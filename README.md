@@ -1,9 +1,13 @@
-# mathbook
+# ChalkMath
 
-A Mathematica-like learning notebook (linear algebra → Calc IV) with "show work" mode, plus
-the zero-to-hero book written from building it. One math engine in Lean 4, verified, compiled
-to native (server / CLI) and wasm (web worker). The TypeScript reference engine it was ported
-from was deleted after M2; its answers live on in `engine/Tests/golden.tsv`.
+A math notebook for learning, from linear algebra to Calc IV, that shows its work: every
+answer comes with the steps that produced it, and any piece of a result can be clicked to see
+which rule made it. It runs entirely in your browser; nothing you type is sent anywhere.
+
+This repository also holds *Show Your Work*, the zero-to-hero book written from building it.
+One math engine in Lean 4, verified, compiled to native (server / CLI) and wasm (web worker).
+The TypeScript reference engine it was ported from was deleted after M2; its answers live on in
+`engine/Tests/golden.tsv`.
 
 ```
 packages/protocol       JSON-RPC contract + Transport abstraction (the seam everything hangs on)

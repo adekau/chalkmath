@@ -1,5 +1,5 @@
 {
-  "name": "@mathbook/engine-host",
+  "name": "@chalkmath/engine-host",
   "version": "0.1.0",
   "type": "module",
   "main": "dist/index.js",
@@ -10,7 +10,7 @@
     "test": "node --test test/*.test.mjs"
   },
   "dependencies": {
-    "@mathbook/protocol": "0.1.0"
+    "@chalkmath/protocol": "0.1.0"
   },
   "exports": {
     ".": "./dist/index.js",

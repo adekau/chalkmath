@@ -1,5 +1,5 @@
 {
-  "name": "mathbook",
+  "name": "chalkmath",
   "private": true,
   "workspaces": [
     "packages/*",
@@ -8,9 +8,11 @@
   "scripts": {
     "build": "npm run build -w packages/protocol && npm run build -ws --if-present",
     "test": "npm test -ws --if-present",
+    "typecheck": "tsc -p apps/notebook",
     "bundle": "node scripts/bundle.mjs",
     "wasm": "scripts/build-wasm.sh",
-    "test:proofs": "cd proofs && lake build"
+    "test:proofs": "cd proofs && lake build",
+    "check:engine": "scripts/check-engine-deps.sh"
   },
   "devDependencies": {
     "@types/node": "^22.20.2",

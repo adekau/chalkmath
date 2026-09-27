@@ -1,4 +1,4 @@
-import type { Transport } from "@mathbook/protocol";
+import type { Transport } from "@chalkmath/protocol";
 
 /** Browser side: talk to an engine running in a Web Worker. */
 export function workerTransport(worker: Worker): Transport {

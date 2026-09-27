@@ -1,5 +1,5 @@
 /**
- * @mathbook/protocol — the contract between a notebook frontend and a math engine.
+ * @chalkmath/protocol — the contract between a notebook frontend and a math engine.
  *
  * Design rules (see ARCHITECTURE.md §2; rule 5: new capabilities are optional fields, never changes):
  *  1. Everything crossing the boundary is plain JSON. No classes, no functions, no BigInt.

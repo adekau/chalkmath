@@ -3,7 +3,7 @@
 // requiring the emcc output in place would treat it as ESM and drop its module.exports).
 const fs = require("node:fs"), os = require("node:os"), path = require("node:path");
 const src = path.resolve(process.argv[2] || "apps/notebook/dist");
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mathbook-wasm-"));
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), "chalkmath-wasm-"));
 for (const f of ["engine-lean.js", "engine-lean.wasm"]) fs.copyFileSync(path.join(src, f), path.join(dir, f));
 const t0 = performance.now();
 const createMathEngine = require(path.join(dir, "engine-lean.js"));

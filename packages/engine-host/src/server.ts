@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import type { RpcRequest, RpcResponse } from "@mathbook/protocol";
+import type { RpcRequest, RpcResponse } from "@chalkmath/protocol";
 import { leanNativeClient } from "./lean-native.js";
 
 /**
@@ -29,7 +29,7 @@ export function startServer(port = 8787, exe = "engine/.lake/build/bin/mathengin
     });
   });
   server.on("close", () => client.close());
-  server.listen(port, () => console.log(`mathbook engine-lean listening on http://localhost:${port}`));
+  server.listen(port, () => console.log(`chalkmath engine-lean listening on http://localhost:${port}`));
   return server;
 }
 

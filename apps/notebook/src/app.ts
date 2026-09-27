@@ -1,6 +1,6 @@
-import { createClient, type EngineClient, type Step, type Path, type RuleStatus, type Derivation, type WireExpr } from "@mathbook/protocol";
+import { createClient, type EngineClient, type Step, type Path, type RuleStatus, type Derivation, type WireExpr } from "@chalkmath/protocol";
 declare const __BUILD_ID__: string;
-import { workerTransport, httpTransport } from "@mathbook/engine-host";
+import { workerTransport, httpTransport } from "@chalkmath/engine-host";
 
 /**
  * The notebook shell. Structure, type and colour follow the second export of the
