@@ -46,6 +46,8 @@ jobs:
           elan toolchain install "$(cat lean-toolchain)"
           lake build
           lake test
+      - name: Every cell of the welcome notebook evaluates (it is the first thing a visitor runs)
+        run: node scripts/notebooks/drive.mjs notebooks/welcome.chalk
       - name: Build the TypeScript packages and type-check the notebook
         run: |
           npm run build

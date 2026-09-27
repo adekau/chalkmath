@@ -940,6 +940,93 @@ function openNotebook() {
 }
 function closeModal() { document.querySelectorAll(".modal").forEach((m) => m.remove()); }
 
+/** A dialog: a title, a body, and a Close button; Esc or a click outside closes it too. */
+function showModal(title: string, body: (Node | string)[], wide = false) {
+  closeModal();
+  const box = h("div", "modal");
+  const card = h("div", `modalcard${wide ? " wide" : ""}`);
+  card.setAttribute("role", "dialog"); card.setAttribute("aria-modal", "true"); card.setAttribute("aria-label", title);
+  card.append(h("h3", undefined, title), ...body);
+  const foot = h("div", "modalfoot");
+  const close = h("button", "primary", "Close"); close.addEventListener("click", closeModal);
+  foot.append(h("div", "spacer"), close);
+  card.append(foot);
+  box.append(card);
+  box.addEventListener("click", (ev) => { if (ev.target === box) closeModal(); });
+  document.body.append(box);
+  close.focus();
+}
+
+/** Notebooks that ship with the page (notebooks/ in the repository, examples/ on the site). */
+const EXAMPLES: { file: string; title: string; blurb: string }[] = [
+  { file: "welcome.chalk", title: "Welcome to ChalkMath", blurb: "A short tour: running cells, reading the steps, and one example from each area." },
+  { file: "llamas.chalk", title: "Drawing llamas with circles", blurb: "Fourier series from inner products to epicycles, ending with a llama drawn by spinning circles." },
+  { file: "order-lattices.chalk", title: "Order and lattices", blurb: "Part I of From Zero to Propagators: partial orders, joins and meets, monotone maps and fixed points." },
+];
+
+/** Open a bundled notebook in a tab (or show it, if it is open already). */
+async function openExample(file: string): Promise<boolean> {
+  const open = S.docs.findIndex((d) => d.name === file);
+  if (open >= 0) { loadDoc(open); switchTab("notebook"); return true; }
+  try {
+    const res = await fetch(`examples/${file}?v=${typeof __BUILD_ID__ === "string" ? __BUILD_ID__ : "dev"}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    await loadNotebook(await res.text(), file);
+    return true;
+  } catch (e) {
+    notify("err", `Could not open ${file}: ${e instanceof Error ? e.message : String(e)}`);
+    return false;
+  }
+}
+
+function showExamples() {
+  const list = h("div", "liblist");
+  for (const ex of EXAMPLES) {
+    const row = h("button", "librow");
+    const main = h("div", "main");
+    main.append(h("div", "name", ex.title), h("div", "when", ex.blurb));
+    row.append(main);
+    row.addEventListener("click", () => { closeModal(); void openExample(ex.file); });
+    list.append(row);
+  }
+  showModal("Example notebooks", [list]);
+}
+
+const SHORTCUTS: [string, string][] = [
+  ["Enter", "Run the cell (in a Markdown cell: a new line)"],
+  ["Shift+Enter or Esc", "Render a Markdown cell"],
+  ["Enter on rendered Markdown, or double-click", "Edit it"],
+  ["↑ / ↓", "Move to the cell above or below"],
+  ["Tab", "Complete a command or a \\-symbol"],
+  ["\\pi, \\lam, \\e, \\theta … then space", "Type a symbol: π, λ, ℯ, θ …"],
+  ["Esc", "Close a popup, the signature help, or this dialog"],
+  ["Ctrl/⌘+S", "Save in this browser (with Shift: Save as)"],
+  ["Ctrl/⌘+B", "Show or hide the sidebar"],
+];
+function showShortcuts() {
+  const t = h("table", "keys");
+  for (const [k, what] of SHORTCUTS) {
+    const tr = h("tr");
+    const kd = h("td"); kd.append(h("kbd", undefined, k));
+    tr.append(kd, h("td", undefined, what));
+    t.append(tr);
+  }
+  showModal("Keyboard shortcuts", [t]);
+}
+
+function showAbout() {
+  const p = (text: string) => h("p", "muted", text);
+  const links = h("p", "muted");
+  const a = (href: string, text: string) => { const l = document.createElement("a"); l.href = href; l.target = "_blank"; l.rel = "noreferrer"; l.textContent = text; return l; };
+  links.append(a("https://github.com/adekau/chalkmath", "Source on GitHub"), " · ", a("https://github.com/adekau/chalkmath/releases", "The book, Show Your Work (PDF)"));
+  showModal("About ChalkMath", [
+    p("A notebook for mathematics that shows its work: every answer comes with the steps that produced it, and any part of an answer can be traced back to the rule that made it."),
+    p("Privacy: the engine runs in your browser. What you type is not sent to a server, and notebooks are kept in this browser's storage until you export them. The page loads its fonts and math typesetting from public CDNs; an import(\"url\") cell fetches that URL."),
+    links,
+    p(`Build ${typeof __BUILD_ID__ === "string" ? __BUILD_ID__ : "dev"}${S.caps ? ` · engine ${S.caps.version}` : ""}`),
+  ]);
+}
+
 /** A notebook from the library becomes a tab (or replaces an untouched one); one already open is shown. */
 function openFromLibrary(name: string) {
   const already = S.docs.findIndex((d) => d.name === name);
@@ -1397,7 +1484,7 @@ function renderChrome() {
   brand.append(mark, h("span", "name", "ChalkMath"));
   const menus = h("div", "menus");
   const MENUS: Record<string, [string, () => void][]> = {
-    File: [["New notebook", newNotebook], ["Open…", openNotebook], ["Save", () => saveNotebook()], ["Save as…", saveNotebookAs], ["Export to file…", exportNotebook], ["Import from file…", importNotebook], ["Attach file…", attachFile], ["Copy link to notebook", () => void copyNotebookLink()]],
+    File: [["New notebook", newNotebook], ["Open…", openNotebook], ["Examples…", showExamples], ["Save", () => saveNotebook()], ["Save as…", saveNotebookAs], ["Export to file…", exportNotebook], ["Import from file…", importNotebook], ["Attach file…", attachFile], ["Copy link to notebook", () => void copyNotebookLink()]],
     Edit: [["Add math cell", () => { addCell(); focusCell(S.cells.length - 1); }], ["Add Markdown cell", () => { addCell("", "markdown"); focusCell(S.cells.length - 1); }], ["Add section", () => { addCell("", "section"); focusCell(S.cells.length - 1); }],
       ...(S.cells[S.active] ? CELL_TYPES.filter(([t]) => t !== (S.cells[S.active]!.type ?? "math")).map(([t, label]): [string, () => void] => [`Change to ${label.toLowerCase()}`, () => convertCell(S.cells[S.active]!, t)]) : []),
       ["Clear outputs", clearOutputs]],
@@ -1417,7 +1504,8 @@ function renderChrome() {
       [`${S.runOnOpen ? "✓ " : ""}Run notebooks when opened`, () => { S.runOnOpen = !S.runOnOpen; setPref("chalkmath.runonopen", S.runOnOpen); renderChrome(); }]],
     Kernel: [...(S.running ? [["Interrupt", () => void interrupt()] as [string, () => void]] : []),
       ["Restart kernel", () => void restartKernel()], ["Restart and run all", async () => { await restartKernel(); await runAll(); }]],
-    Help: [["Reference", () => switchTab("reference")], ["Manim Studio", () => switchTab("studio")],
+    Help: [["Welcome notebook", () => void openExample("welcome.chalk")], ["Example notebooks…", showExamples], ["Keyboard shortcuts", showShortcuts],
+      ["Reference", () => switchTab("reference")], ["Manim Studio", () => switchTab("studio")], ["About ChalkMath", showAbout],
       [`${S.dev ? "✓ " : ""}Developer mode`, () => { S.dev = !S.dev; setPref("chalkmath.dev", S.dev); if (!S.dev && S.panelTab === "log") S.panelTab = "explain"; renderChrome(); renderPanelHead(); renderPanel(); }]],
   };
   for (const m of Object.keys(MENUS)) {
@@ -3718,14 +3806,19 @@ if (saved) {
     restoredActive = "chalkmath" in parsed && typeof parsed.active === "number" ? parsed.active : 0;
   } catch { /* ignore a corrupt autosave */ }
 }
-if (!S.docs.length) {
-  const d = makeDoc("untitled.chalk", SAMPLES.map((src) => freshCell(src)));
-  d.cells.push(freshCell());
-  S.docs.push(d);
-}
+// a first visit gets an empty notebook at once, replaced by the welcome notebook when it arrives
+const firstVisit = !S.docs.length && !location.hash.startsWith("#nb");
+if (!S.docs.length) S.docs.push(makeDoc("untitled.chalk", [freshCell()]));
 S.doc = -1;
 loadDoc(Math.min(restoredActive, S.docs.length - 1));
 if (!saved) { const d = currentDoc(); if (d) d.savedText = serializeNotebook(); }
+if (firstVisit) void openExample("welcome.chalk").then((ok) => {
+  // served without examples/ (a bare dev server): a few cells to start from instead
+  const d = currentDoc();
+  if (ok || !d || !docPristine(d)) return;
+  S.cells.splice(0, S.cells.length, ...SAMPLES.map((src) => freshCell(src)), freshCell());
+  d.savedText = serializeNotebook(); renderCells(); renderSidebar(); renderChrome();
+});
 void connect().then(async () => {
   // a link with a notebook in its fragment opens that notebook (in its own tab unless the current one is untouched)
   if (location.hash.startsWith("#nb") && await openNotebookLink(location.hash)) return;

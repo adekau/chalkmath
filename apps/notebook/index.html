@@ -349,6 +349,13 @@ svg .epitip { fill:var(--acc); }
 .librow .when { font-size:11px; color:var(--ink-mut); margin-top:2px; }
 .librow .del { font-size:11px; color:var(--danger); opacity:0; }
 .librow:hover .del { opacity:1; }
+.modalcard.wide { width:min(720px, 92vw); }
+.modalcard p { line-height:1.6; margin:0 0 10px; }
+button.librow { width:100%; text-align:left; background:transparent; border:0; font:inherit; color:inherit; }
+button.librow:hover, button.librow:focus-visible { background:var(--hov); }
+table.keys { border-collapse:collapse; font-size:12.5px; }
+table.keys td { padding:5px 14px 5px 0; vertical-align:top; color:var(--ink-2); }
+table.keys kbd { font:11.5px var(--mono); color:var(--ink); background:var(--panel-2); border:1px solid var(--border); border-bottom-width:2px; border-radius:4px; padding:1px 6px; white-space:nowrap; }
 .modalfoot { display:flex; align-items:center; gap:8px; margin-top:14px; }
 .modalfoot button { font:12px var(--font); padding:5px 12px; border-radius:5px; border:1px solid var(--btn-edge); background:var(--btn); color:var(--ink-2); cursor:pointer; }
 .modalfoot button.primary { background:var(--primary); color:var(--pri-ink); border-color:var(--pri-edge); }
