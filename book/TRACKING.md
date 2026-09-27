@@ -522,3 +522,27 @@ Goal: re-derive the article (inner products → orthogonality → the square wav
 - notebook: hover under a radical — DONE 2026-09-21. KaTeX draws the radical sign as an SVG overlay on top of the
    radicand (and the fraction and overline rules as overlays), which swallowed the pointer: a changed subterm
    under a √ could never be hovered or clicked. The overlays are `pointer-events: none` now.
+
+## Productionizing ChalkMath (2026-09-27, Alex: "as usable as possible for anyone, not just me")
+
+- security: KaTeX trusts `\htmlData` only — DONE 2026-09-27. Saved outputs (a `.chalk` file, the library, the
+   autosave) render before any re-run, and `trust: true` let that LaTeX carry `\href{javascript:…}`, `\htmlStyle`
+   overlays and remote `\includegraphics`: one click on a crafted file ran script. The engine emits nothing but
+   `\htmlData` (the paths), so a trust function allowing exactly that command costs nothing.
+- autosave kept attachments out — DONE 2026-09-27. The restore skipped `assetsFromFile`, so `llamas.chalk` lost
+   its llama on reload.
+- kernel: stop, crash, load failure — DONE 2026-09-27. The wasm engine is synchronous inside its worker, so an
+   evaluation cannot be interrupted from inside; ■ Stop terminates the worker, starts a fresh one, and rebuilds
+   the session by re-running the cells above that had outputs (a failed or stopped cell bound nothing, and one
+   that hung would hang again). Protocol (rule 5): `Transport.onError` / `EngineClient.onError`, and `close()`
+   fails the calls in flight, which is what lets a terminated call settle. Runs asked for while the engine is
+   busy queue (In[*]) instead of being dropped. A worker that fails to load or dies shows a notice with Restart.
+- notebook options — DONE 2026-09-27 (Alex's list): don't run notebooks on open (saved outputs plus a "not run
+   yet" notice; nothing reaches the engine, no `import()` is fetched); hide work in opened notebooks, and show /
+   hide all work; a sidebar that folds away (rail button, View menu, Ctrl/Cmd+B); the active cell's ⋮ actions in
+   the toolbar. The kernel picker, log and rule count moved behind Help › Developer mode; what the reader did
+   gets a toast.
+- repository — DONE 2026-09-27. Packages renamed `@chalkmath/*` (the GitHub repository is still `mathbook`).
+   CI (`ci.yml`): engine build + `lake test`, check:engine, TS build + type-check + tests, bundle. Pages deploys
+   only a main commit CI passed, after a wasm smoke test. `proofs.yml` builds the theorems when engine/ or proofs/
+   change.

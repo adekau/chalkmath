@@ -545,7 +545,8 @@ async function evaluateCell(cell: Cell, client: EngineClient) {
   } catch (e) {
     cell.ms = performance.now() - t0;
     const stopped = S.engineMode === "http" ? "Stopped." : "Stopped. The engine was restarted, and the cells above this one with outputs were run again.";
-    cell.error = { message: cell === stoppedCell ? stopped : e instanceof Error ? e.message : String(e) };
+    cell.error = { message: cell === stoppedCell ? stopped
+      : S.kernel === "failed" ? "The engine stopped while evaluating this cell." : e instanceof Error ? e.message : String(e) };
     if (cell === stoppedCell) stoppedCell = null;
     log("err", cell.error.message);
   }
