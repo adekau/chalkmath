@@ -66,7 +66,7 @@ echo "== compiling the emitted C"
 sed 's/@[A-Z_]*@//g' "$SRC/src/util/ffi.cpp" > "$OUT/ffi.cpp"
 RT="debug thread mpz utf8 object apply exception interrupt memory stackinfo compact init_module io hash byteslice platform alloc allocprof sharecommon stack_overflow process object_ref mpn mutex libuv uv/net_addr uv/event_loop uv/timer uv/tcp uv/udp uv/dns uv/system uv/signal openssl"
 CPP=$( { for s in $RT; do echo "runtime/$s.cpp"; done
-         (cd "$SRC/src" && ls kernel/*.cpp library/*.cpp util/*.cpp initialize/*.cpp shell/lean.cpp) ; } | grep -v -e '^shell/lean_js' -e '^util/ffi.cpp' )   # ffi.cpp: the configured copy is compiled below
+         (cd "$SRC/src" && ls kernel/*.cpp library/*.cpp library/constructions/*.cpp util/*.cpp initialize/*.cpp shell/lean.cpp) ; } | grep -v -e '^shell/lean_js' -e '^util/ffi.cpp' )   # ffi.cpp: the configured copy is compiled below
 echo "== compiling $(wc -l <<<"$CPP" | tr -d ' ') C++ files"
 xargs -P "$JOBS" -I{} bash -c 'o="$OUT/obj/cpp/{}.o"; [ -f "$o" ] && exit 0; mkdir -p "$(dirname "$o")"; em++ $CXXFLAGS -c "$SRC/src/{}" -o "$o.tmp" && mv "$o.tmp" "$o"' <<<"$CPP"
 [ -f "$OUT/obj/cpp/ffi.o" ] || em++ $CXXFLAGS -c "$OUT/ffi.cpp" -o "$OUT/obj/cpp/ffi.o"
