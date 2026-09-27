@@ -109,9 +109,22 @@ $k m^p s^i$. The printer then shows $2^{3/2}$ as $2\sqrt 2$ and $12^{1/2}$ as $2
 display is the textbook's, the term is the ordering's, and the identity of this chapter is the
 distance between them.
 
+The steps have to show that distance too, or a derivation reads as nonsense. Written as a power,
+$\sqrt 8$ is $8^{1/2}$, which prints as $\sqrt 8$ again: a step that changes nothing on the page.
+So $\sqrt a = a^{1/2}$ is its own rule, \rn{simp.sqrt}, and it is silent, like reordering. The
+exception is a base the printer simplifies, $\sqrt{18}$ shown as $3\sqrt 2$: there the same
+rewrite is a visible \rn{simp.radical} step that says why, $18 = 3^2 \cdot 2$, so $\sqrt{18} =
+\sqrt{3^2} \cdot \sqrt 2 = 3\sqrt 2$. The perfect-power step writes out the identity of the
+previous section for its numbers, $\sqrt{32} = (2^5)^{1/2} = 2^{5/2} = 2^2 \cdot 2^{1/2} = 4\sqrt
+2$, and collecting shows the coefficients it adds, $2\sqrt 2 + 4\sqrt 2 = (2 + 4)\sqrt 2$. The
+work lives in the explanation, not in extra rewrites: $(2^5)^{1/2}$ and $2^2 \cdot 2^{1/2}$ are
+heavier than $32^{1/2}$, so the ordering could not allow them as steps, and it does not need to.
+
 \section{The theorems}
 
-All three rules are \status{verified}, unconditionally, because their bases are positive integers.
+All the rules are \status{verified}, unconditionally: the radical rules because their bases are
+positive integers, the two for $\sqrt a$ because \lc{Real.sqrt_eq_rpow} holds for every real $a$
+(both sides are $0$ for a negative one).
 
 \begin{minted}{lean}
 theorem perfectPower_spec {a r k : ℕ} (h : perfectPower a = some (r, k)) : r ^ k = a
@@ -122,6 +135,8 @@ theorem radicalBase_soundR (ρ : EnvR) {e : Expr} {res : RuleResult}
     (h : radicalBase.apply e = some res) : evalR ρ res.result = evalR ρ e
 theorem collectRadicals_soundR (ρ : EnvR) … : evalR ρ res.result = evalR ρ e
 theorem mulRadicals_soundR (ρ : EnvR) … : evalR ρ res.result = evalR ρ e
+theorem sqrtPower_soundR (ρ : EnvR) … : evalR ρ res.result = evalR ρ e
+theorem sqrtRadical_soundR (ρ : EnvR) … : evalR ρ res.result = evalR ρ e
 \end{minted}
 
 The first two are about the searches: a perfect power found is one, a decomposition found is one.

@@ -60,7 +60,11 @@ differential test with zero mismatches.
   than `8^(1/2)` under any bounded numeral weight, so the engine's normal form is the single power
   `2^(3/2)` (a sixth tier, the magnitudes of integer numerals, orders that step), radicals with the
   same square-free part collect in sums and same-index radicals multiply in products (both decrease
-  `M`), and the printer displays the single-power form the textbook way. `RadicalRules.lean`.
+  `M`), and the printer displays the single-power form the textbook way. `√a = a^(1/2)` is a
+  silent rule where the two print alike and a visible `simp.radical` step where they do not
+  (`√18` shows as `3√2`); the arithmetic the textbook writes out (`√32 = (2^5)^(1/2) = 2^2 · 2^(1/2)`)
+  lives in the explanations, since those intermediate forms are heavier than the input and could
+  not be steps. `RadicalRules.lean`.
 - **The λ-calculus is a second world in the same engine.** `Lambda.lean` has its own terms, parser
   and normal-order β-reducer; terms are encoded into `Expr` for the wire, so selection, explanation
   and origin tracking work unchanged. The de Bruijn view is computed with every step. Reduction is

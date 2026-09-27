@@ -2244,9 +2244,15 @@ function markChanges(rows: HTMLElement[], d: Derivation) {
   d.steps.forEach((st, n) => {
     const el = rows[n]?.querySelector<HTMLElement>(".el"); if (!el) return;
     const beforeLatex = st.beforeRendered?.latex ?? (n === 0 ? d.inputRendered?.latex : undefined);
-    for (const p of changedPaths(st.before, st.after)) {
-      if (!p.length) continue;
-      const now = el.querySelector<HTMLElement>(`[data-path="${p.join(".")}"]`); if (!now) continue;
+    const tinted = new Set<string>();
+    for (const changed of changedPaths(st.before, st.after)) {
+      // a subterm the printer does not show on its own (the 2 and 3/2 of 2^(3/2), shown as 2√2)
+      // tints the nearest ancestor it does show
+      let p = changed, found: HTMLElement | null = null;
+      for (; p.length; p = p.slice(0, -1)) if ((found = el.querySelector<HTMLElement>(`[data-path="${p.join(".")}"]`))) break;
+      const now = found;
+      if (!now || tinted.has(p.join("."))) continue;
+      tinted.add(p.join("."));
       now.classList.add("chg");
       const old = beforeLatex ? pathLatex(beforeLatex, p) : null;
       const neu = st.afterRendered ? pathLatex(st.afterRendered.latex, p) : null;

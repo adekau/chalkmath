@@ -54,13 +54,14 @@ theorem at?_replaceAt_disjoint (new : Expr) : ∀ (e : Expr) (p q : Path), Disjo
     · rfl
 
 /-- The representative of a term up to what the rewriter changes *silently* — argument order
-(`simp.sort`) and nesting of sums in sums and products in products (`simp.flatten`), the two rules
-that leave no `Step`. Two terms with the same `canonDeep` are the same term to the tracer, which is
-exactly the invariant a silent rule must keep. -/
+(`simp.sort`), nesting of sums in sums and products in products (`simp.flatten`), and `√a` for
+`a^(1/2)` (`simp.sqrt`), the rules that leave no `Step`. Two terms with the same `canonDeep` are
+the same term to the tracer, which is exactly the invariant a silent rule must keep. -/
 partial def canonDeep (e : Expr) : Expr :=
   match withChildren e ((children e).map canonDeep) with
   | .add es => canon (.add (es.flatMap unAdd))
   | .mul es => canon (.mul (es.flatMap unMul))
+  | .fn "sqrt" [a] => .pow a (.num (Q.ofRat (mkRat 1 2)))
   | e' => canon e'
 
 /-- Positions at or below `root` in `t` whose subterm equals `sub` up to argument order. -/
