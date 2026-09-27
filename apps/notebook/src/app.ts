@@ -16,8 +16,12 @@ import { workerTransport, httpTransport } from "@mathbook/engine-host";
  */
 
 declare const katex: { renderToString(tex: string, opts?: object): string; render(tex: string, el: HTMLElement, opts?: object): void };
+/** The one trusted KaTeX command is `\htmlData`, which carries the engine's subterm paths. LaTeX can
+ *  come from a file someone else wrote (saved outputs render before any re-run), and a blanket
+ *  `trust: true` would let it add `\href{javascript:…}`, arbitrary styles, or remote images. */
+const TRUST_PATHS = (ctx: { command: string }) => ctx.command === "\\htmlData";
 const tex = (s: string, paths = false) =>
-  katex.renderToString(s, { throwOnError: false, trust: paths, strict: false, displayMode: false });
+  katex.renderToString(s, { throwOnError: false, trust: paths ? TRUST_PATHS : false, strict: false, displayMode: false });
 
 // ---------------------------------------------------------------------------
 // Content: the notebook's own vocabulary, from the design's reference copy.
@@ -2534,7 +2538,7 @@ function measure(texSrc: string, fontSize: number): Measured {
   const el = document.createElement("div");
   el.style.cssText = `font-size:${fontSize}px; display:inline-block; white-space:nowrap`;
   host.appendChild(el);
-  try { katex.render(texSrc, el, { throwOnError: false, displayMode: false, strict: false, trust: true }); } catch { return empty; }
+  try { katex.render(texSrc, el, { throwOnError: false, displayMode: false, strict: false, trust: TRUST_PATHS }); } catch { return empty; }
   const root = el.querySelector(".katex-html") as HTMLElement | null;
   if (!root) return empty;
   el.querySelector(".katex-mathml")?.remove();
@@ -3462,12 +3466,12 @@ if (saved) {
       ? parsed.docs
       : [{ file: parsed as ChalkFile, dirty: false }];
     for (const { file, dirty } of entries) {
-      const d = makeDoc(file.name ?? "untitled.chalk", cellsFromFile(file), Array.isArray(file.scenes) ? file.scenes : []);
+      const d = makeDoc(file.name ?? "untitled.chalk", cellsFromFile(file), Array.isArray(file.scenes) ? file.scenes : [], assetsFromFile(file));
       if (!d.cells.length) d.cells.push(freshCell());
       d.hydrated = false;
       S.docs.push(d);
       // the saved text is what the tab compares against; a dirty document compares against nothing
-      d.text = JSON.stringify({ chalk: 1, name: d.name, cells: file.cells, scenes: d.scenes }, null, 2);
+      d.text = JSON.stringify({ chalk: 1, name: d.name, cells: file.cells, scenes: d.scenes, ...(Object.keys(d.assets).length ? { assets: d.assets } : {}) }, null, 2);
       d.savedText = dirty ? "" : d.text;
     }
     restoredActive = "chalkmath" in parsed && typeof parsed.active === "number" ? parsed.active : 0;
