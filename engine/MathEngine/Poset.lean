@@ -1,4 +1,6 @@
 import MathEngine.Print
+import Std.Data.HashSet
+import Std.Data.HashMap
 /-!
 # The order-theory world: finite posets
 
@@ -21,9 +23,23 @@ transitively closed by construction (`mk`). -/
 structure Poset where
   elems : List String
   le : List (String × String)
-  deriving Repr, Inhabited
+  /-- `le` as a hash set, built once. `covers` over every triple of a 128-element powerset makes
+  millions of lookups, and a list scan of the 2187-pair order per lookup made `subsets` of seven
+  elements take minutes; `leSet_eq` keeps the proofs on the list. -/
+  leSet : Std.HashSet (String × String)
+  leSet_eq : leSet = Std.HashSet.ofList le
 
-def Poset.rel (P : Poset) (x y : String) : Bool := P.le.contains (x, y)
+/-- The one way to build a poset: the set is computed from the list. -/
+def Poset.of (elems : List String) (le : List (String × String)) : Poset :=
+  ⟨elems, le, Std.HashSet.ofList le, rfl⟩
+
+instance : Inhabited Poset := ⟨Poset.of [] []⟩
+
+def Poset.rel (P : Poset) (x y : String) : Bool := P.leSet.contains (x, y)
+
+/-- `rel` decides membership in `le`: what the proofs use. -/
+theorem Poset.rel_eq (P : Poset) (x y : String) : P.rel x y = P.le.contains (x, y) := by
+  rw [Poset.rel, P.leSet_eq, Std.HashSet.contains_ofList]
 def Poset.lt (P : Poset) (x y : String) : Bool := P.rel x y && x != y
 
 /-- Reflexive-transitive closure of `gen` over `elems` (a fixed number of rounds suffices). -/
@@ -52,7 +68,7 @@ def mk (elems : List String) (gen : List (String × String)) : Except String Pos
   if let some (x, y) := gen.find? (fun (x, y) => !elems.contains x || !elems.contains y) then
     .error s!"{x} < {y} mentions an element outside the set"
   else
-    let P : Poset := ⟨elems, closure elems gen⟩
+    let P : Poset := Poset.of elems (closure elems gen)
     match checkPartialOrder P with
     | some why => .error s!"not a partial order: {why}"
     | none => .ok P
@@ -64,14 +80,15 @@ def covers (P : Poset) (x y : String) : Bool :=
 def hasse (P : Poset) : List (String × String) :=
   P.elems.flatMap fun x => P.elems.filterMap fun y => if covers P x y then some (x, y) else none
 
-/-- Height of an element: the length of the longest chain below it (for the drawing's layers). -/
-def height (P : Poset) (x : String) : Nat := go P.elems.length x
-where
-  go : Nat → String → Nat
-    | 0, _ => 0
-    | n + 1, x =>
-      let below := P.elems.filter fun z => P.lt z x
-      (below.map fun z => go n z + 1).foldl max 0
+/-- The height of every element — the length of the longest chain below it, for the drawing's
+layers — by relaxing along the covers `|elems|` times: the longest chain has fewer edges than that.
+(The recursive definition, longest chain below each element below, walked every chain of the
+powerset of seven elements: 47 000 of them under the top alone.) -/
+def heights (P : Poset) : Std.HashMap String Nat :=
+  let cov := hasse P
+  let init : Std.HashMap String Nat := P.elems.foldl (fun m x => m.insert x 0) {}
+  (List.range P.elems.length).foldl (fun m _ =>
+    cov.foldl (fun m (a, b) => let h := m.getD a 0 + 1; if h > m.getD b 0 then m.insert b h else m) m) init
 
 def upperBounds (P : Poset) (xs : List String) : List String :=
   P.elems.filter fun u => xs.all fun x => P.rel x u
@@ -103,19 +120,19 @@ def divisors (n : Nat) : Except String Poset :=
   if n = 0 then .error "divisors(0) is not finite" else
   let ds := (List.range (n + 1)).filter fun d => d > 0 && n % d == 0
   let elems := ds.map toString
-  .ok ⟨elems, ds.flatMap fun a => ds.filterMap fun b => if b % a == 0 then some (toString a, toString b) else none⟩
+  .ok (Poset.of elems (ds.flatMap fun a => ds.filterMap fun b => if b % a == 0 then some (toString a, toString b) else none))
 
 /-- All subsets of a finite set under inclusion, written `{a,b}`. -/
 def subsets (xs : List String) : Poset :=
   let xs := xs.eraseDups
   let pw := xs.foldr (fun x acc => acc ++ acc.map (x :: ·)) [[]]
   let name (s : List String) : String := "{" ++ ",".intercalate (xs.filter (s.contains ·)) ++ "}"
-  ⟨pw.map name, pw.flatMap fun a => pw.filterMap fun b => if a.all (b.contains ·) then some (name a, name b) else none⟩
+  Poset.of (pw.map name) (pw.flatMap fun a => pw.filterMap fun b => if a.all (b.contains ·) then some (name a, name b) else none)
 
 /-- The chain `0 < 1 < … < n-1`. -/
 def chain (n : Nat) : Poset :=
   let es := (List.range n).map toString
-  ⟨es, (List.range n).flatMap fun a => (List.range n).filterMap fun b => if a ≤ b then some (toString a, toString b) else none⟩
+  Poset.of es ((List.range n).flatMap fun a => (List.range n).filterMap fun b => if a ≤ b then some (toString a, toString b) else none)
 
 /-! ## Maps -/
 

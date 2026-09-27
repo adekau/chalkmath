@@ -89,7 +89,7 @@ theorem iter_le_fixed {P : Poset} {f : PMap} (hm : monotoneFailure P f = none) {
   | 0, x, hx => hx
   | n + 1, x, hx => by
     have ih := iter_le_fixed hm hy n x hx
-    have := monotone_of_none hm (f.iter n x, y) (by simpa [Poset.rel] using ih)
+    have := monotone_of_none hm (f.iter n x, y) (by simpa [Poset.rel_eq] using ih)
     simp only [PMap.iter]
     rw [hy] at this
     exact this

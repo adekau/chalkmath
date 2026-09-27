@@ -181,6 +181,8 @@ def tests : TestM Unit := do
   check "latex x/2 + sqrt(y)" (latexOf "x/2 + sqrt(y)") "\\frac{x}{2} + \\sqrt{y}"
   check "latex diff" (latexOf "diff(x^2, x)") "\\frac{d}{dx}\\left({x}^{2}\\right)"
   check "latex greek and mathit" (latexOf "pi * abc") "\\pi \\cdot \\mathit{abc}"
+  -- a subsets-poset element is named by its set literal; braces are LaTeX grouping, so they are escaped
+  check "latex set-literal elements" ((Expr.fn "set" [.var "{}", .var "{x,y}"]).toLatex false) "\\{\\varnothing, \\{x,y\\}\\}"
   check "latex matrix" (latexOf "[1,2;3,4]") "\\begin{bmatrix}1 & 2 \\\\ 3 & 4\\end{bmatrix}"
   check "latex paths" (latexOf "x^3" true) "\\htmlData{path=root}{{\\htmlData{path=0}{x}}^{\\htmlData{path=1}{3}}}"
   -- step 2: normalize records whole-term before/after and the path; innermost order

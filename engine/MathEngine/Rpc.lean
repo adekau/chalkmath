@@ -160,8 +160,10 @@ def evaluateOrder (st : Store) (params : Json) (sessionId cellId src : String) :
     let r := #[("ok", .bool true), ("kind", .str "poset"), ("value", res.value.toJson), ("rendered", Rendered.toJson res.value paths),
       ("summary", .str res.summary)]
     let r := match res.poset with
-      | some P => r.push ("hasse", .obj #[
-          ("nodes", .arr (P.elems.map fun x => Json.obj #[("name", .str x), ("height", .num (toString (Ord.height P x)))]).toArray),
+      | some P =>
+        let hs := Ord.heights P
+        r.push ("hasse", .obj #[
+          ("nodes", .arr (P.elems.map fun x => Json.obj #[("name", .str x), ("height", .num (toString (hs.getD x 0)))]).toArray),
           ("covers", .arr ((Ord.hasse P).map fun (a, b) => Json.arr #[.str a, .str b]).toArray)])
       | none => r
     let r := if params.getBool "showWork" then

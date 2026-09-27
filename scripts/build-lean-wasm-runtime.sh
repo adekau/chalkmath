@@ -7,11 +7,12 @@
 #                compiled with em++ using the flags src/CMakeLists.txt uses for Emscripten
 #                (USE_GMP=OFF, USE_MIMALLOC=OFF, MMAP=OFF, MULTI_THREAD=OFF; no -pthread, no LTO)
 #   libInit.a    C emitted for every Init module by the *same* host `lean` that built the toolchain's
-#                .oleans (`lean --c`), compiled with emcc. The engine only imports Init.
+#                .oleans (`lean --c`), compiled with emcc.
+#   libStd.a     the same for the Std modules the engine imports, transitively (step 5).
 # The Lean compiler itself is never built; the host toolchain from elan does all elaboration.
 #
 # Requires: elan toolchain from engine/lean-toolchain, emcc/em++/emar (emsdk), git, curl.
-# Output:   engine/toolchains/lean-<ver>-wasm32/{include,lib/libleanrt.a,lib/libInit.a}
+# Output:   engine/toolchains/lean-<ver>-wasm32/{include,lib/libleanrt.a,lib/libInit.a,lib/libStd.a}
 # Patch:    engine/wasm/lean-runtime-emscripten.patch (the two stub signatures from lean4#14973)
 set -euo pipefail
 cd "$(dirname "$0")/../engine"
@@ -77,5 +78,42 @@ if [ ! -f "$TC/lib/libInit.a" ]; then
   (cd "$TC/c" && find . -name '*.c' | xargs -P "$JOBS" -I{} bash -c 'c={}; o="$TC/obj/Init/${c%.c}.o"; mkdir -p "$(dirname "$o")"; [ -f "$o" ] || emcc $CFLAGS -c "$c" -o "$o"')
   find "$TC/obj/Init" -name '*.o' > "$TC/obj/init-objs.txt"
   emar rcs "$TC/lib/libInit.a" $(cat "$TC/obj/init-objs.txt")
+fi
+# 5. libStd.a: the Std modules the engine imports, transitively (Std is not part of Init; only the
+#    engine's own imports are elaborated, since e.g. Std.Tactic.BVDecide is heavy and Std.Net needs
+#    libuv). The list is kept beside the archive and the step reruns when a new import widens it.
+STD_MODS=$(python3 - "$PREFIX/src/lean" "$PWD/MathEngine" <<'PY'
+import re, os, sys
+root, eng = sys.argv[1], sys.argv[2]
+imp = re.compile(r'^\s*(?:(?:public|private|meta|all)\s+)*import\s+(.+)$', re.M)
+def imports(text):
+    text = re.sub(r'/-.*?-/', '', text, flags=re.S)
+    return [t for m in imp.finditer(text) for t in m.group(1).split() if t.startswith('Std.')]
+seen, order = set(), []
+def visit(m):
+    if m in seen: return
+    seen.add(m)
+    path = os.path.join(root, m.replace('.', '/') + '.lean')
+    if os.path.exists(path):
+        for d in imports(open(path, encoding='utf8').read()): visit(d)
+    order.append(m)
+for f in sorted(os.listdir(eng)):
+    if f.endswith('.lean'):
+        for d in imports(open(os.path.join(eng, f), encoding='utf8').read()): visit(d)
+print('\n'.join(order))
+PY
+)
+if [ ! -f "$TC/lib/libStd.a" ] || [ "$STD_MODS" != "$(cat "$TC/obj/std-modules.txt" 2>/dev/null)" ]; then
+  echo "== emitting C for $(wc -w <<<"$STD_MODS" | tr -d ' ') Std modules with $LEAN"
+  mkdir -p "$TC/obj/Std"
+  export LEAN LEAN_PATH="$PREFIX/lib/lean" TC
+  (cd "$PREFIX/src/lean" && tr ' ' '\n' <<<"$STD_MODS" | sed 's#\.#/#g; s#$#.lean#' | xargs -P "$JOBS" -I{} bash -c 'f={}; o="$TC/c/${f%.lean}.c"; mkdir -p "$(dirname "$o")"; [ -f "$o" ] || "$LEAN" -R . --c="$o" "$f"')
+  echo "== compiling Std modules"
+  CFLAGS="-O3 -DNDEBUG -DLEAN_EXPORTING -ffp-contract=off -fwasm-exceptions -I$TC/include"
+  export CFLAGS
+  (cd "$TC/c" && find Std -name '*.c' | xargs -P "$JOBS" -I{} bash -c 'c={}; o="$TC/obj/Std/${c%.c}.o"; mkdir -p "$(dirname "$o")"; [ -f "$o" ] || emcc $CFLAGS -c "$c" -o "$o"')
+  rm -f "$TC/lib/libStd.a"
+  emar rcs "$TC/lib/libStd.a" $(find "$TC/obj/Std" -name '*.o')
+  printf '%s' "$STD_MODS" > "$TC/obj/std-modules.txt"
 fi
 ls -la "$TC/lib"
