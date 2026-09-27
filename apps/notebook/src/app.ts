@@ -532,6 +532,7 @@ async function evaluateCell(cell: Cell, client: EngineClient) {
       }
       if ("kind" in r && r.kind === "lambda") { cell.outDeBruijn = r.renderedDeBruijn?.latex; cell.reading = r.reading; cell.kind = "λ-term"; }
       log("ok", `Out[${cell.label}] ${r.rendered.text}  (${cell.ms.toFixed(1)} ms, ${cell.steps.length} steps)`);
+      announce(`Out ${cell.label}: ${r.rendered.text}`);
       if ("bound" in r && r.bound?.length) {
         log("ok", `bound ${r.bound.join(", ")}`);
         const k = `${sessionId}:${r.bound[0]}`;
@@ -544,6 +545,7 @@ async function evaluateCell(cell: Cell, client: EngineClient) {
       delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.plot; delete cell.image; cell.steps = [];
       cell.error = r.error;
       log("err", `${r.error.code}: ${r.error.message}`);
+      announce(`Error: ${r.error.message}`);
     }
   } catch (e) {
     cell.ms = performance.now() - t0;
@@ -739,19 +741,23 @@ function renderTabs() {
     const on = S.tab === "notebook" && i === S.doc;
     const t = h("div", `tab${on ? " on" : ""}${dirty ? " dirty" : ""}`);
     t.title = dirty ? `${d.name} — unsaved changes` : d.name;
-    const x = h("span", "x", "×"); x.title = "Close";
+    const x = asButton(h("span", "x", "×"), `Close ${d.name}`); x.title = "Close";
     x.addEventListener("click", (ev) => { ev.stopPropagation(); closeDoc(i); });
-    t.append(h("span", "label", `${d.name}${dirty ? "*" : ""}`), x);
+    // the label is the button (the × beside it is another; one may not hold the other)
+    const label = asButton(h("span", "label", `${d.name}${dirty ? "*" : ""}`), `${d.name}${dirty ? ", unsaved changes" : ""}`);
+    label.setAttribute("aria-current", String(on));
+    t.append(label, x);
     t.addEventListener("click", () => { if (i !== S.doc) loadDoc(i); switchTab("notebook"); });
     tabs.append(t);
   });
   for (const [key, label] of [["studio", "manim studio"], ["reference", "reference"]] as const) {
-    const t = h("div", `tab${S.tab === key ? " on" : ""}`);
+    const t = asButton(h("div", `tab${S.tab === key ? " on" : ""}`), label);
+    t.setAttribute("aria-current", String(S.tab === key));
     t.append(h("span", "label", label));
     t.addEventListener("click", () => switchTab(key));
     tabs.append(t);
   }
-  tabs.append((() => { const a = h("div", "tabadd", "+"); a.title = "New notebook"; a.addEventListener("click", () => { newDoc(); switchTab("notebook"); }); return a; })());
+  tabs.append((() => { const a = asButton(h("div", "tabadd", "+"), "New notebook"); a.title = "New notebook"; a.addEventListener("click", () => { newDoc(); switchTab("notebook"); }); return a; })());
 }
 
 // ---------------------------------------------------------------------------
@@ -919,6 +925,7 @@ function openNotebook() {
   const names = Object.keys(lib).sort((a, b) => (lib[b]!.savedAt > lib[a]!.savedAt ? 1 : -1));
   const box = h("div", "modal");
   const card = h("div", "modalcard");
+  card.setAttribute("role", "dialog"); card.setAttribute("aria-modal", "true"); card.setAttribute("aria-label", "Open a notebook");
   card.append(h("h3", undefined, "Open a notebook"));
   if (!names.length) card.append(h("p", "muted", "Nothing saved in this browser yet. File › Save keeps the current notebook here; File › Import opens a .chalk file."));
   const list = h("div", "liblist");
@@ -927,8 +934,9 @@ function openNotebook() {
     const when = new Date(lib[name]!.savedAt);
     const main = h("div", "main");
     main.append(h("div", "name", name), h("div", "when", `${lib[name]!.file.cells.length} cells · saved ${when.toLocaleString()}`));
+    asButton(main, `Open ${name}`);
     main.addEventListener("click", () => { closeModal(); openFromLibrary(name); });
-    const del = h("span", "del", "delete"); del.title = "Remove from this browser";
+    const del = asButton(h("span", "del", "delete"), `Delete ${name} from this browser`); del.title = "Remove from this browser";
     del.addEventListener("click", (ev) => { ev.stopPropagation(); if (window.confirm(`Delete ${name} from this browser?`)) { const l = readLibrary(); delete l[name]; writeLibrary(l); openNotebook(); } });
     row.append(main, del);
     list.append(row);
@@ -941,9 +949,30 @@ function openNotebook() {
   card.append(foot);
   box.append(card);
   box.addEventListener("click", (ev) => { if (ev.target === box) closeModal(); });
+  mountModal(box);
+  (list.querySelector<HTMLElement>("[role=button]") ?? close).focus();
+}
+/** Where focus was before a dialog opened; it goes back there when the dialog closes. */
+let modalReturn: HTMLElement | null = null;
+function closeModal() {
+  const had = document.querySelector(".modal");
+  document.querySelectorAll(".modal").forEach((m) => m.remove());
+  if (had && modalReturn?.isConnected) modalReturn.focus();
+  modalReturn = null;
+}
+/** Put a dialog on the page: Tab and Shift+Tab stay inside it. */
+function mountModal(box: HTMLElement) {
+  modalReturn = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  box.addEventListener("keydown", (ev) => {
+    if (ev.key !== "Tab") return;
+    const f = [...box.querySelectorAll<HTMLElement>("button, [href], input, [tabindex]:not([tabindex='-1'])")].filter((e) => !e.hidden);
+    if (!f.length) return;
+    const first = f[0]!, last = f[f.length - 1]!;
+    if (ev.shiftKey && document.activeElement === first) { ev.preventDefault(); last.focus(); }
+    else if (!ev.shiftKey && document.activeElement === last) { ev.preventDefault(); first.focus(); }
+  });
   document.body.append(box);
 }
-function closeModal() { document.querySelectorAll(".modal").forEach((m) => m.remove()); }
 
 /** A dialog: a title, a body, and a Close button; Esc or a click outside closes it too. */
 function showModal(title: string, body: (Node | string)[], wide = false) {
@@ -958,7 +987,7 @@ function showModal(title: string, body: (Node | string)[], wide = false) {
   card.append(foot);
   box.append(card);
   box.addEventListener("click", (ev) => { if (ev.target === box) closeModal(); });
-  document.body.append(box);
+  mountModal(box);
   close.focus();
 }
 
@@ -1446,6 +1475,42 @@ const h = (tag: string, cls?: string, text?: string) => {
 };
 const app = () => document.getElementById("app")!;
 
+/** Make a clickable element a keyboard-operable button: focusable, announced as a button, and
+ *  activated by Enter or Space like a <button>. */
+function asButton<T extends HTMLElement>(el: T, label?: string): T {
+  el.setAttribute("role", "button"); el.tabIndex = 0;
+  if (label) el.setAttribute("aria-label", label);
+  el.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); ev.stopPropagation(); el.click(); } });
+  return el;
+}
+
+/** Arrow keys, Home and End move between a menu's items; Esc calls `onEscape`. */
+function menuKeys(menu: HTMLElement, onEscape: () => void, onSide?: (dir: -1 | 1) => void) {
+  menu.setAttribute("role", "menu");
+  const items = () => [...menu.querySelectorAll<HTMLElement>(":scope > .item")];
+  for (const it of items()) { it.setAttribute("role", "menuitem"); it.tabIndex = -1; }
+  menu.addEventListener("keydown", (ev) => {
+    const all = items(), i = all.indexOf(document.activeElement as HTMLElement);
+    const go = (j: number) => { ev.preventDefault(); ev.stopPropagation(); all[(j + all.length) % all.length]?.focus(); };
+    if (ev.key === "ArrowDown") go(i + 1);
+    else if (ev.key === "ArrowUp") go(i - 1);
+    else if (ev.key === "Home") go(0);
+    else if (ev.key === "End") go(all.length - 1);
+    else if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); ev.stopPropagation(); (document.activeElement as HTMLElement | null)?.click(); }
+    else if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); onEscape(); }
+    else if (onSide && (ev.key === "ArrowLeft" || ev.key === "ArrowRight")) { ev.preventDefault(); ev.stopPropagation(); onSide(ev.key === "ArrowLeft" ? -1 : 1); }
+  });
+}
+
+/** Say something to a screen reader without showing it (a result arriving, an error). */
+function announce(text: string) {
+  let live = document.getElementById("sr-live");
+  if (!live) { live = h("div", "sr-only"); live.id = "sr-live"; live.setAttribute("role", "status"); live.setAttribute("aria-live", "polite"); document.body.append(live); }
+  live.textContent = "";
+  requestAnimationFrame(() => { live!.textContent = text; });
+}
+const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
 /** Render an engine explanation: Markdown-ish text with `$latex$` spans. */
 function inlineMath(md: string, cls?: string): HTMLElement {
   const el = h("span", cls);
@@ -1465,17 +1530,20 @@ function shell() {
   const root = app();
   root.innerHTML = "";
   root.append(
-    h("div", "titlebar"), h("div", "tabbar"),
+    (() => { const t = h("header", "titlebar"); return t; })(),
+    (() => { const t = h("nav", "tabbar"); t.setAttribute("aria-label", "Notebooks"); return t; })(),
     (() => {
       const body = h("div", "body");
-      body.append(h("div", "rail"), h("aside", "sidebar"), (() => {
-        const main = h("div", "main");
+      const rail = h("nav", "rail"); rail.setAttribute("aria-label", "Sidebar views");
+      const side = h("aside", "sidebar"); side.setAttribute("aria-label", "Sidebar");
+      body.append(rail, side, (() => {
+        const main = h("div", "main"); main.setAttribute("role", "main");
         main.append(h("div", "toolbar"), h("div", "notice"), h("div", "cells"), h("div", "reference"), h("div", "studio"), h("div", "panel"));
         return main;
       })());
       return body;
     })(),
-    h("div", "statusbar"),
+    h("footer", "statusbar"),
   );
 }
 
@@ -1486,7 +1554,7 @@ function renderChrome() {
   const tb = $(".titlebar"); tb.innerHTML = "";
   const brand = h("div", "brand");
   const mark = document.createElement("img"); mark.className = "mark"; mark.src = "logo.svg"; mark.alt = ""; mark.draggable = false;
-  brand.append(mark, h("span", "name", "ChalkMath"));
+  brand.append(mark, h("h1", "name", "ChalkMath"));
   const menus = h("div", "menus");
   const MENUS: Record<string, [string, () => void][]> = {
     File: [["New notebook", newNotebook], ["Open…", openNotebook], ["Examples…", showExamples], ["Save", () => saveNotebook()], ["Save as…", saveNotebookAs], ["Export to file…", exportNotebook], ["Import from file…", importNotebook], ["Attach file…", attachFile], ["Copy link to notebook", () => void copyNotebookLink()]],
@@ -1513,9 +1581,21 @@ function renderChrome() {
       ["Reference", () => switchTab("reference")], ["Manim Studio", () => switchTab("studio")], ["About ChalkMath", showAbout],
       [`${S.dev ? "✓ " : ""}Developer mode`, () => { S.dev = !S.dev; setPref("chalkmath.dev", S.dev); if (!S.dev && S.panelTab === "log") S.panelTab = "explain"; renderChrome(); renderPanelHead(); renderPanel(); }]],
   };
-  for (const m of Object.keys(MENUS)) {
+  const names = Object.keys(MENUS);
+  const openMenu = (m: string | null, kb: boolean) => {
+    S.menu = m; renderChrome();
+    // opened from the keyboard: focus goes into the menu; closed: back to its title
+    if (m && kb) $<HTMLElement>(".menus .dropdown .item")?.focus();
+  };
+  for (const m of names) {
+    // the title and its dropdown are siblings: a menu may not sit inside a button
+    const wrap = h("div", "mwrap");
     const sp = h("span", S.menu === m ? "open" : undefined, m);
-    sp.addEventListener("click", (ev) => { ev.stopPropagation(); S.menu = S.menu === m ? null : m; renderChrome(); });
+    wrap.append(sp);
+    asButton(sp); sp.setAttribute("aria-haspopup", "menu"); sp.setAttribute("aria-expanded", String(S.menu === m)); sp.dataset["menu"] = m;
+    // a click from the keyboard has detail 0
+    sp.addEventListener("click", (ev) => { ev.stopPropagation(); openMenu(S.menu === m ? null : m, ev.detail === 0); });
+    sp.addEventListener("keydown", (ev) => { if (ev.key === "ArrowDown") { ev.preventDefault(); openMenu(m, true); } });
     if (S.menu === m) {
       const dd = h("div", "dropdown");
       for (const [label, act] of MENUS[m]!) {
@@ -1523,11 +1603,13 @@ function renderChrome() {
         it.addEventListener("click", (ev) => { ev.stopPropagation(); S.menu = null; renderChrome(); act(); });
         dd.append(it);
       }
-      sp.append(dd);
+      menuKeys(dd, () => { openMenu(null, false); $<HTMLElement>(`.menus [data-menu="${m}"]`)?.focus(); },
+        (dir) => openMenu(names[(names.indexOf(m) + dir + names.length) % names.length]!, true));
+      wrap.append(dd);
     }
-    menus.append(sp);
+    menus.append(wrap);
   }
-  const theme = h("span", "themebtn", S.theme === "light" ? "◑ Light" : "◐ Dark");
+  const theme = asButton(h("span", "themebtn", S.theme === "light" ? "◑ Light" : "◐ Dark"), `Theme: ${S.theme}. Switch to ${S.theme === "light" ? "dark" : "light"}`);
   theme.title = "Toggle light and dark";
   theme.addEventListener("click", () => { applyTheme(S.theme === "light" ? "dark" : "light"); renderChrome(); if (S.tab === "studio") renderStage(); });
   const kernel = h("div", "kernel");
@@ -1554,7 +1636,8 @@ function renderChrome() {
   const rail = $(".rail"); rail.innerHTML = "";
   for (const [key, glyph, title] of [["outline", "≡", "Outline"], ["palette", "ƒ", "Commands"]] as const) {
     const on = S.sidebarOpen && S.rail === key;
-    const b = h("div", `b${on ? " on" : ""}`, glyph);
+    const b = asButton(h("div", `b${on ? " on" : ""}`, glyph), title);
+    b.setAttribute("aria-pressed", String(on));
     b.title = on ? `${title} (click again to hide the sidebar)` : title;
     // the open view's button folds the sidebar away; any other button opens it on that view
     b.addEventListener("click", () => { if (on) toggleSidebar(); else { S.rail = key; if (!S.sidebarOpen) toggleSidebar(); else { renderChrome(); renderSidebar(); } } });
@@ -1657,7 +1740,7 @@ function renderSidebar() {
     S.cells.forEach((c, i) => {
       if (c.type === "section") { inSection = true; folded = !!c.collapsed; }
       else if (folded) return;
-      const row = h("div", `olrow${i === S.active ? " on" : ""}${c.type ? ` ${c.type}` : ""}${inSection && c.type !== "section" ? " in" : ""}`);
+      const row = asButton(h("div", `olrow${i === S.active ? " on" : ""}${c.type ? ` ${c.type}` : ""}${inSection && c.type !== "section" ? " in" : ""}`));
       if (c.type === "section") {
         const [a, b] = sectionRange(i);
         row.append(h("span", "num", c.collapsed ? "▸" : "§"));
@@ -1680,7 +1763,7 @@ function renderSidebar() {
     });
   } else {
     for (const d of DOCS) {
-      const row = h("div", "plrow");
+      const row = asButton(h("div", "plrow"));
       row.append(h("span", "name", d.name), h("span", "sig", d.sig));
       row.addEventListener("click", () => {
         if (S.tab !== "notebook") switchTab("notebook");
@@ -1703,6 +1786,9 @@ function plotSvg(p: PlotData, w: number, hgt: number, frac = 1, t01?: number): S
   const NS = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(NS, "svg");
   svg.setAttribute("viewBox", `0 0 ${w} ${hgt}`); svg.setAttribute("width", String(w)); svg.setAttribute("height", String(hgt));
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", p.terms?.length ? `Epicycles: ${p.terms.length} circles drawing ${p.series.map((c) => c.text).join(", ")}`
+    : `Plot of ${p.series.map((c) => c.text).join(" and ")} for ${p.var} from ${p.from} to ${p.to}`);
   const parametric = p.series.some((s) => s.parametric);
   const ys = p.series.flatMap((s) => s.points.map((q) => q[1])).filter((y): y is number => y !== null).sort((a, b) => a - b);
   let y0 = -1, y1 = 1, x0 = p.from, x1 = p.to;
@@ -1879,6 +1965,8 @@ function epicycleBox(p: PlotData, w: number, hgt: number): HTMLElement {
       curve.setAttribute("d", d);
     }
   };
+  // with reduced motion, the finished drawing: the whole trace, the circles at the end of the period
+  if (reducedMotion()) { draw(start + period - 1); return box; }
   draw(start);
   let raf = 0;
   const loop = (now: number) => {
@@ -1904,6 +1992,8 @@ function hasseSvg(d: { nodes: { name: string; height: number }[]; covers: [strin
   const pos = new Map<string, [number, number]>();
   for (const [ht, names] of layers) names.forEach((name, i) => pos.set(name, [20 + (i + 0.5) * ((w - 40) / names.length), h - 12 - (ht + 0.5) * rowH]));
   const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", `Hasse diagram of ${d.nodes.length} elements${d.covers.length ? `; covers: ${d.covers.map(([a, b]) => `${a} below ${b}`).join(", ")}` : ""}`);
   svg.setAttribute("viewBox", `0 0 ${w} ${h}`); svg.setAttribute("width", String(w)); svg.setAttribute("height", String(h));
   for (const [a, b] of d.covers) {
     const p = pos.get(a), q = pos.get(b); if (!p || !q) continue;
@@ -1962,7 +2052,7 @@ function renderCells() {
       el.append(h("div", "prompt", "§"));
       const mid = h("div", "mid");
       const row = h("div", "sectrow");
-      const tog = h("span", "secttog", cell.collapsed ? "▸" : "▾");
+      const tog = asButton(h("span", "secttog", cell.collapsed ? "▸" : "▾"), cell.collapsed ? "Unfold section" : "Fold section");
       tog.title = cell.collapsed ? "Show this section's cells" : "Fold this section's cells away";
       tog.addEventListener("mousedown", (e) => e.preventDefault());
       tog.addEventListener("click", () => { cell.collapsed = !cell.collapsed; S.active = i; renderCells(); renderSidebar(); autosave(); });
@@ -1982,7 +2072,7 @@ function renderCells() {
       mid.append(row);
       el.append(mid);
       const acts = h("div", "cellacts");
-      const run = h("span", undefined, "▶ Run section"); run.title = "Run every cell of this section, in order";
+      const run = asButton(h("span", undefined, "▶ Run section")); run.title = "Run every cell of this section, in order";
       run.addEventListener("mousedown", (e) => e.preventDefault());
       run.addEventListener("click", () => void runSection(i));
       acts.append(run);
@@ -1997,6 +2087,7 @@ function renderCells() {
     const mid = h("div", "mid");
     const input = document.createElement("input");
     input.className = "cellin"; input.type = "text"; input.value = cell.src;
+    input.setAttribute("aria-label", `Cell ${i + 1}, math input`);
     input.autocapitalize = "off"; input.autocomplete = "off"; input.setAttribute("autocorrect", "off"); input.enterKeyHint = "go";
     input.placeholder = i === 0 ? "e.g. diff(x^2 * sin(x), x)" : "";
     input.spellcheck = false;
@@ -2020,7 +2111,7 @@ function renderCells() {
     el.append(mid);
 
     const acts = h("div", "cellacts");
-    const run = h("span", undefined, "▶ Run"); run.title = "Run this cell";
+    const run = asButton(h("span", undefined, "▶ Run")); run.title = "Run this cell";
     run.addEventListener("mousedown", (e) => e.preventDefault());
     run.addEventListener("click", () => void runCell(cell));
     acts.append(run);
@@ -2336,7 +2427,7 @@ function renderCellBody(cell: Cell) {
     // the output form: a per-cell choice of typesetting, like Mathematica's //MatrixForm
     if (!cell.hasse && !cell.plot && !cell.image) {
       const forms = formsFor(cell);
-      const fs = document.createElement("select"); fs.className = "formsel"; fs.title = "Output form";
+      const fs = document.createElement("select"); fs.className = "formsel"; fs.title = "Output form"; fs.setAttribute("aria-label", "Output form");
       for (const [v, label] of forms) { const o = document.createElement("option"); o.value = v; o.textContent = label; o.selected = (cell.form ?? forms[0]![0]) === v; fs.append(o); }
       fs.addEventListener("mousedown", (e) => e.stopPropagation());
       fs.addEventListener("change", () => { if (fs.value === forms[0]![0]) delete cell.form; else cell.form = fs.value; renderCellBody(cell); autosave(); });
@@ -2353,9 +2444,14 @@ function renderCellBody(cell: Cell) {
   const acts = el.querySelector(".cellacts")!;
   while (acts.childElementCount > 1) acts.lastElementChild!.remove();
   if (cell.steps?.length) {
-    const tw = h("span", undefined, cell.showWork ? "▾ Hide work" : `▸ Work (${cell.steps.length})`);
+    const tw = asButton(h("span", undefined, cell.showWork ? "▾ Hide work" : `▸ Work (${cell.steps.length})`));
+    tw.setAttribute("aria-expanded", String(cell.showWork));
     tw.addEventListener("mousedown", (e) => e.preventDefault());
-    tw.addEventListener("click", () => { cell.showWork = !cell.showWork; renderCellBody(cell); renderChrome(); autosave(); });
+    tw.addEventListener("click", () => {
+      const had = document.activeElement === tw;
+      cell.showWork = !cell.showWork; renderCellBody(cell); renderChrome(); autosave();
+      if (had) cell.el?.querySelector<HTMLElement>(".cellacts [aria-expanded]")?.focus();   // the button was rebuilt
+    });
     acts.append(tw);
   }
   appendMore(cell, acts);
@@ -2364,7 +2460,8 @@ function renderCellBody(cell: Cell) {
 /** The ⋮ button at the end of a cell's actions (replacing any there). */
 function appendMore(cell: Cell, acts: Element) {
   acts.querySelector(".more")?.remove();
-  const more = h("span", "more", "⋮"); more.title = "Cell actions";
+  const more = asButton(h("span", "more", "⋮"), "Cell actions"); more.title = "Cell actions";
+  more.setAttribute("aria-haspopup", "menu");
   more.addEventListener("mousedown", (e) => e.preventDefault());
   more.addEventListener("click", (ev) => { ev.stopPropagation(); toggleCellMenu(cell, more); });
   acts.append(more);
@@ -2411,7 +2508,7 @@ function renderMdCell(cell: Cell) {
     mid.append(out);
   }
   const acts = el.querySelector(".cellacts")!; acts.innerHTML = "";
-  const btn = h("span", undefined, cell.editing ? "▶ Render" : "✎ Edit");
+  const btn = asButton(h("span", undefined, cell.editing ? "▶ Render" : "✎ Edit"));
   btn.title = cell.editing ? "Render the Markdown (Shift+Enter)" : "Edit the text (double-click)";
   btn.addEventListener("mousedown", (e) => e.preventDefault());
   btn.addEventListener("click", () => { if (cell.editing) void runCell(cell); else edit(); });
@@ -2621,6 +2718,8 @@ function toggleCellMenu(cell: Cell, anchor: HTMLElement) {
   item("Delete cell", () => deleteCell(cell), { danger: true });
   // on the body, fixed: the paper scrolls and clips, and a menu near its bottom must not grow a scrollbar
   document.body.append(menu);
+  menuKeys(menu, () => { closeCellMenu(); anchor.focus(); });
+  menu.querySelector<HTMLElement>(":scope > .item:not(.off)")?.focus({ preventScroll: true });
   const r = anchor.getBoundingClientRect(), mh = menu.offsetHeight;
   const below = r.bottom + 4 + mh <= window.innerHeight - 8;
   menu.style.top = `${below ? r.bottom + 4 : Math.max(8, r.top - 4 - mh)}px`;
@@ -2668,14 +2767,15 @@ function renderPanelHead() {
   head.innerHTML = "";
   const tabs = [["explain", "Explanation", ""], ["log", "Kernel log", String(S.log.length)]] as const;
   for (const [key, label, badge] of tabs.filter(([k]) => S.dev || k !== "log")) {
-    const t = h("div", `ptab${S.panelTab === key ? " on" : ""}`);
+    const t = asButton(h("div", `ptab${S.panelTab === key ? " on" : ""}`));
+    t.setAttribute("aria-pressed", String(S.panelTab === key));
     t.append(document.createTextNode(label));
     if (badge) t.append(h("span", "badge", badge));
     t.addEventListener("click", () => { S.panelTab = key; S.panelOpen = true; renderPanelHead(); renderPanel(); });
     head.append(t);
   }
   head.append(h("div", "spacer"));
-  const toggle = h("div", "pbtn", S.panelOpen ? "▾ Collapse" : "▴ Expand");
+  const toggle = asButton(h("div", "pbtn", S.panelOpen ? "▾ Collapse" : "▴ Expand"), S.panelOpen ? "Collapse the explanation panel" : "Expand the explanation panel");
   toggle.addEventListener("click", () => { S.panelOpen = !S.panelOpen; renderPanelHead(); renderPanel(); });
   head.append(toggle);
 }
@@ -3791,6 +3891,7 @@ document.addEventListener("keydown", (ev) => {
   if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === "s") { ev.preventDefault(); if (ev.shiftKey) saveNotebookAs(); else saveNotebook(); }
   if ((ev.metaKey || ev.ctrlKey) && !ev.shiftKey && ev.key.toLowerCase() === "b") { ev.preventDefault(); toggleSidebar(); }
   if (ev.key === "Escape") closeModal();
+  if (ev.key === "Escape" && S.menu) { const m = S.menu; S.menu = null; renderChrome(); $<HTMLElement>(`.menus [data-menu="${m}"]`)?.focus(); }
 });
 const saved = restoreAutosave();
 let restoredActive = 0;
