@@ -600,6 +600,15 @@ Goal: re-derive the article (inner products → orthogonality → the square wav
    the two libuv stubs (lean4#14973) and the tempfile/tempdir arity mismatch are all still present at v4.34.1.
    `engine-lean.wasm` 2.96 MB. All 200 math cells of the three bundled notebooks (show work and paths on) give
    byte-identical replies from the native and the wasm engine.
-- proofs — `proofs/lean-toolchain` → v4.34.1, Mathlib `rev` → tag v4.34.1 (d13f23b), `lake update mathlib`
-   moved its dependencies in `lake-manifest.json`. Built by `proofs.yml` (the session that made the bump could
-   not reach Mathlib's cache).
+- proofs — DONE 2026-09-27. `proofs/lean-toolchain` → v4.34.1, Mathlib `rev` → tag v4.34.1 (d13f23b), `lake
+   update mathlib` moved its dependencies in `lake-manifest.json`. Mathlib's cache host was unreachable from
+   the session, so the 2,472 Mathlib modules the theorems import were built from source (84 min on 4 cores):
+   2,799 jobs, 0 errors, no `sorry`. The bump's deprecations are gone: `if_pos`/`if_neg` → `ite_eq_left`/
+   `ite_eq_right` (CxRules, Deriv, Fourier), `Mathlib.Data.Real.Sign` → `Mathlib.Basic.Real.Sign`, `push_neg`
+   → `push Not`. The remaining linter warnings (unused simp arguments, tactics that do nothing) were not
+   compared against v4.33.1.
+- wasm, `-DLEAN_EMSCRIPTEN` — DONE 2026-09-27. lean.h lays out static objects' 64-bit scalars (a Name
+   literal's precomputed hash) in two 32-bit slots only under that define, which the runtime had but the C
+   emitted for Init, Std and the engine did not: every static Name literal carried a truncated hash. The engine
+   never looked such a name up in a hash map (all 200 cells were identical before and after); Lean itself does,
+   and failed at initialization. The runtime script records its flags and rebuilds its archives when they change.

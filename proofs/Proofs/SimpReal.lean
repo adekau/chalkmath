@@ -346,7 +346,7 @@ theorem exactRoot_spec {r : ℚ} {n : ℕ} {a : ℚ} (hn : n ≠ 0) (h : exactRo
   · rename_i hg
     have hr : 0 ≤ r := by
       by_contra hlt
-      push_neg at hlt
+      push Not at hlt
       exact hg (by
         first
           | simp [hlt]

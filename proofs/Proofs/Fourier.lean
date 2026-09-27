@@ -99,12 +99,12 @@ theorem sign_fold_soundR (ρ : EnvR) (q : Q) :
   simp only [evalR_fn₁, evalR_num, applyFn_sign]
   by_cases hneg : q.isNeg = true
   · have : q.val < 0 := by simpa [Q.isNeg, Rat.num_neg] using hneg
-    rw [if_pos hneg, Real.sign_of_neg (by exact_mod_cast this)]; simp [Q.minusOne, Q.ofInt]
-  · rw [if_neg hneg]
+    rw [ite_eq_left hneg, Real.sign_of_neg (by exact_mod_cast this)]; simp [Q.minusOne, Q.ofInt]
+  · rw [ite_eq_right hneg]
     have hnn : 0 ≤ q.val := by simpa [Q.isNeg, Rat.num_neg, not_lt] using hneg
     by_cases hz : q.isZero = true
-    · rw [if_pos hz, Q_val_of_isZero hz]; simp
-    · rw [if_neg hz]
+    · rw [ite_eq_left hz, Q_val_of_isZero hz]; simp
+    · rw [ite_eq_right hz]
       have hne : q.val ≠ 0 := fun h0 => hz (by simp [Q.isZero, h0])
       have : 0 < q.val := lt_of_le_of_ne hnn (Ne.symm hne)
       rw [Real.sign_of_pos (by exact_mod_cast this)]; simp
