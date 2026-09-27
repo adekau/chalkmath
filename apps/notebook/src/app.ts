@@ -1769,6 +1769,9 @@ const RULE_NAMES: Record<string, string> = {
   "int.variable": "Integral of the variable", "int.constant": "Integral of a constant", "int.constant-multiple": "Constant multiple", "int.sum": "Sum rule for integrals",
   "int.exponential": "Exponential integral", "int.exp-power": "Exponential of a power", "int.substitution": "Substitution", "int.linear-substitution": "Linear substitution",
   "int.by-parts": "Integration by parts", "int.trig-power": "Trigonometric power",
+  "order.closure": "Closure", "order.covers": "Covers", "order.upper-bounds": "Upper bounds", "order.least": "Least upper bound",
+  "order.lower-bounds": "Lower bounds", "order.greatest": "Greatest lower bound", "order.lattice": "Lattice", "order.cover": "Cover",
+  "order.incomparable": "Incomparable", "order.monotone": "Monotone", "order.iterate": "Iterate", "order.fixed": "Fixed point",
   "cmd.rref": "Row reduce", "cmd.integrate": "Integrate", "cmd.expand": "Expand", "cmd.subst": "Substitute", "cmd.simplify": "Simplify", "cmd.sum": "Sum", "cmd.exptotrig": "Euler's formula",
 };
 

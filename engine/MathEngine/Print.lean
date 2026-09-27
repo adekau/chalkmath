@@ -67,7 +67,10 @@ def latexTarget (paths : Bool) : Target where
   num q := q.toLatex
   var n := match greek.lookup n with
     | some g => g
-    | none => if n.length > 1 then s!"\\mathit\{{n}}" else n
+    | none =>
+      -- a subsets-poset element is named by its set literal: braces are LaTeX grouping, so escape them
+      if n.startsWith "{" then (if n == "{}" then "\\varnothing" else "\\{" ++ (n.drop 1).dropRight 1 ++ "\\}")
+      else if n.length > 1 then s!"\\mathit\{{n}}" else n
   frac n d := s!"\\frac\{{n}}\{{d}}"
   pow b e := s!"\{{b}}^\{{e}}"
   sqrt s := s!"\\sqrt\{{s}}"
