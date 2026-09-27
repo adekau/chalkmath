@@ -186,3 +186,18 @@ index 110c360..fa12a29 100644
 +
  #endif
  }
+diff --git a/src/util/shell.cpp b/src/util/shell.cpp
+index 29b8598..1eb8d86 100644
+--- a/src/util/shell.cpp
++++ b/src/util/shell.cpp
+@@ -286,7 +286,9 @@ extern "C" LEAN_EXPORT int lean_main(int argc, char ** argv) {
+ #ifdef LEAN_EMSCRIPTEN
+     // When running in command-line mode under Node.js, we make system directories available in the virtual filesystem.
+     // This mode is used to compile 32-bit oleans.
+-    EM_ASM(
++    // MAIN_THREAD_: with PROXY_TO_PTHREAD, `main` runs on a pthread whose filesystem calls are served by
++    // the main thread, so the mounts must be made there.
++    MAIN_THREAD_EM_ASM(
+         if ((typeof process === "undefined") || (process.release.name !== "node")) {
+             throw new Error("The Lean command-line driver can only run under Node.js. For the embeddable WASM library, see lean_wasm.cpp.");
+         }

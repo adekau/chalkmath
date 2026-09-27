@@ -70,7 +70,7 @@ CPP=$( { for s in $RT; do echo "runtime/$s.cpp"; done
 echo "== compiling $(wc -l <<<"$CPP" | tr -d ' ') C++ files"
 xargs -P "$JOBS" -I{} bash -c 'o="$OUT/obj/cpp/{}.o"; [ -f "$o" ] && exit 0; mkdir -p "$(dirname "$o")"; em++ $CXXFLAGS -c "$SRC/src/{}" -o "$o.tmp" && mv "$o.tmp" "$o"' <<<"$CPP"
 [ -f "$OUT/obj/cpp/ffi.o" ] || em++ $CXXFLAGS -c "$OUT/ffi.cpp" -o "$OUT/obj/cpp/ffi.o"
-[ -f "$OUT/obj/cpp/uv-stubs.o" ] || emcc $CFLAGS -I"$UV/include" -c c/uv-stubs.c -o "$OUT/obj/cpp/uv-stubs.o"
+[ -f "$OUT/obj/cpp/uv-posix.o" ] || emcc $CFLAGS -I"$UV/include" -c wasm/uv-posix.c -o "$OUT/obj/cpp/uv-posix.o"   # libuv's fs calls on POSIX
 
 # 4. The symbol table over everything both binaries link (replaces dlsym; see the header comment). The
 #    two `main`s (the CLI's and the language server's) are left out of it and linked separately.
@@ -84,7 +84,8 @@ emcc $CFLAGS -O1 -c "$OUT/symtab.c" -o "$OUT/obj/symtab.o"
 # PROXY_TO_PTHREAD keeps the JS main thread free to start the task manager's workers and to service the
 # filesystem calls pthreads proxy to it; the stacks are sized for the elaborator's recursion.
 LINKFLAGS="$EMFLAGS -sPROXY_TO_PTHREAD=1 -sPTHREAD_POOL_SIZE=2 -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=512MB \
-  -sMAXIMUM_MEMORY=4GB -sSTACK_SIZE=16MB -sDEFAULT_PTHREAD_STACK_SIZE=8MB -sDEFAULT_TO_CXX=1"
+  -sMAXIMUM_MEMORY=4GB -sSTACK_SIZE=16MB -sDEFAULT_PTHREAD_STACK_SIZE=8MB -sDEFAULT_TO_CXX=1 \
+  -sEXPORTED_FUNCTIONS=_main,_malloc,_free"   # the runtime's EM_ASM (io.cpp: app path) calls _malloc
 
 # 5. The command-line driver, for Node: what compiles the oleans.
 echo "== linking bin/lean.js"
@@ -100,14 +101,15 @@ emcc $CFLAGS -c "$OUT/server-LeanWorker.c" -o "$OUT/obj/server/LeanWorker.o"
 emcc $CFLAGS -c wasm/server/leanweb.c -o "$OUT/obj/server/leanweb.o"
 emcc -o "$OUT/lean-server.js" @"$OUT/link.rsp" "$OUT/obj/server/LeanWorker.o" "$OUT/obj/server/leanweb.o" $LINKFLAGS \
   -sMODULARIZE=1 -sEXPORT_NAME=createLeanServer -sENVIRONMENT=web,worker,node -sINVOKE_RUN=0 -sEXIT_RUNTIME=0 \
-  -sEXPORTED_FUNCTIONS=_main,_malloc,_free -sEXPORTED_RUNTIME_METHODS=callMain,FS,HEAPU8,HEAP32
+  -sEXPORTED_RUNTIME_METHODS=callMain,FS,HEAPU8,HEAP32
 LEAN_PATH="$PREFIX/lib/lean" "$LEAN" wasm/server/capabilities.lean > "$OUT/lean-initialize.json"
 ls -la "$OUT/bin" "$OUT"/lean-server.*
 
 # 7. 32-bit oleans for Init, compiled by the CLI (what `import Init`, every file's implicit import, loads),
 #    packed for the worker: [u32 LE length of a JSON index [[path, size], ...]] [index] [files], gzipped.
 echo "== compiling Init to 32-bit oleans"
-python3 "$SCRIPTS/lean-wasm-oleans.py" "$OUT/bin/lean.js" "$PREFIX/src/lean" "$OUT/lib/lean" "$JOBS" Init
+# (from the tag's checkout, under /home: the Node driver sees only /home and /tmp, not elan's toolchain)
+python3 "$SCRIPTS/lean-wasm-oleans.py" "$OUT/bin/lean.js" "$SRC/src" "$OUT/lib/lean" "$JOBS" Init
 python3 - "$OUT/lib/lean" "$OUT/lean-lib.pack.gz" <<'PY'
 import gzip, json, os, struct, sys
 root, out = sys.argv[1], sys.argv[2]
