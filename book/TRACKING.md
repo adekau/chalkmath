@@ -589,3 +589,50 @@ Goal: re-derive the article (inner products → orthogonality → the square wav
    results, described plots, landmarks, WCAG AA contrast in both themes, reduced motion; axe-core reports no
    violations on the welcome notebook in either theme. Open: the ⋮ menu's submenus (Send to scene, Change to)
    still open on hover only.
+
+## Visual math input (2026-09-27, Alex: "a WYSIWYG editor for math cell inputs … eventually phase out the input interpretation")
+
+The plan. A cell's source text stays the only thing saved and sent; the editor is a view of it, read
+into a tree of notation and written back to text only when the cell is edited in visual mode, so
+`.chalk` files, `%`, `let`, error spans and the golden corpus are untouched and the engine stays the
+authority on meaning (ARCHITECTURE §4a). Symbolab-style holes, navigable by arrows, Tab and clicks;
+the `\` menu grows templates (`\frac`, `\sqrt`, `\int`, `\sum`, `\diff`, `\mat2x3`, `\vec3`, `\abs`,
+`\norm`) beside the Greek letters. Raw or visual per cell (a toggle and a shortcut; an optional `input`
+field on the cell) and for all cells (View menu, a preference). Cells the grammar does not read —
+λ-terms, order theory, `import("…")`, `⟦file⟧`, text that does not parse, very large literals — stay
+raw with a note.
+
+Decisions (Alex, 2026-09-27):
+- `xy` is one name, as the engine reads it; a space or `*` is the product. (Symbolab reads `xy` as x·y.)
+- New cells stay raw by default until the editor is complete (phase 4 below).
+- Anything with a well-known notation uses it: d/dx, dⁿ/dxⁿ, ∫, ∫ₐᵇ, Σ, √, |x|, ‖v‖, z̄, Mᵀ, u·v,
+  a determinant's bars around a matrix literal, Re/Im, sgn. Commands without one (rref, N, subst,
+  expand, …) show as named functions.
+- Hiding the input interpretation for visual cells is enough for now; clicking the visual input to
+  explain a subterm (which needs the engine to report a text span per path) can wait.
+  `inputRendered` stays in the protocol: Manim Studio's statement shot, explain on the input and
+  the changed-subterm marks use it.
+
+Phases:
+0. Spike: the tree as LaTeX with `\htmlData` on every atom, laid out by KaTeX (so stretchy
+   delimiters, matrices and big operators come free and the input looks like the outputs), with a
+   caret overlay placed from the atoms' boxes and a hidden textarea for keys and IME. Measure caret
+   accuracy, click hit-testing and re-render cost; fall back to a custom DOM view if it falls short.
+1. Model, reader and writer — DONE 2026-09-27. `packages/math-editor`: the tree (`model.ts`), the
+   engine's grammar reading into it rule for rule with the engine's error messages and spans
+   (`read.ts`), the writer that puts back exactly the parentheses the engine needs and maps each atom
+   to its text span (`write.ts`), and the notation as LaTeX following `Print.lean` (`notation.ts`).
+   Tests: the grammar's hard cases (`2x/3`, `x/2y`, `-2^2`, `2^3^2`, `sin^2(y)`, `% 2` against `%2`),
+   the golden parse errors word for word, read ∘ write the identity on all 258 golden sources and
+   notebook cells the grammar reads, KaTeX rendering every notation with every atom tagged, and —
+   where the native engine is built (CI) — every source and its rewrite evaluated side by side with
+   the same parsed input and answer. Writing changes only spacing (`[1,2]` → `[1, 2]`, `a+b` → `a + b`).
+2. Editor, basic: characters, parentheses, fractions, powers, roots, calls, navigation, deletion, Enter
+   runs, the `\` Greek letters, the per-cell toggle. Keep λ and order cells raw by the engine's
+   `kind` for the cell, not only by whether the grammar reads it (`let D = divisors(12)` reads as a
+   product and is an order cell). Pass the session's functions (`USER_NAMES`) as the reader's `known`.
+3. Calculus and linear algebra templates, `let`, `%` as an Out[n] chip, engine errors as underlines
+   on the atoms their span covers (`Written.spans`), copy (source text) and paste (read), completions
+   and signature help over the written text.
+4. Visual by default; visual cells hide the input interpretation; a keypad of templates on phones.
+5. Retire the View › Input interpretation toggle; explain on the input through engine-reported spans.
