@@ -1,0 +1,26 @@
+diff --git a/src/library/ir_interpreter.cpp b/src/library/ir_interpreter.cpp
+index cb954c0..b015ab6 100644
+--- a/src/library/ir_interpreter.cpp
++++ b/src/library/ir_interpreter.cpp
+@@ -338,6 +338,10 @@ void print_value(tout const & ios, value const & v, type t) {
+   return print_value(const_cast<tout &>(ios), v, t);
+ }
+ 
++#if defined(LEAN_EMSCRIPTEN)
++extern "C" void * lean_wasm_lookup_symbol(char const * sym);
++#endif
++
+ void * lookup_symbol_in_cur_exe(char const * sym) {
+ #ifdef LEAN_WINDOWS
+     std::vector<HMODULE> hmods(128);
+@@ -357,6 +361,10 @@ void * lookup_symbol_in_cur_exe(char const * sym) {
+         }
+     }
+     return nullptr;
++#elif defined(LEAN_EMSCRIPTEN)
++    // A static wasm link has no dynamic symbol table: the build generates one (name hash -> address) over
++    // every function and constant the Lean-emitted C defines, and this is its lookup.
++    return lean_wasm_lookup_symbol(sym);
+ #else
+     return dlsym(RTLD_DEFAULT, sym);
+ #endif
