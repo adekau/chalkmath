@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsc -p .",
     "serve": "node dist/server.js",
-    "test": "node --test test/*.test.mjs"
+    "test": "node --test --test-timeout=60000 test/*.test.mjs"
   },
   "dependencies": {
     "@chalkmath/protocol": "0.1.0"
