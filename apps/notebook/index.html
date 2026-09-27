@@ -2,12 +2,20 @@
 <html lang="en" data-theme="dark" data-outsize="m">
 <head>
 <meta charset="utf-8" />
-<title>ChalkMath</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ChalkMath — a math notebook that shows its work</title>
+<meta name="description" content="A math notebook for learning, from algebra to linear algebra and calculus, that shows every step of its work. Runs in your browser; nothing you type leaves it." />
+<meta property="og:title" content="ChalkMath" />
+<meta property="og:description" content="A math notebook that shows its work: every answer comes with the steps that produced it." />
+<meta property="og:type" content="website" />
+<meta name="theme-color" content="#151514" />
+<!-- Everything the page loads is its own (style.css bundles KaTeX and the fonts). Styles may be inline
+     (KaTeX positions glyphs with style attributes); scripts may not, so a javascript: URL cannot run.
+     connect-src and img-src stay open for import("url") and Markdown images; http://localhost for the
+     developer-mode HTTP kernel. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: https:; connect-src 'self' https: http://localhost:* http://127.0.0.1:*; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'" />
 <link rel="icon" type="image/svg+xml" href="logo.svg">
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,500;0,7..72,600;1,7..72,400&family=JetBrains+Mono:wght@400;500&display=swap" />
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.11/katex.min.css" />
-<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.11/katex.min.js"></script>
+<link rel="stylesheet" href="style.css" />
 <style>
 /* =============================================================================
    Structure, type and colour: "Notebook - GitHub" artboard, second export
@@ -88,7 +96,7 @@ html[data-theme="light"] {
   --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif;
   --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   --code: 'JetBrains Mono', ui-monospace, Menlo, monospace;
-  --serif: 'Literata', Georgia, 'Iowan Old Style', serif;
+  --serif: 'Literata Variable', Georgia, 'Iowan Old Style', serif;
 }
 
 html, body { height: 100%; overflow: hidden; margin: 0; }
@@ -547,6 +555,7 @@ table.keys kbd { font:11.5px var(--mono); color:var(--ink); background:var(--pan
 </head>
 <body>
 <div id="app"></div>
+<noscript><p style="padding:24px; font:15px/1.6 system-ui, sans-serif">ChalkMath runs in your browser and needs JavaScript. Turn it on for this page to use the notebook.</p></noscript>
 <script type="module" src="app.js"></script>
 </body>
 </html>

@@ -1,0 +1,12 @@
+/* Self-hosted type, so the page makes no requests to other sites: KaTeX's stylesheet and fonts, and
+   the page's three families from fontsource. scripts/bundle.mjs bundles this into style.css with the
+   font files beside it; a browser downloads only the files whose unicode-range a page uses. */
+@import "katex/dist/katex.min.css";
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/inter/700.css";
+@import "@fontsource-variable/literata/opsz.css";
+@import "@fontsource-variable/literata/opsz-italic.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";

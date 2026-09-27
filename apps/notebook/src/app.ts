@@ -15,7 +15,7 @@ import { workerTransport, httpTransport } from "@chalkmath/engine-host";
  * with their rendered terms; what the page adds is timing, glyph matching, and Python text.
  */
 
-declare const katex: { renderToString(tex: string, opts?: object): string; render(tex: string, el: HTMLElement, opts?: object): void };
+import katex from "katex";
 /** The one trusted KaTeX command is `\htmlData`, which carries the engine's subterm paths. LaTeX can
  *  come from a file someone else wrote (saved outputs render before any re-run), and a blanket
  *  `trust: true` would let it add `\href{javascript:…}`, arbitrary styles, or remote images. */
@@ -548,6 +548,8 @@ async function evaluateCell(cell: Cell, client: EngineClient) {
     cell.error = { message: cell === stoppedCell ? stopped
       : S.kernel === "failed" ? "The engine stopped while evaluating this cell." : e instanceof Error ? e.message : String(e) };
     if (cell === stoppedCell) stoppedCell = null;
+    // the output shown must be this run's: a stale one would also be replayed after a restart
+    delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.plot; delete cell.image; cell.steps = [];
     log("err", cell.error.message);
   }
   S.busy = false; S.running = null;
@@ -1021,7 +1023,7 @@ function showAbout() {
   links.append(a("https://github.com/adekau/chalkmath", "Source on GitHub"), " · ", a("https://github.com/adekau/chalkmath/releases", "The book, Show Your Work (PDF)"));
   showModal("About ChalkMath", [
     p("A notebook for mathematics that shows its work: every answer comes with the steps that produced it, and any part of an answer can be traced back to the rule that made it."),
-    p("Privacy: the engine runs in your browser. What you type is not sent to a server, and notebooks are kept in this browser's storage until you export them. The page loads its fonts and math typesetting from public CDNs; an import(\"url\") cell fetches that URL."),
+    p("Privacy: the engine runs in your browser. What you type is not sent to a server, and notebooks are kept in this browser's storage until you export them. The page loads nothing from other sites, except what a notebook asks for: an import(\"url\") cell, or an image in a Markdown cell."),
     links,
     p(`Build ${typeof __BUILD_ID__ === "string" ? __BUILD_ID__ : "dev"}${S.caps ? ` · engine ${S.caps.version}` : ""}`),
   ]);
