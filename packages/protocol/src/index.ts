@@ -236,6 +236,9 @@ export type RpcResponse = RpcSuccess | RpcFailure;
 export interface Transport {
   send(msg: string): void;
   onMessage(handler: (msg: string) => void): void;
+  /** The far end is gone (a worker that failed to load or crashed): every pending call fails with
+   *  this error rather than waiting forever. Optional; a transport without it never reports one. */
+  onError?(handler: (e: Error) => void): void;
   close?(): void;
 }
 
@@ -243,6 +246,8 @@ export interface Transport {
 export interface EngineClient {
   call<M extends MethodName>(method: M, params: Methods[M]["params"]): Promise<Methods[M]["result"]>;
   close(): void;
+  /** Called when the transport reports the engine gone (see `Transport.onError`). Optional. */
+  onError?(handler: (e: Error) => void): void;
 }
 
 /** The thing an engine implements. Hosted over a Transport by `serve`. */
@@ -253,6 +258,9 @@ export interface EngineHandler {
 export function createClient(t: Transport): EngineClient {
   let nextId = 1;
   const pending = new Map<number | string, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
+  const failAll = (e: Error) => { for (const p of pending.values()) p.reject(e); pending.clear(); };
+  const listeners: ((e: Error) => void)[] = [];
+  t.onError?.((e) => { failAll(e); for (const l of listeners) l(e); });
   t.onMessage((raw) => {
     const msg = JSON.parse(raw) as RpcResponse;
     if (msg.id === null) return;
@@ -271,7 +279,9 @@ export function createClient(t: Transport): EngineClient {
         t.send(JSON.stringify(req));
       });
     },
-    close() { t.close?.(); },
+    // closing abandons what is in flight: those calls fail now instead of never settling
+    close() { t.close?.(); failAll(new Error("the engine connection was closed")); },
+    onError(handler) { listeners.push(handler); },
   };
 }
 
