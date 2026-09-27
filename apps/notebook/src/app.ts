@@ -1053,10 +1053,14 @@ function showAbout() {
   const links = h("p", "muted");
   const a = (href: string, text: string) => { const l = document.createElement("a"); l.href = href; l.target = "_blank"; l.rel = "noreferrer"; l.textContent = text; return l; };
   links.append(a("https://github.com/adekau/chalkmath", "Source on GitHub"), " · ", a("https://github.com/adekau/chalkmath/releases", "The book, Show Your Work (PDF)"));
+  const legal = h("p", "muted");
+  legal.append("Copyright 2026 Alex Dekau. Open source under the ", a("licenses/ChalkMath-LICENSE.txt", "Apache License 2.0"),
+    "; the name and logo are covered by the ", a("licenses/TRADEMARKS.md", "trademark policy"), ". ", a("licenses/NOTICE.txt", "Notices and third-party licenses"), ".");
   showModal("About ChalkMath", [
     p("A notebook for mathematics that shows its work: every answer comes with the steps that produced it, and any part of an answer can be traced back to the rule that made it."),
     p("Privacy: the engine runs in your browser. What you type is not sent to a server, and notebooks are kept in this browser's storage until you export them. The page loads nothing from other sites, except what a notebook asks for: an import(\"url\") cell, or an image in a Markdown cell."),
     links,
+    legal,
     p(`Build ${typeof __BUILD_ID__ === "string" ? __BUILD_ID__ : "dev"}${S.caps ? ` · engine ${S.caps.version}` : ""}`),
   ]);
 }

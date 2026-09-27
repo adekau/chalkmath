@@ -28,3 +28,11 @@ Needs emsdk (`emcc`), elan, git.
 
 `cd proofs && lake exe cache get && lake build` — the theorems (Mathlib; the cache download is
 ~5 GB, and Mathlib never enters the engine — `npm run check:engine` enforces that).
+
+## License
+
+The code is open source under the [Apache License 2.0](LICENSE): use it, change it, host it, with
+credit to ChalkMath ([NOTICE](NOTICE)). The name and logo are covered by the
+[trademark policy](TRADEMARKS.md): host ChalkMath and call it ChalkMath, but give a modified version
+its own name and say it is based on ChalkMath. The book in `book/` is licensed under
+[Creative Commons Attribution 4.0](book/LICENSE).
