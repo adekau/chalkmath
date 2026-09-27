@@ -254,6 +254,9 @@ interface Nb {
   noticeDismissed?: boolean;
 }
 
+/** A phone-sized screen: the sidebar floats over the paper and starts closed, the panel starts folded. */
+const narrow = () => window.matchMedia("(max-width: 760px)").matches;
+
 /** A remembered on/off preference (local storage; private mode just forgets it). */
 function prefOn(key: string, dflt: boolean): boolean {
   try { const v = localStorage.getItem(key); return v === null ? dflt : v !== "off"; } catch { return dflt; }
@@ -271,7 +274,7 @@ const S = {
   rail: "outline" as "outline" | "palette",
   tab: "notebook" as Tab,
   panelTab: "explain" as "explain" | "log",
-  panelOpen: true,
+  panelOpen: !narrow(),
   sel: null as Selection | null,
   log: [] as LogLine[],
   caps: null as { engine: string; version: string; verified: boolean; features: string[]; ruleStatus?: RuleStatus[]; termination?: { status: string; theorem?: string; summary: string } } | null,
@@ -309,7 +312,7 @@ const S = {
   /** Open files and links with every cell's work folded, whatever the file saved. */
   foldWorkOnOpen: prefOn("chalkmath.foldwork", false),
   /** The sidebar (outline / commands) beside the paper; the rail stays. */
-  sidebarOpen: prefOn("chalkmath.sidebar", true),
+  sidebarOpen: narrow() ? false : prefOn("chalkmath.sidebar", true),
   /** Developer mode (Help menu, or `?dev` in the address): the kernel picker (wasm / HTTP), the
    *  kernel log, and the rule count in the status bar. */
   dev: prefOn("chalkmath.dev", false) || new URLSearchParams(location.search).has("dev"),
@@ -1629,7 +1632,8 @@ function renderNotice() {
 }
 
 function toggleSidebar() {
-  S.sidebarOpen = !S.sidebarOpen; setPref("chalkmath.sidebar", S.sidebarOpen);
+  S.sidebarOpen = !S.sidebarOpen;
+  if (!narrow()) setPref("chalkmath.sidebar", S.sidebarOpen);   // on a phone it is a drawer: not a preference
   renderChrome(); renderSidebar();
 }
 
@@ -1671,7 +1675,7 @@ function renderSidebar() {
         wrap.append(h("span", "kind", c.kind ?? cellKind(c.src) ?? "empty"), h("span", "src", c.src || "…"));
         row.append(wrap);
       }
-      row.addEventListener("click", () => { if (S.tab !== "notebook") switchTab("notebook"); focusCell(i); });
+      row.addEventListener("click", () => { if (S.tab !== "notebook") switchTab("notebook"); if (narrow() && S.sidebarOpen) toggleSidebar(); focusCell(i); });
       list.append(row);
     });
   } else {
@@ -1993,6 +1997,7 @@ function renderCells() {
     const mid = h("div", "mid");
     const input = document.createElement("input");
     input.className = "cellin"; input.type = "text"; input.value = cell.src;
+    input.autocapitalize = "off"; input.autocomplete = "off"; input.setAttribute("autocorrect", "off"); input.enterKeyHint = "go";
     input.placeholder = i === 0 ? "e.g. diff(x^2 * sin(x), x)" : "";
     input.spellcheck = false;
     cell.input = input;
@@ -2727,7 +2732,7 @@ function renderSubPanel(body: HTMLElement, sel: Selection & { sub: NonNullable<S
 
 function renderPanel() {
   const panel = $(".panel");
-  panel.style.flex = S.panelOpen ? "0 0 250px" : "0 0 38px";
+  panel.style.flex = S.panelOpen ? (narrow() ? "0 0 45%" : "0 0 250px") : "0 0 38px";
   let body = panel.querySelector(".panelbody") as HTMLElement;
   if (!body) { body = h("div", "panelbody"); panel.append(body); }
   body.hidden = !S.panelOpen;
