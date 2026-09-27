@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { startServer } from "../dist/server.js";
-import { createClient } from "@mathbook/protocol";
+import { createClient } from "@chalkmath/protocol";
 import { httpTransport } from "../dist/index.js";
 
 test("HTTP host: protocol client → HTTP → native Lean engine, sessions persist", async () => {

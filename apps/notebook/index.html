@@ -2,12 +2,20 @@
 <html lang="en" data-theme="dark" data-outsize="m">
 <head>
 <meta charset="utf-8" />
-<title>ChalkMath</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ChalkMath — a math notebook that shows its work</title>
+<meta name="description" content="A math notebook for learning, from algebra to linear algebra and calculus, that shows every step of its work. Runs in your browser; nothing you type leaves it." />
+<meta property="og:title" content="ChalkMath" />
+<meta property="og:description" content="A math notebook that shows its work: every answer comes with the steps that produced it." />
+<meta property="og:type" content="website" />
+<meta name="theme-color" content="#151514" />
+<!-- Everything the page loads is its own (style.css bundles KaTeX and the fonts). Styles may be inline
+     (KaTeX positions glyphs with style attributes); scripts may not, so a javascript: URL cannot run.
+     connect-src and img-src stay open for import("url") and Markdown images; http://localhost for the
+     developer-mode HTTP kernel. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: https:; connect-src 'self' https: http://localhost:* http://127.0.0.1:*; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'" />
 <link rel="icon" type="image/svg+xml" href="logo.svg">
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,500;0,7..72,600;1,7..72,400&family=JetBrains+Mono:wght@400;500&display=swap" />
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.11/katex.min.css" />
-<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.11/katex.min.js"></script>
+<link rel="stylesheet" href="style.css" />
 <style>
 /* =============================================================================
    Structure, type and colour: "Notebook - GitHub" artboard, second export
@@ -49,8 +57,8 @@
 }
 html[data-theme="light"] {
   --bg:#efe7d9; --panel:#e8ddcb; --panel-2:#ddceb7; --border:#cdbda4;
-  --ink:#2f261d; --ink-2:#463a2d; --ink-mut:#7a6855; --ink-faint:#998772;
-  --acc:#a8541a; --acc-hi:#8f4512; --acc-on:#3a1c05; --on-acc:#fff6ea;
+  --ink:#2f261d; --ink-2:#463a2d; --ink-mut:#665747; --ink-faint:#82715e;
+  --acc:#a8541a; --acc-hi:#86400f; --acc-on:#3a1c05; --on-acc:#fff6ea;
   --acc-soft-bg:rgba(168,84,26,0.12); --acc-soft-bg2:rgba(168,84,26,0.09); --acc-soft-bg3:rgba(168,84,26,0.16); --acc-soft-br:rgba(168,84,26,0.4); --sel-bg:rgba(226,135,47,0.32);
   --pri:#e08a34; --pri-2:#bd6a1c; --pri-edge:#93500f; --pri-ink:#2b1a08;
   --logo-a:#f2a95c; --logo-b:#a8541a;
@@ -88,7 +96,7 @@ html[data-theme="light"] {
   --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif;
   --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   --code: 'JetBrains Mono', ui-monospace, Menlo, monospace;
-  --serif: 'Literata', Georgia, 'Iowan Old Style', serif;
+  --serif: 'Literata Variable', Georgia, 'Iowan Old Style', serif;
 }
 
 html, body { height: 100%; overflow: hidden; margin: 0; }
@@ -97,7 +105,8 @@ a { color: var(--acc-hi); text-decoration: none; }
 a:hover { color: var(--acc); text-decoration: underline; }
 ::selection { background: var(--sel-bg); }
 :focus { outline: none; }
-:focus-visible { outline: 1px solid var(--acc); outline-offset: 1px; }
+:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px; }
+.sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0; }
 *::-webkit-scrollbar { width: 11px; height: 11px; }
 *::-webkit-scrollbar-thumb { background: var(--ink-faint); border-radius: 6px; border: 3px solid transparent; background-clip: content-box; }
 *::-webkit-scrollbar-track { background: transparent; }
@@ -109,11 +118,11 @@ button { font-family: var(--font); }
 .titlebar { display:flex; align-items:center; gap:14px; height:38px; flex:0 0 38px; padding:0 12px; background:var(--panel); border-bottom:1px solid var(--border); }
 .brand { display:flex; align-items:center; gap:8px; }
 .brand .mark { display:block; width:22px; height:22px; user-select:none; }
-.brand .name { font-weight:700; font-size:13px; }
+.brand .name { font-weight:700; font-size:13px; margin:0; }
 .menus { display:flex; align-items:center; gap:2px; }
 .menus span { font-size:12px; color:var(--ink-mut); padding:5px 10px; border-radius:6px; cursor:default; }
 .menus span:hover, .menus span.open { background:var(--hov); }
-.menus span { position:relative; }
+.menus .mwrap { position:relative; }
 .menus .dropdown { position:absolute; top:100%; left:0; z-index:40; min-width:190px; padding:5px; margin-top:2px; background:var(--panel-2); border:1px solid var(--border); border-radius:8px; box-shadow:var(--pop); }
 .menus .dropdown .item { display:block; padding:6px 10px; border-radius:5px; font-size:12.5px; color:var(--ink); cursor:default; white-space:nowrap; }
 .menus .dropdown .item:hover { background:var(--hov); }
@@ -174,6 +183,19 @@ button { font-family: var(--font); }
 .bgroup button.primary { background:var(--primary); border-right-color:var(--pri-edge); color:var(--pri-ink); font-weight:600; }
 .bgroup button.on { background:var(--primary); color:var(--on-acc); }
 .vsep { width:1px; height:18px; background:var(--border); }
+.bgroup button:disabled { opacity:0.45; cursor:default; filter:none; transform:none; }
+.toolbar .tlabel { font-size:10px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:var(--ink-mut); margin-left:6px; }
+/* the strip above the paper: engine loading or failed, or a notebook not run yet */
+.notice { display:flex; align-items:center; gap:10px; flex:0 0 auto; padding:7px 14px; font-size:12px; color:var(--ink-2); background:var(--acc-soft-bg2); border-bottom:1px solid var(--acc-soft-br); }
+.notice .msg { flex:1; min-width:0; }
+.notice.bad { color:var(--danger-hi); background:var(--danger-soft); border-bottom-color:var(--danger-2); }
+.notice.wait { color:var(--ink-mut); background:var(--panel); border-bottom-color:var(--border); animation:notice-in .2s .5s both; }   /* shown only if loading takes a moment */
+@keyframes notice-in { from { opacity:0; } }
+.notice.flash { animation:notice-flash .6s ease-out; }
+@keyframes notice-flash { 30% { filter:brightness(1.6); } }
+.notice button { font:11.5px var(--font); font-weight:600; padding:3px 11px; border-radius:4px; border:1px solid var(--btn-edge); background:var(--btn); color:var(--ink-2); cursor:pointer; white-space:nowrap; }
+.notice button:first-of-type { background:var(--primary); color:var(--pri-ink); border-color:var(--pri-edge); }
+.notice button:hover { filter:brightness(1.12); }
 .toolbar .count { font-family:var(--mono); font-size:10px; color:var(--ink-mut); }
 .toolbar .hint { font-size:10.5px; color:var(--ink-mut); }
 
@@ -235,6 +257,8 @@ button { font-family: var(--font); }
 .cell.active { background:var(--p-cell-active); }
 .cell .prompt { text-align:right; padding:5px 12px 0 0; line-height:23px; font-family:var(--code); font-size:11px; letter-spacing:0.01em; color:var(--p-mut3); user-select:none; }
 .cell.done .prompt { color:var(--p-acc); }
+.cell.running > .prompt { color:var(--p-acc); animation:pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity:0.35; } }
 .cell .mid { position:relative; min-width:0; }
 .cellin { width:100%; box-sizing:border-box; background:transparent; border:0; border-radius:6px; color:var(--p-ink); font-family:var(--code); font-size:14px; line-height:1.65; padding:5px 8px; }
 /* room for the action buttons only while they are shown, so a long input is not hidden under invisible buttons */
@@ -319,7 +343,7 @@ svg .epitip { fill:var(--acc); }
 .vmark.checked { background:transparent; border:1.5px solid var(--ok); box-sizing:border-box; }
 .vmark.unverified { background:var(--ink-faint); }
 .cellacts { position:absolute; top:6px; right:44px; display:flex; align-items:center; gap:5px; opacity:0; pointer-events:none; transition:opacity 110ms linear; }
-.cell:hover .cellacts, .cell.active .cellacts { opacity:1; pointer-events:auto; }
+.cell:hover .cellacts, .cell.active .cellacts, .cellacts:focus-within { opacity:1; pointer-events:auto; }
 .cellacts span { display:inline-flex; align-items:center; gap:4px; height:20px; font-size:9.5px; font-weight:600; font-family:var(--font); color:var(--p-btn-ink); background:linear-gradient(180deg, var(--p-btn-a), var(--p-btn-b)); border:1px solid var(--p-btn-br); border-radius:3px; padding:0 7px; cursor:pointer; box-shadow:0 1px 0 var(--p-hl) inset, 0 1px 2px var(--p-sh); }
 .cellacts span.more { padding:0 6px; font-size:12px; font-weight:700; }
 .modal { position:fixed; inset:0; z-index:60; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.35); }
@@ -334,6 +358,13 @@ svg .epitip { fill:var(--acc); }
 .librow .when { font-size:11px; color:var(--ink-mut); margin-top:2px; }
 .librow .del { font-size:11px; color:var(--danger); opacity:0; }
 .librow:hover .del { opacity:1; }
+.modalcard.wide { width:min(720px, 92vw); }
+.modalcard p { line-height:1.6; margin:0 0 10px; }
+button.librow { width:100%; text-align:left; background:transparent; border:0; font:inherit; color:inherit; }
+button.librow:hover, button.librow:focus-visible { background:var(--hov); }
+table.keys { border-collapse:collapse; font-size:12.5px; }
+table.keys td { padding:5px 14px 5px 0; vertical-align:top; color:var(--ink-2); }
+table.keys kbd { font:11.5px var(--mono); color:var(--ink); background:var(--panel-2); border:1px solid var(--border); border-bottom-width:2px; border-radius:4px; padding:1px 6px; white-space:nowrap; }
 .modalfoot { display:flex; align-items:center; gap:8px; margin-top:14px; }
 .modalfoot button { font:12px var(--font); padding:5px 12px; border-radius:5px; border:1px solid var(--btn-edge); background:var(--btn); color:var(--ink-2); cursor:pointer; }
 .modalfoot button.primary { background:var(--primary); color:var(--pri-ink); border-color:var(--pri-edge); }
@@ -474,10 +505,10 @@ svg .epitip { fill:var(--acc); }
 .trailrow .rule { font-size:12px; color:var(--ink-2); }
 .trail { display:flex; flex-direction:column; gap:5px; margin-bottom:11px; }
 .checkbadge { font-size:9.5px; font-weight:700; letter-spacing:0.04em; text-transform:uppercase; color:var(--on-acc); border-radius:999px; padding:2px 8px; }
-.checkbadge.verified { background:var(--ok-2); }
+.checkbadge.verified { background:var(--ok); }
 .checkbadge.conditional { background:var(--warn); }
 .checkbadge.checked { background:transparent; color:var(--ok); border:1px solid var(--ok); }
-.checkbadge.unverified { background:var(--ink-faint); }
+.checkbadge.unverified { background:var(--ink-mut); }
 .rulestat { display:grid; grid-template-columns:8px minmax(0,1fr); gap:6px 9px; align-items:baseline; padding:6px 0; font-size:11.5px; }
 .rulestat .n { font-weight:600; color:var(--ink-2); }
 .rulestat .note { grid-column:2; color:var(--ink-mut); font-size:11px; line-height:1.5; }
@@ -516,11 +547,63 @@ svg .epitip { fill:var(--acc); }
 .hoverdoc .hn { font-size:13px; font-weight:700; }
 .hoverdoc .hs { font-family:var(--mono); font-size:11px; color:var(--acc-hi); margin:8px 0; }
 .hoverdoc .hb { font-size:12px; line-height:1.55; color:var(--ink-2); }
+.toasts { position:fixed; right:16px; bottom:38px; z-index:80; display:flex; flex-direction:column; align-items:flex-end; gap:6px; pointer-events:none; }
+.toast { max-width:min(440px, calc(100vw - 32px)); padding:8px 13px; border-radius:8px; font:12.5px/1.5 var(--font); color:var(--ink); background:var(--panel-2); border:1px solid var(--border); border-left:3px solid var(--ok); box-shadow:var(--pop); pointer-events:auto; cursor:default; animation:toast-in .15s ease-out; }
+.toast.err { border-left-color:var(--danger-2); }
+@keyframes toast-in { from { opacity:0; transform:translateY(6px); } }
+/* --- phones and narrow windows --------------------------------------------- */
+@media (max-width: 760px) {
+  #app { height:100dvh; }
+  .titlebar { gap:8px; padding:0 8px; }
+  .brand .name, .themebtn, .kernel .sep, .kernel > :not(.dot), .formsel { display:none; }
+  .kernel { padding:6px; }
+  .menus { overflow-x:auto; scrollbar-width:none; min-width:0; flex:1; }
+  .menus::-webkit-scrollbar { display:none; }
+  .menus span { padding:5px 7px; }
+  .menus .dropdown { position:fixed; top:40px; left:8px; right:auto; max-width:calc(100vw - 16px); }
+  .spacer { flex:0 0 0; }
+  .tabbar { overflow-x:auto; scrollbar-width:none; }
+  .tab { flex:0 0 auto; padding:6px 10px 7px; }
+  .body { position:relative; }
+  .rail { width:38px; flex-basis:38px; }
+  /* the sidebar is a drawer over the paper */
+  .sidebar { position:absolute; left:38px; top:0; bottom:0; z-index:30; width:min(300px, 80vw); box-shadow:var(--pop); }
+  .toolbar { overflow-x:auto; scrollbar-width:none; }
+  .toolbar .hint, .toolbar .tlabel { display:none; }
+  .notice { flex-wrap:wrap; }
+  .cells { padding:12px 0 40px; }
+  .cell, .outrow { grid-template-columns:46px minmax(0,1fr) 14px; }
+  .cell { padding-right:6px; }
+  .cell .prompt { padding-right:6px; font-size:9px; letter-spacing:0; }
+  .brk { width:6px; }
+  .gap::before { left:46px; right:14px; }
+  /* no room beside the input: the active cell's actions sit under it */
+  .cell:hover .cellin, .cell.active .cellin, .cell:hover .hl, .cell.active .hl { padding-right:8px; }
+  .cellacts { position:static; grid-column:2; grid-row:2; margin:6px 0 0 8px; flex-wrap:wrap; }
+  .cell:not(.active) .cellacts { display:none; }
+  .mdin, .mdout { padding-right:8px; }
+  .mdout { font-size:15.5px; }
+  .sectrow { padding-right:0; }
+  .sectin { font-size:18px; }
+  .step, .step.sub { grid-template-columns:22px minmax(0,1fr); gap:6px 10px; }
+  .step .el { grid-column:1 / -1; }
+  .step.sub { margin-left:0 !important; }
+  .explain { grid-template-columns:minmax(0,1fr); }
+  .refcard { grid-template-columns:minmax(0,1fr); gap:8px; }
+  .statusbar { display:none; }
+  .studio-top { flex-direction:column; }
+  .shots { width:auto; flex:0 0 auto; max-height:35vh; }
+  .toasts { left:16px; right:16px; bottom:16px; align-items:stretch; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration:0.01ms !important; animation-iteration-count:1 !important; transition-duration:0.01ms !important; }
+}
 [hidden] { display:none !important; }
 </style>
 </head>
 <body>
 <div id="app"></div>
+<noscript><p style="padding:24px; font:15px/1.6 system-ui, sans-serif">ChalkMath runs in your browser and needs JavaScript. Turn it on for this page to use the notebook.</p></noscript>
 <script type="module" src="app.js"></script>
 </body>
 </html>

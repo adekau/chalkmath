@@ -1,14 +1,17 @@
 name: Deploy ChalkMath to GitHub Pages
 
 # Builds the notebook — the Lean engine compiled to WebAssembly, then the static page — and publishes
-# apps/notebook/dist. The wasm runtime (Lean's runtime + Init for wasm32, built from source by
-# scripts/build-lean-wasm-runtime.sh) is cached between runs; the first run takes ~15 minutes.
+# apps/notebook/dist. It runs after CI (ci.yml) completes on main, and deploys only the commit CI
+# passed on, so a change that breaks the engine's tests never reaches the public notebook. The wasm
+# runtime (Lean's runtime + Init for wasm32, built from source by scripts/build-lean-wasm-runtime.sh)
+# is cached between runs; the first run takes ~15 minutes.
 # One-time setup on the repository: Settings › Pages › Source: "GitHub Actions".
 
 on:
-  push:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
     branches: [main]
-    paths: ["engine/**", "apps/**", "packages/**", "scripts/**", "package.json", "package-lock.json", ".github/workflows/pages.yml"]
   workflow_dispatch:
 
 permissions:
@@ -22,9 +25,13 @@ concurrency:
 
 jobs:
   build:
+    # a manual run deploys the branch it was started on; an automatic one only a commit CI passed
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
       - name: Install elan (the Lean toolchain pinned in engine/lean-toolchain)
@@ -52,6 +59,8 @@ jobs:
           nproc
       - name: Build the engine for wasm
         run: npm run wasm
+      - name: Smoke-test the wasm engine (load, capabilities, one evaluation)
+        run: node scripts/smoke-wasm.cjs apps/notebook/dist
       - name: Build the workspace packages, then bundle the notebook
         run: |
           npm run build

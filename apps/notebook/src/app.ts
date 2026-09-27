@@ -1,6 +1,6 @@
-import { createClient, type EngineClient, type Step, type Path, type RuleStatus, type Derivation, type WireExpr } from "@mathbook/protocol";
+import { createClient, type EngineClient, type Step, type Path, type RuleStatus, type Derivation, type WireExpr } from "@chalkmath/protocol";
 declare const __BUILD_ID__: string;
-import { workerTransport, httpTransport } from "@mathbook/engine-host";
+import { workerTransport, httpTransport } from "@chalkmath/engine-host";
 
 /**
  * The notebook shell. Structure, type and colour follow the second export of the
@@ -15,9 +15,13 @@ import { workerTransport, httpTransport } from "@mathbook/engine-host";
  * with their rendered terms; what the page adds is timing, glyph matching, and Python text.
  */
 
-declare const katex: { renderToString(tex: string, opts?: object): string; render(tex: string, el: HTMLElement, opts?: object): void };
+import katex from "katex";
+/** The one trusted KaTeX command is `\htmlData`, which carries the engine's subterm paths. LaTeX can
+ *  come from a file someone else wrote (saved outputs render before any re-run), and a blanket
+ *  `trust: true` would let it add `\href{javascript:…}`, arbitrary styles, or remote images. */
+const TRUST_PATHS = (ctx: { command: string }) => ctx.command === "\\htmlData";
 const tex = (s: string, paths = false) =>
-  katex.renderToString(s, { throwOnError: false, trust: paths, strict: false, displayMode: false });
+  katex.renderToString(s, { throwOnError: false, trust: paths ? TRUST_PATHS : false, strict: false, displayMode: false });
 
 // ---------------------------------------------------------------------------
 // Content: the notebook's own vocabulary, from the design's reference copy.
@@ -168,15 +172,15 @@ interface Cell {
    *  the output, in place of the points it stands for. Recomputed on each run. */
   image?: { src: string; name: string };
   /** λ-cells: the result with de Bruijn indices, and what it reads as (a Church numeral or boolean). */
-  outDeBruijn?: string;
-  reading?: string;
+  outDeBruijn?: string | undefined;
+  reading?: string | undefined;
   /** What the engine said the cell was, once it has answered; the badge guesses from the source until then. */
   kind?: string;
   /** Order-world cells: the Hasse diagram to draw, and the one-line summary. */
-  hasse?: { nodes: { name: string; height: number }[]; covers: [string, string][] };
-  summary?: string;
+  hasse?: { nodes: { name: string; height: number }[]; covers: [string, string][] } | undefined;
+  summary?: string | undefined;
   label: number | null;
-  ms?: number;
+  ms?: number | undefined;
   outLatex?: string;
   /** The output in the engine's input syntax (the "input form"). */
   outText?: string;
@@ -184,10 +188,12 @@ interface Cell {
   form?: string;
   /** "complex" when the cell mentions `i`: its steps are judged by the rules' statuses over ℂ. */
   semantics?: "real" | "complex";
-  echoLatex?: string;
+  echoLatex?: string | undefined;
   steps?: Step[];
   error?: { message: string; span?: { start: number; end: number } };
   showWork: boolean;
+  /** Waiting its turn behind the cell the engine is evaluating (shown as In[*]). */
+  queued?: boolean;
   el?: HTMLElement;
   input?: HTMLInputElement;
 }
@@ -244,6 +250,19 @@ interface Nb {
   text: string;
   /** Whether the engine session has been rebuilt from the cells since the document was restored. */
   hydrated: boolean;
+  /** The "not run yet" notice was dismissed for this notebook. */
+  noticeDismissed?: boolean;
+}
+
+/** A phone-sized screen: the sidebar floats over the paper and starts closed, the panel starts folded. */
+const narrow = () => window.matchMedia("(max-width: 760px)").matches;
+
+/** A remembered on/off preference (local storage; private mode just forgets it). */
+function prefOn(key: string, dflt: boolean): boolean {
+  try { const v = localStorage.getItem(key); return v === null ? dflt : v !== "off"; } catch { return dflt; }
+}
+function setPref(key: string, on: boolean) {
+  try { localStorage.setItem(key, on ? "on" : "off"); } catch { /* private mode */ }
 }
 
 const S = {
@@ -255,7 +274,7 @@ const S = {
   rail: "outline" as "outline" | "palette",
   tab: "notebook" as Tab,
   panelTab: "explain" as "explain" | "log",
-  panelOpen: true,
+  panelOpen: !narrow(),
   sel: null as Selection | null,
   log: [] as LogLine[],
   caps: null as { engine: string; version: string; verified: boolean; features: string[]; ruleStatus?: RuleStatus[]; termination?: { status: string; theorem?: string; summary: string } } | null,
@@ -263,6 +282,14 @@ const S = {
   engineMode: "lean-worker" as "lean-worker" | "http",
   httpUrl: "http://localhost:8787",
   busy: false,
+  /** The engine: loading, ready, or failed — to load, or later (a crash) — with the reason. */
+  kernel: "starting" as "starting" | "ready" | "failed",
+  kernelError: "",
+  kernelDetail: "",
+  /** The cell the engine is evaluating now. */
+  running: null as Cell | null,
+  /** The cell that was running when the engine failed: a restart rebuilds the session up to it. */
+  crashed: null as Cell | null,
   comp: null as { cell: Cell; items: CompItem[]; index: number; x: number; y: number } | null,
   /** Signature help: the call the caret is inside, and which argument it is in (View menu toggles it). */
   sig: null as { cell: Cell; key: string; sig: string; blurb: string; arg: number } | null,
@@ -279,6 +306,16 @@ const S = {
   /** Size of rendered mathematics in the cells (View menu): small, normal or large. */
   outSize: (() => { try { return (localStorage.getItem("chalkmath.outsize") as "s" | "m" | "l" | null) ?? "m"; } catch { return "m" as const; } })() as "s" | "m" | "l",
   menu: null as string | null,
+  /** Run a notebook's cells when it opens (a file, a link, the tabs restored on reload). Off, the
+   *  saved outputs show until Run all — nothing is sent to the engine, and no `import()` is fetched. */
+  runOnOpen: prefOn("chalkmath.runonopen", true),
+  /** Open files and links with every cell's work folded, whatever the file saved. */
+  foldWorkOnOpen: prefOn("chalkmath.foldwork", false),
+  /** The sidebar (outline / commands) beside the paper; the rail stays. */
+  sidebarOpen: narrow() ? false : prefOn("chalkmath.sidebar", true),
+  /** Developer mode (Help menu, or `?dev` in the address): the kernel picker (wasm / HTTP), the
+   *  kernel log, and the rule count in the status bar. */
+  dev: prefOn("chalkmath.dev", false) || new URLSearchParams(location.search).has("dev"),
   studio: { scenes: [] as Scene[], active: 0, playing: false, t: 0, speed: 1, codeOpen: true, copied: false },
 };
 
@@ -294,6 +331,19 @@ function log(level: LogLine["level"], text: string) {
   if (S.log.length > 200) S.log.shift();
   if (S.panelTab === "log") renderPanel();
   renderPanelHead();
+}
+
+/** Feedback on something the reader did (saved, copied, could not open…): logged, and shown for a
+ *  few seconds in the corner, where it is also announced to a screen reader. */
+function notify(level: "ok" | "err", text: string) {
+  log(level, text);
+  let host = document.querySelector<HTMLElement>(".toasts");
+  if (!host) { host = h("div", "toasts"); host.setAttribute("role", "status"); host.setAttribute("aria-live", "polite"); document.body.append(host); }
+  const t = h("div", `toast ${level}`, text);
+  t.addEventListener("click", () => t.remove());
+  host.append(t);
+  while (host.childElementCount > 3) host.firstElementChild!.remove();
+  setTimeout(() => t.remove(), level === "err" ? 8000 : 4000);
 }
 
 // ---------------------------------------------------------------------------
@@ -315,23 +365,95 @@ function initTheme() {
 // Engine
 // ---------------------------------------------------------------------------
 
+/** Which connection is current: a reply or failure from an older one is ignored. */
+let connGen = 0;
+
+/** Start an engine (a fresh worker, or a client for the HTTP one). Closing the old client fails
+ *  whatever was in flight on it; the sessions it held are gone with a worker. */
 async function connect() {
+  const gen = ++connGen;
   client?.close();
-  client = S.engineMode === "lean-worker"
-    ? createClient(workerTransport(new Worker(`engine-lean.worker.js?v=${typeof __BUILD_ID__ === "string" ? __BUILD_ID__ : "dev"}`)))
-    : createClient(httpTransport(S.httpUrl));
+  client = null;
+  S.caps = null; S.kernel = "starting"; S.kernelError = "";
+  renderChrome();
+  if (S.engineMode === "lean-worker" && typeof WebAssembly !== "object") {
+    kernelFailed("This browser cannot run WebAssembly, which the engine needs. A current Chrome, Firefox, Safari or Edge can.");
+    return;
+  }
+  let c: EngineClient;
+  try {
+    c = S.engineMode === "lean-worker"
+      ? createClient(workerTransport(new Worker(`engine-lean.worker.js?v=${typeof __BUILD_ID__ === "string" ? __BUILD_ID__ : "dev"}`)))
+      : createClient(httpTransport(S.httpUrl));
+  } catch (e) { kernelFailed("The engine could not start in this browser.", e instanceof Error ? e.message : String(e)); return; }
+  client = c;
+  c.onError?.((e) => {
+    if (gen !== connGen) return;
+    if (S.kernel === "starting") kernelFailed("The engine failed to load. Check your connection, then restart it.", e.message);
+    else kernelFailed("The engine stopped unexpectedly. Restarting it re-runs the cells that had outputs.", e.message);
+  });
   const t0 = performance.now();
   try {
-    const caps = await client.call("engine.capabilities", {});
-    S.caps = caps;
+    const caps = await c.call("engine.capabilities", {});
+    if (gen !== connGen) return;
+    S.caps = caps; S.kernel = "ready";
     S.ruleStatus = new Map((caps.ruleStatus ?? []).map((r) => [r.rule, r]));
     log("ok", `${caps.engine} v${caps.version} ready in ${Math.round(performance.now() - t0)} ms`);
   } catch (e) {
-    S.caps = null;
-    log("err", `capabilities failed: ${e instanceof Error ? e.message : String(e)}`);
+    // kernelFailed drops the client: when it is gone, the failure has been reported already
+    if (gen === connGen && client === c) kernelFailed(S.engineMode === "http" ? `The engine at ${S.httpUrl} did not answer.` : "The engine failed to load. Check your connection, then restart it.", e instanceof Error ? e.message : String(e));
+    return;
   }
   renderChrome();
   renderPanel();
+}
+
+/** The engine is gone, and every session it held with it; `restartEngine` rebuilds them. `why` is
+ *  for the reader, `detail` (the browser's error) for the log and the notice's tooltip. */
+function kernelFailed(why: string, detail = "") {
+  S.kernel = "failed"; S.kernelError = why; S.kernelDetail = detail; S.caps = null;
+  if (S.running) S.crashed = S.running;
+  client?.close(); client = null;
+  log("err", detail ? `${why} (${detail})` : why);
+  renderChrome(); renderPanel();
+}
+
+/** The cell stopped by `interrupt`, whose pending call fails when its engine is closed. */
+let stoppedCell: Cell | null = null;
+/** Bumped by an interrupt: runs queued before it, and `runAll` loops started before it, are dropped. */
+let runGen = 0;
+/** Evaluations happen one at a time, in the order they were asked for. */
+let runChain: Promise<void> = Promise.resolve();
+
+/** Stop the evaluation in progress. The engine is synchronous wasm in a worker and cannot be
+ *  interrupted from outside, so the worker is terminated and a fresh one started; the session is
+ *  rebuilt by re-running the cells above the stopped one (their outputs are what the session held). */
+async function interrupt() {
+  const cell = S.running; if (!cell) return;
+  stoppedCell = cell; runGen++;
+  log("ok", "interrupted: restarting the engine");
+  await restartEngine(cell);
+}
+
+/** Start a new engine after an interrupt, a crash or a failed load, and rebuild the current
+ *  notebook's session from what it held: the cells with an output, above `upTo` when one was
+ *  stopped or crashed (a failed or stopped cell bound nothing, and one that hung would hang again).
+ *  A notebook never run is run whole if notebooks run on open. An HTTP engine keeps its sessions. */
+async function restartEngine(upTo: Cell | null = null) {
+  S.crashed = null;
+  const http = S.engineMode === "http";
+  await connect();
+  if (S.kernel !== "ready" || http) return;
+  const d = currentDoc(); if (!d) return;
+  for (const o of S.docs) if (o !== d) o.hydrated = false;   // their sessions were in the old worker
+  if (!d.hydrated) { if (S.runOnOpen) hydrate(d); return; }
+  const i = upTo ? S.cells.indexOf(upTo) : -1;
+  const gen = runGen;
+  for (const c of i >= 0 ? S.cells.slice(0, i) : [...S.cells]) {
+    if (gen !== runGen) return;
+    if ((c.type ?? "math") === "math" && c.outLatex && cellSrc(c).trim()) await runCell(c);
+  }
+  renderChrome();
 }
 
 async function runCell(cell: Cell) {
@@ -344,12 +466,31 @@ async function runCell(cell: Cell) {
     return;
   }
   if (cell.type === "section") { cell.src = cellSrc(cell); return; }
-  if (!client || S.busy) return;
-  const src = cellSrc(cell);
-  cell.src = src;
-  if (!src.trim()) return;
-  S.busy = true;
-  renderChrome();
+  cell.src = cellSrc(cell);
+  if (!cell.src.trim()) return;
+  if (S.kernel === "failed") {
+    // the notice above the paper says why and offers the restart: draw the eye to it
+    const n = $(".notice"); n.classList.remove("flash"); void n.offsetWidth; n.classList.add("flash");
+    return;
+  }
+  // wait for the evaluations asked for before this one; an interrupt meanwhile drops it
+  const gen = runGen;
+  const prev = runChain;
+  let release!: () => void;
+  runChain = new Promise<void>((r) => { release = r; });
+  cell.queued = true; renderCellBody(cell);
+  try {
+    await prev;
+    cell.queued = false;
+    if (gen === runGen && client) await evaluateCell(cell, client);
+    else renderCellBody(cell);
+  } finally { release(); }
+}
+
+async function evaluateCell(cell: Cell, client: EngineClient) {
+  const src = cell.src;
+  S.busy = true; S.running = cell;
+  renderChrome(); renderCellBody(cell);
   const t0 = performance.now();
   const isPlot = /^\s*(plot|epicycles|dft)\s*\(/.test(src);
   log("rpc", `${isPlot ? "engine.plot" : "engine.evaluate"} ${JSON.stringify(src)}`);
@@ -391,6 +532,7 @@ async function runCell(cell: Cell) {
       }
       if ("kind" in r && r.kind === "lambda") { cell.outDeBruijn = r.renderedDeBruijn?.latex; cell.reading = r.reading; cell.kind = "λ-term"; }
       log("ok", `Out[${cell.label}] ${r.rendered.text}  (${cell.ms.toFixed(1)} ms, ${cell.steps.length} steps)`);
+      announce(`Out ${cell.label}: ${r.rendered.text}`);
       if ("bound" in r && r.bound?.length) {
         log("ok", `bound ${r.bound.join(", ")}`);
         const k = `${sessionId}:${r.bound[0]}`;
@@ -403,13 +545,19 @@ async function runCell(cell: Cell) {
       delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.plot; delete cell.image; cell.steps = [];
       cell.error = r.error;
       log("err", `${r.error.code}: ${r.error.message}`);
+      announce(`Error: ${r.error.message}`);
     }
   } catch (e) {
     cell.ms = performance.now() - t0;
-    cell.error = { message: e instanceof Error ? e.message : String(e) };
+    const stopped = S.engineMode === "http" ? "Stopped." : "Stopped. The engine was restarted, and the cells above this one with outputs were run again.";
+    cell.error = { message: cell === stoppedCell ? stopped
+      : S.kernel === "failed" ? "The engine stopped while evaluating this cell." : e instanceof Error ? e.message : String(e) };
+    if (cell === stoppedCell) stoppedCell = null;
+    // the output shown must be this run's: a stale one would also be replayed after a restart
+    delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.plot; delete cell.image; cell.steps = [];
     log("err", cell.error.message);
   }
-  S.busy = false;
+  S.busy = false; S.running = null;
   S.sel = null;
   renderCellBody(cell);
   renderChrome();
@@ -429,7 +577,8 @@ async function explain(cell: Cell, term: TermRef, path: Path) {
     S.panelTab = "explain"; S.panelOpen = true;
     log("ok", `${ex.rendered.text} — ${ex.steps.length} related steps`);
   } catch (e) {
-    log("err", e instanceof Error ? e.message : String(e));
+    const d = currentDoc();
+    notify("err", d && !d.hydrated ? "Run the notebook first: the engine explains what it has evaluated since the notebook was opened." : `Could not explain that: ${e instanceof Error ? e.message : String(e)}`);
   }
   markSelection();
   renderPanelHead(); renderPanel();
@@ -528,13 +677,12 @@ function loadDoc(i: number) {
   S.sel = null; hideCompletions(); hideSigHelp(); hideHover();
   renderChrome(); renderCells(); renderSidebar(); renderPanelHead(); renderPanel();
   if (S.tab === "studio") renderStudio();
-  if (!d.hydrated && client) hydrate(d);
+  if (!d.hydrated && S.kernel === "ready" && S.runOnOpen) hydrate(d);
 }
 
 /** Rebuild a restored document's engine session by re-running its cells. Re-running renumbers the
  *  cells, so a document that was clean stays clean: its saved baseline moves to the re-run state. */
 function hydrate(d: Nb) {
-  d.hydrated = true;
   const wasClean = !docDirty(d);
   void runAll().then(() => { if (wasClean && d === currentDoc()) { d.savedText = serializeNotebook(); renderTabs(); autosave(); } });
 }
@@ -593,19 +741,23 @@ function renderTabs() {
     const on = S.tab === "notebook" && i === S.doc;
     const t = h("div", `tab${on ? " on" : ""}${dirty ? " dirty" : ""}`);
     t.title = dirty ? `${d.name} — unsaved changes` : d.name;
-    const x = h("span", "x", "×"); x.title = "Close";
+    const x = asButton(h("span", "x", "×"), `Close ${d.name}`); x.title = "Close";
     x.addEventListener("click", (ev) => { ev.stopPropagation(); closeDoc(i); });
-    t.append(h("span", "label", `${d.name}${dirty ? "*" : ""}`), x);
+    // the label is the button (the × beside it is another; one may not hold the other)
+    const label = asButton(h("span", "label", `${d.name}${dirty ? "*" : ""}`), `${d.name}${dirty ? ", unsaved changes" : ""}`);
+    label.setAttribute("aria-current", String(on));
+    t.append(label, x);
     t.addEventListener("click", () => { if (i !== S.doc) loadDoc(i); switchTab("notebook"); });
     tabs.append(t);
   });
   for (const [key, label] of [["studio", "manim studio"], ["reference", "reference"]] as const) {
-    const t = h("div", `tab${S.tab === key ? " on" : ""}`);
+    const t = asButton(h("div", `tab${S.tab === key ? " on" : ""}`), label);
+    t.setAttribute("aria-current", String(S.tab === key));
     t.append(h("span", "label", label));
     t.addEventListener("click", () => switchTab(key));
     tabs.append(t);
   }
-  tabs.append((() => { const a = h("div", "tabadd", "+"); a.title = "New notebook"; a.addEventListener("click", () => { newDoc(); switchTab("notebook"); }); return a; })());
+  tabs.append((() => { const a = asButton(h("div", "tabadd", "+"), "New notebook"); a.title = "New notebook"; a.addEventListener("click", () => { newDoc(); switchTab("notebook"); }); return a; })());
 }
 
 // ---------------------------------------------------------------------------
@@ -647,9 +799,9 @@ function serializeNotebook(): string {
  *  re-run in order so the engine's session (and with it `explain`) matches what is shown. */
 async function loadNotebook(text: string, name?: string) {
   let doc: ChalkFile;
-  try { doc = JSON.parse(text) as ChalkFile; } catch { log("err", "not a .chalk file: invalid JSON"); return; }
-  if ((doc.chalk !== 1 && doc.lemma !== 1) || !Array.isArray(doc.cells)) { log("err", "not a .chalk file"); return; }
-  const d = makeDoc(name ?? doc.name ?? "untitled.chalk", cellsFromFile(doc), Array.isArray(doc.scenes) ? doc.scenes : [], assetsFromFile(doc));
+  try { doc = JSON.parse(text) as ChalkFile; } catch { notify("err", "That file is not a ChalkMath notebook (it is not valid JSON)."); return; }
+  if ((doc.chalk !== 1 && doc.lemma !== 1) || !Array.isArray(doc.cells)) { notify("err", "That file is not a ChalkMath notebook."); return; }
+  const d = makeDoc(name ?? doc.name ?? "untitled.chalk", cellsFromFile(doc, S.foldWorkOnOpen), Array.isArray(doc.scenes) ? doc.scenes : [], assetsFromFile(doc));
   if (!d.cells.length) d.cells.push(freshCell());
   // an untouched new notebook is replaced; otherwise the file gets its own tab
   const cur = currentDoc();
@@ -657,7 +809,8 @@ async function loadNotebook(text: string, name?: string) {
   else { S.docs.push(d); loadDoc(S.docs.length - 1); }
   switchTab("notebook");
   log("ok", `opened ${d.name}: ${d.cells.length} cells, ${d.scenes.length} scenes`);
-  await runAll();
+  if (S.runOnOpen && S.kernel !== "failed") await runAll();
+  else { d.hydrated = false; renderChrome(); }
   d.savedText = serializeNotebook();
   renderTabs();
   autosave();
@@ -673,13 +826,13 @@ function assetsFromFile(doc: ChalkFile): Record<string, Asset> {
   return out;
 }
 
-/** Cells from a file's records (no DOM yet). */
-function cellsFromFile(doc: ChalkFile): Cell[] {
+/** Cells from a file's records (no DOM yet); `foldWork` folds every cell's work whatever was saved. */
+function cellsFromFile(doc: ChalkFile, foldWork = false): Cell[] {
   return doc.cells.map((c) => {
     const cell = freshCell(c.src, c.type === "markdown" || c.type === "section" ? c.type : "math");
     if (cell.type === "markdown") cell.editing = !c.src.trim();   // prose comes back rendered; an empty cell opens for typing
     if (c.collapsed) cell.collapsed = true;
-    cell.showWork = c.showWork ?? false; cell.label = c.label ?? null;
+    cell.showWork = !foldWork && (c.showWork ?? false); cell.label = c.label ?? null;
     if (c.outLatex) cell.outLatex = c.outLatex;
     if (c.outText) cell.outText = c.outText;
     if (c.form) cell.form = c.form;
@@ -692,7 +845,11 @@ function cellsFromFile(doc: ChalkFile): Cell[] {
   });
 }
 
-async function runAll() { for (const c of [...S.cells]) if (cellSrc(c).trim()) await runCell(c); }
+async function runAll() {
+  const d = currentDoc(); if (d) d.hydrated = true;   // every cell, in order: the session is the notebook's
+  const gen = runGen;
+  for (const c of [...S.cells]) { if (gen !== runGen) return; if (cellSrc(c).trim()) await runCell(c); }
+}
 
 /** The cells a section heads: from the one after it to the next section (or the end). */
 function sectionRange(i: number): [number, number] {
@@ -710,11 +867,19 @@ async function runSection(i: number) {
   const [a, b] = sectionRange(i);
   const cells = S.cells.slice(a, b);
   log("ok", `running section “${cellSrc(S.cells[i]!) || "untitled"}”: ${cells.length} cell${cells.length === 1 ? "" : "s"}`);
-  for (const c of cells) if (cellSrc(c).trim()) await runCell(c);
+  const gen = runGen;
+  for (const c of cells) { if (gen !== runGen) return; if (cellSrc(c).trim()) await runCell(c); }
 }
 
 async function restartKernel() {
-  if (client) { try { await client.call("engine.resetSession", { sessionId }); } catch (e) { log("err", String(e)); } }
+  if (S.running) {
+    // a busy engine would answer the reset only after the evaluation: start a fresh one instead
+    stoppedCell = S.running; runGen++;
+    await connect();
+    for (const d of S.docs) if (d !== currentDoc()) d.hydrated = false;
+  } else if (S.kernel === "failed") await connect();
+  else if (client) { try { await client.call("engine.resetSession", { sessionId }); } catch (e) { log("err", String(e)); } }
+  const d = currentDoc(); if (d) d.hydrated = true;   // an empty session matches a notebook with no outputs
   clearOutputs();
   for (const k of [...USER_FNS.keys()]) if (k.startsWith(`${sessionId}:`)) USER_FNS.delete(k);
   for (const k of [...USER_NAMES]) if (k.startsWith(`${sessionId}:`)) USER_NAMES.delete(k);
@@ -732,7 +897,7 @@ function readLibrary(): Library {
 }
 function writeLibrary(lib: Library): boolean {
   try { localStorage.setItem("chalkmath.library", JSON.stringify(lib)); return true; }
-  catch { log("err", "could not save: the browser's storage is full or unavailable"); return false; }
+  catch { notify("err", "Could not save: this browser's storage is full or unavailable. File › Export to file keeps a copy."); return false; }
 }
 
 /** Save the current notebook in the browser under its name. */
@@ -743,7 +908,7 @@ function saveNotebook() {
   if (!writeLibrary(lib)) return;
   const d = currentDoc(); if (d) d.savedText = text;
   renderTabs(); autosave();
-  log("ok", `saved ${S.docName} in this browser`);
+  notify("ok", `Saved ${S.docName} in this browser`);
 }
 function saveNotebookAs() {
   const name = window.prompt("Save notebook as", S.docName);
@@ -760,6 +925,7 @@ function openNotebook() {
   const names = Object.keys(lib).sort((a, b) => (lib[b]!.savedAt > lib[a]!.savedAt ? 1 : -1));
   const box = h("div", "modal");
   const card = h("div", "modalcard");
+  card.setAttribute("role", "dialog"); card.setAttribute("aria-modal", "true"); card.setAttribute("aria-label", "Open a notebook");
   card.append(h("h3", undefined, "Open a notebook"));
   if (!names.length) card.append(h("p", "muted", "Nothing saved in this browser yet. File › Save keeps the current notebook here; File › Import opens a .chalk file."));
   const list = h("div", "liblist");
@@ -768,8 +934,9 @@ function openNotebook() {
     const when = new Date(lib[name]!.savedAt);
     const main = h("div", "main");
     main.append(h("div", "name", name), h("div", "when", `${lib[name]!.file.cells.length} cells · saved ${when.toLocaleString()}`));
+    asButton(main, `Open ${name}`);
     main.addEventListener("click", () => { closeModal(); openFromLibrary(name); });
-    const del = h("span", "del", "delete"); del.title = "Remove from this browser";
+    const del = asButton(h("span", "del", "delete"), `Delete ${name} from this browser`); del.title = "Remove from this browser";
     del.addEventListener("click", (ev) => { ev.stopPropagation(); if (window.confirm(`Delete ${name} from this browser?`)) { const l = readLibrary(); delete l[name]; writeLibrary(l); openNotebook(); } });
     row.append(main, del);
     list.append(row);
@@ -782,9 +949,121 @@ function openNotebook() {
   card.append(foot);
   box.append(card);
   box.addEventListener("click", (ev) => { if (ev.target === box) closeModal(); });
+  mountModal(box);
+  (list.querySelector<HTMLElement>("[role=button]") ?? close).focus();
+}
+/** Where focus was before a dialog opened; it goes back there when the dialog closes. */
+let modalReturn: HTMLElement | null = null;
+function closeModal() {
+  const had = document.querySelector(".modal");
+  document.querySelectorAll(".modal").forEach((m) => m.remove());
+  if (had && modalReturn?.isConnected) modalReturn.focus();
+  modalReturn = null;
+}
+/** Put a dialog on the page: Tab and Shift+Tab stay inside it. */
+function mountModal(box: HTMLElement) {
+  modalReturn = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  box.addEventListener("keydown", (ev) => {
+    if (ev.key !== "Tab") return;
+    const f = [...box.querySelectorAll<HTMLElement>("button, [href], input, [tabindex]:not([tabindex='-1'])")].filter((e) => !e.hidden);
+    if (!f.length) return;
+    const first = f[0]!, last = f[f.length - 1]!;
+    if (ev.shiftKey && document.activeElement === first) { ev.preventDefault(); last.focus(); }
+    else if (!ev.shiftKey && document.activeElement === last) { ev.preventDefault(); first.focus(); }
+  });
   document.body.append(box);
 }
-function closeModal() { document.querySelectorAll(".modal").forEach((m) => m.remove()); }
+
+/** A dialog: a title, a body, and a Close button; Esc or a click outside closes it too. */
+function showModal(title: string, body: (Node | string)[], wide = false) {
+  closeModal();
+  const box = h("div", "modal");
+  const card = h("div", `modalcard${wide ? " wide" : ""}`);
+  card.setAttribute("role", "dialog"); card.setAttribute("aria-modal", "true"); card.setAttribute("aria-label", title);
+  card.append(h("h3", undefined, title), ...body);
+  const foot = h("div", "modalfoot");
+  const close = h("button", "primary", "Close"); close.addEventListener("click", closeModal);
+  foot.append(h("div", "spacer"), close);
+  card.append(foot);
+  box.append(card);
+  box.addEventListener("click", (ev) => { if (ev.target === box) closeModal(); });
+  mountModal(box);
+  close.focus();
+}
+
+/** Notebooks that ship with the page (notebooks/ in the repository, examples/ on the site). */
+const EXAMPLES: { file: string; title: string; blurb: string }[] = [
+  { file: "welcome.chalk", title: "Welcome to ChalkMath", blurb: "A short tour: running cells, reading the steps, and one example from each area." },
+  { file: "llamas.chalk", title: "Drawing llamas with circles", blurb: "Fourier series from inner products to epicycles, ending with a llama drawn by spinning circles." },
+  { file: "order-lattices.chalk", title: "Order and lattices", blurb: "Part I of From Zero to Propagators: partial orders, joins and meets, monotone maps and fixed points." },
+];
+
+/** Open a bundled notebook in a tab (or show it, if it is open already). */
+async function openExample(file: string): Promise<boolean> {
+  const open = S.docs.findIndex((d) => d.name === file);
+  if (open >= 0) { loadDoc(open); switchTab("notebook"); return true; }
+  try {
+    const res = await fetch(`examples/${file}?v=${typeof __BUILD_ID__ === "string" ? __BUILD_ID__ : "dev"}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    await loadNotebook(await res.text(), file);
+    return true;
+  } catch (e) {
+    notify("err", `Could not open ${file}: ${e instanceof Error ? e.message : String(e)}`);
+    return false;
+  }
+}
+
+function showExamples() {
+  const list = h("div", "liblist");
+  for (const ex of EXAMPLES) {
+    const row = h("button", "librow");
+    const main = h("div", "main");
+    main.append(h("div", "name", ex.title), h("div", "when", ex.blurb));
+    row.append(main);
+    row.addEventListener("click", () => { closeModal(); void openExample(ex.file); });
+    list.append(row);
+  }
+  showModal("Example notebooks", [list]);
+}
+
+const SHORTCUTS: [string, string][] = [
+  ["Enter", "Run the cell (in a Markdown cell: a new line)"],
+  ["Shift+Enter or Esc", "Render a Markdown cell"],
+  ["Enter on rendered Markdown, or double-click", "Edit it"],
+  ["↑ / ↓", "Move to the cell above or below"],
+  ["Tab", "Complete a command or a \\-symbol"],
+  ["\\pi, \\lam, \\e, \\theta … then space", "Type a symbol: π, λ, ℯ, θ …"],
+  ["Esc", "Close a popup, the signature help, or this dialog"],
+  ["Ctrl/⌘+S", "Save in this browser (with Shift: Save as)"],
+  ["Ctrl/⌘+B", "Show or hide the sidebar"],
+];
+function showShortcuts() {
+  const t = h("table", "keys");
+  for (const [k, what] of SHORTCUTS) {
+    const tr = h("tr");
+    const kd = h("td"); kd.append(h("kbd", undefined, k));
+    tr.append(kd, h("td", undefined, what));
+    t.append(tr);
+  }
+  showModal("Keyboard shortcuts", [t]);
+}
+
+function showAbout() {
+  const p = (text: string) => h("p", "muted", text);
+  const links = h("p", "muted");
+  const a = (href: string, text: string) => { const l = document.createElement("a"); l.href = href; l.target = "_blank"; l.rel = "noreferrer"; l.textContent = text; return l; };
+  links.append(a("https://github.com/adekau/chalkmath", "Source on GitHub"), " · ", a("https://github.com/adekau/chalkmath/releases", "The book, Show Your Work (PDF)"));
+  const legal = h("p", "muted");
+  legal.append("Copyright 2026 Alex Dekau. Open source under the ", a("licenses/ChalkMath-LICENSE.txt", "Apache License 2.0"),
+    "; the name and logo are covered by the ", a("licenses/TRADEMARKS.md", "trademark policy"), ". ", a("licenses/NOTICE.txt", "Notices and third-party licenses"), ".");
+  showModal("About ChalkMath", [
+    p("A notebook for mathematics that shows its work: every answer comes with the steps that produced it, and any part of an answer can be traced back to the rule that made it."),
+    p("Privacy: the engine runs in your browser. What you type is not sent to a server, and notebooks are kept in this browser's storage until you export them. The page loads nothing from other sites, except what a notebook asks for: an import(\"url\") cell, or an image in a Markdown cell."),
+    links,
+    legal,
+    p(`Build ${typeof __BUILD_ID__ === "string" ? __BUILD_ID__ : "dev"}${S.caps ? ` · engine ${S.caps.version}` : ""}`),
+  ]);
+}
 
 /** A notebook from the library becomes a tab (or replaces an untouched one); one already open is shown. */
 function openFromLibrary(name: string) {
@@ -802,7 +1081,7 @@ function download(name: string, text: string) {
 }
 
 /** Export the current notebook as a .chalk file (a download). */
-function exportNotebook() { download(S.docName, serializeNotebook()); log("ok", `exported ${S.docName}`); }
+function exportNotebook() { download(S.docName, serializeNotebook()); notify("ok", `Exported ${S.docName}`); }
 function importNotebook() {
   const inp = document.createElement("input");
   inp.type = "file"; inp.accept = ".chalk,.lemma,.json,application/json";
@@ -853,8 +1132,11 @@ async function copyNotebookLink() {
   try {
     const url = await notebookLink();
     await navigator.clipboard.writeText(url);
-    log("ok", `copied a link to ${S.docName} (${url.length.toLocaleString()} characters); it opens the sources and re-runs them`);
-  } catch (e) { log("err", `could not copy the link: ${e instanceof Error ? e.message : String(e)}`); }
+    // chat apps and mail clients cut long links; attachments make them long
+    notify("ok", url.length > 8000
+      ? `Copied a link to ${S.docName}. It is ${url.length.toLocaleString()} characters long, which some apps cut short; File › Export to file is safer to send.`
+      : `Copied a link to ${S.docName}`);
+  } catch (e) { notify("err", `Could not copy the link: ${e instanceof Error ? e.message : String(e)}`); }
 }
 /** Open the notebook a link carries (the page's fragment), then drop the fragment so a reload does not open it again. */
 async function openNotebookLink(hash: string): Promise<boolean> {
@@ -873,7 +1155,7 @@ async function openNotebookLink(hash: string): Promise<boolean> {
     history.replaceState(null, "", location.pathname + location.search);
     await loadNotebook(JSON.stringify(file), file.name);
     return true;
-  } catch (e) { log("err", `the link did not open: ${e instanceof Error ? e.message : String(e)}`); return false; }
+  } catch (e) { notify("err", `The notebook link did not open: ${e instanceof Error ? e.message : String(e)}`); return false; }
 }
 
 // --- Attachments: `⟦name⟧` for a file attached to the notebook, `import("url")` for one on the web --
@@ -1028,7 +1310,7 @@ function attachFile() {
       else if (c?.ta) { c.ta.setRangeText(`⟦${name}⟧`, c.ta.selectionStart, c.ta.selectionEnd, "end"); c.src = c.ta.value; c.ta.focus(); }
       else if (mime === "image/svg+xml") { const cell = addCell(`epicycles(⟦${name}⟧)`); renderSidebar(); focusCell(S.cells.indexOf(cell)); }
       else { const cell = addCell(`⟦${name}⟧`, "markdown"); renderSidebar(); focusCell(S.cells.indexOf(cell)); }
-      log("ok", `attached ${name} (${mime}, ${Math.round(data.length / 1024)} KB): ⟦${name}⟧ refers to it`);
+      notify("ok", `Attached ${name} (${Math.round(data.length / 1024)} KB): ⟦${name}⟧ refers to it`);
       renderHighlights(); autosave();
     });
   });
@@ -1051,7 +1333,7 @@ function onPaste(ev: ClipboardEvent, cell: Cell) {
       let k = 1; const ext = file.name ? "" : `.${(mime.split("/")[1] ?? "bin").replace("svg+xml", "svg")}`;
       while (!file.name && S.assets[`pasted-${k}${ext}`]) k++;
       const name = attachAsset(file.name || `pasted-${k}${ext}`, mime, data, binary);
-      put(name); log("ok", `pasted ${name} (${mime}): ⟦${name}⟧ refers to it`);
+      put(name); notify("ok", `Pasted ${name}: ⟦${name}⟧ refers to it`);
     });
     return;
   }
@@ -1060,7 +1342,7 @@ function onPaste(ev: ClipboardEvent, cell: Cell) {
     ev.preventDefault();
     let k = 1; while (S.assets[`pasted-${k}.svg`]) k++;
     const name = attachAsset(`pasted-${k}.svg`, "image/svg+xml", text);
-    put(name); log("ok", `pasted SVG as ${name}: ⟦${name}⟧ refers to it`);
+    put(name); notify("ok", `Pasted the SVG as ${name}: ⟦${name}⟧ refers to it`);
   }
 }
 function newNotebook() {
@@ -1077,6 +1359,7 @@ interface Autosave { chalkmath: 1; active: number; docs: { file: ChalkFile; dirt
  *  since serializing every open notebook after each of a hundred cells is most of what makes a
  *  big notebook feel slow while it loads. The pending save is flushed before the page unloads. */
 let autosaveTimer = 0;
+let autosaveWarned = false;
 function autosave() {
   clearTimeout(autosaveTimer);
   autosaveTimer = window.setTimeout(autosaveNow, 700);
@@ -1085,7 +1368,12 @@ function autosaveNow() {
   clearTimeout(autosaveTimer); autosaveTimer = 0;
   stashDoc();
   const doc: Autosave = { chalkmath: 1, active: S.doc, docs: S.docs.map((d) => ({ file: JSON.parse(d.text) as ChalkFile, dirty: docDirty(d) })) };
-  try { localStorage.setItem("chalkmath.autosave", JSON.stringify(doc)); } catch { /* storage may be unavailable */ }
+  try { localStorage.setItem("chalkmath.autosave", JSON.stringify(doc)); autosaveWarned = false; }
+  catch {
+    // storage full (big attachments) or unavailable (private mode): say so once, not after every run
+    if (!autosaveWarned) notify("err", "Your notebooks could not be kept in this browser (its storage is full or unavailable). File › Export to file keeps a copy.");
+    autosaveWarned = true;
+  }
 }
 window.addEventListener("beforeunload", () => { if (autosaveTimer) autosaveNow(); });
 function restoreAutosave(): string | null {
@@ -1126,6 +1414,37 @@ function convertCell(cell: Cell, type: CellType) {
   renderCells(); renderSidebar(); renderChrome(); autosave();
 }
 
+// The per-cell actions, shared by the cell's ⋮ menu and the toolbar (which acts on the active cell).
+function duplicateCell(cell: Cell) {
+  const i = S.cells.indexOf(cell); if (i < 0) return;
+  S.cells.splice(i + 1, 0, freshCell(cellSrc(cell), cell.type ?? "math"));
+  renderCells(); renderSidebar(); focusCell(i + 1); autosave();
+}
+function moveCell(cell: Cell, by: -1 | 1) {
+  const i = S.cells.indexOf(cell), j = i + by;
+  if (i < 0 || j < 0 || j >= S.cells.length) return;
+  [S.cells[i], S.cells[j]] = [S.cells[j]!, S.cells[i]!];
+  renderCells(); renderSidebar(); focusCell(j); autosave();
+}
+const hasOutput = (cell: Cell) => !!(cell.outLatex || cell.error);
+function clearCellOutput(cell: Cell) {
+  delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.error; delete cell.plot; delete cell.hasse; delete cell.summary; delete cell.image; delete cell.outDeBruijn; delete cell.reading;
+  cell.steps = []; cell.label = null;
+  renderCellBody(cell); renderChrome(); renderSidebar(); autosave();
+}
+function deleteCell(cell: Cell) {
+  const i = S.cells.indexOf(cell); if (i < 0) return;
+  if (S.cells.length === 1) { cell.src = ""; if (cell.input) { cell.input.value = ""; syncHighlight(cell); } if (cell.ta) cell.ta.value = ""; clearCellOutput(cell); return; }
+  S.cells.splice(i, 1);
+  S.active = Math.min(S.active, S.cells.length - 1);
+  renderCells(); renderSidebar(); renderChrome(); autosave();
+}
+/** Show or hide every cell's work at once. */
+function setAllWork(on: boolean) {
+  for (const c of S.cells) if (c.steps?.length) c.showWork = on;
+  renderCells(); autosave();
+}
+
 function focusCell(i: number) {
   S.active = Math.max(0, Math.min(i, S.cells.length - 1));
   renderCells(); renderSidebar(); renderChrome();
@@ -1160,6 +1479,42 @@ const h = (tag: string, cls?: string, text?: string) => {
 };
 const app = () => document.getElementById("app")!;
 
+/** Make a clickable element a keyboard-operable button: focusable, announced as a button, and
+ *  activated by Enter or Space like a <button>. */
+function asButton<T extends HTMLElement>(el: T, label?: string): T {
+  el.setAttribute("role", "button"); el.tabIndex = 0;
+  if (label) el.setAttribute("aria-label", label);
+  el.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); ev.stopPropagation(); el.click(); } });
+  return el;
+}
+
+/** Arrow keys, Home and End move between a menu's items; Esc calls `onEscape`. */
+function menuKeys(menu: HTMLElement, onEscape: () => void, onSide?: (dir: -1 | 1) => void) {
+  menu.setAttribute("role", "menu");
+  const items = () => [...menu.querySelectorAll<HTMLElement>(":scope > .item")];
+  for (const it of items()) { it.setAttribute("role", "menuitem"); it.tabIndex = -1; }
+  menu.addEventListener("keydown", (ev) => {
+    const all = items(), i = all.indexOf(document.activeElement as HTMLElement);
+    const go = (j: number) => { ev.preventDefault(); ev.stopPropagation(); all[(j + all.length) % all.length]?.focus(); };
+    if (ev.key === "ArrowDown") go(i + 1);
+    else if (ev.key === "ArrowUp") go(i - 1);
+    else if (ev.key === "Home") go(0);
+    else if (ev.key === "End") go(all.length - 1);
+    else if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); ev.stopPropagation(); (document.activeElement as HTMLElement | null)?.click(); }
+    else if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); onEscape(); }
+    else if (onSide && (ev.key === "ArrowLeft" || ev.key === "ArrowRight")) { ev.preventDefault(); ev.stopPropagation(); onSide(ev.key === "ArrowLeft" ? -1 : 1); }
+  });
+}
+
+/** Say something to a screen reader without showing it (a result arriving, an error). */
+function announce(text: string) {
+  let live = document.getElementById("sr-live");
+  if (!live) { live = h("div", "sr-only"); live.id = "sr-live"; live.setAttribute("role", "status"); live.setAttribute("aria-live", "polite"); document.body.append(live); }
+  live.textContent = "";
+  requestAnimationFrame(() => { live!.textContent = text; });
+}
+const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
 /** Render an engine explanation: Markdown-ish text with `$latex$` spans. */
 function inlineMath(md: string, cls?: string): HTMLElement {
   const el = h("span", cls);
@@ -1179,17 +1534,20 @@ function shell() {
   const root = app();
   root.innerHTML = "";
   root.append(
-    h("div", "titlebar"), h("div", "tabbar"),
+    (() => { const t = h("header", "titlebar"); return t; })(),
+    (() => { const t = h("nav", "tabbar"); t.setAttribute("aria-label", "Notebooks"); return t; })(),
     (() => {
       const body = h("div", "body");
-      body.append(h("div", "rail"), h("aside", "sidebar"), (() => {
-        const main = h("div", "main");
-        main.append(h("div", "toolbar"), h("div", "cells"), h("div", "reference"), h("div", "studio"), h("div", "panel"));
+      const rail = h("nav", "rail"); rail.setAttribute("aria-label", "Sidebar views");
+      const side = h("aside", "sidebar"); side.setAttribute("aria-label", "Sidebar");
+      body.append(rail, side, (() => {
+        const main = h("div", "main"); main.setAttribute("role", "main");
+        main.append(h("div", "toolbar"), h("div", "notice"), h("div", "cells"), h("div", "reference"), h("div", "studio"), h("div", "panel"));
         return main;
       })());
       return body;
     })(),
-    h("div", "statusbar"),
+    h("footer", "statusbar"),
   );
 }
 
@@ -1200,14 +1558,16 @@ function renderChrome() {
   const tb = $(".titlebar"); tb.innerHTML = "";
   const brand = h("div", "brand");
   const mark = document.createElement("img"); mark.className = "mark"; mark.src = "logo.svg"; mark.alt = ""; mark.draggable = false;
-  brand.append(mark, h("span", "name", "ChalkMath"));
+  brand.append(mark, h("h1", "name", "ChalkMath"));
   const menus = h("div", "menus");
   const MENUS: Record<string, [string, () => void][]> = {
-    File: [["New notebook", newNotebook], ["Open…", openNotebook], ["Save", () => saveNotebook()], ["Save as…", saveNotebookAs], ["Export to file…", exportNotebook], ["Import from file…", importNotebook], ["Attach file…", attachFile], ["Copy link to notebook", () => void copyNotebookLink()]],
+    File: [["New notebook", newNotebook], ["Open…", openNotebook], ["Examples…", showExamples], ["Save", () => saveNotebook()], ["Save as…", saveNotebookAs], ["Export to file…", exportNotebook], ["Import from file…", importNotebook], ["Attach file…", attachFile], ["Copy link to notebook", () => void copyNotebookLink()]],
     Edit: [["Add math cell", () => { addCell(); focusCell(S.cells.length - 1); }], ["Add Markdown cell", () => { addCell("", "markdown"); focusCell(S.cells.length - 1); }], ["Add section", () => { addCell("", "section"); focusCell(S.cells.length - 1); }],
       ...(S.cells[S.active] ? CELL_TYPES.filter(([t]) => t !== (S.cells[S.active]!.type ?? "math")).map(([t, label]): [string, () => void] => [`Change to ${label.toLowerCase()}`, () => convertCell(S.cells[S.active]!, t)]) : []),
       ["Clear outputs", clearOutputs]],
-    View: [["Toggle light / dark", () => { applyTheme(S.theme === "light" ? "dark" : "light"); renderChrome(); }], ["Explanation panel", () => { S.panelOpen = !S.panelOpen; renderPanelHead(); renderPanel(); }], [`${S.deBruijn ? "✓ " : ""}de Bruijn indices (λ-cells)`, () => { S.deBruijn = !S.deBruijn; renderChrome(); renderCells(); }],
+    View: [["Toggle light / dark", () => { applyTheme(S.theme === "light" ? "dark" : "light"); renderChrome(); }], [`${S.sidebarOpen ? "✓ " : ""}Sidebar  (Ctrl+B)`, toggleSidebar], ["Explanation panel", () => { S.panelOpen = !S.panelOpen; renderPanelHead(); renderPanel(); }],
+      ["Show all work", () => setAllWork(true)], ["Hide all work", () => setAllWork(false)],
+      [`${S.foldWorkOnOpen ? "✓ " : ""}Hide work in opened notebooks`, () => { S.foldWorkOnOpen = !S.foldWorkOnOpen; setPref("chalkmath.foldwork", S.foldWorkOnOpen); renderChrome(); }], [`${S.deBruijn ? "✓ " : ""}de Bruijn indices (λ-cells)`, () => { S.deBruijn = !S.deBruijn; renderChrome(); renderCells(); }],
       [`${S.showEcho ? "✓ " : ""}Input interpretation`, () => { S.showEcho = !S.showEcho; try { localStorage.setItem("chalkmath.echo", S.showEcho ? "on" : "off"); } catch { /* private mode */ } renderChrome(); renderCells(); }],
       [`${S.highlight ? "✓ " : ""}Syntax highlighting`, () => { S.highlight = !S.highlight; try { localStorage.setItem("chalkmath.highlight", S.highlight ? "on" : "off"); } catch { /* private mode */ } document.documentElement.classList.toggle("nohl", !S.highlight); renderHighlights(); renderChrome(); }],
       [`${S.sigHelp ? "✓ " : ""}Signature help`, () => { S.sigHelp = !S.sigHelp; try { localStorage.setItem("chalkmath.sighelp", S.sigHelp ? "on" : "off"); } catch { /* private mode */ } if (!S.sigHelp) hideSigHelp(); renderChrome(); }],
@@ -1217,13 +1577,29 @@ function renderChrome() {
         renderChrome();
       }])],
     Run: [["Run all", () => void runAll()], ["Run cell", () => { const c = S.cells[S.active]; if (c) void runCell(c); }],
-      ...(sectionOf(S.active) >= 0 ? [[`Run section “${(cellSrc(S.cells[sectionOf(S.active)]!) || "untitled").slice(0, 24)}”`, () => void runSection(sectionOf(S.active))] as [string, () => void]] : [])],
-    Kernel: [["Restart kernel", () => void restartKernel()], ["Restart and run all", async () => { await restartKernel(); await runAll(); }]],
-    Help: [["Reference", () => switchTab("reference")], ["Manim Studio", () => switchTab("studio")]],
+      ...(sectionOf(S.active) >= 0 ? [[`Run section “${(cellSrc(S.cells[sectionOf(S.active)]!) || "untitled").slice(0, 24)}”`, () => void runSection(sectionOf(S.active))] as [string, () => void]] : []),
+      [`${S.runOnOpen ? "✓ " : ""}Run notebooks when opened`, () => { S.runOnOpen = !S.runOnOpen; setPref("chalkmath.runonopen", S.runOnOpen); renderChrome(); }]],
+    Kernel: [...(S.running ? [["Interrupt", () => void interrupt()] as [string, () => void]] : []),
+      ["Restart kernel", () => void restartKernel()], ["Restart and run all", async () => { await restartKernel(); await runAll(); }]],
+    Help: [["Welcome notebook", () => void openExample("welcome.chalk")], ["Example notebooks…", showExamples], ["Keyboard shortcuts", showShortcuts],
+      ["Reference", () => switchTab("reference")], ["Manim Studio", () => switchTab("studio")], ["About ChalkMath", showAbout],
+      [`${S.dev ? "✓ " : ""}Developer mode`, () => { S.dev = !S.dev; setPref("chalkmath.dev", S.dev); if (!S.dev && S.panelTab === "log") S.panelTab = "explain"; renderChrome(); renderPanelHead(); renderPanel(); }]],
   };
-  for (const m of Object.keys(MENUS)) {
+  const names = Object.keys(MENUS);
+  const openMenu = (m: string | null, kb: boolean) => {
+    S.menu = m; renderChrome();
+    // opened from the keyboard: focus goes into the menu; closed: back to its title
+    if (m && kb) $<HTMLElement>(".menus .dropdown .item")?.focus();
+  };
+  for (const m of names) {
+    // the title and its dropdown are siblings: a menu may not sit inside a button
+    const wrap = h("div", "mwrap");
     const sp = h("span", S.menu === m ? "open" : undefined, m);
-    sp.addEventListener("click", (ev) => { ev.stopPropagation(); S.menu = S.menu === m ? null : m; renderChrome(); });
+    wrap.append(sp);
+    asButton(sp); sp.setAttribute("aria-haspopup", "menu"); sp.setAttribute("aria-expanded", String(S.menu === m)); sp.dataset["menu"] = m;
+    // a click from the keyboard has detail 0
+    sp.addEventListener("click", (ev) => { ev.stopPropagation(); openMenu(S.menu === m ? null : m, ev.detail === 0); });
+    sp.addEventListener("keydown", (ev) => { if (ev.key === "ArrowDown") { ev.preventDefault(); openMenu(m, true); } });
     if (S.menu === m) {
       const dd = h("div", "dropdown");
       for (const [label, act] of MENUS[m]!) {
@@ -1231,17 +1607,20 @@ function renderChrome() {
         it.addEventListener("click", (ev) => { ev.stopPropagation(); S.menu = null; renderChrome(); act(); });
         dd.append(it);
       }
-      sp.append(dd);
+      menuKeys(dd, () => { openMenu(null, false); $<HTMLElement>(`.menus [data-menu="${m}"]`)?.focus(); },
+        (dir) => openMenu(names[(names.indexOf(m) + dir + names.length) % names.length]!, true));
+      wrap.append(dd);
     }
-    menus.append(sp);
+    menus.append(wrap);
   }
-  const theme = h("span", "themebtn", S.theme === "light" ? "◑ Light" : "◐ Dark");
+  const theme = asButton(h("span", "themebtn", S.theme === "light" ? "◑ Light" : "◐ Dark"), `Theme: ${S.theme}. Switch to ${S.theme === "light" ? "dark" : "light"}`);
   theme.title = "Toggle light and dark";
   theme.addEventListener("click", () => { applyTheme(S.theme === "light" ? "dark" : "light"); renderChrome(); if (S.tab === "studio") renderStage(); });
   const kernel = h("div", "kernel");
   const dot = h("span", "dot");
-  const state = S.busy ? "running" : S.caps ? "idle" : "offline";
-  dot.style.background = S.busy ? "var(--acc)" : S.caps ? "var(--ok)" : "var(--danger)";
+  const state = S.kernel === "failed" ? "stopped" : S.kernel === "starting" ? "starting…" : S.busy ? "running" : "ready";
+  dot.style.background = S.kernel === "failed" ? "var(--danger)" : S.kernel === "starting" || S.busy ? "var(--acc)" : "var(--ok)";
+  kernel.title = S.kernel === "failed" ? S.kernelError : S.kernel === "starting" ? "Loading the engine" : S.caps ? `${S.caps.engine} ${S.caps.version}` : "";
   const sel = document.createElement("select");
   for (const [v, label] of [["lean-worker", "kernel · wasm"], ["http", "kernel · http"]] as const) {
     const o = document.createElement("option"); o.value = v; o.textContent = label; o.selected = S.engineMode === v; sel.append(o);
@@ -1250,7 +1629,8 @@ function renderChrome() {
   const url = document.createElement("input");
   url.id = "kurl"; url.value = S.httpUrl; url.hidden = S.engineMode !== "http";
   url.addEventListener("change", () => { S.httpUrl = url.value; void connect(); });
-  kernel.append(dot, sel, url, h("span", "sep", "·"), h("span", undefined, state));
+  if (S.dev) kernel.append(dot, sel, url, h("span", "sep", "·"), h("span", undefined, state));
+  else kernel.append(dot, h("span", undefined, `engine · ${state}`));
   tb.append(brand, menus, h("div", "spacer"), theme, kernel);
 
   // tab bar
@@ -1259,44 +1639,94 @@ function renderChrome() {
   // rail
   const rail = $(".rail"); rail.innerHTML = "";
   for (const [key, glyph, title] of [["outline", "≡", "Outline"], ["palette", "ƒ", "Commands"]] as const) {
-    const b = h("div", `b${S.rail === key ? " on" : ""}`, glyph);
-    b.title = title;
-    b.addEventListener("click", () => { S.rail = key; renderChrome(); renderSidebar(); });
+    const on = S.sidebarOpen && S.rail === key;
+    const b = asButton(h("div", `b${on ? " on" : ""}`, glyph), title);
+    b.setAttribute("aria-pressed", String(on));
+    b.title = on ? `${title} (click again to hide the sidebar)` : title;
+    // the open view's button folds the sidebar away; any other button opens it on that view
+    b.addEventListener("click", () => { if (on) toggleSidebar(); else { S.rail = key; if (!S.sidebarOpen) toggleSidebar(); else { renderChrome(); renderSidebar(); } } });
     rail.append(b);
   }
+  $(".sidebar").hidden = !S.sidebarOpen;
 
   // toolbar
   const tl = $(".toolbar"); tl.innerHTML = "";
   const group = h("div", "bgroup");
-  const mk = (label: string, title: string, fn: () => void, primary = false) => {
+  const mk = (label: string, title: string, fn: () => void, primary = false, enabled = true) => {
     const b = document.createElement("button");
-    b.className = primary ? "primary" : ""; b.textContent = label; b.title = title;
+    b.className = primary ? "primary" : ""; b.textContent = label; b.title = title; b.disabled = !enabled;
+    b.addEventListener("mousedown", (e) => e.preventDefault());   // keep the caret in the cell
     b.addEventListener("click", fn); return b;
   };
   group.append(
-    mk("▶ Run", "Run the active cell", () => { const c = S.cells[S.active]; if (c) void runCell(c); }, true),
+    S.running
+      ? mk("■ Stop", "Stop the evaluation (restarts the engine)", () => void interrupt(), true)
+      : mk("▶ Run", "Run the active cell", () => { const c = S.cells[S.active]; if (c) void runCell(c); }, true),
     mk("▶▶ All", "Run every cell in order", () => void runAll()),
-    mk("Clear", "Clear all outputs", clearOutputs),
+    mk("Clear all", "Clear every cell's output", clearOutputs),
     mk("+ Cell", "Add a cell", () => { const c = addCell(); focusCell(S.cells.indexOf(c)); }),
   );
-  tl.append(group, h("div", "spacer"), h("span", "hint", "Enter runs the cell"));
+  // the active cell's actions, the same as its ⋮ menu
+  const cur = S.cells[S.active];
+  const i = cur ? S.active : -1;
+  const cellGroup = h("div", "bgroup");
+  cellGroup.append(
+    mk("↑", "Move the cell up", () => { if (cur) moveCell(cur, -1); }, false, i > 0),
+    mk("↓", "Move the cell down", () => { if (cur) moveCell(cur, 1); }, false, i >= 0 && i < S.cells.length - 1),
+    mk("Duplicate", "Duplicate the cell", () => { if (cur) duplicateCell(cur); }, false, !!cur),
+    ...(cur?.steps?.length ? [mk(cur.showWork ? "Hide work" : "Show work", "Show or hide the cell's steps", () => { cur.showWork = !cur.showWork; renderCellBody(cur); renderChrome(); autosave(); })] : []),
+    mk("Clear output", "Clear the cell's output", () => { if (cur) clearCellOutput(cur); }, false, !!cur && hasOutput(cur)),
+    mk("Delete", "Delete the cell", () => { if (cur) deleteCell(cur); }, false, !!cur),
+  );
+  tl.append(group, h("span", "tlabel", "Cell"), cellGroup, h("div", "spacer"), h("span", "hint", "Enter runs the cell"));
+
+  renderNotice();
 
   // status bar
   const sb = $(".statusbar"); sb.innerHTML = "";
   const rules = new Set(S.cells.flatMap((c) => c.steps ?? []).map((s) => s.rule));
   const done = S.cells.filter((c) => c.outLatex || c.error).length;
   sb.append(
-    h("span", undefined, `Mode: ${S.tab}`), h("span", "pipe", "|"),
+    ...(S.dev ? [h("span", undefined, `Mode: ${S.tab}`), h("span", "pipe", "|")] : []),
     h("span", undefined, `Cell ${S.active + 1}`), h("span", "pipe", "|"),
     h("span", undefined, `${S.cells.length} cells · ${done} evaluated`),
     h("div", "spacer"),
-    h("span", "rules", `${rules.size} rules applied`), h("span", "pipe", "|"),
+    ...(S.dev ? [h("span", "rules", `${rules.size} rules applied`), h("span", "pipe", "|")] : []),
     h("span", undefined, "type \\ for symbols · Tab completes"),
   );
 }
 
+/** The strip above the paper: the engine loading or failed, or a notebook shown with the outputs
+ *  it was saved with and not run yet. */
+function renderNotice() {
+  const n = $(".notice"); n.innerHTML = ""; n.className = "notice";
+  const d = currentDoc();
+  const btn = (label: string, fn: () => void) => { const b = document.createElement("button"); b.textContent = label; b.addEventListener("click", fn); return b; };
+  if (S.kernel === "failed") {
+    n.classList.add("bad");
+    const msg = h("span", "msg", S.kernelError); msg.title = S.kernelDetail;
+    n.append(msg, btn("Restart engine", () => void restartEngine(S.crashed)));
+  } else if (S.kernel === "starting") {
+    n.classList.add("wait");
+    n.append(h("span", "msg", "Starting the engine…"));
+  } else if (d && !d.hydrated && !d.noticeDismissed && S.cells.some((c) => (c.type ?? "math") === "math" && c.src.trim())) {
+    const saved = S.cells.some((c) => c.outLatex || c.error);
+    n.append(h("span", "msg", `This notebook has not been run yet.${saved ? " The outputs shown are the ones it was saved with." : ""}`),
+      btn("Run all", () => void runAll().then(() => renderChrome())),
+      btn("Dismiss", () => { d.noticeDismissed = true; renderNotice(); }));
+  }
+  n.hidden = !n.childElementCount || S.tab !== "notebook";
+}
+
+function toggleSidebar() {
+  S.sidebarOpen = !S.sidebarOpen;
+  if (!narrow()) setPref("chalkmath.sidebar", S.sidebarOpen);   // on a phone it is a drawer: not a preference
+  renderChrome(); renderSidebar();
+}
+
 function renderView() {
   $(".cells").hidden = S.tab !== "notebook";
+  renderNotice();
   $(".toolbar").hidden = S.tab === "studio";
   $(".reference").hidden = S.tab !== "reference";
   $(".studio").hidden = S.tab !== "studio";
@@ -1314,7 +1744,7 @@ function renderSidebar() {
     S.cells.forEach((c, i) => {
       if (c.type === "section") { inSection = true; folded = !!c.collapsed; }
       else if (folded) return;
-      const row = h("div", `olrow${i === S.active ? " on" : ""}${c.type ? ` ${c.type}` : ""}${inSection && c.type !== "section" ? " in" : ""}`);
+      const row = asButton(h("div", `olrow${i === S.active ? " on" : ""}${c.type ? ` ${c.type}` : ""}${inSection && c.type !== "section" ? " in" : ""}`));
       if (c.type === "section") {
         const [a, b] = sectionRange(i);
         row.append(h("span", "num", c.collapsed ? "▸" : "§"));
@@ -1332,12 +1762,12 @@ function renderSidebar() {
         wrap.append(h("span", "kind", c.kind ?? cellKind(c.src) ?? "empty"), h("span", "src", c.src || "…"));
         row.append(wrap);
       }
-      row.addEventListener("click", () => { if (S.tab !== "notebook") switchTab("notebook"); focusCell(i); });
+      row.addEventListener("click", () => { if (S.tab !== "notebook") switchTab("notebook"); if (narrow() && S.sidebarOpen) toggleSidebar(); focusCell(i); });
       list.append(row);
     });
   } else {
     for (const d of DOCS) {
-      const row = h("div", "plrow");
+      const row = asButton(h("div", "plrow"));
       row.append(h("span", "name", d.name), h("span", "sig", d.sig));
       row.addEventListener("click", () => {
         if (S.tab !== "notebook") switchTab("notebook");
@@ -1360,6 +1790,9 @@ function plotSvg(p: PlotData, w: number, hgt: number, frac = 1, t01?: number): S
   const NS = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(NS, "svg");
   svg.setAttribute("viewBox", `0 0 ${w} ${hgt}`); svg.setAttribute("width", String(w)); svg.setAttribute("height", String(hgt));
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", p.terms?.length ? `Epicycles: ${p.terms.length} circles drawing ${p.series.map((c) => c.text).join(", ")}`
+    : `Plot of ${p.series.map((c) => c.text).join(" and ")} for ${p.var} from ${p.from} to ${p.to}`);
   const parametric = p.series.some((s) => s.parametric);
   const ys = p.series.flatMap((s) => s.points.map((q) => q[1])).filter((y): y is number => y !== null).sort((a, b) => a - b);
   let y0 = -1, y1 = 1, x0 = p.from, x1 = p.to;
@@ -1536,6 +1969,8 @@ function epicycleBox(p: PlotData, w: number, hgt: number): HTMLElement {
       curve.setAttribute("d", d);
     }
   };
+  // with reduced motion, the finished drawing: the whole trace, the circles at the end of the period
+  if (reducedMotion()) { draw(start + period - 1); return box; }
   draw(start);
   let raf = 0;
   const loop = (now: number) => {
@@ -1561,6 +1996,8 @@ function hasseSvg(d: { nodes: { name: string; height: number }[]; covers: [strin
   const pos = new Map<string, [number, number]>();
   for (const [ht, names] of layers) names.forEach((name, i) => pos.set(name, [20 + (i + 0.5) * ((w - 40) / names.length), h - 12 - (ht + 0.5) * rowH]));
   const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", `Hasse diagram of ${d.nodes.length} elements${d.covers.length ? `; covers: ${d.covers.map(([a, b]) => `${a} below ${b}`).join(", ")}` : ""}`);
   svg.setAttribute("viewBox", `0 0 ${w} ${h}`); svg.setAttribute("width", String(w)); svg.setAttribute("height", String(h));
   for (const [a, b] of d.covers) {
     const p = pos.get(a), q = pos.get(b); if (!p || !q) continue;
@@ -1619,7 +2056,7 @@ function renderCells() {
       el.append(h("div", "prompt", "§"));
       const mid = h("div", "mid");
       const row = h("div", "sectrow");
-      const tog = h("span", "secttog", cell.collapsed ? "▸" : "▾");
+      const tog = asButton(h("span", "secttog", cell.collapsed ? "▸" : "▾"), cell.collapsed ? "Unfold section" : "Fold section");
       tog.title = cell.collapsed ? "Show this section's cells" : "Fold this section's cells away";
       tog.addEventListener("mousedown", (e) => e.preventDefault());
       tog.addEventListener("click", () => { cell.collapsed = !cell.collapsed; S.active = i; renderCells(); renderSidebar(); autosave(); });
@@ -1639,7 +2076,7 @@ function renderCells() {
       mid.append(row);
       el.append(mid);
       const acts = h("div", "cellacts");
-      const run = h("span", undefined, "▶ Run section"); run.title = "Run every cell of this section, in order";
+      const run = asButton(h("span", undefined, "▶ Run section")); run.title = "Run every cell of this section, in order";
       run.addEventListener("mousedown", (e) => e.preventDefault());
       run.addEventListener("click", () => void runSection(i));
       acts.append(run);
@@ -1654,6 +2091,8 @@ function renderCells() {
     const mid = h("div", "mid");
     const input = document.createElement("input");
     input.className = "cellin"; input.type = "text"; input.value = cell.src;
+    input.setAttribute("aria-label", `Cell ${i + 1}, math input`);
+    input.autocapitalize = "off"; input.autocomplete = "off"; input.setAttribute("autocorrect", "off"); input.enterKeyHint = "go";
     input.placeholder = i === 0 ? "e.g. diff(x^2 * sin(x), x)" : "";
     input.spellcheck = false;
     cell.input = input;
@@ -1676,7 +2115,7 @@ function renderCells() {
     el.append(mid);
 
     const acts = h("div", "cellacts");
-    const run = h("span", undefined, "▶ Run"); run.title = "Run this cell";
+    const run = asButton(h("span", undefined, "▶ Run")); run.title = "Run this cell";
     run.addEventListener("mousedown", (e) => e.preventDefault());
     run.addEventListener("click", () => void runCell(cell));
     acts.append(run);
@@ -1838,7 +2277,9 @@ function renderCellBody(cell: Cell) {
   if (cell.type === "markdown") return renderMdCell(cell);
   if (cell.type === "section") return appendMore(cell, el.querySelector(".cellacts")!);
   el.classList.toggle("done", !!cell.label);
-  el.querySelector(".prompt")!.textContent = `In[${cell.label ?? " "}]:=`;
+  const busy = cell.queued || S.running === cell;   // Mathematica's In[*]: waiting or being evaluated
+  el.classList.toggle("running", busy);
+  el.querySelector(".prompt")!.textContent = `In[${busy ? "*" : cell.label ?? " "}]:=`;
   const mid = el.querySelector(".mid")!;
   const body = mid.querySelector(".cellbody") as HTMLElement;
   body.innerHTML = "";
@@ -1990,7 +2431,7 @@ function renderCellBody(cell: Cell) {
     // the output form: a per-cell choice of typesetting, like Mathematica's //MatrixForm
     if (!cell.hasse && !cell.plot && !cell.image) {
       const forms = formsFor(cell);
-      const fs = document.createElement("select"); fs.className = "formsel"; fs.title = "Output form";
+      const fs = document.createElement("select"); fs.className = "formsel"; fs.title = "Output form"; fs.setAttribute("aria-label", "Output form");
       for (const [v, label] of forms) { const o = document.createElement("option"); o.value = v; o.textContent = label; o.selected = (cell.form ?? forms[0]![0]) === v; fs.append(o); }
       fs.addEventListener("mousedown", (e) => e.stopPropagation());
       fs.addEventListener("change", () => { if (fs.value === forms[0]![0]) delete cell.form; else cell.form = fs.value; renderCellBody(cell); autosave(); });
@@ -2007,9 +2448,14 @@ function renderCellBody(cell: Cell) {
   const acts = el.querySelector(".cellacts")!;
   while (acts.childElementCount > 1) acts.lastElementChild!.remove();
   if (cell.steps?.length) {
-    const tw = h("span", undefined, cell.showWork ? "▾ Hide work" : `▸ Work (${cell.steps.length})`);
+    const tw = asButton(h("span", undefined, cell.showWork ? "▾ Hide work" : `▸ Work (${cell.steps.length})`));
+    tw.setAttribute("aria-expanded", String(cell.showWork));
     tw.addEventListener("mousedown", (e) => e.preventDefault());
-    tw.addEventListener("click", () => { cell.showWork = !cell.showWork; renderCellBody(cell); });
+    tw.addEventListener("click", () => {
+      const had = document.activeElement === tw;
+      cell.showWork = !cell.showWork; renderCellBody(cell); renderChrome(); autosave();
+      if (had) cell.el?.querySelector<HTMLElement>(".cellacts [aria-expanded]")?.focus();   // the button was rebuilt
+    });
     acts.append(tw);
   }
   appendMore(cell, acts);
@@ -2018,7 +2464,8 @@ function renderCellBody(cell: Cell) {
 /** The ⋮ button at the end of a cell's actions (replacing any there). */
 function appendMore(cell: Cell, acts: Element) {
   acts.querySelector(".more")?.remove();
-  const more = h("span", "more", "⋮"); more.title = "Cell actions";
+  const more = asButton(h("span", "more", "⋮"), "Cell actions"); more.title = "Cell actions";
+  more.setAttribute("aria-haspopup", "menu");
   more.addEventListener("mousedown", (e) => e.preventDefault());
   more.addEventListener("click", (ev) => { ev.stopPropagation(); toggleCellMenu(cell, more); });
   acts.append(more);
@@ -2065,7 +2512,7 @@ function renderMdCell(cell: Cell) {
     mid.append(out);
   }
   const acts = el.querySelector(".cellacts")!; acts.innerHTML = "";
-  const btn = h("span", undefined, cell.editing ? "▶ Render" : "✎ Edit");
+  const btn = asButton(h("span", undefined, cell.editing ? "▶ Render" : "✎ Edit"));
   btn.title = cell.editing ? "Render the Markdown (Shift+Enter)" : "Edit the text (double-click)";
   btn.addEventListener("mousedown", (e) => e.preventDefault());
   btn.addEventListener("click", () => { if (cell.editing) void runCell(cell); else edit(); });
@@ -2228,7 +2675,7 @@ function toggleCellMenu(cell: Cell, anchor: HTMLElement) {
   };
   const copy = (text: string | undefined, what: string) => () => {
     if (text === undefined) return;
-    void navigator.clipboard?.writeText(text).then(() => log("ok", `copied ${what}`), () => log("err", "the clipboard is not available"));
+    void navigator.clipboard?.writeText(text).then(() => notify("ok", `Copied ${what}`), () => notify("err", "The clipboard is not available"));
   };
   // Send to scene ▸ — every scene, then a new one
   const canSend = !!(cell.outLatex && cell.echoLatex);
@@ -2263,29 +2710,20 @@ function toggleCellMenu(cell: Cell, anchor: HTMLElement) {
     item(cell.collapsed ? "Unfold section" : "Fold section", () => { cell.collapsed = !cell.collapsed; renderCells(); renderSidebar(); autosave(); });
   } else if (sectionOf(i) >= 0) item("Run this section", () => void runSection(sectionOf(i)));
   menu.append(h("div", "sep"));
-  item("Duplicate cell", () => {
-    const c = freshCell(cellSrc(cell), cell.type ?? "math");
-    S.cells.splice(i + 1, 0, c); renderCells(); renderSidebar(); focusCell(i + 1); autosave();
-  });
-  item("Move up", i > 0 ? () => { [S.cells[i - 1], S.cells[i]] = [S.cells[i]!, S.cells[i - 1]!]; renderCells(); renderSidebar(); focusCell(i - 1); autosave(); } : null);
-  item("Move down", i < S.cells.length - 1 ? () => { [S.cells[i + 1], S.cells[i]] = [S.cells[i]!, S.cells[i + 1]!]; renderCells(); renderSidebar(); focusCell(i + 1); autosave(); } : null);
+  item("Duplicate cell", () => duplicateCell(cell));
+  item("Move up", i > 0 ? () => moveCell(cell, -1) : null);
+  item("Move down", i < S.cells.length - 1 ? () => moveCell(cell, 1) : null);
   menu.append(h("div", "sep"));
   item("Copy input", copy(cellSrc(cell), "the input"));
   item("Copy output", cell.outText !== undefined ? copy(cell.outText, "the output") : null);
   item("Copy output as LaTeX", cell.outLatex ? copy(stripPaths(cell.outLatex), "the output as LaTeX") : null);
   menu.append(h("div", "sep"));
-  item("Clear output", cell.outLatex || cell.error ? () => {
-    delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.error; delete cell.plot; delete cell.hasse; cell.steps = []; cell.label = null;
-    renderCellBody(cell); renderChrome(); renderSidebar(); autosave();
-  } : null);
-  item("Delete cell", () => {
-    if (S.cells.length === 1) { const c = S.cells[0]!; c.src = ""; if (c.input) { c.input.value = ""; syncHighlight(c); } delete c.outLatex; delete c.outText; delete c.echoLatex; delete c.error; c.steps = []; c.label = null; }
-    else S.cells.splice(i, 1);
-    S.active = Math.min(S.active, S.cells.length - 1);
-    renderCells(); renderSidebar(); renderChrome(); autosave();
-  }, { danger: true });
+  item("Clear output", hasOutput(cell) ? () => clearCellOutput(cell) : null);
+  item("Delete cell", () => deleteCell(cell), { danger: true });
   // on the body, fixed: the paper scrolls and clips, and a menu near its bottom must not grow a scrollbar
   document.body.append(menu);
+  menuKeys(menu, () => { closeCellMenu(); anchor.focus(); });
+  menu.querySelector<HTMLElement>(":scope > .item:not(.off)")?.focus({ preventScroll: true });
   const r = anchor.getBoundingClientRect(), mh = menu.offsetHeight;
   const below = r.bottom + 4 + mh <= window.innerHeight - 8;
   menu.style.top = `${below ? r.bottom + 4 : Math.max(8, r.top - 4 - mh)}px`;
@@ -2331,15 +2769,17 @@ function renderPanelHead() {
   let head = panel.querySelector(".panelhead") as HTMLElement;
   if (!head) { head = h("div", "panelhead"); panel.prepend(head); }
   head.innerHTML = "";
-  for (const [key, label, badge] of [["explain", "Explanation", ""], ["log", "Kernel log", String(S.log.length)]] as const) {
-    const t = h("div", `ptab${S.panelTab === key ? " on" : ""}`);
+  const tabs = [["explain", "Explanation", ""], ["log", "Kernel log", String(S.log.length)]] as const;
+  for (const [key, label, badge] of tabs.filter(([k]) => S.dev || k !== "log")) {
+    const t = asButton(h("div", `ptab${S.panelTab === key ? " on" : ""}`));
+    t.setAttribute("aria-pressed", String(S.panelTab === key));
     t.append(document.createTextNode(label));
     if (badge) t.append(h("span", "badge", badge));
     t.addEventListener("click", () => { S.panelTab = key; S.panelOpen = true; renderPanelHead(); renderPanel(); });
     head.append(t);
   }
   head.append(h("div", "spacer"));
-  const toggle = h("div", "pbtn", S.panelOpen ? "▾ Collapse" : "▴ Expand");
+  const toggle = asButton(h("div", "pbtn", S.panelOpen ? "▾ Collapse" : "▴ Expand"), S.panelOpen ? "Collapse the explanation panel" : "Expand the explanation panel");
   toggle.addEventListener("click", () => { S.panelOpen = !S.panelOpen; renderPanelHead(); renderPanel(); });
   head.append(toggle);
 }
@@ -2396,7 +2836,7 @@ function renderSubPanel(body: HTMLElement, sel: Selection & { sub: NonNullable<S
 
 function renderPanel() {
   const panel = $(".panel");
-  panel.style.flex = S.panelOpen ? "0 0 250px" : "0 0 38px";
+  panel.style.flex = S.panelOpen ? (narrow() ? "0 0 45%" : "0 0 250px") : "0 0 38px";
   let body = panel.querySelector(".panelbody") as HTMLElement;
   if (!body) { body = h("div", "panelbody"); panel.append(body); }
   body.hidden = !S.panelOpen;
@@ -2537,7 +2977,7 @@ function measure(texSrc: string, fontSize: number): Measured {
   const el = document.createElement("div");
   el.style.cssText = `font-size:${fontSize}px; display:inline-block; white-space:nowrap`;
   host.appendChild(el);
-  try { katex.render(texSrc, el, { throwOnError: false, displayMode: false, strict: false, trust: true }); } catch { return empty; }
+  try { katex.render(texSrc, el, { throwOnError: false, displayMode: false, strict: false, trust: TRUST_PATHS }); } catch { return empty; }
   const root = el.querySelector(".katex-html") as HTMLElement | null;
   if (!root) return empty;
   el.querySelector(".katex-mathml")?.remove();
@@ -2780,7 +3220,7 @@ function sendToScene(cell: Cell, target?: number | "new") {
   if (ST.active >= ST.scenes.length) ST.active = ST.scenes.length - 1;
   ST.scenes[ST.active]!.shots.push(...shots);
   ST.t = 0; stopPlayback();
-  log("ok", `${shots.length} shots sent to ${ST.scenes[ST.active]!.name}`);
+  notify("ok", `${shots.length} shots sent to ${ST.scenes[ST.active]!.name}`);
   switchTab("studio");
 }
 
@@ -3453,7 +3893,9 @@ document.addEventListener("click", () => { if (S.menu) { S.menu = null; renderCh
 document.querySelector(".cells")?.addEventListener("scroll", () => closeCellMenu(), { passive: true });   // a fixed menu must not float away from its cell
 document.addEventListener("keydown", (ev) => {
   if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === "s") { ev.preventDefault(); if (ev.shiftKey) saveNotebookAs(); else saveNotebook(); }
+  if ((ev.metaKey || ev.ctrlKey) && !ev.shiftKey && ev.key.toLowerCase() === "b") { ev.preventDefault(); toggleSidebar(); }
   if (ev.key === "Escape") closeModal();
+  if (ev.key === "Escape" && S.menu) { const m = S.menu; S.menu = null; renderChrome(); $<HTMLElement>(`.menus [data-menu="${m}"]`)?.focus(); }
 });
 const saved = restoreAutosave();
 let restoredActive = 0;
@@ -3465,27 +3907,32 @@ if (saved) {
       ? parsed.docs
       : [{ file: parsed as ChalkFile, dirty: false }];
     for (const { file, dirty } of entries) {
-      const d = makeDoc(file.name ?? "untitled.chalk", cellsFromFile(file), Array.isArray(file.scenes) ? file.scenes : []);
+      const d = makeDoc(file.name ?? "untitled.chalk", cellsFromFile(file), Array.isArray(file.scenes) ? file.scenes : [], assetsFromFile(file));
       if (!d.cells.length) d.cells.push(freshCell());
       d.hydrated = false;
       S.docs.push(d);
       // the saved text is what the tab compares against; a dirty document compares against nothing
-      d.text = JSON.stringify({ chalk: 1, name: d.name, cells: file.cells, scenes: d.scenes }, null, 2);
+      d.text = JSON.stringify({ chalk: 1, name: d.name, cells: file.cells, scenes: d.scenes, ...(Object.keys(d.assets).length ? { assets: d.assets } : {}) }, null, 2);
       d.savedText = dirty ? "" : d.text;
     }
     restoredActive = "chalkmath" in parsed && typeof parsed.active === "number" ? parsed.active : 0;
   } catch { /* ignore a corrupt autosave */ }
 }
-if (!S.docs.length) {
-  const d = makeDoc("untitled.chalk", SAMPLES.map((src) => freshCell(src)));
-  d.cells.push(freshCell());
-  S.docs.push(d);
-}
+// a first visit gets an empty notebook at once, replaced by the welcome notebook when it arrives
+const firstVisit = !S.docs.length && !location.hash.startsWith("#nb");
+if (!S.docs.length) S.docs.push(makeDoc("untitled.chalk", [freshCell()]));
 S.doc = -1;
 loadDoc(Math.min(restoredActive, S.docs.length - 1));
 if (!saved) { const d = currentDoc(); if (d) d.savedText = serializeNotebook(); }
+if (firstVisit) void openExample("welcome.chalk").then((ok) => {
+  // served without examples/ (a bare dev server): a few cells to start from instead
+  const d = currentDoc();
+  if (ok || !d || !docPristine(d)) return;
+  S.cells.splice(0, S.cells.length, ...SAMPLES.map((src) => freshCell(src)), freshCell());
+  d.savedText = serializeNotebook(); renderCells(); renderSidebar(); renderChrome();
+});
 void connect().then(async () => {
   // a link with a notebook in its fragment opens that notebook (in its own tab unless the current one is untouched)
   if (location.hash.startsWith("#nb") && await openNotebookLink(location.hash)) return;
-  const d = currentDoc(); if (d && !d.hydrated) hydrate(d);
+  const d = currentDoc(); if (d && !d.hydrated && S.kernel === "ready" && S.runOnOpen) hydrate(d);
 });

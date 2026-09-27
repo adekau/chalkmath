@@ -1,0 +1,58 @@
+name: CI
+
+# What a change must pass before it reaches the public notebook: the Lean engine builds and passes
+# `lake test` (the ported reference suite and the golden corpus), engine/ stays free of Mathlib, the
+# TypeScript packages build and pass their tests against the native engine, and the notebook page
+# type-checks and bundles. pages.yml deploys a main commit only after this has passed on it.
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["book/**", "design/**", "**/*.md"]
+  pull_request:
+    paths-ignore: ["book/**", "design/**", "**/*.md"]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - name: Install elan (the Lean toolchain pinned in engine/lean-toolchain)
+        run: |
+          curl -sSfL https://github.com/leanprover/elan/releases/latest/download/elan-x86_64-unknown-linux-gnu.tar.gz | tar xz
+          ./elan-init -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - name: Cache the engine build
+        uses: actions/cache@v4
+        with:
+          path: engine/.lake
+          key: engine-native-${{ hashFiles('engine/lean-toolchain', 'engine/lake-manifest.json') }}-${{ hashFiles('engine/**/*.lean', 'engine/c/**') }}
+          restore-keys: |
+            engine-native-${{ hashFiles('engine/lean-toolchain', 'engine/lake-manifest.json') }}-
+      - run: npm ci
+      - name: engine/ depends on nothing beyond Init (no Mathlib)
+        run: npm run check:engine
+      - name: Build and test the engine
+        working-directory: engine
+        run: |
+          elan toolchain install "$(cat lean-toolchain)"
+          lake build
+          lake test
+      - name: Every cell of the welcome notebook evaluates (it is the first thing a visitor runs)
+        run: node scripts/notebooks/drive.mjs notebooks/welcome.chalk
+      - name: Build the TypeScript packages and type-check the notebook
+        run: |
+          npm run build
+          npm run typecheck
+      - name: Test the packages (the HTTP and stdio hosts over the native engine)
+        run: npm test
+      - name: Bundle the notebook
+        run: npm run bundle

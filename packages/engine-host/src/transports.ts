@@ -1,10 +1,12 @@
-import type { Transport } from "@mathbook/protocol";
+import type { Transport } from "@chalkmath/protocol";
 
 /** Browser side: talk to an engine running in a Web Worker. */
 export function workerTransport(worker: Worker): Transport {
   return {
     send: (m) => worker.postMessage(m),
     onMessage: (h) => { worker.onmessage = (ev: MessageEvent<string>) => h(ev.data); },
+    // an uncaught error in the worker (its script or the wasm failed to load) ends the engine
+    onError: (h) => { worker.onerror = (ev) => { ev.preventDefault(); h(new Error(ev.message || "the engine worker failed")); }; },
     close: () => worker.terminate(),
   };
 }
@@ -21,7 +23,13 @@ export function workerSelfTransport(self: DedicatedWorkerGlobalScope): Transport
 export function httpTransport(url: string, fetchImpl: typeof fetch = fetch): Transport {
   let handler: (m: string) => void = () => {};
   return {
-    send: (m) => { void fetchImpl(url, { method: "POST", headers: { "content-type": "application/json" }, body: m }).then((r) => r.text()).then(handler); },
+    send: (m) => {
+      void fetchImpl(url, { method: "POST", headers: { "content-type": "application/json" }, body: m }).then((r) => r.text()).then(handler, (e: unknown) => {
+        // an unreachable server answers the request with an error instead of leaving it pending
+        const id = (JSON.parse(m) as { id?: number | string }).id ?? null;
+        handler(JSON.stringify({ jsonrpc: "2.0", id, error: { code: -32000, message: `the engine at ${url} is unreachable: ${e instanceof Error ? e.message : String(e)}` } }));
+      });
+    },
     onMessage: (h) => { handler = h; },
   };
 }

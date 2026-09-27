@@ -1,16 +1,17 @@
 {
-  "name": "@mathbook/engine-host",
+  "name": "@chalkmath/engine-host",
   "version": "0.1.0",
+  "license": "Apache-2.0",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc -p .",
     "serve": "node dist/server.js",
-    "test": "node --test test/*.test.mjs"
+    "test": "node --test --test-timeout=60000 test/*.test.mjs"
   },
   "dependencies": {
-    "@mathbook/protocol": "0.1.0"
+    "@chalkmath/protocol": "0.1.0"
   },
   "exports": {
     ".": "./dist/index.js",

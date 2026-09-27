@@ -3,7 +3,7 @@
  * Web-worker host for the Lean engine compiled to wasm (scripts/build-wasm.sh).
  * Mirrors worker.ts: same Transport, same protocol, different engine behind it.
  */
-import { serve } from "@mathbook/protocol";
+import { serve } from "@chalkmath/protocol";
 import { workerSelfTransport } from "./transports.js";
 
 type Module = {

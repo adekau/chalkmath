@@ -1,9 +1,13 @@
-# mathbook
+# ChalkMath
 
-A Mathematica-like learning notebook (linear algebra → Calc IV) with "show work" mode, plus
-the zero-to-hero book written from building it. One math engine in Lean 4, verified, compiled
-to native (server / CLI) and wasm (web worker). The TypeScript reference engine it was ported
-from was deleted after M2; its answers live on in `engine/Tests/golden.tsv`.
+A math notebook for learning, from linear algebra to Calc IV, that shows its work: every
+answer comes with the steps that produced it, and any piece of a result can be clicked to see
+which rule made it. It runs entirely in your browser; nothing you type is sent anywhere.
+
+This repository also holds *Show Your Work*, the zero-to-hero book written from building it.
+One math engine in Lean 4, verified, compiled to native (server / CLI) and wasm (web worker).
+The TypeScript reference engine it was ported from was deleted after M2; its answers live on in
+`engine/Tests/golden.tsv`.
 
 ```
 packages/protocol       JSON-RPC contract + Transport abstraction (the seam everything hangs on)
@@ -24,3 +28,11 @@ Needs emsdk (`emcc`), elan, git.
 
 `cd proofs && lake exe cache get && lake build` — the theorems (Mathlib; the cache download is
 ~5 GB, and Mathlib never enters the engine — `npm run check:engine` enforces that).
+
+## License
+
+The code is open source under the [Apache License 2.0](LICENSE): use it, change it, host it, with
+credit to ChalkMath ([NOTICE](NOTICE)). The name and logo are covered by the
+[trademark policy](TRADEMARKS.md): host ChalkMath and call it ChalkMath, but give a modified version
+its own name and say it is based on ChalkMath. The book in `book/` is licensed under
+[Creative Commons Attribution 4.0](book/LICENSE).
