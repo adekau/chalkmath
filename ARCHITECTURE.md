@@ -133,6 +133,15 @@ beside each step comes from `engine.capabilities.ruleStatus` rather than a list 
 that could drift from `proofs/`. The one thing the page derives from source text is a cell's *kind*
 label, which is presentation only.
 
+The visual math input (`packages/math-editor`) is the one exception to "does not parse", and it
+reads notation, not meaning. A cell's source text stays what is saved and what the engine is sent.
+The editor reads that text into a tree of notation (fractions, powers, calls, matrices) by the
+engine's own grammar, shows it, and writes it back to text when the reader edits. What the text
+means is still the engine's parse of it. The reader has to agree with `Parser.lean` exactly, or the
+input would show a fraction where the engine reads a product, and its tests hold it to that: every
+golden source and notebook cell is round-tripped and, against the native engine, has to mean the
+same thing before and after.
+
 **Manim Studio** is the third tab. "→ Scene" on an evaluated cell turns its derivation into shots:
 the statement, then each step's `afterRendered` term (an optional field on `Step`, per protocol
 rule 5). The page adds what a storyboard needs and nothing more — order, on/off, an animation name,
