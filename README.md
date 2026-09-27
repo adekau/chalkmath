@@ -21,7 +21,7 @@ scripts/                bundle.mjs (esbuild), build-wasm.sh (Lean → C → emcc
 ```
 
 `npm install && npm run build && npm test` — TS. `cd engine && lake build && lake test` — Lean (toolchain
-pinned in `engine/lean-toolchain`, currently v4.33.1; policy: latest stable). `npm run wasm` —
+pinned in `engine/lean-toolchain`, currently v4.34.1; policy: latest stable). `npm run wasm` —
 builds the Lean runtime + Init for wasm32 from source on first run (~10 min, cached under
 `engine/toolchains/`), then links `apps/notebook/dist/engine-lean.{js,wasm}`; see `book/SPIKE-RESULTS.md`.
 Needs emsdk (`emcc`), elan, git.

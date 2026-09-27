@@ -589,3 +589,17 @@ Goal: re-derive the article (inner products → orthogonality → the square wav
    results, described plots, landmarks, WCAG AA contrast in both themes, reduced motion; axe-core reports no
    violations on the welcome notebook in either theme. Open: the ⋮ menu's submenus (Send to scene, Change to)
    still open on hover only.
+
+## Toolchain v4.34.1 (2026-09-27, Alex: "upgrade our engine to 4.34.1 since mathlib now has a 4.34.1")
+
+- engine — DONE 2026-09-27. `engine/lean-toolchain` → v4.34.1. v4.34 deprecates `if_pos`/`if_neg`/`if_true`/
+   `if_false` (for `ite_eq_left`/`ite_eq_right`/`ite_true`/`ite_false`, same statements); `LinAlgRref.lean` and
+   `PipelineOrder.lean` use the new names, and the build's warnings are exactly v4.33.1's. `lake test` 0 failures,
+   the welcome notebook 27 cells 0 errors, `npm test` green.
+- wasm engine — DONE 2026-09-27, Emscripten 6.0.10. The runtime patch applies unchanged: `string_to_list_core`,
+   the two libuv stubs (lean4#14973) and the tempfile/tempdir arity mismatch are all still present at v4.34.1.
+   `engine-lean.wasm` 2.96 MB. All 200 math cells of the three bundled notebooks (show work and paths on) give
+   byte-identical replies from the native and the wasm engine.
+- proofs — `proofs/lean-toolchain` → v4.34.1, Mathlib `rev` → tag v4.34.1 (d13f23b), `lake update mathlib`
+   moved its dependencies in `lake-manifest.json`. Built by `proofs.yml` (the session that made the bump could
+   not reach Mathlib's cache).
