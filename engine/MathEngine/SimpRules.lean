@@ -621,7 +621,7 @@ def mergeTerms : List Expr → Option (List Expr × Expr)
 def collectTermsApply : Expr → Option RuleResult
   | .add es =>
     match mergeTerms es with
-    | some (es', t) => some ⟨.add es', s!"Like terms share the same variable part, here ${t.toText}$; add their coefficients (distributive law $ax + bx = (a+b)x$).", none, none⟩
+    | some (es', t) => some ⟨.add es', s!"Like terms share the same variable part, here ${t.toLatex}$; add their coefficients (distributive law $ax + bx = (a+b)x$).", none, none⟩
     | none => none
   | _ => none
 
