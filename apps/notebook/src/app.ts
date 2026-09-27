@@ -310,6 +310,9 @@ const S = {
   foldWorkOnOpen: prefOn("chalkmath.foldwork", false),
   /** The sidebar (outline / commands) beside the paper; the rail stays. */
   sidebarOpen: prefOn("chalkmath.sidebar", true),
+  /** Developer mode (Help menu, or `?dev` in the address): the kernel picker (wasm / HTTP), the
+   *  kernel log, and the rule count in the status bar. */
+  dev: prefOn("chalkmath.dev", false) || new URLSearchParams(location.search).has("dev"),
   studio: { scenes: [] as Scene[], active: 0, playing: false, t: 0, speed: 1, codeOpen: true, copied: false },
 };
 
@@ -325,6 +328,19 @@ function log(level: LogLine["level"], text: string) {
   if (S.log.length > 200) S.log.shift();
   if (S.panelTab === "log") renderPanel();
   renderPanelHead();
+}
+
+/** Feedback on something the reader did (saved, copied, could not open…): logged, and shown for a
+ *  few seconds in the corner, where it is also announced to a screen reader. */
+function notify(level: "ok" | "err", text: string) {
+  log(level, text);
+  let host = document.querySelector<HTMLElement>(".toasts");
+  if (!host) { host = h("div", "toasts"); host.setAttribute("role", "status"); host.setAttribute("aria-live", "polite"); document.body.append(host); }
+  const t = h("div", `toast ${level}`, text);
+  t.addEventListener("click", () => t.remove());
+  host.append(t);
+  while (host.childElementCount > 3) host.firstElementChild!.remove();
+  setTimeout(() => t.remove(), level === "err" ? 8000 : 4000);
 }
 
 // ---------------------------------------------------------------------------
@@ -553,7 +569,8 @@ async function explain(cell: Cell, term: TermRef, path: Path) {
     S.panelTab = "explain"; S.panelOpen = true;
     log("ok", `${ex.rendered.text} — ${ex.steps.length} related steps`);
   } catch (e) {
-    log("err", e instanceof Error ? e.message : String(e));
+    const d = currentDoc();
+    notify("err", d && !d.hydrated ? "Run the notebook first: the engine explains what it has evaluated since the notebook was opened." : `Could not explain that: ${e instanceof Error ? e.message : String(e)}`);
   }
   markSelection();
   renderPanelHead(); renderPanel();
@@ -770,8 +787,8 @@ function serializeNotebook(): string {
  *  re-run in order so the engine's session (and with it `explain`) matches what is shown. */
 async function loadNotebook(text: string, name?: string) {
   let doc: ChalkFile;
-  try { doc = JSON.parse(text) as ChalkFile; } catch { log("err", "not a .chalk file: invalid JSON"); return; }
-  if ((doc.chalk !== 1 && doc.lemma !== 1) || !Array.isArray(doc.cells)) { log("err", "not a .chalk file"); return; }
+  try { doc = JSON.parse(text) as ChalkFile; } catch { notify("err", "That file is not a ChalkMath notebook (it is not valid JSON)."); return; }
+  if ((doc.chalk !== 1 && doc.lemma !== 1) || !Array.isArray(doc.cells)) { notify("err", "That file is not a ChalkMath notebook."); return; }
   const d = makeDoc(name ?? doc.name ?? "untitled.chalk", cellsFromFile(doc, S.foldWorkOnOpen), Array.isArray(doc.scenes) ? doc.scenes : [], assetsFromFile(doc));
   if (!d.cells.length) d.cells.push(freshCell());
   // an untouched new notebook is replaced; otherwise the file gets its own tab
@@ -868,7 +885,7 @@ function readLibrary(): Library {
 }
 function writeLibrary(lib: Library): boolean {
   try { localStorage.setItem("chalkmath.library", JSON.stringify(lib)); return true; }
-  catch { log("err", "could not save: the browser's storage is full or unavailable"); return false; }
+  catch { notify("err", "Could not save: this browser's storage is full or unavailable. File › Export to file keeps a copy."); return false; }
 }
 
 /** Save the current notebook in the browser under its name. */
@@ -879,7 +896,7 @@ function saveNotebook() {
   if (!writeLibrary(lib)) return;
   const d = currentDoc(); if (d) d.savedText = text;
   renderTabs(); autosave();
-  log("ok", `saved ${S.docName} in this browser`);
+  notify("ok", `Saved ${S.docName} in this browser`);
 }
 function saveNotebookAs() {
   const name = window.prompt("Save notebook as", S.docName);
@@ -938,7 +955,7 @@ function download(name: string, text: string) {
 }
 
 /** Export the current notebook as a .chalk file (a download). */
-function exportNotebook() { download(S.docName, serializeNotebook()); log("ok", `exported ${S.docName}`); }
+function exportNotebook() { download(S.docName, serializeNotebook()); notify("ok", `Exported ${S.docName}`); }
 function importNotebook() {
   const inp = document.createElement("input");
   inp.type = "file"; inp.accept = ".chalk,.lemma,.json,application/json";
@@ -989,8 +1006,11 @@ async function copyNotebookLink() {
   try {
     const url = await notebookLink();
     await navigator.clipboard.writeText(url);
-    log("ok", `copied a link to ${S.docName} (${url.length.toLocaleString()} characters); it opens the sources and re-runs them`);
-  } catch (e) { log("err", `could not copy the link: ${e instanceof Error ? e.message : String(e)}`); }
+    // chat apps and mail clients cut long links; attachments make them long
+    notify("ok", url.length > 8000
+      ? `Copied a link to ${S.docName}. It is ${url.length.toLocaleString()} characters long, which some apps cut short; File › Export to file is safer to send.`
+      : `Copied a link to ${S.docName}`);
+  } catch (e) { notify("err", `Could not copy the link: ${e instanceof Error ? e.message : String(e)}`); }
 }
 /** Open the notebook a link carries (the page's fragment), then drop the fragment so a reload does not open it again. */
 async function openNotebookLink(hash: string): Promise<boolean> {
@@ -1009,7 +1029,7 @@ async function openNotebookLink(hash: string): Promise<boolean> {
     history.replaceState(null, "", location.pathname + location.search);
     await loadNotebook(JSON.stringify(file), file.name);
     return true;
-  } catch (e) { log("err", `the link did not open: ${e instanceof Error ? e.message : String(e)}`); return false; }
+  } catch (e) { notify("err", `The notebook link did not open: ${e instanceof Error ? e.message : String(e)}`); return false; }
 }
 
 // --- Attachments: `⟦name⟧` for a file attached to the notebook, `import("url")` for one on the web --
@@ -1164,7 +1184,7 @@ function attachFile() {
       else if (c?.ta) { c.ta.setRangeText(`⟦${name}⟧`, c.ta.selectionStart, c.ta.selectionEnd, "end"); c.src = c.ta.value; c.ta.focus(); }
       else if (mime === "image/svg+xml") { const cell = addCell(`epicycles(⟦${name}⟧)`); renderSidebar(); focusCell(S.cells.indexOf(cell)); }
       else { const cell = addCell(`⟦${name}⟧`, "markdown"); renderSidebar(); focusCell(S.cells.indexOf(cell)); }
-      log("ok", `attached ${name} (${mime}, ${Math.round(data.length / 1024)} KB): ⟦${name}⟧ refers to it`);
+      notify("ok", `Attached ${name} (${Math.round(data.length / 1024)} KB): ⟦${name}⟧ refers to it`);
       renderHighlights(); autosave();
     });
   });
@@ -1187,7 +1207,7 @@ function onPaste(ev: ClipboardEvent, cell: Cell) {
       let k = 1; const ext = file.name ? "" : `.${(mime.split("/")[1] ?? "bin").replace("svg+xml", "svg")}`;
       while (!file.name && S.assets[`pasted-${k}${ext}`]) k++;
       const name = attachAsset(file.name || `pasted-${k}${ext}`, mime, data, binary);
-      put(name); log("ok", `pasted ${name} (${mime}): ⟦${name}⟧ refers to it`);
+      put(name); notify("ok", `Pasted ${name}: ⟦${name}⟧ refers to it`);
     });
     return;
   }
@@ -1196,7 +1216,7 @@ function onPaste(ev: ClipboardEvent, cell: Cell) {
     ev.preventDefault();
     let k = 1; while (S.assets[`pasted-${k}.svg`]) k++;
     const name = attachAsset(`pasted-${k}.svg`, "image/svg+xml", text);
-    put(name); log("ok", `pasted SVG as ${name}: ⟦${name}⟧ refers to it`);
+    put(name); notify("ok", `Pasted the SVG as ${name}: ⟦${name}⟧ refers to it`);
   }
 }
 function newNotebook() {
@@ -1213,6 +1233,7 @@ interface Autosave { chalkmath: 1; active: number; docs: { file: ChalkFile; dirt
  *  since serializing every open notebook after each of a hundred cells is most of what makes a
  *  big notebook feel slow while it loads. The pending save is flushed before the page unloads. */
 let autosaveTimer = 0;
+let autosaveWarned = false;
 function autosave() {
   clearTimeout(autosaveTimer);
   autosaveTimer = window.setTimeout(autosaveNow, 700);
@@ -1221,7 +1242,12 @@ function autosaveNow() {
   clearTimeout(autosaveTimer); autosaveTimer = 0;
   stashDoc();
   const doc: Autosave = { chalkmath: 1, active: S.doc, docs: S.docs.map((d) => ({ file: JSON.parse(d.text) as ChalkFile, dirty: docDirty(d) })) };
-  try { localStorage.setItem("chalkmath.autosave", JSON.stringify(doc)); } catch { /* storage may be unavailable */ }
+  try { localStorage.setItem("chalkmath.autosave", JSON.stringify(doc)); autosaveWarned = false; }
+  catch {
+    // storage full (big attachments) or unavailable (private mode): say so once, not after every run
+    if (!autosaveWarned) notify("err", "Your notebooks could not be kept in this browser (its storage is full or unavailable). File › Export to file keeps a copy.");
+    autosaveWarned = true;
+  }
 }
 window.addEventListener("beforeunload", () => { if (autosaveTimer) autosaveNow(); });
 function restoreAutosave(): string | null {
@@ -1390,7 +1416,8 @@ function renderChrome() {
       [`${S.runOnOpen ? "✓ " : ""}Run notebooks when opened`, () => { S.runOnOpen = !S.runOnOpen; setPref("chalkmath.runonopen", S.runOnOpen); renderChrome(); }]],
     Kernel: [...(S.running ? [["Interrupt", () => void interrupt()] as [string, () => void]] : []),
       ["Restart kernel", () => void restartKernel()], ["Restart and run all", async () => { await restartKernel(); await runAll(); }]],
-    Help: [["Reference", () => switchTab("reference")], ["Manim Studio", () => switchTab("studio")]],
+    Help: [["Reference", () => switchTab("reference")], ["Manim Studio", () => switchTab("studio")],
+      [`${S.dev ? "✓ " : ""}Developer mode`, () => { S.dev = !S.dev; setPref("chalkmath.dev", S.dev); if (!S.dev && S.panelTab === "log") S.panelTab = "explain"; renderChrome(); renderPanelHead(); renderPanel(); }]],
   };
   for (const m of Object.keys(MENUS)) {
     const sp = h("span", S.menu === m ? "open" : undefined, m);
@@ -1422,7 +1449,8 @@ function renderChrome() {
   const url = document.createElement("input");
   url.id = "kurl"; url.value = S.httpUrl; url.hidden = S.engineMode !== "http";
   url.addEventListener("change", () => { S.httpUrl = url.value; void connect(); });
-  kernel.append(dot, sel, url, h("span", "sep", "·"), h("span", undefined, state));
+  if (S.dev) kernel.append(dot, sel, url, h("span", "sep", "·"), h("span", undefined, state));
+  else kernel.append(dot, h("span", undefined, `engine · ${state}`));
   tb.append(brand, menus, h("div", "spacer"), theme, kernel);
 
   // tab bar
@@ -1478,11 +1506,11 @@ function renderChrome() {
   const rules = new Set(S.cells.flatMap((c) => c.steps ?? []).map((s) => s.rule));
   const done = S.cells.filter((c) => c.outLatex || c.error).length;
   sb.append(
-    h("span", undefined, `Mode: ${S.tab}`), h("span", "pipe", "|"),
+    ...(S.dev ? [h("span", undefined, `Mode: ${S.tab}`), h("span", "pipe", "|")] : []),
     h("span", undefined, `Cell ${S.active + 1}`), h("span", "pipe", "|"),
     h("span", undefined, `${S.cells.length} cells · ${done} evaluated`),
     h("div", "spacer"),
-    h("span", "rules", `${rules.size} rules applied`), h("span", "pipe", "|"),
+    ...(S.dev ? [h("span", "rules", `${rules.size} rules applied`), h("span", "pipe", "|")] : []),
     h("span", undefined, "type \\ for symbols · Tab completes"),
   );
 }
@@ -2447,7 +2475,7 @@ function toggleCellMenu(cell: Cell, anchor: HTMLElement) {
   };
   const copy = (text: string | undefined, what: string) => () => {
     if (text === undefined) return;
-    void navigator.clipboard?.writeText(text).then(() => log("ok", `copied ${what}`), () => log("err", "the clipboard is not available"));
+    void navigator.clipboard?.writeText(text).then(() => notify("ok", `Copied ${what}`), () => notify("err", "The clipboard is not available"));
   };
   // Send to scene ▸ — every scene, then a new one
   const canSend = !!(cell.outLatex && cell.echoLatex);
@@ -2539,7 +2567,8 @@ function renderPanelHead() {
   let head = panel.querySelector(".panelhead") as HTMLElement;
   if (!head) { head = h("div", "panelhead"); panel.prepend(head); }
   head.innerHTML = "";
-  for (const [key, label, badge] of [["explain", "Explanation", ""], ["log", "Kernel log", String(S.log.length)]] as const) {
+  const tabs = [["explain", "Explanation", ""], ["log", "Kernel log", String(S.log.length)]] as const;
+  for (const [key, label, badge] of tabs.filter(([k]) => S.dev || k !== "log")) {
     const t = h("div", `ptab${S.panelTab === key ? " on" : ""}`);
     t.append(document.createTextNode(label));
     if (badge) t.append(h("span", "badge", badge));
@@ -2988,7 +3017,7 @@ function sendToScene(cell: Cell, target?: number | "new") {
   if (ST.active >= ST.scenes.length) ST.active = ST.scenes.length - 1;
   ST.scenes[ST.active]!.shots.push(...shots);
   ST.t = 0; stopPlayback();
-  log("ok", `${shots.length} shots sent to ${ST.scenes[ST.active]!.name}`);
+  notify("ok", `${shots.length} shots sent to ${ST.scenes[ST.active]!.name}`);
   switchTab("studio");
 }
 
