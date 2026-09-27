@@ -45,7 +45,7 @@ fi
 mkdir -p "$OUT"/{c,obj/c,obj/cpp,bin,lib/lean}
 
 EMFLAGS="-O3 -DNDEBUG -pthread -fwasm-exceptions"
-CFLAGS="$EMFLAGS -DLEAN_EXPORTING -ffp-contract=off -I$TC/include"
+CFLAGS="$EMFLAGS -DLEAN_EXPORTING -DLEAN_EMSCRIPTEN -ffp-contract=off -I$TC/include"   # LEAN_EMSCRIPTEN: lean.h then packs 64-bit scalars (a Name's hash) into two 32-bit slots
 CXXFLAGS="-std=c++20 $EMFLAGS -DLEAN_EXPORTING -D__CLANG__ -DLEAN_BUILD_TYPE=\"Release\" -ffp-contract=off \
   -DLEAN_EMSCRIPTEN -DLEAN_MULTI_THREAD -Wno-unused-parameter -I$TC/include -I$SRC/src -I$SRC/src/include -I$UV/include"
 export LEAN CFLAGS CXXFLAGS OUT SRC

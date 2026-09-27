@@ -67,15 +67,24 @@ if [ ! -f "$TC/lib/libleanrt.a" ]; then
   emar rcs "$TC/lib/libleanrt.a" $(for s in $RT; do echo "$TC/obj/runtime/$s.o"; done)
 fi
 
+# The flags every emitted C file is compiled with. LEAN_EMSCRIPTEN matters to lean.h itself: it makes
+# LEAN_SCALAR_PTR_LITERAL, which emitted C uses for static objects' 64-bit scalars (a Name literal's
+# precomputed hash), fill two 32-bit slots; without it the hash is truncated and those names miss in
+# every hash map keyed by Name. The flags are recorded beside the archives, and a change rebuilds them.
+CFLAGS="-O3 -DNDEBUG -DLEAN_EXPORTING -DLEAN_EMSCRIPTEN -ffp-contract=off -fwasm-exceptions -I$TC/include"
+export CFLAGS
+if [ "$CFLAGS" != "$(cat "$TC/obj/cflags.txt" 2>/dev/null)" ]; then
+  rm -rf "$TC/lib/libInit.a" "$TC/lib/libStd.a" "$TC/obj/Init" "$TC/obj/Std" "$TC/obj/std-modules.txt"
+  printf '%s' "$CFLAGS" > "$TC/obj/cflags.txt"
+fi
+
 # 4. libInit.a: emit C with the host lean, compile with emcc.
 if [ ! -f "$TC/lib/libInit.a" ]; then
   echo "== emitting C for Init with $LEAN"
   export LEAN LEAN_PATH="$PREFIX/lib/lean" TC
   (cd "$PREFIX/src/lean" && { echo Init.lean; find Init -name '*.lean'; } | xargs -P "$JOBS" -I{} bash -c 'f={}; o="$TC/c/${f%.lean}.c"; mkdir -p "$(dirname "$o")"; [ -f "$o" ] || "$LEAN" -R . --c="$o" "$f"')
   echo "== compiling $(find "$TC/c" -name '*.c' | wc -l | tr -d ' ') Init modules"
-  CFLAGS="-O3 -DNDEBUG -DLEAN_EXPORTING -ffp-contract=off -fwasm-exceptions -I$TC/include"
-  export CFLAGS
-  (cd "$TC/c" && find . -name '*.c' | xargs -P "$JOBS" -I{} bash -c 'c={}; o="$TC/obj/Init/${c%.c}.o"; mkdir -p "$(dirname "$o")"; [ -f "$o" ] || emcc $CFLAGS -c "$c" -o "$o"')
+  (cd "$TC/c" && find Init Init.c -name '*.c' | xargs -P "$JOBS" -I{} bash -c 'c={}; o="$TC/obj/Init/${c%.c}.o"; mkdir -p "$(dirname "$o")"; [ -f "$o" ] || emcc $CFLAGS -c "$c" -o "$o"')
   find "$TC/obj/Init" -name '*.o' > "$TC/obj/init-objs.txt"
   emar rcs "$TC/lib/libInit.a" $(cat "$TC/obj/init-objs.txt")
 fi
@@ -109,8 +118,6 @@ if [ ! -f "$TC/lib/libStd.a" ] || [ "$STD_MODS" != "$(cat "$TC/obj/std-modules.t
   export LEAN LEAN_PATH="$PREFIX/lib/lean" TC
   (cd "$PREFIX/src/lean" && tr ' ' '\n' <<<"$STD_MODS" | sed 's#\.#/#g; s#$#.lean#' | xargs -P "$JOBS" -I{} bash -c 'f={}; o="$TC/c/${f%.lean}.c"; mkdir -p "$(dirname "$o")"; [ -f "$o" ] || "$LEAN" -R . --c="$o" "$f"')
   echo "== compiling Std modules"
-  CFLAGS="-O3 -DNDEBUG -DLEAN_EXPORTING -ffp-contract=off -fwasm-exceptions -I$TC/include"
-  export CFLAGS
   (cd "$TC/c" && find Std -name '*.c' | xargs -P "$JOBS" -I{} bash -c 'c={}; o="$TC/obj/Std/${c%.c}.o"; mkdir -p "$(dirname "$o")"; [ -f "$o" ] || emcc $CFLAGS -c "$c" -o "$o"')
   rm -f "$TC/lib/libStd.a"
   emar rcs "$TC/lib/libStd.a" $(find "$TC/obj/Std" -name '*.o')

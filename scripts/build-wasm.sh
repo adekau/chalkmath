@@ -18,7 +18,8 @@ OUT=../apps/notebook/dist; mkdir -p "$OUT"
 # COOP/COEP headers (SharedArrayBuffer) on the host page, a real constraint for "self-hostable".
 # -sDEFAULT_TO_CXX: the Lean runtime is C++ (debug.cpp uses iostreams), so the link needs libc++ even
 # though the driver is emcc and every input here is C; newer emscripten no longer assumes it.
-emcc -O2 -sDEFAULT_TO_CXX=1 -o "$OUT/engine-lean.js" \
+# -DLEAN_EMSCRIPTEN: lean.h's 32-bit layout for static scalars (see build-lean-wasm-runtime.sh)
+emcc -O2 -DLEAN_EMSCRIPTEN -sDEFAULT_TO_CXX=1 -o "$OUT/engine-lean.js" \
   -I "$TC/include" -I toolchains/src/libuv/include -L "$TC/lib" \
   c/shim.c c/uv-stubs.c $(find .lake/build/ir/MathEngine -name '*.c') .lake/build/ir/MathEngine.c \
   -lStd -lInit -lleanrt \
