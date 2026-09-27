@@ -7,7 +7,7 @@ initializers are found the same way. Natively that is `dlsym`; a statically link
 has no symbol table at runtime (Lean's own wasm recipe links with MAIN_MODULE=1/EXPORT_ALL for it,
 which makes every lookup a slow JavaScript search). This script writes one in C instead:
 
-  usage: lean-wasm-symtab.py OUT.c NM_OUTPUT C_FILE...
+  usage: lean-wasm-symtab.py OUT.c NM_OUTPUT C_FILE_LIST     (a file naming the C files, one per line)
 
 The prototypes come from the Lean-emitted C itself (every file declares, one per line, each function
 and constant it defines or uses), so each table entry takes the address of a correctly typed
@@ -20,6 +20,8 @@ import re
 import sys
 
 FUN = re.compile(r'^(?:LEAN_EXPORT |extern )?((?:[A-Za-z_][A-Za-z0-9_]*[ *]+)+?)([A-Za-z_][A-Za-z0-9_]*)\(([^()]*)\);$')
+# Lean's forward declarations name types only: `lean_object*`, `uint8_t`, `size_t`, `double`, ...
+ARG_TYPE = re.compile(r'^(?:const )?(?:[A-Za-z_][A-Za-z0-9_]*_t|lean_object|lean_obj_arg|b_lean_obj_arg|lean_obj_res|double|float|char|int|unsigned|void) ?\**(?: ?[A-Za-z_][A-Za-z0-9_]*)?$')
 VAR = re.compile(r'^(?:LEAN_EXPORT |extern )?((?:lean_object|uint8_t|uint16_t|uint32_t|uint64_t|size_t|double|float) ?\*?) ?([A-Za-z_][A-Za-z0-9_]*);$')
 
 
@@ -32,7 +34,8 @@ def fnv1a64(s: bytes) -> int:
 
 
 def main() -> None:
-    out, nm_file, *c_files = sys.argv[1:]
+    out, nm_file, c_list = sys.argv[1:]
+    c_files = [l.strip() for l in open(c_list, encoding='utf8') if l.strip()]
     defined = set()
     for line in open(nm_file, encoding='utf8', errors='replace'):
         parts = line.split()
@@ -49,6 +52,9 @@ def main() -> None:
             m = FUN.match(line)
             if m:
                 ret, name, args = m.group(1).strip(), m.group(2), m.group(3)
+                if ret.split()[0] in ('return', 'else', 'goto', 'case') or not all(
+                        ARG_TYPE.match(a.strip()) for a in args.split(',') if a.strip()):
+                    continue   # a statement (`return initialize_X(builtin);`), not a declaration
                 if name in defined and name not in funs:
                     funs[name] = f'{ret} {name}({args});'
                 continue

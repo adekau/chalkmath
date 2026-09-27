@@ -77,7 +77,8 @@ xargs -P "$JOBS" -I{} bash -c 'o="$OUT/obj/cpp/{}.o"; [ -f "$o" ] && exit 0; mkd
 find "$OUT/obj" -name '*.o' ! -name symtab.o ! -path '*/shell/lean.cpp.o' ! -path '*/server/*' | sort > "$OUT/objs.txt"
 echo "== symbol table over $(wc -l < "$OUT/objs.txt" | tr -d ' ') objects"
 xargs "$(dirname "$(command -v emcc)")/../bin/llvm-nm" --defined-only --extern-only < "$OUT/objs.txt" > "$OUT/nm.txt"
-find "$OUT/c" -name '*.c' | sort | xargs python3 "$SCRIPTS/lean-wasm-symtab.py" "$OUT/symtab.c" "$OUT/nm.txt"
+find "$OUT/c" -name '*.c' | sort > "$OUT/c-files.txt"
+python3 "$SCRIPTS/lean-wasm-symtab.py" "$OUT/symtab.c" "$OUT/nm.txt" "$OUT/c-files.txt"
 emcc $CFLAGS -O1 -c "$OUT/symtab.c" -o "$OUT/obj/symtab.o"
 { cat "$OUT/objs.txt"; echo "$OUT/obj/symtab.o"; } > "$OUT/link.rsp"
 # PROXY_TO_PTHREAD keeps the JS main thread free to start the task manager's workers and to service the
