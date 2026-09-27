@@ -172,15 +172,15 @@ interface Cell {
    *  the output, in place of the points it stands for. Recomputed on each run. */
   image?: { src: string; name: string };
   /** λ-cells: the result with de Bruijn indices, and what it reads as (a Church numeral or boolean). */
-  outDeBruijn?: string;
-  reading?: string;
+  outDeBruijn?: string | undefined;
+  reading?: string | undefined;
   /** What the engine said the cell was, once it has answered; the badge guesses from the source until then. */
   kind?: string;
   /** Order-world cells: the Hasse diagram to draw, and the one-line summary. */
-  hasse?: { nodes: { name: string; height: number }[]; covers: [string, string][] };
-  summary?: string;
+  hasse?: { nodes: { name: string; height: number }[]; covers: [string, string][] } | undefined;
+  summary?: string | undefined;
   label: number | null;
-  ms?: number;
+  ms?: number | undefined;
   outLatex?: string;
   /** The output in the engine's input syntax (the "input form"). */
   outText?: string;
@@ -188,10 +188,12 @@ interface Cell {
   form?: string;
   /** "complex" when the cell mentions `i`: its steps are judged by the rules' statuses over ℂ. */
   semantics?: "real" | "complex";
-  echoLatex?: string;
+  echoLatex?: string | undefined;
   steps?: Step[];
   error?: { message: string; span?: { start: number; end: number } };
   showWork: boolean;
+  /** Waiting its turn behind the cell the engine is evaluating (shown as In[*]). */
+  queued?: boolean;
   el?: HTMLElement;
   input?: HTMLInputElement;
 }
@@ -248,6 +250,16 @@ interface Nb {
   text: string;
   /** Whether the engine session has been rebuilt from the cells since the document was restored. */
   hydrated: boolean;
+  /** The "not run yet" notice was dismissed for this notebook. */
+  noticeDismissed?: boolean;
+}
+
+/** A remembered on/off preference (local storage; private mode just forgets it). */
+function prefOn(key: string, dflt: boolean): boolean {
+  try { const v = localStorage.getItem(key); return v === null ? dflt : v !== "off"; } catch { return dflt; }
+}
+function setPref(key: string, on: boolean) {
+  try { localStorage.setItem(key, on ? "on" : "off"); } catch { /* private mode */ }
 }
 
 const S = {
@@ -267,6 +279,14 @@ const S = {
   engineMode: "lean-worker" as "lean-worker" | "http",
   httpUrl: "http://localhost:8787",
   busy: false,
+  /** The engine: loading, ready, or failed — to load, or later (a crash) — with the reason. */
+  kernel: "starting" as "starting" | "ready" | "failed",
+  kernelError: "",
+  kernelDetail: "",
+  /** The cell the engine is evaluating now. */
+  running: null as Cell | null,
+  /** The cell that was running when the engine failed: a restart rebuilds the session up to it. */
+  crashed: null as Cell | null,
   comp: null as { cell: Cell; items: CompItem[]; index: number; x: number; y: number } | null,
   /** Signature help: the call the caret is inside, and which argument it is in (View menu toggles it). */
   sig: null as { cell: Cell; key: string; sig: string; blurb: string; arg: number } | null,
@@ -283,6 +303,13 @@ const S = {
   /** Size of rendered mathematics in the cells (View menu): small, normal or large. */
   outSize: (() => { try { return (localStorage.getItem("chalkmath.outsize") as "s" | "m" | "l" | null) ?? "m"; } catch { return "m" as const; } })() as "s" | "m" | "l",
   menu: null as string | null,
+  /** Run a notebook's cells when it opens (a file, a link, the tabs restored on reload). Off, the
+   *  saved outputs show until Run all — nothing is sent to the engine, and no `import()` is fetched. */
+  runOnOpen: prefOn("chalkmath.runonopen", true),
+  /** Open files and links with every cell's work folded, whatever the file saved. */
+  foldWorkOnOpen: prefOn("chalkmath.foldwork", false),
+  /** The sidebar (outline / commands) beside the paper; the rail stays. */
+  sidebarOpen: prefOn("chalkmath.sidebar", true),
   studio: { scenes: [] as Scene[], active: 0, playing: false, t: 0, speed: 1, codeOpen: true, copied: false },
 };
 
@@ -319,23 +346,95 @@ function initTheme() {
 // Engine
 // ---------------------------------------------------------------------------
 
+/** Which connection is current: a reply or failure from an older one is ignored. */
+let connGen = 0;
+
+/** Start an engine (a fresh worker, or a client for the HTTP one). Closing the old client fails
+ *  whatever was in flight on it; the sessions it held are gone with a worker. */
 async function connect() {
+  const gen = ++connGen;
   client?.close();
-  client = S.engineMode === "lean-worker"
-    ? createClient(workerTransport(new Worker(`engine-lean.worker.js?v=${typeof __BUILD_ID__ === "string" ? __BUILD_ID__ : "dev"}`)))
-    : createClient(httpTransport(S.httpUrl));
+  client = null;
+  S.caps = null; S.kernel = "starting"; S.kernelError = "";
+  renderChrome();
+  if (S.engineMode === "lean-worker" && typeof WebAssembly !== "object") {
+    kernelFailed("This browser cannot run WebAssembly, which the engine needs. A current Chrome, Firefox, Safari or Edge can.");
+    return;
+  }
+  let c: EngineClient;
+  try {
+    c = S.engineMode === "lean-worker"
+      ? createClient(workerTransport(new Worker(`engine-lean.worker.js?v=${typeof __BUILD_ID__ === "string" ? __BUILD_ID__ : "dev"}`)))
+      : createClient(httpTransport(S.httpUrl));
+  } catch (e) { kernelFailed("The engine could not start in this browser.", e instanceof Error ? e.message : String(e)); return; }
+  client = c;
+  c.onError?.((e) => {
+    if (gen !== connGen) return;
+    if (S.kernel === "starting") kernelFailed("The engine failed to load. Check your connection, then restart it.", e.message);
+    else kernelFailed("The engine stopped unexpectedly. Restarting it re-runs the cells that had outputs.", e.message);
+  });
   const t0 = performance.now();
   try {
-    const caps = await client.call("engine.capabilities", {});
-    S.caps = caps;
+    const caps = await c.call("engine.capabilities", {});
+    if (gen !== connGen) return;
+    S.caps = caps; S.kernel = "ready";
     S.ruleStatus = new Map((caps.ruleStatus ?? []).map((r) => [r.rule, r]));
     log("ok", `${caps.engine} v${caps.version} ready in ${Math.round(performance.now() - t0)} ms`);
   } catch (e) {
-    S.caps = null;
-    log("err", `capabilities failed: ${e instanceof Error ? e.message : String(e)}`);
+    // kernelFailed drops the client: when it is gone, the failure has been reported already
+    if (gen === connGen && client === c) kernelFailed(S.engineMode === "http" ? `The engine at ${S.httpUrl} did not answer.` : "The engine failed to load. Check your connection, then restart it.", e instanceof Error ? e.message : String(e));
+    return;
   }
   renderChrome();
   renderPanel();
+}
+
+/** The engine is gone, and every session it held with it; `restartEngine` rebuilds them. `why` is
+ *  for the reader, `detail` (the browser's error) for the log and the notice's tooltip. */
+function kernelFailed(why: string, detail = "") {
+  S.kernel = "failed"; S.kernelError = why; S.kernelDetail = detail; S.caps = null;
+  if (S.running) S.crashed = S.running;
+  client?.close(); client = null;
+  log("err", detail ? `${why} (${detail})` : why);
+  renderChrome(); renderPanel();
+}
+
+/** The cell stopped by `interrupt`, whose pending call fails when its engine is closed. */
+let stoppedCell: Cell | null = null;
+/** Bumped by an interrupt: runs queued before it, and `runAll` loops started before it, are dropped. */
+let runGen = 0;
+/** Evaluations happen one at a time, in the order they were asked for. */
+let runChain: Promise<void> = Promise.resolve();
+
+/** Stop the evaluation in progress. The engine is synchronous wasm in a worker and cannot be
+ *  interrupted from outside, so the worker is terminated and a fresh one started; the session is
+ *  rebuilt by re-running the cells above the stopped one (their outputs are what the session held). */
+async function interrupt() {
+  const cell = S.running; if (!cell) return;
+  stoppedCell = cell; runGen++;
+  log("ok", "interrupted: restarting the engine");
+  await restartEngine(cell);
+}
+
+/** Start a new engine after an interrupt, a crash or a failed load, and rebuild the current
+ *  notebook's session from what it held: the cells with an output, above `upTo` when one was
+ *  stopped or crashed (a failed or stopped cell bound nothing, and one that hung would hang again).
+ *  A notebook never run is run whole if notebooks run on open. An HTTP engine keeps its sessions. */
+async function restartEngine(upTo: Cell | null = null) {
+  S.crashed = null;
+  const http = S.engineMode === "http";
+  await connect();
+  if (S.kernel !== "ready" || http) return;
+  const d = currentDoc(); if (!d) return;
+  for (const o of S.docs) if (o !== d) o.hydrated = false;   // their sessions were in the old worker
+  if (!d.hydrated) { if (S.runOnOpen) hydrate(d); return; }
+  const i = upTo ? S.cells.indexOf(upTo) : -1;
+  const gen = runGen;
+  for (const c of i >= 0 ? S.cells.slice(0, i) : [...S.cells]) {
+    if (gen !== runGen) return;
+    if ((c.type ?? "math") === "math" && c.outLatex && cellSrc(c).trim()) await runCell(c);
+  }
+  renderChrome();
 }
 
 async function runCell(cell: Cell) {
@@ -348,12 +447,31 @@ async function runCell(cell: Cell) {
     return;
   }
   if (cell.type === "section") { cell.src = cellSrc(cell); return; }
-  if (!client || S.busy) return;
-  const src = cellSrc(cell);
-  cell.src = src;
-  if (!src.trim()) return;
-  S.busy = true;
-  renderChrome();
+  cell.src = cellSrc(cell);
+  if (!cell.src.trim()) return;
+  if (S.kernel === "failed") {
+    // the notice above the paper says why and offers the restart: draw the eye to it
+    const n = $(".notice"); n.classList.remove("flash"); void n.offsetWidth; n.classList.add("flash");
+    return;
+  }
+  // wait for the evaluations asked for before this one; an interrupt meanwhile drops it
+  const gen = runGen;
+  const prev = runChain;
+  let release!: () => void;
+  runChain = new Promise<void>((r) => { release = r; });
+  cell.queued = true; renderCellBody(cell);
+  try {
+    await prev;
+    cell.queued = false;
+    if (gen === runGen && client) await evaluateCell(cell, client);
+    else renderCellBody(cell);
+  } finally { release(); }
+}
+
+async function evaluateCell(cell: Cell, client: EngineClient) {
+  const src = cell.src;
+  S.busy = true; S.running = cell;
+  renderChrome(); renderCellBody(cell);
   const t0 = performance.now();
   const isPlot = /^\s*(plot|epicycles|dft)\s*\(/.test(src);
   log("rpc", `${isPlot ? "engine.plot" : "engine.evaluate"} ${JSON.stringify(src)}`);
@@ -410,10 +528,12 @@ async function runCell(cell: Cell) {
     }
   } catch (e) {
     cell.ms = performance.now() - t0;
-    cell.error = { message: e instanceof Error ? e.message : String(e) };
+    const stopped = S.engineMode === "http" ? "Stopped." : "Stopped. The engine was restarted, and the cells above this one with outputs were run again.";
+    cell.error = { message: cell === stoppedCell ? stopped : e instanceof Error ? e.message : String(e) };
+    if (cell === stoppedCell) stoppedCell = null;
     log("err", cell.error.message);
   }
-  S.busy = false;
+  S.busy = false; S.running = null;
   S.sel = null;
   renderCellBody(cell);
   renderChrome();
@@ -532,13 +652,12 @@ function loadDoc(i: number) {
   S.sel = null; hideCompletions(); hideSigHelp(); hideHover();
   renderChrome(); renderCells(); renderSidebar(); renderPanelHead(); renderPanel();
   if (S.tab === "studio") renderStudio();
-  if (!d.hydrated && client) hydrate(d);
+  if (!d.hydrated && S.kernel === "ready" && S.runOnOpen) hydrate(d);
 }
 
 /** Rebuild a restored document's engine session by re-running its cells. Re-running renumbers the
  *  cells, so a document that was clean stays clean: its saved baseline moves to the re-run state. */
 function hydrate(d: Nb) {
-  d.hydrated = true;
   const wasClean = !docDirty(d);
   void runAll().then(() => { if (wasClean && d === currentDoc()) { d.savedText = serializeNotebook(); renderTabs(); autosave(); } });
 }
@@ -653,7 +772,7 @@ async function loadNotebook(text: string, name?: string) {
   let doc: ChalkFile;
   try { doc = JSON.parse(text) as ChalkFile; } catch { log("err", "not a .chalk file: invalid JSON"); return; }
   if ((doc.chalk !== 1 && doc.lemma !== 1) || !Array.isArray(doc.cells)) { log("err", "not a .chalk file"); return; }
-  const d = makeDoc(name ?? doc.name ?? "untitled.chalk", cellsFromFile(doc), Array.isArray(doc.scenes) ? doc.scenes : [], assetsFromFile(doc));
+  const d = makeDoc(name ?? doc.name ?? "untitled.chalk", cellsFromFile(doc, S.foldWorkOnOpen), Array.isArray(doc.scenes) ? doc.scenes : [], assetsFromFile(doc));
   if (!d.cells.length) d.cells.push(freshCell());
   // an untouched new notebook is replaced; otherwise the file gets its own tab
   const cur = currentDoc();
@@ -661,7 +780,8 @@ async function loadNotebook(text: string, name?: string) {
   else { S.docs.push(d); loadDoc(S.docs.length - 1); }
   switchTab("notebook");
   log("ok", `opened ${d.name}: ${d.cells.length} cells, ${d.scenes.length} scenes`);
-  await runAll();
+  if (S.runOnOpen && S.kernel !== "failed") await runAll();
+  else { d.hydrated = false; renderChrome(); }
   d.savedText = serializeNotebook();
   renderTabs();
   autosave();
@@ -677,13 +797,13 @@ function assetsFromFile(doc: ChalkFile): Record<string, Asset> {
   return out;
 }
 
-/** Cells from a file's records (no DOM yet). */
-function cellsFromFile(doc: ChalkFile): Cell[] {
+/** Cells from a file's records (no DOM yet); `foldWork` folds every cell's work whatever was saved. */
+function cellsFromFile(doc: ChalkFile, foldWork = false): Cell[] {
   return doc.cells.map((c) => {
     const cell = freshCell(c.src, c.type === "markdown" || c.type === "section" ? c.type : "math");
     if (cell.type === "markdown") cell.editing = !c.src.trim();   // prose comes back rendered; an empty cell opens for typing
     if (c.collapsed) cell.collapsed = true;
-    cell.showWork = c.showWork ?? false; cell.label = c.label ?? null;
+    cell.showWork = !foldWork && (c.showWork ?? false); cell.label = c.label ?? null;
     if (c.outLatex) cell.outLatex = c.outLatex;
     if (c.outText) cell.outText = c.outText;
     if (c.form) cell.form = c.form;
@@ -696,7 +816,11 @@ function cellsFromFile(doc: ChalkFile): Cell[] {
   });
 }
 
-async function runAll() { for (const c of [...S.cells]) if (cellSrc(c).trim()) await runCell(c); }
+async function runAll() {
+  const d = currentDoc(); if (d) d.hydrated = true;   // every cell, in order: the session is the notebook's
+  const gen = runGen;
+  for (const c of [...S.cells]) { if (gen !== runGen) return; if (cellSrc(c).trim()) await runCell(c); }
+}
 
 /** The cells a section heads: from the one after it to the next section (or the end). */
 function sectionRange(i: number): [number, number] {
@@ -714,11 +838,19 @@ async function runSection(i: number) {
   const [a, b] = sectionRange(i);
   const cells = S.cells.slice(a, b);
   log("ok", `running section “${cellSrc(S.cells[i]!) || "untitled"}”: ${cells.length} cell${cells.length === 1 ? "" : "s"}`);
-  for (const c of cells) if (cellSrc(c).trim()) await runCell(c);
+  const gen = runGen;
+  for (const c of cells) { if (gen !== runGen) return; if (cellSrc(c).trim()) await runCell(c); }
 }
 
 async function restartKernel() {
-  if (client) { try { await client.call("engine.resetSession", { sessionId }); } catch (e) { log("err", String(e)); } }
+  if (S.running) {
+    // a busy engine would answer the reset only after the evaluation: start a fresh one instead
+    stoppedCell = S.running; runGen++;
+    await connect();
+    for (const d of S.docs) if (d !== currentDoc()) d.hydrated = false;
+  } else if (S.kernel === "failed") await connect();
+  else if (client) { try { await client.call("engine.resetSession", { sessionId }); } catch (e) { log("err", String(e)); } }
+  const d = currentDoc(); if (d) d.hydrated = true;   // an empty session matches a notebook with no outputs
   clearOutputs();
   for (const k of [...USER_FNS.keys()]) if (k.startsWith(`${sessionId}:`)) USER_FNS.delete(k);
   for (const k of [...USER_NAMES]) if (k.startsWith(`${sessionId}:`)) USER_NAMES.delete(k);
@@ -1130,6 +1262,37 @@ function convertCell(cell: Cell, type: CellType) {
   renderCells(); renderSidebar(); renderChrome(); autosave();
 }
 
+// The per-cell actions, shared by the cell's ⋮ menu and the toolbar (which acts on the active cell).
+function duplicateCell(cell: Cell) {
+  const i = S.cells.indexOf(cell); if (i < 0) return;
+  S.cells.splice(i + 1, 0, freshCell(cellSrc(cell), cell.type ?? "math"));
+  renderCells(); renderSidebar(); focusCell(i + 1); autosave();
+}
+function moveCell(cell: Cell, by: -1 | 1) {
+  const i = S.cells.indexOf(cell), j = i + by;
+  if (i < 0 || j < 0 || j >= S.cells.length) return;
+  [S.cells[i], S.cells[j]] = [S.cells[j]!, S.cells[i]!];
+  renderCells(); renderSidebar(); focusCell(j); autosave();
+}
+const hasOutput = (cell: Cell) => !!(cell.outLatex || cell.error);
+function clearCellOutput(cell: Cell) {
+  delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.error; delete cell.plot; delete cell.hasse; delete cell.summary; delete cell.image; delete cell.outDeBruijn; delete cell.reading;
+  cell.steps = []; cell.label = null;
+  renderCellBody(cell); renderChrome(); renderSidebar(); autosave();
+}
+function deleteCell(cell: Cell) {
+  const i = S.cells.indexOf(cell); if (i < 0) return;
+  if (S.cells.length === 1) { cell.src = ""; if (cell.input) { cell.input.value = ""; syncHighlight(cell); } if (cell.ta) cell.ta.value = ""; clearCellOutput(cell); return; }
+  S.cells.splice(i, 1);
+  S.active = Math.min(S.active, S.cells.length - 1);
+  renderCells(); renderSidebar(); renderChrome(); autosave();
+}
+/** Show or hide every cell's work at once. */
+function setAllWork(on: boolean) {
+  for (const c of S.cells) if (c.steps?.length) c.showWork = on;
+  renderCells(); autosave();
+}
+
 function focusCell(i: number) {
   S.active = Math.max(0, Math.min(i, S.cells.length - 1));
   renderCells(); renderSidebar(); renderChrome();
@@ -1188,7 +1351,7 @@ function shell() {
       const body = h("div", "body");
       body.append(h("div", "rail"), h("aside", "sidebar"), (() => {
         const main = h("div", "main");
-        main.append(h("div", "toolbar"), h("div", "cells"), h("div", "reference"), h("div", "studio"), h("div", "panel"));
+        main.append(h("div", "toolbar"), h("div", "notice"), h("div", "cells"), h("div", "reference"), h("div", "studio"), h("div", "panel"));
         return main;
       })());
       return body;
@@ -1211,7 +1374,9 @@ function renderChrome() {
     Edit: [["Add math cell", () => { addCell(); focusCell(S.cells.length - 1); }], ["Add Markdown cell", () => { addCell("", "markdown"); focusCell(S.cells.length - 1); }], ["Add section", () => { addCell("", "section"); focusCell(S.cells.length - 1); }],
       ...(S.cells[S.active] ? CELL_TYPES.filter(([t]) => t !== (S.cells[S.active]!.type ?? "math")).map(([t, label]): [string, () => void] => [`Change to ${label.toLowerCase()}`, () => convertCell(S.cells[S.active]!, t)]) : []),
       ["Clear outputs", clearOutputs]],
-    View: [["Toggle light / dark", () => { applyTheme(S.theme === "light" ? "dark" : "light"); renderChrome(); }], ["Explanation panel", () => { S.panelOpen = !S.panelOpen; renderPanelHead(); renderPanel(); }], [`${S.deBruijn ? "✓ " : ""}de Bruijn indices (λ-cells)`, () => { S.deBruijn = !S.deBruijn; renderChrome(); renderCells(); }],
+    View: [["Toggle light / dark", () => { applyTheme(S.theme === "light" ? "dark" : "light"); renderChrome(); }], [`${S.sidebarOpen ? "✓ " : ""}Sidebar  (Ctrl+B)`, toggleSidebar], ["Explanation panel", () => { S.panelOpen = !S.panelOpen; renderPanelHead(); renderPanel(); }],
+      ["Show all work", () => setAllWork(true)], ["Hide all work", () => setAllWork(false)],
+      [`${S.foldWorkOnOpen ? "✓ " : ""}Hide work in opened notebooks`, () => { S.foldWorkOnOpen = !S.foldWorkOnOpen; setPref("chalkmath.foldwork", S.foldWorkOnOpen); renderChrome(); }], [`${S.deBruijn ? "✓ " : ""}de Bruijn indices (λ-cells)`, () => { S.deBruijn = !S.deBruijn; renderChrome(); renderCells(); }],
       [`${S.showEcho ? "✓ " : ""}Input interpretation`, () => { S.showEcho = !S.showEcho; try { localStorage.setItem("chalkmath.echo", S.showEcho ? "on" : "off"); } catch { /* private mode */ } renderChrome(); renderCells(); }],
       [`${S.highlight ? "✓ " : ""}Syntax highlighting`, () => { S.highlight = !S.highlight; try { localStorage.setItem("chalkmath.highlight", S.highlight ? "on" : "off"); } catch { /* private mode */ } document.documentElement.classList.toggle("nohl", !S.highlight); renderHighlights(); renderChrome(); }],
       [`${S.sigHelp ? "✓ " : ""}Signature help`, () => { S.sigHelp = !S.sigHelp; try { localStorage.setItem("chalkmath.sighelp", S.sigHelp ? "on" : "off"); } catch { /* private mode */ } if (!S.sigHelp) hideSigHelp(); renderChrome(); }],
@@ -1221,8 +1386,10 @@ function renderChrome() {
         renderChrome();
       }])],
     Run: [["Run all", () => void runAll()], ["Run cell", () => { const c = S.cells[S.active]; if (c) void runCell(c); }],
-      ...(sectionOf(S.active) >= 0 ? [[`Run section “${(cellSrc(S.cells[sectionOf(S.active)]!) || "untitled").slice(0, 24)}”`, () => void runSection(sectionOf(S.active))] as [string, () => void]] : [])],
-    Kernel: [["Restart kernel", () => void restartKernel()], ["Restart and run all", async () => { await restartKernel(); await runAll(); }]],
+      ...(sectionOf(S.active) >= 0 ? [[`Run section “${(cellSrc(S.cells[sectionOf(S.active)]!) || "untitled").slice(0, 24)}”`, () => void runSection(sectionOf(S.active))] as [string, () => void]] : []),
+      [`${S.runOnOpen ? "✓ " : ""}Run notebooks when opened`, () => { S.runOnOpen = !S.runOnOpen; setPref("chalkmath.runonopen", S.runOnOpen); renderChrome(); }]],
+    Kernel: [...(S.running ? [["Interrupt", () => void interrupt()] as [string, () => void]] : []),
+      ["Restart kernel", () => void restartKernel()], ["Restart and run all", async () => { await restartKernel(); await runAll(); }]],
     Help: [["Reference", () => switchTab("reference")], ["Manim Studio", () => switchTab("studio")]],
   };
   for (const m of Object.keys(MENUS)) {
@@ -1244,8 +1411,9 @@ function renderChrome() {
   theme.addEventListener("click", () => { applyTheme(S.theme === "light" ? "dark" : "light"); renderChrome(); if (S.tab === "studio") renderStage(); });
   const kernel = h("div", "kernel");
   const dot = h("span", "dot");
-  const state = S.busy ? "running" : S.caps ? "idle" : "offline";
-  dot.style.background = S.busy ? "var(--acc)" : S.caps ? "var(--ok)" : "var(--danger)";
+  const state = S.kernel === "failed" ? "stopped" : S.kernel === "starting" ? "starting…" : S.busy ? "running" : "ready";
+  dot.style.background = S.kernel === "failed" ? "var(--danger)" : S.kernel === "starting" || S.busy ? "var(--acc)" : "var(--ok)";
+  kernel.title = S.kernel === "failed" ? S.kernelError : S.kernel === "starting" ? "Loading the engine" : S.caps ? `${S.caps.engine} ${S.caps.version}` : "";
   const sel = document.createElement("select");
   for (const [v, label] of [["lean-worker", "kernel · wasm"], ["http", "kernel · http"]] as const) {
     const o = document.createElement("option"); o.value = v; o.textContent = label; o.selected = S.engineMode === v; sel.append(o);
@@ -1263,27 +1431,47 @@ function renderChrome() {
   // rail
   const rail = $(".rail"); rail.innerHTML = "";
   for (const [key, glyph, title] of [["outline", "≡", "Outline"], ["palette", "ƒ", "Commands"]] as const) {
-    const b = h("div", `b${S.rail === key ? " on" : ""}`, glyph);
-    b.title = title;
-    b.addEventListener("click", () => { S.rail = key; renderChrome(); renderSidebar(); });
+    const on = S.sidebarOpen && S.rail === key;
+    const b = h("div", `b${on ? " on" : ""}`, glyph);
+    b.title = on ? `${title} (click again to hide the sidebar)` : title;
+    // the open view's button folds the sidebar away; any other button opens it on that view
+    b.addEventListener("click", () => { if (on) toggleSidebar(); else { S.rail = key; if (!S.sidebarOpen) toggleSidebar(); else { renderChrome(); renderSidebar(); } } });
     rail.append(b);
   }
+  $(".sidebar").hidden = !S.sidebarOpen;
 
   // toolbar
   const tl = $(".toolbar"); tl.innerHTML = "";
   const group = h("div", "bgroup");
-  const mk = (label: string, title: string, fn: () => void, primary = false) => {
+  const mk = (label: string, title: string, fn: () => void, primary = false, enabled = true) => {
     const b = document.createElement("button");
-    b.className = primary ? "primary" : ""; b.textContent = label; b.title = title;
+    b.className = primary ? "primary" : ""; b.textContent = label; b.title = title; b.disabled = !enabled;
+    b.addEventListener("mousedown", (e) => e.preventDefault());   // keep the caret in the cell
     b.addEventListener("click", fn); return b;
   };
   group.append(
-    mk("▶ Run", "Run the active cell", () => { const c = S.cells[S.active]; if (c) void runCell(c); }, true),
+    S.running
+      ? mk("■ Stop", "Stop the evaluation (restarts the engine)", () => void interrupt(), true)
+      : mk("▶ Run", "Run the active cell", () => { const c = S.cells[S.active]; if (c) void runCell(c); }, true),
     mk("▶▶ All", "Run every cell in order", () => void runAll()),
-    mk("Clear", "Clear all outputs", clearOutputs),
+    mk("Clear all", "Clear every cell's output", clearOutputs),
     mk("+ Cell", "Add a cell", () => { const c = addCell(); focusCell(S.cells.indexOf(c)); }),
   );
-  tl.append(group, h("div", "spacer"), h("span", "hint", "Enter runs the cell"));
+  // the active cell's actions, the same as its ⋮ menu
+  const cur = S.cells[S.active];
+  const i = cur ? S.active : -1;
+  const cellGroup = h("div", "bgroup");
+  cellGroup.append(
+    mk("↑", "Move the cell up", () => { if (cur) moveCell(cur, -1); }, false, i > 0),
+    mk("↓", "Move the cell down", () => { if (cur) moveCell(cur, 1); }, false, i >= 0 && i < S.cells.length - 1),
+    mk("Duplicate", "Duplicate the cell", () => { if (cur) duplicateCell(cur); }, false, !!cur),
+    ...(cur?.steps?.length ? [mk(cur.showWork ? "Hide work" : "Show work", "Show or hide the cell's steps", () => { cur.showWork = !cur.showWork; renderCellBody(cur); renderChrome(); autosave(); })] : []),
+    mk("Clear output", "Clear the cell's output", () => { if (cur) clearCellOutput(cur); }, false, !!cur && hasOutput(cur)),
+    mk("Delete", "Delete the cell", () => { if (cur) deleteCell(cur); }, false, !!cur),
+  );
+  tl.append(group, h("span", "tlabel", "Cell"), cellGroup, h("div", "spacer"), h("span", "hint", "Enter runs the cell"));
+
+  renderNotice();
 
   // status bar
   const sb = $(".statusbar"); sb.innerHTML = "";
@@ -1299,8 +1487,36 @@ function renderChrome() {
   );
 }
 
+/** The strip above the paper: the engine loading or failed, or a notebook shown with the outputs
+ *  it was saved with and not run yet. */
+function renderNotice() {
+  const n = $(".notice"); n.innerHTML = ""; n.className = "notice";
+  const d = currentDoc();
+  const btn = (label: string, fn: () => void) => { const b = document.createElement("button"); b.textContent = label; b.addEventListener("click", fn); return b; };
+  if (S.kernel === "failed") {
+    n.classList.add("bad");
+    const msg = h("span", "msg", S.kernelError); msg.title = S.kernelDetail;
+    n.append(msg, btn("Restart engine", () => void restartEngine(S.crashed)));
+  } else if (S.kernel === "starting") {
+    n.classList.add("wait");
+    n.append(h("span", "msg", "Starting the engine…"));
+  } else if (d && !d.hydrated && !d.noticeDismissed && S.cells.some((c) => (c.type ?? "math") === "math" && c.src.trim())) {
+    const saved = S.cells.some((c) => c.outLatex || c.error);
+    n.append(h("span", "msg", `This notebook has not been run yet.${saved ? " The outputs shown are the ones it was saved with." : ""}`),
+      btn("Run all", () => void runAll().then(() => renderChrome())),
+      btn("Dismiss", () => { d.noticeDismissed = true; renderNotice(); }));
+  }
+  n.hidden = !n.childElementCount || S.tab !== "notebook";
+}
+
+function toggleSidebar() {
+  S.sidebarOpen = !S.sidebarOpen; setPref("chalkmath.sidebar", S.sidebarOpen);
+  renderChrome(); renderSidebar();
+}
+
 function renderView() {
   $(".cells").hidden = S.tab !== "notebook";
+  renderNotice();
   $(".toolbar").hidden = S.tab === "studio";
   $(".reference").hidden = S.tab !== "reference";
   $(".studio").hidden = S.tab !== "studio";
@@ -1839,7 +2055,9 @@ function renderCellBody(cell: Cell) {
   if (cell.type === "markdown") return renderMdCell(cell);
   if (cell.type === "section") return appendMore(cell, el.querySelector(".cellacts")!);
   el.classList.toggle("done", !!cell.label);
-  el.querySelector(".prompt")!.textContent = `In[${cell.label ?? " "}]:=`;
+  const busy = cell.queued || S.running === cell;   // Mathematica's In[*]: waiting or being evaluated
+  el.classList.toggle("running", busy);
+  el.querySelector(".prompt")!.textContent = `In[${busy ? "*" : cell.label ?? " "}]:=`;
   const mid = el.querySelector(".mid")!;
   const body = mid.querySelector(".cellbody") as HTMLElement;
   body.innerHTML = "";
@@ -2010,7 +2228,7 @@ function renderCellBody(cell: Cell) {
   if (cell.steps?.length) {
     const tw = h("span", undefined, cell.showWork ? "▾ Hide work" : `▸ Work (${cell.steps.length})`);
     tw.addEventListener("mousedown", (e) => e.preventDefault());
-    tw.addEventListener("click", () => { cell.showWork = !cell.showWork; renderCellBody(cell); });
+    tw.addEventListener("click", () => { cell.showWork = !cell.showWork; renderCellBody(cell); renderChrome(); autosave(); });
     acts.append(tw);
   }
   appendMore(cell, acts);
@@ -2264,27 +2482,16 @@ function toggleCellMenu(cell: Cell, anchor: HTMLElement) {
     item(cell.collapsed ? "Unfold section" : "Fold section", () => { cell.collapsed = !cell.collapsed; renderCells(); renderSidebar(); autosave(); });
   } else if (sectionOf(i) >= 0) item("Run this section", () => void runSection(sectionOf(i)));
   menu.append(h("div", "sep"));
-  item("Duplicate cell", () => {
-    const c = freshCell(cellSrc(cell), cell.type ?? "math");
-    S.cells.splice(i + 1, 0, c); renderCells(); renderSidebar(); focusCell(i + 1); autosave();
-  });
-  item("Move up", i > 0 ? () => { [S.cells[i - 1], S.cells[i]] = [S.cells[i]!, S.cells[i - 1]!]; renderCells(); renderSidebar(); focusCell(i - 1); autosave(); } : null);
-  item("Move down", i < S.cells.length - 1 ? () => { [S.cells[i + 1], S.cells[i]] = [S.cells[i]!, S.cells[i + 1]!]; renderCells(); renderSidebar(); focusCell(i + 1); autosave(); } : null);
+  item("Duplicate cell", () => duplicateCell(cell));
+  item("Move up", i > 0 ? () => moveCell(cell, -1) : null);
+  item("Move down", i < S.cells.length - 1 ? () => moveCell(cell, 1) : null);
   menu.append(h("div", "sep"));
   item("Copy input", copy(cellSrc(cell), "the input"));
   item("Copy output", cell.outText !== undefined ? copy(cell.outText, "the output") : null);
   item("Copy output as LaTeX", cell.outLatex ? copy(stripPaths(cell.outLatex), "the output as LaTeX") : null);
   menu.append(h("div", "sep"));
-  item("Clear output", cell.outLatex || cell.error ? () => {
-    delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.error; delete cell.plot; delete cell.hasse; cell.steps = []; cell.label = null;
-    renderCellBody(cell); renderChrome(); renderSidebar(); autosave();
-  } : null);
-  item("Delete cell", () => {
-    if (S.cells.length === 1) { const c = S.cells[0]!; c.src = ""; if (c.input) { c.input.value = ""; syncHighlight(c); } delete c.outLatex; delete c.outText; delete c.echoLatex; delete c.error; c.steps = []; c.label = null; }
-    else S.cells.splice(i, 1);
-    S.active = Math.min(S.active, S.cells.length - 1);
-    renderCells(); renderSidebar(); renderChrome(); autosave();
-  }, { danger: true });
+  item("Clear output", hasOutput(cell) ? () => clearCellOutput(cell) : null);
+  item("Delete cell", () => deleteCell(cell), { danger: true });
   // on the body, fixed: the paper scrolls and clips, and a menu near its bottom must not grow a scrollbar
   document.body.append(menu);
   const r = anchor.getBoundingClientRect(), mh = menu.offsetHeight;
@@ -3454,6 +3661,7 @@ document.addEventListener("click", () => { if (S.menu) { S.menu = null; renderCh
 document.querySelector(".cells")?.addEventListener("scroll", () => closeCellMenu(), { passive: true });   // a fixed menu must not float away from its cell
 document.addEventListener("keydown", (ev) => {
   if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === "s") { ev.preventDefault(); if (ev.shiftKey) saveNotebookAs(); else saveNotebook(); }
+  if ((ev.metaKey || ev.ctrlKey) && !ev.shiftKey && ev.key.toLowerCase() === "b") { ev.preventDefault(); toggleSidebar(); }
   if (ev.key === "Escape") closeModal();
 });
 const saved = restoreAutosave();
@@ -3488,5 +3696,5 @@ if (!saved) { const d = currentDoc(); if (d) d.savedText = serializeNotebook(); 
 void connect().then(async () => {
   // a link with a notebook in its fragment opens that notebook (in its own tab unless the current one is untouched)
   if (location.hash.startsWith("#nb") && await openNotebookLink(location.hash)) return;
-  const d = currentDoc(); if (d && !d.hydrated) hydrate(d);
+  const d = currentDoc(); if (d && !d.hydrated && S.kernel === "ready" && S.runOnOpen) hydrate(d);
 });
