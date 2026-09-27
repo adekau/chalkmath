@@ -573,7 +573,7 @@ Goal: re-derive the article (inner products → orthogonality → the square wav
    hide all work; a sidebar that folds away (rail button, View menu, Ctrl/Cmd+B); the active cell's ⋮ actions in
    the toolbar. The kernel picker, log and rule count moved behind Help › Developer mode; what the reader did
    gets a toast.
-- repository — DONE 2026-09-27. Packages renamed `@chalkmath/*` (the GitHub repository is still `mathbook`).
+- repository — DONE 2026-09-27. Packages renamed `@chalkmath/*`, and the GitHub repository is now `adekau/chalkmath`.
    CI (`ci.yml`): engine build + `lake test`, check:engine, TS build + type-check + tests, bundle. Pages deploys
    only a main commit CI passed, after a wasm smoke test. `proofs.yml` builds the theorems when engine/ or proofs/
    change.
