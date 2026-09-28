@@ -2084,6 +2084,8 @@ function visualInput(cell: Cell, i: number): MathInput | null {
   const opts: MathInputOptions = {
     known: sessionFns(), symbols: VISUAL_SYMBOLS, label: `Cell ${i + 1}, math input`,
     onFocus: () => { S.active = i; renderChrome(); renderSidebar(); markActive(); },
+    onBlur: () => hideSigHelp(),
+    onCaret: () => updateVisualSigHelp(cell),
     onChange: (text) => { cell.src = text; renderSidebar(); renderTabs(); },
     onEnter: () => {
       if (!mi) return;
@@ -2092,7 +2094,10 @@ function visualInput(cell: Cell, i: number): MathInput | null {
       void runCell(cell);
     },
     onLeave: (dir) => { const j = i + dir; if (j >= 0 && j < S.cells.length) focusCell(j); },
-    onKey: (ev) => modeKey(ev, cell),
+    onKey: (ev) => {
+      if (ev.key === "Escape" && S.sig) { ev.preventDefault(); dismissSigHelp(); return true; }
+      return modeKey(ev, cell);
+    },
     onPaste: (ev) => onPaste(ev, cell),
     // `%` is the output before this cell's own (or, not yet run, the latest); `%n` is Out[n]
     outRef: (ref) => {
@@ -3951,13 +3956,25 @@ function updateSigHelp(cell: Cell) {
   S.sig = { cell, key, sig: found.sig, blurb: found.blurb, arg: ctx.arg };
   renderSigHelp();
 }
+/** Signature help for a visual input: the call around its caret that shows as `name(args)`. */
+function updateVisualSigHelp(cell: Cell) {
+  const ctx = S.sigHelp && cell.mi ? cell.mi.edit.callContext() : null;
+  const found = ctx && sigFor(ctx.name, ctx.firstArg);
+  if (!ctx || !found) { S.sigDismissed = null; return hideSigHelp(); }
+  const key = `${cell.id}:${ctx.name}`;
+  if (S.sigDismissed === key) return hideSigHelp();
+  S.sigDismissed = null;
+  S.sig = { cell, key, sig: found.sig, blurb: found.blurb, arg: ctx.arg };
+  renderSigHelp();
+}
 function hideSigHelp() { S.sig = null; renderSigHelp(); }
 function dismissSigHelp() { if (S.sig) { S.sigDismissed = S.sig.key; hideSigHelp(); } }
 
 function renderSigHelp() {
   document.querySelector(".sighelp")?.remove();
   const g = S.sig;
-  if (!g || !g.cell.input) return;
+  const anchor = g && (g.cell.input ?? g.cell.mi?.el);
+  if (!g || !anchor) return;
   const box = h("div", "sighelp");
   const line = h("div", "ss");
   const pieces = sigPieces(g.sig), n = pieces.filter((p) => p.param).length;
@@ -3969,7 +3986,7 @@ function renderSigHelp() {
     k++;
   }
   box.append(line, h("div", "sb", g.blurb));
-  const r = g.cell.input.getBoundingClientRect();
+  const r = anchor.getBoundingClientRect();
   box.style.left = `${r.left + 8}px`;
   // above the input, like an editor; below it only when there is no room and no completion list there
   if (r.top > 80 || S.comp) box.style.bottom = `${window.innerHeight - r.top + 6}px`; else box.style.top = `${r.bottom + 4}px`;

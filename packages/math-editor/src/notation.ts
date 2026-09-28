@@ -188,6 +188,12 @@ class Notation {
 const BUILTINS = new Set(["simplify", "expand", "factor", "N", "det", "rref", "transpose", "solve", "subst", "plot",
   "dot", "norm", "sum", "exptotrig", "epicycles", "dft", "diff", "integrate", "sign", "sqrt", "abs", "conj", "re", "im"]);
 
+/** Calls drawn in their own notation (d/dx, ∫, Σ, √, bars, …) rather than as `name(args)`; must
+ *  agree with `Notation.call`. */
+const NOTATED = new Set(["sqrt/1", "abs/1", "norm/1", "conj/1", "re/1", "im/1", "sign/1", "diff/2", "diff/3",
+  "integrate/2", "integrate/4", "sum/4", "det/1", "transpose/1", "dot/2"]);
+export const notated = (a: Atom & { k: "call" }) => NOTATED.has(`${a.name}/${a.args.length}`);
+
 /** An atom's slots in the order they sit on screen, left to right and then top to bottom, which is
  *  the order the arrow keys walk them: d/dx (f) is x then f; ∫ₐᵇ f dx is a, b, f, x; Σ is k, a, b,
  *  then the body. Must agree with the LaTeX above. */

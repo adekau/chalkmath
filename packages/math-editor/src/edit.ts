@@ -1,5 +1,5 @@
 import { type Atom, type Block, type Stmt, ch, chars, isAsciiAlpha, isDigit, isIdChar } from "./model.js";
-import { slots } from "./notation.js";
+import { notated, slots } from "./notation.js";
 import { BUILTIN_FUNCTIONS, lex, read, ungroup } from "./read.js";
 import { binaryMinus, write, writeText } from "./write.js";
 
@@ -208,6 +208,18 @@ export class MathEdit {
       this.caret = { block: s.block, i: s.start };
       return true;
     });
+  }
+
+  /** The innermost call around the caret that shows as `name(args)` — a command, or a function the
+   *  session defined — with the argument the caret is in (for signature help). Calls drawn in their
+   *  own notation show their slots already. */
+  callContext(): { name: string; arg: number; firstArg: string } | null {
+    for (const { block, w } of this.ancestors()) {
+      const a = w.atom;
+      if (a.k !== "call" || notated(a)) continue;
+      return { name: a.name, arg: a.args.indexOf(block), firstArg: writeText({ body: a.args[0] ?? [] }) };
+    }
+    return null;
   }
 
   // --- moves -------------------------------------------------------------------------------------

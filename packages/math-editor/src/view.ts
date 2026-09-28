@@ -26,8 +26,11 @@ export interface MathInputOptions {
   onChange?(text: string, holes: number): void;
   /** Enter (after a pending `\\name` has been finished). */
   onEnter?(): void;
-  /** The input took the focus. */
+  /** The input took the focus, or lost it. */
   onFocus?(): void;
+  onBlur?(): void;
+  /** The caret moved or the text changed (signature help follows the caret). */
+  onCaret?(): void;
   /** ↑ or ↓ with nowhere to go inside the input. */
   onLeave?(dir: -1 | 1): void;
   /** A key, before the input handles it; return true to take it (a completion menu's arrows). */
@@ -112,7 +115,7 @@ export class MathInput {
     this.ta.setAttribute("autocorrect", "off"); this.ta.setAttribute("autocomplete", "off");
     this.el.append(this.math, this.caretEl, this.ta);
     this.ta.addEventListener("focus", () => { this.el.classList.add("focused"); this.place(); this.opts.onFocus?.(); });
-    this.ta.addEventListener("blur", () => { this.el.classList.remove("focused"); this.hideSuggestions(); });
+    this.ta.addEventListener("blur", () => { this.el.classList.remove("focused"); this.hideSuggestions(); this.opts.onBlur?.(); });
     this.ta.addEventListener("keydown", (ev) => this.key(ev));
     this.ta.addEventListener("compositionstart", () => { this.composing = true; });
     this.ta.addEventListener("compositionend", () => { this.composing = false; this.typed(); });
@@ -248,6 +251,7 @@ export class MathInput {
     if (this.edit.caret.block.length === 0) this.holeEl.get(this.edit.caret.block)?.classList.add("mi-here");
     this.ta.style.left = this.caretEl.style.left;   // an IME's candidate window opens at the caret
     this.ta.style.top = this.caretEl.style.top;
+    if (this.el.classList.contains("focused")) this.opts.onCaret?.();
   }
 
   /** Every caret position, for a click to choose among. */

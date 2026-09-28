@@ -172,3 +172,13 @@ test("a let head is typed as it reads, and its name and parameters are slots", (
   const t = typed("", "let f(x) = x");
   t.e.home(); t.e.right(); assert.equal(t.e.caret.block, t.e.stmt.body[0].name);
 });
+
+test("the call around the caret, for signature help, is one drawn as name(args)", () => {
+  const ctx = (keys, src, known) => typed(keys, src, known).e.callContext();
+  assert.deepEqual(ctx("subst(x^2{→}, x, 3"), { name: "subst", arg: 2, firstArg: "x^2" });
+  assert.deepEqual(ctx("rref([1,2;3,4"), { name: "rref", arg: 0, firstArg: "[1, 2; 3, 4]" });
+  // inside √ inside N: the √ shows its slot already, so it is N's first argument
+  assert.deepEqual(ctx("N(sqrt(2"), { name: "N", arg: 0, firstArg: "sqrt(2)" });
+  assert.equal(ctx("diff(x^2"), null);
+  assert.deepEqual(ctx("f(1, 2", "", ["f"]), { name: "f", arg: 1, firstArg: "1" });
+});
