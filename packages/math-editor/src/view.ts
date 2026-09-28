@@ -290,6 +290,11 @@ export class MathInput {
     this.changed();
   }
 
+  /** An edit from outside the keyboard (a keypad button): run it on the editor and redraw. */
+  apply(fn: (e: MathEdit) => boolean) {
+    if (fn(this.edit)) this.changed(); else this.place();
+  }
+
   /** Mark where the engine's error is (its span into the text), or clear the mark. */
   markError(span: { start: number; end: number } | null) { this.errSpan = span; this.render(); }
 

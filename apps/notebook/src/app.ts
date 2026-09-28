@@ -328,6 +328,8 @@ const S = {
   /** How math cells take their input (View menu): typeset with holes to fill, as text, or Auto —
    *  typeset where there is notation to show (a fraction, a power, a matrix, d/dx, ∫, Σ, √),
    *  highlighted text where there is none (`epicycles(llama, 60)`). A cell's own choice wins. */
+  /** The math keypad above the keyboard while a math cell has the focus (View menu; on by default on phones). */
+  keypad: prefOn("chalkmath.keypad", narrow()),
   inputMode: ((): "auto" | "visual" | "raw" => {
     try {
       const v = localStorage.getItem("chalkmath.inputmode");
@@ -1616,6 +1618,7 @@ function renderChrome() {
         for (const c of S.cells) delete c.autoFor;
         renderChrome(); renderCells();
       }]),
+      [`${S.keypad ? "✓ " : ""}Math keypad`, () => { S.keypad = !S.keypad; setPref("chalkmath.keypad", S.keypad); renderChrome(); updateKeypad(); }],
       [`${S.showEcho ? "✓ " : ""}Input interpretation`, () => { S.showEcho = !S.showEcho; try { localStorage.setItem("chalkmath.echo", S.showEcho ? "on" : "off"); } catch { /* private mode */ } renderChrome(); renderCells(); }],
       [`${S.highlight ? "✓ " : ""}Syntax highlighting`, () => { S.highlight = !S.highlight; try { localStorage.setItem("chalkmath.highlight", S.highlight ? "on" : "off"); } catch { /* private mode */ } document.documentElement.classList.toggle("nohl", !S.highlight); renderHighlights(); renderChrome(); }],
       [`${S.sigHelp ? "✓ " : ""}Signature help`, () => { S.sigHelp = !S.sigHelp; try { localStorage.setItem("chalkmath.sighelp", S.sigHelp ? "on" : "off"); } catch { /* private mode */ } if (!S.sigHelp) hideSigHelp(); renderChrome(); }],
@@ -2148,16 +2151,11 @@ function openTemplate(cell: Cell, before: string, after: string): boolean {
 function visualInput(cell: Cell, i: number): MathInput | null {
   const opts: MathInputOptions = {
     known: sessionFns(), symbols: VISUAL_SYMBOLS, label: `Cell ${i + 1}, math input`,
-    onFocus: () => { S.active = i; renderChrome(); renderSidebar(); markActive(); },
-    onBlur: () => { hideSigHelp(); autoSettle(cell); },
+    onFocus: () => { S.active = i; renderChrome(); renderSidebar(); markActive(); updateKeypad(); },
+    onBlur: () => { hideSigHelp(); autoSettle(cell); updateKeypad(); },
     onCaret: () => updateVisualSigHelp(cell),
     onChange: (text) => { cell.src = text; renderSidebar(); renderTabs(); },
-    onEnter: () => {
-      if (!mi) return;
-      // text with an empty slot is not something the engine can read: go to the slot instead
-      if (mi.holes) { mi.edit.hole(1); mi.render(); notify("err", `Fill the empty slot${mi.holes === 1 ? "" : "s"} first (Tab moves between them).`); return; }
-      void runCell(cell);
-    },
+    onEnter: () => runFromInput(cell),
     onLeave: (dir) => { const j = i + dir; if (j >= 0 && j < S.cells.length) focusCell(j); },
     onKey: (ev) => {
       if (ev.key === "Escape" && S.sig) { ev.preventDefault(); dismissSigHelp(); return true; }
@@ -2188,6 +2186,88 @@ function visualInput(cell: Cell, i: number): MathInput | null {
   if (mi) cell.tree = mi.edit.stmt; else delete cell.tree;
   return mi;
 }
+
+/** Enter in a math cell: run it — unless a visual input still has an empty slot, which the engine
+ *  could not read: the caret goes there instead. */
+function runFromInput(cell: Cell) {
+  const mi = cell.mi;
+  if (mi?.holes) { mi.edit.hole(1); mi.render(); notify("err", `Fill the empty slot${mi.holes === 1 ? "" : "s"} first (Tab moves between them).`); return; }
+  void runCell(cell);
+}
+
+// --- The math keypad: templates and moves a phone's keyboard does not have -----------------------
+
+interface PadKey { label: string; title: string; tpl?: string; ch?: string; move?: -1 | 1 | "hole" | "run" }
+const KEYPAD: PadKey[] = [
+  { label: "a⁄b", title: "Fraction", tpl: "frac" }, { label: "xⁿ", title: "Power", ch: "^" },
+  { label: "√", title: "Square root", tpl: "sqrt" }, { label: "d/dx", title: "Derivative", tpl: "diff" },
+  { label: "∫", title: "Integral", tpl: "int" }, { label: "∫ₐᵇ", title: "Definite integral", tpl: "dint" },
+  { label: "Σ", title: "Sum", tpl: "sum" }, { label: "[ ]", title: "Matrix", tpl: "mat" },
+  { label: "|x|", title: "Absolute value", tpl: "abs" }, { label: "π", title: "Pi", ch: "π" },
+  { label: "(", title: "Open parenthesis", ch: "(" }, { label: ")", title: "Close parenthesis", ch: ")" },
+  { label: "←", title: "Left", move: -1 }, { label: "→", title: "Right", move: 1 },
+  { label: "⇥", title: "Next empty slot", move: "hole" }, { label: "▶", title: "Run the cell", move: "run" },
+];
+/** In a text cell whose text does not read around the caret yet, a template key types the call instead. */
+const PAD_TEXT: Record<string, string> = { frac: "/", sqrt: "sqrt(", diff: "diff(", int: "integrate(", dint: "integrate(", sum: "sum(", mat: "[", abs: "abs(" };
+
+/** The math cell whose input has the focus, if any. */
+function focusedMathCell(): Cell | null {
+  const a = document.activeElement;
+  return S.cells.find((c) => !c.type && ((c.input && c.input === a) || (c.mi && c.mi.el.contains(a)))) ?? null;
+}
+
+function pressKey(k: PadKey) {
+  const cell = focusedMathCell();
+  if (!cell) return;
+  if (k.move === "run") return runFromInput(cell);
+  if (cell.mi) {
+    const mi = cell.mi;
+    // a fraction takes what is on its left as the numerator, as typing `/` does
+    mi.apply((e) => k.tpl === "frac" ? e.type("/") : k.tpl ? e.insert(TEMPLATES[k.tpl]!.make(), true) : k.ch ? e.type(k.ch)
+      : k.move === -1 ? e.left() : k.move === 1 ? e.right() : k.move === "hole" ? e.hole(1) : false);
+    return;
+  }
+  const input = cell.input!;
+  const at = input.selectionStart ?? input.value.length, end = input.selectionEnd ?? at;
+  if (k.move === -1 || k.move === 1) { const p = Math.max(0, Math.min(input.value.length, at + k.move)); input.setSelectionRange(p, p); return; }
+  // a template turns the cell typeset where it can, as typing it does
+  if (k.tpl && openTemplate(cell, input.value.slice(0, at) + "\\" + k.tpl, input.value.slice(end))) return;
+  const ins = k.tpl ? PAD_TEXT[k.tpl] : k.ch;
+  if (!ins) return;
+  input.setRangeText(ins, at, end, "end");
+  cell.src = input.value; syncHighlight(cell); updateSigHelp(cell); renderSidebar(); renderTabs();
+}
+
+let keypadEl: HTMLElement | null = null;
+/** Show the keypad while a math cell has the focus (View › Math keypad; on by default on phones),
+ *  just above the on-screen keyboard. */
+function updateKeypad() {
+  setTimeout(() => {
+    const cell = S.keypad ? focusedMathCell() : null;
+    if (!cell) { keypadEl?.remove(); keypadEl = null; return; }
+    if (!keypadEl) {
+      keypadEl = h("div", "keypad");
+      keypadEl.setAttribute("role", "toolbar"); keypadEl.setAttribute("aria-label", "Math keypad");
+      for (const k of KEYPAD) {
+        const b = document.createElement("button");
+        b.type = "button"; b.textContent = k.label; b.title = k.title; b.setAttribute("aria-label", k.title);
+        if (k.move === "hole") b.className = "kvisual";
+        // the input keeps the focus (and a phone its keyboard)
+        b.addEventListener("pointerdown", (e) => e.preventDefault());
+        b.addEventListener("mousedown", (e) => e.preventDefault());
+        b.addEventListener("click", () => pressKey(k));
+        keypadEl.append(b);
+      }
+      document.body.append(keypadEl);
+    }
+    keypadEl.classList.toggle("text", !cell.mi);
+    const vv = window.visualViewport;
+    keypadEl.style.bottom = `${vv ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop) : 0}px`;
+  }, 0);
+}
+window.visualViewport?.addEventListener("resize", () => { if (keypadEl) updateKeypad(); });
+window.visualViewport?.addEventListener("scroll", () => { if (keypadEl) updateKeypad(); });
 
 /** Switch a cell between visual and text input (and remember it for the cell). */
 function toggleMode(cell: Cell) {
@@ -2225,12 +2305,12 @@ function inputEls(cell: Cell, i: number): HTMLElement[] {
   input.placeholder = i === 0 ? "e.g. diff(x^2 * sin(x), x)" : "";
   input.spellcheck = false;
   cell.input = input;
-  input.addEventListener("focus", () => { S.active = i; renderChrome(); renderSidebar(); markActive(); });
+  input.addEventListener("focus", () => { S.active = i; renderChrome(); renderSidebar(); markActive(); updateKeypad(); });
   input.addEventListener("input", () => { cell.src = input.value; updateCompletions(cell); updateSigHelp(cell); syncHighlight(cell); renderSidebar(); renderTabs(); });
   input.addEventListener("keyup", () => { updateSigHelp(cell); syncHighlight(cell); });   // caret moves without an input event
   input.addEventListener("click", () => updateSigHelp(cell));
   input.addEventListener("scroll", () => syncHighlight(cell));
-  input.addEventListener("blur", () => { hideCompletions(); hideSigHelp(); autoSettle(cell); });
+  input.addEventListener("blur", () => { hideCompletions(); hideSigHelp(); autoSettle(cell); updateKeypad(); });
   input.addEventListener("keydown", (ev) => onKey(ev, cell, i));
   input.addEventListener("paste", (ev) => onPaste(ev, cell));
   // the highlight overlay sits under the transparent text of the input; the input keeps caret and selection
