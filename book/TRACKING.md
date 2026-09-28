@@ -714,9 +714,13 @@ Phases:
 - Download: editor ~2.6 MB, server wasm ~24 MB, Init's oleans ~114 MB (all gzip) on the first Lean cell; the
    browser caches them.
 - Open:
-   - Deploy. `pages.yml` does not build Lean (a cold build is ~1.5–2 h; cacheable), so the Pages site shows Lean
-     cells as "built without Lean". Decide: build in CI with a cache, or publish the compiler build as a release
-     asset that CI downloads.
+   - Deploy — DONE 2026-09-28 (Alex: the release route). `lean-wasm.yml` builds Lean when its inputs change on
+     main and publishes it as a release named by `scripts/lean-wasm-key.sh` (Lean version + hash of the build's
+     inputs; Emscripten pinned in `engine/wasm/emscripten-version`); `pages.yml` downloads the release its
+     checkout names (none yet: deploys without Lean) and redeploys when the Lean build finishes. The bundle
+     ships the server's wasm gzipped (121 → 24 MB) and the library in 64 MB parts, decompressed in the worker,
+     so the site depends on no host compression and no file over 100 MB. Not yet run on GitHub: the first
+     build starts when this merges (or from Actions › Lean for wasm › Run workflow).
    - Size: ship only the oleans an ordinary `import`-free file needs, or split the library by module and load it
      lazily; Std/Mathlib imports are out of reach at this size.
    - Monaco does not follow the notebook's theme toggle after start.

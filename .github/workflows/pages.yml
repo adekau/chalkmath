@@ -4,18 +4,23 @@ name: Deploy ChalkMath to GitHub Pages
 # apps/notebook/dist. It runs after CI (ci.yml) completes on main, and deploys only the commit CI
 # passed on, so a change that breaks the engine's tests never reaches the public notebook. The wasm
 # runtime (Lean's runtime + Init for wasm32, built from source by scripts/build-lean-wasm-runtime.sh)
-# is cached between runs; the first run takes ~15 minutes.
+# is cached between runs; the first run takes ~15 minutes. Lean itself, for Lean cells, is not built here:
+# the deploy downloads the release lean-wasm.yml publishes for this checkout (scripts/lean-wasm-key.sh),
+# and deploys without it (Lean cells then say so) until that exists. When lean-wasm.yml finishes, this
+# runs again and deploys the newest main commit CI passed on — not the commit that started the Lean
+# build, which a later deploy may already have superseded.
 # One-time setup on the repository: Settings › Pages › Source: "GitHub Actions".
 
 on:
   workflow_run:
-    workflows: ["CI"]
+    workflows: ["CI", "Lean for wasm"]
     types: [completed]
     branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
+  actions: read   # which commit CI last passed on
   pages: write
   id-token: write
 
@@ -26,12 +31,24 @@ concurrency:
 jobs:
   build:
     # a manual run deploys the branch it was started on; an automatic one only a commit CI passed
-    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && (github.event.workflow_run.event == 'push' || github.event.workflow_run.name == 'Lean for wasm'))
     runs-on: ubuntu-latest
     steps:
+      - name: Which commit to deploy
+        id: ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ github.event.workflow_run.name }}" = "Lean for wasm" ]; then
+            sha=$(gh run list -R "$GITHUB_REPOSITORY" --workflow ci.yml --branch main --event push --status success --limit 1 --json headSha --jq '.[0].headSha')
+          else
+            sha="${{ github.event.workflow_run.head_sha || github.sha }}"
+          fi
+          echo "deploying $sha"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ steps.ref.outputs.sha }}
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
       - name: Install elan (the Lean toolchain pinned in engine/lean-toolchain)
@@ -61,6 +78,18 @@ jobs:
         run: npm run wasm
       - name: Smoke-test the wasm engine (load, capabilities, one evaluation)
         run: node scripts/smoke-wasm.cjs apps/notebook/dist
+      - name: Fetch Lean for wasm (the release lean-wasm.yml publishes for this checkout)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag=$(scripts/lean-wasm-key.sh)
+          if gh release download "$tag" --pattern lean-wasm.tar.gz --dir "$RUNNER_TEMP"; then
+            mkdir -p "$RUNNER_TEMP/lean-wasm"
+            tar xzf "$RUNNER_TEMP/lean-wasm.tar.gz" -C "$RUNNER_TEMP/lean-wasm"
+            echo "LEAN_WASM_DIR=$RUNNER_TEMP/lean-wasm" >> "$GITHUB_ENV"
+          else
+            echo "::warning::$tag is not published yet (the Lean for wasm workflow builds it); deploying without Lean"
+          fi
       - name: Build the workspace packages, then bundle the notebook
         run: |
           npm run build

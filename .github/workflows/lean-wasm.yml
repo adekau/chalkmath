@@ -1,0 +1,95 @@
+name: Lean for wasm
+
+# Builds Lean itself for wasm32 — compiler, language server, Init's 32-bit oleans — for the notebook's
+# Lean cells (scripts/build-lean-wasm-compiler.sh), and publishes it as a release named by
+# scripts/lean-wasm-key.sh: the Lean version plus a hash of every input of that build. The Pages deploy
+# (pages.yml) downloads the release its own checkout names instead of building Lean (~1.5–2 h cold), and
+# runs again when this workflow finishes, so a change to Lean's build reaches the site once it is built.
+# A release that already exists is not rebuilt. The build tree is cached even when the job fails or runs
+# out of time, and every step skips what it already has, so a re-run resumes.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - engine/lean-toolchain
+      - engine/wasm/**
+      - scripts/build-lean-wasm-*.sh
+      - scripts/lean-wasm-*
+      - .github/workflows/lean-wasm.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write   # the release
+
+concurrency:
+  group: lean-wasm
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Which release this checkout needs
+        id: key
+        run: |
+          tag=$(scripts/lean-wasm-key.sh)
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "ver=$(sed -E 's/.*:v//' engine/lean-toolchain)" >> "$GITHUB_OUTPUT"
+          echo "emsdk=$(cat engine/wasm/emscripten-version)" >> "$GITHUB_OUTPUT"
+          if gh release view "$tag" >/dev/null 2>&1; then echo "exists=true" >> "$GITHUB_OUTPUT"; echo "$tag is already published"; fi
+      - uses: actions/setup-node@v4
+        if: steps.key.outputs.exists != 'true'
+        with: { node-version: 22, cache: npm }
+      - name: Install elan (the Lean toolchain pinned in engine/lean-toolchain)
+        if: steps.key.outputs.exists != 'true'
+        run: |
+          curl -sSfL https://github.com/leanprover/elan/releases/latest/download/elan-x86_64-unknown-linux-gnu.tar.gz | tar xz
+          ./elan-init -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - uses: mymindstorm/setup-emsdk@v14
+        if: steps.key.outputs.exists != 'true'
+        with: { version: "${{ steps.key.outputs.emsdk }}", actions-cache-folder: emsdk-cache-lean }
+      - name: Restore the build tree
+        if: steps.key.outputs.exists != 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: engine/toolchains
+          key: lean-wasm-tree-${{ steps.key.outputs.tag }}-${{ github.run_id }}
+          restore-keys: |
+            lean-wasm-tree-${{ steps.key.outputs.tag }}-
+      - name: Install the pinned Lean toolchain and show the tool versions
+        if: steps.key.outputs.exists != 'true'
+        run: |
+          elan toolchain install "$(cat engine/lean-toolchain)"
+          (cd engine && lean --version)
+          emcc --version | head -1
+          nproc; free -g; df -h .
+      - name: Build Lean for wasm
+        if: steps.key.outputs.exists != 'true'
+        run: npm run lean-wasm
+      - name: Save the build tree (also after a failure or a timeout, so a re-run resumes)
+        if: always() && steps.key.outputs.exists != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: engine/toolchains
+          key: lean-wasm-tree-${{ steps.key.outputs.tag }}-${{ github.run_id }}
+      - name: Smoke-test the language server (Node)
+        if: steps.key.outputs.exists != 'true'
+        run: |
+          npm ci
+          npm run build -w packages/protocol -w packages/engine-host
+          node scripts/smoke-lean-server.mjs
+      - name: Publish the release
+        if: steps.key.outputs.exists != 'true'
+        run: |
+          dir=engine/toolchains/lean-${{ steps.key.outputs.ver }}-wasm32/compiler
+          tar czf lean-wasm.tar.gz -C "$dir" lean-server.js lean-server.wasm lean-lib.pack.gz lean-initialize.json
+          ls -la lean-wasm.tar.gz
+          gh release create "${{ steps.key.outputs.tag }}" lean-wasm.tar.gz --prerelease --target "$GITHUB_SHA" \
+            --title "Lean ${{ steps.key.outputs.ver }} for wasm (${{ steps.key.outputs.tag }})" \
+            --notes "Lean itself for the notebook's Lean cells, built by scripts/build-lean-wasm-compiler.sh at $GITHUB_SHA with Emscripten ${{ steps.key.outputs.emsdk }}. The Pages deploy fetches it by name (scripts/lean-wasm-key.sh); unpack it and point LEAN_WASM_DIR at it to bundle it locally."

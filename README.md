@@ -28,7 +28,7 @@ builds the Lean runtime + Init for wasm32 from source on first run (~10 min, cac
 Needs emsdk (`emcc`), elan, git.
 
 `npm run lean-wasm` — Lean itself (compiler and language server) for wasm32, for Lean cells: ~1.5–2 h cold,
-cached under `engine/toolchains/`; `npm run bundle` then includes it, and `npm run smoke:lean` checks it in
+cached under `engine/toolchains/` (or unpack a `lean-wasm-*` release and set `LEAN_WASM_DIR` to it); `npm run bundle` then includes it, and `npm run smoke:lean` checks it in
 Node and Chromium (set `CHROMIUM` to a browser executable if playwright-core's own is not installed). Without
 it, Lean cells say the build has no Lean. See ARCHITECTURE.md §4b.
 

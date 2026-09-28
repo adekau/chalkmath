@@ -4,17 +4,21 @@
 //   workers/*.js            the editor's two workers (Monaco's, TextMate's), bundled on their own
 //   assets/, infoview/      files the bundle reaches by URL, and the infoview's own files
 //   lean-server.worker.js   Lean's language server host (packages/engine-host/src/worker-lean-server.ts)
-//   lean-server.{js,wasm}, lean-lib.pack.gz, lean-initialize.json
-//                           Lean itself, from scripts/build-lean-wasm-compiler.sh, when that build exists
+//   lean-server.js, lean-server.wasm.gz, lean-lib.pack.gz.<n>, lean-initialize.json
+//                           Lean itself, from scripts/build-lean-wasm-compiler.sh (or its release, fetched
+//                           into LEAN_WASM_DIR), when that build exists. The wasm is shipped gzipped and
+//                           the library in parts, so no file is over 64 MB and neither depends on the
+//                           host compressing it; the worker decompresses both as they arrive.
 // lean4monaco documents a Vite setup; the three things it needs from a bundler are done here for esbuild:
 // Node polyfills (with `fs` an in-memory filesystem), `new URL('<file>', import.meta.url)` assets, and
 // the workers.
 import { build } from "esbuild";
 import { nodeModulesPolyfillPlugin } from "esbuild-plugins-node-modules-polyfill";
 import { createHash } from "node:crypto";
-import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
+import { gzipSync } from "node:zlib";
 
 const require = createRequire(import.meta.url);
 const WORKERS = {
@@ -26,10 +30,12 @@ const WORKERS = {
 const INFOVIEW = "./lean/infoview/";
 
 const LEAN_FILES = ["lean-server.js", "lean-server.wasm", "lean-lib.pack.gz", "lean-initialize.json"];
-/** Where scripts/build-lean-wasm-compiler.sh put Lean itself, or null when it has not been built. */
+const PART = 64 << 20;
+/** Where Lean itself is: LEAN_WASM_DIR (the release, unpacked), else where scripts/build-lean-wasm-compiler.sh
+ *  put it; null when it has not been built. */
 export function leanBuild() {
   const ver = readFileSync("engine/lean-toolchain", "utf8").trim().replace(/.*:v/, "");
-  const dir = `engine/toolchains/lean-${ver}-wasm32/compiler`;
+  const dir = process.env.LEAN_WASM_DIR || `engine/toolchains/lean-${ver}-wasm32/compiler`;
   return LEAN_FILES.every((f) => existsSync(`${dir}/${f}`)) ? dir : null;
 }
 
@@ -79,9 +85,16 @@ export async function bundleLean({ out, define, minify, nonce }) {
   writeFileSync(`${out}/infoview/webview.js`,
     webview.replace(ESMS, `esmsInitOptions={shimMode:!0,nonce:${JSON.stringify(nonce)}}`).replaceAll('"/infoview/', `"${INFOVIEW}`));
 
-  await build({ ...common, format: "iife", entryPoints: ["packages/engine-host/src/worker-lean-server.ts"], outfile: `${out}/lean-server.worker.js` });
   const lean = leanBuild();
-  if (lean) for (const f of LEAN_FILES) cpSync(`${lean}/${f}`, `${out}/${f}`);
-  else console.log("lean: Lean itself has not been built (npm run lean-wasm); Lean cells will say so");
+  let parts = 0;
+  for (const f of readdirSync(out)) if (/^lean-(server\.wasm|lib\.pack)/.test(f)) rmSync(`${out}/${f}`);
+  if (lean) {
+    for (const f of ["lean-server.js", "lean-initialize.json"]) cpSync(`${lean}/${f}`, `${out}/${f}`);
+    writeFileSync(`${out}/lean-server.wasm.gz`, gzipSync(readFileSync(`${lean}/lean-server.wasm`), { level: 9 }));
+    const lib = readFileSync(`${lean}/lean-lib.pack.gz`);
+    for (let at = 0; at < lib.length; at += PART) writeFileSync(`${out}/lean-lib.pack.gz.${parts++}`, lib.subarray(at, at + PART));
+  } else console.log("lean: Lean itself has not been built (npm run lean-wasm); Lean cells will say so");
+  await build({ ...common, format: "iife", entryPoints: ["packages/engine-host/src/worker-lean-server.ts"], outfile: `${out}/lean-server.worker.js`,
+    define: { ...common.define, __LEAN_LIB_PARTS__: String(parts) } });
   console.log(`lean: ${readdirSync(out).join(" ")}`);
 }

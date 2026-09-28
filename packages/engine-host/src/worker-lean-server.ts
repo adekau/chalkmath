@@ -13,6 +13,8 @@ import { startLeanServer, type LspMessage, type LeanServerModule } from "./lean-
 
 declare const createLeanServer: (opts: object) => Promise<LeanServerModule>;
 declare const __BUILD_ID__: string;
+/** How many parts scripts/lean-bundle.mjs split the library into. */
+declare const __LEAN_LIB_PARTS__: number;
 const stamp = typeof __BUILD_ID__ === "string" ? __BUILD_ID__ : "dev";
 const at = (file: string) => new URL(`${file}?v=${stamp}`, self.location.href).href;
 
@@ -20,11 +22,31 @@ importScripts(at("lean-server.js"));
 if (self.name !== "em-pthread") host();
 
 function host() {
+  /** A gzipped file, decompressed as it arrives; `parts` > 0: shipped as `<file>.0`, `<file>.1`, … */
+  function gunzip(file: string, parts = 0): ReadableStream<Uint8Array> {
+    const names = parts > 0 ? Array.from({ length: parts }, (_, i) => `${file}.${i}`) : [file];
+    let i = 0, reader: ReadableStreamDefaultReader<Uint8Array<ArrayBuffer>> | null = null;
+    const joined = new ReadableStream<BufferSource>({
+      async pull(c) {
+        for (;;) {
+          if (!reader) {
+            if (i === names.length) { c.close(); return; }
+            const res = await fetch(at(names[i++]!));
+            if (!res.ok || !res.body) throw new Error(`Lean's ${names[i - 1]} did not load (${res.status})`);
+            reader = res.body.getReader();
+          }
+          const { done, value } = await reader.read();
+          if (!done) { c.enqueue(value); return; }
+          reader = null;
+        }
+      },
+    });
+    return joined.pipeThrough(new DecompressionStream("gzip"));
+  }
+
   /** `lean-lib.pack.gz`: [u32 LE index length] [JSON [[path, size], ...]] [the files, in index order]. */
   async function library(): Promise<[string, Uint8Array][]> {
-    const res = await fetch(at("lean-lib.pack.gz"));
-    if (!res.ok || !res.body) throw new Error(`Lean's library did not load (${res.status})`);
-    const buf = new Uint8Array(await new Response(res.body.pipeThrough(new DecompressionStream("gzip"))).arrayBuffer());
+    const buf = new Uint8Array(await new Response(gunzip("lean-lib.pack.gz", __LEAN_LIB_PARTS__)).arrayBuffer());
     const n = new DataView(buf.buffer).getUint32(0, true);
     const index = JSON.parse(new TextDecoder().decode(buf.subarray(4, 4 + n))) as [string, number][];
     let off = 4 + n;
@@ -36,7 +58,15 @@ function host() {
   self.onmessage = (ev: MessageEvent<LspMessage>) => receive(ev.data);
 
   Promise.all([
-    createLeanServer({ locateFile: (p: string) => at(p) }),
+    createLeanServer({
+      locateFile: (p: string) => at(p),
+      // the wasm is shipped gzipped (scripts/lean-bundle.mjs), and compiled as it downloads
+      instantiateWasm(imports: WebAssembly.Imports, done: (i: WebAssembly.Instance, m: WebAssembly.Module) => void) {
+        const wasm = new Response(gunzip("lean-server.wasm.gz"), { headers: { "content-type": "application/wasm" } });
+        WebAssembly.instantiateStreaming(wasm, imports).then((r) => done(r.instance, r.module), (e: unknown) => setTimeout(() => { throw e; }));
+        return {};
+      },
+    }),
     library(),
     fetch(at("lean-initialize.json")).then((r) => r.json()),
   ]).then(([module, lib, initializeResult]) => {
