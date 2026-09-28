@@ -28,22 +28,22 @@ const call = (name: string, n: number): Atom => ({ k: "call", name, args: Array.
 const grid = (r: number, c: number): Atom => ({ k: "matrix", rows: Array.from({ length: r }, () => Array.from({ length: c }, () => [])) });
 
 /** The structural `\` commands. A size follows some: `\mat2x3`, `\vec3`. */
-export const TEMPLATES: Record<string, { what: string; make: (r?: number, c?: number) => Atom }> = {
-  frac: { what: "fraction", make: () => ({ k: "frac", num: [], den: [] }) },
-  sqrt: { what: "square root", make: () => call("sqrt", 1) },
-  abs: { what: "absolute value", make: () => call("abs", 1) },
-  norm: { what: "norm", make: () => call("norm", 1) },
-  conj: { what: "complex conjugate", make: () => call("conj", 1) },
-  diff: { what: "derivative d/dx", make: () => call("diff", 2) },
-  dd: { what: "derivative d/dx", make: () => call("diff", 2) },
-  int: { what: "integral", make: () => call("integrate", 2) },
-  dint: { what: "definite integral", make: () => call("integrate", 4) },
-  sum: { what: "sum", make: () => call("sum", 4) },
-  det: { what: "determinant", make: () => call("det", 1) },
-  T: { what: "transpose", make: () => call("transpose", 1) },
-  dot: { what: "dot product", make: () => call("dot", 2) },
-  mat: { what: "matrix (\\mat2x3)", make: (r = 2, c = r) => grid(r, c) },
-  vec: { what: "column vector (\\vec3)", make: (r = 2) => grid(r, 1) },
+export const TEMPLATES: Record<string, { what: string; glyph: string; make: (r?: number, c?: number) => Atom }> = {
+  frac: { what: "fraction", glyph: "a⁄b", make: () => ({ k: "frac", num: [], den: [] }) },
+  sqrt: { what: "square root", glyph: "√", make: () => call("sqrt", 1) },
+  abs: { what: "absolute value", glyph: "|x|", make: () => call("abs", 1) },
+  norm: { what: "norm", glyph: "‖v‖", make: () => call("norm", 1) },
+  conj: { what: "complex conjugate", glyph: "z̄", make: () => call("conj", 1) },
+  diff: { what: "derivative", glyph: "d/dx", make: () => call("diff", 2) },
+  dd: { what: "derivative", glyph: "d/dx", make: () => call("diff", 2) },
+  int: { what: "integral", glyph: "∫", make: () => call("integrate", 2) },
+  dint: { what: "definite integral", glyph: "∫ₐᵇ", make: () => call("integrate", 4) },
+  sum: { what: "sum", glyph: "Σ", make: () => call("sum", 4) },
+  det: { what: "determinant", glyph: "|A|", make: () => call("det", 1) },
+  T: { what: "transpose", glyph: "Mᵀ", make: () => call("transpose", 1) },
+  dot: { what: "dot product", glyph: "u·v", make: () => call("dot", 2) },
+  mat: { what: "matrix, \\mat2x3 for 2×3", glyph: "[ ]", make: (r = 2, c = r) => grid(r, c) },
+  vec: { what: "column vector, \\vec3 for 3", glyph: "[⋮]", make: (r = 2) => grid(r, 1) },
 };
 
 /** How many argument slots a call opens with when typed as `name(`. */

@@ -1,5 +1,5 @@
 import katex from "katex";
-import { MathEdit, type Caret } from "./edit.js";
+import { MathEdit, TEMPLATES, type Caret } from "./edit.js";
 import type { Atom, Block, Stmt } from "./model.js";
 import { slots, toLatex } from "./notation.js";
 import { read } from "./read.js";
@@ -24,8 +24,10 @@ export interface MathInputOptions {
   label?: string;
   /** After every edit: the source text, and how many slots are still empty. */
   onChange?(text: string, holes: number): void;
-  /** Enter. */
+  /** Enter (after a pending `\\name` has been finished). */
   onEnter?(): void;
+  /** The input took the focus. */
+  onFocus?(): void;
   /** ↑ or ↓ with nowhere to go inside the input. */
   onLeave?(dir: -1 | 1): void;
   /** A key, before the input handles it; return true to take it (a completion menu's arrows). */
@@ -42,6 +44,7 @@ export const MATH_INPUT_CSS = `
 .mi.focused .mi-caret { display:block; animation:mi-blink 1.06s steps(1) infinite; }
 .mi.focused { box-shadow:0 0 0 1px var(--mi-focus, #6b8afd); border-radius:4px; }
 .mi.focused .mi-math [data-h].mi-here { color:var(--mi-caret, currentColor); }
+.mi-cmd { color:var(--mi-cmd, #b0662c); }
 .mi-ta { position:absolute; left:0; top:0; width:1px; height:1px; opacity:0; padding:0; border:0; resize:none; overflow:hidden; }
 @keyframes mi-blink { 50% { opacity:0; } }
 @media (prefers-reduced-motion: reduce) { .mi.focused .mi-caret { animation:none; } }
@@ -70,6 +73,10 @@ export class MathInput {
   private atomEl = new Map<Atom, { el: HTMLElement; k: number; n: number }>();
   private holeEl = new Map<Block, HTMLElement>();
   private composing = false;
+  /** The `\\` suggestions under the caret: the names that start with what has been typed. */
+  private comp: { items: { name: string; what: string; glyph: string }[]; index: number; box: HTMLElement } | null = null;
+  /** Esc closed the suggestions for this command; they come back when it changes. */
+  private compDismissed: string | null = null;
 
   /** An input for `src`, or null when the text is not this grammar (the cell stays raw). */
   static fromSource(src: string, opts: MathInputOptions = {}): MathInput | null {
@@ -92,8 +99,8 @@ export class MathInput {
     this.ta.autocapitalize = "off"; this.ta.spellcheck = false;
     this.ta.setAttribute("autocorrect", "off"); this.ta.setAttribute("autocomplete", "off");
     this.el.append(this.math, this.caretEl, this.ta);
-    this.ta.addEventListener("focus", () => { this.el.classList.add("focused"); this.place(); });
-    this.ta.addEventListener("blur", () => this.el.classList.remove("focused"));
+    this.ta.addEventListener("focus", () => { this.el.classList.add("focused"); this.place(); this.opts.onFocus?.(); });
+    this.ta.addEventListener("blur", () => { this.el.classList.remove("focused"); this.hideSuggestions(); });
     this.ta.addEventListener("keydown", (ev) => this.key(ev));
     this.ta.addEventListener("compositionstart", () => { this.composing = true; });
     this.ta.addEventListener("compositionend", () => { this.composing = false; this.typed(); });
@@ -110,14 +117,20 @@ export class MathInput {
       ev.preventDefault();
       const c = this.caretAt(ev.clientX, ev.clientY);
       if (c) this.edit.caret = c;
-      this.focus();
+      this.focus(false);
       this.place();
     });
     this.render();
   }
 
   get text(): string { return write(this.edit.stmt).text; }
-  focus() { this.ta.focus({ preventScroll: true }); }
+  /** How many slots are still empty: text with a hole is not yet something to run. */
+  get holes(): number { return write(this.edit.stmt).holes; }
+  /** Focus the input, scrolling it into view (a click on it passes `scroll: false`: it is in view). */
+  focus(scroll = true) {
+    this.ta.focus({ preventScroll: true });
+    if (scroll) this.el.scrollIntoView({ block: "nearest" });
+  }
 
   // --- drawing -----------------------------------------------------------------------------------
 
@@ -140,6 +153,9 @@ export class MathInput {
       const b = holes[+el.dataset["h"]!]!;
       if (!this.holeEl.has(b)) this.holeEl.set(b, el);
     }
+    // a `\\name` still being typed shows as a command, not as letters of a name
+    const p = this.edit.pendingCommand();
+    if (p) for (const a of this.edit.caret.block.slice(p.start, this.edit.caret.i)) this.atomEl.get(a)?.el.classList.add("mi-cmd");
     const text = this.text;
     this.ta.setAttribute("aria-label", `${this.opts.label ?? "Math input"}: ${text || "empty"}`);
     this.place();
@@ -221,12 +237,95 @@ export class MathInput {
 
   private changed() {
     this.render();
-    this.opts.onChange?.(this.text, write(this.edit.stmt).holes);
+    this.suggest();
+    this.opts.onChange?.(this.text, this.holes);
+  }
+
+  // --- the `\\` suggestions ------------------------------------------------------------------------
+
+  /** Show what the pending `\\name` could become: the symbols (one row per symbol, under the first
+   *  name that matches) and the templates. */
+  private suggest() {
+    const p = this.edit.pendingCommand();
+    if (!p || p.name === this.compDismissed || !this.el.classList.contains("focused")) { this.hideSuggestions(); return; }
+    this.compDismissed = null;
+    const q = p.name, ql = q.toLowerCase();
+    const seen = new Set<string>();
+    const items: { name: string; what: string; glyph: string }[] = [];
+    for (const [name, sym] of Object.entries(this.edit.symbols)) {
+      if (!name.toLowerCase().startsWith(ql) || seen.has(sym)) continue;
+      seen.add(sym);
+      items.push({ name, what: "symbol", glyph: sym });
+    }
+    for (const [name, t] of Object.entries(TEMPLATES)) if (name.toLowerCase().startsWith(ql)) items.push({ name, what: t.what, glyph: t.glyph });
+    // an exact name first, then case-exact prefixes, then the rest
+    const rank = (n: string) => (n === q ? 0 : n.startsWith(q) ? 1 : 2);
+    items.sort((a, b) => rank(a.name) - rank(b.name));
+    if (!items.length) { this.hideSuggestions(); return; }
+    this.hideSuggestions();
+    const box = document.createElement("div");
+    box.className = "completions mi-completions";
+    box.setAttribute("role", "listbox");
+    this.comp = { items: items.slice(0, 9), index: 0, box };
+    this.drawSuggestions();
+    document.body.append(box);
+    const c = this.caretEl.getBoundingClientRect();
+    box.style.position = "fixed";
+    box.style.left = `${Math.max(8, Math.min(c.left - 8, window.innerWidth - box.offsetWidth - 8))}px`;
+    box.style.top = `${c.bottom + 6}px`;
+  }
+
+  private drawSuggestions() {
+    const cp = this.comp;
+    if (!cp) return;
+    cp.box.innerHTML = "";
+    cp.items.forEach((it, i) => {
+      const row = document.createElement("div");
+      row.className = `comprow symrow${i === cp.index ? " on" : ""}`;
+      row.setAttribute("role", "option");
+      row.setAttribute("aria-selected", String(i === cp.index));
+      const n = document.createElement("span"); n.className = "n"; n.textContent = `\\${it.name}`;
+      const h = document.createElement("span"); h.className = "h"; h.textContent = it.what;
+      const g = document.createElement("span"); g.className = "sym"; g.textContent = it.glyph;
+      row.append(n, h, g);
+      row.addEventListener("mousedown", (ev) => { ev.preventDefault(); cp.index = i; this.acceptSuggestion(); });
+      cp.box.append(row);
+    });
+    const foot = document.createElement("div");
+    foot.className = "compfoot";
+    foot.textContent = "Tab or Enter to accept · Esc to dismiss";
+    cp.box.append(foot);
+  }
+
+  private hideSuggestions() { this.comp?.box.remove(); this.comp = null; }
+
+  /** Replace the pending `\\name` with the chosen one and finish it. */
+  private acceptSuggestion() {
+    const cp = this.comp, p = this.edit.pendingCommand();
+    if (!cp || !p) return;
+    const name = cp.items[cp.index]!.name;
+    const { block } = this.edit.caret;
+    block.splice(p.start + 1, p.name.length, ...Array.from(name, (c) => ({ k: "ch" as const, c })));
+    this.edit.caret = { block, i: p.start + 1 + name.length };
+    this.edit.command();
+    this.changed();
   }
 
   private key(ev: KeyboardEvent) {
     if (this.opts.onKey?.(ev)) return;
     if (ev.ctrlKey || ev.metaKey || ev.altKey || this.composing) return;
+    const cp = this.comp;
+    if (cp) {
+      const n = cp.items.length;
+      if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
+        ev.preventDefault();
+        cp.index = (cp.index + (ev.key === "ArrowDown" ? 1 : n - 1)) % n;
+        this.drawSuggestions();
+        return;
+      }
+      if (ev.key === "Tab" || ev.key === "Enter") { ev.preventDefault(); this.acceptSuggestion(); return; }
+      if (ev.key === "Escape") { ev.preventDefault(); this.compDismissed = this.edit.pendingCommand()?.name ?? null; this.hideSuggestions(); return; }
+    }
     const e = this.edit;
     let moved = true, edited = false;
     switch (ev.key) {
@@ -255,6 +354,6 @@ export class MathInput {
     }
     if (!moved) return;
     ev.preventDefault();
-    if (edited) this.changed(); else this.place();
+    if (edited) this.changed(); else { this.place(); this.suggest(); }
   }
 }

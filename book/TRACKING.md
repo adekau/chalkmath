@@ -630,7 +630,7 @@ Phases:
    notebook cells the grammar reads, KaTeX rendering every notation with every atom tagged, and —
    where the native engine is built (CI) — every source and its rewrite evaluated side by side with
    the same parsed input and answer. Writing changes only spacing (`[1,2]` → `[1, 2]`, `a+b` → `a + b`).
-2. Editor, basic. The editing core is in (`edit.ts`, 2026-09-28): arrows walk the slots in the order
+2. Editor, basic — DONE 2026-09-28. The editing core (`edit.ts`): arrows walk the slots in the order
    they are on screen (d/dx then the body; ∫'s bounds, integrand, variable), ↑↓ between a fraction's
    parts, a matrix's rows, a bound's top and bottom and into and out of an exponent; Tab to the next
    empty slot, wrapping; Backspace enters a structure from its end and removes it once empty. The raw
@@ -638,13 +638,18 @@ Phases:
    call, `[1,2;3,4]` fills a matrix, `/` takes what the engine would put in the numerator, a `)` that
    closes a whole denominator or exponent drops its parentheses and leaves the fraction — and `\name`
    inserts a symbol or a template (`\frac \sqrt \int \dint \sum \diff \mat2x3 \vec3 \abs \norm \T
-   \det \dot \conj`), a template starting in its first slot on screen. A letter typed right after a
-   `\` symbol is a product (`\pi r` is π·r; raw mode's `πr` is one name). Still to do: the notebook
-   side — the per-cell toggle, the View menu default, the `\` completion menu over the visual
-   input, keeping λ and order cells raw by the engine's `kind` for the cell (`let D = divisors(12)`
-   reads as a product and is an order cell), and the session's functions (`USER_NAMES`) as `known`.
-3. Calculus and linear algebra templates, `let`, `%` as an Out[n] chip, engine errors as underlines
-   on the atoms their span covers (`Written.spans`), copy (source text) and paste (read), completions
-   and signature help over the written text.
+   \det \dot \conj`), a template starting in its first slot on screen, with a list of what the name
+   typed so far could become (the notebook's completion menu). A letter typed right after a `\` symbol
+   is a product (`\pi r` is π·r; raw mode's `πr` is one name).
+   The notebook: View › Visual math input (off by default) and a Visual / Text button on each math
+   cell, Ctrl/⌘+Shift+M; the cell's choice is saved in the `.chalk` file (`mode`, optional). λ-terms,
+   order theory (including `let D = divisors(12)`, which `cellKind` labelled a definition), file
+   references and text that does not parse stay as text, and the button says why. The session's
+   functions are the reader's `known`. Enter with an empty slot goes to it instead of running. A
+   visual cell hides the input interpretation unless the source has a `%`.
+3. `let` heads editable in the visual input (today they show and cannot take the caret), `%` as an
+   Out[n] chip, engine errors as underlines on the atoms their span covers (`Written.spans`), paste
+   through the reader (today pasted text is typed a character at a time), an image pasted into a visual
+   cell, signature help over the written text, selection (Shift+arrows) and undo.
 4. Visual by default; visual cells hide the input interpretation; a keypad of templates on phones.
 5. Retire the View › Input interpretation toggle; explain on the input through engine-reported spans.
