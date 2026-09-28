@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import katex from "katex";
-import { read, write, toLatex, show, sameStmt, atomsInSpan } from "../dist/index.js";
+import { read, write, toLatex, show, sameStmt, atomsInSpan, letHead } from "../dist/index.js";
 
 const root = new URL("../../../", import.meta.url);
 const golden = readFileSync(new URL("engine/Tests/golden.tsv", root), "utf8").split("\n").filter(Boolean).map((l) => l.split("\t"));
@@ -12,7 +12,7 @@ const notebookCells = readdirSync(new URL("notebooks/", root)).filter((f) => f.e
   return JSON.parse(readFileSync(new URL(`notebooks/${f}`, root), "utf8")).cells.filter((c) => !c.type || c.type === "math").map((c) => {
     const cell = { file: f, src: c.src, known: [...known] };
     const r = read(c.src, known);
-    if (r.ok && r.stmt.let?.params) known.push(r.stmt.let.name);
+    if (r.ok && letHead(r.stmt)?.params) known.push(letHead(r.stmt).name);
     return cell;
   });
 });
@@ -55,8 +55,8 @@ test("the tree is the engine's parse: precedence, implicit products, what the nu
   assert.equal(shape("f(x)"), "[f (paren [x])]");
   assert.equal(shape("f(x)", ["f"]), "[(f [x])]");
   const s = tree("let g(a, b) = a*b + g(a, 1)");
-  assert.deepEqual(s.let, { name: "g", params: ["a", "b"] });
-  assert.equal(show(s.body), "[a * b + (g [a] [1])]");
+  assert.deepEqual(letHead(s), { name: "g", params: ["a", "b"] });
+  assert.equal(show(s.body), "[(let [g] [a] [b]) a * b + (g [a] [1])]");
 });
 
 test("parse errors are the engine's, with its spans", () => {

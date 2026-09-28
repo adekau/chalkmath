@@ -120,7 +120,6 @@ export class MathEdit {
   private restore(snap: Snapshot) {
     const st = JSON.parse(snap.json) as Stmt;
     this.stmt.body.splice(0, this.stmt.body.length, ...st.body);
-    if (st.let) this.stmt.let = st.let; else delete this.stmt.let;
     this.caret = this.caretAtPath(snap.caret);
     this.anchor = null;
     this.run = null;
@@ -276,14 +275,20 @@ export class MathEdit {
     return false;
   }
 
+  /** An empty slot, or the body of a `let` head that has none yet. */
+  private atHole(c: Caret, from: Caret): boolean {
+    if (c.block === from.block && c.i === from.i) return false;
+    return c.block.length === 0 ? c.block !== from.block : c.i === c.block.length && c.block[c.i - 1]?.k === "let";
+  }
+
   /** The next (1) or previous (−1) empty slot, wrapping around; false when there is none. */
   hole(dir: -1 | 1): boolean {
     const start = this.caret;
     const step = () => (dir > 0 ? this.right() : this.left());
     for (let lap = 0; lap < 2; lap++) {
-      while (step()) if (this.caret.block.length === 0 && this.caret.block !== start.block) return true;
+      while (step()) if (this.atHole(this.caret, start)) return true;
       if (dir > 0) this.home(); else this.end();
-      if (this.caret.block.length === 0 && this.caret.block !== start.block) return true;
+      if (this.atHole(this.caret, start)) return true;
     }
     this.caret = start;
     return false;
@@ -317,6 +322,9 @@ export class MathEdit {
   }
 
   private typeOne(c: string): boolean {
+    const hw = this.where(this.caret.block);
+    if (hw?.atom.k === "let") return this.typeInHead(c, hw.atom, hw);
+    if (c === " " && this.startHead()) return true;
     const g = this.glue;
     this.glue = null;
     if (g && g.block === this.caret.block && g.i === this.caret.i && isIdChar(c)) this.insert(ch(" "));
@@ -335,6 +343,36 @@ export class MathEdit {
     }
     if (isIdChar(c) || "+-*%.\\".includes(c)) return this.insert(ch(c));
     return false;
+  }
+
+  /** `let` then a space at the start of the input: the head, with the caret in its name. */
+  private startHead(): boolean {
+    const { block, i } = this.caret;
+    const word = block.slice(0, 3).map((a) => (a.k === "ch" ? a.c : "")).join("");
+    if (block !== this.root || i !== 3 || word !== "let") return false;
+    const head: Atom = { k: "let", name: [], params: null };
+    block.splice(0, 3, head);
+    this.caret = { block: head.name, i: 0 };
+    return true;
+  }
+
+  /** Typing in a `let` head: a name's characters; `(` opens the parameters and `,` adds one; a space,
+   *  `=` or `)` go on to the body. */
+  private typeInHead(c: string, head: Atom & { k: "let" }, w: Where): boolean {
+    const b = this.caret.block;
+    const body = () => { this.caret = { block: w.parent, i: w.index + 1 }; return true; };
+    if (isIdChar(c)) { b.splice(this.caret.i, 0, ch(c)); this.caret = { block: b, i: this.caret.i + 1 }; return true; }
+    if (b === head.name) {
+      if (c === "(") { head.params ??= [[]]; this.caret = { block: head.params[0]!, i: 0 }; return true; }
+      return (c === " " || c === "=") && b.length > 0 ? body() : false;
+    }
+    if (c === ",") {
+      const ps = head.params!, k = ps.indexOf(b);
+      if (k + 1 >= ps.length) ps.push([]);
+      this.caret = { block: ps[k + 1]!, i: 0 };
+      return true;
+    }
+    return c === ")" || c === "=" ? body() : false;
   }
 
   /** Put an atom at the caret; a structure takes the caret into its first slot — the first
@@ -357,7 +395,7 @@ export class MathEdit {
     let j = i;
     while (j > 0) {
       const a = b[j - 1]!;
-      if (a.k === "ch" && (a.c === "+" || (a.c === "-" && binaryMinus(b, j - 1)))) break;
+      if (a.k === "let" || (a.k === "ch" && (a.c === "+" || (a.c === "-" && binaryMinus(b, j - 1))))) break;
       j--;
     }
     const num = ungroup(b.splice(j, i - j));
@@ -384,7 +422,9 @@ export class MathEdit {
     while (j > 0 && b[j - 1]!.k === "ch" && isIdChar((b[j - 1] as { c: string }).c)) j--;
     const run = b.slice(j, i).map((a) => (a as { c: string }).c).join("");
     const last = run ? lex(run).filter((t) => t.kind !== "eof").pop() : undefined;
-    if (last?.kind === "id" && last.stop === Array.from(run).length && (BUILTIN_FUNCTIONS.includes(last.s) || this.known.includes(last.s))) {
+    // a function's own body may call it: `let f(n) = … f(n - 1)`
+    const head = this.root[0]?.k === "let" && this.root[0].params ? this.root[0].name.map((a) => (a as { c: string }).c).join("") : null;
+    if (last?.kind === "id" && last.stop === Array.from(run).length && (BUILTIN_FUNCTIONS.includes(last.s) || this.known.includes(last.s) || last.s === head)) {
       const n = Array.from(last.s).length;
       b.splice(i - n, n);
       this.caret = { block: b, i: i - n };
@@ -492,8 +532,9 @@ export class MathEdit {
       if (this.selection()) this.deleteSelection();
       const r = text.trim() ? read(text, this.known) : null;
       const { block, i } = this.caret;
-      if (r?.ok && r.stmt.let && block === this.root && !block.length && !this.stmt.let) this.stmt.let = r.stmt.let;
-      if (r?.ok && (!r.stmt.let || this.stmt.let === r.stmt.let)) {
+      // a `let` head goes only at the very start of an input that has none
+      const head = r?.ok && r.stmt.body[0]?.k === "let";
+      if (r?.ok && (!head || (block === this.root && i === 0 && this.root[0]?.k !== "let"))) {
         block.splice(i, 0, ...r.stmt.body);
         this.caret = { block, i: i + r.stmt.body.length };
         return true;
@@ -524,6 +565,15 @@ export class MathEdit {
     }
     const w = this.where(b);
     if (!w) return false;
+    if (w.atom.k === "let" && w.slot > 0 && b.length === 0) {
+      // an empty parameter goes (and with the last one, the parentheses)
+      const ps = w.atom.params!;
+      ps.splice(w.slot - 1, 1);
+      if (!ps.length) w.atom.params = null;
+      const prev = slots(w.atom)[w.slot - 1]!;
+      this.caret = { block: prev, i: prev.length };
+      return true;
+    }
     const s = slots(w.atom);
     if (s.every((x) => x.length === 0) || (w.slot === 0 && (w.atom.k === "paren" || (w.atom.k === "call" && s.length === 1)))) {
       w.parent.splice(w.index, 1, ...s.flat());

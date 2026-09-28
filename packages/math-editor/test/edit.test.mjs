@@ -154,3 +154,21 @@ test("paste reads the text as structure where it can", () => {
   e.undo();
   assert.equal(e.text, "");
 });
+
+test("a let head is typed as it reads, and its name and parameters are slots", () => {
+  assert.equal(text("let f(x, y) = x*y"), "let f(x, y) = x*y");
+  assert.equal(text("let a = 2"), "let a = 2");
+  assert.equal(typed("let ").holes, 2);                 // the name, and the body
+  // Tab goes name → body; a parameter list can grow and shrink
+  assert.equal(text("let g{tab}x^2", ""), "let g = x^2");
+  assert.equal(text("let f(x,{⌫}{⌫}{⌫}{tab}x", ""), "let f = x");
+  // the function's own body may call it
+  const { e } = typed("let f(n) = f(n");
+  assert.equal(e.stmt.body[1].k, "call");
+  // a numerator stops at the head, and a minus after it is a negation
+  assert.equal(text("let h = x/2"), "let h = x/2");
+  assert.equal(text("let h = -x"), "let h = -x");
+  // the caret walks through the head like any slot
+  const t = typed("", "let f(x) = x");
+  t.e.home(); t.e.right(); assert.equal(t.e.caret.block, t.e.stmt.body[0].name);
+});

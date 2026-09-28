@@ -3,7 +3,7 @@ import "katex/dist/katex.min.css";
 import { MathInput } from "../src/view.js";
 
 const samples = ["diff(x^2*sin(x), x)", "integrate(cos(t)*sin(t), t, 0, 2pi)", "sum(k^2, k, 1, 10)", "(x + 1)/(x - 1) + sqrt(2)",
-  "det([a, b; c, d])", "rref([1, 2, 3; 4, 5, 6; 7, 8, 10])", "x^(1/2) + abs(3 + 4i)", ""];
+  "det([a, b; c, d])", "rref([1, 2, 3; 4, 5, 6; 7, 8, 10])", "x^(1/2) + abs(3 + 4i)", "let f(x, y) = x^2 + y", ""];
 const host = document.querySelector("#inputs")!;
 const inputs: MathInput[] = [];
 for (const src of samples) {

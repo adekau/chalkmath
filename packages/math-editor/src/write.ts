@@ -16,11 +16,6 @@ export interface Written { text: string; spans: Map<Atom, { start: number; end: 
 
 export function write(stmt: Stmt): Written {
   const w = new Writer();
-  if (stmt.let) {
-    w.out += `let ${stmt.let.name}`;
-    if (stmt.let.params) w.out += `(${stmt.let.params.join(", ")})`;
-    w.out += " = ";
-  }
   w.block(stmt.body);
   return { text: w.out, spans: w.spans, holes: w.holes };
 }
@@ -33,7 +28,7 @@ const isCh = (a: Atom | undefined, c?: string): a is Atom & { k: "ch" } => a?.k 
 /** Is the `-` at `j` a subtraction (something to subtract from on its left) rather than a negation? */
 export function binaryMinus(b: Block, j: number): boolean {
   const p = b[j - 1];
-  return !!p && !(isCh(p) && "+-*".includes(p.c));
+  return !!p && p.k !== "let" && !(isCh(p) && "+-*".includes(p.c));
 }
 
 /** Does `b` have a sum or difference at its top level? */
@@ -59,6 +54,7 @@ function firstChar(a: Atom): string {
   switch (a.k) {
     case "ch": return a.c;
     case "call": return a.name[0] ?? "";
+    case "let": return "l";
     case "sup": return "^";
     case "matrix": return "[";
     default: return "(";
@@ -96,7 +92,7 @@ class Writer {
       case "frac": {
         // bare only where nothing on the left would join the numerator and no power follows
         const p = b[j - 1];
-        const bare = b[j + 1]?.k !== "sup" && (!p || isCh(p, "+") || (isCh(p, "-") && binaryMinus(b, j - 1)));
+        const bare = b[j + 1]?.k !== "sup" && (!p || p.k === "let" || isCh(p, "+") || (isCh(p, "-") && binaryMinus(b, j - 1)));
         if (!bare) this.out += "(";
         if (a.num.length > 0 && !additive(a.num)) this.block(a.num);
         else { this.out += "("; this.block(a.num); this.out += ")"; }
@@ -111,6 +107,17 @@ class Writer {
         this.out += a.name + "(";
         a.args.forEach((x, i) => { if (i) this.out += ", "; this.block(x); });
         this.out += ")";
+        return;
+      case "let":
+        this.out += "let ";
+        this.block(a.name);
+        if (a.params) {
+          this.out += "(";
+          a.params.forEach((x, i) => { if (i) this.out += ", "; this.block(x); });
+          this.out += ")";
+        }
+        this.out += " = ";
+        if (j === b.length - 1) this.holes++;   // a head with no body yet
         return;
       case "matrix":
         this.out += "[";

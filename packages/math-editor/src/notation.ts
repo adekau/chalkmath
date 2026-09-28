@@ -27,13 +27,7 @@ const GLYPH_NAMES: Record<string, string> = { pi: "\\pi", alpha: "\\alpha", beta
 const NAMED_FNS = ["sin", "cos", "tan", "exp", "ln", "log"];
 
 export function toLatex(stmt: Stmt, opts: NotationOptions = {}): string {
-  const n = new Notation(opts);
-  let head = "";
-  if (stmt.let) {
-    const params = stmt.let.params ? `\\left(${stmt.let.params.map(nameLatex).join(", ")}\\right)` : "";
-    head = `\\text{let }${nameLatex(stmt.let.name)}${params} = `;
-  }
-  return head + n.block(stmt.body);
+  return new Notation(opts).block(stmt.body);
 }
 
 /** A name on its own, the way the engine prints a variable: one letter italic, longer ones as one
@@ -90,6 +84,8 @@ class Notation {
       s += this.atom(a);
       j++;
     }
+    // a `let` head with no body yet: the body's place, drawn as an empty slot
+    if (b[b.length - 1]?.k === "let") s += this.hole(b);
     return s;
   }
 
@@ -131,6 +127,10 @@ class Notation {
       case "paren": return this.wrap([a], `\\left(${this.block(a.body)}\\right)`);
       case "matrix": return this.wrap([a], this.matrix(a.rows, "bmatrix"));
       case "call": return this.wrap([a], this.call(a));
+      case "let": {
+        const params = a.params ? `\\left(${a.params.map((p) => this.block(p)).join(",\\,")}\\right)` : "";
+        return this.wrap([a], `\\mathrm{let}\\;${this.block(a.name)}${params}\\;=\\;`);
+      }
     }
   }
 
@@ -184,6 +184,7 @@ export function slots(a: Atom): Block[] {
     case "sup": return [a.exp];
     case "paren": return [a.body];
     case "matrix": return a.rows.flat();
+    case "let": return [a.name, ...(a.params ?? [])];
     case "call": {
       const b = a.args;
       switch (`${a.name}/${b.length}`) {
