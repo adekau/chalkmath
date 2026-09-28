@@ -1,5 +1,6 @@
 // Bundles the Lean/wasm worker glue and the notebook page into apps/notebook/dist (static, self-hostable).
 import { build } from "esbuild";
+import { bundleLean } from "./lean-bundle.mjs";
 import { cpSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 // A build stamp on every asset URL, so a browser never keeps yesterday's engine.
 const BUILD = Date.now().toString(36);
@@ -25,3 +26,5 @@ for (const [from, to] of [
 writeFileSync("apps/notebook/dist/index.html", readFileSync("apps/notebook/index.html", "utf8").replace(/src="app\.js"/, `src="app.js?v=${BUILD}"`).replace(/href="style\.css"/, `href="style.css?v=${BUILD}"`));
 console.log("→ serve apps/notebook/dist with any static server (e.g. `npx serve apps/notebook/dist`)");
 await build({ ...out, entryPoints: ["packages/engine-host/src/worker-lean.ts"], format: "iife", outfile: "apps/notebook/dist/engine-lean.worker.js" });
+// Lean cells: the editor, the infoview and Lean's language server (scripts/lean-bundle.mjs)
+await bundleLean({ out: "apps/notebook/dist/lean", define, minify: true });
