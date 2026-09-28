@@ -1,7 +1,7 @@
 import { createClient, type EngineClient, type Step, type Path, type RuleStatus, type Derivation, type WireExpr } from "@chalkmath/protocol";
 declare const __BUILD_ID__: string;
 import { workerTransport, httpTransport } from "@chalkmath/engine-host";
-import { read as readNotation, writeText, type Stmt } from "@chalkmath/math-editor";
+import { read as readNotation, write as writeNotation, writeText, hasNotation, templateAt, templateInText, TEMPLATES, type Stmt, type Caret, type MathEdit } from "@chalkmath/math-editor";
 import { MathInput, type MathInputOptions } from "@chalkmath/math-editor/view";
 
 /**
@@ -96,7 +96,7 @@ const symbolFor = (name: string) => SYMBOLS.find((s) => s.abbr === name || s.ali
  *  Not λ: a λ-cell is not the grammar the visual input reads, and stays raw. */
 const VISUAL_SYMBOLS: Record<string, string> = Object.fromEntries(
   SYMBOLS.filter((s) => s.sym !== "λ").flatMap((s) => [s.abbr, ...s.aliases].map((a) => [a, s.sym])));
-type CompItem = { kind: "doc"; doc: Doc } | { kind: "sym"; sym: Sym };
+type CompItem = { kind: "doc"; doc: Doc } | { kind: "sym"; sym: Sym } | { kind: "tpl"; name: string; what: string; glyph: string };
 
 /** An order-theory cell, or a `let` binding one: the engine reads these in their own world. */
 const ORDER_CELL = /^(let\s+\w+\s*=\s*)?(poset|divisors|subsets|chain|map|hasse|join|meet|sup|inf|upper|lower|lattice|top|bottom|le|maximal|minimal|monotone|lfp|gfp|fixpoints)\s*\(/;
@@ -212,6 +212,12 @@ interface Cell {
   /** The visual input's tree, kept across re-renders while the source is still its text: it may
    *  have empty slots, whose text (`integrate(, x)`) does not read back. */
   tree?: Stmt;
+  /** Math input Auto: whether the cell is typeset, decided for this source (re-decided when the
+   *  cell is left with a different source, never while it is being typed in). */
+  autoVisual?: boolean;
+  autoFor?: string;
+  /** A template just opened in the cell's text: the editor to show, caret and history included. */
+  openedEdit?: MathEdit;
 }
 
 type TermRef = { kind: "output" } | { kind: "input" } | { kind: "step"; index: number };
@@ -319,9 +325,17 @@ const S = {
   deBruijn: false,
   /** Show the engine's rendering of the parsed input under each cell (View menu). */
   showEcho: (() => { try { return localStorage.getItem("chalkmath.echo") !== "off"; } catch { return true; } })(),
-  /** Math cells show their input typeset, with holes to fill, rather than as text (View menu); a
-   *  cell's own choice (`Cell.mode`) wins. Off until the visual input is complete. */
-  visualInput: prefOn("chalkmath.visual", false),
+  /** How math cells take their input (View menu): typeset with holes to fill, as text, or Auto —
+   *  typeset where there is notation to show (a fraction, a power, a matrix, d/dx, ∫, Σ, √),
+   *  highlighted text where there is none (`epicycles(llama, 60)`). A cell's own choice wins. */
+  inputMode: ((): "auto" | "visual" | "raw" => {
+    try {
+      const v = localStorage.getItem("chalkmath.inputmode");
+      if (v === "auto" || v === "visual" || v === "raw") return v;
+      if (localStorage.getItem("chalkmath.visual") === "on") return "visual";   // the earlier on/off preference
+    } catch { /* private mode */ }
+    return "auto";
+  })(),
   /** Size of rendered mathematics in the cells (View menu): small, normal or large. */
   outSize: (() => { try { return (localStorage.getItem("chalkmath.outsize") as "s" | "m" | "l" | null) ?? "m"; } catch { return "m" as const; } })() as "s" | "m" | "l",
   menu: null as string | null,
@@ -1054,7 +1068,7 @@ const SHORTCUTS: [string, string][] = [
   ["Tab", "Complete a command or a \\-symbol"],
   ["\\pi, \\lam, \\e, \\theta … then space", "Type a symbol: π, λ, ℯ, θ …"],
   ["Ctrl/⌘+Shift+M", "Switch the cell between visual and text input"],
-  ["\\frac, \\sqrt, \\int, \\dint, \\sum, \\diff, \\mat2x3 … (visual)", "Insert a fraction, root, integral, sum, derivative, matrix …"],
+  ["\\frac, \\sqrt, \\int, \\dint, \\sum, \\diff, \\mat2x3 … then space", "Insert a fraction, root, integral, sum, derivative, matrix … (a text cell turns typeset)"],
   ["Tab (visual)", "The next empty slot"],
   ["Esc", "Close a popup, the signature help, or this dialog"],
   ["Ctrl/⌘+S", "Save in this browser (with Shift: Save as)"],
@@ -1596,7 +1610,12 @@ function renderChrome() {
     View: [["Toggle light / dark", () => { applyTheme(S.theme === "light" ? "dark" : "light"); renderChrome(); }], [`${S.sidebarOpen ? "✓ " : ""}Sidebar  (Ctrl+B)`, toggleSidebar], ["Explanation panel", () => { S.panelOpen = !S.panelOpen; renderPanelHead(); renderPanel(); }],
       ["Show all work", () => setAllWork(true)], ["Hide all work", () => setAllWork(false)],
       [`${S.foldWorkOnOpen ? "✓ " : ""}Hide work in opened notebooks`, () => { S.foldWorkOnOpen = !S.foldWorkOnOpen; setPref("chalkmath.foldwork", S.foldWorkOnOpen); renderChrome(); }], [`${S.deBruijn ? "✓ " : ""}de Bruijn indices (λ-cells)`, () => { S.deBruijn = !S.deBruijn; renderChrome(); renderCells(); }],
-      [`${S.visualInput ? "✓ " : ""}Visual math input`, () => { S.visualInput = !S.visualInput; setPref("chalkmath.visual", S.visualInput); renderChrome(); renderCells(); }],
+      ...(["auto", "visual", "raw"] as const).map((m): [string, () => void] => [`${S.inputMode === m ? "✓ " : "   "}Math input: ${{ auto: "automatic", visual: "typeset", raw: "text" }[m]}`, () => {
+        S.inputMode = m;
+        try { localStorage.setItem("chalkmath.inputmode", m); } catch { /* private mode */ }
+        for (const c of S.cells) delete c.autoFor;
+        renderChrome(); renderCells();
+      }]),
       [`${S.showEcho ? "✓ " : ""}Input interpretation`, () => { S.showEcho = !S.showEcho; try { localStorage.setItem("chalkmath.echo", S.showEcho ? "on" : "off"); } catch { /* private mode */ } renderChrome(); renderCells(); }],
       [`${S.highlight ? "✓ " : ""}Syntax highlighting`, () => { S.highlight = !S.highlight; try { localStorage.setItem("chalkmath.highlight", S.highlight ? "on" : "off"); } catch { /* private mode */ } document.documentElement.classList.toggle("nohl", !S.highlight); renderHighlights(); renderChrome(); }],
       [`${S.sigHelp ? "✓ " : ""}Signature help`, () => { S.sigHelp = !S.sigHelp; try { localStorage.setItem("chalkmath.sighelp", S.sigHelp ? "on" : "off"); } catch { /* private mode */ } if (!S.sigHelp) hideSigHelp(); renderChrome(); }],
@@ -2078,13 +2097,59 @@ function visualBlocked(cell: Cell): string | null {
   if (src.trim() && !readNotation(src, sessionFns()).ok) return "the text does not parse yet";
   return null;
 }
-const isVisual = (cell: Cell) => (cell.mode ?? (S.visualInput ? "visual" : "raw")) === "visual" && !visualBlocked(cell);
+const cellMode = (cell: Cell) => cell.mode ?? S.inputMode;
+
+/** Auto's decision for the cell's source: typeset when it has notation to show, or empty slots of the
+ *  visual input's own. */
+function decideAuto(cell: Cell) {
+  const src = cellSrc(cell);
+  const own = cell.tree && writeText(cell.tree) === src ? cell.tree : null;
+  const r = own ? null : src.trim() ? readNotation(src, sessionFns()) : null;
+  const tree = own ?? (r?.ok ? r.stmt : null);
+  cell.autoVisual = !!tree && (hasNotation(tree.body) || writeNotation(tree).holes > 0);
+  cell.autoFor = src;
+}
+
+function isVisual(cell: Cell): boolean {
+  if (visualBlocked(cell)) return false;
+  const mode = cellMode(cell);
+  if (mode !== "auto") return mode === "visual";
+  // the cell being typed in keeps the input it has; it is decided again when it is left
+  if (cell.autoFor === undefined || (cell.autoFor !== cellSrc(cell) && S.cells[S.active] !== cell)) decideAuto(cell);
+  return !!cell.autoVisual;
+}
+
+/** Leaving an Auto cell: typeset if it now has notation, text if not. */
+function autoSettle(cell: Cell) {
+  setTimeout(() => {
+    if (!cell.el?.isConnected || cell.el.contains(document.activeElement) || cellMode(cell) !== "auto") return;
+    const was = !!cell.mi;
+    decideAuto(cell);
+    if (isVisual(cell) !== was) refreshInput(cell);
+  }, 0);
+}
+
+/** A `\template` typed in a cell's text: the cell goes typeset with the template where it was typed.
+ *  False when the cell stays text (Math input: text, a λ-cell, or text that does not read around it). */
+function openTemplate(cell: Cell, before: string, after: string): boolean {
+  if (cellMode(cell) === "raw" || cell.kind === "λ-term" || !templateAt(before)) return false;
+  const rest = before.slice(0, templateAt(before)!.start) + after;
+  if (/[λ\\]|:=/.test(rest)) return false;
+  const e = templateInText(before, after, { known: sessionFns(), symbols: VISUAL_SYMBOLS });
+  if (!e) return false;
+  cell.tree = e.stmt; cell.src = writeText(e.stmt); cell.openedEdit = e;
+  if (cellMode(cell) === "auto") { cell.autoVisual = true; cell.autoFor = cell.src; }
+  refreshInput(cell);
+  cell.mi?.focus();
+  renderSidebar(); renderTabs();
+  return true;
+}
 
 function visualInput(cell: Cell, i: number): MathInput | null {
   const opts: MathInputOptions = {
     known: sessionFns(), symbols: VISUAL_SYMBOLS, label: `Cell ${i + 1}, math input`,
     onFocus: () => { S.active = i; renderChrome(); renderSidebar(); markActive(); },
-    onBlur: () => hideSigHelp(),
+    onBlur: () => { hideSigHelp(); autoSettle(cell); },
     onCaret: () => updateVisualSigHelp(cell),
     onChange: (text) => { cell.src = text; renderSidebar(); renderTabs(); },
     onEnter: () => {
@@ -2099,6 +2164,14 @@ function visualInput(cell: Cell, i: number): MathInput | null {
       return modeKey(ev, cell);
     },
     onPaste: (ev) => onPaste(ev, cell),
+    // the text highlighter's colours: what a name is, and where it is bound
+    classify: (text, as) => {
+      if (as === "num") return "hnum";
+      if (as === "bound") return "hbound";
+      if (USER_NAMES.has(`${sessionId}:${text}`)) return "hdef";
+      if (CONSTANTS.has(text)) return "hconst";
+      return as === "call" ? (COMMANDS.has(text) ? "hcmd" : BUILTIN_FN.has(text) ? "hfn" : null) : null;
+    },
     // `%` is the output before this cell's own (or, not yet run, the latest); `%n` is Out[n]
     outRef: (ref) => {
       const base = cell.label ?? Math.max(0, ...S.cells.map((c) => c.label ?? 0)) + 1;
@@ -2108,6 +2181,9 @@ function visualInput(cell: Cell, i: number): MathInput | null {
       return { label: n, ...(out ? { value: out } : {}) };
     },
   };
+  const e = cell.openedEdit;
+  delete cell.openedEdit;
+  if (e && e.stmt === cell.tree) opts.edit = e;
   const mi = cell.tree && writeText(cell.tree) === cell.src ? new MathInput(cell.tree, opts) : MathInput.fromSource(cell.src, opts);
   if (mi) cell.tree = mi.edit.stmt; else delete cell.tree;
   return mi;
@@ -2136,6 +2212,43 @@ function modeToggle(cell: Cell): HTMLElement {
   b.addEventListener("mousedown", (e) => e.preventDefault());
   b.addEventListener("click", () => toggleMode(cell));
   return b;
+}
+
+/** A math cell's input: the visual one, or the text input with its highlight overlay underneath. */
+function inputEls(cell: Cell, i: number): HTMLElement[] {
+  const mi = isVisual(cell) ? visualInput(cell, i) : null;
+  if (mi) { cell.mi = mi; return [mi.el]; }
+  const input = document.createElement("input");
+  input.className = "cellin"; input.type = "text"; input.value = cell.src;
+  input.setAttribute("aria-label", `Cell ${i + 1}, math input`);
+  input.autocapitalize = "off"; input.autocomplete = "off"; input.setAttribute("autocorrect", "off"); input.enterKeyHint = "go";
+  input.placeholder = i === 0 ? "e.g. diff(x^2 * sin(x), x)" : "";
+  input.spellcheck = false;
+  cell.input = input;
+  input.addEventListener("focus", () => { S.active = i; renderChrome(); renderSidebar(); markActive(); });
+  input.addEventListener("input", () => { cell.src = input.value; updateCompletions(cell); updateSigHelp(cell); syncHighlight(cell); renderSidebar(); renderTabs(); });
+  input.addEventListener("keyup", () => { updateSigHelp(cell); syncHighlight(cell); });   // caret moves without an input event
+  input.addEventListener("click", () => updateSigHelp(cell));
+  input.addEventListener("scroll", () => syncHighlight(cell));
+  input.addEventListener("blur", () => { hideCompletions(); hideSigHelp(); autoSettle(cell); });
+  input.addEventListener("keydown", (ev) => onKey(ev, cell, i));
+  input.addEventListener("paste", (ev) => onPaste(ev, cell));
+  // the highlight overlay sits under the transparent text of the input; the input keeps caret and selection
+  const hl = h("div", "hl"); hl.setAttribute("aria-hidden", "true");
+  cell.hl = hl;
+  syncHighlight(cell);
+  return [hl, input];
+}
+
+/** Swap one cell's input (typeset ↔ text) in place, without rebuilding the others. */
+function refreshInput(cell: Cell) {
+  const i = S.cells.indexOf(cell), mid = cell.el?.querySelector(".mid");
+  if (i < 0 || !mid) return;
+  for (const el of mid.querySelectorAll(":scope > .mi, :scope > .hl, :scope > .cellin")) el.remove();
+  delete cell.mi; delete cell.input; delete cell.hl;
+  mid.prepend(...inputEls(cell, i));
+  cell.el?.querySelector(".modetog")?.replaceWith(modeToggle(cell));
+  renderCellBody(cell);
 }
 
 function renderCells() {
@@ -2197,30 +2310,7 @@ function renderCells() {
     el.append(h("div", "prompt", `In[${cell.label ?? " "}]:=`));
 
     const mid = h("div", "mid");
-    const mi = isVisual(cell) ? visualInput(cell, i) : null;
-    if (mi) { cell.mi = mi; mid.append(mi.el); }
-    else {
-      const input = document.createElement("input");
-      input.className = "cellin"; input.type = "text"; input.value = cell.src;
-      input.setAttribute("aria-label", `Cell ${i + 1}, math input`);
-      input.autocapitalize = "off"; input.autocomplete = "off"; input.setAttribute("autocorrect", "off"); input.enterKeyHint = "go";
-      input.placeholder = i === 0 ? "e.g. diff(x^2 * sin(x), x)" : "";
-      input.spellcheck = false;
-      cell.input = input;
-      input.addEventListener("focus", () => { S.active = i; renderChrome(); renderSidebar(); markActive(); });
-      input.addEventListener("input", () => { cell.src = input.value; updateCompletions(cell); updateSigHelp(cell); syncHighlight(cell); renderSidebar(); renderTabs(); });
-      input.addEventListener("keyup", () => { updateSigHelp(cell); syncHighlight(cell); });   // caret moves without an input event
-      input.addEventListener("click", () => updateSigHelp(cell));
-      input.addEventListener("scroll", () => syncHighlight(cell));
-      input.addEventListener("blur", () => { hideCompletions(); hideSigHelp(); });
-      input.addEventListener("keydown", (ev) => onKey(ev, cell, i));
-      input.addEventListener("paste", (ev) => onPaste(ev, cell));
-      // the highlight overlay sits under the transparent text of the input; the input keeps caret and selection
-      const hl = h("div", "hl"); hl.setAttribute("aria-hidden", "true");
-      cell.hl = hl;
-      mid.append(hl, input);
-      syncHighlight(cell);
-    }
+    mid.append(...inputEls(cell, i));
 
     const body = h("div", "cellbody");
     mid.append(body);
@@ -3719,6 +3809,10 @@ function updateCompletions(cell: Cell) {
   if (word.startsWith("\\")) {
     const q = word.slice(1).toLowerCase();
     items = SYMBOLS.filter((s) => [s.abbr, ...s.aliases].some((a) => a.startsWith(q))).map((sym) => ({ kind: "sym", sym }));
+    // unless the cell is kept as text, a template (`\frac`, `\int`, …) turns it typeset
+    if (cellMode(cell) !== "raw" && cell.kind !== "λ-term") {
+      for (const [name, t] of Object.entries(TEMPLATES)) if (name.toLowerCase().startsWith(q)) items.push({ kind: "tpl", name, what: t.what, glyph: t.glyph });
+    }
   } else {
     items = DOCS.filter((d) => d.name.toLowerCase().startsWith(word.toLowerCase()) && d.name !== word).map((doc) => ({ kind: "doc", doc }));
   }
@@ -3737,6 +3831,15 @@ function acceptCompletion() {
   const { word, start } = currentWord(input);
   const item = items[index]!;
   const after = input.value.slice(start + word.length);
+  if (item.kind === "tpl") {
+    hideCompletions();
+    if (openTemplate(cell, input.value.slice(0, start) + "\\" + item.name, after)) return true;
+    // the text around it does not read yet: the command stays as typed, to finish by hand
+    input.value = input.value.slice(0, start) + "\\" + item.name + after;
+    input.setSelectionRange(start + item.name.length + 1, start + item.name.length + 1);
+    cell.src = input.value; syncHighlight(cell); renderSidebar();
+    return true;
+  }
   // a symbol abbreviation becomes the symbol itself; a function name opens its parenthesis
   const insert = item.kind === "sym" ? item.sym.sym : item.doc.name + (after.startsWith("(") ? "" : "(");
   input.value = input.value.slice(0, start) + insert + after;
@@ -3757,6 +3860,9 @@ function renderCompletions() {
     if (it.kind === "sym") {
       const s = it.sym;
       row.append(h("span", "n", `\\${s.abbr}${s.aliases.length ? ` (${s.aliases.map((a) => "\\" + a).join(", ")})` : ""}`), h("span", "h", s.what), h("span", "sym", s.sym));
+    } else if (it.kind === "tpl") {
+      row.classList.add("symrow");
+      row.append(h("span", "n", `\\${it.name}`), h("span", "h", it.what), h("span", "sym", it.glyph));
     } else {
       const d = it.doc;
       row.append(h("span", "n", d.sig), h("span", "h", d.blurb.split(".")[0]!));
@@ -3875,7 +3981,7 @@ function syncHighlight(cell: Cell) {
   (hl.firstElementChild as HTMLElement | null)?.style.setProperty("transform", `translateX(${-input.scrollLeft}px)`);
 }
 /** Redraw every overlay (a name became bound, the toggle changed). */
-function renderHighlights() { for (const c of S.cells) { if (c.hl) delete c.hl.dataset["src"]; syncHighlight(c); } }
+function renderHighlights() { for (const c of S.cells) { if (c.hl) delete c.hl.dataset["src"]; syncHighlight(c); c.mi?.render(); } }
 
 // --- Signature help: the call around the caret, its parameters, the current one in bold ---------
 
@@ -4009,6 +4115,11 @@ function hideHover() { document.querySelector(".hoverdoc")?.remove(); }
 
 function onKey(ev: KeyboardEvent, cell: Cell, i: number) {
   if (modeKey(ev, cell)) return;
+  if (ev.key === " " && cell.input) {
+    // `\frac` then space in the text: the cell goes typeset with the template in place
+    const input = cell.input, at = input.selectionStart ?? input.value.length;
+    if (openTemplate(cell, input.value.slice(0, at), input.value.slice(input.selectionEnd ?? at))) { ev.preventDefault(); hideCompletions(); return; }
+  }
   if (S.comp) {
     if (ev.key === "ArrowDown") { ev.preventDefault(); S.comp.index = (S.comp.index + 1) % S.comp.items.length; return renderCompletions(); }
     if (ev.key === "ArrowUp") { ev.preventDefault(); S.comp.index = (S.comp.index - 1 + S.comp.items.length) % S.comp.items.length; return renderCompletions(); }

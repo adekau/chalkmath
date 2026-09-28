@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import katex from "katex";
-import { read, write, toLatex, show, sameStmt, atomsInSpan, letHead } from "../dist/index.js";
+import { read, write, toLatex, show, sameStmt, atomsInSpan, letHead, hasNotation } from "../dist/index.js";
 
 const root = new URL("../../../", import.meta.url);
 const golden = readFileSync(new URL("engine/Tests/golden.tsv", root), "utf8").split("\n").filter(Boolean).map((l) => l.split("\t"));
@@ -141,4 +141,19 @@ test("an engine span maps to the innermost atoms it covers", () => {
   assert.equal(at(10, 17), "[(sqrt [z])]");
   assert.equal(at(10, 14), "[(sqrt [z])]");            // the name of a call is the call
   assert.equal(at(17, 17), "[(sqrt [z])]");            // the end of the input: the last atom
+});
+
+test("tokens carry the host's highlight classes, with binders' variables and parameters bound", () => {
+  const seen = [];
+  const classify = (text, as) => { seen.push(`${as}:${text}`); return as === "name" ? null : as; };
+  const latex = toLatex(tree("let f(x) = diff(x^2 + y, x) + rref(M) + 2"), { classify });
+  assert.deepEqual(seen.sort(), ["bound:x", "bound:x", "bound:x", "call:rref", "name:M", "name:f", "name:y", "num:2", "num:2"]);
+  assert.match(latex, /\\htmlData\{hl=call\}\{\\operatorname\{rref\}\}/);
+  assert.doesNotThrow(() => katex.renderToString(latex, { throwOnError: true, strict: false, trust: (c) => c.command === "\\htmlData" }));
+});
+
+test("notation is what the text cannot show: fractions, powers, matrices, d/dx, ∫, Σ, √, bars", () => {
+  const has = (src) => hasNotation(tree(src).body);
+  for (const src of ["1/2", "x^2", "[1,2]", "diff(f, x)", "sqrt(2)", "abs(x)", "rref([1,2;3,4])", "N(1/3)"]) assert.equal(has(src), true, src);
+  for (const src of ["epicycles(llama, 60)", "x + 1", "N(pi)", "rref(M)", "subst(f, x, 3)", "let f = g", "diff"]) assert.equal(has(src), false, src);
 });

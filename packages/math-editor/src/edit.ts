@@ -611,3 +611,41 @@ export class MathEdit {
     return true;
   }
 }
+
+/** The template a `\name` at the end of `text` asks for (`\frac`, `\mat2x3`), with where it starts. */
+export function templateAt(text: string): { name: string; start: number; make: () => Atom } | null {
+  const m = /\\([A-Za-z]+?)(\d+)?(?:x(\d+))?$/.exec(text);
+  const t = m && TEMPLATES[m[1]!];
+  if (!m || !t) return null;
+  return { name: m[1]!, start: m.index, make: () => t.make(m[2] ? +m[2] : undefined, m[3] ? +m[3] : undefined) };
+}
+
+/** A template asked for in a cell's text: `before` ends with the `\name`, `after` follows the caret.
+ *  The cell as a tree with the template where the command was and the caret in its first slot, or
+ *  null when the text around it does not read (the cell stays text). The text is read with a
+ *  placeholder name in the command's place, so the template lands where it was typed, whatever
+ *  surrounds it: `rref(\mat2x2)`, `1 + \frac`. */
+export function templateInText(before: string, after: string, opts: { known?: readonly string[]; symbols?: Record<string, string> } = {}): MathEdit | null {
+  const t = templateAt(before);
+  if (!t) return null;
+  const PH = "__template__";
+  const r = read(`${before.slice(0, t.start)} ${PH} ${after}`, opts.known);
+  if (!r.ok) return null;
+  const find = (b: Block): Caret | null => {
+    for (let i = 0; i + PH.length <= b.length; i++) {
+      if (Array.from(PH).every((c, k) => { const a = b[i + k]; return a?.k === "ch" && a.c === c; })) return { block: b, i };
+    }
+    for (const a of b) for (const s of slots(a)) { const c = find(s); if (c) return c; }
+    return null;
+  };
+  const at = find(r.stmt.body);
+  if (!at) return null;
+  at.block.splice(at.i, PH.length);
+  // the space the reader kept between the placeholder and a name beside it goes with it
+  const sp = (a: Atom | undefined) => a?.k === "ch" && a.c === " ";
+  if (sp(at.block[at.i - 1])) { at.block.splice(at.i - 1, 1); at.i--; } else if (sp(at.block[at.i])) at.block.splice(at.i, 1);
+  const e = new MathEdit(r.stmt, opts);
+  e.caret = at;
+  e.insert(t.make(), true);
+  return e;
+}
