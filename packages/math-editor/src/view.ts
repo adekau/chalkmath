@@ -1,9 +1,9 @@
 import katex from "katex";
 import { MathEdit, TEMPLATES, type Caret } from "./edit.js";
 import type { Atom, Block, Stmt } from "./model.js";
-import { slots, toLatex } from "./notation.js";
+import { outRefOf, slots, toLatex } from "./notation.js";
 import { read } from "./read.js";
-import { write } from "./write.js";
+import { atomsInSpan, write } from "./write.js";
 
 /**
  * The visual input on a page. The tree is drawn by KaTeX — the LaTeX of `notation.ts` with every atom
@@ -26,12 +26,20 @@ export interface MathInputOptions {
   onChange?(text: string, holes: number): void;
   /** Enter (after a pending `\\name` has been finished). */
   onEnter?(): void;
-  /** The input took the focus. */
+  /** The input took the focus, or lost it. */
   onFocus?(): void;
+  onBlur?(): void;
+  /** The caret moved or the text changed (signature help follows the caret). */
+  onCaret?(): void;
   /** ↑ or ↓ with nowhere to go inside the input. */
   onLeave?(dir: -1 | 1): void;
   /** A key, before the input handles it; return true to take it (a completion menu's arrows). */
   onKey?(ev: KeyboardEvent): boolean;
+  /** What an output reference (`%`, `%%`, `%3`) stands for: its number, and the output's text for
+   *  a tooltip. Without it, `%n` shows its number and `%` stays as typed. */
+  outRef?(ref: string): { label: number; value?: string } | null;
+  /** A paste, before the input reads it: the host takes it (an image, an SVG) by preventing its default. */
+  onPaste?(ev: ClipboardEvent): void;
 }
 
 /** The styles the input needs; added to the page once. Colours come from the page's `--mi-*`
@@ -45,6 +53,9 @@ export const MATH_INPUT_CSS = `
 .mi.focused { box-shadow:0 0 0 1px var(--mi-focus, #6b8afd); border-radius:4px; }
 .mi.focused .mi-math [data-h].mi-here { color:var(--mi-caret, currentColor); }
 .mi-cmd { color:var(--mi-cmd, #b0662c); }
+.mi-math .mi-err { background:var(--mi-err-bg, rgba(192,57,43,0.12)); box-shadow:0 2px 0 var(--mi-err, #c0392b); border-radius:2px 2px 0 0; }
+.mi-math [data-out] { background:var(--mi-chip, rgba(107,138,253,0.14)); border-radius:4px; padding:0 2px; }
+.mi-math .mi-sel { background:var(--mi-sel, rgba(107,138,253,0.28)); border-radius:2px; }
 .mi-ta { position:absolute; left:0; top:0; width:1px; height:1px; opacity:0; padding:0; border:0; resize:none; overflow:hidden; }
 @keyframes mi-blink { 50% { opacity:0; } }
 @media (prefers-reduced-motion: reduce) { .mi.focused .mi-caret { animation:none; } }
@@ -73,6 +84,10 @@ export class MathInput {
   private atomEl = new Map<Atom, { el: HTMLElement; k: number; n: number }>();
   private holeEl = new Map<Block, HTMLElement>();
   private composing = false;
+  /** The engine's error span on the last run, marked on the atoms it covers until the next edit. */
+  private errSpan: { start: number; end: number } | null = null;
+  /** A mouse drag in progress: where it started. */
+  private drag: Caret | null = null;
   /** The `\\` suggestions under the caret: the names that start with what has been typed. */
   private comp: { items: { name: string; what: string; glyph: string }[]; index: number; box: HTMLElement } | null = null;
   /** Esc closed the suggestions for this command; they come back when it changes. */
@@ -100,25 +115,50 @@ export class MathInput {
     this.ta.setAttribute("autocorrect", "off"); this.ta.setAttribute("autocomplete", "off");
     this.el.append(this.math, this.caretEl, this.ta);
     this.ta.addEventListener("focus", () => { this.el.classList.add("focused"); this.place(); this.opts.onFocus?.(); });
-    this.ta.addEventListener("blur", () => { this.el.classList.remove("focused"); this.hideSuggestions(); });
+    this.ta.addEventListener("blur", () => { this.el.classList.remove("focused"); this.hideSuggestions(); this.opts.onBlur?.(); });
     this.ta.addEventListener("keydown", (ev) => this.key(ev));
     this.ta.addEventListener("compositionstart", () => { this.composing = true; });
     this.ta.addEventListener("compositionend", () => { this.composing = false; this.typed(); });
     this.ta.addEventListener("input", () => { if (!this.composing) this.typed(); });
-    this.ta.addEventListener("copy", (ev) => { ev.clipboardData?.setData("text/plain", this.text); ev.preventDefault(); });
-    this.ta.addEventListener("paste", (ev) => {
-      const t = ev.clipboardData?.getData("text/plain");
-      if (t === undefined) return;
+    // Copy and Cut take the selection (or, with none, the whole input) as source text
+    this.ta.addEventListener("copy", (ev) => { ev.clipboardData?.setData("text/plain", this.edit.selectedText() || this.text); ev.preventDefault(); });
+    this.ta.addEventListener("cut", (ev) => {
       ev.preventDefault();
-      for (const c of t) this.edit.type(c);
+      if (!this.edit.selection()) return;
+      ev.clipboardData?.setData("text/plain", this.edit.selectedText());
+      this.edit.deleteSelection();
       this.changed();
     });
+    this.ta.addEventListener("paste", (ev) => {
+      this.opts.onPaste?.(ev);
+      if (ev.defaultPrevented) return;
+      const t = ev.clipboardData?.getData("text/plain");
+      if (!t) return;
+      ev.preventDefault();
+      if (this.edit.paste(t)) this.changed();
+    });
+    // a click puts the caret; a drag selects; Shift+click extends the selection
     this.el.addEventListener("mousedown", (ev) => {
       ev.preventDefault();
       const c = this.caretAt(ev.clientX, ev.clientY);
-      if (c) this.edit.caret = c;
+      if (c) {
+        if (ev.shiftKey) this.edit.extend(); else this.edit.anchor = null;
+        this.edit.caret = c;
+        this.edit.moved();
+        this.drag = ev.shiftKey ? this.edit.anchor : { ...c };
+      }
       this.focus(false);
       this.place();
+      const move = (m: MouseEvent) => {
+        const to = this.drag && this.caretAt(m.clientX, m.clientY);
+        if (!to || !this.drag) return;
+        this.edit.anchor = to.block === this.drag.block && to.i === this.drag.i ? null : this.drag;
+        this.edit.caret = to;
+        this.place();
+      };
+      const up = () => { this.drag = null; document.removeEventListener("mousemove", move); document.removeEventListener("mouseup", up); };
+      document.addEventListener("mousemove", move);
+      document.addEventListener("mouseup", up);
     });
     this.render();
   }
@@ -140,6 +180,7 @@ export class MathInput {
     const latex = toLatex(this.edit.stmt, {
       wrap: (atoms, s) => { tagged.push(atoms); return `\\htmlData{a=${tagged.length - 1}}{${s}}`; },
       hole: (b) => { holes.push(b); return `\\htmlData{h=${holes.length - 1}}{\\square}`; },
+      outRef: (ref) => this.opts.outRef?.(ref)?.label ?? null,
     });
     // display-size fractions and operators, as a textbook (and Symbolab) set an input, but left-aligned
     katex.render(`\\displaystyle ${latex}`, this.math, { throwOnError: false, trust: TRUST, strict: false, displayMode: false });
@@ -156,6 +197,11 @@ export class MathInput {
     // a `\\name` still being typed shows as a command, not as letters of a name
     const p = this.edit.pendingCommand();
     if (p) for (const a of this.edit.caret.block.slice(p.start, this.edit.caret.i)) this.atomEl.get(a)?.el.classList.add("mi-cmd");
+    if (this.errSpan) for (const a of atomsInSpan(this.edit.stmt, this.errSpan)) this.atomEl.get(a)?.el.classList.add("mi-err");
+    for (const el of this.math.querySelectorAll<HTMLElement>("[data-out]")) {
+      const r = this.opts.outRef?.(outRefOf(el.dataset["out"]!));
+      if (r) el.title = `Out[${r.label}]${r.value ? ` = ${r.value}` : ""}`;
+    }
     const text = this.text;
     this.ta.setAttribute("aria-label", `${this.opts.label ?? "Math input"}: ${text || "empty"}`);
     this.place();
@@ -192,6 +238,9 @@ export class MathInput {
   /** Draw the caret, and mark the hole it is in. */
   private place() {
     this.math.querySelector(".mi-here")?.classList.remove("mi-here");
+    for (const el of this.math.querySelectorAll(".mi-sel")) el.classList.remove("mi-sel");
+    const sel = this.edit.selection();
+    if (sel) for (const a of sel.block.slice(sel.start, sel.end)) this.atomEl.get(a)?.el.classList.add("mi-sel");
     const bx = this.box(this.edit.caret);
     if (!bx) { this.caretEl.style.display = "none"; return; }
     this.caretEl.style.removeProperty("display");
@@ -202,6 +251,7 @@ export class MathInput {
     if (this.edit.caret.block.length === 0) this.holeEl.get(this.edit.caret.block)?.classList.add("mi-here");
     this.ta.style.left = this.caretEl.style.left;   // an IME's candidate window opens at the caret
     this.ta.style.top = this.caretEl.style.top;
+    if (this.el.classList.contains("focused")) this.opts.onCaret?.();
   }
 
   /** Every caret position, for a click to choose among. */
@@ -235,7 +285,11 @@ export class MathInput {
     this.changed();
   }
 
+  /** Mark where the engine's error is (its span into the text), or clear the mark. */
+  markError(span: { start: number; end: number } | null) { this.errSpan = span; this.render(); }
+
   private changed() {
+    this.errSpan = null;
     this.render();
     this.suggest();
     this.opts.onChange?.(this.text, this.holes);
@@ -313,7 +367,16 @@ export class MathInput {
 
   private key(ev: KeyboardEvent) {
     if (this.opts.onKey?.(ev)) return;
-    if (ev.ctrlKey || ev.metaKey || ev.altKey || this.composing) return;
+    if (this.composing) return;
+    const mod = ev.ctrlKey || ev.metaKey, k = ev.key.toLowerCase();
+    if (mod && !ev.altKey && (k === "z" || k === "y" || k === "a")) {
+      ev.preventDefault();
+      if (k === "a") { this.edit.selectAll(); this.place(); return; }
+      const redo = k === "y" || ev.shiftKey;
+      if (redo ? this.edit.redo() : this.edit.undo()) this.changed();
+      return;
+    }
+    if (mod || ev.altKey) return;
     const cp = this.comp;
     if (cp) {
       const n = cp.items.length;
@@ -328,16 +391,25 @@ export class MathInput {
     }
     const e = this.edit;
     let moved = true, edited = false;
+    // Shift extends the selection with any move; without it, a move drops the selection (← and →
+    // go to its ends)
+    const isMove = /^(Arrow(Left|Right|Up|Down)|Home|End)$/.test(ev.key);
+    if (isMove && ev.shiftKey) e.extend();
+    else if (isMove && e.selection() && (ev.key === "ArrowLeft" || ev.key === "ArrowRight")) {
+      e.collapse(ev.key === "ArrowLeft" ? -1 : 1);
+      ev.preventDefault(); this.place(); return;
+    } else if (isMove) e.anchor = null;
     switch (ev.key) {
       case "ArrowLeft": e.left(); break;
       case "ArrowRight": e.right(); break;
       case "ArrowUp": case "ArrowDown": {
         const dir = ev.key === "ArrowUp" ? -1 : 1;
-        if (!e.vertical(dir)) { ev.preventDefault(); this.opts.onLeave?.(dir); return; }
+        if (!e.vertical(dir)) { ev.preventDefault(); if (!ev.shiftKey) this.opts.onLeave?.(dir); return; }
         break;
       }
       case "Home": e.home(); break;
       case "End": e.end(); break;
+      case "Escape": if (!e.selection()) return; e.anchor = null; break;
       case "Backspace": edited = e.backspace(); break;
       case "Delete": edited = e.deleteForward(); break;
       case "Tab":

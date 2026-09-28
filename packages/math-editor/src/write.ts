@@ -16,11 +16,6 @@ export interface Written { text: string; spans: Map<Atom, { start: number; end: 
 
 export function write(stmt: Stmt): Written {
   const w = new Writer();
-  if (stmt.let) {
-    w.out += `let ${stmt.let.name}`;
-    if (stmt.let.params) w.out += `(${stmt.let.params.join(", ")})`;
-    w.out += " = ";
-  }
   w.block(stmt.body);
   return { text: w.out, spans: w.spans, holes: w.holes };
 }
@@ -33,7 +28,7 @@ const isCh = (a: Atom | undefined, c?: string): a is Atom & { k: "ch" } => a?.k 
 /** Is the `-` at `j` a subtraction (something to subtract from on its left) rather than a negation? */
 export function binaryMinus(b: Block, j: number): boolean {
   const p = b[j - 1];
-  return !!p && !(isCh(p) && "+-*".includes(p.c));
+  return !!p && p.k !== "let" && !(isCh(p) && "+-*".includes(p.c));
 }
 
 /** Does `b` have a sum or difference at its top level? */
@@ -59,6 +54,7 @@ function firstChar(a: Atom): string {
   switch (a.k) {
     case "ch": return a.c;
     case "call": return a.name[0] ?? "";
+    case "let": return "l";
     case "sup": return "^";
     case "matrix": return "[";
     default: return "(";
@@ -96,7 +92,7 @@ class Writer {
       case "frac": {
         // bare only where nothing on the left would join the numerator and no power follows
         const p = b[j - 1];
-        const bare = b[j + 1]?.k !== "sup" && (!p || isCh(p, "+") || (isCh(p, "-") && binaryMinus(b, j - 1)));
+        const bare = b[j + 1]?.k !== "sup" && (!p || p.k === "let" || isCh(p, "+") || (isCh(p, "-") && binaryMinus(b, j - 1)));
         if (!bare) this.out += "(";
         if (a.num.length > 0 && !additive(a.num)) this.block(a.num);
         else { this.out += "("; this.block(a.num); this.out += ")"; }
@@ -112,6 +108,17 @@ class Writer {
         a.args.forEach((x, i) => { if (i) this.out += ", "; this.block(x); });
         this.out += ")";
         return;
+      case "let":
+        this.out += "let ";
+        this.block(a.name);
+        if (a.params) {
+          this.out += "(";
+          a.params.forEach((x, i) => { if (i) this.out += ", "; this.block(x); });
+          this.out += ")";
+        }
+        this.out += " = ";
+        if (j === b.length - 1) this.holes++;   // a head with no body yet
+        return;
       case "matrix":
         this.out += "[";
         a.rows.forEach((r, i) => {
@@ -122,4 +129,20 @@ class Writer {
         return;
     }
   }
+}
+
+/** The atoms a span of the text covers (the engine reports a syntax error's span): the largest ones
+ *  it covers whole, else the innermost ones it overlaps; a span at the very end (an unexpected end
+ *  of input) is the last atom. */
+export function atomsInSpan(stmt: Stmt, span: { start: number; end: number }): Atom[] {
+  const { text, spans } = write(stmt);
+  const start = span.start, end = Math.max(span.end, span.start + 1);
+  const within = (s: { start: number; end: number }, t: { start: number; end: number }) => t.start <= s.start && s.end <= t.end;
+  const hits = [...spans].filter(([, s]) => s.start < end && s.end > start);
+  const whole = hits.filter(([, s]) => within(s, { start, end }));
+  const pick = whole.length
+    ? whole.filter(([a, s]) => !whole.some(([b, t]) => b !== a && within(s, t)))
+    : hits.filter(([a, s]) => !hits.some(([b, t]) => b !== a && within(t, s)));
+  if (!pick.length && start >= text.length && stmt.body.length) return [stmt.body[stmt.body.length - 1]!];
+  return pick.map(([a]) => a);
 }

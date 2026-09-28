@@ -14,7 +14,13 @@ import { type Atom, type Block, type Stmt, isDigit, isIdChar, isIdStart } from "
 export interface NotationOptions {
   wrap?: (atoms: Atom[], latex: string) => string;
   hole?: (b: Block) => string;
+  /** Which output a relative reference (`%`, `%%`) stands for, when the host knows. */
+  outRef?: (ref: string) => number | null;
 }
+
+/** An output reference's tag: `%` is `p1`, `%%` is `p2`, `%3` is `n3` (a `data-out` the view reads back). */
+export const outTag = (ref: string) => (/^%\d+$/.test(ref) ? `n${ref.slice(1)}` : `p${ref.length}`);
+export const outRefOf = (tag: string) => (tag[0] === "n" ? `%${tag.slice(1)}` : "%".repeat(+tag.slice(1)));
 
 const GREEK: Record<string, string> = {
   "π": "\\pi", "α": "\\alpha", "β": "\\beta", "γ": "\\gamma", "δ": "\\delta", "ε": "\\varepsilon", "θ": "\\theta",
@@ -27,13 +33,7 @@ const GLYPH_NAMES: Record<string, string> = { pi: "\\pi", alpha: "\\alpha", beta
 const NAMED_FNS = ["sin", "cos", "tan", "exp", "ln", "log"];
 
 export function toLatex(stmt: Stmt, opts: NotationOptions = {}): string {
-  const n = new Notation(opts);
-  let head = "";
-  if (stmt.let) {
-    const params = stmt.let.params ? `\\left(${stmt.let.params.map(nameLatex).join(", ")}\\right)` : "";
-    head = `\\text{let }${nameLatex(stmt.let.name)}${params} = `;
-  }
-  return head + n.block(stmt.body);
+  return new Notation(opts).block(stmt.body);
 }
 
 /** A name on its own, the way the engine prints a variable: one letter italic, longer ones as one
@@ -70,9 +70,11 @@ function tokens(run: (Atom & { k: "ch" })[]): Token[] {
 class Notation {
   private wrap: (atoms: Atom[], latex: string) => string;
   private hole: (b: Block) => string;
+  private outRef: (ref: string) => number | null;
   constructor(opts: NotationOptions) {
     this.wrap = opts.wrap ?? ((_, s) => s);
     this.hole = opts.hole ?? (() => "\\square");
+    this.outRef = opts.outRef ?? (() => null);
   }
 
   block(b: Block): string {
@@ -90,6 +92,8 @@ class Notation {
       s += this.atom(a);
       j++;
     }
+    // a `let` head with no body yet: the body's place, drawn as an empty slot
+    if (b[b.length - 1]?.k === "let") s += this.hole(b);
     return s;
   }
 
@@ -110,6 +114,12 @@ class Notation {
       return `{${s}}`;
     }
     if (t.kind === "num") return this.chars(t.atoms, (c) => c);
+    // an output reference is the output it names, Mathematica's Out[n], as one chip
+    if (text[0] === "%") {
+      const n = /^%\d+$/.test(text) ? +text.slice(1) : this.outRef(text);
+      const label = n === null ? text.replace(/%/g, "\\%") : String(n);
+      return this.wrap(t.atoms, `\\htmlData{out=${outTag(text)}}{\\mathrm{Out}[${label}]}`);
+    }
     // a `\` is a command still being typed (`\frac` before its space)
     return this.chars(t.atoms, (c) => (c === "*" ? "\\cdot " : c === " " ? "\\," : c === "%" ? "\\%" : c === "\\" ? "\\backslash " : c));
   }
@@ -131,6 +141,10 @@ class Notation {
       case "paren": return this.wrap([a], `\\left(${this.block(a.body)}\\right)`);
       case "matrix": return this.wrap([a], this.matrix(a.rows, "bmatrix"));
       case "call": return this.wrap([a], this.call(a));
+      case "let": {
+        const params = a.params ? `\\left(${a.params.map((p) => this.block(p)).join(",\\,")}\\right)` : "";
+        return this.wrap([a], `\\mathrm{let}\\;${this.block(a.name)}${params}\\;=\\;`);
+      }
     }
   }
 
@@ -174,6 +188,12 @@ class Notation {
 const BUILTINS = new Set(["simplify", "expand", "factor", "N", "det", "rref", "transpose", "solve", "subst", "plot",
   "dot", "norm", "sum", "exptotrig", "epicycles", "dft", "diff", "integrate", "sign", "sqrt", "abs", "conj", "re", "im"]);
 
+/** Calls drawn in their own notation (d/dx, ∫, Σ, √, bars, …) rather than as `name(args)`; must
+ *  agree with `Notation.call`. */
+const NOTATED = new Set(["sqrt/1", "abs/1", "norm/1", "conj/1", "re/1", "im/1", "sign/1", "diff/2", "diff/3",
+  "integrate/2", "integrate/4", "sum/4", "det/1", "transpose/1", "dot/2"]);
+export const notated = (a: Atom & { k: "call" }) => NOTATED.has(`${a.name}/${a.args.length}`);
+
 /** An atom's slots in the order they sit on screen, left to right and then top to bottom, which is
  *  the order the arrow keys walk them: d/dx (f) is x then f; ∫ₐᵇ f dx is a, b, f, x; Σ is k, a, b,
  *  then the body. Must agree with the LaTeX above. */
@@ -184,6 +204,7 @@ export function slots(a: Atom): Block[] {
     case "sup": return [a.exp];
     case "paren": return [a.body];
     case "matrix": return a.rows.flat();
+    case "let": return [a.name, ...(a.params ?? [])];
     case "call": {
       const b = a.args;
       switch (`${a.name}/${b.length}`) {

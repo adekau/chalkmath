@@ -1348,6 +1348,8 @@ function onPaste(ev: ClipboardEvent, cell: Cell) {
   const dt = ev.clipboardData; if (!dt) return;
   const put = (name: string) => {
     if (cell.input) insertAtCaret(cell, `⟦${name}⟧`);
+    // a file reference is not something the visual input shows: the cell goes back to text
+    else if (cell.mi) { cell.mode = "raw"; cell.src = cellSrc(cell) + `⟦${name}⟧`; focusCell(S.cells.indexOf(cell)); }
     else if (cell.ta) { cell.ta.setRangeText(`⟦${name}⟧`, cell.ta.selectionStart, cell.ta.selectionEnd, "end"); cell.src = cell.ta.value; cell.ta.dispatchEvent(new Event("input")); }
     renderHighlights(); autosave();
   };
@@ -2082,6 +2084,8 @@ function visualInput(cell: Cell, i: number): MathInput | null {
   const opts: MathInputOptions = {
     known: sessionFns(), symbols: VISUAL_SYMBOLS, label: `Cell ${i + 1}, math input`,
     onFocus: () => { S.active = i; renderChrome(); renderSidebar(); markActive(); },
+    onBlur: () => hideSigHelp(),
+    onCaret: () => updateVisualSigHelp(cell),
     onChange: (text) => { cell.src = text; renderSidebar(); renderTabs(); },
     onEnter: () => {
       if (!mi) return;
@@ -2090,7 +2094,19 @@ function visualInput(cell: Cell, i: number): MathInput | null {
       void runCell(cell);
     },
     onLeave: (dir) => { const j = i + dir; if (j >= 0 && j < S.cells.length) focusCell(j); },
-    onKey: (ev) => modeKey(ev, cell),
+    onKey: (ev) => {
+      if (ev.key === "Escape" && S.sig) { ev.preventDefault(); dismissSigHelp(); return true; }
+      return modeKey(ev, cell);
+    },
+    onPaste: (ev) => onPaste(ev, cell),
+    // `%` is the output before this cell's own (or, not yet run, the latest); `%n` is Out[n]
+    outRef: (ref) => {
+      const base = cell.label ?? Math.max(0, ...S.cells.map((c) => c.label ?? 0)) + 1;
+      const n = /^%\d+$/.test(ref) ? +ref.slice(1) : base - ref.length;
+      if (n < 1) return null;
+      const out = S.cells.find((c) => c.label === n)?.outText;
+      return { label: n, ...(out ? { value: out } : {}) };
+    },
   };
   const mi = cell.tree && writeText(cell.tree) === cell.src ? new MathInput(cell.tree, opts) : MathInput.fromSource(cell.src, opts);
   if (mi) cell.tree = mi.edit.stmt; else delete cell.tree;
@@ -2402,9 +2418,8 @@ function renderCellBody(cell: Cell) {
   const body = mid.querySelector(".cellbody") as HTMLElement;
   body.innerHTML = "";
 
-  // a visual input already shows what was typed; the interpretation still earns its place when `%`
-  // stood for an earlier output
-  if (cell.echoLatex && S.showEcho && !(isVisual(cell) && !cellSrc(cell).includes("%"))) {
+  // a visual input already shows what was typed, and a `%` in it as the output it names
+  if (cell.echoLatex && S.showEcho && !isVisual(cell)) {
     const echo = h("div", "echo");
     echo.innerHTML = tex(cell.echoLatex, true);
     wireTerm(echo, cell, { kind: "input" });
@@ -2414,7 +2429,9 @@ function renderCellBody(cell: Cell) {
 
   if (cell.error) {
     const err = h("div", "cellerr", cell.error.message);
-    if (cell.error.span) {
+    // a visual input marks the error on the symbols themselves; text gets the source with carets
+    if (cell.error.span && cell.mi) cell.mi.markError(cell.error.span);
+    else if (cell.error.span) {
       const { start, end } = cell.error.span;
       err.append(h("span", "caret", `${cell.src}\n${" ".repeat(start)}${"^".repeat(Math.max(1, end - start))}`));
     }
@@ -3939,13 +3956,25 @@ function updateSigHelp(cell: Cell) {
   S.sig = { cell, key, sig: found.sig, blurb: found.blurb, arg: ctx.arg };
   renderSigHelp();
 }
+/** Signature help for a visual input: the call around its caret that shows as `name(args)`. */
+function updateVisualSigHelp(cell: Cell) {
+  const ctx = S.sigHelp && cell.mi ? cell.mi.edit.callContext() : null;
+  const found = ctx && sigFor(ctx.name, ctx.firstArg);
+  if (!ctx || !found) { S.sigDismissed = null; return hideSigHelp(); }
+  const key = `${cell.id}:${ctx.name}`;
+  if (S.sigDismissed === key) return hideSigHelp();
+  S.sigDismissed = null;
+  S.sig = { cell, key, sig: found.sig, blurb: found.blurb, arg: ctx.arg };
+  renderSigHelp();
+}
 function hideSigHelp() { S.sig = null; renderSigHelp(); }
 function dismissSigHelp() { if (S.sig) { S.sigDismissed = S.sig.key; hideSigHelp(); } }
 
 function renderSigHelp() {
   document.querySelector(".sighelp")?.remove();
   const g = S.sig;
-  if (!g || !g.cell.input) return;
+  const anchor = g && (g.cell.input ?? g.cell.mi?.el);
+  if (!g || !anchor) return;
   const box = h("div", "sighelp");
   const line = h("div", "ss");
   const pieces = sigPieces(g.sig), n = pieces.filter((p) => p.param).length;
@@ -3957,7 +3986,7 @@ function renderSigHelp() {
     k++;
   }
   box.append(line, h("div", "sb", g.blurb));
-  const r = g.cell.input.getBoundingClientRect();
+  const r = anchor.getBoundingClientRect();
   box.style.left = `${r.left + 8}px`;
   // above the input, like an editor; below it only when there is no room and no completion list there
   if (r.top > 80 || S.comp) box.style.bottom = `${window.innerHeight - r.top + 6}px`; else box.style.top = `${r.bottom + 4}px`;

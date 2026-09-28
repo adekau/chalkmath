@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { read, write } from "../dist/index.js";
+import { read, write, letHead } from "../dist/index.js";
 
 // The reader and writer against the engine itself: every golden source and every notebook cell, as
 // written and as the visual editor would write it back, evaluated side by side in two sessions of
@@ -29,7 +29,7 @@ test("what the editor writes means what the source meant, to the engine", { skip
       const r = read(src, known);
       // cells this grammar does not read (λ, order theory, import) go to both sessions unchanged
       const rewritten = r.ok ? write(r.stmt).text : src;
-      if (r.ok && r.stmt.let?.params) known.push(r.stmt.let.name);
+      if (r.ok && letHead(r.stmt)?.params) known.push(letHead(r.stmt).name);
       const method = /^\s*(plot|epicycles|dft)\s*\(/.test(src) ? "engine.plot" : "engine.evaluate";
       const call = (sessionId, source) => c.call(method, { sessionId, cellId: `c${i}`, source, showWork: true })
         .catch((e) => ({ ok: false, error: { message: `rpc: ${e.message}` } }));

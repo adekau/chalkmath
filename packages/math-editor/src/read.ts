@@ -118,7 +118,7 @@ class Reader {
       this.expectOp("=");
       // inside the body the function may call itself
       this.known.unshift(name.s);
-      stmt = { let: { name: name.s, params }, body: this.expr() };
+      stmt = { body: [{ k: "let", name: chars(name.s), params: params && params.map(chars) }, ...this.expr()] };
     } else stmt = { body: this.expr() };
     const end = this.peek();
     if (end.kind !== "eof") fail(`unexpected '${end.s}'`, end);
