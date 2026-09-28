@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Math input demo</title>
+<link rel="stylesheet" href="dist/demo.css">
+<style>
+  body { font: 15px/1.5 system-ui, sans-serif; margin: 24px; background: #fbfaf7; color: #222; }
+  .row { display: flex; gap: 24px; align-items: center; margin: 14px 0; }
+  .row .mi { min-width: 320px; background: #fff; border: 1px solid #ddd; border-radius: 4px; }
+  code { color: #666; font-size: 13px; }
+</style></head>
+<body>
+<h1 style="font-size:18px">Visual math input</h1>
+<p>Click into any input and type. <code>\frac</code>, <code>\sqrt</code>, <code>\dint</code>, <code>\sum</code>, <code>\mat2x3</code>, <code>\pi</code> … then space; Tab goes to the next empty slot.</p>
+<div id="inputs"></div>
+<script type="module" src="dist/demo.js"></script>
+</body></html>

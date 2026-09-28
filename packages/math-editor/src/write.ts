@@ -31,7 +31,7 @@ export const writeText = (stmt: Stmt) => write(stmt).text;
 const isCh = (a: Atom | undefined, c?: string): a is Atom & { k: "ch" } => a?.k === "ch" && (c === undefined || a.c === c);
 
 /** Is the `-` at `j` a subtraction (something to subtract from on its left) rather than a negation? */
-function binaryMinus(b: Block, j: number): boolean {
+export function binaryMinus(b: Block, j: number): boolean {
   const p = b[j - 1];
   return !!p && !(isCh(p) && "+-*".includes(p.c));
 }
@@ -53,10 +53,6 @@ function singleUnary(b: Block): boolean {
   const s = factor.map((a) => (a as { c: string }).c).join("");
   return /^[0-9]*\.?[0-9]+$/.test(s) || /^%([0-9]+|%*)$/.test(s) || (isIdStart(s[0]!) && Array.from(s).every(isIdChar));
 }
-
-/** The reader drops one pair of parentheses around a numerator, denominator or exponent, so a slot
- *  holding exactly a group needs a second pair to keep it. */
-const loneGroup = (b: Block) => b.length === 1 && b[0]!.k === "paren";
 
 /** The first character an atom writes, to decide whether it needs a space after what came before. */
 function firstChar(a: Atom): string {
@@ -89,7 +85,7 @@ class Writer {
   /** A slot that must read as one `unary` (a denominator, an exponent). */
   private tight(b: Block) {
     // a negation could go bare (`x^-2` is the engine's x^(-2)) but reads better in parentheses
-    if (b.length > 0 && singleUnary(b) && !loneGroup(b) && !isCh(b[0], "-")) this.block(b);
+    if (b.length > 0 && singleUnary(b) && !isCh(b[0], "-")) this.block(b);
     else { this.out += "("; this.block(b); this.out += ")"; }
   }
 
@@ -102,7 +98,7 @@ class Writer {
         const p = b[j - 1];
         const bare = b[j + 1]?.k !== "sup" && (!p || isCh(p, "+") || (isCh(p, "-") && binaryMinus(b, j - 1)));
         if (!bare) this.out += "(";
-        if (a.num.length > 0 && !additive(a.num) && !loneGroup(a.num)) this.block(a.num);
+        if (a.num.length > 0 && !additive(a.num)) this.block(a.num);
         else { this.out += "("; this.block(a.num); this.out += ")"; }
         this.out += "/";
         this.tight(a.den);

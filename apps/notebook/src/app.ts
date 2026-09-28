@@ -1,6 +1,8 @@
 import { createClient, type EngineClient, type Step, type Path, type RuleStatus, type Derivation, type WireExpr } from "@chalkmath/protocol";
 declare const __BUILD_ID__: string;
 import { workerTransport, httpTransport } from "@chalkmath/engine-host";
+import { read as readNotation, writeText, type Stmt } from "@chalkmath/math-editor";
+import { MathInput, type MathInputOptions } from "@chalkmath/math-editor/view";
 
 /**
  * The notebook shell. Structure, type and colour follow the second export of the
@@ -90,7 +92,14 @@ const SYMBOLS: Sym[] = [
 /** `\abbr` at the end of the text before the caret → the symbol; longest abbreviations first so `\eps` beats `\e`. */
 const SYMBOL_RE = new RegExp("\\\\(" + SYMBOLS.flatMap((s) => [s.abbr, ...s.aliases]).sort((a, b) => b.length - a.length).join("|") + ")$");
 const symbolFor = (name: string) => SYMBOLS.find((s) => s.abbr === name || s.aliases.includes(name))?.sym ?? "";
+/** The same table for the visual input, whose `\\` also inserts templates (`\\frac`, `\\int`, …).
+ *  Not λ: a λ-cell is not the grammar the visual input reads, and stays raw. */
+const VISUAL_SYMBOLS: Record<string, string> = Object.fromEntries(
+  SYMBOLS.filter((s) => s.sym !== "λ").flatMap((s) => [s.abbr, ...s.aliases].map((a) => [a, s.sym])));
 type CompItem = { kind: "doc"; doc: Doc } | { kind: "sym"; sym: Sym };
+
+/** An order-theory cell, or a `let` binding one: the engine reads these in their own world. */
+const ORDER_CELL = /^(let\s+\w+\s*=\s*)?(poset|divisors|subsets|chain|map|hasse|join|meet|sup|inf|upper|lower|lattice|top|bottom|le|maximal|minimal|monotone|lfp|gfp|fixpoints)\s*\(/;
 
 /** Label for a cell, from its source. Presentation only — the engine decides what it means. */
 function cellKind(src: string): string | null {
@@ -109,7 +118,7 @@ function cellKind(src: string): string | null {
     case "exptotrig": return "Euler";
   }
   if (/[λ\\]|:=/.test(s)) return "λ-term";
-  if (/^(let\s+\w+\s*=\s*)?(poset|divisors|subsets|chain|map|hasse|join|meet|sup|inf|upper|lower|lattice|top|bottom|le|maximal|minimal|monotone|lfp|gfp|fixpoints)\s*\(/.test(s)) return "order";
+  if (ORDER_CELL.test(s)) return "order";
   switch (head) {
     case "rref": return "row reduce";
     case "det": return "determinant";
@@ -196,6 +205,13 @@ interface Cell {
   queued?: boolean;
   el?: HTMLElement;
   input?: HTMLInputElement;
+  /** Visual (typeset, with holes) or raw text input; absent follows View › Visual math input. */
+  mode?: "raw" | "visual";
+  /** The visual input, when the cell has one. */
+  mi?: MathInput;
+  /** The visual input's tree, kept across re-renders while the source is still its text: it may
+   *  have empty slots, whose text (`integrate(, x)`) does not read back. */
+  tree?: Stmt;
 }
 
 type TermRef = { kind: "output" } | { kind: "input" } | { kind: "step"; index: number };
@@ -303,6 +319,9 @@ const S = {
   deBruijn: false,
   /** Show the engine's rendering of the parsed input under each cell (View menu). */
   showEcho: (() => { try { return localStorage.getItem("chalkmath.echo") !== "off"; } catch { return true; } })(),
+  /** Math cells show their input typeset, with holes to fill, rather than as text (View menu); a
+   *  cell's own choice (`Cell.mode`) wins. Off until the visual input is complete. */
+  visualInput: prefOn("chalkmath.visual", false),
   /** Size of rendered mathematics in the cells (View menu): small, normal or large. */
   outSize: (() => { try { return (localStorage.getItem("chalkmath.outsize") as "s" | "m" | "l" | null) ?? "m"; } catch { return "m" as const; } })() as "s" | "m" | "l",
   menu: null as string | null,
@@ -767,7 +786,7 @@ function renderTabs() {
 interface ChalkFile {
   /** Format version. Files written as `.lemma` before the rename carry `lemma: 1` instead and still open. */
   chalk?: 1; lemma?: 1; name: string;
-  cells: { src: string; type?: Cell["type"] | undefined; collapsed?: boolean | undefined; showWork: boolean; label: number | null; outLatex?: string | undefined; outText?: string | undefined; form?: string | undefined; semantics?: "real" | "complex" | undefined; echoLatex?: string | undefined; steps?: Step[] | undefined; error?: Cell["error"] | undefined; plot?: PlotData | undefined }[];
+  cells: { src: string; type?: Cell["type"] | undefined; collapsed?: boolean | undefined; showWork: boolean; label: number | null; outLatex?: string | undefined; outText?: string | undefined; form?: string | undefined; semantics?: "real" | "complex" | undefined; echoLatex?: string | undefined; steps?: Step[] | undefined; error?: Cell["error"] | undefined; plot?: PlotData | undefined; mode?: Cell["mode"] | undefined }[];
   scenes: Scene[];
   /** Images attached to the notebook, by name. */
   assets?: Record<string, Asset>;
@@ -788,7 +807,7 @@ function stepsToSave(c: Cell): Step[] | undefined {
 function serializeNotebook(): string {
   const doc: ChalkFile = {
     chalk: 1, name: S.docName,
-    cells: S.cells.map((c) => ({ src: cellSrc(c), type: c.type, collapsed: c.collapsed || undefined, showWork: c.showWork, label: c.label, outLatex: c.outLatex, outText: c.outText, form: c.form, semantics: c.semantics, echoLatex: c.echoLatex, steps: stepsToSave(c), error: c.error, plot: c.plot })),
+    cells: S.cells.map((c) => ({ src: cellSrc(c), type: c.type, collapsed: c.collapsed || undefined, showWork: c.showWork, label: c.label, outLatex: c.outLatex, outText: c.outText, form: c.form, semantics: c.semantics, echoLatex: c.echoLatex, steps: stepsToSave(c), error: c.error, plot: c.plot, mode: c.mode })),
     scenes: ST.scenes,
     ...(Object.keys(S.assets).length ? { assets: S.assets } : {}),
   };
@@ -841,6 +860,7 @@ function cellsFromFile(doc: ChalkFile, foldWork = false): Cell[] {
     if (c.steps) cell.steps = c.steps;
     if (c.error) cell.error = c.error;
     if (c.plot) cell.plot = migratePlot(c.plot);
+    if (c.mode === "raw" || c.mode === "visual") cell.mode = c.mode;
     return cell;
   });
 }
@@ -1033,6 +1053,9 @@ const SHORTCUTS: [string, string][] = [
   ["↑ / ↓", "Move to the cell above or below"],
   ["Tab", "Complete a command or a \\-symbol"],
   ["\\pi, \\lam, \\e, \\theta … then space", "Type a symbol: π, λ, ℯ, θ …"],
+  ["Ctrl/⌘+Shift+M", "Switch the cell between visual and text input"],
+  ["\\frac, \\sqrt, \\int, \\dint, \\sum, \\diff, \\mat2x3 … (visual)", "Insert a fraction, root, integral, sum, derivative, matrix …"],
+  ["Tab (visual)", "The next empty slot"],
   ["Esc", "Close a popup, the signature help, or this dialog"],
   ["Ctrl/⌘+S", "Save in this browser (with Shift: Save as)"],
   ["Ctrl/⌘+B", "Show or hide the sidebar"],
@@ -1307,6 +1330,8 @@ function attachFile() {
       const name = attachAsset(f.name, mime, data, binary);
       const c = S.cells[S.active];
       if (c?.input && !c.type) { insertAtCaret(c, `⟦${name}⟧`); c.input.focus(); }
+      // a file reference is not something the visual input shows: the cell goes back to text
+      else if (c?.mi) { c.mode = "raw"; c.src += `⟦${name}⟧`; focusCell(S.active); }
       else if (c?.ta) { c.ta.setRangeText(`⟦${name}⟧`, c.ta.selectionStart, c.ta.selectionEnd, "end"); c.src = c.ta.value; c.ta.focus(); }
       else if (mime === "image/svg+xml") { const cell = addCell(`epicycles(⟦${name}⟧)`); renderSidebar(); focusCell(S.cells.indexOf(cell)); }
       else { const cell = addCell(`⟦${name}⟧`, "markdown"); renderSidebar(); focusCell(S.cells.indexOf(cell)); }
@@ -1434,7 +1459,7 @@ function clearCellOutput(cell: Cell) {
 }
 function deleteCell(cell: Cell) {
   const i = S.cells.indexOf(cell); if (i < 0) return;
-  if (S.cells.length === 1) { cell.src = ""; if (cell.input) { cell.input.value = ""; syncHighlight(cell); } if (cell.ta) cell.ta.value = ""; clearCellOutput(cell); return; }
+  if (S.cells.length === 1) { cell.src = ""; if (cell.input) { cell.input.value = ""; syncHighlight(cell); } if (cell.ta) cell.ta.value = ""; if (cell.mi) renderCells(); clearCellOutput(cell); return; }
   S.cells.splice(i, 1);
   S.active = Math.min(S.active, S.cells.length - 1);
   renderCells(); renderSidebar(); renderChrome(); autosave();
@@ -1450,7 +1475,8 @@ function focusCell(i: number) {
   renderCells(); renderSidebar(); renderChrome();
   const c = S.cells[S.active];
   // after the render: it rebuilds the inputs, and focus on the old one is lost
-  (c?.input ?? c?.ta ?? c?.el?.querySelector<HTMLElement>(".mdout"))?.focus();
+  if (c?.mi) c.mi.focus();
+  else (c?.input ?? c?.ta ?? c?.el?.querySelector<HTMLElement>(".mdout"))?.focus();
 }
 
 function clearOutputs() {
@@ -1568,6 +1594,7 @@ function renderChrome() {
     View: [["Toggle light / dark", () => { applyTheme(S.theme === "light" ? "dark" : "light"); renderChrome(); }], [`${S.sidebarOpen ? "✓ " : ""}Sidebar  (Ctrl+B)`, toggleSidebar], ["Explanation panel", () => { S.panelOpen = !S.panelOpen; renderPanelHead(); renderPanel(); }],
       ["Show all work", () => setAllWork(true)], ["Hide all work", () => setAllWork(false)],
       [`${S.foldWorkOnOpen ? "✓ " : ""}Hide work in opened notebooks`, () => { S.foldWorkOnOpen = !S.foldWorkOnOpen; setPref("chalkmath.foldwork", S.foldWorkOnOpen); renderChrome(); }], [`${S.deBruijn ? "✓ " : ""}de Bruijn indices (λ-cells)`, () => { S.deBruijn = !S.deBruijn; renderChrome(); renderCells(); }],
+      [`${S.visualInput ? "✓ " : ""}Visual math input`, () => { S.visualInput = !S.visualInput; setPref("chalkmath.visual", S.visualInput); renderChrome(); renderCells(); }],
       [`${S.showEcho ? "✓ " : ""}Input interpretation`, () => { S.showEcho = !S.showEcho; try { localStorage.setItem("chalkmath.echo", S.showEcho ? "on" : "off"); } catch { /* private mode */ } renderChrome(); renderCells(); }],
       [`${S.highlight ? "✓ " : ""}Syntax highlighting`, () => { S.highlight = !S.highlight; try { localStorage.setItem("chalkmath.highlight", S.highlight ? "on" : "off"); } catch { /* private mode */ } document.documentElement.classList.toggle("nohl", !S.highlight); renderHighlights(); renderChrome(); }],
       [`${S.sigHelp ? "✓ " : ""}Signature help`, () => { S.sigHelp = !S.sigHelp; try { localStorage.setItem("chalkmath.sighelp", S.sigHelp ? "on" : "off"); } catch { /* private mode */ } if (!S.sigHelp) hideSigHelp(); renderChrome(); }],
@@ -1773,6 +1800,7 @@ function renderSidebar() {
         if (S.tab !== "notebook") switchTab("notebook");
         const c = S.cells[S.active];
         if (c?.input) { c.input.value = d.examples[0] ?? `${d.name}(`; c.src = c.input.value; c.input.focus(); syncHighlight(c); updateSigHelp(c); renderCellBody(c); renderSidebar(); }
+        else if (c?.mi) { c.src = d.examples[0] ?? `${d.name}(`; focusCell(S.active); }
       });
       row.addEventListener("mouseenter", (ev) => showHover(d, ev as MouseEvent));
       row.addEventListener("mouseleave", hideHover);
@@ -2030,6 +2058,70 @@ function pyExpr(text: string): string {
     .replace(/\bpi\b/g, "np.pi").replace(/\be\b/g, "np.e");
 }
 
+// --- The visual input: math cells typeset as they are typed ---------------------------------------
+
+/** The functions this session has defined: after `let f(x) = …`, `f(` is a call. */
+const sessionFns = () => [...USER_FNS.keys()].filter((k) => k.startsWith(`${sessionId}:`)).map((k) => k.slice(sessionId.length + 1));
+
+/** Why a cell cannot be shown visually, or null when it can. λ-terms, order theory and file
+ *  references are other grammars; so is text that does not parse, which stays as typed to be fixed. */
+function visualBlocked(cell: Cell): string | null {
+  if (cell.type) return "it is not a math cell";
+  const src = cellSrc(cell);
+  if (cell.tree && writeText(cell.tree) === src) return null;   // the visual input's own, holes and all
+  const kind = cell.kind ?? cellKind(src);
+  if (kind === "λ-term") return "λ-terms are edited as text";
+  if (kind === "order" || ORDER_CELL.test(src.trim())) return "order theory is edited as text";
+  if (kind === "image") return "file references are edited as text";
+  if (src.trim() && !readNotation(src, sessionFns()).ok) return "the text does not parse yet";
+  return null;
+}
+const isVisual = (cell: Cell) => (cell.mode ?? (S.visualInput ? "visual" : "raw")) === "visual" && !visualBlocked(cell);
+
+function visualInput(cell: Cell, i: number): MathInput | null {
+  const opts: MathInputOptions = {
+    known: sessionFns(), symbols: VISUAL_SYMBOLS, label: `Cell ${i + 1}, math input`,
+    onFocus: () => { S.active = i; renderChrome(); renderSidebar(); markActive(); },
+    onChange: (text) => { cell.src = text; renderSidebar(); renderTabs(); },
+    onEnter: () => {
+      if (!mi) return;
+      // text with an empty slot is not something the engine can read: go to the slot instead
+      if (mi.holes) { mi.edit.hole(1); mi.render(); notify("err", `Fill the empty slot${mi.holes === 1 ? "" : "s"} first (Tab moves between them).`); return; }
+      void runCell(cell);
+    },
+    onLeave: (dir) => { const j = i + dir; if (j >= 0 && j < S.cells.length) focusCell(j); },
+    onKey: (ev) => modeKey(ev, cell),
+  };
+  const mi = cell.tree && writeText(cell.tree) === cell.src ? new MathInput(cell.tree, opts) : MathInput.fromSource(cell.src, opts);
+  if (mi) cell.tree = mi.edit.stmt; else delete cell.tree;
+  return mi;
+}
+
+/** Switch a cell between visual and text input (and remember it for the cell). */
+function toggleMode(cell: Cell) {
+  const blocked = visualBlocked(cell);
+  if (!isVisual(cell) && blocked) { notify("err", `This cell stays as text: ${blocked}.`); return; }
+  cell.mode = isVisual(cell) ? "raw" : "visual";
+  focusCell(S.cells.indexOf(cell));
+  autosave();
+}
+/** Ctrl/⌘+Shift+M in either input. */
+function modeKey(ev: KeyboardEvent, cell: Cell): boolean {
+  if (!((ev.ctrlKey || ev.metaKey) && ev.shiftKey && ev.key.toLowerCase() === "m")) return false;
+  ev.preventDefault();
+  toggleMode(cell);
+  return true;
+}
+function modeToggle(cell: Cell): HTMLElement {
+  const on = isVisual(cell), blocked = visualBlocked(cell);
+  const b = asButton(h("span", "modetog", on ? "Text" : "Visual"), on ? "Edit as text" : "Edit as typeset math");
+  b.title = on ? "Edit this cell as text (Ctrl+Shift+M)" : blocked ? `Visual input is not available: ${blocked}` : "Edit this cell as typeset math, with holes to fill (Ctrl+Shift+M)";
+  if (!on && blocked) b.setAttribute("aria-disabled", "true");
+  b.addEventListener("mousedown", (e) => e.preventDefault());
+  b.addEventListener("click", () => toggleMode(cell));
+  return b;
+}
+
 function renderCells() {
   hideHover(); hideSigHelp();
   const host = $(".cells");
@@ -2037,10 +2129,10 @@ function renderCells() {
   let folded = false;   // inside a collapsed section: its cells are not built
   S.cells.forEach((cell, i) => {
     if (cell.type === "section") folded = !!cell.collapsed;
-    else if (folded) { delete cell.el; delete cell.input; delete cell.ta; delete cell.hl; return; }
+    else if (folded) { delete cell.el; delete cell.input; delete cell.ta; delete cell.hl; delete cell.mi; return; }
     const el = h("div", `cell${i === S.active ? " active" : ""}${cell.label ? " done" : ""}${cell.type ? ` ${cell.type}` : ""}`);
     cell.el = el;
-    delete cell.input; delete cell.ta; delete cell.hl;
+    delete cell.input; delete cell.ta; delete cell.hl; delete cell.mi;
     if (cell.type === "markdown") {
       el.append(h("div", "prompt", ""));
       const mid = h("div", "mid");
@@ -2089,32 +2181,37 @@ function renderCells() {
     el.append(h("div", "prompt", `In[${cell.label ?? " "}]:=`));
 
     const mid = h("div", "mid");
-    const input = document.createElement("input");
-    input.className = "cellin"; input.type = "text"; input.value = cell.src;
-    input.setAttribute("aria-label", `Cell ${i + 1}, math input`);
-    input.autocapitalize = "off"; input.autocomplete = "off"; input.setAttribute("autocorrect", "off"); input.enterKeyHint = "go";
-    input.placeholder = i === 0 ? "e.g. diff(x^2 * sin(x), x)" : "";
-    input.spellcheck = false;
-    cell.input = input;
-    input.addEventListener("focus", () => { S.active = i; renderChrome(); renderSidebar(); markActive(); });
-    input.addEventListener("input", () => { cell.src = input.value; updateCompletions(cell); updateSigHelp(cell); syncHighlight(cell); renderSidebar(); renderTabs(); });
-    input.addEventListener("keyup", () => { updateSigHelp(cell); syncHighlight(cell); });   // caret moves without an input event
-    input.addEventListener("click", () => updateSigHelp(cell));
-    input.addEventListener("scroll", () => syncHighlight(cell));
-    input.addEventListener("blur", () => { hideCompletions(); hideSigHelp(); });
-    input.addEventListener("keydown", (ev) => onKey(ev, cell, i));
-    input.addEventListener("paste", (ev) => onPaste(ev, cell));
-    // the highlight overlay sits under the transparent text of the input; the input keeps caret and selection
-    const hl = h("div", "hl"); hl.setAttribute("aria-hidden", "true");
-    cell.hl = hl;
-    mid.append(hl, input);
-    syncHighlight(cell);
+    const mi = isVisual(cell) ? visualInput(cell, i) : null;
+    if (mi) { cell.mi = mi; mid.append(mi.el); }
+    else {
+      const input = document.createElement("input");
+      input.className = "cellin"; input.type = "text"; input.value = cell.src;
+      input.setAttribute("aria-label", `Cell ${i + 1}, math input`);
+      input.autocapitalize = "off"; input.autocomplete = "off"; input.setAttribute("autocorrect", "off"); input.enterKeyHint = "go";
+      input.placeholder = i === 0 ? "e.g. diff(x^2 * sin(x), x)" : "";
+      input.spellcheck = false;
+      cell.input = input;
+      input.addEventListener("focus", () => { S.active = i; renderChrome(); renderSidebar(); markActive(); });
+      input.addEventListener("input", () => { cell.src = input.value; updateCompletions(cell); updateSigHelp(cell); syncHighlight(cell); renderSidebar(); renderTabs(); });
+      input.addEventListener("keyup", () => { updateSigHelp(cell); syncHighlight(cell); });   // caret moves without an input event
+      input.addEventListener("click", () => updateSigHelp(cell));
+      input.addEventListener("scroll", () => syncHighlight(cell));
+      input.addEventListener("blur", () => { hideCompletions(); hideSigHelp(); });
+      input.addEventListener("keydown", (ev) => onKey(ev, cell, i));
+      input.addEventListener("paste", (ev) => onPaste(ev, cell));
+      // the highlight overlay sits under the transparent text of the input; the input keeps caret and selection
+      const hl = h("div", "hl"); hl.setAttribute("aria-hidden", "true");
+      cell.hl = hl;
+      mid.append(hl, input);
+      syncHighlight(cell);
+    }
 
     const body = h("div", "cellbody");
     mid.append(body);
     el.append(mid);
 
     const acts = h("div", "cellacts");
+    acts.append(modeToggle(cell));
     const run = asButton(h("span", undefined, "▶ Run")); run.title = "Run this cell";
     run.addEventListener("mousedown", (e) => e.preventDefault());
     run.addEventListener("click", () => void runCell(cell));
@@ -2305,7 +2402,9 @@ function renderCellBody(cell: Cell) {
   const body = mid.querySelector(".cellbody") as HTMLElement;
   body.innerHTML = "";
 
-  if (cell.echoLatex && S.showEcho) {
+  // a visual input already shows what was typed; the interpretation still earns its place when `%`
+  // stood for an earlier output
+  if (cell.echoLatex && S.showEcho && !(isVisual(cell) && !cellSrc(cell).includes("%"))) {
     const echo = h("div", "echo");
     echo.innerHTML = tex(cell.echoLatex, true);
     wireTerm(echo, cell, { kind: "input" });
@@ -2771,7 +2870,8 @@ function renderReference() {
       b.addEventListener("click", () => {
         switchTab("notebook");
         const c = S.cells[S.cells.length - 1] ?? addCell();
-        if (c.input) { c.input.value = e; c.src = e; syncHighlight(c); }
+        c.src = e;
+        if (c.input) { c.input.value = e; syncHighlight(c); }
         focusCell(S.cells.indexOf(c)); void runCell(c);
       });
       ex.append(b);
@@ -3879,6 +3979,7 @@ function hideHover() { document.querySelector(".hoverdoc")?.remove(); }
 // ---------------------------------------------------------------------------
 
 function onKey(ev: KeyboardEvent, cell: Cell, i: number) {
+  if (modeKey(ev, cell)) return;
   if (S.comp) {
     if (ev.key === "ArrowDown") { ev.preventDefault(); S.comp.index = (S.comp.index + 1) % S.comp.items.length; return renderCompletions(); }
     if (ev.key === "ArrowUp") { ev.preventDefault(); S.comp.index = (S.comp.index - 1 + S.comp.items.length) % S.comp.items.length; return renderCompletions(); }
