@@ -19,6 +19,12 @@ function typed(keys, src = "", known = []) {
       case "{tab}": if (!e.command()) e.hole(1); break;
       case "{s-tab}": e.hole(-1); break;
       case "{home}": e.home(); break;
+      case "{end}": e.end(); break;
+      case "{undo}": e.undo(); break;
+      case "{redo}": e.redo(); break;
+      case "{s-←}": e.extend(); e.left(); break;
+      case "{s-→}": e.extend(); e.right(); break;
+      case "{all}": e.selectAll(); break;
       default: e.type(k);
     }
   }
@@ -93,4 +99,86 @@ test("backspace enters a structure from its end and removes it once empty", () =
   assert.equal(text("sqrt(x{home}{→}{⌫}"), "x");
   assert.equal(text("ab{⌫}"), "a");
   assert.equal(text("ab{home}{del}"), "b");
+});
+
+test("undo takes back a run of typing, a structure, or a deletion as one step; redo puts it back", () => {
+  assert.equal(text("x+1{undo}"), "x + ");
+  assert.equal(text("abc{undo}"), "");
+  assert.equal(text("ab{←}c{undo}"), "ab");   // a move ends the run
+  assert.equal(text("1/2{undo}"), "1/()");
+  // undoing a template goes back to the command as typed, like undoing an autocorrection
+  assert.equal(text("\\sqrt x{undo}{undo}"), "\\sqrt");
+  assert.equal(text("\\sqrt x{undo}{undo}{redo}"), "sqrt()");
+  assert.equal(text("abc{⌫}{⌫}{undo}"), "abc");
+  assert.equal(text("x{undo}{redo}{redo}"), "x");
+  // after undo, the caret is back where it was and typing carries on from there
+  assert.equal(text("x^2{undo}3"), "x^3");
+  // a new edit after undo drops what redo would have put back
+  assert.equal(text("ab{undo}c{redo}"), "c");
+});
+
+test("a selection is whole atoms of one block, and edits act on it", () => {
+  const sel = (keys, src) => { const { e } = typed(keys, src); const s = e.selection(); return s && e.selectedText(); };
+  assert.equal(sel("{end}{s-←}{s-←}", "x + 12"), "12");
+  // reaching into a fraction selects all of it
+  assert.equal(sel("{end}{s-←}{s-←}", "1 + a/b"), "a/b");
+  assert.equal(sel("{all}", "diff(x^2, x)"), "diff(x^2, x)");
+  assert.equal(text("{end}{s-←}{s-←}{⌫}", "x + 12"), "x + ");
+  assert.equal(text("{end}{s-←}{s-←}9", "x + 12"), "x + 9");
+  assert.equal(text("{end}{s-←}{s-←}9{undo}", "x + 12"), "x + 12");
+  // / makes the selection a numerator, ( puts it in parentheses
+  assert.equal(text("{all}/2", "x + 1"), "(x + 1)/2");
+  assert.equal(text("{all}(", "x + 1"), "(x + 1)");
+  // ← and → on a selection go to its ends
+  const { e } = typed("{end}{s-←}{s-←}", "x + 12");
+  e.collapse(-1); e.type("-");
+  assert.equal(e.text, "x + -12");
+});
+
+test("paste reads the text as structure where it can", () => {
+  const pasted = (src, clip, keys = "") => { const { e } = typed(keys, src); e.paste(clip); return e; };
+  let e = pasted("", "1/2 + diff(x^2, x)");
+  assert.deepEqual(e.stmt.body.map((a) => a.k), ["frac", "ch", "call"]);
+  assert.equal(e.text, "1/2 + diff(x^2, x)");
+  // at the caret, inside a slot
+  e = pasted("", "x^2", "\\sqrt ");
+  assert.equal(e.text, "sqrt(x^2)");
+  // a whole `let` into an empty input is the cell's head too
+  e = pasted("", "let f(x) = x^2");
+  assert.equal(e.text, "let f(x) = x^2");
+  // text that is not an expression is typed as far as it goes: `⟦`, `{` mean nothing here
+  e = pasted("", "a+⟦b⟧");
+  assert.equal(e.text, "a + b");
+  // one step to undo
+  e = pasted("", "1/2 + 3");
+  e.undo();
+  assert.equal(e.text, "");
+});
+
+test("a let head is typed as it reads, and its name and parameters are slots", () => {
+  assert.equal(text("let f(x, y) = x*y"), "let f(x, y) = x*y");
+  assert.equal(text("let a = 2"), "let a = 2");
+  assert.equal(typed("let ").holes, 2);                 // the name, and the body
+  // Tab goes name → body; a parameter list can grow and shrink
+  assert.equal(text("let g{tab}x^2", ""), "let g = x^2");
+  assert.equal(text("let f(x,{⌫}{⌫}{⌫}{tab}x", ""), "let f = x");
+  // the function's own body may call it
+  const { e } = typed("let f(n) = f(n");
+  assert.equal(e.stmt.body[1].k, "call");
+  // a numerator stops at the head, and a minus after it is a negation
+  assert.equal(text("let h = x/2"), "let h = x/2");
+  assert.equal(text("let h = -x"), "let h = -x");
+  // the caret walks through the head like any slot
+  const t = typed("", "let f(x) = x");
+  t.e.home(); t.e.right(); assert.equal(t.e.caret.block, t.e.stmt.body[0].name);
+});
+
+test("the call around the caret, for signature help, is one drawn as name(args)", () => {
+  const ctx = (keys, src, known) => typed(keys, src, known).e.callContext();
+  assert.deepEqual(ctx("subst(x^2{→}, x, 3"), { name: "subst", arg: 2, firstArg: "x^2" });
+  assert.deepEqual(ctx("rref([1,2;3,4"), { name: "rref", arg: 0, firstArg: "[1, 2; 3, 4]" });
+  // inside √ inside N: the √ shows its slot already, so it is N's first argument
+  assert.deepEqual(ctx("N(sqrt(2"), { name: "N", arg: 0, firstArg: "sqrt(2)" });
+  assert.equal(ctx("diff(x^2"), null);
+  assert.deepEqual(ctx("f(1, 2", "", ["f"]), { name: "f", arg: 1, firstArg: "1" });
 });

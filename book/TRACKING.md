@@ -647,11 +647,25 @@ Phases:
    references and text that does not parse stay as text, and the button says why. The session's
    functions are the reader's `known`. Enter with an empty slot goes to it instead of running. A
    visual cell hides the input interpretation unless the source has a `%`.
-3. `let` heads editable in the visual input (today they show and cannot take the caret), `%` as an
-   Out[n] chip, engine errors as underlines on the atoms their span covers (`Written.spans`), paste
-   through the reader (today pasted text is typed a character at a time), an image pasted into a visual
-   cell, signature help over the written text, selection (Shift+arrows) and undo.
-4. Visual by default; visual cells hide the input interpretation; a keypad of templates on phones.
+3. Editing — DONE 2026-09-28.
+   - Undo and redo (Ctrl/⌘+Z, Ctrl/⌘+Shift+Z, Ctrl+Y): a snapshot of the tree and the caret's path
+     before each edit; a run of typed letters or of deletions is one step, and undoing a template goes
+     back to the command as typed.
+   - Selection (Shift with any move, drag, Shift+click, Ctrl/⌘+A): whole atoms of the smallest block
+     holding both ends, so reaching into a fraction selects the fraction. Typing replaces it, `/` makes
+     it a numerator, `(` parenthesises it; Copy and Cut give its source text.
+   - Paste reads the text: an expression goes in as structure, anything else is typed as far as it
+     goes. An image or SVG pasted into a visual cell is attached and the cell goes back to text.
+   - The `let` head is an atom whose name and parameters are slots (it was `Stmt.let`, outside the
+     tree): `let ` at the start makes one, `(` and `,` build the parameters, and the caret, Tab,
+     selection and undo go through it like anything else.
+   - `%`, `%%`, `%n` are Out[n] chips; the notebook says which output `%` names, and the tooltip is
+     its text. With them a visual cell hides the input interpretation always.
+   - A syntax error's span is marked on the atoms it covers (`atomsInSpan`). Only syntax errors carry a
+     span and a visual cell's text reads by the engine's grammar, so this shows where the two disagree.
+   - Signature help above a visual cell for the call around the caret that shows as `name(args)`;
+     d/dx, ∫, Σ and the rest show their slots already.
+4. Visual by default; a keypad of templates on phones.
 5. Retire the View › Input interpretation toggle; explain on the input through engine-reported spans.
 
 ## Toolchain v4.34.1 (2026-09-27, Alex: "upgrade our engine to 4.34.1 since mathlib now has a 4.34.1")

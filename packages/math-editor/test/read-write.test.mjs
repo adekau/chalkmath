@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import katex from "katex";
-import { read, write, toLatex, show, sameStmt } from "../dist/index.js";
+import { read, write, toLatex, show, sameStmt, atomsInSpan, letHead } from "../dist/index.js";
 
 const root = new URL("../../../", import.meta.url);
 const golden = readFileSync(new URL("engine/Tests/golden.tsv", root), "utf8").split("\n").filter(Boolean).map((l) => l.split("\t"));
@@ -12,7 +12,7 @@ const notebookCells = readdirSync(new URL("notebooks/", root)).filter((f) => f.e
   return JSON.parse(readFileSync(new URL(`notebooks/${f}`, root), "utf8")).cells.filter((c) => !c.type || c.type === "math").map((c) => {
     const cell = { file: f, src: c.src, known: [...known] };
     const r = read(c.src, known);
-    if (r.ok && r.stmt.let?.params) known.push(r.stmt.let.name);
+    if (r.ok && letHead(r.stmt)?.params) known.push(letHead(r.stmt).name);
     return cell;
   });
 });
@@ -55,8 +55,8 @@ test("the tree is the engine's parse: precedence, implicit products, what the nu
   assert.equal(shape("f(x)"), "[f (paren [x])]");
   assert.equal(shape("f(x)", ["f"]), "[(f [x])]");
   const s = tree("let g(a, b) = a*b + g(a, 1)");
-  assert.deepEqual(s.let, { name: "g", params: ["a", "b"] });
-  assert.equal(show(s.body), "[a * b + (g [a] [1])]");
+  assert.deepEqual(letHead(s), { name: "g", params: ["a", "b"] });
+  assert.equal(show(s.body), "[(let [g] [a] [b]) a * b + (g [a] [1])]");
 });
 
 test("parse errors are the engine's, with its spans", () => {
@@ -127,5 +127,18 @@ test("every notation is LaTeX KaTeX renders, with every atom tagged", () => {
   assert.equal(tex("transpose(M) + conj(z)"), "{{M}}^{\\mathsf{T}}+\\overline{{z}}");
   assert.equal(tex("dot(u, v + w)"), "{u} \\cdot \\left({v}+{w}\\right)");
   assert.equal(tex("2 llama + x_1"), "2{\\mathit{llama}}+{x_{1}}");
+  // output references are Out[n] chips; a relative one needs the host to say which output it is
+  assert.equal(tex("%3 + %"), "\\htmlData{out=n3}{\\mathrm{Out}[3]}+\\htmlData{out=p1}{\\mathrm{Out}[\\%]}");
+  assert.equal(toLatex(tree("%%"), { outRef: (r) => (r === "%%" ? 5 : null) }), "\\htmlData{out=p2}{\\mathrm{Out}[5]}");
   assert.equal(tex("norm(v) + abs(x) + sqrt(2)"), "\\left\\lVert {v}\\right\\rVert+\\left|{x}\\right|+\\sqrt{2}");
+});
+
+test("an engine span maps to the innermost atoms it covers", () => {
+  const t = tree("1 + x/y + sqrt(z)");
+  const at = (start, end) => atomsInSpan(t, { start, end }).map((a) => show([a])).join(" ");
+  assert.equal(at(4, 5), "[x]");                       // inside the fraction: just the x
+  assert.equal(at(4, 7), "[(frac [x] [y])]");          // the whole fraction: the fraction
+  assert.equal(at(10, 17), "[(sqrt [z])]");
+  assert.equal(at(10, 14), "[(sqrt [z])]");            // the name of a call is the call
+  assert.equal(at(17, 17), "[(sqrt [z])]");            // the end of the input: the last atom
 });

@@ -23,12 +23,20 @@ export type Atom =
   /** `name(args)`: a builtin or a function the session defined. How it shows (d/dx, ∫, |·|) is
    *  `notation.ts`'s choice; the tree only knows the name. */
   | { k: "call"; name: string; args: Block[] }
-  | { k: "matrix"; rows: Block[][] };
+  | { k: "matrix"; rows: Block[][] }
+  /** `let name =` or `let f(x, y) =`: the cell's head, only ever first in the body. The name and the
+   *  parameters are slots like any other, so the caret goes through them. */
+  | { k: "let"; name: Block; params: Block[] | null };
 
-/** A cell: an optional `let name =` or `let f(x, y) =` head, and the expression. */
-export interface Stmt {
-  let?: { name: string; params: string[] | null };
-  body: Block;
+/** A cell: its body, which may start with a `let` head. */
+export interface Stmt { body: Block }
+
+/** A cell's `let` head as text: the name and the parameters (null for `let name =`). */
+export function letHead(stmt: Stmt): { name: string; params: string[] | null } | null {
+  const h = stmt.body[0];
+  if (h?.k !== "let") return null;
+  const text = (b: Block) => b.map((a) => (a.k === "ch" ? a.c : "")).join("");
+  return { name: text(h.name), params: h.params ? h.params.map(text) : null };
 }
 
 export const ch = (c: string): Atom => ({ k: "ch", c });
@@ -75,14 +83,11 @@ export function sameAtom(a: Atom, b: Atom): boolean {
     case "call": return b.k === "call" && a.name === b.name && a.args.length === b.args.length && a.args.every((x, i) => sameBlock(x, b.args[i]!));
     case "matrix": return b.k === "matrix" && a.rows.length === b.rows.length &&
       a.rows.every((r, i) => r.length === b.rows[i]!.length && r.every((x, j) => sameBlock(x, b.rows[i]![j]!)));
+    case "let": return b.k === "let" && sameBlock(a.name, b.name) && (a.params === null ? b.params === null
+      : b.params !== null && a.params.length === b.params.length && a.params.every((x, i) => sameBlock(x, b.params![i]!)));
   }
 }
-export function sameStmt(a: Stmt, b: Stmt): boolean {
-  const la = a.let, lb = b.let;
-  if (!!la !== !!lb) return false;
-  if (la && lb && (la.name !== lb.name || JSON.stringify(la.params) !== JSON.stringify(lb.params))) return false;
-  return sameBlock(a.body, b.body);
-}
+export const sameStmt = (a: Stmt, b: Stmt): boolean => sameBlock(a.body, b.body);
 
 /** A compact rendering of a tree for tests and debugging: `(frac [2 x] [3])`. */
 export function show(b: Block): string {
@@ -96,5 +101,6 @@ function showAtom(a: Atom): string {
     case "paren": return `(paren ${show(a.body)})`;
     case "call": return `(${a.name} ${a.args.map(show).join(" ")})`;
     case "matrix": return `(matrix ${a.rows.map((r) => r.map(show).join(" ")).join(" ; ")})`;
+    case "let": return `(let ${show(a.name)}${a.params ? " " + a.params.map(show).join(" ") : ""})`;
   }
 }
