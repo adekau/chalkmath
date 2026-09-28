@@ -65,12 +65,15 @@ def out (fd : UInt8) : IO.FS.Stream where
 
 end LeanWeb
 
-def main (_args : List String) : IO UInt32 := do
+unsafe def main (_args : List String) : IO UInt32 := do
   let libs := (← IO.getEnv "LEAN_PATH").map System.SearchPath.parse |>.getD ["/lib/lean"]
   searchPathRef.set libs
   -- No Lake in a browser: `setupFile` finds its binary by `LAKE` before `IO.appDir` (which has no
   -- meaning here) and treats a missing binary as a file without a lakefile, on the plain search path.
   LeanWeb.setEnv "LAKE" "/lake-is-not-available-in-the-browser"
+  -- as `lean_main` does before it runs the worker (src/util/shell.cpp): imported `[init]` declarations
+  -- may run, which importing the header needs
+  enableInitializersExecution
   let _ ← IO.setStdin (← LeanWeb.stdin)
   let _ ← IO.setStdout (LeanWeb.out 1)
   let _ ← IO.setStderr (LeanWeb.out 2)
