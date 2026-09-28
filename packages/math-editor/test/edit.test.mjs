@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { MathEdit, read, write } from "../dist/index.js";
+import { MathEdit, read, write, templateInText } from "../dist/index.js";
 
 /** Type into a fresh editor (or one holding `src`). `{→}` `{←}` `{↑}` `{↓}` `{⌫}` `{del}` `{tab}`
  *  `{s-tab}` are keys; anything else is typed a character at a time. */
@@ -181,4 +181,22 @@ test("the call around the caret, for signature help, is one drawn as name(args)"
   assert.deepEqual(ctx("N(sqrt(2"), { name: "N", arg: 0, firstArg: "sqrt(2)" });
   assert.equal(ctx("diff(x^2"), null);
   assert.deepEqual(ctx("f(1, 2", "", ["f"]), { name: "f", arg: 1, firstArg: "1" });
+});
+
+test("a template typed in a cell's text lands where it was typed, in a tree", () => {
+  const at = (before, after = "") => { const e = templateInText(before, after); return e && [e.text, e.caret.block.length === 0]; };
+  assert.deepEqual(at("\\frac"), ["()/()", true]);
+  assert.deepEqual(at("1 + \\frac"), ["1 + ()/()", true]);
+  assert.deepEqual(at("rref(\\mat2x2", ")"), ["rref([, ; , ])", true]);
+  assert.deepEqual(at("x \\sqrt", " + 1"), ["x sqrt() + 1", true]);
+  assert.deepEqual(at("x^2 + \\int"), ["x^2 + integrate(, )", true]);
+  // the rest of the text keeps its reading: x^2 + 1 is not typed into the exponent
+  assert.equal(templateInText("x^2 + 1 + \\sqrt", "").text, "x^2 + 1 + sqrt()");
+  // not a template, or text that does not read around it: nothing
+  assert.equal(templateInText("\\pi", ""), null);
+  assert.equal(templateInText("rref(\\frac", ""), null);
+  // the template is one step to undo
+  const e = templateInText("1 + \\frac", "");
+  e.undo();
+  assert.equal(e.text, "1 + ");
 });
