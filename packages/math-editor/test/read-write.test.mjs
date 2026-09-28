@@ -76,7 +76,7 @@ test("parse errors are the engine's, with its spans", () => {
 test("writing puts back exactly the parentheses the engine needs", () => {
   const cases = {
     "2(a/b)": "2(a/b)", "(a+b)/(c+d)": "(a + b)/(c + d)", "x^(2n)": "x^(2n)", "x^(1/2)": "x^(1/2)",
-    "a/(b/c)": "a/(b/c)", "-(a/b)": "-(a/b)", "a - (b/c)": "a - b/c", "((a+b))/c": "((a + b))/c",
+    "a/(b/c)": "a/(b/c)", "-(a/b)": "-(a/b)", "a - (b/c)": "a - b/c", "((a+b))/c": "(a + b)/c",
     "x sin(y)": "x sin(y)", "sin^2(y)": "sin(y)^2", "x^n y": "x^n y", "% 2": "% 2", "(a/b)(c/d)": "a/b(c/d)",
     "a*b/c": "a*b/c", "a*(b/c)": "a*(b/c)", "x/(2y)": "x/(2y)", "x/(y)": "x/y", "1/x^2": "1/x^2",
     "let f(x, y) = x/y": "let f(x, y) = x/y", "[1, 2; 3, 4]": "[1, 2; 3, 4]", "diff(x^2,x)": "diff(x^2, x)",

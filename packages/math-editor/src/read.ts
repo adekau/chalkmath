@@ -70,8 +70,8 @@ export function read(src: string, known: readonly string[] = []): ReadResult {
 }
 
 /** A fraction's numerator and denominator and an exponent show their own grouping: `(a+b)/c`
- *  keeps `a+b` and drops the parentheses. */
-const ungroup = (b: Block): Block => { const a = b[0]; return b.length === 1 && a?.k === "paren" ? a.body : b; };
+ *  keeps `a+b` and drops the parentheses (all of them: `((a+b))/c` is the same fraction). */
+export const ungroup = (b: Block): Block => { const a = b[0]; return b.length === 1 && a?.k === "paren" ? ungroup(a.body) : b; };
 
 /** Append `more` to `out` as an implicit product, keeping a space where the two would lex as one. */
 function juxtapose(out: Block, more: Block) {

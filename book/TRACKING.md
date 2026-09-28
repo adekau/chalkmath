@@ -614,10 +614,13 @@ Decisions (Alex, 2026-09-27):
   the changed-subterm marks use it.
 
 Phases:
-0. Spike: the tree as LaTeX with `\htmlData` on every atom, laid out by KaTeX (so stretchy
-   delimiters, matrices and big operators come free and the input looks like the outputs), with a
-   caret overlay placed from the atoms' boxes and a hidden textarea for keys and IME. Measure caret
-   accuracy, click hit-testing and re-render cost; fall back to a custom DOM view if it falls short.
+0. Spike — DONE 2026-09-28: KaTeX it is. The tree as LaTeX (with `\displaystyle`) and `\htmlData` on
+   every atom and hole, laid out by KaTeX — stretchy delimiters, matrices, ∫ and Σ with their bounds,
+   determinant bars come free and the input looks like the outputs — with a caret line placed from
+   the tagged boxes and a hidden textarea for keys, IME and phones (`view.ts`, `demo/`). In
+   Chromium: a click just inside each of 65 atoms across the demo's inputs puts the caret on that
+   atom's left edge within 3px and on its line (the two at 3.06px are the ½ exponent's edge);
+   re-rendering on every key costs 2–3 ms for a typical cell and 5.5 ms for a 20×2 matrix.
 1. Model, reader and writer — DONE 2026-09-27. `packages/math-editor`: the tree (`model.ts`), the
    engine's grammar reading into it rule for rule with the engine's error messages and spans
    (`read.ts`), the writer that puts back exactly the parentheses the engine needs and maps each atom
@@ -627,10 +630,19 @@ Phases:
    notebook cells the grammar reads, KaTeX rendering every notation with every atom tagged, and —
    where the native engine is built (CI) — every source and its rewrite evaluated side by side with
    the same parsed input and answer. Writing changes only spacing (`[1,2]` → `[1, 2]`, `a+b` → `a + b`).
-2. Editor, basic: characters, parentheses, fractions, powers, roots, calls, navigation, deletion, Enter
-   runs, the `\` Greek letters, the per-cell toggle. Keep λ and order cells raw by the engine's
-   `kind` for the cell, not only by whether the grammar reads it (`let D = divisors(12)` reads as a
-   product and is an order cell). Pass the session's functions (`USER_NAMES`) as the reader's `known`.
+2. Editor, basic. The editing core is in (`edit.ts`, 2026-09-28): arrows walk the slots in the order
+   they are on screen (d/dx then the body; ∫'s bounds, integrand, variable), ↑↓ between a fraction's
+   parts, a matrix's rows, a bound's top and bottom and into and out of an exponent; Tab to the next
+   empty slot, wrapping; Backspace enters a structure from its end and removes it once empty. The raw
+   syntax typed into it still works — `diff(` opens d/dx, `,` is the next argument, `)` leaves the
+   call, `[1,2;3,4]` fills a matrix, `/` takes what the engine would put in the numerator, a `)` that
+   closes a whole denominator or exponent drops its parentheses and leaves the fraction — and `\name`
+   inserts a symbol or a template (`\frac \sqrt \int \dint \sum \diff \mat2x3 \vec3 \abs \norm \T
+   \det \dot \conj`), a template starting in its first slot on screen. A letter typed right after a
+   `\` symbol is a product (`\pi r` is π·r; raw mode's `πr` is one name). Still to do: the notebook
+   side — the per-cell toggle, the View menu default, the `\` completion menu over the visual
+   input, keeping λ and order cells raw by the engine's `kind` for the cell (`let D = divisors(12)`
+   reads as a product and is an order cell), and the session's functions (`USER_NAMES`) as `known`.
 3. Calculus and linear algebra templates, `let`, `%` as an Out[n] chip, engine errors as underlines
    on the atoms their span covers (`Written.spans`), copy (source text) and paste (read), completions
    and signature help over the written text.

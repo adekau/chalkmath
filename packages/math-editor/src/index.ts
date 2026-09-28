@@ -4,6 +4,7 @@
  * it is what runs.
  */
 export * from "./model.js";
-export { read, lex, BUILTIN_FUNCTIONS, type ReadResult, type ReadError } from "./read.js";
+export { read, lex, ungroup, BUILTIN_FUNCTIONS, type ReadResult, type ReadError } from "./read.js";
 export { write, writeText, type Written } from "./write.js";
-export { toLatex, type NotationOptions } from "./notation.js";
+export { toLatex, slots, type NotationOptions } from "./notation.js";
+export { MathEdit, TEMPLATES, DEFAULT_SYMBOLS, type Caret, type Where } from "./edit.js";

@@ -110,7 +110,8 @@ class Notation {
       return `{${s}}`;
     }
     if (t.kind === "num") return this.chars(t.atoms, (c) => c);
-    return this.chars(t.atoms, (c) => (c === "*" ? "\\cdot " : c === " " ? "\\," : c === "%" ? "\\%" : c));
+    // a `\` is a command still being typed (`\frac` before its space)
+    return this.chars(t.atoms, (c) => (c === "*" ? "\\cdot " : c === " " ? "\\," : c === "%" ? "\\%" : c === "\\" ? "\\backslash " : c));
   }
 
   /** A slot shown in parentheses unless it is one factor already. */
@@ -172,3 +173,26 @@ class Notation {
 
 const BUILTINS = new Set(["simplify", "expand", "factor", "N", "det", "rref", "transpose", "solve", "subst", "plot",
   "dot", "norm", "sum", "exptotrig", "epicycles", "dft", "diff", "integrate", "sign", "sqrt", "abs", "conj", "re", "im"]);
+
+/** An atom's slots in the order they sit on screen, left to right and then top to bottom, which is
+ *  the order the arrow keys walk them: d/dx (f) is x then f; ∫ₐᵇ f dx is a, b, f, x; Σ is k, a, b,
+ *  then the body. Must agree with the LaTeX above. */
+export function slots(a: Atom): Block[] {
+  switch (a.k) {
+    case "ch": return [];
+    case "frac": return [a.num, a.den];
+    case "sup": return [a.exp];
+    case "paren": return [a.body];
+    case "matrix": return a.rows.flat();
+    case "call": {
+      const b = a.args;
+      switch (`${a.name}/${b.length}`) {
+        case "diff/2": return [b[1]!, b[0]!];
+        case "diff/3": return [b[2]!, b[1]!, b[0]!];
+        case "integrate/4": return [b[2]!, b[3]!, b[0]!, b[1]!];
+        case "sum/4": return [b[1]!, b[2]!, b[3]!, b[0]!];
+        default: return b;
+      }
+    }
+  }
+}

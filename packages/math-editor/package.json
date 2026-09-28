@@ -7,9 +7,17 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc -p .",
-    "test": "node --test --test-timeout=60000 test/*.test.mjs"
+    "test": "node --test --test-timeout=60000 test/*.test.mjs",
+    "demo": "node demo/build.mjs"
   },
   "devDependencies": {
     "@chalkmath/engine-host": "0.1.0"
+  },
+  "exports": {
+    ".": "./dist/index.js",
+    "./view": "./dist/view.js"
+  },
+  "dependencies": {
+    "katex": "^0.16.47"
   }
 }
