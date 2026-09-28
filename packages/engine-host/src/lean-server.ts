@@ -29,6 +29,8 @@ export interface LeanServerModule {
   _leanweb_in_w(): number;
   _leanweb_in_r(): number;
   leanwebOut?: (fd: number, bytes: Uint8Array) => void;
+  /** What `IO.appPath` returns (engine/wasm/lean-compiler-emscripten.patch): a web worker has no executable. */
+  leanAppPath?: string;
 }
 
 export interface LeanServerOptions {
@@ -115,6 +117,9 @@ export function startLeanServer(o: LeanServerOptions): { receive(msg: LspMessage
   };
 
   const start = () => {
+    // Lean's server resolves its source search path from the application's directory (`IO.appDir`)
+    M.FS.mkdirTree("/bin");
+    M.leanAppPath = "/bin/lean";
     for (const [path, data] of o.library) {
       const full = `/lib/lean/${path}`;
       M.FS.mkdirTree(full.slice(0, full.lastIndexOf("/")));
