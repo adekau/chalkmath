@@ -330,7 +330,7 @@ theorem dec_cmd {r : PlainRule} (hname : ∀ e res, r.apply e = some res → ∃
   have hlist : countList cmdOwn es = 0 := by
     rw [countList_eq_zero_iff]; intro c hc
     exact (normal_facts (hcn c hc)).1
-  have : count cmdOwn (.fn f es) = 1 := by rw [count_fn, cmdOwn_fn, hlist, if_pos hf]
+  have : count cmdOwn (.fn f es) = 1 := by rw [count_fn, cmdOwn_fn, hlist, ite_eq_left hf]
   simp only [μ, cmdCount]
   exact Prod.Lex.left _ _ (by rw [hzero, this]; exact Nat.zero_lt_one)
 

@@ -1,0 +1,229 @@
+diff --git a/src/library/ir_interpreter.cpp b/src/library/ir_interpreter.cpp
+index cb954c0..744248a 100644
+--- a/src/library/ir_interpreter.cpp
++++ b/src/library/ir_interpreter.cpp
+@@ -338,6 +338,10 @@ void print_value(tout const & ios, value const & v, type t) {
+   return print_value(const_cast<tout &>(ios), v, t);
+ }
+ 
++#if defined(LEAN_EMSCRIPTEN)
++extern "C" void * lean_wasm_lookup_symbol(char const * sym);
++#endif
++
+ void * lookup_symbol_in_cur_exe(char const * sym) {
+ #ifdef LEAN_WINDOWS
+     std::vector<HMODULE> hmods(128);
+@@ -357,6 +361,10 @@ void * lookup_symbol_in_cur_exe(char const * sym) {
+         }
+     }
+     return nullptr;
++#elif defined(LEAN_EMSCRIPTEN)
++    // A static wasm link has no dynamic symbol table: the build generates one (name hash -> address) over
++    // every function and constant the Lean-emitted C defines, and this is its lookup.
++    return lean_wasm_lookup_symbol(sym);
+ #else
+     return dlsym(RTLD_DEFAULT, sym);
+ #endif
+@@ -1206,7 +1214,8 @@ extern "C" LEAN_EXPORT obj_res lean_run_mod_init_core(b_obj_arg  sym) {
+     }
+ }
+ 
+-extern "C" LEAN_EXPORT object * lean_run_init(object * env, object * opts, object * decl, object * init_decl, object *) {
++extern "C" LEAN_EXPORT object * lean_run_init(object * env, object * opts, object * decl, object * init_decl) {
++  // no world token: IO externs take none since lean4#10625, and wasm32 traps on the arity mismatch
+     return interpreter::with_interpreter<object *>(TO_REF(elab_environment, env), TO_REF(options, opts), TO_REF(name, decl), [&](interpreter & interp) {
+         return interp.run_init(TO_REF(name, decl), TO_REF(name, init_decl));
+     });
+diff --git a/src/library/module.cpp b/src/library/module.cpp
+index 402e522..76bde68 100644
+--- a/src/library/module.cpp
++++ b/src/library/module.cpp
+@@ -267,7 +267,8 @@ static std::vector<std::pair<size_t, ptrdiff_t>> read_lib_table_from_buffer(char
+ 
+ extern "C" LEAN_EXPORT object * lean_compacted_region_save(b_obj_arg ofname, b_obj_arg mod, b_obj_arg odata,
+                                                            b_obj_arg odep_regions, obj_arg oprev,
+-                                                           uint8 allow_closures_u8, object *) {
++                                                           uint8 allow_closures_u8) {
++  // no world token: IO externs take none since lean4#10625, and wasm32 traps on the arity mismatch
+     // `mmap` addresses must be page-aligned. The default (non-huge) page size on x86-64 is 4KB;
+     // `MapViewOfFileEx` addresses must be aligned to the "memory allocation granularity" (64KB).
+     const size_t ALIGN = 1LL<<16;
+@@ -449,7 +450,8 @@ static object * mk_compacted_region(b_obj_arg ofname, object * root,
+ // root to be interpreted as — the C side does no type checking and the caller is responsible for
+ // using a type compatible with what was saved (see `CompactedRegion.read`).
+ // Supports both `v2` and `v3` formats.
+-extern "C" LEAN_EXPORT object * lean_compacted_region_read(b_obj_arg ofname, b_obj_arg odep_regions, object *) {
++extern "C" LEAN_EXPORT object * lean_compacted_region_read(b_obj_arg ofname, b_obj_arg odep_regions) {
++  // no world token: IO externs take none since lean4#10625, and wasm32 traps on the arity mismatch
+     std::string olean_fn(lean_string_cstr(ofname));
+     try {
+         std::vector<region_view> dep_regions = extract_dep_regions(odep_regions);
+@@ -618,7 +620,8 @@ extern "C" LEAN_EXPORT object * lean_compacted_region_read(b_obj_arg ofname, b_o
+     }
+ }
+ 
+-extern "C" LEAN_EXPORT obj_res lean_compacted_region_free(obj_arg region, object *) {
++extern "C" LEAN_EXPORT obj_res lean_compacted_region_free(obj_arg region) {
++  // no world token: IO externs take none since lean4#10625, and wasm32 traps on the arity mismatch
+     char * buffer = region_buffer(region);
+     size_t full_sz = region_size(region);
+     bool is_mmap = lean_ctor_get_uint8(region, sizeof(void*) * 5) != 0;
+diff --git a/src/runtime/compact.cpp b/src/runtime/compact.cpp
+index 73c9a4e..048cba6 100644
+--- a/src/runtime/compact.cpp
++++ b/src/runtime/compact.cpp
+@@ -100,6 +100,9 @@ LEAN_EXPORT std::vector<lib_info> get_loaded_libs() {
+         if (!name) continue;
+         libs.push_back({reinterpret_cast<size_t>(hdr), name});
+     }
++#elif defined(LEAN_EMSCRIPTEN)
++    // one statically linked module, whose function pointers are table indices from 0 (no dl_iterate_phdr)
++    libs.push_back({0, ""});
+ #else
+     // Linux: use dl_iterate_phdr
+     dl_iterate_phdr([](struct dl_phdr_info * info, size_t, void * data) -> int {
+diff --git a/src/runtime/interrupt.cpp b/src/runtime/interrupt.cpp
+index 4cc6fac..d88faaf 100644
+--- a/src/runtime/interrupt.cpp
++++ b/src/runtime/interrupt.cpp
+@@ -17,7 +17,8 @@ namespace lean {
+ LEAN_THREAD_VALUE(size_t, g_max_heartbeat, 0);
+ LEAN_THREAD_VALUE(size_t, g_heartbeat, 0);
+ 
+-extern "C" LEAN_EXPORT obj_res lean_internal_get_default_max_heartbeat() {
++extern "C" LEAN_EXPORT obj_res lean_internal_get_default_max_heartbeat(b_lean_obj_arg /* unit */) {
++  // `(_ : Unit) → Nat` in Lean/Shell.lean: the caller passes the unit, and wasm32 traps on the arity mismatch
+ #ifdef LEAN_DEFAULT_MAX_HEARTBEAT
+     return lean_box(LEAN_DEFAULT_MAX_HEARTBEAT);
+ #else
+diff --git a/src/runtime/io.cpp b/src/runtime/io.cpp
+index 3df6291..46a422a 100644
+--- a/src/runtime/io.cpp
++++ b/src/runtime/io.cpp
+@@ -1258,7 +1258,8 @@ extern "C" LEAN_EXPORT obj_res lean_io_hard_link(b_obj_arg orig, b_obj_arg link)
+ }
+ 
+ /* createTempFile : IO (Handle × FilePath) */
+-extern "C" LEAN_EXPORT obj_res lean_io_create_tempfile(lean_object * /* w */) {
++extern "C" LEAN_EXPORT obj_res lean_io_create_tempfile() {
++  // no world token: IO externs take none since lean4#10625, and wasm32 traps on the arity mismatch
+     char path[PATH_MAX];
+     size_t base_len = PATH_MAX;
+     int ret = uv_os_tmpdir(path, &base_len);
+@@ -1304,7 +1305,8 @@ extern "C" LEAN_EXPORT obj_res lean_io_create_tempfile(lean_object * /* w */) {
+ }
+ 
+ /* createTempDir : IO FilePath */
+-extern "C" LEAN_EXPORT obj_res lean_io_create_tempdir(lean_object * /* w */) {
++extern "C" LEAN_EXPORT obj_res lean_io_create_tempdir() {
++  // no world token: IO externs take none since lean4#10625, and wasm32 traps on the arity mismatch
+     char path[PATH_MAX];
+     size_t base_len = PATH_MAX;
+     int ret = uv_os_tmpdir(path, &base_len);
+@@ -1386,14 +1388,21 @@ extern "C" LEAN_EXPORT obj_res lean_io_app_path() {
+     return io_result_mk_ok(mk_string(buf2));
+ #elif defined(LEAN_EMSCRIPTEN)
+     // See https://emscripten.org/docs/api_reference/emscripten.h.html#c.EM_ASM_INT
+-    char* appPath = reinterpret_cast<char*>(EM_ASM_INT({
+-        if ((typeof process === "undefined") || (process.release.name !== "node")) {
++    // On the main thread, where the host's `Module` is: a host that embeds Lean (a web worker has no
++    // executable) names a path in its virtual filesystem as `Module.leanAppPath`; under Node without
++    // one, the script's own path.
++    char* appPath = reinterpret_cast<char*>(MAIN_THREAD_EM_ASM_INT({
++        var path = Module["leanAppPath"];
++        if (!path && (typeof process !== "undefined") && (process.release.name === "node")) {
++            path = __filename;
++        }
++        if (!path) {
+             return 0;
+         }
+ 
+-        var lengthBytes = lengthBytesUTF8(__filename)+1;
++        var lengthBytes = lengthBytesUTF8(path)+1;
+         var pathOnWasmHeap = _malloc(lengthBytes);
+-        stringToUTF8(__filename, pathOnWasmHeap, lengthBytes);
++        stringToUTF8(path, pathOnWasmHeap, lengthBytes);
+         return pathOnWasmHeap;
+     }));
+     if (appPath == nullptr) {
+diff --git a/src/runtime/memory.cpp b/src/runtime/memory.cpp
+index 0a72369..1ad98f5 100644
+--- a/src/runtime/memory.cpp
++++ b/src/runtime/memory.cpp
+@@ -114,7 +114,8 @@ namespace lean {
+ static size_t g_max_memory = 0;
+ LEAN_THREAD_VALUE(size_t, g_counter, 0);
+ 
+-extern "C" LEAN_EXPORT lean_obj_res lean_internal_get_default_max_memory() {
++extern "C" LEAN_EXPORT lean_obj_res lean_internal_get_default_max_memory(b_lean_obj_arg /* unit */) {
++  // `(_ : Unit) → Nat` in Lean/Shell.lean: the caller passes the unit, and wasm32 traps on the arity mismatch
+ #ifdef LEAN_DEFAULT_MAX_MEMORY
+     return lean_box(LEAN_DEFAULT_MAX_MEMORY);
+ #else
+diff --git a/src/runtime/uv/tcp.cpp b/src/runtime/uv/tcp.cpp
+index eadc3be..0285850 100644
+--- a/src/runtime/uv/tcp.cpp
++++ b/src/runtime/uv/tcp.cpp
+@@ -831,5 +831,24 @@ extern "C" LEAN_EXPORT lean_obj_res lean_uv_tcp_keepalive(b_obj_arg socket, int3
+     );
+ }
+ 
++// Emscripten stubs for the functions added with Std.Async (missing upstream at v4.34.1)
++extern "C" LEAN_EXPORT lean_obj_res lean_uv_tcp_wait_readable(b_obj_arg socket) {
++    lean_always_assert(
++        false && ("Please build a version of Lean4 with libuv to invoke this.")
++    );
++}
++
++extern "C" LEAN_EXPORT lean_obj_res lean_uv_tcp_cancel_recv(b_obj_arg socket) {
++    lean_always_assert(
++        false && ("Please build a version of Lean4 with libuv to invoke this.")
++    );
++}
++
++extern "C" LEAN_EXPORT lean_obj_res lean_uv_tcp_try_accept(b_obj_arg socket) {
++    lean_always_assert(
++        false && ("Please build a version of Lean4 with libuv to invoke this.")
++    );
++}
++
+ #endif
+ }
+diff --git a/src/runtime/uv/udp.cpp b/src/runtime/uv/udp.cpp
+index 110c360..fa12a29 100644
+--- a/src/runtime/uv/udp.cpp
++++ b/src/runtime/uv/udp.cpp
+@@ -660,5 +660,18 @@ extern "C" LEAN_EXPORT lean_obj_res lean_uv_udp_set_ttl(b_obj_arg socket, uint32
+     );
+ }
+ 
++// Emscripten stubs for the functions added with Std.Async (missing upstream at v4.34.1)
++extern "C" LEAN_EXPORT lean_obj_res lean_uv_udp_wait_readable(b_obj_arg socket) {
++    lean_always_assert(
++        false && ("Please build a version of Lean4 with libuv to invoke this.")
++    );
++}
++
++extern "C" LEAN_EXPORT lean_obj_res lean_uv_udp_cancel_recv(b_obj_arg socket) {
++    lean_always_assert(
++        false && ("Please build a version of Lean4 with libuv to invoke this.")
++    );
++}
++
+ #endif
+ }
+diff --git a/src/util/shell.cpp b/src/util/shell.cpp
+index 29b8598..1eb8d86 100644
+--- a/src/util/shell.cpp
++++ b/src/util/shell.cpp
+@@ -286,7 +286,9 @@ extern "C" LEAN_EXPORT int lean_main(int argc, char ** argv) {
+ #ifdef LEAN_EMSCRIPTEN
+     // When running in command-line mode under Node.js, we make system directories available in the virtual filesystem.
+     // This mode is used to compile 32-bit oleans.
+-    EM_ASM(
++    // MAIN_THREAD_: with PROXY_TO_PTHREAD, `main` runs on a pthread whose filesystem calls are served by
++    // the main thread, so the mounts must be made there.
++    MAIN_THREAD_EM_ASM(
+         if ((typeof process === "undefined") || (process.release.name !== "node")) {
+             throw new Error("The Lean command-line driver can only run under Node.js. For the embeddable WASM library, see lean_wasm.cpp.");
+         }

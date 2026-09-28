@@ -387,13 +387,13 @@ theorem trigValue_soundR (ρ : EnvR) {f : String} (hf : f = "sin" ∨ f = "cos" 
   · rename_i sc sr cc cr hs
     obtain ⟨⟨hsin, hcos⟩, hrad⟩ := sinCos_spec hs
     rcases hf with rfl | rfl | rfl
-    · rw [if_pos (by decide)] at hc
+    · rw [ite_eq_left (by decide)] at hc
       simp only [Option.some.injEq, Prod.mk.injEq] at hc; obtain ⟨rfl, rfl⟩ := hc
       simp [hsin]
-    · rw [if_neg (by decide), if_pos (by decide)] at hc
+    · rw [ite_eq_right (by decide), ite_eq_left (by decide)] at hc
       simp only [Option.some.injEq, Prod.mk.injEq] at hc; obtain ⟨rfl, rfl⟩ := hc
       simp [hcos]
-    · rw [if_neg (by decide), if_neg (by decide), if_pos (by decide)] at hc
+    · rw [ite_eq_right (by decide), ite_eq_right (by decide), ite_eq_left (by decide)] at hc
       simp only [applyFn]
       rw [Real.tan_eq_sin_div_cos, hsin, hcos]
       split_ifs at hc with h0 h1 h2 h3 <;> simp only [Option.some.injEq, Prod.mk.injEq, reduceCtorEq] at hc

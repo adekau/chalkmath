@@ -1,7 +1,7 @@
 import Mathlib.Analysis.SpecialFunctions.Pow.Real
 import Mathlib.Analysis.SpecialFunctions.Trigonometric.Basic
 import Mathlib.Analysis.SpecialFunctions.Log.Base
-import Mathlib.Data.Real.Sign
+import Mathlib.Basic.Real.Sign
 import MathEngine
 /-!
 # ℝ-valued semantics

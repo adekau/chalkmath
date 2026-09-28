@@ -56,23 +56,23 @@ theorem entry_swap {m : Mat} {i j : Nat} (hi : i < m.length) (hj : j < m.length)
 
 theorem entry_scale {m : Mat} {i : Nat} {c : Rat} (hc : c ≠ 0) (hi : i < m.length) (k l : Nat) :
     entry ((Op.scale i c).apply m) k l = if k = i then c * entry m i l else entry m k l := by
-  simp only [Op.apply, if_neg hc]
+  simp only [Op.apply, ite_eq_right hc]
   rw [List.getElem?_eq_getElem hi]
   simp only
   rw [entry_set]
   by_cases hki : k = i
-  · subst hki; simp only [hi, and_self, if_true, entry_eq hi]
+  · subst hki; simp only [hi, and_self, ite_true, entry_eq hi]
     cases hl : m[k][l]? <;> simp [List.getElem?_map, hl]
   · simp [hki]
 
 theorem entry_addMul {m : Mat} {i j : Nat} {c : Rat} (hij : i ≠ j) (hi : i < m.length) (hj : j < m.length) (k l : Nat) :
     entry ((Op.addMul i j c).apply m) k l = if k = i then entry m i l + c * entry m j l else entry m k l := by
-  simp only [Op.apply, if_neg hij]
+  simp only [Op.apply, ite_eq_right hij]
   rw [List.getElem?_eq_getElem hi, List.getElem?_eq_getElem hj]
   simp only
   rw [entry_set]
   by_cases hki : k = i
-  · subst hki; simp only [hi, and_self, if_true, entry_eq hi, entry_eq hj, getD_rowAdd]
+  · subst hki; simp only [hi, and_self, ite_true, entry_eq hi, entry_eq hj, getD_rowAdd]
   · simp [hki]
 
 theorem run_map_eq_runOps (col : Nat) (ops : List Op) : ∀ m, run (ops.map (col, ·)) m = runOps ops m := by
@@ -256,22 +256,22 @@ theorem Inv.swap_ge {m : Mat} {p col : Nat} {pivs : List Nat} (h : Inv m p col p
   have e := entry_swap hq hp
   exact {
     len := h.len, lt := h.lt, sorted := h.sorted
-    pivot := fun i hi => by rw [e]; simp only [show i ≠ p by omega, show i ≠ q by omega, if_false]; exact h.pivot i hi
-    lead := fun i hi j hj => by rw [e]; simp only [show i ≠ p by omega, show i ≠ q by omega, if_false]; exact h.lead i hi j hj
+    pivot := fun i hi => by rw [e]; simp only [show i ≠ p by omega, show i ≠ q by omega, ite_false]; exact h.pivot i hi
+    lead := fun i hi j hj => by rw [e]; simp only [show i ≠ p by omega, show i ≠ q by omega, ite_false]; exact h.lead i hi j hj
     alone := fun i hi k hk => by
       rw [e]
       by_cases hkp : k = p
-      · subst hkp; simp only [if_true]; exact h.below q hpq _ (hlt i hi)
+      · subst hkp; simp only [ite_true]; exact h.below q hpq _ (hlt i hi)
       · by_cases hkq : k = q
-        · subst hkq; simp only [hkp, if_false, if_true]; exact h.below p (Nat.le_refl _) _ (hlt i hi)
-        · simp only [hkp, hkq, if_false]; exact h.alone i hi k hk
+        · subst hkq; simp only [hkp, ite_false, ite_true]; exact h.below p (Nat.le_refl _) _ (hlt i hi)
+        · simp only [hkp, hkq, ite_false]; exact h.alone i hi k hk
     below := fun i hi j hj => by
       rw [e]
       by_cases hip : i = p
-      · subst hip; simp only [if_true]; exact h.below q hpq j hj
+      · subst hip; simp only [ite_true]; exact h.below q hpq j hj
       · by_cases hiq : i = q
-        · subst hiq; simp only [hip, if_false, if_true]; exact h.below p (Nat.le_refl _) j hj
-        · simp only [hip, hiq, if_false]; exact h.below i hi j hj
+        · subst hiq; simp only [hip, ite_false, ite_true]; exact h.below p (Nat.le_refl _) j hj
+        · simp only [hip, hiq, ite_false]; exact h.below i hi j hj
     p_le := by rw [length_apply]; exact h.p_le }
 
 /-- Scaling row `p` keeps the invariant. -/
@@ -281,18 +281,18 @@ theorem Inv.scale_p {m : Mat} {p col : Nat} {pivs : List Nat} (h : Inv m p col p
   have e := entry_scale hc hp
   exact {
     len := h.len, lt := h.lt, sorted := h.sorted
-    pivot := fun i hi => by rw [e]; simp only [show i ≠ p by omega, if_false]; exact h.pivot i hi
-    lead := fun i hi j hj => by rw [e]; simp only [show i ≠ p by omega, if_false]; exact h.lead i hi j hj
+    pivot := fun i hi => by rw [e]; simp only [show i ≠ p by omega, ite_false]; exact h.pivot i hi
+    lead := fun i hi j hj => by rw [e]; simp only [show i ≠ p by omega, ite_false]; exact h.lead i hi j hj
     alone := fun i hi k hk => by
       rw [e]
       by_cases hkp : k = p
-      · subst hkp; simp only [if_true]; rw [h.below k (Nat.le_refl _) _ (hlt i hi)]; simp
-      · simp only [hkp, if_false]; exact h.alone i hi k hk
+      · subst hkp; simp only [ite_true]; rw [h.below k (Nat.le_refl _) _ (hlt i hi)]; simp
+      · simp only [hkp, ite_false]; exact h.alone i hi k hk
     below := fun i hi j hj => by
       rw [e]
       by_cases hip : i = p
-      · subst hip; simp only [if_true]; rw [h.below i (Nat.le_refl _) j hj]; simp
-      · simp only [hip, if_false]; exact h.below i hi j hj
+      · subst hip; simp only [ite_true]; rw [h.below i (Nat.le_refl _) j hj]; simp
+      · simp only [hip, ite_false]; exact h.below i hi j hj
     p_le := by rw [length_apply]; exact h.p_le }
 
 theorem coeffOf_map (k : Nat) (g : Nat → Rat) : ∀ (l : List Nat), l.Nodup →
@@ -302,7 +302,7 @@ theorem coeffOf_map (k : Nat) (g : Nat → Rat) : ∀ (l : List Nat), l.Nodup �
     simp only [List.map_cons, coeffOf, List.mem_cons]
     by_cases hki : k = i
     · subst hki; simp
-    · simp only [hki, if_false, false_or]
+    · simp only [hki, ite_false, false_or]
       exact coeffOf_map k g rest (List.nodup_cons.mp hnd).2
 
 theorem columnOps_none {m : Mat} {col p : Nat} (h : columnOps m col p = none) :
@@ -344,7 +344,7 @@ theorem columnOps_some {m : Mat} {col p : Nat} {pivs : List Nat} {ops : List Op}
     · have hinv : (entry m1 p col).inv ≠ 0 := by
         show (entry m1 p col)⁻¹ ≠ 0; grind
       refine ⟨(Op.scale p (entry m1 p col).inv).apply m1, by simp [runOps, List.foldl, hone], h1.scale_p hinv hp1, ?_, by rw [length_apply, hlen1]⟩
-      rw [entry_scale hinv hp1]; simp only [if_true]
+      rw [entry_scale hinv hp1]; simp only [ite_true]
       show (entry m1 p col)⁻¹ * entry m1 p col = 1; grind
   obtain ⟨m2, hm2, h2, hpiv, hlen2⟩ := stage2
   rw [hm2]
@@ -366,8 +366,8 @@ theorem columnOps_some {m : Mat} {col p : Nat} {pivs : List Nat} {ops : List Op}
   · intro k hk l
     rw [hcl, coeffOf_map _ _ keys hnd]
     by_cases hkm : k ∈ keys
-    · simp only [hkm, if_true]; grind
-    · simp only [hkm, if_false]
+    · simp only [hkm, ite_true]; grind
+    · simp only [hkm, ite_false]
       have hz : entry m2 k col = 0 := by
         by_cases hkl : k < m.length
         · cases Decidable.em (entry m2 k col = 0) with

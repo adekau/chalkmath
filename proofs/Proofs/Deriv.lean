@@ -85,7 +85,7 @@ theorem fnD_two (ρ : EnvR) (f : String) (g v : Expr) :
 @[simp] theorem fnD_long (ρ : EnvR) (f : String) (a b c : Expr) (r : List Expr) :
     fnD ρ f (a :: b :: c :: r) = 0 := rfl
 @[simp] theorem fnD_two_ne (ρ : EnvR) {f : String} (g v : Expr) (h : f ≠ "diff") : fnD ρ f [g, v] = 0 := by
-  rw [fnD_two, if_neg h]
+  rw [fnD_two, ite_eq_right h]
 @[simp] theorem sumD_nil (ρ : EnvR) : sumD ρ [] = 0 := rfl
 @[simp] theorem sumD_cons (ρ : EnvR) (e : Expr) (es : List Expr) :
     sumD ρ (e :: es) = evalD ρ e + sumD ρ es := rfl
@@ -98,7 +98,7 @@ theorem fnD_two (ρ : EnvR) (f : String) (g v : Expr) :
 def D (ρ : EnvR) (x : String) (f : Expr) : ℝ := deriv (fun t => evalD (upd ρ x t) f) (ρ x)
 
 @[simp] theorem evalD_diff (ρ : EnvR) (f : Expr) (x : String) :
-    evalD ρ (.fn "diff" [f, .var x]) = D ρ x f := by rw [evalD_fn, fnD_two, if_pos rfl]; rfl
+    evalD ρ (.fn "diff" [f, .var x]) = D ρ x f := by rw [evalD_fn, fnD_two, ite_eq_left rfl]; rfl
 
 /-- The function `diff(f, x)` differentiates. -/
 abbrev fx (ρ : EnvR) (x : String) (f : Expr) : ℝ → ℝ := fun t => evalD (upd ρ x t) f
@@ -111,7 +111,7 @@ theorem D_eq (ρ : EnvR) (x : String) (f : Expr) : D ρ x f = deriv (fx ρ x f) 
 
 /-- `fnD` is what the `evalD_fn` simp lemma leaves behind, so `diff` needs its own form here too. -/
 @[simp] theorem fnD_diff (ρ : EnvR) (f : Expr) (x : String) :
-    fnD ρ "diff" [f, .var x] = D ρ x f := by rw [fnD_two, if_pos rfl]; rfl
+    fnD ρ "diff" [f, .var x] = D ρ x f := by rw [fnD_two, ite_eq_left rfl]; rfl
 
 theorem evalD_intLit (ρ : EnvR) (m : ℤ) : evalD ρ (.num (Q.ofInt m)) = (m : ℝ) := by
   show ((Q.ofInt m).val : ℝ) = _
