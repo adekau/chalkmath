@@ -18,6 +18,7 @@ apps/notebook           the notebook: "Notebook - GitHub" structure with the "No
 design/                 the Claude Design export the shell is built from (.dc.html artboards)
 book/                   SPIKE-RESULTS.md (milestone 0, done), M1-BRIEF.md (current), TRACKING.md
 scripts/                bundle.mjs (esbuild), build-wasm.sh (Lean → C → emcc), build-lean-wasm-runtime.sh (leanrt + Init for wasm32, from source)
+packages/lean-editor    Lean cells: the VS Code editor + Lean 4 extension (lean4monaco) on Lean's own server, compiled to wasm
 ```
 
 `npm install && npm run build && npm test` — TS. `cd engine && lake build && lake test` — Lean (toolchain
@@ -25,6 +26,11 @@ pinned in `engine/lean-toolchain`, currently v4.34.1; policy: latest stable). `n
 builds the Lean runtime + Init for wasm32 from source on first run (~10 min, cached under
 `engine/toolchains/`), then links `apps/notebook/dist/engine-lean.{js,wasm}`; see `book/SPIKE-RESULTS.md`.
 Needs emsdk (`emcc`), elan, git.
+
+`npm run lean-wasm` — Lean itself (compiler and language server) for wasm32, for Lean cells: ~1.5–2 h cold,
+cached under `engine/toolchains/` (or unpack a `lean-wasm-*` release and set `LEAN_WASM_DIR` to it); `npm run bundle` then includes it, and `npm run smoke:lean` checks it in
+Node and Chromium (set `CHROMIUM` to a browser executable if playwright-core's own is not installed). Without
+it, Lean cells say the build has no Lean. See ARCHITECTURE.md §4b.
 
 `cd proofs && lake exe cache get && lake build` — the theorems (Mathlib; the cache download is
 ~5 GB, and Mathlib never enters the engine — `npm run check:engine` enforces that).

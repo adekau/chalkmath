@@ -150,6 +150,41 @@ subsequence, then interpolated position and opacity, a browser-side stand-in for
 `TransformMatchingTex`), and prints the Python a Manim user would run. Rendering the video is
 Manim's job, outside the browser.
 
+## 4b. Lean cells
+
+A Lean cell is Lean 4 itself, checked as you type, in the browser: the VS Code editor with the Lean 4
+extension (lean4monaco, pinned) as its input, what Lean reports on its lines as its output, and the
+infoview — goals at the cursor — in the panel's Lean goals tab. It is the one part of the notebook that
+does not go through the engine's protocol: the engine answers `engine.*` for math cells, Lean's own
+language server answers LSP for Lean cells.
+
+- **Lean compiled to wasm32.** `scripts/build-lean-wasm-compiler.sh` (`npm run lean-wasm`) builds the whole
+  compiler — parser, elaborator, kernel, IR interpreter, language server — from the C the host `lean` emits
+  for the tagged sources, linked statically with Emscripten. Lean's IR interpreter finds compiled code by
+  name; a static link has no dynamic symbol table, so a generated table (name hash → address,
+  `scripts/lean-wasm-symtab.py`) stands in for `dlsym`. An `.olean` is a memory image with pointer-sized
+  fields, so the library is compiled again, by the wasm `lean` under Node, into 32-bit oleans
+  (`scripts/lean-wasm-oleans.py`; Init today). The patches to Lean's sources are in
+  `engine/wasm/lean-compiler-emscripten.patch`, the upstream findings in `engine/wasm/UPSTREAM.md`.
+- **The server in a web worker.** `engine/wasm/server/LeanWorker.lean` runs Lean's file worker with
+  stdin/stdout over a shared-memory queue (`leanweb.c`); `packages/engine-host/src/lean-server.ts` plays
+  Lean's watchdog for one document (answers `initialize` with the reply Lean's own watchdog gives, printed
+  at build time; drops the cross-file index traffic). The server is threaded: it reads LSP while
+  elaboration runs in tasks. So the page must be cross-origin isolated, which a static host gets from
+  `coi-sw.js`, a service worker registered the first time a notebook has a Lean cell (one reload). In a
+  browser each thread is a worker and one started beyond the pre-created pool is not ready in time, so
+  the pool is large (32) and Lean's own pool is capped (4).
+- **One document per notebook.** The notebook's Lean cells, in order, are the stretches of one Lean file
+  between separator comment lines; each cell's editor is a Monaco view of that one model that hides every
+  other line (`packages/lean-editor`). Definitions carry from cell to cell, editing a cell re-elaborates
+  it and the cells after it, and every position the extension and the infoview use is real — nothing is
+  translated between cells and file.
+- **Cost.** Nothing loads until a notebook has a Lean cell. Then, compressed: the editor (~3 MB), the
+  server (~24 MB) and Init's 32-bit oleans (~114 MB: their private parts, proofs included, are most of it,
+  and an ordinary file's implicit `import Init` needs them), once per browser. The site gets Lean from a
+  release `lean-wasm.yml` publishes whenever Lean's build inputs change (`scripts/lean-wasm-key.sh` names it),
+  so a deploy does not spend two hours building it.
+
 ## 5. Visuals
 
 The engine never draws. It emits **visual specs**: declarative JSON next to `rendered`

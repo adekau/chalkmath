@@ -23,6 +23,7 @@ export interface LeanServerModule {
   HEAP32: Int32Array;
   HEAPU8: Uint8Array;
   FS: { mkdirTree(path: string): void; writeFile(path: string, data: Uint8Array): void };
+  ENV: Record<string, string>;
   callMain(args: string[]): void;
   _leanweb_in_buf(): number;
   _leanweb_in_cap(): number;
@@ -120,6 +121,10 @@ export function startLeanServer(o: LeanServerOptions): { receive(msg: LspMessage
     // Lean's server resolves its source search path from the application's directory (`IO.appDir`)
     M.FS.mkdirTree("/bin");
     M.leanAppPath = "/bin/lean";
+    // Lean's task manager runs this many threads, and adds one whenever a pooled task waits on another;
+    // in a browser each is a worker from the pool the module pre-creates (32), and one started beyond
+    // it is not ready in time
+    M.ENV["LEAN_NUM_THREADS"] = "4";
     for (const [path, data] of o.library) {
       const full = `/lib/lean/${path}`;
       M.FS.mkdirTree(full.slice(0, full.lastIndexOf("/")));

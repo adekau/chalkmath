@@ -1,0 +1,15 @@
+{
+  "name": "@chalkmath/lean-editor",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./types": { "types": "./src/types.ts", "default": "./src/types.ts" }
+  },
+  "dependencies": {
+    "lean4monaco": "1.1.16",
+    "memfs": "^4.9.3"
+  }
+}

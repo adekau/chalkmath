@@ -1,9 +1,15 @@
 // Bundles the Lean/wasm worker glue and the notebook page into apps/notebook/dist (static, self-hostable).
 import { build } from "esbuild";
+import { bundleLean, leanBuild } from "./lean-bundle.mjs";
 import { cpSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 // A build stamp on every asset URL, so a browser never keeps yesterday's engine.
 const BUILD = Date.now().toString(36);
-const define = { __BUILD_ID__: JSON.stringify(BUILD) };
+// whether this copy includes Lean itself (the Lean cells' server), which a separate, long build makes
+const define = { __BUILD_ID__: JSON.stringify(BUILD), __LEAN_BUILT__: JSON.stringify(!!leanBuild()) };
+// The one inline script the page allows: es-module-shims' feature detection in Lean's infoview, which
+// marks its scripts with this nonce (scripts/lean-bundle.mjs). A new one each build.
+const NONCE = randomBytes(18).toString("base64");
 mkdirSync("apps/notebook/dist", { recursive: true });
 // minified, with a linked source map so an error a reader reports still has file and line
 const out = { bundle: true, target: "es2022", logLevel: "info", define, minify: true, sourcemap: "linked" };
@@ -22,6 +28,9 @@ for (const [from, to] of [
   ["node_modules/@fontsource-variable/literata/LICENSE", "Literata-OFL.txt"],
   ["node_modules/@fontsource/jetbrains-mono/LICENSE", "JetBrainsMono-OFL.txt"],
 ]) cpSync(from, `apps/notebook/dist/licenses/${to}`);
-writeFileSync("apps/notebook/dist/index.html", readFileSync("apps/notebook/index.html", "utf8").replace(/src="app\.js"/, `src="app.js?v=${BUILD}"`).replace(/href="style\.css"/, `href="style.css?v=${BUILD}"`));
+writeFileSync("apps/notebook/dist/index.html", readFileSync("apps/notebook/index.html", "utf8")
+  .replace("script-src 'self'", `script-src 'self' 'nonce-${NONCE}'`).replace(/src="app\.js"/, `src="app.js?v=${BUILD}"`).replace(/href="style\.css"/, `href="style.css?v=${BUILD}"`));
 console.log("→ serve apps/notebook/dist with any static server (e.g. `npx serve apps/notebook/dist`)");
 await build({ ...out, entryPoints: ["packages/engine-host/src/worker-lean.ts"], format: "iife", outfile: "apps/notebook/dist/engine-lean.worker.js" });
+// Lean cells: the editor, the infoview and Lean's language server (scripts/lean-bundle.mjs)
+await bundleLean({ out: "apps/notebook/dist/lean", define, minify: true, nonce: NONCE });

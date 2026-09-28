@@ -13,7 +13,7 @@
      (KaTeX positions glyphs with style attributes); scripts may not, so a javascript: URL cannot run.
      connect-src and img-src stay open for import("url") and Markdown images; http://localhost for the
      developer-mode HTTP kernel. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: https:; connect-src 'self' https: http://localhost:* http://127.0.0.1:*; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob: https:; connect-src 'self' https: http://localhost:* http://127.0.0.1:*; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'" />
 <link rel="icon" type="image/svg+xml" href="logo.svg">
 <link rel="stylesheet" href="style.css" />
 <style>
@@ -319,6 +319,23 @@ html[data-outsize="l"] { --sz-out:28px; --sz-echo:22px; --sz-work:19px; --sz-sub
 .kindbadge:hover { filter:brightness(1.18); }
 .kindbadge .i { display:inline-flex; align-items:center; justify-content:center; width:12px; height:12px; border-radius:50%; background:var(--p-acc-chip); font-size:8px; font-style:italic; }
 .timing { font-family:var(--code); font-size:10px; color:var(--p-mut2); }
+/* Lean cells: the VS Code editor (lean4monaco) as the input, Lean's messages as the output */
+.cell.lean .leanview { min-height:24px; border:1px solid var(--p-input-br); border-radius:6px; overflow:hidden; background:var(--p-input-bg); }
+.cell.lean .leanview.pending { font-family:var(--code); font-size:13px; line-height:19px; white-space:pre-wrap; padding:5px 8px; color:var(--p-mut); }
+.leanstate { margin:8px 0 0 8px; font-size:12.5px; color:var(--p-mut); }
+.leanstate.failed { color:var(--p-err); }
+.leanbar { position:relative; height:4px; max-width:360px; margin:6px 0 0 8px; border-radius:2px; overflow:hidden; background:var(--p-input-br); }
+.leanbar > div { height:100%; background:var(--p-acc); transition:width .2s linear; }
+.leanbar.busy > div { width:30%; animation:leanbusy 1.3s ease-in-out infinite; }
+@keyframes leanbusy { from { transform:translateX(-100%); } to { transform:translateX(340%); } }
+.leanmsg { display:grid; grid-template-columns:auto minmax(0,1fr); gap:10px; margin:6px 0 0 8px; font-size:12.5px; line-height:1.55; }
+.leanmsg .where { font-family:var(--code); color:var(--p-mut3); }
+.leanmsg .text { font-family:var(--code); white-space:pre-wrap; overflow-wrap:anywhere; color:var(--p-ink); }
+.leanmsg.error .text { color:var(--p-err); }
+.leanmsg.warning .text { color:var(--p-acc-ink); }
+.panel .leaninfo { flex:1; min-height:0; }
+.panel .leaninfo.off { flex:0 0 0; height:0; visibility:hidden; overflow:hidden; }
+.panel .leaninfo iframe { width:100%; height:100%; border:0; }
 .cellerr { margin:10px 0 0 8px; font-size:12.5px; line-height:1.65; color:var(--p-err); background:var(--p-err-bg); border-left:2px solid var(--p-err-line); border-radius:0 6px 6px 0; padding:8px 12px; }
 .cellerr .caret { font-family:var(--code); color:var(--p-mut); display:block; margin-top:4px; white-space:pre; }
 .work { margin:12px 0 0 8px; display:flex; flex-direction:column; gap:5px; }
@@ -621,6 +638,7 @@ table.keys kbd { font:11.5px var(--mono); color:var(--ink); background:var(--pan
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration:0.01ms !important; animation-iteration-count:1 !important; transition-duration:0.01ms !important; }
+  .leanbar.busy > div { width:100%; opacity:.45; animation:none; }
 }
 [hidden] { display:none !important; }
 </style>

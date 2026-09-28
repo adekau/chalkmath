@@ -94,3 +94,38 @@ by us. Likely fix: drop the unused parameter in `io.cpp` (check other `IO` exter
 - `-sSAFE_HEAP=1` reports an unaligned 64-bit load in `Init.Data.ByteArray.Extra`'s initializer
   (`lean_ctor_get_uint64` at a 4-byte-aligned scalar offset); tolerated by wasm, but a
   `LEAN_CASSERT`-style alignment story for 32-bit scalar areas may be worth raising.
+
+## 5. Lean itself on wasm32 (v4.34.1): findings from building the compiler and server
+
+Building the whole compiler — `lean` and the language server's file worker — for wasm32 with Emscripten
+(`scripts/build-lean-wasm-compiler.sh`, patch `lean-compiler-emscripten.patch`) turned up more of the same
+kind, each one silent on 64-bit native targets:
+
+- **World-token arity drift beyond §3.** `lean_run_init`, `lean_compacted_region_read`/`_free`,
+  `mk_compacted_region` (via `lean_save_module_data`) and the tempfile/tempdir pair still take the `object *`
+  world argument that `@[extern]` IO functions stopped receiving with #10625. On wasm32 the call traps.
+- **`lean_internal_get_default_max_heartbeat` / `_max_memory`** are declared `(_ : Unit) → Nat` in
+  `Lean/Shell.lean`, so the emitted call passes the unit, but the C++ definitions take no arguments.
+- **Std.Async stubs missing:** `lean_uv_tcp_wait_readable`, `lean_uv_tcp_cancel_recv`, `lean_uv_tcp_try_accept`,
+  `lean_uv_udp_wait_readable`, `lean_uv_udp_cancel_recv` have no `LEAN_EMSCRIPTEN` branch (undefined at link).
+- **`get_loaded_libs` uses `dl_iterate_phdr`**, which Emscripten lacks; a static wasm link is one module whose
+  function pointers are table indices from 0.
+- **The interpreter needs `dlsym` over the executable** (`lookup_symbol_in_cur_exe`), which a static wasm link
+  does not provide. We generate a name-hash → address table at build time; an upstream answer could be an
+  opt-in table emitted by the build, or preferring the interpreter wholesale on such targets.
+- **Emitted C must be compiled with `-DLEAN_EMSCRIPTEN`** (§1's neighbor): `LEAN_SCALAR_PTR_LITERAL` splits
+  64-bit scalars in static objects only under that define. The define is in Lean's own CMake, but anyone
+  compiling `lean --c` output for wasm32 by hand (as `lake` would for a wasm target) gets truncated Name hashes
+  and a Lean that fails at initialization ("unknown parser category"). Keying it on `__EMSCRIPTEN__` or
+  `UINTPTR_MAX` in lean.h would remove the trap.
+- **`lean_main`'s NODEFS mounts use `EM_ASM`**, which under `-sPROXY_TO_PTHREAD` runs on the pthread, whose
+  filesystem is the main thread's; the mounts must be `MAIN_THREAD_EM_ASM`.
+- **`IO.appPath` reads `__filename`**, which only exists under Node; in a web worker there is no executable.
+  We let the host name a path (`Module.leanAppPath`).
+- **`LEAN_NUM_THREADS` is ignored under `LEAN_EMSCRIPTEN`.** In a browser each thread is a web worker; one
+  started beyond Emscripten's pre-created pool only becomes ready when the main thread yields, and Lean's task
+  manager starts a thread whenever a pooled task waits on another — so a busy server stalls. The host has to
+  be able to cap it (we honor the variable and pre-create 32 workers).
+- **Oleans are pointer-size specific,** so a wasm32 Lean needs the library compiled by a wasm32 Lean; the
+  release's `linux_wasm32` build ships none for its own use in a browser. Init at v4.34.1 is 649 modules, whose
+  `.olean.private` parts (needed by `import` of an ordinary file) are most of the ~114 MB compressed.
