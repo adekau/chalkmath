@@ -1,7 +1,7 @@
 import { type Atom, type Block, type Stmt, ch, chars, isAsciiAlpha, isDigit, isIdChar } from "./model.js";
 import { slots } from "./notation.js";
-import { BUILTIN_FUNCTIONS, lex, ungroup } from "./read.js";
-import { binaryMinus, write } from "./write.js";
+import { BUILTIN_FUNCTIONS, lex, read, ungroup } from "./read.js";
+import { binaryMinus, write, writeText } from "./write.js";
 
 /**
  * Editing the tree: a caret, the moves, and what each key does. No DOM here: the view (`view.ts`)
@@ -15,6 +15,11 @@ import { binaryMinus, write } from "./write.js";
  */
 
 export interface Caret { block: Block; i: number }
+/** A selection: atoms `start` to `end` (exclusive) of one block. */
+export interface Selection { block: Block; start: number; end: number }
+/** A caret as indices from the root (atom, slot, …, then the position), to survive a tree replaced by undo. */
+interface CaretPath { steps: [number, number][]; i: number }
+interface Snapshot { json: string; caret: CaretPath }
 /** Where a block sits: the atom it is a slot of, and where that atom sits. */
 export interface Where { atom: Atom; parent: Block; index: number; slot: number }
 
@@ -60,6 +65,9 @@ export class MathEdit {
     this.symbols = opts.symbols ?? DEFAULT_SYMBOLS;
   }
 
+  /** The other end of the selection, when there is one (the caret is the end that moves). */
+  anchor: Caret | null = null;
+
   get root(): Block { return this.stmt.body; }
   get text(): string { return write(this.stmt).text; }
 
@@ -83,9 +91,130 @@ export class MathEdit {
     for (let w = this.where(b); w; b = w.parent, w = this.where(b)) yield { block: b, w };
   }
 
+  // --- undo --------------------------------------------------------------------------------------
+
+  private undoStack: Snapshot[] = [];
+  private redoStack: Snapshot[] = [];
+  /** What the last edit was, while the caret has not moved since: a run of typed letters or of
+   *  deletions is one step to undo. */
+  private run: "type" | "delete" | null = null;
+  private depth = 0;
+
+  private pathOf(c: Caret): CaretPath {
+    const steps: [number, number][] = [];
+    let b = c.block;
+    for (let w = this.where(b); w; b = w.parent, w = this.where(b)) steps.unshift([w.index, w.slot]);
+    return { steps, i: c.i };
+  }
+  private caretAtPath(p: CaretPath): Caret {
+    let b = this.root;
+    for (const [index, slot] of p.steps) {
+      const s = b[index] && slots(b[index]!)[slot];
+      if (!s) return { block: b, i: b.length };
+      b = s;
+    }
+    return { block: b, i: Math.min(p.i, b.length) };
+  }
+  private snapshot(): Snapshot { return { json: JSON.stringify(this.stmt), caret: this.pathOf(this.caret) }; }
+  /** Put a snapshot back into the same objects (the view and the notebook hold on to them). */
+  private restore(snap: Snapshot) {
+    const st = JSON.parse(snap.json) as Stmt;
+    this.stmt.body.splice(0, this.stmt.body.length, ...st.body);
+    if (st.let) this.stmt.let = st.let; else delete this.stmt.let;
+    this.caret = this.caretAtPath(snap.caret);
+    this.anchor = null;
+    this.run = null;
+  }
+
+  /** Run an edit as one undo step; `changed` false (or a tree that came out the same) records nothing. */
+  private mutate(kind: "type" | "delete" | "struct", fn: () => boolean): boolean {
+    if (this.depth > 0) return fn();
+    const coalesce = kind !== "struct" && this.run === kind && !this.anchor;
+    const snap = coalesce ? null : this.snapshot();
+    this.depth++;
+    let changed: boolean;
+    try { changed = fn(); } finally { this.depth--; }
+    if (!changed || (snap && JSON.stringify(this.stmt) === snap.json)) return changed;
+    if (snap) { this.undoStack.push(snap); if (this.undoStack.length > 500) this.undoStack.shift(); }
+    this.redoStack = [];
+    this.run = kind === "struct" ? null : kind;
+    return true;
+  }
+
+  undo(): boolean {
+    const snap = this.undoStack.pop();
+    if (!snap) return false;
+    this.redoStack.push(this.snapshot());
+    this.restore(snap);
+    return true;
+  }
+  redo(): boolean {
+    const snap = this.redoStack.pop();
+    if (!snap) return false;
+    this.undoStack.push(this.snapshot());
+    this.restore(snap);
+    return true;
+  }
+  /** The caret was put somewhere by other means (a click): the next edit is a step of its own. */
+  moved() { this.run = null; }
+
+  // --- selection ---------------------------------------------------------------------------------
+
+  /** Positions from the root down to `c`: at each level the block and the index in it (of the atom
+   *  holding the level below, or the caret itself at the last level). */
+  private chain(c: Caret): { block: Block; i: number }[] {
+    const out = [{ block: c.block, i: c.i }];
+    let b = c.block;
+    for (let w = this.where(b); w; b = w.parent, w = this.where(b)) out.unshift({ block: w.parent, i: w.index });
+    return out;
+  }
+
+  /** The selected atoms: the smallest block holding both ends, from the one end to the other, whole
+   *  atoms wherever an end is inside one. */
+  selection(): Selection | null {
+    if (!this.anchor) return null;
+    const a = this.chain(this.anchor), c = this.chain(this.caret);
+    let k = 0;
+    while (k + 1 < a.length && k + 1 < c.length && a[k + 1]!.block === c[k + 1]!.block) k++;
+    const block = a[k]!.block;
+    const span = (ch: { i: number }[]) => (ch.length > k + 1 ? [ch[k]!.i, ch[k]!.i + 1] : [ch[k]!.i, ch[k]!.i]);
+    const [s1, e1] = span(a), [s2, e2] = span(c);
+    const start = Math.min(s1!, s2!), end = Math.max(e1!, e2!);
+    return start < end ? { block, start, end } : null;
+  }
+  /** Start a selection at the caret if there is none (Shift held while moving). */
+  extend() { if (!this.anchor) this.anchor = { ...this.caret }; }
+  /** Drop the selection; with `toward`, the caret goes to that end of it first (← and → on a selection). */
+  collapse(toward?: -1 | 1): boolean {
+    const s = this.selection();
+    this.anchor = null;
+    if (!s || !toward) return false;
+    this.caret = { block: s.block, i: toward < 0 ? s.start : s.end };
+    this.run = null;
+    return true;
+  }
+  selectAll() { this.anchor = { block: this.root, i: 0 }; this.caret = { block: this.root, i: this.root.length }; }
+  /** The selection as source text (what Copy puts on the clipboard). */
+  selectedText(): string {
+    const s = this.selection();
+    return s ? writeText({ body: s.block.slice(s.start, s.end) }) : "";
+  }
+  /** Remove the selected atoms; the caret goes where they were. */
+  deleteSelection(): boolean {
+    const s = this.selection();
+    this.anchor = null;
+    if (!s) return false;
+    return this.mutate("struct", () => {
+      s.block.splice(s.start, s.end - s.start);
+      this.caret = { block: s.block, i: s.start };
+      return true;
+    });
+  }
+
   // --- moves -------------------------------------------------------------------------------------
 
   right(): boolean {
+    this.run = null;
     const { block: b, i } = this.caret;
     if (i < b.length) {
       const s = slots(b[i]!);
@@ -100,6 +229,7 @@ export class MathEdit {
   }
 
   left(): boolean {
+    this.run = null;
     const { block: b, i } = this.caret;
     if (i > 0) {
       const s = slots(b[i - 1]!);
@@ -118,6 +248,7 @@ export class MathEdit {
    *  into or out of an exponent. False when there is nowhere to go (the notebook moves to the
    *  neighbouring cell). */
   vertical(dir: -1 | 1): boolean {
+    this.run = null;
     for (const { block: b, w } of this.ancestors()) {
       const a = w.atom;
       let target: Block | undefined;
@@ -158,8 +289,8 @@ export class MathEdit {
     return false;
   }
 
-  home() { this.caret = { block: this.root, i: 0 }; }
-  end() { this.caret = { block: this.root, i: this.root.length }; }
+  home() { this.run = null; this.caret = { block: this.root, i: 0 }; }
+  end() { this.run = null; this.caret = { block: this.root, i: this.root.length }; }
 
   // --- typing ------------------------------------------------------------------------------------
 
@@ -167,8 +298,25 @@ export class MathEdit {
    *  name (`\pi r` is π·r; `πr` would be one name, as Greek letters are name characters). */
   private glue: Caret | null = null;
 
-  /** One typed character. False when it means nothing here (and nothing changed). */
+  /** One typed character. False when it means nothing here (and nothing changed). With a selection,
+   *  `/` makes it a numerator and `(` puts it in parentheses; anything else replaces it. */
   type(c: string): boolean {
+    const sel = this.selection();
+    if (sel && (c === "/" || c === "(")) {
+      this.anchor = null;
+      return this.mutate("struct", () => {
+        const atoms = sel.block.splice(sel.start, sel.end - sel.start);
+        const a: Atom = c === "/" ? { k: "frac", num: ungroup(atoms), den: [] } : { k: "paren", body: atoms };
+        sel.block.splice(sel.start, 0, a);
+        this.caret = c === "/" ? { block: (a as { den: Block }).den, i: 0 } : { block: sel.block, i: sel.start + 1 };
+        return true;
+      });
+    }
+    if (sel) return this.mutate("struct", () => { this.deleteSelection(); this.typeOne(c); return true; });
+    return this.mutate(isIdChar(c) ? "type" : "struct", () => this.typeOne(c));
+  }
+
+  private typeOne(c: string): boolean {
     const g = this.glue;
     this.glue = null;
     if (g && g.block === this.caret.block && g.i === this.caret.i && isIdChar(c)) this.insert(ch(" "));
@@ -193,6 +341,9 @@ export class MathEdit {
    *  argument (as typed, `integrate(` then the integrand) or with `onScreen` the first slot on
    *  screen (a `\dint` template fills its bounds first). */
   insert(a: Atom, onScreen = false): boolean {
+    return this.mutate("struct", () => { if (this.selection()) this.deleteSelection(); return this.insertOne(a, onScreen); });
+  }
+  private insertOne(a: Atom, onScreen: boolean): boolean {
     const { block: b, i } = this.caret;
     b.splice(i, 0, a);
     const s = a.k === "call" && !onScreen ? a.args : slots(a);
@@ -314,7 +465,8 @@ export class MathEdit {
   }
 
   /** Replace a finished `\name` with its symbol or template. False when there is none (or no such name). */
-  command(): boolean {
+  command(): boolean { return this.pendingCommand() ? this.mutate("struct", () => this.commandOne()) : false; }
+  private commandOne(): boolean {
     const p = this.pendingCommand();
     if (!p) return false;
     const { block: b, i } = this.caret;
@@ -333,11 +485,34 @@ export class MathEdit {
     return this.insert(t!.make(m![2] ? +m![2] : undefined, m![3] ? +m![3] : undefined), true);
   }
 
+  /** Pasted text: structure when it reads as an expression (a whole `let` into an empty input
+   *  becomes the cell's head too), otherwise typed a character at a time. One step to undo. */
+  paste(text: string): boolean {
+    return this.mutate("struct", () => {
+      if (this.selection()) this.deleteSelection();
+      const r = text.trim() ? read(text, this.known) : null;
+      const { block, i } = this.caret;
+      if (r?.ok && r.stmt.let && block === this.root && !block.length && !this.stmt.let) this.stmt.let = r.stmt.let;
+      if (r?.ok && (!r.stmt.let || this.stmt.let === r.stmt.let)) {
+        block.splice(i, 0, ...r.stmt.body);
+        this.caret = { block, i: i + r.stmt.body.length };
+        return true;
+      }
+      let any = false;
+      for (const c of text) any = this.typeOne(c) || any;
+      return any;
+    });
+  }
+
   // --- deleting ----------------------------------------------------------------------------------
 
   /** Backspace: a character goes; a structure is entered from its end, and goes once it is empty. At
    *  the start of a group or a one-argument call the wrapper goes and its contents stay. */
   backspace(): boolean {
+    if (this.selection()) return this.deleteSelection();
+    return this.mutate("delete", () => this.backspaceOne());
+  }
+  private backspaceOne(): boolean {
     const { block: b, i } = this.caret;
     if (i > 0) {
       const a = b[i - 1]!;
@@ -361,6 +536,10 @@ export class MathEdit {
 
   /** Delete: the character after the caret; a structure is entered from its start, and goes once empty. */
   deleteForward(): boolean {
+    if (this.selection()) return this.deleteSelection();
+    return this.mutate("delete", () => this.deleteForwardOne());
+  }
+  private deleteForwardOne(): boolean {
     const { block: b, i } = this.caret;
     const a = b[i];
     if (!a) return false;

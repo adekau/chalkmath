@@ -1348,6 +1348,8 @@ function onPaste(ev: ClipboardEvent, cell: Cell) {
   const dt = ev.clipboardData; if (!dt) return;
   const put = (name: string) => {
     if (cell.input) insertAtCaret(cell, `⟦${name}⟧`);
+    // a file reference is not something the visual input shows: the cell goes back to text
+    else if (cell.mi) { cell.mode = "raw"; cell.src = cellSrc(cell) + `⟦${name}⟧`; focusCell(S.cells.indexOf(cell)); }
     else if (cell.ta) { cell.ta.setRangeText(`⟦${name}⟧`, cell.ta.selectionStart, cell.ta.selectionEnd, "end"); cell.src = cell.ta.value; cell.ta.dispatchEvent(new Event("input")); }
     renderHighlights(); autosave();
   };
@@ -2091,6 +2093,7 @@ function visualInput(cell: Cell, i: number): MathInput | null {
     },
     onLeave: (dir) => { const j = i + dir; if (j >= 0 && j < S.cells.length) focusCell(j); },
     onKey: (ev) => modeKey(ev, cell),
+    onPaste: (ev) => onPaste(ev, cell),
   };
   const mi = cell.tree && writeText(cell.tree) === cell.src ? new MathInput(cell.tree, opts) : MathInput.fromSource(cell.src, opts);
   if (mi) cell.tree = mi.edit.stmt; else delete cell.tree;

@@ -32,6 +32,8 @@ export interface MathInputOptions {
   onLeave?(dir: -1 | 1): void;
   /** A key, before the input handles it; return true to take it (a completion menu's arrows). */
   onKey?(ev: KeyboardEvent): boolean;
+  /** A paste, before the input reads it: the host takes it (an image, an SVG) by preventing its default. */
+  onPaste?(ev: ClipboardEvent): void;
 }
 
 /** The styles the input needs; added to the page once. Colours come from the page's `--mi-*`
@@ -45,6 +47,7 @@ export const MATH_INPUT_CSS = `
 .mi.focused { box-shadow:0 0 0 1px var(--mi-focus, #6b8afd); border-radius:4px; }
 .mi.focused .mi-math [data-h].mi-here { color:var(--mi-caret, currentColor); }
 .mi-cmd { color:var(--mi-cmd, #b0662c); }
+.mi-math .mi-sel { background:var(--mi-sel, rgba(107,138,253,0.28)); border-radius:2px; }
 .mi-ta { position:absolute; left:0; top:0; width:1px; height:1px; opacity:0; padding:0; border:0; resize:none; overflow:hidden; }
 @keyframes mi-blink { 50% { opacity:0; } }
 @media (prefers-reduced-motion: reduce) { .mi.focused .mi-caret { animation:none; } }
@@ -73,6 +76,8 @@ export class MathInput {
   private atomEl = new Map<Atom, { el: HTMLElement; k: number; n: number }>();
   private holeEl = new Map<Block, HTMLElement>();
   private composing = false;
+  /** A mouse drag in progress: where it started. */
+  private drag: Caret | null = null;
   /** The `\\` suggestions under the caret: the names that start with what has been typed. */
   private comp: { items: { name: string; what: string; glyph: string }[]; index: number; box: HTMLElement } | null = null;
   /** Esc closed the suggestions for this command; they come back when it changes. */
@@ -105,20 +110,45 @@ export class MathInput {
     this.ta.addEventListener("compositionstart", () => { this.composing = true; });
     this.ta.addEventListener("compositionend", () => { this.composing = false; this.typed(); });
     this.ta.addEventListener("input", () => { if (!this.composing) this.typed(); });
-    this.ta.addEventListener("copy", (ev) => { ev.clipboardData?.setData("text/plain", this.text); ev.preventDefault(); });
-    this.ta.addEventListener("paste", (ev) => {
-      const t = ev.clipboardData?.getData("text/plain");
-      if (t === undefined) return;
+    // Copy and Cut take the selection (or, with none, the whole input) as source text
+    this.ta.addEventListener("copy", (ev) => { ev.clipboardData?.setData("text/plain", this.edit.selectedText() || this.text); ev.preventDefault(); });
+    this.ta.addEventListener("cut", (ev) => {
       ev.preventDefault();
-      for (const c of t) this.edit.type(c);
+      if (!this.edit.selection()) return;
+      ev.clipboardData?.setData("text/plain", this.edit.selectedText());
+      this.edit.deleteSelection();
       this.changed();
     });
+    this.ta.addEventListener("paste", (ev) => {
+      this.opts.onPaste?.(ev);
+      if (ev.defaultPrevented) return;
+      const t = ev.clipboardData?.getData("text/plain");
+      if (!t) return;
+      ev.preventDefault();
+      if (this.edit.paste(t)) this.changed();
+    });
+    // a click puts the caret; a drag selects; Shift+click extends the selection
     this.el.addEventListener("mousedown", (ev) => {
       ev.preventDefault();
       const c = this.caretAt(ev.clientX, ev.clientY);
-      if (c) this.edit.caret = c;
+      if (c) {
+        if (ev.shiftKey) this.edit.extend(); else this.edit.anchor = null;
+        this.edit.caret = c;
+        this.edit.moved();
+        this.drag = ev.shiftKey ? this.edit.anchor : { ...c };
+      }
       this.focus(false);
       this.place();
+      const move = (m: MouseEvent) => {
+        const to = this.drag && this.caretAt(m.clientX, m.clientY);
+        if (!to || !this.drag) return;
+        this.edit.anchor = to.block === this.drag.block && to.i === this.drag.i ? null : this.drag;
+        this.edit.caret = to;
+        this.place();
+      };
+      const up = () => { this.drag = null; document.removeEventListener("mousemove", move); document.removeEventListener("mouseup", up); };
+      document.addEventListener("mousemove", move);
+      document.addEventListener("mouseup", up);
     });
     this.render();
   }
@@ -192,6 +222,9 @@ export class MathInput {
   /** Draw the caret, and mark the hole it is in. */
   private place() {
     this.math.querySelector(".mi-here")?.classList.remove("mi-here");
+    for (const el of this.math.querySelectorAll(".mi-sel")) el.classList.remove("mi-sel");
+    const sel = this.edit.selection();
+    if (sel) for (const a of sel.block.slice(sel.start, sel.end)) this.atomEl.get(a)?.el.classList.add("mi-sel");
     const bx = this.box(this.edit.caret);
     if (!bx) { this.caretEl.style.display = "none"; return; }
     this.caretEl.style.removeProperty("display");
@@ -313,7 +346,16 @@ export class MathInput {
 
   private key(ev: KeyboardEvent) {
     if (this.opts.onKey?.(ev)) return;
-    if (ev.ctrlKey || ev.metaKey || ev.altKey || this.composing) return;
+    if (this.composing) return;
+    const mod = ev.ctrlKey || ev.metaKey, k = ev.key.toLowerCase();
+    if (mod && !ev.altKey && (k === "z" || k === "y" || k === "a")) {
+      ev.preventDefault();
+      if (k === "a") { this.edit.selectAll(); this.place(); return; }
+      const redo = k === "y" || ev.shiftKey;
+      if (redo ? this.edit.redo() : this.edit.undo()) this.changed();
+      return;
+    }
+    if (mod || ev.altKey) return;
     const cp = this.comp;
     if (cp) {
       const n = cp.items.length;
@@ -328,16 +370,25 @@ export class MathInput {
     }
     const e = this.edit;
     let moved = true, edited = false;
+    // Shift extends the selection with any move; without it, a move drops the selection (← and →
+    // go to its ends)
+    const isMove = /^(Arrow(Left|Right|Up|Down)|Home|End)$/.test(ev.key);
+    if (isMove && ev.shiftKey) e.extend();
+    else if (isMove && e.selection() && (ev.key === "ArrowLeft" || ev.key === "ArrowRight")) {
+      e.collapse(ev.key === "ArrowLeft" ? -1 : 1);
+      ev.preventDefault(); this.place(); return;
+    } else if (isMove) e.anchor = null;
     switch (ev.key) {
       case "ArrowLeft": e.left(); break;
       case "ArrowRight": e.right(); break;
       case "ArrowUp": case "ArrowDown": {
         const dir = ev.key === "ArrowUp" ? -1 : 1;
-        if (!e.vertical(dir)) { ev.preventDefault(); this.opts.onLeave?.(dir); return; }
+        if (!e.vertical(dir)) { ev.preventDefault(); if (!ev.shiftKey) this.opts.onLeave?.(dir); return; }
         break;
       }
       case "Home": e.home(); break;
       case "End": e.end(); break;
+      case "Escape": if (!e.selection()) return; e.anchor = null; break;
       case "Backspace": edited = e.backspace(); break;
       case "Delete": edited = e.deleteForward(); break;
       case "Tab":
