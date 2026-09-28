@@ -16,45 +16,8 @@ import * as monaco from "monaco-editor";
 
 export const SEPARATOR = "--⁅cell⁆";
 
-export interface LeanMessage {
-  severity: "error" | "warning" | "info" | "hint";
-  /** 1-based, relative to the cell's first line. */
-  line: number;
-  column: number;
-  endLine: number;
-  endColumn: number;
-  message: string;
-}
-
-export interface CellView {
-  focus(): void;
-  dispose(): void;
-}
-
-export interface LeanNotebook {
-  /** Replaces every Lean cell, in document order. */
-  setCells(cells: { id: string; src: string }[]): void;
-  /** Inserts a cell at `index` among the Lean cells. */
-  insertCell(index: number, id: string, src: string): void;
-  removeCell(id: string): void;
-  source(id: string): string;
-  messages(id: string): LeanMessage[];
-  /** Shows cell `id` in `el`, which grows with its content. */
-  mount(id: string, el: HTMLElement): CellView;
-  dispose(): void;
-}
-
-export interface LeanOptions {
-  /** The worker hosting Lean's server (worker-lean-server.ts). */
-  worker: Worker;
-  /** Where the infoview (goals, messages at the cursor) goes. */
-  infoview: HTMLElement;
-  dark?: boolean;
-  /** A cell's source changed by typing in its view. */
-  onSource?(id: string, src: string): void;
-  /** A cell's messages changed. */
-  onMessages?(id: string, messages: LeanMessage[]): void;
-}
+export type { LeanMessage, CellView, LeanNotebook, LeanOptions } from "./types.js";
+import type { LeanMessage, LeanNotebook, LeanOptions } from "./types.js";
 
 /** LeanMonaco, speaking LSP to a web worker instead of a WebSocket (monaco-languageclient's `WorkerDirect`). */
 class WorkerLeanMonaco extends LeanMonaco {

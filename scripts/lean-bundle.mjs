@@ -25,7 +25,7 @@ const WORKERS = {
 // root-absolute `/infoview/` paths become the page-relative directory the files are copied to.
 const INFOVIEW = "./lean/infoview/";
 
-export async function bundleLean({ out, define, minify }) {
+export async function bundleLean({ out, define, minify, nonce }) {
   mkdirSync(`${out}/assets`, { recursive: true });
   const importMetaUrl = {
     name: "import-meta-url",
@@ -60,8 +60,16 @@ export async function bundleLean({ out, define, minify }) {
     await build({ ...common, entryPoints: [require.resolve(spec)], outfile: `${out}/workers/${name}` });
   mkdirSync(`${out}/infoview`, { recursive: true });
   cpSync(path.dirname(require.resolve("@leanprover/infoview/package.json")) + "/dist", `${out}/infoview`, { recursive: true });
+  // es-module-shims (inside webview.js) detects the browser's module features with an inline script in a
+  // hidden iframe, which a Content-Security-Policy without 'unsafe-inline' refuses (and the infoview then
+  // never loads). It marks its inline scripts with esmsInitOptions.nonce: the build's nonce, which
+  // bundle.mjs puts in the page's script-src. (Pinned lean4monaco 1.1.16; a version that sets the options
+  // differently fails here rather than leaving a blank infoview.)
+  const ESMS = "esmsInitOptions={shimMode:!0}";
+  const webview = readFileSync(require.resolve("lean4monaco/dist/webview/webview.js"), "utf8");
+  if (!webview.includes(ESMS)) throw new Error("lean-bundle: es-module-shims' options not found in webview.js");
   writeFileSync(`${out}/infoview/webview.js`,
-    readFileSync(require.resolve("lean4monaco/dist/webview/webview.js"), "utf8").replaceAll('"/infoview/', `"${INFOVIEW}`));
+    webview.replace(ESMS, `esmsInitOptions={shimMode:!0,nonce:${JSON.stringify(nonce)}}`).replaceAll('"/infoview/', `"${INFOVIEW}`));
 
   await build({ ...common, format: "iife", entryPoints: ["packages/engine-host/src/worker-lean-server.ts"], outfile: `${out}/lean-server.worker.js` });
   const ver = readFileSync("engine/lean-toolchain", "utf8").trim().replace(/.*:v/, "");

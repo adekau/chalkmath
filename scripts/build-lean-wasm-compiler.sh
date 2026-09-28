@@ -94,7 +94,10 @@ emcc -o "$OUT/bin/lean.js" @"$OUT/link.rsp" "$OUT/obj/cpp/shell/lean.cpp.o" $LIN
 
 # 6. The language server's file worker (engine/wasm/server/): LeanWorker.lean's `main`, with stdin/stdout
 #    over leanweb.c's shared-memory queue. The host (packages/engine-host/src/lean-server.ts) writes the
-#    library into the virtual filesystem, then calls `main`.
+#    library into the virtual filesystem, then calls `main`. In a browser every thread is a worker, and
+#    one started beyond the pre-created pool is not ready in time: Lean's task manager adds a thread when
+#    a pooled task waits on another, and the server's main loop then stalls. So the pool is large, and
+#    the host caps Lean's own pool (LEAN_NUM_THREADS) well below it.
 echo "== linking lean-server.js"
 mkdir -p "$OUT/obj/server"
 LEAN_PATH="$PREFIX/lib/lean" "$LEAN" --c="$OUT/server-LeanWorker.c" wasm/server/LeanWorker.lean
@@ -102,8 +105,9 @@ emcc $CFLAGS -c "$OUT/server-LeanWorker.c" -o "$OUT/obj/server/LeanWorker.o"
 emcc $CFLAGS -c wasm/server/leanweb.c -o "$OUT/obj/server/leanweb.o"
 emcc -o "$OUT/lean-server.js" @"$OUT/link.rsp" "$OUT/obj/server/LeanWorker.o" "$OUT/obj/server/leanweb.o" $LINKFLAGS \
   -sMODULARIZE=1 -sEXPORT_NAME=createLeanServer -sENVIRONMENT=web,worker,node -sINVOKE_RUN=0 -sEXIT_RUNTIME=0 \
+  -sPTHREAD_POOL_SIZE=32 \
   -sEXPORTED_FUNCTIONS=$EXPORTS,_leanweb_in_buf,_leanweb_in_cap,_leanweb_in_w,_leanweb_in_r \
-  -sEXPORTED_RUNTIME_METHODS=callMain,FS,HEAPU8,HEAP32
+  -sEXPORTED_RUNTIME_METHODS=callMain,FS,ENV,HEAPU8,HEAP32
 LEAN_PATH="$PREFIX/lib/lean" "$LEAN" wasm/server/capabilities.lean > "$OUT/lean-initialize.json"
 ls -la "$OUT/bin" "$OUT"/lean-server.*
 

@@ -227,3 +227,21 @@ index 29b8598..1eb8d86 100644
          if ((typeof process === "undefined") || (process.release.name !== "node")) {
              throw new Error("The Lean command-line driver can only run under Node.js. For the embeddable WASM library, see lean_wasm.cpp.");
          }
+diff --git a/src/runtime/object.cpp b/src/runtime/object.cpp
+index 9a8b4c5..98db144 100644
+--- a/src/runtime/object.cpp
++++ b/src/runtime/object.cpp
+@@ -1120,11 +1120,11 @@ extern "C" LEAN_EXPORT void lean_init_task_manager_using(unsigned num_workers) {
+ }
+ 
+ static unsigned get_lean_num_threads() {
+-#ifndef LEAN_EMSCRIPTEN
++    // honored under Emscripten too: a browser host has to bound the threads, since each is a worker and
++    // one started beyond the pre-created pool is not ready in time (Lean waits on it)
+     if (char const * num_threads = std::getenv("LEAN_NUM_THREADS")) {
+         return atoi(num_threads);
+     }
+-#endif
+     return hardware_concurrency();
+ }
+ 

@@ -18,6 +18,7 @@ import { MathInput, type MathInputOptions } from "@chalkmath/math-editor/view";
  */
 
 import katex from "katex";
+import { ensureLean, syncLean, mountLean, unmountLean, focusLean, infoview as leanInfoview, leanState, leanFailure, initLeanIsolation, type LeanMessage } from "./lean-cells.js";
 /** The one trusted KaTeX command is `\htmlData`, which carries the engine's subterm paths. LaTeX can
  *  come from a file someone else wrote (saved outputs render before any re-run), and a blanket
  *  `trust: true` would let it add `\href{javascript:…}`, arbitrary styles, or remote images. */
@@ -161,7 +162,7 @@ function migratePlot(p: PlotData | { var: string; from: number; to: number; poin
 
 /** What a cell is: mathematics for the engine (the default), Markdown prose with `$…$` and code, or a
  *  section heading that groups the cells below it (run together, collapsible). */
-type CellType = "math" | "markdown" | "section";
+type CellType = "math" | "markdown" | "section" | "lean";
 
 interface Cell {
   id: string;
@@ -212,6 +213,8 @@ interface Cell {
   /** The visual input's tree, kept across re-renders while the source is still its text: it may
    *  have empty slots, whose text (`integrate(, x)`) does not read back. */
   tree?: Stmt;
+  /** Lean cells: what Lean reports on the cell's lines (lean-cells.ts), shown as its output. */
+  leanMessages?: LeanMessage[];
 }
 
 type TermRef = { kind: "output" } | { kind: "input" } | { kind: "step"; index: number };
@@ -289,7 +292,7 @@ const S = {
   active: 0,
   rail: "outline" as "outline" | "palette",
   tab: "notebook" as Tab,
-  panelTab: "explain" as "explain" | "log",
+  panelTab: "explain" as "explain" | "log" | "lean",
   panelOpen: !narrow(),
   sel: null as Selection | null,
   log: [] as LogLine[],
@@ -485,6 +488,7 @@ async function runCell(cell: Cell) {
     return;
   }
   if (cell.type === "section") { cell.src = cellSrc(cell); return; }
+  if (cell.type === "lean") return;   // Lean checks as you type (lean-cells.ts)
   cell.src = cellSrc(cell);
   if (!cell.src.trim()) return;
   if (S.kernel === "failed") {
@@ -848,7 +852,7 @@ function assetsFromFile(doc: ChalkFile): Record<string, Asset> {
 /** Cells from a file's records (no DOM yet); `foldWork` folds every cell's work whatever was saved. */
 function cellsFromFile(doc: ChalkFile, foldWork = false): Cell[] {
   return doc.cells.map((c) => {
-    const cell = freshCell(c.src, c.type === "markdown" || c.type === "section" ? c.type : "math");
+    const cell = freshCell(c.src, c.type === "markdown" || c.type === "section" || c.type === "lean" ? c.type : "math");
     if (cell.type === "markdown") cell.editing = !c.src.trim();   // prose comes back rendered; an empty cell opens for typing
     if (c.collapsed) cell.collapsed = true;
     cell.showWork = !foldWork && (c.showWork ?? false); cell.label = c.label ?? null;
@@ -1118,7 +1122,7 @@ function importNotebook() {
 
 /** What a link carries: the name and every cell's text and kind. Outputs are not included: the
  *  engine recomputes them when the link opens, which is the point of a verified notebook. */
-interface LinkDoc { v: 1; n: string; c: { s: string; t?: "markdown" | "section"; w?: 1; f?: 1 }[]; a?: Record<string, { m: string; d: string; b?: 1 }> }
+interface LinkDoc { v: 1; n: string; c: { s: string; t?: "markdown" | "section" | "lean"; w?: 1; f?: 1 }[]; a?: Record<string, { m: string; d: string; b?: 1 }> }
 
 async function deflate(text: string): Promise<Uint8Array> {
   const cs = new CompressionStream("deflate-raw");
@@ -1171,7 +1175,7 @@ async function openNotebookLink(hash: string): Promise<boolean> {
     if (doc.v !== 1 || !Array.isArray(doc.c)) throw new Error("not a notebook link");
     const file: ChalkFile = {
       chalk: 1, name: doc.n || "shared.chalk",
-      cells: doc.c.map((c) => ({ src: String(c.s ?? ""), type: c.t === "markdown" || c.t === "section" ? c.t : undefined, collapsed: c.f ? true : undefined, showWork: !!c.w, label: null })),
+      cells: doc.c.map((c) => ({ src: String(c.s ?? ""), type: c.t === "markdown" || c.t === "section" || c.t === "lean" ? c.t : undefined, collapsed: c.f ? true : undefined, showWork: !!c.w, label: null })),
       scenes: [],
       ...(doc.a ? { assets: Object.fromEntries(Object.entries(doc.a).map(([name, a]) => [name, { name, mime: String(a.m), data: String(a.d), ...(a.b ? { binary: true } : {}) }])) } : {}),
     };
@@ -1413,6 +1417,7 @@ function freshCell(src = "", type: CellType = "math"): Cell {
   const cell: Cell = { id: `c${++cellSeq}`, src, label: null, showWork: false };
   if (type === "markdown") { cell.type = "markdown"; cell.editing = true; }
   if (type === "section") cell.type = "section";
+  if (type === "lean") cell.type = "lean";
   return cell;
 }
 function addCell(src = "", type: CellType = "math"): Cell {
@@ -1436,6 +1441,7 @@ function convertCell(cell: Cell, type: CellType) {
   if (type === "markdown") cell.editing = !cell.src.trim();
   if (type !== "math") { delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.error; delete cell.plot; delete cell.hasse; delete cell.summary; cell.steps = []; cell.label = null; }
   if (type === "section") cell.src = cell.src.split("\n")[0]!.replace(/^#+\s*/, "");
+  if (type !== "lean") delete cell.leanMessages;
   renderCells(); renderSidebar(); renderChrome(); autosave();
 }
 
@@ -1476,6 +1482,7 @@ function focusCell(i: number) {
   const c = S.cells[S.active];
   // after the render: it rebuilds the inputs, and focus on the old one is lost
   if (c?.mi) c.mi.focus();
+  else if (c?.type === "lean") focusLean(c.id);
   else (c?.input ?? c?.ta ?? c?.el?.querySelector<HTMLElement>(".mdout"))?.focus();
 }
 
@@ -1588,7 +1595,7 @@ function renderChrome() {
   const menus = h("div", "menus");
   const MENUS: Record<string, [string, () => void][]> = {
     File: [["New notebook", newNotebook], ["Open…", openNotebook], ["Examples…", showExamples], ["Save", () => saveNotebook()], ["Save as…", saveNotebookAs], ["Export to file…", exportNotebook], ["Import from file…", importNotebook], ["Attach file…", attachFile], ["Copy link to notebook", () => void copyNotebookLink()]],
-    Edit: [["Add math cell", () => { addCell(); focusCell(S.cells.length - 1); }], ["Add Markdown cell", () => { addCell("", "markdown"); focusCell(S.cells.length - 1); }], ["Add section", () => { addCell("", "section"); focusCell(S.cells.length - 1); }],
+    Edit: [["Add math cell", () => { addCell(); focusCell(S.cells.length - 1); }], ["Add Markdown cell", () => { addCell("", "markdown"); focusCell(S.cells.length - 1); }], ["Add section", () => { addCell("", "section"); focusCell(S.cells.length - 1); }], ["Add Lean cell", () => { addCell("", "lean"); focusCell(S.cells.length - 1); }],
       ...(S.cells[S.active] ? CELL_TYPES.filter(([t]) => t !== (S.cells[S.active]!.type ?? "math")).map(([t, label]): [string, () => void] => [`Change to ${label.toLowerCase()}`, () => convertCell(S.cells[S.active]!, t)]) : []),
       ["Clear outputs", clearOutputs]],
     View: [["Toggle light / dark", () => { applyTheme(S.theme === "light" ? "dark" : "light"); renderChrome(); }], [`${S.sidebarOpen ? "✓ " : ""}Sidebar  (Ctrl+B)`, toggleSidebar], ["Explanation panel", () => { S.panelOpen = !S.panelOpen; renderPanelHead(); renderPanel(); }],
@@ -1777,6 +1784,11 @@ function renderSidebar() {
         row.append(h("span", "num", c.collapsed ? "▸" : "§"));
         const wrap = h("span");
         wrap.append(h("span", "kind", c.src || "Untitled section"), h("span", "src", `${b - a} cell${b - a === 1 ? "" : "s"}${c.collapsed ? ", folded" : ""}`));
+        row.append(wrap);
+      } else if (c.type === "lean") {
+        row.append(h("span", "num", "λ"));
+        const wrap = h("span");
+        wrap.append(h("span", "kind", "Lean"), h("span", "src", c.src.split("\n").find((l) => l.trim()) || "…"));
         row.append(wrap);
       } else if (c.type === "markdown") {
         row.append(h("span", "num", "¶"));
@@ -2126,6 +2138,12 @@ function renderCells() {
   hideHover(); hideSigHelp();
   const host = $(".cells");
   host.innerHTML = "";
+  // Lean cells: one document per notebook, whose views are rebuilt with the cells
+  const leanCells = S.cells.filter((c) => c.type === "lean");
+  const leanIds = new Set(leanCells.map((c) => c.id));
+  unmountLean((id) => leanIds.has(id));
+  syncLean(currentDoc(), leanCells.map((c) => ({ id: c.id, src: c.src })));
+  if (leanCells.length) void ensureLean(leanHooks());
   let folded = false;   // inside a collapsed section: its cells are not built
   S.cells.forEach((cell, i) => {
     if (cell.type === "section") folded = !!cell.collapsed;
@@ -2141,6 +2159,22 @@ function renderCells() {
       el.append(acts, h("div", "brk"));
       insertGap(host, i);
       host.append(el);
+      renderCellBody(cell);
+      return;
+    }
+    if (cell.type === "lean") {
+      el.append(h("div", "prompt", "Lean"));
+      const mid = h("div", "mid");
+      const view = h("div", "leanview");
+      view.setAttribute("aria-label", `Cell ${i + 1}, Lean`);
+      view.addEventListener("focusin", () => { if (S.active !== i) { S.active = i; renderChrome(); renderSidebar(); markActive(); } });
+      mid.append(view, h("div", "cellbody"));
+      el.append(mid);
+      const acts = h("div", "cellacts");
+      el.append(acts, h("div", "brk"));
+      insertGap(host, i);
+      host.append(el);
+      mountLean(cell.id, view, cell.src);
       renderCellBody(cell);
       return;
     }
@@ -2243,6 +2277,7 @@ const CELL_TYPES: [CellType, string, string][] = [
   ["math", "Math cell", "An input for the engine: In[n]:= …"],
   ["markdown", "Markdown text", "Prose with $math$, $$display math$$, `code` and ``` blocks"],
   ["section", "Section heading", "Groups the cells below it: run them together, fold them away"],
+  ["lean", "Lean cell", "Lean 4, checked as you type; goals in the panel, definitions shared with the Lean cells below"],
 ];
 /** A small menu of the cell kinds under `anchor`; `pick` gets the chosen one. */
 function typeMenu(anchor: HTMLElement, pick: (t: CellType) => void, current?: CellType) {
@@ -2389,11 +2424,49 @@ function showDiffTip(anchor: HTMLElement, oldTex: string, newTex: string) {
 function hideDiffTip() { document.querySelector(".difftip")?.remove(); }
 
 /** Re-render everything below a cell's input, leaving the input element untouched. */
+/** What Lean cells tell the notebook (lean-cells.ts): typing in a view, Lean's messages, Lean's state. */
+function leanHooks() {
+  return {
+    dark: S.theme !== "light",
+    onSource: (id: string, src: string) => {
+      const c = S.cells.find((x) => x.id === id); if (!c) return;
+      c.src = src; renderSidebar(); renderTabs(); autosave();
+    },
+    onMessages: (id: string, ms: LeanMessage[]) => {
+      const c = S.cells.find((x) => x.id === id); if (!c) return;
+      c.leanMessages = ms; renderCellBody(c);
+    },
+    onState: () => { renderPanelHead(); for (const c of S.cells) if (c.type === "lean") renderCellBody(c); },
+  };
+}
+
+/** A Lean cell's output: what Lean says about its lines (an #eval's value, errors, warnings); the goals
+ *  at the cursor are in the panel's Lean goals tab. */
+function renderLeanBody(cell: Cell) {
+  const el = cell.el; if (!el) return;
+  const body = el.querySelector(".cellbody") as HTMLElement;
+  body.innerHTML = "";
+  const st = leanState();
+  if (st !== "ready") {
+    body.append(h("div", `leanstate ${st}`,
+      st === "failed" ? `Lean did not start: ${leanFailure()}`
+      : st === "isolating" ? "Preparing the page for Lean: it reloads once."
+      : "Starting Lean. The first time, this downloads Lean and its library (about 120 MB)."));
+  }
+  for (const m of cell.leanMessages ?? []) {
+    const row = h("div", `leanmsg ${m.severity}`);
+    row.append(h("span", "where", `${m.line}:${m.column}`), h("span", "text", m.message));
+    body.append(row);
+  }
+  appendMore(cell, el.querySelector(".cellacts")!);
+}
+
 function renderCellBody(cell: Cell) {
   const el = cell.el; if (!el) return;
   hideDiffTip();
   if (cell.type === "markdown") return renderMdCell(cell);
   if (cell.type === "section") return appendMore(cell, el.querySelector(".cellacts")!);
+  if (cell.type === "lean") return renderLeanBody(cell);
   el.classList.toggle("done", !!cell.label);
   const busy = cell.queued || S.running === cell;   // Mathematica's In[*]: waiting or being evaluated
   el.classList.toggle("running", busy);
@@ -2894,8 +2967,9 @@ function renderPanelHead() {
   let head = panel.querySelector(".panelhead") as HTMLElement;
   if (!head) { head = h("div", "panelhead"); panel.prepend(head); }
   head.innerHTML = "";
-  const tabs = [["explain", "Explanation", ""], ["log", "Kernel log", String(S.log.length)]] as const;
-  for (const [key, label, badge] of tabs.filter(([k]) => S.dev || k !== "log")) {
+  const hasLean = S.cells.some((c) => c.type === "lean") || leanState() !== "off";
+  const tabs = [["explain", "Explanation", ""], ["lean", "Lean goals", ""], ["log", "Kernel log", String(S.log.length)]] as const;
+  for (const [key, label, badge] of tabs.filter(([k]) => (S.dev || k !== "log") && (hasLean || k !== "lean"))) {
     const t = asButton(h("div", `ptab${S.panelTab === key ? " on" : ""}`));
     t.setAttribute("aria-pressed", String(S.panelTab === key));
     t.append(document.createTextNode(label));
@@ -2970,7 +3044,12 @@ function renderPanel() {
   if (!body) { body = h("div", "panelbody"); panel.append(body); }
   body.hidden = !S.panelOpen;
   body.innerHTML = "";
+  // the infoview never moves (its iframe would reload): it is shown or hidden where it is
+  const info = leanInfoview();
+  if (info.parentElement !== panel) panel.append(info);
+  info.hidden = !S.panelOpen || S.panelTab !== "lean";
   if (!S.panelOpen) return;
+  if (S.panelTab === "lean") { body.hidden = true; return; }
 
   if (S.panelTab === "log") {
     const list = h("div", "log");
@@ -4014,6 +4093,7 @@ function onKey(ev: KeyboardEvent, cell: Cell, i: number) {
 // ---------------------------------------------------------------------------
 
 initTheme();
+initLeanIsolation();
 document.documentElement.dataset["outsize"] = S.outSize;
 document.documentElement.classList.toggle("nohl", !S.highlight);
 shell();
