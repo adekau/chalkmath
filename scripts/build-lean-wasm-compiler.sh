@@ -84,12 +84,13 @@ emcc $CFLAGS -O1 -c "$OUT/symtab.c" -o "$OUT/obj/symtab.o"
 # PROXY_TO_PTHREAD keeps the JS main thread free to start the task manager's workers and to service the
 # filesystem calls pthreads proxy to it; the stacks are sized for the elaborator's recursion.
 LINKFLAGS="$EMFLAGS -sPROXY_TO_PTHREAD=1 -sPTHREAD_POOL_SIZE=2 -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=512MB \
-  -sMAXIMUM_MEMORY=4GB -sSTACK_SIZE=16MB -sDEFAULT_PTHREAD_STACK_SIZE=8MB -sDEFAULT_TO_CXX=1 \
-  -sEXPORTED_FUNCTIONS=_main,_malloc,_free"   # the runtime's EM_ASM (io.cpp: app path) calls _malloc
+  -sMAXIMUM_MEMORY=4GB -sSTACK_SIZE=16MB -sDEFAULT_PTHREAD_STACK_SIZE=8MB -sDEFAULT_TO_CXX=1"
+# _malloc/_free: the runtime's EM_ASM (io.cpp: app path) calls them
+EXPORTS="_main,_malloc,_free"
 
 # 5. The command-line driver, for Node: what compiles the oleans.
 echo "== linking bin/lean.js"
-emcc -o "$OUT/bin/lean.js" @"$OUT/link.rsp" "$OUT/obj/cpp/shell/lean.cpp.o" $LINKFLAGS -lnodefs.js -sENVIRONMENT=node -sEXIT_RUNTIME=1
+emcc -o "$OUT/bin/lean.js" @"$OUT/link.rsp" "$OUT/obj/cpp/shell/lean.cpp.o" $LINKFLAGS -sEXPORTED_FUNCTIONS=$EXPORTS -lnodefs.js -sENVIRONMENT=node -sEXIT_RUNTIME=1
 
 # 6. The language server's file worker (engine/wasm/server/): LeanWorker.lean's `main`, with stdin/stdout
 #    over leanweb.c's shared-memory queue. The host (packages/engine-host/src/lean-server.ts) writes the
@@ -101,6 +102,7 @@ emcc $CFLAGS -c "$OUT/server-LeanWorker.c" -o "$OUT/obj/server/LeanWorker.o"
 emcc $CFLAGS -c wasm/server/leanweb.c -o "$OUT/obj/server/leanweb.o"
 emcc -o "$OUT/lean-server.js" @"$OUT/link.rsp" "$OUT/obj/server/LeanWorker.o" "$OUT/obj/server/leanweb.o" $LINKFLAGS \
   -sMODULARIZE=1 -sEXPORT_NAME=createLeanServer -sENVIRONMENT=web,worker,node -sINVOKE_RUN=0 -sEXIT_RUNTIME=0 \
+  -sEXPORTED_FUNCTIONS=$EXPORTS,_leanweb_in_buf,_leanweb_in_cap,_leanweb_in_w,_leanweb_in_r \
   -sEXPORTED_RUNTIME_METHODS=callMain,FS,HEAPU8,HEAP32
 LEAN_PATH="$PREFIX/lib/lean" "$LEAN" wasm/server/capabilities.lean > "$OUT/lean-initialize.json"
 ls -la "$OUT/bin" "$OUT"/lean-server.*
