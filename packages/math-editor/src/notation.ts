@@ -16,7 +16,15 @@ export interface NotationOptions {
   hole?: (b: Block) => string;
   /** Which output a relative reference (`%`, `%%`) stands for, when the host knows. */
   outRef?: (ref: string) => number | null;
+  /** A highlight class for a token, by what it is where it stands: a call's name, a variable bound
+   *  by the call or `let` head around it (`diff(f, x)`'s x, `let f(x)`'s x), any other name, or a
+   *  numeral. Null leaves it plain. The notation tags it `\\htmlData{hl=…}` for the host's colours. */
+  classify?: (text: string, as: "call" | "bound" | "name" | "num") => string | null;
 }
+
+/** Commands whose argument at this index is a variable bound over the call (the notebook's
+ *  highlighter has the same list). */
+const BINDERS: Record<string, number> = { diff: 1, integrate: 1, plot: 1, epicycles: 1, sum: 1, subst: 1 };
 
 /** An output reference's tag: `%` is `p1`, `%%` is `p2`, `%3` is `n3` (a `data-out` the view reads back). */
 export const outTag = (ref: string) => (/^%\d+$/.test(ref) ? `n${ref.slice(1)}` : `p${ref.length}`);
@@ -71,14 +79,27 @@ class Notation {
   private wrap: (atoms: Atom[], latex: string) => string;
   private hole: (b: Block) => string;
   private outRef: (ref: string) => number | null;
+  private classify: NonNullable<NotationOptions["classify"]>;
+  /** The names bound where the notation is now (a binder's variable, a head's parameters). */
+  private bound: string[] = [];
   constructor(opts: NotationOptions) {
     this.wrap = opts.wrap ?? ((_, s) => s);
     this.hole = opts.hole ?? (() => "\\square");
     this.outRef = opts.outRef ?? (() => null);
+    this.classify = opts.classify ?? (() => null);
   }
+
+  private tag(cls: string | null, latex: string) { return cls ? `\\htmlData{hl=${cls}}{${latex}}` : latex; }
 
   block(b: Block): string {
     if (b.length === 0) return this.hole(b);
+    // a function's parameters are bound over its whole cell
+    const head = b[0]?.k === "let" && b[0].params ? b[0].params.map(nameOf).filter((n): n is string => !!n) : [];
+    this.bound.push(...head);
+    try { return this.blockInner(b); } finally { this.bound.length -= head.length; }
+  }
+
+  private blockInner(b: Block): string {
     let s = "";
     let j = 0;
     while (j < b.length) {
@@ -104,16 +125,25 @@ class Notation {
   private token(t: Token): string {
     const text = t.atoms.map((a) => (a as { c: string }).c).join("");
     if (t.kind === "name") {
-      if (GLYPH_NAMES[text]) return this.wrap(t.atoms, GLYPH_NAMES[text]!);
-      const u = t.atoms.findIndex((a) => (a as { c: string }).c === "_");
-      const head = u < 0 ? t.atoms : t.atoms.slice(0, u);
-      const inner = this.chars(head, charLatex);
-      let s = head.length > 1 ? `\\mathit{${inner}}` : inner;
-      // `x_1`: the underscore is where the subscript starts, not a character on screen
-      if (u >= 0) s += this.wrap([t.atoms[u]!], "") + `_{${this.chars(t.atoms.slice(u + 1), charLatex)}}`;
-      return `{${s}}`;
+      const cls = this.classify(text, this.bound.includes(text) ? "bound" : "name");
+      return this.tag(cls, this.name(t, text));
     }
-    if (t.kind === "num") return this.chars(t.atoms, (c) => c);
+    if (t.kind === "num") return this.tag(this.classify(text, "num"), this.chars(t.atoms, (c) => c));
+    return this.op(t, text);
+  }
+
+  private name(t: Token, text: string): string {
+    if (GLYPH_NAMES[text]) return this.wrap(t.atoms, GLYPH_NAMES[text]!);
+    const u = t.atoms.findIndex((a) => (a as { c: string }).c === "_");
+    const head = u < 0 ? t.atoms : t.atoms.slice(0, u);
+    const inner = this.chars(head, charLatex);
+    let s = head.length > 1 ? `\\mathit{${inner}}` : inner;
+    // `x_1`: the underscore is where the subscript starts, not a character on screen
+    if (u >= 0) s += this.wrap([t.atoms[u]!], "") + `_{${this.chars(t.atoms.slice(u + 1), charLatex)}}`;
+    return `{${s}}`;
+  }
+
+  private op(t: Token, text: string): string {
     // an output reference is the output it names, Mathematica's Out[n], as one chip
     if (text[0] === "%") {
       const n = /^%\d+$/.test(text) ? +text.slice(1) : this.outRef(text);
@@ -153,6 +183,13 @@ class Notation {
   }
 
   private call(a: Atom & { k: "call" }): string {
+    // a binder's variable is bound over the whole call: `diff(x^2, x)`
+    const i = BINDERS[a.name], v = i === undefined ? null : nameOf(a.args[i] ?? []);
+    if (v) this.bound.push(v);
+    try { return this.callInner(a); } finally { if (v) this.bound.pop(); }
+  }
+
+  private callInner(a: Atom & { k: "call" }): string {
     const b = a.args;
     const x = (i: number) => this.block(b[i]!);
     const n = b.length;
@@ -178,11 +215,24 @@ class Notation {
       case "dot/2": return `${this.operand(b[0]!)} \\cdot ${this.operand(b[1]!)}`;
     }
     const args = b.map((_, i) => x(i)).join(", ");
-    if (NAMED_FNS.includes(a.name)) return `\\${a.name}\\left(${args}\\right)`;
     // a function the session defined is a name like any other; the rest are commands
-    const head = BUILTINS.has(a.name) ? `\\operatorname{${a.name}}` : nameLatex(a.name);
-    return `${head}\\left(${args}\\right)`;
+    const head = NAMED_FNS.includes(a.name) ? `\\${a.name}` : BUILTINS.has(a.name) ? `\\operatorname{${a.name}}` : nameLatex(a.name);
+    return `${this.tag(this.classify(a.name, "call"), head)}\\left(${args}\\right)`;
   }
+}
+
+/** The name a slot holds when it is just one name (`x`, `k`), else null. */
+function nameOf(b: Block): string | null {
+  if (!b.length || !b.every((a) => a.k === "ch")) return null;
+  const ts = tokens(b as (Atom & { k: "ch" })[]);
+  return ts.length === 1 && ts[0]!.kind === "name" ? b.map((a) => (a as { c: string }).c).join("") : null;
+}
+
+/** Does a block show anything the text could not — a fraction, a power, a matrix, or a call drawn in
+ *  its own notation? Where it does not (`epicycles(llama, 60)`), the notebook's Auto mode keeps the
+ *  cell as highlighted text. */
+export function hasNotation(b: Block): boolean {
+  return b.some((a) => a.k === "frac" || a.k === "sup" || a.k === "matrix" || (a.k === "call" && notated(a)) || slots(a).some(hasNotation));
 }
 
 const BUILTINS = new Set(["simplify", "expand", "factor", "N", "det", "rref", "transpose", "solve", "subst", "plot",

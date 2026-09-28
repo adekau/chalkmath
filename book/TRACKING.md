@@ -665,8 +665,23 @@ Phases:
      span and a visual cell's text reads by the engine's grammar, so this shows where the two disagree.
    - Signature help above a visual cell for the call around the caret that shows as `name(args)`;
      d/dx, ∫, Σ and the rest show their slots already.
-4. Visual by default; a keypad of templates on phones.
-5. Retire the View › Input interpretation toggle; explain on the input through engine-reported spans.
+4. Default and phones — DONE 2026-09-28.
+   - View › Math input: automatic (the default), typeset or text; an earlier "visual on" preference
+     carries over as typeset. Automatic typesets a cell only when it shows something the text cannot —
+     a fraction, a power, a matrix, or a call in its own notation (`hasNotation`) — so a cell like
+     `epicycles(llama, 60)` keeps its highlighted text (Alex: "a smart adapt/hybrid"). The choice is
+     made for a cell's source when the cell is left, never while it is typed in. A `\template` typed
+     (or picked from the `\` completions) in a text cell turns it typeset with the template where it
+     was typed: the text is read with a placeholder in the command's place (`templateInText`).
+   - Typeset cells keep the highlighter's colours: the notation asks the host to classify each token by
+     what it is where it stands (a call's name, a variable bound by a binder or a head's parameters,
+     another name, a numeral), and the notebook answers from its highlighter's sets.
+   - A math keypad above a phone's keyboard while a math cell has the focus (View › Math keypad, on by
+     default on narrow screens): fraction, power, root, d/dx, ∫, ∫ₐᵇ, Σ, matrix, |x|, π, parentheses,
+     moves, next slot, run. In a text cell a template key turns it typeset where the text reads, and
+     types the call (`sqrt(`) where it does not yet.
+5. Retire the View › Input interpretation toggle (text cells still show it); explain on the input
+   through engine-reported spans.
 
 ## Toolchain v4.34.1 (2026-09-27, Alex: "upgrade our engine to 4.34.1 since mathlib now has a 4.34.1")
 

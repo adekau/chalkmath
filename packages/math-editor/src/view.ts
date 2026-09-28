@@ -16,6 +16,8 @@ import { atomsInSpan, write } from "./write.js";
  */
 
 export interface MathInputOptions {
+  /** An editor to show, caret and undo history included (a template just opened in the cell's text). */
+  edit?: MathEdit;
   /** Functions the session defined. */
   known?: readonly string[];
   /** The `\` symbols (the notebook passes its own table). */
@@ -38,6 +40,8 @@ export interface MathInputOptions {
   /** What an output reference (`%`, `%%`, `%3`) stands for: its number, and the output's text for
    *  a tooltip. Without it, `%n` shows its number and `%` stays as typed. */
   outRef?(ref: string): { label: number; value?: string } | null;
+  /** Highlight classes for tokens (see `NotationOptions.classify`); the page styles `[data-hl=…]`. */
+  classify?(text: string, as: "call" | "bound" | "name" | "num"): string | null;
   /** A paste, before the input reads it: the host takes it (an image, an SVG) by preventing its default. */
   onPaste?(ev: ClipboardEvent): void;
 }
@@ -102,7 +106,7 @@ export class MathInput {
 
   constructor(stmt: Stmt, private opts: MathInputOptions = {}) {
     addStyles(document);
-    this.edit = new MathEdit(stmt, { ...(opts.known ? { known: opts.known } : {}), ...(opts.symbols ? { symbols: opts.symbols } : {}) });
+    this.edit = opts.edit ?? new MathEdit(stmt, { ...(opts.known ? { known: opts.known } : {}), ...(opts.symbols ? { symbols: opts.symbols } : {}) });
     this.el = document.createElement("div");
     this.el.className = "mi";
     this.math = document.createElement("div");
@@ -181,6 +185,7 @@ export class MathInput {
       wrap: (atoms, s) => { tagged.push(atoms); return `\\htmlData{a=${tagged.length - 1}}{${s}}`; },
       hole: (b) => { holes.push(b); return `\\htmlData{h=${holes.length - 1}}{\\square}`; },
       outRef: (ref) => this.opts.outRef?.(ref)?.label ?? null,
+      ...(this.opts.classify ? { classify: (t: string, as: "call" | "bound" | "name" | "num") => this.opts.classify!(t, as) } : {}),
     });
     // display-size fractions and operators, as a textbook (and Symbolab) set an input, but left-aligned
     katex.render(`\\displaystyle ${latex}`, this.math, { throwOnError: false, trust: TRUST, strict: false, displayMode: false });
@@ -283,6 +288,11 @@ export class MathInput {
     if (!s) return;
     for (const c of s) this.edit.type(c);
     this.changed();
+  }
+
+  /** An edit from outside the keyboard (a keypad button): run it on the editor and redraw. */
+  apply(fn: (e: MathEdit) => boolean) {
+    if (fn(this.edit)) this.changed(); else this.place();
   }
 
   /** Mark where the engine's error is (its span into the text), or clear the mark. */

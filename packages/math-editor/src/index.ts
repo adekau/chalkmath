@@ -6,5 +6,5 @@
 export * from "./model.js";
 export { read, lex, ungroup, BUILTIN_FUNCTIONS, type ReadResult, type ReadError } from "./read.js";
 export { write, writeText, atomsInSpan, type Written } from "./write.js";
-export { toLatex, slots, outTag, outRefOf, type NotationOptions } from "./notation.js";
-export { MathEdit, TEMPLATES, DEFAULT_SYMBOLS, type Caret, type Where } from "./edit.js";
+export { toLatex, slots, outTag, outRefOf, hasNotation, type NotationOptions } from "./notation.js";
+export { MathEdit, TEMPLATES, DEFAULT_SYMBOLS, templateAt, templateInText, type Caret, type Where } from "./edit.js";
