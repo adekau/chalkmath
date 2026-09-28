@@ -1,7 +1,7 @@
 import katex from "katex";
 import { MathEdit, TEMPLATES, type Caret } from "./edit.js";
 import type { Atom, Block, Stmt } from "./model.js";
-import { slots, toLatex } from "./notation.js";
+import { outRefOf, slots, toLatex } from "./notation.js";
 import { read } from "./read.js";
 import { atomsInSpan, write } from "./write.js";
 
@@ -32,6 +32,9 @@ export interface MathInputOptions {
   onLeave?(dir: -1 | 1): void;
   /** A key, before the input handles it; return true to take it (a completion menu's arrows). */
   onKey?(ev: KeyboardEvent): boolean;
+  /** What an output reference (`%`, `%%`, `%3`) stands for: its number, and the output's text for
+   *  a tooltip. Without it, `%n` shows its number and `%` stays as typed. */
+  outRef?(ref: string): { label: number; value?: string } | null;
   /** A paste, before the input reads it: the host takes it (an image, an SVG) by preventing its default. */
   onPaste?(ev: ClipboardEvent): void;
 }
@@ -48,6 +51,7 @@ export const MATH_INPUT_CSS = `
 .mi.focused .mi-math [data-h].mi-here { color:var(--mi-caret, currentColor); }
 .mi-cmd { color:var(--mi-cmd, #b0662c); }
 .mi-math .mi-err { background:var(--mi-err-bg, rgba(192,57,43,0.12)); box-shadow:0 2px 0 var(--mi-err, #c0392b); border-radius:2px 2px 0 0; }
+.mi-math [data-out] { background:var(--mi-chip, rgba(107,138,253,0.14)); border-radius:4px; padding:0 2px; }
 .mi-math .mi-sel { background:var(--mi-sel, rgba(107,138,253,0.28)); border-radius:2px; }
 .mi-ta { position:absolute; left:0; top:0; width:1px; height:1px; opacity:0; padding:0; border:0; resize:none; overflow:hidden; }
 @keyframes mi-blink { 50% { opacity:0; } }
@@ -173,6 +177,7 @@ export class MathInput {
     const latex = toLatex(this.edit.stmt, {
       wrap: (atoms, s) => { tagged.push(atoms); return `\\htmlData{a=${tagged.length - 1}}{${s}}`; },
       hole: (b) => { holes.push(b); return `\\htmlData{h=${holes.length - 1}}{\\square}`; },
+      outRef: (ref) => this.opts.outRef?.(ref)?.label ?? null,
     });
     // display-size fractions and operators, as a textbook (and Symbolab) set an input, but left-aligned
     katex.render(`\\displaystyle ${latex}`, this.math, { throwOnError: false, trust: TRUST, strict: false, displayMode: false });
@@ -190,6 +195,10 @@ export class MathInput {
     const p = this.edit.pendingCommand();
     if (p) for (const a of this.edit.caret.block.slice(p.start, this.edit.caret.i)) this.atomEl.get(a)?.el.classList.add("mi-cmd");
     if (this.errSpan) for (const a of atomsInSpan(this.edit.stmt, this.errSpan)) this.atomEl.get(a)?.el.classList.add("mi-err");
+    for (const el of this.math.querySelectorAll<HTMLElement>("[data-out]")) {
+      const r = this.opts.outRef?.(outRefOf(el.dataset["out"]!));
+      if (r) el.title = `Out[${r.label}]${r.value ? ` = ${r.value}` : ""}`;
+    }
     const text = this.text;
     this.ta.setAttribute("aria-label", `${this.opts.label ?? "Math input"}: ${text || "empty"}`);
     this.place();

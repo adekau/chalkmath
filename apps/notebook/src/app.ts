@@ -2094,6 +2094,14 @@ function visualInput(cell: Cell, i: number): MathInput | null {
     onLeave: (dir) => { const j = i + dir; if (j >= 0 && j < S.cells.length) focusCell(j); },
     onKey: (ev) => modeKey(ev, cell),
     onPaste: (ev) => onPaste(ev, cell),
+    // `%` is the output before this cell's own (or, not yet run, the latest); `%n` is Out[n]
+    outRef: (ref) => {
+      const base = cell.label ?? Math.max(0, ...S.cells.map((c) => c.label ?? 0)) + 1;
+      const n = /^%\d+$/.test(ref) ? +ref.slice(1) : base - ref.length;
+      if (n < 1) return null;
+      const out = S.cells.find((c) => c.label === n)?.outText;
+      return { label: n, ...(out ? { value: out } : {}) };
+    },
   };
   const mi = cell.tree && writeText(cell.tree) === cell.src ? new MathInput(cell.tree, opts) : MathInput.fromSource(cell.src, opts);
   if (mi) cell.tree = mi.edit.stmt; else delete cell.tree;
@@ -2405,9 +2413,8 @@ function renderCellBody(cell: Cell) {
   const body = mid.querySelector(".cellbody") as HTMLElement;
   body.innerHTML = "";
 
-  // a visual input already shows what was typed; the interpretation still earns its place when `%`
-  // stood for an earlier output
-  if (cell.echoLatex && S.showEcho && !(isVisual(cell) && !cellSrc(cell).includes("%"))) {
+  // a visual input already shows what was typed, and a `%` in it as the output it names
+  if (cell.echoLatex && S.showEcho && !isVisual(cell)) {
     const echo = h("div", "echo");
     echo.innerHTML = tex(cell.echoLatex, true);
     wireTerm(echo, cell, { kind: "input" });

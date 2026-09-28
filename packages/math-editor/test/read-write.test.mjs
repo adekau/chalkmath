@@ -127,6 +127,9 @@ test("every notation is LaTeX KaTeX renders, with every atom tagged", () => {
   assert.equal(tex("transpose(M) + conj(z)"), "{{M}}^{\\mathsf{T}}+\\overline{{z}}");
   assert.equal(tex("dot(u, v + w)"), "{u} \\cdot \\left({v}+{w}\\right)");
   assert.equal(tex("2 llama + x_1"), "2{\\mathit{llama}}+{x_{1}}");
+  // output references are Out[n] chips; a relative one needs the host to say which output it is
+  assert.equal(tex("%3 + %"), "\\htmlData{out=n3}{\\mathrm{Out}[3]}+\\htmlData{out=p1}{\\mathrm{Out}[\\%]}");
+  assert.equal(toLatex(tree("%%"), { outRef: (r) => (r === "%%" ? 5 : null) }), "\\htmlData{out=p2}{\\mathrm{Out}[5]}");
   assert.equal(tex("norm(v) + abs(x) + sqrt(2)"), "\\left\\lVert {v}\\right\\rVert+\\left|{x}\\right|+\\sqrt{2}");
 });
 

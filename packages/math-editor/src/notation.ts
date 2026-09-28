@@ -14,7 +14,13 @@ import { type Atom, type Block, type Stmt, isDigit, isIdChar, isIdStart } from "
 export interface NotationOptions {
   wrap?: (atoms: Atom[], latex: string) => string;
   hole?: (b: Block) => string;
+  /** Which output a relative reference (`%`, `%%`) stands for, when the host knows. */
+  outRef?: (ref: string) => number | null;
 }
+
+/** An output reference's tag: `%` is `p1`, `%%` is `p2`, `%3` is `n3` (a `data-out` the view reads back). */
+export const outTag = (ref: string) => (/^%\d+$/.test(ref) ? `n${ref.slice(1)}` : `p${ref.length}`);
+export const outRefOf = (tag: string) => (tag[0] === "n" ? `%${tag.slice(1)}` : "%".repeat(+tag.slice(1)));
 
 const GREEK: Record<string, string> = {
   "π": "\\pi", "α": "\\alpha", "β": "\\beta", "γ": "\\gamma", "δ": "\\delta", "ε": "\\varepsilon", "θ": "\\theta",
@@ -64,9 +70,11 @@ function tokens(run: (Atom & { k: "ch" })[]): Token[] {
 class Notation {
   private wrap: (atoms: Atom[], latex: string) => string;
   private hole: (b: Block) => string;
+  private outRef: (ref: string) => number | null;
   constructor(opts: NotationOptions) {
     this.wrap = opts.wrap ?? ((_, s) => s);
     this.hole = opts.hole ?? (() => "\\square");
+    this.outRef = opts.outRef ?? (() => null);
   }
 
   block(b: Block): string {
@@ -106,6 +114,12 @@ class Notation {
       return `{${s}}`;
     }
     if (t.kind === "num") return this.chars(t.atoms, (c) => c);
+    // an output reference is the output it names, Mathematica's Out[n], as one chip
+    if (text[0] === "%") {
+      const n = /^%\d+$/.test(text) ? +text.slice(1) : this.outRef(text);
+      const label = n === null ? text.replace(/%/g, "\\%") : String(n);
+      return this.wrap(t.atoms, `\\htmlData{out=${outTag(text)}}{\\mathrm{Out}[${label}]}`);
+    }
     // a `\` is a command still being typed (`\frac` before its space)
     return this.chars(t.atoms, (c) => (c === "*" ? "\\cdot " : c === " " ? "\\," : c === "%" ? "\\%" : c === "\\" ? "\\backslash " : c));
   }
