@@ -2417,7 +2417,9 @@ function renderCellBody(cell: Cell) {
 
   if (cell.error) {
     const err = h("div", "cellerr", cell.error.message);
-    if (cell.error.span) {
+    // a visual input marks the error on the symbols themselves; text gets the source with carets
+    if (cell.error.span && cell.mi) cell.mi.markError(cell.error.span);
+    else if (cell.error.span) {
       const { start, end } = cell.error.span;
       err.append(h("span", "caret", `${cell.src}\n${" ".repeat(start)}${"^".repeat(Math.max(1, end - start))}`));
     }

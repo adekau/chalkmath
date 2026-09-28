@@ -123,3 +123,19 @@ class Writer {
     }
   }
 }
+
+/** The atoms a span of the text covers (the engine reports a syntax error's span): the largest ones
+ *  it covers whole, else the innermost ones it overlaps; a span at the very end (an unexpected end
+ *  of input) is the last atom. */
+export function atomsInSpan(stmt: Stmt, span: { start: number; end: number }): Atom[] {
+  const { text, spans } = write(stmt);
+  const start = span.start, end = Math.max(span.end, span.start + 1);
+  const within = (s: { start: number; end: number }, t: { start: number; end: number }) => t.start <= s.start && s.end <= t.end;
+  const hits = [...spans].filter(([, s]) => s.start < end && s.end > start);
+  const whole = hits.filter(([, s]) => within(s, { start, end }));
+  const pick = whole.length
+    ? whole.filter(([a, s]) => !whole.some(([b, t]) => b !== a && within(s, t)))
+    : hits.filter(([a, s]) => !hits.some(([b, t]) => b !== a && within(t, s)));
+  if (!pick.length && start >= text.length && stmt.body.length) return [stmt.body[stmt.body.length - 1]!];
+  return pick.map(([a]) => a);
+}

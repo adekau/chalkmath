@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import katex from "katex";
-import { read, write, toLatex, show, sameStmt } from "../dist/index.js";
+import { read, write, toLatex, show, sameStmt, atomsInSpan } from "../dist/index.js";
 
 const root = new URL("../../../", import.meta.url);
 const golden = readFileSync(new URL("engine/Tests/golden.tsv", root), "utf8").split("\n").filter(Boolean).map((l) => l.split("\t"));
@@ -128,4 +128,14 @@ test("every notation is LaTeX KaTeX renders, with every atom tagged", () => {
   assert.equal(tex("dot(u, v + w)"), "{u} \\cdot \\left({v}+{w}\\right)");
   assert.equal(tex("2 llama + x_1"), "2{\\mathit{llama}}+{x_{1}}");
   assert.equal(tex("norm(v) + abs(x) + sqrt(2)"), "\\left\\lVert {v}\\right\\rVert+\\left|{x}\\right|+\\sqrt{2}");
+});
+
+test("an engine span maps to the innermost atoms it covers", () => {
+  const t = tree("1 + x/y + sqrt(z)");
+  const at = (start, end) => atomsInSpan(t, { start, end }).map((a) => show([a])).join(" ");
+  assert.equal(at(4, 5), "[x]");                       // inside the fraction: just the x
+  assert.equal(at(4, 7), "[(frac [x] [y])]");          // the whole fraction: the fraction
+  assert.equal(at(10, 17), "[(sqrt [z])]");
+  assert.equal(at(10, 14), "[(sqrt [z])]");            // the name of a call is the call
+  assert.equal(at(17, 17), "[(sqrt [z])]");            // the end of the input: the last atom
 });

@@ -3,7 +3,7 @@ import { MathEdit, TEMPLATES, type Caret } from "./edit.js";
 import type { Atom, Block, Stmt } from "./model.js";
 import { slots, toLatex } from "./notation.js";
 import { read } from "./read.js";
-import { write } from "./write.js";
+import { atomsInSpan, write } from "./write.js";
 
 /**
  * The visual input on a page. The tree is drawn by KaTeX — the LaTeX of `notation.ts` with every atom
@@ -47,6 +47,7 @@ export const MATH_INPUT_CSS = `
 .mi.focused { box-shadow:0 0 0 1px var(--mi-focus, #6b8afd); border-radius:4px; }
 .mi.focused .mi-math [data-h].mi-here { color:var(--mi-caret, currentColor); }
 .mi-cmd { color:var(--mi-cmd, #b0662c); }
+.mi-math .mi-err { background:var(--mi-err-bg, rgba(192,57,43,0.12)); box-shadow:0 2px 0 var(--mi-err, #c0392b); border-radius:2px 2px 0 0; }
 .mi-math .mi-sel { background:var(--mi-sel, rgba(107,138,253,0.28)); border-radius:2px; }
 .mi-ta { position:absolute; left:0; top:0; width:1px; height:1px; opacity:0; padding:0; border:0; resize:none; overflow:hidden; }
 @keyframes mi-blink { 50% { opacity:0; } }
@@ -76,6 +77,8 @@ export class MathInput {
   private atomEl = new Map<Atom, { el: HTMLElement; k: number; n: number }>();
   private holeEl = new Map<Block, HTMLElement>();
   private composing = false;
+  /** The engine's error span on the last run, marked on the atoms it covers until the next edit. */
+  private errSpan: { start: number; end: number } | null = null;
   /** A mouse drag in progress: where it started. */
   private drag: Caret | null = null;
   /** The `\\` suggestions under the caret: the names that start with what has been typed. */
@@ -186,6 +189,7 @@ export class MathInput {
     // a `\\name` still being typed shows as a command, not as letters of a name
     const p = this.edit.pendingCommand();
     if (p) for (const a of this.edit.caret.block.slice(p.start, this.edit.caret.i)) this.atomEl.get(a)?.el.classList.add("mi-cmd");
+    if (this.errSpan) for (const a of atomsInSpan(this.edit.stmt, this.errSpan)) this.atomEl.get(a)?.el.classList.add("mi-err");
     const text = this.text;
     this.ta.setAttribute("aria-label", `${this.opts.label ?? "Math input"}: ${text || "empty"}`);
     this.place();
@@ -268,7 +272,11 @@ export class MathInput {
     this.changed();
   }
 
+  /** Mark where the engine's error is (its span into the text), or clear the mark. */
+  markError(span: { start: number; end: number } | null) { this.errSpan = span; this.render(); }
+
   private changed() {
+    this.errSpan = null;
     this.render();
     this.suggest();
     this.opts.onChange?.(this.text, this.holes);
