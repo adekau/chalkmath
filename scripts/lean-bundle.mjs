@@ -86,15 +86,17 @@ export async function bundleLean({ out, define, minify, nonce }) {
     webview.replace(ESMS, `esmsInitOptions={shimMode:!0,nonce:${JSON.stringify(nonce)}}`).replaceAll('"/infoview/', `"${INFOVIEW}`));
 
   const lean = leanBuild();
-  let parts = 0;
+  let parts = 0, download = 0;
   for (const f of readdirSync(out)) if (/^lean-(server\.wasm|lib\.pack)/.test(f)) rmSync(`${out}/${f}`);
   if (lean) {
     for (const f of ["lean-server.js", "lean-initialize.json"]) cpSync(`${lean}/${f}`, `${out}/${f}`);
-    writeFileSync(`${out}/lean-server.wasm.gz`, gzipSync(readFileSync(`${lean}/lean-server.wasm`), { level: 9 }));
+    const wasm = gzipSync(readFileSync(`${lean}/lean-server.wasm`), { level: 9 });
+    writeFileSync(`${out}/lean-server.wasm.gz`, wasm);
     const lib = readFileSync(`${lean}/lean-lib.pack.gz`);
+    download = wasm.length + lib.length;
     for (let at = 0; at < lib.length; at += PART) writeFileSync(`${out}/lean-lib.pack.gz.${parts++}`, lib.subarray(at, at + PART));
   } else console.log("lean: Lean itself has not been built (npm run lean-wasm); Lean cells will say so");
   await build({ ...common, format: "iife", entryPoints: ["packages/engine-host/src/worker-lean-server.ts"], outfile: `${out}/lean-server.worker.js`,
-    define: { ...common.define, __LEAN_LIB_PARTS__: String(parts) } });
+    define: { ...common.define, __LEAN_LIB_PARTS__: String(parts), __LEAN_DOWNLOAD_BYTES__: String(download) } });
   console.log(`lean: ${readdirSync(out).join(" ")}`);
 }

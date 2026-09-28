@@ -15,13 +15,29 @@ declare const createLeanServer: (opts: object) => Promise<LeanServerModule>;
 declare const __BUILD_ID__: string;
 /** How many parts scripts/lean-bundle.mjs split the library into. */
 declare const __LEAN_LIB_PARTS__: number;
+/** The compressed size of the wasm and the library together, for progress. */
+declare const __LEAN_DOWNLOAD_BYTES__: number;
 const stamp = typeof __BUILD_ID__ === "string" ? __BUILD_ID__ : "dev";
 const at = (file: string) => new URL(`${file}?v=${stamp}`, self.location.href).href;
 
 importScripts(at("lean-server.js"));
 if (self.name !== "em-pthread") host();
 
+/** What the page shows while Lean loads, posted on the BroadcastChannel named by the worker URL's
+ *  `progress` parameter (the worker's own messages are the extension's LSP): the download, then Lean
+ *  loading its library and checking the document, until it has checked it once. */
+export type LeanProgress = { phase: "download"; loaded: number; total: number } | { phase: "checking" } | { phase: "done" };
+
 function host() {
+  const channelName = new URL(self.location.href).searchParams.get("progress");
+  const channel = channelName ? new BroadcastChannel(channelName) : null;
+  const report = (p: LeanProgress) => channel?.postMessage(p);
+  let loaded = 0, lastReport = 0;
+  const counted = (n: number) => {
+    loaded += n;
+    const now = Date.now();
+    if (now - lastReport > 100) { lastReport = now; report({ phase: "download", loaded, total: __LEAN_DOWNLOAD_BYTES__ }); }
+  };
   /** A gzipped file, decompressed as it arrives; `parts` > 0: shipped as `<file>.0`, `<file>.1`, … */
   function gunzip(file: string, parts = 0): ReadableStream<Uint8Array> {
     const names = parts > 0 ? Array.from({ length: parts }, (_, i) => `${file}.${i}`) : [file];
@@ -36,7 +52,7 @@ function host() {
             reader = res.body.getReader();
           }
           const { done, value } = await reader.read();
-          if (!done) { c.enqueue(value); return; }
+          if (!done) { counted(value.byteLength); c.enqueue(value); return; }
           reader = null;
         }
       },
@@ -70,9 +86,18 @@ function host() {
     library(),
     fetch(at("lean-initialize.json")).then((r) => r.json()),
   ]).then(([module, lib, initializeResult]) => {
+    report({ phase: "checking" });
+    let checked = false;
     const server = startLeanServer({
       module, library: lib, initializeResult,
-      send: (m) => self.postMessage(m),
+      send: (m) => {
+        // `$/lean/fileProgress` with nothing left to process: the document has been checked once
+        if (!checked && m.method === "$/lean/fileProgress" && (m.params as { processing?: unknown[] }).processing?.length === 0) {
+          checked = true;
+          report({ phase: "done" });
+        }
+        self.postMessage(m);
+      },
       log: (l) => console.debug(`[lean] ${l}`),
     });
     receive = (m) => server.receive(m);

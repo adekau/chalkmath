@@ -31,6 +31,14 @@ const doc = { v: 1, n: "lean-cells.chalk", c: [
 const browser = await chromium.launch({ ...(process.env.CHROMIUM ? { executablePath: process.env.CHROMIUM } : {}), args: ["--no-sandbox"] });
 const page = await browser.newPage({ viewport: { width: 1400, height: 950 } });
 page.on("pageerror", (e) => { if (!/^unsupported/.test(e.message)) console.log(`[page error] ${e.message}`); });   // "unsupported": a VS Code API lean4monaco does not provide, harmless
+// every loading status the page shows, as it shows them
+await page.addInitScript(() => {
+  const seen = (window.__leanStatus = []);
+  new MutationObserver(() => {
+    const t = document.querySelector(".leanstatus .leanstate")?.textContent;
+    if (t && seen.at(-1) !== t) seen.push(t);
+  }).observe(document, { subtree: true, childList: true, characterData: true });
+});
 const t0 = Date.now();
 await page.goto(`http://localhost:${port}/index.html#nbj=${Buffer.from(JSON.stringify(doc)).toString("base64url")}`);
 const checks = [];
@@ -39,6 +47,11 @@ const check = (name, ok, detail = "") => { checks.push(ok); console.log(`${ok ? 
 check("cross-origin isolated", await page.evaluate(() => self.crossOriginIsolated));
 const got42 = await page.waitForFunction(() => [...document.querySelectorAll(".leanmsg .text")].some((e) => e.textContent.trim() === "42"), null, { timeout: 180000 }).then(() => true, () => false);
 check("#eval double 21 shows 42 from the cell above", got42, `${Date.now() - t0} ms after load`);
+const statuses = await page.evaluate(() => window.__leanStatus);
+check("the loading status showed the download", statuses.some((t) => /Downloading Lean and its library: [\d.]+ of [\d.]+ MB/.test(t)),
+  `${statuses.length} updates, last: ${statuses.at(-1) ?? "none"}`);
+await page.waitForFunction(() => !document.querySelector(".leanstatus"), null, { timeout: 60000 }).catch(() => {});
+check("and is gone once Lean has checked the notebook", await page.evaluate(() => !document.querySelector(".leanstatus")));
 check("the math cell still evaluates", await page.evaluate(() => !!document.querySelector(".cell.done")));
 
 await page.evaluate(() => [...document.querySelectorAll(".ptab")].find((t) => t.textContent.includes("Lean goals"))?.click());

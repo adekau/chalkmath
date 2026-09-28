@@ -18,7 +18,7 @@ import { MathInput, type MathInputOptions } from "@chalkmath/math-editor/view";
  */
 
 import katex from "katex";
-import { ensureLean, syncLean, mountLean, unmountLean, focusLean, infoview as leanInfoview, leanState, leanFailure, initLeanIsolation, type LeanMessage } from "./lean-cells.js";
+import { ensureLean, syncLean, mountLean, unmountLean, focusLean, infoview as leanInfoview, leanState, leanFailure, leanProgress, initLeanIsolation, type LeanMessage } from "./lean-cells.js";
 /** The one trusted KaTeX command is `\htmlData`, which carries the engine's subterm paths. LaTeX can
  *  come from a file someone else wrote (saved outputs render before any re-run), and a blanket
  *  `trust: true` would let it add `\href{javascript:…}`, arbitrary styles, or remote images. */
@@ -2453,7 +2453,38 @@ function leanHooks() {
       c.leanMessages = ms; renderCellBody(c);
     },
     onState: () => { renderPanelHead(); for (const c of S.cells) if (c.type === "lean") renderCellBody(c); },
+    onProgress: () => {
+      // the status is in the first Lean cell: updated in place while it shows, re-rendered when it comes or goes
+      const first = S.cells.find((c) => c.type === "lean");
+      const old = first?.el?.querySelector(".leanstatus");
+      const next = leanStatus();
+      if (old && next) old.replaceWith(next);
+      else if (first && (old || next)) renderCellBody(first);
+    },
   };
+}
+
+const MB = (n: number) => (n / 1e6).toFixed(n < 10e6 ? 1 : 0);
+/** What Lean is doing while it loads, with a progress bar; null once it has checked the notebook. */
+function leanStatus(): HTMLElement | null {
+  const st = leanState(), p = leanProgress();
+  if (st === "off" || st === "isolating" || st === "failed" || !p) return null;
+  const pct = p.phase === "download" && p.total > 0 ? Math.min(100, Math.round((p.loaded / p.total) * 100)) : null;
+  const text = p.phase === "editor" ? "Loading the Lean editor…"
+    : p.phase === "download" ? (p.total > 0
+      ? `Downloading Lean and its library: ${MB(p.loaded)} of ${MB(p.total)} MB. Only the first time: your browser keeps it.`
+      : "Downloading Lean and its library…")
+    : "Lean is loading its library and checking the notebook…";
+  const box = h("div", "leanstatus");
+  const bar = h("div", `leanbar${pct === null ? " busy" : ""}`);
+  bar.setAttribute("role", "progressbar");
+  bar.setAttribute("aria-label", "Loading Lean");
+  if (pct !== null) { bar.setAttribute("aria-valuemin", "0"); bar.setAttribute("aria-valuemax", "100"); bar.setAttribute("aria-valuenow", String(pct)); }
+  const fill = h("div");
+  if (pct !== null) fill.style.width = `${pct}%`;
+  bar.append(fill);
+  box.append(h("div", "leanstate", text), bar);
+  return box;
 }
 
 /** A Lean cell's output: what Lean says about its lines (an #eval's value, errors, warnings); the goals
@@ -2463,11 +2494,12 @@ function renderLeanBody(cell: Cell) {
   const body = el.querySelector(".cellbody") as HTMLElement;
   body.innerHTML = "";
   const st = leanState();
-  if (st !== "ready") {
+  if (st === "failed" || st === "isolating") {
     body.append(h("div", `leanstate ${st}`,
-      st === "failed" ? `Lean did not start: ${leanFailure()}`
-      : st === "isolating" ? "Preparing the page for Lean: it reloads once."
-      : "Starting Lean. The first time, this downloads Lean and its library (about 120 MB)."));
+      st === "failed" ? `Lean did not start: ${leanFailure()}` : "Preparing the page for Lean: it reloads once."));
+  } else if (S.cells.find((c) => c.type === "lean") === cell) {
+    const status = leanStatus();
+    if (status) body.append(status);
   }
   for (const m of cell.leanMessages ?? []) {
     const row = h("div", `leanmsg ${m.severity}`);

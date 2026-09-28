@@ -45,11 +45,20 @@ export function infoview(): HTMLElement {
 export const leanState = () => state;
 export const leanFailure = () => failure;
 
+/** Where Lean is in loading, while it loads (null once it has checked the notebook, or before it starts):
+ *  the editor, then Lean's download (reported by its worker, packages/engine-host/src/worker-lean-server.ts),
+ *  then Lean loading its library and checking the notebook for the first time. */
+export type LeanProgress = { phase: "editor" } | { phase: "download"; loaded: number; total: number } | { phase: "checking" };
+let progress: LeanProgress | null = null;
+export const leanProgress = () => progress;
+const setProgress = (p: LeanProgress | null) => { progress = p; hooks?.onProgress(); };
+
 export interface LeanHooks {
   dark: boolean;
   onSource(id: string, src: string): void;
   onMessages(id: string, messages: LeanMessage[]): void;
   onState(): void;
+  onProgress(): void;
 }
 let hooks: LeanHooks | null = null;
 
@@ -94,12 +103,22 @@ export function ensureLean(h: LeanHooks): Promise<LeanNotebook | null> {
   }
   if (!self.crossOriginIsolated) { void isolate(); return Promise.resolve(null); }
   setState("starting");
+  setProgress({ phase: "editor" });
   starting = (async () => {
     try {
       const url = new URL(`lean/lean-editor.js?v=${stamp}`, location.href).href;
       const mod = (await import(url)) as { startLean(o: LeanOptions): Promise<LeanNotebook> };
-      const worker = new Worker(`lean/lean-server.worker.js?v=${stamp}`);
-      worker.addEventListener("error", (e) => setState("failed", e.message || "Lean's server stopped"));
+      const channel = `chalkmath-lean-${crypto.randomUUID()}`;
+      const bc = new BroadcastChannel(channel);
+      bc.onmessage = (e: MessageEvent<{ phase: string; loaded?: number; total?: number }>) => {
+        const p = e.data;
+        if (p.phase === "done") bc.close();
+        setProgress(p.phase === "download" ? { phase: "download", loaded: p.loaded!, total: p.total! }
+          : p.phase === "checking" ? { phase: "checking" } : null);
+      };
+      setProgress({ phase: "download", loaded: 0, total: 0 });
+      const worker = new Worker(`lean/lean-server.worker.js?v=${stamp}&progress=${channel}`);
+      worker.addEventListener("error", (e) => { setProgress(null); setState("failed", e.message || "Lean's server stopped"); });
       session = await mod.startLean({ worker, infoview: infoview(), dark: h.dark,
         onSource: (id, src) => hooks?.onSource(id, src), onMessages: (id, ms) => hooks?.onMessages(id, ms) });
       setState("ready");
@@ -108,6 +127,7 @@ export function ensureLean(h: LeanHooks): Promise<LeanNotebook | null> {
       pending.clear();
       return session;
     } catch (e) {
+      progress = null;
       setState("failed", e instanceof Error ? e.message : String(e));
       return null;
     }
