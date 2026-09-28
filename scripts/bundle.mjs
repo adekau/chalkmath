@@ -1,11 +1,12 @@
 // Bundles the Lean/wasm worker glue and the notebook page into apps/notebook/dist (static, self-hostable).
 import { build } from "esbuild";
-import { bundleLean } from "./lean-bundle.mjs";
+import { bundleLean, leanBuild } from "./lean-bundle.mjs";
 import { cpSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 // A build stamp on every asset URL, so a browser never keeps yesterday's engine.
 const BUILD = Date.now().toString(36);
-const define = { __BUILD_ID__: JSON.stringify(BUILD) };
+// whether this copy includes Lean itself (the Lean cells' server), which a separate, long build makes
+const define = { __BUILD_ID__: JSON.stringify(BUILD), __LEAN_BUILT__: JSON.stringify(!!leanBuild()) };
 // The one inline script the page allows: es-module-shims' feature detection in Lean's infoview, which
 // marks its scripts with this nonce (scripts/lean-bundle.mjs). A new one each build.
 const NONCE = randomBytes(18).toString("base64");

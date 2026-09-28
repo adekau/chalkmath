@@ -676,3 +676,36 @@ Phases:
    emitted for Init, Std and the engine did not: every static Name literal carried a truncated hash. The engine
    never looked such a name up in a hash map (all 200 cells were identical before and after); Lean itself does,
    and failed at initialization. The runtime script records its flags and rebuilds its archives when they change.
+
+## Lean cells (2026-09-28, Alex: "allow lean evaluation (as a cell) … let's use vscode's web editor + the lean4 extension for input and the proof obligation pane … Output will remain our cell output")
+
+- Lean for wasm32 — DONE 2026-09-28. `npm run lean-wasm` (`scripts/build-lean-wasm-compiler.sh`) builds the
+   whole v4.34.1 compiler from source with Emscripten 6.0.10: C for Init, Std and Lean emitted by the host
+   `lean`, the C++ half, a generated symbol table (214,056 functions, 3,873 constants) standing in for `dlsym`,
+   then Init's 649 modules compiled again into 32-bit oleans by the wasm `lean` under Node. Findings in
+   `engine/wasm/UPSTREAM.md` §5. A cold build is ~1.5–2 h on 4 cores and keeps ~1.7 GB under `engine/toolchains/`.
+- Language server in a worker — DONE 2026-09-28. `LeanWorker.lean` runs Lean's file worker over a shared-memory
+   queue; `packages/engine-host/src/lean-server.ts` stands in for the watchdog. `scripts/smoke-lean-server.mjs`
+   (Node): `#eval` gives 6765, a false `decide` reports its error, `$/lean/plainGoal` after `constructor` shows
+   two goals.
+- Editor — DONE 2026-09-28. `packages/lean-editor` on lean4monaco 1.1.16 (the vscode-lean4 extension and its
+   infoview on monaco-vscode-api), talking to the worker directly. One document per notebook (cells between
+   `--⁅cell⁆` lines, each cell a view of the one model with the rest hidden), the infoview in the panel's
+   "Lean goals" tab, each cell's output the messages on its lines.
+- Browser — DONE 2026-09-28. `scripts/smoke-lean-cells.mjs` (`npm run smoke:lean`, Chromium via playwright-core):
+   the page isolates, `#eval double 21` shows 42 from the cell above (~7 s after load, warm cache), the math cell
+   still evaluates, and the cursor after `constructor` shows 2 goals `⊢ q`, `⊢ p` in the Lean goals tab.
+   The stall that took longest to find: in a browser, a thread started beyond the pre-created pthread pool never
+   became ready while Lean waited on it; pool 32, `LEAN_NUM_THREADS=4`.
+- Download: editor ~2.6 MB, server wasm ~24 MB, Init's oleans ~114 MB (all gzip) on the first Lean cell; the
+   browser caches them.
+- Open:
+   - Deploy. `pages.yml` does not build Lean (a cold build is ~1.5–2 h; cacheable), so the Pages site shows Lean
+     cells as "built without Lean". Decide: build in CI with a cache, or publish the compiler build as a release
+     asset that CI downloads.
+   - Size: ship only the oleans an ordinary `import`-free file needs, or split the library by module and load it
+     lazily; Std/Mathlib imports are out of reach at this size.
+   - Monaco does not follow the notebook's theme toggle after start.
+   - Adding, removing or reordering Lean cells replaces the document (Lean re-checks all of it); undo is one
+     stack across the notebook's Lean cells.
+   - Console noise: "unsupported" (VS Code APIs lean4monaco lacks) and cancelled requests (-32800).

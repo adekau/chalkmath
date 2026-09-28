@@ -25,6 +25,14 @@ const WORKERS = {
 // root-absolute `/infoview/` paths become the page-relative directory the files are copied to.
 const INFOVIEW = "./lean/infoview/";
 
+const LEAN_FILES = ["lean-server.js", "lean-server.wasm", "lean-lib.pack.gz", "lean-initialize.json"];
+/** Where scripts/build-lean-wasm-compiler.sh put Lean itself, or null when it has not been built. */
+export function leanBuild() {
+  const ver = readFileSync("engine/lean-toolchain", "utf8").trim().replace(/.*:v/, "");
+  const dir = `engine/toolchains/lean-${ver}-wasm32/compiler`;
+  return LEAN_FILES.every((f) => existsSync(`${dir}/${f}`)) ? dir : null;
+}
+
 export async function bundleLean({ out, define, minify, nonce }) {
   mkdirSync(`${out}/assets`, { recursive: true });
   const importMetaUrl = {
@@ -72,10 +80,8 @@ export async function bundleLean({ out, define, minify, nonce }) {
     webview.replace(ESMS, `esmsInitOptions={shimMode:!0,nonce:${JSON.stringify(nonce)}}`).replaceAll('"/infoview/', `"${INFOVIEW}`));
 
   await build({ ...common, format: "iife", entryPoints: ["packages/engine-host/src/worker-lean-server.ts"], outfile: `${out}/lean-server.worker.js` });
-  const ver = readFileSync("engine/lean-toolchain", "utf8").trim().replace(/.*:v/, "");
-  const lean = `engine/toolchains/lean-${ver}-wasm32/compiler`;
-  const files = ["lean-server.js", "lean-server.wasm", "lean-lib.pack.gz", "lean-initialize.json"];
-  if (files.every((f) => existsSync(`${lean}/${f}`))) for (const f of files) cpSync(`${lean}/${f}`, `${out}/${f}`);
-  else console.log(`lean: no build of Lean itself in ${lean} (scripts/build-lean-wasm-compiler.sh); Lean cells will say so`);
+  const lean = leanBuild();
+  if (lean) for (const f of LEAN_FILES) cpSync(`${lean}/${f}`, `${out}/${f}`);
+  else console.log("lean: Lean itself has not been built (npm run lean-wasm); Lean cells will say so");
   console.log(`lean: ${readdirSync(out).join(" ")}`);
 }

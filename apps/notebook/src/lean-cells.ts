@@ -16,6 +16,7 @@ import type { LeanNotebook, LeanMessage, CellView, LeanOptions } from "@chalkmat
 
 export type { LeanMessage };
 declare const __BUILD_ID__: string;
+declare const __LEAN_BUILT__: boolean;
 const stamp = typeof __BUILD_ID__ === "string" ? __BUILD_ID__ : "dev";
 const PREF = "chalkmath.lean";
 
@@ -87,6 +88,10 @@ export function initLeanIsolation() {
 export function ensureLean(h: LeanHooks): Promise<LeanNotebook | null> {
   hooks = h;
   if (starting) return starting;
+  if (typeof __LEAN_BUILT__ === "boolean" && !__LEAN_BUILT__) {
+    setState("failed", "this copy of ChalkMath was built without Lean itself (npm run lean-wasm, then npm run bundle)");
+    return Promise.resolve(null);
+  }
   if (!self.crossOriginIsolated) { void isolate(); return Promise.resolve(null); }
   setState("starting");
   starting = (async () => {
