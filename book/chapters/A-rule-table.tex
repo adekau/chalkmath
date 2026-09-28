@@ -15,7 +15,8 @@ the engine omits is unverified.
 \rt{simp.power}{verified}{Includes exact roots; the root search returns only checked roots.}
 \rt{simp.collect-powers}{conditional}{$b^m b^n = b^{m+n}$ needs a positive base: at $b = 0$ it turns $0$ into $1$.}
 \rt{simp.function}{conditional}{$\exp(\ln x) = x$ needs $0 < x$: at $x = -1$ it turns $-1$ into $1$. The other cases, $\sin/\cos = \tan$ among them, are unconditional.}
-\rt{simp.radical}{verified}{A perfect-power base is reduced ($8^{1/2} = 2^{3/2}$) and same-index radicals multiply under one root; unconditional, the bases being positive integers.}
+\rt{simp.radical}{verified}{A perfect-power base is reduced ($8^{1/2} = 2^{3/2}$), same-index radicals multiply under one root, and $\sqrt{18}$ is written $18^{1/2}$, shown as $3\sqrt 2$; unconditional, the bases being positive integers.}
+\rt{simp.sqrt}{verified}{$\sqrt a = a^{1/2}$ for every real $a$. Silent: the two print alike.}
 \rt{simp.collect-radicals}{verified}{Radicals with the same square-free part collect, $\sqrt{50} - \sqrt{18} = 2\sqrt 2$; unconditional.}
 \midrule \multicolumn{3}{l}{\textbf{Derivatives}} \\
 \rt{diff.constant}{verified}{A term the variable does not occur in has derivative $0$.}

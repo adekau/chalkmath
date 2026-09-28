@@ -1674,7 +1674,7 @@ function renderChrome() {
     mk("↑", "Move the cell up", () => { if (cur) moveCell(cur, -1); }, false, i > 0),
     mk("↓", "Move the cell down", () => { if (cur) moveCell(cur, 1); }, false, i >= 0 && i < S.cells.length - 1),
     mk("Duplicate", "Duplicate the cell", () => { if (cur) duplicateCell(cur); }, false, !!cur),
-    ...(cur?.steps?.length ? [mk(cur.showWork ? "Hide work" : "Show work", "Show or hide the cell's steps", () => { cur.showWork = !cur.showWork; renderCellBody(cur); renderChrome(); autosave(); })] : []),
+    ...(cur && shownSteps(cur.steps) ? [mk(cur.showWork ? "Hide work" : "Show work", "Show or hide the cell's steps", () => { cur.showWork = !cur.showWork; renderCellBody(cur); renderChrome(); autosave(); })] : []),
     mk("Clear output", "Clear the cell's output", () => { if (cur) clearCellOutput(cur); }, false, !!cur && hasOutput(cur)),
     mk("Delete", "Delete the cell", () => { if (cur) deleteCell(cur); }, false, !!cur),
   );
@@ -2236,6 +2236,21 @@ function changedPaths(a: WireExpr, b: WireExpr, path: Path = [], out: Path[] = [
   return out;
 }
 
+/** A step whose term prints the same before and after — a one-factor product unwrapped, `x·1 = x`
+ *  under a fraction bar — is part of the derivation but shows nothing happening, so the work list
+ *  folds it. The panel's trail keeps it, unnumbered, and the engine's step indices are unchanged.
+ *  A step with nested work is always shown. */
+function printsUnchanged(st: Step): boolean {
+  return !st.sub && !!st.beforeRendered && !!st.afterRendered
+    && stripPaths(st.beforeRendered.latex) === stripPaths(st.afterRendered.latex);
+}
+/** The number each step's row shows (1, 2, … over the shown steps); `undefined` for a folded step. */
+function stepNumbers(steps: Step[]): (number | undefined)[] {
+  let k = 0;
+  return steps.map((st) => printsUnchanged(st) ? undefined : ++k);
+}
+const shownSteps = (steps: Step[] | undefined): number => (steps ?? []).filter((st) => !printsUnchanged(st)).length;
+
 /** What each step changed, in place: the subterms a step rewrote (`before` against `after`) are
  *  tinted in its row, and hovering one shows `old → new`, cut from the step's own renderings of
  *  `before` and `after` (the row above is not always `before`: the pipeline flattens and reorders
@@ -2244,9 +2259,15 @@ function markChanges(rows: HTMLElement[], d: Derivation) {
   d.steps.forEach((st, n) => {
     const el = rows[n]?.querySelector<HTMLElement>(".el"); if (!el) return;
     const beforeLatex = st.beforeRendered?.latex ?? (n === 0 ? d.inputRendered?.latex : undefined);
-    for (const p of changedPaths(st.before, st.after)) {
-      if (!p.length) continue;
-      const now = el.querySelector<HTMLElement>(`[data-path="${p.join(".")}"]`); if (!now) continue;
+    const tinted = new Set<string>();
+    for (const changed of changedPaths(st.before, st.after)) {
+      // a subterm the printer does not show on its own (the 2 and 3/2 of 2^(3/2), shown as 2√2)
+      // tints the nearest ancestor it does show
+      let p = changed, found: HTMLElement | null = null;
+      for (; p.length; p = p.slice(0, -1)) if ((found = el.querySelector<HTMLElement>(`[data-path="${p.join(".")}"]`))) break;
+      const now = found;
+      if (!now || tinted.has(p.join("."))) continue;
+      tinted.add(p.join("."));
       now.classList.add("chg");
       const old = beforeLatex ? pathLatex(beforeLatex, p) : null;
       const neu = st.afterRendered ? pathLatex(st.afterRendered.latex, p) : null;
@@ -2301,7 +2322,7 @@ function renderCellBody(cell: Cell) {
     body.append(err);
   }
 
-  if (cell.showWork && cell.steps?.length) {
+  if (cell.showWork && cell.steps && shownSteps(cell.steps)) {
     const work = h("div", "work");
     const stepRow = (st: Step, label: string, status: string, term?: TermRef, sub?: { steps: Step[]; index: number; top: number }): HTMLElement => {
       const row = h("div", "step");
@@ -2342,27 +2363,31 @@ function renderCellBody(cell: Cell) {
     // Nested derivations (rref's row operations, integrate's finder and its check) render below
     // their step, indented one level per depth and numbered 1.2, 1.2.3, …
     const renderSub = (st: Step, label: string, top: number, depth: number) => {
-      const rows: HTMLElement[] = [];
+      const rows: HTMLElement[] = [];   // by step index; a folded step has none
+      const nums = stepNumbers(st.sub?.steps ?? []);
       st.sub?.steps.forEach((sub, k) => {
-        const l = `${label}.${k + 1}`;
+        if (nums[k] === undefined) return;
+        const l = `${label}.${nums[k]}`;
         const srow = stepRow(sub, l, statusOf(sub, cellComplex(cell)), undefined, { steps: st.sub!.steps, index: k, top });
         srow.classList.add("sub");
         srow.style.marginLeft = `${26 * depth}px`;
         srow.title = sub.explanation.replace(/\$/g, "");
         srow.addEventListener("click", (ev) => { ev.stopPropagation(); selectSubStep(cell, st.sub!.steps, k, l, top); });
         work.append(srow);
-        rows.push(srow);
+        rows[k] = srow;
         renderSub(sub, l, top, depth + 1);
       });
       if (st.sub) markChanges(rows, st.sub);
     };
-    const rows: HTMLElement[] = [];
+    const rows: HTMLElement[] = [];   // by step index, which is what `engine.explain` takes; a folded step has none
+    const nums = stepNumbers(cell.steps);
     cell.steps.forEach((st, n) => {
-      const row = stepRow(st, String(n + 1), statusOf(st, cellComplex(cell)), { kind: "step", index: n });
+      if (nums[n] === undefined) return;
+      const row = stepRow(st, String(nums[n]), statusOf(st, cellComplex(cell)), { kind: "step", index: n });
       row.addEventListener("click", () => void explain(cell, { kind: "step", index: n }, []));
       work.append(row);
-      rows.push(row);
-      renderSub(st, String(n + 1), n, 1);
+      rows[n] = row;
+      renderSub(st, String(nums[n]), n, 1);
     });
     // the cell keeps the steps, not the derivation: its input is the first step's before, rendered as the echo
     const first = cell.steps[0]!;
@@ -2447,8 +2472,8 @@ function renderCellBody(cell: Cell) {
   // per-cell actions beyond Run exist only once there is output
   const acts = el.querySelector(".cellacts")!;
   while (acts.childElementCount > 1) acts.lastElementChild!.remove();
-  if (cell.steps?.length) {
-    const tw = asButton(h("span", undefined, cell.showWork ? "▾ Hide work" : `▸ Work (${cell.steps.length})`));
+  if (shownSteps(cell.steps)) {
+    const tw = asButton(h("span", undefined, cell.showWork ? "▾ Hide work" : `▸ Work (${shownSteps(cell.steps)})`));
     tw.setAttribute("aria-expanded", String(cell.showWork));
     tw.addEventListener("mousedown", (e) => e.preventDefault());
     tw.addEventListener("click", () => {
@@ -2809,13 +2834,17 @@ function renderSubPanel(body: HTMLElement, sel: Selection & { sub: NonNullable<S
   const p = h("p"); p.append(inlineMath(st.explanation)); c1.append(p);
   grid.append(c1);
   const c2 = h("div", "col");
-  c2.append(h("h3", undefined, `Inside step ${top + 1}`));
+  const parent = label.split(".").slice(0, -1).join(".");
+  c2.append(h("h3", undefined, `Inside step ${parent}`));
   const trail = h("div", "trail");
+  const nums = stepNumbers(steps);
   steps.forEach((s, i) => {
     const row = h("div", `trailrow${i === index ? " on" : ""}`);
-    row.append(h("span", "n", `${label.split(".").slice(0, -1).join(".")}.${i + 1}`), h("span", "rule", s.rule));
+    const l = nums[i] !== undefined ? `${parent}.${nums[i]}` : `${parent}.·`;
+    row.append(h("span", "n", l), h("span", "rule", s.rule));
+    if (nums[i] === undefined) row.title = "Not in the work list: the term prints the same before and after.";
     row.style.cursor = "pointer";
-    row.addEventListener("click", () => { if (cell) selectSubStep(cell, steps, i, `${label.split(".").slice(0, -1).join(".")}.${i + 1}`, top); });
+    row.addEventListener("click", () => { if (cell) selectSubStep(cell, steps, i, l, top); });
     trail.append(row);
   });
   c2.append(trail);
@@ -2865,7 +2894,9 @@ function renderPanel() {
   const sel = S.sel;
   const cell = S.cells.find((c) => c.id === sel.cellId);
   const steps = cell?.steps ?? [];
-  const where = sel.term.kind === "step" ? `after step ${sel.term.index + 1}` : sel.term.kind === "input" ? "in the input" : "in the output";
+  const nums = stepNumbers(steps);
+  const where = sel.term.kind !== "step" ? (sel.term.kind === "input" ? "in the input" : "in the output")
+    : nums[sel.term.index] !== undefined ? `after step ${nums[sel.term.index]}` : "after a step the work list folds (the term prints the same)";
 
   // Selection: the subterm, what it is, and the reference entry for its head function if any
   const c1 = h("div", "col");
@@ -2898,9 +2929,10 @@ function renderPanel() {
     trailSteps.forEach((st, i) => {
       const rel = relOf(i);
       const row = h("div", `trailrow${rel === "created" ? " on" : rel ? " weak" : ""}`);
-      row.append(h("span", "no", String(i + 1)), h("span", "rule", st.rule));
+      row.append(h("span", "no", nums[i] !== undefined ? String(nums[i]) : "·"), h("span", "rule", st.rule));
       if (rel) row.append(h("span", "rel", rel));
       row.title = rel === "created" ? "This rule built the selected node." : rel === "copied" ? "This rule moved or copied the selected node." : rel === "contains" ? "This rule fired inside the selected node." : "This rule did not touch the selection.";
+      if (nums[i] === undefined) row.title += " Not in the work list: the term prints the same before and after.";
       row.addEventListener("click", () => { if (cell) void explain(cell, { kind: "step", index: i }, []); });
       row.style.cursor = "pointer";
       trail.append(row);

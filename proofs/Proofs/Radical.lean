@@ -4,7 +4,8 @@ import Proofs.SimpReal
 
 `simp.radical` and `simp.collect-radicals` (engine, `RadicalRules.lean`) are unconditional: their
 bases are integers ≥ 2, so every real power involved is a power of a positive number, where
-`Real.rpow_add`, `Real.rpow_mul` and `Real.mul_rpow` hold without side conditions.
+`Real.rpow_add`, `Real.rpow_mul` and `Real.mul_rpow` hold without side conditions. `√a = a^(1/2)`
+(`simp.sqrt`, and `simp.radical` on `√18`) holds for every real `a`.
 -/
 noncomputable section
 namespace MathProofs
@@ -203,6 +204,33 @@ theorem radicalBase_soundR (ρ : EnvR) {e : Expr} {res : RuleResult} (h : radica
           exact_mod_cast hz
         · simp at h
       · simp at h
+    · simp at h
+  · simp at h
+
+/-- `√a = a^(1/2)` for every real `a`: Mathlib's `Real.sqrt_eq_rpow` has no side condition, since
+both sides are `0` for a negative `a`. -/
+theorem evalR_sqrt_eq_pow (ρ : EnvR) (a : Expr) :
+    evalR ρ (.pow a (.num (Q.ofRat (mkRat 1 2)))) = evalR ρ (.fn "sqrt" [a]) := by
+  rw [evalR_pow, evalR_num, evalR_fn₁, applyFn_sqrt, Real.sqrt_eq_rpow]
+  congr 1
+  show ((mkRat 1 2 : ℚ) : ℝ) = 1 / 2
+  rw [Rat.mkRat_eq_div]; push_cast; norm_num
+
+theorem sqrtPower_soundR (ρ : EnvR) {e : Expr} {res : RuleResult} (h : sqrtPower.apply e = some res) :
+    evalR ρ res.result = evalR ρ e := by
+  simp only [sqrtPower] at h
+  split at h
+  · split at h
+    · simp at h
+    · simp only [Option.some.injEq] at h; subst h; exact evalR_sqrt_eq_pow ρ _
+  · simp at h
+
+theorem sqrtRadical_soundR (ρ : EnvR) {e : Expr} {res : RuleResult} (h : sqrtRadical.apply e = some res) :
+    evalR ρ res.result = evalR ρ e := by
+  simp only [sqrtRadical] at h
+  split at h
+  · split at h
+    · simp only [Option.some.injEq] at h; subst h; exact evalR_sqrt_eq_pow ρ _
     · simp at h
   · simp at h
 

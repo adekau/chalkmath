@@ -32,12 +32,12 @@ theorem mem_pipeline_iff (r : PlainRule) : r ∈ (pipelineRulesWith norm) ↔
     r = laAdd ∨ r = laScalarMul ∨ r = laMul ∨ r = laTranspose ∨ r = laDet ∨ r = laPow ∨ r = laDot ∨ r = laNorm ∨ r = laConj ∨
     r = scalarOnly iPower ∨ r = scalarOnly cxArith ∨ r = scalarOnly cxPow ∨ r = scalarOnly cxConj ∨ r = scalarOnly cxReIm ∨
     r = scalarOnly cxAbs ∨ r = scalarOnly exactTrig ∨ r = scalarOnly euler ∨ r = scalarOnly eulerPower ∨ r = scalarOnly expProduct ∨
-    r = scalarOnly flatten.toPlain ∨ r = scalarOnly identity.toPlain ∨ r = scalarOnly foldConstants.toPlain ∨
+    r = scalarOnly sqrtPower ∨ r = scalarOnly sqrtRadical ∨ r = scalarOnly flatten.toPlain ∨ r = scalarOnly identity.toPlain ∨ r = scalarOnly foldConstants.toPlain ∨
     r = scalarOnly functionRules.toPlain ∨ r = scalarOnly powerRules.toPlain ∨ r = scalarOnly collectPowers.toPlain ∨
     r = scalarOnly collectTerms.toPlain ∨ r = scalarOnly parityPowMul ∨ r = scalarOnly parityPowPow ∨
     r = scalarOnly radicalBase ∨ r = scalarOnly collectRadicals ∨ r = scalarOnly mulRadicals ∨ r = laContext := by
   simp [pipelineRulesWith, commandRulesWith, diffRules, matrixRules, simpPlain, simpRules, parityPlain, parityRules,
-    radicalPlain, radicalRules, complexPlain, complexRules, contextRules]
+    radicalPlain, radicalRules, sqrtPlain, sqrtRules, complexPlain, complexRules, contextRules]
 
 -- ---------------------------------------------------------------------------
 -- Clean terms: nothing the first three tiers count
@@ -2469,6 +2469,32 @@ theorem dec_radicalBase : Dec norm (scalarOnly radicalBase) := dec_scalar fun e 
     · simp at happ
   · simp at happ
 
+theorem dec_sqrtPower : Dec norm (scalarOnly sqrtPower) := dec_scalar fun e res hcn hm happ herr => by
+  simp only [sqrtPower] at happ
+  split at happ
+  · rename_i a
+    split at happ
+    · simp at happ
+    · simp only [Option.some.injEq] at happ; subst happ; (try dsimp only)
+      obtain ⟨he, hcs⟩ := clean_of_scalar hcn hm (by simp [cmdOwn, cmdNames]) (by simp [d3Own]) rfl
+      have ha := hcs a (by simp [children])
+      apply muLt_of_clean (Clean.pow ha (Clean.num _)) he
+      left; rw [M.fn₁ (by decide), M.pow, M.num, Q_half_isOne, Q_half_isInt]; simp; omega
+  · simp at happ
+
+theorem dec_sqrtRadical : Dec norm (scalarOnly sqrtRadical) := dec_scalar fun e res hcn hm happ herr => by
+  simp only [sqrtRadical] at happ
+  split at happ
+  · rename_i a
+    split at happ
+    · simp only [Option.some.injEq] at happ; subst happ; (try dsimp only)
+      obtain ⟨he, hcs⟩ := clean_of_scalar hcn hm (by simp [cmdOwn, cmdNames]) (by simp [d3Own]) rfl
+      have ha := hcs a (by simp [children])
+      apply muLt_of_clean (Clean.pow ha (Clean.num _)) he
+      left; rw [M.fn₁ (by decide), M.pow, M.num, Q_half_isOne, Q_half_isInt]; simp; omega
+    · simp at happ
+  · simp at happ
+
 theorem dec_collectRadicals : Dec norm (scalarOnly collectRadicals) := dec_scalar fun e res hcn hm happ herr => by
   simp only [collectRadicals] at happ
   split at happ
@@ -2764,7 +2790,7 @@ theorem pipelineOrderedWith (norm : Norm) : Ordered (pipelineRulesWith norm) := 
   rw [mem_pipeline_iff] at hr
   rcases hr with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
     rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
-    rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+    rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
   · exact dec_cmdSimplify
   · exact dec_cmdExpand
   · exact dec_cmdRref
@@ -2802,6 +2828,8 @@ theorem pipelineOrderedWith (norm : Norm) : Ordered (pipelineRulesWith norm) := 
   · exact dec_euler
   · exact dec_eulerPower
   · exact dec_expProduct
+  · exact dec_sqrtPower
+  · exact dec_sqrtRadical
   · exact dec_flatten
   · exact dec_identity
   · exact dec_foldConstants

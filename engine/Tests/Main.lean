@@ -384,6 +384,24 @@ def tests : TestM Unit := do
   (st, r) := ev st "32^(1/2)"; check "perfect-power base reduced" r "2^(5/2)"
   check "radical display" (match parseStmt "sqrt(8)/2" with | .ok st => (match (normalizeT pipelineRules pipelineOrdered st.value).run' #[] with | .ok e => e.toLatex | .error m => m) | .error _ => "parse") "\\sqrt{2}"
   check "radical display, square-free part" (match parseStmt "5*sqrt(12)" with | .ok st => (match (normalizeT pipelineRules pipelineOrdered st.value).run' #[] with | .ok e => e.toLatex | .error m => m) | .error _ => "parse") "10\\sqrt{3}"
+  -- radicals, shown: one row per radical with its work written out; √a = a^(1/2) alone leaves no row
+  (st, r) := sessionEval st "sqrt(8)+sqrt(32)" ",\"showWork\":true"
+  check "radical steps: perfect-power bases" (derivationRules st "sqrt(8)+sqrt(32)").toString "[simp.radical, simp.radical, simp.collect-radicals]"
+  (st, r) := sessionEval st "sqrt(8)+sqrt(18)" ",\"showWork\":true"
+  check "radical steps: a square factor" (derivationRules st "sqrt(8)+sqrt(18)").toString "[simp.radical, simp.radical, simp.collect-radicals]"
+  (st, r) := sessionEval st "sqrt(x)*sqrt(x)" ",\"showWork\":true"
+  check "radical steps: sqrt as a power is silent" ((derivationRules st "sqrt(x)*sqrt(x)").head?.getD "") "simp.collect-powers"
+  (st, r) := sessionEval st "sqrt(2)*sqrt(6)" ",\"showWork\":true"
+  let whys (src : String) : List String :=
+    ((st.get "t").cells.lookup src).map (fun c => c.derivation.steps.toList.map (·.explanation)) |>.getD []
+  check "radical work: perfect-power base" ((whys "sqrt(8)+sqrt(32)")[1]?.getD "")
+    "$32 = 2^{5}$, so $\\sqrt{32} = (2^{5})^{1/2} = 2^{5/2} = 2^{2} \\cdot 2^{1/2} = 4\\sqrt{2}$."
+  check "radical work: square factor" ((whys "sqrt(8)+sqrt(18)")[1]?.getD "")
+    "$18 = 3^{2} \\cdot 2$, so $\\sqrt{18} = \\sqrt{3^{2}} \\cdot \\sqrt{2} = 3\\sqrt{2}$."
+  check "radical work: collect" ((whys "sqrt(8)+sqrt(18)")[2]?.getD "")
+    "$2\\sqrt{2} + 3\\sqrt{2} = (2 + 3)\\sqrt{2} = 5\\sqrt{2}$: radicals with the same base and index collect."
+  check "radical work: multiply" ((whys "sqrt(2)*sqrt(6)")[0]?.getD "")
+    "$\\sqrt{2} \\cdot \\sqrt{6} = \\sqrt{12} = 2\\sqrt{3}$: radicals with the same index multiply under one root."
   -- M8: integrate is a checked guess
   (st, r) := ev st "integrate(x^2 + sin(x), x)"; check "integrate sum" r "x^3/3 - cos(x)"
   (st, r) := ev st "integrate(exp(2*x), x)"; check "integrate linear substitution" r "exp(2*x)/2"
