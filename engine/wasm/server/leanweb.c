@@ -55,3 +55,10 @@ LEAN_EXPORT lean_obj_res leanweb_write(uint8_t fd, b_lean_obj_arg bytes) {
     MAIN_THREAD_ASYNC_EM_ASM({ const b = HEAPU8.slice($1, $1 + $2); _free($1); Module.leanwebOut($0, b); }, fd, copy, len);
     return lean_io_result_mk_ok(lean_box(0));
 }
+
+/* LeanWeb.setEnv : @& String → @& String → IO Unit (Lean's IO has no setter; libc's environment is shared by
+   every thread of the module) */
+LEAN_EXPORT lean_obj_res leanweb_setenv(b_lean_obj_arg name, b_lean_obj_arg value) {
+    setenv(lean_string_cstr(name), lean_string_cstr(value), 1);
+    return lean_io_result_mk_ok(lean_box(0));
+}

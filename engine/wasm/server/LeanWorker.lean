@@ -9,7 +9,8 @@ the web worker hosting the wasm module (`packages/engine-host/src/worker-lean-se
 watchdog, and stdin/stdout are a shared-memory queue (`leanweb.c`) instead of pipes.
 
 The olean search path is set here rather than from `IO.appDir`, which has no meaning in a browser: the
-host mounts the 32-bit library at `/lib/lean`, or wherever `LEAN_PATH` says.
+host mounts the 32-bit library at `/lib/lean`, or wherever `LEAN_PATH` says. For the same reason `LAKE`
+points at a path that does not exist, so the worker never looks for Lake next to the application.
 -/
 open Lean
 
@@ -19,6 +20,8 @@ namespace LeanWeb
 @[extern "leanweb_read"] opaque read (n : USize) : IO ByteArray
 /-- Hands bytes to the host: `fd` 1 is the LSP stream, 2 is the log. -/
 @[extern "leanweb_write"] opaque write (fd : UInt8) (b : @& ByteArray) : IO Unit
+/-- Sets an environment variable (Lean's `IO` has no setter). -/
+@[extern "leanweb_setenv"] opaque setEnv (name value : @& String) : IO Unit
 
 /-- stdin over the queue, with a buffer so `getLine` (LSP headers) and `read` (bodies) can share it. -/
 def stdin : IO IO.FS.Stream := do
@@ -65,6 +68,9 @@ end LeanWeb
 def main (_args : List String) : IO UInt32 := do
   let libs := (← IO.getEnv "LEAN_PATH").map System.SearchPath.parse |>.getD ["/lib/lean"]
   searchPathRef.set libs
+  -- No Lake in a browser: `setupFile` finds its binary by `LAKE` before `IO.appDir` (which has no
+  -- meaning here) and treats a missing binary as a file without a lakefile, on the plain search path.
+  LeanWeb.setEnv "LAKE" "/lake-is-not-available-in-the-browser"
   let _ ← IO.setStdin (← LeanWeb.stdin)
   let _ ← IO.setStdout (LeanWeb.out 1)
   let _ ← IO.setStderr (LeanWeb.out 2)
