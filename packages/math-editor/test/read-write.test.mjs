@@ -147,7 +147,7 @@ test("tokens carry the host's highlight classes, with binders' variables and par
   const seen = [];
   const classify = (text, as) => { seen.push(`${as}:${text}`); return as === "name" ? null : as; };
   const latex = toLatex(tree("let f(x) = diff(x^2 + y, x) + rref(M) + 2"), { classify });
-  assert.deepEqual(seen.sort(), ["bound:x", "bound:x", "bound:x", "call:rref", "name:M", "name:f", "name:y", "num:2", "num:2"]);
+  assert.deepEqual(seen.sort(), ["bound:x", "bound:x", "bound:x", "call:rref", "keyword:let", "name:M", "name:f", "name:y", "num:2", "num:2"]);
   // a call's name is a word in the text face, against its parentheses
   assert.match(latex, /\\htmlData\{hl=call\}\{\\htmlData\{word=1\}\{\\mathrm\{rref\}\}\}\{\\left\(/);
   assert.doesNotThrow(() => katex.renderToString(latex, { throwOnError: true, strict: false, trust: (c) => c.command === "\\htmlData" }));

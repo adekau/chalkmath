@@ -41,7 +41,7 @@ export interface MathInputOptions {
    *  a tooltip. Without it, `%n` shows its number and `%` stays as typed. */
   outRef?(ref: string): { label: number; value?: string } | null;
   /** Highlight classes for tokens (see `NotationOptions.classify`); the page styles `[data-hl=…]`. */
-  classify?(text: string, as: "call" | "bound" | "name" | "num"): string | null;
+  classify?(text: string, as: "call" | "bound" | "name" | "num" | "keyword"): string | null;
   /** A paste, before the input reads it: the host takes it (an image, an SVG) by preventing its default. */
   onPaste?(ev: ClipboardEvent): void;
 }
@@ -195,7 +195,7 @@ export class MathInput {
       wrap: (atoms, s) => { tagged.push(atoms); return `\\htmlData{a=${tagged.length - 1}}{${s}}`; },
       hole: (b) => { holes.push(b); return `\\htmlData{h=${holes.length - 1}}{\\square}`; },
       outRef: (ref) => this.opts.outRef?.(ref)?.label ?? null,
-      ...(this.opts.classify ? { classify: (t: string, as: "call" | "bound" | "name" | "num") => this.opts.classify!(t, as) } : {}),
+      ...(this.opts.classify ? { classify: (t: string, as: "call" | "bound" | "name" | "num" | "keyword") => this.opts.classify!(t, as) } : {}),
     });
     // display-size fractions and operators, as a textbook (and Symbolab) set an input, but left-aligned
     katex.render(`\\displaystyle ${latex}`, this.math, { throwOnError: false, trust: TRUST, strict: false, displayMode: false });

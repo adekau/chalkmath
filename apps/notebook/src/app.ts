@@ -2177,6 +2177,7 @@ function visualInput(cell: Cell, i: number): MathInput | null {
     // the text highlighter's colours: what a name is, and where it is bound
     classify: (text, as) => {
       if (as === "num") return "hnum";
+      if (as === "keyword") return "hkw";
       if (as === "bound") return "hbound";
       if (USER_NAMES.has(`${sessionId}:${text}`)) return "hdef";
       if (CONSTANTS.has(text)) return "hconst";

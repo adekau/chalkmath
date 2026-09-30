@@ -19,7 +19,7 @@ export interface NotationOptions {
   /** A highlight class for a token, by what it is where it stands: a call's name, a variable bound
    *  by the call or `let` head around it (`diff(f, x)`'s x, `let f(x)`'s x), any other name, or a
    *  numeral. Null leaves it plain. The notation tags it `\\htmlData{hl=…}` for the host's colours. */
-  classify?: (text: string, as: "call" | "bound" | "name" | "num") => string | null;
+  classify?: (text: string, as: "call" | "bound" | "name" | "num" | "keyword") => string | null;
 }
 
 /** Commands whose argument at this index is a variable bound over the call (the notebook's
@@ -169,9 +169,10 @@ class Notation {
       case "call": return this.wrap([a], this.call(a));
       case "let": {
         // `let f(x) =` names a function, so its name is a word like a call's; `let a =` names a value
-        if (!a.params) return this.wrap([a], `${this.word("\\mathrm{let}")}\\;${this.block(a.name)}\\;=\\;`);
+        const kw = this.tag(this.classify("let", "keyword"), this.word("\\mathrm{let}"));
+        if (!a.params) return this.wrap([a], `${kw}\\;${this.block(a.name)}\\;=\\;`);
         const params = `{\\left(${a.params.map((p) => this.block(p)).join(",\\,")}\\right)}`;
-        return this.wrap([a], `${this.word("\\mathrm{let}")}\\;${this.word(this.block(a.name))}${params}\\;=\\;`);
+        return this.wrap([a], `${kw}\\;${this.word(this.block(a.name))}${params}\\;=\\;`);
       }
     }
   }
