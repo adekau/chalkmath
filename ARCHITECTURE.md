@@ -187,6 +187,43 @@ language server answers LSP for Lean cells.
   release `lean-wasm.yml` publishes whenever Lean's build inputs change (`scripts/lean-wasm-key.sh` names it),
   so a deploy does not spend two hours building it.
 
+## 4c. Lookups (`?` cells)
+
+A math cell that starts with `?` is a question — `?volume of a cone`, `?the first ten primes`,
+`let mlb = ?MLB runs and home runs per game for the last 20 years` — answered by a language model
+running on the reader's machine, as *source text* the engine then evaluates like any other cell: a
+number, a list `[a, b, c]`, a matrix, or a formula (`B*h`; `let V = ?…` defines `V(B, h)`). So the
+page still owns no mathematics: the answer is engine input, parsed and normalized by the engine, and
+everything after it keeps its steps. The pipeline is `packages/ask`; the notebook's side (models,
+settings, the cell) is `apps/notebook/src/ask-cells.ts`.
+
+- **The model plans first.** It says what shape the answer has, names its parts, writes searches,
+  and says whether the answer is standard knowledge (a textbook formula, a constant). Standard
+  knowledge it answers itself, and nothing leaves the machine; the answer is labelled "from the
+  model's knowledge" and the cell offers *Check with a search*.
+- **Data is searched for, and the model never copies a number.** Every step is held to a JSON
+  schema. Shown previews of the tables the searches found (numbered columns, first and last rows),
+  the model picks a table, columns and a row filter as *indices*; code copies the values out of the
+  page's cells. When no table fits, it lifts values from passages with a quote per row, and each
+  value is checked against the quoted sentence and the quote against the page; what fails is
+  flagged. A formula comes from LaTeX the page states (Wikipedia's `<math alttext>`), is translated
+  to engine syntax by the model, and is shown next to that LaTeX. The model's memory is the last
+  resort, and an answer from it is flagged throughout.
+- **Sources are generic, not per subject.** Wikipedia (no key, and it allows other origins) and, if
+  the reader sets one, a SearXNG-style endpoint that queries Google, DuckDuckGo, Bing and Brave.
+  Most sites refuse cross-origin reads, so a web result is read directly when it allows that and
+  otherwise through a page reader the reader configures (`scripts/ask-proxy/worker.js` is one).
+  Google's Custom Search API closes on 2027-01-01 and DuckDuckGo has no results API, so neither is
+  built in.
+- **Models.** Chrome's built-in model (the Prompt API) where the browser has it; elsewhere a WebGPU
+  model through WebLLM, bundled separately (`dist/ask/`) and loaded only when a lookup needs it, its
+  weights downloaded once from Hugging Face.
+- **What is sent.** Only a search sends anything: the search terms the model wrote, to the sources.
+  Never the notebook. The first search asks first.
+- **Saved with the cell.** The answer, its shape, where it came from and how it was found are saved
+  in the `.chalk` file, so running the notebook again evaluates the saved answer without asking
+  again; *Look up again* asks afresh.
+
 ## 5. Visuals
 
 The engine never draws. It emits **visual specs**: declarative JSON next to `rendered`

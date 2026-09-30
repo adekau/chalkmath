@@ -24,6 +24,7 @@ mkdirSync("apps/notebook/dist/licenses", { recursive: true });
 for (const [from, to] of [
   ["LICENSE", "ChalkMath-LICENSE.txt"], ["NOTICE", "NOTICE.txt"], ["TRADEMARKS.md", "TRADEMARKS.md"],
   ["node_modules/katex/LICENSE", "KaTeX-LICENSE.txt"],
+  ["node_modules/@mlc-ai/web-llm/LICENSE", "WebLLM-LICENSE.txt"],
   ["node_modules/@fontsource/inter/LICENSE", "Inter-OFL.txt"],
   ["node_modules/@fontsource-variable/literata/LICENSE", "Literata-OFL.txt"],
   ["node_modules/@fontsource/jetbrains-mono/LICENSE", "JetBrainsMono-OFL.txt"],
@@ -32,5 +33,9 @@ writeFileSync("apps/notebook/dist/index.html", readFileSync("apps/notebook/index
   .replace("script-src 'self'", `script-src 'self' 'nonce-${NONCE}'`).replace(/src="app\.js"/, `src="app.js?v=${BUILD}"`).replace(/href="style\.css"/, `href="style.css?v=${BUILD}"`));
 console.log("→ serve apps/notebook/dist with any static server (e.g. `npx serve apps/notebook/dist`)");
 await build({ ...out, entryPoints: ["packages/engine-host/src/worker-lean.ts"], format: "iife", outfile: "apps/notebook/dist/engine-lean.worker.js" });
+// `?` lookups' WebGPU model (WebLLM), loaded only when a lookup needs it and Chrome's built-in model is
+// not there (apps/notebook/src/ask-cells.ts); the model itself runs in the worker
+await build({ ...out, entryPoints: ["apps/notebook/src/webllm.ts"], format: "esm", outfile: "apps/notebook/dist/ask/webllm.js" });
+await build({ ...out, entryPoints: ["apps/notebook/src/webllm-worker.ts"], format: "esm", outfile: "apps/notebook/dist/ask/webllm-worker.js" });
 // Lean cells: the editor, the infoview and Lean's language server (scripts/lean-bundle.mjs)
 await bundleLean({ out: "apps/notebook/dist/lean", define, minify: true, nonce: NONCE });
