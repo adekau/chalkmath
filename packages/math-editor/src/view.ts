@@ -59,7 +59,11 @@ export const MATH_INPUT_CSS = `
 .mi-cmd { color:var(--mi-cmd, #b0662c); }
 .mi-math .mi-err { background:var(--mi-err-bg, rgba(192,57,43,0.12)); box-shadow:0 2px 0 var(--mi-err, #c0392b); border-radius:2px 2px 0 0; }
 .mi-math [data-word], .mi-math [data-word] * { font-family:var(--mi-word-font, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace) !important; font-style:normal !important; }
-.mi-math [data-word] { font-size:var(--mi-word-size, 0.8em); }
+.mi-math [data-word="1"] { font-size:var(--mi-word-size, 0.8em); }
+.mi-math [data-word="s"] { font-size:0.8em; }
+.mi-math .mi-tall { display:inline-block; }
+.mi-math .mi-tall > * { display:none; }
+.mi-math .mi-tall > svg { display:block; position:static; width:100%; height:100%; stroke:none; }
 .mi-math [data-open] { opacity:0.35; }
 .mi-math [data-out] { background:var(--mi-chip, rgba(107,138,253,0.14)); border-radius:4px; padding:0 2px; }
 .mi-math .mi-sel { background:var(--mi-sel, rgba(107,138,253,0.28)); border-radius:2px; }
@@ -74,6 +78,57 @@ function addStyles(doc: Document) {
   s.id = "mi-styles";
   s.textContent = MATH_INPUT_CSS;
   doc.head.append(s);
+}
+
+let measure: CanvasRenderingContext2D | null | undefined;
+
+/** The ink of an element's own text (a glyph's box is its font's line, taller than the glyph), or the
+ *  box of a rule or a drawing; null for anything else. */
+function inkOf(el: Element): { top: number; bottom: number; baseline: number } | null {
+  const r = el.getBoundingClientRect();
+  if (r.height <= 0) return null;
+  if (el.tagName.toLowerCase() === "svg" || el.classList.contains("frac-line")) return { top: r.top, bottom: r.bottom, baseline: r.bottom };
+  const text = [...el.childNodes].filter((n) => n.nodeType === Node.TEXT_NODE).map((n) => n.textContent).join("");
+  if (!text.trim()) return null;
+  const cs = getComputedStyle(el);
+  measure ??= document.createElement("canvas").getContext("2d");
+  if (!measure) return { top: r.top, bottom: r.bottom, baseline: r.bottom };
+  measure.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+  const m = measure.measureText(text);
+  if (!m.fontBoundingBoxAscent) return { top: r.top, bottom: r.bottom, baseline: r.bottom };
+  const baseline = r.top + m.fontBoundingBoxAscent;
+  return { top: baseline - m.actualBoundingBoxAscent, bottom: baseline + m.actualBoundingBoxDescent, baseline };
+}
+
+/** A paren `w` by `h` px as an SVG, drawn as TeX draws a tall one: a hook at each end and, when it
+ *  is tall enough, a straight stroke between them. */
+function paren(left: boolean, w: number, h: number, em: number): SVGSVGElement {
+  const t = 0.075 * em, tip = 0.035 * em;
+  const hook = Math.min(h / 2, 1.1 * em);
+  const x0 = 0.08 * em, x1 = w - 0.06 * em, xi = x0 + t;
+  const X = (x: number) => (left ? x : w - x).toFixed(2), Y = (y: number) => y.toFixed(2);
+  const P = (x: number, y: number) => `${X(x)} ${Y(y)}`;
+  const d = [
+    `M${P(x1, 0)}`,
+    `C${P(x1 - (x1 - x0) * 0.55, hook * 0.25)} ${P(x0, hook * 0.55)} ${P(x0, hook)}`,
+    `L${P(x0, h - hook)}`,
+    `C${P(x0, h - hook * 0.55)} ${P(x1 - (x1 - x0) * 0.55, h - hook * 0.25)} ${P(x1, h)}`,
+    `L${P(x1, h - tip)}`,
+    `C${P(x1 - (x1 - xi) * 0.5, h - hook * 0.35)} ${P(xi, h - hook * 0.6)} ${P(xi, h - hook)}`,
+    `L${P(xi, hook)}`,
+    `C${P(xi, hook * 0.6)} ${P(x1 - (x1 - xi) * 0.5, hook * 0.35)} ${P(x1, tip)}`,
+    "Z",
+  ].join(" ");
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("width", String(w)); svg.setAttribute("height", String(h));
+  svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+  svg.setAttribute("aria-hidden", "true");
+  const path = document.createElementNS(ns, "path");
+  path.setAttribute("d", d);
+  path.setAttribute("fill", "currentColor");
+  svg.append(path);
+  return svg;
 }
 
 /** KaTeX may run only the one command the input emits; its LaTeX is built from the tree, but a name
@@ -95,6 +150,8 @@ export class MathInput {
   private errSpan: { start: number; end: number } | null = null;
   /** A mouse drag in progress: where it started. */
   private drag: Caret | null = null;
+  /** Whether the parens were last fitted with the input on screen. */
+  private fitted = false;
   /** The `\\` suggestions under the caret: the names that start with what has been typed. */
   private comp: { items: { name: string; what: string; glyph: string }[]; index: number; box: HTMLElement } | null = null;
   /** Esc closed the suggestions for this command; they come back when it changes. */
@@ -131,6 +188,9 @@ export class MathInput {
       this.opts.onBlur?.();
     });
     this.ta.addEventListener("keydown", (ev) => this.key(ev));
+    // the parens are fitted by measuring, so again once the input is on screen and its fonts are in
+    new ResizeObserver(() => { if (!this.fitted) this.refit(); }).observe(this.math);
+    void document.fonts?.ready.then(() => this.refit());
     this.ta.addEventListener("compositionstart", () => { this.composing = true; });
     this.ta.addEventListener("compositionend", () => { this.composing = false; this.typed(); });
     this.ta.addEventListener("input", () => { if (!this.composing) this.typed(); });
@@ -199,6 +259,7 @@ export class MathInput {
     });
     // display-size fractions and operators, as a textbook (and Symbolab) set an input, but left-aligned
     katex.render(`\\displaystyle ${latex}`, this.math, { throwOnError: false, trust: TRUST, strict: false, displayMode: false });
+    this.fitParens();
     this.atomEl.clear(); this.holeEl.clear();
     // a slot drawn twice (dⁿ/dxⁿ shows n twice) is found at its first place
     for (const el of this.math.querySelectorAll<HTMLElement>("[data-a]")) {
@@ -220,6 +281,49 @@ export class MathInput {
     const text = this.text;
     this.ta.setAttribute("aria-label", `${this.opts.label ?? "Math input"}: ${text || "empty"}`);
     this.place();
+  }
+
+  private refit() { this.fitParens(); this.place(); }
+
+  /** Stretch each group's parentheses over what it holds, where that is taller than a paren. KaTeX's
+   *  `\\left(` would centre them on the math axis instead, so a stack of fractions that goes further
+   *  below the axis than above it would get parens reaching as far above it again, over nothing. */
+  private fitParens() {
+    for (const d of this.math.querySelectorAll<HTMLElement>(".mi-tall")) {
+      d.classList.remove("mi-tall");
+      for (const p of ["width", "height", "vertical-align"]) d.style.removeProperty(p);
+      d.querySelector(":scope > svg")?.remove();
+    }
+    this.fitted = this.math.getClientRects().length > 0;
+    if (!this.fitted) return;
+    // the innermost first, so an outer group measures its inner groups' parens as fitted
+    for (const g of [...this.math.querySelectorAll<HTMLElement>("[data-pg]")].reverse()) {
+      const sides = [...g.querySelectorAll<HTMLElement>("[data-pd]")].filter((d) => d.parentElement?.closest("[data-pg]") === g);
+      const open = sides.find((d) => d.dataset["pd"] === "o"), close = sides.find((d) => d.dataset["pd"] === "c");
+      const glyph = open && inkOf(open.querySelector("*") ?? open);
+      if (!open || !close || !glyph) continue;
+      let top = Infinity, bottom = -Infinity;
+      for (const el of g.querySelectorAll<Element>("*")) {
+        if (open.contains(el) || close.contains(el)) continue;
+        const r = inkOf(el);
+        if (r) { top = Math.min(top, r.top); bottom = Math.max(bottom, r.bottom); }
+      }
+      const em = parseFloat(getComputedStyle(open).fontSize) || 16;
+      if (!(top < glyph.top - 0.05 * em || bottom > glyph.bottom + 0.05 * em)) continue;
+      // a little past what they hold, as TeX's do, and never shorter than the plain paren
+      top = Math.min(top - 0.1 * em, glyph.top); bottom = Math.max(bottom + 0.1 * em, glyph.bottom);
+      const h = bottom - top;
+      const w = Math.min(Math.max(0.39 * em, 0.28 * em + 0.07 * h), 0.8 * em);
+      for (const d of [open, close]) {
+        // an inline block the paren's size, set on the line where it is drawn, so the input's
+        // height takes it in (its baseline, with no line inside, is its bottom edge)
+        d.classList.add("mi-tall");
+        d.style.width = `${w}px`;
+        d.style.height = `${h}px`;
+        d.style.verticalAlign = `${glyph.baseline - bottom}px`;
+        d.append(paren(d === open, w, h, em));
+      }
+    }
   }
 
   /** An atom's box on screen; a piece of a glyph that stands for several atoms (`pi` is π) gets its share. */

@@ -120,12 +120,12 @@ test("every notation is LaTeX KaTeX renders, with every atom tagged", () => {
     }
   }
   const tex = (src) => toLatex(tree(src));
-  assert.equal(tex("diff(x^2, x)"), "\\frac{d}{d{x}}\\left({x}^{2}\\right)");
+  assert.equal(tex("diff(x^2, x)"), "\\frac{d}{d{x}}\\htmlData{pg=1}{\\htmlData{pd=o}{(}{x}^{2}\\htmlData{pd=c}{)}}");
   assert.equal(tex("integrate(f, x, 0, 1)"), "\\int_{0}^{1} {f} \\, d{x}");
   assert.equal(tex("sum(k^2, k, 1, 10)"), "\\sum_{{k}=1}^{10} {k}^{2}");
   assert.equal(tex("det([a,b;c,d])"), "\\begin{vmatrix}{a} & {b} \\\\ {c} & {d}\\end{vmatrix}");
   assert.equal(tex("transpose(M) + conj(z)"), "{{M}}^{\\mathsf{T}}+\\overline{{z}}");
-  assert.equal(tex("dot(u, v + w)"), "{u} \\cdot \\left({v}+{w}\\right)");
+  assert.equal(tex("dot(u, v + w)"), "{u} \\cdot \\htmlData{pg=1}{\\htmlData{pd=o}{(}{v}+{w}\\htmlData{pd=c}{)}}");
   assert.equal(tex("2 llama + x_1"), "2{\\mathit{llama}}+{x_{1}}");
   // output references are Out[n] chips; a relative one needs the host to say which output it is
   assert.equal(tex("%3 + %"), "\\htmlData{out=n3}{\\mathrm{Out}[3]}+\\htmlData{out=p1}{\\mathrm{Out}[\\%]}");
@@ -149,7 +149,7 @@ test("tokens carry the host's highlight classes, with binders' variables and par
   const latex = toLatex(tree("let f(x) = diff(x^2 + y, x) + rref(M) + 2"), { classify });
   assert.deepEqual(seen.sort(), ["bound:x", "bound:x", "bound:x", "call:rref", "keyword:let", "name:M", "name:f", "name:y", "num:2", "num:2"]);
   // a call's name is a word in the text face, against its parentheses
-  assert.match(latex, /\\htmlData\{hl=call\}\{\\htmlData\{word=1\}\{\\mathrm\{rref\}\}\}\{\\left\(/);
+  assert.match(latex, /\\htmlData\{hl=call\}\{\\htmlData\{word=1\}\{\\mathrm\{rref\}\}\}\{\\htmlData\{pg=1\}\{\\htmlData\{pd=o\}\{\(\}/);
   assert.doesNotThrow(() => katex.renderToString(latex, { throwOnError: true, strict: false, trust: (c) => c.command === "\\htmlData" }));
 });
 
@@ -168,7 +168,13 @@ test("fractions keep full size when nested, script size in exponents and bounds;
   assert.match(deep, /\\small \{c\}/);
   assert.match(deep, /\\footnotesize \{d\}/);
   assert.match(deep, /\\scriptsize \{f\}/);
+  // an open group's paren is drawn faint where it would go
+  assert.match(toLatex({ body: [{ k: "paren", body: [], open: true }] }), /\\htmlData\{pd=c, open=1\}\{\)\}/);
   assert.equal(tex("x^(1/2)"), "{x}^{\\frac{1}{2}}");
   assert.match(tex("integrate(x, x, 0, 1/2)"), /\^\{\\frac\{1\}\{2\}\}/);
-  assert.match(tex("sign(sin(t))"), /^\\htmlData\{word=1\}\{\\mathrm\{sgn\}\}\{\\left\(\\htmlData\{word=1\}\{\\mathrm\{sin\}\}/);
+  // a word in an exponent, or in a fraction that has shrunk, shrinks with it
+  assert.match(tex("x^sin(t)"), /word=s/);
+  assert.match(tex("a/(b/(c/sin(t)))"), /word=s/);
+  assert.match(tex("a/(b/sin(t))"), /word=1/);
+  assert.match(tex("sign(sin(t))"), /^\\htmlData\{word=1\}\{\\mathrm\{sgn\}\}\{\\htmlData\{pg=1\}\{\\htmlData\{pd=o\}\{\(\}\\htmlData\{word=1\}\{\\mathrm\{sin\}\}/);
 });
