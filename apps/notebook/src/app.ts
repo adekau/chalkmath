@@ -1076,6 +1076,7 @@ const SHORTCUTS: [string, string][] = [
   ["Ctrl/⌘+Shift+M", "Switch the cell between visual and text input"],
   ["\\frac, \\sqrt, \\int, \\dint, \\sum, \\diff, \\mat2x3 … then space", "Insert a fraction, root, integral, sum, derivative, matrix … (a text cell turns typeset)"],
   ["Tab (visual)", "The next empty slot"],
+  ["@ (visual)", "Put the selection in parentheses with a box in front for a function's name: select, @, then type norm"],
   ["Esc", "Close a popup, the signature help, or this dialog"],
   ["Ctrl/⌘+S", "Save in this browser (with Shift: Save as)"],
   ["Ctrl/⌘+B", "Show or hide the sidebar"],

@@ -316,16 +316,18 @@ export class MathEdit {
   private glue: Caret | null = null;
 
   /** One typed character. False when it means nothing here (and nothing changed). With a selection,
-   *  `/` makes it a numerator and `(` puts it in parentheses; anything else replaces it. */
+   *  `/` makes it a numerator, `(` puts it in parentheses, and `@` puts it in parentheses with a box
+   *  in front for a function's name; anything else replaces it. */
   type(c: string): boolean {
     const sel = this.selection();
-    if (sel && (c === "/" || c === "(")) {
+    if (sel && (c === "/" || c === "(" || c === "@")) {
       this.anchor = null;
       return this.mutate("struct", () => {
         const atoms = sel.block.splice(sel.start, sel.end - sel.start);
-        const a: Atom = c === "/" ? { k: "frac", num: ungroup(atoms), den: [] } : { k: "paren", body: atoms };
+        const a: Atom = c === "/" ? { k: "frac", num: ungroup(atoms), den: [] } : { k: "paren", body: atoms, ...(c === "@" ? { head: true } : {}) };
         sel.block.splice(sel.start, 0, a);
-        this.caret = c === "/" ? { block: (a as { den: Block }).den, i: 0 } : { block: sel.block, i: sel.start + 1 };
+        // `@` leaves the caret in front, for the function's name (Mathematica's prefix `f@x`)
+        this.caret = c === "/" ? { block: (a as { den: Block }).den, i: 0 } : { block: sel.block, i: sel.start + (c === "@" ? 0 : 1) };
         return true;
       });
     }
@@ -352,6 +354,11 @@ export class MathEdit {
       case ",": return this.comma();
       case ";": return this.semicolon();
       case " ": return this.space();
+      case "@": {
+        // with nothing selected, an empty group to name a function in front of
+        this.caret.block.splice(this.caret.i, 0, { k: "paren", body: [], head: true });
+        return true;
+      }
     }
     if (isIdChar(c) || "+-*%.\\".includes(c)) return this.insert(ch(c));
     return false;
@@ -432,23 +439,66 @@ export class MathEdit {
    *  `expand(` in front of `(x+5)(2x+3)` wraps the product. */
   private open(): boolean {
     const { block: b, i } = this.caret;
-    let j = i;
-    while (j > 0 && b[j - 1]!.k === "ch" && isIdChar((b[j - 1] as { c: string }).c)) j--;
-    const run = b.slice(j, i).map((a) => (a as { c: string }).c).join("");
-    const last = run ? lex(run).filter((t) => t.kind !== "eof").pop() : undefined;
-    // a function's own body may call it: `let f(n) = … f(n - 1)`
-    const head = this.root[0]?.k === "let" && this.root[0].params ? this.root[0].name.map((a) => (a as { c: string }).c).join("") : null;
-    if (last?.kind === "id" && last.stop === Array.from(run).length && (BUILTIN_FUNCTIONS.includes(last.s) || this.known.includes(last.s) || last.s === head)) {
-      const n = Array.from(last.s).length;
+    const f = this.fnBefore(b, i);
+    if (f) {
+      const n = f.n;
       b.splice(i - n, n);
       this.caret = { block: b, i: i - n };
-      const c = call(last.s, ARITY[last.s] ?? 1) as Atom & { k: "call" };
+      const c = call(f.name, ARITY[f.name] ?? 1) as Atom & { k: "call" };
       const rest = b.splice(this.caret.i);
       if (rest.length) { c.args[0] = rest; c.open = true; }
       return this.insert(c);
     }
     const rest = b.splice(i);
     return this.insert(rest.length ? { k: "paren", body: rest, open: true } : { k: "paren", body: [] });
+  }
+
+  /** Whether the atom before `i` in `b` is a name's character. */
+  private nameAt(b: Block, i: number): boolean {
+    const p = b[i - 1];
+    return p?.k === "ch" && isIdChar(p.c);
+  }
+
+  /** The function name that ends at `i` in `b`, as the text lexes it (`2sin` ends in `sin`), with
+   *  its length; null when what ends there is not a name, or names no function. */
+  private fnBefore(b: Block, i: number): { name: string; n: number } | null {
+    let j = i;
+    while (j > 0 && b[j - 1]!.k === "ch" && isIdChar((b[j - 1] as { c: string }).c)) j--;
+    const run = b.slice(j, i).map((a) => (a as { c: string }).c).join("");
+    const last = run ? lex(run).filter((t) => t.kind !== "eof").pop() : undefined;
+    // a function's own body may call it: `let f(n) = … f(n - 1)`
+    const head = this.root[0]?.k === "let" && this.root[0].params ? this.root[0].name.map((a) => (a as { c: string }).c).join("") : null;
+    if (last?.kind !== "id" || last.stop !== Array.from(run).length) return null;
+    if (!(BUILTIN_FUNCTIONS.includes(last.s) || this.known.includes(last.s) || last.s === head)) return null;
+    return { name: last.s, n: Array.from(last.s).length };
+  }
+
+  /** A function's name typed in front of a group (`norm` before `(v/2)`) makes it the function's
+   *  call, as the text reads it. Not while the caret is in or at the end of the name, where the name
+   *  may still be growing (`sin` into `sinh`, `N` into `norm`); `all` settles those too (the input
+   *  is left). The caret and the selection's anchor keep their places. True if anything changed. */
+  settle(all = false, b: Block = this.root): boolean {
+    let changed = false;
+    for (let j = 0; j < b.length; j++) {
+      const a = b[j]!;
+      for (const x of slots(a)) changed = this.settle(all, x) || changed;
+      if (a.k !== "paren" || a.open) continue;
+      let start = j;
+      while (start > 0 && this.nameAt(b, start)) start--;
+      if (!all && this.caret.block === b && this.caret.i >= start && this.caret.i <= j) continue;
+      if (a.head) { delete a.head; changed = true; }
+      const f = this.fnBefore(b, j);
+      if (!f) continue;
+      const at = j - f.n;
+      b.splice(at, f.n + 1, { k: "call", name: f.name, args: [a.body] });
+      for (const p of [this.caret, this.anchor]) {
+        if (p?.block !== b || p.i <= at) continue;
+        p.i = p.i > j ? p.i - f.n : at;
+      }
+      j = at;
+      changed = true;
+    }
+    return changed;
   }
 
   /** Place every `)` still open (the input is left: the text had them all along). */
@@ -601,6 +651,12 @@ export class MathEdit {
   }
   private backspaceOne(): boolean {
     const { block: b, i } = this.caret;
+    // in the empty name box `@` left: undo the `@`, the group's contents back where they were
+    const g = b[i];
+    if (g?.k === "paren" && g.head && !this.nameAt(b, i)) {
+      b.splice(i, 1, ...g.body);
+      return true;
+    }
     if (i > 0) {
       const a = b[i - 1]!;
       if ((a.k === "paren" || (a.k === "call" && !notated(a))) && !a.open) {
@@ -625,6 +681,29 @@ export class MathEdit {
       ps.splice(w.slot - 1, 1);
       if (!ps.length) w.atom.params = null;
       const prev = slots(w.atom)[w.slot - 1]!;
+      this.caret = { block: prev, i: prev.length };
+      return true;
+    }
+    // at the start of an empty column (`[1, |]`) or row, the `,` or `;` before it goes, as in the text
+    if (w.atom.k === "matrix" && b.length === 0) {
+      const rows = w.atom.rows, r = rows.findIndex((row) => row.includes(b)), c = rows[r]!.indexOf(b);
+      if (c > 0 && rows.every((row) => row[c]!.length === 0)) {
+        for (const row of rows) row.splice(c, 1);
+        const prev = rows[r]![c - 1]!;
+        this.caret = { block: prev, i: prev.length };
+        return true;
+      }
+      if (c === 0 && r > 0 && rows[r]!.every((x) => x.length === 0)) {
+        rows.splice(r, 1);
+        const prev = rows[r - 1]![rows[r - 1]!.length - 1]!;
+        this.caret = { block: prev, i: prev.length };
+        return true;
+      }
+    }
+    // and at the start of an empty argument after the first (`f(a, |)`), its `,`
+    if (w.atom.k === "call" && !notated(w.atom) && w.slot > 0 && b.length === 0) {
+      w.atom.args.splice(w.slot, 1);
+      const prev = w.atom.args[w.slot - 1]!;
       this.caret = { block: prev, i: prev.length };
       return true;
     }

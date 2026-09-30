@@ -123,7 +123,13 @@ class Notation {
    *  hold: TeX's `\\left(` centres a paren on the math axis, so around a stack of fractions deeper
    *  than it is tall it reaches as far above the stack as the stack goes below. */
   private parens(inner: string, open?: boolean, call = false) {
-    return `\\htmlData{pg=${call ? "c" : "1"}}{\\htmlData{pd=o}{(}${inner}\\htmlData{pd=c${open ? ", open=1" : ""}}{)}}`;
+    return this.delims(inner, "(", ")", call ? "c" : "1", open);
+  }
+  /** Delimiters the view fits to what they hold, as `parens`: `pk` says how it draws them (a paren,
+   *  `abs`'s bars, `norm`'s double bars). */
+  private delims(inner: string, l: string, r: string, group: string, open?: boolean, kind?: string) {
+    const pk = kind ? `, pk=${kind}` : "";
+    return `\\htmlData{pg=${group}${pk}}{\\htmlData{pd=o}{${l}}${inner}\\htmlData{pd=c${open ? ", open=1" : ""}}{${r}}}`;
   }
 
   block(b: Block): string {
@@ -145,7 +151,7 @@ class Notation {
         s += tokens(run).map((t) => this.token(t)).join("");
         continue;
       }
-      s += this.atom(a);
+      s += this.atom(a, b[j - 1]);
       j++;
     }
     // a `let` head with no body yet: the body's place, drawn as an empty slot
@@ -197,13 +203,17 @@ class Notation {
     return one || word || b.length === 0 ? s : this.parens(s);
   }
 
-  private atom(a: Atom): string {
+  private atom(a: Atom, prev?: Atom): string {
     switch (a.k) {
       case "ch": return this.token({ kind: "op", atoms: [a] });
       case "frac": return this.wrap([a], this.frac(a));
       // the power attaches to what precedes it in the LaTeX as in the text; the tag goes inside
       case "sup": return `^{${this.wrap([a], this.scripted(a.exp))}}`;
-      case "paren": return this.wrap([a], this.parens(this.block(a.body), a.open));
+      case "paren": {
+        // `@`'s box for the function's name, until one is typed there
+        const box = a.head && !(prev?.k === "ch" && isIdChar(prev.c)) ? "\\htmlData{fh=1}{\\square}" : "";
+        return this.wrap([a], box + this.parens(this.block(a.body), a.open));
+      }
       case "matrix": return this.wrap([a], this.matrix(a.rows, "bmatrix"));
       case "call": return this.wrap([a], this.call(a));
       case "let": {
@@ -233,8 +243,8 @@ class Notation {
     const n = b.length;
     switch (`${a.name}/${n}`) {
       case "sqrt/1": return `\\sqrt{${x(0)}}`;
-      case "abs/1": return `\\left|${x(0)}\\right|`;
-      case "norm/1": return `\\left\\lVert ${x(0)}\\right\\rVert`;
+      case "abs/1": return this.delims(x(0), "\\lvert ", "\\rvert ", "1", false, "abs");
+      case "norm/1": return this.delims(x(0), "\\lVert ", "\\rVert ", "1", false, "norm");
       case "conj/1": return `\\overline{${x(0)}}`;
       // names shown as the textbook writes them, but names all the same: words, like `sin(`
       case "re/1": return this.named(a, "Re");

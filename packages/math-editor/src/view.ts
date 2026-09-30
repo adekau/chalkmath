@@ -51,7 +51,7 @@ export interface MathInputOptions {
 export const MATH_INPUT_CSS = `
 .mi { position:relative; display:inline-block; min-width:2em; min-height:1.4em; padding:2px 4px; cursor:text; outline:none; }
 .mi-math .katex { font-size:1.15em; }
-.mi-math [data-h] { color:var(--mi-hole, #8a8a8a); }
+.mi-math [data-h], .mi-math [data-fh] { color:var(--mi-hole, #8a8a8a); }
 .mi-caret { position:absolute; width:1.5px; background:var(--mi-caret, currentColor); pointer-events:none; display:none; }
 .mi.focused .mi-caret { display:block; animation:mi-blink 1.06s steps(1) infinite; }
 .mi.focused { box-shadow:0 0 0 1px var(--mi-focus, #6b8afd); border-radius:4px; }
@@ -132,6 +132,25 @@ function paren(left: boolean, w: number, h: number, em: number): SVGSVGElement {
   return svg;
 }
 
+/** `abs`'s bars (one line) or `norm`'s (two), `w` by `h` px, as an SVG. */
+function bars(n: 1 | 2, w: number, h: number, em: number): SVGSVGElement {
+  const t = 0.056 * em, gap = 0.2 * em;
+  const xs = n === 1 ? [w / 2] : [w / 2 - gap / 2, w / 2 + gap / 2];
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("width", String(w)); svg.setAttribute("height", String(h));
+  svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+  svg.setAttribute("aria-hidden", "true");
+  for (const x of xs) {
+    const r = document.createElementNS(ns, "rect");
+    r.setAttribute("x", (x - t / 2).toFixed(2)); r.setAttribute("y", "0");
+    r.setAttribute("width", t.toFixed(2)); r.setAttribute("height", h.toFixed(2));
+    r.setAttribute("fill", "currentColor");
+    svg.append(r);
+  }
+  return svg;
+}
+
 /** KaTeX may run only the one command the input emits; its LaTeX is built from the tree, but a name
  *  in it came from a file. */
 const TRUST = (ctx: { command: string }) => ctx.command === "\\htmlData";
@@ -185,6 +204,7 @@ export class MathInput {
       this.hideSuggestions();
       // leaving the input places every `)` still open, as the text had them all along
       this.edit.closeAll();
+      this.edit.settle(true);
       this.render();
       this.opts.onBlur?.();
     });
@@ -289,7 +309,7 @@ export class MathInput {
    *  page from moving) can call it. */
   layout() { this.fitParens(); this.place(); }
 
-  /** Stretch each group's parentheses over what it holds, where that is taller than a paren. KaTeX's
+  /** Stretch each group's parentheses (or bars) over what it holds, where that is taller than a paren. KaTeX's
    *  `\\left(` would centre them on the math axis instead, so a stack of fractions that goes further
    *  below the axis than above it would get parens reaching as far above it again, over nothing. */
   private fitParens() {
@@ -321,7 +341,9 @@ export class MathInput {
       // a little past what they hold, as TeX's do, and never shorter than the plain paren
       top = Math.min(top - 0.1 * em, glyph.top); bottom = Math.max(bottom + 0.1 * em, glyph.bottom);
       const h = bottom - top;
-      const w = Math.min(Math.max(0.39 * em, 0.28 * em + 0.07 * h), 0.8 * em);
+      const kind = g.dataset["pk"];
+      // bars keep their width; a paren grows a little wider as it grows taller
+      const w = kind ? open.getBoundingClientRect().width : Math.min(Math.max(0.39 * em, 0.28 * em + 0.07 * h), 0.8 * em);
       for (const d of [open, close]) {
         // an inline block the paren's size, set on the line where it is drawn, so the input's
         // height takes it in (its baseline, with no line inside, is its bottom edge)
@@ -329,7 +351,7 @@ export class MathInput {
         d.style.width = `${w}px`;
         d.style.height = `${h}px`;
         d.style.verticalAlign = `${glyph.baseline - bottom}px`;
-        d.append(paren(d === open, w, h, em));
+        d.append(kind ? bars(kind === "norm" ? 2 : 1, w, h, em) : paren(d === open, w, h, em));
       }
       // a call's name level with the middle of its parentheses, not down on the line under a stack
       const name = g.dataset["pg"] === "c" ? g.closest("[data-call]")?.querySelector<HTMLElement>("[data-word]") : null;
@@ -372,6 +394,8 @@ export class MathInput {
 
   /** Draw the caret, and mark the hole it is in. */
   private place() {
+    // a name typed in front of a group becomes its call once the caret has left the name
+    if (this.edit.settle()) { this.render(); return; }
     this.math.querySelector(".mi-here")?.classList.remove("mi-here");
     for (const el of this.math.querySelectorAll(".mi-sel")) el.classList.remove("mi-sel");
     const sel = this.edit.selection();

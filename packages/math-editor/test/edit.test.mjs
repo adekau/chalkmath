@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { MathEdit, read, write, templateInText } from "../dist/index.js";
+import { MathEdit, read, write, templateInText, toLatex } from "../dist/index.js";
 
 /** Type into a fresh editor (or one holding `src`). `{→}` `{←}` `{↑}` `{↓}` `{⌫}` `{del}` `{tab}`
  *  `{s-tab}` are keys; anything else is typed a character at a time. */
@@ -248,4 +248,60 @@ test("leaving the input places every open )", () => {
   const { e } = typed("{home}expand(", "(x + 5)(2x + 3)");
   e.closeAll();
   assert.equal(e.stmt.body[0].open, undefined);
+});
+
+test("backspace at the start of an empty column, row or argument takes its `,` or `;`", () => {
+  // [1, ⌫ ; → a 2×1 matrix, not 2×2
+  const { e } = typed("[1,{⌫};2");
+  assert.equal(e.text, "[1; 2]");
+  assert.equal(text("[1,2;{⌫}"), "[1, 2]");
+  // a column with something in it stays; the caret only moves back
+  assert.equal(text("[1,2;3,{⌫}4"), "[1, 2; 34, ]");
+  assert.equal(text("f(a,{⌫}", "", ["f"]), "f(a)");
+});
+
+test("a function's name typed in front of a group becomes its call once the caret leaves the name", () => {
+  const { e } = typed("(v+1){home}norm");
+  // still at the end of the name: it may yet grow (`N` into `norm`)
+  assert.deepEqual(e.stmt.body.map((a) => a.k), ["ch", "ch", "ch", "ch", "paren"]);
+  e.right(); e.settle();
+  assert.deepEqual(e.stmt.body.map((a) => a.k), ["call"]);
+  assert.equal(e.stmt.body[0].name, "norm");
+  assert.equal(e.text, "norm(v + 1)");
+  // the caret went into the parentheses, and stays at the start of the argument
+  assert.equal(e.caret.block, e.stmt.body[0].args[0]);
+  assert.equal(e.caret.i, 0);
+  // leaving the input settles it wherever the caret is
+  const t = typed("(x-1){home}abs").e;
+  t.settle(true);
+  assert.equal(t.stmt.body[0].name, "abs");
+  // a name that is not a function stays a product, as the text reads it
+  const x = typed("(a+b){home}x").e;
+  x.settle(true);
+  assert.deepEqual(x.stmt.body.map((a) => a.k), ["ch", "paren"]);
+});
+
+test("@ puts the selection in parentheses with a box in front for a function's name", () => {
+  // select all, @, type the name, → into the group: the call
+  const { e } = typed("x/2{→}+1{all}@norm");
+  assert.equal(e.text, "norm(x/2 + 1)");
+  assert.deepEqual(e.stmt.body.map((a) => a.k), ["ch", "ch", "ch", "ch", "paren"]);
+  assert.match(toLatex(e.stmt), /norm/);
+  e.right(); e.settle();
+  assert.deepEqual(e.stmt.body.map((a) => a.k), ["call"]);
+  assert.equal(e.stmt.body[0].args[0], e.caret.block);
+  // the box shows until a name is typed there
+  const box = typed("a+b{all}@").e;
+  assert.match(toLatex(box.stmt), /\\htmlData\{fh=1\}/);
+  assert.equal(box.text, "(a + b)");
+  // backspace in the empty box undoes the @; after a name, it takes the name first
+  assert.equal(text("a+b{all}@{⌫}"), "a + b");
+  const back = typed("a+b{all}@ab{⌫}{⌫}{⌫}").e;
+  assert.equal(back.text, "a + b");
+  assert.deepEqual(back.stmt.body.map((a) => a.k), ["ch", "ch", "ch"]);
+  // left unnamed, the group is just parentheses once the caret goes elsewhere
+  const left = typed("a+b{all}@{→}").e;
+  left.settle();
+  assert.equal(left.stmt.body[0].head, undefined);
+  assert.equal(left.text, "(a + b)");
 });
