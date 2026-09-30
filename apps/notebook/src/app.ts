@@ -504,7 +504,7 @@ async function restartEngine(upTo: Cell | null = null) {
   const i = upTo ? S.cells.indexOf(upTo) : -1;
   const gen = runGen;
   for (const c of i >= 0 ? S.cells.slice(0, i) : [...S.cells]) {
-    if (gen !== runGen) return;
+    if (gen !== runGen || !S.docs.includes(d)) return;
     if ((c.type ?? "math") === "math" && c.outLatex && cellSrc(c).trim()) await runCell(c);
   }
   renderChrome();
@@ -537,12 +537,15 @@ async function runCell(cell: Cell) {
   try {
     await prev;
     cell.queued = false;
-    if (gen === runGen && client) await evaluateCell(cell, client);
+    // the cell is evaluated in its own notebook's session, which need not be the current one by now
+    // (a notebook re-running when its tab was left); a closed notebook's cells are not evaluated
+    const d = docOf(cell);
+    if (gen === runGen && client && d) await evaluateCell(cell, client, d.sessionId);
     else renderCellBody(cell);
   } finally { release(); }
 }
 
-async function evaluateCell(cell: Cell, client: EngineClient) {
+async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string) {
   const src = cell.src;
   S.busy = true; S.running = cell;
   renderChrome(); renderCellBody(cell);
@@ -752,6 +755,8 @@ function wireTerm(host: HTMLElement, cell: Cell, term: TermRef) {
 // ---------------------------------------------------------------------------
 
 const currentDoc = () => S.docs[S.doc];
+/** The open notebook a cell belongs to (the current one's cells are the live `S.cells`), if any. */
+const docOf = (cell: Cell) => S.docs.find((d) => (d === currentDoc() ? S.cells : d.cells).includes(cell));
 
 /** Copy the live globals back into the current document. */
 function stashDoc() {
@@ -945,7 +950,8 @@ function cellsFromFile(doc: ChalkFile, foldWork = false): Cell[] {
 async function runAll() {
   const d = currentDoc(); if (d) d.hydrated = true;   // every cell, in order: the session is the notebook's
   const gen = runGen;
-  for (const c of [...S.cells]) { if (gen !== runGen) return; if (cellSrc(c).trim()) await runCell(c); }
+  // switching tabs meanwhile leaves this notebook running in its own session; closing it stops it
+  for (const c of [...S.cells]) { if (gen !== runGen || (d && !S.docs.includes(d))) return; if (cellSrc(c).trim()) await runCell(c); }
 }
 
 /** The cells a section heads: from the one after it to the next section (or the end). */
@@ -964,8 +970,9 @@ async function runSection(i: number) {
   const [a, b] = sectionRange(i);
   const cells = S.cells.slice(a, b);
   log("ok", `running section “${cellSrc(S.cells[i]!) || "untitled"}”: ${cells.length} cell${cells.length === 1 ? "" : "s"}`);
+  const d = currentDoc();
   const gen = runGen;
-  for (const c of cells) { if (gen !== runGen) return; if (cellSrc(c).trim()) await runCell(c); }
+  for (const c of cells) { if (gen !== runGen || (d && !S.docs.includes(d))) return; if (cellSrc(c).trim()) await runCell(c); }
 }
 
 async function restartKernel() {
