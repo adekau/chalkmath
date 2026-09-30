@@ -128,9 +128,9 @@ test("every notation is LaTeX KaTeX renders, with every atom tagged", () => {
   assert.equal(tex("dot(u, v + w)"), "{u} \\cdot \\htmlData{pg=1}{\\htmlData{pd=o}{(}{v}+{w}\\htmlData{pd=c}{)}}");
   assert.equal(tex("2 llama + x_1"), "2{\\mathit{llama}}+{x_{1}}");
   // a fixed output reference is a %ₙ chip; a relative one stays % or %% (it follows the outputs),
-  // in a chip of its own
+  // in a chip of its own, with the output it means now (when the host says) faint beside it
   assert.equal(tex("%3 + %"), "\\htmlData{out=n3}{\\%_{3}}+\\htmlData{out=p1, rel=1}{\\%}");
-  assert.equal(tex("%%"), "\\htmlData{out=p2, rel=1}{\\%\\%}");
+  assert.equal(toLatex(tree("%%"), { outRef: (r) => (r === "%%" ? 5 : null) }), "\\htmlData{out=p2, rel=1}{\\%\\%_{\\htmlData{now=1}{5}}}");
   assert.equal(tex("norm(v) + abs(x) + sqrt(2)"), "\\htmlData{pg=1, pk=norm}{\\htmlData{pd=o}{\\lVert }{v}\\htmlData{pd=c}{\\rVert }}+\\htmlData{pg=1, pk=abs}{\\htmlData{pd=o}{\\lvert }{x}\\htmlData{pd=c}{\\rvert }}+\\sqrt{2}");
 });
 

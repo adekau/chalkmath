@@ -14,6 +14,8 @@ import { type Atom, type Block, type Stmt, isDigit, isIdChar, isIdStart } from "
 export interface NotationOptions {
   wrap?: (atoms: Atom[], latex: string) => string;
   hole?: (b: Block) => string;
+  /** Which output a relative reference (`%`, `%%`) stands for now, when the host knows. */
+  outRef?: (ref: string) => number | null;
   /** A highlight class for a token, by what it is where it stands: a call's name, a variable bound
    *  by the call or `let` head around it (`diff(f, x)`'s x, `let f(x)`'s x), any other name, or a
    *  numeral. Null leaves it plain. The notation tags it `\\htmlData{hl=…}` for the host's colours. */
@@ -65,6 +67,7 @@ function tokens(run: (Atom & { k: "ch" })[]): Token[] {
 class Notation {
   private wrap: (atoms: Atom[], latex: string) => string;
   private hole: (b: Block) => string;
+  private outRef: (ref: string) => number | null;
   private classify: NonNullable<NotationOptions["classify"]>;
   /** The names bound where the notation is now (a binder's variable, a head's parameters). */
   private bound: string[] = [];
@@ -75,6 +78,7 @@ class Notation {
   constructor(opts: NotationOptions) {
     this.wrap = opts.wrap ?? ((_, s) => s);
     this.hole = opts.hole ?? (() => "\\square");
+    this.outRef = opts.outRef ?? (() => null);
     this.classify = opts.classify ?? (() => null);
   }
 
@@ -183,10 +187,12 @@ class Notation {
   private op(t: Token, text: string): string {
     // an output reference is one chip. `%17` names one output for good, drawn %₁₇. `%` and `%%`
     // mean the last output and the one before it whenever the cell runs, so they are drawn as
-    // typed, in a chip of their own (`rel`); which output that is now, the host's tooltip says
+    // typed, in a chip of their own (`rel`), with the output they mean now faint (`now`) beside them
     if (text[0] === "%") {
       if (/^%\d+$/.test(text)) return this.wrap(t.atoms, `\\htmlData{out=${outTag(text)}}{\\%_{${text.slice(1)}}}`);
-      return this.wrap(t.atoms, `\\htmlData{out=${outTag(text)}, rel=1}{${text.replace(/%/g, "\\%")}}`);
+      const n = this.outRef(text);
+      const now = n === null ? "" : `_{\\htmlData{now=1}{${n}}}`;
+      return this.wrap(t.atoms, `\\htmlData{out=${outTag(text)}, rel=1}{${text.replace(/%/g, "\\%")}${now}}`);
     }
     // a `\` is a command still being typed (`\frac` before its space)
     return this.chars(t.atoms, (c) => (c === "*" ? "\\cdot " : c === " " ? "\\," : c === "%" ? "\\%" : c === "\\" ? "\\backslash " : c));

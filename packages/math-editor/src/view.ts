@@ -37,8 +37,8 @@ export interface MathInputOptions {
   onLeave?(dir: -1 | 1): void;
   /** A key, before the input handles it; return true to take it (a completion menu's arrows). */
   onKey?(ev: KeyboardEvent): boolean;
-  /** What an output reference (`%`, `%%`, `%3`) stands for, for its tooltip: the output's number
-   *  and text. */
+  /** What an output reference (`%`, `%%`, `%3`) stands for: the output's number (shown beside a
+   *  relative one) and its text (for the tooltip). */
   outRef?(ref: string): { label: number; value?: string } | null;
   /** Highlight classes for tokens (see `NotationOptions.classify`); the page styles `[data-hl=…]`. */
   classify?(text: string, as: "call" | "bound" | "name" | "num" | "keyword"): string | null;
@@ -68,6 +68,7 @@ export const MATH_INPUT_CSS = `
 .mi-math [data-open] { opacity:0.35; }
 .mi-math [data-out] { background:var(--mi-chip, rgba(107,138,253,0.14)); border-radius:4px; padding:0 2px; }
 .mi-math [data-out][data-rel] { background:transparent; outline:1px dashed var(--mi-chip-edge, rgba(107,138,253,0.6)); outline-offset:-1px; }
+.mi-math [data-now] { opacity:0.55; }
 .mi-math .mi-sel { background:var(--mi-sel, rgba(107,138,253,0.28)); border-radius:2px; }
 .mi-ta { position:absolute; left:0; top:0; width:1px; height:1px; opacity:0; padding:0; border:0; resize:none; overflow:hidden; }
 @keyframes mi-blink { 50% { opacity:0; } }
@@ -279,6 +280,7 @@ export class MathInput {
     const latex = toLatex(this.edit.stmt, {
       wrap: (atoms, s) => { tagged.push(atoms); return `\\htmlData{a=${tagged.length - 1}}{${s}}`; },
       hole: (b) => { holes.push(b); return `\\htmlData{h=${holes.length - 1}}{\\square}`; },
+      outRef: (ref) => this.opts.outRef?.(ref)?.label ?? null,
       ...(this.opts.classify ? { classify: (t: string, as: "call" | "bound" | "name" | "num" | "keyword") => this.opts.classify!(t, as) } : {}),
     });
     // display-size fractions and operators, as a textbook (and Symbolab) set an input, but left-aligned
