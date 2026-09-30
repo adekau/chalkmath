@@ -1076,6 +1076,7 @@ const SHORTCUTS: [string, string][] = [
   ["Ctrl/⌘+Shift+M", "Switch the cell between visual and text input"],
   ["\\frac, \\sqrt, \\int, \\dint, \\sum, \\diff, \\mat2x3 … then space", "Insert a fraction, root, integral, sum, derivative, matrix … (a text cell turns typeset)"],
   ["Tab (visual)", "The next empty slot"],
+  ["@ (visual)", "Put the selection in parentheses with a box in front for a function's name: select, @, then type norm"],
   ["Esc", "Close a popup, the signature help, or this dialog"],
   ["Ctrl/⌘+S", "Save in this browser (with Shift: Save as)"],
   ["Ctrl/⌘+B", "Show or hide the sidebar"],
@@ -2357,9 +2358,51 @@ function refreshInput(cell: Cell) {
   renderCellBody(cell);
 }
 
+/** Where the notebook is scrolled to, as the first cell in view and how far down the view it is, so a
+ *  rebuild can put the page back where it was even when the cells above it change height. */
+interface ScrollSpot { cell: Cell | undefined; at: number; offset: number; scrollTop: number }
+function scrollSpot(host: HTMLElement): ScrollSpot {
+  const top = host.getBoundingClientRect().top;
+  const els = [...host.querySelectorAll<HTMLElement>(":scope > .cell")];
+  const at = els.findIndex((el) => el.getBoundingClientRect().bottom > top);
+  const el = els[at];
+  return { cell: el && S.cells.find((c) => c.el === el), at, offset: el ? el.getBoundingClientRect().top - top : 0, scrollTop: host.scrollTop };
+}
+function restoreScroll(host: HTMLElement, spot: ScrollSpot) {
+  if (spot.at < 0) { host.scrollTop = spot.scrollTop; return; }
+  // the same cell if it is still there, else (it was deleted) the one that took its place
+  const el = spot.cell?.el?.isConnected ? spot.cell.el : host.querySelectorAll<HTMLElement>(":scope > .cell")[spot.at];
+  if (!el) { host.scrollTop = spot.scrollTop; return; }
+  host.scrollTop += el.getBoundingClientRect().top - host.getBoundingClientRect().top - spot.offset;
+}
+/** Keep the page where it was while the rebuilt cells settle: a typeset input fits its parens once
+ *  it is on screen and a Lean editor mounts later, both changing the height of cells above the view.
+ *  Anything else that moves the page meanwhile (focus bringing a new cell into view) is where it
+ *  is kept from then on. The hold ends after a moment, or as soon as the reader scrolls. */
+let scrollHold: (() => void) | null = null;
+function holdScroll(host: HTMLElement, spot: ScrollSpot) {
+  scrollHold?.();
+  let set = host.scrollTop;
+  const ro = new ResizeObserver(() => { restoreScroll(host, spot); set = host.scrollTop; });
+  for (const el of host.children) ro.observe(el);
+  const moved = () => { if (Math.abs(host.scrollTop - set) > 1) { spot = scrollSpot(host); set = host.scrollTop; } };
+  const inputs = ["wheel", "touchstart", "keydown", "mousedown"];
+  const stop = () => {
+    ro.disconnect(); clearTimeout(timer);
+    host.removeEventListener("scroll", moved);
+    for (const ev of inputs) host.removeEventListener(ev, stop);
+    if (scrollHold === stop) scrollHold = null;
+  };
+  const timer = setTimeout(stop, 1500);
+  host.addEventListener("scroll", moved, { passive: true });
+  for (const ev of inputs) host.addEventListener(ev, stop, { passive: true });
+  scrollHold = stop;
+}
+
 function renderCells() {
   hideHover(); hideSigHelp();
   const host = $(".cells");
+  const spot = scrollSpot(host);
   host.innerHTML = "";
   promptLevel.disconnect();
   // Lean cells: one document per notebook, whose views are rebuilt with the cells
@@ -2458,6 +2501,10 @@ function renderCells() {
   });
   insertGap(host, S.cells.length);
   markActive();
+  // the typeset inputs are on the page now: their heights, before the page is put back
+  for (const c of S.cells) c.mi?.layout();
+  restoreScroll(host, spot);
+  holdScroll(host, spot);
 }
 
 /** A thin strip between cells (and after the last): hovering shows a rule with a `+ cell` pill, a

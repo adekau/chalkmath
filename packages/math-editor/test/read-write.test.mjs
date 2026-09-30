@@ -130,7 +130,7 @@ test("every notation is LaTeX KaTeX renders, with every atom tagged", () => {
   // output references are Out[n] chips; a relative one needs the host to say which output it is
   assert.equal(tex("%3 + %"), "\\htmlData{out=n3}{\\mathrm{Out}[3]}+\\htmlData{out=p1}{\\mathrm{Out}[\\%]}");
   assert.equal(toLatex(tree("%%"), { outRef: (r) => (r === "%%" ? 5 : null) }), "\\htmlData{out=p2}{\\mathrm{Out}[5]}");
-  assert.equal(tex("norm(v) + abs(x) + sqrt(2)"), "\\left\\lVert {v}\\right\\rVert+\\left|{x}\\right|+\\sqrt{2}");
+  assert.equal(tex("norm(v) + abs(x) + sqrt(2)"), "\\htmlData{pg=1, pk=norm}{\\htmlData{pd=o}{\\lVert }{v}\\htmlData{pd=c}{\\rVert }}+\\htmlData{pg=1, pk=abs}{\\htmlData{pd=o}{\\lvert }{x}\\htmlData{pd=c}{\\rvert }}+\\sqrt{2}");
 });
 
 test("an engine span maps to the innermost atoms it covers", () => {

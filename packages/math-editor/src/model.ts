@@ -21,7 +21,11 @@ export type Atom =
   | { k: "sup"; exp: Block }
   /** `open`: typed before existing atoms, the group took in everything to its right and its `)`
    *  is not placed yet (drawn faint); typing `)` places it. Editing state only: the text is the same. */
-  | { k: "paren"; body: Block; open?: boolean }
+  | { k: "paren"; body: Block; open?: boolean;
+      /** `head`: put in by `@`, which wraps the selection for a function to be named in front of it:
+       *  until the caret leaves, an empty box there shows where the name goes, and the name (once it
+       *  names a function) makes the group that function's call. Editing state only, as `open`. */
+      head?: boolean }
   /** `name(args)`: a builtin or a function the session defined. How it shows (d/dx, ∫, |·|) is
    *  `notation.ts`'s choice; the tree only knows the name. */
   | { k: "call"; name: string; args: Block[]; open?: boolean }
