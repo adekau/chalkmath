@@ -170,6 +170,9 @@ export class MathInput {
   private errSpan: { start: number; end: number } | null = null;
   /** A mouse drag in progress: where it started. */
   private drag: Caret | null = null;
+  /** How far an atom drawn with fitted parens or bars reaches above and below its line, for the
+   *  caret beside it (a KaTeX span's own box is its line). Kept by `fitParens`. */
+  private tallOf = new Map<HTMLElement, { up: number; down: number }>();
   /** Whether the parens were last fitted with the input on screen. */
   private fitted = false;
   /** The `\\` suggestions under the caret: the names that start with what has been typed. */
@@ -322,8 +325,24 @@ export class MathInput {
       w.classList.remove("mi-lift");
       w.style.removeProperty("top");
     }
+    this.tallOf.clear();
     this.fitted = this.math.getClientRects().length > 0;
     if (!this.fitted) return;
+    try { this.fitGroups(); } finally { this.measureTall(); }
+  }
+
+  private measureTall() {
+    for (const el of this.math.querySelectorAll<HTMLElement>("[data-a]")) {
+      const ts = el.querySelectorAll(".mi-tall");
+      if (!ts.length) continue;
+      const r = el.getBoundingClientRect();
+      let top = r.top, bottom = r.bottom;
+      for (const t of ts) { const q = t.getBoundingClientRect(); top = Math.min(top, q.top); bottom = Math.max(bottom, q.bottom); }
+      this.tallOf.set(el, { up: r.top - top, down: bottom - r.bottom });
+    }
+  }
+
+  private fitGroups() {
     // the innermost first, so an outer group measures its inner groups' parens as fitted
     for (const g of [...this.math.querySelectorAll<HTMLElement>("[data-pg]")].reverse()) {
       const sides = [...g.querySelectorAll<HTMLElement>("[data-pd]")].filter((d) => d.parentElement?.closest("[data-pg]") === g);
@@ -368,7 +387,9 @@ export class MathInput {
   private rect(a: Atom): DOMRect | null {
     const e = this.atomEl.get(a);
     if (!e) return null;
-    const r = e.el.getBoundingClientRect();
+    let r = e.el.getBoundingClientRect();
+    const t = this.tallOf.get(e.el);
+    if (t) r = new DOMRect(r.left, r.top - t.up, r.width, r.height + t.up + t.down);
     if (e.n === 1) return r;
     const w = r.width / e.n;
     return new DOMRect(r.left + w * e.k, r.top, w, r.height);
