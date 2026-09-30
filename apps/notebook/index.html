@@ -267,6 +267,7 @@ button { font-family: var(--font); }
 .cellin::placeholder { color:var(--p-ph); }
 /* the visual input (packages/math-editor): typeset math with a caret, in the same box as the text input */
 .cell .mi { display:block; width:100%; box-sizing:border-box; min-height:36px; padding:5px 8px; border-radius:6px; color:var(--p-ink);
+  font-size:var(--sz-echo);   /* View › Math size, as the input interpretation and a little under the outputs */
   --mi-caret:var(--p-ink-strong); --mi-hole:var(--p-ink-3); --mi-cmd:var(--p-acc); --mi-focus:var(--p-input-br);
   --mi-sel:var(--p-sel); --mi-err:var(--p-err-line); --mi-err-bg:var(--p-err-bg); --mi-chip:var(--p-acc-chip);
   --mi-word-font:var(--code); }
