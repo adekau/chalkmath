@@ -2,14 +2,20 @@
 //
 // Most sites do not let a page on another origin read them, so a lookup that finds a page through
 // web search cannot read it from the browser. This worker fetches the page and returns it with CORS
-// headers, for the notebook's origins only: it is not an open proxy. Deploy it with
+// headers. Deploy it with
 //   npx wrangler deploy scripts/ask-proxy/worker.js --name chalkmath-reader --compatibility-date 2026-09-01
-// set ORIGINS (comma-separated, e.g. "https://adekau.github.io,http://localhost:4173") in its
-// variables, and put `https://chalkmath-reader.<you>.workers.dev/?url={url}` in Run › Lookup settings.
+// and put `https://chalkmath-reader.<you>.workers.dev/?url={url}` in Run › Lookup settings.
+//
+// Who can use it: ORIGINS (comma-separated; default the public notebook) is checked against the
+// request's Origin header, which stops other web pages from using the reader through visitors'
+// browsers, but not a program that sends the header itself. Set TOKEN (a secret: `npx wrangler secret
+// put TOKEN`) to require `&token=…` as well, and put it in the reader URL in your settings
+// (`…/?token=…&url={url}`); a rate-limiting rule on the route limits what a leaked token costs. To
+// use the reader from a local copy, add its origin to ORIGINS (e.g. "http://localhost:4173").
 // It sends no cookies and keeps nothing.
 
 const MAX_BYTES = 5_000_000;
-const DEFAULT_ORIGINS = "https://adekau.github.io,http://localhost:4173";
+const DEFAULT_ORIGINS = "https://adekau.github.io";
 
 export default {
   async fetch(request, env) {
@@ -20,8 +26,10 @@ export default {
     if (request.method === "OPTIONS") return new Response(null, { status: allowed ? 204 : 403, headers: { ...cors, "Access-Control-Allow-Methods": "GET", "Access-Control-Max-Age": "86400" } });
     if (!allowed) return new Response("This reader serves the ChalkMath notebook only.", { status: 403 });
     if (request.method !== "GET") return new Response("GET only", { status: 405, headers: cors });
+    const params = new URL(request.url).searchParams;
+    if (env?.TOKEN && params.get("token") !== env.TOKEN) return new Response("A token is required.", { status: 401, headers: cors });
     let target;
-    try { target = new URL(new URL(request.url).searchParams.get("url") ?? ""); } catch { return new Response("?url= must be a URL", { status: 400, headers: cors }); }
+    try { target = new URL(params.get("url") ?? ""); } catch { return new Response("?url= must be a URL", { status: 400, headers: cors }); }
     if (target.protocol !== "https:" && target.protocol !== "http:") return new Response("http and https only", { status: 400, headers: cors });
     let r;
     try {
@@ -42,6 +50,8 @@ export default {
       if (size > MAX_BYTES) { await reader.cancel(); break; }
       chunks.push(value);
     }
-    return new Response(new Blob(chunks), { status: r.status, headers: { ...cors, "Content-Type": type, "Cache-Control": "public, max-age=3600" } });
+    // a response with no body (204, 304) cannot be given one
+    const empty = r.status === 204 || r.status === 205 || r.status === 304;
+    return new Response(empty ? null : new Blob(chunks), { status: r.status, headers: { ...cors, "Content-Type": type, "Cache-Control": "public, max-age=3600" } });
   },
 };

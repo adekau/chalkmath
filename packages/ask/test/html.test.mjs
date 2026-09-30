@@ -61,3 +61,18 @@ test("numbers as tables write them", () => {
   assert.equal(numberText(1e-7), "0.0000001");
   assert.equal(numberText(NaN), null);
 });
+
+test("a script's text is not markup: `e<t.length` does not hide the rest of the page", () => {
+  const { tables, text } = readHtml(`<script>for(var e=0;e<t.length;e++)x(e)</script><p>Intro</p><STYLE>p<a{}</STYLE><table><tr><th>a</th></tr><tr><td>1</td></tr></table><div hidden>secret</div><p>end</p>`);
+  assert.deepEqual(tables.map((t) => t.rows), [[["1"]]]);
+  assert.equal(text, "Intro\nend");
+});
+
+test("a superscript or a stray space never joins digits into another number", () => {
+  const { tables } = readHtml(`<table><tr><th>v</th></tr><tr><td>123<sup>1</sup></td></tr><tr><td>10<sup>6</sup></td></tr><tr><td>H<sub>2</sub>O</td></tr></table>`);
+  assert.deepEqual(tables[0].rows.map((r) => r[0]), ["123^{1}", "10^{6}", "H_{2}O"]);
+  for (const s of ["123^{1}", "10^{6}", "4 5", "1234 5"]) assert.equal(parseNumber(s), null, s);
+  assert.equal(parseNumber("1 234 567"), "1234567");
+  assert.equal(parseNumber("1'234"), "1234");
+  assert.equal(parseNumber("− 3"), "-3");
+});

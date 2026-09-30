@@ -8,10 +8,12 @@ import { CreateWebWorkerMLCEngine, type InitProgressReport } from "@mlc-ai/web-l
 import type { Model } from "@chalkmath/ask";
 
 export async function createEngine(workerUrl: string, modelId: string, progress: (fraction: number, text: string) => void): Promise<Model> {
-  const engine = await CreateWebWorkerMLCEngine(new Worker(workerUrl, { type: "module" }), modelId, {
+  const worker = new Worker(workerUrl, { type: "module" });
+  const engine = await CreateWebWorkerMLCEngine(worker, modelId, {
     initProgressCallback: (r: InitProgressReport) => progress(r.progress, r.text),
-  });
+  }).catch((e: unknown) => { worker.terminate(); throw e; });
   return {
+    async unload() { try { await engine.unload(); } finally { worker.terminate(); } },
     id: modelId.replace(/-q\d+f\d+(_\d+)?-MLC$/, ""),
     async complete({ system, user, schema, signal }) {
       const stop = () => { void engine.interruptGenerate(); };

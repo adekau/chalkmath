@@ -15,7 +15,7 @@
  * sends what the reader typed: the question's search terms, never the notebook. The first search
  * asks first.
  */
-import { lookup, wikipedia, webSearch, AskError, type AskResult, type Model, type Source } from "@chalkmath/ask";
+import { lookup, wikipedia, webSearch, validAnswer, AskError, type AskResult, type Model, type Source } from "@chalkmath/ask";
 
 export type { AskResult };
 export { AskError };
@@ -57,9 +57,14 @@ export function askSettings(): AskSettings {
   } catch { return { ...DEFAULTS }; }
 }
 export function setAskSettings(s: Partial<AskSettings>) {
-  const next = { ...askSettings(), ...s };
+  const prev = askSettings();
+  const next = { ...prev, ...s };
   try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* private mode */ }
-  if (s.backend !== undefined || s.model !== undefined) model = null;
+  // another model: the one loaded is let go (a WebGPU model holds gigabytes of GPU memory)
+  if (next.backend !== prev.backend || next.model !== prev.model) {
+    const old = model; model = null;
+    void old?.then((m) => m.unload?.()).catch(() => {});
+  }
 }
 
 // --- the models ---------------------------------------------------------------------------------
@@ -124,7 +129,21 @@ async function webgpuModel(id: string): Promise<Model> {
 async function loadModel(): Promise<Model> {
   const s = askSettings();
   const lm = chromeLM();
-  if (s.backend !== "webllm" && lm && await chromeAvailable()) return chromeModel(lm);
+  if (s.backend !== "webllm" && lm && await chromeAvailable()) {
+    // Chrome downloads its model the first time a page creates a session, which it allows only
+    // shortly after a click or key press; if it refuses, a WebGPU model is the fallback
+    if ((await lm.availability(LM_OPTS)) === "available") return chromeModel(lm);
+    try {
+      (await lm.create({ ...LM_OPTS, monitor(m: EventTarget) {
+        m.addEventListener("downloadprogress", (e) => sink(`Downloading Chrome's model: ${Math.round(((e as ProgressEvent).loaded ?? 0) * 100)}%`));
+      } })).destroy();
+      return chromeModel(lm);
+    } catch (e) {
+      if (s.backend === "chrome" || !(await webgpuAvailable())) {
+        throw new AskError(`Chrome's built-in model could not be downloaded (${e instanceof Error ? e.message : String(e)}). Run the cell again with Enter or its Run button: Chrome starts the download only right after a key press or click.`);
+      }
+    }
+  }
   if (s.backend === "chrome") throw new AskError("This browser has no built-in model (Chrome's Prompt API). Choose the WebGPU model in the lookup settings.");
   if (!(await webgpuAvailable())) {
     throw new AskError("Lookups need a model on this computer: Chrome's built-in model, or WebGPU for a downloaded one. This browser has neither.");
@@ -136,8 +155,8 @@ async function loadModel(): Promise<Model> {
 
 export interface LookupHooks {
   onProgress(line: string): void;
-  /** Ask the reader whether searches may leave the machine (the first time only). */
-  confirmSearch(): Promise<boolean>;
+  /** Ask the reader whether searches may leave the machine (the first time only); a stop closes the question. */
+  confirmSearch(signal: AbortSignal): Promise<boolean>;
   signal: AbortSignal;
   forceSearch?: boolean;
 }
@@ -153,8 +172,18 @@ export async function runLookup(question: string, h: LookupHooks): Promise<AskRe
     const s = askSettings();
     h.onProgress("Starting the model");
     model ??= loadModel();
+    // a stop while the model loads (a download can take minutes) ends the lookup; the load goes on,
+    // and the next lookup uses it
     let m: Model;
-    try { m = await model; } catch (e) { model = null; throw e; }
+    const stopped = new Promise<never>((_, reject) => {
+      if (h.signal.aborted) reject(new AskError("Stopped."));
+      h.signal.addEventListener("abort", () => reject(new AskError("Stopped.")), { once: true });
+    });
+    const loading = model;
+    try { m = await Promise.race([loading, stopped]); } catch (e) {
+      if (!(e instanceof AskError && e.message === "Stopped.") && model === loading) model = null;
+      throw e;
+    }
     const f = globalThis.fetch.bind(globalThis);
     const sources: Source[] = [];
     if (s.wikipedia) sources.push(wikipedia(f));
@@ -164,12 +193,31 @@ export async function runLookup(question: string, h: LookupHooks): Promise<AskRe
       forceSearch: !!h.forceSearch, today: today(), onProgress: h.onProgress, signal: h.signal,
       beforeSearch: async () => {
         if (askSettings().searchOk) return true;
-        const ok = await h.confirmSearch();
+        const ok = await h.confirmSearch(h.signal);
         if (ok) setAskSettings({ searchOk: true });
         return ok;
       },
     });
   } finally { sink = () => {}; }
+}
+
+/** A lookup saved in a notebook file, if it has every field a lookup produces and an answer a lookup
+ *  could give (a number, a grid of numbers, a checked formula); a file is not trusted beyond that. */
+export function savedAsk(x: unknown): AskResult | undefined {
+  if (!x || typeof x !== "object") return undefined;
+  const a = x as Record<string, unknown>;
+  const str = (v: unknown) => typeof v === "string";
+  const strs = (v: unknown) => Array.isArray(v) && v.every(str);
+  const ok = str(a["question"]) && str(a["source"]) && str(a["rowsAre"]) && str(a["model"]) && str(a["at"])
+    && ["number", "list", "table", "formula"].includes(a["shape"] as string) && ["table", "text", "knowledge", "memory"].includes(a["via"] as string)
+    && strs(a["columns"]) && strs(a["notes"]) && strs(a["trail"])
+    && Array.isArray(a["cites"]) && a["cites"].every((c) => !!c && typeof c === "object" && str((c as { title?: unknown }).title) && str((c as { url?: unknown }).url))
+    && Array.isArray(a["flagged"]) && a["flagged"].every((f) => Array.isArray(f) && f.length === 2 && f.every((n) => Number.isInteger(n)))
+    && (a["params"] === undefined || strs(a["params"])) && (a["rowLabels"] === undefined || strs(a["rowLabels"])) && (a["latex"] === undefined || str(a["latex"]))
+    && (a["vars"] === undefined || (Array.isArray(a["vars"]) && a["vars"].every((v) => !!v && typeof v === "object" && str((v as { name?: unknown }).name) && str((v as { meaning?: unknown }).meaning))));
+  if (!ok) return undefined;
+  const r = x as AskResult;
+  return validAnswer(r.shape, r.source, r.params ?? []) && (r.params ?? []).every((p) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(p)) ? r : undefined;
 }
 
 /** The engine source a question cell evaluates: the answer, bound when the cell says `let name =`;

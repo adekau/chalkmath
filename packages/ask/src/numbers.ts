@@ -6,12 +6,15 @@
  */
 
 const FOOTNOTE = /\[[^\]]{1,8}\]/g;
-const MARKS = /[*†‡§¶#^]+/g;
-const SPACES = /[\s  -​ ']/g;
+const MARKS = /[*†‡§¶#]+/g;
+/** A space, thin space or apostrophe between digit groups of three: `1 234 567`, `1'234`. */
+const GROUP = /(\d)[\s\u00a0\u2009\u202f'](?=\d{3}(?!\d))/g;
 
-/** The text with footnotes, marks and spacing removed, the minus signs made ASCII. */
+/** The text with footnotes and marks removed, digit-group spaces closed up, the minus signs made
+ *  ASCII. Other spaces stay, so `4 5` is not read as 45; a superscript (`10^{6}`, as the page reader
+ *  marks it) stays too, so it is not read as 106. */
 function strip(s: string): string {
-  return s.replace(FOOTNOTE, "").replace(MARKS, "").replace(SPACES, "").replace(/^[−–—‒]/, "-").replace(/^\+/, "");
+  return s.replace(FOOTNOTE, "").replace(MARKS, "").trim().replace(GROUP, "$1").replace(/^[−–—‒]\s*/, "-").replace(/^\+/, "");
 }
 
 /** Normalize `digits[.digits]` (commas as thousands separators already checked) to the engine's form. */

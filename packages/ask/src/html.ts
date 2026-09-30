@@ -50,7 +50,7 @@ function texOf(alt: string): string {
   return (m ? m[1]! : t).replace(/\s+/g, " ").trim();
 }
 
-const clean = (s: string) => s.replace(/[\s  -​ ]+/g, " ").trim();
+const clean = (s: string) => s.replace(/[\s\u00a0\u2000-\u200b\u202f]+/g, " ").trim();
 
 function attr(attrs: string, name: string): string | null {
   const m = new RegExp(`(?:^|\\s)${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "i").exec(attrs);
@@ -64,7 +64,7 @@ function skipped(tag: string, attrs: string): boolean {
   if (/\b(reference|mw-ref|sortkey|mw-editsection|noprint|mw-cite-backlink)\b/.test(cls)) return true;
   const style = attr(attrs, "style") ?? "";
   if (/display\s*:\s*none/i.test(style)) return true;
-  return attr(attrs, "hidden") !== null && tag !== "input";
+  return /(?:^|\s)hidden(?:[\s=/]|$)/i.test(attrs) && tag !== "input";
 }
 
 interface CellDraft { text: string; th: boolean; rowspan: number; colspan: number }
@@ -121,11 +121,21 @@ export function readHtml(html: string): PageContent {
       else if (close && tag === skipStack[skipStack.length - 1]) { skipStack.pop(); skipDepth--; }
       continue;
     }
+    // a script's or style's text is not markup (`a<b` in code is no tag): skip to its closing tag
+    if (!close && (tag === "script" || tag === "style") && !selfClosing) {
+      const end = html.toLowerCase().indexOf(`</${tag}`, re.lastIndex);
+      const gt = end < 0 ? -1 : html.indexOf(">", end);
+      re.lastIndex = last = gt < 0 ? html.length : gt + 1;
+      continue;
+    }
     if (!close && !VOID.has(tag) && !selfClosing && skipped(tag, attrs)) { skipStack.push(tag); skipDepth++; continue; }
     if (/^h[1-6]$/.test(tag)) {
       if (!close) { headingOpen = true; headingText = ""; }
       else { headingOpen = false; heading = clean(headingText); }
     }
+    // a superscript or subscript is marked, so `123<sup>1</sup>` can never read as the number 1231
+    if (tag === "sup") emit(close ? "}" : "^{");
+    else if (tag === "sub") emit(close ? "}" : "_{");
     if (BLOCK.has(tag)) emit("\n");
     else if (tag === "td" || tag === "th") emit(" ");
     switch (tag) {

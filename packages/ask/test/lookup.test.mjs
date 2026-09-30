@@ -279,3 +279,30 @@ test("formulas in the engine's syntax", async () => {
   assert.equal(checkFormula("(a + b", []), null);
   assert.equal(checkFormula("", []), null);
 });
+
+test("a saved answer must be one a lookup could produce", async () => {
+  const { validAnswer } = await import("../dist/index.js");
+  assert.equal(validAnswer("table", "[1, -2.5; 3, 4]"), true);
+  assert.equal(validAnswer("number", "42"), true);
+  assert.equal(validAnswer("list", "[2, 3, 5]"), true);
+  assert.equal(validAnswer("table", "diff(x^2, x)"), false);
+  assert.equal(validAnswer("formula", "B*h", ["B", "h"]), true);
+  assert.equal(validAnswer("formula", "B*h; x"), false);
+  assert.equal(validAnswer("formula", "V = B*h"), false);
+});
+
+test("a check of the model's answer that may not search says so, and a stop while asking stops", async () => {
+  const fetch = fakeFetch([]);
+  const model = scripted({ plan: PRISM_PLAN, formula: PRISM });
+  await assert.rejects(lookup("volume of a prism", { ...opts(model, fetch), forceSearch: true, beforeSearch: async () => false }),
+    (e) => e instanceof AskError && e.message === "Searching was declined, so the answer could not be checked.");
+  const ac = new AbortController();
+  await assert.rejects(lookup("runs", { ...opts(scripted({ plan: PLAN }), fetch), signal: ac.signal, beforeSearch: async () => { ac.abort(); return false; } }),
+    (e) => e instanceof AskError && e.message === "Stopped.");
+});
+
+test("a model that returns partial text when stopped is still stopped", async () => {
+  const ac = new AbortController();
+  const model = { id: "m", async complete() { ac.abort(); return "{\"sha"; } };
+  await assert.rejects(lookup("x", { ...opts(model, fakeFetch([])), signal: ac.signal }), (e) => e instanceof AskError && e.message === "Stopped.");
+});

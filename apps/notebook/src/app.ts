@@ -18,7 +18,7 @@ import { MathInput, type MathInputOptions } from "@chalkmath/math-editor/view";
  */
 
 import katex from "katex";
-import { ASK_CELL, AskError, askSettings, setAskSettings, runLookup, askSource, backendStatus, WEBGPU_MODELS, type AskResult } from "./ask-cells.js";
+import { ASK_CELL, AskError, askSettings, setAskSettings, runLookup, askSource, savedAsk, backendStatus, WEBGPU_MODELS, type AskResult } from "./ask-cells.js";
 import { ensureLean, syncLean, mountLean, unmountLean, focusLean, infoview as leanInfoview, leanState, leanFailure, leanProgress, initLeanIsolation, type LeanMessage } from "./lean-cells.js";
 /** The one trusted KaTeX command is `\htmlData`, which carries the engine's subterm paths. LaTeX can
  *  come from a file someone else wrote (saved outputs render before any re-run), and a blanket
@@ -482,8 +482,8 @@ const askAgain = new WeakMap<Cell, "again" | "search">();
  *  rebuilt by re-running the cells above the stopped one (their outputs are what the session held). */
 async function interrupt() {
   const cell = S.running; if (!cell) return;
-  // a lookup is stopped where it is; the engine was not asked anything yet
-  if (askAbort) { askAbort.abort(); return; }
+  // a lookup is stopped where it is (the engine was not asked anything yet), and runs queued after it are dropped
+  if (askAbort) { runGen++; askAbort.abort(); return; }
   stoppedCell = cell; runGen++;
   log("ok", "interrupted: restarting the engine");
   await restartEngine(cell);
@@ -564,9 +564,14 @@ async function evaluateCell(cell: Cell, client: EngineClient) {
           cell.ask = await runLookup(question, {
             signal: askAbort.signal, forceSearch: again === "search",
             onProgress: (line) => { cell.askProgress = line; renderCellBody(cell); },
-            confirmSearch: confirmSearch,
+            confirmSearch,
           });
           log("ok", `lookup: ${cell.ask.via}, ${cell.ask.source.length > 80 ? `${cell.ask.source.slice(0, 80)}…` : cell.ask.source}`);
+        } catch (e) {
+          // asking again (or checking) and finding nothing keeps the answer the cell had
+          if (!(e instanceof AskError && cell.ask?.question === question)) throw e;
+          notify("err", e.message === "Stopped." ? "Stopped: the cell keeps its answer." : `${again === "search" ? "Check" : "Lookup"}: ${e.message} The cell keeps its answer.`);
+          log("err", `lookup: ${e.message}`);
         } finally { askAbort = null; delete cell.askProgress; askAgain.delete(cell); }
       }
       asked = askSource(askM[1], cell.ask);
@@ -633,8 +638,8 @@ async function evaluateCell(cell: Cell, client: EngineClient) {
       cell.askTrail = e.trail;
       delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.plot; delete cell.image; cell.steps = [];
       log("err", `lookup: ${e.message}`);
-      S.busy = false; S.running = null;
-      renderCellBody(cell); renderChrome(); renderSidebar();
+      S.busy = false; S.running = null; S.sel = null;
+      renderCellBody(cell); renderChrome(); renderSidebar(); renderPanel();
       if (cell === S.cells[S.cells.length - 1]) addCell();
       return;
     }
@@ -931,7 +936,8 @@ function cellsFromFile(doc: ChalkFile, foldWork = false): Cell[] {
     if (c.error) cell.error = c.error;
     if (c.plot) cell.plot = migratePlot(c.plot);
     if (c.mode === "raw" || c.mode === "visual") cell.mode = c.mode;
-    if (c.ask && typeof c.ask.question === "string" && typeof c.ask.source === "string") cell.ask = c.ask;
+    const ask = savedAsk(c.ask);
+    if (ask) cell.ask = ask;
     return cell;
   });
 }
@@ -3033,8 +3039,8 @@ function askInfo(cell: Cell, bound: boolean): HTMLElement {
   return box;
 }
 
-/** Before a lookup's first search: what would be sent, and to where. */
-function confirmSearch(): Promise<boolean> {
+/** Before a lookup's first search: what would be sent, and to where. A stop closes it (as a no). */
+function confirmSearch(signal: AbortSignal): Promise<boolean> {
   return new Promise((resolve) => {
     const s = askSettings();
     const host = (u: string) => { try { return new URL(u.replace("{q}", "")).host; } catch { return u; } };
@@ -3059,6 +3065,7 @@ function confirmSearch(): Promise<boolean> {
     yes.addEventListener("click", () => { answer = true; closeModal(); });
     box.addEventListener("click", (ev) => { if (ev.target === box) closeModal(); });
     mountModal(box);
+    signal.addEventListener("abort", () => { if (box.isConnected) closeModal(); }, { once: true });
     yes.focus();
   });
 }

@@ -27,6 +27,8 @@ export interface Model {
   id: string;
   /** The model's reply to `user` under `system`: JSON text meeting `schema`. */
   complete(req: { system: string; user: string; schema: object; signal?: AbortSignal | undefined }): Promise<string>;
+  /** Free what the model holds (a WebGPU model's GPU memory and worker), when it is replaced. */
+  unload?(): Promise<void>;
 }
 
 export interface AskOptions {
@@ -282,7 +284,7 @@ export function engineText(rows: string[][], shape: Shape = "table"): string {
 const placed = (shape: Shape, rows: string[][]) => (rc: [number, number]): [number, number] =>
   shape === "list" && rows.length > 1 && rows.every((r) => r.length === 1) ? [0, rc[0]] : rc;
 
-const norm = (s: string) => s.toLowerCase().replace(/[\s ]+/g, " ").replace(/[“”]/g, "\"").replace(/[‘’]/g, "'").trim();
+const norm = (s: string) => s.toLowerCase().replace(/[\s\u00a0]+/g, " ").replace(/[“”]/g, "\"").replace(/[‘’]/g, "'").trim();
 const squash = (s: string) => s.replace(/\s+/g, "");
 
 /** Passages likely to answer: paragraphs (and, for formulas, table rows) with the plan's words and
@@ -325,13 +327,28 @@ export function checkFormula(expr: string, params: string[]): { expr: string; pa
   return { expr: e, params: [...ok, ...ids.filter((n) => !ok.includes(n))] };
 }
 
+const NUM = String.raw`-?\d+(?:\.\d+)?`;
+const GRID = new RegExp(String.raw`^(?:${NUM}|\[${NUM}(?:, ${NUM})*(?:; ${NUM}(?:, ${NUM})*)*\])$`);
+
+/** Whether a saved answer is one this code could have produced: a number, a grid of numbers, or a
+ *  formula in the checked syntax. A notebook file is not trusted to carry anything else as an answer. */
+export function validAnswer(shape: Shape, source: string, params: string[] = []): boolean {
+  if (shape !== "formula") return GRID.test(source);
+  const f = checkFormula(source, params);
+  return !!f && f.expr === source;
+}
+
 async function ask(model: Model, system: string, user: string, schema: object, signal?: AbortSignal): Promise<string> {
   if (signal?.aborted) throw new AskError("Stopped.");
-  try { return await model.complete({ system, user, schema, signal }); } catch (e) {
+  let reply: string;
+  try { reply = await model.complete({ system, user, schema, signal }); } catch (e) {
     // a model stopped mid-answer throws its own abort error
     if (signal?.aborted) throw new AskError("Stopped.");
     throw e;
   }
+  // or returns what it had so far
+  if (signal?.aborted) throw new AskError("Stopped.");
+  return reply;
 }
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
@@ -365,11 +382,16 @@ export async function lookup(question: string, o: AskOptions): Promise<AskResult
     trail.push("The model did not answer from its knowledge after all: searching.");
   }
   const none = !o.sources.length;
-  if (none || (o.beforeSearch && !(await o.beforeSearch()))) {
-    trail.push(none ? "No search source is turned on." : "Searching was declined.");
+  const declined = none || (o.beforeSearch ? !(await o.beforeSearch()) : false);
+  if (o.signal?.aborted) throw new AskError("Stopped.", trail);
+  if (declined) {
+    const why = none ? "No search source is turned on" : "Searching was declined";
+    trail.push(`${why}.`);
+    // a check of the model's own answer that cannot search has nothing to add
+    if (o.forceSearch && plan.known) throw new AskError(`${why}, so the answer could not be checked.`, trail);
     const r = knowledge && !plan.known ? await fromKnowledge(q, plan, o, trail, say, true) : null;
     if (r) return { ...base, ...r, trail };
-    throw new AskError(`${none ? "No search source is turned on" : "Searching was declined"}, and the model does not know the answer.`, trail);
+    throw new AskError(`${why}, and the model does not know the answer.`, trail);
   }
   const { hits, pages } = await gather(plan, o, trail, say);
   const r = plan.shape === "formula" ? await formula(q, plan, pages, o, trail, say) : await numbers(q, plan, pages, o, trail, say);
