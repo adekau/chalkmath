@@ -190,8 +190,8 @@ export class MathInput {
     });
     this.ta.addEventListener("keydown", (ev) => this.key(ev));
     // the parens are fitted by measuring, so again once the input is on screen and its fonts are in
-    new ResizeObserver(() => { if (!this.fitted) this.refit(); }).observe(this.math);
-    void document.fonts?.ready.then(() => this.refit());
+    new ResizeObserver(() => { if (!this.fitted) this.layout(); }).observe(this.math);
+    void document.fonts?.ready.then(() => this.layout());
     this.ta.addEventListener("compositionstart", () => { this.composing = true; });
     this.ta.addEventListener("compositionend", () => { this.composing = false; this.typed(); });
     this.ta.addEventListener("input", () => { if (!this.composing) this.typed(); });
@@ -284,7 +284,10 @@ export class MathInput {
     this.place();
   }
 
-  private refit() { this.fitParens(); this.place(); }
+  /** Fit the parens to what they hold and place the caret. The input does this itself once it is on
+   *  screen, a frame later; a host that has just put it there and wants its height now (to keep the
+   *  page from moving) can call it. */
+  layout() { this.fitParens(); this.place(); }
 
   /** Stretch each group's parentheses over what it holds, where that is taller than a paren. KaTeX's
    *  `\\left(` would centre them on the math axis instead, so a stack of fractions that goes further
