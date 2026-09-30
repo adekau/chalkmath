@@ -37,8 +37,8 @@ export interface MathInputOptions {
   onLeave?(dir: -1 | 1): void;
   /** A key, before the input handles it; return true to take it (a completion menu's arrows). */
   onKey?(ev: KeyboardEvent): boolean;
-  /** What an output reference (`%`, `%%`, `%3`) stands for: its number, and the output's text for
-   *  a tooltip. Without it, `%n` shows its number and `%` stays as typed. */
+  /** What an output reference (`%`, `%%`, `%3`) stands for, for its tooltip: the output's number
+   *  and text. */
   outRef?(ref: string): { label: number; value?: string } | null;
   /** Highlight classes for tokens (see `NotationOptions.classify`); the page styles `[data-hl=…]`. */
   classify?(text: string, as: "call" | "bound" | "name" | "num" | "keyword"): string | null;
@@ -279,7 +279,6 @@ export class MathInput {
     const latex = toLatex(this.edit.stmt, {
       wrap: (atoms, s) => { tagged.push(atoms); return `\\htmlData{a=${tagged.length - 1}}{${s}}`; },
       hole: (b) => { holes.push(b); return `\\htmlData{h=${holes.length - 1}}{\\square}`; },
-      outRef: (ref) => this.opts.outRef?.(ref)?.label ?? null,
       ...(this.opts.classify ? { classify: (t: string, as: "call" | "bound" | "name" | "num" | "keyword") => this.opts.classify!(t, as) } : {}),
     });
     // display-size fractions and operators, as a textbook (and Symbolab) set an input, but left-aligned
@@ -302,7 +301,7 @@ export class MathInput {
     for (const el of this.math.querySelectorAll<HTMLElement>("[data-out]")) {
       const r = this.opts.outRef?.(outRefOf(el.dataset["out"]!));
       if (!r) continue;
-      const out = `Out[${r.label}]${r.value ? ` = ${r.value}` : ""}`;
+      const out = `%${r.label}${r.value ? ` = ${r.value}` : ""}`;
       const ref = outRefOf(el.dataset["out"]!);
       // a relative reference says what it means, and that it follows the outputs
       el.title = el.dataset["rel"] ? `${ref}: the ${ref.length === 1 ? "last output" : `output ${ref.length} back`} when the cell runs; now ${out}` : out;
