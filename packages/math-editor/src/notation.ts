@@ -71,6 +71,8 @@ class Notation {
   private classify: NonNullable<NotationOptions["classify"]>;
   /** The names bound where the notation is now (a binder's variable, a head's parameters). */
   private bound: string[] = [];
+  /** How deep in exponents and bounds the notation is now: there a fraction stays script-size. */
+  private script = 0;
   constructor(opts: NotationOptions) {
     this.wrap = opts.wrap ?? ((_, s) => s);
     this.hole = opts.hole ?? (() => "\\square");
@@ -82,6 +84,15 @@ class Notation {
   /** A keyword or a function's name: a word as typed, not a variable, so the host draws it in its
    *  text face (upright, the text input's font) rather than math italic. */
   private word(latex: string) { return `\\htmlData{word=1}{${latex}}`; }
+  /** A slot in an exponent or a bound (script size). */
+  private scripted(b: Block): string {
+    this.script++;
+    try { return this.block(b); } finally { this.script--; }
+  }
+  /** A call drawn as its display name (`sgn` for `sign`) set as a word, against its parentheses. */
+  private named(a: Atom & { k: "call" }, shown: string): string {
+    return `${this.tag(this.classify(a.name, "call"), this.word(`\\mathrm{${shown}}`))}{${this.parens(a.args.map((x) => this.block(x)).join(", "), a.open)}}`;
+  }
   /** Parentheses around `inner`; an open group's `)` is drawn faint where it would go. */
   private parens(inner: string, open?: boolean) {
     return open ? `\\left(${inner}\\right.\\htmlData{open=1}{)}` : `\\left(${inner}\\right)`;
@@ -161,9 +172,11 @@ class Notation {
   private atom(a: Atom): string {
     switch (a.k) {
       case "ch": return this.token({ kind: "op", atoms: [a] });
-      case "frac": return this.wrap([a], `\\frac{${this.block(a.num)}}{${this.block(a.den)}}`);
+      // an input is read and clicked into, so a fraction inside a fraction keeps full size (a
+      // textbook would shrink it); in an exponent or a bound it stays script-size
+      case "frac": return this.wrap([a], `\\${this.script ? "frac" : "dfrac"}{${this.block(a.num)}}{${this.block(a.den)}}`);
       // the power attaches to what precedes it in the LaTeX as in the text; the tag goes inside
-      case "sup": return `^{${this.wrap([a], this.block(a.exp))}}`;
+      case "sup": return `^{${this.wrap([a], this.scripted(a.exp))}}`;
       case "paren": return this.wrap([a], this.parens(this.block(a.body), a.open));
       case "matrix": return this.wrap([a], this.matrix(a.rows, "bmatrix"));
       case "call": return this.wrap([a], this.call(a));
@@ -197,14 +210,15 @@ class Notation {
       case "abs/1": return `\\left|${x(0)}\\right|`;
       case "norm/1": return `\\left\\lVert ${x(0)}\\right\\rVert`;
       case "conj/1": return `\\overline{${x(0)}}`;
-      case "re/1": return `\\operatorname{Re}\\left(${x(0)}\\right)`;
-      case "im/1": return `\\operatorname{Im}\\left(${x(0)}\\right)`;
-      case "sign/1": return `\\operatorname{sgn}\\left(${x(0)}\\right)`;
+      // names shown as the textbook writes them, but names all the same: words, like `sin(`
+      case "re/1": return this.named(a, "Re");
+      case "im/1": return this.named(a, "Im");
+      case "sign/1": return this.named(a, "sgn");
       case "diff/2": return `\\frac{d}{d${x(1)}}\\left(${x(0)}\\right)`;
-      case "diff/3": return `\\frac{d^{${x(2)}}}{d{${x(1)}}^{${x(2)}}}\\left(${x(0)}\\right)`;
+      case "diff/3": return `\\frac{d^{${this.scripted(b[2]!)}}}{d{${x(1)}}^{${this.scripted(b[2]!)}}}\\left(${x(0)}\\right)`;
       case "integrate/2": return `\\int ${x(0)} \\, d${x(1)}`;
-      case "integrate/4": return `\\int_{${x(2)}}^{${x(3)}} ${x(0)} \\, d${x(1)}`;
-      case "sum/4": return `\\sum_{${x(1)}=${x(2)}}^{${x(3)}} ${x(0)}`;
+      case "integrate/4": return `\\int_{${this.scripted(b[2]!)}}^{${this.scripted(b[3]!)}} ${x(0)} \\, d${x(1)}`;
+      case "sum/4": return `\\sum_{${this.scripted(b[1]!)}=${this.scripted(b[2]!)}}^{${this.scripted(b[3]!)}} ${x(0)}`;
       case "det/1": {
         const m = b[0]![0];
         if (b[0]!.length === 1 && m?.k === "matrix") return this.wrap([m], this.matrix(m.rows, "vmatrix"));
