@@ -157,3 +157,8 @@ integrate(x^(-2), x)	-1/x
 sqrt(72)	sqrt(72)
 2*sqrt(8)+3*sqrt(2)	7*sqrt(2)
 8^(-1/2)	1/2^(3/2)
+4^(3/2)	8
+4^(5/2)	32
+4^(-3/2)	1/8
+integrate(sqrt(x), x, 0, 4)	16/3
+integrate(x^(3/2), x, 0, 4)	64/5
