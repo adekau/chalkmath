@@ -67,6 +67,7 @@ export const MATH_INPUT_CSS = `
 .mi-math .mi-tall > svg { display:block; position:static; width:100%; height:100%; stroke:none; }
 .mi-math [data-open] { opacity:0.35; }
 .mi-math [data-out] { background:var(--mi-chip, rgba(107,138,253,0.14)); border-radius:4px; padding:0 2px; }
+.mi-math [data-out][data-rel] { background:transparent; outline:1px dashed var(--mi-chip-edge, rgba(107,138,253,0.6)); outline-offset:-1px; }
 .mi-math .mi-sel { background:var(--mi-sel, rgba(107,138,253,0.28)); border-radius:2px; }
 .mi-ta { position:absolute; left:0; top:0; width:1px; height:1px; opacity:0; padding:0; border:0; resize:none; overflow:hidden; }
 @keyframes mi-blink { 50% { opacity:0; } }
@@ -300,7 +301,11 @@ export class MathInput {
     if (this.errSpan) for (const a of atomsInSpan(this.edit.stmt, this.errSpan)) this.atomEl.get(a)?.el.classList.add("mi-err");
     for (const el of this.math.querySelectorAll<HTMLElement>("[data-out]")) {
       const r = this.opts.outRef?.(outRefOf(el.dataset["out"]!));
-      if (r) el.title = `Out[${r.label}]${r.value ? ` = ${r.value}` : ""}`;
+      if (!r) continue;
+      const out = `Out[${r.label}]${r.value ? ` = ${r.value}` : ""}`;
+      const ref = outRefOf(el.dataset["out"]!);
+      // a relative reference says what it means, and that it follows the outputs
+      el.title = el.dataset["rel"] ? `${ref}: the ${ref.length === 1 ? "last output" : `output ${ref.length} back`} when the cell runs; now ${out}` : out;
     }
     const text = this.text;
     this.ta.setAttribute("aria-label", `${this.opts.label ?? "Math input"}: ${text || "empty"}`);
