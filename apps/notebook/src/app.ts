@@ -1095,7 +1095,7 @@ function showModal(title: string, body: (Node | string)[], wide = false) {
 const EXAMPLES: { file: string; title: string; blurb: string }[] = [
   { file: "welcome.chalk", title: "Welcome to ChalkMath", blurb: "A short tour: running cells, reading the steps, and one example from each area." },
   { file: "llamas.chalk", title: "Drawing llamas with circles", blurb: "Fourier series from inner products to epicycles, ending with a llama drawn by spinning circles." },
-  { file: "order-lattices.chalk", title: "Order and lattices", blurb: "Part I of From Zero to Propagators: partial orders, joins and meets, monotone maps and fixed points." },
+  { file: "order-lattices.chalk", title: "Order and lattices", blurb: "Part I of From Zero to Propagators: partial orders, joins and meets, monotone maps and fixed points, with the proofs in Lean cells." },
 ];
 
 /** Open a bundled notebook in a tab (or show it, if it is open already). */

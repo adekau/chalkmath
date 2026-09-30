@@ -48,6 +48,8 @@ jobs:
           lake test
       - name: Every cell of the welcome notebook evaluates (it is the first thing a visitor runs)
         run: node scripts/notebooks/drive.mjs notebooks/welcome.chalk
+      - name: The example notebooks' Lean cells check, with the Lean the browser runs (engine/lean-toolchain)
+        run: node scripts/notebooks/check-lean.mjs notebooks/*.chalk
       - name: Build the TypeScript packages and type-check the notebook
         run: |
           npm run build
