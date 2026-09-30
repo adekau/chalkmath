@@ -158,6 +158,28 @@ try {
   assert.equal(offsite.length, before);
   await run(5, "V(2, 10)");
   assert.equal((await out(5)).tex, "20");
+
+  // typeset input: `?` at the start of a cell (or after `let name =`) makes it a question, as text
+  await menu("View", "Math input: typeset");
+  const typeIn = async (i, keys) => {
+    await cells().nth(i).locator(".mi").click();
+    await page.keyboard.type(keys);
+  };
+  await typeIn(6, "?the first ten primes");
+  const q = cells().nth(6);
+  assert.equal(await q.locator(".mi").count(), 0);
+  assert.equal(await q.locator("input.cellin").inputValue(), "?the first ten primes");
+  assert.equal(await q.locator(".hl .hq").textContent(), "?");
+  await page.keyboard.press("Enter");
+  assert.equal((await out(6)).tex, "\\beginbmatrix2&3&5&7&11&13&17&19&23&29\\endbmatrix");
+  await typeIn(7, "let P ?the first ten primes");
+  assert.equal(await cells().nth(7).locator("input.cellin").inputValue(), "let P = ?the first ten primes");
+  await page.keyboard.press("Enter");
+  await out(7);
+  // anywhere else, `?` is refused with a word rather than dropped
+  await typeIn(8, "x+?");
+  assert.match(await page.locator(".toasts .toast.err").last().innerText(), /starts a question/);
+  if (shot) { await cells().nth(6).scrollIntoViewIfNeeded(); await page.screenshot({ path: shot.replace(/\.png$/, "-typeset.png") }); }
   console.log("smoke-ask: ok");
 } finally {
   await browser.close();
