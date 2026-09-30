@@ -161,8 +161,13 @@ test("notation is what the text cannot show: fractions, powers, matrices, d/dx, 
 
 test("fractions keep full size when nested, script size in exponents and bounds; Re, Im, sgn are words", () => {
   const tex = (src) => toLatex(tree(src));
-  // N(80000/3 / (250/(300/7))): every level readable, not a size smaller per level
-  assert.equal(tex("(a/b)/(c/d)"), "\\dfrac{\\dfrac{{a}}{{b}}}{\\dfrac{{c}}{{d}}}");
+  // N(80000/3 / (250/(300/7))): the first two levels full size, each padded so the bars nest
+  assert.equal(tex("(a/b)/(c/d)"), "\\dfrac{\\,\\dfrac{\\,{a}\\,}{\\,{b}\\,}\\,}{\\,\\dfrac{\\,{c}\\,}{\\,{d}\\,}\\,}");
+  // deeper levels shrink gently, to 70% at the deepest
+  const deep = tex("a/(b/(c/(d/(e/f))))");
+  assert.match(deep, /\\small \{c\}/);
+  assert.match(deep, /\\footnotesize \{d\}/);
+  assert.match(deep, /\\scriptsize \{f\}/);
   assert.equal(tex("x^(1/2)"), "{x}^{\\frac{1}{2}}");
   assert.match(tex("integrate(x, x, 0, 1/2)"), /\^\{\\frac\{1\}\{2\}\}/);
   assert.match(tex("sign(sin(t))"), /^\\htmlData\{word=1\}\{\\mathrm\{sgn\}\}\{\\left\(\\htmlData\{word=1\}\{\\mathrm\{sin\}\}/);

@@ -73,6 +73,8 @@ class Notation {
   private bound: string[] = [];
   /** How deep in exponents and bounds the notation is now: there a fraction stays script-size. */
   private script = 0;
+  /** How many fractions the notation is inside now. */
+  private fracs = 0;
   constructor(opts: NotationOptions) {
     this.wrap = opts.wrap ?? ((_, s) => s);
     this.hole = opts.hole ?? (() => "\\square");
@@ -84,6 +86,21 @@ class Notation {
   /** A keyword or a function's name: a word as typed, not a variable, so the host draws it in its
    *  text face (upright, the text input's font) rather than math italic. */
   private word(latex: string) { return `\\htmlData{word=1}{${latex}}`; }
+  /** A fraction. An input is read and clicked into, so nested fractions shrink gently where a
+   *  textbook would drop a size per level: the first two levels full size, then 90%, 80%, and 70%
+   *  at the deepest. Each is padded a little either side, so every bar is longer than the bars
+   *  inside it and a stack of them still shows which bar divides what. In an exponent or a bound a
+   *  fraction stays script-size, as there. */
+  private frac(a: Atom & { k: "frac" }): string {
+    if (this.script) return `\\frac{${this.block(a.num)}}{${this.block(a.den)}}`;
+    const size = FRAC_SIZES[Math.min(this.fracs, FRAC_SIZES.length - 1)];
+    this.fracs++;
+    try {
+      const part = (b: Block) => `\\,${size}${this.block(b)}\\,`;
+      return `\\dfrac{${part(a.num)}}{${part(a.den)}}`;
+    } finally { this.fracs--; }
+  }
+
   /** A slot in an exponent or a bound (script size). */
   private scripted(b: Block): string {
     this.script++;
@@ -172,9 +189,7 @@ class Notation {
   private atom(a: Atom): string {
     switch (a.k) {
       case "ch": return this.token({ kind: "op", atoms: [a] });
-      // an input is read and clicked into, so a fraction inside a fraction keeps full size (a
-      // textbook would shrink it); in an exponent or a bound it stays script-size
-      case "frac": return this.wrap([a], `\\${this.script ? "frac" : "dfrac"}{${this.block(a.num)}}{${this.block(a.den)}}`);
+      case "frac": return this.wrap([a], this.frac(a));
       // the power attaches to what precedes it in the LaTeX as in the text; the tag goes inside
       case "sup": return `^{${this.wrap([a], this.scripted(a.exp))}}`;
       case "paren": return this.wrap([a], this.parens(this.block(a.body), a.open));
@@ -234,6 +249,9 @@ class Notation {
     return `${this.tag(this.classify(a.name, "call"), this.word(head))}{${this.parens(args, a.open)}}`;
   }
 }
+
+/** The size of a fraction's parts by how many fractions it is inside (KaTeX's sizes are absolute). */
+const FRAC_SIZES = ["", "", "\\small ", "\\footnotesize ", "\\scriptsize "];
 
 /** The name a slot holds when it is just one name (`x`, `k`), else null. */
 function nameOf(b: Block): string | null {
