@@ -18,6 +18,7 @@ import { MathInput, type MathInputOptions } from "@chalkmath/math-editor/view";
  */
 
 import katex from "katex";
+import { ASK_CELL, AskError, askSettings, setAskSettings, runLookup, askSource, backendStatus, WEBGPU_MODELS, type AskResult } from "./ask-cells.js";
 import { ensureLean, syncLean, mountLean, unmountLean, focusLean, infoview as leanInfoview, leanState, leanFailure, leanProgress, initLeanIsolation, type LeanMessage } from "./lean-cells.js";
 /** The one trusted KaTeX command is `\htmlData`, which carries the engine's subterm paths. LaTeX can
  *  come from a file someone else wrote (saved outputs render before any re-run), and a blanket
@@ -106,6 +107,7 @@ const ORDER_CELL = /^(let\s+\w+\s*=\s*)?(poset|divisors|subsets|chain|map|hasse|
 function cellKind(src: string): string | null {
   const s = src.trim();
   if (!s) return null;
+  if (ASK_CELL.test(s)) return "lookup";
   if (/^let\s/.test(s)) return "definition";
   if (/⟦|\bimport\(/.test(s) && !/^(epicycles|dft|plot)\s*\(/.test(s)) return "image";
   const m = /^([A-Za-z_][A-Za-z0-9_]*)\s*\(/.exec(s);
@@ -221,6 +223,13 @@ interface Cell {
   autoFor?: string;
   /** A template just opened in the cell's text: the editor to show, caret and history included. */
   openedEdit?: MathEdit;
+  /** A `?` cell's lookup (ask-cells.ts): its answer, where it came from, and how it was found. Saved,
+   *  so running the notebook again evaluates the answer without asking again. */
+  ask?: AskResult;
+  /** While a lookup runs: what it is doing. */
+  askProgress?: string;
+  /** A lookup that found nothing: how it searched. */
+  askTrail?: string[];
 }
 
 type TermRef = { kind: "output" } | { kind: "input" } | { kind: "step"; index: number };
@@ -462,12 +471,19 @@ let stoppedCell: Cell | null = null;
 let runGen = 0;
 /** Evaluations happen one at a time, in the order they were asked for. */
 let runChain: Promise<void> = Promise.resolve();
+/** Stops the lookup in progress (a `?` cell being evaluated). */
+let askAbort: AbortController | null = null;
+/** A `?` cell asked to look its question up again (its saved answer set aside), or to check an answer
+ *  from the model's knowledge with a search. */
+const askAgain = new WeakMap<Cell, "again" | "search">();
 
 /** Stop the evaluation in progress. The engine is synchronous wasm in a worker and cannot be
  *  interrupted from outside, so the worker is terminated and a fresh one started; the session is
  *  rebuilt by re-running the cells above the stopped one (their outputs are what the session held). */
 async function interrupt() {
   const cell = S.running; if (!cell) return;
+  // a lookup is stopped where it is; the engine was not asked anything yet
+  if (askAbort) { askAbort.abort(); return; }
   stoppedCell = cell; runGen++;
   log("ok", "interrupted: restarting the engine");
   await restartEngine(cell);
@@ -534,8 +550,29 @@ async function evaluateCell(cell: Cell, client: EngineClient) {
   const isPlot = /^\s*(plot|epicycles|dft)\s*\(/.test(src);
   log("rpc", `${isPlot ? "engine.plot" : "engine.evaluate"} ${JSON.stringify(src)}`);
   try {
+    // a question is looked up first (or its saved answer reused); the engine evaluates the answer
+    const askM = ASK_CELL.exec(src);
+    let asked: string | null = null;
+    if (askM) {
+      const question = askM[2]!.trim();
+      const again = askAgain.get(cell);
+      if (!cell.ask || cell.ask.question !== question || again) {
+        delete cell.askTrail;
+        askAbort = new AbortController();
+        log("rpc", `lookup ${JSON.stringify(question)}`);
+        try {
+          cell.ask = await runLookup(question, {
+            signal: askAbort.signal, forceSearch: again === "search",
+            onProgress: (line) => { cell.askProgress = line; renderCellBody(cell); },
+            confirmSearch: confirmSearch,
+          });
+          log("ok", `lookup: ${cell.ask.via}, ${cell.ask.source.length > 80 ? `${cell.ask.source.slice(0, 80)}…` : cell.ask.source}`);
+        } finally { askAbort = null; delete cell.askProgress; askAgain.delete(cell); }
+      }
+      asked = askSource(askM[1], cell.ask);
+    }
     // images in the cell become their sample points; the engine only sees numbers
-    const { src: sent, notes } = await resolveImages(src);
+    const { src: sent, notes } = asked !== null ? { src: asked, notes: [] as string[] } : await resolveImages(src);
     const r = isPlot
       ? await client.call("engine.plot", { sessionId, cellId: cell.id, source: sent, showWork: true, paths: true })
       : await client.call("engine.evaluate", { sessionId, cellId: cell.id, source: sent, showWork: true, paths: true });
@@ -550,6 +587,7 @@ async function evaluateCell(cell: Cell, client: EngineClient) {
       // an image's points are hundreds of rows: the interpretation names the image instead
       if (notes.length) cell.echoLatex = `\\text{${notes.map((n) => n.replace(/[\\{}]/g, "")).join("; ")}}`;
       if (/\bsamplePoints\s*\(/.test(src)) cell.echoLatex = `\\text{samplePoints: the image's points along its paths}`;
+      if (asked !== null) delete cell.echoLatex;   // the input is the question; the answer is the output
       const ref = imageRef(src);
       const shown = ref && imageToShow(ref);
       if (shown) cell.image = shown; else delete cell.image;
@@ -588,6 +626,18 @@ async function evaluateCell(cell: Cell, client: EngineClient) {
     }
   } catch (e) {
     cell.ms = performance.now() - t0;
+    if (e instanceof AskError) {
+      // the lookup found nothing: say why and how it searched; the engine was not asked
+      cell.label = cell.label ?? nextLabel++;
+      cell.error = { message: e.message === "Stopped." ? "Stopped." : `No answer: ${e.message}` };
+      cell.askTrail = e.trail;
+      delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.plot; delete cell.image; cell.steps = [];
+      log("err", `lookup: ${e.message}`);
+      S.busy = false; S.running = null;
+      renderCellBody(cell); renderChrome(); renderSidebar();
+      if (cell === S.cells[S.cells.length - 1]) addCell();
+      return;
+    }
     const stopped = S.engineMode === "http" ? "Stopped." : "Stopped. The engine was restarted, and the cells above this one with outputs were run again.";
     cell.error = { message: cell === stoppedCell ? stopped
       : S.kernel === "failed" ? "The engine stopped while evaluating this cell." : e instanceof Error ? e.message : String(e) };
@@ -806,7 +856,7 @@ function renderTabs() {
 interface ChalkFile {
   /** Format version. Files written as `.lemma` before the rename carry `lemma: 1` instead and still open. */
   chalk?: 1; lemma?: 1; name: string;
-  cells: { src: string; type?: Cell["type"] | undefined; collapsed?: boolean | undefined; showWork: boolean; label: number | null; outLatex?: string | undefined; outText?: string | undefined; form?: string | undefined; semantics?: "real" | "complex" | undefined; echoLatex?: string | undefined; steps?: Step[] | undefined; error?: Cell["error"] | undefined; plot?: PlotData | undefined; mode?: Cell["mode"] | undefined }[];
+  cells: { src: string; type?: Cell["type"] | undefined; collapsed?: boolean | undefined; showWork: boolean; label: number | null; outLatex?: string | undefined; outText?: string | undefined; form?: string | undefined; semantics?: "real" | "complex" | undefined; echoLatex?: string | undefined; steps?: Step[] | undefined; error?: Cell["error"] | undefined; plot?: PlotData | undefined; mode?: Cell["mode"] | undefined; ask?: AskResult | undefined }[];
   scenes: Scene[];
   /** Images attached to the notebook, by name. */
   assets?: Record<string, Asset>;
@@ -827,7 +877,7 @@ function stepsToSave(c: Cell): Step[] | undefined {
 function serializeNotebook(): string {
   const doc: ChalkFile = {
     chalk: 1, name: S.docName,
-    cells: S.cells.map((c) => ({ src: cellSrc(c), type: c.type, collapsed: c.collapsed || undefined, showWork: c.showWork, label: c.label, outLatex: c.outLatex, outText: c.outText, form: c.form, semantics: c.semantics, echoLatex: c.echoLatex, steps: stepsToSave(c), error: c.error, plot: c.plot, mode: c.mode })),
+    cells: S.cells.map((c) => ({ src: cellSrc(c), type: c.type, collapsed: c.collapsed || undefined, showWork: c.showWork, label: c.label, outLatex: c.outLatex, outText: c.outText, form: c.form, semantics: c.semantics, echoLatex: c.echoLatex, steps: stepsToSave(c), error: c.error, plot: c.plot, mode: c.mode, ask: c.ask })),
     scenes: ST.scenes,
     ...(Object.keys(S.assets).length ? { assets: S.assets } : {}),
   };
@@ -881,6 +931,7 @@ function cellsFromFile(doc: ChalkFile, foldWork = false): Cell[] {
     if (c.error) cell.error = c.error;
     if (c.plot) cell.plot = migratePlot(c.plot);
     if (c.mode === "raw" || c.mode === "visual") cell.mode = c.mode;
+    if (c.ask && typeof c.ask.question === "string" && typeof c.ask.source === "string") cell.ask = c.ask;
     return cell;
   });
 }
@@ -994,7 +1045,10 @@ function openNotebook() {
 }
 /** Where focus was before a dialog opened; it goes back there when the dialog closes. */
 let modalReturn: HTMLElement | null = null;
+/** Called once when the open dialog closes, however it closes (a button, Escape, a click outside). */
+let modalClosed: (() => void) | null = null;
 function closeModal() {
+  const done = modalClosed; modalClosed = null; done?.();
   const had = document.querySelector(".modal");
   document.querySelectorAll(".modal").forEach((m) => m.remove());
   if (had && modalReturn?.isConnected) modalReturn.focus();
@@ -1068,6 +1122,7 @@ function showExamples() {
 
 const SHORTCUTS: [string, string][] = [
   ["Enter", "Run the cell (in a Markdown cell: a new line)"],
+  ["? at the start of a cell", "Ask a question: a number, list, table or formula, looked up (Run › Lookup settings)"],
   ["Shift+Enter or Esc", "Render a Markdown cell"],
   ["Enter on rendered Markdown, or double-click", "Edit it"],
   ["↑ / ↓", "Move to the cell above or below"],
@@ -1457,7 +1512,7 @@ function convertCell(cell: Cell, type: CellType) {
   if (type === "math") delete cell.type; else cell.type = type;
   delete cell.editing; delete cell.collapsed;
   if (type === "markdown") cell.editing = !cell.src.trim();
-  if (type !== "math") { delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.error; delete cell.plot; delete cell.hasse; delete cell.summary; cell.steps = []; cell.label = null; }
+  if (type !== "math") { delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.error; delete cell.plot; delete cell.hasse; delete cell.summary; delete cell.ask; delete cell.askTrail; cell.steps = []; cell.label = null; }
   if (type === "section") cell.src = cell.src.split("\n")[0]!.replace(/^#+\s*/, "");
   if (type !== "lean") delete cell.leanMessages;
   renderCells(); renderSidebar(); renderChrome(); autosave();
@@ -1478,6 +1533,7 @@ function moveCell(cell: Cell, by: -1 | 1) {
 const hasOutput = (cell: Cell) => !!(cell.outLatex || cell.error);
 function clearCellOutput(cell: Cell) {
   delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.error; delete cell.plot; delete cell.hasse; delete cell.summary; delete cell.image; delete cell.outDeBruijn; delete cell.reading;
+  delete cell.ask; delete cell.askTrail;
   cell.steps = []; cell.label = null;
   renderCellBody(cell); renderChrome(); renderSidebar(); autosave();
 }
@@ -1636,7 +1692,8 @@ function renderChrome() {
       }])],
     Run: [["Run all", () => void runAll()], ["Run cell", () => { const c = S.cells[S.active]; if (c) void runCell(c); }],
       ...(sectionOf(S.active) >= 0 ? [[`Run section “${(cellSrc(S.cells[sectionOf(S.active)]!) || "untitled").slice(0, 24)}”`, () => void runSection(sectionOf(S.active))] as [string, () => void]] : []),
-      [`${S.runOnOpen ? "✓ " : ""}Run notebooks when opened`, () => { S.runOnOpen = !S.runOnOpen; setPref("chalkmath.runonopen", S.runOnOpen); renderChrome(); }]],
+      [`${S.runOnOpen ? "✓ " : ""}Run notebooks when opened`, () => { S.runOnOpen = !S.runOnOpen; setPref("chalkmath.runonopen", S.runOnOpen); renderChrome(); }],
+      ["Lookup settings…", () => void showAskSettings()]],
     Kernel: [...(S.running ? [["Interrupt", () => void interrupt()] as [string, () => void]] : []),
       ["Restart kernel", () => void restartKernel()], ["Restart and run all", async () => { await restartKernel(); await runAll(); }]],
     Help: [["Welcome notebook", () => void openExample("welcome.chalk")], ["Example notebooks…", showExamples], ["Keyboard shortcuts", showShortcuts],
@@ -2106,6 +2163,7 @@ function visualBlocked(cell: Cell): string | null {
   const src = cellSrc(cell);
   if (cell.tree && writeText(cell.tree) === src) return null;   // the visual input's own, holes and all
   const kind = cell.kind ?? cellKind(src);
+  if (kind === "lookup") return "questions are edited as text";
   if (kind === "λ-term") return "λ-terms are edited as text";
   if (kind === "order" || ORDER_CELL.test(src.trim())) return "order theory is edited as text";
   if (kind === "image") return "file references are edited as text";
@@ -2727,6 +2785,8 @@ function renderCellBody(cell: Cell) {
     }
     body.append(err);
   }
+  if (busy && cell.askProgress) body.append(h("div", "askprog", `${cell.askProgress}…`));
+  if (cell.error && cell.askTrail?.length) body.append(askTrail(cell.askTrail));
 
   if (cell.showWork && cell.steps && shownSteps(cell.steps)) {
     const work = h("div", "work");
@@ -2872,6 +2932,7 @@ function renderCellBody(cell: Cell) {
     if (cell.summary && !cell.hasse) { const rd = h("span", "reading", cell.summary); val.append(rd); }
     out.append(val, h("div", "brk"));
     el.append(out);
+    if (cell.ask && ASK_CELL.test(cell.src)) out.append(h("div"), askInfo(cell, !!ASK_CELL.exec(cell.src)?.[1]), h("div"));
   }
   markSelection();
 
@@ -2889,7 +2950,156 @@ function renderCellBody(cell: Cell) {
     });
     acts.append(tw);
   }
+  if (cell.ask && ASK_CELL.test(cell.src) && !busy) {
+    const again = (how: "again" | "search") => { askAgain.set(cell, how); void runCell(cell); };
+    if (cell.ask.via === "knowledge" || cell.ask.via === "memory") {
+      const chk = asButton(h("span", undefined, "⌕ Check with a search")); chk.title = "Look for a source for this answer";
+      chk.addEventListener("click", () => again("search"));
+      acts.append(chk);
+    }
+    const re = asButton(h("span", undefined, "↻ Look up again")); re.title = "Ask again instead of using the saved answer";
+    re.addEventListener("click", () => again("again"));
+    acts.append(re);
+  }
   appendMore(cell, acts);
+}
+
+// --- `?` lookups: what the answer is and where it came from (ask-cells.ts) -------------------------
+
+const httpUrl = (u: string) => /^https?:\/\//i.test(u);
+
+/** The lines a lookup's trail shows under "How this was found" (or under its error). */
+function askTrail(trail: string[], open = false): HTMLElement {
+  const d = document.createElement("details"); d.className = "asktrail"; d.open = open;
+  d.append(h("summary", undefined, "How this was found"));
+  const ol = h("ol");
+  for (const line of trail) { const li = h("li"); li.append(inlineMath(line)); ol.append(li); }
+  d.append(ol);
+  return d;
+}
+
+/** One entry of the answer's grid, as the engine text wrote it. */
+function askEntry(source: string, r: number, c: number): string {
+  const rows = source.replace(/^\[|\]$/g, "").split(";");
+  return rows[r]?.split(",")[c]?.trim() ?? "";
+}
+
+/** Under a `?` cell's output: where the answer came from, what its parts are, and anything to check. */
+function askInfo(cell: Cell, bound: boolean): HTMLElement {
+  const a = cell.ask!;
+  const box = h("div", "askinfo");
+  const VIA: Record<AskResult["via"], [string, string]> = {
+    table: ["ok", "Copied from a table"],
+    text: [a.flagged.length ? "warn" : "ok", a.shape === "formula" ? "A formula the source states" : "Quoted from the source"],
+    knowledge: ["kn", "From the model's knowledge"],
+    memory: ["warn", "From the model's memory: unsourced"],
+  };
+  const [cls, label] = VIA[a.via];
+  const head = h("div", "askhead");
+  head.append(h("span", `askbadge ${cls}`, label));
+  const cites = a.cites.filter((c) => httpUrl(c.url));
+  cites.forEach((c, i) => {
+    head.append(i ? ", " : " · ");
+    const l = document.createElement("a"); l.href = c.url; l.target = "_blank"; l.rel = "noopener noreferrer"; l.textContent = c.title;
+    head.append(l);
+  });
+  head.append(h("span", "askwhen", ` · ${a.model}, ${a.at}`));
+  box.append(head);
+  const line = (k: string, v: Node | string) => { const d = h("div", "askline"); d.append(h("span", "askkey", k), v); box.append(d); };
+  if (a.shape === "formula") {
+    if (a.latex) { const t = h("span"); t.innerHTML = tex(a.latex); line(a.via === "text" ? "The source writes" : "In LaTeX", t); }
+    if (a.vars?.length) {
+      const w = h("span");
+      a.vars.forEach((v, i) => { w.append(i ? "; " : "", inlineMath(`$${v.name}$`), ` ${v.meaning}`); });
+      line("Where", w);
+    }
+    if (!bound && a.params?.length) {
+      const u = h("span");
+      u.append(h("code", undefined, `let f = ?${a.question}`), h("span", "askmut", ` defines f(${a.params.join(", ")})`));
+      line("To use it", u);
+    }
+  } else {
+    if (a.columns.length > 1 || a.shape === "table") line("Columns", a.columns.join(" · "));
+    else if (a.columns[0]) line(a.shape === "list" ? "Entries" : "Value", a.columns[0]);
+    if (a.rowsAre) line("Rows", a.rowsAre);
+    if (a.rowLabels?.length) line("Row names", a.rowLabels.length > 12 ? `${a.rowLabels.slice(0, 12).join(", ")}, … (${a.rowLabels.length})` : a.rowLabels.join(", "));
+    if (a.flagged.length && a.via !== "memory") {
+      const shown = a.flagged.slice(0, 6).map(([r, c]) => `row ${r + 1}, column ${c + 1} (${askEntry(a.source, r, c)})`);
+      line("⚠ Not in the source", `${shown.join("; ")}${a.flagged.length > 6 ? `; … ${a.flagged.length - 6} more` : ""}`);
+    }
+  }
+  for (const n of a.notes) box.append(h("div", `asknote${a.via === "memory" || a.flagged.length ? " warn" : ""}`, n));
+  if (a.trail.length) box.append(askTrail(a.trail));
+  return box;
+}
+
+/** Before a lookup's first search: what would be sent, and to where. */
+function confirmSearch(): Promise<boolean> {
+  return new Promise((resolve) => {
+    const s = askSettings();
+    const host = (u: string) => { try { return new URL(u.replace("{q}", "")).host; } catch { return u; } };
+    const where = [s.wikipedia ? "Wikipedia" : "", s.searchUrl.trim() ? host(s.searchUrl.trim()) : ""].filter(Boolean).join(" and ");
+    closeModal();
+    const box = h("div", "modal");
+    const card = h("div", "modalcard");
+    card.setAttribute("role", "dialog"); card.setAttribute("aria-modal", "true"); card.setAttribute("aria-label", "Search for this?");
+    card.append(h("h3", undefined, "Search for this?"),
+      h("p", undefined, `This question needs data the model should not answer from memory, so ChalkMath would search ${where} and read the pages it finds.`),
+      h("p", undefined, "What leaves this computer: the search terms the model writes from your question. Not your notebook, and nothing else you typed. The model runs here."),
+      h("p", "muted", "Asked once. Sources and the model are in Run › Lookup settings."));
+    const foot = h("div", "modalfoot");
+    const no = h("button", undefined, "Don't search");
+    const yes = h("button", "primary", "Search");
+    foot.append(h("div", "spacer"), no, yes);
+    card.append(foot);
+    box.append(card);
+    let answer = false;
+    modalClosed = () => resolve(answer);
+    no.addEventListener("click", () => closeModal());
+    yes.addEventListener("click", () => { answer = true; closeModal(); });
+    box.addEventListener("click", (ev) => { if (ev.target === box) closeModal(); });
+    mountModal(box);
+    yes.focus();
+  });
+}
+
+/** Run › Lookup settings: the model, the sources, and whether the model may answer itself. */
+async function showAskSettings() {
+  const s = askSettings();
+  const st = await backendStatus();
+  const form = h("div", "askform");
+  const row = (label: string, input: HTMLElement, hint?: string) => {
+    const l = document.createElement("label"); l.className = "askrow";
+    l.append(h("span", "asklab", label), input);
+    if (hint) l.append(h("span", "askhint", hint));
+    form.append(l);
+  };
+  const sel = (opts: [string, string][], v: string) => {
+    const e = document.createElement("select");
+    for (const [val, lab] of opts) { const o = document.createElement("option"); o.value = val; o.textContent = lab; o.selected = val === v; e.append(o); }
+    return e;
+  };
+  const text = (v: string, ph: string) => { const e = document.createElement("input"); e.type = "text"; e.value = v; e.placeholder = ph; e.spellcheck = false; return e; };
+  const check = (v: boolean) => { const e = document.createElement("input"); e.type = "checkbox"; e.checked = v; return e; };
+  const backend = sel([["auto", "Automatic: Chrome's built-in model, else WebGPU"], ["chrome", "Chrome's built-in model (Gemini Nano)"], ["webllm", "A WebGPU model, downloaded once"]], s.backend);
+  row("Model", backend, `This browser: ${st.chrome ? "has Chrome's built-in model" : "no built-in model"}; ${st.webgpu ? "WebGPU available" : "no WebGPU"}.`);
+  const model = sel(WEBGPU_MODELS, s.model);
+  row("WebGPU model", model, "Downloaded from Hugging Face the first time it is used, then kept by the browser.");
+  const knowledge = check(s.knowledge);
+  row("Answer from the model's knowledge", knowledge, "Standard formulas and constants are answered by the model without searching; when a search finds nothing, the model's memory is the last resort (marked unsourced).");
+  const wiki = check(s.wikipedia);
+  row("Search Wikipedia", wiki);
+  const search = text(s.searchUrl, "https://searx.example (or a URL with {q})");
+  row("Web search", search, "A SearXNG instance (or anything answering its JSON) searches Google, DuckDuckGo, Bing and Brave for you. It must allow this page's origin (CORS).");
+  const reader = text(s.reader, "https://reader.example/?url={url}");
+  row("Page reader", reader, "Most sites do not let another page read them; a reader fetches the page for you (scripts/ask-proxy/worker.js is one).");
+  const consent = check(s.searchOk);
+  row("Search without asking", consent);
+  showModal("Lookup settings", [h("p", "muted", "A cell that starts with ? is a question: ?volume of a cone, ?the first ten primes, let mlb = ?MLB runs and home runs per game for the last 20 years."), form], true);
+  modalClosed = () => setAskSettings({
+    backend: backend.value as "auto" | "chrome" | "webllm", model: model.value, knowledge: knowledge.checked,
+    wikipedia: wiki.checked, searchUrl: search.value.trim(), reader: reader.value.trim(), searchOk: consent.checked,
+  });
 }
 
 /** The ⋮ button at the end of a cell's actions (replacing any there). */
@@ -4009,6 +4219,7 @@ function currentWord(input: HTMLInputElement): { word: string; start: number } {
 
 function updateCompletions(cell: Cell) {
   const input = cell.input!;
+  if (ASK_CELL.test(input.value)) return hideCompletions();   // a question is words, not names
   const { word } = currentWord(input);
   if (word.length < 1) return hideCompletions();
   let items: CompItem[];
@@ -4154,6 +4365,9 @@ const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replac
 
 /** The overlay's HTML for a source line. */
 function highlightHtml(src: string): string {
+  // a question: the binding (if any) as code, the `?`, then the words as they are
+  const q = /^(\s*(?:let\s+[A-Za-z_][A-Za-z0-9_]*\s*=\s*)?)\?/.exec(src);
+  if (q) return `${q[1] ? highlightHtml(q[1]) : ""}<span class="hop">?</span><span class="hask">${esc(src.slice(q[0].length))}</span>`;
   const toks = tokenize(src);
   const bound = boundTokens(src, toks);
   const lambdaCell = /[λ\\]|:=/.test(src);
@@ -4258,7 +4472,7 @@ function sigPieces(sig: string): SigPiece[] {
 
 function updateSigHelp(cell: Cell) {
   const input = cell.input;
-  if (!S.sigHelp || !input || document.activeElement !== input) return hideSigHelp();
+  if (!S.sigHelp || !input || document.activeElement !== input || ASK_CELL.test(input.value)) return hideSigHelp();
   const ctx = callContext(input);
   const found = ctx && sigFor(ctx.name, ctx.firstArg);
   if (!ctx || !found) { S.sigDismissed = null; return hideSigHelp(); }
