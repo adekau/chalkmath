@@ -157,7 +157,9 @@ mutual
   partial def printRaw (e : Expr) (path : Path) (T : Target) : String × Nat :=
     let child (c : Expr) (i : Nat) (ctx : Nat) := print c (path ++ [i]) T ctx
     match e with
-    | .num q => (T.num q, if q.isNeg then P_NEG else P_ATOM)
+    -- in text an exact non-integer numeral prints as a division, `4/9`, so it binds like one: the base
+    -- of a power is `(4/9)^(3/2)`, not `4/9^(3/2)`, which reads back as 4/27 (`\frac` groups itself)
+    | .num q => (T.num q, if q.isNeg then P_NEG else if T.times == "*" && !q.isInt && !q.approx then P_MUL else P_ATOM)
     | .var x => (T.var x, P_ATOM)
     | .matrix rows =>
       let w := (rows.head?.map List.length).getD 0
@@ -293,8 +295,9 @@ mutual
     powRaw (b x : Expr) : String × Nat :=
       let bs := print b (path ++ [0]) T (P_POW + 1)  -- left of ^ needs parens for anything non-atomic incl. -3 and 2^3
       let xs := print x (path ++ [1]) T P_POW        -- right-assoc: 2^3^4 is 2^(3^4)
-      -- in text a fractional exponent needs its parentheses: 2^(3/2), not 2^3/2
-      let xs := if T.times == "*" && (match x with | .num q => !q.isInt | _ => false) then T.parens xs else xs
+      -- in text a fractional exponent needs its parentheses: 2^(3/2), not 2^3/2 (an exact one binds as a
+      -- division and has them already; a decimal, 2^(0.5), does not)
+      let xs := if T.times == "*" && (match x with | .num q => !q.isInt && q.approx | _ => false) then T.parens xs else xs
       (T.pow bs xs, P_POW)
 end
 
