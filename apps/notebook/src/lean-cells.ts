@@ -48,7 +48,7 @@ export const leanFailure = () => failure;
 /** Where Lean is in loading, while it loads (null once it has checked the notebook, or before it starts):
  *  the editor, then Lean's download (reported by its worker, packages/engine-host/src/worker-lean-server.ts),
  *  then Lean loading its library and checking the notebook for the first time. */
-export type LeanProgress = { phase: "editor" } | { phase: "download"; loaded: number; total: number } | { phase: "checking" };
+export type LeanProgress = { phase: "editor" } | { phase: "starting" } | { phase: "download"; loaded: number; total: number } | { phase: "checking" };
 let progress: LeanProgress | null = null;
 export const leanProgress = () => progress;
 const setProgress = (p: LeanProgress | null) => { progress = p; hooks?.onProgress(); };
@@ -116,7 +116,7 @@ export function ensureLean(h: LeanHooks): Promise<LeanNotebook | null> {
         setProgress(p.phase === "download" ? { phase: "download", loaded: p.loaded!, total: p.total! }
           : p.phase === "checking" ? { phase: "checking" } : null);
       };
-      setProgress({ phase: "download", loaded: 0, total: 0 });
+      setProgress({ phase: "starting" });   // a download is reported only for what this browser does not have
       const worker = new Worker(`lean/lean-server.worker.js?v=${stamp}&progress=${channel}`);
       worker.addEventListener("error", (e) => { setProgress(null); setState("failed", e.message || "Lean's server stopped"); });
       session = await mod.startLean({ worker, infoview: infoview(), dark: h.dark,

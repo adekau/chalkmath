@@ -12,7 +12,9 @@ const dist = path.resolve(import.meta.dirname, "../apps/notebook/dist");
 const shot = process.argv[2];
 const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".wasm": "application/wasm", ".json": "application/json", ".svg": "image/svg+xml" };
 // the headers a host serving Lean cells sends (or the page's service worker adds): SharedArrayBuffer
+const fetched = [];   // Lean's large files, as the server sent them
 const server = createServer((req, res) => {
+  if (/lean-(server\.wasm|lib\.pack)/.test(req.url)) fetched.push(req.url.split("?")[0]);
   const file = path.join(dist, decodeURIComponent(new URL(req.url, "http://x").pathname));
   try { if (!statSync(file).isFile()) throw 0; } catch { res.writeHead(404); res.end(); return; }
   res.writeHead(200, { "content-type": types[path.extname(file)] ?? "application/octet-stream",
@@ -28,7 +30,7 @@ const doc = { v: 1, n: "lean-cells.chalk", c: [
   { s: "diff(x^2 * sin(x), x)" },
   { s: "theorem and_swap (p q : Prop) (hp : p) (hq : q) : q ∧ p := by\n  constructor\n  · exact hq\n  · exact hp", t: "lean" },
 ] };
-const browser = await chromium.launch({ ...(process.env.CHROMIUM ? { executablePath: process.env.CHROMIUM } : {}), args: ["--no-sandbox"] });
+const browser = await chromium.launch({ ...(process.env.CHROMIUM ? { executablePath: process.env.CHROMIUM } : {}), args: ["--no-sandbox", "--disk-cache-size=100000000"] });   // an HTTP cache too small for the library: the worker's store must keep it
 const page = await browser.newPage({ viewport: { width: 1400, height: 950 } });
 page.on("pageerror", (e) => { if (!/^unsupported/.test(e.message)) console.log(`[page error] ${e.message}`); });   // "unsupported": a VS Code API lean4monaco does not provide, harmless
 // every loading status the page shows, as it shows them
@@ -65,6 +67,16 @@ const goals = await page.waitForFunction(() => {
 }, null, { timeout: 30000 }).then((h) => h.jsonValue(), () => false);
 check("the Lean goals tab shows the goals at the cursor", !!goals, goals ? goals.split("\n")[0] : "");
 if (shot) await page.screenshot({ path: shot });
+
+// a reload loads Lean from the browser's store, not the network
+fetched.length = 0;
+const t1 = Date.now();
+await page.reload();
+const again = await page.waitForFunction(() => [...document.querySelectorAll(".leanmsg .text")].some((e) => e.textContent.trim() === "42"), null, { timeout: 180000 }).then(() => true, () => false);
+check("after a reload, #eval shows 42 again", again, `${Date.now() - t1} ms after reload`);
+check("and Lean's large files came from the browser's store", fetched.length === 0, fetched.join(", ") || "nothing downloaded");
+const later = await page.evaluate(() => window.__leanStatus);
+check("so the status never said it was downloading", !later.some((t) => /Downloading/.test(t)), later.join(" → "));
 await browser.close();
 server.close();
 process.exit(checks.every(Boolean) ? 0 : 1);

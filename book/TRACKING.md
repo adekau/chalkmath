@@ -742,3 +742,9 @@ Phases:
    - Adding, removing or reordering Lean cells replaces the document (Lean re-checks all of it); undo is one
      stack across the notebook's Lean cells.
    - Console noise: "unsupported" (VS Code APIs lean4monaco lacks) and cancelled requests (-32800).
+   - Reloads downloaded Lean again — FIXED 2026-09-30 (Alex: "every time I reload the page, Lean is
+     redownloading"). The HTTP cache does not keep entries the size of the library's parts (Firefox: 50 MB;
+     Chrome: an eighth of its cache — reproduced with a 200 MB cache, which kept the 24 MB wasm and refetched
+     both parts every load), and every deploy changed the files' URLs. The worker now keeps them in Cache
+     Storage under a hash of their contents; the smoke test reloads under a 100 MB HTTP cache and checks
+     nothing large is fetched, and a re-bundle with the same Lean fetched only the two small scripts.
