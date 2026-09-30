@@ -1,6 +1,7 @@
 // node scripts/notebooks/mk-order-lattices.mjs
 // Generates notebooks/order-lattices.chalk: Part I of "From Zero to Propagators" (lean4learning)
-// as a ChalkMath notebook, the Lean computation interludes replaced by live poset cells.
+// as a ChalkMath notebook, the Lean computation interludes replaced by live poset cells and the book's
+// Lean code as Lean cells (one Lean file, core Lean only: see the coda for what changed from the book).
 // Inline code is written ‹like this› (template literals cannot hold backticks).
 import { writeFileSync } from "node:fs";
 
@@ -8,6 +9,7 @@ const cells = [];
 const sec = (title) => cells.push({ src: title, type: "section", showWork: false, label: null });
 const md = (text) => cells.push({ src: text.replace(/‹|›/g, "`").replace(/^~~~/gm, "```").trim(), type: "markdown", showWork: false, label: null });
 const m = (src, showWork = false) => cells.push({ src, showWork, label: null });
+const lean = (src) => cells.push({ src: src.trim(), type: "lean", showWork: false, label: null });
 const r = String.raw;
 
 // ───────────────────────────── Preface ─────────────────────────────
@@ -26,7 +28,9 @@ This notebook is the first part of *From Zero to Propagators*, a book that build
 
 Turn on **show work** for a cell (the ▸ beside it) to see the derivation: which elements are the upper bounds, why the least of them is the join, the Kleene chain climbing to a fixed point. Every rule these cells use is in the verified column of the ledger — ‹PosetProofs.lean› proves the decisions correct (‹checkPartialOrder_none›, ‹covers_spec›, ‹sup_spec›, ‹iter_le_fixed›).
 
-Where the book proves a theorem in Lean, the proof is kept here as a code block: the engine decides facts about *particular* finite posets; the Lean proofs are about *all* of them.
+Where the book proves a theorem in Lean, the proof is a **Lean cell**: Lean 4 itself, running in your browser, checks it, and checks it again as you edit it. Put the cursor inside a proof and the panel's **Lean goals** tab shows what is left to prove at that point. The Lean cells are one Lean file read top to bottom, so a definition in one cell is in scope in every cell after it. The engine decides facts about *particular* finite posets; the Lean proofs are about *all* of them.
+
+The first time, Lean and its library are a large download (about 140 MB, which the browser then keeps), so the Lean cells can take a minute to check while the engine's cells are already answering.
 `);
 
 // ───────────────────────────── Chapter 1 ─────────────────────────────
@@ -40,9 +44,11 @@ Before we can study lattices or build propagator networks, we need a precise voc
 
 Lean 4 encodes a relation as a function returning ‹Prop›:
 
-~~~lean
+`);
+lean(r`
 def Rel (α : Type) : Type := α → α → Prop
-~~~
+`);
+md(r`
 
 Using ‹Prop› rather than ‹Bool› is crucial: proofs are computationally irrelevant, and we can state facts like “this relation is a partial order” as types.
 
@@ -59,21 +65,40 @@ $$\begin{aligned}
 \text{Transitive} &\iff \forall a\, b\, c,\; a \mathrel{R} b \to b \mathrel{R} c \to a \mathrel{R} c
 \end{aligned}$$
 
+In Lean each property is a predicate on relations, and an ‹example› is a statement Lean checks and then forgets — here, two instances:
+`);
+lean(r`
+def Reflexive  {α : Type} (r : Rel α) : Prop := ∀ a, r a a
+def Symmetric  {α : Type} (r : Rel α) : Prop := ∀ a b, r a b → r b a
+def Antisymm   {α : Type} (r : Rel α) : Prop := ∀ a b, r a b → r b a → a = b
+def Transitive {α : Type} (r : Rel α) : Prop := ∀ a b c, r a b → r b c → r a c
+
+-- ≤ on Nat is transitive; equality is symmetric
+example : Transitive (fun a b : Nat => a ≤ b) := fun _ _ _ => Nat.le_trans
+example {α : Type} : Symmetric (fun a b : α => a = b) := fun _ _ h => h.symm
+`);
+md(r`
 > **Symmetry vs antisymmetry.** These are not negations of each other. A relation can be both (equality), neither (“$a$ is a parent of $b$”), or only one. Antisymmetry says: if you can go *both* ways, the elements must be equal.
 
 ## Partial orders
 
 **Definition.** A *partial order* on $A$ is a relation $\le$ that is reflexive, antisymmetric and transitive. The pair $(A, \le)$ is a *partially ordered set*, or *poset*.
 
-The word *partial* means not every two elements need be comparable: there may be $a, b$ with neither $a \le b$ nor $b \le a$. In Lean the definition is a typeclass:
+The word *partial* means not every two elements need be comparable: there may be $a, b$ with neither $a \le b$ nor $b \le a$. In Lean the definition is a typeclass. The ‹instance› after it lets any partial order write ‹a ≤ b›, and ‹export› lets the laws be used by their short names:
 
-~~~lean
+`);
+lean(r`
 class PartialOrder (α : Type) where
   le          : α → α → Prop
   le_refl     : ∀ (a : α), le a a
   le_antisymm : ∀ (a b : α), le a b → le b a → a = b
   le_trans    : ∀ (a b c : α), le a b → le b c → le a c
-~~~
+
+-- write a ≤ b for any partial order
+instance (priority := low) {α : Type} [PartialOrder α] : LE α := ⟨PartialOrder.le⟩
+export PartialOrder (le_refl le_antisymm le_trans)
+`);
+md(r`
 
 The engine's ‹poset› takes a finite set and a *generating* relation, closes it under reflexivity and transitivity, and then checks all three laws — so the order below contains $a \le c$ although only $a < b$ and $b < c$ were written:
 `);
@@ -86,17 +111,33 @@ m("poset({a, b}; a < b, b < a)");
 md(r`
 ## The natural numbers
 
-The natural numbers with the usual $\le$ are the first instance; Lean's core library already has ‹Nat.le_refl›, ‹Nat.le_antisymm›, ‹Nat.le_trans›, so the instance just reuses them. A finite initial segment is ‹chain(n)›: the elements $0 < 1 < \cdots < n-1$, every pair comparable, which is what *total* order looks like as a Hasse diagram — a single line.
+The natural numbers with the usual $\le$ are the first instance; Lean's core library already has ‹Nat.le_refl›, ‹Nat.le_antisymm›, ‹Nat.le_trans›, so the instance just reuses them:
+`);
+lean(r`
+instance : PartialOrder Nat where
+  le          := Nat.le
+  le_refl     := Nat.le_refl
+  le_antisymm := fun _ _ => Nat.le_antisymm
+  le_trans    := fun _ _ _ => Nat.le_trans
+`);
+md(r`
+A finite initial segment is ‹chain(n)›: the elements $0 < 1 < \cdots < n-1$, every pair comparable, which is what *total* order looks like as a Hasse diagram — a single line.
 `);
 m("let N5 = chain(5)");
 md(r`
 ## Divisibility
 
-Divisibility is a partial order on $\mathbb{N}$: $n \le m$ means $n \mid m$, i.e. $\exists k,\ m = n k$. It is a genuinely different order from $\le$: $3 \mid 12$ but $4 \nmid 6$.
-
+Divisibility is a partial order on $\mathbb{N}$: $n \le m$ means $n \mid m$, i.e. $\exists k,\ m = n k$. It is a genuinely different order from $\le$: $3 \mid 12$ but $4 \nmid 6$. In Lean the first is proved by its witness, and the second is decided:
+`);
+lean(r`
+example : (3 : Nat) ∣ 12 := ⟨4, rfl⟩     -- the witness: 12 = 3 * 4
+example : ¬ (4 : Nat) ∣ 6 := by decide
+`);
+md(r`
 In the book this is where the first real proof lives. Reflexivity has the explicit witness $k = 1$; transitivity composes witnesses, $b = ak$ and $c = bj$ give $c = a(kj)$; but antisymmetry — if $a \mid b$ and $b \mid a$ then $a = b$ — needs three lemmas: that only $0$ is divisible by $0$, that $kj = 1$ in $\mathbb{N}$ forces $k = 1$, and cancellation of $a > 0$. The mathematical core is the middle one:
 
-~~~lean
+`);
+lean(r`
 theorem mul_eq_one_left {k j : Nat} (h : k * j = 1) : k = 1 := by
   match k with
   | 0     => simp [Nat.zero_mul] at h          -- 0 * j = 0 ≠ 1
@@ -107,12 +148,13 @@ theorem mul_eq_one_left {k j : Nat} (h : k * j = 1) : k = 1 := by
       cases j with
       | zero   => simp [Nat.mul_zero] at h
       | succ j => exact Nat.succ_le_succ (Nat.zero_le j)
-    have hbig : (k + 2) * j ≥ 2 :=
-      calc (k + 2) * j ≥ (k + 2) * 1 := Nat.mul_le_mul_left (k + 2) hj
-        _ = k + 2 := Nat.mul_one (k + 2)
-        _ ≥ 2 := Nat.le_add_left 2 k
+    have hbig : 2 ≤ (k + 2) * j :=
+      calc 2 ≤ k + 2           := Nat.le_add_left 2 k
+        _ = (k + 2) * 1       := (Nat.mul_one (k + 2)).symm
+        _ ≤ (k + 2) * j       := Nat.mul_le_mul_left (k + 2) hj
     omega
-~~~
+`);
+md(r`
 
 Everything else is bookkeeping. When reading an unfamiliar proof it is always worth asking where the actual mathematical content is; here it is entirely in that one lemma.
 
@@ -126,13 +168,18 @@ md(r`
 
 Sets, represented as predicates $\alpha \to \mathsf{Prop}$, are ordered by inclusion $s \subseteq t \iff \forall a,\ s\,a \to t\,a$. This is the first non-trivial Lean proof in the book: antisymmetry needs *function extensionality* and *propositional extensionality* to turn $s\,a \leftrightarrow t\,a$ for all $a$ into $s = t$.
 
-~~~lean
+`);
+lean(r`
+def Set (α : Type) : Type := α → Prop
+def Set.subset {α : Type} (s t : Set α) : Prop := ∀ a, s a → t a
+
 instance {α : Type} : PartialOrder (Set α) where
   le          := Set.subset
-  le_refl     := fun s a ha => ha
-  le_antisymm := fun s t h1 h2 => funext (fun a => propext ⟨h1 a, h2 a⟩)
-  le_trans    := fun s t u h1 h2 a ha => h2 a (h1 a ha)
-~~~
+  le_refl     := fun _ _ ha => ha
+  le_antisymm := fun _ _ h1 h2 => funext (fun a => propext ⟨h1 a, h2 a⟩)
+  le_trans    := fun _ _ _ h1 h2 a ha => h2 a (h1 a ha)
+`);
+md(r`
 
 The finite version is ‹subsets({…})›: all subsets of a finite set under $\subseteq$. The book's first Hasse diagram is $\mathcal{P}(\{a, b, c\})$:
 `);
@@ -162,21 +209,36 @@ Dually, the lower bounds are the common divisors and the greatest of them — th
 m("lower(D, {4, 6})");
 m("inf(D, 4, 6)", true);
 m("inf(D, 3, 4)", true);
+md(r`
+The book's Lean versions are a few list functions over ‹D12›, run with ‹#eval›. Lean and the engine agree: the common multiples of $4$ and $6$ in the set are just $12$, the join is $12$ and the meet is $2$.
+`);
+lean(r`
+def D12 : List Nat := [1, 2, 3, 4, 6, 12]
+def upper12 (a b : Nat) : List Nat := D12.filter (fun u => u % a == 0 && u % b == 0)
+def sup12 (a b : Nat) : Option Nat := (upper12 a b).find? (fun s => (upper12 a b).all (· % s == 0))
+def lower12 (a b : Nat) : List Nat := D12.filter (fun l => a % l == 0 && b % l == 0)
+def inf12 (a b : Nat) : Option Nat := (lower12 a b).find? (fun s => (lower12 a b).all (s % · == 0))
 
+#eval upper12 4 6    -- common multiples in D12
+#eval sup12 4 6      -- their least: the lcm
+#eval inf12 4 6      -- the gcd
+`);
 md(r`
 ## Exercises
 
 **1.1 Reflexivity and symmetry.** Show that a relation that is both symmetric and antisymmetric must be a subset of equality: $a \mathrel{R} b \to a = b$.
 
-~~~lean
+`);
+lean(r`
 theorem symm_antisymm_eq {α : Type} (r : Rel α)
     (hs : Symmetric r) (ha : Antisymm r) :
     ∀ a b : α, r a b → a = b := by
   intro a b h
   exact ha a b h (hs a b h)
-~~~
+`);
+md(r`
 
-This one is about *all* relations, so it is a Lean theorem and not a cell.
+This one is about *all* relations, so it is a Lean cell and not an engine cell: Lean checks the proof once, for every type and every relation.
 
 **1.2 Divisibility on a small set.** For divisibility on $\{1, 2, 3, 4, 6, 12\}$: (a) draw its Hasse diagram — that is $D$ above; (b) which pairs are incomparable? Ask the engine. An element is incomparable with another when ‹le› fails in both directions:
 `);
@@ -188,7 +250,17 @@ m("le(D, 6, 4)");
 md(r`
 So the incomparable pairs are $\{2, 3\}$, $\{3, 4\}$, $\{4, 6\}$ — and $\{4,6\}$'s derivation shows the engine looked for a chain of covers from $4$ to $6$ and found none.
 
-**1.3 Product order.** Given posets $(A, \le_A)$ and $(B, \le_B)$, the *product order* on $A \times B$ is $(a_1, b_1) \le (a_2, b_2) \iff a_1 \le_A a_2 \wedge b_1 \le_B b_2$. The Lean instance proves each law component-wise. The engine has no product constructor (yet), but a small product can be written out: $\mathbf{2} \times \mathbf{2}$, with $x_{ij}$ standing for the pair $(i, j)$ —
+**1.3 Product order.** Given posets $(A, \le_A)$ and $(B, \le_B)$, the *product order* on $A \times B$ is $(a_1, b_1) \le (a_2, b_2) \iff a_1 \le_A a_2 \wedge b_1 \le_B b_2$. The Lean instance proves each law component-wise:
+`);
+lean(r`
+instance {α β : Type} [PartialOrder α] [PartialOrder β] : PartialOrder (α × β) where
+  le p q := p.1 ≤ q.1 ∧ p.2 ≤ q.2
+  le_refl p := ⟨le_refl p.1, le_refl p.2⟩
+  le_antisymm _ _ h1 h2 := Prod.ext (le_antisymm _ _ h1.1 h2.1) (le_antisymm _ _ h1.2 h2.2)
+  le_trans _ _ _ h1 h2 := ⟨le_trans _ _ _ h1.1 h2.1, le_trans _ _ _ h1.2 h2.2⟩
+`);
+md(r`
+The engine has no product constructor (yet), but a small product can be written out: $\mathbf{2} \times \mathbf{2}$, with $x_{ij}$ standing for the pair $(i, j)$ —
 `);
 m("let Sq = poset({x00, x01, x10, x11}; x00 < x01, x00 < x10, x01 < x11, x10 < x11)");
 m("le(Sq, x01, x10)");
@@ -226,14 +298,19 @@ m("let T = poset({p, q, r, s, t}; p < r, p < s, q < s, r < t, s < t)");
 m("minimal(T)");
 m("bottom(T)");
 md(r`
-~~~lean
+In Lean, $\bot$ and $\top$ are classes of their own (with notation for them), and a *bounded* partial order has both:
+`);
+lean(r`
 class Bot (α : Type) where bot : α
 class Top (α : Type) where top : α
+notation "⊥" => Bot.bot
+notation "⊤" => Top.top
 
 class BoundedPartialOrder (α : Type) extends PartialOrder α, Bot α, Top α where
   bot_le : ∀ (a : α), (⊥ : α) ≤ a
   le_top : ∀ (a : α), a ≤ (⊤ : α)
-~~~
+`);
+md(r`
 
 **Bounded orders.** $(\mathcal{P}(S), \subseteq)$ has $\bot = \varnothing$ and $\top = S$; $(\{0, 1\}, \le)$ has $\bot = 0$, $\top = 1$; $(\mathbb{N}, \le)$ has $\bot = 0$ and no $\top$. The divisors of $12$ have both ($1$ divides everything, everything divides $12$):
 `);
@@ -241,6 +318,16 @@ m("bottom(P3)");
 m("top(P3)");
 m("bottom(D)");
 m("top(D)");
+md(r`
+For ‹Set α›, $\bot$ is the predicate that holds of nothing and $\top$ the one that holds of everything:
+`);
+lean(r`
+instance {α : Type} : BoundedPartialOrder (Set α) where
+  bot    := fun _ => False     -- ∅
+  top    := fun _ => True      -- the whole of α
+  bot_le := fun _ _ h => h.elim
+  le_top := fun _ _ _ => trivial
+`);
 md(r`
 The book's example is divisibility on *all* of $\{1, \ldots, 12\}$, not just the divisors of $12$ — and that poset has $\bot = 1$ but no single $\top$. Writing out the generating pairs (a prime's multiples suffice; the closure does the rest):
 `);
@@ -272,7 +359,8 @@ It refuses — and it is right. A least upper bound must be an upper bound that 
 
 *Proof.* If $u$ and $v$ are both least upper bounds, then $v \le u$ because $u$ is an upper bound and $v$ is least; symmetrically $u \le v$; antisymmetry gives $u = v$. $\square$
 
-~~~lean
+`);
+lean(r`
 structure IsSupOf {α : Type} [PartialOrder α] (a b sup : α) : Prop where
   ge_a  : a ≤ sup
   ge_b  : b ≤ sup
@@ -283,7 +371,8 @@ theorem sup_unique {α : Type} [PartialOrder α] {a b s t : α}
   apply PartialOrder.le_antisymm
   · exact hs.least t ht.ge_a ht.ge_b
   · exact ht.least s hs.ge_a hs.ge_b
-~~~
+`);
+md(r`
 
 The engine's ‹join› is this specification made executable: the rule ‹order.least› picks the upper bound below every other, and ‹sup_spec› proves that is what it picked (and ‹sup_none› that when it finds nothing, nothing exists).
 
@@ -293,14 +382,16 @@ The engine's ‹join› is this specification made executable: the rule ‹order
 
 Monotone maps are the morphisms of the category of posets, and they will be central to propagators: every propagator is a monotone function on a lattice.
 
-~~~lean
+`);
+lean(r`
 structure Monotone {α β : Type} [PartialOrder α] [PartialOrder β] (f : α → β) : Prop where
   map_le : ∀ (a b : α), a ≤ b → f a ≤ f b
 
-theorem Monotone.comp {f : α → β} {g : β → γ} (hf : Monotone f) (hg : Monotone g) :
-    Monotone (g ∘ f) where
-  map_le := fun a b h => hg.map_le _ _ (hf.map_le _ _ h)
-~~~
+theorem Monotone.comp {α β γ : Type} [PartialOrder α] [PartialOrder β] [PartialOrder γ]
+    {f : α → β} {g : β → γ} (hf : Monotone f) (hg : Monotone g) : Monotone (g ∘ f) where
+  map_le := fun a b h => hg.map_le (f a) (f b) (hf.map_le a b h)
+`);
+md(r`
 
 The engine's maps are maps from a poset *to itself*, given as a table; elements not listed are fixed. The book's ‹double12› sends $n$ to $2n$ when that is still a divisor of $12$ and leaves it alone otherwise. Monotone: if $a \mid b$ then $2a \mid 2b$.
 `);
@@ -340,11 +431,37 @@ Each application moves strictly upward in the divisibility order until it reache
 
 ## Exercises
 
-**2.1 Antitone composition.** Show that the composite of two *antitone* maps ($a \le b \to f(b) \le f(a)$) is monotone. Example: ‹comp› above is antitone, and ‹comp ∘ comp› is the identity, which is monotone. In general $a \le b \Rightarrow f(b) \le f(a) \Rightarrow g(f(a)) \le g(f(b))$: the two reversals cancel.
+**2.1 Antitone composition.** Show that the composite of two *antitone* maps ($a \le b \to f(b) \le f(a)$) is monotone. Example: ‹comp› above is antitone, and ‹comp ∘ comp› is the identity, which is monotone. In general $a \le b \Rightarrow f(b) \le f(a) \Rightarrow g(f(a)) \le g(f(b))$: the two reversals cancel, and that is the whole Lean proof:
+`);
+lean(r`
+def Antitone {α β : Type} [PartialOrder α] [PartialOrder β] (f : α → β) : Prop :=
+  ∀ (a b : α), a ≤ b → f b ≤ f a
 
-**2.2 Fixed points.** Show that if $f$ is monotone and $a \le f(a)$, the chain $a \le f(a) \le f^2(a) \le \cdots$ is indeed a chain. Induction: $f^n(a) \le f^{n+1}(a)$ gives $f^{n+1}(a) \le f^{n+2}(a)$ by monotonicity — each step of the ‹lfp› derivation above is one instance.
+theorem Antitone.comp {α β γ : Type} [PartialOrder α] [PartialOrder β] [PartialOrder γ]
+    {f : α → β} {g : β → γ} (hf : Antitone f) (hg : Antitone g) : Monotone (g ∘ f) where
+  map_le := fun a b h => hg (f b) (f a) (hf a b h)    -- two reversals cancel
+`);
+md(r`
+**2.2 Fixed points.** Show that if $f$ is monotone and $a \le f(a)$, the chain $a \le f(a) \le f^2(a) \le \cdots$ is indeed a chain. Induction: $f^n(a) \le f^{n+1}(a)$ gives $f^{n+1}(a) \le f^{n+2}(a)$ by monotonicity — each step of the ‹lfp› derivation above is one instance. In Lean, with ‹iter f n a› for $f^n(a)$:
+`);
+lean(r`
+-- iter f n a is fⁿ(a)
+def iter {α : Type} (f : α → α) : Nat → α → α
+  | 0,     a => a
+  | n + 1, a => f (iter f n a)
 
-**2.3 The identity is monotone.** For any poset. The cell ‹monotone(D, idD)› above checks the instance; the Lean proof is one line, ‹⟨fun a b h => h⟩›.
+theorem iter_chain {α : Type} [PartialOrder α] {f : α → α} (hf : Monotone f) {a : α}
+    (h : a ≤ f a) : ∀ n, iter f n a ≤ iter f (n + 1) a := by
+  intro n
+  induction n with
+  | zero      => exact h
+  | succ n ih => exact hf.map_le _ _ ih
+`);
+md(r`
+**2.3 The identity is monotone.** For any poset. The cell ‹monotone(D, idD)› above checks the instance; the Lean proof is one line:
+`);
+lean(r`
+theorem Monotone.id {α : Type} [PartialOrder α] : Monotone (fun a : α => a) := ⟨fun _ _ h => h⟩
 `);
 
 // ───────────────────────────── Chapter 3 ─────────────────────────────
@@ -374,7 +491,8 @@ a \sqcap (a \sqcup b) &= a, & a \sqcup (a \sqcap b) &= a & &\text{(absorption)}
 
 and the order can be recovered from either operation: $a \le b \iff a \sqcap b = a \iff a \sqcup b = b$.
 
-~~~lean
+`);
+lean(r`
 class Lattice (α : Type) extends PartialOrder α where
   inf : α → α → α    -- meet  (⊓)
   sup : α → α → α    -- join  (⊔)
@@ -384,12 +502,18 @@ class Lattice (α : Type) extends PartialOrder α where
   sup_le_left  : ∀ (a b : α), a ≤ sup a b
   sup_le_right : ∀ (a b : α), b ≤ sup a b
   le_sup : ∀ (a b c : α), a ≤ c → b ≤ c → sup a b ≤ c
-~~~
+
+infixl:69 " ⊓ " => Lattice.inf
+infixl:68 " ⊔ " => Lattice.sup
+export Lattice (inf_le_left inf_le_right le_inf sup_le_left sup_le_right le_sup)
+`);
+md(r`
 
 Commutativity and idempotence follow from the axioms alone; the book derives them by ‹le_antisymm› against ‹le_inf›. For instance:
 
-~~~lean
-theorem inf_comm (a b : α) : a ⊓ b = b ⊓ a := by
+`);
+lean(r`
+theorem inf_comm {α : Type} [Lattice α] (a b : α) : a ⊓ b = b ⊓ a := by
   apply le_antisymm
   · apply le_inf
     · exact inf_le_right a b
@@ -397,7 +521,8 @@ theorem inf_comm (a b : α) : a ⊓ b = b ⊓ a := by
   · apply le_inf
     · exact inf_le_right b a
     · exact inf_le_left b a
-~~~
+`);
+md(r`
 
 Those are theorems about every lattice. On a particular one the engine just computes both sides. Commutativity, idempotence and absorption in $D$ — the last as two cells, since the order world has no nesting: $4 \sqcap 6 = 2$, and then $4 \sqcup 2 = 4$:
 `);
@@ -417,25 +542,30 @@ Every lattice has a *dual*: swap $\sqcap \leftrightarrow \sqcup$ and $\le \leftr
 
 **Theorem (duality principle).** If $\varphi$ is a theorem about lattices, so is the statement obtained by replacing every $\sqcap$ with $\sqcup$, $\sqcup$ with $\sqcap$, $\le$ with $\ge$, $\bot$ with $\top$ and $\top$ with $\bot$.
 
-In Lean the dual is a wrapper type whose ‹LE› flips the original's, and whose lattice instance swaps ‹inf› and ‹sup›:
+In Lean the dual is a wrapper type whose order flips the original's, and whose lattice instance swaps ‹inf› and ‹sup›:
 
-~~~lean
+`);
+lean(r`
 structure Dual (α : Type) where
   val : α
 
-instance {α : Type} [LE α] : LE (Dual α) where
-  le a b := LE.le (α := α) b.val a.val
+instance {α : Type} [PartialOrder α] : PartialOrder (Dual α) where
+  le a b := b.val ≤ a.val                    -- the order, flipped
+  le_refl a := le_refl a.val
+  le_antisymm := fun ⟨a⟩ ⟨b⟩ h1 h2 => congrArg Dual.mk (le_antisymm a b h2 h1)
+  le_trans _ _ _ h1 h2 := le_trans _ _ _ h2 h1
 
 instance {α : Type} [Lattice α] : Lattice (Dual α) where
-  inf := fun a b => ⟨Lattice.sup (α := α) a.val b.val⟩
-  sup := fun a b => ⟨Lattice.inf (α := α) a.val b.val⟩
-  inf_le_left  := fun a b => Lattice.sup_le_left  (α := α) a.val b.val
-  inf_le_right := fun a b => Lattice.sup_le_right (α := α) a.val b.val
-  sup_le_left  := fun a b => Lattice.inf_le_left  (α := α) a.val b.val
-  sup_le_right := fun a b => Lattice.inf_le_right (α := α) a.val b.val
-  le_inf := fun a b c h1 h2 => Lattice.le_sup (α := α) b.val c.val a.val h1 h2
-  le_sup := fun a b c h1 h2 => Lattice.le_inf (α := α) c.val a.val b.val h1 h2
-~~~
+  inf a b := ⟨a.val ⊔ b.val⟩                -- meet and join, swapped
+  sup a b := ⟨a.val ⊓ b.val⟩
+  inf_le_left  a b := sup_le_left  a.val b.val
+  inf_le_right a b := sup_le_right a.val b.val
+  sup_le_left  a b := inf_le_left  a.val b.val
+  sup_le_right a b := inf_le_right a.val b.val
+  le_inf a b c h1 h2 := le_sup b.val c.val a.val h1 h2
+  le_sup a b c h1 h2 := le_inf c.val a.val b.val h1 h2
+`);
+md(r`
 
 Turning the Hasse diagram upside down exchanges every meet with every join. ‹Dop› from Exercise 1.4 is $D$ upside down, and its meet of $4$ and $6$ is $D$'s join:
 `);
@@ -445,7 +575,27 @@ m("bottom(Dop)");
 md(r`
 ## Important lattice examples
 
-**The two-element lattice $\mathbf{2}$.** ‹Bool› with ‹false < true›; meet is ‹&&›, join is ‹||›, and every axiom is ‹by decide› because the type is finite and the statements decidable. The engine's version is decided the same way:
+**The two-element lattice $\mathbf{2}$.** ‹Bool› with ‹false < true›; meet is ‹&&›, join is ‹||›, and every axiom is ‹by decide› because the type is finite and the statements decidable:
+`);
+lean(r`
+instance : Lattice Bool where
+  le a b := a = true → b = true             -- false ≤ true
+  inf := (· && ·)
+  sup := (· || ·)
+  le_refl      := by decide
+  le_antisymm  := by decide
+  le_trans     := by decide
+  inf_le_left  := by decide
+  inf_le_right := by decide
+  le_inf       := by decide
+  sup_le_left  := by decide
+  sup_le_right := by decide
+  le_sup       := by decide
+
+#eval (false ⊔ true, false ⊓ true)
+`);
+md(r`
+The engine's version is decided the same way:
 `);
 m("let B = poset({false, true}; false < true)");
 m("join(B, false, true)");
@@ -514,7 +664,8 @@ m("meet(D, 4, 12)");
 md(r`
 **3.3 Characterising the order.** $a \le b \iff a \sqcup b = b$, from the lattice axioms alone:
 
-~~~lean
+`);
+lean(r`
 theorem le_iff_sup_eq {α : Type} [Lattice α] (a b : α) : a ≤ b ↔ a ⊔ b = b := by
   constructor
   · intro h
@@ -525,7 +676,8 @@ theorem le_iff_sup_eq {α : Type} [Lattice α] (a b : α) : a ≤ b ↔ a ⊔ b 
     have : b = a ⊔ b := h.symm
     rw [this]
     exact Lattice.sup_le_left a b
-~~~
+`);
+md(r`
 
 Checked at one instance — $2 \le 6$ in $D$, and $2 \sqcup 6 = 6$:
 `);
@@ -547,7 +699,8 @@ Lattices let us take meets and joins of *pairs* of elements. A *complete* lattic
 
 > In particular the empty set has a supremum, which is $\bot$, and an infimum, which is $\top$ — so every complete lattice is bounded. Taking $S = L$ gives $\bigvee L = \top$ and $\bigwedge L = \bot$.
 
-~~~lean
+`);
+lean(r`
 abbrev Pred (α : Type) := α → Prop
 
 class CompleteLattice (α : Type) extends Lattice α where
@@ -557,7 +710,9 @@ class CompleteLattice (α : Type) extends Lattice α where
   sSup_le : ∀ (s : Pred α) (u : α), (∀ a, s a → a ≤ u) → sSup s ≤ u
   sInf_le : ∀ (s : Pred α) (a : α), s a → sInf s ≤ a
   le_sInf : ∀ (s : Pred α) (l : α), (∀ a, s a → l ≤ a) → l ≤ sInf s
-~~~
+export CompleteLattice (sSup sInf le_sSup sSup_le sInf_le le_sInf)
+`);
+md(r`
 
 The powerset lattice is the canonical example: $\bigvee \mathcal{F} = \bigcup \mathcal{F}$ and $\bigwedge \mathcal{F} = \bigcap \mathcal{F}$. And *every finite lattice is complete*: the supremum of a finite set is the join of its elements one at a time, so every lattice in this notebook is a complete lattice. ‹upper› and ‹lower› take any set; the least upper bound of $\{2, 3, 4\}$ in $D$ is the least of its upper bounds, and the upper bounds of the *empty* set are everything, whose least element is $\bot$:
 `);
@@ -586,7 +741,8 @@ A *fixed point* of $f : L \to L$ is an element $x$ with $f(x) = x$ — where an 
 
 So $f(m) = m$. Any fixed point $x^*$ has $f(x^*) = x^* \le x^*$, so $x^* \in P$ and $m \le x^*$: $m$ is the *least* fixed point. $\square$
 
-~~~lean
+`);
+lean(r`
 theorem knaster_tarski {α : Type} [CompleteLattice α] (f : α → α) (hf : Monotone f) :
     ∃ (lfp : α), f lfp = lfp ∧ ∀ (x : α), f x = x → lfp ≤ x := by
   let P : Pred α := fun x => f x ≤ x
@@ -594,17 +750,19 @@ theorem knaster_tarski {α : Type} [CompleteLattice α] (f : α → α) (hf : Mo
   have step1 : f m ≤ m := by
     apply le_sInf
     intro x hx
-    exact le_trans (hf.map_le m x (sInf_le P x hx)) hx
+    exact le_trans _ _ _ (hf.map_le m x (sInf_le P x hx)) hx
   have step2 : m ≤ f m := by
     apply sInf_le
     exact hf.map_le _ _ step1
-  have fixed : f m = m := le_antisymm step1 step2
+  have fixed : f m = m := le_antisymm _ _ step1 step2
   refine ⟨m, fixed, ?_⟩
   intro x hx
   apply sInf_le
   show f x ≤ x
-  exact le_of_eq hx
-~~~
+  rw [hx]
+  exact le_refl x
+`);
+md(r`
 
 On a finite lattice the least fixed point can be *reached*: start at $\bot$ and apply $f$ until nothing changes. This is the ascending *Kleene chain* $\bot \le f(\bot) \le f^2(\bot) \le \cdots$, and the engine's ‹lfp› is exactly that iteration, each step shown. Take a monotone map on $D$ with several fixed points:
 `);
@@ -652,7 +810,15 @@ md(r`
 m("gfp(D, dbl)", true);
 m("gfp(D, one)", true);
 md(r`
-**4.2 Ascending Kleene chain.** Prove in Lean that each element of $\bot, f(\bot), f^2(\bot), \ldots$ is $\le$ the next. Induction on $n$: $\bot \le f(\bot)$ since $\bot$ is least, and $f^n(\bot) \le f^{n+1}(\bot)$ gives $f^{n+1}(\bot) \le f^{n+2}(\bot)$ by ‹hf.map_le›. Each ‹order.iterate› step in the derivations above is one instance of the induction step — and ‹le› confirms any of them:
+**4.2 Ascending Kleene chain.** Prove in Lean that each element of $\bot, f(\bot), f^2(\bot), \ldots$ is $\le$ the next. Induction on $n$: $\bot \le f(\bot)$ since $\bot$ is least, and $f^n(\bot) \le f^{n+1}(\bot)$ gives $f^{n+1}(\bot) \le f^{n+2}(\bot)$ by ‹hf.map_le› — which is ‹iter_chain› from Exercise 2.2, started at $\bot$:
+`);
+lean(r`
+theorem kleene_chain {α : Type} [BoundedPartialOrder α] {f : α → α} (hf : Monotone f) :
+    ∀ n, iter f n ⊥ ≤ iter f (n + 1) ⊥ :=
+  iter_chain hf (BoundedPartialOrder.bot_le (f ⊥))
+`);
+md(r`
+Each ‹order.iterate› step in the derivations above is one instance of the induction step — and ‹le› confirms any of them:
 `);
 m("le(D, 2, 4)", true);
 
@@ -661,7 +827,7 @@ sec("Where Part II goes");
 md(r`
 The rest of the book leaves finite mathematics for programs: propagator *cells* that accumulate partial information (Chapter 5), a scheduler and network in Lean 4 with monotonicity proofs for ‹addProp› and ‹subProp› (Chapter 6), the interval lattice of Exercise 3.1 (Chapter 7), and two capstones — a Sudoku solver whose domains are the *dual* powerset of Exercise 1.4, and type inference by propagation on a type lattice. The load-bearing facts in all of them are the ones checked here: the order is a partial order, the propagators are monotone, and the network's quiescent state is the least fixed point of Knaster–Tarski, reached along the Kleene chain because the lattices satisfy the ascending chain condition.
 
-**What the engine checked.** Every order-world cell above runs on rules in the ledger's verified column: ‹order.closure› (the three laws, ‹checkPartialOrder_none›), ‹order.covers› (‹covers_spec›), ‹order.upper-bounds› / ‹order.least› (‹sup_spec›, ‹sup_none›) and their duals, ‹order.lattice›, ‹order.cover› for ‹le›, ‹order.monotone› (‹monotone_of_none›), and ‹order.iterate› / ‹order.fixed› (‹iter_le_fixed›). The Lean theorems quoted in code blocks are the book's; they are about all posets and lattices, and are checked by Lean in the ‹lean4learning› repository rather than by this engine.
+**What the engine checked.** Every order-world cell above runs on rules in the ledger's verified column: ‹order.closure› (the three laws, ‹checkPartialOrder_none›), ‹order.covers› (‹covers_spec›), ‹order.upper-bounds› / ‹order.least› (‹sup_spec›, ‹sup_none›) and their duals, ‹order.lattice›, ‹order.cover› for ‹le›, ‹order.monotone› (‹monotone_of_none›), and ‹order.iterate› / ‹order.fixed› (‹iter_le_fixed›). The Lean cells are the book's definitions and theorems, checked by Lean in your browser; they are about all posets and lattices. A few needed small changes to stand on Lean's core library alone, without Mathlib: the ‹LE› instance that lets a partial order write ‹≤›, notation for ‹⊓ ⊔ ⊥ ⊤›, ‹Set› defined as predicates, the ‹calc› in ‹mul_eq_one_left› written upward (core has no ‹Trans› instance for ‹≥›), the partial-order fields of ‹Dual›'s instance, and the last step of ‹knaster_tarski›.
 
 **What the engine does not have yet**, found by writing this notebook: a product-poset constructor and a dual (Exercises 1.3, 1.4 are written out by hand); maps between *different* posets and maps whose table uses set literals, so $S \mapsto S \cup \{x\}$ on a powerset cannot be typed; nested order expressions such as ‹meet(D, 4, join(D, 4, 6))›; a ‹distributive(P)› check; and an $n$-ary ‹sup› / ‹inf› of a set, which ‹upper› and ‹lower› only approximate.
 `);
@@ -669,4 +835,4 @@ The rest of the book leaves finite mathematics for programs: propagator *cells* 
 const nb = { chalk: 1, name: "order-lattices.chalk", cells, scenes: [] };
 writeFileSync(new URL("../../notebooks/order-lattices.chalk", import.meta.url), JSON.stringify(nb, null, 2) + "\n");
 const n = (t) => cells.filter((c) => (c.type ?? "math") === t).length;
-console.log(`${cells.length} cells: ${n("math")} math, ${n("markdown")} markdown, ${n("section")} sections`);
+console.log(`${cells.length} cells: ${n("math")} math, ${n("lean")} Lean, ${n("markdown")} markdown, ${n("section")} sections`);

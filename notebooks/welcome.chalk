@@ -20,10 +20,34 @@
       "label": null
     },
     {
-      "src": "That is the product rule, then the power rule, each a step you can read. A few things to try:\n\n- **Show or hide the steps** with the `Work` button beside a cell (it appears when you hover), or View ` Show all work.\n- **Click any part of an answer**, a single term or a whole fraction, and the panel below says which rule produced it and traces it back through the steps.\n- **Change a cell** and press Enter again. The cells below keep their answers until you run them.\n- Press **Enter in the empty cell at the bottom** to start your own work.",
+      "src": "That is the product rule, then the power rule, each a step you can read. A few things to try:\n\n- **Show or hide the steps** with the `Work` button beside a cell (it appears when you hover), or View › Show all work.\n- **Click any part of an answer**, a single term or a whole fraction, and the panel below says which rule produced it and traces it back through the steps.\n- **Change a cell** and press Enter again. The cells below keep their answers until you run them.\n- Press **Enter in the empty cell at the bottom** to start your own work.",
       "type": "markdown",
       "showWork": false,
       "label": null
+    },
+    {
+      "src": "Typing math",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A cell with a fraction, a power, a root, an integral, a sum or a matrix is **typeset**: you read and edit the math as it would be written on paper. Click into one of these and change it.\n\n- `/` starts a fraction and `^` a power; **Tab** goes to the next empty slot.\n- `\\int`, `\\sum`, `\\sqrt` or `\\mat2x3`, then space, inserts one to fill in.\n- The **Text** button beside a cell (or Ctrl/⌘+Shift+M) shows the same cell as the text the engine reads; **Visual** turns it back. View › Math input sets it for every cell.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "integrate(x/(x^2 + 1), x)",
+      "showWork": false,
+      "label": null,
+      "mode": "visual"
+    },
+    {
+      "src": "sum(1/2^k, k, 0, 5)",
+      "showWork": false,
+      "label": null,
+      "mode": "visual"
     },
     {
       "src": "Algebra",
@@ -208,7 +232,7 @@
       "label": null
     },
     {
-      "src": "epicycles(exp(i*t) + 1/2*exp(-3i*t), t)",
+      "src": "epicycles(ℯ^(i*t) + 1/2*ℯ^(-3i*t), t)",
       "showWork": false,
       "label": null
     },
@@ -228,13 +252,19 @@
       "label": null
     },
     {
+      "src": "A notebook can also hold **Lean cells** (Edit › Add Lean cell): Lean 4 itself, running in your browser, checks definitions and proofs as you type them, and the panel's **Lean goals** tab shows what is left to prove at the cursor. Lean is a large download the first time, so this notebook has none; the orders-and-lattices example has its proofs in them.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "Where to next",
       "type": "section",
       "showWork": false,
       "label": null
     },
     {
-      "src": "- **Reference** (the tab at the top) lists every command, with examples you can click to run.\n- **File ` Examples** opens longer notebooks: drawing a llama with Fourier series, and a course on orders and lattices.\n- **Help ` Keyboard shortcuts** lists the keys. Type `\\pi`, `\\lam` or another `\\`-name for a symbol, and **Tab** completes a command.\n- **File ` Save** keeps a notebook in this browser. **Export to file** and **Copy link to notebook** are for sharing.",
+      "src": "- **Reference** (the tab at the top) lists every command, with examples you can click to run.\n- **File › Examples** opens longer notebooks: drawing a llama with Fourier series, and a course on orders and lattices with its proofs in Lean cells.\n- **Help › Keyboard shortcuts** lists the keys. Type `\\pi`, `\\lam` or another `\\`-name for a symbol, and **Tab** completes a command.\n- **File › Save** keeps a notebook in this browser. **Export to file** and **Copy link to notebook** are for sharing.",
       "type": "markdown",
       "showWork": false,
       "label": null

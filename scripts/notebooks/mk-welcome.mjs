@@ -7,8 +7,9 @@ import { writeFileSync } from "node:fs";
 
 const cells = [];
 const sec = (title) => cells.push({ src: title, type: "section", showWork: false, label: null });
-const md = (text) => cells.push({ src: text.replace(/‹|›/g, "`").trim(), type: "markdown", showWork: false, label: null });
-const m = (src, showWork = false) => cells.push({ src, showWork, label: null });
+const md = (text) => cells.push({ src: text.replace(/‹([^‹›\n]*)›/g, "`$1`").trim(), type: "markdown", showWork: false, label: null });
+// mode "visual": typeset whatever the reader chose under View › Math input (the cells that show it off)
+const m = (src, showWork = false, mode) => cells.push({ src, showWork, label: null, ...(mode ? { mode } : {}) });
 const r = String.raw;
 
 sec("Welcome to ChalkMath");
@@ -26,6 +27,17 @@ That is the product rule, then the power rule, each a step you can read. A few t
 - **Change a cell** and press Enter again. The cells below keep their answers until you run them.
 - Press **Enter in the empty cell at the bottom** to start your own work.
 `);
+
+sec("Typing math");
+md(r`
+A cell with a fraction, a power, a root, an integral, a sum or a matrix is **typeset**: you read and edit the math as it would be written on paper. Click into one of these and change it.
+
+- ‹/› starts a fraction and ‹^› a power; **Tab** goes to the next empty slot.
+- ‹\int›, ‹\sum›, ‹\sqrt› or ‹\mat2x3›, then space, inserts one to fill in.
+- The **Text** button beside a cell (or Ctrl/⌘+Shift+M) shows the same cell as the text the engine reads; **Visual** turns it back. View › Math input sets it for every cell.
+`);
+m("integrate(x/(x^2 + 1), x)", false, "visual");
+m("sum(1/2^k, k, 0, 5)", false, "visual");
 
 sec("Algebra");
 m("expand((x+1)^3)", true);
@@ -77,15 +89,18 @@ sec("A little further");
 md(r`
 The same engine draws Fourier series as spinning circles, reasons about finite orders, and reduces λ-terms one step at a time.
 `);
-m("epicycles(exp(i*t) + 1/2*exp(-3i*t), t)");
+m("epicycles(ℯ^(i*t) + 1/2*ℯ^(-3i*t), t)");
 m("let D = divisors(12)");
 m("join(D, 4, 6)");
 m("add 2 3");
+md(r`
+A notebook can also hold **Lean cells** (Edit › Add Lean cell): Lean 4 itself, running in your browser, checks definitions and proofs as you type them, and the panel's **Lean goals** tab shows what is left to prove at the cursor. Lean is a large download the first time, so this notebook has none; the orders-and-lattices example has its proofs in them.
+`);
 
 sec("Where to next");
 md(r`
 - **Reference** (the tab at the top) lists every command, with examples you can click to run.
-- **File › Examples** opens longer notebooks: drawing a llama with Fourier series, and a course on orders and lattices.
+- **File › Examples** opens longer notebooks: drawing a llama with Fourier series, and a course on orders and lattices with its proofs in Lean cells.
 - **Help › Keyboard shortcuts** lists the keys. Type ‹\pi›, ‹\lam› or another ‹\›-name for a symbol, and **Tab** completes a command.
 - **File › Save** keeps a notebook in this browser. **Export to file** and **Copy link to notebook** are for sharing.
 `);

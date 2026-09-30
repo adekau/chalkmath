@@ -15,7 +15,7 @@
       "label": null
     },
     {
-      "src": "epicycles(exp(i*t) + exp(-i*t), t)",
+      "src": "epicycles(ℯ^(i*t) + ℯ^(-i*t), t)",
       "showWork": false,
       "label": null
     },
@@ -26,7 +26,7 @@
       "label": null
     },
     {
-      "src": "epicycles(exp(i*t) + 1/9*exp(-3i*t) + 1/25*exp(5i*t), t)",
+      "src": "epicycles(ℯ^(i*t) + 1/9*ℯ^(-3i*t) + 1/25*ℯ^(5i*t), t)",
       "showWork": false,
       "label": null
     },
@@ -37,7 +37,7 @@
       "label": null
     },
     {
-      "src": "epicycles(-1/(2*sqrt(2)) + 1/2*exp(i*t) + 1/2*exp(-i*t) + (1/4 + 1/(4*sqrt(2)))*exp(2i*t) + (1/(4*sqrt(2)) - 1/4)*exp(-2i*t), t)",
+      "src": "epicycles(-1/(2*sqrt(2)) + 1/2*ℯ^(i*t) + 1/2*ℯ^(-i*t) + (1/4 + 1/(4*sqrt(2)))*ℯ^(2i*t) + (1/(4*sqrt(2)) - 1/4)*ℯ^(-2i*t), t)",
       "showWork": false,
       "label": null
     },
@@ -279,7 +279,7 @@
       "label": null
     },
     {
-      "src": "exptotrig(exp(i*x))",
+      "src": "exptotrig(ℯ^(i*x))",
       "showWork": true,
       "label": null
     },
@@ -306,7 +306,7 @@
       "label": null
     },
     {
-      "src": "epicycles(exp(i*t), t)",
+      "src": "epicycles(ℯ^(i*t), t)",
       "showWork": false,
       "label": null
     },
@@ -317,7 +317,7 @@
       "label": null
     },
     {
-      "src": "diff(exp(i*t), t)",
+      "src": "diff(ℯ^(i*t), t)",
       "showWork": true,
       "label": null
     },
@@ -328,7 +328,7 @@
       "label": null
     },
     {
-      "src": "plot(exp(i*t), t, 0, 2pi)",
+      "src": "plot(ℯ^(i*t), t, 0, 2pi)",
       "showWork": false,
       "label": null
     },
@@ -361,7 +361,7 @@
       "label": null
     },
     {
-      "src": "integrate(exp(2i*t)*exp(-3i*t), t, -pi, pi)",
+      "src": "integrate(ℯ^(2i*t)*ℯ^(-3i*t), t, -pi, pi)",
       "showWork": true,
       "label": null
     },
@@ -400,7 +400,7 @@
       "label": null
     },
     {
-      "src": "integrate(exp(i*x), x)",
+      "src": "integrate(ℯ^(i*x), x)",
       "showWork": true,
       "label": null
     },
@@ -411,7 +411,7 @@
       "label": null
     },
     {
-      "src": "let c(k) = 1/(2pi)*(integrate(exp(-i*k*t), t, 0, pi) - integrate(exp(-i*k*t), t, -pi, 0))",
+      "src": "let c(k) = 1/(2pi)*(integrate(ℯ^(-i*k*t), t, 0, pi) - integrate(ℯ^(-i*k*t), t, -pi, 0))",
       "showWork": true,
       "label": null
     },
@@ -475,7 +475,7 @@
       "label": null
     },
     {
-      "src": "sum(c(k)*exp(i*k*t), k, -3, 3)",
+      "src": "sum(c(k)*ℯ^(i*k*t), k, -3, 3)",
       "showWork": false,
       "label": null
     },
@@ -486,7 +486,7 @@
       "label": null
     },
     {
-      "src": "expand(exptotrig(exp(-i*k*t) - exp(i*k*t)))",
+      "src": "expand(exptotrig(ℯ^(-i*k*t) - ℯ^(i*k*t)))",
       "showWork": true,
       "label": null
     },
@@ -497,7 +497,7 @@
       "label": null
     },
     {
-      "src": "expand(exptotrig(sum(c(k)*exp(i*k*t), k, -3, 3)))",
+      "src": "expand(exptotrig(sum(c(k)*ℯ^(i*k*t), k, -3, 3)))",
       "showWork": false,
       "label": null
     },
@@ -530,7 +530,7 @@
       "label": null
     },
     {
-      "src": "epicycles(sum(c(k)*exp(i*k*t), k, -3, 3), t)",
+      "src": "epicycles(sum(c(k)*ℯ^(i*k*t), k, -3, 3), t)",
       "showWork": false,
       "label": null
     },

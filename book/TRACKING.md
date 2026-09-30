@@ -748,3 +748,21 @@ Phases:
      both parts every load), and every deploy changed the files' URLs. The worker now keeps them in Cache
      Storage under a hash of their contents; the smoke test reloads under a 100 MB HTTP cache and checks
      nothing large is fetched, and a re-bundle with the same Lean fetched only the two small scripts.
+
+## Example notebooks use visual input and Lean cells (2026-09-30, Alex: "make sure they make use of these cell types")
+
+- order-lattices.chalk — DONE. The book's Lean code blocks are Lean cells now (25: the 14 blocks, and 11 new
+   ones where the prose already described a Lean proof or computation — the relation properties, the `Nat`,
+   product and bounded-`Set` instances, `3 ∣ 12` / `4 ∤ 6`, the `D12` interlude's `#eval`s, Exercises 2.1–2.3
+   and 4.2, the `Bool` lattice `by decide`). One Lean file on core Lean alone, so some of the book's code had to
+   change, listed in the notebook's coda: an `LE` instance for any partial order (low priority, so `Nat` keeps
+   core's and `omega` still works), notation for `⊓ ⊔ ⊥ ⊤`, `Set` as predicates, `mul_eq_one_left`'s `calc`
+   written upward (core has no `Trans` instance for `≥`), the partial-order fields `Dual`'s instance was missing,
+   and the last step of `knaster_tarski`. Binders renamed `_` where unused, since a warning shows in the cell.
+   `scripts/notebooks/check-lean.mjs` checks every notebook's Lean cells with the pinned Lean; CI runs it.
+- welcome.chalk — DONE. A "Typing math" section (two cells kept typeset whatever View › Math input says) with the
+   keys; a paragraph on Lean cells pointing at order-lattices, but no Lean cell: a first visit should not start a
+   ~140 MB download and a reload. Fixed while there: the generator turned every `›` into a backtick, so the
+   menu paths read "View ` Show all work"; it now converts only `‹…›` pairs.
+- llamas.chalk — DONE. `exp(…)` written `ℯ^(…)` in its 14 cells, so they typeset as the prose's e^{ikt}; same
+   answers, one more step each (`cx.euler-power`, eᵇ is exp(b)) when the work is shown.
