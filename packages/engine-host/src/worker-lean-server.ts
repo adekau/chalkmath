@@ -15,8 +15,8 @@ declare const createLeanServer: (opts: object) => Promise<LeanServerModule>;
 declare const __BUILD_ID__: string;
 /** How many parts scripts/lean-bundle.mjs split the library into. */
 declare const __LEAN_LIB_PARTS__: number;
-/** The compressed size of the wasm and the library together, for progress. */
-declare const __LEAN_DOWNLOAD_BYTES__: number;
+/** The large files (the gzipped wasm, the library's parts), their sizes, and an id of their contents. */
+declare const __LEAN_FILES__: { id: string; sizes: Record<string, number> };
 const stamp = typeof __BUILD_ID__ === "string" ? __BUILD_ID__ : "dev";
 const at = (file: string) => new URL(`${file}?v=${stamp}`, self.location.href).href;
 
@@ -24,20 +24,56 @@ importScripts(at("lean-server.js"));
 if (self.name !== "em-pthread") host();
 
 /** What the page shows while Lean loads, posted on the BroadcastChannel named by the worker URL's
- *  `progress` parameter (the worker's own messages are the extension's LSP): the download, then Lean
- *  loading its library and checking the document, until it has checked it once. */
+ *  `progress` parameter (the worker's own messages are the extension's LSP): the download (of what this
+ *  browser does not have yet), then Lean loading its library and checking the document, until it has
+ *  checked it once. */
 export type LeanProgress = { phase: "download"; loaded: number; total: number } | { phase: "checking" } | { phase: "done" };
 
 function host() {
   const channelName = new URL(self.location.href).searchParams.get("progress");
   const channel = channelName ? new BroadcastChannel(channelName) : null;
   const report = (p: LeanProgress) => channel?.postMessage(p);
+
+  // Lean's large files are kept in Cache Storage, under the id of their contents, rather than left to the
+  // HTTP cache: a browser's HTTP cache does not keep an entry that large (Firefox: 50 MB; Chrome: an
+  // eighth of its size, which follows free disk), and the files' URLs change with every deploy (`?v=`)
+  // whether Lean changed or not. A new id replaces the old store.
+  const STORE = `chalkmath-lean-${__LEAN_FILES__.id}`;
+  const key = (file: string) => new URL(file, self.location.href).href;
+  const stored = (async () => {
+    let store: Cache | null = null;
+    const have = new Map<string, Response>();
+    try {
+      store = await caches.open(STORE);
+      for (const k of await caches.keys()) if (k.startsWith("chalkmath-lean-") && k !== STORE) void caches.delete(k);
+      for (const f of Object.keys(__LEAN_FILES__.sizes)) { const r = await store.match(key(f)); if (r?.body) have.set(f, r); }
+    } catch { store = null; }   // no Cache Storage here (storage blocked): the network, every time
+    const total = Object.entries(__LEAN_FILES__.sizes).reduce((n, [f, size]) => n + (have.has(f) ? 0 : size), 0);
+    return { store, have, total };
+  })();
   let loaded = 0, lastReport = 0;
-  const counted = (n: number) => {
+  const counted = (n: number, total: number) => {
     loaded += n;
     const now = Date.now();
-    if (now - lastReport > 100) { lastReport = now; report({ phase: "download", loaded, total: __LEAN_DOWNLOAD_BYTES__ }); }
+    if (now - lastReport > 100) { lastReport = now; report({ phase: "download", loaded, total }); }
   };
+  /** One of the large files: from the store, or downloaded (and stored as it arrives). */
+  async function body(file: string): Promise<ReadableStream<Uint8Array<ArrayBuffer>>> {
+    const { store, have, total } = await stored;
+    const kept = have.get(file);
+    if (kept?.body) return kept.body as ReadableStream<Uint8Array<ArrayBuffer>>;
+    const res = await fetch(at(file));
+    if (!res.ok || !res.body) throw new Error(`Lean's ${file} did not load (${res.status})`);
+    let stream = res.body;
+    if (store) {
+      const [mine, copy] = stream.tee();
+      stream = mine;
+      store.put(key(file), new Response(copy)).catch(() => { /* over quota: downloaded again next time */ });
+    }
+    return stream.pipeThrough(new TransformStream<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>({
+      transform(chunk, c) { counted(chunk.byteLength, total); c.enqueue(chunk); },
+    }));
+  }
   /** A gzipped file, decompressed as it arrives; `parts` > 0: shipped as `<file>.0`, `<file>.1`, … */
   function gunzip(file: string, parts = 0): ReadableStream<Uint8Array> {
     const names = parts > 0 ? Array.from({ length: parts }, (_, i) => `${file}.${i}`) : [file];
@@ -47,12 +83,10 @@ function host() {
         for (;;) {
           if (!reader) {
             if (i === names.length) { c.close(); return; }
-            const res = await fetch(at(names[i++]!));
-            if (!res.ok || !res.body) throw new Error(`Lean's ${names[i - 1]} did not load (${res.status})`);
-            reader = res.body.getReader();
+            reader = (await body(names[i++]!)).getReader();
           }
           const { done, value } = await reader.read();
-          if (!done) { counted(value.byteLength); c.enqueue(value); return; }
+          if (!done) { c.enqueue(value); return; }
           reader = null;
         }
       },

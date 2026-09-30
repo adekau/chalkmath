@@ -2656,6 +2656,7 @@ function leanStatus(): HTMLElement | null {
   if (st === "off" || st === "isolating" || st === "failed" || !p) return null;
   const pct = p.phase === "download" && p.total > 0 ? Math.min(100, Math.round((p.loaded / p.total) * 100)) : null;
   const text = p.phase === "editor" ? "Loading the Lean editor…"
+    : p.phase === "starting" ? "Starting Lean…"
     : p.phase === "download" ? (p.total > 0
       ? `Downloading Lean and its library: ${MB(p.loaded)} of ${MB(p.total)} MB. Only the first time: your browser keeps it.`
       : "Downloading Lean and its library…")

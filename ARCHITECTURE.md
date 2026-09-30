@@ -181,7 +181,9 @@ language server answers LSP for Lean cells.
   translated between cells and file.
 - **Cost.** Nothing loads until a notebook has a Lean cell. Then, compressed: the editor (~3 MB), the
   server (~24 MB) and Init's 32-bit oleans (~114 MB: their private parts, proofs included, are most of it,
-  and an ordinary file's implicit `import Init` needs them), once per browser. The site gets Lean from a
+  and an ordinary file's implicit `import Init` needs them), once per browser: the worker keeps the large
+  files in Cache Storage under an id of their contents (a browser's HTTP cache will not hold entries that
+  size, and the files' URLs change with every deploy), so they are downloaded again only when Lean changes. The site gets Lean from a
   release `lean-wasm.yml` publishes whenever Lean's build inputs change (`scripts/lean-wasm-key.sh` names it),
   so a deploy does not spend two hours building it.
 

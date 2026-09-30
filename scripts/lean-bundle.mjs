@@ -86,17 +86,22 @@ export async function bundleLean({ out, define, minify, nonce }) {
     webview.replace(ESMS, `esmsInitOptions={shimMode:!0,nonce:${JSON.stringify(nonce)}}`).replaceAll('"/infoview/', `"${INFOVIEW}`));
 
   const lean = leanBuild();
-  let parts = 0, download = 0;
+  let parts = 0;
+  /** What the worker loads, in order, with sizes, and an id of their contents: the worker keeps them in
+   *  Cache Storage under that id, so a deploy that does not change Lean reuses what a browser has. */
+  const files = { id: "", sizes: {} };
   for (const f of readdirSync(out)) if (/^lean-(server\.wasm|lib\.pack)/.test(f)) rmSync(`${out}/${f}`);
   if (lean) {
     for (const f of ["lean-server.js", "lean-initialize.json"]) cpSync(`${lean}/${f}`, `${out}/${f}`);
     const wasm = gzipSync(readFileSync(`${lean}/lean-server.wasm`), { level: 9 });
-    writeFileSync(`${out}/lean-server.wasm.gz`, wasm);
     const lib = readFileSync(`${lean}/lean-lib.pack.gz`);
-    download = wasm.length + lib.length;
-    for (let at = 0; at < lib.length; at += PART) writeFileSync(`${out}/lean-lib.pack.gz.${parts++}`, lib.subarray(at, at + PART));
+    const id = createHash("sha256");
+    const add = (name, data) => { writeFileSync(`${out}/${name}`, data); files.sizes[name] = data.length; id.update(name).update(data); };
+    add("lean-server.wasm.gz", wasm);
+    for (let at = 0; at < lib.length; at += PART) add(`lean-lib.pack.gz.${parts++}`, lib.subarray(at, at + PART));
+    files.id = id.digest("hex").slice(0, 16);
   } else console.log("lean: Lean itself has not been built (npm run lean-wasm); Lean cells will say so");
   await build({ ...common, format: "iife", entryPoints: ["packages/engine-host/src/worker-lean-server.ts"], outfile: `${out}/lean-server.worker.js`,
-    define: { ...common.define, __LEAN_LIB_PARTS__: String(parts), __LEAN_DOWNLOAD_BYTES__: String(download) } });
+    define: { ...common.define, __LEAN_LIB_PARTS__: String(parts), __LEAN_FILES__: JSON.stringify(files) } });
   console.log(`lean: ${readdirSync(out).join(" ")}`);
 }
