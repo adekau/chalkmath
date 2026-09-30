@@ -146,11 +146,17 @@ def radicalBaseWhy (a q : Q) (r k : Nat) : String :=
       let whole := if n / d == 1 then toString r else s!"{r}^\{{n / d}}"
       [s!"{whole} \\cdot {r}^\{{n % d}/{d}}"]
     else []
-  let steps := [(Expr.pow (.num a) (.num q)).toLatex, s!"({rk})^\{{q.toText}}", s!"{r}^\{{x.toText}}"] ++ split ++
-    [(Expr.pow (.num (Q.ofInt r)) (.num x)).toLatex]
+  -- an exact root ends at `2^{3}`, which `simp.power` evaluates next; only a radical needs the
+  -- notation the row shows (`2√2`)
+  let shown := if x.isInt then [] else [(Expr.pow (.num (Q.ofInt r)) (.num x)).toLatex]
+  let steps := [(Expr.pow (.num a) (.num q)).toLatex, s!"({rk})^\{{q.toText}}", s!"{r}^\{{x.toText}}"] ++ split ++ shown
   s!"${a.toText} = {rk}$, so ${chain steps}$."
 
-/-- `a^(p/q)` with `a = r^k` a perfect power: `r^(k·p/q)`. Guarded by the ordering it decreases. -/
+/-- `a^(p/q)` with `a = r^k` a perfect power: `r^(k·p/q)`. Guarded by the ordering it decreases:
+when the root is exact (`k·p/q` an integer, `4^(3/2) → 2^3`) `M` drops, since an integer exponent
+is lighter than a fraction; otherwise (`8^(1/2) → 2^(3/2)`) `M` and `size` stay put and the base
+shrinks. The exact case cannot rely on the base alone: `numCount` counts the new exponent too, and
+`2 + 3` outweighs `4`. -/
 def radicalBase : PlainRule :=
   { name := "simp.radical", apply := fun e =>
       match e with
@@ -159,7 +165,7 @@ def radicalBase : PlainRule :=
           match perfectPower a.val.num.toNat with
           | some (r, k) =>
             let res : Expr := .pow (.num (Q.ofInt r)) (.num (q * Q.ofInt k))
-            if M res ≤ M e && numCount res < numCount e then
+            if M res < M e || (M res ≤ M e && numCount res < numCount e) then
               some ⟨res, radicalBaseWhy a q r k, none, none⟩
             else none
           | none => none

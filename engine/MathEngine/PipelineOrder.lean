@@ -2457,10 +2457,11 @@ theorem dec_radicalBase : Dec norm (scalarOnly radicalBase) := dec_scalar fun e 
         split at happ
         · rename_i hg
           simp only [Option.some.injEq] at happ; subst happ; (try dsimp only)
-          simp only [Bool.and_eq_true, decide_eq_true_eq] at hg
-          obtain ⟨hM, hN⟩ := hg
+          simp only [Bool.or_eq_true, Bool.and_eq_true, decide_eq_true_eq] at hg
           have he : Clean (.pow (.num a) (.num q)) := Clean.pow (Clean.num _) (Clean.num _)
           have hr : Clean (.pow (.num (Q.ofInt r)) (.num (q * Q.ofInt k))) := Clean.pow (Clean.num _) (Clean.num _)
+          rcases hg with hlt | ⟨hM, hN⟩
+          · exact muLt_of_clean hr he (Or.inl hlt)
           rcases Nat.lt_or_eq_of_le hM with hlt | heq
           · exact muLt_of_clean hr he (Or.inl hlt)
           · exact muLt_of_clean' hr he ⟨heq, rfl, hN⟩
