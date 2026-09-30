@@ -19,7 +19,7 @@ export interface NotationOptions {
   /** A highlight class for a token, by what it is where it stands: a call's name, a variable bound
    *  by the call or `let` head around it (`diff(f, x)`'s x, `let f(x)`'s x), any other name, or a
    *  numeral. Null leaves it plain. The notation tags it `\\htmlData{hl=…}` for the host's colours. */
-  classify?: (text: string, as: "call" | "bound" | "name" | "num") => string | null;
+  classify?: (text: string, as: "call" | "bound" | "name" | "num" | "keyword") => string | null;
 }
 
 /** Commands whose argument at this index is a variable bound over the call (the notebook's
@@ -38,22 +38,11 @@ const GREEK: Record<string, string> = {
 };
 /** Spelled-out names the engine prints as one glyph. */
 const GLYPH_NAMES: Record<string, string> = { pi: "\\pi", alpha: "\\alpha", beta: "\\beta", theta: "\\theta", lambda: "\\lambda" };
-const NAMED_FNS = ["sin", "cos", "tan", "exp", "ln", "log"];
 
 export function toLatex(stmt: Stmt, opts: NotationOptions = {}): string {
   return new Notation(opts).block(stmt.body);
 }
 
-/** A name on its own, the way the engine prints a variable: one letter italic, longer ones as one
- *  italic word, `x_1` with its subscript. */
-function nameLatex(s: string): string {
-  if (GLYPH_NAMES[s]) return GLYPH_NAMES[s]!;
-  const cs = Array.from(s);
-  const u = cs.indexOf("_");
-  const head = (u < 0 ? cs : cs.slice(0, u)).map(charLatex);
-  const base = head.length > 1 ? `\\mathit{${head.join("")}}` : head.join("");
-  return u < 0 ? base : `${base}_{${cs.slice(u + 1).map(charLatex).join("")}}`;
-}
 const charLatex = (c: string) => GREEK[c] ?? (c === "_" ? "\\_" : c === "'" ? "'" : c);
 
 type Token = { kind: "name" | "num" | "op"; atoms: Atom[] };
@@ -90,6 +79,13 @@ class Notation {
   }
 
   private tag(cls: string | null, latex: string) { return cls ? `\\htmlData{hl=${cls}}{${latex}}` : latex; }
+  /** A keyword or a function's name: a word as typed, not a variable, so the host draws it in its
+   *  text face (upright, the text input's font) rather than math italic. */
+  private word(latex: string) { return `\\htmlData{word=1}{${latex}}`; }
+  /** Parentheses around `inner`; an open group's `)` is drawn faint where it would go. */
+  private parens(inner: string, open?: boolean) {
+    return open ? `\\left(${inner}\\right.\\htmlData{open=1}{)}` : `\\left(${inner}\\right)`;
+  }
 
   block(b: Block): string {
     if (b.length === 0) return this.hole(b);
@@ -168,12 +164,15 @@ class Notation {
       case "frac": return this.wrap([a], `\\frac{${this.block(a.num)}}{${this.block(a.den)}}`);
       // the power attaches to what precedes it in the LaTeX as in the text; the tag goes inside
       case "sup": return `^{${this.wrap([a], this.block(a.exp))}}`;
-      case "paren": return this.wrap([a], `\\left(${this.block(a.body)}\\right)`);
+      case "paren": return this.wrap([a], this.parens(this.block(a.body), a.open));
       case "matrix": return this.wrap([a], this.matrix(a.rows, "bmatrix"));
       case "call": return this.wrap([a], this.call(a));
       case "let": {
-        const params = a.params ? `\\left(${a.params.map((p) => this.block(p)).join(",\\,")}\\right)` : "";
-        return this.wrap([a], `\\mathrm{let}\\;${this.block(a.name)}${params}\\;=\\;`);
+        // `let f(x) =` names a function, so its name is a word like a call's; `let a =` names a value
+        const kw = this.tag(this.classify("let", "keyword"), this.word("\\mathrm{let}"));
+        if (!a.params) return this.wrap([a], `${kw}\\;${this.block(a.name)}\\;=\\;`);
+        const params = `{\\left(${a.params.map((p) => this.block(p)).join(",\\,")}\\right)}`;
+        return this.wrap([a], `${kw}\\;${this.word(this.block(a.name))}${params}\\;=\\;`);
       }
     }
   }
@@ -209,15 +208,16 @@ class Notation {
       case "det/1": {
         const m = b[0]![0];
         if (b[0]!.length === 1 && m?.k === "matrix") return this.wrap([m], this.matrix(m.rows, "vmatrix"));
-        return `\\det\\left(${x(0)}\\right)`;
+        return `${this.word("\\mathrm{det}")}{${this.parens(x(0), a.open)}}`;
       }
       case "transpose/1": return `{${this.operand(b[0]!)}}^{\\mathsf{T}}`;
       case "dot/2": return `${this.operand(b[0]!)} \\cdot ${this.operand(b[1]!)}`;
     }
     const args = b.map((_, i) => x(i)).join(", ");
-    // a function the session defined is a name like any other; the rest are commands
-    const head = NAMED_FNS.includes(a.name) ? `\\${a.name}` : BUILTINS.has(a.name) ? `\\operatorname{${a.name}}` : nameLatex(a.name);
-    return `${this.tag(this.classify(a.name, "call"), head)}\\left(${args}\\right)`;
+    // the name as typed, in the text face, right against its parentheses as in the text (`\\sin` and
+    // `\\operatorname` are operators, which KaTeX spaces off from the `(`)
+    const head = `\\mathrm{${Array.from(a.name).map(charLatex).join("")}}`;
+    return `${this.tag(this.classify(a.name, "call"), this.word(head))}{${this.parens(args, a.open)}}`;
   }
 }
 
@@ -234,9 +234,6 @@ function nameOf(b: Block): string | null {
 export function hasNotation(b: Block): boolean {
   return b.some((a) => a.k === "frac" || a.k === "sup" || a.k === "matrix" || (a.k === "call" && notated(a)) || slots(a).some(hasNotation));
 }
-
-const BUILTINS = new Set(["simplify", "expand", "factor", "N", "det", "rref", "transpose", "solve", "subst", "plot",
-  "dot", "norm", "sum", "exptotrig", "epicycles", "dft", "diff", "integrate", "sign", "sqrt", "abs", "conj", "re", "im"]);
 
 /** Calls drawn in their own notation (d/dx, ∫, Σ, √, bars, …) rather than as `name(args)`; must
  *  agree with `Notation.call`. */

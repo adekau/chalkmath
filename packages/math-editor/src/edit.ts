@@ -427,7 +427,9 @@ export class MathEdit {
     return this.insert({ k: "sup", exp: [] });
   }
 
-  /** `(`: a call if the name before it is a function, else a group. */
+  /** `(`: a call if the name before it is a function, else a group. Typed before existing atoms,
+   *  it takes them all in, as `(` does in the text, with its `)` left open until one is typed:
+   *  `expand(` in front of `(x+5)(2x+3)` wraps the product. */
   private open(): boolean {
     const { block: b, i } = this.caret;
     let j = i;
@@ -440,9 +442,21 @@ export class MathEdit {
       const n = Array.from(last.s).length;
       b.splice(i - n, n);
       this.caret = { block: b, i: i - n };
-      return this.insert(call(last.s, ARITY[last.s] ?? 1));
+      const c = call(last.s, ARITY[last.s] ?? 1) as Atom & { k: "call" };
+      const rest = b.splice(this.caret.i);
+      if (rest.length) { c.args[0] = rest; c.open = true; }
+      return this.insert(c);
     }
-    return this.insert({ k: "paren", body: [] });
+    const rest = b.splice(i);
+    return this.insert(rest.length ? { k: "paren", body: rest, open: true } : { k: "paren", body: [] });
+  }
+
+  /** Place every `)` still open (the input is left: the text had them all along). */
+  closeAll(b: Block = this.root) {
+    for (const a of b) {
+      if ((a.k === "paren" || a.k === "call") && a.open) delete a.open;
+      for (const s of slots(a)) this.closeAll(s);
+    }
   }
 
   /** `)` or `]`: out of the innermost enclosing group, call or matrix. A group that is the whole
@@ -450,9 +464,21 @@ export class MathEdit {
    *  raised position shows it, so its parentheses go, and the caret leaves the fraction or power
    *  too, as the text's `)` ended it. */
   private close(match: (a: Atom) => boolean): boolean {
-    for (const { w } of this.ancestors()) {
-      if (!match(w.atom)) continue;
-      const a = w.atom, slot = w.parent, outer = this.where(slot);
+    let inner: Where | null = null;   // the level below, on the way up from the caret
+    for (const { block: b, w } of this.ancestors()) {
+      if (!match(w.atom)) { inner = w; continue; }
+      const a = w.atom;
+      // an open group ends where its `)` is typed: what follows goes back out after it
+      if ((a.k === "paren" || a.k === "call") && a.open) {
+        delete a.open;
+        if (b === (a.k === "paren" ? a.body : a.args[a.args.length - 1])) {
+          const cut = b === this.caret.block ? this.caret.i : inner!.index + 1;
+          w.parent.splice(w.index + 1, 0, ...b.splice(cut));
+        }
+        this.caret = { block: w.parent, i: w.index + 1 };
+        return true;
+      }
+      const slot = w.parent, outer = this.where(slot);
       if (a.k === "paren" && slot.length === 1 && outer && ((outer.atom.k === "frac" && slot === outer.atom.den) || outer.atom.k === "sup")) {
         slot.splice(0, 1, ...a.body);
         this.caret = { block: outer.parent, i: outer.index + 1 };
@@ -461,6 +487,9 @@ export class MathEdit {
       this.caret = { block: w.parent, i: w.index + 1 };
       return true;
     }
+    // `)` just after an open group places its `)` where it already is
+    const prev = this.caret.block[this.caret.i - 1];
+    if (prev && (prev.k === "paren" || prev.k === "call") && prev.open && match(prev)) { delete prev.open; return true; }
     return false;
   }
 
@@ -469,8 +498,10 @@ export class MathEdit {
     for (const { block: b, w } of this.ancestors()) {
       const a = w.atom;
       if (a.k === "call") {
+        // in the middle of an argument, what follows the caret starts the next one, as in the text
         const k = a.args.indexOf(b);
-        if (k + 1 >= a.args.length) a.args.push([]);
+        const rest = b === this.caret.block ? b.splice(this.caret.i) : [];
+        if (rest.length || k + 1 >= a.args.length) a.args.splice(k + 1, 0, rest);
         this.caret = { block: a.args[k + 1]!, i: 0 };
         return true;
       }
@@ -559,8 +590,11 @@ export class MathEdit {
 
   // --- deleting ----------------------------------------------------------------------------------
 
-  /** Backspace: a character goes; a structure is entered from its end, and goes once it is empty. At
-   *  the start of a group or a one-argument call the wrapper goes and its contents stay. */
+  /** Backspace: a character goes; a structure is entered from its end, and goes once it is empty.
+   *  Right after a group's `)` (or a call's), the `)` goes as it would in the text: the group opens
+   *  again and takes in what follows. At the start of a group its `(` goes and the contents stay; at
+   *  the start of a call drawn as `name(…)`, the name stays too (`sin(x` → `sinx`), and one drawn
+   *  in its own notation (√, |x|) leaves its contents. */
   backspace(): boolean {
     if (this.selection()) return this.deleteSelection();
     return this.mutate("delete", () => this.backspaceOne());
@@ -569,6 +603,14 @@ export class MathEdit {
     const { block: b, i } = this.caret;
     if (i > 0) {
       const a = b[i - 1]!;
+      if ((a.k === "paren" || (a.k === "call" && !notated(a))) && !a.open) {
+        const last = a.k === "paren" ? a.body : a.args[a.args.length - 1]!;
+        const at = last.length;
+        last.push(...b.splice(i));
+        a.open = true;
+        this.caret = { block: last, i: at };
+        return true;
+      }
       const s = slots(a);
       if (s.every((x) => x.length === 0)) { b.splice(i - 1, 1); this.caret = { block: b, i: i - 1 }; return true; }
       const last = s[s.length - 1]!;
@@ -587,6 +629,12 @@ export class MathEdit {
       return true;
     }
     const s = slots(w.atom);
+    if (w.slot === 0 && w.atom.k === "call" && !notated(w.atom) && (w.atom.args.length === 1 || s.every((x) => x.length === 0))) {
+      const name = chars(w.atom.name);
+      w.parent.splice(w.index, 1, ...name, ...w.atom.args[0]!);
+      this.caret = { block: w.parent, i: w.index + name.length };
+      return true;
+    }
     if (s.every((x) => x.length === 0) || (w.slot === 0 && (w.atom.k === "paren" || (w.atom.k === "call" && s.length === 1)))) {
       w.parent.splice(w.index, 1, ...s.flat());
       this.caret = { block: w.parent, i: w.index };

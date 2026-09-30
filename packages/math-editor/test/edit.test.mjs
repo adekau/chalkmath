@@ -200,3 +200,52 @@ test("a template typed in a cell's text lands where it was typed, in a tree", ()
   e.undo();
   assert.equal(e.text, "1 + ");
 });
+
+test("a ( typed before existing atoms takes them in, with its ) open until one is typed", () => {
+  // the case from the notebook: wrap a product in expand( after the fact
+  let t = typed("{home}expand(", "(x + 5)(2x + 3)");
+  assert.equal(t.text, "expand((x + 5)(2x + 3))");
+  assert.equal(t.e.stmt.body[0].open, true);
+  assert.equal(t.e.caret.block, t.e.stmt.body[0].args[0]);
+  // End then ) places the ) where it already is
+  t = typed("{home}expand({end})", "(x + 5)(2x + 3)");
+  assert.equal(t.text, "expand((x + 5)(2x + 3))");
+  assert.equal(t.e.stmt.body[0].open, undefined);
+  // a ) typed inside puts what follows back out, as in the text
+  assert.equal(text("{home}expand({→}{→}{→}{→}{→})", "(x + 5)(2x + 3)"), "expand((x + 5))(2x + 3)");
+  // a plain group too: 2( in front of x + 1
+  assert.equal(text("{home}{→}(", "2x + 1"), "2(x + 1)");
+  assert.equal(text("{home}{→}({→}{→}{→})", "2x + 1"), "2(x + 1)");
+  assert.equal(text("{home}{→}({→})", "2x + 1"), "2(x) + 1");
+  // typed at the end, a ( closes as before
+  assert.equal(typed("sin(x").e.stmt.body[0].open, undefined);
+});
+
+test("backspace after a ) opens the group again; at a ( only the ( goes", () => {
+  // the ) goes: sin(x) + 1 → sin(x + 1), nothing deleted
+  let t = typed("{end}{←}{←}{⌫}", "sin(x) + 1");
+  assert.equal(t.text, "sin(x + 1)");
+  assert.equal(t.e.stmt.body[0].open, true);
+  // and typing ) puts it back where it was
+  assert.equal(text("{end}{←}{←}{⌫})", "sin(x) + 1"), "sin(x) + 1");
+  // after an open group, backspace steps in rather than deleting it
+  assert.equal(text("{home}expand({end}{⌫}", "(x + 5)(2x + 3)"), "expand((x + 5)(2x + 3))");
+  // at the start of a call drawn as name(…), the ( goes and the name stays
+  assert.equal(text("{home}expand({⌫}", "(x + 5)"), "expand(x + 5)");
+  assert.deepEqual(typed("{home}expand({⌫}", "(x + 5)").e.stmt.body.map((a) => a.k).join(" "), "ch ch ch ch ch ch paren");
+  // and an empty call's ( leaves its name to go on typing
+  assert.equal(text("f({⌫}", "", ["f"]), "f");
+  // a notated call (√) leaves its contents, as before
+  assert.equal(text("sqrt(x{home}{→}{⌫}"), "x");
+});
+
+test("a comma in the middle of an argument starts the next one with what follows", () => {
+  assert.equal(text("f(ab{←},", "", ["f"]), "f(a, b)");
+  assert.equal(text("{home}{→}{→},", "subst(ab, x, 1)"), "subst(a, b, x, 1)");
+});
+
+test("leaving the input places every open )", () => {
+  const { e } = typed("{home}expand(", "(x + 5)(2x + 3)");
+  e.closeAll();
+  assert.equal(e.stmt.body[0].open, undefined);
+});

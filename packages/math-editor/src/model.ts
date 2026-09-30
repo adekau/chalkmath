@@ -19,10 +19,12 @@ export type Atom =
   | { k: "frac"; num: Block; den: Block }
   /** A power of the atom before it: `x^2` is the character `x` followed by `sup [2]`. */
   | { k: "sup"; exp: Block }
-  | { k: "paren"; body: Block }
+  /** `open`: typed before existing atoms, the group took in everything to its right and its `)`
+   *  is not placed yet (drawn faint); typing `)` places it. Editing state only: the text is the same. */
+  | { k: "paren"; body: Block; open?: boolean }
   /** `name(args)`: a builtin or a function the session defined. How it shows (d/dx, ∫, |·|) is
    *  `notation.ts`'s choice; the tree only knows the name. */
-  | { k: "call"; name: string; args: Block[] }
+  | { k: "call"; name: string; args: Block[]; open?: boolean }
   | { k: "matrix"; rows: Block[][] }
   /** `let name =` or `let f(x, y) =`: the cell's head, only ever first in the body. The name and the
    *  parameters are slots like any other, so the caret goes through them. */

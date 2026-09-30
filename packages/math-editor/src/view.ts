@@ -41,7 +41,7 @@ export interface MathInputOptions {
    *  a tooltip. Without it, `%n` shows its number and `%` stays as typed. */
   outRef?(ref: string): { label: number; value?: string } | null;
   /** Highlight classes for tokens (see `NotationOptions.classify`); the page styles `[data-hl=…]`. */
-  classify?(text: string, as: "call" | "bound" | "name" | "num"): string | null;
+  classify?(text: string, as: "call" | "bound" | "name" | "num" | "keyword"): string | null;
   /** A paste, before the input reads it: the host takes it (an image, an SVG) by preventing its default. */
   onPaste?(ev: ClipboardEvent): void;
 }
@@ -58,6 +58,9 @@ export const MATH_INPUT_CSS = `
 .mi.focused .mi-math [data-h].mi-here { color:var(--mi-caret, currentColor); }
 .mi-cmd { color:var(--mi-cmd, #b0662c); }
 .mi-math .mi-err { background:var(--mi-err-bg, rgba(192,57,43,0.12)); box-shadow:0 2px 0 var(--mi-err, #c0392b); border-radius:2px 2px 0 0; }
+.mi-math [data-word], .mi-math [data-word] * { font-family:var(--mi-word-font, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace) !important; font-style:normal !important; }
+.mi-math [data-word] { font-size:var(--mi-word-size, 0.8em); }
+.mi-math [data-open] { opacity:0.35; }
 .mi-math [data-out] { background:var(--mi-chip, rgba(107,138,253,0.14)); border-radius:4px; padding:0 2px; }
 .mi-math .mi-sel { background:var(--mi-sel, rgba(107,138,253,0.28)); border-radius:2px; }
 .mi-ta { position:absolute; left:0; top:0; width:1px; height:1px; opacity:0; padding:0; border:0; resize:none; overflow:hidden; }
@@ -119,7 +122,14 @@ export class MathInput {
     this.ta.setAttribute("autocorrect", "off"); this.ta.setAttribute("autocomplete", "off");
     this.el.append(this.math, this.caretEl, this.ta);
     this.ta.addEventListener("focus", () => { this.el.classList.add("focused"); this.place(); this.opts.onFocus?.(); });
-    this.ta.addEventListener("blur", () => { this.el.classList.remove("focused"); this.hideSuggestions(); this.opts.onBlur?.(); });
+    this.ta.addEventListener("blur", () => {
+      this.el.classList.remove("focused");
+      this.hideSuggestions();
+      // leaving the input places every `)` still open, as the text had them all along
+      this.edit.closeAll();
+      this.render();
+      this.opts.onBlur?.();
+    });
     this.ta.addEventListener("keydown", (ev) => this.key(ev));
     this.ta.addEventListener("compositionstart", () => { this.composing = true; });
     this.ta.addEventListener("compositionend", () => { this.composing = false; this.typed(); });
@@ -185,7 +195,7 @@ export class MathInput {
       wrap: (atoms, s) => { tagged.push(atoms); return `\\htmlData{a=${tagged.length - 1}}{${s}}`; },
       hole: (b) => { holes.push(b); return `\\htmlData{h=${holes.length - 1}}{\\square}`; },
       outRef: (ref) => this.opts.outRef?.(ref)?.label ?? null,
-      ...(this.opts.classify ? { classify: (t: string, as: "call" | "bound" | "name" | "num") => this.opts.classify!(t, as) } : {}),
+      ...(this.opts.classify ? { classify: (t: string, as: "call" | "bound" | "name" | "num" | "keyword") => this.opts.classify!(t, as) } : {}),
     });
     // display-size fractions and operators, as a textbook (and Symbolab) set an input, but left-aligned
     katex.render(`\\displaystyle ${latex}`, this.math, { throwOnError: false, trust: TRUST, strict: false, displayMode: false });
