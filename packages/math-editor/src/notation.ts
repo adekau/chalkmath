@@ -85,7 +85,10 @@ class Notation {
   private tag(cls: string | null, latex: string) { return cls ? `\\htmlData{hl=${cls}}{${latex}}` : latex; }
   /** A keyword or a function's name: a word as typed, not a variable, so the host draws it in its
    *  text face (upright, the text input's font) rather than math italic. */
-  private word(latex: string) { return `\\htmlData{word=1}{${latex}}`; }
+  private word(latex: string) {
+    // at full size a word is the text input's size; in a script or a small fraction it shrinks with it
+    return `\\htmlData{word=${this.script || this.fracs >= 3 ? "s" : "1"}}{${latex}}`;
+  }
   /** A fraction. An input is read and clicked into, so nested fractions shrink gently where a
    *  textbook would drop a size per level: the first two levels full size, then 90%, 80%, and 70%
    *  at the deepest. Each is padded a little either side, so every bar is longer than the bars
@@ -110,9 +113,12 @@ class Notation {
   private named(a: Atom & { k: "call" }, shown: string): string {
     return `${this.tag(this.classify(a.name, "call"), this.word(`\\mathrm{${shown}}`))}{${this.parens(a.args.map((x) => this.block(x)).join(", "), a.open)}}`;
   }
-  /** Parentheses around `inner`; an open group's `)` is drawn faint where it would go. */
+  /** Parentheses around `inner`; an open group's `)` is drawn faint where it would go. They are set
+   *  at text size and tagged (`pg` the group, `pd` each side) for the view to stretch over what they
+   *  hold: TeX's `\\left(` centres a paren on the math axis, so around a stack of fractions deeper
+   *  than it is tall it reaches as far above the stack as the stack goes below. */
   private parens(inner: string, open?: boolean) {
-    return open ? `\\left(${inner}\\right.\\htmlData{open=1}{)}` : `\\left(${inner}\\right)`;
+    return `\\htmlData{pg=1}{\\htmlData{pd=o}{(}${inner}\\htmlData{pd=c${open ? ", open=1" : ""}}{)}}`;
   }
 
   block(b: Block): string {
@@ -183,7 +189,7 @@ class Notation {
     const s = this.block(b);
     const one = b.length === 1 && b[0]!.k !== "ch" && b[0]!.k !== "frac" && b[0]!.k !== "sup";
     const word = b.length > 0 && b.every((a) => a.k === "ch") && tokens(b as (Atom & { k: "ch" })[]).length === 1;
-    return one || word || b.length === 0 ? s : `\\left(${s}\\right)`;
+    return one || word || b.length === 0 ? s : this.parens(s);
   }
 
   private atom(a: Atom): string {
@@ -199,7 +205,7 @@ class Notation {
         // `let f(x) =` names a function, so its name is a word like a call's; `let a =` names a value
         const kw = this.tag(this.classify("let", "keyword"), this.word("\\mathrm{let}"));
         if (!a.params) return this.wrap([a], `${kw}\\;${this.block(a.name)}\\;=\\;`);
-        const params = `{\\left(${a.params.map((p) => this.block(p)).join(",\\,")}\\right)}`;
+        const params = `{${this.parens(a.params.map((p) => this.block(p)).join(",\\,"))}}`;
         return this.wrap([a], `${kw}\\;${this.word(this.block(a.name))}${params}\\;=\\;`);
       }
     }
@@ -229,8 +235,8 @@ class Notation {
       case "re/1": return this.named(a, "Re");
       case "im/1": return this.named(a, "Im");
       case "sign/1": return this.named(a, "sgn");
-      case "diff/2": return `\\frac{d}{d${x(1)}}\\left(${x(0)}\\right)`;
-      case "diff/3": return `\\frac{d^{${this.scripted(b[2]!)}}}{d{${x(1)}}^{${this.scripted(b[2]!)}}}\\left(${x(0)}\\right)`;
+      case "diff/2": return `\\frac{d}{d${x(1)}}${this.parens(x(0))}`;
+      case "diff/3": return `\\frac{d^{${this.scripted(b[2]!)}}}{d{${x(1)}}^{${this.scripted(b[2]!)}}}${this.parens(x(0))}`;
       case "integrate/2": return `\\int ${x(0)} \\, d${x(1)}`;
       case "integrate/4": return `\\int_{${this.scripted(b[2]!)}}^{${this.scripted(b[3]!)}} ${x(0)} \\, d${x(1)}`;
       case "sum/4": return `\\sum_{${this.scripted(b[1]!)}=${this.scripted(b[2]!)}}^{${this.scripted(b[3]!)}} ${x(0)}`;
