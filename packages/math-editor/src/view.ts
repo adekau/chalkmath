@@ -62,6 +62,7 @@ export const MATH_INPUT_CSS = `
 .mi-math [data-word="1"] { font-size:var(--mi-word-size, 0.8em); }
 .mi-math [data-word="s"] { font-size:0.8em; }
 .mi-math .mi-tall { display:inline-block; }
+.mi-math .mi-lift { position:relative; }
 .mi-math .mi-tall > * { display:none; }
 .mi-math .mi-tall > svg { display:block; position:static; width:100%; height:100%; stroke:none; }
 .mi-math [data-open] { opacity:0.35; }
@@ -294,6 +295,10 @@ export class MathInput {
       for (const p of ["width", "height", "vertical-align"]) d.style.removeProperty(p);
       d.querySelector(":scope > svg")?.remove();
     }
+    for (const w of this.math.querySelectorAll<HTMLElement>(".mi-lift")) {
+      w.classList.remove("mi-lift");
+      w.style.removeProperty("top");
+    }
     this.fitted = this.math.getClientRects().length > 0;
     if (!this.fitted) return;
     // the innermost first, so an outer group measures its inner groups' parens as fitted
@@ -322,6 +327,14 @@ export class MathInput {
         d.style.height = `${h}px`;
         d.style.verticalAlign = `${glyph.baseline - bottom}px`;
         d.append(paren(d === open, w, h, em));
+      }
+      // a call's name level with the middle of its parentheses, not down on the line under a stack
+      const name = g.dataset["pg"] === "c" ? g.closest("[data-call]")?.querySelector<HTMLElement>("[data-word]") : null;
+      const inks = name ? [...name.querySelectorAll("*")].map(inkOf).filter((r) => !!r) : [];
+      if (name && inks.length) {
+        const mid = (Math.min(...inks.map((r) => r.top)) + Math.max(...inks.map((r) => r.bottom))) / 2;
+        name.classList.add("mi-lift");
+        name.style.top = `${(top + bottom) / 2 - mid}px`;
       }
     }
   }

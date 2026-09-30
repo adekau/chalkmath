@@ -149,7 +149,7 @@ test("tokens carry the host's highlight classes, with binders' variables and par
   const latex = toLatex(tree("let f(x) = diff(x^2 + y, x) + rref(M) + 2"), { classify });
   assert.deepEqual(seen.sort(), ["bound:x", "bound:x", "bound:x", "call:rref", "keyword:let", "name:M", "name:f", "name:y", "num:2", "num:2"]);
   // a call's name is a word in the text face, against its parentheses
-  assert.match(latex, /\\htmlData\{hl=call\}\{\\htmlData\{word=1\}\{\\mathrm\{rref\}\}\}\{\\htmlData\{pg=1\}\{\\htmlData\{pd=o\}\{\(\}/);
+  assert.match(latex, /\\htmlData\{hl=call\}\{\\htmlData\{word=1\}\{\\mathrm\{rref\}\}\}\{\\htmlData\{pg=c\}\{\\htmlData\{pd=o\}\{\(\}/);
   assert.doesNotThrow(() => katex.renderToString(latex, { throwOnError: true, strict: false, trust: (c) => c.command === "\\htmlData" }));
 });
 
@@ -176,5 +176,5 @@ test("fractions keep full size when nested, script size in exponents and bounds;
   assert.match(tex("x^sin(t)"), /word=s/);
   assert.match(tex("a/(b/(c/sin(t)))"), /word=s/);
   assert.match(tex("a/(b/sin(t))"), /word=1/);
-  assert.match(tex("sign(sin(t))"), /^\\htmlData\{word=1\}\{\\mathrm\{sgn\}\}\{\\htmlData\{pg=1\}\{\\htmlData\{pd=o\}\{\(\}\\htmlData\{word=1\}\{\\mathrm\{sin\}\}/);
+  assert.match(tex("sign(sin(t))"), /^\\htmlData\{call=1\}\{\\htmlData\{word=1\}\{\\mathrm\{sgn\}\}\{\\htmlData\{pg=c\}\{\\htmlData\{pd=o\}\{\(\}\\htmlData\{call=1\}\{\\htmlData\{word=1\}\{\\mathrm\{sin\}\}/);
 });

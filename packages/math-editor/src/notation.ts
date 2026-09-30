@@ -111,14 +111,19 @@ class Notation {
   }
   /** A call drawn as its display name (`sgn` for `sign`) set as a word, against its parentheses. */
   private named(a: Atom & { k: "call" }, shown: string): string {
-    return `${this.tag(this.classify(a.name, "call"), this.word(`\\mathrm{${shown}}`))}{${this.parens(a.args.map((x) => this.block(x)).join(", "), a.open)}}`;
+    return this.called(this.tag(this.classify(a.name, "call"), this.word(`\\mathrm{${shown}}`)), a.args.map((x) => this.block(x)).join(", "), a.open);
+  }
+  /** A call: its name, then its arguments in parentheses, grouped (`call`) so the view can set the
+   *  name level with the middle of the parentheses when they stretch. */
+  private called(head: string, args: string, open?: boolean): string {
+    return `\\htmlData{call=1}{${head}{${this.parens(args, open, true)}}}`;
   }
   /** Parentheses around `inner`; an open group's `)` is drawn faint where it would go. They are set
    *  at text size and tagged (`pg` the group, `pd` each side) for the view to stretch over what they
    *  hold: TeX's `\\left(` centres a paren on the math axis, so around a stack of fractions deeper
    *  than it is tall it reaches as far above the stack as the stack goes below. */
-  private parens(inner: string, open?: boolean) {
-    return `\\htmlData{pg=1}{\\htmlData{pd=o}{(}${inner}\\htmlData{pd=c${open ? ", open=1" : ""}}{)}}`;
+  private parens(inner: string, open?: boolean, call = false) {
+    return `\\htmlData{pg=${call ? "c" : "1"}}{\\htmlData{pd=o}{(}${inner}\\htmlData{pd=c${open ? ", open=1" : ""}}{)}}`;
   }
 
   block(b: Block): string {
@@ -243,7 +248,7 @@ class Notation {
       case "det/1": {
         const m = b[0]![0];
         if (b[0]!.length === 1 && m?.k === "matrix") return this.wrap([m], this.matrix(m.rows, "vmatrix"));
-        return `${this.word("\\mathrm{det}")}{${this.parens(x(0), a.open)}}`;
+        return this.called(this.word("\\mathrm{det}"), x(0), a.open);
       }
       case "transpose/1": return `{${this.operand(b[0]!)}}^{\\mathsf{T}}`;
       case "dot/2": return `${this.operand(b[0]!)} \\cdot ${this.operand(b[1]!)}`;
@@ -252,7 +257,7 @@ class Notation {
     // the name as typed, in the text face, right against its parentheses as in the text (`\\sin` and
     // `\\operatorname` are operators, which KaTeX spaces off from the `(`)
     const head = `\\mathrm{${Array.from(a.name).map(charLatex).join("")}}`;
-    return `${this.tag(this.classify(a.name, "call"), this.word(head))}{${this.parens(args, a.open)}}`;
+    return this.called(this.tag(this.classify(a.name, "call"), this.word(head)), args, a.open);
   }
 }
 

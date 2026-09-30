@@ -2308,9 +2308,21 @@ function modeToggle(cell: Cell): HTMLElement {
 }
 
 /** A math cell's input: the visual one, or the text input with its highlight overlay underneath. */
+/** A typeset input can be several lines tall (a stack of fractions); its `In[n]:=` sits level with
+ *  its middle rather than its top. */
+const promptLevel = new ResizeObserver((entries) => {
+  for (const { target } of entries) {
+    const mi = target as HTMLElement, prompt = mi.closest(".cell")?.querySelector<HTMLElement>(":scope > .prompt");
+    if (!prompt || !mi.isConnected) continue;
+    const line = parseFloat(getComputedStyle(prompt).lineHeight) || 23;
+    const top = mi.getBoundingClientRect().top - prompt.getBoundingClientRect().top;
+    prompt.style.paddingTop = `${Math.max(5, top + (mi.offsetHeight - line) / 2)}px`;
+  }
+});
+
 function inputEls(cell: Cell, i: number): HTMLElement[] {
   const mi = isVisual(cell) ? visualInput(cell, i) : null;
-  if (mi) { cell.mi = mi; return [mi.el]; }
+  if (mi) { cell.mi = mi; promptLevel.observe(mi.el); return [mi.el]; }
   const input = document.createElement("input");
   input.className = "cellin"; input.type = "text"; input.value = cell.src;
   input.setAttribute("aria-label", `Cell ${i + 1}, math input`);
@@ -2337,8 +2349,9 @@ function inputEls(cell: Cell, i: number): HTMLElement[] {
 function refreshInput(cell: Cell) {
   const i = S.cells.indexOf(cell), mid = cell.el?.querySelector(".mid");
   if (i < 0 || !mid) return;
-  for (const el of mid.querySelectorAll(":scope > .mi, :scope > .hl, :scope > .cellin")) el.remove();
+  for (const el of mid.querySelectorAll(":scope > .mi, :scope > .hl, :scope > .cellin")) { promptLevel.unobserve(el); el.remove(); }
   delete cell.mi; delete cell.input; delete cell.hl;
+  cell.el?.querySelector<HTMLElement>(":scope > .prompt")?.style.removeProperty("padding-top");
   mid.prepend(...inputEls(cell, i));
   cell.el?.querySelector(".modetog")?.replaceWith(modeToggle(cell));
   renderCellBody(cell);
@@ -2348,6 +2361,7 @@ function renderCells() {
   hideHover(); hideSigHelp();
   const host = $(".cells");
   host.innerHTML = "";
+  promptLevel.disconnect();
   // Lean cells: one document per notebook, whose views are rebuilt with the cells
   const leanCells = S.cells.filter((c) => c.type === "lean");
   const leanIds = new Set(leanCells.map((c) => c.id));
