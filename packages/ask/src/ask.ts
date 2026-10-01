@@ -30,6 +30,9 @@ export interface Model {
   complete(req: { system: string; user: string; schema: object; signal?: AbortSignal | undefined }): Promise<string>;
   /** Free what the model holds (a WebGPU model's GPU memory and worker), when it is replaced. */
   unload?(): Promise<void>;
+  /** A model that can search the web itself (OpenRouter's web search): the reply, and the pages its
+   *  search gave it. */
+  search?(req: { system: string; user: string; schema: object; signal?: AbortSignal | undefined }): Promise<{ text: string; citations: { url: string; title: string; content?: string }[] }>;
 }
 
 export interface AskOptions {
@@ -43,6 +46,12 @@ export interface AskOptions {
   useKnowledge?: boolean;
   /** Search even when the model says it knows the answer ("Check with a search"). */
   forceSearch?: boolean;
+  /** Let the model read what was found and answer in the question's shape itself, rather than
+   *  choosing among previews while code copies the values: for a capable (cloud) model. Its numbers
+   *  are still checked against what it read. */
+  direct?: boolean;
+  /** With `direct`, a model that can search the web itself does so instead of the sources. */
+  webSearch?: boolean;
   /** Asked just before the first request leaves the machine; false means no search (the reader
    *  declined). A lookup answered from knowledge never asks. */
   beforeSearch?: () => Promise<boolean>;
@@ -59,7 +68,7 @@ export type Shape = "number" | "list" | "table" | "formula";
 /** Where the answer came from: copied out of a table, lifted from quoted prose (or a quoted formula),
  *  the model's knowledge (standard knowledge it was asked for directly), or its memory (a last resort
  *  after the sources gave nothing). */
-export type Via = "table" | "text" | "knowledge" | "memory";
+export type Via = "table" | "text" | "search" | "knowledge" | "memory";
 
 export interface AskResult {
   question: string;
@@ -473,7 +482,8 @@ export async function lookup(question: string, o: AskOptions): Promise<AskResult
     if (r) return { ...base, ...r, trail };
     trail.push("The model did not answer from its knowledge after all: searching.");
   }
-  const none = !o.sources.length;
+  // a model that searches the web itself needs no source of the notebook's
+  const none = !o.sources.length && !(o.direct && o.webSearch && o.model.search);
   const declined = none || (o.beforeSearch ? !(await o.beforeSearch()) : false);
   if (o.signal?.aborted) throw new AskError("Stopped.", trail);
   if (declined) {
@@ -485,8 +495,17 @@ export async function lookup(question: string, o: AskOptions): Promise<AskResult
     if (r) return { ...base, ...r, trail };
     throw new AskError(`${why}, and the model does not know the answer.`, trail);
   }
+  // a capable model searching the web itself: one call, its pages its own
+  if (o.direct && o.webSearch && o.model.search) {
+    const r = await direct(q, plan, [], o, trail, say);
+    if (r) return { ...base, ...r, trail };
+    const m = knowledge && (!plan.known || o.forceSearch) ? await fromKnowledge(q, plan, o, trail, say, true) : null;
+    if (m) return { ...base, ...m, trail };
+    throw new AskError("The model's web search did not find the answer.", trail);
+  }
   const { hits, pages } = await gather(plan, o, trail, say);
-  const r = plan.shape === "formula" ? await formula(q, plan, pages, o, trail, say) : await numbers(q, plan, pages, o, trail, say);
+  const r = o.direct ? (pages.length ? await direct(q, plan, pages, o, trail, say) : null)
+    : plan.shape === "formula" ? await formula(q, plan, pages, o, trail, say) : await numbers(q, plan, pages, o, trail, say);
   if (r) return { ...base, ...r, trail };
   // the last resort: the model's memory, marked as unsourced (a question it called standard
   // knowledge has already been answered, or declined, above; a forced search reports what it found)
@@ -729,6 +748,122 @@ async function confirmRows<T extends { vals: string[]; quote: string }>(q: strin
   const kept = rows.filter((_, i) => a[i] === true);
   if (kept.length < rows.length) trail.push(`Left out ${plural(rows.length - kept.length, "row")} whose sentence does not answer the question: ${rows.filter((_, i) => a[i] !== true).map((r) => r.vals.join(", ")).join("; ")}`);
   return kept;
+}
+
+const DIRECT_SCHEMA = {
+  type: "object",
+  properties: {
+    found: { type: "boolean" },
+    rows: { type: "array", items: { type: "array", items: { type: "number" } } },
+    columns: { type: "array", items: { type: "string" } },
+    rowLabels: { type: "array", items: { type: "string" } },
+    formula: {
+      type: "object",
+      properties: {
+        latex: { type: "string" }, expr: { type: "string" }, params: { type: "array", items: { type: "string" } },
+        vars: { type: "array", items: { type: "object", properties: { name: { type: "string" }, meaning: { type: "string" } }, required: ["name", "meaning"] } },
+      },
+      required: ["latex", "expr", "params", "vars"],
+    },
+    sources: { type: "array", items: { type: "object", properties: { title: { type: "string" }, url: { type: "string" }, quote: { type: "string" } }, required: ["title", "url", "quote"] } },
+  },
+  required: ["found", "rows", "columns", "rowLabels", "formula", "sources"],
+} as const;
+
+const DIRECT_SYSTEM = `You answer a question for a math notebook from sources: the pages given below, or the pages your web search finds. Reply with JSON only.
+- found: false if the sources do not answer the question (then leave the rest empty).
+- rows: the answer's numbers. One number: [[x]]. A list: one row, [[a, b, c]]. A table: one row per item, one number per column. A formula: [].
+  Use only numbers the sources state, as they state them; never estimate, compute or remember one.
+- columns: what each column holds. rowLabels: what each row is when rows are named by text (a team, a country), else [].
+- formula: for a formula only, else empty: latex as a source writes it; expr the right-hand side in the notebook's syntax. ${SYNTAX}
+- sources: the pages you used, each with its title, url and a short exact quote that states the answer.`;
+
+interface DirectReply {
+  found?: boolean; rows?: unknown[][]; columns?: string[]; rowLabels?: string[];
+  formula?: { latex?: string; expr?: string; params?: string[]; vars?: { name?: string; meaning?: string }[] };
+  sources?: { title?: string; url?: string; quote?: string }[];
+}
+
+/** A page as a capable model reads it: its title and address, its tables (the likeliest first,
+ *  as rows of cells), then its paragraphs (the likeliest first), within a share of the budget. */
+function pageText(p: Page, plan: Plan, share: number): string {
+  const out: string[] = [`## ${p.title} (${p.url})`];
+  let used = out[0]!.length;
+  const tables = [...p.tables].sort((a, b) => scoreTable(b, plan, 0) - scoreTable(a, plan, 0));
+  for (const t of tables) {
+    const lines = [`Table${t.caption ? `: ${t.caption}` : ""}`, t.headers.join(" | "), ...t.rows.slice(0, 80).map((r) => r.join(" | "))];
+    const block = lines.join("\n");
+    if (used + block.length > share * 0.7) continue;
+    out.push(block); used += block.length;
+  }
+  for (const para of p.text.split("\n")) {
+    if (used + para.length > share) break;
+    out.push(para); used += para.length;
+  }
+  return out.join("\n");
+}
+
+/** A capable model's own answer, in the question's shape, from the pages read (or, with no pages,
+ *  from its own web search); every number it gives is looked for in what it read. */
+async function direct(q: string, plan: Plan, pages: Page[], o: AskOptions, trail: string[], say: Say): Promise<Answer | null> {
+  const ask0 = `Today is ${o.today}.\nQuestion: ${q}\nThe answer is ${plan.shape === "number" ? "one number" : plan.shape === "list" ? "a list" : plan.shape === "formula" ? "a formula" : "a table"}${plan.shape === "table" || plan.shape === "list" ? ` (${plan.columns.join("; ")})` : ""}.`;
+  let reply: DirectReply | null;
+  let evidence: string;
+  let cites: { title: string; url: string }[];
+  if (!pages.length) {
+    say(`Searching the web with ${o.model.id}`);
+    let got: { text: string; citations: { url: string; title: string; content?: string }[] };
+    try { got = await o.model.search!({ system: DIRECT_SYSTEM, user: ask0, schema: DIRECT_SCHEMA, signal: o.signal }); }
+    catch (e) { if (o.signal?.aborted) throw new AskError("Stopped.", trail); throw e; }
+    if (o.signal?.aborted) throw new AskError("Stopped.", trail);
+    reply = parseJson<DirectReply>(got.text);
+    const quoted = (reply?.sources ?? []).map((s) => s.quote ?? "");
+    evidence = [...quoted, ...got.citations.map((c) => c.content ?? "")].join("\n");
+    const seen = new Set<string>();
+    cites = [...got.citations, ...(reply?.sources ?? []).map((s) => ({ url: s.url ?? "", title: s.title ?? "" }))]
+      .filter((c) => /^https?:\/\//.test(c.url) && !seen.has(c.url) && seen.add(c.url)).map((c) => ({ title: c.title || new URL(c.url).host, url: c.url })).slice(0, 8);
+    trail.push(`${o.model.id} searched the web: ${plural(got.citations.length, "page")} cited`);
+  } else {
+    const share = Math.floor(30000 / pages.length);
+    say(`${o.model.id} is reading ${plural(pages.length, "page")}`);
+    reply = parseJson<DirectReply>(await ask(o.model, DIRECT_SYSTEM, `${ask0}\n\nSources:\n${pages.map((p) => pageText(p, plan, share)).join("\n\n")}`, DIRECT_SCHEMA, o.signal));
+    evidence = pages.map((p) => [p.text, ...p.tables.map((t) => [t.headers, ...t.rows].map((r) => r.join(" | ")).join("\n"))].join("\n")).join("\n");
+    const used = new Set((reply?.sources ?? []).map((s) => s.url ?? ""));
+    const usedPages = pages.filter((p) => used.has(p.url));
+    cites = (usedPages.length ? usedPages : pages).map((p) => ({ title: p.title, url: p.url }));
+    trail.push(`Gave ${o.model.id} the text and tables of ${plural(pages.length, "page")}`);
+  }
+  if (!reply?.found) { trail.push("The model found no answer in the sources."); return null; }
+
+  if (plan.shape === "formula") {
+    const f = reply.formula ?? {};
+    const got = formulaReply({ found: true, expr: f.expr ?? "", params: f.params ?? [], vars: f.vars ?? [], quote: f.latex ?? "" }, trail, true);
+    if (!got) return null;
+    const stated = !!got.latex && squash(evidence).includes(squash(got.latex));
+    trail.push(stated ? `The formula $${got.latex}$ is in the sources` : `The formula $${got.latex}$ is not written that way in the sources`);
+    return {
+      ...got, columns: plan.columns.slice(0, 1), via: pages.length ? "text" : "search", cites, flagged: stated ? [] : [[0, 0]],
+      notes: stated ? [] : ["⚠ This formula is not written this way in the sources: compare it with them before use."],
+    };
+  }
+
+  const rows = (reply.rows ?? []).map((r) => (Array.isArray(r) ? r : []).map((v) => typeof v === "number" ? numberText(v) : null));
+  if (!rows.length || rows.some((r) => !r.length || r.some((v) => v === null) || r.length !== rows[0]!.length)) {
+    trail.push("The model's answer was not a grid of numbers.");
+    return null;
+  }
+  const said = numbersIn(evidence);
+  const flagged: [number, number][] = [];
+  rows.forEach((r, i) => r.forEach((v, c) => { if (!said.some((n) => Math.abs(n - Number(v)) <= 1e-9 * Math.max(1, Math.abs(n)))) flagged.push([i, c]); }));
+  const grid = rows as string[][];
+  trail.push(`${o.model.id} answered with ${plural(grid.length * grid[0]!.length, "value")}; ${flagged.length ? `${plural(flagged.length, "value")} not found in the sources` : "every value found in the sources"}`);
+  const columns = (reply.columns ?? []).filter((c) => typeof c === "string");
+  return {
+    source: engineText(grid, plan.shape), columns: columns.length ? columns.slice(0, grid[0]!.length) : plan.columns.slice(0, grid[0]!.length),
+    ...named((reply.rowLabels ?? []).filter((l) => typeof l === "string").slice(0, grid.length)),
+    via: pages.length ? "text" : "search", cites, flagged: flagged.map(placed(plan.shape, grid)),
+    notes: flagged.length ? ["Values marked ⚠ are not in the sources the model read: check them before use."] : [],
+  };
 }
 
 /** A formula: one the pages state in LaTeX, translated by the model. */

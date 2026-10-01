@@ -10,7 +10,10 @@
  * downloads nothing from this page; elsewhere a WebGPU model through WebLLM, loaded only when a
  * lookup needs it (dist/ask/webllm.js) and downloaded once from Hugging Face; or, when the reader
  * chooses it, a model served by Ollama on this computer (`http://localhost:11434`), which can be
- * larger than a browser can hold.
+ * larger than a browser can hold; or a model through OpenRouter, on the reader's own account
+ * (signed in with OpenRouter's OAuth PKCE flow, the key kept in this browser). A cloud model is
+ * capable enough to read the pages and answer in the question's shape itself (`direct`), and may
+ * search the web itself.
  *
  * Searches go to Wikipedia (no key, and it answers other origins) and, when the reader sets one, a
  * SearXNG-style endpoint that queries the web's search engines. They are the one place the notebook
@@ -29,12 +32,16 @@ export const ASK_CELL = /^\s*(?:let\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*)?\?\s*([\s
 
 export interface AskSettings {
   /** Which model: Chrome's built-in one when there is one, else WebGPU ("auto"); or one of them, or Ollama's. */
-  backend: "auto" | "chrome" | "webllm" | "ollama";
+  backend: "auto" | "chrome" | "webllm" | "ollama" | "openrouter";
   /** The WebGPU model (a WebLLM model id). */
   model: string;
   /** Ollama's address on this computer, and the model it serves (`ollama pull <name>`). */
   ollamaUrl: string;
   ollamaModel: string;
+  /** The reader's OpenRouter key (from signing in, or pasted), the model, and whether it searches the web itself. */
+  openrouterKey: string;
+  openrouterModel: string;
+  openrouterWeb: boolean;
   /** Let the model answer standard knowledge itself, and fall back on its memory when searches fail. */
   knowledge: boolean;
   wikipedia: boolean;
@@ -61,6 +68,7 @@ export const WEBGPU_MODELS: [id: string, label: string][] = [
 const KEY = "chalkmath.ask";
 const DEFAULTS: AskSettings = {
   backend: "auto", model: WEBGPU_MODELS[0]![0], ollamaUrl: "http://localhost:11434", ollamaModel: "gemma4:e2b",
+  openrouterKey: "", openrouterModel: "anthropic/claude-haiku-4.5", openrouterWeb: true,
   knowledge: true, wikipedia: true, searchUrl: "", reader: "", searchOk: false,
 };
 
@@ -75,7 +83,8 @@ export function setAskSettings(s: Partial<AskSettings>) {
   const next = { ...prev, ...s };
   try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* private mode */ }
   // another model: the one loaded is let go (a WebGPU model holds gigabytes of GPU memory)
-  if (next.backend !== prev.backend || next.model !== prev.model || next.ollamaUrl !== prev.ollamaUrl || next.ollamaModel !== prev.ollamaModel) {
+  if (next.backend !== prev.backend || next.model !== prev.model || next.ollamaUrl !== prev.ollamaUrl || next.ollamaModel !== prev.ollamaModel
+    || next.openrouterKey !== prev.openrouterKey || next.openrouterModel !== prev.openrouterModel || next.openrouterWeb !== prev.openrouterWeb) {
     const old = model; model = null;
     void old?.then((m) => m.unload?.()).catch(() => {});
   }
@@ -95,6 +104,18 @@ const LM_OPTS = { expectedInputs: [{ type: "text", languages: ["en"] }], expecte
 /** Where a model's download and loading report, as a detail of the lookup's current step. */
 let sink: (detail: string) => void = () => {};
 let model: Promise<Model> | null = null;
+/** The settings the loaded model was made from. Settings can change without this page saving them
+ *  (the OpenRouter sign-in window, another tab), so a lookup compares rather than waits to be told. */
+let modelFor = "";
+const modelKey = (s: AskSettings) => JSON.stringify([s.backend, s.model, s.ollamaUrl, s.ollamaModel, s.openrouterKey, s.openrouterModel, s.openrouterWeb]);
+
+/** The model the settings name: the one loaded, or a new one (the old one let go). */
+function currentModel(onLoad?: () => void): Promise<Model> {
+  const k = modelKey(askSettings());
+  if (model && modelFor !== k) { const old = model; model = null; void old.then((m) => m.unload?.()).catch(() => {}); }
+  if (!model) { onLoad?.(); model = loadModel(); modelFor = k; }
+  return model;
+}
 
 async function chromeAvailable(): Promise<boolean> {
   const lm = chromeLM();
@@ -167,8 +188,89 @@ function ollamaModel(base: string, name: string): Model {
   };
 }
 
+const OPENROUTER = "https://openrouter.ai/api/v1";
+
+/** A model through OpenRouter, on the reader's key. The reply is held to the schema where the model
+ *  supports structured outputs; where it does not, the schema is given in the prompt and the reply
+ *  read as JSON. With `web`, OpenRouter's web search runs first and its pages come back as citations. */
+function openrouterModel(key: string, name: string, web: boolean): Model {
+  let structured = true;
+  const call = async (req: { system: string; user: string; schema: object; signal?: AbortSignal | undefined }, search: boolean) => {
+    const send = async (withSchema: boolean) => {
+      const system = withSchema ? req.system : `${req.system}\nThe reply must be JSON matching this JSON Schema: ${JSON.stringify(req.schema)}`;
+      const body = {
+        model: name, temperature: 0, max_tokens: 2500,
+        messages: [{ role: "system", content: system }, { role: "user", content: req.user }],
+        ...(withSchema ? { response_format: { type: "json_schema", json_schema: { name: "answer", strict: false, schema: req.schema } } } : {}),
+        ...(search ? { plugins: [{ id: "web", max_results: 5 }] } : {}),
+      };
+      let r: Response;
+      try {
+        r = await fetch(`${OPENROUTER}/chat/completions`, {
+          method: "POST", body: JSON.stringify(body), ...(req.signal ? { signal: req.signal } : {}),
+          headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", "HTTP-Referer": location.origin, "X-Title": "ChalkMath" },
+        });
+      } catch (e) { if (req.signal?.aborted) throw e; throw new AskError("OpenRouter could not be reached."); }
+      const d = await r.json().catch(() => ({})) as { error?: { message?: string }; choices?: { message?: { content?: string; annotations?: { type?: string; url_citation?: { url?: string; title?: string; content?: string } }[] } }[] };
+      if (!r.ok) {
+        const why = d.error?.message ?? `answered ${r.status}`;
+        throw Object.assign(new AskError(r.status === 401 ? "OpenRouter refused the key: sign in again in Run › Lookup settings."
+          : r.status === 402 ? "OpenRouter: the account is out of credits." : `OpenRouter: ${why}`), { status: r.status, why });
+      }
+      const m = d.choices?.[0]?.message;
+      return {
+        text: m?.content ?? "",
+        citations: (m?.annotations ?? []).filter((a) => a.type === "url_citation" && a.url_citation?.url)
+          .map((a) => ({ url: a.url_citation!.url!, title: a.url_citation!.title ?? "", ...(a.url_citation!.content ? { content: a.url_citation!.content } : {}) })),
+      };
+    };
+    if (structured) {
+      try { return await send(true); }
+      catch (e) {
+        // a model without structured outputs: say so once, and give it the schema in the prompt
+        const st = (e as { status?: number; why?: string });
+        if (!(st.status === 400 || st.status === 404) || !/response_format|structured|json_schema|schema/i.test(st.why ?? "")) throw e;
+        structured = false;
+      }
+    }
+    return send(false);
+  };
+  return {
+    id: `${name.replace(/^[^/]+\//, "")} (OpenRouter)`,
+    async complete(req) { return (await call(req, false)).text; },
+    ...(web ? { async search(req: { system: string; user: string; schema: object; signal?: AbortSignal | undefined }) { return call(req, true); } } : {}),
+  };
+}
+
+/** Sign in with OpenRouter (OAuth PKCE): a window to OpenRouter, which sends the reader back to
+ *  openrouter-callback.html with a code; that page trades it for a key and saves it in the settings
+ *  (this page hears of it through a storage event). */
+export async function signInOpenRouter(): Promise<void> {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  const b64url = (b: Uint8Array) => btoa(String.fromCharCode(...b)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  const verifier = b64url(bytes);
+  const challenge = b64url(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))));
+  try { localStorage.setItem("chalkmath.openrouter.pkce", verifier); } catch { throw new AskError("This browser does not let the page keep the sign-in (storage is off)."); }
+  const callback = new URL("openrouter-callback.html", location.href).href;
+  const url = `https://openrouter.ai/auth?callback_url=${encodeURIComponent(callback)}&code_challenge=${challenge}&code_challenge_method=S256`;
+  if (!window.open(url, "chalkmath-openrouter", "width=520,height=760")) location.assign(url);
+}
+
+/** OpenRouter's models that take a schema for their reply, cheapest first, or null when it does not answer. */
+export async function openrouterModels(): Promise<{ id: string; name: string; price: number }[] | null> {
+  try {
+    const d = await (await fetch(`${OPENROUTER}/models`)).json() as { data?: { id: string; name?: string; supported_parameters?: string[]; pricing?: { prompt?: string } }[] };
+    return (d.data ?? []).filter((m) => (m.supported_parameters ?? []).some((p) => p === "structured_outputs" || p === "response_format"))
+      .map((m) => ({ id: m.id, name: m.name ?? m.id, price: Number(m.pricing?.prompt ?? 0) * 1e6 })).sort((a, b) => a.price - b.price);
+  } catch { return null; }
+}
+
 async function loadModel(): Promise<Model> {
   const s = askSettings();
+  if (s.backend === "openrouter") {
+    if (!s.openrouterKey) throw new AskError("Sign in to OpenRouter first, in Run › Lookup settings.");
+    return openrouterModel(s.openrouterKey, s.openrouterModel || DEFAULTS.openrouterModel, s.openrouterWeb);
+  }
   if (s.backend === "ollama") return ollamaModel(s.ollamaUrl || DEFAULTS.ollamaUrl, s.ollamaModel || DEFAULTS.ollamaModel);
   const lm = chromeLM();
   if (s.backend !== "webllm" && lm && await chromeAvailable()) {
@@ -218,7 +320,7 @@ export async function runLookup(question: string, h: LookupHooks): Promise<AskRe
   sink = h.onDetail;
   try {
     const s = askSettings();
-    if (!model) { h.onProgress("Loading the model"); model = loadModel(); }
+    const loading = currentModel(() => h.onProgress("Loading the model"));
     // a stop while the model loads (a download can take minutes) ends the lookup; the load goes on,
     // and the next lookup uses it
     let m: Model;
@@ -226,7 +328,6 @@ export async function runLookup(question: string, h: LookupHooks): Promise<AskRe
       if (h.signal.aborted) reject(new AskError("Stopped."));
       h.signal.addEventListener("abort", () => reject(new AskError("Stopped.")), { once: true });
     });
-    const loading = model;
     try { m = await Promise.race([loading, stopped]); } catch (e) {
       if (!(e instanceof AskError && e.message === "Stopped.") && model === loading) model = null;
       throw e;
@@ -237,6 +338,8 @@ export async function runLookup(question: string, h: LookupHooks): Promise<AskRe
     if (s.searchUrl.trim()) sources.push(webSearch(f, s.searchUrl.trim()));
     return await lookup(question, {
       model: m, sources, fetch: f, reader: s.reader.trim() || undefined, useKnowledge: s.knowledge,
+      // a cloud model reads the pages and answers in the question's shape itself, and may search the web itself
+      direct: s.backend === "openrouter", webSearch: s.backend === "openrouter" && s.openrouterWeb,
       forceSearch: !!h.forceSearch, today: today(), onProgress: h.onProgress, signal: h.signal,
       beforeSearch: async () => {
         if (askSettings().searchOk) return true;
@@ -262,9 +365,9 @@ export async function ollamaModels(base: string): Promise<string[] | null> {
 export async function testModel(onDetail: (d: string) => void): Promise<{ ms: number; reply: string; model: string }> {
   sink = onDetail;
   try {
-    model ??= loadModel();
+    const loading = currentModel();
     let m: Model;
-    try { m = await model; } catch (e) { model = null; throw e; }
+    try { m = await loading; } catch (e) { if (model === loading) model = null; throw e; }
     onDetail("asking it a question");
     const t0 = performance.now();
     const reply = await m.complete({
@@ -284,7 +387,7 @@ export function savedAsk(x: unknown): AskResult | undefined {
   const str = (v: unknown) => typeof v === "string";
   const strs = (v: unknown) => Array.isArray(v) && v.every(str);
   const ok = str(a["question"]) && str(a["source"]) && str(a["rowsAre"]) && str(a["model"]) && str(a["at"])
-    && ["number", "list", "table", "formula"].includes(a["shape"] as string) && ["table", "text", "knowledge", "memory"].includes(a["via"] as string)
+    && ["number", "list", "table", "formula"].includes(a["shape"] as string) && ["table", "text", "search", "knowledge", "memory"].includes(a["via"] as string)
     && strs(a["columns"]) && strs(a["notes"]) && strs(a["trail"])
     && Array.isArray(a["cites"]) && a["cites"].every((c) => !!c && typeof c === "object" && str((c as { title?: unknown }).title) && str((c as { url?: unknown }).url))
     && Array.isArray(a["flagged"]) && a["flagged"].every((f) => Array.isArray(f) && f.length === 2 && f.every((n) => Number.isInteger(n)))

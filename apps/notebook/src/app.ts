@@ -18,7 +18,7 @@ import { MathInput, type MathInputOptions } from "@chalkmath/math-editor/view";
  */
 
 import katex from "katex";
-import { ASK_CELL, AskError, askSettings, setAskSettings, runLookup, askSource, savedAsk, backendStatus, ollamaModels, testModel, WEBGPU_MODELS, type AskResult, type AskSettings } from "./ask-cells.js";
+import { ASK_CELL, AskError, askSettings, setAskSettings, runLookup, askSource, savedAsk, backendStatus, ollamaModels, openrouterModels, signInOpenRouter, testModel, WEBGPU_MODELS, type AskResult, type AskSettings } from "./ask-cells.js";
 import { fileCellOf, resolveFiles, importsIn, svgPoints, kindOf, tableOf, numericColumns, fileText, fileSize, fmtSize, mimeLabel, mimeFor, dataUrl, fileFromBytes, helpersFor, type FileValue, type FileRef, type FileScope } from "./files.js";
 import { dataGrid, matrixEntries } from "./datagrid.js";
 import { ensureLean, syncLean, mountLean, unmountLean, focusLean, infoview as leanInfoview, leanState, leanFailure, leanProgress, initLeanIsolation, type LeanMessage } from "./lean-cells.js";
@@ -3187,6 +3187,7 @@ function askInfo(cell: Cell, bound: boolean): HTMLElement {
   const VIA: Record<AskResult["via"], [string, string]> = {
     table: ["ok", "Copied from a table"],
     text: [a.flagged.length ? "warn" : "ok", a.shape === "formula" ? "A formula the source states" : "Quoted from the source"],
+    search: [a.flagged.length ? "warn" : "ok", "Found by the model's web search"],
     knowledge: ["kn", "From the model's knowledge"],
     memory: ["warn", "From the model's memory: unsourced"],
   };
@@ -3240,8 +3241,13 @@ function confirmSearch(signal: AbortSignal): Promise<boolean> {
     const card = h("div", "modalcard");
     card.setAttribute("role", "dialog"); card.setAttribute("aria-modal", "true"); card.setAttribute("aria-label", "Search for this?");
     card.append(h("h3", undefined, "Search for this?"),
-      h("p", undefined, `This question needs data the model should not answer from memory, so ChalkMath would search ${where} and read the pages it finds.`),
-      h("p", undefined, "What leaves this computer: the search terms the model writes from your question. Not your notebook, and nothing else you typed. The model runs here."),
+      ...(s.backend === "openrouter" ? [
+        h("p", undefined, `This question needs data the model should not answer from memory, so ChalkMath would ${s.openrouterWeb ? "have the model search the web through OpenRouter" : `search ${where} and send the pages it finds to the model`}.`),
+        h("p", undefined, "What leaves this computer: your question (and the pages read) go to OpenRouter and the model's provider, on your OpenRouter account. Not your notebook."),
+      ] : [
+        h("p", undefined, `This question needs data the model should not answer from memory, so ChalkMath would search ${where} and read the pages it finds.`),
+        h("p", undefined, "What leaves this computer: the search terms the model writes from your question. Not your notebook, and nothing else you typed. The model runs here."),
+      ]),
       h("p", "muted", "Asked once. Sources and the model are in Run › Lookup settings."));
     const foot = h("div", "modalfoot");
     const no = h("button", undefined, "Don't search");
@@ -3265,11 +3271,14 @@ async function showAskSettings() {
   const s = askSettings();
   const st = await backendStatus();
   const form = h("div", "askform");
-  const row = (label: string, input: HTMLElement, hint?: string) => {
+  /** A setting; `only` names the models it belongs to (it is hidden for the others). */
+  const shown: [HTMLElement, string[]][] = [];
+  const row = (label: string, input: HTMLElement, hint?: string, only?: string[]) => {
     const l = document.createElement("label"); l.className = "askrow";
     l.append(h("span", "asklab", label), input);
     if (hint) l.append(h("span", "askhint", hint));
     form.append(l);
+    if (only) shown.push([l, only]);
   };
   const sel = (opts: [string, string][], v: string) => {
     const e = document.createElement("select");
@@ -3279,16 +3288,16 @@ async function showAskSettings() {
   const text = (v: string, ph: string) => { const e = document.createElement("input"); e.type = "text"; e.value = v; e.placeholder = ph; e.spellcheck = false; return e; };
   const check = (v: boolean) => { const e = document.createElement("input"); e.type = "checkbox"; e.checked = v; return e; };
   const backend = sel([["auto", "Automatic: Chrome's built-in model, else WebGPU"], ["chrome", "Chrome's built-in model (Gemini Nano)"],
-    ["webllm", "A WebGPU model, downloaded once"], ["ollama", "Ollama, on this computer"]], s.backend);
+    ["webllm", "A WebGPU model, downloaded once"], ["ollama", "Ollama, on this computer"], ["openrouter", "OpenRouter: a cloud model, on your account"]], s.backend);
   row("Model", backend, `This browser: ${st.chrome ? "has Chrome's built-in model" : "no built-in model"}; ${st.webgpu ? "WebGPU available" : "no WebGPU"}.`);
   const model = sel(WEBGPU_MODELS, s.model);
-  row("WebGPU model", model, "Downloaded from Hugging Face the first time it is used, then kept by the browser. It has to fit in the graphics card's own memory.");
+  row("WebGPU model", model, "Downloaded from Hugging Face the first time it is used, then kept by the browser. It has to fit in the graphics card's own memory.", ["auto", "webllm"]);
   const ollamaUrl = text(s.ollamaUrl, "http://localhost:11434");
-  row("Ollama address", ollamaUrl, `Start Ollama so it lets this page call it: OLLAMA_ORIGINS=${location.origin} ollama serve. Chrome may ask to allow this page to reach devices on your network.`);
+  row("Ollama address", ollamaUrl, `Start Ollama so it lets this page call it: OLLAMA_ORIGINS=${location.origin} ollama serve. Chrome may ask to allow this page to reach devices on your network.`, ["ollama"]);
   const ollamaModel = text(s.ollamaModel, "gemma4:e2b");
   const known = document.createElement("datalist"); known.id = "ollamamodels";
   ollamaModel.setAttribute("list", known.id);
-  row("Ollama model", ollamaModel, "A model Ollama has (ollama pull gemma4:e2b). Larger models read pages better and answer more slowly.");
+  row("Ollama model", ollamaModel, "A model Ollama has (ollama pull gemma4:e2b). Larger models read pages better and answer more slowly.", ["ollama"]);
   form.append(known);
   const fillModels = async () => {
     const names = await ollamaModels(ollamaUrl.value.trim() || "http://localhost:11434");
@@ -3297,6 +3306,37 @@ async function showAskSettings() {
   if (s.backend === "ollama") void fillModels();
   ollamaUrl.addEventListener("change", () => void fillModels());
   backend.addEventListener("change", () => { if (backend.value === "ollama") void fillModels(); });
+  // OpenRouter: signing in fetches a key, kept in this browser; the model is any that takes a schema
+  const orStatus = h("span");
+  let orKey = s.openrouterKey, signedOut = false;
+  const showKey = () => { orStatus.textContent = orKey ? `Signed in (key …${orKey.slice(-4)}). ` : "Not signed in. "; signOut.hidden = !orKey; signIn.textContent = orKey ? "Sign in again" : "Sign in with OpenRouter"; };
+  const signIn = h("button", undefined, "Sign in with OpenRouter");
+  const signOut = h("button", undefined, "Sign out");
+  const orBox = h("span"); orBox.append(orStatus, signIn, " ", signOut);
+  row("OpenRouter", orBox, "Pay-as-you-go on your own OpenRouter account. Your questions, and the pages read, go to OpenRouter and the model's provider. The key stays in this browser.", ["openrouter"]);
+  showKey();
+  signIn.addEventListener("click", () => { void signInOpenRouter().catch((e) => { orStatus.textContent = e instanceof Error ? `${e.message} ` : String(e); }); });
+  signOut.addEventListener("click", () => { orKey = ""; signedOut = true; setAskSettings({ openrouterKey: "" }); showKey(); });
+  // the sign-in window saves the key and closes: this page hears of it here
+  const onStorage = (ev: StorageEvent) => {
+    if (ev.key !== "chalkmath.ask") return;
+    const k = askSettings().openrouterKey;
+    if (k && k !== orKey) { orKey = k; signedOut = false; backend.value = "openrouter"; showKey(); notify("ok", "Signed in to OpenRouter."); }
+  };
+  window.addEventListener("storage", onStorage);
+  const orModel = text(s.openrouterModel, "anthropic/claude-haiku-4.5");
+  const orList = document.createElement("datalist"); orList.id = "openroutermodels";
+  orModel.setAttribute("list", orList.id);
+  row("OpenRouter model", orModel, "Any model OpenRouter offers that takes a schema for its reply (the list, cheapest first). A fast, inexpensive one is plenty.", ["openrouter"]);
+  form.append(orList);
+  const fillOr = async () => {
+    const ms = await openrouterModels();
+    orList.replaceChildren(...(ms ?? []).slice(0, 300).map((m) => { const o = document.createElement("option"); o.value = m.id; o.label = `${m.name}${m.price ? ` · $${m.price.toFixed(2)}/M tokens in` : " · free"}`; return o; }));
+  };
+  if (s.backend === "openrouter") void fillOr();
+  backend.addEventListener("change", () => { if (backend.value === "openrouter") void fillOr(); });
+  const orWeb = check(s.openrouterWeb);
+  row("Let the model search the web", orWeb, "OpenRouter's web search finds pages for the model across the whole web (about half a cent to one and a half cents a lookup). Off, it reads what Wikipedia and your web search find.", ["openrouter"]);
   // a test of the chosen model: one small question, timed
   const testBtn = h("button", undefined, "Test the model");
   const result = h("span", "askhint", "Runs one small question on the model chosen above (a WebGPU model is downloaded first).");
@@ -3314,6 +3354,8 @@ async function showAskSettings() {
   row("Search without asking", consent);
   const save = () => setAskSettings({
     backend: backend.value as AskSettings["backend"], model: model.value, ollamaUrl: ollamaUrl.value.trim(), ollamaModel: ollamaModel.value.trim(),
+    // a sign-in that finished while this dialog was open is kept even if its event was missed
+    openrouterKey: signedOut ? "" : askSettings().openrouterKey || orKey, openrouterModel: orModel.value.trim(), openrouterWeb: orWeb.checked,
     knowledge: knowledge.checked, wikipedia: wiki.checked, searchUrl: search.value.trim(), reader: reader.value.trim(), searchOk: consent.checked,
   });
   testBtn.addEventListener("click", async () => {
@@ -3328,8 +3370,11 @@ async function showAskSettings() {
       result.textContent = e instanceof Error ? e.message : String(e);
     } finally { testBtn.removeAttribute("disabled"); }
   });
+  const showFor = () => { for (const [el, only] of shown) el.hidden = !only.includes(backend.value); };
+  backend.addEventListener("change", showFor);
+  showFor();
   showModal("Lookup settings", [h("p", "muted", "A cell that starts with ? is a question: ?volume of a cone, ?the first ten primes, let mlb = ?MLB runs and home runs per game for the last 20 years."), form], true);
-  modalClosed = save;
+  modalClosed = () => { window.removeEventListener("storage", onStorage); save(); };
 }
 
 /** The ⋮ button at the end of a cell's actions (replacing any there). */

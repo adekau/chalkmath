@@ -44,7 +44,7 @@ function scripted(replies) {
     calls,
     async complete({ schema, user }) {
       const step = schema.required.includes("searches") ? "plan" : schema.required.includes("table") ? "pick" : schema.required.includes("expr") ? "formula"
-        : schema.required.includes("answers") ? "confirm"
+        : schema.required.includes("answers") ? "confirm" : schema.required.includes("sources") ? "direct"
         : schema.properties.rows.items.required.includes("quote") ? "extract" : "memory";
       calls.push({ step, user });
       const r = replies[step];
@@ -481,4 +481,81 @@ test("a match keeps the rows with the question's words, not text the model copie
   assert.equal(r.source, "[1935, 1945, 1968, 1984]");
   const { matchWords } = await import("../dist/index.js");
   assert.deepEqual(matchWords("Won 1935 World"), ["won", "1935", "world"]);
+});
+
+// --- a capable model reads the pages and answers in the question's shape itself ---------------------
+
+test("direct: the model reads the pages and answers in shape; its numbers are found in what it read", async () => {
+  const fetch = fakeFetch(champsRoutes);
+  const model = scripted({
+    plan: CHAMPS_PLAN,
+    direct: (user) => {
+      // the model is given the page's table as rows of cells
+      assert.match(user, /## List of World Series champions \(https:\/\/en\.wikipedia\.org\/wiki\/List_of_World_Series_champions\)/);
+      assert.match(user, /1935 \| Detroit Tigers \(AL\) \| Chicago Cubs/);
+      return JSON.stringify({ found: true, rows: [[1935], [1945], [1968], [1984]], columns: ["year"], rowLabels: [], formula: { latex: "", expr: "", params: [], vars: [] },
+        sources: [{ title: "List of World Series champions", url: "https://en.wikipedia.org/wiki/List_of_World_Series_champions", quote: "1935 Detroit Tigers" }] });
+    },
+  });
+  const r = await lookup("what years did the tigers win the world series", { ...opts(model, fetch), direct: true });
+  assert.equal(r.source, "[1935, 1945, 1968, 1984]");
+  assert.equal(r.via, "text");
+  assert.deepEqual(r.flagged, []);
+  assert.deepEqual(r.cites, [{ title: "List of World Series champions", url: "https://en.wikipedia.org/wiki/List_of_World_Series_champions" }]);
+  assert.deepEqual(model.calls.map((c) => c.step), ["plan", "direct"]);
+});
+
+test("direct: a number the pages do not state is flagged, not dropped", async () => {
+  const fetch = fakeFetch(champsRoutes);
+  const model = scripted({ plan: CHAMPS_PLAN, direct: { found: true, rows: [[1935], [1945], [1968], [1984], [2006]], columns: ["year"], rowLabels: [], formula: { latex: "", expr: "", params: [], vars: [] }, sources: [] } });
+  const r = await lookup("what years did the tigers win the world series", { ...opts(model, fetch), direct: true });
+  assert.equal(r.source, "[1935, 1945, 1968, 1984, 2006]");
+  assert.deepEqual(r.flagged, [], "2006 is on the page (a series the Tigers lost): found, so not flagged; the check is that numbers are real, not that they are right");
+  const model2 = scripted({ plan: CHAMPS_PLAN, direct: { found: true, rows: [[1935], [1999]], columns: ["year"], rowLabels: [], formula: { latex: "", expr: "", params: [], vars: [] }, sources: [] } });
+  const r2 = await lookup("what years did the tigers win the world series", { ...opts(model2, fetch), direct: true });
+  assert.deepEqual(r2.flagged, [[0, 1]]);
+  assert.match(r2.notes[0], /not in the sources the model read/);
+});
+
+test("direct with the model's own web search: one call, its citations the sources", async () => {
+  const fetch = fakeFetch([]);
+  let searched = 0;
+  const model = {
+    id: "or-model", calls: [],
+    async complete({ schema }) { assert.ok(schema.required.includes("searches"), "only the plan is a plain call"); return JSON.stringify(CHAMPS_PLAN); },
+    async search({ user }) {
+      searched++;
+      assert.match(user, /The answer is one number\./);
+      return { text: JSON.stringify({ found: true, rows: [[4]], columns: ["World Series titles"], rowLabels: [], formula: { latex: "", expr: "", params: [], vars: [] },
+        sources: [{ title: "Detroit Tigers", url: "https://en.wikipedia.org/wiki/Detroit_Tigers", quote: "The Tigers have won four World Series championships" }] }),
+        citations: [{ url: "https://www.mlb.com/tigers/history", title: "Tigers history", content: "four World Series titles (1935, 1945, 1968, 1984)" }] };
+    },
+  };
+  let asked = 0;
+  const r = await lookup("how many world series have the tigers won", { ...opts(model, fetch), direct: true, webSearch: true, beforeSearch: async () => { asked++; return true; } });
+  assert.equal(searched, 1);
+  assert.equal(asked, 1, "the model's web search is a search: asked first");
+  assert.equal(r.source, "4");
+  assert.equal(r.via, "search");
+  assert.deepEqual(r.flagged, []);
+  assert.deepEqual(r.cites.map((c) => c.url), ["https://www.mlb.com/tigers/history", "https://en.wikipedia.org/wiki/Detroit_Tigers"]);
+  assert.deepEqual(fetch.asked, [], "nothing fetched by the notebook itself");
+});
+
+test("direct: a formula is read from the LaTeX the model quotes, and checked against the pages", async () => {
+  const area = `<table class="wikitable"><tr><th>Shape</th><th>Formula</th></tr><tr><td>Prism</td><td><math alttext="{\\displaystyle 2B+Ph}"></math></td></tr></table>`;
+  const fetch = fakeFetch([[/w\/api\.php.*list=search/, { query: { search: [{ title: "Area" }] } }], [/rest_v1\/page\/html\/Area/, area]]);
+  const plan = { lookup: true, shape: "formula", subject: "mathematics", known: false, searches: ["prism surface area"], columns: ["area"], rows: "", keywords: [] };
+  const model = scripted({ plan, direct: { found: true, rows: [], columns: [], rowLabels: [], formula: { latex: "2B+Ph", expr: "2B+Ph", params: ["B", "P", "h"], vars: [{ name: "P", meaning: "perimeter of the base" }] }, sources: [] } });
+  const r = await lookup("formula for the surface area of a prism", { ...opts(model, fetch), direct: true });
+  assert.equal(r.source, "2*B + P*h");
+  assert.deepEqual(r.flagged, []);
+});
+
+test("direct: no answer in the pages falls back on memory, flagged", async () => {
+  const fetch = fakeFetch(champsRoutes);
+  const model = scripted({ plan: CHAMPS_PLAN, direct: { found: false, rows: [], columns: [], rowLabels: [], formula: { latex: "", expr: "", params: [], vars: [] }, sources: [] }, memory: { rows: [{ label: "", values: [4] }] } });
+  const r = await lookup("how many world series have the tigers won", { ...opts(model, fetch), direct: true });
+  assert.equal(r.via, "memory");
+  assert.ok(r.trail.includes("The model found no answer in the sources."));
 });

@@ -14,6 +14,7 @@ import { readFileSync, statSync } from "node:fs";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { startServer } from "../packages/engine-host/dist/server.js";
+import { createHash } from "node:crypto";
 
 const root = path.resolve(import.meta.dirname, "..");
 const dist = path.join(root, "apps/notebook/dist");
@@ -105,6 +106,39 @@ await page.addInitScript(() => {
       };
     },
   };
+});
+
+// a stand-in for openrouter.ai: its sign-in page sends the reader back with a code, the code (and the
+// PKCE verifier) buy a key, and chat completions answer by the schema, with web search's citations
+const orCalls = [];
+let orChallenge = "";
+await page.context().route("https://openrouter.ai/**", async (route) => {
+  const req = route.request(), u = new URL(req.url());
+  const cors = { "access-control-allow-origin": "*", "access-control-allow-headers": "authorization, content-type, http-referer, x-title", "access-control-allow-methods": "GET, POST" };
+  if (req.method() === "OPTIONS") return route.fulfill({ status: 204, headers: cors });
+  if (u.pathname === "/auth") {
+    orChallenge = u.searchParams.get("code_challenge");
+    assert.equal(u.searchParams.get("code_challenge_method"), "S256");
+    return route.fulfill({ status: 302, headers: { location: `${u.searchParams.get("callback_url")}?code=or-code` } });
+  }
+  const json = (body) => route.fulfill({ headers: { ...cors, "content-type": "application/json" }, body: JSON.stringify(body) });
+  if (u.pathname === "/api/v1/auth/keys") {
+    const b = req.postDataJSON();
+    const ok = b.code === "or-code" && createHash("sha256").update(b.code_verifier).digest("base64url") === orChallenge;
+    return ok ? json({ key: "sk-or-v1-test1234", user_id: "u" }) : route.fulfill({ status: 403, headers: cors, body: "{}" });
+  }
+  if (u.pathname === "/api/v1/models") return json({ data: [{ id: "anthropic/claude-haiku-4.5", name: "Claude Haiku 4.5", supported_parameters: ["structured_outputs"], pricing: { prompt: "0.000001" } }] });
+  if (u.pathname === "/api/v1/chat/completions") {
+    const b = req.postDataJSON();
+    orCalls.push({ auth: req.headers()["authorization"], model: b.model, web: !!b.plugins?.some((p) => p.id === "web"), schema: !!b.response_format });
+    const r = b.response_format.json_schema.schema.required;
+    const content = r.includes("searches") ? { lookup: true, shape: "number", subject: "the world", known: false, searches: ["Tigers World Series titles"], columns: ["titles"], rows: "", keywords: [] }
+      : r.includes("sources") ? { found: true, rows: [[4]], columns: ["World Series titles"], rowLabels: [], formula: { latex: "", expr: "", params: [], vars: [] },
+        sources: [{ title: "Detroit Tigers", url: "https://en.wikipedia.org/wiki/Detroit_Tigers", quote: "The Tigers have won four World Series titles" }] } : {};
+    return json({ choices: [{ message: { role: "assistant", content: JSON.stringify(content),
+      annotations: b.plugins ? [{ type: "url_citation", url_citation: { url: "https://www.mlb.com/tigers/history", title: "Tigers history", content: "World Series titles: 1935, 1945, 1968, 1984 (4)" } }] : [] } }] });
+  }
+  return route.fulfill({ status: 404, headers: cors, body: "" });
 });
 
 /** The notebook, on the engine over HTTP (?dev shows the switch). */
@@ -238,6 +272,27 @@ try {
   assert.equal(r.tex, "s^3");
   assert.match(r.info, /gemma4:e2b \(Ollama\)/);
   assert.ok(ollamaCalls.length >= 3 && ollamaCalls.every((c) => c.model === "gemma4:e2b" && c.think === false), JSON.stringify(ollamaCalls));
+
+  // OpenRouter: signing in through its window, then a lookup the model answers from its own web search
+  await menu("Run", "Lookup settings");
+  await dialog.locator("select").first().selectOption("openrouter");
+  const [popup] = await Promise.all([page.waitForEvent("popup"), dialog.locator("button", { hasText: "Sign in with OpenRouter" }).click()]);
+  await popup.waitForEvent("close", { timeout: 20000 });
+  await page.waitForFunction(() => /Signed in \(key …1234\)/.test(document.querySelector(".modal")?.textContent ?? ""), null, { timeout: 10000 });
+  await dialog.getByLabel("OpenRouter model").fill("anthropic/claude-haiku-4.5");
+  if (shot) await dialog.locator(".modalcard").screenshot({ path: shot.replace(/\.png$/, "-openrouter.png") });
+  await page.keyboard.press("Escape");
+  await cells().nth(9).locator(".mi").click();
+  await page.keyboard.type("?how many world series have the tigers won");
+  await page.keyboard.press("Enter");
+  r = await out(9);
+  assert.equal(r.tex, "4");
+  assert.match(r.info, /FOUND BY THE MODEL'S WEB SEARCH/i);
+  assert.match(r.info, /Tigers history/);
+  assert.match(r.info, /claude-haiku-4\.5 \(OpenRouter\)/);
+  assert.equal(orCalls.length, 2, JSON.stringify(orCalls));
+  assert.ok(orCalls.every((c) => c.auth === "Bearer sk-or-v1-test1234" && c.model === "anthropic/claude-haiku-4.5" && c.schema), JSON.stringify(orCalls));
+  assert.deepEqual(orCalls.map((c) => c.web), [false, true], "only the answer searches the web");
   console.log("smoke-ask: ok");
 } finally {
   await browser.close();

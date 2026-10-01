@@ -3,7 +3,8 @@
 A math notebook for learning, from linear algebra to Calc IV, that shows its work: every
 answer comes with the steps that produced it, and any piece of a result can be clicked to see
 which rule made it. It runs entirely in your browser; nothing you type is sent anywhere, except the
-search terms of a `?` lookup that needs a search, and only once you allow it (ARCHITECTURE.md §4c).
+search terms of a `?` lookup that needs a search, and only once you allow it, or, if you choose a
+cloud model through OpenRouter for lookups, the questions you ask it (ARCHITECTURE.md §4c).
 
 This repository also holds *Show Your Work*, the zero-to-hero book written from building it.
 One math engine in Lean 4, verified, compiled to native (server / CLI) and wasm (web worker).
