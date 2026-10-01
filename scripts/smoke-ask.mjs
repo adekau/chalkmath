@@ -86,7 +86,18 @@ await page.addInitScript(() => {
         : { shape: "table", subject: "the world", known: false, searches: ["MLB runs per game by season"], columns: ["season", "runs per game", "home runs per game"], rows: "one MLB season, 2006 to 2025", keywords: ["year", "R/G", "HR/G"] };
     }
     if (schema.required.includes("expr")) return { found: true, expr: "B*h", params: ["B", "h"], vars: [{ name: "B", meaning: "area of the base" }, { name: "h", meaning: "height" }], quote: /Passages/.test(user) ? "V=Bh" : "V = Bh" };
-    if (schema.required.includes("table")) return { table: 0, columns: [0, 2, 3], label: -1, filter: { column: 0, min: 2006, max: 2025 } };
+    if (schema.required.includes("sources") && /prism/i.test(q)) {
+      // the formula as the page writes it, which code reads into the engine's syntax
+      return { found: /\$V=Bh\$/.test(user), rows: [], columns: [], rowLabels: [], formula: { latex: "V=Bh", expr: "B*h", params: ["B", "h"], vars: [{ name: "B", meaning: "area of the base" }, { name: "h", meaning: "height" }] },
+        sources: [{ title: "Prism (geometry)", url: "https://en.wikipedia.org/wiki/Prism_(geometry)", quote: "V=Bh" }] };
+    }
+    if (schema.required.includes("sources")) {
+      // the model reads what was found: the rows of the last 20 seasons must be among it
+      const years = Array.from({ length: 20 }, (_, i) => 2006 + i);
+      const rows = years.map((y) => { const m = new RegExp(`\\n${y} \\| \\d+ \\| ([\\d.]+) \\| ([\\d.]+)`).exec(user); return m ? [y, Number(m[1]), Number(m[2])] : null; });
+      if (rows.some((r) => !r)) return { found: false, rows: [], columns: [], rowLabels: [], formula: { latex: "", expr: "", params: [], vars: [] }, sources: [] };
+      return { found: true, rows, columns: ["Year", "R/G", "HR/G"], rowLabels: [], formula: { latex: "", expr: "", params: [], vars: [] }, sources: [{ title: "Batting by season", url: "https://en.wikipedia.org/wiki/Batting_by_season", quote: "" }] };
+    }
     if (/primes/i.test(q)) return { rows: [2, 3, 5, 7, 11, 13, 17, 19, 23, 29].map((p) => ({ label: "", values: [p] })) };
     return { rows: [] };
   };
@@ -99,7 +110,7 @@ await page.addInitScript(() => {
         prompt: async (user, p) => {
           window.__lm.push(p.responseConstraint.required[0]);
           // choosing a table takes a moment, as it does for a real model: long enough to read the progress
-          if (p.responseConstraint.required.includes("table")) await new Promise((r) => setTimeout(r, 1600));
+          if (p.responseConstraint.required.includes("sources")) await new Promise((r) => setTimeout(r, 1600));
           return JSON.stringify(reply(user, p.responseConstraint));
         },
         destroy() {},
@@ -200,16 +211,16 @@ try {
   assert.match(await page.locator(".modal").innerText(), /search terms the model writes/);
   await page.locator(".modal button.primary", { hasText: "Search" }).click();
   // the progress: the steps done, ticked, then the one under way with its seconds; never a download
-  await page.waitForFunction(() => /Choosing among/.test(document.querySelector(".askprog .now")?.textContent ?? ""), null, { timeout: 20000 });
+  await page.waitForFunction(() => /is reading what was found/.test(document.querySelector(".askprog .now")?.textContent ?? ""), null, { timeout: 20000 });
   await page.waitForFunction(() => /\d s/.test(document.querySelector(".askprog .now .secs")?.textContent ?? ""), null, { timeout: 5000 });
   const progress = await cells().nth(4).locator(".askprog").innerText();
-  assert.match(progress, /✓ Planning the search\n✓ Searching Wikipedia for “MLB runs per game by season”\n✓ Reading 1 page\nChoosing among 1 table… \d s/);
+  assert.match(progress, /✓ Planning the search\n✓ Searching Wikipedia for “MLB runs per game by season”\n✓ Reading 1 page\nGemini Nano \(Chrome\) is reading what was found… \d s/);
   assert.doesNotMatch(progress, /download|100%/i);
   if (shot) await cells().nth(4).screenshot({ path: shot.replace(/\.png$/, "-progress.png") });
   r = await out(4);
   const want = Array.from({ length: 20 }, (_, i) => 2006 + i).map((y) => `${y}&${Number(rg(y))}&${Number(hr(y))}`).join("\\\\");
   assert.equal(r.tex, `\\beginbmatrix${want}\\endbmatrix`);
-  assert.match(r.info, /COPIED FROM A TABLE/i);
+  assert.match(r.info, /QUOTED FROM THE SOURCE/i);
   assert.match(r.info, /Columns:?\s*Year · R\/G · HR\/G/);
   assert.deepEqual(offsite, ["en.wikipedia.org/w/api.php", "en.wikipedia.org/api/rest_v1/page/html/Batting_by_season"]);
 

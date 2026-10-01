@@ -204,14 +204,26 @@ settings, the cell) is `apps/notebook/src/ask-cells.ts`.
   search*. A question about the world (teams, people, places, events) is always searched for: a small
   model is sure of far more such facts than it gets right. Where the question's words fix the
   shape ("how many", "the number of", "formula"), they decide it, not the model.
-- **Data is searched for, and the model never copies a number.** Every step is held to a JSON
-  schema. Shown previews of the tables the searches found (numbered columns, first and last rows),
-  the model picks a table, columns and a row filter as *indices*; code copies the values out of the
-  page's cells. When no table fits, it lifts values from passages with a quote per row, and each
-  value is checked against the quoted sentence and the quote against the page; what fails is
-  flagged. A formula comes from LaTeX the page states (Wikipedia's `<math alttext>`), is translated
-  to engine syntax by the model, and is shown next to that LaTeX. The model's memory is the last
-  resort, and an answer from it is flagged throughout.
+- **The model answers from what was found, in the question's shape.** It is given the stretches of
+  the pages read most likely to hold the answer: paragraphs ranked by the question's words they share
+  (a page's opening paragraphs, which sum it up, a little ahead) and tables ranked by caption, column
+  names and best row, as much as the model's context takes (about 7,000 characters for a 4k-token
+  browser model, 30,000 for a cloud one). A table too big for that keeps the rows with the question's
+  own words, or its first rows and its last. Held to a JSON schema, the model answers with the
+  numbers (or the formula), its sources and a quote; or a model that can search the web itself
+  (OpenRouter's web search) does, and its citations are the sources.
+- **What the model says is checked, not trusted.** Every number it gives is looked for in what it
+  read (a number written in words counts) and flagged ⚠ when it is not there. A formula is read from
+  the LaTeX it quotes by code (`tex.ts`), never from the model's translation, and flagged when the
+  pages do not write it that way. A question that asks to make something (a random matrix) is no
+  lookup and is refused before any search. The model's memory is the last resort, and an answer
+  from it is flagged throughout.
+- **Why not have the model pick and code copy.** An earlier version showed a small model previews of
+  the tables found and had it choose a table, columns and a row range while code copied the cells,
+  to keep it from inventing numbers. It chose the wrong table as often as a model misreads a page
+  (asked how many World Series the Tigers have won, it counted a table of their best seasons), and
+  it read the prose last, though the article's opening said "four". Reading what was found and
+  checking the numbers works better with every model tried.
 - **Sources are generic, not per subject.** Wikipedia (no key, and it allows other origins) and, if
   the reader sets one, a SearXNG-style endpoint that queries Google, DuckDuckGo, Bing and Brave.
   Most sites refuse cross-origin reads, so a web result is read directly when it allows that and
@@ -225,21 +237,9 @@ settings, the cell) is `apps/notebook/src/ask-cells.ts`.
   than a browser holds; or a cloud model through OpenRouter on the reader's own account (signed in
   with OpenRouter's OAuth PKCE flow from a window that returns to `openrouter-callback.html`, the
   key kept in the browser). Settings has a *Test the model* button that times one small question.
-- **A capable model answers directly.** The machinery below, where the model only chooses and code
-  copies, is for small local models, which invent numbers when asked for them. A cloud model reads
-  the pages (their text and their tables, as rows of cells) and answers in the question's shape
-  itself, with its sources and a quote; or it searches the web itself (OpenRouter's web search) and
-  its citations are the sources. Every number it gives is still looked for in what it read, and
-  flagged when it is not there; a formula is still read from its LaTeX by code.
-- **The model is checked where it is weakest.** Small models misread: lifted from a sentence about
-  a lost series, 2006 was offered as a year the Tigers won. So a row lifted from prose stands only
-  when its sentence is on the page and states all its numbers, and the model then answers a narrow
-  yes or no for each row: does this sentence answer the question? A table match is the question's
-  own words (a model copied "Won 1935 World" from one row), and a count that finds one row with a
-  number column chosen answers that row's number. A question that asks to make something (a random
-  matrix) is no lookup and is refused before any search.
-- **What is sent.** Only a search sends anything: the search terms the model wrote, to the sources.
-  Never the notebook. The first search asks first.
+- **What is sent.** With a model on the reader's computer, only a search sends anything: the search
+  terms the model wrote, to the sources. With OpenRouter, the question and what was found go to
+  OpenRouter and the model's provider. Never the notebook. The first search asks first.
 - **Saved with the cell.** The answer, its shape, where it came from and how it was found are saved
   in the `.chalk` file, so running the notebook again evaluates the saved answer without asking
   again; *Look up again* asks afresh.

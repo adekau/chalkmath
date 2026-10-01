@@ -137,6 +137,7 @@ export async function backendStatus(): Promise<{ chrome: boolean; webgpu: boolea
 function chromeModel(lm: LMStatic): Model {
   return {
     id: "Gemini Nano (Chrome)",
+    context: 9000,
     async complete({ system, user, schema, signal }) {
       // no download monitor here: the model is on the machine by now (loadModel), and Chrome reports a
       // "download" of 100% for every session it creates, which would hide what the lookup is doing
@@ -176,6 +177,7 @@ function ollamaModel(base: string, name: string): Model {
   };
   return {
     id: `${name} (Ollama)`,
+    context: 16000,   // num_ctx 8192 tokens, less the prompt and the reply
     async complete({ system, user, schema, signal }) {
       const body = { model: name, stream: false, format: schema, options: { temperature: 0, num_ctx: 8192 },
         messages: [{ role: "system", content: system }, { role: "user", content: user }] };
@@ -260,6 +262,7 @@ function openrouterModel(key: string, name: string, web: boolean): Model {
   };
   return {
     id: `${name.replace(/^[^/]+\//, "")} (OpenRouter)`,
+    context: 30000,
     async complete(req) { return (await call(req, false)).text; },
     ...(web ? { async search(req: { system: string; user: string; schema: object; signal?: AbortSignal | undefined }) { return call(req, true); } } : {}),
   };
@@ -361,8 +364,8 @@ export async function runLookup(question: string, h: LookupHooks): Promise<AskRe
     if (s.searchUrl.trim()) sources.push(webSearch(f, s.searchUrl.trim()));
     return await lookup(question, {
       model: m, sources, fetch: f, reader: s.reader.trim() || undefined, useKnowledge: s.knowledge,
-      // a cloud model reads the pages and answers in the question's shape itself, and may search the web itself
-      direct: s.backend === "openrouter", webSearch: s.backend === "openrouter" && s.openrouterWeb,
+      // a cloud model may search the web itself
+      webSearch: s.backend === "openrouter" && s.openrouterWeb,
       forceSearch: !!h.forceSearch, today: today(), onProgress: h.onProgress, signal: h.signal,
       beforeSearch: async () => {
         if (askSettings().searchOk) return true;

@@ -15,6 +15,7 @@ export async function createEngine(workerUrl: string, modelId: string, progress:
   return {
     async unload() { try { await engine.unload(); } finally { worker.terminate(); } },
     id: modelId.replace(/-q\d+f\d+(_\d+)?-MLC$/, ""),
+    context: 7000,   // a 4k-token context, less the prompt and the reply
     async complete({ system, user, schema, signal }) {
       const stop = () => { void engine.interruptGenerate(); };
       signal?.addEventListener("abort", stop);
