@@ -19,6 +19,8 @@ import { MathInput, type MathInputOptions } from "@chalkmath/math-editor/view";
 
 import katex from "katex";
 import { ASK_CELL, AskError, askSettings, setAskSettings, runLookup, askSource, savedAsk, backendStatus, ollamaModels, testModel, WEBGPU_MODELS, type AskResult, type AskSettings } from "./ask-cells.js";
+import { fileCellOf, resolveFiles, importsIn, svgPoints, kindOf, tableOf, numericColumns, fileText, fileSize, fmtSize, mimeLabel, mimeFor, dataUrl, fileFromBytes, helpersFor, type FileValue, type FileRef, type FileScope } from "./files.js";
+import { dataGrid, matrixEntries } from "./datagrid.js";
 import { ensureLean, syncLean, mountLean, unmountLean, focusLean, infoview as leanInfoview, leanState, leanFailure, leanProgress, initLeanIsolation, type LeanMessage } from "./lean-cells.js";
 /** The one trusted KaTeX command is `\htmlData`, which carries the engine's subterm paths. LaTeX can
  *  come from a file someone else wrote (saved outputs render before any re-run), and a blanket
@@ -40,7 +42,9 @@ const DOCS: Doc[] = [
   { name: "exptotrig", sig: "exptotrig(e)", blurb: "Euler's formula exp(iθ) = cos θ + i sin θ applied to every exponential with a pure-imaginary argument, at once (Mathematica's ExpToTrig). It is a command rather than a simplification rule because the general formula makes the term bigger; wrap it in expand to distribute and collect. Proved sound over ℂ.", examples: ["exptotrig(exp(i*t))", "expand(exptotrig(exp(-i*t) - exp(i*t)))"] },
   { name: "dot", sig: "dot(u, v) · norm(v)", blurb: "The dot product Σ uᵢvᵢ of two vectors (one-row or one-column matrices), bilinear like Mathematica's Dot — the Hermitian inner product of complex vectors is dot(u, conj(v)). norm(v) is the Euclidean length √(Σ vᵢ²).", examples: ["dot([1,2,3],[4,5,6])", "dot([i,1], conj([i,1]))", "norm([3,4])"] },
   { name: "epicycles", sig: "epicycles(f, t[, n]) · epicycles(points[, modes]) · dft(points[, modes])", blurb: "Draw a finite Fourier sum Σ c_k·exp(i k t) with circles: one per term, radius |c_k| and phase arg c_k, spinning at k turns per period, tip to tail; the tip traces the curve. Given a list of points instead — [x, y; …] or complex numbers — it computes their coefficients numerically (the discrete Fourier transform, dft, keeping the modes largest) and draws the same way. The drawing is numeric presentation; the sum's algebra is the engine's.", examples: ["epicycles(exp(i*t) + 1/2*exp(-3i*t), t)", "epicycles(sum(2i/(k*pi)*(exp(-i*k*t) - exp(i*k*t)), k, 1, 3), t)", "dft([1, i, -1, -i])"] },
-  { name: "import", sig: "import(\"url\") · ⟦file.svg⟧ · samplePoints(image)", blurb: "A file as a value, as in Mathematica. ⟦name⟧ refers to a file attached to the notebook (File → Attach file…, or paste an image into a cell); import(\"url\") fetches one from the web. A cell whose value is an image shows the image, and let x = import(…) binds it. samplePoints(x) is the image as numbers: for an SVG, 400 points sampled along its paths at equal arc lengths, centred and scaled to [-1, 1] — a 400×2 matrix. Where points are expected (epicycles, dft), an image is accepted and sampled the same way. In a Markdown cell ⟦name⟧ shows the image. Other file types have no conversion to a value yet.", examples: ["let llama = import(\"https://raw.githubusercontent.com/adekau/fourier/master/src/assets/llama.svg\")", "samplePoints(llama)", "epicycles(llama, 60)"] },
+  { name: "import", sig: "import(\"url\") · ⟦file⟧ · let x = import(…)", blurb: "A file as a value, as in Mathematica: kept as it came — its name, media type and contents — and shown by what it is. An image shows as the image, a CSV or TSV as a table, JSON and other text as text, anything else as a card with its type and size. ⟦name⟧ refers to a file attached to the notebook (File → Attach file…, or paste one into a cell); import(\"url\") fetches one from the web (the server must allow cross-origin reads). let x = import(…) binds the name to the file. Nothing is converted on the way in: a function called on the file turns it into numbers — samplePoints for an SVG, matrix, column, row and dimensions for a table — and a file anywhere else in a cell is an error naming them.", examples: ["import(\"https://raw.githubusercontent.com/adekau/fourier/master/src/assets/llama.svg\")", "let planets = import(\"examples/data/planets.csv\")"] },
+  { name: "samplePoints", sig: "samplePoints(svg[, n])", blurb: "An SVG as numbers: n points (400 if not given) sampled along its paths at equal arc lengths, centred and scaled so the larger extent is [-1, 1] — an n×2 matrix, ready for epicycles and dft. Only SVG paths are traced; another image is an error.", examples: ["let llama = import(\"https://raw.githubusercontent.com/adekau/fourier/master/src/assets/llama.svg\")", "let pts = samplePoints(llama)", "epicycles(pts, 60)"] },
+  { name: "matrix", sig: "matrix(table) · column(table, k) · row(table, k) · dimensions(table)", blurb: "A CSV or TSV file as numbers. matrix is every data row; column takes a number from 1 or a header name in quotes and gives a column vector; row gives one row; dimensions is [rows, columns]. The first line is a header when it has no numbers in it. A field that is not a number is an error naming its row and column. Large results show as a data table.", examples: ["let planets = import(\"examples/data/planets.csv\")", "dimensions(planets)", "column(planets, \"period\")", "column(planets, \"distance\")^3"] },
   { name: "sign", sig: "sign(x)", blurb: "The sign function: −1, 0 or 1. Folds on numerals and stays symbolic otherwise, so sign(sin(t)) is the square wave.", examples: ["sign(-3)", "plot(sign(sin(t)), t, -pi, pi)"] },
   { name: "poset", sig: "poset({a,b,c}; a<b, a<c) · divisors(n) · subsets({…}) · chain(n)", blurb: "A finite partial order: the reflexive-transitive closure of the relation given, checked for antisymmetry. Bind it with let and ask about it: hasse, join, meet, sup, inf, upper, lower, top, bottom, maximal, minimal, lattice, le.", examples: ["let D = divisors(12)", "join(D, 4, 6)", "lattice(D)", "le(D, 2, 12)", "let P = poset({a,b,c,d}; a<b, a<c, b<d, c<d)"] },
   { name: "map", sig: "map(P; a->b, c->d, …) · monotone(P, f) · lfp(P, f) · gfp(P, f) · fixpoints(P, f)", blurb: "A map on a poset given as a table (other elements are fixed). monotone checks every pair; lfp and gfp iterate from ⊥ and ⊤ and show the Kleene chain, which is proved to end at the least (greatest) fixed point.", examples: ["let f = map(D; 1->2, 3->6)", "monotone(D, f)", "lfp(D, f)"] },
@@ -109,7 +113,7 @@ function cellKind(src: string): string | null {
   if (!s) return null;
   if (ASK_CELL.test(s)) return "lookup";
   if (/^let\s/.test(s)) return "definition";
-  if (/⟦|\bimport\(/.test(s) && !/^(epicycles|dft|plot)\s*\(/.test(s)) return "image";
+  if (/⟦|\bimport\(/.test(s) && !/^(epicycles|dft|plot)\s*\(/.test(s)) return "file";
   const m = /^([A-Za-z_][A-Za-z0-9_]*)\s*\(/.exec(s);
   const head = m?.[1];
   switch (head) {
@@ -180,9 +184,9 @@ interface Cell {
   /** The syntax-highlight overlay under the input (presentation). */
   hl?: HTMLElement;
   plot?: PlotData;
-  /** An image-valued cell (`import("url")`, `⟦name⟧`, or `let x =` one of them): the image to show as
-   *  the output, in place of the points it stands for. Recomputed on each run. */
-  image?: { src: string; name: string };
+  /** A file-valued cell (`import("url")`, `⟦name⟧`, or `let x =` one of them): the file it shows,
+   *  by what it is. The engine never sees it; the contents are the attachment's or the import's. */
+  file?: FileMeta;
   /** λ-cells: the result with de Bruijn indices, and what it reads as (a Church numeral or boolean). */
   outDeBruijn?: string | undefined;
   reading?: string | undefined;
@@ -271,9 +275,8 @@ type Tab = "notebook" | "studio" | "reference";
  *  (`S.cells`, `S.docName`, `ST.scenes`, `sessionId`) are views of the current one; `stashDoc` and
  *  `loadDoc` swap them. */
 /** A file attached to a notebook (attached or pasted): any type, held as text or as base64. A cell
- *  refers to it as `⟦name⟧`. What a reference means depends on where it stands: in a Markdown cell an
- *  image shows; in a math cell an SVG becomes the sample points along its paths before the engine
- *  sees the cell — the engine only ever deals in numbers, and other types have no conversion yet. */
+ *  refers to it as `⟦name⟧`, and it is a value like an import (files.ts): shown by what it is, and
+ *  turned into numbers only by a function called on it. */
 interface Asset { name: string; mime: string; data: string; binary?: boolean }
 
 interface Nb {
@@ -507,7 +510,7 @@ async function restartEngine(upTo: Cell | null = null) {
   const gen = runGen;
   for (const c of i >= 0 ? S.cells.slice(0, i) : [...S.cells]) {
     if (gen !== runGen || !S.docs.includes(d)) return;
-    if ((c.type ?? "math") === "math" && c.outLatex && cellSrc(c).trim()) await runCell(c);
+    if ((c.type ?? "math") === "math" && (c.outLatex || c.file) && cellSrc(c).trim()) await runCell(c);
   }
   renderChrome();
 }
@@ -582,8 +585,13 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
       }
       asked = askSource(askM[1], cell.ask);
     }
-    // images in the cell become their sample points; the engine only sees numbers
-    const { src: sent, notes } = asked !== null ? { src: asked, notes: [] as string[] } : await resolveImages(src);
+    // a file is the notebook's: a cell whose value is one shows it, and functions called on one are
+    // evaluated here (samplePoints, matrix, …); the engine only ever sees numbers
+    const scope = fileScope(sessionId, docOf(cell)?.assets ?? S.assets);
+    if (asked === null) await fetchImports(src);
+    const fc = asked === null ? fileCellOf(src, scope) : null;
+    if (fc) return await evaluateFileCell(cell, fc, client, sessionId, t0);
+    const { src: sent, notes } = asked !== null ? { src: asked, notes: [] as string[] } : resolveFiles(src, scope);
     const r = isPlot
       ? await client.call("engine.plot", { sessionId, cellId: cell.id, source: sent, showWork: true, paths: true })
       : await client.call("engine.evaluate", { sessionId, cellId: cell.id, source: sent, showWork: true, paths: true });
@@ -595,13 +603,10 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
       cell.outText = r.rendered.text;
       cell.semantics = "semantics" in r && r.semantics === "complex" ? "complex" : "real";
       cell.echoLatex = r.inputRendered?.latex;
-      // an image's points are hundreds of rows: the interpretation names the image instead
-      if (notes.length) cell.echoLatex = `\\text{${notes.map((n) => n.replace(/[\\{}]/g, "")).join("; ")}}`;
-      if (/\bsamplePoints\s*\(/.test(src)) cell.echoLatex = `\\text{samplePoints: the image's points along its paths}`;
+      // a file's numbers are hundreds of rows: the interpretation names the calls that made them instead
+      if (notes.length) cell.echoLatex = `\\text{${notes.map((n) => n.replace(/[\\{}$&#^_%~]/g, "")).join("; ")}}`;
       if (asked !== null) delete cell.echoLatex;   // the input is the question; the answer is the output
-      const ref = imageRef(src);
-      const shown = ref && imageToShow(ref);
-      if (shown) cell.image = shown; else delete cell.image;
+      delete cell.file;
       // a dft cell's input is a long list of sample points: say how many rather than typeset them
       if (/^\s*dft\s*\(\s*\[/.test(src)) {
         // a literal list is long: say how many points rather than typeset them. Rows `[x, y; …]` are
@@ -612,6 +617,8 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
       }
       cell.steps = r.derivation?.steps ?? [];
       delete cell.error;
+      // this output is a number: a file that had its label before a restart no longer does
+      if (r.label) { LAST_LABEL.set(sessionId, r.label); FILE_OUTS.delete(`${sessionId}:${r.label}`); }
       delete cell.plot; delete cell.outDeBruijn; delete cell.reading; delete cell.kind; delete cell.hasse; delete cell.summary;
       if ("kind" in r && r.kind === "poset") { cell.kind = "order"; cell.hasse = r.hasse; cell.summary = r.summary; }
       if ("kind" in r && r.kind === "plot") {
@@ -626,11 +633,13 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
         const k = `${sessionId}:${r.bound[0]}`;
         if (r.params?.length) USER_FNS.set(k, r.params); else USER_FNS.delete(k);
         USER_NAMES.add(k);
+        FILE_VARS.delete(k);   // a name bound to a number is no longer the file it was
         renderHighlights();
       }
     } else {
       cell.label = r.label ?? cell.label ?? nextLabel++;
-      delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.plot; delete cell.image; cell.steps = [];
+      if (r.label) { LAST_LABEL.set(sessionId, r.label); FILE_OUTS.delete(`${sessionId}:${r.label}`); }
+      delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.plot; delete cell.file; cell.steps = [];
       cell.error = r.error;
       log("err", `${r.error.code}: ${r.error.message}`);
       announce(`Error: ${r.error.message}`);
@@ -642,11 +651,9 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
       cell.label = cell.label ?? nextLabel++;
       cell.error = { message: e.message === "Stopped." ? "Stopped." : `No answer: ${e.message}` };
       cell.askTrail = e.trail;
-      delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.plot; delete cell.image; cell.steps = [];
+      delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.plot; delete cell.file; cell.steps = [];
       log("err", `lookup: ${e.message}`);
-      S.busy = false; S.running = null; S.sel = null;
-      renderCellBody(cell); refreshRelativeRefs(); renderChrome(); renderSidebar(); renderPanel();
-      if (cell === S.cells[S.cells.length - 1]) addCell();
+      finishEvaluation(cell);
       return;
     }
     const stopped = S.engineMode === "http" ? "Stopped." : "Stopped. The engine was restarted, and the cells above this one with outputs were run again.";
@@ -654,9 +661,14 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
       : S.kernel === "failed" ? "The engine stopped while evaluating this cell." : e instanceof Error ? e.message : String(e) };
     if (cell === stoppedCell) stoppedCell = null;
     // the output shown must be this run's: a stale one would also be replayed after a restart
-    delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.plot; delete cell.image; cell.steps = [];
+    delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.plot; delete cell.file; cell.steps = [];
     log("err", cell.error.message);
   }
+  finishEvaluation(cell);
+}
+
+/** After a cell's evaluation: the notebook is free, and the cell shows what it got. */
+function finishEvaluation(cell: Cell) {
   S.busy = false; S.running = null;
   S.sel = null;
   renderCellBody(cell);
@@ -665,6 +677,33 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
   renderSidebar();
   renderPanel();
   if (cell === S.cells[S.cells.length - 1]) addCell();
+}
+
+/** A cell whose value is a file: it shows the file, and `let x = …` binds the name to it here. The
+ *  engine never sees the file, but the evaluation is numbered like any other: the engine is asked
+ *  to evaluate nothing, which fails and takes the next number, so `In[n]` and `%n` keep one count
+ *  (and `%` after this cell is the file). */
+async function evaluateFileCell(cell: Cell, fc: { bind?: string; file: FileValue }, client: EngineClient, sessionId: string, t0: number) {
+  const { bind, file } = fc;
+  log("rpc", `file ${file.name} (${file.mime}, ${fmtSize(fileSize(file))})${bind ? ` as ${bind}` : ""}`);
+  const r = await client.call("engine.evaluate", { sessionId, cellId: cell.id, source: "" });
+  cell.ms = performance.now() - t0;
+  cell.label = r.label ?? cell.label ?? nextLabel++;
+  if (r.label) { LAST_LABEL.set(sessionId, r.label); FILE_OUTS.set(`${sessionId}:${r.label}`, file); }
+  if (bind) {
+    const k = `${sessionId}:${bind}`;
+    FILE_VARS.set(k, file); USER_NAMES.add(k); USER_FNS.delete(k);
+    renderHighlights();
+  }
+  delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.plot; delete cell.error;
+  delete cell.outDeBruijn; delete cell.reading; delete cell.kind; delete cell.hasse; delete cell.summary;
+  cell.steps = [];
+  cell.file = { name: file.name, mime: file.mime, size: fileSize(file), origin: file.origin };
+  if (cell.form && cell.form !== "text") delete cell.form;
+  queueMicrotask(autosave);
+  log("ok", `Out[${cell.label}] ${file.name}: ${mimeLabel(file.mime)}`);
+  announce(`Out ${cell.label}: ${file.name}, ${mimeLabel(file.mime)}`);
+  finishEvaluation(cell);
 }
 
 async function explain(cell: Cell, term: TermRef, path: Path) {
@@ -711,10 +750,21 @@ function pathLatex(latex: string, path: Path): string | null {
 
 /** The output forms a cell may choose from (the engine prints once; these are typesetting choices). */
 function formsFor(cell: Cell): [string, string][] {
+  if (cell.file) return [["table", "table"], ["text", "text"]];
+  const m = cell.outLatex ? matrixEntries(cell.outLatex) : null;
+  if (m) {
+    const forms: [string, string][] = [["matrix", "matrix [ ]"], ["pmatrix", "matrix ( )"], ["grid", "grid"], ["table", "table"], ["data", "data table"], ["input", "input form"]];
+    // a large matrix is a value to bind and read, not to typeset: it shows as a data table
+    return bigMatrix(m) ? [forms[4]!, ...forms.slice(0, 4), forms[5]!] : forms;
+  }
   return cell.outLatex?.includes("\\begin{bmatrix}")
     ? [["matrix", "matrix [ ]"], ["pmatrix", "matrix ( )"], ["grid", "grid"], ["table", "table"], ["input", "input form"]]
     : [["standard", "standard"], ["input", "input form"]];
 }
+/** More rows or columns than typeset well: shown as a data table unless another form is chosen. */
+const bigMatrix = (rows: string[][]) => rows.length > 24 || (rows[0]?.length ?? 0) > 12;
+/** The output form a cell shows: the one chosen, or the first its output offers. */
+const formOf = (cell: Cell) => cell.form ?? formsFor(cell)[0]![0];
 function formLatex(latex: string, form: string | undefined): string {
   if (!form || form === "matrix" || form === "standard") return latex;
   return latex.replace(/\\begin\{bmatrix\}([\s\S]*?)\\end\{bmatrix\}/g, (_m, body: string) => {
@@ -729,9 +779,9 @@ function formLatex(latex: string, form: string | undefined): string {
   });
 }
 
-/** A matrix of more than 24 rows shows its first three, a row of dots with the count, and its last:
- *  a 400-point image is a value to bind and draw, not to read. (Rows are split at the top level
- *  only, so a nested matrix is left alone.) */
+/** A matrix of more than 24 rows typeset shows its first three, a row of dots with the count, and its
+ *  last (a large matrix alone shows as a data table unless typesetting is chosen; this is for one
+ *  inside a term). Rows are split at the top level only, so a nested matrix is left alone. */
 function abridgeMatrix(latex: string): string {
   return latex.replace(/\\begin\{bmatrix\}([\s\S]*?)\\end\{bmatrix\}/g, (whole, body: string) => {
     const rows = body.split(" \\\\ ");
@@ -745,6 +795,10 @@ function abridgeMatrix(latex: string): string {
 /** Make every path-annotated subterm of a rendered term clickable. */
 function wireTerm(host: HTMLElement, cell: Cell, term: TermRef) {
   host.dataset["term"] = termKey(term);
+  wirePaths(host, cell, term);
+}
+/** Make the path-annotated subterms inside an element clickable (rows a data table adds later). */
+function wirePaths(host: HTMLElement, cell: Cell, term: TermRef) {
   host.querySelectorAll<HTMLElement>("[data-path]").forEach((span) => {
     span.addEventListener("click", (ev) => {
       ev.stopPropagation();
@@ -815,7 +869,7 @@ function docDirty(d: Nb): boolean {
 
 /** A new notebook nobody has typed in: the natural place to open a file into. */
 function docPristine(d: Nb): boolean {
-  return d.name === "untitled.chalk" && d.scenes.length === 0 && !Object.keys(d.assets).length && d.cells.every((c) => !cellSrc(c).trim() && !c.outLatex);
+  return d.name === "untitled.chalk" && d.scenes.length === 0 && !Object.keys(d.assets).length && d.cells.every((c) => !cellSrc(c).trim() && !c.outLatex && !c.file);
 }
 
 /** Close a tab; an unsaved notebook asks first. The last tab closing leaves a fresh one. */
@@ -870,7 +924,7 @@ function renderTabs() {
 interface ChalkFile {
   /** Format version. Files written as `.lemma` before the rename carry `lemma: 1` instead and still open. */
   chalk?: 1; lemma?: 1; name: string;
-  cells: { src: string; type?: Cell["type"] | undefined; collapsed?: boolean | undefined; showWork: boolean; label: number | null; outLatex?: string | undefined; outText?: string | undefined; form?: string | undefined; semantics?: "real" | "complex" | undefined; echoLatex?: string | undefined; steps?: Step[] | undefined; error?: Cell["error"] | undefined; plot?: PlotData | undefined; mode?: Cell["mode"] | undefined; ask?: AskResult | undefined }[];
+  cells: { src: string; type?: Cell["type"] | undefined; collapsed?: boolean | undefined; showWork: boolean; label: number | null; outLatex?: string | undefined; outText?: string | undefined; form?: string | undefined; semantics?: "real" | "complex" | undefined; echoLatex?: string | undefined; steps?: Step[] | undefined; error?: Cell["error"] | undefined; plot?: PlotData | undefined; mode?: Cell["mode"] | undefined; ask?: AskResult | undefined; file?: FileMeta | undefined }[];
   scenes: Scene[];
   /** Images attached to the notebook, by name. */
   assets?: Record<string, Asset>;
@@ -891,7 +945,7 @@ function stepsToSave(c: Cell): Step[] | undefined {
 function serializeNotebook(): string {
   const doc: ChalkFile = {
     chalk: 1, name: S.docName,
-    cells: S.cells.map((c) => ({ src: cellSrc(c), type: c.type, collapsed: c.collapsed || undefined, showWork: c.showWork, label: c.label, outLatex: c.outLatex, outText: c.outText, form: c.form, semantics: c.semantics, echoLatex: c.echoLatex, steps: stepsToSave(c), error: c.error, plot: c.plot, mode: c.mode, ask: c.ask })),
+    cells: S.cells.map((c) => ({ src: cellSrc(c), type: c.type, collapsed: c.collapsed || undefined, showWork: c.showWork, label: c.label, outLatex: c.outLatex, outText: c.outText, form: c.form, semantics: c.semantics, echoLatex: c.echoLatex, steps: stepsToSave(c), error: c.error, plot: c.plot, mode: c.mode, ask: c.ask, file: c.file })),
     scenes: ST.scenes,
     ...(Object.keys(S.assets).length ? { assets: S.assets } : {}),
   };
@@ -944,6 +998,9 @@ function cellsFromFile(doc: ChalkFile, foldWork = false): Cell[] {
     if (c.steps) cell.steps = c.steps;
     if (c.error) cell.error = c.error;
     if (c.plot) cell.plot = migratePlot(c.plot);
+    const f = c.file;
+    if (f && typeof f.name === "string" && typeof f.mime === "string" && f.origin && (typeof (f.origin as { url?: unknown }).url === "string" || typeof (f.origin as { asset?: unknown }).asset === "string"))
+      cell.file = { name: f.name, mime: f.mime, size: Number(f.size) || 0, origin: "url" in f.origin ? { url: f.origin.url } : { asset: f.origin.asset } };
     if (c.mode === "raw" || c.mode === "visual") cell.mode = c.mode;
     const ask = savedAsk(c.ask);
     if (ask) cell.ask = ask;
@@ -991,6 +1048,8 @@ async function restartKernel() {
   clearOutputs();
   for (const k of [...USER_FNS.keys()]) if (k.startsWith(`${sessionId}:`)) USER_FNS.delete(k);
   for (const k of [...USER_NAMES]) if (k.startsWith(`${sessionId}:`)) USER_NAMES.delete(k);
+  for (const m of [FILE_VARS, FILE_OUTS]) for (const k of [...m.keys()]) if (k.startsWith(`${sessionId}:`)) m.delete(k);
+  LAST_LABEL.delete(sessionId);
   log("ok", "kernel restarted: the session is empty");
 }
 
@@ -1274,61 +1333,74 @@ async function openNotebookLink(hash: string): Promise<boolean> {
   } catch (e) { notify("err", `The notebook link did not open: ${e instanceof Error ? e.message : String(e)}`); return false; }
 }
 
-// --- Attachments: `⟦name⟧` for a file attached to the notebook, `import("url")` for one on the web --
-// The store is generic (any file, by name); what a reference means is decided where it stands. In a
-// math cell an SVG becomes, before the engine sees the cell, the list of points sampled along its
-// paths at equal arc lengths (the article's `getPointAtLength` loop), centred and scaled so the
-// larger extent is [-1, 1]: `let x = ⟦llama.svg⟧` binds a 400×2 matrix and `epicycles(x, 60)` draws
-// it. Other types have no conversion to a value yet and say so. In a Markdown cell any image shows.
+// --- Files: `⟦name⟧` for a file attached to the notebook, `import("url")` for one on the web -------
+// A file is a value of the notebook, not of the engine (files.ts): a cell whose value is one shows
+// it, `let x = …` binds the name here, and the functions that turn a file into numbers are evaluated
+// before the cell is sent. In a Markdown cell `⟦name⟧` shows the file the same way.
 
-const ASSET_RE = /⟦([^⟧]+)⟧/g;
-const IMPORT_RE = /\bimport\(\s*(["'])([^"']*)\1\s*\)/g;
-/** The text of every SVG fetched by `import`, by URL, so an image-valued cell can show it (a raw
- *  file server may serve SVG as text/plain, which an <img src=url> will not render). */
-const SVG_TEXT = new Map<string, string>();
+/** A file-valued cell's output: what the file is and where its contents are (saved with the cell,
+ *  so a notebook not yet re-run can say what its outputs were). */
+interface FileMeta { name: string; mime: string; size: number; origin: FileValue["origin"] }
 
-/** A cell whose value is an image: `import("url")`, `⟦name⟧`, or `let x =` one of them. */
-function imageRef(src: string): { url?: string; name?: string } | null {
-  const m = /^\s*(?:let\s+[A-Za-z_][A-Za-z0-9_]*\s*=\s*)?(?:import\(\s*(["'])([^"']*)\1\s*\)|⟦([^⟧]+)⟧)\s*$/.exec(src);
-  if (!m) return null;
-  return m[2] !== undefined ? { url: m[2] } : { name: m[3]! };
+/** Imports by URL, fetched once per page (a re-run does not fetch again). */
+const IMPORTS = new Map<string, FileValue>();
+/** Names bound to files by `let x = import(…)`, keyed `session:name` like `USER_NAMES`. */
+const FILE_VARS = new Map<string, FileValue>();
+/** Outputs that are files, keyed `session:label`, for `%` and `%n`; and each session's latest label. */
+const FILE_OUTS = new Map<string, FileValue>();
+const LAST_LABEL = new Map<string, number>();
+/** Points sampled from an SVG, by count and text, so a re-run does not measure the paths again. */
+const SVG_SAMPLES = new Map<string, { points: [number, number][]; paths: number }>();
+
+/** An attachment as a file value. */
+const assetFile = (a: Asset): FileValue => ({ name: a.name, mime: a.mime, data: a.data, ...(a.binary ? { binary: true } : {}), origin: { asset: a.name } });
+
+/** The files a cell of a notebook may refer to: its attachments, the imports fetched, and the names
+ *  and outputs of its session that are files. */
+function fileScope(sid: string, assets: Record<string, Asset>): FileScope {
+  return {
+    lookup: (ref: FileRef) => {
+      if (ref.kind === "asset") {
+        const a = assets[ref.name];
+        if (!a) throw new Error(`nothing named ⟦${ref.name}⟧ is attached to this notebook (File → Attach file…, or paste a file into a cell)`);
+        return assetFile(a);
+      }
+      if (ref.kind === "url") return IMPORTS.get(ref.url);
+      if (ref.kind === "name") return FILE_VARS.get(`${sid}:${ref.name}`);
+      const last = LAST_LABEL.get(sid) ?? 0;
+      const n = /^%\d+$/.test(ref.text) ? Number(ref.text.slice(1)) : last + 1 - ref.text.length;
+      return FILE_OUTS.get(`${sid}:${n}`);
+    },
+    sample: (xml, n) => {
+      const key = `${n}:${xml}`;
+      let r = SVG_SAMPLES.get(key);
+      if (!r) { r = svgPoints(xml, n); SVG_SAMPLES.set(key, r); }
+      return r;
+    },
+  };
 }
-/** What an image-valued cell shows: the attachment, or the fetched SVG as a data URL. */
-function imageToShow(ref: { url?: string; name?: string }): { src: string; name: string } | undefined {
-  if (ref.url !== undefined) {
-    const xml = SVG_TEXT.get(ref.url);
-    return { src: xml ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(xml)}` : ref.url, name: ref.url.split("/").pop() || ref.url };
-  }
-  const u = assetUrl(ref.name!);
-  return u ? { src: u, name: ref.name! } : undefined;
-}
-/** Points sampled from an SVG, by its text (an attached image) or its URL (an import), so a re-run
- *  neither re-samples nor re-fetches. */
-const SAMPLE_CACHE = new Map<string, string>();
 
-/** The sample points along an SVG's paths as a matrix literal `[x, y; …]`, or an explanation of why not. */
-function svgPoints(xml: string, N = 400): { rows: string; n: number; paths: number } {
-  const doc = new DOMParser().parseFromString(xml, "image/svg+xml");
-  const paths = Array.from(doc.querySelectorAll("path"));
-  if (!paths.length) throw new Error("the SVG has no <path> elements (shapes, text and images are not traced)");
-  // measure in a hidden host SVG so getTotalLength works
-  const NS = "http://www.w3.org/2000/svg";
-  const host = document.createElementNS(NS, "svg"); host.setAttribute("width", "0"); host.setAttribute("height", "0"); host.style.position = "absolute";
-  document.body.append(host);
-  const copies = paths.map((p) => { const c = document.createElementNS(NS, "path"); c.setAttribute("d", p.getAttribute("d") ?? ""); host.append(c); return c; });
-  const total = copies.reduce((a, c) => a + c.getTotalLength(), 0);
-  const pts: [number, number][] = [];
-  for (const c of copies) {
-    const len = c.getTotalLength(), n = Math.max(1, Math.round((N * len) / (total || 1)));
-    for (let i = 0; i < n; i++) { const q = c.getPointAtLength((len * i) / n); pts.push([q.x, q.y]); }
+/** Fetch what a cell imports (once per URL): the media type is the server's, or the extension's
+ *  when the server's says nothing (a raw file host sends CSV and SVG as text/plain). */
+async function fetchImports(src: string) {
+  for (const url of importsIn(src)) {
+    if (IMPORTS.has(url)) continue;
+    let r: Response;
+    try {
+      r = await fetch(url);
+      if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+    } catch (e) { throw new Error(`import("${url}") failed: ${e instanceof Error ? e.message : String(e)} — the server must allow cross-origin reads; attach the file instead`); }
+    const name = decodeURIComponent(new URL(url, location.href).pathname.split("/").pop() || url);
+    const mime = mimeFor(name, r.headers.get("content-type") ?? "");
+    IMPORTS.set(url, fileFromBytes(name, mime, new Uint8Array(await r.arrayBuffer()), { url }));
   }
-  host.remove();
-  // centre, flip y (SVG's y grows downward), scale the larger extent to [-1, 1]
-  const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
-  const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2;
-  const ext = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) / 2 || 1;
-  const rows = pts.map(([x, y]) => `${((x - cx) / ext).toFixed(3)}, ${(-(y - cy) / ext).toFixed(3)}`).join("; ");
-  return { rows: `[${rows}]`, n: pts.length, paths: paths.length };
+}
+
+/** A file's contents for a saved output, if this page has them (an import is not saved with the notebook). */
+function fileOf(meta: FileMeta, assets: Record<string, Asset> = S.assets): FileValue | undefined {
+  if ("url" in meta.origin) return IMPORTS.get(meta.origin.url);
+  const a = assets[meta.origin.asset];
+  return a && assetFile(a);
 }
 
 /** Attach a file to the notebook under a name (made unique if another file has it) and return the name. */
@@ -1341,23 +1413,15 @@ function attachAsset(name: string, mime: string, data: string, binary = false): 
   S.assets[n] = { name: n, mime, data, ...(binary ? { binary: true } : {}) };
   return n;
 }
-/** An attachment as a URL an <img> can show. */
+/** An attachment as a URL an <img> or a link can use. */
 function assetUrl(name: string): string | undefined {
-  const a = S.assets[name]; if (!a) return undefined;
-  return a.binary ? `data:${a.mime};base64,${a.data}` : `data:${a.mime};charset=utf-8,${encodeURIComponent(a.data)}`;
+  const a = S.assets[name];
+  return a && dataUrl(assetFile(a));
 }
-/** The sample points an attachment stands for in a math cell: an SVG's paths; nothing else, yet. */
-function assetPoints(a: Asset): { rows: string; n: number; paths: number } {
-  if (a.mime !== "image/svg+xml") throw new Error(`⟦${a.name}⟧ is ${a.mime}: only an SVG can be traced into points (yet)`);
-  return svgPoints(a.data);
-}
-/** Read a file for attaching: text for SVG and text types, base64 otherwise. */
+/** Read a file for attaching: text for text types, base64 otherwise. */
 async function readAttachment(f: File): Promise<{ mime: string; data: string; binary: boolean }> {
-  const mime = f.type || (/\.svg$/i.test(f.name) ? "image/svg+xml" : "application/octet-stream");
-  if (mime === "image/svg+xml" || mime.startsWith("text/")) return { mime, data: await f.text(), binary: false };
-  const buf = new Uint8Array(await f.arrayBuffer());
-  let bin = ""; for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
-  return { mime, data: btoa(bin), binary: true };
+  const v = fileFromBytes(f.name, mimeFor(f.name, f.type), new Uint8Array(await f.arrayBuffer()), { asset: f.name });
+  return { mime: v.mime, data: v.data, binary: !!v.binary };
 }
 
 /** Put text at the caret of a cell's input (replacing the selection), as if typed. */
@@ -1367,53 +1431,46 @@ function insertAtCaret(cell: Cell, text: string) {
   cell.src = input.value; syncHighlight(cell); renderSidebar(); renderTabs();
 }
 
-/** The cell's source with every image reference replaced by its sample points, and a note per
- *  image for the input interpretation. Imports are fetched (and cached); an unknown name, a failed
- *  fetch or an SVG without paths throws with the reason. */
-async function resolveImages(src: string): Promise<{ src: string; notes: string[] }> {
-  const notes: string[] = [];
-  const sample = (key: string, xml: string, label: string) => {
-    let rows = SAMPLE_CACHE.get(key);
-    if (!rows) {
-      const s = svgPoints(xml);
-      rows = s.rows; SAMPLE_CACHE.set(key, rows);
-      notes.push(`${label}: ${s.n} points along ${s.paths} path${s.paths === 1 ? "" : "s"}`);
-    } else notes.push(`${label}: ${rows.split(";").length} points`);
-    return rows;
-  };
-  let out = src.replace(ASSET_RE, (_m, name: string) => {
-    const a = S.assets[name];
-    if (!a) throw new Error(`nothing named ⟦${name}⟧ is attached to this notebook (File → Attach file…, or paste an image)`);
-    let rows = SAMPLE_CACHE.get(`asset:${a.mime}:${a.data}`);
-    if (!rows) { const s = assetPoints(a); rows = s.rows; SAMPLE_CACHE.set(`asset:${a.mime}:${a.data}`, rows); notes.push(`${name}: ${s.n} points along ${s.paths} path${s.paths === 1 ? "" : "s"}`); }
-    else notes.push(`${name}: ${rows.split(";").length} points`);
-    return rows;
-  });
-  const imports = [...out.matchAll(IMPORT_RE)];
-  for (const m of imports) {
-    const url = m[2]!;
-    if (!SAMPLE_CACHE.has(`url:${url}`)) {
-      let xml: string;
-      try {
-        const r = await fetch(url);
-        if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
-        xml = await r.text();
-      } catch (e) { throw new Error(`import("${url}") failed: ${e instanceof Error ? e.message : String(e)} — the server must allow cross-origin reads; attach the file instead`); }
-      if (!/<svg[\s>]/i.test(xml)) throw new Error(`import("${url}"): not an SVG (only SVG images can be traced)`);
-      SVG_TEXT.set(url, xml);
-      SAMPLE_CACHE.set(`url:${url}`, sample(`svgtext:${xml}`, xml, url.split("/").pop() || url));
-    } else notes.push(`${url.split("/").pop() || url}: ${SAMPLE_CACHE.get(`url:${url}`)!.split(";").length} points`);
+/** How a file shows as an output, or in a Markdown cell: by what it is. `x` is what the cell calls
+ *  it, for the functions the caption offers. */
+function fileView(f: FileValue, x: string, form?: string): { body: HTMLElement; cap: HTMLElement } {
+  const kind = kindOf(f);
+  const cap = h("div", "plotcap filecap");
+  let what = `${f.name} · ${mimeLabel(f.mime)} · ${fmtSize(fileSize(f))}`;
+  let body: HTMLElement;
+  if (kind === "image") {
+    body = h("div", "plotbox imgbox");
+    const img = document.createElement("img"); img.src = dataUrl(f); img.alt = f.name; img.className = "outimg";
+    body.append(img);
+  } else if (kind === "table" && form !== "text") {
+    const t = tableOf(f);
+    what = `${f.name} · ${mimeLabel(f.mime)} · ${t.rows.length.toLocaleString()} row${t.rows.length === 1 ? "" : "s"} × ${t.cols} column${t.cols === 1 ? "" : "s"}${t.header ? "" : " (no header row)"} · ${fmtSize(fileSize(f))}`;
+    body = dataGrid({ rows: t.rows.length, cols: t.cols, header: t.header, cell: (r, c) => t.rows[r]![c]!, numeric: numericColumns(t), label: `${f.name}, a table` });
+  } else if (kind === "binary") {
+    body = h("div", "filecard");
+    body.append(h("span", "fileicon", "⎙"), h("span", "filename", f.name), h("span", "filemeta", `${mimeLabel(f.mime)}, ${fmtSize(fileSize(f))}`));
+  } else {
+    // text, shown as it is (JSON indented); a long file shows its start
+    let text = fileText(f);
+    if (kind === "json") { try { text = JSON.stringify(JSON.parse(text), null, 2); } catch { /* shown as it came */ } }
+    const MAX = 20000;
+    body = h("pre", "filetext", text.length > MAX ? `${text.slice(0, MAX)}\n…` : text);
+    if (text.length > MAX) what += ` · the first ${fmtSize(MAX)} shown`;
   }
-  out = out.replace(IMPORT_RE, (_m, _q, url: string) => SAMPLE_CACHE.get(`url:${url}`)!);
-  // samplePoints(image) is the image's points — which is what an image already stands for here;
-  // the function is the explicit, Mathematica-shaped way to say it (the engine never sees it)
-  out = out.replace(/\bsamplePoints\s*\(/g, "(");
-  return { src: out, notes };
+  if (kind !== "binary") cap.append(h("span", "epinote", what));   // a card says it already
+  const helpers = helpersFor(kind, f.mime, x);
+  if (helpers.length) {
+    const fns = h("span", "epinote");
+    fns.append("As numbers: ");
+    helpers.forEach((s, i) => { fns.append(h("code", undefined, s)); if (i < helpers.length - 1) fns.append(" · "); });
+    cap.append(fns);
+  }
+  return { body, cap };
 }
 
 /** File → Attach file…: the file joins the notebook and `⟦name⟧` lands at the caret of the active
- *  cell — a math cell's input, or a Markdown cell's editor (where an image shows); with neither, a
- *  fresh cell `epicycles(⟦name⟧)` for an SVG. */
+ *  cell — a math cell's input, or a Markdown cell's editor (where the file shows); with neither, a
+ *  fresh cell `⟦name⟧`, which shows the file when run. */
 function attachFile() {
   const inp = document.createElement("input");
   inp.type = "file";
@@ -1426,8 +1483,7 @@ function attachFile() {
       // a file reference is not something the visual input shows: the cell goes back to text
       else if (c?.mi) { c.mode = "raw"; c.src += `⟦${name}⟧`; focusCell(S.active); }
       else if (c?.ta) { c.ta.setRangeText(`⟦${name}⟧`, c.ta.selectionStart, c.ta.selectionEnd, "end"); c.src = c.ta.value; c.ta.focus(); }
-      else if (mime === "image/svg+xml") { const cell = addCell(`epicycles(⟦${name}⟧)`); renderSidebar(); focusCell(S.cells.indexOf(cell)); }
-      else { const cell = addCell(`⟦${name}⟧`, "markdown"); renderSidebar(); focusCell(S.cells.indexOf(cell)); }
+      else { const cell = addCell(`⟦${name}⟧`); renderSidebar(); focusCell(S.cells.indexOf(cell)); }
       notify("ok", `Attached ${name} (${Math.round(data.length / 1024)} KB): ⟦${name}⟧ refers to it`);
       renderHighlights(); autosave();
     });
@@ -1548,9 +1604,9 @@ function moveCell(cell: Cell, by: -1 | 1) {
   [S.cells[i], S.cells[j]] = [S.cells[j]!, S.cells[i]!];
   renderCells(); renderSidebar(); focusCell(j); autosave();
 }
-const hasOutput = (cell: Cell) => !!(cell.outLatex || cell.error);
+const hasOutput = (cell: Cell) => !!(cell.outLatex || cell.file || cell.error);
 function clearCellOutput(cell: Cell) {
-  delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.error; delete cell.plot; delete cell.hasse; delete cell.summary; delete cell.image; delete cell.outDeBruijn; delete cell.reading;
+  delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.error; delete cell.plot; delete cell.hasse; delete cell.summary; delete cell.file; delete cell.outDeBruijn; delete cell.reading;
   delete cell.ask; delete cell.askTrail;
   cell.steps = []; cell.label = null;
   renderCellBody(cell); renderChrome(); renderSidebar(); autosave();
@@ -1579,7 +1635,7 @@ function focusCell(i: number) {
 }
 
 function clearOutputs() {
-  for (const c of S.cells) { delete c.outLatex; delete c.outText; delete c.echoLatex; delete c.error; delete c.plot; delete c.image; c.steps = []; c.label = null; c.ms = undefined; }
+  for (const c of S.cells) { delete c.outLatex; delete c.outText; delete c.echoLatex; delete c.error; delete c.plot; delete c.file; c.steps = []; c.label = null; c.ms = undefined; }
   nextLabel = 1; S.sel = null;
   renderCells(); renderSidebar(); renderPanel();
   log("ok", "outputs cleared");
@@ -1818,7 +1874,7 @@ function renderChrome() {
   // status bar
   const sb = $(".statusbar"); sb.innerHTML = "";
   const rules = new Set(S.cells.flatMap((c) => c.steps ?? []).map((s) => s.rule));
-  const done = S.cells.filter((c) => c.outLatex || c.error).length;
+  const done = S.cells.filter((c) => c.outLatex || c.file || c.error).length;
   sb.append(
     ...(S.dev ? [h("span", undefined, `Mode: ${S.tab}`), h("span", "pipe", "|")] : []),
     h("span", undefined, `Cell ${S.active + 1}`), h("span", "pipe", "|"),
@@ -1843,7 +1899,7 @@ function renderNotice() {
     n.classList.add("wait");
     n.append(h("span", "msg", "Starting the engine…"));
   } else if (d && !d.hydrated && !d.noticeDismissed && S.cells.some((c) => (c.type ?? "math") === "math" && c.src.trim())) {
-    const saved = S.cells.some((c) => c.outLatex || c.error);
+    const saved = S.cells.some((c) => c.outLatex || c.file || c.error);
     n.append(h("span", "msg", `This notebook has not been run yet.${saved ? " The outputs shown are the ones it was saved with." : ""}`),
       btn("Run all", () => void runAll().then(() => renderChrome())),
       btn("Dismiss", () => { d.noticeDismissed = true; renderNotice(); }));
@@ -2184,7 +2240,7 @@ function visualBlocked(cell: Cell): string | null {
   if (kind === "lookup") return "questions are edited as text";
   if (kind === "λ-term") return "λ-terms are edited as text";
   if (kind === "order" || ORDER_CELL.test(src.trim())) return "order theory is edited as text";
-  if (kind === "image") return "file references are edited as text";
+  if (kind === "file") return "file references are edited as text";
   if (src.trim() && !readNotation(src, sessionFns()).ok) return "the text does not parse yet";
   return null;
 }
@@ -2957,7 +3013,7 @@ function renderCellBody(cell: Cell) {
   }
 
   const old = el.querySelector(".outrow"); old?.remove();
-  if (cell.outLatex) {
+  if (cell.outLatex || cell.file) {
     const out = h("div", "outrow");
     out.append(h("div", "prompt", `Out[${cell.label}]=`));
     const val = h("div", "outval");
@@ -2967,14 +3023,20 @@ function renderCellBody(cell: Cell) {
       const cap = h("div", "plotcap", cell.summary ?? "");
       val.classList.add("isplot");
       val.append(box, cap);
-    } else if (cell.image) {
-      const box = h("div", "plotbox imgbox");
-      const img = document.createElement("img"); img.src = cell.image.src; img.alt = cell.image.name; img.className = "outimg";
-      box.append(img);
-      const cap = h("div", "plotcap");
-      cap.append(h("span", "epinote", `${cell.image.name} — an image. samplePoints(…) is its points along its paths; where points are expected, the image is sampled the same way.`));
+    } else if (cell.file) {
+      const f = fileOf(cell.file, docOf(cell)?.assets);
+      // what the cell calls the file, for the functions its caption offers
+      const x = /^\s*let\s+([A-Za-z_][A-Za-z0-9_]*)/.exec(cell.src)?.[1] ?? (/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*$/.exec(cell.src)?.[1] ?? cell.src.trim());
+      if (f) {
+        const { body, cap } = fileView(f, x, cell.form);
+        val.append(body, cap);
+      } else {
+        // a saved output whose import this page has not fetched yet
+        const card = h("div", "filecard");
+        card.append(h("span", "fileicon", "⎙"), h("span", "filename", cell.file.name), h("span", "filemeta", `${mimeLabel(cell.file.mime)}, ${fmtSize(cell.file.size)} — run the cell to load it`));
+        val.append(card);
+      }
       val.classList.add("isplot");
-      val.append(box, cap);
     } else if (cell.plot) {
       const epi = !!cell.plot.terms?.length;
       const box = epi ? epicycleBox(cell.plot, 520, 320) : h("div", "plotbox");
@@ -3001,7 +3063,7 @@ function renderCellBody(cell: Cell) {
           cap.append(it);
         });
       } else {
-        cap.innerHTML = tex(cell.outLatex, true);
+        cap.innerHTML = tex(cell.outLatex ?? "", true);
         wireTerm(cap, cell, { kind: "output" });
       }
       val.classList.add("isplot");
@@ -3010,15 +3072,26 @@ function renderCellBody(cell: Cell) {
       val.innerHTML = tex(cell.outDeBruijn, true);
     } else if (cell.form === "input") {
       val.append(h("code", "outtext", cell.outText ?? ""));
+    } else if (formOf(cell) === "data") {
+      // a matrix to read rather than typeset: rows and columns numbered, rows added as they scroll in
+      const rows = matrixEntries(cell.outLatex!)!;
+      val.dataset["term"] = termKey({ kind: "output" });
+      // a column of numerals aligns right, as a CSV's does
+      const numeral = (e: string) => /^-?\d+(\.\d+)?$/.test(stripPaths(e).trim());
+      const numeric = rows[0]!.map((_, c) => rows.every((r) => numeral(r[c]!)));
+      val.append(dataGrid({ rows: rows.length, cols: rows[0]!.length, cell: (r, c) => tex(rows[r]![c]!, true), html: true, numeric, label: `a ${rows.length} by ${rows[0]!.length} matrix` },
+        (trs) => trs.forEach((tr) => wirePaths(tr, cell, { kind: "output" }))));
+      val.append(h("div", "plotcap", `${rows.length} × ${rows[0]!.length} matrix`));
+      val.classList.add("isplot");
     } else {
-      val.innerHTML = tex(abridgeMatrix(formLatex(cell.outLatex, cell.form)), true);
+      val.innerHTML = tex(abridgeMatrix(formLatex(cell.outLatex ?? "", cell.form)), true);
       wireTerm(val, cell, { kind: "output" });
     }
     // the output form: a per-cell choice of typesetting, like Mathematica's //MatrixForm
-    if (!cell.hasse && !cell.plot && !cell.image) {
+    if (!cell.hasse && !cell.plot && (!cell.file || (fileOf(cell.file, docOf(cell)?.assets) && kindOf(cell.file) === "table"))) {
       const forms = formsFor(cell);
       const fs = document.createElement("select"); fs.className = "formsel"; fs.title = "Output form"; fs.setAttribute("aria-label", "Output form");
-      for (const [v, label] of forms) { const o = document.createElement("option"); o.value = v; o.textContent = label; o.selected = (cell.form ?? forms[0]![0]) === v; fs.append(o); }
+      for (const [v, label] of forms) { const o = document.createElement("option"); o.value = v; o.textContent = label; o.selected = formOf(cell) === v; fs.append(o); }
       fs.addEventListener("mousedown", (e) => e.stopPropagation());
       fs.addEventListener("change", () => { if (fs.value === forms[0]![0]) delete cell.form; else cell.form = fs.value; renderCellBody(cell); autosave(); });
       out.querySelector(".prompt")!.append(fs);
@@ -3362,8 +3435,10 @@ function mdInline(host: HTMLElement, text: string) {
       const a = m && S.assets[m[1]!];
       if (m && a) {
         flush(); i += m[0].length;
-        if (a.mime.startsWith("image/")) { const img = document.createElement("img"); img.src = assetUrl(a.name)!; img.alt = a.name; img.className = "mdimg"; host.append(img); }
-        else { const e = h("code", "mdcode", `⟦${a.name}⟧`); e.title = `${a.mime}, ${Math.round(a.data.length / 1024)} KB`; host.append(e); }
+        const f = assetFile(a), kind = kindOf(f);
+        if (kind === "image") { const img = document.createElement("img"); img.src = dataUrl(f); img.alt = a.name; img.className = "mdimg"; host.append(img); }
+        else if (kind === "table") { const t = tableOf(f); host.append(dataGrid({ rows: t.rows.length, cols: t.cols, header: t.header, cell: (r, c) => t.rows[r]![c]!, numeric: numericColumns(t), label: `${a.name}, a table` })); }
+        else { const e = h("code", "mdcode", `⟦${a.name}⟧`); e.title = `${mimeLabel(a.mime)}, ${fmtSize(fileSize(f))}`; host.append(e); }
         continue;
       }
     }
@@ -4456,7 +4531,7 @@ const USER_NAMES = new Set<string>();
 /** Commands whose argument at `arg` is a variable bound over the call: `diff(f, x)`, `plot(f, x, …)`. */
 const BINDERS: Record<string, number> = { diff: 1, integrate: 1, plot: 1, epicycles: 1, sum: 1, subst: 1 };
 const BUILTIN_FN = new Set(["sin", "cos", "tan", "exp", "ln", "log", "sqrt", "abs", "conj", "re", "im", "sign", "det", "rref", "transpose", "dot", "norm", "solve"]);
-const COMMANDS = new Set(["diff", "integrate", "plot", "epicycles", "dft", "import", "samplePoints", "sum", "exptotrig", "expand", "factor", "simplify", "N", "subst", "poset", "map", "monotone", "lfp", "gfp", "fixpoints", "hasse", "join", "meet", "sup", "inf", "upper", "lower", "top", "bottom", "maximal", "minimal", "lattice", "le", "divisors", "subsets", "chain"]);
+const COMMANDS = new Set(["diff", "integrate", "plot", "epicycles", "dft", "import", "samplePoints", "matrix", "column", "row", "dimensions", "sum", "exptotrig", "expand", "factor", "simplify", "N", "subst", "poset", "map", "monotone", "lfp", "gfp", "fixpoints", "hasse", "join", "meet", "sup", "inf", "upper", "lower", "top", "bottom", "maximal", "minimal", "lattice", "le", "divisors", "subsets", "chain"]);
 const CONSTANTS = new Set(["pi", "π", "e", "ℯ", "i", "phi", "φ"]);
 
 type Tok = { kind: "id" | "num" | "op" | "ws" | "kw" | "asset" | "str"; text: string; start: number };
