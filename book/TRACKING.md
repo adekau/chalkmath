@@ -757,6 +757,12 @@ Phases:
      both parts every load), and every deploy changed the files' URLs. The worker now keeps them in Cache
      Storage under a hash of their contents; the smoke test reloads under a 100 MB HTTP cache and checks
      nothing large is fetched, and a re-bundle with the same Lean fetched only the two small scripts.
+   - Lean stuck spinning, "Got unsupported notification method: $/setTrace" — FIXED 2026-10-01 (Alex: "sometimes I
+     get this and the notebook and tooltips just perma spin"). The in-browser watchdog relayed every client
+     notification once the document was open; Lean's file worker ends its main loop on any it does not handle
+     (and on a message without params), and the extension's `$/setTrace` came before or after `didOpen` by
+     timing. The bridge now relays only what Lean's watchdog relays (didChange, cancelRequest, rpc release and
+     keepAlive). `smoke-lean-server.mjs` sends those notifications after `didOpen`; the old bridge stops there.
 
 ## Example notebooks use visual input and Lean cells (2026-09-30, Alex: "make sure they make use of these cell types")
 

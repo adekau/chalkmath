@@ -10,7 +10,10 @@
  *     at build time by engine/wasm/server/capabilities.lean);
  *   - the first `textDocument/didOpen` starts the wasm worker and hands it `initialize` + `didOpen`, the
  *     handshake the watchdog performs (`startFileWorker`);
- *   - everything else is relayed. From the worker, the notifications that feed the watchdog's
+ *   - of the client's notifications, only those the watchdog forwards and the file worker handles are
+ *     relayed (FORWARDED); the worker ends its main loop on any other ("Got unsupported notification
+ *     method", FileWorker.lean), as on a message without params, so those never reach it;
+ *   - requests and responses are relayed. From the worker, the notifications that feed the watchdog's
  *     cross-file index (`$/lean/ilean*`, `$/lean/importClosure`) are dropped, and its
  *     `$/lean/queryModule` request is answered with no results, as for a module nothing else imports.
  * Messages are JSON-RPC objects, one per call, as monaco-languageclient's browser transport posts them.
@@ -47,6 +50,10 @@ export interface LeanServerOptions {
   log?(line: string): void;
 }
 
+/** The client notifications the watchdog relays to a file worker (Watchdog.lean `handleNotification`,
+ *  FileWorker.lean `handleNotification`); `$/setTrace`, `didSave`, `didClose`, configuration and the
+ *  rest stop at the watchdog. */
+const FORWARDED = new Set(["textDocument/didChange", "$/cancelRequest", "$/lean/rpc/release", "$/lean/rpc/keepAlive"]);
 const WATCHDOG_ONLY = new Set(["$/lean/ileanHeaderSetupInfo", "$/lean/ileanInfoUpdate", "$/lean/ileanInfoFinal", "$/lean/importClosure"]);
 
 /** Splits a byte stream into LSP messages (`Content-Length` framing). */
@@ -157,11 +164,24 @@ export function startLeanServer(o: LeanServerOptions): { receive(msg: LspMessage
           }
           return;
         }
-        default:
-          if (openUri !== null) toWorker(msg);
+        default: {
+          const request = msg.id != null && !!msg.method;
+          if (!request && msg.method) {
+            if (openUri !== null && FORWARDED.has(msg.method) && msg.params !== undefined) toWorker(msg);
+            return;
+          }
           // before the document opens the worker would read it ahead of its handshake; the watchdog
           // answers requests to files it has no worker for with `contentModified` (Watchdog.lean)
-          else if (msg.id != null && msg.method) o.send({ jsonrpc: "2.0", id: msg.id, error: { code: -32801, message: "the document is not open" } });
+          if (openUri === null) {
+            if (request) o.send({ jsonrpc: "2.0", id: msg.id!, error: { code: -32801, message: "the document is not open" } });
+            return;
+          }
+          if (request && msg.params === undefined) {
+            o.send({ jsonrpc: "2.0", id: msg.id!, error: { code: -32601, message: `${msg.method} is not supported by this Lean server` } });
+            return;
+          }
+          toWorker(msg);
+        }
       }
     },
   };

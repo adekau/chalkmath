@@ -58,10 +58,17 @@ const init = await request("initialize", { processId: null, rootUri: null, capab
 console.log(`[${ms()} ms] initialize: ${init.result.serverInfo.name}`);
 server.receive({ jsonrpc: "2.0", method: "initialized", params: {} });
 server.receive({ jsonrpc: "2.0", method: "textDocument/didOpen", params: { textDocument: { uri, languageId: "lean4", version: 1, text } } });
-await finished;
+// notifications the Lean 4 extension sends that Lean's watchdog keeps from the file worker, which stops
+// on them ("Got unsupported notification method: $/setTrace"); and one without params
+for (const [method, params] of [["$/setTrace", { value: "off" }], ["workspace/didChangeConfiguration", { settings: {} }],
+  ["textDocument/didSave", { textDocument: { uri } }], ["$/lean/noParams", undefined]])
+  server.receive({ jsonrpc: "2.0", method, ...(params ? { params } : {}) });
+const timeout = (p, what) => Promise.race([p, new Promise((_, no) => setTimeout(() => no(new Error(`${what}: no answer in 120 s (did the worker stop?)`)), 120000))]);
+await timeout(finished, "processing the file").catch((e) => { console.log(`FAILED: ${e.message}`); process.exit(1); });
 console.log(`[${ms()} ms] file processed`);
 for (const d of diagnostics) console.log(`  ${d.range.start.line + 1}:${d.range.start.character} ${["", "error", "warning", "info", "hint"][d.severity]}: ${d.message.split("\n")[0]}`);
-const goal = await request("$/lean/plainGoal", { textDocument: { uri }, position: { line: 6, character: 13 } });
+const goal = await timeout(request("$/lean/plainGoal", { textDocument: { uri }, position: { line: 6, character: 13 } }), "the goal request")
+  .catch((e) => { console.log(`FAILED: ${e.message}`); process.exit(1); });
 console.log(`[${ms()} ms] goal after constructor:\n${goal.result?.rendered ?? JSON.stringify(goal)}`);
 
 const has = (sev, s) => diagnostics.some((d) => d.severity === sev && d.message.includes(s));
