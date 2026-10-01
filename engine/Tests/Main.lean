@@ -116,6 +116,14 @@ def tests : TestM Unit := do
   check "parse (-2)^2" (roundtrip "(-2)^2") "(-2)^2"
   check "parse 2^3^2" (roundtrip "2^3^2") "2^3^2"
   check "parse x/y/z" (roundtrip "x/y/z") "x/y/z"
+  -- a fraction numeral prints as a division, so as a power's base it keeps its parentheses; the
+  -- output, pasted back in, is the same term (`4/9^(3/2)` would read back as 4/27)
+  check "print fraction base" (evalText "(4/9)^(3/2)") "(4/9)^(3/2)"
+  check "print fraction base, pasted back" (evalText (evalText "(4/9)^(3/2)")) "(4/9)^(3/2)"
+  check "print fraction base, symbolic exponent" (evalText "(4/9)^x") "(4/9)^x"
+  check "print fraction base, negative" (evalText "(-4/9)^x") "(-4/9)^x"
+  check "print fraction base, in a denominator" (evalText "(4/9)^(-3/2)") "1/(4/9)^(3/2)"
+  check "print decimal exponent keeps its parentheses" (evalText "x^0.3") "x^(0.3)"
   -- Fourier milestone: definite integrals, finite sums, Euler as a command, dot/norm, sign
   check "definite integral of a power" (evalText "integrate(x^2, x, 0, 1)") "1/3"
   check "definite integral with symbolic bound" (evalText "integrate(2x, x, 0, b)") "b^2"
