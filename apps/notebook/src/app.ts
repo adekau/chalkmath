@@ -2233,6 +2233,20 @@ function openTemplate(cell: Cell, before: string, after: string): boolean {
   return true;
 }
 
+/** `?` typed in a typeset input that holds nothing yet, or only `let name =`: the cell becomes a
+ *  question (`?…`, `let name = ?…`), which is edited as text, with the caret after the `?`. */
+function openQuestion(cell: Cell): boolean {
+  const m = /^\s*(?:let\s+([A-Za-z_][A-Za-z0-9_]*)\s*=?\s*)?$/.exec(cell.src);
+  if (!m) return false;
+  cell.src = m[1] ? `let ${m[1]} = ?` : "?";
+  delete cell.tree; delete cell.autoFor;
+  refreshInput(cell);
+  const input = cell.input;
+  if (input) { input.focus(); input.setSelectionRange(input.value.length, input.value.length); syncHighlight(cell); }
+  renderSidebar(); renderTabs();
+  return true;
+}
+
 function visualInput(cell: Cell, i: number): MathInput | null {
   const opts: MathInputOptions = {
     known: sessionFns(), symbols: VISUAL_SYMBOLS, label: `Cell ${i + 1}, math input`,
@@ -2244,6 +2258,12 @@ function visualInput(cell: Cell, i: number): MathInput | null {
     onLeave: (dir) => { const j = i + dir; if (j >= 0 && j < S.cells.length) focusCell(j); },
     onKey: (ev) => {
       if (ev.key === "Escape" && S.sig) { ev.preventDefault(); dismissSigHelp(); return true; }
+      // `?` is not notation: at the start of the cell it makes the cell a question, edited as text
+      if (ev.key === "?" && !ev.ctrlKey && !ev.metaKey && !ev.altKey) {
+        ev.preventDefault();
+        if (!openQuestion(cell)) notify("err", "? starts a question: type it at the start of a cell, or after let name =.");
+        return true;
+      }
       return modeKey(ev, cell);
     },
     onPaste: (ev) => onPaste(ev, cell),
@@ -4440,7 +4460,7 @@ const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replac
 function highlightHtml(src: string): string {
   // a question: the binding (if any) as code, the `?`, then the words as they are
   const q = /^(\s*(?:let\s+[A-Za-z_][A-Za-z0-9_]*\s*=\s*)?)\?/.exec(src);
-  if (q) return `${q[1] ? highlightHtml(q[1]) : ""}<span class="hop">?</span><span class="hask">${esc(src.slice(q[0].length))}</span>`;
+  if (q) return `${q[1] ? highlightHtml(q[1]) : ""}<span class="hq">?</span><span class="hask">${esc(src.slice(q[0].length))}</span>`;
   const toks = tokenize(src);
   const bound = boundTokens(src, toks);
   const lambdaCell = /[λ\\]|:=/.test(src);

@@ -53,7 +53,7 @@ function scripted(replies) {
   };
 }
 
-const PLAN = { shape: "table", known: false, searches: ["MLB runs per game by season"], columns: ["season", "runs per game", "home runs per game"], rows: "one MLB season, 2006 to 2025", keywords: ["year", "R/G", "HR/G", "runs", "home runs"] };
+const PLAN = { shape: "table", subject: "the world", known: false, searches: ["MLB runs per game by season"], columns: ["season", "runs per game", "home runs per game"], rows: "one MLB season, 2006 to 2025", keywords: ["year", "R/G", "HR/G", "runs", "home runs"] };
 const wikiRoutes = (page) => [
   [/w\/api\.php.*list=search/, { query: { search: [{ title: "Batting by season", snippet: "<span>runs</span> per game" }] } }],
   [/rest_v1\/page\/html\/Batting_by_season/, page],
@@ -189,7 +189,7 @@ test("a long table's preview shows its first and last rows", () => {
 
 // --- the model's own knowledge, and shapes other than a table ---------------------------------
 
-const PRISM_PLAN = { shape: "formula", known: true, searches: ["prism volume"], columns: ["volume"], rows: "", keywords: ["prism", "volume", "base", "height"] };
+const PRISM_PLAN = { shape: "formula", subject: "mathematics", known: true, searches: ["prism volume"], columns: ["volume"], rows: "", keywords: ["prism", "volume", "base", "height"] };
 const PRISM = { found: true, expr: "V = B*h", params: ["B", "h"], vars: [{ name: "B", meaning: "area of the base" }, { name: "h", meaning: "height" }, { name: "x", meaning: "not used" }], quote: "V = Bh" };
 
 test("standard knowledge is answered by the model, and nothing is sent anywhere", async () => {
@@ -213,7 +213,7 @@ test("standard knowledge is answered by the model, and nothing is sent anywhere"
 
 test("a known number: one value, not a matrix", async () => {
   const fetch = fakeFetch([]);
-  const model = scripted({ plan: { shape: "number", known: true, searches: ["speed of light"], columns: ["speed of light in m/s"], rows: "", keywords: [] },
+  const model = scripted({ plan: { shape: "number", subject: "physical science", known: true, searches: ["speed of light"], columns: ["speed of light in m/s"], rows: "", keywords: [] },
     memory: { rows: [{ label: "c", values: [299792458] }] } });
   const r = await lookup("speed of light in m/s", opts(model, fetch));
   assert.equal(r.source, "299792458");
@@ -257,7 +257,7 @@ test("searching declined: an answer from memory, flagged, or an error when the m
 
 test("a model that says it knows, then does not, falls back to searching", async () => {
   const fetch = fakeFetch(wikiRoutes(seasonsPage));
-  const model = scripted({ plan: { ...PLAN, known: true }, memory: { rows: [] }, pick: { table: 0, columns: [2], label: -1, filter: { column: 0, min: 2025, max: 2025 } } });
+  const model = scripted({ plan: { ...PLAN, subject: "mathematics", known: true }, memory: { rows: [] }, pick: { table: 0, columns: [2], label: -1, filter: { column: 0, min: 2025, max: 2025 } } });
   const r = await lookup("runs per game in 2025", opts(model, fetch));
   assert.equal(r.via, "table");
   assert.ok(r.trail.includes("The model did not answer from its knowledge after all: searching."));
@@ -305,4 +305,41 @@ test("a model that returns partial text when stopped is still stopped", async ()
   const ac = new AbortController();
   const model = { id: "m", async complete() { ac.abort(); return "{\"sha"; } };
   await assert.rejects(lookup("x", { ...opts(model, fakeFetch([])), signal: ac.signal }), (e) => e instanceof AskError && e.message === "Stopped.");
+});
+
+// --- what a real model got wrong: "?number of world series the tigers have won" -----------------
+
+test("a question about the world is searched for even when the model is sure, and “number of” is one number", async () => {
+  const page = `<p>The Detroit Tigers have won four World Series titles, in 1935, 1945, 1968 and 1984.</p>`;
+  const fetch = fakeFetch([[/w\/api\.php.*list=search/, { query: { search: [{ title: "Detroit Tigers" }] } }], [/rest_v1\/page\/html\/Detroit_Tigers/, page]]);
+  // the model's plan as Gemini Nano wrote it: a list, "known", and the rows field filled with years
+  const plan = { shape: "list", subject: "the world", known: true, searches: ["Detroit Tigers World Series titles"], columns: ["Year"],
+    rows: "190; 1905; 1911; 1912; 1913; 1918", keywords: ["World Series", "titles"] };
+  const model = scripted({ plan, extract: { rows: [{ label: "Year", values: [4], quote: "The Detroit Tigers have won four World Series titles, in 1935, 1945, 1968 and 1984." }] } });
+  const r = await lookup("number of world series the tigers have won", opts(model, fetch));
+  assert.equal(r.shape, "number");
+  assert.equal(r.via, "text");
+  assert.equal(r.source, "4");
+  assert.deepEqual(r.flagged, []);
+  assert.equal(r.rowsAre, "");
+  assert.equal(r.rowLabels, undefined);
+  assert.ok(r.trail.includes("The model says it knows this, but questions about the world are searched for."));
+  assert.match(model.calls[0].user, /The answer is one number\./);
+  assert.ok(!model.calls.some((c) => c.step === "memory"), "the model's memory was not asked");
+});
+
+test("the question's own words fix the shape when they can", async () => {
+  const { shapeOf } = await import("../dist/index.js");
+  assert.equal(shapeOf("number of world series the tigers have won"), "number");
+  assert.equal(shapeOf("how many moons does Jupiter have"), "number");
+  assert.equal(shapeOf("number of home runs per year for the last 20 years"), null);
+  assert.equal(shapeOf("how many runs did each team score"), null);
+  assert.equal(shapeOf("what is the formula for volume of a prism?"), "formula");
+  assert.equal(shapeOf("the first ten primes"), null);
+});
+
+test("numbers spelled out in prose confirm a value", async () => {
+  const { numbersIn } = await import("../dist/index.js");
+  assert.deepEqual(numbersIn("won four titles, twice in a row, twenty-one games"), [4, 2, 21]);
+  assert.ok(numbersIn("someone gone").every((n) => n !== 1), "“one” inside a word is no number");
 });

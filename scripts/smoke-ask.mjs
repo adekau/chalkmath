@@ -59,9 +59,9 @@ await page.addInitScript(() => {
   const reply = (user, schema) => {
     const q = /Question: (.*)/.exec(user)?.[1] ?? "";
     if (schema.required.includes("searches")) {
-      return /prism/i.test(q) ? { shape: "formula", known: true, searches: ["prism volume"], columns: ["volume"], rows: "", keywords: ["prism", "volume", "base", "height"] }
-        : /primes/i.test(q) ? { shape: "list", known: true, searches: ["prime numbers"], columns: ["prime"], rows: "", keywords: [] }
-        : { shape: "table", known: false, searches: ["MLB runs per game by season"], columns: ["season", "runs per game", "home runs per game"], rows: "one MLB season, 2006 to 2025", keywords: ["year", "R/G", "HR/G"] };
+      return /prism/i.test(q) ? { shape: "formula", subject: "mathematics", known: true, searches: ["prism volume"], columns: ["volume"], rows: "", keywords: ["prism", "volume", "base", "height"] }
+        : /primes/i.test(q) ? { shape: "list", subject: "mathematics", known: true, searches: ["prime numbers"], columns: ["prime"], rows: "", keywords: [] }
+        : { shape: "table", subject: "the world", known: false, searches: ["MLB runs per game by season"], columns: ["season", "runs per game", "home runs per game"], rows: "one MLB season, 2006 to 2025", keywords: ["year", "R/G", "HR/G"] };
     }
     if (schema.required.includes("expr")) return { found: true, expr: "B*h", params: ["B", "h"], vars: [{ name: "B", meaning: "area of the base" }, { name: "h", meaning: "height" }], quote: /Passages/.test(user) ? "V=Bh" : "V = Bh" };
     if (schema.required.includes("table")) return { table: 0, columns: [0, 2, 3], label: -1, filter: { column: 0, min: 2006, max: 2025 } };
@@ -158,6 +158,28 @@ try {
   assert.equal(offsite.length, before);
   await run(5, "V(2, 10)");
   assert.equal((await out(5)).tex, "20");
+
+  // typeset input: `?` at the start of a cell (or after `let name =`) makes it a question, as text
+  await menu("View", "Math input: typeset");
+  const typeIn = async (i, keys) => {
+    await cells().nth(i).locator(".mi").click();
+    await page.keyboard.type(keys);
+  };
+  await typeIn(6, "?the first ten primes");
+  const q = cells().nth(6);
+  assert.equal(await q.locator(".mi").count(), 0);
+  assert.equal(await q.locator("input.cellin").inputValue(), "?the first ten primes");
+  assert.equal(await q.locator(".hl .hq").textContent(), "?");
+  await page.keyboard.press("Enter");
+  assert.equal((await out(6)).tex, "\\beginbmatrix2&3&5&7&11&13&17&19&23&29\\endbmatrix");
+  await typeIn(7, "let P ?the first ten primes");
+  assert.equal(await cells().nth(7).locator("input.cellin").inputValue(), "let P = ?the first ten primes");
+  await page.keyboard.press("Enter");
+  await out(7);
+  // anywhere else, `?` is refused with a word rather than dropped
+  await typeIn(8, "x+?");
+  assert.match(await page.locator(".toasts .toast.err").last().innerText(), /starts a question/);
+  if (shot) { await cells().nth(6).scrollIntoViewIfNeeded(); await page.screenshot({ path: shot.replace(/\.png$/, "-typeset.png") }); }
   console.log("smoke-ask: ok");
 } finally {
   await browser.close();
