@@ -198,9 +198,12 @@ everything after it keeps its steps. The pipeline is `packages/ask`; the noteboo
 settings, the cell) is `apps/notebook/src/ask-cells.ts`.
 
 - **The model plans first.** It says what shape the answer has, names its parts, writes searches,
-  and says whether the answer is standard knowledge (a textbook formula, a constant). Standard
-  knowledge it answers itself, and nothing leaves the machine; the answer is labelled "from the
-  model's knowledge" and the cell offers *Check with a search*.
+  names the subject, and says whether the answer is standard knowledge. Standard knowledge of
+  mathematics or physical science (a formula, a constant) it answers itself, and nothing leaves the
+  machine; the answer is labelled "from the model's knowledge" and the cell offers *Check with a
+  search*. A question about the world (teams, people, places, events) is always searched for: a small
+  model is sure of far more such facts than it gets right. Where the question's words fix the
+  shape ("how many", "the number of", "formula"), they decide it, not the model.
 - **Data is searched for, and the model never copies a number.** Every step is held to a JSON
   schema. Shown previews of the tables the searches found (numbered columns, first and last rows),
   the model picks a table, columns and a row filter as *indices*; code copies the values out of the

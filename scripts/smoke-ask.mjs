@@ -59,9 +59,9 @@ await page.addInitScript(() => {
   const reply = (user, schema) => {
     const q = /Question: (.*)/.exec(user)?.[1] ?? "";
     if (schema.required.includes("searches")) {
-      return /prism/i.test(q) ? { shape: "formula", known: true, searches: ["prism volume"], columns: ["volume"], rows: "", keywords: ["prism", "volume", "base", "height"] }
-        : /primes/i.test(q) ? { shape: "list", known: true, searches: ["prime numbers"], columns: ["prime"], rows: "", keywords: [] }
-        : { shape: "table", known: false, searches: ["MLB runs per game by season"], columns: ["season", "runs per game", "home runs per game"], rows: "one MLB season, 2006 to 2025", keywords: ["year", "R/G", "HR/G"] };
+      return /prism/i.test(q) ? { shape: "formula", subject: "mathematics", known: true, searches: ["prism volume"], columns: ["volume"], rows: "", keywords: ["prism", "volume", "base", "height"] }
+        : /primes/i.test(q) ? { shape: "list", subject: "mathematics", known: true, searches: ["prime numbers"], columns: ["prime"], rows: "", keywords: [] }
+        : { shape: "table", subject: "the world", known: false, searches: ["MLB runs per game by season"], columns: ["season", "runs per game", "home runs per game"], rows: "one MLB season, 2006 to 2025", keywords: ["year", "R/G", "HR/G"] };
     }
     if (schema.required.includes("expr")) return { found: true, expr: "B*h", params: ["B", "h"], vars: [{ name: "B", meaning: "area of the base" }, { name: "h", meaning: "height" }], quote: /Passages/.test(user) ? "V=Bh" : "V = Bh" };
     if (schema.required.includes("table")) return { table: 0, columns: [0, 2, 3], label: -1, filter: { column: 0, min: 2006, max: 2025 } };

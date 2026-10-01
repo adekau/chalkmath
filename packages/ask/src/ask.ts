@@ -102,23 +102,39 @@ export class AskError extends Error {
 // ---------------------------------------------------------------------------------------------
 
 const SHAPES = ["number", "list", "table", "formula"] as const;
+/** What a question is about. Only mathematics and physical science are answered from the model's
+ *  knowledge without a search: a small model is sure of far more facts about the world than it
+ *  gets right (asked how many World Series a team has won, one listed thirty wrong years). */
+const SUBJECTS = ["mathematics", "physical science", "the world"] as const;
+
+/** The answer's shape as the question's own words fix it, when they do: "how many …" and "the number
+ *  of …" ask for one number (unless "per year", "each", "for the last …" ask for one per row);
+ *  "formula" and "equation" ask for a formula. Null leaves the shape to the model. */
+export function shapeOf(question: string): Shape | null {
+  if (/\b(formulas?|equations?)\b/i.test(question)) return "formula";
+  const count = /\b(how many|how much|number of|count of)\b/i.test(question);
+  const perRow = /\b(per|each|every|by (year|season|month|decade|country|state|team|player)|over (the|time)|for the (last|past)|between|since|from \d{4}|annual(ly)?|yearly|list|table)\b/i.test(question);
+  return count && !perRow ? "number" : null;
+}
 
 const PLAN_SCHEMA = {
   type: "object",
   properties: {
     shape: { type: "string", enum: SHAPES },
+    subject: { type: "string", enum: SUBJECTS },
     known: { type: "boolean" },
     searches: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 3 },
     columns: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 8 },
     rows: { type: "string" },
     keywords: { type: "array", items: { type: "string" }, maxItems: 12 },
   },
-  required: ["shape", "known", "searches", "columns", "rows", "keywords"],
+  required: ["shape", "subject", "known", "searches", "columns", "rows", "keywords"],
 } as const;
 
 const PLAN_SYSTEM = `You plan how to look up an answer for a math notebook. Reply with JSON only:
 - shape: "number" for one value (the speed of light), "list" for several values of one kind (the first ten primes), "table" for rows of several values (runs and home runs per season), "formula" for an equation or expression (the volume of a prism).
-- known: true if the answer is standard knowledge you are sure of and that does not change: a textbook formula, a physical or mathematical constant, a definition, a well-known fixed fact. false for statistics, records, prices, populations, anything recent, or anything you would have to look up to be exact.
+- known: true if the answer is standard knowledge you are sure of and that does not change: a textbook formula, a physical or mathematical constant, a definition. false for statistics, records, results, prices, populations, anything recent, or anything you would have to look up to be exact.
+- subject: "mathematics" (numbers, sequences, geometry, formulas of mathematics), "physical science" (laws and constants of physics and chemistry), or "the world" (people, places, teams, events, history, economics, sports, anything else).
 - searches: 1 to 3 short search-engine queries likely to find a page stating this (name the subject, not the math).
 - columns: for numbers, what each column holds, in order, e.g. ["season", "runs per game", "home runs per game"], the row key (like a year) first; for a formula, the quantity it gives, e.g. ["volume"].
 - rows: what one row is, e.g. "one MLB season, 2006 to 2025", or "" for one value or a formula.
@@ -208,7 +224,7 @@ const FORMULA_MEMORY_SYSTEM = `Give the standard formula that answers the questi
 
 // ---------------------------------------------------------------------------------------------
 
-interface Plan { shape: Shape; known: boolean; searches: string[]; columns: string[]; rows: string; keywords: string[] }
+interface Plan { shape: Shape; subject: string; known: boolean; searches: string[]; columns: string[]; rows: string; keywords: string[] }
 interface Found { table: Table; page: Page }
 
 /** The first JSON object in a model's reply (a model may wrap it in prose or a code fence). */
@@ -351,6 +367,9 @@ async function ask(model: Model, system: string, user: string, schema: object, s
   return reply;
 }
 
+/** Row names, when they name the rows: two or more different ones (a model may label every row "Year"). */
+const named = (labels: string[]): { rowLabels?: string[] } => new Set(labels.filter((l) => l.trim())).size > 1 ? { rowLabels: labels } : {};
+
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 export async function lookup(question: string, o: AskOptions): Promise<AskResult> {
@@ -360,10 +379,15 @@ export async function lookup(question: string, o: AskOptions): Promise<AskResult
 
   // 1. the plan
   say("Planning the search");
-  const plan0 = parseJson<Partial<Plan>>(await ask(o.model, PLAN_SYSTEM, `Today is ${o.today}.\nQuestion: ${q}`, PLAN_SCHEMA, o.signal));
+  const cue = shapeOf(q);
+  const hint = cue === "number" ? "\nThe answer is one number." : cue === "formula" ? "\nThe answer is a formula." : "";
+  const plan0 = parseJson<Partial<Plan>>(await ask(o.model, PLAN_SYSTEM, `Today is ${o.today}.\nQuestion: ${q}${hint}`, PLAN_SCHEMA, o.signal));
+  const subject = SUBJECTS.includes(plan0?.subject as typeof SUBJECTS[number]) ? plan0!.subject! : "the world";
   const plan: Plan = {
-    shape: SHAPES.includes(plan0?.shape as Shape) ? plan0!.shape as Shape : "table",
-    known: plan0?.known === true,
+    shape: cue ?? (SHAPES.includes(plan0?.shape as Shape) ? plan0!.shape as Shape : "table"),
+    subject,
+    // the model's own knowledge answers only mathematics and physical science
+    known: plan0?.known === true && subject !== "the world",
     searches: (plan0?.searches ?? []).filter((s) => typeof s === "string" && s.trim()).slice(0, 3),
     columns: (plan0?.columns ?? []).filter((s) => typeof s === "string" && s.trim()),
     rows: typeof plan0?.rows === "string" ? plan0.rows : "",
@@ -371,6 +395,10 @@ export async function lookup(question: string, o: AskOptions): Promise<AskResult
   };
   if (!plan.searches.length) plan.searches = [q];
   if (!plan.columns.length) plan.columns = ["value"];
+  // what a row is, in words: one number or a formula has no rows, and a model that lists values here
+  // has not described anything
+  if (plan.shape === "number" || plan.shape === "formula" || (plan.rows.match(/\d+/g) ?? []).length > 3) plan.rows = "";
+  if (plan0?.known === true && !plan.known) trail.push("The model says it knows this, but questions about the world are searched for.");
   trail.push(plan.shape === "formula" ? `Looking for a formula for ${plan.columns[0]}` : `Looking for ${plan.shape === "number" ? "a number" : plan.shape === "list" ? "a list" : "a table"}: ${plan.columns.join(", ")}${plan.rows ? `; a row is ${plan.rows}` : ""}`);
   const base = { question: q, shape: plan.shape, model: o.model.id, at: o.today, rowsAre: plan.rows };
 
@@ -429,7 +457,7 @@ async function fromKnowledge(q: string, plan: Plan, o: AskOptions, trail: string
   if (!rows.length) return null;
   trail.push(fallback ? "Answered from the model's memory: no source had the numbers." : "Answered from the model's knowledge: standard knowledge, so nothing was searched.");
   return {
-    source: engineText(rows, plan.shape), columns: plan.columns.slice(0, rows[0]!.length), ...(labels.some((l) => l) ? { rowLabels: labels } : {}),
+    source: engineText(rows, plan.shape), columns: plan.columns.slice(0, rows[0]!.length), ...named(labels),
     via, cites: [], flagged: fallback ? rows.flatMap((r, i) => r.map((_, c) => [i, c] as [number, number])).map(placed(plan.shape, rows)) : [],
     notes: [fallback ? "From the model's memory, not from a source. A small model often gets numbers wrong: check them before use." : "From the model's knowledge; no source was consulted."],
   };
@@ -519,7 +547,7 @@ async function numbers(q: string, plan: Plan, pages: Page[], o: AskOptions, trai
           if (skipped) notes.push(`${plural(skipped, "row was", "rows were")} left out because a chosen cell was not a single number.`);
           return {
             source: engineText(rows, plan.shape), columns: cols.map((c) => f.table.headers[c] || plan.columns[cols.indexOf(c)] || `column ${c}`),
-            ...(labels.length && labels.some((l) => l) ? { rowLabels: labels } : {}),
+            ...named(labels),
             via: "table", cites: [{ title: f.page.title, url: f.page.url }], flagged: [], notes,
           };
         }
@@ -552,7 +580,7 @@ async function numbers(q: string, plan: Plan, pages: Page[], o: AskOptions, trai
     if (rows.length) {
       trail.push(`Lifted ${plural(rows.length, "row")} from passages; ${flagged.length ? `${plural(flagged.length, "value")} not found in the quoted text` : "every value found in the quoted text"}`);
       return {
-        source: engineText(rows, plan.shape), columns: plan.columns.slice(0, rows[0]!.length), ...(labels.some((l) => l) ? { rowLabels: labels } : {}),
+        source: engineText(rows, plan.shape), columns: plan.columns.slice(0, rows[0]!.length), ...named(labels),
         via: "text", cites: [...cites.values()], flagged: flagged.map(placed(plan.shape, rows)),
         notes: flagged.length ? ["Values marked ⚠ were not found in the text the model quoted: check them before use."] : [],
       };

@@ -43,9 +43,22 @@ export function leadingNumber(s: string): number | null {
   return m ? Number(canon(!!m[1], m[2]!, m[3])) : null;
 }
 
-/** Every number written in a stretch of prose, as numbers (for checking a quote says what was extracted). */
+const WORDS: Record<string, number> = {
+  zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+  eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19,
+  twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90,
+  once: 1, twice: 2, thrice: 3, single: 1, double: 2, triple: 3,
+};
+
+/** Every number written in a stretch of prose, as numbers (for checking a quote says what was
+ *  extracted): numerals, and the small ones prose spells out ("four titles", "twenty-one", "twice"). */
 export function numbersIn(s: string): number[] {
   const out: number[] = [];
+  for (const m of s.toLowerCase().matchAll(/\b([a-z]+)(?:-([a-z]+))?\b/g)) {
+    const a = WORDS[m[1]!], b = m[2] ? WORDS[m[2]] : undefined;
+    if (a === undefined) continue;
+    out.push(b !== undefined && a >= 20 && a % 10 === 0 && b > 0 && b < 10 ? a + b : a);
+  }
   const re = /[−–-]?\d{1,3}(?:,\d{3})+(?:\.\d+)?|[−–-]?\d*\.?\d+/g;
   const t = s.replace(FOOTNOTE, "");
   for (let m = re.exec(t); m; m = re.exec(t)) {
