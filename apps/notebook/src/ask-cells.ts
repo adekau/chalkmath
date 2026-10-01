@@ -219,7 +219,7 @@ export function savedAsk(x: unknown): AskResult | undefined {
     && (a["vars"] === undefined || (Array.isArray(a["vars"]) && a["vars"].every((v) => !!v && typeof v === "object" && str((v as { name?: unknown }).name) && str((v as { meaning?: unknown }).meaning))));
   if (!ok) return undefined;
   const r = x as AskResult;
-  return validAnswer(r.shape, r.source, r.params ?? []) && (r.params ?? []).every((p) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(p)) ? r : undefined;
+  return validAnswer(r.shape, r.source, r.params ?? []) && (r.params ?? []).every((p) => /^[A-Za-z_\u0391-\u03c9][A-Za-z0-9_\u0391-\u03c9]*$/.test(p)) ? r : undefined;
 }
 
 /** The engine source a question cell evaluates: the answer, bound when the cell says `let name =`;
