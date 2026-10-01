@@ -220,7 +220,16 @@ settings, the cell) is `apps/notebook/src/ask-cells.ts`.
   built in.
 - **Models.** Chrome's built-in model (the Prompt API) where the browser has it; elsewhere a WebGPU
   model through WebLLM, bundled separately (`dist/ask/`) and loaded only when a lookup needs it, its
-  weights downloaded once from Hugging Face.
+  weights downloaded once from Hugging Face; or, chosen in the settings, a model Ollama serves on
+  the reader's own computer (`/api/chat`, held to the schema by its `format`), which can be larger
+  than a browser holds. Settings has a *Test the model* button that times one small question.
+- **The model is checked where it is weakest.** Small models misread: lifted from a sentence about
+  a lost series, 2006 was offered as a year the Tigers won. So a row lifted from prose stands only
+  when its sentence is on the page and states all its numbers, and the model then answers a narrow
+  yes or no for each row: does this sentence answer the question? A table match is the question's
+  own words (a model copied "Won 1935 World" from one row), and a count that finds one row with a
+  number column chosen answers that row's number. A question that asks to make something (a random
+  matrix) is no lookup and is refused before any search.
 - **What is sent.** Only a search sends anything: the search terms the model wrote, to the sources.
   Never the notebook. The first search asks first.
 - **Saved with the cell.** The answer, its shape, where it came from and how it was found are saved

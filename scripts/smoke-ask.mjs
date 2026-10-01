@@ -29,6 +29,27 @@ const engine = startServer(0, path.join(root, "engine/.lake/build/bin/mathengine
 await new Promise((r) => engine.once("listening", r));
 const base = `http://localhost:${site.address().port}`;
 const engineUrl = `http://localhost:${engine.address().port}`;
+// a stand-in for Ollama on this computer: its /api/chat, answering by the schema in `format`, with the
+// CORS headers Ollama sends when OLLAMA_ORIGINS allows the page
+const ollamaCalls = [];
+const ollama = createServer((req, res) => {
+  const cors = { "access-control-allow-origin": req.headers.origin ?? "*", "access-control-allow-headers": "content-type", "access-control-allow-methods": "GET, POST" };
+  if (req.method === "OPTIONS") { res.writeHead(204, cors); res.end(); return; }
+  if (req.url === "/api/tags") { res.writeHead(200, { ...cors, "content-type": "application/json" }); res.end(JSON.stringify({ models: [{ name: "gemma4:e2b" }] })); return; }
+  let body = "";
+  req.on("data", (c) => (body += c));
+  req.on("end", () => {
+    const b = JSON.parse(body);
+    ollamaCalls.push({ model: b.model, think: b.think, required: b.format.required });
+    const r = b.format.required;
+    const reply = r.includes("volume") ? { volume: 24, lookup: false }
+      : r.includes("searches") ? { lookup: true, shape: "formula", subject: "mathematics", known: true, searches: ["cube volume"], columns: ["volume"], rows: "", keywords: [] }
+      : r.includes("expr") ? { found: true, expr: "s^3", params: ["s"], vars: [{ name: "s", meaning: "side length" }], quote: "V = s^3" } : {};
+    res.writeHead(200, { ...cors, "content-type": "application/json" });
+    res.end(JSON.stringify({ model: b.model, message: { role: "assistant", content: JSON.stringify(reply) }, done: true }));
+  });
+}).listen(0);
+const ollamaUrl = `http://localhost:${ollama.address().port}`;
 
 const rg = (y) => (4 + ((y * 7) % 100) / 100).toFixed(2);
 const hr = (y) => (0.8 + ((y * 3) % 60) / 100).toFixed(2);
@@ -196,8 +217,29 @@ try {
   await typeIn(8, "x+?");
   assert.match(await page.locator(".toasts .toast.err").last().innerText(), /starts a question/);
   if (shot) { await cells().nth(6).scrollIntoViewIfNeeded(); await page.screenshot({ path: shot.replace(/\.png$/, "-typeset.png") }); }
+
+  // Ollama: chosen in the settings, tested there, then answering a lookup
+  await menu("Run", "Lookup settings");
+  const dialog = page.locator(".modal");
+  await dialog.locator("select").first().selectOption("ollama");
+  await dialog.getByLabel("Ollama address").fill(ollamaUrl);
+  await dialog.getByLabel("Ollama model").fill("gemma4:e2b");
+  await dialog.locator("button", { hasText: "Test the model" }).click();
+  await page.waitForFunction(() => /answered in/.test(document.querySelector(".modal")?.textContent ?? ""), null, { timeout: 20000 });
+  assert.match(await dialog.innerText(), /gemma4:e2b \(Ollama\): answered in \d+\.\d s, correctly/);
+  if (shot) await dialog.locator(".modalcard").screenshot({ path: shot.replace(/\.png$/, "-ollama.png") });
+  await page.keyboard.press("Escape");
+  // the cell left holding `x+` above, emptied
+  await cells().nth(8).locator(".mi").click();
+  await page.keyboard.press("Control+A"); await page.keyboard.press("Backspace");
+  await page.keyboard.type("?volume of a cube");
+  await page.keyboard.press("Enter");
+  r = await out(8);
+  assert.equal(r.tex, "s^3");
+  assert.match(r.info, /gemma4:e2b \(Ollama\)/);
+  assert.ok(ollamaCalls.length >= 3 && ollamaCalls.every((c) => c.model === "gemma4:e2b" && c.think === false), JSON.stringify(ollamaCalls));
   console.log("smoke-ask: ok");
 } finally {
   await browser.close();
-  site.close(); engine.close();
+  site.close(); engine.close(); ollama.close();
 }

@@ -18,7 +18,7 @@ import { MathInput, type MathInputOptions } from "@chalkmath/math-editor/view";
  */
 
 import katex from "katex";
-import { ASK_CELL, AskError, askSettings, setAskSettings, runLookup, askSource, savedAsk, backendStatus, WEBGPU_MODELS, type AskResult } from "./ask-cells.js";
+import { ASK_CELL, AskError, askSettings, setAskSettings, runLookup, askSource, savedAsk, backendStatus, ollamaModels, testModel, WEBGPU_MODELS, type AskResult, type AskSettings } from "./ask-cells.js";
 import { ensureLean, syncLean, mountLean, unmountLean, focusLean, infoview as leanInfoview, leanState, leanFailure, leanProgress, initLeanIsolation, type LeanMessage } from "./lean-cells.js";
 /** The one trusted KaTeX command is `\htmlData`, which carries the engine's subterm paths. LaTeX can
  *  come from a file someone else wrote (saved outputs render before any re-run), and a blanket
@@ -3204,10 +3204,30 @@ async function showAskSettings() {
   };
   const text = (v: string, ph: string) => { const e = document.createElement("input"); e.type = "text"; e.value = v; e.placeholder = ph; e.spellcheck = false; return e; };
   const check = (v: boolean) => { const e = document.createElement("input"); e.type = "checkbox"; e.checked = v; return e; };
-  const backend = sel([["auto", "Automatic: Chrome's built-in model, else WebGPU"], ["chrome", "Chrome's built-in model (Gemini Nano)"], ["webllm", "A WebGPU model, downloaded once"]], s.backend);
+  const backend = sel([["auto", "Automatic: Chrome's built-in model, else WebGPU"], ["chrome", "Chrome's built-in model (Gemini Nano)"],
+    ["webllm", "A WebGPU model, downloaded once"], ["ollama", "Ollama, on this computer"]], s.backend);
   row("Model", backend, `This browser: ${st.chrome ? "has Chrome's built-in model" : "no built-in model"}; ${st.webgpu ? "WebGPU available" : "no WebGPU"}.`);
   const model = sel(WEBGPU_MODELS, s.model);
-  row("WebGPU model", model, "Downloaded from Hugging Face the first time it is used, then kept by the browser.");
+  row("WebGPU model", model, "Downloaded from Hugging Face the first time it is used, then kept by the browser. It has to fit in the graphics card's own memory.");
+  const ollamaUrl = text(s.ollamaUrl, "http://localhost:11434");
+  row("Ollama address", ollamaUrl, `Start Ollama so it lets this page call it: OLLAMA_ORIGINS=${location.origin} ollama serve. Chrome may ask to allow this page to reach devices on your network.`);
+  const ollamaModel = text(s.ollamaModel, "gemma4:e2b");
+  const known = document.createElement("datalist"); known.id = "ollamamodels";
+  ollamaModel.setAttribute("list", known.id);
+  row("Ollama model", ollamaModel, "A model Ollama has (ollama pull gemma4:e2b). Larger models read pages better and answer more slowly.");
+  form.append(known);
+  const fillModels = async () => {
+    const names = await ollamaModels(ollamaUrl.value.trim() || "http://localhost:11434");
+    known.replaceChildren(...(names ?? []).map((n) => { const o = document.createElement("option"); o.value = n; return o; }));
+  };
+  if (s.backend === "ollama") void fillModels();
+  ollamaUrl.addEventListener("change", () => void fillModels());
+  backend.addEventListener("change", () => { if (backend.value === "ollama") void fillModels(); });
+  // a test of the chosen model: one small question, timed
+  const testBtn = h("button", undefined, "Test the model");
+  const result = h("span", "askhint", "Runs one small question on the model chosen above (a WebGPU model is downloaded first).");
+  const tester = h("div", "askrow"); tester.append(h("span", "asklab", ""), testBtn, result);
+  form.append(tester);
   const knowledge = check(s.knowledge);
   row("Answer from the model's knowledge", knowledge, "Standard formulas and constants are answered by the model without searching; when a search finds nothing, the model's memory is the last resort (marked unsourced).");
   const wiki = check(s.wikipedia);
@@ -3218,11 +3238,24 @@ async function showAskSettings() {
   row("Page reader", reader, "Most sites do not let another page read them; a reader fetches the page for you (scripts/ask-proxy/worker.js is one).");
   const consent = check(s.searchOk);
   row("Search without asking", consent);
-  showModal("Lookup settings", [h("p", "muted", "A cell that starts with ? is a question: ?volume of a cone, ?the first ten primes, let mlb = ?MLB runs and home runs per game for the last 20 years."), form], true);
-  modalClosed = () => setAskSettings({
-    backend: backend.value as "auto" | "chrome" | "webllm", model: model.value, knowledge: knowledge.checked,
-    wikipedia: wiki.checked, searchUrl: search.value.trim(), reader: reader.value.trim(), searchOk: consent.checked,
+  const save = () => setAskSettings({
+    backend: backend.value as AskSettings["backend"], model: model.value, ollamaUrl: ollamaUrl.value.trim(), ollamaModel: ollamaModel.value.trim(),
+    knowledge: knowledge.checked, wikipedia: wiki.checked, searchUrl: search.value.trim(), reader: reader.value.trim(), searchOk: consent.checked,
   });
+  testBtn.addEventListener("click", async () => {
+    save();
+    testBtn.setAttribute("disabled", "");
+    result.textContent = "Loading the model…";
+    try {
+      const r = await testModel((d) => { result.textContent = `${d}…`; });
+      const ok = /"volume"\s*:\s*24(\.0+)?\b/.test(r.reply);
+      result.textContent = `${r.model}: answered in ${(r.ms / 1000).toFixed(1)} s${ok ? ", correctly" : `, wrongly (${r.reply.slice(0, 80)})`}. A lookup asks it 3 to 5 such questions, with longer prompts.`;
+    } catch (e) {
+      result.textContent = e instanceof Error ? e.message : String(e);
+    } finally { testBtn.removeAttribute("disabled"); }
+  });
+  showModal("Lookup settings", [h("p", "muted", "A cell that starts with ? is a question: ?volume of a cone, ?the first ten primes, let mlb = ?MLB runs and home runs per game for the last 20 years."), form], true);
+  modalClosed = save;
 }
 
 /** The ⋮ button at the end of a cell's actions (replacing any there). */
