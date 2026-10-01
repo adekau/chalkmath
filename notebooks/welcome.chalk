@@ -264,7 +264,7 @@
       "label": null
     },
     {
-      "src": "- **Reference** (the tab at the top) lists every command, with examples you can click to run.\n- **File › Examples** opens longer notebooks: drawing a llama with Fourier series, and a course on orders and lattices with its proofs in Lean cells.\n- **Help › Keyboard shortcuts** lists the keys. Type `\\pi`, `\\lam` or another `\\`-name for a symbol, and **Tab** completes a command.\n- **File › Save** keeps a notebook in this browser. **Export to file** and **Copy link to notebook** are for sharing.",
+      "src": "- **Help › Documentation** explains the notebook, lookups and Lean cells, and lists every command with examples you can click to run.\n- **File › Examples** opens longer notebooks: drawing a llama with Fourier series, and a course on orders and lattices with its proofs in Lean cells.\n- **Help › Keyboard shortcuts** lists the keys. Type `\\pi`, `\\lam` or another `\\`-name for a symbol, and **Tab** completes a command.\n- **File › Save** keeps a notebook in this browser. **Export to file** and **Copy link to notebook** are for sharing.",
       "type": "markdown",
       "showWork": false,
       "label": null

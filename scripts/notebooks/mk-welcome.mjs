@@ -1,7 +1,7 @@
 // node scripts/notebooks/mk-welcome.mjs
 // Generates notebooks/welcome.chalk: the notebook a first-time visitor sees. A short tour — how to
 // run a cell, see its work and ask where a piece of an answer came from — then one section per
-// area, each with a few cells to run and change. The inputs are the Reference tab's examples.
+// area, each with a few cells to run and change. The inputs are the documentation's examples.
 // Inline code is written ‹like this› (template literals cannot hold backticks).
 import { writeFileSync } from "node:fs";
 
@@ -99,7 +99,7 @@ A notebook can also hold **Lean cells** (Edit › Add Lean cell): Lean 4 itself,
 
 sec("Where to next");
 md(r`
-- **Reference** (the tab at the top) lists every command, with examples you can click to run.
+- **Help › Documentation** explains the notebook, lookups and Lean cells, and lists every command with examples you can click to run.
 - **File › Examples** opens longer notebooks: drawing a llama with Fourier series, and a course on orders and lattices with its proofs in Lean cells.
 - **Help › Keyboard shortcuts** lists the keys. Type ‹\pi›, ‹\lam› or another ‹\›-name for a symbol, and **Tab** completes a command.
 - **File › Save** keeps a notebook in this browser. **Export to file** and **Copy link to notebook** are for sharing.
