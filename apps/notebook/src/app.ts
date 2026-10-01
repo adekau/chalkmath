@@ -240,6 +240,8 @@ interface Cell {
   askDetail?: string;
   /** A lookup that found nothing: how it searched. */
   askTrail?: string[];
+  /** Asking again failed and the cell kept its answer: why, until a lookup succeeds (not saved). */
+  askFailed?: string;
 }
 
 type TermRef = { kind: "output" } | { kind: "input" } | { kind: "step"; index: number };
@@ -580,10 +582,12 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
             onDetail: (detail) => { cell.askDetail = detail; tickAsk(); },
             confirmSearch,
           });
+          delete cell.askFailed;
           log("ok", `lookup: ${cell.ask.via}, ${cell.ask.source.length > 80 ? `${cell.ask.source.slice(0, 80)}…` : cell.ask.source}`);
         } catch (e) {
           // asking again (or checking) and finding nothing keeps the answer the cell had
           if (!(e instanceof AskError && cell.ask?.question === question)) throw e;
+          cell.askFailed = e.message === "Stopped." ? "Stopped." : e.message;
           notify("err", e.message === "Stopped." ? "Stopped: the cell keeps its answer." : `${again === "search" ? "Check" : "Lookup"}: ${e.message} The cell keeps its answer.`);
           log("err", `lookup: ${e.message}`);
         } finally { askAbort = null; delete cell.askSteps; delete cell.askDetail; askAgain.delete(cell); }
@@ -3226,6 +3230,8 @@ function askInfo(cell: Cell, bound: boolean): HTMLElement {
   };
   const [cls, label] = VIA[a.via];
   const head = h("div", "askhead");
+  // asking again failed: say so where the answer is, not only in a passing notice
+  if (cell.askFailed) box.append(h("div", "asknote warn", `The last lookup failed, so this is the earlier answer: ${cell.askFailed}`));
   head.append(h("span", `askbadge ${cls}`, label));
   const cites = a.cites.filter((c) => httpUrl(c.url));
   cites.forEach((c, i) => {
@@ -3360,11 +3366,11 @@ async function showAskSettings() {
   const orModel = text(s.openrouterModel, "anthropic/claude-haiku-4.5");
   const orList = document.createElement("datalist"); orList.id = "openroutermodels";
   orModel.setAttribute("list", orList.id);
-  row("OpenRouter model", orModel, "Any model OpenRouter offers that takes a schema for its reply (the list, cheapest first). A fast, inexpensive one is plenty.", ["openrouter"]);
+  row("OpenRouter model", orModel, "Any model OpenRouter offers that takes a schema for its reply (the list, cheapest first). A fast, inexpensive one is plenty; free ones (“:free”) are rate-limited to a few requests a minute and often busy.", ["openrouter"]);
   form.append(orList);
   const fillOr = async () => {
     const ms = await openrouterModels();
-    orList.replaceChildren(...(ms ?? []).slice(0, 300).map((m) => { const o = document.createElement("option"); o.value = m.id; o.label = `${m.name}${m.price ? ` · $${m.price.toFixed(2)}/M tokens in` : " · free"}`; return o; }));
+    orList.replaceChildren(...(ms ?? []).slice(0, 300).map((m) => { const o = document.createElement("option"); o.value = m.id; o.label = `${m.name}${m.price ? ` · $${m.price.toFixed(2)}/M tokens in` : " · free, rate-limited"}`; return o; }));
   };
   if (s.backend === "openrouter") void fillOr();
   backend.addEventListener("change", () => { if (backend.value === "openrouter") void fillOr(); });

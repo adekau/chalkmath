@@ -189,6 +189,17 @@ function ollamaModel(base: string, name: string): Model {
 }
 
 const OPENROUTER = "https://openrouter.ai/api/v1";
+/** Seconds to wait before asking a busy model again, attempt by attempt. */
+const RETRIES = [3, 8, 15];
+
+/** A wait that a stop ends early. */
+function wait(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) { reject(new AskError("Stopped.")); return; }
+    const t = setTimeout(resolve, ms);
+    signal?.addEventListener("abort", () => { clearTimeout(t); reject(new AskError("Stopped.")); }, { once: true });
+  });
+}
 
 /** A model through OpenRouter, on the reader's key. The reply is held to the schema where the model
  *  supports structured outputs; where it does not, the schema is given in the prompt and the reply
@@ -205,17 +216,29 @@ function openrouterModel(key: string, name: string, web: boolean): Model {
         ...(search ? { plugins: [{ id: "web", max_results: 5 }] } : {}),
       };
       let r: Response;
-      try {
-        r = await fetch(`${OPENROUTER}/chat/completions`, {
-          method: "POST", body: JSON.stringify(body), ...(req.signal ? { signal: req.signal } : {}),
-          headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", "HTTP-Referer": location.origin, "X-Title": "ChalkMath" },
-        });
-      } catch (e) { if (req.signal?.aborted) throw e; throw new AskError("OpenRouter could not be reached."); }
+      // a busy model (429: rate-limited, which free models are, tightly; 502/503: its provider) is
+      // asked again after a wait, three times, before the lookup gives up
+      for (let attempt = 0; ; attempt++) {
+        try {
+          r = await fetch(`${OPENROUTER}/chat/completions`, {
+            method: "POST", body: JSON.stringify(body), ...(req.signal ? { signal: req.signal } : {}),
+            headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", "HTTP-Referer": location.origin, "X-Title": "ChalkMath" },
+          });
+        } catch (e) { if (req.signal?.aborted) throw e; throw new AskError("OpenRouter could not be reached."); }
+        if (![429, 502, 503].includes(r.status) || attempt >= RETRIES.length) break;
+        const after = Number(r.headers.get("retry-after"));
+        const secs = Number.isFinite(after) && after > 0 ? Math.min(after, 30) : RETRIES[attempt]!;
+        sink(`${r.status === 429 ? "OpenRouter is rate-limiting this model" : "the model's provider is busy"}; trying again in ${secs} s`);
+        await wait(secs * 1000, req.signal);
+        sink("");
+      }
       const d = await r.json().catch(() => ({})) as { error?: { message?: string }; choices?: { message?: { content?: string; annotations?: { type?: string; url_citation?: { url?: string; title?: string; content?: string } }[] } }[] };
       if (!r.ok) {
         const why = d.error?.message ?? `answered ${r.status}`;
         throw Object.assign(new AskError(r.status === 401 ? "OpenRouter refused the key: sign in again in Run › Lookup settings."
-          : r.status === 402 ? "OpenRouter: the account is out of credits." : `OpenRouter: ${why}`), { status: r.status, why });
+          : r.status === 402 ? "OpenRouter: the account is out of credits."
+          : r.status === 429 ? `OpenRouter: ${why} Free models (“:free”) are limited to about 20 requests a minute and a few dozen a day, and are often busy; a lookup makes 2 or 3. Try again shortly, or choose an inexpensive paid model (a lookup costs well under a cent).`
+          : `OpenRouter: ${why}`), { status: r.status, why });
       }
       const m = d.choices?.[0]?.message;
       return {

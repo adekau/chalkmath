@@ -112,6 +112,8 @@ await page.addInitScript(() => {
 // PKCE verifier) buy a key, and chat completions answer by the schema, with web search's citations
 const orCalls = [];
 let orChallenge = "";
+/** How the stand-in answers chat: "busy-once" (a 429, then answers, as a free model often does), "ok", "refuse" (a 401). */
+let orMode = "busy-once";
 await page.context().route("https://openrouter.ai/**", async (route) => {
   const req = route.request(), u = new URL(req.url());
   const cors = { "access-control-allow-origin": "*", "access-control-allow-headers": "authorization, content-type, http-referer, x-title", "access-control-allow-methods": "GET, POST" };
@@ -129,6 +131,8 @@ await page.context().route("https://openrouter.ai/**", async (route) => {
   }
   if (u.pathname === "/api/v1/models") return json({ data: [{ id: "anthropic/claude-haiku-4.5", name: "Claude Haiku 4.5", supported_parameters: ["structured_outputs"], pricing: { prompt: "0.000001" } }] });
   if (u.pathname === "/api/v1/chat/completions") {
+    if (orMode === "busy-once") { orMode = "ok"; return route.fulfill({ status: 429, headers: { ...cors, "content-type": "application/json" }, body: JSON.stringify({ error: { code: 429, message: "This model is temporarily rate-limited upstream." } }) }); }
+    if (orMode === "refuse") return route.fulfill({ status: 401, headers: { ...cors, "content-type": "application/json" }, body: JSON.stringify({ error: { code: 401, message: "No auth credentials found" } }) });
     const b = req.postDataJSON();
     orCalls.push({ auth: req.headers()["authorization"], model: b.model, web: !!b.plugins?.some((p) => p.id === "web"), schema: !!b.response_format });
     const r = b.response_format.json_schema.schema.required;
@@ -285,6 +289,8 @@ try {
   await cells().nth(9).locator(".mi").click();
   await page.keyboard.type("?how many world series have the tigers won");
   await page.keyboard.press("Enter");
+  // the first answer is a 429: the lookup says so, waits, and asks again
+  await page.waitForFunction(() => /OpenRouter is rate-limiting this model; trying again in 3 s/.test(document.querySelector(".askprog .now")?.textContent ?? ""), null, { timeout: 15000 });
   r = await out(9);
   assert.equal(r.tex, "4");
   assert.match(r.info, /FOUND BY THE MODEL'S WEB SEARCH/i);
@@ -292,7 +298,15 @@ try {
   assert.match(r.info, /claude-haiku-4\.5 \(OpenRouter\)/);
   assert.equal(orCalls.length, 2, JSON.stringify(orCalls));
   assert.ok(orCalls.every((c) => c.auth === "Bearer sk-or-v1-test1234" && c.model === "anthropic/claude-haiku-4.5" && c.schema), JSON.stringify(orCalls));
-  assert.deepEqual(orCalls.map((c) => c.web), [false, true], "only the answer searches the web");
+  assert.deepEqual(orCalls.map((c) => c.web), [false, true], "only the answer searches the web (the 429 is not counted: it is answered before the body is read)");
+  // asking again fails: the cell keeps its answer and says, under it, why the new lookup failed
+  orMode = "refuse";
+  await cells().nth(9).hover();
+  await cells().nth(9).locator(".cellacts span", { hasText: "Look up again" }).click();
+  await page.waitForFunction(() => /The last lookup failed/.test(document.querySelectorAll(".cell:not(.markdown):not(.section)")[9]?.querySelector(".askinfo")?.textContent ?? ""), null, { timeout: 15000 });
+  r = await out(9);
+  assert.equal(r.tex, "4");
+  assert.match(r.info, /The last lookup failed, so this is the earlier answer: OpenRouter refused the key/);
   console.log("smoke-ask: ok");
 } finally {
   await browser.close();
