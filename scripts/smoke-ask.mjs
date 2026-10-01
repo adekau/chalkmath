@@ -70,10 +70,19 @@ await page.addInitScript(() => {
   };
   window.LanguageModel = {
     availability: async () => "available",
-    create: async () => ({
-      prompt: async (user, p) => { window.__lm.push(p.responseConstraint.required[0]); return JSON.stringify(reply(user, p.responseConstraint)); },
-      destroy() {},
-    }),
+    // like Chrome: every session created with a monitor reports a "download" at 100%, model or no
+    create: async (o) => {
+      if (o?.monitor) { const t = new EventTarget(); o.monitor(t); t.dispatchEvent(Object.assign(new Event("downloadprogress"), { loaded: 1 })); }
+      return {
+        prompt: async (user, p) => {
+          window.__lm.push(p.responseConstraint.required[0]);
+          // choosing a table takes a moment, as it does for a real model: long enough to read the progress
+          if (p.responseConstraint.required.includes("table")) await new Promise((r) => setTimeout(r, 1600));
+          return JSON.stringify(reply(user, p.responseConstraint));
+        },
+        destroy() {},
+      };
+    },
   };
 });
 
@@ -131,6 +140,13 @@ try {
   await page.waitForSelector(".modal", { timeout: 20000 });
   assert.match(await page.locator(".modal").innerText(), /search terms the model writes/);
   await page.locator(".modal button.primary", { hasText: "Search" }).click();
+  // the progress: the steps done, ticked, then the one under way with its seconds; never a download
+  await page.waitForFunction(() => /Choosing among/.test(document.querySelector(".askprog .now")?.textContent ?? ""), null, { timeout: 20000 });
+  await page.waitForFunction(() => /\d s/.test(document.querySelector(".askprog .now .secs")?.textContent ?? ""), null, { timeout: 5000 });
+  const progress = await cells().nth(4).locator(".askprog").innerText();
+  assert.match(progress, /✓ Planning the search\n✓ Searching Wikipedia for “MLB runs per game by season”\n✓ Reading 1 page\nChoosing among 1 table… \d s/);
+  assert.doesNotMatch(progress, /download|100%/i);
+  if (shot) await cells().nth(4).screenshot({ path: shot.replace(/\.png$/, "-progress.png") });
   r = await out(4);
   const want = Array.from({ length: 20 }, (_, i) => 2006 + i).map((y) => `${y}&${Number(rg(y))}&${Number(hr(y))}`).join("\\\\");
   assert.equal(r.tex, `\\beginbmatrix${want}\\endbmatrix`);

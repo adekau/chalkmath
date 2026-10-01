@@ -78,8 +78,8 @@ interface LMStatic {
 const chromeLM = (): LMStatic | null => (globalThis as { LanguageModel?: LMStatic }).LanguageModel ?? null;
 const LM_OPTS = { expectedInputs: [{ type: "text", languages: ["en"] }], expectedOutputs: [{ type: "text", languages: ["en"] }] };
 
-/** Where the current lookup's progress lines go (a model's download reports through it). */
-let sink: (line: string) => void = () => {};
+/** Where a model's download and loading report, as a detail of the lookup's current step. */
+let sink: (detail: string) => void = () => {};
 let model: Promise<Model> | null = null;
 
 async function chromeAvailable(): Promise<boolean> {
@@ -103,12 +103,9 @@ function chromeModel(lm: LMStatic): Model {
   return {
     id: "Gemini Nano (Chrome)",
     async complete({ system, user, schema, signal }) {
-      const s = await lm.create({
-        ...LM_OPTS, initialPrompts: [{ role: "system", content: system }], ...(signal ? { signal } : {}),
-        monitor(m: EventTarget) {
-          m.addEventListener("downloadprogress", (e) => sink(`Downloading Chrome's model: ${Math.round(((e as ProgressEvent).loaded ?? 0) * 100)}%`));
-        },
-      });
+      // no download monitor here: the model is on the machine by now (loadModel), and Chrome reports a
+      // "download" of 100% for every session it creates, which would hide what the lookup is doing
+      const s = await lm.create({ ...LM_OPTS, initialPrompts: [{ role: "system", content: system }], ...(signal ? { signal } : {}) });
       try { return await s.prompt(user, { responseConstraint: schema, ...(signal ? { signal } : {}) }); } finally { s.destroy(); }
     },
   };
@@ -122,7 +119,7 @@ async function webgpuModel(id: string): Promise<Model> {
     if (pct === last) return;
     last = pct;
     // WebLLM reports fetching and then loading onto the GPU; "Finish" is the end of both
-    sink(/fetch|download/i.test(text) ? `Downloading the model (once): ${pct}%` : pct < 100 ? `Loading the model: ${pct}%` : "Model ready");
+    sink(/fetch|download/i.test(text) ? `downloading the model, once: ${pct}%` : pct < 100 ? `loading the model onto the GPU: ${pct}%` : "");
   });
 }
 
@@ -135,7 +132,10 @@ async function loadModel(): Promise<Model> {
     if ((await lm.availability(LM_OPTS)) === "available") return chromeModel(lm);
     try {
       (await lm.create({ ...LM_OPTS, monitor(m: EventTarget) {
-        m.addEventListener("downloadprogress", (e) => sink(`Downloading Chrome's model: ${Math.round(((e as ProgressEvent).loaded ?? 0) * 100)}%`));
+        m.addEventListener("downloadprogress", (e) => {
+          const done = (e as ProgressEvent).loaded ?? 0;
+          sink(done < 1 ? `downloading Chrome's model, once: ${Math.round(done * 100)}%` : "preparing Chrome's model");
+        });
       } })).destroy();
       return chromeModel(lm);
     } catch (e) {
@@ -154,7 +154,10 @@ async function loadModel(): Promise<Model> {
 // --- a lookup -----------------------------------------------------------------------------------
 
 export interface LookupHooks {
+  /** A step of the lookup begins ("Searching Wikipedia for …"). */
   onProgress(line: string): void;
+  /** How the current step is getting on, when there is something to say: a model's download. */
+  onDetail(detail: string): void;
   /** Ask the reader whether searches may leave the machine (the first time only); a stop closes the question. */
   confirmSearch(signal: AbortSignal): Promise<boolean>;
   signal: AbortSignal;
@@ -167,11 +170,10 @@ const today = () => {
 };
 
 export async function runLookup(question: string, h: LookupHooks): Promise<AskResult> {
-  sink = h.onProgress;
+  sink = h.onDetail;
   try {
     const s = askSettings();
-    h.onProgress("Starting the model");
-    model ??= loadModel();
+    if (!model) { h.onProgress("Loading the model"); model = loadModel(); }
     // a stop while the model loads (a download can take minutes) ends the lookup; the load goes on,
     // and the next lookup uses it
     let m: Model;

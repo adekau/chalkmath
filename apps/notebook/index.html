@@ -342,7 +342,11 @@ html[data-outsize="l"] { --sz-out:28px; --sz-echo:22px; --sz-work:19px; --sz-sub
 .cellerr { margin:10px 0 0 8px; font-size:12.5px; line-height:1.65; color:var(--p-err); background:var(--p-err-bg); border-left:2px solid var(--p-err-line); border-radius:0 6px 6px 0; padding:8px 12px; }
 .cellerr .caret { font-family:var(--code); color:var(--p-mut); display:block; margin-top:4px; white-space:pre; }
 /* `?` lookups: progress, then where the answer came from (apps/notebook/src/ask-cells.ts) */
-.askprog { margin:10px 0 0 8px; font-size:12.5px; color:var(--p-mut); font-style:italic; }
+.askprog { margin:10px 0 0 8px; font-size:12.5px; line-height:1.7; color:var(--p-mut); }
+.askprog .done { opacity:0.7; }
+.askprog .now { color:var(--p-ink-2); font-style:italic; }
+.askprog .secs { font-style:normal; font-family:var(--code); font-size:11px; color:var(--p-mut); margin-left:4px; }
+.askprog .detail { font-style:normal; color:var(--p-acc); }
 .askinfo { padding-left:8px; margin-top:6px; font-size:12px; line-height:1.6; color:var(--p-ink-2); font-family:var(--font); }
 .askhead { color:var(--p-mut); }
 .askhead a { color:var(--p-acc); }

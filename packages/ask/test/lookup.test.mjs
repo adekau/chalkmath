@@ -80,7 +80,7 @@ test("a table answers: the model picks columns and a year range, the values are 
   assert.match(pick, /columns: 0: Year; 1: Teams; 2: R\/G; 3: HR\/G; 4: Notes \[text\]/);
   assert.doesNotMatch(pick, /MVP/);
   assert.ok(pick.length < 2500, `the pick prompt is ${pick.length} characters`);
-  assert.ok(r.trail.some((l) => /Chose the table “League batting by season” on “Batting by season”: columns Year, R\/G, HR\/G, rows with Year from 2006 to 2025/.test(l)), r.trail.join("\n"));
+  assert.ok(r.trail.some((l) => /Chose the table “League batting by season” on “Batting by season”: columns Year, R\/G, HR\/G, rows where Year from 2006 to 2025/.test(l)), r.trail.join("\n"));
 });
 
 test("a row whose chosen cell is not a number is left out, and the result says so", async () => {
@@ -342,4 +342,41 @@ test("numbers spelled out in prose confirm a value", async () => {
   const { numbersIn } = await import("../dist/index.js");
   assert.deepEqual(numbersIn("won four titles, twice in a row, twenty-one games"), [4, 2, 21]);
   assert.ok(numbersIn("someone gone").every((n) => n !== 1), "“one” inside a word is no number");
+});
+
+// --- what a real model needed and could not say: rows by their text, and a count ------------------
+
+// a champions table built like Wikipedia's "List of World Series champions" (abridged; the Tigers' wins are real)
+const CHAMPS = [[1903, "Boston Americans", "Pittsburgh Pirates"], [1907, "Chicago Cubs", "Detroit Tigers"], [1935, "Detroit Tigers", "Chicago Cubs"],
+  [1940, "Cincinnati Reds", "Detroit Tigers"], [1945, "Detroit Tigers", "Chicago Cubs"], [1968, "Detroit Tigers", "St. Louis Cardinals"],
+  [1984, "Detroit Tigers", "San Diego Padres"], [2006, "St. Louis Cardinals", "Detroit Tigers"], [2024, "Los Angeles Dodgers", "New York Yankees"]];
+const champsPage = `<h2>Results</h2><table class="wikitable"><tr><th>Year</th><th>Winning team</th><th>Losing team</th></tr>
+${CHAMPS.map(([y, w, l]) => `<tr><td>${y}</td><td>${w} (AL)</td><td>${l}</td></tr>`).join("")}</table>`;
+const champsRoutes = [[/w\/api\.php.*list=search/, { query: { search: [{ title: "List of World Series champions" }] } }], [/rest_v1\/page\/html\/List_of_World_Series_champions/, champsPage]];
+const CHAMPS_PLAN = { shape: "table", subject: "the world", known: false, searches: ["World Series champions"], columns: ["Year"], rows: "", keywords: ["World Series", "Tigers"] };
+
+test("“how many”: the rows whose text matches are counted by code, and the count names them", async () => {
+  const fetch = fakeFetch(champsRoutes);
+  const model = scripted({ plan: CHAMPS_PLAN, pick: { table: 0, columns: [0], label: -1, filter: { column: 0, min: 2023, max: 2025 }, match: { column: 1, text: "Tigers" }, count: true } });
+  // the model's year filter (as Gemini Nano wrote it) is dropped: the question names no range
+  const r = await lookup("number of world series the tigers have won", opts(model, fetch));
+  assert.equal(r.shape, "number");
+  assert.equal(r.source, "4");
+  assert.ok(r.trail.includes("Dropped the model's filter on Year (from 2023 to 2025): the question names no range."), r.trail.join("\n"));
+  const model2 = scripted({ plan: CHAMPS_PLAN, pick: { table: 0, columns: [0], label: -1, filter: { column: -1, min: 2023, max: 2025 }, match: { column: 1, text: "Tigers" }, count: true } });
+  const r2 = await lookup("number of world series the tigers have won", opts(model2, fetch));
+  assert.equal(r2.source, "4");
+  assert.equal(r2.via, "table");
+  assert.deepEqual(r2.columns, ["rows where Winning team contains “Tigers”"]);
+  assert.deepEqual(r2.notes, ["Counted 4 rows of the table where Winning team contains “Tigers”: 1935, 1945, 1968, 1984."]);
+  // the pick prompt shows the model an example of exactly this
+  assert.match(model2.calls.find((c) => c.step === "pick").user, /1: Winning team \[text\]/);
+});
+
+test("a count is only taken when the question asks how many", async () => {
+  const fetch = fakeFetch(champsRoutes);
+  const model = scripted({ plan: CHAMPS_PLAN, pick: { table: 0, columns: [0], label: -1, filter: { column: -1, min: null, max: null }, match: { column: 1, text: "tigers" }, count: true } });
+  const r = await lookup("what years did the tigers win the world series?", opts(model, fetch));
+  assert.equal(r.source, "[1935, 1945, 1968, 1984]", "one column is a list, laid across");
+  assert.deepEqual(r.notes, ["Only the rows where Winning team contains “tigers”."]);
 });

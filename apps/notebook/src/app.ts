@@ -226,8 +226,10 @@ interface Cell {
   /** A `?` cell's lookup (ask-cells.ts): its answer, where it came from, and how it was found. Saved,
    *  so running the notebook again evaluates the answer without asking again. */
   ask?: AskResult;
-  /** While a lookup runs: what it is doing. */
-  askProgress?: string;
+  /** While a lookup runs: its steps so far (the last is under way), each with when it began, and how
+   *  the current one is getting on (a model's download). */
+  askSteps?: { text: string; at: number }[];
+  askDetail?: string;
   /** A lookup that found nothing: how it searched. */
   askTrail?: string[];
 }
@@ -566,7 +568,8 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
         try {
           cell.ask = await runLookup(question, {
             signal: askAbort.signal, forceSearch: again === "search",
-            onProgress: (line) => { cell.askProgress = line; renderCellBody(cell); },
+            onProgress: (line) => { (cell.askSteps ??= []).push({ text: line, at: performance.now() }); delete cell.askDetail; renderCellBody(cell); },
+            onDetail: (detail) => { cell.askDetail = detail; tickAsk(); },
             confirmSearch,
           });
           log("ok", `lookup: ${cell.ask.via}, ${cell.ask.source.length > 80 ? `${cell.ask.source.slice(0, 80)}…` : cell.ask.source}`);
@@ -575,7 +578,7 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
           if (!(e instanceof AskError && cell.ask?.question === question)) throw e;
           notify("err", e.message === "Stopped." ? "Stopped: the cell keeps its answer." : `${again === "search" ? "Check" : "Lookup"}: ${e.message} The cell keeps its answer.`);
           log("err", `lookup: ${e.message}`);
-        } finally { askAbort = null; delete cell.askProgress; askAgain.delete(cell); }
+        } finally { askAbort = null; delete cell.askSteps; delete cell.askDetail; askAgain.delete(cell); }
       }
       asked = askSource(askM[1], cell.ask);
     }
@@ -2877,7 +2880,7 @@ function renderCellBody(cell: Cell) {
     }
     body.append(err);
   }
-  if (busy && cell.askProgress) body.append(h("div", "askprog", `${cell.askProgress}…`));
+  if (busy && cell.askSteps?.length) body.append(askProgress(cell));
   if (cell.error && cell.askTrail?.length) body.append(askTrail(cell.askTrail));
 
   if (cell.showWork && cell.steps && shownSteps(cell.steps)) {
@@ -3059,6 +3062,33 @@ function renderCellBody(cell: Cell) {
 // --- `?` lookups: what the answer is and where it came from (ask-cells.ts) -------------------------
 
 const httpUrl = (u: string) => /^https?:\/\//i.test(u);
+
+/** A lookup under way: the steps done (✓), then the current one with its seconds and any detail. */
+function askProgress(cell: Cell): HTMLElement {
+  const box = h("div", "askprog");
+  box.setAttribute("aria-live", "polite");
+  const steps = cell.askSteps ?? [];
+  const from = Math.max(0, steps.length - 6);
+  steps.slice(from).forEach((st, k) => {
+    const now = from + k === steps.length - 1;
+    const row = h("div", now ? "now" : "done", `${now ? "" : "✓ "}${st.text}${now ? "…" : ""}`);
+    if (now) row.append(h("span", "secs"), h("span", "detail"));
+    box.append(row);
+  });
+  queueMicrotask(tickAsk);
+  return box;
+}
+
+/** Bring the running lookup's seconds and detail up to date (every half second while one runs). */
+function tickAsk() {
+  const cell = S.running, st = cell?.askSteps?.[cell.askSteps.length - 1];
+  const row = cell?.el?.querySelector(".askprog .now");
+  if (!cell || !st || !row) return;
+  const secs = Math.floor((performance.now() - st.at) / 1000);
+  row.querySelector(".secs")!.textContent = secs >= 1 ? ` ${secs} s` : "";
+  row.querySelector(".detail")!.textContent = cell.askDetail ? ` · ${cell.askDetail}` : "";
+}
+setInterval(() => { if (askAbort) tickAsk(); }, 500);
 
 /** The lines a lookup's trail shows under "How this was found" (or under its error). */
 function askTrail(trail: string[], open = false): HTMLElement {
