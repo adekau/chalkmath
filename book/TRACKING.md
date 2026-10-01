@@ -546,6 +546,15 @@ Goal: re-derive the article (inner products → orthogonality → the square wav
    along the covers `|elems|` times. subsets of 7 with the lattice check: 0.4 s; of 8 (256 elements): 3 s.
    Untouched and still quadratic-ish: `closure` for a hand-written `poset(...)` (eraseDups over pair lists) and
    `latticeFailure` (every pair, every upper bound) — fine to a few hundred elements.
+- engine: exact roots of perfect-power bases — DONE 2026-09-30. `integrate(sqrt(x), x, 0, 4)` answered
+   `2*4^(3/2)/3`, while the same integral to 9 answered 18. `simp.radical`'s perfect-power rule (`a^(p/q) → r^(kp/q)`
+   for `a = r^k`) was guarded by `M` unchanged and `numCount` down, the right guard for `8^(1/2) → 2^(3/2)`; but
+   when the root is exact the new exponent is an integer numeral and `numCount` counts it too: `9 → 3, 3` is 6 < 9,
+   `4 → 2, 3` is 5 > 4, so `4^(3/2)` (and `4^(5/2)`, `4^(-3/2)`) never reduced. An exact root does lower `M`
+   (11 → 5: an integer exponent is lighter than a fraction), so the guard now also accepts a strict `M` decrease;
+   the ordering proof (`dec_radicalBase`) takes that branch first, and the soundness proof is unchanged. The row
+   reads `$4 = 2^{2}$, so $4^{3/2} = (2^{2})^{3/2} = 2^{3}$` and `simp.power` evaluates `2^3 = 8` next. Still
+   open: a rational base (`(4/9)^(3/2)`) stays, since `simp.power` evaluates only `p^(1/n)` of a rational.
 - wasm: Std in the browser engine — DONE 2026-09-27. The poset change imported `Std.Data.HashSet`, and the wasm
    link failed on `initialize_Std_Data_HashMap`: the wasm toolchain built only the runtime and `Init` ("the engine
    only imports Init"), and the failure hid behind a `| tail` — the browser kept running the old wasm, which is

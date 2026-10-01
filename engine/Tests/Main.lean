@@ -129,6 +129,7 @@ def tests : TestM Unit := do
   check "definite integral with symbolic bound" (evalText "integrate(2x, x, 0, b)") "b^2"
   check "definite integral of sin over a period" (evalText "integrate(sin(x), x, 0, 2pi)") "0"
   check "definite integral of cos over a period" (evalText "integrate(cos(x), x, 0, 2pi)") "0"
+  check "definite integral with an exact root at a bound" (evalText "integrate(sqrt(x), x, 0, 4)") "16/3"
   check "definite integral bound must not mention the variable" (evalText "integrate(x, x, 0, x)") "<error: integrate: the bounds may not mention the variable x>"
   check "cos·sin are orthogonal" (evalText "integrate(cos(t)*sin(t), t, 0, 2pi)") "0"
   check "sum expands and collects" (evalText "sum(k^2, k, 1, 4)") "30"
@@ -399,6 +400,14 @@ def tests : TestM Unit := do
   check "radical steps: a square factor" (derivationRules st "sqrt(8)+sqrt(18)").toString "[simp.radical, simp.radical, simp.collect-radicals]"
   (st, r) := sessionEval st "sqrt(x)*sqrt(x)" ",\"showWork\":true"
   check "radical steps: sqrt as a power is silent" ((derivationRules st "sqrt(x)*sqrt(x)").head?.getD "") "simp.collect-powers"
+  -- an exact root: the perfect-power base comes out whole (M drops though 2 + 3 outweighs 4), then evaluates
+  (st, r) := sessionEval st "4^(3/2)" ",\"showWork\":true"
+  check "radical steps: exact root of a perfect-power base" (derivationRules st "4^(3/2)").toString "[simp.radical, simp.power]"
+  check "radical steps: exact root, value" r "8"
+  (st, r) := sessionEval st "integrate(sqrt(x), x, 0, 4)" ",\"showWork\":true"
+  check "radical steps: exact root at an integral's bound" ((derivationRules st "integrate(sqrt(x), x, 0, 4)").take 4).toString
+    "[cmd.integrate, simp.radical, simp.power, simp.fold-constants]"
+  check "radical steps: exact root at an integral's bound, value" r "16/3"
   (st, r) := sessionEval st "sqrt(2)*sqrt(6)" ",\"showWork\":true"
   let whys (src : String) : List String :=
     ((st.get "t").cells.lookup src).map (fun c => c.derivation.steps.toList.map (·.explanation)) |>.getD []
@@ -408,6 +417,8 @@ def tests : TestM Unit := do
     "$18 = 3^{2} \\cdot 2$, so $\\sqrt{18} = \\sqrt{3^{2}} \\cdot \\sqrt{2} = 3\\sqrt{2}$."
   check "radical work: collect" ((whys "sqrt(8)+sqrt(18)")[2]?.getD "")
     "$2\\sqrt{2} + 3\\sqrt{2} = (2 + 3)\\sqrt{2} = 5\\sqrt{2}$: radicals with the same base and index collect."
+  check "radical work: exact root" ((whys "4^(3/2)")[0]?.getD "")
+    "$4 = 2^{2}$, so ${4}^{\\frac{3}{2}} = (2^{2})^{3/2} = 2^{3}$."
   check "radical work: multiply" ((whys "sqrt(2)*sqrt(6)")[0]?.getD "")
     "$\\sqrt{2} \\cdot \\sqrt{6} = \\sqrt{12} = 2\\sqrt{3}$: radicals with the same index multiply under one root."
   -- M8: integrate is a checked guess

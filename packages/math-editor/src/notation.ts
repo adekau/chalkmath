@@ -185,11 +185,13 @@ class Notation {
   }
 
   private op(t: Token, text: string): string {
-    // an output reference is the output it names, Mathematica's Out[n], as one chip
+    // an output reference is one chip. `%17` names one output for good: Mathematica's Out[17].
+    // `%` and `%%` mean the last output and the one before it whenever the cell runs, so they are
+    // drawn as typed, in a chip of their own (`rel`), with the output they mean now beside them
     if (text[0] === "%") {
-      const n = /^%\d+$/.test(text) ? +text.slice(1) : this.outRef(text);
-      const label = n === null ? text.replace(/%/g, "\\%") : String(n);
-      return this.wrap(t.atoms, `\\htmlData{out=${outTag(text)}}{\\mathrm{Out}[${label}]}`);
+      if (/^%\d+$/.test(text)) return this.wrap(t.atoms, `\\htmlData{out=${outTag(text)}}{\\mathrm{Out}[${text.slice(1)}]}`);
+      const n = this.outRef(text);
+      return this.wrap(t.atoms, `\\htmlData{out=${outTag(text)}, rel=1}{${text.replace(/%/g, "\\%")}${n === null ? "" : `_{${n}}`}}`);
     }
     // a `\` is a command still being typed (`\frac` before its space)
     return this.chars(t.atoms, (c) => (c === "*" ? "\\cdot " : c === " " ? "\\," : c === "%" ? "\\%" : c === "\\" ? "\\backslash " : c));
