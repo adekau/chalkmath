@@ -468,10 +468,11 @@ export function parseFileRef(s: string): FileRef | null {
   return null;
 }
 
-/** Where the reference starting at `i` ends (an attachment, an import, an output or a name), or -1. */
+/** Where the reference starting at `i` ends (an attachment, an import, an output or a name), or -1.
+ *  `%n` is tried before `%`, `%%`: unanchored, `%*` matches nothing and `%12` would end at `%`. */
 function refEnd(src: string, i: number): number {
   const rest = src.slice(i);
-  const m = /^⟦[^⟧]+⟧/.exec(rest) ?? /^import\(\s*(["'])[^"']*\1\s*\)/.exec(rest) ?? /^%(%*|\d+)/.exec(rest)
+  const m = /^⟦[^⟧]+⟧/.exec(rest) ?? /^import\(\s*(["'])[^"']*\1\s*\)/.exec(rest) ?? /^%(\d+|%*)/.exec(rest)
     ?? (isIdentChar(src[i - 1]) ? null : /^[A-Za-z_][A-Za-z0-9_]*/.exec(rest));
   return m ? i + m[0].length : -1;
 }

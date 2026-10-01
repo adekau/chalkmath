@@ -31,7 +31,7 @@ function scope(names = {}) {
       if (ref.kind === "name") return names[ref.name];
       if (ref.kind === "asset") { const f = { "nums.csv": nums, "p.png": png }[ref.name]; if (!f) throw new Error(`nothing named ⟦${ref.name}⟧`); return f; }
       if (ref.kind === "url") return ref.url === "https://x/s.svg" ? svg : undefined;
-      return ref.text === "%" ? names["%"] : undefined;
+      return names[ref.text];
     },
     sample: (_xml, n) => ({ points: Array.from({ length: n }, (_, i) => [i / n, i / n]), paths: 1 }),
   };
@@ -102,6 +102,12 @@ test("functions on files become numbers before the engine sees the cell", () => 
   assert.equal(F.resolveFiles("let m = matrix(⟦nums.csv⟧)", sc).src, "let m = [1, 2; 3, 4; 5, 6]");
   assert.equal(F.resolveFiles("dimensions(planets)", sc).src, "[2, 3]");
   assert.equal(F.resolveFiles("samplePoints(%)", scope({ "%": svg })).src.split(";").length, 400);
+  // `%n` is Out[n] whole, not `%` followed by a number
+  const outs = scope({ "%": svg, "%1": nums, "%12": planets });
+  assert.equal(F.resolveFiles("dimensions(%1)", outs).src, "[3, 2]");
+  assert.equal(F.resolveFiles("dimensions(%12) + %1[[2, 1]]", outs).src, "[2, 3] + 3");
+  assert.equal(F.resolveFiles("%3 + 1", outs).src, "%3 + 1");
+  assert.throws(() => F.resolveFiles("%1 + 1", outs), /%1 is a file, a CSV, not a number: %1\[\[1\]\]/);
   // a function that is not given a file is the engine's (a user's own `row`, say)
   assert.equal(F.resolveFiles("row(3) + matrix", sc).src, "row(3) + matrix");
   // a name that only starts like a file's is not cut
