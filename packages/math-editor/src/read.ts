@@ -26,7 +26,10 @@ export const BUILTIN_FUNCTIONS = ["sin", "cos", "tan", "exp", "ln", "log", "sqrt
 /** `sin^2(y)` is `sin(y)^2` for these. */
 const POWER_FNS = ["sin", "cos", "tan", "exp", "ln", "log", "sqrt", "abs"];
 
-type TokKind = "num" | "id" | "op" | "eof";
+/** `str`: a name in quotes, which only an index of a part can hold (`t[["mass"]]`, a file's column,
+ *  which the notebook reads before the engine sees the cell); anywhere else it is the engine's
+ *  `unexpected character '"'`. */
+type TokKind = "num" | "id" | "op" | "str" | "asset" | "eof";
 interface Tok { kind: TokKind; s: string; start: number; stop: number }
 
 class Fail { constructor(readonly error: ReadError) {} }
@@ -51,6 +54,19 @@ export function lex(src: string): Tok[] {
       while (j < cs.length && isIdChar(cs[j]!)) j++;
       out.push({ kind: "id", s: cs.slice(i, j).join(""), start: i, stop: j });
       i = j;
+    } else if (c === "⟦") {
+      // a file attached to the notebook: `⟦name⟧`, which the notebook reads before the engine
+      let j = i + 1;
+      while (j < cs.length && cs[j] !== "⟧") j++;
+      if (j >= cs.length) fail("unexpected character '⟦'", { start: i, stop: i + 1 });
+      out.push({ kind: "asset", s: cs.slice(i + 1, j).join(""), start: i, stop: j + 1 });
+      i = j + 1;
+    } else if (c === '"') {
+      let j = i + 1;
+      while (j < cs.length && cs[j] !== '"') j++;
+      if (j >= cs.length) fail(`unexpected character '"'`, { start: i, stop: i + 1 });
+      out.push({ kind: "str", s: cs.slice(i, j + 1).join(""), start: i, stop: j + 1 });
+      i = j + 1;
     } else if ("+-*/^()[],;=%{}".includes(c)) {
       out.push({ kind: "op", s: c, start: i, stop: i + 1 });
       i++;
@@ -63,7 +79,7 @@ export function lex(src: string): Tok[] {
 /** Read a cell. `known` lists the functions the session has defined (`let f(x) = …`). */
 export function read(src: string, known: readonly string[] = []): ReadResult {
   try {
-    return { ok: true, stmt: new Reader(lex(src), known).stmt() };
+    return { ok: true, stmt: new Reader(lex(src), known, Array.from(src)).stmt() };
   } catch (e) {
     if (e instanceof Fail) return { ok: false, error: e.error };
     throw e;
@@ -86,7 +102,7 @@ function juxtapose(out: Block, more: Block) {
 class Reader {
   private i = 0;
   private known: string[];
-  constructor(private toks: Tok[], known: readonly string[]) { this.known = [...known]; }
+  constructor(private toks: Tok[], known: readonly string[], private cs: string[]) { this.known = [...known]; }
 
   private peek(k = 0): Tok { return this.toks[this.i + k] ?? this.toks[this.toks.length - 1]!; }
   private prev(): Tok | undefined { return this.i === 0 ? undefined : this.toks[this.i - 1]; }
@@ -122,6 +138,7 @@ class Reader {
       stmt = { body: [{ k: "let", name: chars(name.s), params: params && params.map(chars) }, ...this.expr()] };
     } else stmt = { body: this.expr() };
     const end = this.peek();
+    if (end.kind === "str") fail(`unexpected character '"'`, { start: end.start, stop: end.start + 1 });
     if (end.kind !== "eof") fail(`unexpected '${end.s}'`, end);
     return stmt;
   }
@@ -159,8 +176,8 @@ class Reader {
 
   private power(): Block {
     let b = this.atom();
-    // `m[[2]]`, Mathematica's Part, has no typeset form yet: the cell stays text
-    if (this.isOp(this.peek(0), "[") && this.isOp(this.peek(1), "[")) fail("a part m[[…]] is edited as text", this.peek(0));
+    // `m[[2]]`, Mathematica's Part, any number of times: binds tighter than `^`
+    while (this.isOp(this.peek(0), "[") && this.isOp(this.peek(1), "[")) b = [...b, this.part()];
     if (this.isOp(this.peek(), "^")) {
       this.next();
       // `sin^2(y)^3`: the atom was already a power; group it so the next one applies to all of it
@@ -219,7 +236,31 @@ class Reader {
         if (t.s === "{") return fail("braces list the indices of a part, as in m[[{1, 3}]]", t);
         return fail(`unexpected '${t.s}'`, t);
       }
+      // text in quotes, and an attached file: the notebook's (`import("url")`, `⟦data.csv⟧`)
+      case "str": return [{ k: "str", body: chars(t.s.slice(1, -1)) }];
+      case "asset": return [{ k: "asset", name: t.s }];
       case "eof": return fail("unexpected end of input", t);
+    }
+  }
+
+  /** A part's indices, after its `[[`, each kept as the characters typed (consumes the `]]`). */
+  private part(): Atom {
+    const open = this.next(); this.next();
+    const specs: Block[] = [];
+    let from = this.peek(), depth = 0;
+    const cut = (to: Tok) => specs.push(chars(this.cs.slice(from.start, to.start).join("").trim()));
+    for (;;) {
+      const t = this.peek();
+      if (t.kind === "eof") fail("expected ']]' to close the part", open);
+      if (depth === 0 && this.isOp(t, ",")) { cut(t); this.next(); from = this.peek(); continue; }
+      if (depth === 0 && this.isOp(t, "]")) {
+        if (!this.isOp(this.peek(1), "]")) fail("expected ']]' to close the part", t);
+        cut(t); this.next(); this.next();
+        return { k: "part", specs };
+      }
+      if (t.kind === "op" && "([{".includes(t.s)) depth++;
+      else if (t.kind === "op" && ")]}".includes(t.s)) depth--;
+      this.next();
     }
   }
 

@@ -463,15 +463,16 @@ export function parseFileRef(s: string): FileRef | null {
   if (m) return { kind: "asset", name: m[1]! };
   m = /^import\(\s*(["'])([^"']*)\1\s*\)$/.exec(t);
   if (m) return { kind: "url", url: m[2]! };
-  if (/^%(%*|\d+)$/.test(t)) return { kind: "out", text: t };
+  if (/^%(\d+|%*)$/.test(t)) return { kind: "out", text: t };
   if (IDENT.test(t)) return { kind: "name", name: t };
   return null;
 }
 
-/** Where the reference starting at `i` ends (an attachment, an import, an output or a name), or -1. */
+/** Where the reference starting at `i` ends (an attachment, an import, an output or a name), or -1.
+ *  `%n` is tried before `%`, `%%`: unanchored, `%*` matches nothing and `%12` would end at `%`. */
 function refEnd(src: string, i: number): number {
   const rest = src.slice(i);
-  const m = /^⟦[^⟧]+⟧/.exec(rest) ?? /^import\(\s*(["'])[^"']*\1\s*\)/.exec(rest) ?? /^%(%*|\d+)/.exec(rest)
+  const m = /^⟦[^⟧]+⟧/.exec(rest) ?? /^import\(\s*(["'])[^"']*\1\s*\)/.exec(rest) ?? /^%(\d+|%*)/.exec(rest)
     ?? (isIdentChar(src[i - 1]) ? null : /^[A-Za-z_][A-Za-z0-9_]*/.exec(rest));
   return m ? i + m[0].length : -1;
 }
@@ -536,27 +537,38 @@ export function fileCellOf(src: string, scope: FileScope): { bind?: string; file
   return m[2] ? { bind: m[2], file: fe.file } : { file: fe.file };
 }
 
-/** Examples of what a file's caption offers: its parts, with its own column names and keys, and the
- *  functions that turn it into numbers. */
-export function helpersFor(f: FileValue, x: string): string[] {
-  if (f.mime === "image/svg+xml") return [`samplePoints(${x})`, `samplePoints(${x}, n)`];
+/** What can be done with a file, for the suggestions bar under it and for errors: a short label and
+ *  the code it stands for, with the file's own column names and keys. `x` is how a cell calls the file
+ *  (its name, or `%n`). */
+export function helpersFor(f: FileValue, x: string): { label: string; code: string }[] {
+  if (f.mime === "image/svg+xml") return [{ label: "points", code: `samplePoints(${x})` }, { label: "100 points", code: `samplePoints(${x}, 100)` }];
   const kind = kindOf(f);
   if (kind === "table") {
     let t: Table;
     try { t = tableOf(f); } catch { return []; }
-    const nums = numericColumns(t);
-    const c = nums.indexOf(true);
+    const c = numericColumns(t).indexOf(true);
     const col = c >= 0 ? (t.header ? `"${t.header[c]}"` : String(c + 1)) : null;
-    return [`${x}[[1]]`, ...(col ? [`${x}[[All, ${col}]]`, `mean(${x}[[All, ${col}]])`] : []), `${x}[[1;;3]]`, `matrix(${x})`, `dimensions(${x})`];
+    return [
+      { label: "row 1", code: `${x}[[1]]` },
+      { label: "rows 1–3", code: `${x}[[1;;3]]` },
+      ...(col ? [{ label: `column ${col}`, code: `${x}[[All, ${col}]]` }, { label: `mean ${col}`, code: `mean(${x}[[All, ${col}]])` }] : []),
+      { label: "matrix", code: `matrix(${x})` },
+      { label: "dimensions", code: `dimensions(${x})` },
+    ];
   }
   if (kind === "json") {
     let v: Json;
     try { v = jsonOf(f); } catch { return []; }
-    if (isObj(v)) { const k = Object.keys(v)[0]; return k === undefined ? [] : [`${x}[["${k}"]]`]; }
+    if (isObj(v)) return Object.keys(v).slice(0, 4).map((k) => ({ label: `"${k}"`, code: `${x}[["${k}"]]` }));
     if (Array.isArray(v) && v.length) {
       const first = v[0]!;
-      if (isObj(first)) { const k = Object.keys(first).find((key) => typeof first[key] === "number") ?? Object.keys(first)[0]; return [`${x}[[1]]`, ...(k ? [`${x}[[All, "${k}"]]`] : [])]; }
-      return [`${x}[[1]]`, `${x}[[1;;3]]`];
+      const out = [{ label: "item 1", code: `${x}[[1]]` }, { label: "items 1–3", code: `${x}[[1;;3]]` }];
+      if (isObj(first)) {
+        const k = Object.keys(first).find((key) => typeof first[key] === "number") ?? Object.keys(first)[0];
+        if (k) out.push({ label: `column "${k}"`, code: `${x}[[All, "${k}"]]` });
+        if (jsonTable(v)) out.push({ label: "dimensions", code: `dimensions(${x})` });
+      }
+      return out;
     }
   }
   return [];
@@ -564,9 +576,10 @@ export function helpersFor(f: FileValue, x: string): string[] {
 
 /** What a file is, for an error that it was used as a number. */
 function notANumber(x: string, f: FileValue): Error {
-  const helpers = helpersFor(f, x);
+  // the suggestions that make numbers (not a row with text in it)
+  const helpers = helpersFor(f, x).map((h) => h.code).filter((c) => !/\[\[1(;;3)?\]\]$/.test(c) || kindOf(f) === "json").slice(0, 3);
   const what = `${x} is ${f.origin && "derived" in f.origin ? "" : "a file, "}${anA(mimeLabel(f.mime))}, not a number`;
-  return new Error(helpers.length ? `${what}: ${helpers.slice(0, 3).join(", ")} ${helpers.length === 1 ? "turns" : "turn"} it into numbers` : `${what}, and nothing turns ${anA(mimeLabel(f.mime))} into numbers`);
+  return new Error(helpers.length ? `${what}: ${helpers.join(", ")} ${helpers.length === 1 ? "turns" : "turn"} it into numbers` : `${what}, and nothing turns ${anA(mimeLabel(f.mime))} into numbers`);
 }
 
 const HELPERS = new Set(["samplePoints", "matrix", "dimensions"]);
@@ -732,7 +745,7 @@ function exprStart(src: string, pos: number): number {
     while (j > 0 && (src[j - 1] === " " || src[j - 1] === "\t")) j--;
   }
   const head = src.slice(0, j);
-  const m = /(⟦[^⟧]+⟧|import\(\s*(["'])[^"']*\2\s*\)|%(%*|\d+)|[A-Za-z_][A-Za-z0-9_]*)$/.exec(head);
+  const m = /(⟦[^⟧]+⟧|import\(\s*(["'])[^"']*\2\s*\)|%(\d+|%*)|[A-Za-z_][A-Za-z0-9_]*)$/.exec(head);
   return m ? j - m[0].length : pos;
 }
 

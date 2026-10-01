@@ -416,8 +416,9 @@ export const FUNCTIONS: FnDoc[] = [
   },
   {
     name: "dimensions", area: "Lists, tables and files",
-    usage: [["dimensions(t)", "gives `[rows, columns]` of a table."]],
-    examples: [basic("let planets = import(\"examples/data/planets.csv\")", "dimensions(planets)")],
+    usage: [["dimensions(t)", "gives `[rows, columns]` of a table, or of a part of one that is numbers."]],
+    details: ["Mathematica's `Dimensions`, for a CSV or TSV file or JSON that is a list of records."],
+    examples: [basic("let planets = import(\"examples/data/planets.csv\")", "dimensions(planets)", "dimensions(planets[[All, 2;;]])")],
     see: ["matrix", "part"],
   },
   {
@@ -437,14 +438,14 @@ export const FUNCTIONS: FnDoc[] = [
   {
     name: "total", area: "Statistics",
     usage: [["total(v)", "gives the sum of the entries of the vector `v`."], ["total(m)", "gives the sum of each column of the matrix `m`."]],
-    details: ["A definition, so symbolic entries work."],
-    examples: [basic("total([1; 2; 3])", "total([a, b, c])")],
+    details: ["Mathematica's `Total`: the sum of a list. `sum(f, k, a, b)` is the sum of a term over an index.", "A definition, so symbolic entries work; over ℝ the value is the list's sum (`total_soundR`)."],
+    examples: [basic("total([1; 2; 3])", "total([1, 2; 3, 4])"), section("Scope", "total([a, b, c])")],
     see: ["mean", "sum"],
   },
   {
     name: "mean", area: "Statistics",
     usage: [["mean(v)", "gives the mean of the entries of `v`."], ["mean(m)", "gives the mean of each column of the matrix `m`, as a row."]],
-    details: ["A definition, so symbolic entries work."],
+    details: ["A definition, so symbolic entries work: `mean([a; b])` is $(a + b)/2$.", "Over ℝ the value is the sum over the count (`mean_soundR`)."],
     examples: [
       basic("mean([2, 4, 4, 4, 5, 5, 7, 9])"),
       section("Scope", "mean([a; b])", "mean([1, 2; 3, 4])"),
@@ -456,7 +457,7 @@ export const FUNCTIONS: FnDoc[] = [
   {
     name: "median", area: "Statistics",
     usage: [["median(v)", "gives the middle entry of `v`, or the mean of the two middle ones."], ["median(m)", "gives the median of each column."]],
-    details: ["It compares exact rationals, so it takes numbers."],
+    details: ["It compares exact rationals, so the entries must be numbers.", "The result is the middle of a sorted permutation of the entries (`medianQ_spec`)."],
     examples: [basic("median([5, 1, 3])", "median([4, 1, 3, 2])")],
     see: ["mean", "min", "max"],
   },
@@ -465,15 +466,17 @@ export const FUNCTIONS: FnDoc[] = [
     usage: [["variance(v)", "gives the sample variance of `v`, dividing by n − 1."], ["variance(m)", "gives the variance of each column."]],
     details: [
       "The sample variance, as Mathematica's `Variance` and Python's `statistics.variance` compute it.",
-      "The engine writes it in its one-pass form, proved equal to $\\sum (x_i - \\bar x)^2/(n-1)$ (`variance_soundR`). Symbolic entries work.",
+      "The engine writes it in its one-pass form, $(\\sum x_i^2 - (\\sum x_i)^2/n)/(n-1)$, proved equal to $\\sum (x_i - \\bar x)^2/(n-1)$ (`variance_soundR`). Symbolic entries work.",
+      "It needs two values or more.",
     ],
-    examples: [basic("variance([2, 4, 4, 4, 5, 5, 7, 9])")],
+    examples: [basic("variance([2, 4, 4, 4, 5, 5, 7, 9])"), section("Scope", "variance([a, b])")],
     see: ["stdev", "mean"],
     ref: "https://mathworld.wolfram.com/SampleVariance.html",
   },
   {
     name: "stdev", area: "Statistics",
     usage: [["stdev(v)", "gives the sample standard deviation of `v`, the square root of its variance."], ["stdev(m)", "gives the standard deviation of each column."]],
+    details: ["Proved to be the square root of `variance` (`stdev_soundR`)."],
     examples: [basic("stdev([1, 3])", "stdev([2, 4, 4, 4, 5, 5, 7, 9])")],
     see: ["variance", "mean"],
     ref: "https://mathworld.wolfram.com/StandardDeviation.html",
@@ -481,14 +484,14 @@ export const FUNCTIONS: FnDoc[] = [
   {
     name: "min", area: "Statistics",
     usage: [["min(v)", "gives the least entry of `v`."], ["min(m)", "gives the least entry of each column."]],
-    details: ["It compares exact rationals, so it takes numbers."],
+    details: ["It compares exact rationals, so the entries must be numbers.", "The result is an entry, and no entry is smaller (`minQ_spec`)."],
     examples: [basic("min([3, -1, 2.5])")],
     see: ["max", "median"],
   },
   {
     name: "max", area: "Statistics",
     usage: [["max(v)", "gives the greatest entry of `v`."], ["max(m)", "gives the greatest entry of each column."]],
-    details: ["It compares exact rationals, so it takes numbers."],
+    details: ["It compares exact rationals, so the entries must be numbers.", "The result is an entry, and no entry is larger (`maxQ_spec`)."],
     examples: [basic("max([3, -1, 2.5])")],
     see: ["min", "median"],
   },

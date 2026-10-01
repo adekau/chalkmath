@@ -51,6 +51,11 @@ export const TEMPLATES: Record<string, { what: string; glyph: string; make: (r?:
   vec: { what: "column vector, \\vec3 for 3", glyph: "[⋮]", make: (r = 2) => grid(r, 1) },
 };
 
+/** Does the atom before a `[[` end a value a part can be taken of: a name or numeral, a call, a group,
+ *  a matrix, an output reference, another part? */
+const valueEnds = (a: Atom | undefined): boolean =>
+  !!a && (a.k === "ch" ? isIdChar(a.c) || a.c === "%" : a.k === "call" || a.k === "paren" || a.k === "matrix" || a.k === "part");
+
 /** How many argument slots a call opens with when typed as `name(`. */
 const ARITY: Record<string, number> = { diff: 2, integrate: 2, sum: 4, dot: 2, subst: 3 };
 
@@ -338,6 +343,15 @@ export class MathEdit {
   private typeOne(c: string): boolean {
     const hw = this.where(this.caret.block);
     if (hw?.atom.k === "let") return this.typeInHead(c, hw.atom, hw);
+    if (hw?.atom.k === "part") return this.typeInPart(c, hw.atom, hw);
+    // in quotes every character is the text's; the closing quote leaves it
+    if (hw?.atom.k === "str") {
+      if (c === '"') { this.caret = { block: hw.parent, i: hw.index + 1 }; return true; }
+      if (c.length !== 1 || c === "\n") return false;
+      this.caret.block.splice(this.caret.i, 0, ch(c));
+      this.caret = { block: this.caret.block, i: this.caret.i + 1 };
+      return true;
+    }
     if (c === " " && this.startHead()) return true;
     const g = this.glue;
     this.glue = null;
@@ -349,9 +363,20 @@ export class MathEdit {
       case "^": return this.power();
       case "(": return this.open();
       case ")": return this.close((a) => a.k === "paren" || a.k === "call");
-      case "[": return this.insert(grid(1, 1));
-      case "]": return this.close((a) => a.k === "matrix");
+      case "[": {
+        // `[[` after a value: the empty matrix the first `[` made becomes a part, `x[[`
+        if (hw?.atom.k === "matrix" && hw.atom.rows.length === 1 && hw.atom.rows[0]!.length === 1 && !this.caret.block.length && valueEnds(hw.parent[hw.index - 1])) {
+          const part: Atom = { k: "part", specs: [[]] };
+          hw.parent.splice(hw.index, 1, part);
+          this.caret = { block: part.specs[0]!, i: 0 };
+          return true;
+        }
+        return this.insert(grid(1, 1));
+      }
+      // the second `]` of a part's `]]`, after the first left it
+      case "]": return this.caret.block[this.caret.i - 1]?.k === "part" ? true : this.close((a) => a.k === "matrix");
       case ",": return this.comma();
+      case '"': return this.insert({ k: "str", body: [] });
       case ";": return this.semicolon();
       case " ": return this.space();
       case "@": {
@@ -362,6 +387,27 @@ export class MathEdit {
     }
     if (isIdChar(c) || "+-*%.\\".includes(c)) return this.insert(ch(c));
     return false;
+  }
+
+  /** Typing in an index of a part: its characters as typed. `,` goes on to the next index (outside a
+   *  list's braces and a quoted name) and `]` leaves the part; within quotes every character is the
+   *  name's. */
+  private typeInPart(c: string, part: Atom & { k: "part" }, w: Where): boolean {
+    const b = this.caret.block, i = this.caret.i;
+    const before = b.slice(0, i).map((a) => (a.k === "ch" ? a.c : "")).join("");
+    const quoted = (before.match(/"/g)?.length ?? 0) % 2 === 1;
+    const put = () => { b.splice(i, 0, ch(c)); this.caret = { block: b, i: i + 1 }; return true; };
+    if (quoted) return c.length === 1 && c !== "\n" ? put() : false;
+    const braces = (before.match(/\{/g)?.length ?? 0) - (before.match(/\}/g)?.length ?? 0);
+    if (c === "," && braces <= 0) {
+      const k = part.specs.indexOf(b);
+      part.specs.splice(k + 1, 0, b.splice(i));
+      this.caret = { block: part.specs[k + 1]!, i: 0 };
+      return true;
+    }
+    if (c === "]") { this.caret = { block: w.parent, i: w.index + 1 }; return true; }
+    if (c === " ") return true;   // spaces in an index mean nothing outside a name in quotes
+    return isIdChar(c) || '-+;{},".'.includes(c) ? put() : false;
   }
 
   /** `let` then a space at the start of the input: the head, with the caret in its name. */
@@ -585,6 +631,69 @@ export class MathEdit {
     if (this.pendingCommand()) return false;   // an unknown `\name` stays as typed, to be fixed
     const prev = this.caret.block[this.caret.i - 1];
     return prev?.k === "ch" && isIdChar(prev.c) ? this.insert(ch(" ")) : false;
+  }
+
+  /** The name the caret is at the end of (not a `\name`, not inside a part's index), and where it
+   *  starts: what a function name being typed would complete. */
+  nameBefore(): { name: string; start: number } | null {
+    const { block: b, i } = this.caret;
+    if (this.where(b)?.atom.k === "part" || this.pendingCommand()) return null;
+    const next = b[i];
+    if (next?.k === "ch" && isIdChar(next.c)) return null;
+    let j = i;
+    while (j > 0 && b[j - 1]!.k === "ch" && isIdChar((b[j - 1] as { c: string }).c)) j--;
+    // the run as the engine lexes it (`2pla` is 2·pla): its last token, if a name
+    const run = b.slice(j, i).map((a) => (a as { c: string }).c).join("");
+    const last = run ? lex(run).filter((t) => t.kind !== "eof").pop() : undefined;
+    if (last?.kind !== "id" || last.stop !== Array.from(run).length || !/^[A-Za-z_]/.test(last.s)) return null;
+    return { name: last.s, start: i - Array.from(last.s).length };
+  }
+
+  /** When the caret is in an index of a part: the cell's text up to the caret (as it will be written),
+   *  and what is being typed there (a word, or a name from its opening quote). */
+  partBefore(): { text: string; typed: string; start: number; quoted: boolean } | null {
+    const { block: b, i } = this.caret;
+    const w = this.where(b);
+    if (w?.atom.k !== "part") return null;
+    const part = w.atom;
+    const span = write(this.stmt).spans.get(part);
+    if (!span) return null;
+    const chars = (x: Block) => x.map((a) => (a.k === "ch" ? a.c : "")).join("");
+    const k = part.specs.indexOf(b);
+    const here = chars(b.slice(0, i));
+    const text = writeText(this.stmt).slice(0, span.start) + "[[" + part.specs.slice(0, k).map(chars).map((x) => x + ", ").join("") + here;
+    const q = here.lastIndexOf('"');
+    const quoted = (here.match(/"/g)?.length ?? 0) % 2 === 1;
+    if (quoted) return { text, typed: here.slice(q + 1), start: q, quoted };
+    const m = /[A-Za-z_][A-Za-z0-9_]*$/.exec(here);
+    return { text, typed: m?.[0] ?? "", start: i - (m?.[0].length ?? 0), quoted };
+  }
+
+  /** Put `insert` (a quoted name, `All`) in place of what is being typed in a part's index, and a
+   *  closing quote already there with it. */
+  completeIndex(insert: string): boolean {
+    const p = this.partBefore();
+    if (!p) return false;
+    return this.mutate("struct", () => {
+      const { block: b, i } = this.caret;
+      const closing = insert.startsWith('"') && b[i]?.k === "ch" && (b[i] as { c: string }).c === '"' ? 1 : 0;
+      b.splice(p.start, i - p.start + closing, ...chars(insert));
+      this.caret = { block: b, i: p.start + Array.from(insert).length };
+      return true;
+    });
+  }
+
+  /** Replace the name before the caret with `name` and (`call`) open its call, as typing the rest
+   *  and `(` would. */
+  completeName(name: string, call = true): boolean {
+    const p = this.nameBefore();
+    if (!p) return false;
+    return this.mutate("struct", () => {
+      const { block: b } = this.caret;
+      b.splice(p.start, p.name.length, ...chars(name));
+      this.caret = { block: b, i: p.start + Array.from(name).length };
+      return call ? this.typeOne("(") : true;
+    });
   }
 
   /** The `\name` just before the caret, if there is one: its text and where it starts. */

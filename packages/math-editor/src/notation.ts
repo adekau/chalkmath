@@ -45,6 +45,9 @@ export function toLatex(stmt: Stmt, opts: NotationOptions = {}): string {
   return new Notation(opts).block(stmt.body);
 }
 
+/** A character of a quoted name, as text (TeX's specials escaped). */
+const textChar = (c: string) => c === " " ? "\\ " : /[\\{}$%#&_^~]/.test(c) ? `\\text{\\char${c.codePointAt(0)}}` : `\\text{${c}}`;
+
 const charLatex = (c: string) => GREEK[c] ?? (c === "_" ? "\\_" : c === "'" ? "'" : c);
 
 type Token = { kind: "name" | "num" | "op"; atoms: Atom[] };
@@ -222,6 +225,11 @@ class Notation {
         return this.wrap([a], box + this.parens(this.block(a.body), a.open));
       }
       case "matrix": return this.wrap([a], this.matrix(a.rows, "bmatrix"));
+      // Part, as the engine prints it: m⟦2, 1;;3⟧
+      case "part": return this.wrap([a], `\\llbracket ${a.specs.map((x) => this.spec(x)).join(",\\,")}\\rrbracket `);
+      // text in quotes, each character its own (for the caret), and an attached file as a chip
+      case "str": return this.wrap([a], `\\text{“}${a.body.length ? a.body.map((x) => this.wrap([x], textChar((x as { c: string }).c))).join("") : this.hole(a.body)}\\text{”}`);
+      case "asset": return this.wrap([a], `\\htmlData{asset=1}{\\boxed{${Array.from(a.name).map(textChar).join("")}}}`);
       case "call": return this.wrap([a], this.call(a));
       case "let": {
         // `let f(x) =` names a function, so its name is a word like a call's; `let a =` names a value
@@ -231,6 +239,38 @@ class Notation {
         return this.wrap([a], `${kw}\\;${this.word(this.block(a.name))}${params}\\;=\\;`);
       }
     }
+  }
+
+  /** One index of a part, from its characters: positions and names as elsewhere, `All` upright, a
+   *  span's `;;`, a list's braces, and a name in quotes as text. */
+  private spec(b: Block): string {
+    if (!b.length) return this.hole(b);
+    let s = "";
+    let j = 0;
+    while (j < b.length) {
+      const a = b[j] as Atom & { k: "ch" };
+      if (a.c === '"') {
+        // the quoted name, up to and including its closing quote
+        let k = j + 1;
+        while (k < b.length && (b[k] as { c: string }).c !== '"') k++;
+        const inner = b.slice(j + 1, k) as (Atom & { k: "ch" })[];
+        s += this.wrap([a], "\\text{“}") + inner.map((x) => this.wrap([x], textChar(x.c))).join("");
+        if (k < b.length) s += this.wrap([b[k]!], "\\text{”}");
+        j = k + 1;
+        continue;
+      }
+      if (a.c === "{" || a.c === "}") { s += this.wrap([a], a.c === "{" ? "\\{" : "\\}"); j++; continue; }
+      if (a.c === ";") { s += this.wrap([a], "{;}"); j++; continue; }
+      if (a.c === ",") { s += this.wrap([a], ",\\,"); j++; continue; }
+      // a run of anything else reads as the engine's tokens do: names, numerals, a minus
+      const run: (Atom & { k: "ch" })[] = [];
+      while (j < b.length && !'"{};,'.includes((b[j] as { c: string }).c)) run.push(b[j++] as Atom & { k: "ch" });
+      s += tokens(run).map((t) => {
+        const text = t.atoms.map((x) => (x as { c: string }).c).join("");
+        return t.kind === "name" && text === "All" ? this.wrap(t.atoms, this.word("\\mathrm{All}")) : this.token(t);
+      }).join("");
+    }
+    return s;
   }
 
   private matrix(rows: Block[][], env: string): string {
@@ -292,7 +332,7 @@ function nameOf(b: Block): string | null {
  *  its own notation? Where it does not (`epicycles(llama, 60)`), the notebook's Auto mode keeps the
  *  cell as highlighted text. */
 export function hasNotation(b: Block): boolean {
-  return b.some((a) => a.k === "frac" || a.k === "sup" || a.k === "matrix" || (a.k === "call" && notated(a)) || slots(a).some(hasNotation));
+  return b.some((a) => a.k === "frac" || a.k === "sup" || a.k === "matrix" || a.k === "part" || (a.k === "call" && notated(a)) || slots(a).some(hasNotation));
 }
 
 /** Calls drawn in their own notation (d/dx, ∫, Σ, √, bars, …) rather than as `name(args)`; must
@@ -311,6 +351,9 @@ export function slots(a: Atom): Block[] {
     case "sup": return [a.exp];
     case "paren": return [a.body];
     case "matrix": return a.rows.flat();
+    case "part": return a.specs;
+    case "str": return [a.body];
+    case "asset": return [];
     case "let": return [a.name, ...(a.params ?? [])];
     case "call": {
       const b = a.args;

@@ -78,7 +78,9 @@ const symbolFor = (name: string) => SYMBOLS.find((s) => s.abbr === name || s.ali
  *  Not λ: a λ-cell is not the grammar the visual input reads, and stays raw. */
 const VISUAL_SYMBOLS: Record<string, string> = Object.fromEntries(
   SYMBOLS.filter((s) => s.sym !== "λ").flatMap((s) => [s.abbr, ...s.aliases].map((a) => [a, s.sym])));
-type CompItem = { kind: "doc"; doc: Doc } | { kind: "sym"; sym: Sym } | { kind: "tpl"; name: string; what: string; glyph: string }
+type CompItem = { kind: "doc"; doc: Doc }
+  /** A name bound in the session: a value, a file, or a function (which opens its call). */
+  | { kind: "name"; name: string; what: string; call: boolean } | { kind: "sym"; sym: Sym } | { kind: "tpl"; name: string; what: string; glyph: string }
   /** Inside `x[[…]]`: a column name, an object key or `All`, replacing what was typed from `start`. */
   | { kind: "part"; insert: string; label: string; hint: string; start: number };
 
@@ -165,6 +167,8 @@ interface Cell {
   /** A file-valued cell (`import("url")`, `⟦name⟧`, or `let x =` one of them): the file it shows,
    *  by what it is. The engine never sees it; the contents are the attachment's or the import's. */
   file?: FileMeta;
+  /** The suggestions bar under a file's output was dismissed for this cell. */
+  noSuggest?: boolean;
   /** λ-cells: the result with de Bruijn indices, and what it reads as (a Church numeral or boolean). */
   outDeBruijn?: string | undefined;
   reading?: string | undefined;
@@ -323,6 +327,8 @@ const S = {
   deBruijn: false,
   /** Show the engine's rendering of the parsed input under each cell (View menu). */
   showEcho: (() => { try { return localStorage.getItem("chalkmath.echo") !== "off"; } catch { return true; } })(),
+  /** The suggestions bar under a file's output (View › Suggestions bar). */
+  suggestions: prefOn("chalkmath.suggestions", true),
   /** How math cells take their input (View menu): typeset with holes to fill, as text, or Auto —
    *  typeset where there is notation to show (a fraction, a power, a matrix, d/dx, ∫, Σ, √),
    *  highlighted text where there is none (`epicycles(llama, 60)`). A cell's own choice wins. */
@@ -925,7 +931,7 @@ function renderTabs() {
 interface ChalkFile {
   /** Format version. Files written as `.lemma` before the rename carry `lemma: 1` instead and still open. */
   chalk?: 1; lemma?: 1; name: string;
-  cells: { src: string; type?: Cell["type"] | undefined; collapsed?: boolean | undefined; showWork: boolean; label: number | null; outLatex?: string | undefined; outText?: string | undefined; form?: string | undefined; semantics?: "real" | "complex" | undefined; echoLatex?: string | undefined; steps?: Step[] | undefined; error?: Cell["error"] | undefined; plot?: PlotData | undefined; mode?: Cell["mode"] | undefined; ask?: AskResult | undefined; file?: FileMeta | undefined }[];
+  cells: { src: string; type?: Cell["type"] | undefined; collapsed?: boolean | undefined; showWork: boolean; label: number | null; outLatex?: string | undefined; outText?: string | undefined; form?: string | undefined; semantics?: "real" | "complex" | undefined; echoLatex?: string | undefined; steps?: Step[] | undefined; error?: Cell["error"] | undefined; plot?: PlotData | undefined; mode?: Cell["mode"] | undefined; ask?: AskResult | undefined; file?: FileMeta | undefined; noSuggest?: true | undefined }[];
   scenes: Scene[];
   /** Images attached to the notebook, by name. */
   assets?: Record<string, Asset>;
@@ -946,7 +952,7 @@ function stepsToSave(c: Cell): Step[] | undefined {
 function serializeNotebook(): string {
   const doc: ChalkFile = {
     chalk: 1, name: S.docName,
-    cells: S.cells.map((c) => ({ src: cellSrc(c), type: c.type, collapsed: c.collapsed || undefined, showWork: c.showWork, label: c.label, outLatex: c.outLatex, outText: c.outText, form: c.form, semantics: c.semantics, echoLatex: c.echoLatex, steps: stepsToSave(c), error: c.error, plot: c.plot, mode: c.mode, ask: c.ask, file: c.file })),
+    cells: S.cells.map((c) => ({ src: cellSrc(c), type: c.type, collapsed: c.collapsed || undefined, showWork: c.showWork, label: c.label, outLatex: c.outLatex, outText: c.outText, form: c.form, semantics: c.semantics, echoLatex: c.echoLatex, steps: stepsToSave(c), error: c.error, plot: c.plot, mode: c.mode, ask: c.ask, file: c.file, noSuggest: c.noSuggest || undefined })),
     scenes: ST.scenes,
     ...(Object.keys(S.assets).length ? { assets: S.assets } : {}),
   };
@@ -1006,6 +1012,7 @@ function cellsFromFile(doc: ChalkFile, foldWork = false): Cell[] {
       if (origin) cell.file = { name: f.name, mime: f.mime, size: Number(f.size) || 0, origin };
     }
     if (c.mode === "raw" || c.mode === "visual") cell.mode = c.mode;
+    if (c.noSuggest) cell.noSuggest = true;
     const ask = savedAsk(c.ask);
     if (ask) cell.ask = ask;
     return cell;
@@ -1348,6 +1355,24 @@ interface FileMeta { name: string; mime: string; size: number; origin: FileValue
 
 /** Imports by URL, fetched once per page (a re-run does not fetch again). */
 const IMPORTS = new Map<string, FileValue>();
+/** The names bound in a session that start with `prefix`, for completions: what each is (a file and
+ *  its type and size, a matrix's shape, a function's parameters). */
+function sessionNames(sid: string, prefix: string): { name: string; what: string; call: boolean }[] {
+  const out: { name: string; what: string; call: boolean }[] = [];
+  const q = prefix.toLowerCase();
+  for (const k of USER_NAMES) {
+    if (!k.startsWith(`${sid}:`)) continue;
+    const name = k.slice(sid.length + 1);
+    if (!name.toLowerCase().startsWith(q)) continue;
+    const file = FILE_VARS.get(k), params = USER_FNS.get(k), shape = MATRIX_SHAPES.get(k);
+    const t = file && tabular(file);
+    const what = file ? `${mimeLabel(file.mime)}${t ? `, ${t.rows.length} × ${t.cols}` : ""}`
+      : params ? `${name}(${params.join(", ")})` : shape ? `${shape.rows}×${shape.cols} matrix` : "defined with let";
+    out.push({ name, what, call: !!params });
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+
 /** The shapes of names bound to matrices, keyed `session:name`, for completions inside `name[[`. */
 const MATRIX_SHAPES = new Map<string, { rows: number; cols: number }>();
 /** Names bound to files by `let x = import(…)`, keyed `session:name` like `USER_NAMES`. */
@@ -1447,7 +1472,7 @@ function insertAtCaret(cell: Cell, text: string) {
 
 /** How a file shows as an output, or in a Markdown cell: by what it is. `x` is what the cell calls
  *  it, for the functions the caption offers. */
-function fileView(f: FileValue, x: string, form?: string): { body: HTMLElement; cap: HTMLElement } {
+function fileView(f: FileValue, x: string, form?: string, suggest?: { run(code: string): void; dismiss(): void }): { body: HTMLElement; cap: HTMLElement } {
   const kind = kindOf(f);
   const cap = h("div", "plotcap filecap");
   let what = `${f.name} · ${mimeLabel(f.mime)} · ${fmtSize(fileSize(f))}`;
@@ -1473,12 +1498,24 @@ function fileView(f: FileValue, x: string, form?: string): { body: HTMLElement; 
     if (text.length > MAX) what += ` · the first ${fmtSize(MAX)} shown`;
   }
   if (kind !== "binary") cap.append(h("span", "epinote", what));   // a card says it already
-  const helpers = helpersFor(f, x);
+  // Mathematica's suggestions bar: what can be done with the file, each a short label that adds the
+  // code (its tooltip) as a cell below and runs it; × hides the bar for this cell
+  const helpers = suggest ? helpersFor(f, x) : [];
   if (helpers.length) {
-    const fns = h("span", "epinote");
-    fns.append("Try: ");
-    helpers.forEach((s, i) => { fns.append(h("code", undefined, s)); if (i < helpers.length - 1) fns.append(" · "); });
-    cap.append(fns);
+    const bar = h("div", "trybar");
+    bar.setAttribute("role", "toolbar"); bar.setAttribute("aria-label", "Suggestions");
+    for (const { label, code } of helpers) {
+      const chip = asButton(h("span", "trychip", label), `${label}: ${code}`);
+      chip.title = code;
+      chip.addEventListener("mousedown", (e) => e.preventDefault());
+      chip.addEventListener("click", () => suggest!.run(code));
+      bar.append(chip);
+    }
+    const x2 = asButton(h("span", "tryx", "×"), "Hide suggestions for this cell");
+    x2.title = "Hide suggestions for this cell (View › Suggestions bar hides them everywhere)";
+    x2.addEventListener("click", () => suggest!.dismiss());
+    bar.append(x2);
+    cap.append(bar);
   }
   return { body, cap };
 }
@@ -1506,7 +1543,7 @@ function attachFile() {
       const c = S.cells[S.active];
       if (c?.input && !c.type) { insertAtCaret(c, `⟦${name}⟧`); c.input.focus(); }
       // a file reference is not something the visual input shows: the cell goes back to text
-      else if (c?.mi) { c.mode = "raw"; c.src += `⟦${name}⟧`; focusCell(S.active); }
+      else if (c?.mi) { c.mi.apply((e) => e.insert({ k: "asset", name })); c.mi.focus(); }
       else if (c?.ta) { c.ta.setRangeText(`⟦${name}⟧`, c.ta.selectionStart, c.ta.selectionEnd, "end"); c.src = c.ta.value; c.ta.focus(); }
       else { const cell = addCell(`⟦${name}⟧`); renderSidebar(); focusCell(S.cells.indexOf(cell)); }
       notify("ok", `Attached ${name} (${Math.round(data.length / 1024)} KB): ⟦${name}⟧ refers to it`);
@@ -1522,8 +1559,8 @@ function onPaste(ev: ClipboardEvent, cell: Cell) {
   const dt = ev.clipboardData; if (!dt) return;
   const put = (name: string) => {
     if (cell.input) insertAtCaret(cell, `⟦${name}⟧`);
-    // a file reference is not something the visual input shows: the cell goes back to text
-    else if (cell.mi) { cell.mode = "raw"; cell.src = cellSrc(cell) + `⟦${name}⟧`; focusCell(S.cells.indexOf(cell)); }
+    // the visual input shows the file as a chip, where the caret is
+    else if (cell.mi) cell.mi.apply((e) => e.insert({ k: "asset", name }));
     else if (cell.ta) { cell.ta.setRangeText(`⟦${name}⟧`, cell.ta.selectionStart, cell.ta.selectionEnd, "end"); cell.src = cell.ta.value; cell.ta.dispatchEvent(new Event("input")); }
     renderHighlights(); autosave();
   };
@@ -1781,6 +1818,7 @@ function renderChrome() {
         renderChrome(); renderCells();
       }]),
       [`${S.keypad ? "✓ " : ""}Math keypad`, () => { S.keypad = !S.keypad; setPref("chalkmath.keypad", S.keypad); renderChrome(); updateKeypad(); }],
+      [`${S.suggestions ? "✓ " : ""}Suggestions bar`, () => { S.suggestions = !S.suggestions; setPref("chalkmath.suggestions", S.suggestions); renderChrome(); renderCells(); }],
       [`${S.showEcho ? "✓ " : ""}Input interpretation`, () => { S.showEcho = !S.showEcho; try { localStorage.setItem("chalkmath.echo", S.showEcho ? "on" : "off"); } catch { /* private mode */ } renderChrome(); renderCells(); }],
       [`${S.highlight ? "✓ " : ""}Syntax highlighting`, () => { S.highlight = !S.highlight; try { localStorage.setItem("chalkmath.highlight", S.highlight ? "on" : "off"); } catch { /* private mode */ } document.documentElement.classList.toggle("nohl", !S.highlight); renderHighlights(); renderChrome(); }],
       [`${S.sigHelp ? "✓ " : ""}Signature help`, () => { S.sigHelp = !S.sigHelp; try { localStorage.setItem("chalkmath.sighelp", S.sigHelp ? "on" : "off"); } catch { /* private mode */ } if (!S.sigHelp) hideSigHelp(); renderChrome(); }],
@@ -2257,7 +2295,10 @@ function pyExpr(text: string): string {
 // --- The visual input: math cells typeset as they are typed ---------------------------------------
 
 /** The functions this session has defined: after `let f(x) = …`, `f(` is a call. */
-const sessionFns = () => [...USER_FNS.keys()].filter((k) => k.startsWith(`${sessionId}:`)).map((k) => k.slice(sessionId.length + 1));
+/** The notebook's own functions, which act on files before the engine sees a cell (files.ts): calls
+ *  in the visual input as the engine's builtins are. */
+const NOTEBOOK_FNS = ["import", "samplePoints", "matrix", "dimensions"];
+const sessionFns = () => [...NOTEBOOK_FNS, ...[...USER_FNS.keys()].filter((k) => k.startsWith(`${sessionId}:`)).map((k) => k.slice(sessionId.length + 1))];
 
 /** Why a cell cannot be shown visually, or null when it can. λ-terms, order theory and file
  *  references are other grammars; so is text that does not parse, which stays as typed to be fixed. */
@@ -2269,7 +2310,6 @@ function visualBlocked(cell: Cell): string | null {
   if (kind === "lookup") return "questions are edited as text";
   if (kind === "λ-term") return "λ-terms are edited as text";
   if (kind === "order" || ORDER_CELL.test(src.trim())) return "order theory is edited as text";
-  if (kind === "file") return "file references are edited as text";
   if (src.trim() && !readNotation(src, sessionFns()).ok) return "the text does not parse yet";
   return null;
 }
@@ -2355,6 +2395,17 @@ function visualInput(cell: Cell, i: number): MathInput | null {
       return modeKey(ev, cell);
     },
     onPaste: (ev) => onPaste(ev, cell),
+    // in an index of a part: the column names or keys that can go there, and All
+    partNames: (before) => {
+      const part = partIn(cell, before);
+      if (!part) return [];
+      return [{ name: "All", what: "every position" }, ...part.help.names.map((n) => ({ name: n, what: part.help.namesAre ?? "name" }))];
+    },
+    // what a name being typed could be, as the text input lists them: the session's names, then functions
+    functions: (prefix) => [
+      ...sessionNames(docOf(cell)?.sessionId ?? sessionId, prefix),
+      ...DOCS.filter((d) => !d.notation && d.name.toLowerCase().startsWith(prefix.toLowerCase()) && /^[A-Za-z]/.test(d.name)).map((d) => ({ name: d.name, what: d.blurb.split(".")[0]!, call: true })),
+    ].slice(0, 9),
     // the text highlighter's colours: what a name is, and where it is bound
     classify: (text, as) => {
       if (as === "num") return "hnum";
@@ -3054,10 +3105,20 @@ function renderCellBody(cell: Cell) {
       val.append(box, cap);
     } else if (cell.file) {
       const f = fileOf(cell);
-      // what the cell calls the file, for the functions its caption offers
-      const x = /^\s*let\s+([A-Za-z_][A-Za-z0-9_]*)/.exec(cell.src)?.[1] ?? (/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*$/.exec(cell.src)?.[1] ?? cell.src.trim());
+      // what the cell calls the file, for its suggestions: its name, or its output's number
+      const x = /^\s*let\s+([A-Za-z_][A-Za-z0-9_]*)/.exec(cell.src)?.[1] ?? (/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*$/.exec(cell.src)?.[1] ?? (cell.label !== null ? `%${cell.label}` : cell.src.trim()));
       if (f) {
-        const { body, cap } = fileView(f, x, cell.form);
+        const suggest = S.suggestions && !cell.noSuggest ? {
+          run: (code: string) => {
+            const at = S.cells.indexOf(cell) + 1;
+            const c = freshCell(code, "math");
+            S.cells.splice(at, 0, c);
+            renderCells(); renderSidebar(); autosave();
+            void runCell(c);
+          },
+          dismiss: () => { cell.noSuggest = true; renderCellBody(cell); autosave(); },
+        } : undefined;
+        const { body, cap } = fileView(f, x, cell.form, suggest);
         val.append(body, cap);
       } else {
         // a saved output whose import this page has not fetched yet
@@ -4872,7 +4933,10 @@ function updateCompletions(cell: Cell) {
       for (const [name, t] of Object.entries(TEMPLATES)) if (name.toLowerCase().startsWith(q)) items.push({ kind: "tpl", name, what: t.what, glyph: t.glyph });
     }
   } else {
-    items = DOCS.filter((d) => !d.notation && d.name.toLowerCase().startsWith(word.toLowerCase()) && d.name !== word).map((doc) => ({ kind: "doc", doc }));
+    items = [
+      ...sessionNames(docOf(cell)?.sessionId ?? sessionId, word).filter((n) => n.name !== word).map((n) => ({ kind: "name" as const, ...n })),
+      ...DOCS.filter((d) => !d.notation && d.name.toLowerCase().startsWith(word.toLowerCase()) && d.name !== word).map((doc) => ({ kind: "doc" as const, doc })),
+    ];
   }
   if (!items.length) return hideCompletions();
   const r = input.getBoundingClientRect();
@@ -4912,7 +4976,8 @@ function acceptCompletion() {
     return true;
   }
   // a symbol abbreviation becomes the symbol itself; a function name opens its parenthesis
-  const insert = item.kind === "sym" ? item.sym.sym : item.doc.name + (after.startsWith("(") ? "" : "(");
+  const insert = item.kind === "sym" ? item.sym.sym : item.kind === "name" ? item.name + (item.call && !after.startsWith("(") ? "(" : "")
+    : item.doc.name + (after.startsWith("(") ? "" : "(");
   input.value = input.value.slice(0, start) + insert + after;
   const pos = start + insert.length;
   input.setSelectionRange(pos, pos);
@@ -4931,6 +4996,8 @@ function renderCompletions() {
     if (it.kind === "sym") {
       const s = it.sym;
       row.append(h("span", "n", `\\${s.abbr}${s.aliases.length ? ` (${s.aliases.map((a) => "\\" + a).join(", ")})` : ""}`), h("span", "h", s.what), h("span", "sym", s.sym));
+    } else if (it.kind === "name") {
+      row.append(h("span", "n", it.name), h("span", "h", it.what));
     } else if (it.kind === "part") {
       row.append(h("span", "n", it.label), h("span", "h", it.hint));
     } else if (it.kind === "tpl") {
@@ -5134,8 +5201,11 @@ function sigPieces(sig: string): SigPiece[] {
 /** Inside `x[[…]]` at the caret: what `x` is (a file, a part of one, or a bound matrix) and what the
  *  index being typed can be. */
 function partAt(cell: Cell, input: HTMLInputElement) {
-  const caret = input.selectionStart ?? input.value.length;
-  const ctx = partContext(input.value.slice(0, caret));
+  return partIn(cell, input.value.slice(0, input.selectionStart ?? input.value.length));
+}
+/** The same, given the cell's text up to the caret (a visual input writes it). */
+function partIn(cell: Cell, before: string) {
+  const ctx = partContext(before);
   if (!ctx) return null;
   const d = docOf(cell);
   const sid = d?.sessionId ?? sessionId;
@@ -5145,18 +5215,22 @@ function partAt(cell: Cell, input: HTMLInputElement) {
   return help ? { ctx, help } : null;
 }
 
+/** The signature line inside a part: its indices, the one at the caret bold, and what is in range. */
+function partSig(cell: Cell, key: string, { ctx, help }: NonNullable<ReturnType<typeof partIn>>) {
+  const pieces: SigPiece[] = [{ text: `${ctx.base}[[`, param: false }];
+  help.params.forEach((p, i) => { if (i) pieces.push({ text: ", ", param: false }); pieces.push({ text: p, param: true }); });
+  pieces.push({ text: "]]", param: false });
+  return { cell, key, sig: pieces.map((p) => p.text).join(""), blurb: help.blurb, arg: Math.min(ctx.arg, help.params.length - 1), pieces };
+}
+
 function updateSigHelp(cell: Cell) {
   const input = cell.input;
   if (!S.sigHelp || !input || document.activeElement !== input || ASK_CELL.test(input.value)) return hideSigHelp();
   const part = partAt(cell, input);
   if (part) {
-    const { ctx, help } = part;
-    const key = `${cell.id}:[[${ctx.base}`;
+    const key = `${cell.id}:[[${part.ctx.base}`;
     if (S.sigDismissed === key) return hideSigHelp();
-    const pieces: SigPiece[] = [{ text: `${ctx.base}[[`, param: false }];
-    help.params.forEach((p, i) => { if (i) pieces.push({ text: ", ", param: false }); pieces.push({ text: p, param: true }); });
-    pieces.push({ text: "]]", param: false });
-    S.sig = { cell, key, sig: pieces.map((p) => p.text).join(""), blurb: help.blurb, arg: Math.min(ctx.arg, help.params.length - 1), pieces };
+    S.sig = partSig(cell, key, part);
     return renderSigHelp();
   }
   const ctx = callContext(input);
@@ -5170,6 +5244,15 @@ function updateSigHelp(cell: Cell) {
 }
 /** Signature help for a visual input: the call around its caret that shows as `name(args)`. */
 function updateVisualSigHelp(cell: Cell) {
+  // in an index of a part: what can go there, as for the text input
+  const pb = S.sigHelp && cell.mi ? cell.mi.edit.partBefore() : null;
+  const part = pb && partIn(cell, pb.text);
+  if (part) {
+    const key = `${cell.id}:[[${part.ctx.base}`;
+    if (S.sigDismissed === key) return hideSigHelp();
+    S.sig = partSig(cell, key, part);
+    return renderSigHelp();
+  }
   const ctx = S.sigHelp && cell.mi ? cell.mi.edit.callContext() : null;
   const found = ctx && sigFor(ctx.name, ctx.firstArg, ctx.arg);
   if (!ctx || !found) { S.sigDismissed = null; return hideSigHelp(); }
