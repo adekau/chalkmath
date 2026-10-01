@@ -150,6 +150,12 @@ subsequence, then interpolated position and opacity, a browser-side stand-in for
 `TransformMatchingTex`), and prints the Python a Manim user would run. Rendering the video is
 Manim's job, outside the browser.
 
+**Help › Documentation** opens a tab beside the studio: a guide to the notebook (cells, input,
+reading the work, files, lookups and their set-up, Lean cells, the studio) and the reference pages.
+The pages are Markdown in `src/docs.ts`, drawn by the Markdown cells' renderer; the tables in them
+(the commands, the symbols and templates, the shortcuts, the example notebooks) are built from the
+lists the notebook itself uses, so they cannot drift from it.
+
 ## 4b. Lean cells
 
 A Lean cell is Lean 4 itself, checked as you type, in the browser: the VS Code editor with the Lean 4

@@ -507,16 +507,56 @@ table.keys kbd { font:11.5px var(--mono); color:var(--ink); background:var(--pan
 .difftip .was { opacity:0.7; }
 .katex [data-path].sel { background:var(--p-sel); box-shadow:0 0 0 1px var(--p-acc-2); }
 
-/* --- reference view ------------------------------------------------------- */
-.reference { flex:1; overflow-y:auto; min-height:0; padding:14px 14px 40px; }
-.refgrid { max-width:900px; display:flex; flex-direction:column; gap:10px; }
-.refcard { display:grid; grid-template-columns:minmax(0,200px) minmax(0,1fr); gap:20px; padding:16px; border-radius:11px; background:var(--panel); border:1px solid var(--border); }
-.refcard .rname { font-size:13.5px; font-weight:700; color:var(--ink); }
-.refcard .rsig { font-family:var(--mono); font-size:11px; color:var(--ink-mut); margin-top:4px; }
-.refcard .rblurb { font-size:12.5px; line-height:1.6; color:var(--ink-2); max-width:70ch; }
+/* --- documentation (Help › Documentation): contents beside a page on the paper -------- */
+.docs { flex:1; min-height:0; display:flex; }
+.docnav { flex:0 0 230px; width:230px; display:flex; flex-direction:column; min-height:0; background:var(--panel); border-right:1px solid var(--border); }
+.docsearch { margin:12px 12px 6px; padding:6px 9px; font-size:12px; color:var(--ink); background:var(--bg); border:1px solid var(--border); border-radius:6px; outline:none; }
+.docsearch:focus { border-color:var(--acc-soft-br); }
+.doclist { flex:1; overflow-y:auto; padding:0 8px 16px; }
+.docgroup { font-size:10px; font-weight:700; letter-spacing:0.09em; text-transform:uppercase; color:var(--ink-mut); padding:12px 8px 5px; }
+.docrow { font-size:12.5px; color:var(--ink-2); padding:5px 8px; border-radius:5px; cursor:pointer; }
+.docrow:hover { background:var(--hov); color:var(--ink); }
+.docrow.on { color:var(--acc-hi); background:var(--acc-soft-bg2); font-weight:600; }
+.docnone { font-size:12px; color:var(--ink-mut); padding:10px 8px; }
+.docmain { flex:1; min-width:0; overflow-y:auto; color:var(--p-ink);
+  background-color:var(--paper-bg); background-image:var(--paper-mottle), var(--paper-grain); background-attachment:local, local; background-size:300px 300px, 160px 160px; }
+.docmain::-webkit-scrollbar-thumb { background:var(--p-scroll); background-clip:content-box; }
+.docmain ::selection { background:var(--p-sel); }
+.docpage { max-width:840px; margin:0 auto; padding:26px 32px 60px; }
+.docpage .mdout { padding:0; max-width:76ch; }
+.docpage .mdout h1:first-child { margin-top:0.2em; }
+.docpage > * + * { margin-top:14px; }
+.doctry { display:flex; gap:7px; flex-wrap:wrap; align-items:center; }
+.doctry .lab { font-size:10px; font-weight:700; letter-spacing:0.09em; text-transform:uppercase; color:var(--p-mut); margin-right:3px; }
+.doctry button, .refcard .rex button { font-family:var(--mono); font-size:11px; color:var(--acc-hi); background:var(--acc-soft-bg); border:1px solid var(--acc-soft-br); border-radius:999px; padding:4px 11px; cursor:pointer; }
+.doctry button:hover, .refcard .rex button:hover { filter:brightness(1.16); }
+.docfilter { font-size:13px; color:var(--p-mut); margin:0 0 12px; }
+.docpage .link { color:var(--p-acc); }
+table.doctable { border-collapse:collapse; font-size:14px; }
+table.doctable th { text-align:left; font-size:10px; font-weight:700; letter-spacing:0.09em; text-transform:uppercase; color:var(--p-mut); padding:0 18px 6px 0; }
+table.doctable td { padding:6px 18px 6px 0; vertical-align:top; color:var(--p-ink-2); border-top:1px solid var(--p-br-out); }
+table.doctable td.mono { font-family:var(--code); font-size:12.5px; color:var(--p-ink); white-space:pre; }
+.docpage table.keys kbd { color:var(--p-ink); background:var(--p-input-bg); border-color:var(--p-input-br); }
+.docfoot { display:flex; gap:12px; margin-top:40px; }
+.docstep { flex:1 1 0; display:flex; flex-direction:column; gap:3px; padding:10px 14px; border-radius:8px; border:1px solid var(--p-br-out); cursor:pointer; }
+.docstep:hover { border-color:var(--p-acc-br); background:var(--p-hov); }
+.docstep.next { text-align:right; }
+.docstep .dir { font-size:11px; color:var(--p-mut); }
+.docstep .t { font-size:14px; color:var(--p-ink-strong); }
+.refgrid { display:flex; flex-direction:column; gap:10px; }
+.refcard { display:grid; grid-template-columns:minmax(0,190px) minmax(0,1fr); gap:20px; padding:16px; border-radius:11px; background:var(--p-input-bg); border:1px solid var(--p-br-out); scroll-margin-top:16px; }
+.refcard .rname { font-size:13.5px; font-weight:700; color:var(--p-ink-strong); }
+.refcard .rsig { font-family:var(--code); font-size:11px; color:var(--p-mut); margin-top:4px; overflow-wrap:anywhere; }
+.refcard .rblurb { font-size:13px; line-height:1.6; color:var(--p-ink-2); max-width:70ch; }
 .refcard .rex { display:flex; gap:7px; flex-wrap:wrap; margin-top:11px; }
-.refcard .rex button { font-family:var(--mono); font-size:11px; color:var(--acc-hi); background:var(--acc-soft-bg); border:1px solid var(--acc-soft-br); border-radius:999px; padding:4px 11px; cursor:pointer; }
-.refcard .rex button:hover { filter:brightness(1.16); }
+.refcard .rlink { display:inline-block; margin-top:10px; font-size:11.5px; color:var(--p-acc); }
+.refcard.docex { cursor:pointer; }
+.refcard.docex:hover { border-color:var(--p-acc-br); }
+.refcard.flash { animation:doc-flash 1.8s ease-out; }
+@keyframes doc-flash { from { box-shadow:0 0 0 2px var(--p-acc); } to { box-shadow:0 0 0 2px transparent; } }
+.link { color:var(--acc-hi); cursor:pointer; }
+.link:hover { text-decoration:underline; }
+.sellinks { margin-top:10px; font-size:11.5px; }
 
 /* --- Manim Studio --------------------------------------------------------- */
 .studio { flex:1; min-height:0; display:flex; flex-direction:column; }
@@ -691,6 +731,15 @@ table.keys kbd { font:11.5px var(--mono); color:var(--ink); background:var(--pan
   .step.sub { margin-left:0 !important; }
   .explain { grid-template-columns:minmax(0,1fr); }
   .refcard { grid-template-columns:minmax(0,1fr); gap:8px; }
+  /* the contents become a strip above the page */
+  .docs { flex-direction:column; }
+  .docnav { flex:0 0 auto; width:auto; border-right:0; border-bottom:1px solid var(--border); }
+  .docsearch { margin:8px 10px 4px; }
+  .doclist { display:flex; gap:2px; overflow-x:auto; scrollbar-width:none; padding:0 8px 6px; }
+  .docgroup { display:none; }
+  .docrow { flex:0 0 auto; white-space:nowrap; }
+  .docpage { padding:16px 16px 40px; }
+  .docfoot { flex-direction:column; }
   .statusbar { display:none; }
   .studio-top { flex-direction:column; }
   .shots { width:auto; flex:0 0 auto; max-height:35vh; }

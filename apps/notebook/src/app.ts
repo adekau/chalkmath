@@ -21,6 +21,7 @@ import katex from "katex";
 import { ASK_CELL, AskError, askSettings, setAskSettings, runLookup, askSource, savedAsk, backendStatus, ollamaModels, openrouterModels, signInOpenRouter, testModel, WEBGPU_MODELS, type AskResult, type AskSettings } from "./ask-cells.js";
 import { fileCellOf, resolveFiles, importsIn, partContext, partHelp, fileExprValue, svgPoints, kindOf, tableOf, jsonOf, jsonTable, numericColumns, fileText, fileSize, fmtSize, mimeLabel, mimeFor, dataUrl, fileFromBytes, helpersFor, type FileValue, type FileRef, type FileScope, type Table } from "./files.js";
 import { dataGrid, matrixEntries } from "./datagrid.js";
+import { DOC_PAGES, type DocPage, type DocPart } from "./docs.js";
 import { ensureLean, syncLean, mountLean, unmountLean, focusLean, infoview as leanInfoview, leanState, leanFailure, leanProgress, initLeanIsolation, type LeanMessage } from "./lean-cells.js";
 /** The one trusted KaTeX command is `\htmlData`, which carries the engine's subterm paths. LaTeX can
  *  come from a file someone else wrote (saved outputs render before any re-run), and a blanket
@@ -275,7 +276,7 @@ interface LogLine { time: string; level: "rpc" | "ok" | "err"; text: string }
 interface Shot { id: number; label: string; tex: string; anim: string; dur: number; note: string; on: boolean; cell: number | null; plot?: PlotData }
 interface Scene { id: number; name: string; shots: Shot[] }
 
-type Tab = "notebook" | "studio" | "reference";
+type Tab = "notebook" | "studio" | "docs";
 
 /** One open notebook: its cells, its studio scenes and its own engine session. The globals below
  *  (`S.cells`, `S.docName`, `ST.scenes`, `sessionId`) are views of the current one; `stashDoc` and
@@ -375,6 +376,8 @@ const S = {
   /** Developer mode (Help menu, or `?dev` in the address): the kernel picker (wasm / HTTP), the
    *  kernel log, and the rule count in the status bar. */
   dev: prefOn("chalkmath.dev", false) || new URLSearchParams(location.search).has("dev"),
+  /** Help › Documentation: whether its tab is open, the page shown, and the contents' search. */
+  guide: { open: false, page: "start", query: "" },
   studio: { scenes: [] as Scene[], active: 0, playing: false, t: 0, speed: 1, codeOpen: true, copied: false },
 };
 
@@ -904,7 +907,8 @@ function closeDoc(i: number) {
   autosave();
 }
 
-/** The tab bar: one tab per open notebook (italic with a star while unsaved), then the studio and the reference. */
+/** The tab bar: one tab per open notebook (italic with a star while unsaved), then the studio, then
+ *  the documentation while it is open (Help › Documentation; its × closes it). */
 function renderTabs() {
   const tabs = $(".tabbar"); tabs.innerHTML = "";
   S.docs.forEach((d, i) => {
@@ -921,10 +925,15 @@ function renderTabs() {
     t.addEventListener("click", () => { if (i !== S.doc) loadDoc(i); switchTab("notebook"); });
     tabs.append(t);
   });
-  for (const [key, label] of [["studio", "manim studio"], ["reference", "reference"]] as const) {
+  for (const [key, label] of [["studio", "manim studio"], ...(S.guide.open ? [["docs", "documentation"] as const] : [])] as const) {
     const t = asButton(h("div", `tab${S.tab === key ? " on" : ""}`), label);
     t.setAttribute("aria-current", String(S.tab === key));
     t.append(h("span", "label", label));
+    if (key === "docs") {
+      const x = asButton(h("span", "x", "×"), "Close the documentation"); x.title = "Close";
+      x.addEventListener("click", (ev) => { ev.stopPropagation(); closeDocs(); });
+      t.append(x);
+    }
     t.addEventListener("click", () => switchTab(key));
     tabs.append(t);
   }
@@ -1761,7 +1770,7 @@ function shell() {
       const side = h("aside", "sidebar"); side.setAttribute("aria-label", "Sidebar");
       body.append(rail, side, (() => {
         const main = h("div", "main"); main.setAttribute("role", "main");
-        main.append(h("div", "toolbar"), h("div", "notice"), h("div", "cells"), h("div", "reference"), h("div", "studio"), h("div", "panel"));
+        main.append(h("div", "toolbar"), h("div", "notice"), h("div", "cells"), h("div", "docs"), h("div", "studio"), h("div", "panel"));
         return main;
       })());
       return body;
@@ -1808,8 +1817,8 @@ function renderChrome() {
       ["Lookup settings…", () => void showAskSettings()]],
     Kernel: [...(S.running ? [["Interrupt", () => void interrupt()] as [string, () => void]] : []),
       ["Restart kernel", () => void restartKernel()], ["Restart and run all", async () => { await restartKernel(); await runAll(); }]],
-    Help: [["Welcome notebook", () => void openExample("welcome.chalk")], ["Example notebooks…", showExamples], ["Keyboard shortcuts", showShortcuts],
-      ["Reference", () => switchTab("reference")], ["Manim Studio", () => switchTab("studio")], ["About ChalkMath", showAbout],
+    Help: [["Documentation", () => openDocs()], ["Welcome notebook", () => void openExample("welcome.chalk")], ["Example notebooks…", showExamples], ["Keyboard shortcuts", showShortcuts],
+      ["Manim Studio", () => switchTab("studio")], ["About ChalkMath", showAbout],
       [`${S.dev ? "✓ " : ""}Developer mode`, () => { S.dev = !S.dev; setPref("chalkmath.dev", S.dev); if (!S.dev && S.panelTab === "log") S.panelTab = "explain"; renderChrome(); renderPanelHead(); renderPanel(); }]],
   };
   const names = Object.keys(MENUS);
@@ -1874,7 +1883,9 @@ function renderChrome() {
     b.addEventListener("click", () => { if (on) toggleSidebar(); else { S.rail = key; if (!S.sidebarOpen) toggleSidebar(); else { renderChrome(); renderSidebar(); } } });
     rail.append(b);
   }
-  $(".sidebar").hidden = !S.sidebarOpen;
+  // the documentation has its own contents: the notebook's outline and commands step aside
+  rail.hidden = S.tab === "docs";
+  $(".sidebar").hidden = !S.sidebarOpen || S.tab === "docs";
 
   // toolbar
   const tl = $(".toolbar"); tl.innerHTML = "";
@@ -1954,11 +1965,11 @@ function toggleSidebar() {
 function renderView() {
   $(".cells").hidden = S.tab !== "notebook";
   renderNotice();
-  $(".toolbar").hidden = S.tab === "studio";
-  $(".reference").hidden = S.tab !== "reference";
+  $(".toolbar").hidden = S.tab !== "notebook";
+  $(".docs").hidden = S.tab !== "docs";
   $(".studio").hidden = S.tab !== "studio";
-  $(".panel").hidden = S.tab === "studio";
-  if (S.tab === "reference") renderReference();
+  $(".panel").hidden = S.tab !== "notebook";
+  if (S.tab === "docs") renderDocs();
   if (S.tab === "studio") renderStudio();
 }
 
@@ -3688,38 +3699,215 @@ function toggleCellMenu(cell: Cell, anchor: HTMLElement) {
 }
 function closeCellMenu() { document.querySelectorAll(".cellmenu").forEach((m) => m.remove()); }
 
-function renderReference() {
-  const host = $(".reference"); host.innerHTML = "";
-  const grid = h("div", "refgrid");
-  for (const d of DOCS) {
-    const card = h("div", "refcard");
-    const left = h("div");
-    left.append(h("div", "rname", d.name), h("div", "rsig", d.sig));
-    const right = h("div");
-    right.append(h("div", "rblurb", d.blurb));
-    const ex = h("div", "rex");
-    for (const e of d.examples) {
-      const b = document.createElement("button"); b.textContent = e;
-      b.addEventListener("click", () => {
-        switchTab("notebook");
-        const c = S.cells[S.cells.length - 1] ?? addCell();
-        c.src = e;
-        if (c.input) { c.input.value = e; syncHighlight(c); }
-        focusCell(S.cells.indexOf(c)); void runCell(c);
-      });
-      ex.append(b);
+// --- Help › Documentation (docs.ts): the contents beside the page shown ---------------------------
+
+/** Open the documentation's tab on a page (the one last shown by default), scrolled to `anchor`. */
+function openDocs(page = S.guide.page, anchor?: string) {
+  S.guide.open = true;
+  S.guide.page = DOC_PAGES.some((p) => p.id === page) ? page : "start";
+  docsAnchor = anchor ?? null;
+  switchTab("docs");
+}
+/** Where the page opened by `openDocs` scrolls to (a command's entry), once. */
+let docsAnchor: string | null = null;
+function closeDocs() {
+  S.guide.open = false;
+  if (S.tab === "docs") switchTab("notebook"); else renderTabs();
+}
+
+/** Run an example: in the last cell when it is an empty math cell, else in a new one at the end. */
+function tryInNotebook(src: string) {
+  switchTab("notebook");
+  const last = S.cells[S.cells.length - 1];
+  let c: Cell;
+  if (last && !last.type && !cellSrc(last).trim()) { c = last; c.src = src; delete c.tree; renderCells(); }
+  else c = addCell(src);
+  focusCell(S.cells.indexOf(c)); void runCell(c);
+}
+
+/** What a `#do:` link in the documentation does. */
+const DOC_ACTIONS: Record<string, () => void> = {
+  "ask-settings": () => void showAskSettings(),
+  welcome: () => void openExample("welcome.chalk"),
+};
+
+/** A page's text, for the contents' search: its Markdown and the tables it shows. */
+function docText(p: DocPage): string {
+  return [p.title, ...p.parts.map((part) => typeof part === "string" ? part : "try" in part ? part.try.join(" ") : {
+    functions: DOCS.map((d) => `${d.name} ${d.sig} ${d.blurb}`).join(" "),
+    symbols: SYMBOLS.map((s) => `${s.abbr} ${s.aliases.join(" ")} ${s.what}`).join(" ") + Object.entries(TEMPLATES).map(([k, t]) => `${k} ${t.what}`).join(" "),
+    shortcuts: SHORTCUTS.flat().join(" "),
+    examples: EXAMPLES.map((e) => `${e.title} ${e.blurb}`).join(" "),
+  }[part.insert])].join(" ").toLowerCase();
+}
+const queryWords = (q: string) => q.toLowerCase().split(/\s+/).filter(Boolean);
+const docMatches = (text: string, q: string) => queryWords(q).every((w) => text.includes(w));
+
+function renderDocs() {
+  const host = $(".docs"); host.innerHTML = "";
+  const nav = h("nav", "docnav"); nav.setAttribute("aria-label", "Documentation contents");
+  const search = document.createElement("input");
+  search.type = "search"; search.className = "docsearch"; search.placeholder = "Search the documentation"; search.value = S.guide.query;
+  search.setAttribute("aria-label", "Search the documentation"); search.spellcheck = false;
+  const list = h("div", "doclist");
+  const fillList = () => {
+    list.innerHTML = "";
+    const q = S.guide.query.trim();
+    const shown = DOC_PAGES.filter((p) => !q || docMatches(docText(p), q));
+    let group = "";
+    for (const p of shown) {
+      if (p.group !== group) { group = p.group; list.append(h("div", "docgroup", group)); }
+      const row = asButton(h("div", `docrow${p.id === S.guide.page ? " on" : ""}`, p.title));
+      row.setAttribute("aria-current", String(p.id === S.guide.page));
+      row.addEventListener("click", () => openDocs(p.id));
+      list.append(row);
     }
-    right.append(ex);
-    if (d.ref) {
-      const a = document.createElement("a");
-      a.href = d.ref; a.target = "_blank"; a.rel = "noreferrer"; a.textContent = "Reference entry ↗";
-      a.style.cssText = "display:inline-block; margin-top:10px; font-size:11.5px";
-      right.append(a);
+    if (!shown.length) list.append(h("div", "docnone", "Nothing matches."));
+    // on a phone the contents are a strip: the page shown stays in view
+    requestAnimationFrame(() => list.querySelector(".docrow.on")?.scrollIntoView({ block: "nearest", inline: "nearest" }));
+  };
+  search.addEventListener("input", () => {
+    S.guide.query = search.value; fillList();
+    if (S.guide.page === "functions") renderDocPage(main);   // the commands narrow as you type
+  });
+  search.addEventListener("keydown", (ev) => {
+    if (ev.key !== "Enter") return;
+    const first = DOC_PAGES.find((p) => docMatches(docText(p), S.guide.query));
+    if (first) openDocs(first.id);
+  });
+  fillList();
+  nav.append(search, list);
+  const main = h("div", "docmain");
+  // links between pages, and to parts of the notebook, stay in the page
+  main.addEventListener("click", (ev) => {
+    const a = (ev.target as Element).closest?.("a");
+    const href = a?.getAttribute("href") ?? "";
+    const m = /^#(doc|do):([\w-]+)(?:\/(.+))?$/.exec(href);
+    if (!m) return;
+    ev.preventDefault();
+    if (m[1] === "do") DOC_ACTIONS[m[2]!]?.();
+    else openDocs(m[2]!, m[3]);
+  });
+  host.append(nav, main);
+  renderDocPage(main);
+}
+
+function renderDocPage(main: HTMLElement) {
+  main.innerHTML = "";
+  const i = Math.max(0, DOC_PAGES.findIndex((p) => p.id === S.guide.page));
+  const page = DOC_PAGES[i]!;
+  const art = h("article", "docpage");
+  for (const part of page.parts) art.append(docPart(part));
+  // the pages read in order: the one before and after
+  const foot = h("div", "docfoot");
+  const step = (j: number, dir: string) => {
+    const p = DOC_PAGES[j];
+    if (!p) { foot.append(h("span")); return; }
+    const b = asButton(h("div", `docstep ${dir}`));
+    b.append(h("span", "dir", dir === "prev" ? "← Previous" : "Next →"), h("span", "t", p.title));
+    b.addEventListener("click", () => openDocs(p.id));
+    foot.append(b);
+  };
+  step(i - 1, "prev"); step(i + 1, "next");
+  art.append(foot);
+  main.append(art);
+  const target = docsAnchor ? art.querySelector<HTMLElement>(`[data-anchor="${CSS.escape(docsAnchor)}"]`) : null;
+  docsAnchor = null;
+  if (target) { target.scrollIntoView({ block: "start" }); target.classList.add("flash"); }
+  else main.scrollTop = 0;
+}
+
+function docPart(part: DocPart): HTMLElement {
+  if (typeof part === "string") return mdRender(part.replaceAll("{origin}", location.origin));
+  if ("try" in part) {
+    const row = h("div", "doctry");
+    row.append(h("span", "lab", "Try"));
+    for (const e of part.try) {
+      const b = document.createElement("button"); b.textContent = e; b.title = "Run this in the notebook";
+      b.addEventListener("click", () => tryInNotebook(e));
+      row.append(b);
     }
-    card.append(left, right);
-    grid.append(card);
+    return row;
   }
-  host.append(grid);
+  switch (part.insert) {
+    case "functions": {
+      const q = S.guide.query.trim();
+      const shown = DOCS.filter((d) => !q || docMatches(`${d.name} ${d.sig} ${d.blurb}`.toLowerCase(), q));
+      const box = h("div");
+      if (q) {
+        const note = h("p", "docfilter", `${shown.length} of ${DOCS.length} match “${q}”. `);
+        const all = asButton(h("span", "link", "Show all"));
+        all.addEventListener("click", () => { S.guide.query = ""; renderDocs(); });
+        note.append(all); box.append(note);
+      }
+      const grid = h("div", "refgrid");
+      for (const d of shown) grid.append(refCard(d));
+      box.append(grid);
+      return box;
+    }
+    case "symbols": {
+      const box = h("div");
+      const t = h("table", "doctable");
+      t.append(docRow(["Type", "For", ""], "th"));
+      for (const s of SYMBOLS) t.append(docRow([[s.abbr, ...s.aliases].map((a) => `\\${a}`).join("  "), s.sym, s.what]));
+      box.append(t, mdRender("## Templates\n\nIn a typeset cell these insert a shape with slots to fill (Tab goes to the next one); in a text cell, they turn the cell typeset."));
+      const t2 = h("table", "doctable");
+      t2.append(docRow(["Type", "For", ""], "th"));
+      for (const [k, tpl] of Object.entries(TEMPLATES)) t2.append(docRow([`\\${k}`, tpl.glyph, tpl.what]));
+      box.append(t2);
+      return box;
+    }
+    case "shortcuts": {
+      const t = h("table", "keys doctable");
+      for (const [k, what] of SHORTCUTS) {
+        const tr = h("tr"); const kd = h("td"); kd.append(h("kbd", undefined, k));
+        tr.append(kd, h("td", undefined, what)); t.append(tr);
+      }
+      return t;
+    }
+    case "examples": {
+      const list = h("div", "refgrid");
+      for (const ex of EXAMPLES) {
+        const card = asButton(h("div", "refcard docex"));
+        const left = h("div"); left.append(h("div", "rname", ex.title));
+        const right = h("div"); right.append(h("div", "rblurb", ex.blurb));
+        card.append(left, right);
+        card.addEventListener("click", () => void openExample(ex.file));
+        list.append(card);
+      }
+      return list;
+    }
+  }
+}
+function docRow(cells: string[], tag = "td"): HTMLElement {
+  const tr = h("tr");
+  cells.forEach((c, i) => tr.append(h(tag, i === 0 && tag === "td" ? "mono" : undefined, c)));
+  return tr;
+}
+
+/** A command's entry: its signature, what it does, and examples that run in the notebook. */
+function refCard(d: Doc): HTMLElement {
+  const card = h("div", "refcard");
+  card.dataset["anchor"] = d.name;
+  const left = h("div");
+  left.append(h("div", "rname", d.name), h("div", "rsig", d.sig));
+  const right = h("div");
+  right.append(h("div", "rblurb", d.blurb));
+  const ex = h("div", "rex");
+  for (const e of d.examples) {
+    const b = document.createElement("button"); b.textContent = e; b.title = "Run this in the notebook";
+    b.addEventListener("click", () => tryInNotebook(e));
+    ex.append(b);
+  }
+  right.append(ex);
+  if (d.ref) {
+    const a = document.createElement("a");
+    a.href = d.ref; a.target = "_blank"; a.rel = "noreferrer"; a.textContent = "Reference entry ↗";
+    a.className = "rlink";
+    right.append(a);
+  }
+  card.append(left, right);
+  return card;
 }
 
 function renderPanelHead() {
@@ -3848,11 +4036,17 @@ function renderPanel() {
   c1.append(h("p", undefined, doc
     ? `${doc.blurb} This occurrence is ${where}; the engine located it by the path recorded when the term was printed.`
     : `Rendered as ${sel.text}, ${where}. The engine located this subterm by the path recorded when the term was printed, so the selection and the derivation refer to the same node.`));
-  if (doc?.ref) {
-    const a = document.createElement("a");
-    a.href = doc.ref; a.target = "_blank"; a.rel = "noreferrer"; a.textContent = "Definition and identities ↗";
-    a.style.cssText = "display:inline-block; margin-top:10px; font-size:11.5px";
-    c1.append(a);
+  if (doc) {
+    const links = h("div", "sellinks");
+    const more = asButton(h("span", "link", "In the documentation"));
+    more.addEventListener("click", () => openDocs("functions", doc.name));
+    links.append(more);
+    if (doc.ref) {
+      const a = document.createElement("a");
+      a.href = doc.ref; a.target = "_blank"; a.rel = "noreferrer"; a.textContent = "Definition and identities ↗";
+      links.append(" · ", a);
+    }
+    c1.append(links);
   }
   grid.append(c1);
 
