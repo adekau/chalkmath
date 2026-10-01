@@ -326,7 +326,8 @@ const S = {
   running: null as Cell | null,
   /** The cell that was running when the engine failed: a restart rebuilds the session up to it. */
   crashed: null as Cell | null,
-  comp: null as { cell: Cell; items: CompItem[]; index: number; x: number; y: number } | null,
+  /** `picked`: a row was chosen with the arrows, so Enter takes it rather than running the cell. */
+  comp: null as { cell: Cell; items: CompItem[]; index: number; picked: boolean; x: number; y: number } | null,
   /** Signature help: the call the caret is inside, and which argument it is in (View menu toggles it). */
   sig: null as { cell: Cell; key: string; sig: string; blurb: string; arg: number } | null,
   /** A call site dismissed with Esc stays quiet until the caret leaves it. */
@@ -4391,7 +4392,7 @@ function updateCompletions(cell: Cell) {
   }
   if (!items.length) return hideCompletions();
   const r = input.getBoundingClientRect();
-  S.comp = { cell, items: items.slice(0, 9), index: 0, x: r.left + 8, y: r.bottom + 4 };
+  S.comp = { cell, items: items.slice(0, 9), index: 0, picked: false, x: r.left + 8, y: r.bottom + 4 };
   renderCompletions();
 }
 
@@ -4444,7 +4445,7 @@ function renderCompletions() {
     row.addEventListener("mouseenter", () => { S.comp!.index = i; renderCompletions(); });
     box.append(row);
   });
-  box.append(h("div", "compfoot", "Tab or Enter to accept · Esc to dismiss"));
+  box.append(h("div", "compfoot", S.comp.items[0]!.kind === "doc" ? "Tab to accept · ↑↓ then Enter · Esc to dismiss" : "Tab or Enter to accept · Esc to dismiss"));
   document.body.append(box);
 }
 
@@ -4697,9 +4698,13 @@ function onKey(ev: KeyboardEvent, cell: Cell, i: number) {
     if (openTemplate(cell, input.value.slice(0, at), input.value.slice(input.selectionEnd ?? at))) { ev.preventDefault(); hideCompletions(); return; }
   }
   if (S.comp) {
-    if (ev.key === "ArrowDown") { ev.preventDefault(); S.comp.index = (S.comp.index + 1) % S.comp.items.length; return renderCompletions(); }
-    if (ev.key === "ArrowUp") { ev.preventDefault(); S.comp.index = (S.comp.index - 1 + S.comp.items.length) % S.comp.items.length; return renderCompletions(); }
-    if (ev.key === "Tab" || ev.key === "Enter") { ev.preventDefault(); acceptCompletion(); return; }
+    if (ev.key === "ArrowDown") { ev.preventDefault(); S.comp.picked = true; S.comp.index = (S.comp.index + 1) % S.comp.items.length; return renderCompletions(); }
+    if (ev.key === "ArrowUp") { ev.preventDefault(); S.comp.picked = true; S.comp.index = (S.comp.index - 1 + S.comp.items.length) % S.comp.items.length; return renderCompletions(); }
+    if (ev.key === "Tab") { ev.preventDefault(); acceptCompletion(); return; }
+    // Enter takes a row only once one is picked (or for a `\` abbreviation, which cannot run as typed):
+    // `d` then Enter runs `d`, not `diff(`
+    if (ev.key === "Enter" && (S.comp.picked || currentWord(cell.input!).word.startsWith("\\"))) { ev.preventDefault(); acceptCompletion(); return; }
+    if (ev.key === "Enter") hideCompletions();
     if (ev.key === "Escape") { ev.preventDefault(); return hideCompletions(); }
   }
   if (ev.key === "Escape" && S.sig) { ev.preventDefault(); return dismissSigHelp(); }
