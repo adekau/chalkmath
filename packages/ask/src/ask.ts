@@ -151,8 +151,14 @@ const PICK_SCHEMA = {
       properties: { column: { type: "integer" }, min: { type: ["number", "null"] }, max: { type: ["number", "null"] } },
       required: ["column", "min", "max"],
     },
+    match: {
+      type: "object",
+      properties: { column: { type: "integer" }, text: { type: "string" } },
+      required: ["column", "text"],
+    },
+    count: { type: "boolean" },
   },
-  required: ["table", "columns", "label", "filter"],
+  required: ["table", "columns", "label", "filter", "match", "count"],
 } as const;
 
 const PICK_SYSTEM = `You choose which table answers a question. Each table is shown with its numbered columns and its first and last rows.
@@ -160,7 +166,12 @@ Reply with JSON only:
 - table: the number of the table that best answers the question, or -1 if none has the data.
 - columns: column numbers from that table, one for each column the answer needs, in the answer's order. Use only columns that hold numbers.
 - label: the number of a text column that names each row (like a team or country) when rows are not keyed by a number, else -1.
-- filter: which rows to keep: column is a number column to filter on (like the year), or -1 to keep all rows; min and max bound it (null for no bound). For "the last 20 years" in 2026 that is min 2006, max 2025.`;
+- filter: which rows to keep by a number: column is a number column to filter on (like the year), or -1 to keep all rows; min and max bound it (null for no bound). For "the last 20 years" in 2026 that is min 2006, max 2025.
+- match: which rows to keep by their text: column is a text column, text a short word from the question that the row must contain. For "what years did the Tigers win the World Series" in a table of champions: the winning team's column and "Tigers". Else column -1 and text "".
+- count: true when the question asks how many rows there are ("how many titles", "the number of wins"): the answer is then the number of rows kept, and columns may be empty. Else false.
+
+Example. Question: "how many World Series have the Tigers won". Table 0 has columns 0: Year; 1: Winning team [text]; 2: Losing team [text].
+Reply: {"table": 0, "columns": [0], "label": -1, "filter": {"column": -1, "min": null, "max": null}, "match": {"column": 1, "text": "Tigers"}, "count": true}`;
 
 const EXTRACT_SCHEMA = {
   type: "object",
@@ -268,17 +279,33 @@ export function preview(t: Table, i: number, page: Page): string {
 
 /** Build the answer from a chosen table: the chosen columns of the rows the filter keeps, each value
  *  read from the cell's own text. A row with a value that is not a number is left out, and said. */
-export function fromTable(t: Table, pick: { columns: number[]; label: number; filter: { column: number; min: number | null; max: number | null } }):
-  { rows: string[][]; labels: string[]; skipped: number } {
+export interface TablePick {
+  columns: number[];
+  label: number;
+  filter: { column: number; min: number | null; max: number | null };
+  /** Keep only rows whose cell in `column` contains `text` (any case). */
+  match?: { column: number; text: string } | null;
+}
+
+/** The rows of a table a pick keeps: in the filter's range, and containing the match's text. */
+export function keptRows(t: Table, pick: Pick<TablePick, "filter" | "match">): string[][] {
+  const f = pick.filter, m = pick.match;
+  const want = m ? norm(m.text) : "";
+  return t.rows.filter((r) => {
+    if (f.column >= 0) {
+      const k = leadingNumber(r[f.column] ?? "");
+      if (k === null || (f.min !== null && k < f.min) || (f.max !== null && k > f.max)) return false;
+    }
+    return !m || norm(r[m.column] ?? "").includes(want);
+  });
+}
+
+export function fromTable(t: Table, pick: TablePick): { rows: string[][]; labels: string[]; skipped: number } {
   const rows: string[][] = [];
   const labels: string[] = [];
   let skipped = 0;
   const f = pick.filter;
-  for (const r of t.rows) {
-    if (f.column >= 0) {
-      const k = leadingNumber(r[f.column] ?? "");
-      if (k === null || (f.min !== null && k < f.min) || (f.max !== null && k > f.max)) continue;
-    }
+  for (const r of keptRows(t, pick)) {
     // a key column like a season "2005–06" is read by its leading number; values must be one number
     const vals = pick.columns.map((c) => c === f.column ? (parseNumber(r[c] ?? "") ?? numberText(leadingNumber(r[c] ?? "") ?? NaN)) : parseNumber(r[c] ?? ""));
     if (vals.some((v) => v === null)) { skipped++; continue; }
@@ -292,13 +319,16 @@ export function fromTable(t: Table, pick: { columns: number[]; label: number; fi
  *  `[a, b, c]` (a single column read down the page is laid across); else a matrix. */
 export function engineText(rows: string[][], shape: Shape = "table"): string {
   if (rows.length === 1 && rows[0]!.length === 1) return rows[0]![0]!;
-  const grid = shape === "list" && rows.every((r) => r.length === 1) ? [rows.map((r) => r[0]!)] : rows;
+  const grid = across(shape, rows) ? [rows.map((r) => r[0]!)] : rows;
   return `[${grid.map((r) => r.join(", ")).join("; ")}]`;
 }
 
+/** Whether a grid is one column read down the page: a list, laid across as a row (`[a, b, c]`)
+ *  whatever shape was planned, since one value per row is a list. */
+const across = (_shape: Shape, rows: string[][]) => rows.length > 1 && rows.every((r) => r.length === 1);
+
 /** Where a grid's [row, column] went in `engineText`'s layout. */
-const placed = (shape: Shape, rows: string[][]) => (rc: [number, number]): [number, number] =>
-  shape === "list" && rows.length > 1 && rows.every((r) => r.length === 1) ? [0, rc[0]] : rc;
+const placed = (shape: Shape, rows: string[][]) => (rc: [number, number]): [number, number] => across(shape, rows) ? [0, rc[0]] : rc;
 
 const norm = (s: string) => s.toLowerCase().replace(/[\s\u00a0]+/g, " ").replace(/[“”]/g, "\"").replace(/[‘’]/g, "'").trim();
 const squash = (s: string) => s.replace(/\s+/g, "");
@@ -366,6 +396,12 @@ async function ask(model: Model, system: string, user: string, schema: object, s
   if (signal?.aborted) throw new AskError("Stopped.");
   return reply;
 }
+
+/** Words that name a range of rows: a number (a year), or a span of time. */
+const RANGE = /\d|\b(last|past|since|between|from|before|after|until|through|recent(ly)?|lately|nowadays|ago|modern|decades?|century|centuries|this (year|season)|today|current(ly)?|latest|first|early|late)\b/i;
+
+/** Words that ask for a count of things: the only questions a table's rows are counted for. */
+const COUNT = /\b(how many|number of|count of)\b/i;
 
 /** Row names, when they name the rows: two or more different ones (a model may label every row "Year"). */
 const named = (labels: string[]): { rowLabels?: string[] } => new Set(labels.filter((l) => l.trim())).size > 1 ? { rowLabels: labels } : {};
@@ -529,29 +565,53 @@ async function numbers(q: string, plan: Plan, pages: Page[], o: AskOptions, trai
   if (shown.length) {
     say(`Choosing among ${plural(shown.length, "table")}`);
     const user = `Today is ${o.today}.\nQuestion: ${q}\nThe answer's columns: ${plan.columns.join("; ")}\n\n${shown.map((f, i) => preview(f.table, i, f.page)).join("\n\n")}`;
-    const pick = parseJson<{ table: number; columns: number[]; label: number; filter: { column: number; min: number | null; max: number | null } }>(
+    const pick = parseJson<{ table: number; columns: number[]; label: number; filter: { column: number; min: number | null; max: number | null }; match?: { column: number; text: string }; count?: boolean }>(
       await ask(o.model, PICK_SYSTEM, user, PICK_SCHEMA, o.signal));
     const f = pick && Number.isInteger(pick.table) ? shown[pick.table] : undefined;
     if (pick && f) {
       const width = f.table.headers.length;
+      const head = (c: number) => f.table.headers[c] || `#${c}`;
       const cols = (pick.columns ?? []).filter((c) => Number.isInteger(c) && c >= 0 && c < width && numericColumn(f.table, c));
       const label = Number.isInteger(pick.label) && pick.label >= 0 && pick.label < width && !cols.includes(pick.label) ? pick.label : -1;
-      const fc = pick.filter && Number.isInteger(pick.filter.column) && pick.filter.column >= 0 && pick.filter.column < width ? pick.filter.column : -1;
       const num = (v: unknown) => typeof v === "number" && Number.isFinite(v) ? v : null;
-      if (cols.length) {
-        const { rows, labels, skipped } = fromTable(f.table, { columns: cols, label, filter: { column: fc, min: num(pick.filter?.min), max: num(pick.filter?.max) } });
-        const where = `table ${f.table.caption ? `“${f.table.caption}” ` : ""}on “${f.page.title}”`;
-        trail.push(`Chose the ${where}: columns ${cols.map((c) => f.table.headers[c] || `#${c}`).join(", ")}${fc >= 0 ? `, rows with ${f.table.headers[fc] || `#${fc}`} ${fmtRange(num(pick.filter.min), num(pick.filter.max))}` : ""}`);
+      let fc = pick.filter && Number.isInteger(pick.filter.column) && pick.filter.column >= 0 && pick.filter.column < width ? pick.filter.column : -1;
+      // a range of rows only when the question names one: asked "how many World Series have the
+      // Tigers won", a model kept 2023 to 2025
+      if (fc >= 0 && (num(pick.filter.min) !== null || num(pick.filter.max) !== null) && !RANGE.test(q)) {
+        trail.push(`Dropped the model's filter on ${head(fc)} (${fmtRange(num(pick.filter.min), num(pick.filter.max))}): the question names no range.`);
+        fc = -1;
+      }
+      const filter = { column: fc, min: fc >= 0 ? num(pick.filter.min) : null, max: fc >= 0 ? num(pick.filter.max) : null };
+      const mt = pick.match && Number.isInteger(pick.match.column) && pick.match.column >= 0 && pick.match.column < width
+        && typeof pick.match.text === "string" && pick.match.text.trim().length >= 2 ? { column: pick.match.column, text: pick.match.text.trim() } : null;
+      const where = `table ${f.table.caption ? `“${f.table.caption}” ` : ""}on “${f.page.title}”`;
+      const which = [fc >= 0 ? `${head(fc)} ${fmtRange(filter.min, filter.max)}` : "", mt ? `${head(mt.column)} contains “${mt.text}”` : ""].filter(Boolean).join(" and ");
+      const cites = [{ title: f.page.title, url: f.page.url }];
+      // a count is only what "how many" asks for, and code does the counting
+      if (pick.count === true && COUNT.test(q)) {
+        const kept = keptRows(f.table, { filter, match: mt });
+        trail.push(`Chose the ${where}, and counted its rows${which ? ` where ${which}` : ""}: ${kept.length}`);
+        if (kept.length) {
+          const key = cols[0] ?? (fc >= 0 ? fc : 0);
+          const shownRows = kept.slice(0, 30).map((r) => r[key] ?? "").join(", ");
+          return {
+            source: String(kept.length), columns: [which ? `rows where ${which}` : `rows of the table`], via: "table", cites, flagged: [],
+            notes: [`Counted ${plural(kept.length, "row")} of the table${which ? ` where ${which}` : ""}: ${shownRows}${kept.length > 30 ? ", …" : ""}.`],
+          };
+        }
+      } else if (cols.length) {
+        const { rows, labels, skipped } = fromTable(f.table, { columns: cols, label, filter, match: mt });
+        trail.push(`Chose the ${where}: columns ${cols.map(head).join(", ")}${which ? `, rows where ${which}` : ""}`);
         if (rows.length) {
           const notes: string[] = [];
+          if (mt) notes.push(`Only the rows where ${head(mt.column)} contains “${mt.text}”.`);
           if (skipped) notes.push(`${plural(skipped, "row was", "rows were")} left out because a chosen cell was not a single number.`);
           return {
             source: engineText(rows, plan.shape), columns: cols.map((c) => f.table.headers[c] || plan.columns[cols.indexOf(c)] || `column ${c}`),
-            ...named(labels),
-            via: "table", cites: [{ title: f.page.title, url: f.page.url }], flagged: [], notes,
+            ...named(labels), via: "table", cites, flagged: [], notes,
           };
         }
-        trail.push("No row of that table matched the filter.");
+        trail.push("No row of that table matched.");
       } else trail.push("The model chose no number columns from the tables.");
     } else trail.push("The model found no table with the data.");
   } else if (pages.length) trail.push("No table on the pages read has numbers.");
