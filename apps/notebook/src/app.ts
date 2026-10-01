@@ -197,6 +197,8 @@ interface Cell {
   /** A file-valued cell (`import("url")`, `⟦name⟧`, or `let x =` one of them): the file it shows,
    *  by what it is. The engine never sees it; the contents are the attachment's or the import's. */
   file?: FileMeta;
+  /** The suggestions bar under a file's output was dismissed for this cell. */
+  noSuggest?: boolean;
   /** λ-cells: the result with de Bruijn indices, and what it reads as (a Church numeral or boolean). */
   outDeBruijn?: string | undefined;
   reading?: string | undefined;
@@ -355,6 +357,8 @@ const S = {
   deBruijn: false,
   /** Show the engine's rendering of the parsed input under each cell (View menu). */
   showEcho: (() => { try { return localStorage.getItem("chalkmath.echo") !== "off"; } catch { return true; } })(),
+  /** The suggestions bar under a file's output (View › Suggestions bar). */
+  suggestions: prefOn("chalkmath.suggestions", true),
   /** How math cells take their input (View menu): typeset with holes to fill, as text, or Auto —
    *  typeset where there is notation to show (a fraction, a power, a matrix, d/dx, ∫, Σ, √),
    *  highlighted text where there is none (`epicycles(llama, 60)`). A cell's own choice wins. */
@@ -944,7 +948,7 @@ function renderTabs() {
 interface ChalkFile {
   /** Format version. Files written as `.lemma` before the rename carry `lemma: 1` instead and still open. */
   chalk?: 1; lemma?: 1; name: string;
-  cells: { src: string; type?: Cell["type"] | undefined; collapsed?: boolean | undefined; showWork: boolean; label: number | null; outLatex?: string | undefined; outText?: string | undefined; form?: string | undefined; semantics?: "real" | "complex" | undefined; echoLatex?: string | undefined; steps?: Step[] | undefined; error?: Cell["error"] | undefined; plot?: PlotData | undefined; mode?: Cell["mode"] | undefined; ask?: AskResult | undefined; file?: FileMeta | undefined }[];
+  cells: { src: string; type?: Cell["type"] | undefined; collapsed?: boolean | undefined; showWork: boolean; label: number | null; outLatex?: string | undefined; outText?: string | undefined; form?: string | undefined; semantics?: "real" | "complex" | undefined; echoLatex?: string | undefined; steps?: Step[] | undefined; error?: Cell["error"] | undefined; plot?: PlotData | undefined; mode?: Cell["mode"] | undefined; ask?: AskResult | undefined; file?: FileMeta | undefined; noSuggest?: true | undefined }[];
   scenes: Scene[];
   /** Images attached to the notebook, by name. */
   assets?: Record<string, Asset>;
@@ -965,7 +969,7 @@ function stepsToSave(c: Cell): Step[] | undefined {
 function serializeNotebook(): string {
   const doc: ChalkFile = {
     chalk: 1, name: S.docName,
-    cells: S.cells.map((c) => ({ src: cellSrc(c), type: c.type, collapsed: c.collapsed || undefined, showWork: c.showWork, label: c.label, outLatex: c.outLatex, outText: c.outText, form: c.form, semantics: c.semantics, echoLatex: c.echoLatex, steps: stepsToSave(c), error: c.error, plot: c.plot, mode: c.mode, ask: c.ask, file: c.file })),
+    cells: S.cells.map((c) => ({ src: cellSrc(c), type: c.type, collapsed: c.collapsed || undefined, showWork: c.showWork, label: c.label, outLatex: c.outLatex, outText: c.outText, form: c.form, semantics: c.semantics, echoLatex: c.echoLatex, steps: stepsToSave(c), error: c.error, plot: c.plot, mode: c.mode, ask: c.ask, file: c.file, noSuggest: c.noSuggest || undefined })),
     scenes: ST.scenes,
     ...(Object.keys(S.assets).length ? { assets: S.assets } : {}),
   };
@@ -1025,6 +1029,7 @@ function cellsFromFile(doc: ChalkFile, foldWork = false): Cell[] {
       if (origin) cell.file = { name: f.name, mime: f.mime, size: Number(f.size) || 0, origin };
     }
     if (c.mode === "raw" || c.mode === "visual") cell.mode = c.mode;
+    if (c.noSuggest) cell.noSuggest = true;
     const ask = savedAsk(c.ask);
     if (ask) cell.ask = ask;
     return cell;
@@ -1466,7 +1471,7 @@ function insertAtCaret(cell: Cell, text: string) {
 
 /** How a file shows as an output, or in a Markdown cell: by what it is. `x` is what the cell calls
  *  it, for the functions the caption offers. */
-function fileView(f: FileValue, x: string, form?: string): { body: HTMLElement; cap: HTMLElement } {
+function fileView(f: FileValue, x: string, form?: string, suggest?: { run(code: string): void; dismiss(): void }): { body: HTMLElement; cap: HTMLElement } {
   const kind = kindOf(f);
   const cap = h("div", "plotcap filecap");
   let what = `${f.name} · ${mimeLabel(f.mime)} · ${fmtSize(fileSize(f))}`;
@@ -1492,12 +1497,24 @@ function fileView(f: FileValue, x: string, form?: string): { body: HTMLElement; 
     if (text.length > MAX) what += ` · the first ${fmtSize(MAX)} shown`;
   }
   if (kind !== "binary") cap.append(h("span", "epinote", what));   // a card says it already
-  const helpers = helpersFor(f, x);
+  // Mathematica's suggestions bar: what can be done with the file, each a short label that adds the
+  // code (its tooltip) as a cell below and runs it; × hides the bar for this cell
+  const helpers = suggest ? helpersFor(f, x) : [];
   if (helpers.length) {
-    const fns = h("span", "epinote");
-    fns.append("Try: ");
-    helpers.forEach((s, i) => { fns.append(h("code", undefined, s)); if (i < helpers.length - 1) fns.append(" · "); });
-    cap.append(fns);
+    const bar = h("div", "trybar");
+    bar.setAttribute("role", "toolbar"); bar.setAttribute("aria-label", "Suggestions");
+    for (const { label, code } of helpers) {
+      const chip = asButton(h("span", "trychip", label), `${label}: ${code}`);
+      chip.title = code;
+      chip.addEventListener("mousedown", (e) => e.preventDefault());
+      chip.addEventListener("click", () => suggest!.run(code));
+      bar.append(chip);
+    }
+    const x2 = asButton(h("span", "tryx", "×"), "Hide suggestions for this cell");
+    x2.title = "Hide suggestions for this cell (View › Suggestions bar hides them everywhere)";
+    x2.addEventListener("click", () => suggest!.dismiss());
+    bar.append(x2);
+    cap.append(bar);
   }
   return { body, cap };
 }
@@ -1800,6 +1817,7 @@ function renderChrome() {
         renderChrome(); renderCells();
       }]),
       [`${S.keypad ? "✓ " : ""}Math keypad`, () => { S.keypad = !S.keypad; setPref("chalkmath.keypad", S.keypad); renderChrome(); updateKeypad(); }],
+      [`${S.suggestions ? "✓ " : ""}Suggestions bar`, () => { S.suggestions = !S.suggestions; setPref("chalkmath.suggestions", S.suggestions); renderChrome(); renderCells(); }],
       [`${S.showEcho ? "✓ " : ""}Input interpretation`, () => { S.showEcho = !S.showEcho; try { localStorage.setItem("chalkmath.echo", S.showEcho ? "on" : "off"); } catch { /* private mode */ } renderChrome(); renderCells(); }],
       [`${S.highlight ? "✓ " : ""}Syntax highlighting`, () => { S.highlight = !S.highlight; try { localStorage.setItem("chalkmath.highlight", S.highlight ? "on" : "off"); } catch { /* private mode */ } document.documentElement.classList.toggle("nohl", !S.highlight); renderHighlights(); renderChrome(); }],
       [`${S.sigHelp ? "✓ " : ""}Signature help`, () => { S.sigHelp = !S.sigHelp; try { localStorage.setItem("chalkmath.sighelp", S.sigHelp ? "on" : "off"); } catch { /* private mode */ } if (!S.sigHelp) hideSigHelp(); renderChrome(); }],
@@ -3078,10 +3096,20 @@ function renderCellBody(cell: Cell) {
       val.append(box, cap);
     } else if (cell.file) {
       const f = fileOf(cell);
-      // what the cell calls the file, for the functions its caption offers
-      const x = /^\s*let\s+([A-Za-z_][A-Za-z0-9_]*)/.exec(cell.src)?.[1] ?? (/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*$/.exec(cell.src)?.[1] ?? cell.src.trim());
+      // what the cell calls the file, for its suggestions: its name, or its output's number
+      const x = /^\s*let\s+([A-Za-z_][A-Za-z0-9_]*)/.exec(cell.src)?.[1] ?? (/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*$/.exec(cell.src)?.[1] ?? (cell.label !== null ? `%${cell.label}` : cell.src.trim()));
       if (f) {
-        const { body, cap } = fileView(f, x, cell.form);
+        const suggest = S.suggestions && !cell.noSuggest ? {
+          run: (code: string) => {
+            const at = S.cells.indexOf(cell) + 1;
+            const c = freshCell(code, "math");
+            S.cells.splice(at, 0, c);
+            renderCells(); renderSidebar(); autosave();
+            void runCell(c);
+          },
+          dismiss: () => { cell.noSuggest = true; renderCellBody(cell); autosave(); },
+        } : undefined;
+        const { body, cap } = fileView(f, x, cell.form, suggest);
         val.append(body, cap);
       } else {
         // a saved output whose import this page has not fetched yet

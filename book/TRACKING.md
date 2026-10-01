@@ -844,3 +844,11 @@ Phases:
    name being typed (`functions`, from the Reference, as the text input does; Enter takes one only once picked),
    and in a part's index the column names, keys and All (`partNames`), with the same signature line as text. Each
    statistic has its own Reference entry, so `var`, `med`, `stdev` complete and `variance(` has signature help.
+- notebook: `%n` as a file, and the suggestions bar — DONE (Alex: "dimensions now doesn't work. But also the `Try: ...`
+   is a bit obnoxious. This could be like mathematica's Try: bar that's dismissable"). `dimensions(%18)` read `%`
+   then a stray `18`: the reference pattern tried `%%…` first, which matches nothing; digits go first now (with a
+   test). The caption's "Try:" line, which spelled out a whole `import("…")` per example, is Mathematica's
+   suggestions bar: short chips (`row 1`, `column "id"`, `mean "id"`, `matrix`, `dimensions`), the code in each
+   tooltip, written against the cell's name or `%n`; a chip adds its code as a cell below and runs it; × hides the
+   bar for that cell (saved with it), View › Suggestions bar for all. Errors offer only the suggestions that make
+   numbers.

@@ -335,6 +335,12 @@ html:not(.nohl) .cellin::selection { color:transparent; }
 .filecard .filemeta { color:var(--p-mut); font-size:12.5px; }
 .filetext { max-height:320px; overflow:auto; margin:4px 0; padding:10px 12px; border:1px solid var(--p-br-out); border-radius:6px; background:var(--p-input-bg); color:var(--p-ink); font-family:var(--code); font-size:12.5px; line-height:1.5; white-space:pre; }
 .filecap code { font-family:var(--code); font-size:11px; color:var(--p-ink-2); }
+/* Mathematica's suggestions bar under a file: short chips (their code in the tooltip), and × to hide it */
+.trybar { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:7px; }
+.trychip { font-family:var(--font); font-size:11.5px; line-height:1; padding:5px 9px; border-radius:999px; cursor:pointer; color:var(--p-ink-2); background:var(--p-input-bg); box-shadow:inset 0 0 0 1px var(--p-br-out); white-space:nowrap; }
+.trychip:hover, .trychip:focus-visible { color:var(--p-acc-ink); background:var(--p-acc-bg); box-shadow:inset 0 0 0 1px var(--p-acc-br); outline:none; }
+.tryx { font-size:14px; line-height:1; padding:3px 6px; border-radius:4px; cursor:pointer; color:var(--p-mut); }
+.tryx:hover, .tryx:focus-visible { color:var(--p-ink); background:var(--p-hov); outline:none; }
 html[data-outsize="s"] { --sz-out:17px; --sz-echo:14px; --sz-work:13px; --sz-sub:12px; }
 html[data-outsize="m"] { --sz-out:22px; --sz-echo:18px; --sz-work:16px; --sz-sub:14px; }
 html[data-outsize="l"] { --sz-out:28px; --sz-echo:22px; --sz-work:19px; --sz-sub:17px; }
