@@ -313,6 +313,28 @@ html:not(.nohl) .cellin::selection { color:transparent; }
 .hl .hstr { color:var(--hl-const); }
 .imgbox { padding:10px; }
 .outimg { display:block; max-width:100%; max-height:320px; margin:0 auto; background:#fdfaf2; border-radius:6px; padding:6px; box-sizing:border-box; }
+/* the data table: a CSV file, or a matrix too large to typeset; header and row numbers stay in view */
+.dgrid { width:fit-content; max-width:100%; box-sizing:border-box; max-height:360px; overflow:auto; border:1px solid var(--p-br-out); border-radius:6px; background:var(--paper-bg); font-size:13px; color:var(--p-ink); margin:4px 0; }
+.dgrid:focus-visible { outline:2px solid var(--p-br-act); outline-offset:1px; }
+.dgrid table { border-collapse:separate; border-spacing:0; }
+.dgrid th, .dgrid td { padding:3px 10px; border-bottom:1px solid var(--p-row-bg); white-space:nowrap; text-align:left; max-width:24em; overflow:hidden; text-overflow:ellipsis; }
+.dgrid td { font-family:var(--code); font-size:12.5px; }
+.dgrid td .katex { font-size:1.05em; }
+.dgrid thead th { position:sticky; top:0; z-index:2; background:var(--p-btn-b); color:var(--p-ink-strong); font-family:var(--font); font-weight:600; border-bottom:1px solid var(--p-br-out); }
+.dgrid th.dg-no { position:sticky; left:0; z-index:1; background:var(--p-btn-b); color:var(--p-mut); font-family:var(--code); font-weight:400; font-size:11px; text-align:right; min-width:2.5em; border-right:1px solid var(--p-br-out); }
+.dgrid thead th.dg-no { z-index:3; }
+.dgrid .dg-num { text-align:right; font-variant-numeric:tabular-nums; }
+.dgrid tbody tr:nth-child(even) td { background:var(--p-row-bg); }
+.dgrid tbody tr:hover td { background:var(--p-hov); }
+.dg-more { position:sticky; left:0; padding:6px 10px; font-size:11px; color:var(--p-mut); font-family:var(--font); }
+.mdout .dgrid { margin:8px 0; }
+/* a file with no display of its own, and text files */
+.filecard { display:inline-flex; align-items:center; gap:10px; padding:10px 14px; border:1px solid var(--p-br-out); border-radius:8px; background:var(--p-input-bg); color:var(--p-ink); font-family:var(--font); font-size:14px; }
+.filecard .fileicon { font-size:20px; color:var(--p-mut); }
+.filecard .filename { font-weight:600; }
+.filecard .filemeta { color:var(--p-mut); font-size:12.5px; }
+.filetext { max-height:320px; overflow:auto; margin:4px 0; padding:10px 12px; border:1px solid var(--p-br-out); border-radius:6px; background:var(--p-input-bg); color:var(--p-ink); font-family:var(--code); font-size:12.5px; line-height:1.5; white-space:pre; }
+.filecap code { font-family:var(--code); font-size:11px; color:var(--p-ink-2); }
 html[data-outsize="s"] { --sz-out:17px; --sz-echo:14px; --sz-work:13px; --sz-sub:12px; }
 html[data-outsize="m"] { --sz-out:22px; --sz-echo:18px; --sz-work:16px; --sz-sub:14px; }
 html[data-outsize="l"] { --sz-out:28px; --sz-echo:22px; --sz-work:19px; --sz-sub:17px; }

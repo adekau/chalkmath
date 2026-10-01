@@ -42,13 +42,13 @@
       "label": null
     },
     {
-      "src": "For a more extreme example of what is possible using only circles connected to other circles, here's a llama being drawn using $100$ circles each with different frequencies, radii, and start angles (the article used $1024$; all $400$ this drawing can carry come at the end). The drawing is the article's own `llama.svg`, imported straight from its repository: `import(\"url\")` fetches an SVG and hands the engine the points sampled along its paths. In general (most) every closed curve can be drawn using circles, called epicycles.",
+      "src": "For a more extreme example of what is possible using only circles connected to other circles, here's a llama being drawn using $100$ circles each with different frequencies, radii, and start angles (the article used $1024$; all $400$ this drawing can carry come at the end). The drawing is the article's own `llama.svg`, imported straight from its repository: `import(\"url\")` fetches the file, and `samplePoints` turns its paths into the points the circles are fitted to. In general (most) every closed curve can be drawn using circles, called epicycles.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "epicycles(import(\"https://raw.githubusercontent.com/adekau/fourier/master/src/assets/llama.svg\"), 100)",
+      "src": "epicycles(samplePoints(import(\"https://raw.githubusercontent.com/adekau/fourier/master/src/assets/llama.svg\")), 100)",
       "showWork": false,
       "label": null
     },
@@ -541,7 +541,7 @@
       "label": null
     },
     {
-      "src": "We can use the same principles demonstrated in the section above to draw pretty much anything we want to as long as we can represent it as a closed curve that is fairly smooth. As far as how to go about acquiring a function that represents a llama, there's two things we can do. We can draw a llama in a vector graphics program and export it as an SVG and then use the SVG since SVGs are just mathematically defined curves (lines, bezier curves, etc). Or, we could take that SVG and sample it at evenly spaced intervals and get a list of sample points and execute a discrete Fourier transformation (DFT) on those sample points to get the Fourier coefficients. For this article, we are going to go with the second option as it's more straightforward.\n\n```ts\nconst numSamples = 400;\nlet pts = [];\n\nasync function entry() {\n    const svgUrl = './images/llama.svg';\n    const response = await fetch(svgUrl);\n    const text = await response.text();\n    pts = await sampleSvgPoints(text, numSamples);\n}\n\n// Might not sample exactly numPts number of sample points, but it will be\n// close. Not a concern using the O(N^2) DFT.\nasync function sampleSvgPoints(xml: string, numPts: number): Promise<[number, number][]> {\n    const doc = new DOMParser().parseFromString(xml, 'application/xml');\n    let samplePts = [];\n    const paths = Array.from(doc.querySelectorAll('path'));\n    const totalLength = paths.reduce((acc, v) => acc + v.getTotalLength(), 0);\n    const step = totalLength / numPts;\n    paths.forEach(path => {\n        const n = Math.floor(path.getTotalLength());\n        for (let i = 0; i < n; i += step)\n            samplePts.push(toPt(path.getPointAtLength(i)));\n    });\n    return samplePts.slice(0, numPts);\n}\n```\n\n(In ChalkMath this sampling is what `import(\"url\")` and an attached `⟦file.svg⟧` do.) So then we run the Discrete Fourier Transform (DFT) on those sampled points to find the Fourier coefficients that we want just like for the square wave above. The Discrete Fourier transform equation is the following\n\n$$\nc_k=\\frac{1}{N}\\sum_{j=0}^{N-1}{p_j\\,e^{-i\\frac{2\\pi}{N}kj}}\n$$\n\nWhere $N$ is the total number of sample points. The DFT is really the same thing as the Fourier series except we are summing evenly spaced definite samples rather than having a limit as the change between steps reaches $0$. It converts $N$ evenly spaced sample complex points in the time domain into their representation in the frequency domain — the strengths of each whole-number frequency — the direct application of the change of basis to the $N$-dimensional basis $(\\ldots, e^{-2it}, e^{-it}, 1, e^{it}, e^{2it}, \\ldots)$.\n\n```ts\nexport function dft(cps: Complex[]): DFTData[] {\n    const X = [];\n    const N = cps.length;\n    for (let k = 0; k < N; k++) {\n        let sum = complex(0, 0);\n        for (let n = 0; n < N; n++) {\n            const theta = -(2 * Math.PI * k * n) / N;\n            sum = add(sum, multiply(cps[n], complex(Math.cos(theta), Math.sin(theta))));\n        }\n        const { re, im } = multiply(1 / N, sum);\n        X.push({ re, im, freq: k, radius: Math.hypot(re, im), phase: Math.atan2(im, re) });\n    }\n    return X;\n}\n```\n\nThe smallest example: four points around the unit circle, $1, i, -1, -i$, are one turn of $e^{it}$ — the transform finds the single circle ($c_1 = 1$, everything else $0$):",
+      "src": "We can use the same principles demonstrated in the section above to draw pretty much anything we want to as long as we can represent it as a closed curve that is fairly smooth. As far as how to go about acquiring a function that represents a llama, there's two things we can do. We can draw a llama in a vector graphics program and export it as an SVG and then use the SVG since SVGs are just mathematically defined curves (lines, bezier curves, etc). Or, we could take that SVG and sample it at evenly spaced intervals and get a list of sample points and execute a discrete Fourier transformation (DFT) on those sample points to get the Fourier coefficients. For this article, we are going to go with the second option as it's more straightforward.\n\n```ts\nconst numSamples = 400;\nlet pts = [];\n\nasync function entry() {\n    const svgUrl = './images/llama.svg';\n    const response = await fetch(svgUrl);\n    const text = await response.text();\n    pts = await sampleSvgPoints(text, numSamples);\n}\n\n// Might not sample exactly numPts number of sample points, but it will be\n// close. Not a concern using the O(N^2) DFT.\nasync function sampleSvgPoints(xml: string, numPts: number): Promise<[number, number][]> {\n    const doc = new DOMParser().parseFromString(xml, 'application/xml');\n    let samplePts = [];\n    const paths = Array.from(doc.querySelectorAll('path'));\n    const totalLength = paths.reduce((acc, v) => acc + v.getTotalLength(), 0);\n    const step = totalLength / numPts;\n    paths.forEach(path => {\n        const n = Math.floor(path.getTotalLength());\n        for (let i = 0; i < n; i += step)\n            samplePts.push(toPt(path.getPointAtLength(i)));\n    });\n    return samplePts.slice(0, numPts);\n}\n```\n\n(In ChalkMath this sampling is `samplePoints`, called on an SVG that `import(\"url\")` fetched or that is attached as `⟦file.svg⟧`.) So then we run the Discrete Fourier Transform (DFT) on those sampled points to find the Fourier coefficients that we want just like for the square wave above. The Discrete Fourier transform equation is the following\n\n$$\nc_k=\\frac{1}{N}\\sum_{j=0}^{N-1}{p_j\\,e^{-i\\frac{2\\pi}{N}kj}}\n$$\n\nWhere $N$ is the total number of sample points. The DFT is really the same thing as the Fourier series except we are summing evenly spaced definite samples rather than having a limit as the change between steps reaches $0$. It converts $N$ evenly spaced sample complex points in the time domain into their representation in the frequency domain — the strengths of each whole-number frequency — the direct application of the change of basis to the $N$-dimensional basis $(\\ldots, e^{-2it}, e^{-it}, 1, e^{it}, e^{2it}, \\ldots)$.\n\n```ts\nexport function dft(cps: Complex[]): DFTData[] {\n    const X = [];\n    const N = cps.length;\n    for (let k = 0; k < N; k++) {\n        let sum = complex(0, 0);\n        for (let n = 0; n < N; n++) {\n            const theta = -(2 * Math.PI * k * n) / N;\n            sum = add(sum, multiply(cps[n], complex(Math.cos(theta), Math.sin(theta))));\n        }\n        const { re, im } = multiply(1 / N, sum);\n        X.push({ re, im, freq: k, radius: Math.hypot(re, im), phase: Math.atan2(im, re) });\n    }\n    return X;\n}\n```\n\nThe smallest example: four points around the unit circle, $1, i, -1, -i$, are one turn of $e^{it}$ — the transform finds the single circle ($c_1 = 1$, everything else $0$):",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -552,7 +552,7 @@
       "label": null
     },
     {
-      "src": "Now the llama. `import` fetches the article's `llama.svg` from its repository; the cell shows the image, and the name is bound to it. (An SVG can also be attached or pasted into a cell, where it appears as `⟦llama.svg⟧`.)",
+      "src": "Now the llama. `import` fetches the article's `llama.svg` from its repository and `let` binds the name to the file as it came: an SVG image, which the cell shows. (An SVG can also be attached or pasted into a cell, where it appears as `⟦llama.svg⟧`.)",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -563,13 +563,13 @@
       "label": null
     },
     {
-      "src": "`samplePoints` is the image as numbers: $400$ points sampled along its paths at equal arc lengths, centred and scaled so the larger extent is $[-1, 1]$ — a $400 \\times 2$ matrix. Anywhere points are expected, the image itself is accepted and sampled the same way.",
+      "src": "`samplePoints` is the image as numbers: $400$ points sampled along its paths at equal arc lengths, centred and scaled so the larger extent is $[-1, 1]$ — a $400 \\times 2$ matrix, shown as a table and bound here as `pts`. The file itself stays a file: `llama` where numbers are expected is an error that says what turns it into some.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "samplePoints(llama)",
+      "src": "let pts = samplePoints(llama)",
       "showWork": false,
       "label": null
     },
@@ -580,7 +580,7 @@
       "label": null
     },
     {
-      "src": "epicycles(llama, 10)",
+      "src": "epicycles(pts, 10)",
       "showWork": false,
       "label": null
     },
@@ -591,12 +591,12 @@
       "label": null
     },
     {
-      "src": "epicycles(llama, 60)",
+      "src": "epicycles(pts, 60)",
       "showWork": false,
       "label": null
     },
     {
-      "src": "epicycles(llama)",
+      "src": "epicycles(pts)",
       "showWork": false,
       "label": null
     },
