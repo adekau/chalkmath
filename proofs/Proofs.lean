@@ -9,6 +9,7 @@ import Proofs.Radical
 import Proofs.Cx
 import Proofs.CxRules
 import Proofs.Fourier
+import Proofs.Stats
 /-!
 # Proofs about the engine (skeleton)
 

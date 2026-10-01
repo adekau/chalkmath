@@ -202,6 +202,18 @@ mutual
         let fs := print f (path ++ [0]) T P_APP
         let as := print a (path ++ [1]) T (P_APP + 1)
         (if T.times != "*" then s!"{fs}\\ {as}" else s!"{fs} {as}", P_APP)
+      -- Mathematica's Part: m[[2, 1;;3]], and the specs it takes
+      | "part", m :: _, _ :: specs =>
+        let ms := print m (path ++ [0]) T P_ATOM
+        let inner := ", ".intercalate specs
+        (if T.times != "*" then s!"{ms}\\llbracket {inner}\\rrbracket" else s!"{ms}[[{inner}]]", P_ATOM)
+      | "span", [_, _, c], [a, b, cs] =>
+        let sep := if T.times != "*" then "\\mathbin{;;}" else ";;"
+        (if c.isOne then s!"{a}{sep}{b}" else s!"{a}{sep}{b}{sep}{cs}", P_ADD)
+      | "All", [], _ => (if T.times != "*" then "\\mathrm{All}" else "All", P_ATOM)
+      | "List", _, _ =>
+        let inner := ", ".intercalate as
+        (if T.times != "*" then "\\{" ++ inner ++ "\\}" else "{" ++ inner ++ "}", P_ATOM)
       | _, _, _ => (T.fn name as, P_ATOM)
     | .pow b x =>
       match (if T.times != "*" then radicalLatex b x else none) with

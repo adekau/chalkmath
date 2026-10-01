@@ -19,7 +19,7 @@ import { MathInput, type MathInputOptions } from "@chalkmath/math-editor/view";
 
 import katex from "katex";
 import { ASK_CELL, AskError, askSettings, setAskSettings, runLookup, askSource, savedAsk, backendStatus, ollamaModels, testModel, WEBGPU_MODELS, type AskResult, type AskSettings } from "./ask-cells.js";
-import { fileCellOf, resolveFiles, importsIn, svgPoints, kindOf, tableOf, numericColumns, fileText, fileSize, fmtSize, mimeLabel, mimeFor, dataUrl, fileFromBytes, helpersFor, type FileValue, type FileRef, type FileScope } from "./files.js";
+import { fileCellOf, resolveFiles, importsIn, partContext, partHelp, fileExprValue, svgPoints, kindOf, tableOf, jsonOf, jsonTable, numericColumns, fileText, fileSize, fmtSize, mimeLabel, mimeFor, dataUrl, fileFromBytes, helpersFor, type FileValue, type FileRef, type FileScope, type Table } from "./files.js";
 import { dataGrid, matrixEntries } from "./datagrid.js";
 import { ensureLean, syncLean, mountLean, unmountLean, focusLean, infoview as leanInfoview, leanState, leanFailure, leanProgress, initLeanIsolation, type LeanMessage } from "./lean-cells.js";
 /** The one trusted KaTeX command is `\htmlData`, which carries the engine's subterm paths. LaTeX can
@@ -42,9 +42,11 @@ const DOCS: Doc[] = [
   { name: "exptotrig", sig: "exptotrig(e)", blurb: "Euler's formula exp(iθ) = cos θ + i sin θ applied to every exponential with a pure-imaginary argument, at once (Mathematica's ExpToTrig). It is a command rather than a simplification rule because the general formula makes the term bigger; wrap it in expand to distribute and collect. Proved sound over ℂ.", examples: ["exptotrig(exp(i*t))", "expand(exptotrig(exp(-i*t) - exp(i*t)))"] },
   { name: "dot", sig: "dot(u, v) · norm(v)", blurb: "The dot product Σ uᵢvᵢ of two vectors (one-row or one-column matrices), bilinear like Mathematica's Dot — the Hermitian inner product of complex vectors is dot(u, conj(v)). norm(v) is the Euclidean length √(Σ vᵢ²).", examples: ["dot([1,2,3],[4,5,6])", "dot([i,1], conj([i,1]))", "norm([3,4])"] },
   { name: "epicycles", sig: "epicycles(f, t[, n]) · epicycles(points[, modes]) · dft(points[, modes])", blurb: "Draw a finite Fourier sum Σ c_k·exp(i k t) with circles: one per term, radius |c_k| and phase arg c_k, spinning at k turns per period, tip to tail; the tip traces the curve. Given a list of points instead — [x, y; …] or complex numbers — it computes their coefficients numerically (the discrete Fourier transform, dft, keeping the modes largest) and draws the same way. The drawing is numeric presentation; the sum's algebra is the engine's.", examples: ["epicycles(exp(i*t) + 1/2*exp(-3i*t), t)", "epicycles(sum(2i/(k*pi)*(exp(-i*k*t) - exp(i*k*t)), k, 1, 3), t)", "dft([1, i, -1, -i])"] },
-  { name: "import", sig: "import(\"url\") · ⟦file⟧ · let x = import(…)", blurb: "A file as a value, as in Mathematica: kept as it came — its name, media type and contents — and shown by what it is. An image shows as the image, a CSV or TSV as a table, JSON and other text as text, anything else as a card with its type and size. ⟦name⟧ refers to a file attached to the notebook (File → Attach file…, or paste one into a cell); import(\"url\") fetches one from the web (the server must allow cross-origin reads). let x = import(…) binds the name to the file. Nothing is converted on the way in: a function called on the file turns it into numbers — samplePoints for an SVG, matrix, column, row and dimensions for a table — and a file anywhere else in a cell is an error naming them.", examples: ["import(\"https://raw.githubusercontent.com/adekau/fourier/master/src/assets/llama.svg\")", "let planets = import(\"examples/data/planets.csv\")"] },
+  { name: "import", sig: "import(\"url\") · ⟦file⟧ · let x = import(…)", blurb: "A file as a value, as in Mathematica: kept as it came — its name, media type and contents — and shown by what it is. An image shows as the image, a CSV or TSV as a table, JSON and other text as text, anything else as a card with its type and size. ⟦name⟧ refers to a file attached to the notebook (File → Attach file…, or paste one into a cell); import(\"url\") fetches one from the web (the server must allow cross-origin reads). let x = import(…) binds the name to the file. Nothing is converted on the way in: its parts and the functions called on it turn it into numbers — t[[All, \"mass\"]] for a table, j[[\"key\"]] for JSON, samplePoints for an SVG, matrix and dimensions for a table — and a file anywhere else in a cell is an error saying which. A part that is not numbers (rows with text, a JSON object) is shown and bound like a file.", examples: ["import(\"https://raw.githubusercontent.com/adekau/fourier/master/src/assets/llama.svg\")", "let planets = import(\"examples/data/planets.csv\")"] },
   { name: "samplePoints", sig: "samplePoints(svg[, n])", blurb: "An SVG as numbers: n points (400 if not given) sampled along its paths at equal arc lengths, centred and scaled so the larger extent is [-1, 1] — an n×2 matrix, ready for epicycles and dft. Only SVG paths are traced; another image is an error.", examples: ["let llama = import(\"https://raw.githubusercontent.com/adekau/fourier/master/src/assets/llama.svg\")", "let pts = samplePoints(llama)", "epicycles(pts, 60)"] },
-  { name: "matrix", sig: "matrix(table) · column(table, k) · row(table, k) · dimensions(table)", blurb: "A CSV or TSV file as numbers. matrix is every data row; column takes a number from 1 or a header name in quotes and gives a column vector; row gives one row; dimensions is [rows, columns]. The first line is a header when it has no numbers in it. A field that is not a number is an error naming its row and column. Large results show as a data table.", examples: ["let planets = import(\"examples/data/planets.csv\")", "dimensions(planets)", "column(planets, \"period\")", "column(planets, \"distance\")^3"] },
+  { name: "part", sig: "m[[i]] · m[[i, j]] · m[[All, j]] · m[[a;;b;;s]] · m[[{i, j}]] · t[[All, \"name\"]]", blurb: "Mathematica's Part. Positions count from 1, and a negative one from the end (-1 is the last). All takes every position; a;;b takes a through b, both included (;;b from the start, a;; to the end), and a;;b;;s steps by s, backwards when s is negative; {i, j} takes those positions in that order. A matrix takes rows, then columns; a vector (one row or one column) takes one index into its entries. A single index drops that dimension (an entry, or a row or column vector); a span or a list keeps it. A table also takes column names in quotes, t[[\"mass\"]] alone being that column; JSON takes keys and positions one level at a time, with All applying the rest to every element: j[[\"planets\", All, \"mass\"]]. A selection of numbers goes to the engine (la.part, every position in range by partSpec_lt); one with text in it stays a table, JSON or text of the notebook.", examples: ["[1, 2, 3; 4, 5, 6; 7, 8, 9][[2]]", "[1, 2, 3; 4, 5, 6; 7, 8, 9][[All, -1]]", "[1, 2, 3; 4, 5, 6; 7, 8, 9][[1;;3;;2, {3, 1}]]", "let planets = import(\"examples/data/planets.csv\")", "planets[[All, \"period\"]]", "planets[[2;;4]]"] },
+  { name: "mean", sig: "mean(v) · median(v) · variance(v) · stdev(v) · min(v) · max(v) · total(v)", blurb: "Statistics of a vector, or of each column of a matrix (a row of the columns' statistics), as in Mathematica. total, mean, variance and stdev are definitions, so symbolic entries work; variance and stdev are the sample ones, dividing by n − 1 (Mathematica's Variance, Python's statistics.variance), and the engine writes the variance in its one-pass form, proved equal to Σ(xᵢ − x̄)²/(n − 1) (variance_soundR). min, max and median compare exact rationals, so they take numbers.", examples: ["mean([2, 4, 4, 4, 5, 5, 7, 9])", "variance([2, 4, 4, 4, 5, 5, 7, 9])", "stdev([1, 3])", "median([4, 1, 3, 2])", "mean([a; b])", "mean([1, 2; 3, 4])", "mean(planets[[All, \"mass\"]])"] },
+  { name: "matrix", sig: "matrix(table) · dimensions(table)", blurb: "A CSV or TSV file, or JSON that is a list of records, as numbers: matrix is every data row (an error naming the field if one is not a number), dimensions is [rows, columns]. The first line of a CSV is a header when it has no numbers in it. To take some of a table, use its parts: t[[All, {\"mass\", \"period\"}]].", examples: ["let planets = import(\"examples/data/planets.csv\")", "dimensions(planets)", "matrix(planets[[All, 2;;]])"] },
   { name: "sign", sig: "sign(x)", blurb: "The sign function: −1, 0 or 1. Folds on numerals and stays symbolic otherwise, so sign(sin(t)) is the square wave.", examples: ["sign(-3)", "plot(sign(sin(t)), t, -pi, pi)"] },
   { name: "poset", sig: "poset({a,b,c}; a<b, a<c) · divisors(n) · subsets({…}) · chain(n)", blurb: "A finite partial order: the reflexive-transitive closure of the relation given, checked for antisymmetry. Bind it with let and ask about it: hasse, join, meet, sup, inf, upper, lower, top, bottom, maximal, minimal, lattice, le.", examples: ["let D = divisors(12)", "join(D, 4, 6)", "lattice(D)", "le(D, 2, 12)", "let P = poset({a,b,c,d}; a<b, a<c, b<d, c<d)"] },
   { name: "map", sig: "map(P; a->b, c->d, …) · monotone(P, f) · lfp(P, f) · gfp(P, f) · fixpoints(P, f)", blurb: "A map on a poset given as a table (other elements are fixed). monotone checks every pair; lfp and gfp iterate from ⊥ and ⊤ and show the Kleene chain, which is proved to end at the least (greatest) fixed point.", examples: ["let f = map(D; 1->2, 3->6)", "monotone(D, f)", "lfp(D, f)"] },
@@ -102,7 +104,9 @@ const symbolFor = (name: string) => SYMBOLS.find((s) => s.abbr === name || s.ali
  *  Not λ: a λ-cell is not the grammar the visual input reads, and stays raw. */
 const VISUAL_SYMBOLS: Record<string, string> = Object.fromEntries(
   SYMBOLS.filter((s) => s.sym !== "λ").flatMap((s) => [s.abbr, ...s.aliases].map((a) => [a, s.sym])));
-type CompItem = { kind: "doc"; doc: Doc } | { kind: "sym"; sym: Sym } | { kind: "tpl"; name: string; what: string; glyph: string };
+type CompItem = { kind: "doc"; doc: Doc } | { kind: "sym"; sym: Sym } | { kind: "tpl"; name: string; what: string; glyph: string }
+  /** Inside `x[[…]]`: a column name, an object key or `All`, replacing what was typed from `start`. */
+  | { kind: "part"; insert: string; label: string; hint: string; start: number };
 
 /** An order-theory cell, or a `let` binding one: the engine reads these in their own world. */
 const ORDER_CELL = /^(let\s+\w+\s*=\s*)?(poset|divisors|subsets|chain|map|hasse|join|meet|sup|inf|upper|lower|lattice|top|bottom|le|maximal|minimal|monotone|lfp|gfp|fixpoints)\s*\(/;
@@ -331,7 +335,7 @@ const S = {
   crashed: null as Cell | null,
   comp: null as { cell: Cell; items: CompItem[]; index: number; x: number; y: number } | null,
   /** Signature help: the call the caret is inside, and which argument it is in (View menu toggles it). */
-  sig: null as { cell: Cell; key: string; sig: string; blurb: string; arg: number } | null,
+  sig: null as { cell: Cell; key: string; sig: string; blurb: string; arg: number; pieces?: { text: string; param: boolean }[] } | null,
   /** A call site dismissed with Esc stays quiet until the caret leaves it. */
   sigDismissed: null as string | null,
   sigHelp: (() => { try { return localStorage.getItem("chalkmath.sighelp") !== "off"; } catch { return true; } })(),
@@ -603,8 +607,9 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
       cell.outText = r.rendered.text;
       cell.semantics = "semantics" in r && r.semantics === "complex" ? "complex" : "real";
       cell.echoLatex = r.inputRendered?.latex;
-      // a file's numbers are hundreds of rows: the interpretation names the calls that made them instead
-      if (notes.length) cell.echoLatex = `\\text{${notes.map((n) => n.replace(/[\\{}$&#^_%~]/g, "")).join("; ")}}`;
+      // a file's numbers can be hundreds of rows: then the interpretation names what made them instead
+      // (a few numbers read better as themselves: mean([0.33; 4.87; …]))
+      if (notes.length && sent.length - src.length > 400) cell.echoLatex = `\\text{${notes.map((n) => n.replace(/[\\{}$&#^_%~]/g, "")).join("; ")}}`;
       if (asked !== null) delete cell.echoLatex;   // the input is the question; the answer is the output
       delete cell.file;
       // a dft cell's input is a long list of sample points: say how many rather than typeset them
@@ -634,6 +639,9 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
         if (r.params?.length) USER_FNS.set(k, r.params); else USER_FNS.delete(k);
         USER_NAMES.add(k);
         FILE_VARS.delete(k);   // a name bound to a number is no longer the file it was
+        // a bound matrix's shape, for what `name[[` offers
+        const m = matrixEntries(r.rendered.latex);
+        if (m) MATRIX_SHAPES.set(k, { rows: m.length, cols: m[0]!.length }); else MATRIX_SHAPES.delete(k);
         renderHighlights();
       }
     } else {
@@ -699,6 +707,7 @@ async function evaluateFileCell(cell: Cell, fc: { bind?: string; file: FileValue
   delete cell.outDeBruijn; delete cell.reading; delete cell.kind; delete cell.hasse; delete cell.summary;
   cell.steps = [];
   cell.file = { name: file.name, mime: file.mime, size: fileSize(file), origin: file.origin };
+  CELL_FILES.set(cell, file);
   if (cell.form && cell.form !== "text") delete cell.form;
   queueMicrotask(autosave);
   log("ok", `Out[${cell.label}] ${file.name}: ${mimeLabel(file.mime)}`);
@@ -999,8 +1008,11 @@ function cellsFromFile(doc: ChalkFile, foldWork = false): Cell[] {
     if (c.error) cell.error = c.error;
     if (c.plot) cell.plot = migratePlot(c.plot);
     const f = c.file;
-    if (f && typeof f.name === "string" && typeof f.mime === "string" && f.origin && (typeof (f.origin as { url?: unknown }).url === "string" || typeof (f.origin as { asset?: unknown }).asset === "string"))
-      cell.file = { name: f.name, mime: f.mime, size: Number(f.size) || 0, origin: "url" in f.origin ? { url: f.origin.url } : { asset: f.origin.asset } };
+    const o = f?.origin as { url?: unknown; asset?: unknown; derived?: unknown } | undefined;
+    if (f && typeof f.name === "string" && typeof f.mime === "string" && o) {
+      const origin = typeof o.url === "string" ? { url: o.url } : typeof o.asset === "string" ? { asset: o.asset } : typeof o.derived === "string" ? { derived: o.derived } : null;
+      if (origin) cell.file = { name: f.name, mime: f.mime, size: Number(f.size) || 0, origin };
+    }
     if (c.mode === "raw" || c.mode === "visual") cell.mode = c.mode;
     const ask = savedAsk(c.ask);
     if (ask) cell.ask = ask;
@@ -1048,7 +1060,7 @@ async function restartKernel() {
   clearOutputs();
   for (const k of [...USER_FNS.keys()]) if (k.startsWith(`${sessionId}:`)) USER_FNS.delete(k);
   for (const k of [...USER_NAMES]) if (k.startsWith(`${sessionId}:`)) USER_NAMES.delete(k);
-  for (const m of [FILE_VARS, FILE_OUTS]) for (const k of [...m.keys()]) if (k.startsWith(`${sessionId}:`)) m.delete(k);
+  for (const m of [FILE_VARS, FILE_OUTS, MATRIX_SHAPES]) for (const k of [...m.keys()]) if (k.startsWith(`${sessionId}:`)) m.delete(k);
   LAST_LABEL.delete(sessionId);
   log("ok", "kernel restarted: the session is empty");
 }
@@ -1344,6 +1356,8 @@ interface FileMeta { name: string; mime: string; size: number; origin: FileValue
 
 /** Imports by URL, fetched once per page (a re-run does not fetch again). */
 const IMPORTS = new Map<string, FileValue>();
+/** The shapes of names bound to matrices, keyed `session:name`, for completions inside `name[[`. */
+const MATRIX_SHAPES = new Map<string, { rows: number; cols: number }>();
 /** Names bound to files by `let x = import(…)`, keyed `session:name` like `USER_NAMES`. */
 const FILE_VARS = new Map<string, FileValue>();
 /** Outputs that are files, keyed `session:label`, for `%` and `%n`; and each session's latest label. */
@@ -1396,10 +1410,18 @@ async function fetchImports(src: string) {
   }
 }
 
-/** A file's contents for a saved output, if this page has them (an import is not saved with the notebook). */
-function fileOf(meta: FileMeta, assets: Record<string, Asset> = S.assets): FileValue | undefined {
+/** The file each file-valued cell showed when it last ran (a part of a file exists nowhere else). */
+const CELL_FILES = new WeakMap<Cell, FileValue>();
+
+/** A file-valued cell's file, if this page has it: an import and a part of a file are not saved with
+ *  the notebook, so until the cell runs again its output says what it was. */
+function fileOf(cell: Cell): FileValue | undefined {
+  const meta = cell.file; if (!meta) return undefined;
+  const ran = CELL_FILES.get(cell);
+  if (ran) return ran;
   if ("url" in meta.origin) return IMPORTS.get(meta.origin.url);
-  const a = assets[meta.origin.asset];
+  if ("derived" in meta.origin) return undefined;
+  const a = (docOf(cell)?.assets ?? S.assets)[meta.origin.asset];
   return a && assetFile(a);
 }
 
@@ -1442,8 +1464,9 @@ function fileView(f: FileValue, x: string, form?: string): { body: HTMLElement; 
     body = h("div", "plotbox imgbox");
     const img = document.createElement("img"); img.src = dataUrl(f); img.alt = f.name; img.className = "outimg";
     body.append(img);
-  } else if (kind === "table" && form !== "text") {
-    const t = tableOf(f);
+  } else if (form !== "text" && tabular(f)) {
+    // a CSV, or JSON that is a list of records or of lists: rows and columns
+    const t = tabular(f)!;
     what = `${f.name} · ${mimeLabel(f.mime)} · ${t.rows.length.toLocaleString()} row${t.rows.length === 1 ? "" : "s"} × ${t.cols} column${t.cols === 1 ? "" : "s"}${t.header ? "" : " (no header row)"} · ${fmtSize(fileSize(f))}`;
     body = dataGrid({ rows: t.rows.length, cols: t.cols, header: t.header, cell: (r, c) => t.rows[r]![c]!, numeric: numericColumns(t), label: `${f.name}, a table` });
   } else if (kind === "binary") {
@@ -1458,14 +1481,24 @@ function fileView(f: FileValue, x: string, form?: string): { body: HTMLElement; 
     if (text.length > MAX) what += ` · the first ${fmtSize(MAX)} shown`;
   }
   if (kind !== "binary") cap.append(h("span", "epinote", what));   // a card says it already
-  const helpers = helpersFor(kind, f.mime, x);
+  const helpers = helpersFor(f, x);
   if (helpers.length) {
     const fns = h("span", "epinote");
-    fns.append("As numbers: ");
+    fns.append("Try: ");
     helpers.forEach((s, i) => { fns.append(h("code", undefined, s)); if (i < helpers.length - 1) fns.append(" · "); });
     cap.append(fns);
   }
   return { body, cap };
+}
+
+/** A file-valued cell whose file shows as a table, which can also be shown as its text. */
+const tabularCell = (cell: Cell) => { const f = fileOf(cell); return !!f && !!tabular(f); };
+/** A file as rows and columns, when it is one: a CSV or TSV, or JSON that is a list of records or of lists. */
+function tabular(f: FileValue): Table | null {
+  try {
+    const kind = kindOf(f);
+    return kind === "table" ? tableOf(f) : kind === "json" ? jsonTable(jsonOf(f)) : null;
+  } catch { return null; }
 }
 
 /** File → Attach file…: the file joins the notebook and `⟦name⟧` lands at the caret of the active
@@ -2744,7 +2777,7 @@ const RULE_NAMES: Record<string, string> = {
   "cx.euler": "Euler's formula", "cx.euler-power": "Euler's formula", "cx.arithmetic": "Complex arithmetic", "cx.i-power": "Power of i", "cx.re-im": "Real and imaginary parts",
   "cx.conjugate": "Conjugate", "cx.abs": "Modulus", "cx.exact-trig": "Exact value", "cx.power": "Complex power",
   "la.row-swap": "Swap rows", "la.row-scale": "Scale a row", "la.row-add": "Add a multiple of a row", "la.det": "Determinant", "la.mul": "Matrix product", "la.add": "Matrix sum",
-  "la.scalar-mul": "Scalar multiple", "la.transpose": "Transpose", "la.pow": "Matrix power", "la.dot": "Dot product", "la.norm": "Norm", "la.conj": "Conjugate", "la.context": "Matrix context",
+  "la.scalar-mul": "Scalar multiple", "la.transpose": "Transpose", "la.pow": "Matrix power", "la.dot": "Dot product", "la.norm": "Norm", "la.conj": "Conjugate", "la.part": "Part", "stat.total": "Total", "stat.mean": "Mean", "stat.variance": "Sample variance", "stat.stdev": "Standard deviation", "stat.min": "Minimum", "stat.max": "Maximum", "stat.median": "Median", "la.context": "Matrix context",
   "int.check": "Check by differentiating", "int.compare": "Compare with the integrand", "int.bounds": "Evaluate at the bounds", "int.table": "Table integral", "int.power": "Power rule for integrals",
   "int.variable": "Integral of the variable", "int.constant": "Integral of a constant", "int.constant-multiple": "Constant multiple", "int.sum": "Sum rule for integrals",
   "int.exponential": "Exponential integral", "int.exp-power": "Exponential of a power", "int.substitution": "Substitution", "int.linear-substitution": "Linear substitution",
@@ -3024,7 +3057,7 @@ function renderCellBody(cell: Cell) {
       val.classList.add("isplot");
       val.append(box, cap);
     } else if (cell.file) {
-      const f = fileOf(cell.file, docOf(cell)?.assets);
+      const f = fileOf(cell);
       // what the cell calls the file, for the functions its caption offers
       const x = /^\s*let\s+([A-Za-z_][A-Za-z0-9_]*)/.exec(cell.src)?.[1] ?? (/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*$/.exec(cell.src)?.[1] ?? cell.src.trim());
       if (f) {
@@ -3088,7 +3121,7 @@ function renderCellBody(cell: Cell) {
       wireTerm(val, cell, { kind: "output" });
     }
     // the output form: a per-cell choice of typesetting, like Mathematica's //MatrixForm
-    if (!cell.hasse && !cell.plot && (!cell.file || (fileOf(cell.file, docOf(cell)?.assets) && kindOf(cell.file) === "table"))) {
+    if (!cell.hasse && !cell.plot && (!cell.file || tabularCell(cell))) {
       const forms = formsFor(cell);
       const fs = document.createElement("select"); fs.className = "formsel"; fs.title = "Output form"; fs.setAttribute("aria-label", "Output form");
       for (const [v, label] of forms) { const o = document.createElement("option"); o.value = v; o.textContent = label; o.selected = formOf(cell) === v; fs.append(o); }
@@ -4451,6 +4484,20 @@ function currentWord(input: HTMLInputElement): { word: string; start: number } {
 function updateCompletions(cell: Cell) {
   const input = cell.input!;
   if (ASK_CELL.test(input.value)) return hideCompletions();   // a question is words, not names
+  // inside `x[[…]]`: the column names or keys that can go there, and All
+  const part = partAt(cell, input);
+  if (part) {
+    const { ctx, help } = part;
+    const q = ctx.typed.text.toLowerCase();
+    const items: CompItem[] = help.names.filter((n) => n.toLowerCase().startsWith(q))
+      .map((n) => ({ kind: "part" as const, insert: `"${n}"`, label: `"${n}"`, hint: help.blurb.startsWith("An object") ? "key" : "column", start: ctx.typed.start }));
+    if (!ctx.typed.quoted && "all".startsWith(q)) items.unshift({ kind: "part", insert: "All", label: "All", hint: "every position", start: ctx.typed.start });
+    // nothing typed yet and nothing to name: the signature line says what is in range
+    if (!items.length || (!q && !ctx.typed.quoted && !help.names.length)) return hideCompletions();
+    const r = input.getBoundingClientRect();
+    S.comp = { cell, items: items.slice(0, 9), index: 0, x: r.left + 8, y: r.bottom + 4 };
+    return renderCompletions();
+  }
   const { word } = currentWord(input);
   if (word.length < 1) return hideCompletions();
   let items: CompItem[];
@@ -4478,6 +4525,19 @@ function acceptCompletion() {
   const input = cell.input!;
   const { word, start } = currentWord(input);
   const item = items[index]!;
+  if (item.kind === "part") {
+    // replace what was typed (a bare word, or a name from its opening quote) through the caret, and
+    // a closing quote already there
+    const caret = input.selectionStart ?? input.value.length;
+    let rest = input.value.slice(caret);
+    if (item.insert.startsWith('"') && rest.startsWith('"')) rest = rest.slice(1);
+    input.value = input.value.slice(0, item.start) + item.insert + rest;
+    const pos = item.start + item.insert.length;
+    input.setSelectionRange(pos, pos);
+    cell.src = input.value;
+    hideCompletions(); syncHighlight(cell); updateSigHelp(cell); renderSidebar();
+    return true;
+  }
   const after = input.value.slice(start + word.length);
   if (item.kind === "tpl") {
     hideCompletions();
@@ -4508,6 +4568,8 @@ function renderCompletions() {
     if (it.kind === "sym") {
       const s = it.sym;
       row.append(h("span", "n", `\\${s.abbr}${s.aliases.length ? ` (${s.aliases.map((a) => "\\" + a).join(", ")})` : ""}`), h("span", "h", s.what), h("span", "sym", s.sym));
+    } else if (it.kind === "part") {
+      row.append(h("span", "n", it.label), h("span", "h", it.hint));
     } else if (it.kind === "tpl") {
       row.classList.add("symrow");
       row.append(h("span", "n", `\\${it.name}`), h("span", "h", it.what), h("span", "sym", it.glyph));
@@ -4530,9 +4592,10 @@ const USER_NAMES = new Set<string>();
 
 /** Commands whose argument at `arg` is a variable bound over the call: `diff(f, x)`, `plot(f, x, …)`. */
 const BINDERS: Record<string, number> = { diff: 1, integrate: 1, plot: 1, epicycles: 1, sum: 1, subst: 1 };
-const BUILTIN_FN = new Set(["sin", "cos", "tan", "exp", "ln", "log", "sqrt", "abs", "conj", "re", "im", "sign", "det", "rref", "transpose", "dot", "norm", "solve"]);
-const COMMANDS = new Set(["diff", "integrate", "plot", "epicycles", "dft", "import", "samplePoints", "matrix", "column", "row", "dimensions", "sum", "exptotrig", "expand", "factor", "simplify", "N", "subst", "poset", "map", "monotone", "lfp", "gfp", "fixpoints", "hasse", "join", "meet", "sup", "inf", "upper", "lower", "top", "bottom", "maximal", "minimal", "lattice", "le", "divisors", "subsets", "chain"]);
-const CONSTANTS = new Set(["pi", "π", "e", "ℯ", "i", "phi", "φ"]);
+const BUILTIN_FN = new Set(["sin", "cos", "tan", "exp", "ln", "log", "sqrt", "abs", "conj", "re", "im", "sign", "det", "rref", "transpose", "dot", "norm", "solve",
+  "total", "mean", "variance", "stdev", "min", "max", "median"]);
+const COMMANDS = new Set(["diff", "integrate", "plot", "epicycles", "dft", "import", "samplePoints", "matrix", "dimensions", "sum", "exptotrig", "expand", "factor", "simplify", "N", "subst", "poset", "map", "monotone", "lfp", "gfp", "fixpoints", "hasse", "join", "meet", "sup", "inf", "upper", "lower", "top", "bottom", "maximal", "minimal", "lattice", "le", "divisors", "subsets", "chain"]);
+const CONSTANTS = new Set(["pi", "π", "e", "ℯ", "i", "phi", "φ", "All"]);
 
 type Tok = { kind: "id" | "num" | "op" | "ws" | "kw" | "asset" | "str"; text: string; start: number };
 function tokenize(src: string): Tok[] {
@@ -4701,9 +4764,34 @@ function sigPieces(sig: string): SigPiece[] {
   return out;
 }
 
+/** Inside `x[[…]]` at the caret: what `x` is (a file, a part of one, or a bound matrix) and what the
+ *  index being typed can be. */
+function partAt(cell: Cell, input: HTMLInputElement) {
+  const caret = input.selectionStart ?? input.value.length;
+  const ctx = partContext(input.value.slice(0, caret));
+  if (!ctx) return null;
+  const d = docOf(cell);
+  const sid = d?.sessionId ?? sessionId;
+  const value = fileExprValue(ctx.base, fileScope(sid, d?.assets ?? S.assets))
+    ?? (() => { const sh = MATRIX_SHAPES.get(`${sid}:${ctx.base}`); return sh ? { kind: "numbers" as const, ...sh, single: false } : null; })();
+  const help = value && partHelp(value, ctx.specs, ctx.arg);
+  return help ? { ctx, help } : null;
+}
+
 function updateSigHelp(cell: Cell) {
   const input = cell.input;
   if (!S.sigHelp || !input || document.activeElement !== input || ASK_CELL.test(input.value)) return hideSigHelp();
+  const part = partAt(cell, input);
+  if (part) {
+    const { ctx, help } = part;
+    const key = `${cell.id}:[[${ctx.base}`;
+    if (S.sigDismissed === key) return hideSigHelp();
+    const pieces: SigPiece[] = [{ text: `${ctx.base}[[`, param: false }];
+    help.params.forEach((p, i) => { if (i) pieces.push({ text: ", ", param: false }); pieces.push({ text: p, param: true }); });
+    pieces.push({ text: "]]", param: false });
+    S.sig = { cell, key, sig: pieces.map((p) => p.text).join(""), blurb: help.blurb, arg: Math.min(ctx.arg, help.params.length - 1), pieces };
+    return renderSigHelp();
+  }
   const ctx = callContext(input);
   const found = ctx && sigFor(ctx.name, ctx.firstArg);
   if (!ctx || !found) { S.sigDismissed = null; return hideSigHelp(); }
@@ -4734,7 +4822,7 @@ function renderSigHelp() {
   if (!g || !anchor) return;
   const box = h("div", "sighelp");
   const line = h("div", "ss");
-  const pieces = sigPieces(g.sig), n = pieces.filter((p) => p.param).length;
+  const pieces = g.pieces ?? sigPieces(g.sig), n = pieces.filter((p) => p.param).length;
   let k = 0;
   for (const p of pieces) {
     if (!p.param) { line.append(p.text); continue; }

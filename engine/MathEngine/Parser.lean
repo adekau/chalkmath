@@ -9,10 +9,16 @@ stmt   := 'let' IDENT '=' expr | expr
 expr   := term (('+' | '-') term)*
 term   := unary (('*' | '/') unary | <implicit> unary)*
 unary  := '-' unary | power
-power  := atom ('^' unary)?                       -- right-assoc; -x^2 parses as -(x^2)
+power  := part ('^' unary)?                       -- right-assoc; -x^2 parses as -(x^2)
+part   := atom ('[[' spec (',' spec)* ']]')*        -- Mathematica's Part: m[[2]], m[[All, 1;;3]]
+spec   := 'All' | '{' expr,* '}' | expr? ';;' expr? (';;' expr)? | expr
 atom   := NUMBER | IDENT | IDENT '(' expr,* ')' | '(' expr ')' | '[' row (';' row)* ']'
 row    := expr (',' expr)*
 ```
+
+`m[[s, t]]` is `part(m, s, t)`; a span `a;;b;;c` is `span(a, b, c)` with an omitted end read as
+Mathematica does (`;;b` from 1, `a;;` to the last, `-1`); `All` is `All()`, a list `{i, j}` is
+`List(i, j)`. `[[` after a term cannot be anything else: a nested matrix literal is refused.
 
 Implicit multiplication (`2x`, `2(x+1)`, `x y`) is allowed when the previous token ends an atom
 and the next begins one, except number-after-number (`3 4` is an error). `IDENT (` is a call
@@ -46,7 +52,8 @@ structure Tok where
 def builtinFunctions : List String :=
   ["sin", "cos", "tan", "exp", "ln", "log", "sqrt", "abs", "conj", "re", "im",
    "diff", "simplify", "expand", "factor", "N", "det", "rref", "transpose", "solve", "subst", "integrate", "plot",
-   "sign", "dot", "norm", "sum", "exptotrig", "epicycles", "dft"]
+   "sign", "dot", "norm", "sum", "exptotrig", "epicycles", "dft",
+   "total", "mean", "variance", "stdev", "min", "max", "median"]
 
 /-- Lexer over the character list; `i` is the byte-free character index used for spans. -/
 partial def lex (src : String) : Except ParseError (Array Tok) := go src.toList 0 #[]
@@ -73,7 +80,7 @@ where
         let ds := (c :: cs).takeWhile isIdChar
         let text := String.ofList ds
         go ((c :: cs).drop ds.length) (i + ds.length) (acc.push ⟨.id, text, i, i + ds.length⟩)
-      else if "+-*/^()[],;=%".contains c then go cs (i + 1) (acc.push ⟨.op, c.toString, i, i + 1⟩)
+      else if "+-*/^()[],;=%{}".contains c then go cs (i + 1) (acc.push ⟨.op, c.toString, i, i + 1⟩)
       else .error ⟨s!"unexpected character '{c}'", i, i + 1⟩
 
 structure PS where
@@ -132,7 +139,7 @@ mutual
       | e => pure (Expr.neg e)
     else power
   partial def power : PM Expr := do
-    let b ← atom
+    let b ← part (← atom)
     let t ← peek
     if isOp t "^" then discard next; pure (.pow b (← unary)) else pure b
   partial def atom : PM Expr := do
@@ -192,8 +199,51 @@ mutual
         let w := (rows.head?.map List.length).getD 0
         if rows.any (·.length != w) then fail "ragged matrix rows" t
         pure (.matrix rows)
+      else if t.s == "{" then fail "braces list the indices of a part, as in m[[{1, 3}]]" t
       else fail s!"unexpected '{t.s}'" t
     | .eof => fail "unexpected end of input" t
+  /-- `e[[…]]`, any number of times: Mathematica's Part, binding tighter than `^`. -/
+  partial def part (e : Expr) : PM Expr := do
+    let st ← get
+    let at_ (k : Nat) : Tok := st.toks.getD (st.i + k) ⟨.eof, "", 0, 0⟩
+    if !(isOp (at_ 0) "[" && isOp (at_ 1) "[") then return e
+    discard next; discard next
+    let mut specs := [← spec]
+    while isOp (← peek) "," do
+      discard next
+      specs := specs ++ [← spec]
+    let t ← peek
+    if !isOp t "]" then fail "expected ']]' to close the part" t
+    discard next
+    let t ← peek
+    if !isOp t "]" then fail "expected ']]' to close the part" t
+    discard next
+    part (.fn "part" (e :: specs))
+  /-- One index of a part: an expression, `All`, a span or a list of indices. -/
+  partial def spec : PM Expr := do
+    let t ← peek
+    if t.kind == .id && t.s == "All" then discard next; return .fn "All" []
+    if isOp t "{" then
+      discard next
+      let mut xs : List Expr := []
+      if !isOp (← peek) "}" then
+        xs := [← expr]
+        while isOp (← peek) "," do
+          discard next
+          xs := xs ++ [← expr]
+      expectOp "}"
+      return .fn "List" xs
+    let startsSpan : PM Bool := do
+      let st ← get
+      pure (isOp (st.toks.getD st.i ⟨.eof, "", 0, 0⟩) ";" && isOp (st.toks.getD (st.i + 1) ⟨.eof, "", 0, 0⟩) ";")
+    let ends (t : Tok) : Bool := isOp t "," || isOp t "]" || isOp t ";"
+    let a ← if ← startsSpan then pure (Expr.ofInt 1) else expr
+    if !(← startsSpan) then return a
+    discard next; discard next
+    let b ← if ends (← peek) then pure (Expr.ofInt (-1)) else expr
+    if !(← startsSpan) then return .fn "span" [a, b, Expr.one]
+    discard next; discard next
+    return .fn "span" [a, b, ← expr]
   /-- The arguments of a call, after its `(`; consumes the `)`. -/
   partial def callArgs : PM (List Expr) := do
     let mut args : List Expr := []
