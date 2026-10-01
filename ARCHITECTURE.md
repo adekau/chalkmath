@@ -222,7 +222,15 @@ settings, the cell) is `apps/notebook/src/ask-cells.ts`.
   model through WebLLM, bundled separately (`dist/ask/`) and loaded only when a lookup needs it, its
   weights downloaded once from Hugging Face; or, chosen in the settings, a model Ollama serves on
   the reader's own computer (`/api/chat`, held to the schema by its `format`), which can be larger
-  than a browser holds. Settings has a *Test the model* button that times one small question.
+  than a browser holds; or a cloud model through OpenRouter on the reader's own account (signed in
+  with OpenRouter's OAuth PKCE flow from a window that returns to `openrouter-callback.html`, the
+  key kept in the browser). Settings has a *Test the model* button that times one small question.
+- **A capable model answers directly.** The machinery below, where the model only chooses and code
+  copies, is for small local models, which invent numbers when asked for them. A cloud model reads
+  the pages (their text and their tables, as rows of cells) and answers in the question's shape
+  itself, with its sources and a quote; or it searches the web itself (OpenRouter's web search) and
+  its citations are the sources. Every number it gives is still looked for in what it read, and
+  flagged when it is not there; a formula is still read from its LaTeX by code.
 - **The model is checked where it is weakest.** Small models misread: lifted from a sentence about
   a lost series, 2006 was offered as a year the Tigers won. So a row lifted from prose stands only
   when its sentence is on the page and states all its numbers, and the model then answers a narrow
