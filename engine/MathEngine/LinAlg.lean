@@ -383,13 +383,17 @@ def minQ : List Q → Option Q
 def maxQ : List Q → Option Q
   | [] => none
   | q :: qs => some (qs.foldl (fun m x => if m.val < x.val then x else m) q)
+/-- The numerals in increasing order. -/
+def sortQ (qs : List Q) : List Q := qs.mergeSort fun a b => decide (a.val ≤ b.val)
+
 /-- The middle of the sorted numerals, or the mean of the two middles. -/
 def medianQ (qs : List Q) : Option Q :=
-  let s := qs.mergeSort fun a b => a.val ≤ b.val
-  let n := s.length
-  if n == 0 then none
-  else if n % 2 == 1 then s[n / 2]?
-  else do let a ← s[n / 2 - 1]?; let b ← s[n / 2]?; return (a + b) / Q.ofInt 2
+  let s := sortQ qs
+  if qs.length == 0 then none
+  else if qs.length % 2 == 1 then s[qs.length / 2]?
+  else match s[qs.length / 2 - 1]?, s[qs.length / 2]? with
+    | some a, some b => some ((a + b) / Q.ofInt 2)
+    | _, _ => none
 
 /-- One statistic: its name, how it is computed from a column, and the explanation of the step. -/
 structure Stat where

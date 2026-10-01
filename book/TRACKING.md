@@ -796,3 +796,35 @@ Phases:
    numbers held in view, rows added 100 at a time as they scroll in, numeric columns right-aligned, entries still
    selectable for `explain`. It is the default form of such a matrix ("data table" in the output-form menu); the
    typeset forms remain, abridged as before. A file table's forms are "table" and "text".
+
+## Selection and statistics (2026-10-01, Alex: "selection and statistics stuff for csv, json … in the usual engine way with proofs if possible"; Part syntax `x[[…]]`, 1-based, chosen over Python's)
+
+- engine: Part — DONE. `m[[i]]`, `m[[i, j]]`, `m[[All, j]]`, spans `a;;b;;s` (both ends included; `;;b` and
+   `a;;` as Mathematica reads them), lists `{i, j}`, negative positions from the end. Postfix, tighter than `^`;
+   `[[` after a term was a nested matrix, already refused, so no input changes meaning. `part(m, …)`, `span`,
+   `All()`, `List(…)` in the tree; printed back as typed and as `m\llbracket…\rrbracket`. `la.part` on a literal:
+   a vector takes one index into its entries, a matrix rows then columns; a single index drops the dimension (a
+   column stays a column vector). `partSpec_lt` (core Lean, in LinAlg.lean): every position a spec selects is in
+   range, so the selection is the entries named and never `getD`'s filler. The visual input refuses a part (the
+   cell stays text) and knows the new builtins.
+- engine: statistics — DONE. `total`, `mean`, `variance`, `stdev`, `min`, `max`, `median` of a vector, or the row of
+   a matrix's column statistics (Mathematica's convention); variance and stdev divide by n − 1. The variance is
+   written `(Σxᵢ² − (Σxᵢ)²/n)/(n − 1)`, linear in n; the definition repeats the mean in each of n terms.
+   `min`/`max`/`median` compare exact rationals and refuse symbols. One rule per statistic (`stat.*`) through
+   `checkedLit`; termination is one generic lemma, `dec_statRule`. Engine tests: 33 more, in `partStatTests`.
+- proofs: `Proofs/Stats.lean`. `total_soundR`, `mean_soundR` (the sum, the sum over the count),
+   `variance_soundR` (the one-pass form is the sample variance Σ(xᵢ − x̄)²/(n − 1), via `sum_sq_dev`),
+   `stdev_soundR`, `minQ_spec`/`maxQ_spec` (an entry, none smaller/larger), `medianQ_spec` (the middle of a
+   sorted permutation, by core's `mergeSort_perm` and `sorted_mergeSort`).
+- notebook: Part on files — DONE. A CSV takes rows and columns by position or by name in quotes (`t[["mass"]]` alone
+   is that column); JSON takes keys and positions one level at a time, `All` applying the rest to each element
+   (`j[["planets", All, "mass"]]`). The same semantics as the engine's, in TypeScript; a differential test runs 22
+   specs through both, errors included. A selection of numbers goes to the engine as a numeral or matrix literal
+   (parts after it stay in the source for the engine); one with text stays the notebook's: a smaller table, JSON,
+   or text, shown and bound like a file. JSON that is a list of records or of lists shows as a data table.
+   `column`/`row` gave way to Part; `matrix` and `dimensions` read JSON tables too.
+- notebook: intellisense in `[[ ]]` — DONE. Signature help names the indices (`planets[[row, column]]`) and says
+   what is in range: the rows and columns, a table's column names, an object's keys at the level being indexed,
+   the shape of a name bound to a matrix (recorded from its output). Completions offer the names and `All`; a
+   quoted name replaces what was typed, its closing quote included. Captions suggest parts with the file's own
+   column names (`mean(planets[[All, "mass"]])`).

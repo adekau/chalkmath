@@ -4490,7 +4490,7 @@ function updateCompletions(cell: Cell) {
     const { ctx, help } = part;
     const q = ctx.typed.text.toLowerCase();
     const items: CompItem[] = help.names.filter((n) => n.toLowerCase().startsWith(q))
-      .map((n) => ({ kind: "part" as const, insert: `"${n}"`, label: `"${n}"`, hint: help.blurb.startsWith("An object") ? "key" : "column", start: ctx.typed.start }));
+      .map((n) => ({ kind: "part" as const, insert: `"${n}"`, label: `"${n}"`, hint: help.namesAre ?? "name", start: ctx.typed.start }));
     if (!ctx.typed.quoted && "all".startsWith(q)) items.unshift({ kind: "part", insert: "All", label: "All", hint: "every position", start: ctx.typed.start });
     // nothing typed yet and nothing to name: the signature line says what is in range
     if (!items.length || (!q && !ctx.typed.quoted && !help.names.length)) return hideCompletions();

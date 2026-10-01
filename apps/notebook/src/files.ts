@@ -751,7 +751,7 @@ export function fileExprValue(text: string, scope: FileScope): { kind: "file"; f
 /** What can go in index `arg` of a part of `value`, given the indices before it: the indices' names
  *  for the signature (`row, column`), a line saying what is in range, and the names that can be typed
  *  there (a table's columns, an object's keys). */
-export function partHelp(value: { kind: "file"; file: FileValue } | { kind: "numbers"; rows: number; cols: number; single: boolean }, specs: string[], arg: number): { params: string[]; blurb: string; names: string[] } | null {
+export function partHelp(value: { kind: "file"; file: FileValue } | { kind: "numbers"; rows: number; cols: number; single: boolean }, specs: string[], arg: number): { params: string[]; blurb: string; names: string[]; namesAre?: "column" | "key" } | null {
   const range = (n: number, what: string) => `${what} 1…${n} (or -${n}…-1), All, a;;b, {i, j}`;
   if (value.kind === "numbers") {
     if (value.single) return null;
@@ -767,8 +767,8 @@ export function partHelp(value: { kind: "file"; file: FileValue } | { kind: "num
     const t = tableOf(f);
     const cols = t.header ? t.header.map((h) => `"${h}"`) : [];
     const colLine = `${range(t.cols, "columns")}${t.header ? `, or by name: ${cols.join(", ")}` : ""}`;
-    if (arg === 0) return { params: ["row", "column"], blurb: `${t.rows.length} rows: ${range(t.rows.length, "rows")}. A name alone picks a column.`, names: t.header ?? [] };
-    if (arg === 1) return { params: ["row", "column"], blurb: `${t.cols} columns: ${colLine}.`, names: t.header ?? [] };
+    if (arg === 0) return { params: ["row", "column"], blurb: `${t.rows.length} rows: ${range(t.rows.length, "rows")}. A name alone picks a column.`, names: t.header ?? [], namesAre: "column" };
+    if (arg === 1) return { params: ["row", "column"], blurb: `${t.cols} columns: ${colLine}.`, names: t.header ?? [], namesAre: "column" };
     return { params: ["row", "column"], blurb: "A table has two dimensions, rows and columns.", names: [] };
   }
   if (kind === "json") {
@@ -787,7 +787,7 @@ export function partHelp(value: { kind: "file"; file: FileValue } | { kind: "num
     const params = [...specs.map((_, i) => `i${i + 1}`), "…"];
     params[arg] = Array.isArray(v) ? "position" : isObj(v) ? "key" : "…";
     if (Array.isArray(v)) return { params, blurb: `A list of ${v.length}: ${range(v.length, "positions")}.`, names: [] };
-    if (isObj(v)) { const keys = Object.keys(v); return { params, blurb: `An object with ${keys.length} key${keys.length === 1 ? "" : "s"}: ${keys.slice(0, 12).map((k) => `"${k}"`).join(", ")}${keys.length > 12 ? ", …" : ""}.`, names: keys }; }
+    if (isObj(v)) { const keys = Object.keys(v); return { params, blurb: `An object with ${keys.length} key${keys.length === 1 ? "" : "s"}: ${keys.slice(0, 12).map((k) => `"${k}"`).join(", ")}${keys.length > 12 ? ", …" : ""}.`, names: keys, namesAre: "key" }; }
     return { params, blurb: `${JSON.stringify(v).slice(0, 40)} is ${jsonKind(v)}, which has no parts.`, names: [] };
   }
   return null;

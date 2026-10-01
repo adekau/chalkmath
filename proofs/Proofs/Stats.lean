@@ -33,17 +33,20 @@ summed, over `n − 1`. -/
 def sampleVariance (v : List ℝ) : ℝ :=
   (v.map fun x => (x - v.sum / v.length) ^ 2).sum / (v.length - 1)
 
-/-- The squared deviations sum to `Σxᵢ² − (Σxᵢ)²/n`: expand the square and collect. -/
+/-- Σ(xᵢ − c)² = Σxᵢ² − 2cΣxᵢ + nc², for any `c`: the square expanded, term by term. -/
+theorem sum_sq_sub (v : List ℝ) (c : ℝ) :
+    (v.map fun x => (x - c) ^ 2).sum = (v.map (· ^ 2)).sum - 2 * c * v.sum + v.length * c ^ 2 := by
+  induction v with
+  | nil => simp
+  | cons a l ih => simp only [List.map_cons, List.sum_cons, List.length_cons, ih]; push_cast; ring
+
+/-- The squared deviations from the mean sum to `Σxᵢ² − (Σxᵢ)²/n`. -/
 theorem sum_sq_dev (v : List ℝ) :
     (v.map fun x => (x - v.sum / v.length) ^ 2).sum = (v.map (· ^ 2)).sum - v.sum ^ 2 / v.length := by
-  rcases v.eq_nil_or_ne_nil with rfl | hv
-  · simp
-  have hn : (v.length : ℝ) ≠ 0 := by simpa using List.length_pos_iff.mpr hv
-  set m := v.sum / v.length
-  have expand : ∀ x : ℝ, (x - m) ^ 2 = x ^ 2 + (-(2 * m) * x + m ^ 2) := fun x => by ring
-  simp only [expand, List.sum_map_add, List.sum_map_mul_left, List.map_id', List.map_const', List.sum_replicate,
-    nsmul_eq_mul]
-  simp only [m]
+  by_cases hv : v = []
+  · subst hv; simp
+  have hn : (v.length : ℝ) ≠ 0 := by simpa using hv
+  rw [sum_sq_sub]
   field_simp
   ring
 
@@ -75,8 +78,12 @@ theorem foldl_min (qs : List Q) : ∀ acc : Q,
     intro acc
     obtain ⟨hmem, hle⟩ := ih (if y.val < acc.val then y else acc)
     simp only [List.foldl_cons]
+    have ha : (if y.val < acc.val then y else acc) = y ∨ (if y.val < acc.val then y else acc) = acc := by
+      split <;> simp
     refine ⟨?_, ?_⟩
-    · split at hmem <;> simp_all
+    · rcases List.mem_cons.mp hmem with h | h
+      · rcases ha with h' | h' <;> rw [h, h'] <;> simp
+      · simp [h]
     · have hstep : (if y.val < acc.val then y else acc).val ≤ y.val ∧ (if y.val < acc.val then y else acc).val ≤ acc.val := by
         split
         · rename_i h; exact ⟨le_refl _, le_of_lt h⟩
@@ -98,8 +105,12 @@ theorem foldl_max (qs : List Q) : ∀ acc : Q,
     intro acc
     obtain ⟨hmem, hle⟩ := ih (if acc.val < y.val then y else acc)
     simp only [List.foldl_cons]
+    have ha : (if acc.val < y.val then y else acc) = y ∨ (if acc.val < y.val then y else acc) = acc := by
+      split <;> simp
     refine ⟨?_, ?_⟩
-    · split at hmem <;> simp_all
+    · rcases List.mem_cons.mp hmem with h | h
+      · rcases ha with h' | h' <;> rw [h, h'] <;> simp
+      · simp [h]
     · have hstep : y.val ≤ (if acc.val < y.val then y else acc).val ∧ acc.val ≤ (if acc.val < y.val then y else acc).val := by
         split
         · rename_i h; exact ⟨le_refl _, le_of_lt h⟩
@@ -130,30 +141,24 @@ theorem medianQ_spec {qs : List Q} {m : Q} (h : medianQ qs = some m) :
     ∃ s : List Q, s.Perm qs ∧ s.Pairwise (fun a b => a.val ≤ b.val) ∧
       ((qs.length % 2 = 1 ∧ s[qs.length / 2]? = some m) ∨
        (qs.length % 2 = 0 ∧ ∃ a b, s[qs.length / 2 - 1]? = some a ∧ s[qs.length / 2]? = some b ∧ m = (a + b) / Q.ofInt 2)) := by
-  let le : Q → Q → Bool := fun a b => decide (a.val ≤ b.val)
-  have hperm := List.mergeSort_perm qs le
-  have hsorted : (qs.mergeSort le).Pairwise (fun a b => le a b) :=
-    List.sorted_mergeSort (le := le)
-      (fun a b c hab hbc => by simp only [le, decide_eq_true_eq] at *; exact le_trans hab hbc)
-      (fun a b => by simp only [le, Bool.or_eq_true, decide_eq_true_eq]; exact le_total _ _) qs
-  refine ⟨qs.mergeSort le, hperm, hsorted.imp (by simp [le]), ?_⟩
-  have hlen : (qs.mergeSort le).length = qs.length := hperm.length_eq
+  have hsorted : (sortQ qs).Pairwise (fun a b => decide (a.val ≤ b.val)) :=
+    List.pairwise_mergeSort
+      (fun a b c hab hbc => by simp only [decide_eq_true_eq] at *; exact le_trans hab hbc)
+      (fun a b => by simp only [Bool.or_eq_true, decide_eq_true_eq]; exact le_total _ _) qs
+  refine ⟨sortQ qs, List.mergeSort_perm qs _, hsorted.imp (by simp), ?_⟩
   unfold medianQ at h
-  simp only [hlen] at h
+  simp only at h
   split at h
   · simp at h
   · split at h
-    · left; exact ⟨by simpa using ‹_›, h⟩
-    · right
-      refine ⟨by omega, ?_⟩
-      simp only [bind, Option.bind] at h
+    · rename_i hodd; left; exact ⟨by simpa using hodd, h⟩
+    · rename_i hz hodd
+      right
+      refine ⟨by simp at hz hodd; omega, ?_⟩
       split at h
+      · rename_i a b ha hb
+        simp only [Option.some.injEq] at h
+        exact ⟨a, b, ha, hb, h.symm⟩
       · simp at h
-      · rename_i a ha
-        split at h
-        · simp at h
-        · rename_i b hb
-          simp only [pure, Option.some.injEq] at h
-          exact ⟨a, b, ha, hb, h.symm⟩
 
 end MathProofs
