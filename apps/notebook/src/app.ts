@@ -1,4 +1,4 @@
-import { createClient, type EngineClient, type Step, type Path, type RuleStatus, type Derivation, type WireExpr } from "@chalkmath/protocol";
+import { createClient, type EngineClient, type Step, type Path, type RuleStatus, type Derivation, type WireExpr, type PlotResult, type HasseData } from "@chalkmath/protocol";
 declare const __BUILD_ID__: string;
 import { workerTransport, httpTransport } from "@chalkmath/engine-host";
 import { read as readNotation, write as writeNotation, writeText, hasNotation, templateAt, templateInText, TEMPLATES, type Stmt, type Caret, type MathEdit } from "@chalkmath/math-editor";
@@ -22,6 +22,7 @@ import { ASK_CELL, AskError, askSettings, setAskSettings, runLookup, askSource, 
 import { fileCellOf, resolveFiles, importsIn, partContext, partHelp, fileExprValue, svgPoints, kindOf, tableOf, jsonOf, jsonTable, numericColumns, fileText, fileSize, fmtSize, mimeLabel, mimeFor, dataUrl, fileFromBytes, helpersFor, type FileValue, type FileRef, type FileScope, type Table } from "./files.js";
 import { dataGrid, matrixEntries } from "./datagrid.js";
 import { DOC_PAGES, type DocPage, type DocPart } from "./docs.js";
+import { FUNCTIONS, FN_BY_NAME, AREAS, fnPage, evaluable, type FnDoc, type ExampleSection } from "./reference.js";
 import { ensureLean, syncLean, mountLean, unmountLean, focusLean, infoview as leanInfoview, leanState, leanFailure, leanProgress, initLeanIsolation, type LeanMessage } from "./lean-cells.js";
 /** The one trusted KaTeX command is `\htmlData`, which carries the engine's subterm paths. LaTeX can
  *  come from a file someone else wrote (saved outputs render before any re-run), and a blanket
@@ -31,48 +32,20 @@ const tex = (s: string, paths = false) =>
   katex.renderToString(s, { throwOnError: false, trust: paths ? TRUST_PATHS : false, strict: false, displayMode: false });
 
 // ---------------------------------------------------------------------------
-// Content: the notebook's own vocabulary, from the design's reference copy.
+// Content: the notebook's own vocabulary, from the function reference (reference.ts)
 // ---------------------------------------------------------------------------
 
-interface Doc { name: string; sig: string; blurb: string; ref?: string; examples: string[] }
+/** A command as completion, signature help, hover and the Explanation panel show it. */
+interface Doc { name: string; sig: string; blurb: string; ref?: string; examples: string[]; notation?: boolean }
 
-const DOCS: Doc[] = [
-  { name: "diff", sig: "diff(f, x[, n])", blurb: "Derivative of f with respect to x; the optional n takes it n times. Implemented as rewrite rules that push d/dx inward, so the derivation reads like a textbook.", ref: "https://mathworld.wolfram.com/Derivative.html", examples: ["diff(x^2 * sin(x), x)", "diff(x^3, x, 2)"] },
-  { name: "integrate", sig: "integrate(f, x) · integrate(f, x, a, b)", blurb: "Antiderivative of f in x, without the constant. A small rule set guesses; the guess is accepted only if differentiating it gives f back, so the check is the proof. With bounds, the definite integral: the checked antiderivative at b minus at a (the fundamental theorem of calculus, integrate_definite).", ref: "https://mathworld.wolfram.com/IndefiniteIntegral.html", examples: ["integrate(x^2 + sin(x), x)", "integrate(exp(2*x), x)", "integrate(cos(t)*sin(t), t, 0, 2pi)", "integrate(exp(-3i*t), t, 0, pi)"] },
-  { name: "sum", sig: "sum(f, k, a, b)", blurb: "The finite sum f[k := a] + … + f[k := b] for integer bounds, expanded and collected. A definition, read over ℝ by sum_soundR.", examples: ["sum(k^2, k, 1, 10)", "sum(c*exp(i*k*t), k, -3, 3)"] },
-  { name: "exptotrig", sig: "exptotrig(e)", blurb: "Euler's formula exp(iθ) = cos θ + i sin θ applied to every exponential with a pure-imaginary argument, at once (Mathematica's ExpToTrig). It is a command rather than a simplification rule because the general formula makes the term bigger; wrap it in expand to distribute and collect. Proved sound over ℂ.", examples: ["exptotrig(exp(i*t))", "expand(exptotrig(exp(-i*t) - exp(i*t)))"] },
-  { name: "dot", sig: "dot(u, v) · norm(v)", blurb: "The dot product Σ uᵢvᵢ of two vectors (one-row or one-column matrices), bilinear like Mathematica's Dot — the Hermitian inner product of complex vectors is dot(u, conj(v)). norm(v) is the Euclidean length √(Σ vᵢ²).", examples: ["dot([1,2,3],[4,5,6])", "dot([i,1], conj([i,1]))", "norm([3,4])"] },
-  { name: "epicycles", sig: "epicycles(f, t[, n]) · epicycles(points[, modes]) · dft(points[, modes])", blurb: "Draw a finite Fourier sum Σ c_k·exp(i k t) with circles: one per term, radius |c_k| and phase arg c_k, spinning at k turns per period, tip to tail; the tip traces the curve. Given a list of points instead — [x, y; …] or complex numbers — it computes their coefficients numerically (the discrete Fourier transform, dft, keeping the modes largest) and draws the same way. The drawing is numeric presentation; the sum's algebra is the engine's.", examples: ["epicycles(exp(i*t) + 1/2*exp(-3i*t), t)", "epicycles(sum(2i/(k*pi)*(exp(-i*k*t) - exp(i*k*t)), k, 1, 3), t)", "dft([1, i, -1, -i])"] },
-  { name: "import", sig: "import(\"url\") · ⟦file⟧ · let x = import(…)", blurb: "A file as a value, as in Mathematica: kept as it came — its name, media type and contents — and shown by what it is. An image shows as the image, a CSV or TSV as a table, JSON and other text as text, anything else as a card with its type and size. ⟦name⟧ refers to a file attached to the notebook (File → Attach file…, or paste one into a cell); import(\"url\") fetches one from the web (the server must allow cross-origin reads). let x = import(…) binds the name to the file. Nothing is converted on the way in: its parts and the functions called on it turn it into numbers — t[[All, \"mass\"]] for a table, j[[\"key\"]] for JSON, samplePoints for an SVG, matrix and dimensions for a table — and a file anywhere else in a cell is an error saying which. A part that is not numbers (rows with text, a JSON object) is shown and bound like a file.", examples: ["import(\"https://raw.githubusercontent.com/adekau/fourier/master/src/assets/llama.svg\")", "let planets = import(\"examples/data/planets.csv\")"] },
-  { name: "samplePoints", sig: "samplePoints(svg[, n])", blurb: "An SVG as numbers: n points (400 if not given) sampled along its paths at equal arc lengths, centred and scaled so the larger extent is [-1, 1] — an n×2 matrix, ready for epicycles and dft. Only SVG paths are traced; another image is an error.", examples: ["let llama = import(\"https://raw.githubusercontent.com/adekau/fourier/master/src/assets/llama.svg\")", "let pts = samplePoints(llama)", "epicycles(pts, 60)"] },
-  { name: "part", sig: "m[[i]] · m[[i, j]] · m[[All, j]] · m[[a;;b;;s]] · m[[{i, j}]] · t[[All, \"name\"]]", blurb: "Mathematica's Part. Positions count from 1, and a negative one from the end (-1 is the last). All takes every position; a;;b takes a through b, both included (;;b from the start, a;; to the end), and a;;b;;s steps by s, backwards when s is negative; {i, j} takes those positions in that order. A matrix takes rows, then columns; a vector (one row or one column) takes one index into its entries. A single index drops that dimension (an entry, or a row or column vector); a span or a list keeps it. A table also takes column names in quotes, t[[\"mass\"]] alone being that column; JSON takes keys and positions one level at a time, with All applying the rest to every element: j[[\"planets\", All, \"mass\"]]. A selection of numbers goes to the engine (la.part, every position in range by partSpec_lt); one with text in it stays a table, JSON or text of the notebook.", examples: ["[1, 2, 3; 4, 5, 6; 7, 8, 9][[2]]", "[1, 2, 3; 4, 5, 6; 7, 8, 9][[All, -1]]", "[1, 2, 3; 4, 5, 6; 7, 8, 9][[1;;3;;2, {3, 1}]]", "let planets = import(\"examples/data/planets.csv\")", "planets[[All, \"period\"]]", "planets[[2;;4]]"] },
-  { name: "mean", sig: "mean(v) · median(v) · variance(v) · stdev(v) · min(v) · max(v) · total(v)", blurb: "Statistics of a vector, or of each column of a matrix (a row of the columns' statistics), as in Mathematica. total, mean, variance and stdev are definitions, so symbolic entries work; variance and stdev are the sample ones, dividing by n − 1 (Mathematica's Variance, Python's statistics.variance), and the engine writes the variance in its one-pass form, proved equal to Σ(xᵢ − x̄)²/(n − 1) (variance_soundR). min, max and median compare exact rationals, so they take numbers.", examples: ["mean([2, 4, 4, 4, 5, 5, 7, 9])", "variance([2, 4, 4, 4, 5, 5, 7, 9])", "stdev([1, 3])", "median([4, 1, 3, 2])", "mean([a; b])", "mean([1, 2; 3, 4])", "mean(planets[[All, \"mass\"]])"] },
-  { name: "matrix", sig: "matrix(table) · dimensions(table)", blurb: "A CSV or TSV file, or JSON that is a list of records, as numbers: matrix is every data row (an error naming the field if one is not a number), dimensions is [rows, columns]. The first line of a CSV is a header when it has no numbers in it. To take some of a table, use its parts: t[[All, {\"mass\", \"period\"}]].", examples: ["let planets = import(\"examples/data/planets.csv\")", "dimensions(planets)", "matrix(planets[[All, 2;;]])"] },
-  { name: "sign", sig: "sign(x)", blurb: "The sign function: −1, 0 or 1. Folds on numerals and stays symbolic otherwise, so sign(sin(t)) is the square wave.", examples: ["sign(-3)", "plot(sign(sin(t)), t, -pi, pi)"] },
-  { name: "poset", sig: "poset({a,b,c}; a<b, a<c) · divisors(n) · subsets({…}) · chain(n)", blurb: "A finite partial order: the reflexive-transitive closure of the relation given, checked for antisymmetry. Bind it with let and ask about it: hasse, join, meet, sup, inf, upper, lower, top, bottom, maximal, minimal, lattice, le.", examples: ["let D = divisors(12)", "join(D, 4, 6)", "lattice(D)", "le(D, 2, 12)", "let P = poset({a,b,c,d}; a<b, a<c, b<d, c<d)"] },
-  { name: "map", sig: "map(P; a->b, c->d, …) · monotone(P, f) · lfp(P, f) · gfp(P, f) · fixpoints(P, f)", blurb: "A map on a poset given as a table (other elements are fixed). monotone checks every pair; lfp and gfp iterate from ⊥ and ⊤ and show the Kleene chain, which is proved to end at the least (greatest) fixed point.", examples: ["let f = map(D; 1->2, 3->6)", "monotone(D, f)", "lfp(D, f)"] },
-  { name: "lambda", sig: "λx. e  ·  type \\lam", blurb: "A λ-cell: any cell with a λ (type \\lam, then Tab or space) or a backslash. Application is juxtaposition, λx y. e binds two, digits are Church numerals, and name := term defines. The engine reduces in normal order one β-step at a time; toggle de Bruijn indices in the View menu.", examples: ["(λx. x) y", "(λx. λy. x y) y", "add 2 3", "TWO := succ (succ zero)"] },
-  { name: "church", sig: "true false and or not if · zero succ add mul pow iszero · pair fst snd · id const K S I omega Y", blurb: "The Church library, available in every λ-cell; a normal form that is a Church numeral or boolean is read out beside the result.", examples: ["if (iszero 0) a b", "fst (pair 1 2)", "mul 2 3"] },
-  { name: "plot", sig: "plot(f, x, from, to[, n])  ·  plot([f, g, …], x, from, to[, n])", blurb: "Graph of f — or of several functions, given as a list — over [from, to]. The engine simplifies each under the session (a derivative plots as the derivative), records the derivation, and samples every curve where it has a finite value; the notebook draws them with a legend.", examples: ["plot(sin(x)/x, x, -10, 10)", "plot([sin(x), cos(x)], x, 0, 2pi)", "plot([x^2, diff(x^2, x)], x, -3, 3)"] },
-  { name: "expand", sig: "expand(e)", blurb: "Multiplies out products and powers of sums by repeated distribution.", ref: "https://mathworld.wolfram.com/Expand.html", examples: ["expand((x+1)^3)", "expand((a+b)^4)"] },
-  { name: "factor", sig: "factor(e)", blurb: "The shape a hand derivation ends in: expand and collect, put the sum over a common denominator (Mathematica's Together), and pull the numerator's common factor out — so a definite integral's ½·(−(i/k − i·e^{ikπ}/k) − i/k + i·e^{−ikπ}/k)/π becomes i·(e^{−ikπ} + e^{ikπ} − 2)/(2kπ). One presentation of the normal form; not a factorization into irreducibles (x² − 1 stays).", examples: ["factor(x^2 + 2*x)", "factor(a/x + b/y)", "factor(c(k))"] },
-  { name: "simplify", sig: "simplify(e)", blurb: "Explicit request for the normal form. Every cell is simplified anyway; this names the intent.", examples: ["simplify(x + x)"] },
-  { name: "rref", sig: "rref(M)", blurb: "Gauss–Jordan elimination to reduced row echelon form. Each row operation is recorded as its own step.", ref: "https://mathworld.wolfram.com/ReducedRowEchelonForm.html", examples: ["rref([1,2,3;4,5,6;7,8,10])", "rref([1,2;2,4])"] },
-  { name: "det", sig: "det(M)", blurb: "Determinant by Laplace expansion along the first row. Works on symbolic entries.", ref: "https://mathworld.wolfram.com/Determinant.html", examples: ["det([1,2;3,4])", "det([a,b;c,d])"] },
-  { name: "transpose", sig: "transpose(M)", blurb: "Swaps rows and columns.", examples: ["transpose([1,2,3;4,5,6])"] },
-  { name: "subst", sig: "subst(e, x, v)", blurb: "Replaces every free occurrence of x with v.", examples: ["subst(x^2 + 1, x, 3)"] },
-  { name: "N", sig: "N(e)", blurb: "Numerical approximation in IEEE-754 double precision, printed to fifteen significant digits. Over ℂ when the term mentions i, or when the real value is not finite (N(sqrt(-1)) is i).", examples: ["N(pi)", "N(sqrt(2))"] },
-  { name: "sqrt", sig: "sqrt(x)", blurb: "Square root, i.e. x^(1/2), so the power rule handles it directly.", ref: "https://mathworld.wolfram.com/SquareRoot.html", examples: ["sqrt(16)", "diff(sqrt(x), x)"] },
-  { name: "sin", sig: "sin(x)", blurb: "Sine. Derivative cos x.", ref: "https://mathworld.wolfram.com/Sine.html", examples: ["diff(sin(x^2), x)"] },
-  { name: "cos", sig: "cos(x)", blurb: "Cosine. Derivative −sin x.", ref: "https://mathworld.wolfram.com/Cosine.html", examples: ["diff(cos(x), x)"] },
-  { name: "tan", sig: "tan(x)", blurb: "Tangent, sin x / cos x. Derivative sec² x.", ref: "https://mathworld.wolfram.com/Tangent.html", examples: ["diff(tan(x), x)"] },
-  { name: "exp", sig: "exp(x)", blurb: "Its own derivative and its own antiderivative.", ref: "https://mathworld.wolfram.com/ExponentialFunction.html", examples: ["diff(exp(2x), x)", "ln(exp(x))"] },
-  { name: "ln", sig: "ln(x)", blurb: "Natural logarithm. Derivative 1/x.", ref: "https://mathworld.wolfram.com/NaturalLogarithm.html", examples: ["diff(ln(x), x)"] },
-  { name: "abs", sig: "abs(x)", blurb: "Absolute value; folds on numeric arguments.", examples: ["abs(-3)"] },
-  { name: "i", sig: "i · conj(z) · re(z) · im(z) · abs(z) · pi · ℯ", blurb: "The imaginary unit, with i² = −1. Gaussian numerals a + b·i multiply, divide and take powers exactly; conj, re, im and abs read them; sin, cos and tan take exact values at rational multiples of π; and exp(iθ) becomes cos θ + i sin θ where both are exact, so ℯ^(π i) is −1. A cell that mentions i is read over ℂ and shows each rule's status there.", examples: ["ℯ^(pi*i)", "(1+i)*(2-i)", "abs(3+4i)", "cos(pi/3)"] },
-  { name: "%", sig: "% · %% · %n", blurb: "The previous output, the one before it, or Out[n]: Mathematica's output references. The engine numbers every evaluation and substitutes the value before anything else happens, so the input interpretation shows what % stood for.", examples: ["diff(%, x)", "rref(%)", "%1 + %2"] },
-  { name: "let", sig: "let name = e · let f(x, y) = e", blurb: "Binds a name in this session, or defines a function of its parameters. Later cells substitute the value or expand the call; a bare function name stands for its body over its own parameters, so after let g(a, b) = a*b, integrate(g, a) integrates a*b.", examples: ["let f = x^3 - 3x", "let sq(x) = x^2 + 1", "diff(sq(x), x)", "let g(a, b) = a*b", "integrate(g, a)"] },
-];
+/** A usage line as text: its `code` without the backticks. */
+const plainUsage = (s: string) => s.replace(/`([^`]*)`/g, "$1");
+const DOCS: Doc[] = FUNCTIONS.map((f) => ({
+  name: f.name, sig: f.usage.map(([form]) => form).join(" · "),
+  blurb: f.usage.map(([form, what]) => `${form} ${plainUsage(what)}`).join(" "),
+  examples: f.examples.flatMap((s) => s.items.filter((it): it is string => typeof it === "string")),
+  ...(f.ref ? { ref: f.ref } : {}), ...(f.notation ? { notation: true } : {}),
+}));
 const DOC_BY_NAME = new Map(DOCS.map((d) => [d.name, d]));
 
 /** Lean-style backslash abbreviations: type `\`, see them all, filter as you type, Tab inserts the symbol. */
@@ -468,6 +441,7 @@ async function connect() {
   }
   renderChrome();
   renderPanel();
+  if (S.tab === "docs") renderDocs();   // the examples' outputs were waiting for the engine
 }
 
 /** The engine is gone, and every session it held with it; `restartEngine` rebuilds them. `why` is
@@ -634,10 +608,7 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
       if (r.label) { LAST_LABEL.set(sessionId, r.label); FILE_OUTS.delete(`${sessionId}:${r.label}`); }
       delete cell.plot; delete cell.outDeBruijn; delete cell.reading; delete cell.kind; delete cell.hasse; delete cell.summary;
       if ("kind" in r && r.kind === "poset") { cell.kind = "order"; cell.hasse = r.hasse; cell.summary = r.summary; }
-      if ("kind" in r && r.kind === "plot") {
-        cell.plot = { var: r.var, from: r.from, to: r.to, series: r.series.map((s) => ({ latex: s.rendered.latex, text: s.rendered.text, points: s.points, ...(s.parametric ? { parametric: true } : {}) })) };
-        if (r.terms?.length) cell.plot.terms = r.terms.map((t) => ({ k: t.k, re: t.re, im: t.im, ...(t.rendered ? { latex: t.rendered.latex } : {}) }));
-      }
+      if ("kind" in r && r.kind === "plot") cell.plot = plotDataOf(r);
       if ("kind" in r && r.kind === "lambda") { cell.outDeBruijn = r.renderedDeBruijn?.latex; cell.reading = r.reading; cell.kind = "λ-term"; }
       log("ok", `Out[${cell.label}] ${r.rendered.text}  (${cell.ms.toFixed(1)} ms, ${cell.steps.length} steps)`);
       announce(`Out ${cell.label}: ${r.rendered.text}`);
@@ -681,6 +652,13 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
     log("err", cell.error.message);
   }
   finishEvaluation(cell);
+}
+
+/** A plot reply as the notebook draws it: each curve's term and samples, and an epicycle drawing's circles. */
+function plotDataOf(r: PlotResult): PlotData {
+  const p: PlotData = { var: r.var, from: r.from, to: r.to, series: r.series.map((s) => ({ latex: s.rendered.latex, text: s.rendered.text, points: s.points, ...(s.parametric ? { parametric: true } : {}) })) };
+  if (r.terms?.length) p.terms = r.terms.map((t) => ({ k: t.k, re: t.re, im: t.im, ...(t.rendered ? { latex: t.rendered.latex } : {}) }));
+  return p;
 }
 
 /** After a cell's evaluation: the notebook is free, and the cell shows what it got. */
@@ -2010,6 +1988,8 @@ function renderSidebar() {
     });
   } else {
     for (const d of DOCS) {
+      const area = FN_BY_NAME.get(d.name)!.area;
+      if (area !== FN_BY_NAME.get(DOCS[DOCS.indexOf(d) - 1]?.name ?? "")?.area) list.append(h("div", "plhead", area));
       const row = asButton(h("div", "plrow"));
       row.append(h("span", "name", d.name), h("span", "sig", d.sig));
       row.addEventListener("click", () => {
@@ -3699,17 +3679,17 @@ function toggleCellMenu(cell: Cell, anchor: HTMLElement) {
 }
 function closeCellMenu() { document.querySelectorAll(".cellmenu").forEach((m) => m.remove()); }
 
-// --- Help › Documentation (docs.ts): the contents beside the page shown ---------------------------
+// --- Help › Documentation (docs.ts, reference.ts): the contents beside the page shown ------------
 
-/** Open the documentation's tab on a page (the one last shown by default), scrolled to `anchor`. */
-function openDocs(page = S.guide.page, anchor?: string) {
+/** Whether a page exists: a guide or reference page, or a function's page (`fn:name`). */
+const docPageExists = (id: string) => DOC_PAGES.some((p) => p.id === id) || (id.startsWith("fn:") && FN_BY_NAME.has(id.slice(3)));
+
+/** Open the documentation's tab on a page (the one last shown by default). */
+function openDocs(page = S.guide.page) {
   S.guide.open = true;
-  S.guide.page = DOC_PAGES.some((p) => p.id === page) ? page : "start";
-  docsAnchor = anchor ?? null;
+  S.guide.page = docPageExists(page) ? page : "start";
   switchTab("docs");
 }
-/** Where the page opened by `openDocs` scrolls to (a command's entry), once. */
-let docsAnchor: string | null = null;
 function closeDocs() {
   S.guide.open = false;
   if (S.tab === "docs") switchTab("notebook"); else renderTabs();
@@ -3725,6 +3705,20 @@ function tryInNotebook(src: string) {
   focusCell(S.cells.indexOf(c)); void runCell(c);
 }
 
+/** A function's examples as a notebook of their own, in a new tab, run. */
+function openExamples(f: FnDoc, sections: ExampleSection[]) {
+  const cells: Cell[] = [freshCell(`${f.title ?? f.name}: examples`, "section")];
+  for (const sec of sections) {
+    if (sections.length > 1) cells.push(freshCell(`## ${sec.title}`, "markdown"));
+    for (const it of sec.items) cells.push(typeof it === "string" ? freshCell(it) : freshCell(it.note, "markdown"));
+  }
+  cells.push(freshCell());
+  const d = makeDoc(`${f.name.replace(/[^\w-]/g, "") || "examples"}-examples.chalk`, cells);
+  S.docs.push(d); loadDoc(S.docs.length - 1);
+  switchTab("notebook");
+  void runAll();
+}
+
 /** What a `#do:` link in the documentation does. */
 const DOC_ACTIONS: Record<string, () => void> = {
   "ask-settings": () => void showAskSettings(),
@@ -3734,14 +3728,21 @@ const DOC_ACTIONS: Record<string, () => void> = {
 /** A page's text, for the contents' search: its Markdown and the tables it shows. */
 function docText(p: DocPage): string {
   return [p.title, ...p.parts.map((part) => typeof part === "string" ? part : "try" in part ? part.try.join(" ") : {
-    functions: DOCS.map((d) => `${d.name} ${d.sig} ${d.blurb}`).join(" "),
+    functions: "",
     symbols: SYMBOLS.map((s) => `${s.abbr} ${s.aliases.join(" ")} ${s.what}`).join(" ") + Object.entries(TEMPLATES).map(([k, t]) => `${k} ${t.what}`).join(" "),
     shortcuts: SHORTCUTS.flat().join(" "),
     examples: EXAMPLES.map((e) => `${e.title} ${e.blurb}`).join(" "),
   }[part.insert])].join(" ").toLowerCase();
 }
+const fnText = (f: FnDoc) => [f.name, f.title ?? "", f.area, ...f.usage.flat(), ...(f.details ?? [])].join(" ").toLowerCase();
 const queryWords = (q: string) => q.toLowerCase().split(/\s+/).filter(Boolean);
 const docMatches = (text: string, q: string) => queryWords(q).every((w) => text.includes(w));
+/** The functions a search finds: the name typed first, then names that start with it, then the rest. */
+function fnMatches(q: string): FnDoc[] {
+  const k = q.trim().toLowerCase();
+  const rank = (f: FnDoc) => f.name.toLowerCase() === k ? 0 : f.name.toLowerCase().startsWith(k) ? 1 : 2;
+  return FUNCTIONS.filter((f) => docMatches(fnText(f), q)).sort((a, b) => rank(a) - rank(b));
+}
 
 function renderDocs() {
   const host = $(".docs"); host.innerHTML = "";
@@ -3750,30 +3751,46 @@ function renderDocs() {
   search.type = "search"; search.className = "docsearch"; search.placeholder = "Search the documentation"; search.value = S.guide.query;
   search.setAttribute("aria-label", "Search the documentation"); search.spellcheck = false;
   const list = h("div", "doclist");
+  const row = (id: string, label: string, cls = "") => {
+    const r = asButton(h("div", `docrow${cls}${id === S.guide.page ? " on" : ""}`, label));
+    r.setAttribute("aria-current", String(id === S.guide.page));
+    r.addEventListener("click", () => openDocs(id));
+    return r;
+  };
   const fillList = () => {
     list.innerHTML = "";
     const q = S.guide.query.trim();
-    const shown = DOC_PAGES.filter((p) => !q || docMatches(docText(p), q));
     let group = "";
-    for (const p of shown) {
-      if (p.group !== group) { group = p.group; list.append(h("div", "docgroup", group)); }
-      const row = asButton(h("div", `docrow${p.id === S.guide.page ? " on" : ""}`, p.title));
-      row.setAttribute("aria-current", String(p.id === S.guide.page));
-      row.addEventListener("click", () => openDocs(p.id));
-      list.append(row);
+    const head = (g: string) => { if (g !== group) { group = g; list.append(h("div", "docgroup", g)); } };
+    if (q) {
+      const pages = DOC_PAGES.filter((p) => docMatches(docText(p), q));
+      const fns = fnMatches(q);
+      // a function named as typed comes first
+      if (fns[0] && fns[0].name.toLowerCase() === q.toLowerCase()) { head("Functions"); for (const f of fns) list.append(row(fnPage(f.name), f.title ?? f.name, " fn")); }
+      for (const p of pages) { head(p.group); list.append(row(p.id, p.title)); }
+      if (group !== "Functions" && fns.length) { group = ""; head("Functions"); for (const f of fns) list.append(row(fnPage(f.name), f.title ?? f.name, " fn")); }
+      if (!pages.length && !fns.length) list.append(h("div", "docnone", "Nothing matches."));
+    } else {
+      // the function pages unfold under the index while one of them (or the index) is shown
+      const inFns = S.guide.page === "functions" || S.guide.page.startsWith("fn:");
+      for (const p of DOC_PAGES) {
+        head(p.group);
+        list.append(row(p.id, p.title));
+        if (p.id === "functions" && inFns) {
+          for (const [area] of AREAS) {
+            list.append(h("div", "docarea", area));
+            for (const f of FUNCTIONS.filter((x) => x.area === area)) list.append(row(fnPage(f.name), f.title ?? f.name, " fn tree"));
+          }
+        }
+      }
     }
-    if (!shown.length) list.append(h("div", "docnone", "Nothing matches."));
-    // on a phone the contents are a strip: the page shown stays in view
+    // the page shown stays in view (on a phone the contents are a strip)
     requestAnimationFrame(() => list.querySelector(".docrow.on")?.scrollIntoView({ block: "nearest", inline: "nearest" }));
   };
-  search.addEventListener("input", () => {
-    S.guide.query = search.value; fillList();
-    if (S.guide.page === "functions") renderDocPage(main);   // the commands narrow as you type
-  });
+  search.addEventListener("input", () => { S.guide.query = search.value; fillList(); });
   search.addEventListener("keydown", (ev) => {
     if (ev.key !== "Enter") return;
-    const first = DOC_PAGES.find((p) => docMatches(docText(p), S.guide.query));
-    if (first) openDocs(first.id);
+    list.querySelector<HTMLElement>(".docrow")?.click();
   });
   fillList();
   nav.append(search, list);
@@ -3781,40 +3798,166 @@ function renderDocs() {
   // links between pages, and to parts of the notebook, stay in the page
   main.addEventListener("click", (ev) => {
     const a = (ev.target as Element).closest?.("a");
-    const href = a?.getAttribute("href") ?? "";
-    const m = /^#(doc|do):([\w-]+)(?:\/(.+))?$/.exec(href);
+    const m = /^#(doc|do|fn):(.+)$/.exec(a?.getAttribute("href") ?? "");
     if (!m) return;
     ev.preventDefault();
     if (m[1] === "do") DOC_ACTIONS[m[2]!]?.();
-    else openDocs(m[2]!, m[3]);
+    else openDocs(m[1] === "fn" ? fnPage(m[2]!) : m[2]!);
   });
   host.append(nav, main);
-  renderDocPage(main);
+  const art = h("article", "docpage");
+  if (S.guide.page.startsWith("fn:")) renderFnPage(art, FN_BY_NAME.get(S.guide.page.slice(3))!);
+  else renderGuidePage(art);
+  main.append(art);
 }
 
-function renderDocPage(main: HTMLElement) {
-  main.innerHTML = "";
+/** The pages before and after, by the contents' order. */
+function docFoot(prev?: [string, string], next?: [string, string]): HTMLElement {
+  const foot = h("div", "docfoot");
+  for (const [p, dir] of [[prev, "prev"], [next, "next"]] as const) {
+    if (!p) { foot.append(h("span", "docstep none")); continue; }
+    const b = asButton(h("div", `docstep ${dir}`));
+    b.append(h("span", "dir", dir === "prev" ? "← Previous" : "Next →"), h("span", "t", p[1]));
+    b.addEventListener("click", () => openDocs(p[0]));
+    foot.append(b);
+  }
+  return foot;
+}
+
+function renderGuidePage(art: HTMLElement) {
   const i = Math.max(0, DOC_PAGES.findIndex((p) => p.id === S.guide.page));
   const page = DOC_PAGES[i]!;
-  const art = h("article", "docpage");
   for (const part of page.parts) art.append(docPart(part));
-  // the pages read in order: the one before and after
-  const foot = h("div", "docfoot");
-  const step = (j: number, dir: string) => {
-    const p = DOC_PAGES[j];
-    if (!p) { foot.append(h("span")); return; }
-    const b = asButton(h("div", `docstep ${dir}`));
-    b.append(h("span", "dir", dir === "prev" ? "← Previous" : "Next →"), h("span", "t", p.title));
-    b.addEventListener("click", () => openDocs(p.id));
-    foot.append(b);
-  };
-  step(i - 1, "prev"); step(i + 1, "next");
-  art.append(foot);
-  main.append(art);
-  const target = docsAnchor ? art.querySelector<HTMLElement>(`[data-anchor="${CSS.escape(docsAnchor)}"]`) : null;
-  docsAnchor = null;
-  if (target) { target.scrollIntoView({ block: "start" }); target.classList.add("flash"); }
-  else main.scrollTop = 0;
+  const pg = (j: number): [string, string] | undefined => DOC_PAGES[j] ? [DOC_PAGES[j]!.id, DOC_PAGES[j]!.title] : undefined;
+  art.append(docFoot(pg(i - 1), pg(i + 1)));
+}
+
+/** A function's page, as Mathematica lays one out: usage, details, examples with their outputs (the
+ *  engine's, evaluated here), and related functions. */
+function renderFnPage(art: HTMLElement, f: FnDoc) {
+  art.classList.add("fnpage");
+  const head = h("div", "fnhead");
+  const area = asButton(h("span", "fnarea", f.area));
+  area.addEventListener("click", () => openDocs("functions"));
+  head.append(h("h1", "fnname", f.title ?? f.name), area);
+  art.append(head);
+  const usage = h("div", "fnusage");
+  for (const [form, what] of f.usage) {
+    const r = h("div", "urow");
+    r.append(h("code", "uform", form));
+    const w = h("div", "uwhat"); mdInline(w, what); r.append(w);
+    usage.append(r);
+  }
+  art.append(usage);
+  if (f.details?.length) {
+    const d = document.createElement("details"); d.className = "fndetails"; d.open = true;
+    d.append(h("summary", undefined, "Details"), mdRender(f.details.map((x) => `- ${x}`).join("\n")));
+    art.append(d);
+  }
+  art.append(h("h2", "fnsec", "Examples"));
+  const all = h("button", "smallbtn", "Open all in a notebook");
+  all.title = "A new notebook with every example on this page, run";
+  all.addEventListener("click", () => openExamples(f, f.examples));
+  art.append(all);
+  f.examples.forEach((sec, k) => art.append(exampleSection(f, sec, k)));
+  if (f.see?.length) {
+    art.append(h("h2", "fnsec", "See also"));
+    const see = h("div", "fnsee");
+    for (const n of f.see) {
+      const g = FN_BY_NAME.get(n); if (!g) continue;
+      const a = document.createElement("a"); a.href = `#fn:${g.name}`; a.textContent = g.title ?? g.name;
+      see.append(a);
+    }
+    art.append(see);
+  }
+  if (f.ref) {
+    const a = document.createElement("a"); a.href = f.ref; a.target = "_blank"; a.rel = "noreferrer"; a.className = "fnref"; a.textContent = "On MathWorld ↗";
+    art.append(a);
+  }
+  const i = FUNCTIONS.indexOf(f);
+  const pg = (j: number): [string, string] | undefined => FUNCTIONS[j] ? [fnPage(FUNCTIONS[j]!.name), FUNCTIONS[j]!.title ?? FUNCTIONS[j]!.name] : undefined;
+  art.append(docFoot(pg(i - 1) ?? ["functions", "Functions and commands"], pg(i + 1)));
+}
+
+/** One section of a function's examples: its inputs and, as the engine answers, their outputs. */
+function exampleSection(f: FnDoc, sec: ExampleSection, k: number): HTMLElement {
+  const box = h("section", "exsec");
+  const top = h("div", "exhead");
+  top.append(h("h3", undefined, sec.title));
+  const open = asButton(h("span", "link", "Open in a notebook"));
+  open.addEventListener("click", () => openExamples(f, [sec]));
+  top.append(open);
+  box.append(top);
+  const live = evaluable(sec);
+  const outs: HTMLElement[] = [];
+  let n = 0;
+  for (const it of sec.items) {
+    if (typeof it !== "string") { box.append(mdRender(it.note)); continue; }
+    const pair = h("div", "expair");
+    const inRow = h("div", "exrow");
+    inRow.append(h("span", "exprompt", live ? `In[${++n}]:=` : ""), h("code", "exin", it));
+    const outRow = h("div", "exrow exout");
+    if (live) { outRow.append(h("span", "exprompt"), h("div", "exval pending", "…")); outs.push(outRow); }
+    pair.append(inRow, ...(live ? [outRow] : []));
+    box.append(pair);
+  }
+  if (!live) box.append(h("p", "exnote", "These read a file or ask a question, which a notebook does: open them in one to see what they give."));
+  else void fillOutputs(`${f.name}#${k}`, sec, outs);
+  return box;
+}
+
+/** The outputs of a section's inputs, evaluated once per page view in a session of their own. */
+interface ExOut { label?: number; latex?: string; plot?: PlotData; hasse?: HasseData; summary?: string; error?: string }
+const EXAMPLE_OUTS = new Map<string, Promise<ExOut[]>>();
+async function fillOutputs(key: string, sec: ExampleSection, rows: HTMLElement[]) {
+  const val = (r: HTMLElement) => r.querySelector(".exval") as HTMLElement;
+  if (!client || S.kernel !== "ready") {
+    // the engine is still loading (the page is drawn again when it is ready) or has stopped
+    if (S.kernel === "failed") rows.forEach((r) => { val(r).textContent = "not evaluated: the engine is not running"; });
+    return;
+  }
+  let p = EXAMPLE_OUTS.get(key);
+  if (!p) { p = evaluateExamples(client, sec.items.filter((x): x is string => typeof x === "string")); EXAMPLE_OUTS.set(key, p); }
+  let outs: ExOut[];
+  try { outs = await p; } catch (e) {
+    EXAMPLE_OUTS.delete(key);
+    rows.forEach((r) => { const v = val(r); v.className = "exval err"; v.textContent = e instanceof Error ? e.message : String(e); });
+    return;
+  }
+  rows.forEach((r, i) => {
+    const o = outs[i]; if (!o) return;
+    const prompt = r.querySelector(".exprompt")!, v = val(r);
+    prompt.textContent = `Out[${o.label ?? i + 1}]=`;
+    r.previousElementSibling?.querySelector(".exprompt")?.replaceChildren(`In[${o.label ?? i + 1}]:=`);
+    v.className = "exval"; v.innerHTML = "";
+    if (o.error) { v.classList.add("err"); v.textContent = o.error; return; }
+    if (o.plot) {
+      const epi = !!o.plot.terms?.length;
+      const pb = epi ? epicycleBox(o.plot, 420, 260) : h("div", "plotbox");
+      if (!epi) pb.append(plotSvg(o.plot, 420, o.plot.series.some((s) => s.parametric) ? 300 : 210));
+      v.append(pb);
+    } else if (o.hasse) {
+      const pb = h("div", "plotbox"); pb.append(hasseSvg(o.hasse)); v.append(pb);
+    } else v.innerHTML = tex(o.latex ?? "");
+    if (o.summary) v.append(h("span", "exsummary", o.summary));
+  });
+}
+async function evaluateExamples(c: EngineClient, inputs: string[]): Promise<ExOut[]> {
+  const sid = `docs-${crypto.randomUUID()}`;
+  const outs: ExOut[] = [];
+  try {
+    for (const [k, source] of inputs.entries()) {
+      const params = { sessionId: sid, cellId: `ex${k}`, source, showWork: false, paths: false };
+      const r = /^\s*(plot|epicycles|dft)\s*\(/.test(source) ? await c.call("engine.plot", params) : await c.call("engine.evaluate", params);
+      if (!r.ok) { outs.push({ ...(r.label ? { label: r.label } : {}), error: r.error.message }); continue; }
+      const o: ExOut = { latex: r.rendered.latex, ...(r.label ? { label: r.label } : {}) };
+      if ("kind" in r && r.kind === "plot") o.plot = plotDataOf(r);
+      if ("kind" in r && r.kind === "poset" && r.hasse) { o.hasse = r.hasse; if (r.summary) o.summary = r.summary; }
+      if ("kind" in r && r.kind === "lambda" && r.reading) o.summary = r.reading;
+      outs.push(o);
+    }
+  } finally { void c.call("engine.resetSession", { sessionId: sid }).catch(() => undefined); }
+  return outs;
 }
 
 function docPart(part: DocPart): HTMLElement {
@@ -3831,18 +3974,19 @@ function docPart(part: DocPart): HTMLElement {
   }
   switch (part.insert) {
     case "functions": {
-      const q = S.guide.query.trim();
-      const shown = DOCS.filter((d) => !q || docMatches(`${d.name} ${d.sig} ${d.blurb}`.toLowerCase(), q));
-      const box = h("div");
-      if (q) {
-        const note = h("p", "docfilter", `${shown.length} of ${DOCS.length} match “${q}”. `);
-        const all = asButton(h("span", "link", "Show all"));
-        all.addEventListener("click", () => { S.guide.query = ""; renderDocs(); });
-        note.append(all); box.append(note);
+      // the index: every function, by area, with its first usage line
+      const box = h("div", "fnindex");
+      for (const [area, what] of AREAS) {
+        box.append(h("h2", undefined, area), h("p", "fnareawhat", what));
+        const grid = h("div", "fngrid");
+        for (const f of FUNCTIONS.filter((x) => x.area === area)) {
+          const r = h("div", "fnitem");
+          const a = document.createElement("a"); a.href = `#fn:${f.name}`; a.textContent = f.title ?? f.name;
+          const w = h("span", "fnwhat"); mdInline(w, f.usage[0]![1]);
+          r.append(a, w); grid.append(r);
+        }
+        box.append(grid);
       }
-      const grid = h("div", "refgrid");
-      for (const d of shown) grid.append(refCard(d));
-      box.append(grid);
       return box;
     }
     case "symbols": {
@@ -3866,12 +4010,10 @@ function docPart(part: DocPart): HTMLElement {
       return t;
     }
     case "examples": {
-      const list = h("div", "refgrid");
+      const list = h("div", "exlist");
       for (const ex of EXAMPLES) {
-        const card = asButton(h("div", "refcard docex"));
-        const left = h("div"); left.append(h("div", "rname", ex.title));
-        const right = h("div"); right.append(h("div", "rblurb", ex.blurb));
-        card.append(left, right);
+        const card = asButton(h("div", "excard"));
+        card.append(h("div", "t", ex.title), h("div", "b", ex.blurb));
         card.addEventListener("click", () => void openExample(ex.file));
         list.append(card);
       }
@@ -3883,31 +4025,6 @@ function docRow(cells: string[], tag = "td"): HTMLElement {
   const tr = h("tr");
   cells.forEach((c, i) => tr.append(h(tag, i === 0 && tag === "td" ? "mono" : undefined, c)));
   return tr;
-}
-
-/** A command's entry: its signature, what it does, and examples that run in the notebook. */
-function refCard(d: Doc): HTMLElement {
-  const card = h("div", "refcard");
-  card.dataset["anchor"] = d.name;
-  const left = h("div");
-  left.append(h("div", "rname", d.name), h("div", "rsig", d.sig));
-  const right = h("div");
-  right.append(h("div", "rblurb", d.blurb));
-  const ex = h("div", "rex");
-  for (const e of d.examples) {
-    const b = document.createElement("button"); b.textContent = e; b.title = "Run this in the notebook";
-    b.addEventListener("click", () => tryInNotebook(e));
-    ex.append(b);
-  }
-  right.append(ex);
-  if (d.ref) {
-    const a = document.createElement("a");
-    a.href = d.ref; a.target = "_blank"; a.rel = "noreferrer"; a.textContent = "Reference entry ↗";
-    a.className = "rlink";
-    right.append(a);
-  }
-  card.append(left, right);
-  return card;
 }
 
 function renderPanelHead() {
@@ -4039,7 +4156,7 @@ function renderPanel() {
   if (doc) {
     const links = h("div", "sellinks");
     const more = asButton(h("span", "link", "In the documentation"));
-    more.addEventListener("click", () => openDocs("functions", doc.name));
+    more.addEventListener("click", () => openDocs(fnPage(doc.name)));
     links.append(more);
     if (doc.ref) {
       const a = document.createElement("a");
@@ -4755,7 +4872,7 @@ function updateCompletions(cell: Cell) {
       for (const [name, t] of Object.entries(TEMPLATES)) if (name.toLowerCase().startsWith(q)) items.push({ kind: "tpl", name, what: t.what, glyph: t.glyph });
     }
   } else {
-    items = DOCS.filter((d) => d.name.toLowerCase().startsWith(word.toLowerCase()) && d.name !== word).map((doc) => ({ kind: "doc", doc }));
+    items = DOCS.filter((d) => !d.notation && d.name.toLowerCase().startsWith(word.toLowerCase()) && d.name !== word).map((doc) => ({ kind: "doc", doc }));
   }
   if (!items.length) return hideCompletions();
   const r = input.getBoundingClientRect();
@@ -4974,16 +5091,20 @@ function callContext(input: HTMLInputElement): { name: string; open: number; arg
   return null;
 }
 
-/** The signature to show for a call: a session function first, else the reference entry whose
- *  signature lists `name(`; `plot` picks its list form when the first argument starts with `[`. */
-function sigFor(name: string, firstArg: string): { sig: string; blurb: string } | null {
+/** The signature to show for a call: a session function first, else the reference's usage line for
+ *  `name(` — the first with room for the argument the caret is in (`diff(f, x, n)` once a third is
+ *  typed); `plot` picks its list form when the first argument starts with `[`. */
+function sigFor(name: string, firstArg: string, arg = 0): { sig: string; blurb: string } | null {
   const user = USER_FNS.get(`${sessionId}:${name}`);
   if (user) return { sig: `${name}(${user.join(", ")})`, blurb: "Defined in this session with let." };
-  for (const d of DOCS) {
-    const alts = d.sig.split(" · ").map((a) => a.trim()).filter((a) => a.startsWith(name + "("));
+  for (const f of FUNCTIONS) {
+    const alts = f.usage.filter(([form]) => form.startsWith(name + "("));
     if (!alts.length) continue;
-    const alt = (alts.length > 1 && firstArg.startsWith("[") ? alts.find((a) => a.startsWith(name + "([")) : undefined) ?? alts[0]!;
-    return { sig: alt, blurb: d.blurb.split(".")[0]! + "." };
+    const fit = alts.filter(([form]) => sigPieces(form).filter((p) => p.param).length > arg);
+    const pool = fit.length ? fit : alts;
+    const [form, what] = (pool.length > 1 && firstArg.startsWith("[") ? pool.find(([a]) => a.startsWith(name + "([")) : undefined) ?? pool[0]!;
+    const blurb = plainUsage(what);
+    return { sig: form, blurb: blurb[0]!.toUpperCase() + blurb.slice(1) };
   }
   return null;
 }
@@ -5039,7 +5160,7 @@ function updateSigHelp(cell: Cell) {
     return renderSigHelp();
   }
   const ctx = callContext(input);
-  const found = ctx && sigFor(ctx.name, ctx.firstArg);
+  const found = ctx && sigFor(ctx.name, ctx.firstArg, ctx.arg);
   if (!ctx || !found) { S.sigDismissed = null; return hideSigHelp(); }
   const key = `${cell.id}:${ctx.open}`;
   if (S.sigDismissed === key) return hideSigHelp();
@@ -5050,7 +5171,7 @@ function updateSigHelp(cell: Cell) {
 /** Signature help for a visual input: the call around its caret that shows as `name(args)`. */
 function updateVisualSigHelp(cell: Cell) {
   const ctx = S.sigHelp && cell.mi ? cell.mi.edit.callContext() : null;
-  const found = ctx && sigFor(ctx.name, ctx.firstArg);
+  const found = ctx && sigFor(ctx.name, ctx.firstArg, ctx.arg);
   if (!ctx || !found) { S.sigDismissed = null; return hideSigHelp(); }
   const key = `${cell.id}:${ctx.name}`;
   if (S.sigDismissed === key) return hideSigHelp();

@@ -152,9 +152,14 @@ Manim's job, outside the browser.
 
 **Help › Documentation** opens a tab beside the studio: a guide to the notebook (cells, input,
 reading the work, files, lookups and their set-up, Lean cells, the studio) and the reference pages.
-The pages are Markdown in `src/docs.ts`, drawn by the Markdown cells' renderer; the tables in them
-(the commands, the symbols and templates, the shortcuts, the example notebooks) are built from the
-lists the notebook itself uses, so they cannot drift from it.
+The pages are Markdown in `src/docs.ts`, drawn by the Markdown cells' renderer; their tables (the
+symbols and templates, the shortcuts, the example notebooks) are built from the lists the notebook
+itself uses. Every function has a page of its own, laid out as Mathematica's are — usage lines,
+details, examples in sections, related functions — from `src/reference.ts`, which is also where
+completion, signature help and the sidebar's command list read their entries. A page holds only the
+examples' inputs: the engine evaluates each section in a session of its own when the page is shown,
+so the outputs are this engine's and cannot go stale (a section that reads a file or asks a question
+is shown as inputs, with *Open in a notebook*).
 
 ## 4b. Lean cells
 

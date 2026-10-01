@@ -5,8 +5,8 @@
  * to run, and the tables that live with the code they describe (the commands, the symbols, the
  * keyboard shortcuts, the example notebooks), so they cannot drift from it.
  *
- * Links between pages are `#doc:<id>` (or `#doc:<id>/<anchor>`); `#do:<action>` opens part of the
- * notebook (a dialog, a notebook). `{origin}` is this page's origin, which an Ollama set-up needs.
+ * Links between pages are `#doc:<id>`, to a function's page `#fn:<name>` (reference.ts); `#do:<action>`
+ * opens part of the notebook (a dialog, a notebook). `{origin}` is this page's origin, which an Ollama set-up needs.
  */
 
 /** A piece of a page: Markdown, a row of inputs to try (each runs in the notebook), or a table the
@@ -43,7 +43,7 @@ Each of those buttons runs its input in the notebook. What comes back:
 - [Notebooks and cells](#doc:notebooks): the kinds of cell, running them, naming values with ‹let›.
 - [Typing math](#doc:typing): typeset input, ‹\›-symbols and templates, completion.
 - [Lookups](#doc:ask): a cell that starts with ‹?› asks a question (‹?volume of a cone›) and a model answers it as mathematics the engine evaluates.
-- [Functions and commands](#doc:functions): everything the engine knows, with examples to run.
+- [Functions and commands](#doc:functions): a page for everything the engine knows, with worked examples.
 - The [welcome notebook](#do:welcome) is a short tour with one section per area; the [example notebooks](#doc:examples) go further.
 `],
   },
@@ -143,7 +143,7 @@ ChalkMath's rules are proved correct in Lean 4 against a semantics of the expres
 
 - **verified** (a filled dot): the rule has an unconditional soundness theorem; the step preserves the value, always.
 - **conditional**: the theorem has a side condition (a denominator that is not zero, say), and that the condition is needed is itself proved.
-- **checked** (a hollow dot): a guess whose result a later step verifies. [‹integrate›](#doc:functions/integrate)'s antiderivative is one: the engine differentiates it and answers only if that gives your function back, so the check is the proof.
+- **checked** (a hollow dot): a guess whose result a later step verifies. [‹integrate›](#fn:integrate)'s antiderivative is one: the engine differentiates it and answers only if that gives your function back, so the check is the proof.
 - **unverified**: no theorem yet.
 
 A step that delegates work is only as verified as the weakest step under it. A cell that mentions ‹i› is read over the complex numbers and shows each rule's status over ℂ, where it may differ (a rule proved over ℝ only is unverified there).
@@ -172,7 +172,7 @@ A step that delegates work is only as verified as the weakest step under it. A c
 Its parts turn it into numbers: ‹t[[All, "mass"]]› is a table's column, ‹j[["key"]]› a JSON value, ‹matrix(t)› a table's numbers and ‹samplePoints(svg)› points along an SVG's paths.`,
       { try: ["let planets = import(\"examples/data/planets.csv\")", "planets[[All, \"period\"]]", "mean(planets[[All, \"mass\"]])"] },
       md`
-See ‹import›, ‹part›, ‹matrix› and ‹samplePoints› under [Functions and commands](#doc:functions).
+See [‹import›](#fn:import), [‹part›](#fn:part), [‹matrix›](#fn:matrix) and [‹samplePoints›](#fn:samplePoints).
 `],
   },
   {
@@ -341,22 +341,22 @@ The language is small and close to what you would write by hand. A cell is one e
 - **Calls**: ‹name(a, b)› for a command or a function you defined; any other name before ‹(› is a variable times a parenthesis.
 - **Constants**: ‹pi› or π, ‹i› the imaginary unit, ‹ℯ› (‹\e›) Euler's number; ‹exp(x)› is $e^x$.
 - **Matrices and vectors** row by row, commas between entries and semicolons between rows: ‹[1, 2; 3, 4]›. A list is one row, ‹[a, b, c]›.
-- **Parts**, as Mathematica writes them: ‹m[[2]]›, ‹m[[i, j]]›, ‹m[[All, 1]]›, spans ‹a;;b› and ‹a;;b;;step›, a list of positions ‹{i, j}›, and column names for tables, ‹t[[All, "mass"]]›.
-- **Earlier answers**: ‹%›, ‹%%›, ‹%n›.
+- [**Parts**](#fn:part), as Mathematica writes them: ‹m[[2]]›, ‹m[[i, j]]›, ‹m[[All, 1]]›, spans ‹a;;b› and ‹a;;b;;step›, a list of positions ‹{i, j}›, and column names for tables, ‹t[[All, "mass"]]›.
+- [**Earlier answers**](#fn:%): ‹%›, ‹%%›, ‹%n›.
 - **Files**: ‹⟦name⟧› is an attached file, ‹import("url")› one from the web.
 - **Questions**: a cell starting with ‹?›, or ‹let x = ?…› ([Lookups](#doc:ask)).
 
 Some areas have their own notation:
 
-- **λ-calculus**: a cell with a λ (‹\lam›) or a backslash is a λ-term. ‹λx. e› abstracts, application is juxtaposition, ‹λx y. e› binds two, digits are Church numerals and ‹name := term› defines.
-- **Orders**: ‹poset({a, b, c}; a<b, a<c)› is a partial order from its relation, ‹map(P; a->b)› a map on one.
+- [**λ-calculus**](#fn:lambda): a cell with a λ (‹\lam›) or a backslash is a λ-term. ‹λx. e› abstracts, application is juxtaposition, ‹λx y. e› binds two, digits are Church numerals and ‹name := term› defines.
+- [**Orders**](#fn:poset): ‹poset({a, b, c}; a<b, a<c)› is a partial order from its relation, ‹map(P; a->b)› a map on one.
 `],
   },
   {
     id: "functions", title: "Functions and commands", group: "Reference", parts: [md`
 # Functions and commands
 
-Every command the engine knows, with examples: each example runs in the notebook. The ƒ list in the sidebar has the same entries.
+Every function and notation, by area. Each has a page: what it does, the details, and examples whose outputs this engine computes as you read them. Search the contents for a name to go straight to its page.
 `, { insert: "functions" }],
   },
   {
