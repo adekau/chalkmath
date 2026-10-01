@@ -2,23 +2,24 @@
  * A `?` question, answered in the engine's own syntax: a number, a list, a table (a matrix), or a
  * formula.
  *
- * The model is small and runs on the reader's machine. It knows the volume of a prism and the speed
- * of light better than it could find them, so the plan it makes first says whether the answer is
- * standard knowledge; if it is, the model answers from what it knows, nothing leaves the machine,
- * the answer says where it came from, and the notebook offers to check it with a search.
+ * The model plans first: the shape of the answer, its parts, searches, and whether the answer is
+ * standard knowledge of mathematics or physical science (a formula, a constant), which it answers
+ * from what it knows; nothing then leaves the machine, the answer says where it came from, and the
+ * notebook offers to check it with a search.
  *
- * Data that changes, or is too specific to remember (a season's statistics), is searched for, and
- * there the model is never trusted with a number it would have to remember or copy. Held to a JSON
- * schema, it picks, from previews of the tables the searches found, a table, its columns and a range
- * of rows; when no table fits, it lifts values out of passages, quoting each row; and for a formula
- * it translates one the page states (as LaTeX) into the engine's syntax. The numbers themselves are
- * copied from the page by this code, or checked against the quoted page text, and a formula is shown
- * next to the LaTeX it came from. The model's memory is the last resort, and an answer from it is
- * marked as unsourced throughout.
+ * Anything else is searched for, and the model answers from what was found, in the question's shape:
+ * the passages and table rows of the pages read that share the most words with the question, as much
+ * as the model can take; or, for a model that can search the web itself, the pages its own search
+ * finds. Every number it gives is looked for in what it read and flagged when it is not there, and a
+ * formula is read from the LaTeX it quotes by code. The model's memory is the last resort, and an
+ * answer from it is marked as unsourced throughout.
+ *
+ * (An earlier version had a small model pick table columns while code copied the cells. It latched
+ * onto the wrong table as often as a model misreads a page, and never read the paragraph that said
+ * "the Tigers have won four World Series".)
  */
-import { leadingNumber, numberText, numbersIn, numeric, parseNumber } from "./numbers.js";
+import { numberText, numbersIn } from "./numbers.js";
 import { readHit, type Fetch, type Hit, type Page, type Source } from "./sources.js";
-import type { Table } from "./html.js";
 import { texToEngine } from "./tex.js";
 
 /** A language model held to a JSON schema. The notebook supplies one (Chrome's built-in model, or a
@@ -28,6 +29,9 @@ export interface Model {
   id: string;
   /** The model's reply to `user` under `system`: JSON text meeting `schema`. */
   complete(req: { system: string; user: string; schema: object; signal?: AbortSignal | undefined }): Promise<string>;
+  /** How much source text, in characters, the model can be given in one question (its context window,
+   *  less the prompt and its reply): about 7,000 for a 4k-token browser model, far more for a cloud one. */
+  context?: number;
   /** Free what the model holds (a WebGPU model's GPU memory and worker), when it is replaced. */
   unload?(): Promise<void>;
   /** A model that can search the web itself (OpenRouter's web search): the reply, and the pages its
@@ -46,11 +50,7 @@ export interface AskOptions {
   useKnowledge?: boolean;
   /** Search even when the model says it knows the answer ("Check with a search"). */
   forceSearch?: boolean;
-  /** Let the model read what was found and answer in the question's shape itself, rather than
-   *  choosing among previews while code copies the values: for a capable (cloud) model. Its numbers
-   *  are still checked against what it read. */
-  direct?: boolean;
-  /** With `direct`, a model that can search the web itself does so instead of the sources. */
+  /** A model that can search the web itself does so instead of the sources. */
   webSearch?: boolean;
   /** Asked just before the first request leaves the machine; false means no search (the reader
    *  declined). A lookup answered from knowledge never asks. */
@@ -65,9 +65,10 @@ export interface AskOptions {
 
 /** What the answer is: one number, a list of numbers, a table of numbers, or a formula. */
 export type Shape = "number" | "list" | "table" | "formula";
-/** Where the answer came from: copied out of a table, lifted from quoted prose (or a quoted formula),
- *  the model's knowledge (standard knowledge it was asked for directly), or its memory (a last resort
- *  after the sources gave nothing). */
+/** Where the answer came from: the pages read ("text"), the model's own web search, the model's
+ *  knowledge (standard knowledge it was asked for directly), or its memory (a last resort after the
+ *  sources gave nothing). "table" is an earlier version's: copied out of a table, kept so saved
+ *  notebooks still read. */
 export type Via = "table" | "text" | "search" | "knowledge" | "memory";
 
 export interface AskResult {
@@ -152,58 +153,6 @@ const PLAN_SYSTEM = `You plan how to look up an answer for a math notebook. Repl
 - rows: what one row is, e.g. "one MLB season, 2006 to 2025", or "" for one value or a formula.
 - keywords: words and abbreviations the page might use, e.g. ["year", "R/G", "HR", "runs", "home runs"] or ["prism", "volume", "base area", "height"].`;
 
-const PICK_SCHEMA = {
-  type: "object",
-  properties: {
-    table: { type: "integer" },
-    columns: { type: "array", items: { type: "integer" } },
-    label: { type: "integer" },
-    filter: {
-      type: "object",
-      properties: { column: { type: "integer" }, min: { type: ["number", "null"] }, max: { type: ["number", "null"] } },
-      required: ["column", "min", "max"],
-    },
-    match: {
-      type: "object",
-      properties: { column: { type: "integer" }, text: { type: "string" } },
-      required: ["column", "text"],
-    },
-    count: { type: "boolean" },
-  },
-  required: ["table", "columns", "label", "filter", "match", "count"],
-} as const;
-
-const PICK_SYSTEM = `You choose which table answers a question. Each table is shown with its numbered columns and its first and last rows.
-Reply with JSON only:
-- table: the number of the table that best answers the question, or -1 if none has the data.
-- columns: column numbers from that table, one for each column the answer needs, in the answer's order. Use only columns that hold numbers.
-- label: the number of a text column that names each row (like a team or country) when rows are not keyed by a number, else -1.
-- filter: which rows to keep by a number: column is a number column to filter on (like the year), or -1 to keep all rows; min and max bound it (null for no bound). For "the last 20 years" in 2026 that is min 2006, max 2025.
-- match: which rows to keep by their text: column is a text column, text one or two words from the question itself that the row must contain (not words or numbers copied from the table). For "what years did the Tigers win the World Series" in a table of champions: the winning team's column and "Tigers". Else column -1 and text "".
-- count: true when the question asks how many rows there are ("how many titles", "the number of wins"): the answer is then the number of rows kept, and columns may be empty. Else false.
-
-Example. Question: "how many World Series have the Tigers won". Table 0 has columns 0: Year; 1: Winning team [text]; 2: Losing team [text].
-Reply: {"table": 0, "columns": [0], "label": -1, "filter": {"column": -1, "min": null, "max": null}, "match": {"column": 1, "text": "Tigers"}, "count": true}`;
-
-const EXTRACT_SCHEMA = {
-  type: "object",
-  properties: {
-    rows: {
-      type: "array", maxItems: 60,
-      items: {
-        type: "object",
-        properties: { label: { type: "string" }, values: { type: "array", items: { type: "number" } }, quote: { type: "string" } },
-        required: ["label", "values", "quote"],
-      },
-    },
-  },
-  required: ["rows"],
-} as const;
-
-const EXTRACT_SYSTEM = `You copy numbers out of passages to answer a question. Use only numbers written in the passages; never compute or remember one.
-Reply with JSON only: rows, each with label (what the row is), values (one number per answer column, in order) and quote (the exact sentence from a passage that states those numbers).
-If the passages do not state the numbers, reply {"rows": []}.`;
-
 const MEMORY_SCHEMA = {
   type: "object",
   properties: {
@@ -230,14 +179,6 @@ const FORMULA_SCHEMA = {
   required: ["found", "expr", "params", "vars", "quote"],
 } as const;
 
-const FORMULA_SYSTEM = `You find the formula that answers a question in passages where formulas are written in LaTeX between $ signs.
-Reply with JSON only:
-- found: false if no passage states the formula (then leave the rest empty).
-- quote: the formula's LaTeX exactly as written between the $ signs in the passage you used.
-- expr: that formula's right-hand side. ${SYNTAX}
-- params: the variables of expr, in a natural order, e.g. ["B", "h"].
-- vars: what each variable means, from the passage, e.g. [{"name": "B", "meaning": "area of the base"}].`;
-
 const FORMULA_MEMORY_SYSTEM = `Give the standard formula that answers the question, from what you know. Reply with JSON only:
 - found: false if you do not know it.
 - expr: the formula's right-hand side. ${SYNTAX}
@@ -248,7 +189,6 @@ const FORMULA_MEMORY_SYSTEM = `Give the standard formula that answers the questi
 // ---------------------------------------------------------------------------------------------
 
 interface Plan { lookup: boolean; shape: Shape; subject: string; known: boolean; searches: string[]; columns: string[]; rows: string; keywords: string[] }
-interface Found { table: Table; page: Page }
 
 /** The first JSON object in a model's reply (a model may wrap it in prose or a code fence). */
 export function parseJson<T>(text: string): T | null {
@@ -260,59 +200,7 @@ export function parseJson<T>(text: string): T | null {
 const words = (s: string) => s.toLowerCase().split(/[^a-z0-9%/]+/).filter((w) => w.length > 1 && !STOP.has(w));
 const STOP = new Set(["the", "of", "and", "in", "for", "per", "by", "to", "a", "an", "on", "at", "last", "each", "number", "what", "how", "many", "is", "are", "was", "were", "average", "total", "data", "table", "list", "over", "years", "year", "formula", "equation"]);
 
-/** How well a table might answer: header and caption words that match the plan, numeric columns, and rows. */
-export function scoreTable(t: Table, plan: Pick<Plan, "keywords" | "columns">, pageRank: number): number {
-  const want = new Set([...plan.keywords.flatMap((k) => [k.toLowerCase(), ...words(k)]), ...plan.columns.flatMap(words)]);
-  const head = [t.caption, ...t.headers].join(" ");
-  const hw = new Set([...words(head), ...t.headers.map((h) => h.toLowerCase().trim())]);
-  let hits = 0;
-  for (const w of want) if (hw.has(w)) hits++;
-  const numCols = t.headers.filter((_, c) => numericColumn(t, c)).length;
-  return hits * 3 + Math.min(numCols, plan.columns.length) * 2 + Math.log2(1 + t.rows.length) - pageRank * 0.5;
-}
-
-/** Whether most of a column's cells are numbers. */
-function numericColumn(t: Table, c: number): boolean {
-  let n = 0, filled = 0;
-  for (const r of t.rows) { const s = r[c] ?? ""; if (!s) continue; filled++; if (numeric(s) || leadingNumber(s) !== null) n++; }
-  return filled > 0 && n / filled >= 0.6;
-}
-
 const cut = (s: string, n: number) => s.length > n ? `${s.slice(0, n - 1)}…` : s;
-
-/** A table as the model sees it: numbered columns, then the first and last rows. */
-export function preview(t: Table, i: number, page: Page): string {
-  const cols = t.headers.map((h, c) => `${c}: ${cut(h || "(no name)", 28)}${numericColumn(t, c) ? "" : " [text]"}`).slice(0, 14);
-  const row = (r: string[]) => `  | ${r.slice(0, 14).map((s) => cut(s, 16)).join(" | ")}`;
-  const rows = t.rows.length <= 6 ? t.rows.map(row) : [...t.rows.slice(0, 3).map(row), `  … ${t.rows.length - 6} more rows …`, ...t.rows.slice(-3).map(row)];
-  return [`Table ${i}, from "${cut(page.title, 60)}"${t.caption ? `, "${cut(t.caption, 60)}"` : ""}, ${t.rows.length} rows`,
-    `  columns: ${cols.join("; ")}${t.headers.length > 14 ? `; … (${t.headers.length} in all)` : ""}`, ...rows].join("\n");
-}
-
-/** Build the answer from a chosen table: the chosen columns of the rows the filter keeps, each value
- *  read from the cell's own text. A row with a value that is not a number is left out, and said. */
-export interface TablePick {
-  columns: number[];
-  label: number;
-  filter: { column: number; min: number | null; max: number | null };
-  /** Keep only rows whose cell in `column` contains `text` (any case). */
-  match?: { column: number; text: string } | null;
-}
-
-/** The rows of a table a pick keeps: in the filter's range, and containing the match's text. */
-export function keptRows(t: Table, pick: Pick<TablePick, "filter" | "match">): string[][] {
-  const f = pick.filter, m = pick.match;
-  const want = m ? matchWords(m.text) : [];
-  return t.rows.filter((r) => {
-    if (f.column >= 0) {
-      const k = leadingNumber(r[f.column] ?? "");
-      if (k === null || (f.min !== null && k < f.min) || (f.max !== null && k > f.max)) return false;
-    }
-    if (!m) return true;
-    const cell = ` ${norm(r[m.column] ?? "").replace(/[^a-z0-9]+/g, " ")} `;
-    return want.every((w) => cell.includes(` ${w} `));
-  });
-}
 
 const IRREGULAR: Record<string, string> = { won: "win", lost: "lose", beaten: "beat", led: "lead", held: "hold", took: "take", made: "make", came: "come", went: "go", got: "get", ran: "run" };
 
@@ -320,27 +208,6 @@ const IRREGULAR: Record<string, string> = { won: "win", lost: "lose", beaten: "b
 function stem(w: string): string {
   if (IRREGULAR[w]) return IRREGULAR[w]!;
   return w.length > 4 ? w.replace(/(ies)$/, "y").replace(/(ing|ed|es|s)$/, "") : w;
-}
-
-/** The words a row's text must contain: a match is word by word ("Won World" keeps "Won 1945 World
- *  Series"), not one stretch of text. */
-export function matchWords(text: string): string[] {
-  return norm(text).split(/[^a-z0-9]+/).filter(Boolean);
-}
-
-export function fromTable(t: Table, pick: TablePick): { rows: string[][]; labels: string[]; skipped: number } {
-  const rows: string[][] = [];
-  const labels: string[] = [];
-  let skipped = 0;
-  const f = pick.filter;
-  for (const r of keptRows(t, pick)) {
-    // a key column like a season "2005–06" is read by its leading number; values must be one number
-    const vals = pick.columns.map((c) => c === f.column ? (parseNumber(r[c] ?? "") ?? numberText(leadingNumber(r[c] ?? "") ?? NaN)) : parseNumber(r[c] ?? ""));
-    if (vals.some((v) => v === null)) { skipped++; continue; }
-    rows.push(vals as string[]);
-    if (pick.label >= 0) labels.push(r[pick.label] ?? "");
-  }
-  return { rows, labels, skipped };
 }
 
 /** The engine's text for a grid of numbers in the answer's shape: one number alone; a list as a row
@@ -360,29 +227,6 @@ const placed = (shape: Shape, rows: string[][]) => (rc: [number, number]): [numb
 
 const norm = (s: string) => s.toLowerCase().replace(/[\s\u00a0]+/g, " ").replace(/[“”]/g, "\"").replace(/[‘’]/g, "'").trim();
 const squash = (s: string) => s.replace(/\s+/g, "");
-
-/** Passages likely to answer: paragraphs (and, for formulas, table rows) with the plan's words and
- *  digits, or formulas. */
-function passages(pages: Page[], plan: Plan, formulas: boolean, budget = 2400): string[] {
-  const want = new Set([...plan.keywords.flatMap(words), ...plan.columns.flatMap(words)]);
-  const scored: { s: string; score: number }[] = [];
-  pages.forEach((p, pi) => {
-    const paras = p.text.split("\n");
-    if (formulas) for (const t of p.tables) for (const r of t.rows) if (r.some((c) => c.includes("$"))) paras.push(r.map((c, i) => t.headers[i] ? `${t.headers[i]}: ${c}` : c).join("; "));
-    for (const para of paras) {
-      const marks = formulas ? (para.match(/\$[^$]+\$/g) ?? []).length : (para.match(/\d+/g) ?? []).length;
-      if (!marks || para.length < (formulas ? 8 : 30)) continue;
-      const hits = words(para).filter((w) => want.has(w)).length;
-      if (!hits) continue;
-      scored.push({ s: cut(para, 600), score: hits * 2 + Math.min(marks, 6) - pi });
-    }
-  });
-  scored.sort((a, b) => b.score - a.score);
-  const out: string[] = [];
-  let used = 0;
-  for (const { s } of scored) { if (used + s.length > budget) continue; out.push(s); used += s.length; if (out.length >= 8) break; }
-  return out;
-}
 
 /** Names the engine reads as functions or constants, never a formula's variables. */
 const RESERVED = new Set(["sin", "cos", "tan", "exp", "ln", "log", "sqrt", "abs", "pi", "e", "i", "conj", "re", "im", "let"]);
@@ -427,12 +271,6 @@ async function ask(model: Model, system: string, user: string, schema: object, s
 
 /** Words that ask to make something, which no page holds. */
 const MAKE = /\b(random|randomly|generate|make up|invent|an example of|example of a)\b/i;
-
-/** Words that name a range of rows: a number (a year), or a span of time. */
-const RANGE = /\d|\b(last|past|since|between|from|before|after|until|through|recent(ly)?|lately|nowadays|ago|modern|decades?|century|centuries|this (year|season)|today|current(ly)?|latest|first|early|late)\b/i;
-
-/** Words that ask for a count of things: the only questions a table's rows are counted for. */
-const COUNT = /\b(how many|number of|count of)\b/i;
 
 /** Row names, when they name the rows: two or more different ones (a model may label every row "Year"). */
 const named = (labels: string[]): { rowLabels?: string[] } => new Set(labels.filter((l) => l.trim())).size > 1 ? { rowLabels: labels } : {};
@@ -483,7 +321,8 @@ export async function lookup(question: string, o: AskOptions): Promise<AskResult
     trail.push("The model did not answer from its knowledge after all: searching.");
   }
   // a model that searches the web itself needs no source of the notebook's
-  const none = !o.sources.length && !(o.direct && o.webSearch && o.model.search);
+  const web = !!(o.webSearch && o.model.search);
+  const none = !o.sources.length && !web;
   const declined = none || (o.beforeSearch ? !(await o.beforeSearch()) : false);
   if (o.signal?.aborted) throw new AskError("Stopped.", trail);
   if (declined) {
@@ -495,8 +334,8 @@ export async function lookup(question: string, o: AskOptions): Promise<AskResult
     if (r) return { ...base, ...r, trail };
     throw new AskError(`${why}, and the model does not know the answer.`, trail);
   }
-  // a capable model searching the web itself: one call, its pages its own
-  if (o.direct && o.webSearch && o.model.search) {
+  // a model searching the web itself: one call, its pages its own
+  if (web) {
     const r = await direct(q, plan, [], o, trail, say);
     if (r) return { ...base, ...r, trail };
     const m = knowledge && (!plan.known || o.forceSearch) ? await fromKnowledge(q, plan, o, trail, say, true) : null;
@@ -504,8 +343,7 @@ export async function lookup(question: string, o: AskOptions): Promise<AskResult
     throw new AskError("The model's web search did not find the answer.", trail);
   }
   const { hits, pages } = await gather(plan, o, trail, say);
-  const r = o.direct ? (pages.length ? await direct(q, plan, pages, o, trail, say) : null)
-    : plan.shape === "formula" ? await formula(q, plan, pages, o, trail, say) : await numbers(q, plan, pages, o, trail, say);
+  const r = pages.length ? await direct(q, plan, pages, o, trail, say) : null;
   if (r) return { ...base, ...r, trail };
   // the last resort: the model's memory, marked as unsourced (a question it called standard
   // knowledge has already been answered, or declined, above; a forced search reports what it found)
@@ -608,148 +446,6 @@ async function gather(plan: Plan, o: AskOptions, trail: string[], say: Say): Pro
   return { hits, pages };
 }
 
-/** A number, list or table: from a table (values copied), else prose (values checked against a quote). */
-async function numbers(q: string, plan: Plan, pages: Page[], o: AskOptions, trail: string[], say: Say): Promise<Answer | null> {
-  // tables: the best few, previewed, one picked by the model; the values copied by code
-  const found: (Found & { score: number })[] = [];
-  pages.forEach((page, pi) => {
-    for (const table of page.tables) {
-      if (table.rows.length < 1 || table.headers.length < 1) continue;
-      if (!table.headers.some((_, c) => numericColumn(table, c))) continue;
-      found.push({ table, page, score: scoreTable(table, plan, pi) });
-    }
-  });
-  found.sort((a, b) => b.score - a.score);
-  const shown = found.slice(0, 5);
-  if (shown.length) {
-    say(`Choosing among ${plural(shown.length, "table")}`);
-    const user = `Today is ${o.today}.\nQuestion: ${q}\nThe answer's columns: ${plan.columns.join("; ")}\n\n${shown.map((f, i) => preview(f.table, i, f.page)).join("\n\n")}`;
-    const pick = parseJson<{ table: number; columns: number[]; label: number; filter: { column: number; min: number | null; max: number | null }; match?: { column: number; text: string }; count?: boolean }>(
-      await ask(o.model, PICK_SYSTEM, user, PICK_SCHEMA, o.signal));
-    const f = pick && Number.isInteger(pick.table) ? shown[pick.table] : undefined;
-    if (pick && f) {
-      const width = f.table.headers.length;
-      const head = (c: number) => f.table.headers[c] || `#${c}`;
-      const cols = (pick.columns ?? []).filter((c) => Number.isInteger(c) && c >= 0 && c < width && numericColumn(f.table, c));
-      const label = Number.isInteger(pick.label) && pick.label >= 0 && pick.label < width && !cols.includes(pick.label) ? pick.label : -1;
-      const num = (v: unknown) => typeof v === "number" && Number.isFinite(v) ? v : null;
-      let fc = pick.filter && Number.isInteger(pick.filter.column) && pick.filter.column >= 0 && pick.filter.column < width ? pick.filter.column : -1;
-      // a range of rows only when the question names one: asked "how many World Series have the
-      // Tigers won", a model kept 2023 to 2025
-      if (fc >= 0 && (num(pick.filter.min) !== null || num(pick.filter.max) !== null) && !RANGE.test(q)) {
-        trail.push(`Dropped the model's filter on ${head(fc)} (${fmtRange(num(pick.filter.min), num(pick.filter.max))}): the question names no range.`);
-        fc = -1;
-      }
-      const filter = { column: fc, min: fc >= 0 ? num(pick.filter.min) : null, max: fc >= 0 ? num(pick.filter.max) : null };
-      let mt = pick.match && Number.isInteger(pick.match.column) && pick.match.column >= 0 && pick.match.column < width
-        && typeof pick.match.text === "string" && pick.match.text.trim().length >= 2 ? { column: pick.match.column, text: pick.match.text.trim() } : null;
-      // a match is the question's words: a model may copy one row's text ("Won 1935 World"), which
-      // keeps only that row
-      if (mt) {
-        const asked = new Set(matchWords(q).map(stem)), words = matchWords(mt.text), kept = words.filter((w) => asked.has(stem(w)));
-        if (kept.length && kept.length < words.length) {
-          trail.push(`Matched only the question's words of “${mt.text}”: ${kept.join(" ")}`);
-          mt = { column: mt.column, text: kept.join(" ") };
-        }
-      }
-      const where = `table ${f.table.caption ? `“${f.table.caption}” ` : ""}on “${f.page.title}”`;
-      const which = [fc >= 0 ? `${head(fc)} ${fmtRange(filter.min, filter.max)}` : "", mt ? `${head(mt.column)} contains “${mt.text}”` : ""].filter(Boolean).join(" and ");
-      const cites = [{ title: f.page.title, url: f.page.url }];
-      // a count is only what "how many" asks for, and code does the counting
-      const keptForCount = pick.count === true && COUNT.test(q) ? keptRows(f.table, { filter, match: mt }) : [];
-      // one row, and a number column chosen: the question's number is in that row ("Wins: 4"), and
-      // counting the rows would answer 1 (a model asked how many World Series the Tigers have won
-      // found the Tigers' row of a table of teams, and asked for a count)
-      const oneRow = keptForCount.length === 1 && cols.length > 0;
-      if (oneRow) trail.push(`One row matched, with ${cols.map(head).join(", ")} chosen: its value, not a count of rows.`);
-      if (pick.count === true && COUNT.test(q) && !oneRow) {
-        const kept = keptForCount;
-        trail.push(`Chose the ${where}, and counted its rows${which ? ` where ${which}` : ""}: ${kept.length}`);
-        if (kept.length) {
-          const key = cols[0] ?? (fc >= 0 ? fc : 0);
-          const shownRows = kept.slice(0, 30).map((r) => r[key] ?? "").join(", ");
-          return {
-            source: String(kept.length), columns: [which ? `rows where ${which}` : `rows of the table`], via: "table", cites, flagged: [],
-            notes: [`Counted ${plural(kept.length, "row")} of the table${which ? ` where ${which}` : ""}: ${shownRows}${kept.length > 30 ? ", …" : ""}.`],
-          };
-        }
-      } else if (cols.length) {
-        const { rows, labels, skipped } = fromTable(f.table, { columns: oneRow ? cols.slice(0, 1) : cols, label, filter, match: mt });
-        trail.push(`Chose the ${where}: columns ${cols.map(head).join(", ")}${which ? `, rows where ${which}` : ""}`);
-        if (rows.length) {
-          const notes: string[] = [];
-          if (mt) notes.push(`Only the rows where ${head(mt.column)} contains “${mt.text}”.`);
-          if (skipped) notes.push(`${plural(skipped, "row was", "rows were")} left out because a chosen cell was not a single number.`);
-          return {
-            source: engineText(rows, plan.shape), columns: cols.map((c) => f.table.headers[c] || plan.columns[cols.indexOf(c)] || `column ${c}`),
-            ...named(labels), via: "table", cites, flagged: [], notes,
-          };
-        }
-        trail.push("No row of that table matched.");
-      } else trail.push("The model chose no number columns from the tables.");
-    } else trail.push("The model found no table with the data.");
-  } else if (pages.length) trail.push("No table on the pages read has numbers.");
-
-  // prose: values lifted with a quote, each checked against the page text
-  const ps = passages(pages, plan, false);
-  if (ps.length) {
-    say("Reading passages");
-    const user = `Question: ${q}\nThe answer's columns: ${plan.columns.join("; ")}\n\nPassages:\n${ps.map((p, i) => `[${i + 1}] ${p}`).join("\n")}`;
-    const got = parseJson<{ rows?: { label?: string; values?: number[]; quote?: string }[] }>(await ask(o.model, EXTRACT_SYSTEM, user, EXTRACT_SCHEMA, o.signal));
-    const all = norm(pages.map((p) => p.text).join("\n"));
-    // a row stands only when the sentence it quotes is on a page and states every one of its numbers
-    const cand: { vals: string[]; label: string; quote: string; page?: Page | undefined }[] = [];
-    let unsaid = 0;
-    for (const r of got?.rows ?? []) {
-      const vals = (r.values ?? []).map((v) => typeof v === "number" ? numberText(v) : null);
-      if (!vals.length || vals.some((v) => v === null) || (cand.length && vals.length !== cand[0]!.vals.length)) continue;
-      const quote = norm(r.quote ?? "");
-      const inPage = quote.length >= 8 && all.includes(quote);
-      const said = inPage ? numbersIn(r.quote ?? "") : [];
-      if (!vals.every((v) => said.some((n) => Math.abs(n - Number(v)) <= 1e-9 * Math.max(1, Math.abs(n))))) { unsaid++; continue; }
-      cand.push({ vals: vals as string[], label: r.label ?? "", quote: r.quote ?? "", page: pages.find((pg) => norm(pg.text).includes(quote)) });
-    }
-    if (unsaid) trail.push(`Left out ${plural(unsaid, "row")} the model lifted: ${unsaid === 1 ? "its numbers are" : "their numbers are"} not in the sentence quoted.`);
-    // and only when the sentence answers the question: a sentence can state 2006 and be about a loss
-    const kept = cand.length ? await confirmRows(q, cand, o, trail, say) : [];
-    if (kept.length) {
-      const rows = kept.map((c) => c.vals), labels = kept.map((c) => c.label);
-      const cites = new Map(kept.filter((c) => c.page).map((c) => [c.page!.url, { title: c.page!.title, url: c.page!.url }]));
-      trail.push(`Took ${plural(rows.length, "row")} from passages, each stated by the sentence it quotes`);
-      return {
-        source: engineText(rows, plan.shape), columns: plan.columns.slice(0, rows[0]!.length), ...named(labels),
-        via: "text", cites: [...cites.values()], flagged: [], notes: [],
-      };
-    }
-    trail.push("The passages did not state the numbers.");
-  }
-
-  return null;
-}
-
-const CONFIRM_SCHEMA = {
-  type: "object",
-  properties: { answers: { type: "array", items: { type: "boolean" } } },
-  required: ["answers"],
-} as const;
-
-const CONFIRM_SYSTEM = `You check answers to a question. Each numbered line gives values and the sentence they were taken from.
-For each line, answer true only if the sentence itself says those values answer the question, and false otherwise: a sentence about a loss does not say which years a team won; a sentence that only mentions a number does not say it is the answer.
-Reply with JSON only: {"answers": [true or false for line 1, for line 2, …]}.`;
-
-/** The rows whose sentences answer the question, by a yes or no for each: a narrow question a small
- *  model answers far better than the open one it was asked to lift the rows. */
-async function confirmRows<T extends { vals: string[]; quote: string }>(q: string, rows: T[], o: AskOptions, trail: string[], say: Say): Promise<T[]> {
-  say(`Checking ${plural(rows.length, "row")} against ${rows.length === 1 ? "its sentence" : "their sentences"}`);
-  const user = `Question: ${q}\n\n${rows.map((r, i) => `${i + 1}. values: ${r.vals.join(", ")}. Sentence: "${cut(r.quote, 300)}"`).join("\n")}`;
-  const got = parseJson<{ answers?: unknown[] }>(await ask(o.model, CONFIRM_SYSTEM, user, { ...CONFIRM_SCHEMA, properties: { answers: { ...CONFIRM_SCHEMA.properties.answers, minItems: rows.length, maxItems: rows.length } } }, o.signal));
-  const a = got?.answers;
-  if (!Array.isArray(a) || a.length !== rows.length) { trail.push("The check of the rows against their sentences gave no clear answer: none are kept."); return []; }
-  const kept = rows.filter((_, i) => a[i] === true);
-  if (kept.length < rows.length) trail.push(`Left out ${plural(rows.length - kept.length, "row")} whose sentence does not answer the question: ${rows.filter((_, i) => a[i] !== true).map((r) => r.vals.join(", ")).join("; ")}`);
-  return kept;
-}
-
 const DIRECT_SCHEMA = {
   type: "object",
   properties: {
@@ -770,10 +466,11 @@ const DIRECT_SCHEMA = {
   required: ["found", "rows", "columns", "rowLabels", "formula", "sources"],
 } as const;
 
-const DIRECT_SYSTEM = `You answer a question for a math notebook from sources: the pages given below, or the pages your web search finds. Reply with JSON only.
+const DIRECT_SYSTEM = `You answer a question for a math notebook from sources: the passages and table rows given below, or the pages your web search finds. Reply with JSON only.
 - found: false if the sources do not answer the question (then leave the rest empty).
 - rows: the answer's numbers. One number: [[x]]. A list: one row, [[a, b, c]]. A table: one row per item, one number per column. A formula: [].
-  Use only numbers the sources state, as they state them; never estimate, compute or remember one.
+  Use only numbers the sources state; a number written in words ("four titles") is that number (4). Never estimate or remember one.
+  For "how many", count only what the sources list or state as a count.
 - columns: what each column holds. rowLabels: what each row is when rows are named by text (a team, a country), else [].
 - formula: for a formula only, else empty: latex as a source writes it; expr the right-hand side in the notebook's syntax. ${SYNTAX}
 - sources: the pages you used, each with its title, url and a short exact quote that states the answer.`;
@@ -784,31 +481,87 @@ interface DirectReply {
   sources?: { title?: string; url?: string; quote?: string }[];
 }
 
-/** A page as a capable model reads it: its title and address, its tables (the likeliest first,
- *  as rows of cells), then its paragraphs (the likeliest first), within a share of the budget. */
-function pageText(p: Page, plan: Plan, share: number): string {
-  const out: string[] = [`## ${p.title} (${p.url})`];
-  let used = out[0]!.length;
-  const tables = [...p.tables].sort((a, b) => scoreTable(b, plan, 0) - scoreTable(a, plan, 0));
-  for (const t of tables) {
-    const lines = [`Table${t.caption ? `: ${t.caption}` : ""}`, t.headers.join(" | "), ...t.rows.slice(0, 80).map((r) => r.join(" | "))];
-    const block = lines.join("\n");
-    if (used + block.length > share * 0.7) continue;
-    out.push(block); used += block.length;
+/** The stretches of the pages most likely to hold the answer, as much as `budget` characters allows:
+ *  paragraphs, ranked by the question's words they share (a page's first paragraphs, which sum it
+ *  up, a little ahead), and tables, ranked by their caption, column names and best row. A table that
+ *  does not fit keeps the rows with the question's words, or, when no row has them, its first rows
+ *  and as many of its last as fit ("the first ten", "the last 20 years"). Given back page by page,
+ *  each in its own order. */
+export function evidence(pages: Page[], q: string, plan: Pick<Plan, "keywords" | "columns" | "shape">, budget: number): string {
+  const want = new Set([...words(q), ...plan.keywords.flatMap(words), ...plan.columns.flatMap(words)].map(stem));
+  // the question's words that can single rows out: not short numbers ("the last 20 years" is no row
+  // whose R/G is 4.20), though a year is ("in 1984")
+  const asked = new Set(words(q).filter((w) => !/^\d{1,3}$/.test(w)).map(stem));
+  const count = (s: string, of: Set<string>) => { const ws = new Set(words(s).map(stem)); let n = 0; for (const w of of) if (ws.has(w)) n++; return n; };
+  const hits = (s: string) => count(s, want);
+  const formula = plan.shape === "formula";
+  interface Unit { page: number; order: number; score: number; text: (room: number) => string }
+  const units: Unit[] = [];
+  pages.forEach((p, pi) => {
+    let order = 0;
+    for (const para of p.text.split("\n")) {
+      const o = order++;
+      const h = hits(para), f = formula && para.includes("$");
+      if (para.length < 20 || (!h && !f)) continue;
+      const text = cut(para, 900);
+      units.push({ page: pi, order: o, score: h * 3 + (/\d/.test(para) ? 1 : 0) + (f ? 3 : 0) + (o < 3 ? 1 : 0) - pi * 0.5, text: () => text });
+    }
+    for (const t of p.tables) {
+      const o = order++;
+      const lines = t.rows.map((r) => r.join(" | "));
+      // rows are told apart by the question's own words ("tigers"), not the plan's guesses at column
+      // names: a "short season" note once made one row of a table of seasons the only one kept
+      const rowHits = lines.map((l) => count(l, asked));
+      const best = Math.max(0, ...rowHits);
+      const f = formula && lines.some((l) => l.includes("$"));
+      const score = hits(`${t.caption} ${t.headers.join(" ")}`) * 3 + best * 2 + (f ? 3 : 0) - pi * 0.5;
+      if (score <= 0 && !f) continue;
+      const head = `Table${t.caption ? `: ${t.caption}` : ""}\n${t.headers.join(" | ")}`;
+      units.push({
+        page: pi, order: o, score,
+        text: (room) => {
+          const all = lines.map((_, i) => i);
+          const keyed = all.filter((i) => rowHits[i]! > 0);
+          const pick = keyed.length && keyed.length < lines.length ? keyed : all;
+          const size = (ix: number[]) => ix.reduce((n, i) => n + lines[i]!.length + 1, head.length);
+          let ix = pick;
+          if (size(ix) > room) {
+            // the rows with the question's words, from the top; or the first rows and the last
+            const first = pick === all ? pick.slice(0, 10) : [];
+            const rest = pick === all ? pick.slice(10).reverse() : pick;
+            ix = [...first];
+            for (const i of rest) { if (size([...ix, i]) > room) break; ix.push(i); }
+            ix.sort((a, b) => a - b);
+          }
+          const left = lines.length - ix.length;
+          return [head, ...ix.map((i) => lines[i]!), ...(left ? [`(${plural(left, "row")} of this table left out)`] : [])].join("\n");
+        },
+      });
+    }
+  });
+  units.sort((a, b) => b.score - a.score);
+  const chosen: { unit: Unit; text: string }[] = [];
+  let used = 0;
+  for (const u of units) {
+    const room = budget - used;
+    if (room < 200) break;
+    const text = u.text(Math.min(room, Math.floor(budget * 0.6)));
+    if (text.length > room) continue;
+    chosen.push({ unit: u, text }); used += text.length + 1;
   }
-  for (const para of p.text.split("\n")) {
-    if (used + para.length > share) break;
-    out.push(para); used += para.length;
-  }
-  return out.join("\n");
+  return pages.map((p, pi) => {
+    const mine = chosen.filter((c) => c.unit.page === pi).sort((a, b) => a.unit.order - b.unit.order);
+    return mine.length ? [`## ${p.title} (${p.url})`, ...mine.map((c) => c.text)].join("\n") : "";
+  }).filter(Boolean).join("\n\n");
 }
 
-/** A capable model's own answer, in the question's shape, from the pages read (or, with no pages,
- *  from its own web search); every number it gives is looked for in what it read. */
+/** The model's own answer, in the question's shape, from what was found on the pages read (or, with
+ *  no pages, from its own web search); every number it gives is looked for in what it read. */
 async function direct(q: string, plan: Plan, pages: Page[], o: AskOptions, trail: string[], say: Say): Promise<Answer | null> {
   const ask0 = `Today is ${o.today}.\nQuestion: ${q}\nThe answer is ${plan.shape === "number" ? "one number" : plan.shape === "list" ? "a list" : plan.shape === "formula" ? "a formula" : "a table"}${plan.shape === "table" || plan.shape === "list" ? ` (${plan.columns.join("; ")})` : ""}.`;
   let reply: DirectReply | null;
-  let evidence: string;
+  /** All that the model read, for looking its numbers up. */
+  let readText: string;
   let cites: { title: string; url: string }[];
   if (!pages.length) {
     say(`Searching the web with ${o.model.id}`);
@@ -818,20 +571,21 @@ async function direct(q: string, plan: Plan, pages: Page[], o: AskOptions, trail
     if (o.signal?.aborted) throw new AskError("Stopped.", trail);
     reply = parseJson<DirectReply>(got.text);
     const quoted = (reply?.sources ?? []).map((s) => s.quote ?? "");
-    evidence = [...quoted, ...got.citations.map((c) => c.content ?? "")].join("\n");
+    readText = [...quoted, ...got.citations.map((c) => c.content ?? "")].join("\n");
     const seen = new Set<string>();
     cites = [...got.citations, ...(reply?.sources ?? []).map((s) => ({ url: s.url ?? "", title: s.title ?? "" }))]
       .filter((c) => /^https?:\/\//.test(c.url) && !seen.has(c.url) && seen.add(c.url)).map((c) => ({ title: c.title || new URL(c.url).host, url: c.url })).slice(0, 8);
     trail.push(`${o.model.id} searched the web: ${plural(got.citations.length, "page")} cited`);
   } else {
-    const share = Math.floor(30000 / pages.length);
-    say(`${o.model.id} is reading ${plural(pages.length, "page")}`);
-    reply = parseJson<DirectReply>(await ask(o.model, DIRECT_SYSTEM, `${ask0}\n\nSources:\n${pages.map((p) => pageText(p, plan, share)).join("\n\n")}`, DIRECT_SCHEMA, o.signal));
-    evidence = pages.map((p) => [p.text, ...p.tables.map((t) => [t.headers, ...t.rows].map((r) => r.join(" | ")).join("\n"))].join("\n")).join("\n");
+    const sources = evidence(pages, q, plan, o.model.context ?? 8000);
+    if (!sources) { trail.push("Nothing on the pages read shares a word with the question."); return null; }
+    say(`${o.model.id} is reading what was found`);
+    reply = parseJson<DirectReply>(await ask(o.model, DIRECT_SYSTEM, `${ask0}\n\nSources:\n${sources}`, DIRECT_SCHEMA, o.signal));
+    readText = pages.map((p) => [p.text, ...p.tables.map((t) => [t.headers, ...t.rows].map((r) => r.join(" | ")).join("\n"))].join("\n")).join("\n");
     const used = new Set((reply?.sources ?? []).map((s) => s.url ?? ""));
     const usedPages = pages.filter((p) => used.has(p.url));
     cites = (usedPages.length ? usedPages : pages).map((p) => ({ title: p.title, url: p.url }));
-    trail.push(`Gave ${o.model.id} the text and tables of ${plural(pages.length, "page")}`);
+    trail.push(`Gave ${o.model.id} the passages and table rows of the pages read that share the most words with the question (${Math.round(sources.length / 100) / 10}k characters)`);
   }
   if (!reply?.found) { trail.push("The model found no answer in the sources."); return null; }
 
@@ -839,7 +593,7 @@ async function direct(q: string, plan: Plan, pages: Page[], o: AskOptions, trail
     const f = reply.formula ?? {};
     const got = formulaReply({ found: true, expr: f.expr ?? "", params: f.params ?? [], vars: f.vars ?? [], quote: f.latex ?? "" }, trail, true);
     if (!got) return null;
-    const stated = !!got.latex && squash(evidence).includes(squash(got.latex));
+    const stated = !!got.latex && squash(readText).includes(squash(got.latex));
     trail.push(stated ? `The formula $${got.latex}$ is in the sources` : `The formula $${got.latex}$ is not written that way in the sources`);
     return {
       ...got, columns: plan.columns.slice(0, 1), via: pages.length ? "text" : "search", cites, flagged: stated ? [] : [[0, 0]],
@@ -852,7 +606,7 @@ async function direct(q: string, plan: Plan, pages: Page[], o: AskOptions, trail
     trail.push("The model's answer was not a grid of numbers.");
     return null;
   }
-  const said = numbersIn(evidence);
+  const said = numbersIn(readText);
   const flagged: [number, number][] = [];
   rows.forEach((r, i) => r.forEach((v, c) => { if (!said.some((n) => Math.abs(n - Number(v)) <= 1e-9 * Math.max(1, Math.abs(n)))) flagged.push([i, c]); }));
   const grid = rows as string[][];
@@ -864,38 +618,4 @@ async function direct(q: string, plan: Plan, pages: Page[], o: AskOptions, trail
     via: pages.length ? "text" : "search", cites, flagged: flagged.map(placed(plan.shape, grid)),
     notes: flagged.length ? ["Values marked ⚠ are not in the sources the model read: check them before use."] : [],
   };
-}
-
-/** A formula: one the pages state in LaTeX, translated by the model. */
-async function formula(q: string, plan: Plan, pages: Page[], o: AskOptions, trail: string[], say: Say): Promise<Answer | null> {
-  const ps = passages(pages, plan, true);
-  if (ps.length) {
-    say("Reading formulas");
-    const user = `Question: ${q}\n\nPassages:\n${ps.map((p, i) => `[${i + 1}] ${p}`).join("\n")}`;
-    const got = formulaReply(parseJson<FormulaReply>(await ask(o.model, FORMULA_SYSTEM, user, FORMULA_SCHEMA, o.signal)), trail, true);
-    if (got) {
-      // the quoted LaTeX must be one of the page's formulas, and name the variables the expression uses
-      const page = got.latex ? pages.find((p) => [...p.text.matchAll(/\$([^$]+)\$/g), ...p.tables.flatMap((t) => t.rows.flat()).flatMap((c) => [...c.matchAll(/\$([^$]+)\$/g)])]
-        .some((m) => squash(m[1]!).includes(squash(got.latex)))) : undefined;
-      const letters = got.latex.replace(/\\[A-Za-z]+/g, "");
-      const named = got.params.every((p) => letters.includes(p));
-      const ok = !!page && named;
-      trail.push(page ? `Took the formula $${got.latex}$ from “${page.title}”${named ? "" : `, but it does not use the variable${got.params.length === 1 ? "" : "s"} ${got.params.join(", ")}`}`
-        : `The formula the model quoted ($${got.latex}$) is not on the pages read.`);
-      return {
-        ...got, columns: plan.columns.slice(0, 1), via: "text", cites: page ? [{ title: page.title, url: page.url }] : [], flagged: ok ? [] : [[0, 0]],
-        notes: ok ? [] : ["⚠ This formula could not be matched to one on the page: compare it with the source before use."],
-      };
-    }
-    trail.push("The passages did not state the formula.");
-  } else if (pages.length) trail.push("The pages read have no formulas about this.");
-
-  return null;
-}
-
-function fmtRange(min: number | null, max: number | null): string {
-  if (min !== null && max !== null) return `from ${min} to ${max}`;
-  if (min !== null) return `from ${min}`;
-  if (max !== null) return `up to ${max}`;
-  return "(all)";
 }
