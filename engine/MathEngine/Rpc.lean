@@ -67,6 +67,14 @@ def ruleStatus : Json :=
     entry "la.dot" "verified" "Σ uᵢvᵢ by definition; a matrix has no value in the ℝ semantics, so the claim is the definition (bilinear, as Mathematica's Dot — the Hermitian product is dot(u, conj(v))).",
     entry "la.norm" "verified" "(Σ vᵢ²)^(1/2) by definition, the Pythagorean length.",
     entry "la.conj" "verified" "Entrywise by definition.",
+    entry "la.part" "verified" "Mathematica's Part by definition: positions count from 1, negative ones from the end. Every position a spec selects is in range (partSpec_lt), so the selection is exactly the entries named, never a filler.",
+    entry "stat.total" "verified" "Σ xᵢ by definition; over ℝ the value is the list's sum (total_soundR).",
+    entry "stat.mean" "verified" "(1/n)·Σ xᵢ; over ℝ the value is the sum over the count (mean_soundR).",
+    entry "stat.variance" "verified" "The one-pass form (Σxᵢ² − (Σxᵢ)²/n)/(n − 1) equals the sample variance Σ(xᵢ − x̄)²/(n − 1) over ℝ, for n ≥ 2 (variance_soundR).",
+    entry "stat.stdev" "verified" "The square root of the sample variance in its one-pass form (stdev_soundR, from variance_soundR).",
+    entry "stat.min" "verified" "Exact comparison of rationals: the result is an entry and no entry is smaller (minQ_spec).",
+    entry "stat.max" "verified" "Exact comparison of rationals: the result is an entry and no entry is larger (maxQ_spec).",
+    entry "stat.median" "verified" "The entries sorted (a sorted permutation: List.mergeSort_perm, List.sorted_mergeSort), then the middle one or the mean of the two middle ones (medianQ_spec).",
     entry "int.check" "verified" "The differentiation of the candidate: this step carries the claim, with the statuses of its own steps.",
     entry "int.compare" "verified" "Derivative and integrand are rewritten with cos²u = 1 − sin²u and (eᵘ)ᵏ = eᵏᵘ (identNorm), expanded (dist) and simplified before comparison — both rewrites proved sound, and needed because the pipeline applies neither identity nor distributes a numeral over a sum; the statuses of the simplification steps apply.",
     entry "int.constant" "checked" "A guess from the finder; nothing is proved about it. Accepted only because int.check verifies the result by differentiation.",
@@ -107,7 +115,7 @@ def ruleStatus : Json :=
 
 def capabilities : Json :=
   .obj #[("engine", .str "engine-lean"), ("version", .str "0.1.0-m8"), ("verified", .bool true),
-         ("features", .arr #[.str "simplify", .str "expand", .str "factor", .str "diff", .str "linalg", .str "numeric", .str "integrate", .str "plot", .str "lambda", .str "order", .str "sum", .str "exptotrig"]),
+         ("features", .arr #[.str "simplify", .str "expand", .str "factor", .str "diff", .str "linalg", .str "numeric", .str "integrate", .str "plot", .str "lambda", .str "order", .str "sum", .str "exptotrig", .str "part", .str "statistics"]),
          ("ruleStatus", ruleStatus),
          ("termination", .obj #[("status", .str "proven"), ("theorem", .str "MathEngine.pipelineOrdered"),
            ("summary", .str "Cell evaluation has no step budget: every pipeline rule decreases a five-tier ordering (commands, higher-order diff, matrix literals, the weight M, size) on nodes whose children are normal.")])]

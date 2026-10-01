@@ -493,8 +493,45 @@ def goldenTests : TestM Unit := do
       check s!"golden: {source}" actual expected
     | _ => pure ()
 
+/-- Part (`m[[…]]`) and the statistics. -/
+def partStatTests : TestM Unit := do
+  -- Part, Mathematica's indexing: from 1, negative from the end, All, spans, lists
+  check "part parses and prints" (roundtrip "m[[2, 1;;3]]") "m[[2, 1;;3]]"
+  check "part: omitted span ends" (roundtrip "m[[;;2, 2;;, All, {1, 3}, 1;;-1;;2]]") "m[[1;;2, 2;;-1, All, {1, 3}, 1;;-1;;2]]"
+  check "part binds tighter than ^" (roundtrip "v[[1]]^2") "v[[1]]^2"
+  check "part latex" (latexOf "m[[2, All]]") "m\\llbracket 2, \\mathrm{All}\\rrbracket"
+  check "part: a row" (evalText "[1,2,3;4,5,6;7,8,9][[2]]") "[4, 5, 6]"
+  check "part: an entry" (evalText "[1,2,3;4,5,6;7,8,9][[2, 3]]") "6"
+  check "part: a column stays a column" (evalText "[1,2,3;4,5,6;7,8,9][[All, 2]]") "[2; 5; 8]"
+  check "part: span and list" (evalText "[1,2,3;4,5,6;7,8,9][[1;;2, {1, 3}]]") "[1, 3; 4, 6]"
+  check "part: from the end" (evalText "[1,2,3;4,5,6;7,8,9][[-1, -1]]") "9"
+  check "part: a negative step" (evalText "[1,2,3;4,5,6;7,8,9][[3;;1;;-1, 1]]") "[7; 4; 1]"
+  check "part: a vector takes one index" (evalText "[10, 20, 30][[2]]") "20"
+  check "part: a column vector's span" (evalText "[10; 20; 30][[2;;]]") "[20; 30]"
+  check "part: out of range" (evalText "[1, 2, 3][[4]]") "<error: part 4 of 3: the index runs from 1 to 3 (or -3 to -1)>"
+  check "part: no part 0" (evalText "[1, 2, 3][[0]]") "<error: parts count from 1 (and -1 is the last); there is no part 0>"
+  check "part: too many indices" (evalText "[1, 2; 3, 4][[1, 2, 1]]") "<error: a matrix has two dimensions; 3 indices were given>"
+  check "part: an empty span" (evalText "[1, 2, 3][[3;;1]]") "<error: the span 3;;1 selects nothing>"
+  check "part of a symbol stays" (evalText "x[[1]]") "x[[1]]"
+  check "braces outside a part" (evalText "{1, 2}") "<error: braces list the indices of a part, as in m[[{1, 3}]]>"
+  -- statistics: definitions, so symbolic entries work; a matrix gives its columns' statistics
+  check "total" (evalText "total([1; 2; 3])") "6"
+  check "mean" (evalText "mean([1, 2, 3, 4])") "5/2"
+  check "mean symbolic" (evalText "mean([a; b])") "(a + b)/2"
+  check "mean of a matrix is by column" (evalText "mean([1, 2, 3; 4, 5, 6; 7, 8, 9])") "[4, 5, 6]"
+  check "sample variance" (evalText "variance([2, 4, 4, 4, 5, 5, 7, 9])") "32/7"
+  check "variance symbolic" (evalText "variance([a, b])") "a^2 + b^2 - (a + b)^2/2"
+  check "stdev" (evalText "stdev([1, 3])") "sqrt(2)"
+  check "variance of one value" (evalText "variance([1])") "<error: variance needs at least two values (it divides by n − 1)>"
+  check "median odd" (evalText "median([5, 1, 3])") "3"
+  check "median even" (evalText "median([4, 1, 3, 2])") "5/2"
+  check "min" (evalText "min([3, -1, 2.5])") "-1"
+  check "max" (evalText "max([3, -1, 2.5])") "3"
+  check "min needs numbers" (evalText "min([a, 1])") "<error: min compares numbers; an entry is not a number>"
+  check "a statistic of a part" (evalText "mean([1,2,3;4,5,6;7,8,9][[All, 2]])") "5"
+
 def main : IO UInt32 := do
-  let ((), failures) ← (do tests; goldenTests).run #[]
+  let ((), failures) ← (do tests; partStatTests; goldenTests).run #[]
   for f in failures do
     IO.println s!"FAIL {f.name}\n  expected: {f.expected}\n  actual:   {f.actual}"
   IO.println s!"{failures.size} failures"

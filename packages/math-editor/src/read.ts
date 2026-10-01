@@ -20,7 +20,8 @@ export type ReadResult = { ok: true; stmt: Stmt } | { ok: false; error: ReadErro
  *  or a function the session defined (`known`); otherwise it is a product, `f·(x)`. */
 export const BUILTIN_FUNCTIONS = ["sin", "cos", "tan", "exp", "ln", "log", "sqrt", "abs", "conj", "re", "im",
   "diff", "simplify", "expand", "factor", "N", "det", "rref", "transpose", "solve", "subst", "integrate", "plot",
-  "sign", "dot", "norm", "sum", "exptotrig", "epicycles", "dft"];
+  "sign", "dot", "norm", "sum", "exptotrig", "epicycles", "dft",
+  "total", "mean", "variance", "stdev", "min", "max", "median"];
 
 /** `sin^2(y)` is `sin(y)^2` for these. */
 const POWER_FNS = ["sin", "cos", "tan", "exp", "ln", "log", "sqrt", "abs"];
@@ -50,7 +51,7 @@ export function lex(src: string): Tok[] {
       while (j < cs.length && isIdChar(cs[j]!)) j++;
       out.push({ kind: "id", s: cs.slice(i, j).join(""), start: i, stop: j });
       i = j;
-    } else if ("+-*/^()[],;=%".includes(c)) {
+    } else if ("+-*/^()[],;=%{}".includes(c)) {
       out.push({ kind: "op", s: c, start: i, stop: i + 1 });
       i++;
     } else fail(`unexpected character '${c}'`, { start: i, stop: i + 1 });
@@ -158,6 +159,8 @@ class Reader {
 
   private power(): Block {
     let b = this.atom();
+    // `m[[2]]`, Mathematica's Part, has no typeset form yet: the cell stays text
+    if (this.isOp(this.peek(0), "[") && this.isOp(this.peek(1), "[")) fail("a part m[[…]] is edited as text", this.peek(0));
     if (this.isOp(this.peek(), "^")) {
       this.next();
       // `sin^2(y)^3`: the atom was already a power; group it so the next one applies to all of it
@@ -213,6 +216,7 @@ class Reader {
           if (rows.some((r) => r.length !== w)) fail("ragged matrix rows", t);
           return [{ k: "matrix", rows }];
         }
+        if (t.s === "{") return fail("braces list the indices of a part, as in m[[{1, 3}]]", t);
         return fail(`unexpected '${t.s}'`, t);
       }
       case "eof": return fail("unexpected end of input", t);

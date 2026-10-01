@@ -70,7 +70,12 @@ test("parse errors are the engine's, with its spans", () => {
   const bad = read("x + )");
   assert.deepEqual(bad.ok ? null : bad.error, { message: "unexpected ')'", span: { start: 4, end: 5 } });
   // λ-terms and the other worlds are not this grammar: those cells stay raw
-  for (const src of ["(λx. x) y", "TWO := succ (succ zero)", "poset({a,b}; a<b)", "import(\"a.svg\")", "⟦llama.svg⟧"]) assert.equal(read(src).ok, false, src);
+  for (const src of ["(λx. x) y", "TWO := succ (succ zero)", "poset({a,b}; a<b)", "import(\"a.svg\")", "⟦llama.svg⟧", "m[[2]]", "mean(t[[All, 2]])"]) assert.equal(read(src).ok, false, src);
+  const brace = read("{1, 2}");
+  assert.equal(brace.ok ? "(read)" : brace.error.message, "braces list the indices of a part, as in m[[{1, 3}]]");
+  // the statistics are calls, as in the engine, not products
+  const mean = read("mean(x)");
+  assert.ok(mean.ok && JSON.stringify(mean.stmt).includes('"k":"call"'), JSON.stringify(mean));
 });
 
 test("writing puts back exactly the parentheses the engine needs", () => {

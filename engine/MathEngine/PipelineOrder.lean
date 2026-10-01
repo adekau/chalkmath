@@ -30,6 +30,7 @@ theorem mem_pipeline_iff (r : PlainRule) : r ∈ (pipelineRulesWith norm) ↔
     r = diffHigherOrder ∨ r = diffConstant ∨ r = diffVariable ∨ r = diffSum ∨ r = diffConstMul ∨
     r = diffProduct ∨ r = diffPower ∨ r = diffChain ∨ r = diffMatrix ∨
     r = laAdd ∨ r = laScalarMul ∨ r = laMul ∨ r = laTranspose ∨ r = laDet ∨ r = laPow ∨ r = laDot ∨ r = laNorm ∨ r = laConj ∨
+    r = laPart ∨ (∃ st ∈ stats, statRule st = r) ∨
     r = scalarOnly iPower ∨ r = scalarOnly cxArith ∨ r = scalarOnly cxPow ∨ r = scalarOnly cxConj ∨ r = scalarOnly cxReIm ∨
     r = scalarOnly cxAbs ∨ r = scalarOnly exactTrig ∨ r = scalarOnly euler ∨ r = scalarOnly eulerPower ∨ r = scalarOnly expProduct ∨
     r = scalarOnly sqrtPower ∨ r = scalarOnly sqrtRadical ∨ r = scalarOnly flatten.toPlain ∨ r = scalarOnly identity.toPlain ∨ r = scalarOnly foldConstants.toPlain ∨
@@ -37,7 +38,7 @@ theorem mem_pipeline_iff (r : PlainRule) : r ∈ (pipelineRulesWith norm) ↔
     r = scalarOnly collectTerms.toPlain ∨ r = scalarOnly parityPowMul ∨ r = scalarOnly parityPowPow ∨
     r = scalarOnly radicalBase ∨ r = scalarOnly collectRadicals ∨ r = scalarOnly mulRadicals ∨ r = laContext := by
   simp [pipelineRulesWith, commandRulesWith, diffRules, matrixRules, simpPlain, simpRules, parityPlain, parityRules,
-    radicalPlain, radicalRules, sqrtPlain, sqrtRules, complexPlain, complexRules, contextRules]
+    radicalPlain, radicalRules, sqrtPlain, sqrtRules, complexPlain, complexRules, contextRules, statRules]
 
 -- ---------------------------------------------------------------------------
 -- Clean terms: nothing the first three tiers count
@@ -574,6 +575,36 @@ theorem dec_diffMatrix : Dec norm diffMatrix := dec_lit
     obtain ⟨p, hp, _⟩ := h
     rw [target_spec hp]; exact ⟨by simp [cmdOwn, cmdNames], by simp [d3Own]⟩)
   (fun e res h => by unfold diffMatrix at h; obtain ⟨r₀, _, rfl⟩ := lit_apply h; exact ⟨r₀, rfl⟩)
+
+theorem dec_laPart : Dec norm laPart := dec_lit
+  (fun e res h => by
+    unfold laPart at h; obtain ⟨r₀, h, _⟩ := lit_apply h
+    split at h
+    · exact ⟨by simp [cmdOwn, cmdNames], by simp [d3Own]⟩
+    · simp at h)
+  (fun e res h => by unfold laPart at h; obtain ⟨r₀, _, rfl⟩ := lit_apply h; exact ⟨r₀, rfl⟩)
+
+/-- No statistic is named like a command or `diff`. -/
+theorem stat_heads : ∀ st ∈ stats, cmdNames.contains st.fn = false ∧ st.fn ≠ "diff" := by
+  simp [stats, cmdNames]
+
+/-- Every statistic's rule: its node is `fn st.fn …`, which is neither a command nor a `diff`. -/
+theorem dec_statRule (st : Stat) (hs : cmdNames.contains st.fn = false ∧ st.fn ≠ "diff") :
+    Dec norm (statRule st) := dec_lit
+  (fun e res h => by
+    unfold statRule at h; dsimp only at h; obtain ⟨r₀, h, _⟩ := lit_apply h
+    have ok : ∀ f es, f = st.fn → cmdOwn (.fn f es) = 0 ∧ d3Own (.fn f es) = 0 := by
+      have hm : st.fn ∉ cmdNames := by simpa using hs.1
+      intro f es hf; subst hf; exact ⟨by simp [cmdOwn, hm], by simp [d3Own, hs.2]⟩
+    split at h
+    · split at h
+      · simp at h
+      · rename_i hc; exact ok _ _ (by simpa using hc)
+    · split at h
+      · rename_i hc; exact ok _ _ (by simp at hc; exact hc.1)
+      · simp at h
+    · simp at h)
+  (fun e res h => by unfold statRule at h; dsimp only at h; obtain ⟨r₀, _, rfl⟩ := lit_apply h; exact ⟨r₀, rfl⟩)
 
 /-- `la.context` only refuses. -/
 theorem dec_laContext : Dec norm laContext := by
@@ -2789,9 +2820,12 @@ theorem dec_eulerPower : Dec norm (scalarOnly eulerPower) := dec_scalar fun e re
 With `normalizeT`'s innermost strategy this is exactly what makes cell evaluation terminate. -/
 theorem pipelineOrderedWith (norm : Norm) : Ordered (pipelineRulesWith norm) := ⟨fun r hr => by
   rw [mem_pipeline_iff] at hr
-  rcases hr with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
-    rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
-    rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+  -- 27 commands, diff and la rules; la.part; the statistics; 25 scalar rules and la.context
+  rcases hr with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
+    rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
+    rfl | ⟨st, hst, rfl⟩ |
+    rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
+    rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
   · exact dec_cmdSimplify
   · exact dec_cmdExpand
   · exact dec_cmdRref
@@ -2819,6 +2853,8 @@ theorem pipelineOrderedWith (norm : Norm) : Ordered (pipelineRulesWith norm) := 
   · exact dec_laDot
   · exact dec_laNorm
   · exact dec_laConj
+  · exact dec_laPart
+  · exact dec_statRule st (stat_heads st hst)
   · exact dec_iPower
   · exact dec_cxArith
   · exact dec_cxPow

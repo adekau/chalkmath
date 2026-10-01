@@ -176,7 +176,268 @@ def laConj : PlainRule :=
         some ⟨.matrix (rows.map fun r => r.map fun a => .fn "conj" [a]), "The conjugate of a matrix is taken entrywise.", none, none⟩
       | _ => none }
 
-def matrixRules : List PlainRule := [laAdd, laScalarMul, laMul, laTranspose, laDet, laPow, laDot, laNorm, laConj]
+/-! ## Part: `m[[i, j]]`, Mathematica's indexing
+
+Counting from 1, a negative index from the end (`-1` is the last), `All`, spans `a;;b;;s` (both
+ends included, `s` a nonzero step) and lists `{i, j}`. A vector (one row or one column) takes one
+index into its entries; a matrix takes rows, then columns. A single index drops that dimension (an
+entry, or a row or column vector, which keeps its orientation); a span or list keeps it. -/
+
+/-- The position (from 0) a single index names among `n`, or why it names none. -/
+def partPos (n : Nat) (e : Expr) : Except String Nat :=
+  match e with
+  | .num q =>
+    if !q.isInt then .error s!"a part index is a whole number, not {q.toText}"
+    else
+      let k := q.val.num
+      if k == 0 then .error "parts count from 1 (and -1 is the last); there is no part 0"
+      else if 0 < k && k ≤ n then .ok (k - 1).toNat
+      else if k < 0 && -k ≤ n then .ok (n + k).toNat
+      else .error s!"part {k} of {n}: the index runs from 1 to {n} (or -{n} to -1)"
+  | _ => .error s!"a part index is a whole number, All, a span a;;b or a list {"{"}i, j{"}"}; ${e.toText}$ is not"
+
+/-- The positions from `i` to `j` (both included) in steps of `st`: forwards for a positive step,
+backwards for a negative one, none when `j` is on the wrong side of `i`. -/
+def spanIndices (i j : Nat) (st : Int) : List Nat :=
+  if 0 < st then (if i ≤ j then (List.range ((j - i) / st.toNat + 1)).map (i + · * st.toNat) else [])
+  else (if j ≤ i then (List.range ((i - j) / (-st).toNat + 1)).map (i - · * (-st).toNat) else [])
+
+/-- The positions a spec selects among `n`, and whether it was a single index (which drops the
+dimension). -/
+def partSpec (n : Nat) (e : Expr) : Except String (List Nat × Bool) :=
+  match e with
+  | .fn "All" [] => .ok (List.range n, false)
+  | .fn "List" xs => do
+    if xs.isEmpty then throw "an empty list of indices selects nothing"
+    return (← xs.mapM (partPos n), false)
+  | .fn "span" [a, b, .num s] => do
+    let i ← partPos n a
+    let j ← partPos n b
+    if !s.isInt || s.isZero then throw s!"the step of a span is a nonzero whole number, not {s.toText}"
+    let span := spanIndices i j s.val.num
+    if span.isEmpty then throw s!"the span {a.toText};;{b.toText} selects nothing"
+    return (span, false)
+  | .fn "span" _ => .error "the step of a span is a nonzero whole number"
+  | _ => do return ([← partPos n e], true)
+
+theorem partPos_lt {n : Nat} {e : Expr} {i : Nat} (h : partPos n e = .ok i) : i < n := by
+  unfold partPos at h
+  split at h
+  · rename_i q
+    simp only at h
+    split at h
+    · simp at h
+    · split at h
+      · simp at h
+      · split at h
+        · rename_i _ _ hk; simp only [Except.ok.injEq] at h; subst h
+          simp only [Bool.and_eq_true, decide_eq_true_eq] at hk; omega
+        · split at h
+          · rename_i _ _ _ hk; simp only [Except.ok.injEq] at h; subst h
+            simp only [Bool.and_eq_true, decide_eq_true_eq] at hk; omega
+          · simp at h
+  · simp at h
+
+theorem mapM_partPos_lt {n : Nat} : ∀ {xs : List Expr} {is : List Nat}, xs.mapM (partPos n) = .ok is → ∀ i ∈ is, i < n
+  | [], is, h => by simp [List.mapM_nil, pure, Except.pure] at h; subst h; simp
+  | x :: xs, is, h => by
+    rw [List.mapM_cons] at h
+    cases hx : partPos n x with
+    | error _ => rw [hx] at h; simp [bind, Except.bind] at h
+    | ok i =>
+      cases hxs : xs.mapM (partPos n) with
+      | error _ => rw [hx, hxs] at h; simp [bind, Except.bind] at h
+      | ok js =>
+        rw [hx, hxs] at h; simp [bind, Except.bind, pure, Except.pure] at h; subst h
+        intro k hk; simp at hk
+        rcases hk with rfl | hk
+        · exact partPos_lt hx
+        · exact mapM_partPos_lt hxs k hk
+
+/-- A span between two positions in range stays in range: forwards it never passes `j`, backwards
+it never passes `i`. -/
+theorem spanIndices_lt {n i j : Nat} {st : Int} (hi : i < n) (hj : j < n) : ∀ x ∈ spanIndices i j st, x < n := by
+  intro x hx
+  unfold spanIndices at hx
+  split at hx
+  · split at hx
+    · simp only [List.mem_map, List.mem_range] at hx
+      obtain ⟨k, hk, rfl⟩ := hx
+      have h1 : k ≤ (j - i) / st.toNat := by omega
+      have h2 := Nat.le_trans (Nat.mul_le_mul_right st.toNat h1) (Nat.div_mul_le_self (j - i) st.toNat)
+      omega
+    · simp at hx
+  · split at hx
+    · simp only [List.mem_map, List.mem_range] at hx
+      obtain ⟨k, -, rfl⟩ := hx
+      omega
+    · simp at hx
+
+/-- **Part stays in range**: every position a spec selects among `n` is below `n`, so the
+selection is exactly the entries Mathematica's Part names. -/
+theorem partSpec_lt {n : Nat} {e : Expr} {is : List Nat} {b : Bool} (h : partSpec n e = .ok (is, b)) :
+    ∀ i ∈ is, i < n := by
+  unfold partSpec at h
+  split at h
+  · simp only [Except.ok.injEq, Prod.mk.injEq] at h; obtain ⟨rfl, -⟩ := h; intro i hi; simpa using hi
+  · rename_i xs
+    simp only [bind, Except.bind] at h
+    split at h
+    · simp [throw, throwThe, MonadExceptOf.throw] at h
+    · cases hm : xs.mapM (partPos n) with
+      | error _ => rw [hm] at h; simp at h
+      | ok js => rw [hm] at h; simp [pure, Except.pure] at h; obtain ⟨rfl, -⟩ := h; exact mapM_partPos_lt hm
+  · rename_i a b s
+    cases ha : partPos n a with
+    | error _ => simp [ha, bind, Except.bind] at h
+    | ok i =>
+      cases hb : partPos n b with
+      | error _ => simp [ha, hb, bind, Except.bind] at h
+      | ok j =>
+        simp only [ha, hb, bind, Except.bind] at h
+        split at h
+        · simp [throw, throwThe, MonadExceptOf.throw] at h
+        · split at h
+          · simp [throw, throwThe, MonadExceptOf.throw] at h
+          · simp only [pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
+            obtain ⟨rfl, -⟩ := h
+            exact spanIndices_lt (partPos_lt ha) (partPos_lt hb)
+  · simp at h
+  · cases hp : partPos n e with
+    | error _ => simp [hp, bind, Except.bind] at h
+    | ok i => simp [hp, bind, Except.bind, pure, Except.pure] at h; obtain ⟨rfl, -⟩ := h; simpa using partPos_lt hp
+/-- `rows[[specs]]`: the selected entries, and what was selected, for the step's explanation. -/
+def partOf (rows : List (List Expr)) (specs : List Expr) : Except String (Expr × String) := do
+  let (r, c) := dims rows
+  if r == 0 || c == 0 then throw "part of an empty matrix"
+  match specs with
+  | [s] =>
+    if r == 1 || c == 1 then
+      -- a vector: one index into its entries, keeping its orientation
+      let vs := if r == 1 then rows.head! else rows.map (·.head!)
+      let (is, single) ← partSpec vs.length s
+      let picked := is.map (vs.getD · Expr.zero)
+      if single then return (picked.head!, s!"Entry {is.head! + 1} of the vector, counting from 1.")
+      let out := if r == 1 then Expr.matrix [picked] else Expr.matrix (picked.map ([·]))
+      return (out, s!"Entries {", ".intercalate (is.map (toString ∘ (· + 1)))} of the vector.")
+    else
+      let (is, single) ← partSpec r s
+      let picked := is.map (rows.getD · [])
+      if single then return (.matrix picked, s!"Row {is.head! + 1} of the {r}×{c} matrix, as a row vector.")
+      return (.matrix picked, s!"Rows {", ".intercalate (is.map (toString ∘ (· + 1)))} of the {r}×{c} matrix.")
+  | [s, t] =>
+    let (is, si) ← partSpec r s
+    let (js, sj) ← partSpec c t
+    let pick := is.map fun i => js.map fun j => entry rows i j
+    let what := s!"rows {", ".intercalate (is.map (toString ∘ (· + 1)))}, columns {", ".intercalate (js.map (toString ∘ (· + 1)))} of the {r}×{c} matrix"
+    if si && sj then return (entry rows is.head! js.head!, s!"Entry ({is.head! + 1}, {js.head! + 1}) of the {r}×{c} matrix.")
+    -- a single column keeps its orientation: a column vector
+    if sj then return (.matrix (pick.map fun row => [row.head!]), s!"The selection: {what}, as a column vector.")
+    if si then return (.matrix [pick.head!], s!"The selection: {what}, as a row vector.")
+    return (.matrix pick, s!"The selection: {what}.")
+  | [] => throw "a part needs an index: m[[i]]"
+  | _ => throw s!"a matrix has two dimensions; {specs.length} indices were given"
+
+def laPart : PlainRule :=
+  { name := "la.part", apply := fun e => Option.map (checkedLit e) <|
+      match e with
+      | .fn "part" (.matrix rows :: specs) =>
+        some (match partOf rows specs with
+          | .ok (r, text) => ⟨r, text, none, none⟩
+          | .error msg => refuse msg)
+      | _ => none }
+
+/-! ## Statistics of a vector, or of each column of a matrix
+
+Mathematica's conventions: a statistic of a matrix is the row of its columns' statistics, and the
+variance divides by `n − 1` (the sample variance, as `Variance` and Python's `statistics.variance`).
+`total`, `mean`, `variance` and `stdev` are definitions, so symbolic entries work: `mean([a; b])`
+is `(a + b)/2`. The variance is written in the one-pass form `(Σxᵢ² − (Σxᵢ)²/n)/(n − 1)`, linear in
+`n` where the definition `Σ(xᵢ − x̄)²/(n − 1)` repeats the mean in every term; `variance_soundR`
+(proofs/Proofs/Stats.lean) proves the two equal over ℝ. `min`, `max` and `median` compare, so they
+take numerals only. -/
+
+/-- The entries of a vector, or each column of a matrix (and whether it was a matrix). -/
+def statColumns (rows : List (List Expr)) : List (List Expr) × Bool :=
+  let (r, c) := dims rows
+  if r == 1 then ([rows.head!], false)
+  else if c == 1 then ([rows.map (·.head!)], false)
+  else ((List.range c).map (fun j => rows.map (·.getD j Expr.zero)), true)
+
+/-- The numerals of a list, if every entry is one. -/
+def numerals (xs : List Expr) : Option (List Q) := xs.mapM fun | .num q => some q | _ => none
+
+def totalOf (xs : List Expr) : Expr := addN xs
+def meanOf (xs : List Expr) : Expr := .mul [.num (Q.ofRat (1 / (xs.length : Rat))), addN xs]
+/-- The sample variance, one-pass: `(Σxᵢ² − (Σxᵢ)²/n)/(n − 1)`. -/
+def varianceOf (xs : List Expr) : Expr :=
+  let n : Rat := xs.length
+  .mul [.num (Q.ofRat (1 / (n - 1))),
+    .add [addN (xs.map fun x => .pow x (.num 2)), .mul [.num (Q.ofRat (-1 / n)), .pow (addN xs) (.num 2)]]]
+def stdevOf (xs : List Expr) : Expr := .pow (varianceOf xs) (.num (Q.ofRat (1 / 2)))
+
+/-- The least numeral (the first, among equals). -/
+def minQ : List Q → Option Q
+  | [] => none
+  | q :: qs => some (qs.foldl (fun m x => if x.val < m.val then x else m) q)
+def maxQ : List Q → Option Q
+  | [] => none
+  | q :: qs => some (qs.foldl (fun m x => if m.val < x.val then x else m) q)
+/-- The numerals in increasing order. -/
+def sortQ (qs : List Q) : List Q := qs.mergeSort fun a b => decide (a.val ≤ b.val)
+
+/-- The middle of the sorted numerals, or the mean of the two middles. -/
+def medianQ (qs : List Q) : Option Q :=
+  let s := sortQ qs
+  if qs.length == 0 then none
+  else if qs.length % 2 == 1 then s[qs.length / 2]?
+  else match s[qs.length / 2 - 1]?, s[qs.length / 2]? with
+    | some a, some b => some ((a + b) / Q.ofInt 2)
+    | _, _ => none
+
+/-- One statistic: its name, how it is computed from a column, and the explanation of the step. -/
+structure Stat where
+  fn : String
+  of : List Expr → Except String Expr
+  text : String
+
+def stats : List Stat := [
+  ⟨"total", fun xs => .ok (totalOf xs), "$\\sum_i x_i$: the entries added."⟩,
+  ⟨"mean", fun xs => .ok (meanOf xs), "$\\bar x = \\frac{1}{n}\\sum_i x_i$: the total over the count."⟩,
+  ⟨"variance", fun xs => if xs.length < 2 then .error "variance needs at least two values (it divides by n − 1)" else .ok (varianceOf xs),
+    "The sample variance $\\frac{1}{n-1}\\sum_i (x_i - \\bar x)^2$, written $\\frac{1}{n-1}\\left(\\sum_i x_i^2 - \\frac{1}{n}\\left(\\sum_i x_i\\right)^2\\right)$ (the same number: `variance_soundR`)."⟩,
+  ⟨"stdev", fun xs => if xs.length < 2 then .error "stdev needs at least two values (it divides by n − 1)" else .ok (stdevOf xs),
+    "The sample standard deviation, $\\sqrt{\\frac{1}{n-1}\\sum_i (x_i - \\bar x)^2}$, written in the one-pass form of the variance."⟩,
+  ⟨"min", fun xs => match numerals xs >>= minQ with | some q => .ok (.num q) | none => .error "min compares numbers; an entry is not a number", "The least entry."⟩,
+  ⟨"max", fun xs => match numerals xs >>= maxQ with | some q => .ok (.num q) | none => .error "max compares numbers; an entry is not a number", "The greatest entry."⟩,
+  ⟨"median", fun xs => match numerals xs >>= medianQ with | some q => .ok (.num q) | none => .error "median sorts numbers; an entry is not a number",
+    "The middle entry once sorted, or the mean of the two middle ones."⟩]
+
+def statNames : List String := stats.map (·.fn)
+
+/-- The statistics as one rule per name (`stat.mean`, …): the statistic of a vector, or the row of a
+matrix's column statistics. -/
+def statRule (st : Stat) : PlainRule :=
+  { name := s!"stat.{st.fn}", apply := fun e => Option.map (checkedLit e) <|
+      match e with
+      | .fn f [.matrix rows] =>
+        if f != st.fn then none
+        else
+          let (r, c) := dims rows
+          if r == 0 || c == 0 then some (refuse s!"{st.fn} of an empty matrix")
+          else
+            let (cols, isMat) := statColumns rows
+            match cols.mapM st.of with
+            | .error msg => some (refuse msg)
+            | .ok vs =>
+              if isMat then some ⟨.matrix [vs], s!"Column by column: {st.text}", none, none⟩
+              else some ⟨vs.head!, st.text, none, none⟩
+      | .fn f args => if f == st.fn && args.any isMatrix then some (refuse s!"{st.fn} takes one vector or matrix") else none
+      | _ => none }
+
+def statRules : List PlainRule := stats.map statRule
+
+def matrixRules : List PlainRule := [laAdd, laScalarMul, laMul, laTranspose, laDet, laPow, laDot, laNorm, laConj, laPart] ++ statRules
 
 /-- The catch-all: a matrix literal anywhere no rule above handles it is an error, not junk. -/
 def laContext : PlainRule :=
