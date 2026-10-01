@@ -330,7 +330,8 @@ const S = {
   rail: "outline" as "outline" | "palette",
   tab: "notebook" as Tab,
   panelTab: "explain" as "explain" | "log" | "lean",
-  panelOpen: !narrow(),
+  /** The bottom panel unfolded; the user's last choice is remembered across reloads. */
+  panelOpen: prefOn("chalkmath.panel", !narrow()),
   sel: null as Selection | null,
   log: [] as LogLine[],
   caps: null as { engine: string; version: string; verified: boolean; features: string[]; ruleStatus?: RuleStatus[]; termination?: { status: string; theorem?: string; summary: string } } | null,
@@ -1828,7 +1829,7 @@ function renderChrome() {
     Edit: [["Add math cell", () => { addCell(); focusCell(S.cells.length - 1); }], ["Add Markdown cell", () => { addCell("", "markdown"); focusCell(S.cells.length - 1); }], ["Add section", () => { addCell("", "section"); focusCell(S.cells.length - 1); }], ["Add Lean cell", () => { addCell("", "lean"); focusCell(S.cells.length - 1); }],
       ...(S.cells[S.active] ? CELL_TYPES.filter(([t]) => t !== (S.cells[S.active]!.type ?? "math")).map(([t, label]): [string, () => void] => [`Change to ${label.toLowerCase()}`, () => convertCell(S.cells[S.active]!, t)]) : []),
       ["Clear outputs", clearOutputs]],
-    View: [["Toggle light / dark", () => { applyTheme(S.theme === "light" ? "dark" : "light"); renderChrome(); }], [`${S.sidebarOpen ? "✓ " : ""}Sidebar  (Ctrl+B)`, toggleSidebar], ["Explanation panel", () => { S.panelOpen = !S.panelOpen; renderPanelHead(); renderPanel(); }],
+    View: [["Toggle light / dark", () => { applyTheme(S.theme === "light" ? "dark" : "light"); renderChrome(); }], [`${S.sidebarOpen ? "✓ " : ""}Sidebar  (Ctrl+B)`, toggleSidebar], ["Explanation panel", () => setPanelOpen(!S.panelOpen)],
       ["Show all work", () => setAllWork(true)], ["Hide all work", () => setAllWork(false)],
       [`${S.foldWorkOnOpen ? "✓ " : ""}Hide work in opened notebooks`, () => { S.foldWorkOnOpen = !S.foldWorkOnOpen; setPref("chalkmath.foldwork", S.foldWorkOnOpen); renderChrome(); }], [`${S.deBruijn ? "✓ " : ""}de Bruijn indices (λ-cells)`, () => { S.deBruijn = !S.deBruijn; renderChrome(); renderCells(); }],
       ...(["auto", "visual", "raw"] as const).map((m): [string, () => void] => [`${S.inputMode === m ? "✓ " : "   "}Math input: ${{ auto: "automatic", visual: "typeset", raw: "text" }[m]}`, () => {
@@ -3802,13 +3803,21 @@ function renderPanelHead() {
     t.setAttribute("aria-pressed", String(S.panelTab === key));
     t.append(document.createTextNode(label));
     if (badge) t.append(h("span", "badge", badge));
-    t.addEventListener("click", () => { S.panelTab = key; S.panelOpen = true; renderPanelHead(); renderPanel(); });
+    t.addEventListener("click", () => { S.panelTab = key; setPanelOpen(true); });
     head.append(t);
   }
   head.append(h("div", "spacer"));
   const toggle = asButton(h("div", "pbtn", S.panelOpen ? "▾ Collapse" : "▴ Expand"), S.panelOpen ? "Collapse the explanation panel" : "Expand the explanation panel");
-  toggle.addEventListener("click", () => { S.panelOpen = !S.panelOpen; renderPanelHead(); renderPanel(); });
+  toggle.addEventListener("click", () => setPanelOpen(!S.panelOpen));
   head.append(toggle);
+}
+
+/** Fold or unfold the panel by the user's hand, and remember it for the next load. (Opening it to
+ *  show an explanation is not a choice, so that does not change what is remembered.) */
+function setPanelOpen(open: boolean) {
+  S.panelOpen = open;
+  setPref("chalkmath.panel", open);
+  renderPanelHead(); renderPanel();
 }
 
 /** Select a nested step: the panel shows its result, its explanation, its siblings and its status. */
