@@ -303,11 +303,87 @@ def replaceAt (e : Expr) (path : Path) (new : Expr) : Expr :=
     | some c => withChildren e (cs.set i (replaceAt c rest new))
     | none => e
 
-/-- Replay the firings from `input`, producing steps with whole-term `before`/`after`. -/
+/-- The innermost matrix literal a firing at `path` is strictly inside: the longest proper prefix of
+`path` at which `e` has a matrix. -/
+def enclosingMatrix (e : Expr) (path : Path) : Option Path :=
+  go e path [] none
+where
+  go (e : Expr) : Path → Path → Option Path → Option Path
+    | [], _, best => best
+    | i :: rest, pre, best =>
+      let best := if e.isMatrix then some pre else best
+      match (children e)[i]? with
+      | some c => go c rest (pre ++ [i]) best
+      | none => best
+
+/-- Where entry `k` (row-major) of a matrix with these rows sits, in words. -/
+def entryName (rows : List (List Expr)) (k : Nat) : String :=
+  let cols := (rows.head?.map List.length).getD 1
+  if rows.length ≤ 1 || cols ≤ 1 then s!"entry {k + 1}"
+  else s!"row {k / cols + 1}, column {k % cols + 1}"
+
+/-- Is `p` strictly below `pre`? -/
+def strictlyBelow (pre p : Path) : Bool := pre.length < p.length && p.take pre.length == pre
+
+/-- The firings `raw[i:j]` all sit strictly inside the matrix at `pre` in `cur` — the rewriter
+normalizes a node's children one after another, so a matrix's entries are rewritten in a run. When
+the run rewrites two entries or more, it becomes one step, `la.entrywise`, whose nested derivation
+holds each entry's steps with the entry alone as the term (path relative to it), the matrix around
+it left out. That keeps the derivation of an entrywise computation linear in the matrix's size, where
+one step per entry with the whole matrix before and after would be quadratic, and it reads as a
+textbook writes it: `2A = [2·50, 2·1; …] = [100, 2; …]`, with the arithmetic of each entry below. -/
+def entrywiseStep (cur : Expr) (raw : Array RawStep) (i j : Nat) (pre : Path) : Option (Step × Expr) := do
+  let m ← cur.at? pre
+  let rows ← match m with | .matrix rows => some rows | _ => none
+  let run := (raw.extract i j).toList
+  let touched := (run.filter (!·.silent)).filterMap (·.path[pre.length]?) |>.eraseDups
+  if touched.length < 2 then none
+  let (entries, subs) := run.foldl (init := ((children m).toArray, (#[] : Array Step))) fun (entries, subs) s =>
+    match s.path[pre.length]? with
+    | none => (entries, subs)
+    | some k =>
+      let rel := s.path.drop (pre.length + 1)
+      let before := entries[k]?.getD default
+      let after := replaceAt before rel s.after
+      let entries := entries.set! k after
+      if s.silent then (entries, subs) else
+      let why := if s.explanation.endsWith "." then s.explanation.dropRight 1 else s.explanation
+      (entries, subs.push { rule := s.rule, explanation := s!"{why} ({entryName rows k}).", path := rel, before, after, sub := s.sub })
+  let m' := withChildren m entries.toList
+  let next := replaceAt cur pre m'
+  let total := (children m).length
+  let what := if rows.length ≤ 1 || ((rows.head?.map List.length).getD 1) ≤ 1 then "list" else "matrix"
+  let which := if touched.length == total then s!"every entry of the {what} is worked out on its own"
+    else s!"{touched.length} of the {what}'s {total} entries are worked out, each on its own"
+  let n := subs.size
+  pure ({ rule := "la.entrywise", explanation := s!"Entry by entry: {which}; the {n} steps are nested below.",
+          path := pre, before := cur, after := next, sub := some ⟨m, subs, m'⟩ }, next)
+
+/-- Replay the firings from `input`, producing steps with whole-term `before`/`after`. A run of
+firings inside one matrix's entries becomes one `la.entrywise` step (`entrywiseStep`). -/
 def buildSteps (input : Expr) (raw : Array RawStep) : Array Step × Expr :=
-  raw.foldl (init := (#[], input)) fun (out, cur) s =>
-    let next := replaceAt cur s.path s.after
-    (if s.silent then out else out.push { rule := s.rule, explanation := s.explanation, path := s.path, before := cur, after := next, sub := s.sub }, next)
+  go 0 #[] input
+where
+  go (i : Nat) (out : Array Step) (cur : Expr) : Array Step × Expr :=
+    if h : i < raw.size then
+      let s := raw[i]
+      let grouped := do
+        let pre ← enclosingMatrix cur s.path
+        let j := run pre (i + 1)
+        let (st, next) ← entrywiseStep cur raw i j pre
+        pure (st, next, j)
+      match grouped with
+      -- `run` starts after `i`, so `i < j` always holds; the test is the termination argument
+      | some (st, next, j) => if i < j then go j (out.push st) next else (out, cur)
+      | none =>
+        let next := replaceAt cur s.path s.after
+        go (i + 1) (if s.silent then out else out.push { rule := s.rule, explanation := s.explanation, path := s.path, before := cur, after := next, sub := s.sub }) next
+    else (out, cur)
+  termination_by raw.size - i
+  /-- The end of the run of firings strictly inside `pre` that starts before `j`. -/
+  run (pre : Path) (j : Nat) : Nat :=
+    if h : j < raw.size then (if strictlyBelow pre raw[j].path then run pre (j + 1) else j) else j
+  termination_by raw.size - j
 
 abbrev TraceM := StateM (Array Step)
 

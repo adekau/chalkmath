@@ -1,4 +1,4 @@
-import { createClient, type EngineClient, type Step, type Path, type RuleStatus, type Derivation, type WireExpr } from "@chalkmath/protocol";
+import { createClient, type EngineClient, type Step, type StepOutline, type Path, type RuleStatus, type Derivation, type WireExpr } from "@chalkmath/protocol";
 declare const __BUILD_ID__: string;
 import { workerTransport, httpTransport } from "@chalkmath/engine-host";
 import { read as readNotation, write as writeNotation, writeText, hasNotation, templateAt, templateInText, TEMPLATES, type Stmt, type Caret, type MathEdit } from "@chalkmath/math-editor";
@@ -209,7 +209,14 @@ interface Cell {
   /** "complex" when the cell mentions `i`: its steps are judged by the rules' statuses over ℂ. */
   semantics?: "real" | "complex";
   echoLatex?: string | undefined;
+  /** The work: the evaluation's steps with their terms, once fetched (`loadWork`) or as a file saved them. */
   steps?: Step[];
+  /** The work as the evaluation sent it: the steps without their terms (`engine.steps` sends those
+   *  when the work is opened). A derivation of a big term weighs what its terms weigh, so a cell's
+   *  evaluation does not pay for work nobody opens. */
+  outline?: StepOutline[] | undefined;
+  /** `la.entrywise` steps whose nested entries are open, by step label (not saved). */
+  openEntries?: Set<string>;
   error?: { message: string; span?: { start: number; end: number } };
   showWork: boolean;
   /** Waiting its turn behind the cell the engine is evaluating (shown as In[*]). */
@@ -602,8 +609,8 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
     if (fc) return await evaluateFileCell(cell, fc, client, sessionId, t0);
     const { src: sent, notes } = asked !== null ? { src: asked, notes: [] as string[] } : resolveFiles(src, scope);
     const r = isPlot
-      ? await client.call("engine.plot", { sessionId, cellId: cell.id, source: sent, showWork: true, paths: true })
-      : await client.call("engine.evaluate", { sessionId, cellId: cell.id, source: sent, showWork: true, paths: true });
+      ? await client.call("engine.plot", { sessionId, cellId: cell.id, source: sent, showWork: true, paths: true, outline: true })
+      : await client.call("engine.evaluate", { sessionId, cellId: cell.id, source: sent, showWork: true, paths: true, outline: true });
     cell.ms = performance.now() - t0;
     queueMicrotask(autosave);
     if (r.ok) {
@@ -625,7 +632,10 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
         const n = body.includes(";") ? body.split(";").length : body.split(",").length;
         cell.echoLatex = `\\text{dft of ${n} sample point${n === 1 ? "" : "s"}}`;
       }
+      // an engine that predates outlines sends the derivation itself
       cell.steps = r.derivation?.steps ?? [];
+      cell.outline = r.outline?.steps;
+      delete cell.openEntries; WORK_FAILED.delete(cell);
       delete cell.error;
       // this output is a number: a file that had its label before a restart no longer does
       if (r.label) { LAST_LABEL.set(sessionId, r.label); FILE_OUTS.delete(`${sessionId}:${r.label}`); }
@@ -636,7 +646,7 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
         if (r.terms?.length) cell.plot.terms = r.terms.map((t) => ({ k: t.k, re: t.re, im: t.im, ...(t.rendered ? { latex: t.rendered.latex } : {}) }));
       }
       if ("kind" in r && r.kind === "lambda") { cell.outDeBruijn = r.renderedDeBruijn?.latex; cell.reading = r.reading; cell.kind = "λ-term"; }
-      log("ok", `Out[${cell.label}] ${r.rendered.text}  (${cell.ms.toFixed(1)} ms, ${cell.steps.length} steps)`);
+      log("ok", `Out[${cell.label}] ${r.rendered.text}  (${cell.ms.toFixed(1)} ms, ${(cell.outline ?? cell.steps).length} steps)`);
       announce(`Out ${cell.label}: ${r.rendered.text}`);
       if ("bound" in r && r.bound?.length) {
         log("ok", `bound ${r.bound.join(", ")}`);
@@ -652,7 +662,7 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
     } else {
       cell.label = r.label ?? cell.label ?? nextLabel++;
       if (r.label) { LAST_LABEL.set(sessionId, r.label); FILE_OUTS.delete(`${sessionId}:${r.label}`); }
-      delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.plot; delete cell.file; cell.steps = [];
+      delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.plot; delete cell.file; cell.steps = []; delete cell.outline;
       cell.error = r.error;
       log("err", `${r.error.code}: ${r.error.message}`);
       announce(`Error: ${r.error.message}`);
@@ -664,7 +674,7 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
       cell.label = cell.label ?? nextLabel++;
       cell.error = { message: e.message === "Stopped." ? "Stopped." : `No answer: ${e.message}` };
       cell.askTrail = e.trail;
-      delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.plot; delete cell.file; cell.steps = [];
+      delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.plot; delete cell.file; cell.steps = []; delete cell.outline;
       log("err", `lookup: ${e.message}`);
       finishEvaluation(cell);
       return;
@@ -674,7 +684,7 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
       : S.kernel === "failed" ? "The engine stopped while evaluating this cell." : e instanceof Error ? e.message : String(e) };
     if (cell === stoppedCell) stoppedCell = null;
     // the output shown must be this run's: a stale one would also be replayed after a restart
-    delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.plot; delete cell.file; cell.steps = [];
+    delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.plot; delete cell.file; cell.steps = []; delete cell.outline;
     log("err", cell.error.message);
   }
   finishEvaluation(cell);
@@ -710,7 +720,7 @@ async function evaluateFileCell(cell: Cell, fc: { bind?: string; file: FileValue
   }
   delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.plot; delete cell.error;
   delete cell.outDeBruijn; delete cell.reading; delete cell.kind; delete cell.hasse; delete cell.summary;
-  cell.steps = [];
+  cell.steps = []; delete cell.outline;
   cell.file = { name: file.name, mime: file.mime, size: fileSize(file), origin: file.origin };
   CELL_FILES.set(cell, file);
   if (cell.form && cell.form !== "text") delete cell.form;
@@ -938,7 +948,7 @@ function renderTabs() {
 interface ChalkFile {
   /** Format version. Files written as `.lemma` before the rename carry `lemma: 1` instead and still open. */
   chalk?: 1; lemma?: 1; name: string;
-  cells: { src: string; type?: Cell["type"] | undefined; collapsed?: boolean | undefined; showWork: boolean; label: number | null; outLatex?: string | undefined; outText?: string | undefined; form?: string | undefined; semantics?: "real" | "complex" | undefined; echoLatex?: string | undefined; steps?: Step[] | undefined; error?: Cell["error"] | undefined; plot?: PlotData | undefined; mode?: Cell["mode"] | undefined; ask?: AskResult | undefined; file?: FileMeta | undefined }[];
+  cells: { src: string; type?: Cell["type"] | undefined; collapsed?: boolean | undefined; showWork: boolean; label: number | null; outLatex?: string | undefined; outText?: string | undefined; form?: string | undefined; semantics?: "real" | "complex" | undefined; echoLatex?: string | undefined; steps?: Step[] | undefined; outline?: StepOutline[] | undefined; error?: Cell["error"] | undefined; plot?: PlotData | undefined; mode?: Cell["mode"] | undefined; ask?: AskResult | undefined; file?: FileMeta | undefined }[];
   scenes: Scene[];
   /** Images attached to the notebook, by name. */
   assets?: Record<string, Asset>;
@@ -949,17 +959,26 @@ const cellSrc = (c: Cell) => c.input?.value ?? c.ta?.value ?? c.src;
 
 /** A cell's steps are kept in a file only up to this size: a long derivation of a big term (a sum
  *  of integrals, with the nested checks) runs to megabytes, and the notebook re-runs every cell
- *  when it opens a file anyway — the steps come back then. The output itself is always kept. */
+ *  when it opens a file anyway — the steps come back then. The output itself is always kept, and so
+ *  is the outline of work that was never opened (it has no terms, so it is small). */
 const STEPS_BUDGET = 256 * 1024;
 function stepsToSave(c: Cell): Step[] | undefined {
   if (!c.steps?.length) return c.steps;
   return JSON.stringify(c.steps).length <= STEPS_BUDGET ? c.steps : undefined;
 }
+/** The outline a file keeps when it does not keep the steps, so the cell still offers its work. */
+function outlineToSave(c: Cell): StepOutline[] | undefined {
+  if (!c.steps?.length) return c.outline;
+  return stepsToSave(c) ? undefined : outlineOf(c.steps);
+}
+/** Steps without their terms, as an `outline` reply would have sent them. */
+const outlineOf = (steps: Step[]): StepOutline[] => steps.map((st) => ({ rule: st.rule, explanation: st.explanation, path: st.path,
+  ...(printsUnchanged(st) ? { quiet: true } : {}), ...(st.sub ? { sub: { steps: outlineOf(st.sub.steps) } } : {}) }));
 
 function serializeNotebook(): string {
   const doc: ChalkFile = {
     chalk: 1, name: S.docName,
-    cells: S.cells.map((c) => ({ src: cellSrc(c), type: c.type, collapsed: c.collapsed || undefined, showWork: c.showWork, label: c.label, outLatex: c.outLatex, outText: c.outText, form: c.form, semantics: c.semantics, echoLatex: c.echoLatex, steps: stepsToSave(c), error: c.error, plot: c.plot, mode: c.mode, ask: c.ask, file: c.file })),
+    cells: S.cells.map((c) => ({ src: cellSrc(c), type: c.type, collapsed: c.collapsed || undefined, showWork: c.showWork, label: c.label, outLatex: c.outLatex, outText: c.outText, form: c.form, semantics: c.semantics, echoLatex: c.echoLatex, steps: stepsToSave(c), outline: outlineToSave(c), error: c.error, plot: c.plot, mode: c.mode, ask: c.ask, file: c.file })),
     scenes: ST.scenes,
     ...(Object.keys(S.assets).length ? { assets: S.assets } : {}),
   };
@@ -1010,6 +1029,7 @@ function cellsFromFile(doc: ChalkFile, foldWork = false): Cell[] {
     if (c.semantics) cell.semantics = c.semantics;
     if (c.echoLatex) cell.echoLatex = c.echoLatex;
     if (c.steps) cell.steps = c.steps;
+    if (c.outline && !c.steps?.length) cell.outline = c.outline;
     if (c.error) cell.error = c.error;
     if (c.plot) cell.plot = migratePlot(c.plot);
     const f = c.file;
@@ -1624,7 +1644,7 @@ function convertCell(cell: Cell, type: CellType) {
   if (type === "math") delete cell.type; else cell.type = type;
   delete cell.editing; delete cell.collapsed;
   if (type === "markdown") cell.editing = !cell.src.trim();
-  if (type !== "math") { delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.error; delete cell.plot; delete cell.hasse; delete cell.summary; delete cell.ask; delete cell.askTrail; cell.steps = []; cell.label = null; }
+  if (type !== "math") { delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.error; delete cell.plot; delete cell.hasse; delete cell.summary; delete cell.ask; delete cell.askTrail; cell.steps = []; delete cell.outline; cell.label = null; }
   if (type === "section") cell.src = cell.src.split("\n")[0]!.replace(/^#+\s*/, "");
   if (type !== "lean") delete cell.leanMessages;
   renderCells(); renderSidebar(); renderChrome(); autosave();
@@ -1646,7 +1666,7 @@ const hasOutput = (cell: Cell) => !!(cell.outLatex || cell.file || cell.error);
 function clearCellOutput(cell: Cell) {
   delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.error; delete cell.plot; delete cell.hasse; delete cell.summary; delete cell.file; delete cell.outDeBruijn; delete cell.reading;
   delete cell.ask; delete cell.askTrail;
-  cell.steps = []; cell.label = null;
+  cell.steps = []; delete cell.outline; cell.label = null;
   renderCellBody(cell); renderChrome(); renderSidebar(); autosave();
 }
 function deleteCell(cell: Cell) {
@@ -1658,7 +1678,7 @@ function deleteCell(cell: Cell) {
 }
 /** Show or hide every cell's work at once. */
 function setAllWork(on: boolean) {
-  for (const c of S.cells) if (c.steps?.length) c.showWork = on;
+  for (const c of S.cells) if (workCount(c)) c.showWork = on;
   renderCells(); autosave();
 }
 
@@ -1673,7 +1693,7 @@ function focusCell(i: number) {
 }
 
 function clearOutputs() {
-  for (const c of S.cells) { delete c.outLatex; delete c.outText; delete c.echoLatex; delete c.error; delete c.plot; delete c.file; c.steps = []; c.label = null; c.ms = undefined; }
+  for (const c of S.cells) { delete c.outLatex; delete c.outText; delete c.echoLatex; delete c.error; delete c.plot; delete c.file; c.steps = []; delete c.outline; c.label = null; c.ms = undefined; }
   nextLabel = 1; S.sel = null;
   renderCells(); renderSidebar(); renderPanel();
   log("ok", "outputs cleared");
@@ -1901,7 +1921,7 @@ function renderChrome() {
     mk("↑", "Move the cell up", () => { if (cur) moveCell(cur, -1); }, false, i > 0),
     mk("↓", "Move the cell down", () => { if (cur) moveCell(cur, 1); }, false, i >= 0 && i < S.cells.length - 1),
     mk("Duplicate", "Duplicate the cell", () => { if (cur) duplicateCell(cur); }, false, !!cur),
-    ...(cur && shownSteps(cur.steps) ? [mk(cur.showWork ? "Hide work" : "Show work", "Show or hide the cell's steps", () => { cur.showWork = !cur.showWork; renderCellBody(cur); renderChrome(); autosave(); })] : []),
+    ...(cur && workCount(cur) ? [mk(cur.showWork ? "Hide work" : "Show work", "Show or hide the cell's steps", () => { cur.showWork = !cur.showWork; renderCellBody(cur); renderChrome(); autosave(); })] : []),
     mk("Clear output", "Clear the cell's output", () => { if (cur) clearCellOutput(cur); }, false, !!cur && hasOutput(cur)),
     mk("Delete", "Delete the cell", () => { if (cur) deleteCell(cur); }, false, !!cur),
   );
@@ -1911,7 +1931,7 @@ function renderChrome() {
 
   // status bar
   const sb = $(".statusbar"); sb.innerHTML = "";
-  const rules = new Set(S.cells.flatMap((c) => c.steps ?? []).map((s) => s.rule));
+  const rules = new Set(S.cells.flatMap((c): { rule: string }[] => c.steps?.length ? c.steps : c.outline ?? []).map((s) => s.rule));
   const done = S.cells.filter((c) => c.outLatex || c.file || c.error).length;
   sb.append(
     ...(S.dev ? [h("span", undefined, `Mode: ${S.tab}`), h("span", "pipe", "|")] : []),
@@ -2829,6 +2849,41 @@ function stepNumbers(steps: Step[]): (number | undefined)[] {
   return steps.map((st) => printsUnchanged(st) ? undefined : ++k);
 }
 const shownSteps = (steps: Step[] | undefined): number => (steps ?? []).filter((st) => !printsUnchanged(st)).length;
+/** How many steps a cell's work shows: from its steps once they are here, from the outline before
+ *  (the engine marks the steps that print the same `quiet`, by the comparison `printsUnchanged` makes). */
+const workCount = (cell: Cell): number =>
+  cell.steps?.length ? shownSteps(cell.steps) : (cell.outline ?? []).filter((st) => !st.quiet).length;
+
+/** The fetch of a cell's steps under way, so opening the work twice asks once. */
+const WORK_LOADS = new WeakMap<Cell, Promise<void>>();
+/** Why a cell's steps could not be fetched, until the cell is evaluated again (not saved). */
+const WORK_FAILED = new WeakMap<Cell, string>();
+/** Fetch the steps of a cell whose evaluation sent only their outline. The engine keeps every cell's
+ *  derivation in the session; it sends the terms now. A reply for an evaluation the cell has since
+ *  replaced (its outline changed while the fetch was out) is dropped. */
+function loadWork(cell: Cell): Promise<void> {
+  if (cell.steps?.length || !cell.outline?.length) return Promise.resolve();
+  const pending = WORK_LOADS.get(cell); if (pending) return pending;
+  const outline = cell.outline, c = client;
+  const p = (async () => {
+    try {
+      if (!c) throw new Error("the engine is not running");
+      log("rpc", `engine.steps ${cell.id}`);
+      const r = await c.call("engine.steps", { sessionId, cellId: cell.id, paths: true });
+      if (cell.outline !== outline) return;
+      cell.steps = r.derivation.steps; delete cell.outline;
+      WORK_FAILED.delete(cell);
+      queueMicrotask(autosave);
+    } catch (e) {
+      if (cell.outline !== outline) return;
+      const d = currentDoc();
+      WORK_FAILED.set(cell, d && !d.hydrated ? "Run the notebook first: the engine has the work of what it has evaluated since the notebook was opened."
+        : `Could not fetch the work: ${e instanceof Error ? e.message : String(e)}`);
+    } finally { WORK_LOADS.delete(cell); }
+  })();
+  WORK_LOADS.set(cell, p);
+  return p;
+}
 
 /** What each step changed, in place: the subterms a step rewrote (`before` against `after`) are
  *  tinted in its row, and hovering one shows `old → new`, cut from the step's own renderings of
@@ -2977,6 +3032,12 @@ function renderCellBody(cell: Cell) {
   if (busy && cell.askSteps?.length) body.append(askProgress(cell));
   if (cell.error && cell.askTrail?.length) body.append(askTrail(cell.askTrail));
 
+  if (cell.showWork && !cell.steps?.length && workCount(cell)) {
+    // the outline is here, the terms are not yet: fetch them, then draw the work
+    const failed = WORK_FAILED.get(cell);
+    body.append(h("div", "work pending", failed ?? "Fetching the work…"));
+    if (!failed) void loadWork(cell).then(() => { if (cell.el) renderCellBody(cell); });
+  }
   if (cell.showWork && cell.steps && shownSteps(cell.steps)) {
     const work = h("div", "work");
     const stepRow = (st: Step, label: string, status: string, term?: TermRef, sub?: { steps: Step[]; index: number; top: number }): HTMLElement => {
@@ -2997,7 +3058,8 @@ function renderCellBody(cell: Cell) {
       const el = h("span", "el");
       const shown = S.deBruijn && st.afterDeBruijn ? st.afterDeBruijn : st.afterRendered;
       if (shown) {
-        el.innerHTML = tex(shown.latex, true);
+        // a step on a table's worth of numbers shows the matrix as the output does: its first rows, its last, and the count
+        el.innerHTML = tex(abridgeMatrix(shown.latex), true);
         if (term && shown === st.afterRendered) wireTerm(el, cell, term);
         else if (sub && shown === st.afterRendered) {
           // a nested step's term: selectable locally (the engine traces top-level terms only)
@@ -3018,6 +3080,15 @@ function renderCellBody(cell: Cell) {
     // Nested derivations (rref's row operations, integrate's finder and its check) render below
     // their step, indented one level per depth and numbered 1.2, 1.2.3, …
     const renderSub = (st: Step, label: string, top: number, depth: number) => {
+      // an entrywise step's nested work is one step per entry of a matrix, often hundreds: it opens on request
+      if (st.rule === "la.entrywise" && st.sub && !cell.openEntries?.has(label)) {
+        const n = st.sub.steps.length;
+        const more = asButton(h("div", "step sub more", `▸ ${n} step${n === 1 ? "" : "s"}, entry by entry`), "Show each entry's steps");
+        more.style.marginLeft = `${26 * depth}px`;
+        more.addEventListener("click", (ev) => { ev.stopPropagation(); (cell.openEntries ??= new Set()).add(label); renderCellBody(cell); });
+        work.append(more);
+        return;
+      }
       const rows: HTMLElement[] = [];   // by step index; a folded step has none
       const nums = stepNumbers(st.sub?.steps ?? []);
       st.sub?.steps.forEach((sub, k) => {
@@ -3145,8 +3216,8 @@ function renderCellBody(cell: Cell) {
   // per-cell actions beyond Run exist only once there is output
   const acts = el.querySelector(".cellacts")!;
   while (acts.childElementCount > 1) acts.lastElementChild!.remove();
-  if (shownSteps(cell.steps)) {
-    const tw = asButton(h("span", undefined, cell.showWork ? "▾ Hide work" : `▸ Work (${shownSteps(cell.steps)})`));
+  if (workCount(cell)) {
+    const tw = asButton(h("span", undefined, cell.showWork ? "▾ Hide work" : `▸ Work (${workCount(cell)})`));
     tw.setAttribute("aria-expanded", String(cell.showWork));
     tw.addEventListener("mousedown", (e) => e.preventDefault());
     tw.addEventListener("click", () => {
@@ -3640,12 +3711,12 @@ function toggleCellMenu(cell: Cell, anchor: HTMLElement) {
     const sub = h("div", "submenu");
     ST.scenes.forEach((sc, k) => {
       const it = h("div", "item", `${sc.name} · ${sc.shots.length} shots`);
-      it.addEventListener("click", (ev) => { ev.stopPropagation(); closeCellMenu(); sendToScene(cell, k); });
+      it.addEventListener("click", (ev) => { ev.stopPropagation(); closeCellMenu(); void sendToScene(cell, k); });
       sub.append(it);
     });
     if (ST.scenes.length) sub.append(h("div", "sep"));
     const nw = h("div", "item", "New scene");
-    nw.addEventListener("click", (ev) => { ev.stopPropagation(); closeCellMenu(); sendToScene(cell, "new"); });
+    nw.addEventListener("click", (ev) => { ev.stopPropagation(); closeCellMenu(); void sendToScene(cell, "new"); });
     sub.append(nw);
     item("Send to scene", null, { sub });
   } else item("Send to scene", null);
@@ -4167,8 +4238,11 @@ function stripPaths(src: string): string {
 }
 
 /** Turn a cell's derivation into shots: the statement, then every step's result. */
-function sendToScene(cell: Cell, target?: number | "new") {
+async function sendToScene(cell: Cell, target?: number | "new") {
   if (!cell.outLatex || !cell.echoLatex) return;
+  await loadWork(cell);
+  const failed = WORK_FAILED.get(cell);
+  if (failed) { notify("err", failed); return; }
   if (target === "new") { ST.scenes.push({ id: Date.now(), name: `Scene ${ST.scenes.length + 1}`, shots: [] }); ST.active = ST.scenes.length - 1; }
   else if (typeof target === "number" && ST.scenes[target]) ST.active = target;
   const mk = (label: string, texSrc: string, anim: string, dur: number, note: string): Shot =>

@@ -18,6 +18,8 @@ open Expr
 structure Cell where
   output : Expr
   derivation : Derivation
+  /-- A λ-cell: its steps carry the de Bruijn view too (`lambdaDbSteps`). -/
+  lambda : Bool := false
 
 structure Session where
   env : List (String × Expr) := []
@@ -78,12 +80,17 @@ def evaluateCell (s : Session) (cellId source : String) :
     | (.error msg, _) => (s, .error ("eval", msg, none))
     | (.ok output, steps) =>
       let d : Derivation := ⟨input, steps, output⟩
-      let s := { s with cells := (cellId, ⟨output, d⟩) :: s.cells.filter (·.1 != cellId) }
+      let s := { s with cells := (cellId, { output, derivation := d }) :: s.cells.filter (·.1 != cellId) }
       let s := match stmt with
         | .«let» name [] _ => { s with env := (name, output) :: s.env.filter (·.1 != name) }
         | .«let» name ps _ => { s with fns := (name, (ps, output)) :: s.fns.filter (·.1 != name) }
         | _ => s
       (s, .ok (stmt, output, d))
+
+/-- The de Bruijn view of each step's result in a λ-cell's derivation, in step order. The steps
+store the encoded term; decode it. -/
+def lambdaDbSteps (d : Derivation) : Array Expr :=
+  d.steps.map fun st => Lam.dbToExpr (Lam.toDB [] ((Lam.ofExpr st.after).getD (.var "?")))
 
 /-- What a λ-cell produced. -/
 structure LamResult where
@@ -124,21 +131,18 @@ def lambdaCell (s : Session) (cellId source : String) :
             else ⟨"lambda.beta", "β: the leftmost-outermost redex $(\\lambda x.\\, b)\\ a$ contracts to $b[x := a]$.", [], Lam.toExpr prev, Lam.toExpr t', none⟩
           (acc.push step, t')) (δ, expanded)
       let d : Derivation := ⟨Lam.toExpr t, steps, Lam.toExpr out⟩
-      let dbSteps := steps.map fun st => Lam.dbToExpr (Lam.toDB [] (dbOf st.after))
+      let dbSteps := lambdaDbSteps d
       let reading := match Lam.readChurch out with
         | some n => some s!"the Church numeral {n}"
         | none => match Lam.readBool out with
           | some true => some "the Church boolean true"
           | some false => some "the Church boolean false"
           | none => none
-      let s := { s with cells := (cellId, ⟨Lam.toExpr out, d⟩) :: s.cells.filter (·.1 != cellId) }
+      let s := { s with cells := (cellId, ⟨Lam.toExpr out, d, true⟩) :: s.cells.filter (·.1 != cellId) }
       let s := match name with
         | some n => { s with lambdas := (n, out) :: s.lambdas.filter (·.1 != n) }
         | none => s
       (s, .ok ⟨name, t, out, d, dbSteps, reading⟩)
-where
-  /-- The steps store the encoded term; decode it for the de Bruijn view. -/
-  dbOf (e : Expr) : Lam.Term := (Lam.ofExpr e).getD (.var "?")
 
 /-- What an order-world cell produced: a value (encoded), the derivation, and the poset to draw. -/
 structure OrdResult where
@@ -185,7 +189,7 @@ def orderCell (s : Session) (cellId source : String) :
       -- the derivation starts where the first step does, so the echo shows the question, not the answer
       let input := match steps[0]? with | some st => st.before | none => value
       let d : Derivation := ⟨input, steps, value⟩
-      let s := { s with cells := (cellId, ⟨value, d⟩) :: s.cells.filter (·.1 != cellId) }
+      let s := { s with cells := (cellId, { output := value, derivation := d }) :: s.cells.filter (·.1 != cellId) }
       let s := match name, bindP with
         | some n, some P => { s with posets := (n, P) :: s.posets.filter (·.1 != n) }
         | _, _ => s
@@ -410,7 +414,7 @@ def plotCell (s : Session) (cellId source : String) :
       | (.error msg, _) => (s, .error msg)
       | (.ok output, steps) =>
         let d : Derivation := ⟨input, steps, output⟩
-        ({ s with cells := (cellId, ⟨output, d⟩) :: s.cells.filter (·.1 != cellId) }, .ok (output, d))
+        ({ s with cells := (cellId, { output, derivation := d }) :: s.cells.filter (·.1 != cellId) }, .ok (output, d))
     let samples (rest : List Expr) (dflt : Nat) : Nat := match rest with
       | [.num k] => min 4000 (max 2 k.val.num.toNat)
       | _ => dflt
@@ -459,7 +463,7 @@ def plotCell (s : Session) (cellId source : String) :
         let trace := (epicycleTrace kept n).map fun (x, y) => (x, some y)
         let terms := kept.map fun (k, c) => (k, c, (none : Option Expr))
         let d : Derivation := ⟨value, #[], value⟩
-        let s := { s with cells := (cellId, ⟨value, d⟩) :: s.cells.filter (·.1 != cellId) }
+        let s := { s with cells := (cellId, { output := value, derivation := d }) :: s.cells.filter (·.1 != cellId) }
         (s, .ok (p, value, d, ⟨"t", 0, 2 * 3.141592653589793, #[⟨value, trace, true⟩], terms⟩))
     | _ => bad
 

@@ -37,6 +37,15 @@ differential test with zero mismatches.
 - **Show work is not reconstructed after the fact.** Rewriting records every rule firing as a
   `Step` with the whole term before and after and the path where it fired. The derivation *is*
   the computation, viewed as data.
+- **Work costs what is read.** Every step carries the whole term before and after it, so the
+  derivation of a big term is quadratic in it: 200 steps on a 100-row table were 10 MB of reply.
+  Two things keep it in proportion without capping it. A run of rewrites inside one matrix's entries
+  is one step, `la.entrywise`, whose nested steps carry the entry alone (`buildSteps`), so an
+  entrywise computation is linear in the matrix and reads as a textbook writes it, `2A` then the
+  arithmetic of each entry. And the notebook asks for a derivation's *outline* (each step's rule,
+  explanation and path, and whether it prints the same before and after) and fetches the terms
+  with `engine.steps` when a cell's work is opened; the session already keeps every cell's
+  derivation, for `explain`, so nothing is computed twice and nothing is left out.
 - **Termination is a proof obligation, not a budget.** A rule bundles a proof that it strictly
   decreases a measure; `normalize` is well-founded on that measure and never `partial`. The
   verified `simplify` uses one additive measure (`Rewrite.lean`). The whole notebook pipeline —
