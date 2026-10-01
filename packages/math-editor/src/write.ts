@@ -56,7 +56,9 @@ function firstChar(a: Atom): string {
     case "call": return a.name[0] ?? "";
     case "let": return "l";
     case "sup": return "^";
-    case "matrix": return "[";
+    case "matrix": case "part": return "[";
+    case "str": return '"';
+    case "asset": return "⟦";
     default: return "(";
   }
 }
@@ -119,6 +121,18 @@ class Writer {
         this.out += " = ";
         if (j === b.length - 1) this.holes++;   // a head with no body yet
         return;
+      case "part":
+        // an index is characters kept as typed (a span, All, a list, a name in quotes)
+        this.out += "[[";
+        a.specs.forEach((x, i) => {
+          if (i) this.out += ", ";
+          if (!x.length) this.holes++;
+          this.out += x.map((c) => (c.k === "ch" ? c.c : "")).join("");
+        });
+        this.out += "]]";
+        return;
+      case "str": this.out += '"' + a.body.map((c) => (c.k === "ch" ? c.c : "")).join("") + '"'; return;
+      case "asset": this.out += `⟦${a.name}⟧`; return;
       case "matrix":
         this.out += "[";
         a.rows.forEach((r, i) => {

@@ -834,3 +834,30 @@ Phases:
    the shape of a name bound to a matrix (recorded from its output). Completions offer the names and `All`; a
    quoted name replaces what was typed, its closing quote included. Captions suggest parts with the file's own
    column names (`mean(planets[[All, "mass"]])`).
+- visual input: parts and function names — DONE (Alex: "the new functions don't work in visual mode and don't
+   show in autocomplete"). A `part` atom in the editor's tree (`x[[…]]`, postfix like `sup`): read from the text and
+   written back exactly, drawn `x⟦All, “mass”⟧` (spans as `;;`, lists in braces, a quoted name as text), typed as
+   `[[` after a value (the first `[` makes the matrix it always did; the second turns it into a part). In an index,
+   `,` moves to the next one outside braces and quotes, `]` leaves the part and the second `]` is taken, and every
+   character inside quotes is the name's. The reader lexes a quoted name, which only a part's index may hold;
+   elsewhere it is the engine's `unexpected character '"'`. Completions: the visual input lists functions for a
+   name being typed (`functions`, from the Reference, as the text input does; Enter takes one only once picked),
+   and in a part's index the column names, keys and All (`partNames`), with the same signature line as text. Each
+   statistic has its own Reference entry, so `var`, `med`, `stdev` complete and `variance(` has signature help.
+- notebook: `%n` as a file, and the suggestions bar — DONE (Alex: "dimensions now doesn't work. But also the `Try: ...`
+   is a bit obnoxious. This could be like mathematica's Try: bar that's dismissable"). `dimensions(%18)` read `%`
+   then a stray `18`: the reference pattern tried `%%…` first, which matches nothing; digits go first now (with a
+   test). The caption's "Try:" line, which spelled out a whole `import("…")` per example, is Mathematica's
+   suggestions bar: short chips (`row 1`, `column "id"`, `mean "id"`, `matrix`, `dimensions`), the code in each
+   tooltip, written against the cell's name or `%n`; a chip adds its code as a cell below and runs it; × hides the
+   bar for that cell (saved with it), View › Suggestions bar for all. Errors offer only the suggestions that make
+   numbers.
+- visual input: import, files and the notebook's functions; names in completions — DONE (Alex: "get the new
+   functions + import working in visual mode. Also visual mode is lacking the autocomplete/intellisense"). The
+   notebook's own functions (`import`, `samplePoints`, `matrix`, `dimensions`) are calls in the visual input, as the
+   engine's builtins are (`dimensions(%18)` had read as a product). Two atoms in the editor's tree: text in quotes,
+   whose characters are typed as they are (a URL's `/` is a slash, not a fraction), and an attached file, `⟦name⟧`,
+   drawn as a chip; both read and write back exactly, so file cells are no longer kept out of the visual input,
+   and a file pasted or attached into one lands as a chip at the caret. Completions in both inputs list the names
+   bound in the session before the functions, with what each is (`planets — CSV, 8 × 5`, a matrix's shape, a
+   function's parameters); a function opens its call, a value does not. `dimensions` has its own Reference entry.

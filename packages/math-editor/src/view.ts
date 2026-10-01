@@ -44,6 +44,12 @@ export interface MathInputOptions {
   outRef?(ref: string, editing: boolean): { label: number; value?: string; pending?: boolean } | null;
   /** Highlight classes for tokens (see `NotationOptions.classify`); the page styles `[data-hl=…]`. */
   classify?(text: string, as: "call" | "bound" | "name" | "num" | "keyword"): string | null;
+  /** The functions whose names start with what is being typed, for the completion list (the host
+   *  knows its commands and the session's functions); none, no list for plain names. */
+  functions?(prefix: string): { name: string; what: string; call?: boolean }[];
+  /** In an index of a part (`t[[All, "ma`): the names that can go there (a table's columns, an
+   *  object's keys, `All`), given the cell's text up to the caret. */
+  partNames?(before: string): { name: string; what: string }[];
   /** A paste, before the input reads it: the host takes it (an image, an SVG) by preventing its default. */
   onPaste?(ev: ClipboardEvent): void;
 }
@@ -183,7 +189,8 @@ export class MathInput {
   /** Whether the parens were last fitted with the input on screen. */
   private fitted = false;
   /** The `\\` suggestions under the caret: the names that start with what has been typed. */
-  private comp: { items: { name: string; what: string; glyph: string }[]; index: number; box: HTMLElement } | null = null;
+  /** The completion list: `\` commands, or (`fn`) functions for the name being typed. */
+  private comp: { items: { name: string; what: string; glyph: string; fn?: boolean; index?: boolean; call?: boolean }[]; index: number; box: HTMLElement; picked?: boolean } | null = null;
   /** Esc closed the suggestions for this command; they come back when it changes. */
   private compDismissed: string | null = null;
 
@@ -503,11 +510,12 @@ export class MathInput {
    *  name that matches) and the templates. */
   private suggest() {
     const p = this.edit.pendingCommand();
-    if (!p || p.name === this.compDismissed || !this.el.classList.contains("focused")) { this.hideSuggestions(); return; }
+    if (!p) return this.suggestFunctions();
+    if (p.name === this.compDismissed || !this.el.classList.contains("focused")) { this.hideSuggestions(); return; }
     this.compDismissed = null;
     const q = p.name, ql = q.toLowerCase();
     const seen = new Set<string>();
-    const items: { name: string; what: string; glyph: string }[] = [];
+    const items: { name: string; what: string; glyph: string; fn?: boolean }[] = [];
     for (const [name, sym] of Object.entries(this.edit.symbols)) {
       if (!name.toLowerCase().startsWith(ql) || seen.has(sym)) continue;
       seen.add(sym);
@@ -517,6 +525,30 @@ export class MathInput {
     // an exact name first, then case-exact prefixes, then the rest
     const rank = (n: string) => (n === q ? 0 : n.startsWith(q) ? 1 : 2);
     items.sort((a, b) => rank(a.name) - rank(b.name));
+    this.showSuggestions(items);
+  }
+
+  /** A name being typed that starts a function's: the functions, as the text input lists them; in
+   *  an index of a part, the names that can go there. */
+  private suggestFunctions() {
+    const pb = this.edit.partBefore();
+    if (pb) {
+      if (!this.opts.partNames || !this.el.classList.contains("focused")) { this.hideSuggestions(); return; }
+      const q = pb.typed.toLowerCase();
+      const items = this.opts.partNames(pb.text)
+        .filter((n) => (n.name === "All" ? !pb.quoted && "all".startsWith(q) && q.length > 0 : n.name.toLowerCase().startsWith(q)))
+        .map((n) => ({ name: n.name, what: n.what, glyph: "", fn: true, index: true }));
+      this.showSuggestions(items);
+      return;
+    }
+    const p = this.edit.nameBefore();
+    if (!p || !this.opts.functions || p.name === this.compDismissed || !this.el.classList.contains("focused")) { this.hideSuggestions(); return; }
+    this.compDismissed = null;
+    const items = this.opts.functions(p.name).filter((f) => f.name !== p.name).map((f) => ({ name: f.name, what: f.what, glyph: "", fn: true, call: f.call !== false }));
+    this.showSuggestions(items);
+  }
+
+  private showSuggestions(items: { name: string; what: string; glyph: string; fn?: boolean; index?: boolean; call?: boolean }[]) {
     if (!items.length) { this.hideSuggestions(); return; }
     this.hideSuggestions();
     const box = document.createElement("div");
@@ -537,19 +569,20 @@ export class MathInput {
     cp.box.innerHTML = "";
     cp.items.forEach((it, i) => {
       const row = document.createElement("div");
-      row.className = `comprow symrow${i === cp.index ? " on" : ""}`;
+      row.className = `comprow${it.fn ? "" : " symrow"}${i === cp.index ? " on" : ""}`;
       row.setAttribute("role", "option");
       row.setAttribute("aria-selected", String(i === cp.index));
-      const n = document.createElement("span"); n.className = "n"; n.textContent = `\\${it.name}`;
+      const n = document.createElement("span"); n.className = "n"; n.textContent = it.index && it.name !== "All" ? `"${it.name}"` : it.fn ? it.name : `\\${it.name}`;
       const h = document.createElement("span"); h.className = "h"; h.textContent = it.what;
-      const g = document.createElement("span"); g.className = "sym"; g.textContent = it.glyph;
-      row.append(n, h, g);
+      row.append(n, h);
+      if (!it.fn) { const g = document.createElement("span"); g.className = "sym"; g.textContent = it.glyph; row.append(g); }
       row.addEventListener("mousedown", (ev) => { ev.preventDefault(); cp.index = i; this.acceptSuggestion(); });
       cp.box.append(row);
     });
     const foot = document.createElement("div");
     foot.className = "compfoot";
-    foot.textContent = "Tab or Enter to accept · Esc to dismiss";
+    // a function or a name is taken by Enter only once picked (Enter otherwise runs the cell)
+    foot.textContent = cp.items[0]?.fn ? "Tab to accept · ↑↓ then Enter · Esc to dismiss" : "Tab or Enter to accept · Esc to dismiss";
     cp.box.append(foot);
   }
 
@@ -557,9 +590,14 @@ export class MathInput {
 
   /** Replace the pending `\\name` with the chosen one and finish it. */
   private acceptSuggestion() {
-    const cp = this.comp, p = this.edit.pendingCommand();
-    if (!cp || !p) return;
-    const name = cp.items[cp.index]!.name;
+    const cp = this.comp;
+    if (!cp) return;
+    const item = cp.items[cp.index]!;
+    if (item.index) { this.hideSuggestions(); if (this.edit.completeIndex(item.name === "All" ? "All" : `"${item.name}"`)) this.changed(); return; }
+    if (item.fn) { this.hideSuggestions(); if (this.edit.completeName(item.name, item.call)) this.changed(); return; }
+    const p = this.edit.pendingCommand();
+    if (!p) return;
+    const name = item.name;
     const { block } = this.edit.caret;
     block.splice(p.start + 1, p.name.length, ...Array.from(name, (c) => ({ k: "ch" as const, c })));
     this.edit.caret = { block, i: p.start + 1 + name.length };
@@ -585,11 +623,15 @@ export class MathInput {
       if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
         ev.preventDefault();
         cp.index = (cp.index + (ev.key === "ArrowDown" ? 1 : n - 1)) % n;
+        cp.picked = true;
         this.drawSuggestions();
         return;
       }
-      if (ev.key === "Tab" || ev.key === "Enter") { ev.preventDefault(); this.acceptSuggestion(); return; }
-      if (ev.key === "Escape") { ev.preventDefault(); this.compDismissed = this.edit.pendingCommand()?.name ?? null; this.hideSuggestions(); return; }
+      // a function is taken by Enter only once picked with the arrows (Enter otherwise runs the cell,
+      // as in the text input); a `\\name` cannot run as typed, so Enter finishes it
+      if (ev.key === "Tab" || (ev.key === "Enter" && (cp.picked || !cp.items[0]?.fn))) { ev.preventDefault(); this.acceptSuggestion(); return; }
+      if (ev.key === "Enter") this.hideSuggestions();
+      if (ev.key === "Escape") { ev.preventDefault(); this.compDismissed = this.edit.pendingCommand()?.name ?? this.edit.nameBefore()?.name ?? null; this.hideSuggestions(); return; }
     }
     const e = this.edit;
     let moved = true, edited = false;

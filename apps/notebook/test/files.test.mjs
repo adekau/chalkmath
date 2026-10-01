@@ -107,7 +107,7 @@ test("functions on files become numbers before the engine sees the cell", () => 
   assert.equal(F.resolveFiles("dimensions(%1)", outs).src, "[3, 2]");
   assert.equal(F.resolveFiles("dimensions(%12) + %1[[2, 1]]", outs).src, "[2, 3] + 3");
   assert.equal(F.resolveFiles("%3 + 1", outs).src, "%3 + 1");
-  assert.throws(() => F.resolveFiles("%1 + 1", outs), /%1 is a file, a CSV, not a number: %1\[\[1\]\]/);
+  assert.throws(() => F.resolveFiles("%1 + 1", outs), /%1 is a file, a CSV, not a number: %1\[\[All, 1\]\], mean\(%1\[\[All, 1\]\]\), matrix\(%1\)/);
   // a function that is not given a file is the engine's (a user's own `row`, say)
   assert.equal(F.resolveFiles("row(3) + matrix", sc).src, "row(3) + matrix");
   // a name that only starts like a file's is not cut
@@ -116,8 +116,8 @@ test("functions on files become numbers before the engine sees the cell", () => 
 
 test("errors say what a file is and what turns it into numbers", () => {
   const sc = scope({ llama: svg, planets, photo: png });
-  assert.throws(() => F.resolveFiles("epicycles(llama, 60)", sc), /llama is a file, an SVG image, not a number: samplePoints\(llama\), samplePoints\(llama, n\) turn it into numbers/);
-  assert.throws(() => F.resolveFiles("planets + 1", sc), /planets is a file, a CSV, not a number: planets\[\[1\]\], planets\[\[All, "mass"\]\], mean\(planets\[\[All, "mass"\]\]\) turn it into numbers/);
+  assert.throws(() => F.resolveFiles("epicycles(llama, 60)", sc), /llama is a file, an SVG image, not a number: samplePoints\(llama\), samplePoints\(llama, 100\) turn it into numbers/);
+  assert.throws(() => F.resolveFiles("planets + 1", sc), /planets is a file, a CSV, not a number: planets\[\[All, "mass"\]\], mean\(planets\[\[All, "mass"\]\]\), matrix\(planets\) turn it into numbers/);
   assert.throws(() => F.resolveFiles("samplePoints(photo)", sc), /samplePoints traces the paths of an SVG; photo is a PNG image/);
   assert.throws(() => F.resolveFiles("photo", sc), /nothing turns a PNG image into numbers/);
   assert.throws(() => F.resolveFiles("matrix(planets)", sc), /row 1, column "planet" is "Mercury", not a number/);

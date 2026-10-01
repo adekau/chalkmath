@@ -146,9 +146,12 @@ test("paste reads the text as structure where it can", () => {
   // a whole `let` into an empty input is the cell's head too
   e = pasted("", "let f(x) = x^2");
   assert.equal(e.text, "let f(x) = x^2");
-  // text that is not an expression is typed as far as it goes: `⟦`, `{` mean nothing here
-  e = pasted("", "a+⟦b⟧");
+  // text that is not an expression is typed as far as it goes: `{` means nothing here
+  e = pasted("", "a+{b}");
   assert.equal(e.text, "a + b");
+  // an attached file is a chip
+  e = pasted("", "a+⟦b⟧");
+  assert.equal(e.text, "a + ⟦b⟧");
   // one step to undo
   e = pasted("", "1/2 + 3");
   e.undo();
@@ -304,4 +307,42 @@ test("@ puts the selection in parentheses with a box in front for a function's n
   left.settle();
   assert.equal(left.stmt.body[0].head, undefined);
   assert.equal(left.text, "(a + b)");
+});
+
+/** Type characters one at a time (braces and all, which `typed` would read as keys). */
+function typeChars(e, s) { for (const c of s) e.type(c); return e; }
+
+test("[[ after a value opens a part; its indices are typed as written", () => {
+  const e = typeChars(new MathEdit({ body: [] }), 'planets[[All, "mass"]]');
+  assert.equal(e.text, 'planets[[All, "mass"]]');
+  assert.equal(typeChars(new MathEdit({ body: [] }), 'mean(t[["a b, c", 2;;-1]])').text, 'mean(t[["a b, c", 2;;-1]])');
+  assert.equal(typeChars(new MathEdit({ body: [] }), "m[[{1, 3}, -1]]^2").text, "m[[{1,3}, -1]]^2");
+  // not after a value: a matrix, as before; a space keeps the product
+  assert.equal(typeChars(new MathEdit({ body: [] }), "[[1]]").text, "[[1]]");
+  assert.equal(typeChars(new MathEdit({ body: [] }), "x [1, 2]").text, "x [1, 2]");
+  assert.match(toLatex(read('t[[All, "ma"]]').stmt), /\\llbracket .*\\mathrm\{All\}.*\\text\{“\}.*\\rrbracket/);
+});
+
+test("what completions need: the name being typed, and the part index at the caret", () => {
+  const e = typeChars(new MathEdit({ body: [] }), "2+vari");
+  assert.deepEqual(e.nameBefore(), { name: "vari", start: 2 });
+  assert.ok(e.completeName("variance"));
+  typeChars(e, "[1, 3]");
+  assert.equal(e.text, "2 + variance([1, 3])");
+  const p = typeChars(new MathEdit({ body: [] }), 'mean(t[[All, "ma');
+  assert.deepEqual(p.partBefore(), { text: 'mean(t[[All, "ma', typed: "ma", start: 0, quoted: true });
+  assert.equal(p.nameBefore(), null);   // in an index, names are the part's, not functions
+  assert.ok(p.completeIndex('"mass"'));
+  assert.equal(p.text, 'mean(t[[All, "mass"]])');
+});
+
+test("a quote opens text whose characters are typed as they are, a URL's slashes included", () => {
+  const e = new MathEdit({ body: [] }, { known: ["import"] });
+  typeChars(e, 'import("https://x.org/a/b.csv")');
+  assert.equal(e.text, 'import("https://x.org/a/b.csv")');
+  assert.equal(typeChars(new MathEdit({ body: [] }, { known: ["import"] }), 'let t = import("p.csv")').text, 'let t = import("p.csv")');
+  // a value's name is completed without a call
+  const v = typeChars(new MathEdit({ body: [] }), "2pla");
+  assert.ok(v.completeName("planets", false));
+  assert.equal(v.text, "2planets");
 });
