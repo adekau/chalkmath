@@ -146,9 +146,12 @@ test("paste reads the text as structure where it can", () => {
   // a whole `let` into an empty input is the cell's head too
   e = pasted("", "let f(x) = x^2");
   assert.equal(e.text, "let f(x) = x^2");
-  // text that is not an expression is typed as far as it goes: `⟦`, `{` mean nothing here
-  e = pasted("", "a+⟦b⟧");
+  // text that is not an expression is typed as far as it goes: `{` means nothing here
+  e = pasted("", "a+{b}");
   assert.equal(e.text, "a + b");
+  // an attached file is a chip
+  e = pasted("", "a+⟦b⟧");
+  assert.equal(e.text, "a + ⟦b⟧");
   // one step to undo
   e = pasted("", "1/2 + 3");
   e.undo();
@@ -331,4 +334,15 @@ test("what completions need: the name being typed, and the part index at the car
   assert.equal(p.nameBefore(), null);   // in an index, names are the part's, not functions
   assert.ok(p.completeIndex('"mass"'));
   assert.equal(p.text, 'mean(t[[All, "mass"]])');
+});
+
+test("a quote opens text whose characters are typed as they are, a URL's slashes included", () => {
+  const e = new MathEdit({ body: [] }, { known: ["import"] });
+  typeChars(e, 'import("https://x.org/a/b.csv")');
+  assert.equal(e.text, 'import("https://x.org/a/b.csv")');
+  assert.equal(typeChars(new MathEdit({ body: [] }, { known: ["import"] }), 'let t = import("p.csv")').text, 'let t = import("p.csv")');
+  // a value's name is completed without a call
+  const v = typeChars(new MathEdit({ body: [] }), "2pla");
+  assert.ok(v.completeName("planets", false));
+  assert.equal(v.text, "2planets");
 });

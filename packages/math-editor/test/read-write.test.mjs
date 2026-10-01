@@ -70,7 +70,7 @@ test("parse errors are the engine's, with its spans", () => {
   const bad = read("x + )");
   assert.deepEqual(bad.ok ? null : bad.error, { message: "unexpected ')'", span: { start: 4, end: 5 } });
   // λ-terms and the other worlds are not this grammar: those cells stay raw
-  for (const src of ["(λx. x) y", "TWO := succ (succ zero)", "poset({a,b}; a<b)", "import(\"a.svg\")", "⟦llama.svg⟧"]) assert.equal(read(src).ok, false, src);
+  for (const src of ["(λx. x) y", "TWO := succ (succ zero)", "poset({a,b}; a<b)"]) assert.equal(read(src).ok, false, src);
   // a quoted name outside a part is the engine's lexer error
   const q = read('x "a"');
   assert.deepEqual(q.ok ? null : q.error, { message: "unexpected character '\"'", span: { start: 2, end: 3 } });
@@ -200,4 +200,17 @@ test("a part reads as a part atom, its indices kept as typed, and writes back th
   assert.deepEqual(r.stmt.body.map((a) => a.k), ["ch", "part", "sup"]);
   const open = read("m[[1");
   assert.equal(open.ok ? "(read)" : open.error.message, "expected ']]' to close the part");
+});
+
+test("text in quotes and attached files read as atoms of their own and write back the same", () => {
+  const known = ["import", "samplePoints", "dimensions"];
+  for (const src of ['import("https://example.org/a/b.csv")', "samplePoints(⟦llama.svg⟧, 100)", 'dimensions(import("x.csv")[[All, 2;;]])', 'let t = import("data/planets.csv")']) {
+    const r = read(src, known);
+    assert.ok(r.ok, src);
+    assert.equal(write(r.stmt).text, src, src);
+  }
+  const call = read('import("a/b.csv")', known).stmt.body[0];
+  assert.equal(call.k, "call");
+  assert.deepEqual(call.args[0].map((a) => a.k), ["str"]);   // the URL's slashes are text, not fractions
+  assert.deepEqual(read("⟦a.svg⟧").stmt.body, [{ k: "asset", name: "a.svg" }]);
 });

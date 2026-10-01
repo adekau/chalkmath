@@ -57,6 +57,8 @@ function firstChar(a: Atom): string {
     case "let": return "l";
     case "sup": return "^";
     case "matrix": case "part": return "[";
+    case "str": return '"';
+    case "asset": return "⟦";
     default: return "(";
   }
 }
@@ -129,6 +131,8 @@ class Writer {
         });
         this.out += "]]";
         return;
+      case "str": this.out += '"' + a.body.map((c) => (c.k === "ch" ? c.c : "")).join("") + '"'; return;
+      case "asset": this.out += `⟦${a.name}⟧`; return;
       case "matrix":
         this.out += "[";
         a.rows.forEach((r, i) => {

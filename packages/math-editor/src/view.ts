@@ -46,7 +46,7 @@ export interface MathInputOptions {
   classify?(text: string, as: "call" | "bound" | "name" | "num" | "keyword"): string | null;
   /** The functions whose names start with what is being typed, for the completion list (the host
    *  knows its commands and the session's functions); none, no list for plain names. */
-  functions?(prefix: string): { name: string; what: string }[];
+  functions?(prefix: string): { name: string; what: string; call?: boolean }[];
   /** In an index of a part (`t[[All, "ma`): the names that can go there (a table's columns, an
    *  object's keys, `All`), given the cell's text up to the caret. */
   partNames?(before: string): { name: string; what: string }[];
@@ -190,7 +190,7 @@ export class MathInput {
   private fitted = false;
   /** The `\\` suggestions under the caret: the names that start with what has been typed. */
   /** The completion list: `\` commands, or (`fn`) functions for the name being typed. */
-  private comp: { items: { name: string; what: string; glyph: string; fn?: boolean; index?: boolean }[]; index: number; box: HTMLElement; picked?: boolean } | null = null;
+  private comp: { items: { name: string; what: string; glyph: string; fn?: boolean; index?: boolean; call?: boolean }[]; index: number; box: HTMLElement; picked?: boolean } | null = null;
   /** Esc closed the suggestions for this command; they come back when it changes. */
   private compDismissed: string | null = null;
 
@@ -544,11 +544,11 @@ export class MathInput {
     const p = this.edit.nameBefore();
     if (!p || !this.opts.functions || p.name === this.compDismissed || !this.el.classList.contains("focused")) { this.hideSuggestions(); return; }
     this.compDismissed = null;
-    const items = this.opts.functions(p.name).filter((f) => f.name !== p.name).map((f) => ({ name: f.name, what: f.what, glyph: "", fn: true }));
+    const items = this.opts.functions(p.name).filter((f) => f.name !== p.name).map((f) => ({ name: f.name, what: f.what, glyph: "", fn: true, call: f.call !== false }));
     this.showSuggestions(items);
   }
 
-  private showSuggestions(items: { name: string; what: string; glyph: string; fn?: boolean }[]) {
+  private showSuggestions(items: { name: string; what: string; glyph: string; fn?: boolean; index?: boolean; call?: boolean }[]) {
     if (!items.length) { this.hideSuggestions(); return; }
     this.hideSuggestions();
     const box = document.createElement("div");
@@ -594,7 +594,7 @@ export class MathInput {
     if (!cp) return;
     const item = cp.items[cp.index]!;
     if (item.index) { this.hideSuggestions(); if (this.edit.completeIndex(item.name === "All" ? "All" : `"${item.name}"`)) this.changed(); return; }
-    if (item.fn) { this.hideSuggestions(); if (this.edit.completeName(item.name)) this.changed(); return; }
+    if (item.fn) { this.hideSuggestions(); if (this.edit.completeName(item.name, item.call)) this.changed(); return; }
     const p = this.edit.pendingCommand();
     if (!p) return;
     const name = item.name;

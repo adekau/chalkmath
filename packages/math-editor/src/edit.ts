@@ -344,6 +344,14 @@ export class MathEdit {
     const hw = this.where(this.caret.block);
     if (hw?.atom.k === "let") return this.typeInHead(c, hw.atom, hw);
     if (hw?.atom.k === "part") return this.typeInPart(c, hw.atom, hw);
+    // in quotes every character is the text's; the closing quote leaves it
+    if (hw?.atom.k === "str") {
+      if (c === '"') { this.caret = { block: hw.parent, i: hw.index + 1 }; return true; }
+      if (c.length !== 1 || c === "\n") return false;
+      this.caret.block.splice(this.caret.i, 0, ch(c));
+      this.caret = { block: this.caret.block, i: this.caret.i + 1 };
+      return true;
+    }
     if (c === " " && this.startHead()) return true;
     const g = this.glue;
     this.glue = null;
@@ -368,6 +376,7 @@ export class MathEdit {
       // the second `]` of a part's `]]`, after the first left it
       case "]": return this.caret.block[this.caret.i - 1]?.k === "part" ? true : this.close((a) => a.k === "matrix");
       case ",": return this.comma();
+      case '"': return this.insert({ k: "str", body: [] });
       case ";": return this.semicolon();
       case " ": return this.space();
       case "@": {
@@ -633,8 +642,11 @@ export class MathEdit {
     if (next?.k === "ch" && isIdChar(next.c)) return null;
     let j = i;
     while (j > 0 && b[j - 1]!.k === "ch" && isIdChar((b[j - 1] as { c: string }).c)) j--;
-    const name = b.slice(j, i).map((a) => (a as { c: string }).c).join("");
-    return /^[A-Za-z_]/.test(name) ? { name, start: j } : null;
+    // the run as the engine lexes it (`2pla` is 2·pla): its last token, if a name
+    const run = b.slice(j, i).map((a) => (a as { c: string }).c).join("");
+    const last = run ? lex(run).filter((t) => t.kind !== "eof").pop() : undefined;
+    if (last?.kind !== "id" || last.stop !== Array.from(run).length || !/^[A-Za-z_]/.test(last.s)) return null;
+    return { name: last.s, start: i - Array.from(last.s).length };
   }
 
   /** When the caret is in an index of a part: the cell's text up to the caret (as it will be written),
@@ -671,15 +683,16 @@ export class MathEdit {
     });
   }
 
-  /** Replace the name before the caret with `name` and open its call, as typing the rest and `(` would. */
-  completeName(name: string): boolean {
+  /** Replace the name before the caret with `name` and (`call`) open its call, as typing the rest
+   *  and `(` would. */
+  completeName(name: string, call = true): boolean {
     const p = this.nameBefore();
     if (!p) return false;
     return this.mutate("struct", () => {
       const { block: b } = this.caret;
       b.splice(p.start, p.name.length, ...chars(name));
       this.caret = { block: b, i: p.start + Array.from(name).length };
-      return this.typeOne("(");
+      return call ? this.typeOne("(") : true;
     });
   }
 

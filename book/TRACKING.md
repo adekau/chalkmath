@@ -852,3 +852,12 @@ Phases:
    tooltip, written against the cell's name or `%n`; a chip adds its code as a cell below and runs it; × hides the
    bar for that cell (saved with it), View › Suggestions bar for all. Errors offer only the suggestions that make
    numbers.
+- visual input: import, files and the notebook's functions; names in completions — DONE (Alex: "get the new
+   functions + import working in visual mode. Also visual mode is lacking the autocomplete/intellisense"). The
+   notebook's own functions (`import`, `samplePoints`, `matrix`, `dimensions`) are calls in the visual input, as the
+   engine's builtins are (`dimensions(%18)` had read as a product). Two atoms in the editor's tree: text in quotes,
+   whose characters are typed as they are (a URL's `/` is a slash, not a fraction), and an attached file, `⟦name⟧`,
+   drawn as a chip; both read and write back exactly, so file cells are no longer kept out of the visual input,
+   and a file pasted or attached into one lands as a chip at the caret. Completions in both inputs list the names
+   bound in the session before the functions, with what each is (`planets — CSV, 8 × 5`, a matrix's shape, a
+   function's parameters); a function opens its call, a value does not. `dimensions` has its own Reference entry.

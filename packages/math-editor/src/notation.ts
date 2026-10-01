@@ -227,6 +227,9 @@ class Notation {
       case "matrix": return this.wrap([a], this.matrix(a.rows, "bmatrix"));
       // Part, as the engine prints it: m⟦2, 1;;3⟧
       case "part": return this.wrap([a], `\\llbracket ${a.specs.map((x) => this.spec(x)).join(",\\,")}\\rrbracket `);
+      // text in quotes, each character its own (for the caret), and an attached file as a chip
+      case "str": return this.wrap([a], `\\text{“}${a.body.length ? a.body.map((x) => this.wrap([x], textChar((x as { c: string }).c))).join("") : this.hole(a.body)}\\text{”}`);
+      case "asset": return this.wrap([a], `\\htmlData{asset=1}{\\boxed{${Array.from(a.name).map(textChar).join("")}}}`);
       case "call": return this.wrap([a], this.call(a));
       case "let": {
         // `let f(x) =` names a function, so its name is a word like a call's; `let a =` names a value
@@ -349,6 +352,8 @@ export function slots(a: Atom): Block[] {
     case "paren": return [a.body];
     case "matrix": return a.rows.flat();
     case "part": return a.specs;
+    case "str": return [a.body];
+    case "asset": return [];
     case "let": return [a.name, ...(a.params ?? [])];
     case "call": {
       const b = a.args;

@@ -309,6 +309,9 @@ html:not(.nohl) .cellin::selection { color:transparent; }
 .hl .hpun { color:var(--p-mut2); }
 .hl .hvar { color:var(--p-ink); }
 .hl .hasset { color:var(--p-acc); background:var(--p-acc-chip); border-radius:4px; box-shadow:0 0 0 1px var(--p-acc-br); }
+/* an attached file in a visual input: the same chip as in the text */
+.mi [data-asset] .boxpad { color:var(--p-acc); }
+.mi [data-asset] .fbox { border-color:var(--p-acc-br) !important; border-radius:4px; background:var(--p-acc-chip); }
 .hl .hasset.missing { color:var(--p-err); background:var(--p-err-bg); box-shadow:0 0 0 1px var(--p-err-line); }
 .hl .hstr { color:var(--hl-const); }
 .imgbox { padding:10px; }

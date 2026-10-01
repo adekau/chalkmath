@@ -29,7 +29,7 @@ const POWER_FNS = ["sin", "cos", "tan", "exp", "ln", "log", "sqrt", "abs"];
 /** `str`: a name in quotes, which only an index of a part can hold (`t[["mass"]]`, a file's column,
  *  which the notebook reads before the engine sees the cell); anywhere else it is the engine's
  *  `unexpected character '"'`. */
-type TokKind = "num" | "id" | "op" | "str" | "eof";
+type TokKind = "num" | "id" | "op" | "str" | "asset" | "eof";
 interface Tok { kind: TokKind; s: string; start: number; stop: number }
 
 class Fail { constructor(readonly error: ReadError) {} }
@@ -54,6 +54,13 @@ export function lex(src: string): Tok[] {
       while (j < cs.length && isIdChar(cs[j]!)) j++;
       out.push({ kind: "id", s: cs.slice(i, j).join(""), start: i, stop: j });
       i = j;
+    } else if (c === "⟦") {
+      // a file attached to the notebook: `⟦name⟧`, which the notebook reads before the engine
+      let j = i + 1;
+      while (j < cs.length && cs[j] !== "⟧") j++;
+      if (j >= cs.length) fail("unexpected character '⟦'", { start: i, stop: i + 1 });
+      out.push({ kind: "asset", s: cs.slice(i + 1, j).join(""), start: i, stop: j + 1 });
+      i = j + 1;
     } else if (c === '"') {
       let j = i + 1;
       while (j < cs.length && cs[j] !== '"') j++;
@@ -229,7 +236,9 @@ class Reader {
         if (t.s === "{") return fail("braces list the indices of a part, as in m[[{1, 3}]]", t);
         return fail(`unexpected '${t.s}'`, t);
       }
-      case "str": return fail(`unexpected character '"'`, { start: t.start, stop: t.start + 1 });
+      // text in quotes, and an attached file: the notebook's (`import("url")`, `⟦data.csv⟧`)
+      case "str": return [{ k: "str", body: chars(t.s.slice(1, -1)) }];
+      case "asset": return [{ k: "asset", name: t.s }];
       case "eof": return fail("unexpected end of input", t);
     }
   }

@@ -52,7 +52,8 @@ const DOCS: Doc[] = [
   { name: "min", sig: "min(v)", blurb: "The least (or greatest) entry; of a matrix, each column's. Exact comparison of rationals, so the entries must be numbers; the result is an entry and none is smaller (minQ_spec, maxQ_spec).", examples: ["min([3, -1, 2.5])", "max([3, -1, 2.5])"] },
   { name: "max", sig: "max(v)", blurb: "The greatest (or least) entry; of a matrix, each column's. Exact comparison of rationals, so the entries must be numbers; the result is an entry and none is larger (maxQ_spec, minQ_spec).", examples: ["max([3, -1, 2.5])", "min([3, -1, 2.5])"] },
   { name: "total", sig: "total(v)", blurb: "The sum of a vector's entries, Σ xᵢ, or of each column of a matrix, as Mathematica's Total (sum(f, k, a, b) is the sum of a term over an index). Over ℝ the value is the list's sum (total_soundR).", examples: ["total([1; 2; 3])", "total([1, 2; 3, 4])"] },
-  { name: "matrix", sig: "matrix(table) · dimensions(table)", blurb: "A CSV or TSV file, or JSON that is a list of records, as numbers: matrix is every data row (an error naming the field if one is not a number), dimensions is [rows, columns]. The first line of a CSV is a header when it has no numbers in it. To take some of a table, use its parts: t[[All, {\"mass\", \"period\"}]].", examples: ["let planets = import(\"examples/data/planets.csv\")", "dimensions(planets)", "matrix(planets[[All, 2;;]])"] },
+  { name: "matrix", sig: "matrix(table)", blurb: "A CSV or TSV file, or JSON that is a list of records, as numbers: matrix is every data row (an error naming the field if one is not a number), dimensions is [rows, columns]. The first line of a CSV is a header when it has no numbers in it. To take some of a table, use its parts: t[[All, {\"mass\", \"period\"}]].", examples: ["let planets = import(\"examples/data/planets.csv\")", "dimensions(planets)", "matrix(planets[[All, 2;;]])"] },
+  { name: "dimensions", sig: "dimensions(table)", blurb: "The size of a table (a CSV or TSV, or JSON that is a list of records) or of a part of one that is numbers, as [rows, columns], like Mathematica's Dimensions.", examples: ["dimensions(planets)", "dimensions(planets[[All, 2;;]])"] },
   { name: "sign", sig: "sign(x)", blurb: "The sign function: −1, 0 or 1. Folds on numerals and stays symbolic otherwise, so sign(sin(t)) is the square wave.", examples: ["sign(-3)", "plot(sign(sin(t)), t, -pi, pi)"] },
   { name: "poset", sig: "poset({a,b,c}; a<b, a<c) · divisors(n) · subsets({…}) · chain(n)", blurb: "A finite partial order: the reflexive-transitive closure of the relation given, checked for antisymmetry. Bind it with let and ask about it: hasse, join, meet, sup, inf, upper, lower, top, bottom, maximal, minimal, lattice, le.", examples: ["let D = divisors(12)", "join(D, 4, 6)", "lattice(D)", "le(D, 2, 12)", "let P = poset({a,b,c,d}; a<b, a<c, b<d, c<d)"] },
   { name: "map", sig: "map(P; a->b, c->d, …) · monotone(P, f) · lfp(P, f) · gfp(P, f) · fixpoints(P, f)", blurb: "A map on a poset given as a table (other elements are fixed). monotone checks every pair; lfp and gfp iterate from ⊥ and ⊤ and show the Kleene chain, which is proved to end at the least (greatest) fixed point.", examples: ["let f = map(D; 1->2, 3->6)", "monotone(D, f)", "lfp(D, f)"] },
@@ -110,7 +111,9 @@ const symbolFor = (name: string) => SYMBOLS.find((s) => s.abbr === name || s.ali
  *  Not λ: a λ-cell is not the grammar the visual input reads, and stays raw. */
 const VISUAL_SYMBOLS: Record<string, string> = Object.fromEntries(
   SYMBOLS.filter((s) => s.sym !== "λ").flatMap((s) => [s.abbr, ...s.aliases].map((a) => [a, s.sym])));
-type CompItem = { kind: "doc"; doc: Doc } | { kind: "sym"; sym: Sym } | { kind: "tpl"; name: string; what: string; glyph: string }
+type CompItem = { kind: "doc"; doc: Doc }
+  /** A name bound in the session: a value, a file, or a function (which opens its call). */
+  | { kind: "name"; name: string; what: string; call: boolean } | { kind: "sym"; sym: Sym } | { kind: "tpl"; name: string; what: string; glyph: string }
   /** Inside `x[[…]]`: a column name, an object key or `All`, replacing what was typed from `start`. */
   | { kind: "part"; insert: string; label: string; hint: string; start: number };
 
@@ -1372,6 +1375,24 @@ interface FileMeta { name: string; mime: string; size: number; origin: FileValue
 
 /** Imports by URL, fetched once per page (a re-run does not fetch again). */
 const IMPORTS = new Map<string, FileValue>();
+/** The names bound in a session that start with `prefix`, for completions: what each is (a file and
+ *  its type and size, a matrix's shape, a function's parameters). */
+function sessionNames(sid: string, prefix: string): { name: string; what: string; call: boolean }[] {
+  const out: { name: string; what: string; call: boolean }[] = [];
+  const q = prefix.toLowerCase();
+  for (const k of USER_NAMES) {
+    if (!k.startsWith(`${sid}:`)) continue;
+    const name = k.slice(sid.length + 1);
+    if (!name.toLowerCase().startsWith(q)) continue;
+    const file = FILE_VARS.get(k), params = USER_FNS.get(k), shape = MATRIX_SHAPES.get(k);
+    const t = file && tabular(file);
+    const what = file ? `${mimeLabel(file.mime)}${t ? `, ${t.rows.length} × ${t.cols}` : ""}`
+      : params ? `${name}(${params.join(", ")})` : shape ? `${shape.rows}×${shape.cols} matrix` : "defined with let";
+    out.push({ name, what, call: !!params });
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+
 /** The shapes of names bound to matrices, keyed `session:name`, for completions inside `name[[`. */
 const MATRIX_SHAPES = new Map<string, { rows: number; cols: number }>();
 /** Names bound to files by `let x = import(…)`, keyed `session:name` like `USER_NAMES`. */
@@ -1542,7 +1563,7 @@ function attachFile() {
       const c = S.cells[S.active];
       if (c?.input && !c.type) { insertAtCaret(c, `⟦${name}⟧`); c.input.focus(); }
       // a file reference is not something the visual input shows: the cell goes back to text
-      else if (c?.mi) { c.mode = "raw"; c.src += `⟦${name}⟧`; focusCell(S.active); }
+      else if (c?.mi) { c.mi.apply((e) => e.insert({ k: "asset", name })); c.mi.focus(); }
       else if (c?.ta) { c.ta.setRangeText(`⟦${name}⟧`, c.ta.selectionStart, c.ta.selectionEnd, "end"); c.src = c.ta.value; c.ta.focus(); }
       else { const cell = addCell(`⟦${name}⟧`); renderSidebar(); focusCell(S.cells.indexOf(cell)); }
       notify("ok", `Attached ${name} (${Math.round(data.length / 1024)} KB): ⟦${name}⟧ refers to it`);
@@ -1558,8 +1579,8 @@ function onPaste(ev: ClipboardEvent, cell: Cell) {
   const dt = ev.clipboardData; if (!dt) return;
   const put = (name: string) => {
     if (cell.input) insertAtCaret(cell, `⟦${name}⟧`);
-    // a file reference is not something the visual input shows: the cell goes back to text
-    else if (cell.mi) { cell.mode = "raw"; cell.src = cellSrc(cell) + `⟦${name}⟧`; focusCell(S.cells.indexOf(cell)); }
+    // the visual input shows the file as a chip, where the caret is
+    else if (cell.mi) cell.mi.apply((e) => e.insert({ k: "asset", name }));
     else if (cell.ta) { cell.ta.setRangeText(`⟦${name}⟧`, cell.ta.selectionStart, cell.ta.selectionEnd, "end"); cell.src = cell.ta.value; cell.ta.dispatchEvent(new Event("input")); }
     renderHighlights(); autosave();
   };
@@ -2290,7 +2311,10 @@ function pyExpr(text: string): string {
 // --- The visual input: math cells typeset as they are typed ---------------------------------------
 
 /** The functions this session has defined: after `let f(x) = …`, `f(` is a call. */
-const sessionFns = () => [...USER_FNS.keys()].filter((k) => k.startsWith(`${sessionId}:`)).map((k) => k.slice(sessionId.length + 1));
+/** The notebook's own functions, which act on files before the engine sees a cell (files.ts): calls
+ *  in the visual input as the engine's builtins are. */
+const NOTEBOOK_FNS = ["import", "samplePoints", "matrix", "dimensions"];
+const sessionFns = () => [...NOTEBOOK_FNS, ...[...USER_FNS.keys()].filter((k) => k.startsWith(`${sessionId}:`)).map((k) => k.slice(sessionId.length + 1))];
 
 /** Why a cell cannot be shown visually, or null when it can. λ-terms, order theory and file
  *  references are other grammars; so is text that does not parse, which stays as typed to be fixed. */
@@ -2302,7 +2326,6 @@ function visualBlocked(cell: Cell): string | null {
   if (kind === "lookup") return "questions are edited as text";
   if (kind === "λ-term") return "λ-terms are edited as text";
   if (kind === "order" || ORDER_CELL.test(src.trim())) return "order theory is edited as text";
-  if (kind === "file") return "file references are edited as text";
   if (src.trim() && !readNotation(src, sessionFns()).ok) return "the text does not parse yet";
   return null;
 }
@@ -2394,9 +2417,11 @@ function visualInput(cell: Cell, i: number): MathInput | null {
       if (!part) return [];
       return [{ name: "All", what: "every position" }, ...part.help.names.map((n) => ({ name: n, what: part.help.namesAre ?? "name" }))];
     },
-    // the functions a name being typed could be, as the text input lists them
-    functions: (prefix) => DOCS.filter((d) => d.name.toLowerCase().startsWith(prefix.toLowerCase()) && /^[A-Za-z]/.test(d.name))
-      .slice(0, 9).map((d) => ({ name: d.name, what: d.blurb.split(".")[0]! })),
+    // what a name being typed could be, as the text input lists them: the session's names, then functions
+    functions: (prefix) => [
+      ...sessionNames(docOf(cell)?.sessionId ?? sessionId, prefix),
+      ...DOCS.filter((d) => d.name.toLowerCase().startsWith(prefix.toLowerCase()) && /^[A-Za-z]/.test(d.name)).map((d) => ({ name: d.name, what: d.blurb.split(".")[0]!, call: true })),
+    ].slice(0, 9),
     // the text highlighter's colours: what a name is, and where it is bound
     classify: (text, as) => {
       if (as === "num") return "hnum";
@@ -4604,7 +4629,10 @@ function updateCompletions(cell: Cell) {
       for (const [name, t] of Object.entries(TEMPLATES)) if (name.toLowerCase().startsWith(q)) items.push({ kind: "tpl", name, what: t.what, glyph: t.glyph });
     }
   } else {
-    items = DOCS.filter((d) => d.name.toLowerCase().startsWith(word.toLowerCase()) && d.name !== word).map((doc) => ({ kind: "doc", doc }));
+    items = [
+      ...sessionNames(docOf(cell)?.sessionId ?? sessionId, word).filter((n) => n.name !== word).map((n) => ({ kind: "name" as const, ...n })),
+      ...DOCS.filter((d) => d.name.toLowerCase().startsWith(word.toLowerCase()) && d.name !== word).map((doc) => ({ kind: "doc" as const, doc })),
+    ];
   }
   if (!items.length) return hideCompletions();
   const r = input.getBoundingClientRect();
@@ -4644,7 +4672,8 @@ function acceptCompletion() {
     return true;
   }
   // a symbol abbreviation becomes the symbol itself; a function name opens its parenthesis
-  const insert = item.kind === "sym" ? item.sym.sym : item.doc.name + (after.startsWith("(") ? "" : "(");
+  const insert = item.kind === "sym" ? item.sym.sym : item.kind === "name" ? item.name + (item.call && !after.startsWith("(") ? "(" : "")
+    : item.doc.name + (after.startsWith("(") ? "" : "(");
   input.value = input.value.slice(0, start) + insert + after;
   const pos = start + insert.length;
   input.setSelectionRange(pos, pos);
@@ -4663,6 +4692,8 @@ function renderCompletions() {
     if (it.kind === "sym") {
       const s = it.sym;
       row.append(h("span", "n", `\\${s.abbr}${s.aliases.length ? ` (${s.aliases.map((a) => "\\" + a).join(", ")})` : ""}`), h("span", "h", s.what), h("span", "sym", s.sym));
+    } else if (it.kind === "name") {
+      row.append(h("span", "n", it.name), h("span", "h", it.what));
     } else if (it.kind === "part") {
       row.append(h("span", "n", it.label), h("span", "h", it.hint));
     } else if (it.kind === "tpl") {
