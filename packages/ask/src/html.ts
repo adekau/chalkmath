@@ -193,7 +193,7 @@ function finishTable(t: TableDraft): Table | null {
   const headers = Array.from({ length: width }, (_, i) => {
     const parts: string[] = [];
     for (let r = 0; r < h; r++) { const s = rows[r]![i]!.text; if (s && parts[parts.length - 1] !== s) parts.push(s); }
-    return parts.join(" / ");
+    return parts.join(" / ").replace(/[\s*†‡§¶#]+$/, "");
   });
   return { caption: clean(t.caption) || t.heading, headers, rows: rows.slice(h).map((r) => r.map((c) => c.text)).filter((r) => r.some((s) => s)) };
 }

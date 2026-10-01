@@ -44,6 +44,7 @@ function scripted(replies) {
     calls,
     async complete({ schema, user }) {
       const step = schema.required.includes("searches") ? "plan" : schema.required.includes("table") ? "pick" : schema.required.includes("expr") ? "formula"
+        : schema.required.includes("answers") ? "confirm"
         : schema.properties.rows.items.required.includes("quote") ? "extract" : "memory";
       calls.push({ step, user });
       const r = replies[step];
@@ -106,7 +107,7 @@ test("one value is a number, not a 1×1 matrix", () => {
   assert.equal(engineText([["1", "-2"]]), "[1, -2]");
 });
 
-test("no table fits: numbers are lifted from prose, and each is checked against the quoted sentence", async () => {
+test("no table fits: numbers are lifted from prose; a row stands only when its sentence states its numbers and answers the question", async () => {
   const fetch = fakeFetch(wikiRoutes(prosePage));
   const model = scripted({
     plan: PLAN,
@@ -117,14 +118,30 @@ test("no table fits: numbers are lifted from prose, and each is checked against 
       // a quote the page does not contain confirms nothing
       { label: "2021", values: [2021, 4.53, 1.22], quote: "In 2021 teams scored 4.53 runs per game and 1.22 home runs per game." },
     ] },
+    confirm: (user) => { assert.match(user, /^1\. values: 2019, 4\.52, 1\.39\. Sentence: "The league's teams/m); assert.doesNotMatch(user, /^2\./m); return JSON.stringify({ answers: [true] }); },
   });
   const r = await lookup("runs and home runs per game, 2019 to 2021", opts(model, fetch));
   assert.equal(r.via, "text");
-  assert.equal(r.source, "[2019, 4.52, 1.39; 2020, 4.7, 1.28; 2021, 4.53, 1.22]");
-  assert.deepEqual(r.flagged, [[1, 1], [2, 0], [2, 1], [2, 2]]);
+  assert.equal(r.source, "[2019, 4.52, 1.39]");
+  assert.deepEqual(r.flagged, []);
   assert.deepEqual(r.cites, [{ title: "Batting by season", url: "https://en.wikipedia.org/wiki/Batting_by_season" }]);
-  assert.deepEqual(r.rowLabels, ["2019", "2020", "2021"]);
-  assert.match(r.notes[0], /not found in the text/);
+  assert.ok(r.trail.includes("Left out 2 rows the model lifted: their numbers are not in the sentence quoted."), r.trail.join("\n"));
+});
+
+test("a sentence that states a number but does not answer the question is left out", async () => {
+  const page = `<p>The Tigers lost the 1940 World Series to the Cincinnati Reds.</p><p>The Tigers won the 1945 World Series against the Chicago Cubs.</p>`;
+  const fetch = fakeFetch([[/w\/api\.php.*list=search/, { query: { search: [{ title: "Detroit Tigers" }] } }], [/rest_v1\/page\/html\/Detroit_Tigers/, page]]);
+  const model = scripted({
+    plan: { ...PLAN, columns: ["year"], keywords: ["World Series", "won"] },
+    extract: { rows: [
+      { label: "1940", values: [1940], quote: "The Tigers lost the 1940 World Series to the Cincinnati Reds." },
+      { label: "1945", values: [1945], quote: "The Tigers won the 1945 World Series against the Chicago Cubs." },
+    ] },
+    confirm: { answers: [false, true] },
+  });
+  const r = await lookup("what years did the tigers win the world series", opts(model, fetch));
+  assert.equal(r.source, "1945");
+  assert.ok(r.trail.includes("Left out 1 row whose sentence does not answer the question: 1940"), r.trail.join("\n"));
 });
 
 test("nothing found: the model's memory as a last resort, every value flagged; never when knowledge is off", async () => {
@@ -315,7 +332,7 @@ test("a question about the world is searched for even when the model is sure, an
   // the model's plan as Gemini Nano wrote it: a list, "known", and the rows field filled with years
   const plan = { shape: "list", subject: "the world", known: true, searches: ["Detroit Tigers World Series titles"], columns: ["Year"],
     rows: "190; 1905; 1911; 1912; 1913; 1918", keywords: ["World Series", "titles"] };
-  const model = scripted({ plan, extract: { rows: [{ label: "Year", values: [4], quote: "The Detroit Tigers have won four World Series titles, in 1935, 1945, 1968 and 1984." }] } });
+  const model = scripted({ plan, extract: { rows: [{ label: "Year", values: [4], quote: "The Detroit Tigers have won four World Series titles, in 1935, 1945, 1968 and 1984." }] }, confirm: { answers: [true] } });
   const r = await lookup("number of world series the tigers have won", opts(model, fetch));
   assert.equal(r.shape, "number");
   assert.equal(r.via, "text");
@@ -427,4 +444,41 @@ test("from memory, a model's formula with words for names is replaced by its LaT
   const r = await lookup("volume of a prism", opts(model, fetch));
   assert.equal(r.via, "knowledge");
   assert.equal(r.source, "B*h");
+});
+
+// --- what Qwen3 4B got wrong ------------------------------------------------------------------
+
+test("a question that asks to make something is no lookup: nothing is searched", async () => {
+  const fetch = fakeFetch([]);
+  const model = scripted({ plan: { ...PLAN, lookup: false } });
+  await assert.rejects(lookup("random 5x5 matrix", opts(model, fetch)),
+    (e) => e instanceof AskError && /make something rather than to look it up \(and the engine has no random numbers\)/.test(e.message));
+  // the question's own words decide it even when the model says it is a lookup
+  await assert.rejects(lookup("random 5x5 matrix", opts(scripted({ plan: PLAN }), fetch)), (e) => e instanceof AskError);
+  assert.deepEqual(fetch.asked, []);
+});
+
+test("“how many” that finds one row with a number column chosen answers that row's number, not a count of 1", async () => {
+  // Wikipedia's "World Series" has a table of teams' appearances; Qwen3 4B matched the Tigers' row and asked for a count
+  const page = `<table class="wikitable"><tr><th>Teams<sup>†</sup></th><th>Apps</th><th>Wins</th><th>Losses</th></tr>
+    <tr><td>New York Yankees</td><td>41</td><td>27</td><td>14</td></tr><tr><td>Detroit Tigers</td><td>11</td><td>4</td><td>7</td></tr></table>`;
+  const fetch = fakeFetch([[/w\/api\.php.*list=search/, { query: { search: [{ title: "World Series" }] } }], [/rest_v1\/page\/html\/World_Series/, page]]);
+  const model = scripted({ plan: CHAMPS_PLAN, pick: { table: 0, columns: [2], label: -1, filter: { column: -1, min: null, max: null }, match: { column: 0, text: "Tigers" }, count: true } });
+  const r = await lookup("number of world series the tigers have won", opts(model, fetch));
+  assert.equal(r.source, "4");
+  assert.deepEqual(r.columns, ["Wins"]);
+  assert.ok(r.trail.includes("One row matched, with Wins chosen: its value, not a count of rows."), r.trail.join("\n"));
+});
+
+test("a match keeps the rows with the question's words, not text the model copied from one row", async () => {
+  // a seasons table; Qwen3 4B matched “Won 1935 World”, which only 1935's row contains
+  const seasons = [[1934, "Lost 1934 World Series"], [1935, "Won 1935 World Series"], [1940, "Lost 1940 World Series"], [1945, "Won 1945 World Series"],
+    [1968, "Won 1968 World Series"], [1984, "Won 1984 World Series"], [2006, "Lost 2006 World Series"], [2012, "Lost 2012 World Series"]];
+  const page = `<table class="wikitable"><tr><th>Season</th><th>Wins</th><th>Postseason</th></tr>${seasons.map(([y, p]) => `<tr><td>${y}</td><td>90</td><td>${p}</td></tr>`).join("")}</table>`;
+  const fetch = fakeFetch([[/w\/api\.php.*list=search/, { query: { search: [{ title: "Detroit Tigers" }] } }], [/rest_v1\/page\/html\/Detroit_Tigers/, page]]);
+  const model = scripted({ plan: CHAMPS_PLAN, pick: { table: 0, columns: [0], label: -1, filter: { column: -1, min: null, max: null }, match: { column: 2, text: "Won 1935 World" }, count: false } });
+  const r = await lookup("what years did the detroit tigers win the world series?", opts(model, fetch));
+  assert.equal(r.source, "[1935, 1945, 1968, 1984]");
+  const { matchWords } = await import("../dist/index.js");
+  assert.deepEqual(matchWords("Won 1935 World"), ["won", "1935", "world"]);
 });

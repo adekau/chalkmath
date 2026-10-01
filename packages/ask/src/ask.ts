@@ -122,6 +122,7 @@ const PLAN_SCHEMA = {
   type: "object",
   properties: {
     shape: { type: "string", enum: SHAPES },
+    lookup: { type: "boolean" },
     subject: { type: "string", enum: SUBJECTS },
     known: { type: "boolean" },
     searches: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 3 },
@@ -129,10 +130,11 @@ const PLAN_SCHEMA = {
     rows: { type: "string" },
     keywords: { type: "array", items: { type: "string" }, maxItems: 12 },
   },
-  required: ["shape", "subject", "known", "searches", "columns", "rows", "keywords"],
+  required: ["lookup", "shape", "subject", "known", "searches", "columns", "rows", "keywords"],
 } as const;
 
 const PLAN_SYSTEM = `You plan how to look up an answer for a math notebook. Reply with JSON only:
+- lookup: true if the question asks for a fact, data or a formula that exists somewhere. false if it asks to make something up or work something out instead: a random matrix, an example, the derivative of x^2, solving an equation.
 - shape: "number" for one value (the speed of light), "list" for several values of one kind (the first ten primes), "table" for rows of several values (runs and home runs per season), "formula" for an equation or expression (the volume of a prism).
 - known: true if the answer is standard knowledge you are sure of and that does not change: a textbook formula, a physical or mathematical constant, a definition. false for statistics, records, results, prices, populations, anything recent, or anything you would have to look up to be exact.
 - subject: "mathematics" (numbers, sequences, geometry, formulas of mathematics), "physical science" (laws and constants of physics and chemistry), or "the world" (people, places, teams, events, history, economics, sports, anything else).
@@ -168,7 +170,7 @@ Reply with JSON only:
 - columns: column numbers from that table, one for each column the answer needs, in the answer's order. Use only columns that hold numbers.
 - label: the number of a text column that names each row (like a team or country) when rows are not keyed by a number, else -1.
 - filter: which rows to keep by a number: column is a number column to filter on (like the year), or -1 to keep all rows; min and max bound it (null for no bound). For "the last 20 years" in 2026 that is min 2006, max 2025.
-- match: which rows to keep by their text: column is a text column, text a short word from the question that the row must contain. For "what years did the Tigers win the World Series" in a table of champions: the winning team's column and "Tigers". Else column -1 and text "".
+- match: which rows to keep by their text: column is a text column, text one or two words from the question itself that the row must contain (not words or numbers copied from the table). For "what years did the Tigers win the World Series" in a table of champions: the winning team's column and "Tigers". Else column -1 and text "".
 - count: true when the question asks how many rows there are ("how many titles", "the number of wins"): the answer is then the number of rows kept, and columns may be empty. Else false.
 
 Example. Question: "how many World Series have the Tigers won". Table 0 has columns 0: Year; 1: Winning team [text]; 2: Losing team [text].
@@ -236,7 +238,7 @@ const FORMULA_MEMORY_SYSTEM = `Give the standard formula that answers the questi
 
 // ---------------------------------------------------------------------------------------------
 
-interface Plan { shape: Shape; subject: string; known: boolean; searches: string[]; columns: string[]; rows: string; keywords: string[] }
+interface Plan { lookup: boolean; shape: Shape; subject: string; known: boolean; searches: string[]; columns: string[]; rows: string; keywords: string[] }
 interface Found { table: Table; page: Page }
 
 /** The first JSON object in a model's reply (a model may wrap it in prose or a code fence). */
@@ -291,14 +293,30 @@ export interface TablePick {
 /** The rows of a table a pick keeps: in the filter's range, and containing the match's text. */
 export function keptRows(t: Table, pick: Pick<TablePick, "filter" | "match">): string[][] {
   const f = pick.filter, m = pick.match;
-  const want = m ? norm(m.text) : "";
+  const want = m ? matchWords(m.text) : [];
   return t.rows.filter((r) => {
     if (f.column >= 0) {
       const k = leadingNumber(r[f.column] ?? "");
       if (k === null || (f.min !== null && k < f.min) || (f.max !== null && k > f.max)) return false;
     }
-    return !m || norm(r[m.column] ?? "").includes(want);
+    if (!m) return true;
+    const cell = ` ${norm(r[m.column] ?? "").replace(/[^a-z0-9]+/g, " ")} `;
+    return want.every((w) => cell.includes(` ${w} `));
   });
+}
+
+const IRREGULAR: Record<string, string> = { won: "win", lost: "lose", beaten: "beat", led: "lead", held: "hold", took: "take", made: "make", came: "come", went: "go", got: "get", ran: "run" };
+
+/** A word's plain form, for comparing the question's words with a table's ("won" is "win", "titles" is "title"). */
+function stem(w: string): string {
+  if (IRREGULAR[w]) return IRREGULAR[w]!;
+  return w.length > 4 ? w.replace(/(ies)$/, "y").replace(/(ing|ed|es|s)$/, "") : w;
+}
+
+/** The words a row's text must contain: a match is word by word ("Won World" keeps "Won 1945 World
+ *  Series"), not one stretch of text. */
+export function matchWords(text: string): string[] {
+  return norm(text).split(/[^a-z0-9]+/).filter(Boolean);
 }
 
 export function fromTable(t: Table, pick: TablePick): { rows: string[][]; labels: string[]; skipped: number } {
@@ -398,6 +416,9 @@ async function ask(model: Model, system: string, user: string, schema: object, s
   return reply;
 }
 
+/** Words that ask to make something, which no page holds. */
+const MAKE = /\b(random|randomly|generate|make up|invent|an example of|example of a)\b/i;
+
 /** Words that name a range of rows: a number (a year), or a span of time. */
 const RANGE = /\d|\b(last|past|since|between|from|before|after|until|through|recent(ly)?|lately|nowadays|ago|modern|decades?|century|centuries|this (year|season)|today|current(ly)?|latest|first|early|late)\b/i;
 
@@ -421,6 +442,7 @@ export async function lookup(question: string, o: AskOptions): Promise<AskResult
   const plan0 = parseJson<Partial<Plan>>(await ask(o.model, PLAN_SYSTEM, `Today is ${o.today}.\nQuestion: ${q}${hint}`, PLAN_SCHEMA, o.signal));
   const subject = SUBJECTS.includes(plan0?.subject as typeof SUBJECTS[number]) ? plan0!.subject! : "the world";
   const plan: Plan = {
+    lookup: plan0?.lookup !== false && !MAKE.test(q),
     shape: cue ?? (SHAPES.includes(plan0?.shape as Shape) ? plan0!.shape as Shape : "table"),
     subject,
     // the model's own knowledge answers only mathematics and physical science
@@ -430,6 +452,11 @@ export async function lookup(question: string, o: AskOptions): Promise<AskResult
     rows: typeof plan0?.rows === "string" ? plan0.rows : "",
     keywords: (plan0?.keywords ?? []).filter((s) => typeof s === "string"),
   };
+  // asked to make something rather than find it, there is nothing to look up (asked for a random
+  // matrix, a lookup once searched Wikipedia and lifted [1, 2, 3, 4, 5] from an article on ciphers)
+  if (!plan.lookup) {
+    throw new AskError(`This asks to make something rather than to look it up${/\brandom\b/i.test(q) ? " (and the engine has no random numbers)" : ""}: a lookup finds facts, data and formulas. Write the mathematics in a cell instead.`, ["The model says this is not a lookup: it asks to make or work something out."]);
+  }
   if (!plan.searches.length) plan.searches = [q];
   if (!plan.columns.length) plan.columns = ["value"];
   // what a row is, in words: one number or a formula has no rows, and a model that lists values here
@@ -595,14 +622,29 @@ async function numbers(q: string, plan: Plan, pages: Page[], o: AskOptions, trai
         fc = -1;
       }
       const filter = { column: fc, min: fc >= 0 ? num(pick.filter.min) : null, max: fc >= 0 ? num(pick.filter.max) : null };
-      const mt = pick.match && Number.isInteger(pick.match.column) && pick.match.column >= 0 && pick.match.column < width
+      let mt = pick.match && Number.isInteger(pick.match.column) && pick.match.column >= 0 && pick.match.column < width
         && typeof pick.match.text === "string" && pick.match.text.trim().length >= 2 ? { column: pick.match.column, text: pick.match.text.trim() } : null;
+      // a match is the question's words: a model may copy one row's text ("Won 1935 World"), which
+      // keeps only that row
+      if (mt) {
+        const asked = new Set(matchWords(q).map(stem)), words = matchWords(mt.text), kept = words.filter((w) => asked.has(stem(w)));
+        if (kept.length && kept.length < words.length) {
+          trail.push(`Matched only the question's words of “${mt.text}”: ${kept.join(" ")}`);
+          mt = { column: mt.column, text: kept.join(" ") };
+        }
+      }
       const where = `table ${f.table.caption ? `“${f.table.caption}” ` : ""}on “${f.page.title}”`;
       const which = [fc >= 0 ? `${head(fc)} ${fmtRange(filter.min, filter.max)}` : "", mt ? `${head(mt.column)} contains “${mt.text}”` : ""].filter(Boolean).join(" and ");
       const cites = [{ title: f.page.title, url: f.page.url }];
       // a count is only what "how many" asks for, and code does the counting
-      if (pick.count === true && COUNT.test(q)) {
-        const kept = keptRows(f.table, { filter, match: mt });
+      const keptForCount = pick.count === true && COUNT.test(q) ? keptRows(f.table, { filter, match: mt }) : [];
+      // one row, and a number column chosen: the question's number is in that row ("Wins: 4"), and
+      // counting the rows would answer 1 (a model asked how many World Series the Tigers have won
+      // found the Tigers' row of a table of teams, and asked for a count)
+      const oneRow = keptForCount.length === 1 && cols.length > 0;
+      if (oneRow) trail.push(`One row matched, with ${cols.map(head).join(", ")} chosen: its value, not a count of rows.`);
+      if (pick.count === true && COUNT.test(q) && !oneRow) {
+        const kept = keptForCount;
         trail.push(`Chose the ${where}, and counted its rows${which ? ` where ${which}` : ""}: ${kept.length}`);
         if (kept.length) {
           const key = cols[0] ?? (fc >= 0 ? fc : 0);
@@ -613,7 +655,7 @@ async function numbers(q: string, plan: Plan, pages: Page[], o: AskOptions, trai
           };
         }
       } else if (cols.length) {
-        const { rows, labels, skipped } = fromTable(f.table, { columns: cols, label, filter, match: mt });
+        const { rows, labels, skipped } = fromTable(f.table, { columns: oneRow ? cols.slice(0, 1) : cols, label, filter, match: mt });
         trail.push(`Chose the ${where}: columns ${cols.map(head).join(", ")}${which ? `, rows where ${which}` : ""}`);
         if (rows.length) {
           const notes: string[] = [];
@@ -636,32 +678,57 @@ async function numbers(q: string, plan: Plan, pages: Page[], o: AskOptions, trai
     const user = `Question: ${q}\nThe answer's columns: ${plan.columns.join("; ")}\n\nPassages:\n${ps.map((p, i) => `[${i + 1}] ${p}`).join("\n")}`;
     const got = parseJson<{ rows?: { label?: string; values?: number[]; quote?: string }[] }>(await ask(o.model, EXTRACT_SYSTEM, user, EXTRACT_SCHEMA, o.signal));
     const all = norm(pages.map((p) => p.text).join("\n"));
-    const rows: string[][] = [], labels: string[] = [], flagged: [number, number][] = [];
-    const cites = new Map<string, { title: string; url: string }>();
+    // a row stands only when the sentence it quotes is on a page and states every one of its numbers
+    const cand: { vals: string[]; label: string; quote: string; page?: Page | undefined }[] = [];
+    let unsaid = 0;
     for (const r of got?.rows ?? []) {
       const vals = (r.values ?? []).map((v) => typeof v === "number" ? numberText(v) : null);
-      if (!vals.length || vals.some((v) => v === null) || (rows.length && vals.length !== rows[0]!.length)) continue;
+      if (!vals.length || vals.some((v) => v === null) || (cand.length && vals.length !== cand[0]!.vals.length)) continue;
       const quote = norm(r.quote ?? "");
       const inPage = quote.length >= 8 && all.includes(quote);
       const said = inPage ? numbersIn(r.quote ?? "") : [];
-      const i = rows.length;
-      vals.forEach((v, c) => { if (!said.some((n) => Math.abs(n - Number(v)) <= 1e-9 * Math.max(1, Math.abs(n)))) flagged.push([i, c]); });
-      rows.push(vals as string[]);
-      labels.push(r.label ?? "");
-      if (inPage) { const p = pages.find((pg) => norm(pg.text).includes(quote)); if (p) cites.set(p.url, { title: p.title, url: p.url }); }
+      if (!vals.every((v) => said.some((n) => Math.abs(n - Number(v)) <= 1e-9 * Math.max(1, Math.abs(n))))) { unsaid++; continue; }
+      cand.push({ vals: vals as string[], label: r.label ?? "", quote: r.quote ?? "", page: pages.find((pg) => norm(pg.text).includes(quote)) });
     }
-    if (rows.length) {
-      trail.push(`Lifted ${plural(rows.length, "row")} from passages; ${flagged.length ? `${plural(flagged.length, "value")} not found in the quoted text` : "every value found in the quoted text"}`);
+    if (unsaid) trail.push(`Left out ${plural(unsaid, "row")} the model lifted: ${unsaid === 1 ? "its numbers are" : "their numbers are"} not in the sentence quoted.`);
+    // and only when the sentence answers the question: a sentence can state 2006 and be about a loss
+    const kept = cand.length ? await confirmRows(q, cand, o, trail, say) : [];
+    if (kept.length) {
+      const rows = kept.map((c) => c.vals), labels = kept.map((c) => c.label);
+      const cites = new Map(kept.filter((c) => c.page).map((c) => [c.page!.url, { title: c.page!.title, url: c.page!.url }]));
+      trail.push(`Took ${plural(rows.length, "row")} from passages, each stated by the sentence it quotes`);
       return {
         source: engineText(rows, plan.shape), columns: plan.columns.slice(0, rows[0]!.length), ...named(labels),
-        via: "text", cites: [...cites.values()], flagged: flagged.map(placed(plan.shape, rows)),
-        notes: flagged.length ? ["Values marked ⚠ were not found in the text the model quoted: check them before use."] : [],
+        via: "text", cites: [...cites.values()], flagged: [], notes: [],
       };
     }
     trail.push("The passages did not state the numbers.");
   }
 
   return null;
+}
+
+const CONFIRM_SCHEMA = {
+  type: "object",
+  properties: { answers: { type: "array", items: { type: "boolean" } } },
+  required: ["answers"],
+} as const;
+
+const CONFIRM_SYSTEM = `You check answers to a question. Each numbered line gives values and the sentence they were taken from.
+For each line, answer true only if the sentence itself says those values answer the question, and false otherwise: a sentence about a loss does not say which years a team won; a sentence that only mentions a number does not say it is the answer.
+Reply with JSON only: {"answers": [true or false for line 1, for line 2, …]}.`;
+
+/** The rows whose sentences answer the question, by a yes or no for each: a narrow question a small
+ *  model answers far better than the open one it was asked to lift the rows. */
+async function confirmRows<T extends { vals: string[]; quote: string }>(q: string, rows: T[], o: AskOptions, trail: string[], say: Say): Promise<T[]> {
+  say(`Checking ${plural(rows.length, "row")} against ${rows.length === 1 ? "its sentence" : "their sentences"}`);
+  const user = `Question: ${q}\n\n${rows.map((r, i) => `${i + 1}. values: ${r.vals.join(", ")}. Sentence: "${cut(r.quote, 300)}"`).join("\n")}`;
+  const got = parseJson<{ answers?: unknown[] }>(await ask(o.model, CONFIRM_SYSTEM, user, { ...CONFIRM_SCHEMA, properties: { answers: { ...CONFIRM_SCHEMA.properties.answers, minItems: rows.length, maxItems: rows.length } } }, o.signal));
+  const a = got?.answers;
+  if (!Array.isArray(a) || a.length !== rows.length) { trail.push("The check of the rows against their sentences gave no clear answer: none are kept."); return []; }
+  const kept = rows.filter((_, i) => a[i] === true);
+  if (kept.length < rows.length) trail.push(`Left out ${plural(rows.length - kept.length, "row")} whose sentence does not answer the question: ${rows.filter((_, i) => a[i] !== true).map((r) => r.vals.join(", ")).join("; ")}`);
+  return kept;
 }
 
 /** A formula: one the pages state in LaTeX, translated by the model. */
