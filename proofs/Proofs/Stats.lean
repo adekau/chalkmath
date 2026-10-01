@@ -54,12 +54,10 @@ theorem sum_sq_dev (v : List ℝ) :
 theorem variance_soundR (ρ : EnvR) (xs : List Expr) :
     evalR ρ (varianceOf xs) = sampleVariance (xs.map (evalR ρ)) := by
   rw [sampleVariance, sum_sq_dev]
-  simp [varianceOf, sumR_eq_list_sum, Q.ofRat, List.map_map, Function.comp_def, Real.rpow_two]
-  rcases (xs.length : ℝ).eq_or_ne 1 with h1 | h1
-  · simp [h1]
-  · have : (xs.length : ℝ) - 1 ≠ 0 := sub_ne_zero.mpr h1
-    field_simp
-    ring
+  have two : ((2 : Q).val : ℝ) = 2 := by
+    show ((Q.ofInt 2).val : ℝ) = 2; rw [Q_val_ofInt]; norm_num
+  simp [varianceOf, sumR_eq_list_sum, Q.ofRat, List.map_map, Function.comp_def, two]
+  ring
 
 /-- **`stdev`**: the square root of the sample variance. -/
 theorem stdev_soundR (ρ : EnvR) (xs : List Expr) :
