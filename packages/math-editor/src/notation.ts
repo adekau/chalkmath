@@ -14,8 +14,10 @@ import { type Atom, type Block, type Stmt, isDigit, isIdChar, isIdStart } from "
 export interface NotationOptions {
   wrap?: (atoms: Atom[], latex: string) => string;
   hole?: (b: Block) => string;
-  /** Which output a relative reference (`%`, `%%`) stands for, when the host knows. */
-  outRef?: (ref: string) => number | null;
+  /** Which output a relative reference (`%`, `%%`) stands for, when the host knows: the one the
+   *  cell's output used, or (`pending`: the cell is being edited, or has not run) the one a run
+   *  now would use. */
+  outRef?: (ref: string) => { label: number; pending?: boolean } | null;
   /** A highlight class for a token, by what it is where it stands: a call's name, a variable bound
    *  by the call or `let` head around it (`diff(f, x)`'s x, `let f(x)`'s x), any other name, or a
    *  numeral. Null leaves it plain. The notation tags it `\\htmlData{hl=…}` for the host's colours. */
@@ -67,7 +69,7 @@ function tokens(run: (Atom & { k: "ch" })[]): Token[] {
 class Notation {
   private wrap: (atoms: Atom[], latex: string) => string;
   private hole: (b: Block) => string;
-  private outRef: (ref: string) => number | null;
+  private outRef: NonNullable<NotationOptions["outRef"]>;
   private classify: NonNullable<NotationOptions["classify"]>;
   /** The names bound where the notation is now (a binder's variable, a head's parameters). */
   private bound: string[] = [];
@@ -185,13 +187,16 @@ class Notation {
   }
 
   private op(t: Token, text: string): string {
-    // an output reference is one chip. `%17` names one output for good: Mathematica's Out[17].
-    // `%` and `%%` mean the last output and the one before it whenever the cell runs, so they are
-    // drawn as typed, in a chip of their own (`rel`), with the output they mean now beside them
+    // an output reference is one chip. `%17` names one output for good, drawn %₁₇. `%` and `%%`
+    // mean the last output and the one before it whenever the cell runs, so they are drawn as
+    // typed, in a chip of their own (`rel`), with the output the cell's output used faint (`now`)
+    // beside them, or, while it is edited or before it has run, an arrow to the one a run would
+    // use (`next`)
     if (text[0] === "%") {
-      if (/^%\d+$/.test(text)) return this.wrap(t.atoms, `\\htmlData{out=${outTag(text)}}{\\mathrm{Out}[${text.slice(1)}]}`);
-      const n = this.outRef(text);
-      return this.wrap(t.atoms, `\\htmlData{out=${outTag(text)}, rel=1}{${text.replace(/%/g, "\\%")}${n === null ? "" : `_{${n}}`}}`);
+      if (/^%\d+$/.test(text)) return this.wrap(t.atoms, `\\htmlData{out=${outTag(text)}}{\\%_{${text.slice(1)}}}`);
+      const r = this.outRef(text);
+      const n = !r ? "" : r.pending ? `_{\\htmlData{next=1}{\\to ${r.label}}}` : `_{\\htmlData{now=1}{${r.label}}}`;
+      return this.wrap(t.atoms, `\\htmlData{out=${outTag(text)}, rel=1}{${text.replace(/%/g, "\\%")}${n}}`);
     }
     // a `\` is a command still being typed (`\frac` before its space)
     return this.chars(t.atoms, (c) => (c === "*" ? "\\cdot " : c === " " ? "\\," : c === "%" ? "\\%" : c === "\\" ? "\\backslash " : c));

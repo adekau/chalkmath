@@ -642,7 +642,7 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
       delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.plot; delete cell.image; cell.steps = [];
       log("err", `lookup: ${e.message}`);
       S.busy = false; S.running = null; S.sel = null;
-      renderCellBody(cell); renderChrome(); renderSidebar(); renderPanel();
+      renderCellBody(cell); refreshRelativeRefs(); renderChrome(); renderSidebar(); renderPanel();
       if (cell === S.cells[S.cells.length - 1]) addCell();
       return;
     }
@@ -657,6 +657,7 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
   S.busy = false; S.running = null;
   S.sel = null;
   renderCellBody(cell);
+  refreshRelativeRefs();
   renderChrome();
   renderSidebar();
   renderPanel();
@@ -2256,12 +2257,16 @@ function visualInput(cell: Cell, i: number): MathInput | null {
       return as === "call" ? (COMMANDS.has(text) ? "hcmd" : BUILTIN_FN.has(text) ? "hfn" : null) : null;
     },
     // `%` is the output before this cell's own (or, not yet run, the latest); `%n` is Out[n]
-    outRef: (ref) => {
-      const base = cell.label ?? Math.max(0, ...S.cells.map((c) => c.label ?? 0)) + 1;
+    outRef: (ref, editing) => {
+      // a relative reference: the output this cell's output used (its In[n] counts back from n), or,
+      // while it is edited or before it has run, the one a run now would use (counting back from
+      // the next number)
+      const pending = !/^%\d+$/.test(ref) && (editing || cell.label == null);
+      const base = pending ? Math.max(0, ...S.cells.map((c) => c.label ?? 0)) + 1 : cell.label ?? 0;
       const n = /^%\d+$/.test(ref) ? +ref.slice(1) : base - ref.length;
       if (n < 1) return null;
       const out = S.cells.find((c) => c.label === n)?.outText;
-      return { label: n, ...(out ? { value: out } : {}) };
+      return { label: n, pending, ...(out ? { value: out } : {}) };
     },
   };
   const e = cell.openedEdit;
@@ -2270,6 +2275,12 @@ function visualInput(cell: Cell, i: number): MathInput | null {
   const mi = cell.tree && writeText(cell.tree) === cell.src ? new MathInput(cell.tree, opts) : MathInput.fromSource(cell.src, opts);
   if (mi) cell.tree = mi.edit.stmt; else delete cell.tree;
   return mi;
+}
+
+/** A run made a new output: the typeset inputs whose `%` or `%%` shows what a run would use (the
+ *  one being edited, those not run yet) count from it now. */
+function refreshRelativeRefs() {
+  for (const c of S.cells) if (c.mi && /%(?![%\d])|%%/.test(c.src)) c.mi.render();
 }
 
 /** Enter in a math cell: run it — unless a visual input still has an empty slot, which the engine

@@ -37,9 +37,11 @@ export interface MathInputOptions {
   onLeave?(dir: -1 | 1): void;
   /** A key, before the input handles it; return true to take it (a completion menu's arrows). */
   onKey?(ev: KeyboardEvent): boolean;
-  /** What an output reference (`%`, `%%`, `%3`) stands for: its number, and the output's text for
-   *  a tooltip. Without it, `%n` shows its number and `%` stays as typed. */
-  outRef?(ref: string): { label: number; value?: string } | null;
+  /** What an output reference (`%`, `%%`, `%3`) stands for: the output's number (shown beside a
+   *  relative one) and its text (for the tooltip). `editing`: the input has the focus, so a relative
+   *  one should say what a run now would use; the host also says so (`pending`) when the cell has
+   *  not run. */
+  outRef?(ref: string, editing: boolean): { label: number; value?: string; pending?: boolean } | null;
   /** Highlight classes for tokens (see `NotationOptions.classify`); the page styles `[data-hl=…]`. */
   classify?(text: string, as: "call" | "bound" | "name" | "num" | "keyword"): string | null;
   /** A paste, before the input reads it: the host takes it (an image, an SVG) by preventing its default. */
@@ -68,6 +70,8 @@ export const MATH_INPUT_CSS = `
 .mi-math [data-open] { opacity:0.35; }
 .mi-math [data-out] { background:var(--mi-chip, rgba(107,138,253,0.14)); border-radius:4px; padding:0 2px; }
 .mi-math [data-out][data-rel] { background:transparent; outline:1px dashed var(--mi-chip-edge, rgba(107,138,253,0.6)); outline-offset:-1px; }
+.mi-math [data-now] { opacity:0.55; }
+.mi-math [data-next] { color:var(--mi-next, var(--mi-cmd, #b0662c)); }
 .mi-math .mi-sel { background:var(--mi-sel, rgba(107,138,253,0.28)); border-radius:2px; }
 .mi-ta { position:absolute; left:0; top:0; width:1px; height:1px; opacity:0; padding:0; border:0; resize:none; overflow:hidden; }
 @keyframes mi-blink { 50% { opacity:0; } }
@@ -174,6 +178,8 @@ export class MathInput {
   /** How far an atom drawn with fitted parens or bars reaches above and below its line, for the
    *  caret beside it (a KaTeX span's own box is its line). Kept by `fitParens`. */
   private tallOf = new Map<HTMLElement, { up: number; down: number }>();
+  /** The input has the focus (it is being edited). */
+  private get editing() { return this.el.classList.contains("focused"); }
   /** Whether the parens were last fitted with the input on screen. */
   private fitted = false;
   /** The `\\` suggestions under the caret: the names that start with what has been typed. */
@@ -202,7 +208,12 @@ export class MathInput {
     this.ta.autocapitalize = "off"; this.ta.spellcheck = false;
     this.ta.setAttribute("autocorrect", "off"); this.ta.setAttribute("autocomplete", "off");
     this.el.append(this.math, this.caretEl, this.ta);
-    this.ta.addEventListener("focus", () => { this.el.classList.add("focused"); this.place(); this.opts.onFocus?.(); });
+    this.ta.addEventListener("focus", () => {
+      this.el.classList.add("focused");
+      // a relative output reference says, while the input is edited, what a run now would use
+      if (this.math.querySelector("[data-rel]")) this.render(); else this.place();
+      this.opts.onFocus?.();
+    });
     this.ta.addEventListener("blur", () => {
       this.el.classList.remove("focused");
       this.hideSuggestions();
@@ -279,7 +290,7 @@ export class MathInput {
     const latex = toLatex(this.edit.stmt, {
       wrap: (atoms, s) => { tagged.push(atoms); return `\\htmlData{a=${tagged.length - 1}}{${s}}`; },
       hole: (b) => { holes.push(b); return `\\htmlData{h=${holes.length - 1}}{\\square}`; },
-      outRef: (ref) => this.opts.outRef?.(ref)?.label ?? null,
+      outRef: (ref) => this.opts.outRef?.(ref, this.editing) ?? null,
       ...(this.opts.classify ? { classify: (t: string, as: "call" | "bound" | "name" | "num" | "keyword") => this.opts.classify!(t, as) } : {}),
     });
     // display-size fractions and operators, as a textbook (and Symbolab) set an input, but left-aligned
@@ -300,12 +311,13 @@ export class MathInput {
     if (p) for (const a of this.edit.caret.block.slice(p.start, this.edit.caret.i)) this.atomEl.get(a)?.el.classList.add("mi-cmd");
     if (this.errSpan) for (const a of atomsInSpan(this.edit.stmt, this.errSpan)) this.atomEl.get(a)?.el.classList.add("mi-err");
     for (const el of this.math.querySelectorAll<HTMLElement>("[data-out]")) {
-      const r = this.opts.outRef?.(outRefOf(el.dataset["out"]!));
-      if (!r) continue;
-      const out = `Out[${r.label}]${r.value ? ` = ${r.value}` : ""}`;
       const ref = outRefOf(el.dataset["out"]!);
+      const r = this.opts.outRef?.(ref, this.editing);
+      if (!r) continue;
+      const out = `%${r.label}${r.value ? ` = ${r.value}` : ""}`;
       // a relative reference says what it means, and that it follows the outputs
-      el.title = el.dataset["rel"] ? `${ref}: the ${ref.length === 1 ? "last output" : `output ${ref.length} back`} when the cell runs; now ${out}` : out;
+      const what = `${ref}: the ${ref.length === 1 ? "last output" : `output ${ref.length} back`} when the cell runs`;
+      el.title = !el.dataset["rel"] ? out : r.pending ? `${what}; run now, it takes ${out}` : `${what}; this output used ${out}`;
     }
     const text = this.text;
     this.ta.setAttribute("aria-label", `${this.opts.label ?? "Math input"}: ${text || "empty"}`);
