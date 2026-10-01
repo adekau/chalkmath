@@ -19,6 +19,7 @@
 import { leadingNumber, numberText, numbersIn, numeric, parseNumber } from "./numbers.js";
 import { readHit, type Fetch, type Hit, type Page, type Source } from "./sources.js";
 import type { Table } from "./html.js";
+import { texToEngine } from "./tex.js";
 
 /** A language model held to a JSON schema. The notebook supplies one (Chrome's built-in model, or a
  *  WebGPU model); tests supply a scripted one. */
@@ -204,7 +205,7 @@ const MEMORY_SYSTEM = `Answer a question from what you know, as rows of numbers,
 If you do not know, reply {"rows": []}. Do not invent precision you do not have.`;
 
 const SYNTAX = `Write the expression in this syntax: + - * / ^ and parentheses; write every product with * (B*h, not Bh); sqrt(x), sin, cos, tan, exp, ln, log, abs; pi for π; decimal numbers.
-Variables are letters or words (r, h, base_area); use the page's own letters. The expression is only the right-hand side: no "=" and no name on the left.`;
+Variables are single letters as a textbook writes them (B, P, h, r), b_1 for a subscript, θ for theta; never words. The expression is only the right-hand side: no "=" and no name on the left.`;
 
 const FORMULA_SCHEMA = {
   type: "object",
@@ -364,11 +365,11 @@ const RESERVED = new Set(["sin", "cos", "tan", "exp", "ln", "log", "sqrt", "abs"
 export function checkFormula(expr: string, params: string[]): { expr: string; params: string[] } | null {
   let e = expr.replace(/π/g, "pi").replace(/·|×/g, "*").replace(/−/g, "-").trim();
   if (e.includes("=")) e = e.slice(e.lastIndexOf("=") + 1).trim();
-  if (!e || !/^[A-Za-z0-9_+\-*/^().,\s]+$/.test(e)) return null;
+  if (!e || !/^[A-Za-z0-9_\u0391-\u03c9+\-*/^().,\s]+$/.test(e)) return null;
   let depth = 0;
   for (const c of e) { if (c === "(") depth++; else if (c === ")" && --depth < 0) return null; }
   if (depth) return null;
-  const ids = [...new Set((e.match(/[A-Za-z_][A-Za-z0-9_]*/g) ?? []).filter((n) => !RESERVED.has(n)))];
+  const ids = [...new Set((e.match(/[A-Za-z_\u0391-\u03c9][A-Za-z0-9_\u0391-\u03c9]*/g) ?? []).filter((n) => !RESERVED.has(n)))];
   const ok = params.filter((p) => ids.includes(p));
   return { expr: e, params: [...ok, ...ids.filter((n) => !ok.includes(n))] };
 }
@@ -474,7 +475,7 @@ async function fromKnowledge(q: string, plan: Plan, o: AskOptions, trail: string
   const via: Via = fallback ? "memory" : "knowledge";
   say(fallback ? "Answering from the model's memory" : "Answering from the model's knowledge");
   if (plan.shape === "formula") {
-    const got = formulaReply(parseJson<FormulaReply>(await ask(o.model, FORMULA_MEMORY_SYSTEM, `Question: ${q}`, FORMULA_SCHEMA, o.signal)), trail);
+    const got = formulaReply(parseJson<FormulaReply>(await ask(o.model, FORMULA_MEMORY_SYSTEM, `Question: ${q}`, FORMULA_SCHEMA, o.signal)), trail, false);
     if (!got) return null;
     trail.push(fallback ? "Answered from the model's memory: no source had it." : "Answered from the model's knowledge: a standard formula, so nothing was searched.");
     return {
@@ -503,10 +504,22 @@ interface FormulaReply { found?: boolean; expr?: string; params?: string[]; vars
 
 /** A formula reply, checked: the expression in the engine's syntax, its variables, their meanings,
  *  and the LaTeX it quotes. */
-function formulaReply(r: FormulaReply | null, trail: string[]): { source: string; params: string[]; vars: { name: string; meaning: string }[]; latex: string } | null {
-  if (!r?.found || typeof r.expr !== "string") return null;
-  const f = checkFormula(r.expr, (r.params ?? []).filter((p) => typeof p === "string"));
-  if (!f) { trail.push(`The model's formula “${r.expr}” is not in the engine's syntax.`); return null; }
+/** A textbook's name for a variable: a letter, maybe Greek, maybe with a subscript (`b_1`). */
+const TIDY = /^[A-Za-z\u0391-\u03c9](_[A-Za-z0-9]+)?$/;
+
+function formulaReply(r: FormulaReply | null, trail: string[], fromPage: boolean): { source: string; params: string[]; vars: { name: string; meaning: string }[]; latex: string } | null {
+  if (!r?.found) return null;
+  const latex = typeof r.quote === "string" ? r.quote.replace(/^\$+|\$+$/g, "").trim() : "";
+  const order = (r.params ?? []).filter((p) => typeof p === "string");
+  const tex = latex ? texToEngine(latex) : null;
+  const read = tex ? checkFormula(tex.expr, order) : null;
+  const model = typeof r.expr === "string" ? checkFormula(r.expr, order) : null;
+  // a formula from a page is read from its LaTeX by code: the model only chose it (asked to translate
+  // `2B + Ph`, a small model wrote `{2*B+Ph}`). From memory, the model's expression stands when its
+  // names are a textbook's; otherwise its LaTeX is read too.
+  const f = fromPage ? read ?? model : model && model.params.every((p) => TIDY.test(p)) ? model : read ?? model;
+  if (!f) { trail.push(`Could not read the formula ${latex ? `$${latex}$` : `“${String(r.expr ?? "")}”`} into the engine's syntax.`); return null; }
+  if (f === read && latex) trail.push(`Read $${latex}$ as ${f.expr}`);
   const vars = (r.vars ?? []).filter((v) => typeof v?.name === "string" && typeof v.meaning === "string" && f.params.includes(v.name))
     .map((v) => ({ name: v.name!, meaning: v.meaning! }));
   return { source: f.expr, params: f.params, vars, latex: typeof r.quote === "string" ? r.quote.replace(/^\$+|\$+$/g, "").trim() : "" };
@@ -657,7 +670,7 @@ async function formula(q: string, plan: Plan, pages: Page[], o: AskOptions, trai
   if (ps.length) {
     say("Reading formulas");
     const user = `Question: ${q}\n\nPassages:\n${ps.map((p, i) => `[${i + 1}] ${p}`).join("\n")}`;
-    const got = formulaReply(parseJson<FormulaReply>(await ask(o.model, FORMULA_SYSTEM, user, FORMULA_SCHEMA, o.signal)), trail);
+    const got = formulaReply(parseJson<FormulaReply>(await ask(o.model, FORMULA_SYSTEM, user, FORMULA_SCHEMA, o.signal)), trail, true);
     if (got) {
       // the quoted LaTeX must be one of the page's formulas, and name the variables the expression uses
       const page = got.latex ? pages.find((p) => [...p.text.matchAll(/\$([^$]+)\$/g), ...p.tables.flatMap((t) => t.rows.flat()).flatMap((c) => [...c.matchAll(/\$([^$]+)\$/g)])]

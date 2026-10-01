@@ -380,3 +380,51 @@ test("a count is only taken when the question asks how many", async () => {
   assert.equal(r.source, "[1935, 1945, 1968, 1984]", "one column is a list, laid across");
   assert.deepEqual(r.notes, ["Only the rows where Winning team contains “tigers”."]);
 });
+
+// --- formulas are read from their LaTeX by code, not translated by the model ---------------------
+
+test("LaTeX as pages write formulas, read into the engine's syntax; what it cannot read is refused", async () => {
+  const { texToEngine } = await import("../dist/index.js");
+  const read = (t) => texToEngine(t)?.expr ?? null;
+  assert.equal(read("A = 2B + Ph"), "2*B + P*h");
+  assert.equal(read("{\\displaystyle V=Bh}"), "B*h");
+  assert.equal(read("V = \\frac{1}{3}Bh"), "1/3*B*h");
+  assert.equal(read("V = \\frac{4}{3}\\pi r^3"), "4/3*pi*r^3");
+  assert.equal(read("A=\\pi r^{2}"), "pi*r^2");
+  assert.equal(read("c=\\sqrt{a^2+b^2}"), "sqrt(a^2 + b^2)");
+  assert.equal(read("A = \\frac{1}{2}(b_1 + b_2)h"), "1/2*(b_1 + b_2)*h");
+  assert.equal(read("V = lwh"), "l*w*h");
+  assert.equal(read("s = r\\theta"), "r*θ");
+  assert.equal(read("y = \\sin x + \\cos(2x)"), "sin(x) + cos(2*x)");
+  assert.equal(read("\\sqrt[3]{V}"), "V^(1/3)");
+  assert.equal(read("E = mc^2,"), "m*c^2");
+  assert.equal(texToEngine("A = 2B + Ph").lhs, "A");
+  for (const t of ["x = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}", "A = \\sum_{i} a_i", "V = base_area * h", "|x|", "\\int f"]) assert.equal(texToEngine(t), null, t);
+});
+
+test("a formula a page states is read from its LaTeX, whatever the model made of it", async () => {
+  // Wikipedia's "Area" has a table of surface areas; Gemini Nano chose the prism's row and wrote `{2*B+Ph}`
+  const area = `<h2>Surface area</h2><table class="wikitable"><tr><th>Shape</th><th>Formula</th><th>Variables</th></tr>
+    <tr><td>Cube</td><td><math alttext="{\\displaystyle 6s^{2}}"></math></td><td>s = side length</td></tr>
+    <tr><td>Prism</td><td><math alttext="{\\displaystyle 2B+Ph}"></math></td><td>B = the area of a base, P = the perimeter of a base, h = the height of the prism</td></tr></table>`;
+  const fetch = fakeFetch([[/w\/api\.php.*list=search/, { query: { search: [{ title: "Area" }] } }], [/rest_v1\/page\/html\/Area/, area]]);
+  const plan = { shape: "formula", subject: "mathematics", known: false, searches: ["triangular prism area formula"], columns: ["area"], rows: "", keywords: ["prism", "area", "surface"] };
+  const model = scripted({ plan, formula: { found: true, expr: "{2*B+Ph}", params: ["B", "P", "h"], quote: "2B+Ph",
+    vars: [{ name: "B", meaning: "the area of a base" }, { name: "P", meaning: "the perimeter of a base" }, { name: "h", meaning: "the height" }] } });
+  const r = await lookup("formula for area of a triangular prism", opts(model, fetch));
+  assert.equal(r.via, "text");
+  assert.equal(r.source, "2*B + P*h");
+  assert.deepEqual(r.params, ["B", "P", "h"]);
+  assert.deepEqual(r.flagged, []);
+  assert.deepEqual(r.cites, [{ title: "Area", url: "https://en.wikipedia.org/wiki/Area" }]);
+  assert.ok(r.trail.includes("Read $2B+Ph$ as 2*B + P*h"), r.trail.join("\n"));
+  assert.ok(!model.calls.some((c) => c.step === "memory" || (c.step === "formula" && !/Passages/.test(c.user))), "memory was not asked");
+});
+
+test("from memory, a model's formula with words for names is replaced by its LaTeX when that reads", async () => {
+  const fetch = fakeFetch([]);
+  const model = scripted({ plan: PRISM_PLAN, formula: { found: true, expr: "base_area*height", params: ["base_area", "height"], vars: [], quote: "V = Bh" } });
+  const r = await lookup("volume of a prism", opts(model, fetch));
+  assert.equal(r.via, "knowledge");
+  assert.equal(r.source, "B*h");
+});
