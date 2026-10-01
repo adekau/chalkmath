@@ -775,3 +775,24 @@ Phases:
    menu paths read "View ` Show all work"; it now converts only `‹…›` pairs.
 - llamas.chalk — DONE. `exp(…)` written `ℯ^(…)` in its 14 cells, so they typeset as the prose's e^{ikt}; same
    answers, one more step each (`cx.euler-power`, eᵇ is exp(b)) when the work is shown.
+
+## Files are values; the data table (2026-10-01, Alex: "Import anything and just display it … if we want to do something with it then we call functions on it like samplePoints")
+
+- notebook: a file is a value — DONE. `import("url")`, `⟦name⟧` and `let x =` either keep the file as it came:
+   name, media type (the server's, or the extension's when the server says text/plain or octet-stream) and
+   contents (text, or base64). The cell shows it by what it is: an image as the image, CSV/TSV as a table, JSON
+   (indented) and other text as text, anything else as a card with its type and size. Nothing is converted on the
+   way in: a PNG no longer fails for having no paths. `apps/notebook/src/files.ts`. The engine still never sees a
+   file. A file cell asks it to evaluate nothing, which fails and takes the next number, so `In[n]`/`%n` keep one
+   count, and `%` after a file cell is that file. Functions called on a file are evaluated by the notebook before
+   the cell is sent: `samplePoints(svg[, n])`, and for tables `matrix`, `column(t, k | "name")`, `row`,
+   `dimensions` (numerals passed exactly, `1.5e3` as `1500`). A file anywhere else is an error naming the
+   functions that apply (`llama is a file (SVG image), not a number: samplePoints(llama) …`), so
+   `epicycles(llama, 60)` is now `epicycles(samplePoints(llama), 60)`; llamas.chalk binds `pts` once. A Markdown
+   cell shows an attached table as a table. `notebooks/data/planets.csv` (NASA's fact sheet) is served with
+   the examples for the reference's table examples. Tests: `apps/notebook/test/files.test.mjs` (`npm test`).
+- notebook: the data table — DONE. One display for many rows, shared by a CSV file and a matrix output too
+   large to typeset (more than 24 rows or 12 columns, alone as the output): column names or numbers and row
+   numbers held in view, rows added 100 at a time as they scroll in, numeric columns right-aligned, entries still
+   selectable for `explain`. It is the default form of such a matrix ("data table" in the output-form menu); the
+   typeset forms remain, abridged as before. A file table's forms are "table" and "text".
