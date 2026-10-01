@@ -70,7 +70,10 @@ test("parse errors are the engine's, with its spans", () => {
   const bad = read("x + )");
   assert.deepEqual(bad.ok ? null : bad.error, { message: "unexpected ')'", span: { start: 4, end: 5 } });
   // λ-terms and the other worlds are not this grammar: those cells stay raw
-  for (const src of ["(λx. x) y", "TWO := succ (succ zero)", "poset({a,b}; a<b)", "import(\"a.svg\")", "⟦llama.svg⟧", "m[[2]]", "mean(t[[All, 2]])"]) assert.equal(read(src).ok, false, src);
+  for (const src of ["(λx. x) y", "TWO := succ (succ zero)", "poset({a,b}; a<b)", "import(\"a.svg\")", "⟦llama.svg⟧"]) assert.equal(read(src).ok, false, src);
+  // a quoted name outside a part is the engine's lexer error
+  const q = read('x "a"');
+  assert.deepEqual(q.ok ? null : q.error, { message: "unexpected character '\"'", span: { start: 2, end: 3 } });
   const brace = read("{1, 2}");
   assert.equal(brace.ok ? "(read)" : brace.error.message, "braces list the indices of a part, as in m[[{1, 3}]]");
   // the statistics are calls, as in the engine, not products
@@ -185,4 +188,16 @@ test("fractions keep full size when nested, script size in exponents and bounds;
   assert.match(tex("a/(b/(c/sin(t)))"), /word=s/);
   assert.match(tex("a/(b/sin(t))"), /word=1/);
   assert.match(tex("sign(sin(t))"), /^\\htmlData\{call=1\}\{\\htmlData\{word=1\}\{\\mathrm\{sgn\}\}\{\\htmlData\{pg=c\}\{\\htmlData\{pd=o\}\{\(\}\\htmlData\{call=1\}\{\\htmlData\{word=1\}\{\\mathrm\{sin\}\}/);
+});
+
+test("a part reads as a part atom, its indices kept as typed, and writes back the same", () => {
+  for (const src of ['planets[[All, "mass"]]', 'mean(t[[All, {"mass", "period"}]])', "m[[2, 1;;-1;;2]]^2", "f(x)[[1]][[2]]", "[1, 2; 3, 4][[-1]]", 'x[["a,b", 2]]']) {
+    const r = read(src);
+    assert.ok(r.ok, src);
+    assert.equal(write(r.stmt).text, src, src);
+  }
+  const r = read("m[[2, 1;;3]]^2");
+  assert.deepEqual(r.stmt.body.map((a) => a.k), ["ch", "part", "sup"]);
+  const open = read("m[[1");
+  assert.equal(open.ok ? "(read)" : open.error.message, "expected ']]' to close the part");
 });

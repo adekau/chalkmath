@@ -45,7 +45,13 @@ const DOCS: Doc[] = [
   { name: "import", sig: "import(\"url\") · ⟦file⟧ · let x = import(…)", blurb: "A file as a value, as in Mathematica: kept as it came — its name, media type and contents — and shown by what it is. An image shows as the image, a CSV or TSV as a table, JSON and other text as text, anything else as a card with its type and size. ⟦name⟧ refers to a file attached to the notebook (File → Attach file…, or paste one into a cell); import(\"url\") fetches one from the web (the server must allow cross-origin reads). let x = import(…) binds the name to the file. Nothing is converted on the way in: its parts and the functions called on it turn it into numbers — t[[All, \"mass\"]] for a table, j[[\"key\"]] for JSON, samplePoints for an SVG, matrix and dimensions for a table — and a file anywhere else in a cell is an error saying which. A part that is not numbers (rows with text, a JSON object) is shown and bound like a file.", examples: ["import(\"https://raw.githubusercontent.com/adekau/fourier/master/src/assets/llama.svg\")", "let planets = import(\"examples/data/planets.csv\")"] },
   { name: "samplePoints", sig: "samplePoints(svg[, n])", blurb: "An SVG as numbers: n points (400 if not given) sampled along its paths at equal arc lengths, centred and scaled so the larger extent is [-1, 1] — an n×2 matrix, ready for epicycles and dft. Only SVG paths are traced; another image is an error.", examples: ["let llama = import(\"https://raw.githubusercontent.com/adekau/fourier/master/src/assets/llama.svg\")", "let pts = samplePoints(llama)", "epicycles(pts, 60)"] },
   { name: "part", sig: "m[[i]] · m[[i, j]] · m[[All, j]] · m[[a;;b;;s]] · m[[{i, j}]] · t[[All, \"name\"]]", blurb: "Mathematica's Part. Positions count from 1, and a negative one from the end (-1 is the last). All takes every position; a;;b takes a through b, both included (;;b from the start, a;; to the end), and a;;b;;s steps by s, backwards when s is negative; {i, j} takes those positions in that order. A matrix takes rows, then columns; a vector (one row or one column) takes one index into its entries. A single index drops that dimension (an entry, or a row or column vector); a span or a list keeps it. A table also takes column names in quotes, t[[\"mass\"]] alone being that column; JSON takes keys and positions one level at a time, with All applying the rest to every element: j[[\"planets\", All, \"mass\"]]. A selection of numbers goes to the engine (la.part, every position in range by partSpec_lt); one with text in it stays a table, JSON or text of the notebook.", examples: ["[1, 2, 3; 4, 5, 6; 7, 8, 9][[2]]", "[1, 2, 3; 4, 5, 6; 7, 8, 9][[All, -1]]", "[1, 2, 3; 4, 5, 6; 7, 8, 9][[1;;3;;2, {3, 1}]]", "let planets = import(\"examples/data/planets.csv\")", "planets[[All, \"period\"]]", "planets[[2;;4]]"] },
-  { name: "mean", sig: "mean(v) · median(v) · variance(v) · stdev(v) · min(v) · max(v) · total(v)", blurb: "Statistics of a vector, or of each column of a matrix (a row of the columns' statistics), as in Mathematica. total, mean, variance and stdev are definitions, so symbolic entries work; variance and stdev are the sample ones, dividing by n − 1 (Mathematica's Variance, Python's statistics.variance), and the engine writes the variance in its one-pass form, proved equal to Σ(xᵢ − x̄)²/(n − 1) (variance_soundR). min, max and median compare exact rationals, so they take numbers.", examples: ["mean([2, 4, 4, 4, 5, 5, 7, 9])", "variance([2, 4, 4, 4, 5, 5, 7, 9])", "stdev([1, 3])", "median([4, 1, 3, 2])", "mean([a; b])", "mean([1, 2; 3, 4])", "mean(planets[[All, \"mass\"]])"] },
+  { name: "mean", sig: "mean(v)", blurb: "The mean of a vector's entries, (1/n)·Σ xᵢ, or of each column of a matrix (a row of the column means), as in Mathematica. A definition, so symbolic entries work: mean([a; b]) is (a + b)/2. Over ℝ the value is the sum over the count (mean_soundR).", examples: ["mean([2, 4, 4, 4, 5, 5, 7, 9])", "mean([a; b])", "mean([1, 2; 3, 4])", "mean(planets[[All, \"mass\"]])"] },
+  { name: "median", sig: "median(v)", blurb: "The middle entry once sorted, or the mean of the two middle ones; of a matrix, each column's. It compares exact rationals, so the entries must be numbers (medianQ_spec: the middle of a sorted permutation).", examples: ["median([5, 1, 3])", "median([4, 1, 3, 2])"] },
+  { name: "variance", sig: "variance(v)", blurb: "The sample variance Σ(xᵢ − x̄)²/(n − 1), as Mathematica's Variance and Python's statistics.variance; of a matrix, each column's. Written in the one-pass form (Σxᵢ² − (Σxᵢ)²/n)/(n − 1), proved equal to the definition (variance_soundR). Needs two values or more.", examples: ["variance([2, 4, 4, 4, 5, 5, 7, 9])", "variance([a, b])"] },
+  { name: "stdev", sig: "stdev(v)", blurb: "The sample standard deviation, the square root of variance (stdev_soundR); of a matrix, each column's.", examples: ["stdev([2, 4, 4, 4, 5, 5, 7, 9])", "stdev([1, 3])"] },
+  { name: "min", sig: "min(v)", blurb: "The least (or greatest) entry; of a matrix, each column's. Exact comparison of rationals, so the entries must be numbers; the result is an entry and none is smaller (minQ_spec, maxQ_spec).", examples: ["min([3, -1, 2.5])", "max([3, -1, 2.5])"] },
+  { name: "max", sig: "max(v)", blurb: "The greatest (or least) entry; of a matrix, each column's. Exact comparison of rationals, so the entries must be numbers; the result is an entry and none is larger (maxQ_spec, minQ_spec).", examples: ["max([3, -1, 2.5])", "min([3, -1, 2.5])"] },
+  { name: "total", sig: "total(v)", blurb: "The sum of a vector's entries, Σ xᵢ, or of each column of a matrix, as Mathematica's Total (sum(f, k, a, b) is the sum of a term over an index). Over ℝ the value is the list's sum (total_soundR).", examples: ["total([1; 2; 3])", "total([1, 2; 3, 4])"] },
   { name: "matrix", sig: "matrix(table) · dimensions(table)", blurb: "A CSV or TSV file, or JSON that is a list of records, as numbers: matrix is every data row (an error naming the field if one is not a number), dimensions is [rows, columns]. The first line of a CSV is a header when it has no numbers in it. To take some of a table, use its parts: t[[All, {\"mass\", \"period\"}]].", examples: ["let planets = import(\"examples/data/planets.csv\")", "dimensions(planets)", "matrix(planets[[All, 2;;]])"] },
   { name: "sign", sig: "sign(x)", blurb: "The sign function: −1, 0 or 1. Folds on numerals and stays symbolic otherwise, so sign(sin(t)) is the square wave.", examples: ["sign(-3)", "plot(sign(sin(t)), t, -pi, pi)"] },
   { name: "poset", sig: "poset({a,b,c}; a<b, a<c) · divisors(n) · subsets({…}) · chain(n)", blurb: "A finite partial order: the reflexive-transitive closure of the relation given, checked for antisymmetry. Bind it with let and ask about it: hasse, join, meet, sup, inf, upper, lower, top, bottom, maximal, minimal, lattice, le.", examples: ["let D = divisors(12)", "join(D, 4, 6)", "lattice(D)", "le(D, 2, 12)", "let P = poset({a,b,c,d}; a<b, a<c, b<d, c<d)"] },
@@ -2364,6 +2370,15 @@ function visualInput(cell: Cell, i: number): MathInput | null {
       return modeKey(ev, cell);
     },
     onPaste: (ev) => onPaste(ev, cell),
+    // in an index of a part: the column names or keys that can go there, and All
+    partNames: (before) => {
+      const part = partIn(cell, before);
+      if (!part) return [];
+      return [{ name: "All", what: "every position" }, ...part.help.names.map((n) => ({ name: n, what: part.help.namesAre ?? "name" }))];
+    },
+    // the functions a name being typed could be, as the text input lists them
+    functions: (prefix) => DOCS.filter((d) => d.name.toLowerCase().startsWith(prefix.toLowerCase()) && /^[A-Za-z]/.test(d.name))
+      .slice(0, 9).map((d) => ({ name: d.name, what: d.blurb.split(".")[0]! })),
     // the text highlighter's colours: what a name is, and where it is bound
     classify: (text, as) => {
       if (as === "num") return "hnum";
@@ -4819,8 +4834,11 @@ function sigPieces(sig: string): SigPiece[] {
 /** Inside `x[[…]]` at the caret: what `x` is (a file, a part of one, or a bound matrix) and what the
  *  index being typed can be. */
 function partAt(cell: Cell, input: HTMLInputElement) {
-  const caret = input.selectionStart ?? input.value.length;
-  const ctx = partContext(input.value.slice(0, caret));
+  return partIn(cell, input.value.slice(0, input.selectionStart ?? input.value.length));
+}
+/** The same, given the cell's text up to the caret (a visual input writes it). */
+function partIn(cell: Cell, before: string) {
+  const ctx = partContext(before);
   if (!ctx) return null;
   const d = docOf(cell);
   const sid = d?.sessionId ?? sessionId;
@@ -4830,18 +4848,22 @@ function partAt(cell: Cell, input: HTMLInputElement) {
   return help ? { ctx, help } : null;
 }
 
+/** The signature line inside a part: its indices, the one at the caret bold, and what is in range. */
+function partSig(cell: Cell, key: string, { ctx, help }: NonNullable<ReturnType<typeof partIn>>) {
+  const pieces: SigPiece[] = [{ text: `${ctx.base}[[`, param: false }];
+  help.params.forEach((p, i) => { if (i) pieces.push({ text: ", ", param: false }); pieces.push({ text: p, param: true }); });
+  pieces.push({ text: "]]", param: false });
+  return { cell, key, sig: pieces.map((p) => p.text).join(""), blurb: help.blurb, arg: Math.min(ctx.arg, help.params.length - 1), pieces };
+}
+
 function updateSigHelp(cell: Cell) {
   const input = cell.input;
   if (!S.sigHelp || !input || document.activeElement !== input || ASK_CELL.test(input.value)) return hideSigHelp();
   const part = partAt(cell, input);
   if (part) {
-    const { ctx, help } = part;
-    const key = `${cell.id}:[[${ctx.base}`;
+    const key = `${cell.id}:[[${part.ctx.base}`;
     if (S.sigDismissed === key) return hideSigHelp();
-    const pieces: SigPiece[] = [{ text: `${ctx.base}[[`, param: false }];
-    help.params.forEach((p, i) => { if (i) pieces.push({ text: ", ", param: false }); pieces.push({ text: p, param: true }); });
-    pieces.push({ text: "]]", param: false });
-    S.sig = { cell, key, sig: pieces.map((p) => p.text).join(""), blurb: help.blurb, arg: Math.min(ctx.arg, help.params.length - 1), pieces };
+    S.sig = partSig(cell, key, part);
     return renderSigHelp();
   }
   const ctx = callContext(input);
@@ -4855,6 +4877,15 @@ function updateSigHelp(cell: Cell) {
 }
 /** Signature help for a visual input: the call around its caret that shows as `name(args)`. */
 function updateVisualSigHelp(cell: Cell) {
+  // in an index of a part: what can go there, as for the text input
+  const pb = S.sigHelp && cell.mi ? cell.mi.edit.partBefore() : null;
+  const part = pb && partIn(cell, pb.text);
+  if (part) {
+    const key = `${cell.id}:[[${part.ctx.base}`;
+    if (S.sigDismissed === key) return hideSigHelp();
+    S.sig = partSig(cell, key, part);
+    return renderSigHelp();
+  }
   const ctx = S.sigHelp && cell.mi ? cell.mi.edit.callContext() : null;
   const found = ctx && sigFor(ctx.name, ctx.firstArg);
   if (!ctx || !found) { S.sigDismissed = null; return hideSigHelp(); }

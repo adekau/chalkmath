@@ -834,3 +834,13 @@ Phases:
    the shape of a name bound to a matrix (recorded from its output). Completions offer the names and `All`; a
    quoted name replaces what was typed, its closing quote included. Captions suggest parts with the file's own
    column names (`mean(planets[[All, "mass"]])`).
+- visual input: parts and function names — DONE (Alex: "the new functions don't work in visual mode and don't
+   show in autocomplete"). A `part` atom in the editor's tree (`x[[…]]`, postfix like `sup`): read from the text and
+   written back exactly, drawn `x⟦All, “mass”⟧` (spans as `;;`, lists in braces, a quoted name as text), typed as
+   `[[` after a value (the first `[` makes the matrix it always did; the second turns it into a part). In an index,
+   `,` moves to the next one outside braces and quotes, `]` leaves the part and the second `]` is taken, and every
+   character inside quotes is the name's. The reader lexes a quoted name, which only a part's index may hold;
+   elsewhere it is the engine's `unexpected character '"'`. Completions: the visual input lists functions for a
+   name being typed (`functions`, from the Reference, as the text input does; Enter takes one only once picked),
+   and in a part's index the column names, keys and All (`partNames`), with the same signature line as text. Each
+   statistic has its own Reference entry, so `var`, `med`, `stdev` complete and `variance(` has signature help.

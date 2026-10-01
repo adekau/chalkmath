@@ -30,6 +30,9 @@ export type Atom =
    *  `notation.ts`'s choice; the tree only knows the name. */
   | { k: "call"; name: string; args: Block[]; open?: boolean }
   | { k: "matrix"; rows: Block[][] }
+  /** `[[i, j]]`, Mathematica's Part, of the atom before it (like `sup`, it attaches on the left). Each
+   *  index is a slot of characters kept as typed: `2;;-1`, `All`, `{1, 3}`, a name in quotes. */
+  | { k: "part"; specs: Block[] }
   /** `let name =` or `let f(x, y) =`: the cell's head, only ever first in the body. The name and the
    *  parameters are slots like any other, so the caret goes through them. */
   | { k: "let"; name: Block; params: Block[] | null };
@@ -89,6 +92,7 @@ export function sameAtom(a: Atom, b: Atom): boolean {
     case "call": return b.k === "call" && a.name === b.name && a.args.length === b.args.length && a.args.every((x, i) => sameBlock(x, b.args[i]!));
     case "matrix": return b.k === "matrix" && a.rows.length === b.rows.length &&
       a.rows.every((r, i) => r.length === b.rows[i]!.length && r.every((x, j) => sameBlock(x, b.rows[i]![j]!)));
+    case "part": return b.k === "part" && a.specs.length === b.specs.length && a.specs.every((x, i) => sameBlock(x, b.specs[i]!));
     case "let": return b.k === "let" && sameBlock(a.name, b.name) && (a.params === null ? b.params === null
       : b.params !== null && a.params.length === b.params.length && a.params.every((x, i) => sameBlock(x, b.params![i]!)));
   }
@@ -107,6 +111,7 @@ function showAtom(a: Atom): string {
     case "paren": return `(paren ${show(a.body)})`;
     case "call": return `(${a.name} ${a.args.map(show).join(" ")})`;
     case "matrix": return `(matrix ${a.rows.map((r) => r.map(show).join(" ")).join(" ; ")})`;
+    case "part": return `(part ${a.specs.map(show).join(" ")})`;
     case "let": return `(let ${show(a.name)}${a.params ? " " + a.params.map(show).join(" ") : ""})`;
   }
 }

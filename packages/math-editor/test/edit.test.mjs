@@ -305,3 +305,30 @@ test("@ puts the selection in parentheses with a box in front for a function's n
   assert.equal(left.stmt.body[0].head, undefined);
   assert.equal(left.text, "(a + b)");
 });
+
+/** Type characters one at a time (braces and all, which `typed` would read as keys). */
+function typeChars(e, s) { for (const c of s) e.type(c); return e; }
+
+test("[[ after a value opens a part; its indices are typed as written", () => {
+  const e = typeChars(new MathEdit({ body: [] }), 'planets[[All, "mass"]]');
+  assert.equal(e.text, 'planets[[All, "mass"]]');
+  assert.equal(typeChars(new MathEdit({ body: [] }), 'mean(t[["a b, c", 2;;-1]])').text, 'mean(t[["a b, c", 2;;-1]])');
+  assert.equal(typeChars(new MathEdit({ body: [] }), "m[[{1, 3}, -1]]^2").text, "m[[{1,3}, -1]]^2");
+  // not after a value: a matrix, as before; a space keeps the product
+  assert.equal(typeChars(new MathEdit({ body: [] }), "[[1]]").text, "[[1]]");
+  assert.equal(typeChars(new MathEdit({ body: [] }), "x [1, 2]").text, "x [1, 2]");
+  assert.match(toLatex(read('t[[All, "ma"]]').stmt), /\\llbracket .*\\mathrm\{All\}.*\\text\{“\}.*\\rrbracket/);
+});
+
+test("what completions need: the name being typed, and the part index at the caret", () => {
+  const e = typeChars(new MathEdit({ body: [] }), "2+vari");
+  assert.deepEqual(e.nameBefore(), { name: "vari", start: 2 });
+  assert.ok(e.completeName("variance"));
+  typeChars(e, "[1, 3]");
+  assert.equal(e.text, "2 + variance([1, 3])");
+  const p = typeChars(new MathEdit({ body: [] }), 'mean(t[[All, "ma');
+  assert.deepEqual(p.partBefore(), { text: 'mean(t[[All, "ma', typed: "ma", start: 0, quoted: true });
+  assert.equal(p.nameBefore(), null);   // in an index, names are the part's, not functions
+  assert.ok(p.completeIndex('"mass"'));
+  assert.equal(p.text, 'mean(t[[All, "mass"]])');
+});
