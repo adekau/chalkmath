@@ -30,6 +30,15 @@ mutual
     .obj #[("input", d.input.toJson), ("steps", .arr (d.steps.map fun s => Step.toJson s paths)), ("output", d.output.toJson),
            -- the input rendered too, so a nested derivation's first step has a "before" to show
            ("inputRendered", .obj #[("text", .str d.input.toText), ("latex", .str (d.input.toLatex paths))])]
+  /-- A step without its terms: what `outline` replies carry (the rule, why, where, and whether the
+  term prints the same before and after, which a frontend folds), so that a derivation of a big term
+  costs what its steps say rather than what its terms weigh. `engine.steps` sends the terms. -/
+  partial def Step.outlineJson (s : Step) : Json :=
+    let base := #[("rule", .str s.rule), ("explanation", .str s.explanation), ("path", Path.toJson s.path)]
+    let base := if s.sub.isNone && s.before.toLatex false == s.after.toLatex false then base.push ("quiet", .bool true) else base
+    .obj (match s.sub with | some d => base.push ("sub", d.outlineJson) | none => base)
+  partial def Derivation.outlineJson (d : Derivation) : Json :=
+    .obj #[("steps", .arr (d.steps.map Step.outlineJson))]
 end
 
 end MathEngine

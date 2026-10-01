@@ -60,6 +60,21 @@ export interface Derivation {
   inputRendered?: Rendered;
 }
 
+/** A step without its terms: what an `outline` reply carries (see `EvaluateParams.outline`). */
+export interface StepOutline {
+  rule: string;
+  explanation: string;
+  path: Path;
+  /** The term prints the same before and after the step (a one-factor product unwrapped), and the
+   *  step has no nested work: a frontend folds it. Absent means false. */
+  quiet?: boolean;
+  sub?: Outline;
+}
+
+/** A derivation without its terms: rules, explanations and paths, in step order. Its size is what
+ *  the steps say, not what the terms weigh; `engine.steps` sends the derivation itself. */
+export interface Outline { steps: StepOutline[] }
+
 // ---------------------------------------------------------------------------
 // Rendering
 // ---------------------------------------------------------------------------
@@ -108,6 +123,11 @@ export interface EvaluateParams {
   showWork?: boolean;
   /** Emit \htmlData path annotations in LaTeX so the UI can map selections to subterms. */
   paths?: boolean;
+  /** With `showWork`: reply with the derivation's `outline` instead of the derivation. Every step
+   *  carries the whole term before and after it, so the derivation of a big term (a table's worth of
+   *  numbers) is large where its outline is not; `engine.steps` sends the derivation when the work
+   *  is opened. Optional (rule 5). */
+  outline?: boolean;
 }
 
 /**
@@ -122,6 +142,8 @@ export interface EvaluateResult {
   value: WireExpr;
   rendered: Rendered;
   derivation?: Derivation;
+  /** With `showWork` and `outline`: the derivation's steps without their terms, in place of `derivation`. */
+  outline?: Outline;
   /** Names bound by this cell (e.g. `let f = x^2`). */
   bound?: string[];
   /** With `bound`: the parameters when the binding defined a function (`let f(x, y) = e`). */
@@ -175,7 +197,7 @@ export interface ExplainResult {
  *  function (or the list, entrywise) under the session, records the cell like any other (so
  *  `engine.explain` works on it), and samples each curve on a uniform grid. Drawing is the
  *  frontend's; a sample is `null` where the curve has no finite value. Optional method (rule 5). */
-export interface PlotParams { sessionId: string; cellId: string; source: string; showWork?: boolean; paths?: boolean }
+export interface PlotParams { sessionId: string; cellId: string; source: string; showWork?: boolean; paths?: boolean; outline?: boolean }
 /** One curve: its normalized term (rendered) and its samples. A `parametric` curve is complex-valued
  *  and its samples are `[re, im]` — a point in the plane rather than `[t, y]`. */
 export interface PlotSeries { rendered: Rendered; points: [number, number | null][]; parametric?: boolean }
@@ -189,7 +211,7 @@ export interface PlotResult {
   series: PlotSeries[];
   /** Non-empty for `epicycles` and `dft`: the circles, in frequency order. */
   terms?: Epicycle[];
-  derivation?: Derivation; inputRendered?: Rendered; label?: number;
+  derivation?: Derivation; outline?: Outline; inputRendered?: Rendered; label?: number;
 }
 
 /** M-λ: a λ-cell's reply carries the de Bruijn view of the result and of every step
@@ -205,10 +227,16 @@ export interface WorldExtras {
   hasse?: HasseData; summary?: string;
 }
 
+/** The derivation of the cell's last evaluation in the session, with its terms: what an `outline`
+ *  reply left out. A cell the session has not evaluated is an error. Optional method (rule 5). */
+export interface StepsParams { sessionId: string; cellId: string; paths?: boolean }
+export interface StepsResult { derivation: Derivation; inputRendered: Rendered }
+
 export interface Methods {
   "engine.capabilities": { params: Record<string, never>; result: EngineCapabilities };
   "engine.evaluate":     { params: EvaluateParams; result: (EvaluateResult & WorldExtras) | EvaluateError };
   "engine.explain":      { params: ExplainParams; result: ExplainResult };
+  "engine.steps":        { params: StepsParams; result: StepsResult };
   "engine.resetSession": { params: { sessionId: string }; result: { ok: true } };
   "engine.plot":         { params: PlotParams; result: PlotResult | EvaluateError };
 }

@@ -67,6 +67,7 @@ def ruleStatus : Json :=
     entry "la.dot" "verified" "Σ uᵢvᵢ by definition; a matrix has no value in the ℝ semantics, so the claim is the definition (bilinear, as Mathematica's Dot — the Hermitian product is dot(u, conj(v))).",
     entry "la.norm" "verified" "(Σ vᵢ²)^(1/2) by definition, the Pythagorean length.",
     entry "la.conj" "verified" "Entrywise by definition.",
+    entry "la.entrywise" "verified" "A matrix equals the one whose entries equal its own: each entry is rewritten on its own, and the step is only as sound as the entries' steps nested below it, whose statuses it carries.",
     entry "la.part" "verified" "Mathematica's Part by definition: positions count from 1, negative ones from the end. Every position a spec selects is in range (partSpec_lt), so the selection is exactly the entries named, never a filler.",
     entry "stat.total" "verified" "Σ xᵢ by definition; over ℝ the value is the list's sum (total_soundR).",
     entry "stat.mean" "verified" "(1/n)·Σ xᵢ; over ℝ the value is the sum over the count (mean_soundR).",
@@ -123,6 +124,24 @@ def capabilities : Json :=
 def Rendered.toJson (e : Expr) (paths : Bool) : Json :=
   .obj #[("text", .str e.toText), ("latex", .str (e.toLatex paths))]
 
+/-- A derivation on the wire; a λ-cell's steps also carry their de Bruijn view (`afterDeBruijn`). -/
+def derivationJson (d : Derivation) (paths lambda : Bool) : Json :=
+  if !lambda then d.toJson paths else
+  let steps := (d.steps.zip (lambdaDbSteps d)).map fun (stp, db) =>
+    match stp.toJson paths with
+    | .obj fields => Json.obj (fields.push ("afterDeBruijn", Rendered.toJson db false))
+    | j => j
+  .obj #[("input", d.input.toJson), ("steps", .arr steps), ("output", d.output.toJson)]
+
+/-- The work in a reply, with `showWork`: the derivation, or with `outline` only its outline —
+each step's rule, explanation and path, without the terms, which are what make the derivation of a
+big term large. `engine.steps` sends the derivation itself when it is wanted. -/
+def workFields (params : Json) (d : Derivation) (lambda := false) : Array (String × Json) :=
+  if !params.getBool "showWork" then #[] else
+  let paths := params.getBool "paths"
+  let work := if params.getBool "outline" then ("outline", d.outlineJson) else ("derivation", derivationJson d paths lambda)
+  #[work, ("inputRendered", Rendered.toJson d.input paths)]
+
 private def errorJson (code msg : String) (span : Option (Nat × Nat) := none) : Json :=
   let err := #[("code", .str code), ("message", .str msg)]
   let err := match span with
@@ -142,19 +161,11 @@ def evaluateLambda (st : Store) (params : Json) (sessionId cellId src : String) 
   | .error (code, msg, span) => (st, errorJson code msg span)
   | .ok res =>
     let paths := params.getBool "paths"
-    let d := res.derivation
-    let steps := (d.steps.zip res.dbSteps).map fun (stp, db) =>
-      match stp.toJson paths with
-      | .obj fields => Json.obj (fields.push ("afterDeBruijn", Rendered.toJson db false))
-      | j => j
-    let dj : Json := .obj #[("input", d.input.toJson), ("steps", .arr steps), ("output", d.output.toJson)]
     let out := Lam.toExpr res.output
     let r := #[("ok", .bool true), ("kind", .str "lambda"), ("value", out.toJson), ("rendered", Rendered.toJson out paths),
       ("renderedDeBruijn", Rendered.toJson (Lam.dbToExpr (Lam.toDB [] res.output)) false)]
     let r := match res.reading with | some t => r.push ("reading", .str t) | none => r
-    let r := if params.getBool "showWork" then
-        (r.push ("derivation", dj)).push ("inputRendered", Rendered.toJson d.input paths)
-      else r
+    let r := r ++ workFields params res.derivation (lambda := true)
     let r := match res.name with | some n => r.push ("bound", .arr #[.str n]) | none => r
     (st, .obj r)
 
@@ -175,9 +186,7 @@ def evaluateOrder (st : Store) (params : Json) (sessionId cellId src : String) :
           ("nodes", .arr (P.elems.map fun x => Json.obj #[("name", .str x), ("height", .num (toString (hs.getD x 0)))]).toArray),
           ("covers", .arr ((Ord.hasse P).map fun (a, b) => Json.arr #[.str a, .str b]).toArray)])
       | none => r
-    let r := if params.getBool "showWork" then
-        (r.push ("derivation", res.derivation.toJson paths)).push ("inputRendered", Rendered.toJson res.derivation.input paths)
-      else r
+    let r := r ++ workFields params res.derivation
     let r := match res.name with | some n => r.push ("bound", .arr #[.str n]) | none => r
     (st, .obj r)
 
@@ -212,9 +221,7 @@ where
         let paths := params.getBool "paths"
         let sem := if mentionsI d.input || mentionsI out then "complex" else "real"
         let res := #[("ok", .bool true), ("value", out.toJson), ("rendered", Rendered.toJson out paths), ("semantics", .str sem)]
-        let res := if params.getBool "showWork" then
-            (res.push ("derivation", d.toJson paths)).push ("inputRendered", Rendered.toJson d.input paths)
-          else res
+        let res := res ++ workFields params d
         let res := match stmt with
           | .«let» name [] _ => res.push ("bound", .arr #[.str name])
           | .«let» name ps _ => (res.push ("bound", .arr #[.str name])).push ("params", .arr (ps.map .str).toArray)
@@ -243,9 +250,7 @@ def plot (st : Store) (params : Json) : Store × Json :=
       let res := #[("ok", .bool true), ("kind", .str "plot"), ("value", out.toJson), ("rendered", Rendered.toJson out paths),
         ("var", .str pl.var), ("from", floatJson pl.from_), ("to", floatJson pl.to), ("series", .arr series),
         ("terms", .arr terms)]
-      let res := if params.getBool "showWork" then
-          (res.push ("derivation", d.toJson paths)).push ("inputRendered", Rendered.toJson d.input paths)
-        else res
+      let res := res ++ workFields params d
       (st, .obj res)
     withLabel st sessionId cellId j
 
@@ -267,6 +272,17 @@ def explain (st : Store) (params : Json) : Except String Json := do
   pure (.obj #[("subterm", sub.toJson), ("rendered", Rendered.toJson sub false), ("steps", .arr (steps.map Step.toJson)),
     ("trace", .arr traceJson.toArray)])
 
+/-- A cell's derivation, from the session that evaluated it: what `outline` replies leave out. -/
+def steps (st : Store) (params : Json) : Except String Json := do
+  let sessionId := (params.getStr? "sessionId").getD ""
+  let cellId := (params.getStr? "cellId").getD ""
+  match (st.get sessionId).cells.lookup cellId with
+  | none => throw s!"unknown cell {cellId}: the session has not evaluated it"
+  | some cell =>
+    let paths := params.getBool "paths"
+    let d := cell.derivation
+    pure (.obj #[("derivation", derivationJson d paths cell.lambda), ("inputRendered", Rendered.toJson d.input paths)])
+
 def dispatch (st : Store) (req : Json) : Store × Json :=
   let id := (req.get? "id").getD .null
   let params := (req.get? "params").getD (.obj #[])
@@ -279,6 +295,10 @@ def dispatch (st : Store) (req : Json) : Store × Json :=
   | some "engine.plot" => let (st, r) := plot st params; (st, reply r)
   | some "engine.explain" =>
     match explain st params with
+    | .ok r => (st, reply r)
+    | .error msg => (st, fail (-32000) msg)
+  | some "engine.steps" =>
+    match steps st params with
     | .ok r => (st, reply r)
     | .error msg => (st, fail (-32000) msg)
   | some "engine.resetSession" => (st.reset ((params.getStr? "sessionId").getD ""), reply (.obj #[("ok", .bool true)]))

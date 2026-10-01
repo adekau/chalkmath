@@ -530,8 +530,37 @@ def partStatTests : TestM Unit := do
   check "min needs numbers" (evalText "min([a, 1])") "<error: min compares numbers; an entry is not a number>"
   check "a statistic of a part" (evalText "mean([1,2,3;4,5,6;7,8,9][[All, 2]])") "5"
 
+/-- Show work for big terms: entrywise steps (`buildSteps`), outline replies and `engine.steps`. -/
+def workTests : TestM Unit := do
+  -- entrywise: a run of rewrites inside one matrix's entries is one step, each entry's steps nested
+  -- with the entry alone as their term, so the derivation grows with the matrix, not its square
+  let (st3, _) := sessionEval [] "[1,2;3,4]*2" ",\"showWork\":true"
+  check "entrywise: scalar multiple, then entry by entry" (derivationRules st3 "[1,2;3,4]*2").toString "[la.scalar-mul, la.entrywise]"
+  let ew := (st3.get "t").cells.lookup "[1,2;3,4]*2" >>= fun c => c.derivation.steps[1]?
+  check "entrywise: the step spans the matrix" ((ew.map fun s => s!"{s.before.toText} -> {s.after.toText}").getD "") "[2*1, 2*2; 2*3, 2*4] -> [2, 4; 6, 8]"
+  check "entrywise: nested steps on the entries alone"
+    ((ew >>= (·.sub)).map (fun d => d.steps.toList.map fun s => s!"{s.before.toText} -> {s.after.toText}") |>.getD []).toString
+    "[1*2 -> 2, 2*2 -> 4, 2*3 -> 6, 2*4 -> 8]"
+  checkTrue "entrywise: a nested step says which entry" ((ew >>= (·.sub) >>= (·.steps[2]?)).map (fun s => contains s.explanation "(row 2, column 1).") |>.getD false)
+  let (st3, _) := sessionEval st3 "[x+x, 1]" ",\"showWork\":true"
+  check "entrywise: one entry rewritten stays as it was" (derivationRules st3 "[x+x, 1]").toString "[simp.collect-like-terms, simp.identity]"
+  let (_, exew) := handleS st3 "{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"engine.explain\",\"params\":{\"sessionId\":\"t\",\"cellId\":\"[1,2;3,4]*2\",\"path\":[2]}}"
+  checkTrue "entrywise: explain an entry: created by the entrywise step" (contains exew "\"text\":\"6\"" && contains exew "{\"index\":1,\"relation\":\"created\"}") exew
+  -- outline: the steps without their terms; engine.steps sends the derivation an eager reply would have
+  let req (id method params : String) := s!"\{\"jsonrpc\":\"2.0\",\"id\":{id},\"method\":\"{method}\",\"params\":{params}}"
+  let (st4, oraw) := handleS [] (req "7" "engine.evaluate" "{\"sessionId\":\"o\",\"cellId\":\"a\",\"source\":\"[1,2;3,4]*2\",\"showWork\":true,\"outline\":true,\"paths\":true}")
+  checkTrue "outline: rules and paths, no terms" (contains oraw "\"outline\":{\"steps\":[{\"rule\":\"la.scalar-mul\"" && !contains oraw "\"derivation\"" && !contains oraw "\"before\"" && contains oraw "\"inputRendered\"") oraw
+  let (st4, sraw) := handleS st4 (req "8" "engine.steps" "{\"sessionId\":\"o\",\"cellId\":\"a\",\"paths\":true}")
+  let (_, eraw) := handleS st4 (req "9" "engine.evaluate" "{\"sessionId\":\"o\",\"cellId\":\"b\",\"source\":\"[1,2;3,4]*2\",\"showWork\":true,\"paths\":true}")
+  let deriv (raw : String) := ((Json.parse raw).toOption >>= (·.get? "result") >>= (·.get? "derivation")).map (·.render)
+  checkTrue "engine.steps: the derivation an eager reply carries" (deriv sraw == deriv eraw && (deriv sraw).isSome) sraw
+  checkTrue "outline: a step that prints the same is quiet" (contains (rpc "engine.evaluate" "{\"source\":\"1/x\",\"showWork\":true,\"outline\":true}") "\"quiet\":true")
+  checkTrue "engine.steps: an unknown cell is an error" (contains (rpc "engine.steps" "{\"sessionId\":\"o\",\"cellId\":\"zz\"}") "\"error\":{\"code\":-32000")
+  let (st5, _) := handleS [] (req "10" "engine.evaluate" "{\"sessionId\":\"l\",\"cellId\":\"a\",\"source\":\"(λx. x) y\",\"showWork\":true,\"outline\":true}")
+  checkTrue "engine.steps: a λ-cell's steps keep their de Bruijn view" (contains (handleS st5 (req "11" "engine.steps" "{\"sessionId\":\"l\",\"cellId\":\"a\"}")).2 "\"afterDeBruijn\"")
+
 def main : IO UInt32 := do
-  let ((), failures) ← (do tests; partStatTests; goldenTests).run #[]
+  let ((), failures) ← (do tests; partStatTests; workTests; goldenTests).run #[]
   for f in failures do
     IO.println s!"FAIL {f.name}\n  expected: {f.expected}\n  actual:   {f.actual}"
   IO.println s!"{failures.size} failures"
