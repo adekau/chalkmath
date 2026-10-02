@@ -28,19 +28,28 @@ function lesson() {
       src: question, type: "exercise", prompt: code(prompt), ...(hints.length ? { hints: hints.map(code) } : {}),
       ...(o.hide ? { hideQuestion: true } : {}), showWork: false, label: null,
     }),
+    /** A Lean cell. */
+    lean: (src) => cells.push({ src, type: "lean", showWork: false, label: null }),
+    /** A Lean exercise: the statement (ending `:= by`), the prompt, the author's proof (required: CI checks
+     *  it), the hints, and `o.start`, the proof the reader starts from (`sorry` if absent). */
+    lx: (statement, prompt, proof, hints = [], o = {}) => cells.push({
+      src: statement, type: "exercise", lean: true, prompt: code(prompt), leanSolution: proof,
+      ...(o.start ? { leanStart: o.start } : {}), ...(hints.length ? { hints: hints.map(code) } : {}), showWork: false, label: null,
+    }),
   };
 }
 
 const courses = [];
-/** A course: its lessons are written by `build`, one call of `add(file, title, blurb, write)` each. */
-function course(id, title, blurb, level, build) {
+/** A course: its lessons are written by `build`, one call of `add(file, title, blurb, write)` each.
+ *  `o.leanPrelude`: each lesson's Lean sees the Lean of the lessons before it. */
+function course(id, title, blurb, level, build, o = {}) {
   const lessons = [];
   build((file, ltitle, lblurb, write) => {
     const L = lesson();
     write(L);
     lessons.push({ file, title: ltitle, blurb: lblurb, cells: L.cells });
   });
-  courses.push({ id, title, blurb, level, lessons });
+  courses.push({ id, title, blurb, level, lessons, ...(o.leanPrelude ? { leanPrelude: true } : {}) });
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -490,6 +499,7 @@ course("lambda", "λ-calculus: computing by reduction",
 const manifest = {
   projects: [
     ...courses.map((c) => ({ id: c.id, title: c.title, blurb: c.blurb, kind: "course", level: c.level, path: `courses/${c.id}`,
+      ...(c.leanPrelude ? { leanPrelude: true } : {}),
       lessons: c.lessons.map((l) => ({ file: l.file, title: l.title, blurb: l.blurb })) })),
     { id: "explorations", title: "Explorations", kind: "collection", path: "",
       blurb: "Notebooks that show what ChalkMath does: a tour, Fourier series drawing a llama, and order theory with its proofs in Lean.",

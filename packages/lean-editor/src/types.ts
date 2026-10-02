@@ -21,6 +21,11 @@ export interface LeanNotebook {
   insertCell(index: number, id: string, src: string): void;
   removeCell(id: string): void;
   source(id: string): string;
+  /** Replaces a cell's source from outside its views (an exercise's fixed statement, a prelude). */
+  setSource(id: string, src: string): void;
+  /** The document's version: Lean's `$/lean/fileProgress` names the version it is checking, so a host
+   *  can tell when what it shows has been checked. */
+  version(): number;
   messages(id: string): LeanMessage[];
   /** Shows cell `id` in `el`, which grows with its content. */
   mount(id: string, el: HTMLElement): CellView;

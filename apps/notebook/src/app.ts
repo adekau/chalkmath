@@ -23,7 +23,7 @@ import { fileCellOf, resolveFiles, importsIn, partContext, partHelp, fileExprVal
 import { dataGrid, matrixEntries } from "./datagrid.js";
 import { DOC_PAGES, type DocPage, type DocPart } from "./docs.js";
 import { FUNCTIONS, FN_BY_NAME, AREAS, fnPage, evaluable, type FnDoc, type ExampleSection } from "./reference.js";
-import { ensureLean, syncLean, mountLean, unmountLean, focusLean, setLeanDark, infoview as leanInfoview, leanState, leanFailure, leanProgress, initLeanIsolation, type LeanMessage } from "./lean-cells.js";
+import { ensureLean, syncLean, mountLean, unmountLean, focusLean, setLeanDark, infoview as leanInfoview, leanState, leanFailure, leanProgress, leanChecked, initLeanIsolation, type LeanMessage } from "./lean-cells.js";
 /** The one trusted KaTeX command is `\htmlData`, which carries the engine's subterm paths. LaTeX can
  *  come from a file someone else wrote (saved outputs render before any re-run), and a blanket
  *  `trust: true` would let it add `\href{javascript:…}`, arbitrary styles, or remote images. */
@@ -237,6 +237,14 @@ interface Cell {
   tree?: Stmt;
   /** Lean cells: what Lean reports on the cell's lines (lean-cells.ts), shown as its output. */
   leanMessages?: LeanMessage[];
+  /** A Lean exercise (an exercise with `lean`): `src` is the statement, ending `:= by`, which the reader
+   *  cannot change; `attempt` is the reader's proof, `leanStart` the proof it starts as, `leanSolution`
+   *  the author's, shown on request. Lean checks the two as one declaration of the notebook's Lean file. */
+  lean?: boolean;
+  leanStart?: string;
+  leanSolution?: string;
+  /** What Lean reports on the statement's lines (an unproved goal is reported at its `by`; not saved). */
+  leanStmtMessages?: LeanMessage[];
   /** Math input Auto: whether the cell is typeset, decided for this source (re-decided when the
    *  cell is left with a different source, never while it is being typed in). */
   autoVisual?: boolean;
@@ -311,6 +319,9 @@ interface Nb {
   noticeDismissed?: boolean;
   /** A lesson of a course (or a notebook of a collection): which project, and which of its notebooks. */
   project?: ProjectRef;
+  /** For a lesson of a course with a Lean prelude: the Lean of the lessons before it, in scope above the
+   *  lesson's own Lean (its cells, and its exercises' statements with the author's proofs). */
+  leanPrelude?: string;
 }
 
 /** A phone-sized screen: the sidebar floats over the paper and starts closed, the panel starts folded. */
@@ -554,7 +565,7 @@ async function runCell(cell: Cell) {
     return;
   }
   if (cell.type === "section") { cell.src = cellSrc(cell); return; }
-  if (cell.type === "lean") return;   // Lean checks as you type (lean-cells.ts)
+  if (cell.type === "lean" || (cell.type === "exercise" && cell.lean)) return;   // Lean checks as you type (lean-cells.ts)
   cell.src = cellSrc(cell);
   if (!cell.src.trim()) return;
   if (S.kernel === "failed") {
@@ -1024,12 +1035,14 @@ function renderTabs() {
 interface ChalkFile {
   /** Format version. Files written as `.lemma` before the rename carry `lemma: 1` instead and still open. */
   chalk?: 1; lemma?: 1; name: string;
-  cells: { src: string; type?: Cell["type"] | undefined; collapsed?: boolean | undefined; showWork: boolean; stepwise?: number | undefined; prompt?: string | undefined; hints?: string[] | undefined; hideQuestion?: boolean | undefined; attempt?: string | undefined; hintsShown?: number | undefined; verdict?: Verdict | undefined; solution?: boolean | undefined; slider?: { min: number; max: number; step: number } | undefined; label: number | null; outLatex?: string | undefined; outText?: string | undefined; form?: string | undefined; semantics?: "real" | "complex" | undefined; echoLatex?: string | undefined; steps?: Step[] | undefined; outline?: StepOutline[] | undefined; error?: Cell["error"] | undefined; plot?: PlotData | undefined; mode?: Cell["mode"] | undefined; ask?: AskResult | undefined; file?: FileMeta | undefined; noSuggest?: true | undefined }[];
+  cells: { src: string; type?: Cell["type"] | undefined; collapsed?: boolean | undefined; showWork: boolean; stepwise?: number | undefined; prompt?: string | undefined; hints?: string[] | undefined; hideQuestion?: boolean | undefined; attempt?: string | undefined; hintsShown?: number | undefined; verdict?: Verdict | undefined; solution?: boolean | undefined; lean?: boolean | undefined; leanStart?: string | undefined; leanSolution?: string | undefined; slider?: { min: number; max: number; step: number } | undefined; label: number | null; outLatex?: string | undefined; outText?: string | undefined; form?: string | undefined; semantics?: "real" | "complex" | undefined; echoLatex?: string | undefined; steps?: Step[] | undefined; outline?: StepOutline[] | undefined; error?: Cell["error"] | undefined; plot?: PlotData | undefined; mode?: Cell["mode"] | undefined; ask?: AskResult | undefined; file?: FileMeta | undefined; noSuggest?: true | undefined }[];
   scenes: Scene[];
   /** Images attached to the notebook, by name. */
   assets?: Record<string, Asset>;
   /** The project the notebook was opened from (a course's lesson), so it keeps its place in it. */
   project?: ProjectRef;
+  /** The Lean of the course's earlier lessons, in scope in this one (`Nb.leanPrelude`). */
+  leanPrelude?: string;
 }
 
 /** A cell's source as the user has it now: the live editor's text when there is one. */
@@ -1060,13 +1073,14 @@ function serializeNotebook(): string {
     scenes: ST.scenes,
     ...(Object.keys(S.assets).length ? { assets: S.assets } : {}),
     ...(currentDoc()?.project ? { project: currentDoc()!.project } : {}),
+    ...(currentDoc()?.leanPrelude ? { leanPrelude: currentDoc()!.leanPrelude } : {}),
   };
   return JSON.stringify(doc, null, 2);
 }
 
 /** Replace the notebook with a file's contents: saved outputs show at once, then every cell is
  *  re-run in order so the engine's session (and with it `explain`) matches what is shown. */
-async function loadNotebook(text: string, name?: string, project?: ProjectRef) {
+async function loadNotebook(text: string, name?: string, project?: ProjectRef, prelude?: string) {
   let doc: ChalkFile;
   try { doc = JSON.parse(text) as ChalkFile; } catch { notify("err", "That file is not a ChalkMath notebook (it is not valid JSON)."); return; }
   if ((doc.chalk !== 1 && doc.lemma !== 1) || !Array.isArray(doc.cells)) { notify("err", "That file is not a ChalkMath notebook."); return; }
@@ -1074,6 +1088,8 @@ async function loadNotebook(text: string, name?: string, project?: ProjectRef) {
   if (!d.cells.length) d.cells.push(freshCell());
   const pr = project ?? projectRefOf(doc);
   if (pr) d.project = pr;
+  const pre = prelude ?? (typeof doc.leanPrelude === "string" ? doc.leanPrelude : "");
+  if (pre) d.leanPrelude = pre;
   // an untouched new notebook is replaced; otherwise the file gets its own tab
   const cur = currentDoc();
   if (cur && docPristine(cur)) { stashDoc(); S.docs[S.doc] = d; S.doc = -1; loadDoc(S.docs.indexOf(d)); }
@@ -1101,7 +1117,8 @@ function assetsFromFile(doc: ChalkFile): Record<string, Asset> {
 function exerciseToSave(c: Cell): Partial<ChalkFile["cells"][number]> {
   if (c.type !== "exercise") return {};
   return { prompt: c.prompt || undefined, hints: c.hints?.length ? c.hints : undefined, hideQuestion: c.hideQuestion || undefined,
-    attempt: c.attempt || undefined, hintsShown: c.hintsShown || undefined, verdict: c.verdict, solution: c.solution || undefined };
+    attempt: c.attempt || undefined, hintsShown: c.hintsShown || undefined, verdict: c.verdict, solution: c.solution || undefined,
+    lean: c.lean || undefined, leanStart: c.lean ? c.leanStart : undefined, leanSolution: c.lean ? c.leanSolution : undefined };
 }
 /** An exercise's fields from a file's record; only well-formed ones are kept. */
 function exerciseFromFile(cell: Cell, c: ChalkFile["cells"][number]) {
@@ -1113,6 +1130,11 @@ function exerciseFromFile(cell: Cell, c: ChalkFile["cells"][number]) {
   if (typeof c.hintsShown === "number") cell.hintsShown = c.hintsShown;
   if (c.verdict && typeof c.verdict.equivalent === "boolean") cell.verdict = c.verdict;
   if (c.solution) cell.solution = true;
+  if (c.lean) {
+    cell.lean = true;
+    if (typeof c.leanStart === "string") cell.leanStart = c.leanStart;
+    if (typeof c.leanSolution === "string") cell.leanSolution = c.leanSolution;
+  }
 }
 
 /** Cells from a file's records (no DOM yet); `foldWork` folds every cell's work whatever was saved. */
@@ -1455,6 +1477,28 @@ const EXAMPLES: { file: string; title: string; blurb: string }[] = [
   { file: "order-lattices.chalk", title: "Order and lattices", blurb: "Part I of From Zero to Propagators: partial orders, joins and meets, monotone maps and fixed points, with the proofs in Lean cells." },
 ];
 
+/** A bundled notebook's text, by its path under examples/. */
+async function fetchExample(file: string): Promise<string> {
+  const res = await fetch(`examples/${file}?v=${typeof __BUILD_ID__ === "string" ? __BUILD_ID__ : "dev"}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.text();
+}
+/** The Lean of a course's lessons before lesson `k`, in order: their Lean cells, and their Lean exercises
+ *  as statement and the author's proof (a theorem proved there may be used later). Lessons that are not
+ *  there are left out; what a lesson needs from them then shows as an error in its Lean. */
+async function leanPreludeOf(p: Project, k: number): Promise<string> {
+  const parts: string[] = [];
+  for (let j = 0; j < k; j++) {
+    try {
+      const doc = JSON.parse(await fetchExample(lessonPath(p, j))) as ChalkFile;
+      const lean = doc.cells.flatMap((c) => c.type === "lean" ? [c.src]
+        : c.type === "exercise" && c.lean && c.src.trim() ? [`${c.src}\n${c.leanSolution ?? LEAN_START}`] : []);
+      if (lean.length) parts.push(`-- ${p.lessons[j]!.title}\n${lean.join("\n\n")}`);
+    } catch (e) { log("err", `Lean prelude: ${lessonPath(p, j)}: ${e instanceof Error ? e.message : String(e)}`); }
+  }
+  return parts.join("\n\n");
+}
+
 /** Open a bundled notebook in a tab (or show it, if it is open already). `file` is its path under
  *  examples/; a lesson opens with its place in its project. */
 async function openExample(file: string, project?: ProjectRef): Promise<boolean> {
@@ -1462,9 +1506,10 @@ async function openExample(file: string, project?: ProjectRef): Promise<boolean>
   const open = S.docs.findIndex((d) => d.name === name && (!project || (d.project?.id === project.id && d.project.lesson === project.lesson)));
   if (open >= 0) { loadDoc(open); switchTab("notebook"); return true; }
   try {
-    const res = await fetch(`examples/${file}?v=${typeof __BUILD_ID__ === "string" ? __BUILD_ID__ : "dev"}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    await loadNotebook(await res.text(), name, project);
+    const text = await fetchExample(file);
+    const p = project && projectById(project.id);
+    const prelude = p?.leanPrelude ? await leanPreludeOf(p, project!.lesson) : undefined;
+    await loadNotebook(text, name, project, prelude);
     if (project) recordProgress();
     return true;
   } catch (e) {
@@ -1487,6 +1532,9 @@ interface Project {
   /** The folder of its notebooks under examples/ ("" for the top). */
   path: string;
   level?: string;
+  /** Each lesson's Lean sees the Lean of the lessons before it (their cells, and their exercises proved
+   *  with the author's proofs), so a course builds one development across its lessons. */
+  leanPrelude?: boolean;
   lessons: { file: string; title: string; blurb: string }[];
 }
 /** What the page knows before courses.json arrives (or when it cannot): the example notebooks. */
@@ -1696,7 +1744,7 @@ function importNotebook() {
 
 /** What a link carries: the name and every cell's text and kind. Outputs are not included: the
  *  engine recomputes them when the link opens, which is the point of a verified notebook. */
-interface LinkDoc { v: 1; n: string; c: { s: string; t?: "markdown" | "section" | "lean" | "exercise"; w?: 1; f?: 1; r?: number; p?: string; hs?: string[]; hq?: 1; sl?: [number, number, number] }[]; a?: Record<string, { m: string; d: string; b?: 1 }> }
+interface LinkDoc { v: 1; n: string; c: { s: string; t?: "markdown" | "section" | "lean" | "exercise"; w?: 1; f?: 1; r?: number; p?: string; hs?: string[]; hq?: 1; sl?: [number, number, number]; ln?: 1; lst?: string; lso?: string }[]; a?: Record<string, { m: string; d: string; b?: 1 }> }
 
 async function deflate(text: string): Promise<Uint8Array> {
   const cs = new CompressionStream("deflate-raw");
@@ -1724,7 +1772,8 @@ async function notebookLink(): Promise<string> {
     v: 1, n: S.docName,
     c: S.cells.filter((c) => cellSrc(c).trim()).map((c) => ({ s: cellSrc(c), ...(c.type ? { t: c.type } : {}), ...(c.showWork ? { w: 1 as const } : {}), ...(c.collapsed ? { f: 1 as const } : {}), ...(c.stepwise !== undefined ? { r: c.stepwise } : {}),
       ...(c.prompt ? { p: c.prompt } : {}), ...(c.hints?.length ? { hs: c.hints } : {}), ...(c.hideQuestion ? { hq: 1 as const } : {}),
-      ...(c.slider ? { sl: [c.slider.min, c.slider.max, c.slider.step] as [number, number, number] } : {}) })),
+      ...(c.slider ? { sl: [c.slider.min, c.slider.max, c.slider.step] as [number, number, number] } : {}),
+      ...(c.lean ? { ln: 1 as const, ...(c.leanStart ? { lst: c.leanStart } : {}), ...(c.leanSolution ? { lso: c.leanSolution } : {}) } : {}) })),
     ...(Object.keys(S.assets).length ? { a: Object.fromEntries(Object.values(S.assets).map((a) => [a.name, { m: a.mime, d: a.data, ...(a.binary ? { b: 1 as const } : {}) }])) } : {}),
   };
   const json = JSON.stringify(doc);
@@ -1753,7 +1802,8 @@ async function openNotebookLink(hash: string): Promise<boolean> {
       chalk: 1, name: doc.n || "shared.chalk",
       cells: doc.c.map((c) => ({ src: String(c.s ?? ""), type: c.t === "markdown" || c.t === "section" || c.t === "lean" || c.t === "exercise" ? c.t : undefined, collapsed: c.f ? true : undefined, showWork: !!c.w, stepwise: typeof c.r === "number" ? c.r : undefined,
         prompt: typeof c.p === "string" ? c.p : undefined, hints: Array.isArray(c.hs) ? c.hs.map(String) : undefined, hideQuestion: c.hq ? true : undefined,
-        slider: Array.isArray(c.sl) && c.sl.length === 3 ? { min: Number(c.sl[0]), max: Number(c.sl[1]), step: Number(c.sl[2]) } : undefined, label: null })),
+        slider: Array.isArray(c.sl) && c.sl.length === 3 ? { min: Number(c.sl[0]), max: Number(c.sl[1]), step: Number(c.sl[2]) } : undefined,
+        lean: c.ln ? true : undefined, leanStart: typeof c.lst === "string" ? c.lst : undefined, leanSolution: typeof c.lso === "string" ? c.lso : undefined, label: null })),
       scenes: [],
       ...(doc.a ? { assets: Object.fromEntries(Object.entries(doc.a).map(([name, a]) => [name, { name, mime: String(a.m), data: String(a.d), ...(a.b ? { binary: true } : {}) }])) } : {}),
     };
@@ -2056,8 +2106,10 @@ function addCell(src = "", type: CellType = "math"): Cell {
   return cell;
 }
 /** Insert a fresh cell at `at` and put the caret in it. */
-function insertCell(at: number, type: CellType = "math") {
-  S.cells.splice(at, 0, freshCell("", type));
+function insertCell(at: number, type: CellType = "math", lean = false) {
+  const c = freshCell("", type);
+  if (lean && type === "exercise") c.lean = true;
+  S.cells.splice(at, 0, c);
   renderCells(); renderSidebar(); focusCell(at); autosave();
 }
 /** Make a cell another kind, keeping its text. A cell that stops being mathematics loses its output. */
@@ -2116,6 +2168,7 @@ function focusCell(i: number) {
   // after the render: it rebuilds the inputs, and focus on the old one is lost
   if (c?.mi) c.mi.focus();
   else if (c?.type === "lean") focusLean(c.id);
+  else if (c?.type === "exercise" && c.lean && !c.editing) focusLean(c.id);
   else if (c?.type === "exercise") c.el?.querySelector<HTMLElement>(".xc-edit textarea, .xc-in")?.focus();
   else (c?.input ?? c?.ta ?? c?.el?.querySelector<HTMLElement>(".mdout"))?.focus();
 }
@@ -2229,7 +2282,7 @@ function renderChrome() {
   const menus = h("div", "menus");
   const MENUS: Record<string, [string, () => void][]> = {
     File: [["New notebook", newNotebook], ["Open…", openNotebook], ["Courses and examples…", () => openCourses()], ["Save", () => saveNotebook()], ["Save as…", saveNotebookAs], ["Export to file…", exportNotebook], ["Import from file…", importNotebook], ["Attach file…", attachFile], ["Copy link to notebook", () => void copyNotebookLink()]],
-    Edit: [["Add math cell", () => { addCell(); focusCell(S.cells.length - 1); }], ["Add Markdown cell", () => { addCell("", "markdown"); focusCell(S.cells.length - 1); }], ["Add section", () => { addCell("", "section"); focusCell(S.cells.length - 1); }], ["Add Lean cell", () => { addCell("", "lean"); focusCell(S.cells.length - 1); }], ["Add exercise", () => { addCell("", "exercise"); focusCell(S.cells.length - 1); }],
+    Edit: [["Add math cell", () => { addCell(); focusCell(S.cells.length - 1); }], ["Add Markdown cell", () => { addCell("", "markdown"); focusCell(S.cells.length - 1); }], ["Add section", () => { addCell("", "section"); focusCell(S.cells.length - 1); }], ["Add Lean cell", () => { addCell("", "lean"); focusCell(S.cells.length - 1); }], ["Add exercise", () => { addCell("", "exercise"); focusCell(S.cells.length - 1); }], ["Add Lean exercise", () => { insertCell(S.cells.length, "exercise", true); }],
       ...(S.cells[S.active] ? CELL_TYPES.filter(([t]) => t !== (S.cells[S.active]!.type ?? "math")).map(([t, label]): [string, () => void] => [`Change to ${label.toLowerCase()}`, () => convertCell(S.cells[S.active]!, t)]) : []),
       ["Clear outputs", clearOutputs]],
     View: [["Toggle light / dark", () => { applyTheme(S.theme === "light" ? "dark" : "light"); renderChrome(); }], [`${S.sidebarOpen ? "✓ " : ""}Sidebar  (Ctrl+B)`, toggleSidebar], ["Explanation panel", () => setPanelOpen(!S.panelOpen)],
@@ -3126,10 +3179,10 @@ function renderCells() {
   host.innerHTML = "";
   promptLevel.disconnect();
   // Lean cells: one document per notebook, whose views are rebuilt with the cells
-  const leanCells = S.cells.filter((c) => c.type === "lean");
+  const leanCells = leanDocCells();
   const leanIds = new Set(leanCells.map((c) => c.id));
   unmountLean((id) => leanIds.has(id));
-  syncLean(currentDoc(), leanCells.map((c) => ({ id: c.id, src: c.src })));
+  syncLean(currentDoc(), leanCells);
   if (leanCells.length) void ensureLean(leanHooks());
   let folded = false;   // inside a collapsed section: its cells are not built
   S.cells.forEach((cell, i) => {
@@ -3170,7 +3223,17 @@ function renderCells() {
       const mid = h("div", "mid");
       const box = h("div", "xc-box");
       box.addEventListener("focusin", () => { if (S.active !== i) { S.active = i; renderChrome(); renderSidebar(); markActive(); } });
-      mid.append(box, h("div", "cellbody"));
+      mid.append(box);
+      // a Lean exercise's proof is a view of the notebook's Lean file, made once: the parts around it are
+      // redrawn as Lean reports, the editor is not (it would lose its cursor)
+      if (isLeanCell(cell) && !cell.editing) {
+        const view = h("div", "leanview xc-leanproof");
+        view.setAttribute("aria-label", `Cell ${i + 1}, your proof in Lean`);
+        view.addEventListener("focusin", () => { if (S.active !== i) { S.active = i; renderChrome(); renderSidebar(); markActive(); } });
+        mid.append(view, h("div", "xc-below"));
+        mountLean(cell.id, view, cell.attempt ?? cell.leanStart ?? LEAN_START);
+      }
+      mid.append(h("div", "cellbody"));
       el.append(mid);
       const acts = h("div", "cellacts");
       el.append(acts, h("div", "brk"));
@@ -3254,7 +3317,7 @@ function insertGap(host: HTMLElement, at: number) {
   pill.append(main, more);
   gap.append(pill);
   gap.addEventListener("click", (ev) => { if (ev.target === more) return; insertCell(at); });
-  more.addEventListener("click", (ev) => { ev.stopPropagation(); closeCellMenu(); typeMenu(more, (t) => insertCell(at, t)); });
+  more.addEventListener("click", (ev) => { ev.stopPropagation(); closeCellMenu(); typeMenu(more, (t) => insertCell(at, t), undefined, LEAN_EXERCISE_KIND(() => insertCell(at, "exercise", true))); });
   host.append(gap);
 }
 
@@ -3265,13 +3328,22 @@ const CELL_TYPES: [CellType, string, string][] = [
   ["lean", "Lean cell", "Lean 4, checked as you type; goals in the panel, definitions shared with the Lean cells below"],
   ["exercise", "Exercise", "A question the reader answers; the engine checks the answer and holds the worked solution"],
 ];
+/** The one kind of cell that is not a `CellType` of its own: an exercise whose answer is a Lean proof. */
+const LEAN_EXERCISE_KIND = (act: () => void): [string, string, () => void] =>
+  ["Lean exercise", "A statement in Lean for the reader to prove; Lean checks the proof", act];
 /** A small menu of the cell kinds under `anchor`; `pick` gets the chosen one. */
-function typeMenu(anchor: HTMLElement, pick: (t: CellType) => void, current?: CellType) {
+function typeMenu(anchor: HTMLElement, pick: (t: CellType) => void, current?: CellType, extra?: [string, string, () => void]) {
   const menu = h("div", "cellmenu typemenu");
   for (const [t, label, hint] of CELL_TYPES) {
     const it = h("div", `item${t === current ? " on" : ""}`);
     it.append(h("span", undefined, `${t === current ? "✓ " : ""}${label}`), h("span", "hint", hint));
     it.addEventListener("click", (ev) => { ev.stopPropagation(); closeCellMenu(); pick(t); });
+    menu.append(it);
+  }
+  if (extra) {
+    const it = h("div", "item");
+    it.append(h("span", undefined, extra[0]), h("span", "hint", extra[1]));
+    it.addEventListener("click", (ev) => { ev.stopPropagation(); closeCellMenu(); extra[2](); });
     menu.append(it);
   }
   document.body.append(menu);
@@ -3488,6 +3560,55 @@ function showDiffTip(anchor: HTMLElement, oldTex: string, newTex: string) {
 }
 function hideDiffTip() { document.querySelector(".difftip")?.remove(); }
 
+// --- The notebook's Lean file: its Lean cells, and each Lean exercise as its statement and its proof ---
+
+/** A cell of the notebook's Lean file: a Lean cell, or a Lean exercise (with a statement to prove). */
+const isLeanCell = (c: Cell) => c.type === "lean" || (c.type === "exercise" && !!c.lean && !!c.src.trim());
+/** The proof a Lean exercise starts with when the author gives none. */
+const LEAN_START = "  sorry";
+/** The ids of the parts of the Lean file no view edits: a course's prelude, an exercise's statement. */
+const PRELUDE_ID = "~prelude", STMT_SUFFIX = "~stmt";
+/** The notebook's Lean file, cell by cell: the course's earlier lessons first (a project with a Lean
+ *  prelude), then the Lean cells and the Lean exercises in order, each exercise its statement then the
+ *  reader's proof. An exercise's statement ends `:= by`, so the proof below it is the declaration's own. */
+function leanDocCells(): { id: string; src: string; fixed?: boolean }[] {
+  const out: { id: string; src: string; fixed?: boolean }[] = [];
+  for (const c of S.cells) {
+    if (c.type === "lean") out.push({ id: c.id, src: c.src });
+    else if (isLeanCell(c)) out.push({ id: `${c.id}${STMT_SUFFIX}`, src: c.src, fixed: true }, { id: c.id, src: c.attempt ?? c.leanStart ?? LEAN_START });
+  }
+  const pre = currentDoc()?.leanPrelude;
+  if (pre && out.length) out.unshift({ id: PRELUDE_ID, src: pre, fixed: true });
+  return out;
+}
+/** Whether Lean had finished checking the file when it last reported. */
+let leanWasChecked = false;
+/** Errors in a course's prelude are the course's, not the reader's: logged once per set of messages. */
+let lastPreludeErrors = "";
+function preludeMessages(ms: LeanMessage[]) {
+  const errs = ms.filter((m) => m.severity === "error").map((m) => `prelude ${m.line}:${m.column} ${m.message}`).join("\n");
+  if (errs && errs !== lastPreludeErrors) log("err", errs);
+  lastPreludeErrors = errs;
+}
+/** Settle a Lean exercise's verdict from what Lean says, once Lean has checked the file as it is: proved
+ *  when neither the statement nor the proof has an error and nothing was left as `sorry`. Returns whether
+ *  the verdict changed. */
+function leanVerdict(c: Cell): boolean {
+  if (!leanChecked()) return false;
+  const proof = c.attempt ?? c.leanStart ?? LEAN_START;
+  const ms = [...(c.leanStmtMessages ?? []), ...(c.leanMessages ?? [])];
+  const err = ms.find((m) => m.severity === "error");
+  const sorry = ms.some((m) => m.severity === "warning" && /sorry/.test(m.message)) || /\b(sorry|admit)\b/.test(proof);
+  const v: Verdict = !proof.trim() || sorry
+    ? { equivalent: false, error: { message: !proof.trim() ? "write a proof" : "the proof still has a sorry" } }
+    : err ? { equivalent: false, error: { message: "Lean reports an error, above" } } : { equivalent: true };
+  if (JSON.stringify(v) === JSON.stringify(c.verdict)) return false;
+  c.verdict = v;
+  if (docOf(c) === currentDoc()) queueMicrotask(recordProgress);
+  renderSidebar(); autosave();
+  return true;
+}
+
 /** Re-render everything below a cell's input, leaving the input element untouched. */
 /** What Lean cells tell the notebook (lean-cells.ts): typing in a view, Lean's messages, Lean's state. */
 function leanHooks() {
@@ -3495,16 +3616,29 @@ function leanHooks() {
     dark: S.theme !== "light",
     onSource: (id: string, src: string) => {
       const c = S.cells.find((x) => x.id === id); if (!c) return;
-      c.src = src; renderSidebar(); renderTabs(); autosave();
+      // a Lean exercise's view is its proof; its statement is not the reader's to change
+      if (c.type === "exercise") c.attempt = src; else c.src = src;
+      renderSidebar(); renderTabs(); autosave();
     },
     onMessages: (id: string, ms: LeanMessage[]) => {
-      const c = S.cells.find((x) => x.id === id); if (!c) return;
-      c.leanMessages = ms; renderCellBody(c);
+      if (id === PRELUDE_ID) { preludeMessages(ms); return; }
+      const stmt = id.endsWith(STMT_SUFFIX);
+      const c = S.cells.find((x) => x.id === (stmt ? id.slice(0, -STMT_SUFFIX.length) : id)); if (!c) return;
+      if (stmt) c.leanStmtMessages = ms; else c.leanMessages = ms;
+      if (c.type === "exercise") leanVerdict(c);
+      renderCellBody(c);
     },
-    onState: () => { renderPanelHead(); for (const c of S.cells) if (c.type === "lean") renderCellBody(c); },
+    onChecked: () => {
+      // every Lean exercise says "checking" while Lean is: each is redrawn when Lean starts on the file, and
+      // whenever it reports the file as it is now checked (a small edit can go from checked to checked)
+      const now = leanChecked(), started = !now && leanWasChecked;
+      leanWasChecked = now;
+      for (const c of S.cells) if (c.type === "exercise" && c.lean && (leanVerdict(c) || now || started)) renderCellBody(c);
+    },
+    onState: () => { renderPanelHead(); for (const c of S.cells) if (isLeanCell(c)) renderCellBody(c); },
     onProgress: () => {
       // the status is in the first Lean cell: updated in place while it shows, re-rendered when it comes or goes
-      const first = S.cells.find((c) => c.type === "lean");
+      const first = S.cells.find(isLeanCell);
       const old = first?.el?.querySelector(".leanstatus");
       const next = leanStatus();
       if (old && next) old.replaceWith(next);
@@ -3547,7 +3681,7 @@ function renderLeanBody(cell: Cell) {
   if (st === "failed" || st === "isolating") {
     body.append(h("div", `leanstate ${st}`,
       st === "failed" ? `Lean did not start: ${leanFailure()}` : "Preparing the page for Lean: it reloads once."));
-  } else if (S.cells.find((c) => c.type === "lean") === cell) {
+  } else if (S.cells.find(isLeanCell) === cell) {
     const status = leanStatus();
     if (status) body.append(status);
   }
@@ -3568,7 +3702,7 @@ function renderCellBody(cell: Cell) {
   const exercise = cell.type === "exercise";
   if (exercise) renderExercise(cell);
   // an exercise shows its question's work and value only as the solution, when the reader asks
-  const solving = !exercise || !!cell.solution;
+  const solving = !exercise || (!!cell.solution && !cell.lean);
   el.classList.toggle("done", !!cell.label);
   const busy = cell.queued || S.running === cell;   // Mathematica's In[*]: waiting or being evaluated
   el.classList.toggle("running", busy);
@@ -4094,6 +4228,7 @@ function renderExercise(cell: Cell) {
   box.innerHTML = "";
   delete cell.input;
   if (cell.editing) { box.append(exerciseEditor(cell)); return; }
+  if (cell.lean) return renderLeanExercise(cell, box);
   if (cell.prompt?.trim()) box.append(mdRender(cell.prompt));
   if (!cell.hideQuestion || !cell.prompt?.trim()) {
     const q = h("div", "xc-q");
@@ -4136,22 +4271,71 @@ function renderExercise(cell: Cell) {
     }
     box.append(out);
   }
-  const hints = cell.hints ?? [];
-  const shown = Math.min(cell.hintsShown ?? 0, hints.length);
-  hints.slice(0, shown).forEach((t, k) => {
-    const hb = h("div", "xc-hint");
-    hb.append(h("span", "xc-hintno", hints.length > 1 ? `Hint ${k + 1}` : "Hint"), mdRender(t));
-    box.append(hb);
-  });
+  appendHints(cell, box);
   const tools = h("div", "xc-tools");
-  if (shown < hints.length) tools.append(exBtn(shown ? `Another hint (${shown + 1} of ${hints.length})` : hints.length > 1 ? `Hint (1 of ${hints.length})` : "Hint",
-    "Open the next hint", () => { cell.hintsShown = shown + 1; renderCellBody(cell); autosave(); }));
+  appendHintButton(cell, tools);
   tools.append(exBtn(cell.solution ? "Hide the solution" : "Show the solution", cell.solution ? "Hide the worked solution" : "Step through the worked solution: the engine's own work on the question", () => {
     cell.solution = !cell.solution;
     if (cell.solution) { cell.showWork = true; if (cell.stepwise === undefined) cell.stepwise = 0; if (!cell.outLatex && !cell.error) void runCell(cell); }
     renderCellBody(cell); renderSidebar(); autosave();
   }));
   box.append(tools);
+}
+/** A Lean exercise: the prompt and the statement above the reader's proof (an editor of the notebook's
+ *  Lean file), and below it what Lean says, the verdict, the hints and the author's proof. */
+function renderLeanExercise(cell: Cell, box: HTMLElement) {
+  if (cell.prompt?.trim()) box.append(mdRender(cell.prompt));
+  if (!cell.src.trim()) { box.append(h("div", "xc-src", "No statement yet: ✎ Edit")); return; }
+  const stmt = h("pre", "xc-leanstmt");
+  stmt.append(h("code", undefined, cell.src));
+  box.append(stmt);
+  const below = cell.el?.querySelector<HTMLElement>(".xc-below"); if (!below) return;
+  below.innerHTML = "";
+  if (S.cells.find(isLeanCell) === cell) { const st = leanStatus(); if (st) below.append(st); }
+  const state = leanState();
+  if (state === "failed" || state === "isolating") below.append(h("div", `leanstate ${state}`, state === "failed" ? `Lean did not start: ${leanFailure()}` : "Preparing the page for Lean: it reloads once."));
+  // what Lean says about the proof (its lines), and the statement's own errors (an unproved goal is reported at `by`)
+  const ms = [...(cell.leanStmtMessages ?? []).filter((m) => m.severity === "error").map((m) => ({ ...m, where: "statement" })),
+    ...(cell.leanMessages ?? []).map((m) => ({ ...m, where: `${m.line}:${m.column}` }))];
+  for (const m of ms) {
+    const row = h("div", `leanmsg ${m.severity}`);
+    row.append(h("span", "where", m.where), h("span", "text", m.message));
+    below.append(row);
+  }
+  const v = cell.verdict;
+  const verdict = h("div", "xc-verdict");
+  if (state !== "ready") verdict.append(h("span", "xc-pending", state === "failed" ? "" : "Waiting for Lean…"));
+  else if (!leanChecked()) { verdict.classList.add("old"); verdict.append(h("span", "xc-pending", "Lean is checking…")); }
+  else if (v?.equivalent) { verdict.classList.add("right"); verdict.append(h("span", "xc-mark", "✓"), document.createTextNode(" Proved: Lean accepts the proof, and nothing is left as sorry.")); }
+  else if (v) { verdict.classList.add("wrong"); verdict.append(h("span", "xc-mark", "✗"), document.createTextNode(` Not yet: ${v.error?.message ?? "Lean does not accept the proof"}.`)); }
+  below.append(verdict);
+  appendHints(cell, below);
+  const tools = h("div", "xc-tools");
+  appendHintButton(cell, tools);
+  if (cell.leanSolution?.trim()) tools.append(exBtn(cell.solution ? "Hide the proof" : "Show a proof", cell.solution ? "Hide the author's proof" : "The author's proof, to compare with yours", () => {
+    cell.solution = !cell.solution; renderCellBody(cell); autosave();
+  }));
+  below.append(tools);
+  if (cell.solution && cell.leanSolution?.trim()) {
+    const sol = h("pre", "xc-leanstmt xc-leansol");
+    sol.append(h("code", undefined, `${cell.src}\n${cell.leanSolution}`));
+    below.append(sol);
+  }
+}
+/** The hints opened so far. */
+function appendHints(cell: Cell, into: HTMLElement) {
+  const hints = cell.hints ?? [];
+  hints.slice(0, Math.min(cell.hintsShown ?? 0, hints.length)).forEach((t, k) => {
+    const hb = h("div", "xc-hint");
+    hb.append(h("span", "xc-hintno", hints.length > 1 ? `Hint ${k + 1}` : "Hint"), mdRender(t));
+    into.append(hb);
+  });
+}
+/** The button that opens the next hint, while one is left. */
+function appendHintButton(cell: Cell, tools: HTMLElement) {
+  const hints = cell.hints ?? [], shown = Math.min(cell.hintsShown ?? 0, hints.length);
+  if (shown < hints.length) tools.append(exBtn(shown ? `Another hint (${shown + 1} of ${hints.length})` : hints.length > 1 ? `Hint (1 of ${hints.length})` : "Hint",
+    "Open the next hint", () => { cell.hintsShown = shown + 1; renderCellBody(cell); autosave(); }));
 }
 /** The author's side of an exercise: the prompt, the question, the hints. */
 function exerciseEditor(cell: Cell): HTMLElement {
@@ -4163,9 +4347,10 @@ function exerciseEditor(cell: Cell): HTMLElement {
   };
   const grow = (ta: HTMLTextAreaElement) => { ta.style.height = "auto"; ta.style.height = `${ta.scrollHeight + 2}px`; };
   const prompt = document.createElement("textarea");
-  prompt.rows = 2; prompt.value = cell.prompt ?? ""; prompt.placeholder = "Differentiate, then simplify.";
+  prompt.rows = 2; prompt.value = cell.prompt ?? ""; prompt.placeholder = cell.lean ? "Prove that conjunction commutes." : "Differentiate, then simplify.";
   prompt.addEventListener("input", () => { cell.prompt = prompt.value; grow(prompt); });
   field("Prompt", prompt, "Markdown, with $math$: what the reader is asked to do.");
+  if (cell.lean) return leanExerciseEditor(cell, f, field, grow, prompt);
   const q = document.createElement("input");
   q.type = "text"; q.className = "xc-qin"; q.spellcheck = false; q.value = cell.src; q.placeholder = "diff(x^2 * sin(x), x)";
   cell.input = q;   // what the cell's source is while it is edited (cellSrc)
@@ -4185,8 +4370,39 @@ function exerciseEditor(cell: Cell): HTMLElement {
   queueMicrotask(() => { grow(prompt); grow(hints); });
   return f;
 }
+/** A Lean exercise's editor, after its prompt: the statement, the proof the reader starts from, the
+ *  author's proof, the hints. */
+function leanExerciseEditor(cell: Cell, f: HTMLElement, field: (label: string, input: HTMLElement, hint: string) => void,
+  grow: (ta: HTMLTextAreaElement) => void, prompt: HTMLTextAreaElement): HTMLElement {
+  const area = (value: string, placeholder: string, set: (v: string) => void, code = true) => {
+    const ta = document.createElement("textarea");
+    ta.rows = 2; ta.value = value; ta.placeholder = placeholder; ta.spellcheck = !code;
+    if (code) ta.className = "xc-code";
+    ta.addEventListener("input", () => { set(ta.value); grow(ta); });
+    ta.addEventListener("keydown", (ev) => { if (ev.key === "Enter" && (ev.shiftKey || ev.metaKey || ev.ctrlKey)) { ev.preventDefault(); finishExerciseEdit(cell); } });
+    return ta;
+  };
+  const stmt = area(cell.src, "theorem and_swap (p q : Prop) (h : p ∧ q) : q ∧ p := by", (v) => { cell.src = v; renderSidebar(); });
+  field("Statement", stmt, "Lean, ending with := by. The reader cannot change it; their proof goes below it, and Lean checks the two together, with the notebook's Lean cells above in scope.");
+  const start = area(cell.leanStart ?? "", LEAN_START, (v) => { if (v.trim()) cell.leanStart = v; else delete cell.leanStart; });
+  field("Starting proof", start, "What the reader's proof starts as (indented): by default sorry, which Lean shows the goal of.");
+  const sol = area(cell.leanSolution ?? "", "  obtain ⟨hp, hq⟩ := h\n  exact ⟨hq, hp⟩", (v) => { if (v.trim()) cell.leanSolution = v; else delete cell.leanSolution; });
+  field("A proof", sol, "Yours, shown when the reader asks, and checked when the notebook is (scripts/notebooks/check-lean.mjs).");
+  const hints = area((cell.hints ?? []).join("\n\n"), "Take the conjunction apart first.\n\nobtain ⟨hp, hq⟩ := h", (v) => { cell.hints = v.split(/\n\s*\n/).map((x) => x.trim()).filter(Boolean); }, false);
+  field("Hints", hints, "Opened one at a time, in order; a blank line between two hints.");
+  queueMicrotask(() => { for (const ta of [prompt, stmt, start, sol, hints]) grow(ta); });
+  prompt.addEventListener("keydown", (ev) => { if (ev.key === "Enter" && (ev.shiftKey || ev.metaKey || ev.ctrlKey)) { ev.preventDefault(); finishExerciseEdit(cell); } });
+  return f;
+}
 /** Leave an exercise's editor: a changed question makes the old verdict and solution the old question's. */
 function finishExerciseEdit(cell: Cell) {
+  if (cell.lean) {
+    // the statement is part of the Lean file: the cells are rebuilt, and Lean checks it with the proof below
+    cell.editing = false;
+    delete cell.verdict;
+    renderCells(); renderSidebar(); autosave();
+    return;
+  }
   const was = cell.src;
   cell.src = cellSrc(cell);
   cell.editing = false;
@@ -4198,7 +4414,7 @@ function finishExerciseEdit(cell: Cell) {
 function exerciseActs(cell: Cell, acts: Element) {
   acts.innerHTML = "";
   acts.append(exBtn(cell.editing ? "✓ Done" : "✎ Edit", cell.editing ? "Finish editing the exercise (Shift+Enter)" : "Edit the prompt, the question and the hints",
-    () => { if (cell.editing) finishExerciseEdit(cell); else { cell.editing = true; renderCellBody(cell); focusCell(S.cells.indexOf(cell)); } }, ""));
+    () => { if (cell.editing) finishExerciseEdit(cell); else { cell.editing = true; if (cell.lean) renderCells(); else renderCellBody(cell); focusCell(S.cells.indexOf(cell)); } }, ""));
   appendMore(cell, acts);
 }
 
@@ -6222,9 +6438,10 @@ if (saved) {
       d.hydrated = false;
       const pr = projectRefOf(file);
       if (pr) d.project = pr;
+      if (typeof file.leanPrelude === "string" && file.leanPrelude) d.leanPrelude = file.leanPrelude;
       S.docs.push(d);
       // the saved text is what the tab compares against; a dirty document compares against nothing
-      d.text = JSON.stringify({ chalk: 1, name: d.name, cells: file.cells, scenes: d.scenes, ...(Object.keys(d.assets).length ? { assets: d.assets } : {}), ...(pr ? { project: pr } : {}) }, null, 2);
+      d.text = JSON.stringify({ chalk: 1, name: d.name, cells: file.cells, scenes: d.scenes, ...(Object.keys(d.assets).length ? { assets: d.assets } : {}), ...(pr ? { project: pr } : {}), ...(d.leanPrelude ? { leanPrelude: d.leanPrelude } : {}) }, null, 2);
       d.savedText = dirty ? "" : d.text;
     }
     restoredActive = "chalkmath" in parsed && typeof parsed.active === "number" ? parsed.active : 0;

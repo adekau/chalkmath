@@ -218,6 +218,16 @@ language server answers LSP for Lean cells.
   other line (`packages/lean-editor`). Definitions carry from cell to cell, editing a cell re-elaborates
   it and the cells after it, and every position the extension and the infoview use is real — nothing is
   translated between cells and file.
+- **Lean exercises.** An exercise can ask for a proof instead of a value. Its statement (ending
+  `:= by`) and the reader's proof are two cells of the same Lean file: the statement a cell no view
+  shows (so it cannot be edited), the proof a view of its own. The verdict is Lean's: proved when the
+  two have no error and no `sorry`, read once Lean's `$/lean/fileProgress` says it has finished
+  checking the file's current version, so a verdict is never about text Lean has not seen. CI checks
+  every shipped Lean exercise with the author's proof (`scripts/notebooks/check-lean.mjs`).
+- **A course's Lean prelude.** A project with `leanPrelude` gives each lesson the Lean of the lessons
+  before it (their Lean cells, and their Lean exercises with the author's proofs) as a first cell no view
+  shows, so a course builds one development across its lessons. It is saved with the lesson, and CI
+  checks each lesson with it in front.
 - **Cost.** Nothing loads until a notebook has a Lean cell. Then, compressed: the editor (~3 MB), the
   server (~24 MB) and Init's 32-bit oleans (~114 MB: their private parts, proofs included, are most of it,
   and an ordinary file's implicit `import Init` needs them), once per browser: the worker keeps the large

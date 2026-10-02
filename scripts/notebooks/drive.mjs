@@ -42,7 +42,7 @@ async function drive(file, session) {
   const pageNames = new Set();   // bound to files: the page's
   for (let i = 0; i < nb.cells.length; i++) {
     const c = nb.cells[i];
-    const exercise = c.type === "exercise";
+    const exercise = c.type === "exercise" && !c.lean;   // a Lean exercise is Lean's to check (check-lean.mjs)
     if (c.type && c.type !== "math" && !exercise) continue;
     const src = c.src;
     if (!src.trim()) continue;

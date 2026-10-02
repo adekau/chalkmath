@@ -373,8 +373,9 @@ html[data-outsize="l"] { --sz-out:28px; --sz-echo:22px; --sz-work:19px; --sz-sub
 .kindbadge .i { display:inline-flex; align-items:center; justify-content:center; width:12px; height:12px; border-radius:50%; background:var(--p-acc-chip); font-size:8px; font-style:italic; }
 .timing { font-family:var(--code); font-size:10px; color:var(--p-mut2); }
 /* Lean cells: the VS Code editor (lean4monaco) as the input, Lean's messages as the output */
-.cell.lean .leanview { min-height:24px; border:1px solid var(--p-input-br); border-radius:6px; overflow:hidden; background:var(--p-input-bg); }
-.cell.lean .leanview.pending { font-family:var(--code); font-size:13px; line-height:19px; white-space:pre-wrap; padding:5px 8px; color:var(--p-mut); }
+.cell.lean .leanview, .cell.exercise .xc-leanproof { min-height:24px; border:1px solid var(--p-input-br); border-radius:6px; overflow:hidden; background:var(--p-input-bg); }
+.cell.exercise .xc-leanproof { margin:6px 0 0 11px; }
+.cell.lean .leanview.pending, .cell.exercise .xc-leanproof.pending { font-family:var(--code); font-size:13px; line-height:19px; white-space:pre-wrap; padding:5px 8px; color:var(--p-mut); }
 .leanstate { margin:8px 0 0 8px; font-size:12.5px; color:var(--p-mut); }
 .leanstate.failed { color:var(--p-err); }
 .leanbar { position:relative; height:4px; max-width:360px; margin:6px 0 0 8px; border-radius:2px; overflow:hidden; background:var(--p-input-br); }
@@ -456,6 +457,12 @@ html[data-outsize="l"] { --sz-out:28px; --sz-echo:22px; --sz-work:19px; --sz-sub
 .xc-edit textarea { font:14px var(--font); padding:7px 10px; border-radius:6px; border:1px solid var(--p-input-br); background:var(--p-input-bg); color:var(--p-ink); resize:vertical; min-height:2.4em; }
 .xc-check { font:12.5px var(--font); color:var(--p-ink-2); display:flex; align-items:center; gap:6px; }
 .cell.exercise > .prompt { color:var(--p-acc); }
+.xc-leanstmt { margin:0; padding:7px 10px; border-radius:6px; background:var(--p-row-bg); border:1px solid var(--p-br-out); font:13px/1.5 var(--code); color:var(--p-ink-strong); white-space:pre-wrap; overflow-wrap:anywhere; }
+.xc-below { display:flex; flex-direction:column; gap:8px; padding:8px 0 2px 11px; border-left:3px solid var(--p-acc-br); }
+.xc-below .leanmsg { margin:0; }
+.xc-leansol { color:var(--p-ink); }
+.xc-pending { color:var(--p-mut); font-style:italic; }
+.xc-edit textarea.xc-code { font:13px/1.5 var(--code); }
 .cell.stale .outval, .cell.stale .work, .cell.stale .echo { opacity:0.5; }
 .stalebar { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin:8px 0 0 8px; padding:5px 10px; border-radius:6px; font:12px var(--font); color:var(--p-ink-2); background:var(--p-acc-bg); border:1px solid var(--p-acc-br); }
 .stalebar .stalemark { color:var(--p-acc); font-weight:700; }

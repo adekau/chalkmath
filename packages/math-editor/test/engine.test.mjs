@@ -15,8 +15,8 @@ const chalkFiles = () => [
   ...readdirSync(new URL("notebooks/", root)).filter((f) => f.endsWith(".chalk")),
   ...readdirSync(new URL("notebooks/courses/", root)).flatMap((c) => readdirSync(new URL(`notebooks/courses/${c}/`, root)).filter((f) => f.endsWith(".chalk")).map((f) => `courses/${c}/${f}`)),
 ];
-/** A cell the engine reads as notation: a math cell, or an exercise's question. */
-const mathCell = (c) => !c.type || c.type === "math" || c.type === "exercise";
+/** A cell the engine reads as notation: a math cell, or an exercise's question (a Lean exercise's is Lean). */
+const mathCell = (c) => !c.type || c.type === "math" || (c.type === "exercise" && !c.lean);
 
 test("what the editor writes means what the source meant, to the engine", { skip: !existsSync(exe) && "no native engine build" }, async () => {
   const { leanNativeClient } = await import("@chalkmath/engine-host/lean-native");

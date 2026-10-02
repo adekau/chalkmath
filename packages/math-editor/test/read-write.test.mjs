@@ -11,8 +11,8 @@ const chalkFiles = () => [
   ...readdirSync(new URL("notebooks/", root)).filter((f) => f.endsWith(".chalk")),
   ...readdirSync(new URL("notebooks/courses/", root)).flatMap((c) => readdirSync(new URL(`notebooks/courses/${c}/`, root)).filter((f) => f.endsWith(".chalk")).map((f) => `courses/${c}/${f}`)),
 ];
-/** A cell the engine reads as notation: a math cell, or an exercise's question. */
-const mathCell = (c) => !c.type || c.type === "math" || c.type === "exercise";
+/** A cell the engine reads as notation: a math cell, or an exercise's question (a Lean exercise's is Lean). */
+const mathCell = (c) => !c.type || c.type === "math" || (c.type === "exercise" && !c.lean);
 /** Every math cell of the bundled notebooks, in order, with the functions defined above it. */
 const notebookCells = chalkFiles().flatMap((f) => {
   const known = [];

@@ -169,6 +169,14 @@ export async function startLean(o: LeanOptions): Promise<LeanNotebook> {
       lastMessages.delete(id);
     },
     source,
+    setSource(id, src) {
+      const r = ranges.get(id);
+      if (!r || source(id) === src) return;
+      edit(new monaco.Range(r[0], 1, r[1], model.getLineMaxColumn(r[1])), src);
+      recompute();
+      refreshViews();
+    },
+    version() { return model.getVersionId(); },
     messages(id) { return JSON.parse(lastMessages.get(id) ?? "[]") as LeanMessage[]; },
     mount(id, el) {
       const editor = monaco.editor.create(el, {
