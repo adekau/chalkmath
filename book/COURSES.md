@@ -42,7 +42,12 @@ mathematics (a dedupe-by-key bug, an information-flow lattice, a CRDT store, a t
 9. Well-founded relations and termination: acyclicity with a cycle as counterexample, measures,
    lexicographic orders, `termination_by`; and the engine's own `pipelineOrdered`. *E3*
 
-### 2 · Order and lattices (about 15 lessons; one course, the book's Parts I and II)
+### 2 · Order and lattices (15 lessons; one course, the book's Parts I and II) — written
+
+`notebooks/courses/order-lattices/`, with a Lean prelude: 44 exercises, 26 checked by the engine and
+18 by Lean. Lessons 1–4 are `order-lattices.chalk`'s chapters, generated from it (each carries the
+earlier chapters' `let` cells it reads); Part II's Lean is the course's own, built on one algebraic
+`Semilattice` class (merge as join) rather than the book's class hierarchy, which clashes with Part I's.
 
 Follows *From Zero to Propagators* (lean4learning), with a Lean prelude across its lessons.
 
@@ -122,7 +127,7 @@ E5 events (version vectors), N8 replica simulation*
 | E1 | **Done.** Propositional world: formulas, truth tables, sat/taut with witness, exact equivalence, NNF/CNF/DNF with named laws | each law sound over Bool; decision specs; normalizer termination |
 | E2 | **Done.** Bounded quantifiers over finite sets, with witness or counterexample | decision spec |
 | E3 | **Done.** Relations: property checks with witnesses, closures as steps, partitions, quotients, refinement, acyclicity and measures | closure is least; partition specs |
-| E4 | Finite algebra: operation tables and their laws, homomorphisms, products, maps between posets, distributive and Boolean checks, closure operators, Galois connections, concept lattices | a spec per check |
+| E4 | **Done.** Finite algebra: operation tables and their laws, homomorphisms, products, maps between posets, distributive and Boolean checks, closure operators, Galois connections, concept lattices | a spec per check |
 | E5 | Systems: finite-domain variables, guarded actions, reachability, invariants with traces, inductiveness, deadlock, CTL by lfp/gfp, simulation; events → poset with vector clocks | invariant check sound and complete on finite graphs; CTL fixpoints correct |
 | E6 | Simply typed λ-calculus: annotations, type checking with a derivation, simple inference | checker sound against the rules |
 | E7 | (optional) user-defined rewriting systems: steps, termination by measure, critical pairs | per rule |
@@ -148,7 +153,7 @@ The λ world also grows for course 4: a choice of strategy, η, free variables, 
 
 1. **P0** — Lean exercises and a course's Lean prelude (N1, N7). *Done.*
 2. **P1** — Course 1: E1, E2, E3, N2, N3. *Done.*
-3. **P2** — Course 2: E4.
+3. **P2** — Course 2: E4. *Done.*
 4. **P3** — Course 6 (CRDTs): mostly Lean, little engine; needs only course 2.
 5. **P4** — Course 3: E5, N4, N6.
 6. **P5** — Courses 4 and 5: the λ world's additions, E6.

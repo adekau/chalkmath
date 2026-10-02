@@ -1,0 +1,196 @@
+{
+  "chalk": 1,
+  "name": "10-galois.chalk",
+  "cells": [
+    {
+      "src": "Closure operators and Galois connections",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Recognize closure operators and Galois connections, see how one gives the other, and build the concept lattice of a small formal context.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Closure operator\n> A map $c$ on a poset is a **closure operator** when it is **extensive** ($x \\le c(x)$), **monotone**, and **idempotent** ($c(c(x)) = c(x)$). Its fixed points are the **closed** elements.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let D = divisors(12)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let cl = map(D; 3->6)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "closureop(D, cl)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "fixpoints(D, cl)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let bad = map(D; 2->1)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "closureop(D, bad)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "Galois connections",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Galois connection\n> Monotone maps $f : P \\to Q$ and $g : Q \\to P$ form a **Galois connection** when $f(x) \\le y \\iff x \\le g(y)$ for all $x$ and $y$. Then $g \\circ f$ is a closure operator on $P$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Halving and doubling: $\\lceil x / 2 \\rceil \\le y$ exactly when $x \\le 2y$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let C7 = chain(7)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let C4 = chain(4)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let half = map(C7, C4; 0->0, 1->1, 2->1, 3->2, 4->2, 5->3, 6->3)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let dbl = map(C4, C7; 0->0, 1->2, 2->4, 3->6)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "galois(C7, C4, half, dbl)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "let same = map(C4, C7; 0->0, 1->1, 2->2, 3->3)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "galois(C7, C4, half, same)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "Formal concept analysis",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Formal context, concept\n> A **context** lists objects, attributes, and which object has which. A **concept** is a set of objects and a set of attributes that determine each other: exactly the objects having all those attributes, and exactly the attributes they all share. Ordered by their objects, the concepts form a complete lattice.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let A = context({duck, eagle, dog, bat}, {flies, mammal, bird}; duck->flies, duck->bird, eagle->flies, eagle->bird, dog->mammal, bat->flies, bat->mammal)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "concepts(A)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "The two maps \"the attributes these objects share\" and \"the objects having these attributes\" form a Galois connection (reversing the order), and the concepts are its closed pairs. The bat sits below both \"flies\" and \"mammal\": the lattice finds the category nobody named.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "structure GaloisConnection {α β : Type} [PartialOrder α] [PartialOrder β] (f : α → β) (g : β → α) : Prop where\n  gc : ∀ (a : α) (b : β), f a ≤ b ↔ a ≤ g b",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem GaloisConnection.le_gf {α β : Type} [PartialOrder α] [PartialOrder β] {f : α → β} {g : β → α}\n    (h : GaloisConnection f g) (a : α) : a ≤ g (f a) := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that $g \\circ f$ is extensive.",
+      "leanSolution": "  exact (h.gc a (f a)).mp (le_refl (f a))",
+      "hints": [
+        "Use the connection with $b = f(a)$.",
+        "`le_refl (f a)` proves `f a ≤ f a`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem GaloisConnection.fg_le {α β : Type} [PartialOrder α] [PartialOrder β] {f : α → β} {g : β → α}\n    (h : GaloisConnection f g) (b : β) : f (g b) ≤ b :=\n  (h.gc (g b) b).mpr (le_refl (g b))\n\ntheorem GaloisConnection.monotone_f {α β : Type} [PartialOrder α] [PartialOrder β] {f : α → β} {g : β → α}\n    (h : GaloisConnection f g) : Monotone f where\n  map_le a a' haa := (h.gc a (f a')).mpr (le_trans _ _ _ haa (h.le_gf a'))",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "closureop(D, bad)",
+      "type": "exercise",
+      "prompt": "Is `bad` a closure operator? Answer `true` or `false`.",
+      "hints": [
+        "Is $2 \\le$ `bad`$(2)$?"
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "galois(C7, C4, half, dbl)",
+      "type": "exercise",
+      "prompt": "Do halving (rounded up) and doubling form a Galois connection?",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> A closure operator adds what a property forces and stops; a Galois connection is a pair of maps that are \"adjoint\", and composing them gives a closure. Formal concept analysis is a Galois connection between objects and attributes, and its closed pairs are a lattice of concepts.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

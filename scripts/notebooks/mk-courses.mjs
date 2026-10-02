@@ -5,7 +5,7 @@
 // exercises the engine checks by normal form. Every cell is checked against the engine by
 // `drive.mjs --check` (notebooks/golden/), so a lesson cannot quietly stop working.
 // Inline code is written ‹like this› (template literals cannot hold backticks).
-import { writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 
 const r = String.raw;
 const code = (text) => text.replace(/‹([^‹›\n]*)›/g, "`$1`").trim();
@@ -661,6 +661,918 @@ termination_by m n => (m, n)
     md(r`
 > [!summary]
 > Well-founded means no infinite descent; on a finite set, no cycle. A measure into the naturals proves it, a cycle refutes it, and Lean's ‹termination_by› is a measure written down.
+`);
+  });
+}, { leanPrelude: true });
+
+// ---------------------------------------------------------------------------------------------------
+// Course 2. Lessons 1–4 are the chapters of notebooks/order-lattices.chalk (From Zero to Propagators,
+// Part I), split at its section headings; each carries the earlier chapters' `let` cells it reads.
+const book = JSON.parse(readFileSync(new URL("../../notebooks/order-lattices.chalk", import.meta.url), "utf8")).cells;
+const at = (prefix) => book.findIndex((c) => c.type === "section" && c.src.startsWith(prefix));
+const chapters = [[at("1 ·"), at("2 ·")], [at("2 ·"), at("3 ·")], [at("3 ·"), at("4 ·")], [at("4 ·"), at("Where Part II goes")]];
+/** A notebook cell as a lesson's: its source and how it is shown, without saved outputs. */
+const fresh = (c) => ({ src: c.src, ...(c.type ? { type: c.type } : {}), showWork: !!c.showWork, label: null,
+  ...(c.stepwise !== undefined ? { stepwise: c.stepwise } : {}), ...(c.slider ? { slider: c.slider, mode: c.mode ?? "raw" } : {}) });
+/** Lesson 11's reachability step on the subsets of {a, b, c, d}: S ↦ {a} ∪ S ∪ succ(S), edges a→b, b→c, d→a. */
+const reachMap = "{}->{a}, {a}->{a,b}, {b}->{a,b,c}, {c}->{a,c}, {d}->{a,d}, {a,b}->{a,b,c}, {a,c}->{a,b,c}, {a,d}->{a,b,d}, {b,c}->{a,b,c}, {b,d}->{a,b,c,d}, {c,d}->{a,c,d}, {a,b,d}->{a,b,c,d}, {a,c,d}->{a,b,c,d}, {b,c,d}->{a,b,c,d}";
+/** The same step from d: S ↦ {d} ∪ S ∪ succ(S). */
+const reachFromD = "{}->{d}, {a}->{a,b,d}, {b}->{b,c,d}, {c}->{c,d}, {d}->{a,d}, {a,b}->{a,b,c,d}, {a,c}->{a,b,c,d}, {a,d}->{a,b,d}, {b,c}->{b,c,d}, {b,d}->{a,b,c,d}, {c,d}->{a,c,d}, {a,b,c}->{a,b,c,d}, {a,b,d}->{a,b,c,d}, {a,c,d}->{a,b,c,d}, {b,c,d}->{a,b,c,d}";
+const letName = (src) => /^\s*let\s+([A-Za-z_][A-Za-z0-9_]*)\s*=/.exec(src)?.[1];
+/** The `let` cells of chapters before `k` that chapter `k`'s math cells read (with what they read), in order. */
+function carried(k) {
+  const earlier = book.slice(0, chapters[k][0]).filter((c) => !c.type && letName(c.src));
+  const defs = new Map(earlier.map((c) => [letName(c.src), c]));
+  const need = new Set();
+  const want = (src, bound) => {
+    for (const id of src.match(/\b[A-Za-z_][A-Za-z0-9_]*\b/g) ?? []) {
+      if (defs.has(id) && !bound.has(id) && !need.has(id)) { need.add(id); want(defs.get(id).src.replace(/^\s*let\s+\w+\s*=/, ""), bound); }
+    }
+  };
+  const bound = new Set();
+  for (const c of book.slice(...chapters[k])) {
+    if (c.type) continue;
+    want(c.src.replace(/^\s*let\s+\w+\s*=/, ""), bound);
+    const n = letName(c.src); if (n) bound.add(n);
+  }
+  return earlier.filter((c) => need.has(letName(c.src)));
+}
+/** Chapter `k` as lesson cells: its heading, the goal, the cells the earlier chapters left, then the chapter. */
+function chapter(L, k, goal, opening = []) {
+  const cells = book.slice(...chapters[k]).map(fresh);
+  L.cells.push(cells[0]);
+  L.md(goal);
+  for (const c of opening) L.cells.push(fresh(c));
+  const prior = carried(k);
+  if (prior.length) {
+    L.md(r`From the earlier lessons, the names this one uses:`);
+    for (const c of prior) L.cells.push(fresh(c));
+  }
+  L.cells.push(...cells.slice(1));
+}
+
+course("order-lattices", "Order and lattices",
+  "From Zero to Propagators: partial orders, lattices and fixed points; semilattices as merges, access decisions and information flow; Galois connections; and propagator networks in Lean, ending with a Sudoku solver.",
+  "Discrete mathematics", (add) => {
+
+  add("01-partial-orders.chalk", "Relations and partial orders", "Partial orders on numbers, divisibility and sets, Hasse diagrams, and the definitions in Lean.", (L) => {
+    chapter(L, 0, r`
+> [!goal]
+> Recognize a partial order, compute in one (divisibility, subsets, chains), read its Hasse diagram, and state the definitions in Lean.
+`, [book[1]]);
+    L.sec("Exercises");
+    L.md(r`Answer ‹true› or ‹false›, or with an element or a set.`);
+    L.ex("le(D, 4, 12)", r`In the divisors of 12, is $4 \le 12$?`, [r`$a \le b$ here means $a$ divides $b$.`]);
+    L.ex("le(D, 4, 6)", r`In the divisors of 12, is $4 \le 6$?`, [r`Does 4 divide 6?`]);
+    L.ex("le(P3, {a}, {a, b})", r`Among the subsets of $\{a, b, c\}$, is $\{a\} \le \{a, b\}$?`, [r`The order is inclusion.`]);
+    L.md(r`
+> [!summary]
+> A partial order is reflexive, antisymmetric and transitive; not every two elements need be comparable. Divisibility, inclusion and $\le$ on numbers are the first examples, and a Hasse diagram draws one by its covers.
+`);
+  });
+
+  add("02-special-elements.chalk", "Special elements and monotone maps", "Least, greatest, maximal and minimal elements, bounds, joins and meets, and monotone maps.", (L) => {
+    chapter(L, 1, r`
+> [!goal]
+> Find the extremal elements and bounds of a poset, compute joins and meets (and see when they do not exist), and decide whether a map is monotone.
+`);
+    L.sec("Exercises");
+    L.ex("upper(E, {c, d})", r`List the upper bounds of $c$ and $d$ in $E$.`, [r`Everything above both $c$ and $d$.`]);
+    L.ex("minimal(T)", r`List the minimal elements of $T$.`, [r`Nothing is strictly below a minimal element.`]);
+    L.ex("join(D, 4, 6)", r`In the divisors of 12, what is $4 \vee 6$?`, [r`The least common multiple.`]);
+    L.ex("monotone(D, k)", r`Is the map ‹k› monotone? Answer ‹true› or ‹false›.`, [r`‹k› sends 2 to 3 and fixes everything else. Look at $2 \le 4$.`]);
+    L.md(r`
+> [!summary]
+> A maximum is above everything; a maximal element has nothing above it. The join of two elements is their least upper bound, when there is one. A monotone map keeps the order, and those are the maps whose fixed points the next lessons find.
+`);
+  });
+
+  add("03-lattices.chalk", "Lattices", "Posets where every pair has a join and a meet: duality, the standard examples, and distributivity.", (L) => {
+    chapter(L, 2, r`
+> [!goal]
+> Decide whether a poset is a lattice, compute in the standard ones (Booleans, powersets, divisors), and see duality and the two lattices that are not distributive.
+`);
+    L.sec("Exercises");
+    L.ex("lattice(V)", r`Is the "vee" $V$ a lattice?`, [r`Do $b$ and $c$ have a join?`]);
+    L.ex("meet(D, 4, 6)", r`In the divisors of 12, what is $4 \wedge 6$?`, [r`The greatest common divisor.`]);
+    L.ex("join(Dop, 4, 6)", r`In the dual of the divisors of 12, what is $4 \vee 6$?`, [r`In the dual, joins are the original meets.`]);
+    L.md(r`
+> [!summary]
+> A lattice has every pairwise join and meet. Turning the order upside down swaps them (duality). Booleans, powersets and divisors are lattices; the vee is not, and M₃ and N₅ are lattices that fail the distributive law.
+`);
+  });
+
+  add("04-fixed-points.chalk", "Complete lattices and fixed points", "Complete lattices, the Knaster–Tarski theorem, and least fixed points by iteration.", (L) => {
+    chapter(L, 3, r`
+> [!goal]
+> State and prove the Knaster–Tarski theorem, and compute least and greatest fixed points of monotone maps on finite lattices by iterating from the bottom and the top.
+`);
+    L.sec("Exercises");
+    L.ex("lfp(D, f)", r`What is the least fixed point of ‹f›?`, [r`Start at $\bot = 1$ and apply ‹f› until nothing changes.`]);
+    L.ex("gfp(D, f)", r`And the greatest?`, [r`Start at $\top = 12$.`]);
+    L.ex("fixpoints(D, one)", r`List the fixed points of ‹one›, the map sending everything to 1.`, []);
+    L.md(r`
+> [!summary]
+> On a complete lattice every monotone map has a least and a greatest fixed point. On a finite one they are reached by iterating from $\bot$ and from $\top$: the Kleene chain, every element of which is below every fixed point.
+`);
+  });
+
+  add("05-semilattices.chalk", "Semilattices as algebras", "Join as an operation with laws: associative, commutative, idempotent, and the order it gives back.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Semilattices as algebras");
+    md(r`
+> [!goal]
+> Read a join as an operation, check its three laws on a table (with the elements that break them when they fail), and recover the order from the operation.
+`);
+    md(r`The join of a lattice is an operation $x \vee y$ on its elements, and it obeys laws whatever the lattice. Turned around, any operation with those laws defines an order.`);
+    md(r`
+> [!definition] Semilattice
+> A **semilattice** is a set with an operation $\cdot$ that is **associative** ($(x \cdot y) \cdot z = x \cdot (y \cdot z)$), **commutative** ($x \cdot y = y \cdot x$) and **idempotent** ($x \cdot x = x$).
+`);
+    sec("Operations as tables");
+    md(r`An operation on a finite set is its table: row $x$, column $y$ holds $x \cdot y$. Here is $\max$ on $\{0, 1, 2\}$.`);
+    m("let M = op({0, 1, 2}; [0, 1, 2; 1, 1, 2; 2, 2, 2])");
+    m("semilattice(M)", { work: true });
+    m("identity(M)");
+    md(r`Union on the subsets of $\{a, b\}$ is another; set elements are written as sets:`);
+    m("let U = op({{}, {a}, {b}, {a,b}}; [{}, {a}, {b}, {a,b}; {a}, {a}, {a,b}, {a,b}; {b}, {a,b}, {b}, {a,b}; {a,b}, {a,b}, {a,b}, {a,b}])");
+    m("semilattice(U)");
+    sec("The order an operation gives");
+    md(r`
+> [!theorem] A semilattice is a partial order
+> Define $x \le y$ when $x \cdot y = y$. Idempotence makes it reflexive, commutativity antisymmetric, associativity transitive, and then $x \cdot y$ is the least upper bound of $x$ and $y$.
+`);
+    m("order(M)", { work: true });
+    m("order(U)");
+    md(r`The union table gives back the powerset's diamond. The engine's ‹order› is proved to produce a partial order whose join is the operation (‹semilattice_order›).`);
+    sec("When a law fails");
+    md(r`Rock, paper, scissors: $x \cdot y$ is the winner of $x$ against $y$. Commutative and idempotent, but not associative, so there is no order behind it. The table marks the four entries the two sides of the law read.`);
+    m("let RPS = op({r, p, s}; [r, p, r; p, p, s; r, s, s])");
+    m("commutative(RPS)");
+    m("associative(RPS)", { work: true });
+    m("order(RPS)");
+    md(r`"Keep the newer one", $x \cdot y = y$, is associative and idempotent but not commutative: the result depends on the order the values arrive in.`);
+    m("let K = op({a, b, c}; [a, b, c; a, b, c; a, b, c])");
+    m("commutative(K)", { work: true });
+    sec("In Lean");
+    md(r`The same definitions as a class, and the order it induces, proved a partial order:`);
+    lean(r`class Semilattice (α : Type) where
+  merge : α → α → α
+  merge_comm  : ∀ (a b : α), merge a b = merge b a
+  merge_assoc : ∀ (a b c : α), merge (merge a b) c = merge a (merge b c)
+  merge_idem  : ∀ (a : α), merge a a = a
+
+export Semilattice (merge merge_comm merge_assoc merge_idem)
+
+/-- The order a semilattice induces: a is below b when merging a into b changes nothing. -/
+def Semilattice.le {α : Type} [Semilattice α] (a b : α) : Prop := merge a b = b
+
+theorem Semilattice.le_refl' {α : Type} [Semilattice α] (a : α) : Semilattice.le a a := merge_idem a
+
+theorem Semilattice.le_antisymm' {α : Type} [Semilattice α] (a b : α)
+    (h1 : Semilattice.le a b) (h2 : Semilattice.le b a) : a = b := by
+  unfold Semilattice.le at h1 h2
+  rw [← h2, merge_comm, h1]
+
+theorem Semilattice.le_trans' {α : Type} [Semilattice α] (a b c : α)
+    (h1 : Semilattice.le a b) (h2 : Semilattice.le b c) : Semilattice.le a c := by
+  unfold Semilattice.le at *
+  rw [← h2, ← merge_assoc, h1]
+
+/-- So every semilattice is a partial order. -/
+@[reducible] def Semilattice.toPartialOrder (α : Type) [Semilattice α] : PartialOrder α where
+  le := Semilattice.le
+  le_refl := Semilattice.le_refl'
+  le_antisymm := Semilattice.le_antisymm'
+  le_trans := Semilattice.le_trans'`);
+    md(r`The merge of two elements is above both, and below anything above both: it is their join.`);
+    lx(r`theorem Semilattice.le_merge_left {α : Type} [Semilattice α] (a b : α) : Semilattice.le a (merge a b) := by`, r`Prove that $a \le a \cdot b$.`, r`  unfold Semilattice.le
+  rw [← merge_assoc, merge_idem]`, [r`‹unfold Semilattice.le› turns the goal into ‹merge a (merge a b) = merge a b›.`, r`Regroup with ‹merge_assoc› (right to left), then ‹merge_idem›.`]);
+    lean(r`theorem Semilattice.le_merge_right {α : Type} [Semilattice α] (a b : α) : Semilattice.le b (merge a b) := by
+  unfold Semilattice.le
+  rw [merge_comm a b, ← merge_assoc, merge_idem]
+
+theorem Semilattice.merge_le {α : Type} [Semilattice α] (a b c : α)
+    (h1 : Semilattice.le a c) (h2 : Semilattice.le b c) : Semilattice.le (merge a b) c := by
+  unfold Semilattice.le at *
+  rw [merge_assoc, h2, h1]`);
+    sec("Exercises");
+    md(r`Answer ‹true› or ‹false›, or with an element.`);
+    m("let W = op({0, 1, 2, 3}; [0, 1, 2, 3; 1, 1, 3, 3; 2, 3, 2, 3; 3, 3, 3, 3])");
+    ex("semilattice(W)", r`Is $W$ a semilattice?`, [r`Check the diagonal first, then whether the table is symmetric.`]);
+    ex("identity(W)", r`What is the identity of $W$?`, [r`The row that copies the header.`]);
+    ex("associative(K)", r`Is "keep the newer one" associative?`, [r`$(x \cdot y) \cdot z = z$ and $x \cdot (y \cdot z) = z$.`]);
+    md(r`
+> [!summary]
+> A semilattice is an associative, commutative, idempotent operation, and it is the same thing as an order with joins: $x \le y$ exactly when $x \cdot y = y$. A table decides the three laws, and a failure is a triple or a pair you can point at.
+`);
+  });
+
+  add("06-merges.chalk", "A merge is a join", "Max, union, last-writer-wins and records merged field by field: why replicas that merge this way agree.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("A merge is a join");
+    md(r`
+> [!goal]
+> See why a merge that is a join can be applied in any order and any number of times with the same result, build merges for numbers, flags, timestamped values and records, and prove their laws in Lean.
+`);
+    md(r`Two copies of some data (replicas) change independently and later exchange states. Each **merges** the other's state into its own. They end up equal, whatever order the messages arrive in and however often they are repeated, exactly when the merge is associative, commutative and idempotent: a join.`);
+    sec("Order and repetition do not matter");
+    m("let M = op({0, 1, 2}; [0, 1, 2; 1, 1, 2; 2, 2, 2])");
+    m("fold(M; 2, 0, 1)", { work: true });
+    m("fold(M; 1, 0, 2, 2, 0)", { work: true });
+    md(r`Associativity lets the merges be grouped any way, commutativity lets them arrive in any order, and idempotence lets a message be delivered twice.`);
+    sec("Records merge field by field");
+    md(r`
+> [!theorem] Products of semilattices
+> If $A$ and $B$ are semilattices, so is $A \times B$ with $(a, b) \cdot (a', b') = (a \cdot a', b \cdot b')$. Its order is the product order.
+`);
+    m("let C2 = chain(2)");
+    m("let R2 = product(C2, C2)");
+    m("join(R2, (0, 1), (1, 0))", { work: true });
+    m("let JR = joinop(R2)");
+    m("semilattice(JR)");
+    sec("In Lean");
+    lean(r`instance : Semilattice Nat where
+  merge := max
+  merge_comm := Nat.max_comm
+  merge_assoc := Nat.max_assoc
+  merge_idem := Nat.max_self
+
+instance : Semilattice Bool where
+  merge := (· || ·)
+  merge_comm := by decide
+  merge_assoc := by decide
+  merge_idem := by decide
+
+/-- A record merges field by field: proved once, for any two field types. -/
+instance {α β : Type} [Semilattice α] [Semilattice β] : Semilattice (α × β) where
+  merge p q := (merge p.1 q.1, merge p.2 q.2)
+  merge_comm p q := by rw [merge_comm p.1, merge_comm p.2]
+  merge_assoc p q r := by simp only [merge_assoc]
+  merge_idem p := by simp only [merge_idem]
+
+#eval merge (3, true) (5, false)`);
+    md(r`
+> [!definition] Last-writer-wins register
+> A value with a timestamp; the merge keeps the later one, and on a tie the larger value, so that the merge is commutative even when two replicas write at the same time.
+`);
+    lean(r`/-- A last-writer-wins register: a timestamp and a value. -/
+structure LWW where
+  ts  : Nat
+  val : Nat
+  deriving Repr, DecidableEq
+
+/-- a wins over b: a later timestamp, or the same one and a value at least as large. -/
+def LWW.beats (a b : LWW) : Prop := b.ts < a.ts ∨ (b.ts = a.ts ∧ b.val ≤ a.val)
+instance (a b : LWW) : Decidable (a.beats b) := inferInstanceAs (Decidable (_ ∨ _))
+
+def LWW.merge (a b : LWW) : LWW := if a.beats b then a else b
+
+theorem LWW.merge_comm (a b : LWW) : a.merge b = b.merge a := by
+  rcases a with ⟨t1, v1⟩; rcases b with ⟨t2, v2⟩
+  simp only [LWW.merge]
+  by_cases h1 : (LWW.mk t1 v1).beats ⟨t2, v2⟩ <;> by_cases h2 : (LWW.mk t2 v2).beats ⟨t1, v1⟩ <;>
+    simp only [h1, h2, ↓reduceIte, LWW.mk.injEq] <;> simp only [LWW.beats] at * <;> omega
+
+theorem LWW.merge_assoc (a b c : LWW) : (a.merge b).merge c = a.merge (b.merge c) := by
+  rcases a with ⟨t1, v1⟩; rcases b with ⟨t2, v2⟩; rcases c with ⟨t3, v3⟩
+  simp only [LWW.merge]
+  by_cases h12 : (LWW.mk t1 v1).beats ⟨t2, v2⟩ <;> by_cases h23 : (LWW.mk t2 v2).beats ⟨t3, v3⟩ <;>
+    by_cases h13 : (LWW.mk t1 v1).beats ⟨t3, v3⟩ <;> simp only [h12, h23, h13, ↓reduceIte] <;>
+    simp only [LWW.beats] at * <;> first | rfl | omega
+
+theorem LWW.merge_idem (a : LWW) : a.merge a = a := by
+  simp [LWW.merge, LWW.beats]
+
+instance : Semilattice LWW where
+  merge := LWW.merge
+  merge_comm := LWW.merge_comm
+  merge_assoc := LWW.merge_assoc
+  merge_idem := LWW.merge_idem
+
+#eval merge (LWW.mk 3 10) (LWW.mk 5 7)`);
+    md(r`
+> [!mistake]
+> Without the tie-break ("keep the second on a tie") the merge is not commutative: two replicas that each received the other's write last would keep different values forever.
+`);
+    lx(r`theorem three_replicas {α : Type} [Semilattice α] (a b c : α) :
+    merge (merge a b) c = merge (merge c a) b := by`, r`Three replicas merge their states in two different orders. Prove they agree.`, r`  rw [merge_assoc, merge_comm b c, ← merge_assoc, merge_comm a c]`, [
+      r`Rewrite the left side into the right with ‹merge_assoc› and ‹merge_comm›.`,
+      r`‹merge (merge a b) c = merge a (merge b c) = merge a (merge c b) = merge (merge a c) b›, and then swap ‹a› and ‹c›.`,
+    ]);
+    sec("Exercises");
+    ex("fold(M; 0, 2, 1, 0)", r`Merge the states $0, 2, 1, 0$ with $\max$.`, []);
+    ex("join(R2, (1, 0), (0, 0))", r`Merge the records $(1, 0)$ and $(0, 0)$ field by field. Write the pair as ‹(x, y)›.`, [r`Take the larger value in each field.`]);
+    md(r`
+> [!summary]
+> A merge that is a join can be applied in any grouping, any order and any number of times: replicas that exchange states converge. Maxima, unions, last-writer-wins registers and records of them are all joins, and the product proof is written once for every record.
+`);
+  });
+
+  add("07-distributive.chalk", "Distributive and Boolean lattices", "M₃ and N₅ as the witnesses, complements, and the Boolean lattices of sets and squarefree divisors.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Distributive and Boolean lattices");
+    md(r`
+> [!goal]
+> Decide distributivity with a witness triple when it fails, find complements, and recognize Boolean lattices.
+`);
+    md(r`
+> [!definition] Distributive lattice
+> A lattice is **distributive** when $x \wedge (y \vee z) = (x \wedge y) \vee (x \wedge z)$ for all $x, y, z$ (the dual law then follows).
+`);
+    m("let M3 = poset({bot, a, b, c, top}; bot < a, bot < b, bot < c, a < top, b < top, c < top)");
+    m("distributive(M3)", { work: true });
+    m("let N5 = poset({bot, p, q, r, top}; bot < p, bot < q, q < r, p < top, r < top)");
+    m("distributive(N5)", { work: true });
+    md(r`
+> [!theorem] Birkhoff
+> A lattice is distributive exactly when it contains neither M₃ nor N₅ as a sublattice. They are the witnesses every failure contains.
+`);
+    m("let D = divisors(12)");
+    m("distributive(D)");
+    sec("Complements");
+    md(r`
+> [!definition] Complement
+> In a lattice with $\bot$ and $\top$, a **complement** of $x$ is a $y$ with $x \vee y = \top$ and $x \wedge y = \bot$. In a distributive lattice an element has at most one.
+`);
+    m("complement(M3, a)", { work: true });
+    m("complement(D, 4)");
+    m("complement(D, 2)");
+    md(r`$2$ has no complement among the divisors of 12: any $y$ with $\operatorname{lcm}(2, y) = 12$ is a multiple of 4 or of 3 times 4, and then $\gcd(2, y) = 2$.`);
+    sec("Boolean lattices");
+    md(r`
+> [!definition] Boolean lattice
+> A **Boolean lattice** is distributive and complemented. The subsets of a set are the model: complement is set complement.
+`);
+    m("let P = subsets({x, y, z})");
+    m("boolean(P)");
+    m("let D30 = divisors(30)");
+    m("boolean(D30)");
+    m("complement(D30, 6)");
+    md(r`The divisors of 30 are the subsets of $\{2, 3, 5\}$ in disguise: a squarefree number is the set of its primes.`);
+    sec("In Lean");
+    lx(r`theorem bool_distrib (a b c : Bool) : (a && (b || c)) = ((a && b) || (a && c)) := by`, r`Prove that the Booleans are distributive.`, r`  cases a <;> cases b <;> cases c <;> rfl`, [r`There are eight cases: ‹cases a <;> cases b <;> cases c›, and each is ‹rfl›.`]);
+    sec("Exercises");
+    ex("complement(M3, b)", r`List the complements of $b$ in M₃.`, [r`Which elements join with $b$ to $\top$ and meet it at $\bot$?`]);
+    ex("boolean(D)", r`Are the divisors of 12 a Boolean lattice?`, [r`Does every element have a complement?`]);
+    ex("complement(D30, 10)", r`List the complements of 10 among the divisors of 30.`, [r`$10 = 2 \cdot 5$: which primes are missing?`]);
+    md(r`
+> [!summary]
+> Distributivity can fail, and M₃ and N₅ are why. Boolean lattices are distributive with complements; the subsets of a set, and the divisors of a squarefree number, are the examples.
+`);
+  });
+
+  add("08-access-decisions.chalk", "Access decisions", "Combining permit and deny: deny-overrides and permit-overrides are joins, first-applicable is not commutative.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Access decisions");
+    md(r`
+> [!goal]
+> Model the combining algorithms of an access-control policy as operations, see which are semilattices (so rule order cannot matter) and which are not, and prove that adding a rule never turns a deny into a permit.
+`);
+    md(r`An access policy has many rules. For a given request each rule says **permit**, **deny**, or **not applicable** (na), and a *combining algorithm* turns their answers into one. The standard ones (XACML's) are operations on $\{\mathrm{na}, \mathrm{permit}, \mathrm{deny}\}$, so they are tables with laws.`);
+    sec("Deny overrides");
+    md(r`A deny anywhere wins; otherwise a permit; otherwise not applicable.`);
+    m("let DO = op({na, permit, deny}; [na, permit, deny; permit, permit, deny; deny, deny, deny])");
+    m("semilattice(DO)", { work: true });
+    m("order(DO)", { work: true });
+    m("identity(DO)");
+    md(r`It is the join of the chain $\mathrm{na} < \mathrm{permit} < \mathrm{deny}$: a rule's decision can only push the result up. Because it is a semilattice, the decision for a list of rules does not depend on their order or grouping:`);
+    m("fold(DO; permit, na, deny, permit)", { work: true });
+    m("fold(DO; deny, permit, permit, na)");
+    sec("Permit overrides");
+    md(r`The same with the roles swapped: the join of $\mathrm{na} < \mathrm{deny} < \mathrm{permit}$.`);
+    m("let PO = op({na, permit, deny}; [na, permit, deny; permit, permit, permit; deny, permit, deny])");
+    m("semilattice(PO)");
+    m("order(PO)");
+    sec("First applicable");
+    md(r`The first rule that applies decides. Associative and idempotent, but not commutative:`);
+    m("let FA = op({na, permit, deny}; [na, permit, deny; permit, permit, permit; deny, deny, deny])");
+    m("commutative(FA)", { work: true });
+    m("fold(FA; na, permit, deny)", { work: true });
+    m("fold(FA; na, deny, permit)", { work: true });
+    md(r`
+> [!mistake]
+> With first-applicable, reordering two rules can turn a permit into a deny. That is not a bug in the algorithm: the order of the rules is part of the policy, and a tool that sorts or merges rule lists must keep it. With deny-overrides no order is part of the policy.
+`);
+    sec("In Lean");
+    lean(r`inductive Decision where
+  | na | permit | deny
+  deriving Repr, DecidableEq
+
+def denyOverrides : Decision → Decision → Decision
+  | .deny, _ | _, .deny => .deny
+  | .permit, _ | _, .permit => .permit
+  | .na, .na => .na
+
+def firstApplicable : Decision → Decision → Decision
+  | .na, d => d
+  | d, _ => d
+
+theorem denyOverrides_comm (a b : Decision) : denyOverrides a b = denyOverrides b a := by
+  cases a <;> cases b <;> rfl
+theorem denyOverrides_assoc (a b c : Decision) :
+    denyOverrides (denyOverrides a b) c = denyOverrides a (denyOverrides b c) := by
+  cases a <;> cases b <;> cases c <;> rfl
+theorem denyOverrides_idem (a : Decision) : denyOverrides a a = a := by cases a <;> rfl
+
+theorem firstApplicable_not_comm : ¬ ∀ a b, firstApplicable a b = firstApplicable b a := by
+  intro h
+  cases h .permit .deny
+
+instance : Semilattice Decision where
+  merge := denyOverrides
+  merge_comm := denyOverrides_comm
+  merge_assoc := denyOverrides_assoc
+  merge_idem := denyOverrides_idem
+
+/-- A policy's decision: its rules' decisions combined, starting from "not applicable". -/
+def combine (ds : List Decision) : Decision := ds.foldl denyOverrides .na
+
+#eval combine [.permit, .na, .deny, .permit]`);
+    md(r`Under deny-overrides, adding a rule is monotone: it can only move the decision up the chain. In particular a deny stays a deny.`);
+    lx(r`theorem deny_stays (ds : List Decision) (d : Decision) (h : combine ds = .deny) :
+    combine (ds ++ [d]) = .deny := by`, r`Prove that adding a rule to a policy that denies keeps it denying.`, r`  simp only [combine, List.foldl_append, List.foldl_cons, List.foldl_nil] at *
+  rw [h]
+  cases d <;> rfl`, [
+      r`Unfold ‹combine›: ‹List.foldl_append› splits the fold over ‹ds ++ [d]›.`,
+      r`What is left is ‹denyOverrides (combine ds) d›; rewrite with ‹h›, then try each ‹d›.`,
+    ]);
+    sec("Exercises");
+    ex("fold(DO; na, permit, na)", r`Under deny-overrides, what is the decision of rules that say na, permit, na?`, []);
+    ex("fold(FA; permit, deny)", r`Under first-applicable, rules say permit then deny. What is the decision?`, []);
+    ex("identity(PO)", r`Which decision is the identity of permit-overrides?`, [r`The one that never changes the result.`]);
+    md(r`
+> [!summary]
+> Deny-overrides and permit-overrides are joins of a three-element chain, so a policy's decision under them does not depend on rule order. First-applicable is associative but not commutative: there the order of rules is part of the policy.
+`);
+  });
+
+  add("09-information-flow.chalk", "Information flow", "Denning's lattice of security classes: data may only flow up, and a computation's output gets the join of its inputs' classes.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Information flow");
+    md(r`
+> [!goal]
+> Build a lattice of security classes as a product, label data with classes, and check that every flow of information goes up the lattice; then prove the rule for combining inputs.
+`);
+    md(r`
+> [!definition] Security classes (Denning)
+> A **security class** is a level and a set of categories: $(\mathrm{high}, \{\mathrm{fin}\})$ is high-level data about finance. Classes are ordered componentwise, level by level and categories by inclusion, so they form a product lattice. Information may flow from class $a$ to class $b$ only when $a \le b$.
+`);
+    m("let Lv = poset({low, high}; low < high)");
+    m("let Cat = subsets({fin, hr})");
+    m("let SC = product(Lv, Cat)");
+    m("lattice(SC)");
+    sec("Combining inputs");
+    md(r`A value computed from two inputs may reveal both, so its class must be at least each of theirs: at least their join.`);
+    m("join(SC, (low, {fin}), (high, {}))", { work: true });
+    m("join(SC, (high, {hr}), (low, {fin}))");
+    sec("Checking flows");
+    md(r`A program's flows form a relation: $x \to y$ when information about $x$ reaches $y$. It is secure when every flow goes up. A report built from salaries and then summarized for an audit:`);
+    m("let Fl = rel({salary, report, audit}; salary->report, report->audit)");
+    m("secure(SC, Fl; salary->(high, {hr}), report->(high, {hr, fin}), audit->(low, {fin}))", { work: true });
+    md(r`The audit summary is labelled $(\mathrm{low}, \{\mathrm{fin}\})$, below the report it reads: the flow goes down, and the graph marks it. Raising the audit's class fixes it:`);
+    m("secure(SC, Fl; salary->(high, {hr}), report->(high, {hr, fin}), audit->(high, {hr, fin}))");
+    sec("Decisions and data: two lattices compared");
+    md(r`
+> [!note] The last lesson and this one
+> Both use a lattice to make "more restrictive" precise, but they order different things. In access decisions the lattice orders the *answers* to one request, and combining rules is a join: the policy's answer can only move up as rules are added. Here the lattice orders the *data*, every value carries a class, and the policy is a condition on every flow: a monotone labelling. One decides a request; the other constrains a computation.
+`);
+    sec("In Lean");
+    lean(r`/-- A security class: high or not, and two categories, each present or not. -/
+structure SecClass where
+  high : Bool
+  fin  : Bool
+  hr   : Bool
+  deriving Repr, DecidableEq
+
+/-- a may flow to b: componentwise, false below true. -/
+def SecClass.le (a b : SecClass) : Bool := (!a.high || b.high) && (!a.fin || b.fin) && (!a.hr || b.hr)
+def SecClass.join (a b : SecClass) : SecClass := ⟨a.high || b.high, a.fin || b.fin, a.hr || b.hr⟩
+
+/-- The join is the least upper bound: data may flow from the join exactly when it may flow from both. -/
+theorem join_le_iff (a b c : SecClass) : (a.join b).le c = (a.le c && b.le c) := by
+  cases a; cases b; cases c
+  rename_i a1 a2 a3 b1 b2 b3 c1 c2 c3
+  cases a1 <;> cases a2 <;> cases a3 <;> cases b1 <;> cases b2 <;> cases b3 <;> cases c1 <;> cases c2 <;> cases c3 <;> rfl`);
+    lx(r`theorem join_flow_left (a b c : SecClass) (h : (a.join b).le c = true) : a.le c = true := by`, r`If a computation's output may flow to $c$, so may its first input.`, r`  rw [join_le_iff] at h
+  exact (Bool.and_eq_true _ _ |>.mp h).1`, [r`Rewrite ‹h› with ‹join_le_iff›.`, r`‹Bool.and_eq_true› splits a conjunction of Booleans.`]);
+    sec("Exercises");
+    ex("join(SC, (low, {fin}), (high, {hr}))", r`What class does a value computed from $(\mathrm{low}, \{\mathrm{fin}\})$ and $(\mathrm{high}, \{\mathrm{hr}\})$ data get? Write it as ‹(level, {categories})›.`, [r`Join componentwise: the higher level, the union of the categories.`]);
+    ex("le(SC, (high, {}), (low, {fin}))", r`May information flow from $(\mathrm{high}, \{\})$ to $(\mathrm{low}, \{\mathrm{fin}\})$? Answer ‹true› or ‹false›.`, [r`Compare the levels.`]);
+    md(r`
+> [!summary]
+> Security classes form a product lattice; data flows only upward, a computation's output gets the join of its inputs' classes, and a program is secure when its labelling is monotone along every flow.
+`);
+  });
+
+  add("10-galois.chalk", "Closure operators and Galois connections", "Closure operators, Galois connections between two orders, and the concept lattice of a formal context.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Closure operators and Galois connections");
+    md(r`
+> [!goal]
+> Recognize closure operators and Galois connections, see how one gives the other, and build the concept lattice of a small formal context.
+`);
+    md(r`
+> [!definition] Closure operator
+> A map $c$ on a poset is a **closure operator** when it is **extensive** ($x \le c(x)$), **monotone**, and **idempotent** ($c(c(x)) = c(x)$). Its fixed points are the **closed** elements.
+`);
+    m("let D = divisors(12)");
+    m("let cl = map(D; 3->6)");
+    m("closureop(D, cl)", { work: true });
+    m("fixpoints(D, cl)");
+    m("let bad = map(D; 2->1)");
+    m("closureop(D, bad)", { work: true });
+    sec("Galois connections");
+    md(r`
+> [!definition] Galois connection
+> Monotone maps $f : P \to Q$ and $g : Q \to P$ form a **Galois connection** when $f(x) \le y \iff x \le g(y)$ for all $x$ and $y$. Then $g \circ f$ is a closure operator on $P$.
+`);
+    md(r`Halving and doubling: $\lceil x / 2 \rceil \le y$ exactly when $x \le 2y$.`);
+    m("let C7 = chain(7)");
+    m("let C4 = chain(4)");
+    m("let half = map(C7, C4; 0->0, 1->1, 2->1, 3->2, 4->2, 5->3, 6->3)");
+    m("let dbl = map(C4, C7; 0->0, 1->2, 2->4, 3->6)");
+    m("galois(C7, C4, half, dbl)", { work: true });
+    m("let same = map(C4, C7; 0->0, 1->1, 2->2, 3->3)");
+    m("galois(C7, C4, half, same)", { work: true });
+    sec("Formal concept analysis");
+    md(r`
+> [!definition] Formal context, concept
+> A **context** lists objects, attributes, and which object has which. A **concept** is a set of objects and a set of attributes that determine each other: exactly the objects having all those attributes, and exactly the attributes they all share. Ordered by their objects, the concepts form a complete lattice.
+`);
+    m("let A = context({duck, eagle, dog, bat}, {flies, mammal, bird}; duck->flies, duck->bird, eagle->flies, eagle->bird, dog->mammal, bat->flies, bat->mammal)");
+    m("concepts(A)", { work: true });
+    md(r`The two maps "the attributes these objects share" and "the objects having these attributes" form a Galois connection (reversing the order), and the concepts are its closed pairs. The bat sits below both "flies" and "mammal": the lattice finds the category nobody named.`);
+    sec("In Lean");
+    lean(r`structure GaloisConnection {α β : Type} [PartialOrder α] [PartialOrder β] (f : α → β) (g : β → α) : Prop where
+  gc : ∀ (a : α) (b : β), f a ≤ b ↔ a ≤ g b`);
+    lx(r`theorem GaloisConnection.le_gf {α β : Type} [PartialOrder α] [PartialOrder β] {f : α → β} {g : β → α}
+    (h : GaloisConnection f g) (a : α) : a ≤ g (f a) := by`, r`Prove that $g \circ f$ is extensive.`, r`  exact (h.gc a (f a)).mp (le_refl (f a))`, [r`Use the connection with $b = f(a)$.`, r`‹le_refl (f a)› proves ‹f a ≤ f a›.`]);
+    lean(r`theorem GaloisConnection.fg_le {α β : Type} [PartialOrder α] [PartialOrder β] {f : α → β} {g : β → α}
+    (h : GaloisConnection f g) (b : β) : f (g b) ≤ b :=
+  (h.gc (g b) b).mpr (le_refl (g b))
+
+theorem GaloisConnection.monotone_f {α β : Type} [PartialOrder α] [PartialOrder β] {f : α → β} {g : β → α}
+    (h : GaloisConnection f g) : Monotone f where
+  map_le a a' haa := (h.gc a (f a')).mpr (le_trans _ _ _ haa (h.le_gf a'))`);
+    sec("Exercises");
+    ex("closureop(D, bad)", r`Is ‹bad› a closure operator? Answer ‹true› or ‹false›.`, [r`Is $2 \le$ ‹bad›$(2)$?`]);
+    ex("galois(C7, C4, half, dbl)", r`Do halving (rounded up) and doubling form a Galois connection?`, []);
+    md(r`
+> [!summary]
+> A closure operator adds what a property forces and stops; a Galois connection is a pair of maps that are "adjoint", and composing them gives a closure. Formal concept analysis is a Galois connection between objects and attributes, and its closed pairs are a lattice of concepts.
+`);
+  });
+
+  add("11-fixed-points-in-practice.chalk", "Fixed points in practice", "Apply until nothing changes: reachability as a least fixed point, and why the iteration stops.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Fixed points in practice");
+    md(r`
+> [!goal]
+> Recognize "apply until nothing changes" as computing a least fixed point, compute one on a lattice of sets, and see why it stops.
+`);
+    md(r`Many algorithms keep applying a step until it has no effect: closing a set under rules, propagating facts, computing what can be reached. When the step is monotone and starts from the bottom, the result is the **least** fixed point (Kleene), and it is the smallest set closed under the step.`);
+    sec("Reachability");
+    md(r`The nodes reachable from $a$ in the graph $a \to b \to c$, $d \to a$ are the least set $S$ with $a \in S$ and closed under successors: the least fixed point of $f(S) = \{a\} \cup S \cup \mathrm{succ}(S)$ on the subsets of $\{a, b, c, d\}$.`);
+    m("let P4 = subsets({a, b, c, d})");
+    m(`let reach = map(P4; ${reachMap})`);
+    m("monotone(P4, reach)");
+    m("lfp(P4, reach)", { step: 0 });
+    md(r`Each step adds one more layer of successors: $\varnothing$, $\{a\}$, $\{a, b\}$, $\{a, b, c\}$, and then nothing changes. $d$ is not reachable from $a$.`);
+    sec("Why it stops");
+    md(r`
+> [!theorem] The ascending chain condition
+> If every increasing chain $x_0 \le x_1 \le \cdots$ in a lattice is eventually constant (always true on a finite lattice), then iterating a monotone $f$ from $\bot$ reaches a fixed point after finitely many steps, and it is the least one.
+`);
+    md(r`On the subsets of an $n$-element set a chain has at most $n + 1$ distinct elements, so the iteration takes at most $n$ steps. In Lean, every iterate is below every fixed point above the start:`);
+    lx(r`theorem iter_le_of_fixed {α : Type} [PartialOrder α] {f : α → α} (hf : Monotone f) {a x : α}
+    (ha : a ≤ x) (hx : f x = x) : ∀ n, iter f n a ≤ x := by`, r`Prove that every iterate of $f$ from $a$ stays below a fixed point $x$ above $a$.`, r`  intro n
+  induction n with
+  | zero => exact ha
+  | succ n ih =>
+    show f (iter f n a) ≤ x
+    rw [← hx]
+    exact hf.map_le _ _ ih`, [
+      r`Induction on ‹n›. The base case is ‹ha›.`,
+      r`For ‹n + 1›, the goal is ‹f (iter f n a) ≤ x›; rewrite ‹x› as ‹f x› and use monotonicity on the hypothesis.`,
+    ]);
+    sec("Exercises");
+    m(`let R3 = map(P4; ${reachFromD})`);
+    ex("lfp(P4, R3)", r`‹R3› is the reachability step from $d$. What can $d$ reach? Write the set, such as ‹{a, b}›.`, [r`Iterate from the empty set: $\{d\}$ first.`]);
+    md(r`
+> [!summary]
+> "Apply until nothing changes" computes a least fixed point when the step is monotone and starts from the bottom. On a finite lattice it always stops, and what it finds is the smallest solution: everything forced, nothing more.
+`);
+  });
+
+  add("12-propagators.chalk", "The propagator model", "Cells that only gain information, in a lattice; propagators as monotone functions between them.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("The propagator model");
+    md(r`
+> [!goal]
+> Model partial information as a lattice, merges as joins, and computations as monotone propagators; see why a propagator must never guess.
+`);
+    md(r`
+> [!definition] Cells and propagators
+> A **cell** holds what is known so far about a value, an element of a lattice ordered by information. New information is **merged** in with the join, so a cell's content only rises. A **propagator** reads cells and writes its conclusions to another cell; a network runs propagators until nothing changes.
+`);
+    md(r`The simplest information lattice for a number: nothing known, one of the values, or a contradiction.`);
+    m("let F = poset({unknown, 1, 2, 3, conflict}; unknown < 1, unknown < 2, unknown < 3, 1 < conflict, 2 < conflict, 3 < conflict)");
+    m("lattice(F)");
+    m("join(F, unknown, 2)", { work: true });
+    m("join(F, 2, 3)", { work: true });
+    sec("Propagators are monotone");
+    md(r`A propagator must give at least as much output when it knows more. "Add one" is monotone; "guess 1 when nothing is known" is not, because learning the value is 2 would make it take back its answer.`);
+    m("let inc = map(F; 1->2, 2->3, 3->conflict)");
+    m("monotone(F, inc)");
+    m("let guess = map(F; unknown->1)");
+    m("monotone(F, guess)", { work: true });
+    md(r`
+> [!theorem] Networks of monotone propagators converge
+> Each propagator's output only rises as its inputs rise, and cells only rise under merges, so the cells' contents form an ascending chain. On a lattice with no infinite ascending chains the network reaches a fixed point, the least one, whatever order the propagators run in.
+`);
+    sec("In Lean");
+    lean(r`/-- What a cell knows: nothing yet, a value, or a contradiction. -/
+inductive Flat (α : Type) where
+  | unknown
+  | known (a : α)
+  | conflict
+  deriving Repr, DecidableEq
+
+def Flat.merge {α : Type} [DecidableEq α] : Flat α → Flat α → Flat α
+  | .unknown, x => x
+  | x, .unknown => x
+  | .known a, .known b => if a = b then .known a else .conflict
+  | _, _ => .conflict
+
+instance {α : Type} [DecidableEq α] : Semilattice (Flat α) where
+  merge := Flat.merge
+  merge_comm a b := by
+    cases a <;> cases b <;> simp only [Flat.merge]
+    rename_i x y
+    by_cases h : x = y
+    · subst h; rfl
+    · simp [h, Ne.symm h]
+  merge_assoc a b c := by
+    cases a <;> cases b <;> cases c <;> simp only [Flat.merge]
+    all_goals first
+      | rfl
+      | (rename_i x y z
+         by_cases h1 : x = y <;> by_cases h2 : y = z <;> simp_all)
+      | (rename_i x y
+         by_cases h1 : x = y <;> simp_all)
+  merge_idem a := by cases a <;> simp [Flat.merge]
+
+instance {α : Type} [ToString α] : ToString (Flat α) where
+  toString
+    | .unknown => "?"
+    | .known a => toString a
+    | .conflict => "conflict"
+
+/-- The information order: unknown below everything, conflict above everything. -/
+def Flat.below {α : Type} : Flat α → Flat α → Prop
+  | .unknown, _ => True
+  | _, .conflict => True
+  | .known a, .known b => a = b
+  | _, _ => False
+
+/-- Addition, on what is known: a sum needs both summands. -/
+def Flat.add : Flat Nat → Flat Nat → Flat Nat
+  | .known a, .known b => .known (a + b)
+  | .conflict, _ | _, .conflict => .conflict
+  | _, _ => .unknown
+
+#eval (merge (Flat.known 3) .unknown, merge (Flat.known 3) (Flat.known 4))`);
+    lx(r`theorem Flat.add_mono (a a' b b' : Flat Nat) (ha : a.below a') (hb : b.below b') :
+    (Flat.add a b).below (Flat.add a' b') := by`, r`Prove that addition is a monotone propagator: knowing more about the summands never makes it know less about the sum.`, r`  cases a <;> cases a' <;> cases b <;> cases b' <;> simp_all [Flat.add, Flat.below]`, [
+      r`Case on all four arguments: ‹cases a <;> cases a' <;> cases b <;> cases b'›.`,
+      r`Each case unfolds with ‹simp_all [Flat.add, Flat.below]›.`,
+    ]);
+    sec("Exercises");
+    ex("join(F, 1, 1)", r`Merge the information "the value is 1" with itself.`, []);
+    ex("monotone(F, guess)", r`Is guessing a monotone propagator? Answer ‹true› or ‹false›.`, [r`Compare what it says about ‹unknown› and about ‹2›.`]);
+    md(r`
+> [!summary]
+> Partial information is a lattice; merging is the join; propagators are monotone maps. A network of them converges to the least fixed point, whatever order they run in, and a propagator that guesses breaks that.
+`);
+  });
+
+  add("13-propagator-network.chalk", "A propagator network in Lean", "Mutable cells that only grow, a scheduler that runs to quiescence, and a constraint that runs in every direction.", ({ sec, md, lean, lx }) => {
+    sec("A propagator network in Lean");
+    md(r`
+> [!goal]
+> Build a running propagator network in Lean: cells as references that merge, propagators as small programs, and a loop that runs them until nothing changes.
+`);
+    md(r`A cell is a mutable reference whose writes merge. Writing reports whether the content changed, which is how the scheduler knows when to stop.`);
+    lean(r`/-- A cell: a mutable reference that only ever grows, by merging. -/
+structure Cell (α : Type) where
+  ref : IO.Ref α
+
+def Cell.new {α : Type} (init : α) : IO (Cell α) := do
+  return ⟨← IO.mkRef init⟩
+
+def Cell.read {α : Type} (c : Cell α) : IO α := c.ref.get
+
+/-- Merge new information into a cell, and say whether it changed. -/
+def Cell.write {α : Type} [Semilattice α] [DecidableEq α] (c : Cell α) (v : α) : IO Bool := do
+  let old ← c.ref.get
+  let new := merge old v
+  if new = old then return false
+  c.ref.set new
+  return true
+
+/-- A propagator reads some cells and writes one; it says whether it changed anything. -/
+abbrev Propagator := IO Bool
+
+/-- Run every propagator until a whole round changes nothing; the number of rounds. -/
+def runToFixpoint (ps : List Propagator) : IO Nat := do
+  let mut rounds := 0
+  let mut changed := true
+  while changed do
+    changed := false
+    rounds := rounds + 1
+    for p in ps do
+      if ← p then changed := true
+  return rounds`);
+    sec("A constraint in every direction");
+    md(r`$x + y = z$ is three propagators: one computes $z$ from $x$ and $y$, the others compute $x$ or $y$ from the rest. Whichever two values become known, the third follows.`);
+    lean(r`/-- Subtraction, on what is known; a negative difference is a contradiction. -/
+def Flat.sub : Flat Nat → Flat Nat → Flat Nat
+  | .known t, .known a => if a ≤ t then .known (t - a) else .conflict
+  | .conflict, _ | _, .conflict => .conflict
+  | _, _ => .unknown
+
+/-- x + y = z, in every direction it can be read. -/
+def sumConstraint (x y z : Cell (Flat Nat)) : List Propagator :=
+  [ do z.write (Flat.add (← x.read) (← y.read)),
+    do y.write (Flat.sub (← z.read) (← x.read)),
+    do x.write (Flat.sub (← z.read) (← y.read)) ]
+
+def sumExample : IO Unit := do
+  let x ← Cell.new (Flat.known 3)
+  let y ← Cell.new (Flat.unknown : Flat Nat)
+  let z ← Cell.new (Flat.known 10)
+  let rounds ← runToFixpoint (sumConstraint x y z)
+  IO.println s!"x = {← x.read}, y = {← y.read}, z = {← z.read}  ({rounds} rounds)"
+
+#eval sumExample`);
+    md(r`
+> [!try]
+> Edit ‹sumExample›: start $z$ at ‹Flat.known 2› instead. The subtraction $2 - 3$ is impossible, $y$ becomes a contradiction, and the network still stops.
+`);
+    md(r`
+> [!note] Why the lattice is load-bearing
+> The loop stops because each write either changes nothing or moves a cell up a lattice with no infinite ascending chains, and it gives the same answer in any order because merges are joins. Replace the merge with "overwrite" and both guarantees are gone.
+`);
+    sec("Exercises");
+    lx(r`theorem Flat.below_merge (a b : Flat Nat) : a.below (merge a b) := by`, r`Prove that merging never loses information: a cell's old content is below its new one.`, r`  cases a <;> cases b <;> simp [merge, Flat.merge, Flat.below]
+  rename_i x y
+  by_cases h : x = y <;> simp [h]`, [
+      r`Case on both arguments and unfold: ‹simp [merge, Flat.merge, Flat.below]›.`,
+      r`One case is left, two known values: split on whether they are equal.`,
+    ]);
+    md(r`
+> [!summary]
+> A propagator network is cells that merge, propagators that read and write them, and a loop that runs until quiescence. Monotone propagators over a lattice make the loop stop, and make its answer independent of the order things run in.
+`);
+  });
+
+  add("14-intervals.chalk", "The interval lattice", "Bounds on a number as partial information: intersection as the merge, and interval arithmetic propagators.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("The interval lattice");
+    md(r`
+> [!goal]
+> Represent partial knowledge of a number as an interval, merge intervals by intersecting them, and propagate bounds through arithmetic.
+`);
+    md(r`"The value is between 1 and 5" is partial information, more than "unknown" and less than "it is 3". Two such facts merge into their **intersection**; an empty intersection is a contradiction. Ordered by information, smaller intervals are higher.`);
+    md(r`On the integers $0$ to $2$ (write ‹i01› for $[0, 1]$):`);
+    m("let I = poset({i02, i01, i12, i00, i11, i22, empty}; i02 < i01, i02 < i12, i01 < i00, i01 < i11, i12 < i11, i12 < i22, i00 < empty, i11 < empty, i22 < empty)");
+    m("lattice(I)");
+    m("join(I, i01, i12)", { work: true });
+    m("join(I, i00, i22)", { work: true });
+    sec("In Lean");
+    lean(r`/-- What is known about a number: it lies between lo and hi. -/
+structure Ival where
+  lo : Int
+  hi : Int
+  deriving Repr, DecidableEq
+
+instance : ToString Ival := ⟨fun a => if a.hi < a.lo then "empty" else s!"[{a.lo}, {a.hi}]"⟩
+
+/-- Merging two facts about one number: both hold, so it lies in the intersection. -/
+def Ival.merge (a b : Ival) : Ival := ⟨max a.lo b.lo, min a.hi b.hi⟩
+
+instance : Semilattice Ival where
+  merge := Ival.merge
+  merge_comm a b := by simp only [Ival.merge, Ival.mk.injEq]; omega
+  merge_assoc a b c := by simp only [Ival.merge, Ival.mk.injEq]; omega
+  merge_idem a := by simp only [Ival.merge]; cases a; simp only [Ival.mk.injEq]; omega
+
+def Ival.add (a b : Ival) : Ival := ⟨a.lo + b.lo, a.hi + b.hi⟩
+def Ival.sub (a b : Ival) : Ival := ⟨a.lo - b.hi, a.hi - b.lo⟩
+
+/-- a says at least as much as b: it is inside it. -/
+def Ival.within (a b : Ival) : Prop := b.lo ≤ a.lo ∧ a.hi ≤ b.hi`);
+    md(r`The same three propagators as for $x + y = z$, now on intervals. Bounds flow in every direction until they stop narrowing:`);
+    lean(r`def ivalSum (x y z : Cell Ival) : List Propagator :=
+  [ do z.write (Ival.add (← x.read) (← y.read)),
+    do y.write (Ival.sub (← z.read) (← x.read)),
+    do x.write (Ival.sub (← z.read) (← y.read)) ]
+
+def ivalExample : IO Unit := do
+  let x ← Cell.new (⟨1, 5⟩ : Ival)
+  let y ← Cell.new (⟨2, 3⟩ : Ival)
+  let z ← Cell.new (⟨0, 6⟩ : Ival)
+  let rounds ← runToFixpoint (ivalSum x y z)
+  IO.println s!"x ∈ {← x.read}, y ∈ {← y.read}, z ∈ {← z.read}  ({rounds} rounds)"
+
+#eval ivalExample`);
+    md(r`From $x \in [1, 5]$, $y \in [2, 3]$ and $x + y \in [0, 6]$: $z \ge 3$, so $z \in [3, 6]$, and $x = z - y \le 4$, so $x \in [1, 4]$.`);
+    lx(r`theorem Ival.add_mono (a a' b b' : Ival) (ha : a.within a') (hb : b.within b') :
+    (Ival.add a b).within (Ival.add a' b') := by`, r`Prove that interval addition is monotone: narrower summands give a narrower sum.`, r`  simp only [Ival.within, Ival.add] at *
+  omega`, [r`Unfold ‹Ival.within› and ‹Ival.add› everywhere with ‹simp only›; what is left is linear arithmetic.`]);
+    sec("Exercises");
+    ex("join(I, i02, i12)", r`Merge $[0, 2]$ with $[1, 2]$. Answer with the element's name.`, [r`Intersect them.`]);
+    ex("join(I, i01, i22)", r`Merge $[0, 1]$ with $[2, 2]$.`, [r`Do they overlap?`]);
+    md(r`
+> [!summary]
+> Intervals are partial information about numbers; merging is intersection, and an empty one is a contradiction. Interval arithmetic gives monotone propagators, so a network of them narrows every bound as far as the constraints force, and stops.
+`);
+  });
+
+  add("15-capstones.chalk", "Capstones: Sudoku and type inference", "A Sudoku solver and a type checker, both as propagator networks over lattices of partial information.", ({ sec, md, lean, lx }) => {
+    sec("Capstones: Sudoku and type inference");
+    md(r`
+> [!goal]
+> Solve a Sudoku and infer the types of a small program with the same machinery: cells of partial information, merges that are joins, and propagators run to a fixed point.
+`);
+    sec("Sudoku");
+    md(r`Each square holds the set of digits still possible: a lattice ordered by reverse inclusion, where merging intersects. A square whose set is down to one digit removes that digit from its **peers**, the squares sharing its row, column or box. Here is a 4×4 grid; candidates are bits, so intersection is bitwise and.`);
+    lean(r`/-- The candidates for one Sudoku square, as bits: bit d - 1 set when d is still possible. -/
+structure Cands where
+  mask : Nat
+  deriving Repr, DecidableEq, Inhabited
+
+instance : Semilattice Cands where
+  merge a b := ⟨a.mask &&& b.mask⟩
+  merge_comm a b := by rw [Nat.and_comm]
+  merge_assoc a b c := by simp only [Nat.and_assoc]
+  merge_idem a := by simp only [Nat.and_self]
+
+def Cands.digits (c : Cands) : List Nat :=
+  (List.range 4).filterMap fun i => if c.mask &&& (1 <<< i) != 0 then some (i + 1) else none
+
+/-- The squares sharing a row, a column or a 2×2 box with square i of a 4×4 grid. -/
+def peers (i : Nat) : List Nat :=
+  (List.range 16).filter fun j => j != i && (j / 4 == i / 4 || j % 4 == i % 4 || (j / 8 == i / 8 && j % 4 / 2 == i % 4 / 2))
+
+/-- One round: every square whose digit is known removes it from its peers. -/
+def eliminate (g : Array Cands) : Array Cands :=
+  (List.range 16).foldl (fun g i =>
+    match (g[i]!).digits with
+    | [d] => (peers i).foldl (fun g j => g.set! j (merge g[j]! ⟨15 - (1 <<< (d - 1))⟩)) g
+    | _ => g) g
+
+/-- Rounds until nothing changes (at most n). -/
+def solve (g : Array Cands) : Nat → Array Cands
+  | 0 => g
+  | n + 1 => let g' := eliminate g; if g' = g then g else solve g' n
+
+def puzzle : List Nat := [1, 0, 0, 0,  0, 0, 3, 0,  0, 4, 0, 0,  0, 0, 0, 2]
+def grid (p : List Nat) : Array Cands := (p.map fun d => if d == 0 then (⟨15⟩ : Cands) else ⟨1 <<< (d - 1)⟩).toArray
+
+def showGrid (g : Array Cands) : String :=
+  String.intercalate "\n" ((List.range 4).map fun r => String.intercalate " " ((List.range 4).map fun c =>
+    match (g[r * 4 + c]!).digits with | [d] => toString d | _ => "."))
+
+#eval IO.println (showGrid (solve (grid puzzle) 20))`);
+    md(r`
+> [!try]
+> Change ‹puzzle›: remove a clue and see which squares stay undecided (shown as ‹.›). Elimination alone does not solve every Sudoku; the book adds a second propagator ("the only place a digit can go in a unit") and, for hard ones, search.
+`);
+    lx(r`theorem every_square_has_seven_peers : (List.range 16).all (fun i => (peers i).length == 7) = true := by`, r`Check that every square of a 4×4 grid has seven peers: three in its row, three in its column, and one more in its box.`, r`  decide`, [r`The statement is a finite computation: ‹decide› runs it.`]);
+    sec("Type inference by propagation");
+    md(r`A type checker can work the same way: a cell per expression holding what is known of its type, in the flat lattice (unknown, a type, or a conflict), and a propagator per typing rule. For ‹e := if c then x + 1 else y›: a condition is a boolean, ‹+› takes and gives integers, and both branches have the type of the result.`);
+    lean(r`inductive Ty where
+  | int | bool
+  deriving Repr, DecidableEq
+
+instance : ToString Ty := ⟨fun | .int => "int" | .bool => "bool"⟩
+
+/-- a and b have the same type: whatever is known of one is known of the other. -/
+def sameType (a b : Cell (Flat Ty)) : List Propagator :=
+  [ do a.write (← b.read), do b.write (← a.read) ]
+
+def inferExample : IO Unit := do
+  let c ← Cell.new (Flat.unknown : Flat Ty)
+  let x ← Cell.new (Flat.unknown : Flat Ty)
+  let y ← Cell.new (Flat.unknown : Flat Ty)
+  let e ← Cell.new (Flat.unknown : Flat Ty)
+  let plus1 ← Cell.new (Flat.unknown : Flat Ty)
+  let ps : List Propagator :=
+    [ do c.write (.known .bool),          -- a condition is a bool
+      do x.write (.known .int),           -- x + 1 adds ints
+      do plus1.write (.known .int) ] ++   -- and gives an int
+    sameType plus1 e ++ sameType y e      -- the branches have the result's type
+  let rounds ← runToFixpoint ps
+  IO.println s!"c : {← c.read}, x : {← x.read}, y : {← y.read}, e : {← e.read}  ({rounds} rounds)"
+
+#eval inferExample`);
+    md(r`The type of ‹y› was never written down: it flowed from ‹x + 1› through ‹e›. A program that used ‹y› as a boolean too would drive its cell to ‹conflict›: a type error, found by the same fixed point.`);
+    md(r`
+> [!summary]
+> Sudoku and type inference are both "partial information, merged and propagated to a fixed point". The lattice makes the merges order-independent and the loop terminate; the propagators carry the problem's rules. That is the whole of the propagator model, from the first lesson's partial orders to a working solver.
 `);
   });
 }, { leanPrelude: true });

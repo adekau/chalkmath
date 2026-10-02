@@ -57,6 +57,92 @@
       ]
     },
     {
+      "id": "order-lattices",
+      "title": "Order and lattices",
+      "blurb": "From Zero to Propagators: partial orders, lattices and fixed points; semilattices as merges, access decisions and information flow; Galois connections; and propagator networks in Lean, ending with a Sudoku solver.",
+      "kind": "course",
+      "level": "Discrete mathematics",
+      "path": "courses/order-lattices",
+      "leanPrelude": true,
+      "lessons": [
+        {
+          "file": "01-partial-orders.chalk",
+          "title": "Relations and partial orders",
+          "blurb": "Partial orders on numbers, divisibility and sets, Hasse diagrams, and the definitions in Lean."
+        },
+        {
+          "file": "02-special-elements.chalk",
+          "title": "Special elements and monotone maps",
+          "blurb": "Least, greatest, maximal and minimal elements, bounds, joins and meets, and monotone maps."
+        },
+        {
+          "file": "03-lattices.chalk",
+          "title": "Lattices",
+          "blurb": "Posets where every pair has a join and a meet: duality, the standard examples, and distributivity."
+        },
+        {
+          "file": "04-fixed-points.chalk",
+          "title": "Complete lattices and fixed points",
+          "blurb": "Complete lattices, the Knaster–Tarski theorem, and least fixed points by iteration."
+        },
+        {
+          "file": "05-semilattices.chalk",
+          "title": "Semilattices as algebras",
+          "blurb": "Join as an operation with laws: associative, commutative, idempotent, and the order it gives back."
+        },
+        {
+          "file": "06-merges.chalk",
+          "title": "A merge is a join",
+          "blurb": "Max, union, last-writer-wins and records merged field by field: why replicas that merge this way agree."
+        },
+        {
+          "file": "07-distributive.chalk",
+          "title": "Distributive and Boolean lattices",
+          "blurb": "M₃ and N₅ as the witnesses, complements, and the Boolean lattices of sets and squarefree divisors."
+        },
+        {
+          "file": "08-access-decisions.chalk",
+          "title": "Access decisions",
+          "blurb": "Combining permit and deny: deny-overrides and permit-overrides are joins, first-applicable is not commutative."
+        },
+        {
+          "file": "09-information-flow.chalk",
+          "title": "Information flow",
+          "blurb": "Denning's lattice of security classes: data may only flow up, and a computation's output gets the join of its inputs' classes."
+        },
+        {
+          "file": "10-galois.chalk",
+          "title": "Closure operators and Galois connections",
+          "blurb": "Closure operators, Galois connections between two orders, and the concept lattice of a formal context."
+        },
+        {
+          "file": "11-fixed-points-in-practice.chalk",
+          "title": "Fixed points in practice",
+          "blurb": "Apply until nothing changes: reachability as a least fixed point, and why the iteration stops."
+        },
+        {
+          "file": "12-propagators.chalk",
+          "title": "The propagator model",
+          "blurb": "Cells that only gain information, in a lattice; propagators as monotone functions between them."
+        },
+        {
+          "file": "13-propagator-network.chalk",
+          "title": "A propagator network in Lean",
+          "blurb": "Mutable cells that only grow, a scheduler that runs to quiescence, and a constraint that runs in every direction."
+        },
+        {
+          "file": "14-intervals.chalk",
+          "title": "The interval lattice",
+          "blurb": "Bounds on a number as partial information: intersection as the merge, and interval arithmetic propagators."
+        },
+        {
+          "file": "15-capstones.chalk",
+          "title": "Capstones: Sudoku and type inference",
+          "blurb": "A Sudoku solver and a type checker, both as propagator networks over lattices of partial information."
+        }
+      ]
+    },
+    {
       "id": "calculus",
       "title": "Calculus: derivatives and integrals",
       "blurb": "The rules of differentiation, the chain rule and tangent lines; then antiderivatives the engine checks by differentiating, definite integrals and Riemann sums.",

@@ -1,0 +1,221 @@
+{
+  "chalk": 1,
+  "name": "04-fixed-points.chalk",
+  "cells": [
+    {
+      "src": "4 · Complete Lattices and the Fixed-Point Theorem",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> State and prove the Knaster–Tarski theorem, and compute least and greatest fixed points of monotone maps on finite lattices by iterating from the bottom and the top.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "From the earlier lessons, the names this one uses:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let D = divisors(12)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "let dbl = map(D; 1 -> 2, 2 -> 4, 3 -> 6, 6 -> 12)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let one = map(D; 2 -> 1, 3 -> 1, 4 -> 1, 6 -> 1, 12 -> 1)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let comp = map(D; 1 -> 12, 2 -> 6, 3 -> 4, 4 -> 3, 6 -> 2, 12 -> 1)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Lattices let us take meets and joins of *pairs* of elements. A *complete* lattice extends this to arbitrary (possibly infinite) subsets, and that extra power buys one of the most useful theorems in theoretical computer science: the Knaster–Tarski fixed-point theorem.\n\n## Complete lattices\n\n**Definition.** A lattice $(L, \\le)$ is *complete* if every subset $S \\subseteq L$ has a supremum $\\bigvee S$ and an infimum $\\bigwedge S$ in $L$.\n\n> In particular the empty set has a supremum, which is $\\bot$, and an infimum, which is $\\top$ — so every complete lattice is bounded. Taking $S = L$ gives $\\bigvee L = \\top$ and $\\bigwedge L = \\bot$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "abbrev Pred (α : Type) := α → Prop\n\nclass CompleteLattice (α : Type) extends Lattice α where\n  sSup : Pred α → α    -- supremum of a set  (⨆)\n  sInf : Pred α → α    -- infimum of a set   (⨅)\n  le_sSup : ∀ (s : Pred α) (a : α), s a → a ≤ sSup s\n  sSup_le : ∀ (s : Pred α) (u : α), (∀ a, s a → a ≤ u) → sSup s ≤ u\n  sInf_le : ∀ (s : Pred α) (a : α), s a → sInf s ≤ a\n  le_sInf : ∀ (s : Pred α) (l : α), (∀ a, s a → l ≤ a) → l ≤ sInf s\nexport CompleteLattice (sSup sInf le_sSup sSup_le sInf_le le_sInf)",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The powerset lattice is the canonical example: $\\bigvee \\mathcal{F} = \\bigcup \\mathcal{F}$ and $\\bigwedge \\mathcal{F} = \\bigcap \\mathcal{F}$. And *every finite lattice is complete*: the supremum of a finite set is the join of its elements one at a time, so every lattice in this notebook is a complete lattice. `upper` and `lower` take any set; the least upper bound of $\\{2, 3, 4\\}$ in $D$ is the least of its upper bounds, and the upper bounds of the *empty* set are everything, whose least element is $\\bot$:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "upper(D, {2, 3, 4})",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "lower(D, {4, 6, 12})",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "upper(D, {})",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "## Why fixed points matter\n\nA *fixed point* of $f : L \\to L$ is an element $x$ with $f(x) = x$ — where an iterative process *stabilises*.\n\n- **Propagator networks.** Cell values stop changing when the propagators reach a fixed point of “apply all propagators once”. That stable state is the least fixed point: the most conservative set of conclusions forced by the constraints, nothing more.\n- **Dataflow analysis.** A compiler iterates a flow function until it stabilises; the result is its least fixed point.\n- **Denotational semantics.** The meaning of a recursive program is the least fixed point of a semantic functional.\n- **Regular expressions.** The set matched by $a^*$ is the least fixed point of $S \\mapsto \\{\\varepsilon\\} \\cup a \\cdot S$.\n\n## The Knaster–Tarski fixed-point theorem\n\n**Theorem (Knaster–Tarski, 1955).** Let $(L, \\le)$ be a complete lattice and $f : L \\to L$ monotone. Then $f$ has a *least fixed point* $\\mu f = \\bigwedge \\{x \\mid f(x) \\le x\\}$ and a *greatest fixed point* $\\nu f = \\bigvee \\{x \\mid x \\le f(x)\\}$.\n\n*Proof.* Let $P = \\{x \\mid f(x) \\le x\\}$, the *pre-fixed points*, and $m = \\bigwedge P$.\n\n*Step 1: $f(m) \\le m$.* For every $x \\in P$, $m \\le x$, so $f(m) \\le f(x) \\le x$ by monotonicity. Hence $f(m)$ is a lower bound of $P$, so $f(m) \\le m$.\n\n*Step 2: $m \\le f(m)$.* Applying $f$ to Step 1 gives $f(f(m)) \\le f(m)$, so $f(m) \\in P$; since $m$ is the infimum of $P$, $m \\le f(m)$.\n\nSo $f(m) = m$. Any fixed point $x^*$ has $f(x^*) = x^* \\le x^*$, so $x^* \\in P$ and $m \\le x^*$: $m$ is the *least* fixed point. $\\square$",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem knaster_tarski {α : Type} [CompleteLattice α] (f : α → α) (hf : Monotone f) :\n    ∃ (lfp : α), f lfp = lfp ∧ ∀ (x : α), f x = x → lfp ≤ x := by\n  let P : Pred α := fun x => f x ≤ x\n  let m := sInf P\n  have step1 : f m ≤ m := by\n    apply le_sInf\n    intro x hx\n    exact le_trans _ _ _ (hf.map_le m x (sInf_le P x hx)) hx\n  have step2 : m ≤ f m := by\n    apply sInf_le\n    exact hf.map_le _ _ step1\n  have fixed : f m = m := le_antisymm _ _ step1 step2\n  refine ⟨m, fixed, ?_⟩\n  intro x hx\n  apply sInf_le\n  show f x ≤ x\n  rw [hx]\n  exact le_refl x",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "On a finite lattice the least fixed point can be *reached*: start at $\\bot$ and apply $f$ until nothing changes. This is the ascending *Kleene chain* $\\bot \\le f(\\bot) \\le f^2(\\bot) \\le \\cdots$, and the engine's `lfp` is exactly that iteration, each step shown. Take a monotone map on $D$ with several fixed points:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let f = map(D; 1 -> 2, 3 -> 6)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "monotone(D, f)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "fixpoints(D, f)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "lfp(D, f)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "gfp(D, f)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "The fixed points are $\\{2, 4, 6, 12\\}$; the chain from $\\bot = 1$ stops at $2$, the least of them, and the chain from $\\top = 12$ stops at $12$, the greatest. The rule `order.iterate` carries the theorem's content: `iter_le_fixed` proves every element of the chain from $\\bot$ is below every fixed point, so wherever the chain stops is the least one.\n\nThe theorem needs monotonicity, and so does the iteration: without it the chain need not climb, and need not stop at a fixed point at all. `lfp` refuses a non-monotone map rather than iterate it — the complement `comp` from Chapter 2 flips $1 \\mapsto 12 \\mapsto 1$ forever:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "lfp(D, comp)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "## Chains and convergence\n\nChains are the lattice-theoretic version of sequences in calculus, and understanding them is essential to understanding why iterative computations terminate.\n\n**Definition.** A *chain* in a poset is a subset in which every pair is comparable. An *ascending chain* is a chain written as a sequence $a_0 \\le a_1 \\le a_2 \\le \\cdots$.\n\nThe parallel with calculus is direct:\n\n$$\\begin{array}{ll}\n\\textbf{Calculus} & \\textbf{Lattice theory} \\\\ \\hline\n\\text{sequence } a_0 \\le a_1 \\le a_2 \\le \\cdots & \\text{ascending chain} \\\\\n\\text{limit } \\lim_{n\\to\\infty} a_n & \\text{supremum } \\bigsqcup_n a_n \\\\\n\\text{convergence} & \\text{chain stabilising} \\\\\n\\text{completeness of } \\mathbb{R} & \\text{completeness of the lattice} \\\\\n\\text{Cauchy sequence} & \\text{ascending chain condition}\n\\end{array}$$\n\nJust as the completeness of $\\mathbb{R}$ guarantees every bounded ascending sequence a limit, the completeness of a lattice guarantees every chain a supremum. Without it the supremum might not exist in your structure — exactly as $\\sqrt 2$ does not exist in $\\mathbb{Q}$ although rational sequences converge to it.\n\n**The ascending chain condition.** A poset satisfies the ACC if every strictly ascending chain $a_0 < a_1 < \\cdots$ is finite. Then the Kleene chain must stabilise at some $f^n(\\bot) = f^{n+1}(\\bot)$: a fixed point in finitely many iterations. Every finite poset satisfies the ACC trivially — a strictly ascending chain in `chain(5)` has at most five elements — which is why every `lfp` cell in this notebook terminates. `FlatNat` in Part II satisfies it too (its chains are $\\bot < \\mathrm{known}(n)$, length two); the interval lattice does *not* — $[0,10] < [0,9] < [0,8] < \\cdots$ — which is why interval propagators need a widening operator.\n\n**$\\bot$ is the starting point, not the limit.** The supremum of the Kleene chain is not $\\bot$; $\\bot$ is its *minimum*. For the sequence $0, \\tfrac12, \\tfrac34, \\tfrac78, \\ldots$ the minimum is $0$ and the limit is $1$. The chain in `lfp(D, dbl)` starts at $1$ and ends at $4$:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "lfp(D, dbl)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "## Exercises\n\n**4.1 Greatest fixed point.** Using the Knaster–Tarski proof as a template, prove the existence of $\\nu f = \\bigvee \\{x \\mid x \\le f(x)\\}$. Dualise every step: post-fixed points, $\\bigvee$ for $\\bigwedge$, `le_sSup` for `sInf_le`. `gfp` is the dual iteration, from $\\top$ down:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "gfp(D, dbl)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "gfp(D, one)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "**4.2 Ascending Kleene chain.** Prove in Lean that each element of $\\bot, f(\\bot), f^2(\\bot), \\ldots$ is $\\le$ the next. Induction on $n$: $\\bot \\le f(\\bot)$ since $\\bot$ is least, and $f^n(\\bot) \\le f^{n+1}(\\bot)$ gives $f^{n+1}(\\bot) \\le f^{n+2}(\\bot)$ by `hf.map_le` — which is `iter_chain` from Exercise 2.2, started at $\\bot$:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem kleene_chain {α : Type} [BoundedPartialOrder α] {f : α → α} (hf : Monotone f) :\n    ∀ n, iter f n ⊥ ≤ iter f (n + 1) ⊥ :=\n  iter_chain hf (BoundedPartialOrder.bot_le (f ⊥))",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Each `order.iterate` step in the derivations above is one instance of the induction step — and `le` confirms any of them:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "le(D, 2, 4)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "lfp(D, f)",
+      "type": "exercise",
+      "prompt": "What is the least fixed point of `f`?",
+      "hints": [
+        "Start at $\\bot = 1$ and apply `f` until nothing changes."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "gfp(D, f)",
+      "type": "exercise",
+      "prompt": "And the greatest?",
+      "hints": [
+        "Start at $\\top = 12$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "fixpoints(D, one)",
+      "type": "exercise",
+      "prompt": "List the fixed points of `one`, the map sending everything to 1.",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> On a complete lattice every monotone map has a least and a greatest fixed point. On a finite one they are reached by iterating from $\\bot$ and from $\\top$: the Kleene chain, every element of which is below every fixed point.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

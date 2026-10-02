@@ -291,9 +291,10 @@ def orderCell (s : Session) (cellId source : String) :
       match getP (.elem pn) with
       | .error msg => err msg
       | .ok P =>
-        match ps.find? fun (a, b) => !P.elems.contains a || !P.elems.contains b with
+        match ps.find? fun (a, b) => (Ord.findElem P.elems a).isNone || (Ord.findElem P.elems b).isNone with
         | some (a, b) => err s!"{a} -> {b} mentions an element outside the poset"
         | none =>
+          let ps := ps.map fun (a, b) => ((Ord.findElem P.elems a).getD a, (Ord.findElem P.elems b).getD b)
           let f : Ord.PMap := ⟨ps⟩
           let value := Ord.setExpr (ps.map fun (a, b) => s!"{a}↦{b}")
           done value #[] none s!"a map on {pn} ({ps.length} explicit value{if ps.length == 1 then "" else "s"}; other elements are fixed)" (bindF := some f)

@@ -1,0 +1,403 @@
+{
+  "chalk": 1,
+  "name": "02-special-elements.chalk",
+  "cells": [
+    {
+      "src": "2 · Special Elements and Monotone Maps",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Find the extremal elements and bounds of a poset, compute joins and meets (and see when they do not exist), and decide whether a map is monotone.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "From the earlier lessons, the names this one uses:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let D = divisors(12)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "let P3 = subsets({a, b, c})",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In a poset, certain elements play privileged roles (least, greatest, bounds), and certain functions are especially well-behaved (monotone maps). This chapter equips us with the vocabulary for both.\n\n## Extremal elements\n\n**Definition.** Let $(P, \\le)$ be a poset and $S \\subseteq P$.\n\n- $m \\in S$ is the *minimum* of $S$ if $\\forall s \\in S,\\ m \\le s$; the *maximum* if $\\forall s \\in S,\\ s \\le m$.\n- $m \\in S$ is *minimal* in $S$ if there is no $s \\in S$ with $s < m$; *maximal* if there is no $s$ with $m < s$.\n\nA minimum, if it exists, is unique (by antisymmetry) — we call it $\\bot$, and a unique maximum $\\top$. A minimal element need not be unique. The distinction is subtle but important: a *minimum* beats every other element; a *minimal* element merely has nothing strictly below it.\n\nThe book's figure has two posets side by side. On the left, $a$ is the minimum (and the only minimal element):",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let A = poset({a, b, c, d}; a < b, a < c, b < d, c < d)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "minimal(A)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "bottom(A)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "On the right, $p$ and $q$ are both minimal — nothing is below either — but there is no minimum, because $p \\not\\le q$ and $q \\not\\le p$. The engine's refusal says exactly this:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let T = poset({p, q, r, s, t}; p < r, p < s, q < s, r < t, s < t)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "minimal(T)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "bottom(T)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean, $\\bot$ and $\\top$ are classes of their own (with notation for them), and a *bounded* partial order has both:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "class Bot (α : Type) where bot : α\nclass Top (α : Type) where top : α\nnotation \"⊥\" => Bot.bot\nnotation \"⊤\" => Top.top\n\nclass BoundedPartialOrder (α : Type) extends PartialOrder α, Bot α, Top α where\n  bot_le : ∀ (a : α), (⊥ : α) ≤ a\n  le_top : ∀ (a : α), a ≤ (⊤ : α)",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "**Bounded orders.** $(\\mathcal{P}(S), \\subseteq)$ has $\\bot = \\varnothing$ and $\\top = S$; $(\\{0, 1\\}, \\le)$ has $\\bot = 0$, $\\top = 1$; $(\\mathbb{N}, \\le)$ has $\\bot = 0$ and no $\\top$. The divisors of $12$ have both ($1$ divides everything, everything divides $12$):",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "bottom(P3)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "top(P3)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "bottom(D)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "top(D)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "For `Set α`, $\\bot$ is the predicate that holds of nothing and $\\top$ the one that holds of everything:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "instance {α : Type} : BoundedPartialOrder (Set α) where\n  bot    := fun _ => False     -- ∅\n  top    := fun _ => True      -- the whole of α\n  bot_le := fun _ _ h => h.elim\n  le_top := fun _ _ _ => trivial",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The book's example is divisibility on *all* of $\\{1, \\ldots, 12\\}$, not just the divisors of $12$ — and that poset has $\\bot = 1$ but no single $\\top$. Writing out the generating pairs (a prime's multiples suffice; the closure does the rest):",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let D12 = poset({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}; 1 < 2, 1 < 3, 1 < 5, 1 < 7, 1 < 11, 2 < 4, 2 < 6, 2 < 10, 3 < 6, 3 < 9, 4 < 8, 4 < 12, 5 < 10, 6 < 12)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "maximal(D12)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "top(D12)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "## Upper and lower bounds\n\n**Definition.** Let $S \\subseteq P$.\n\n- $u \\in P$ is an *upper bound* of $S$ if $\\forall s \\in S,\\ s \\le u$; $l$ is a *lower bound* if $\\forall s \\in S,\\ l \\le s$.\n- The *supremum* (least upper bound) $\\sup S$ is the smallest upper bound, when it exists; the *infimum* (greatest lower bound) $\\inf S$ the largest lower bound.\n\nThe book illustrates these on a seven-element poset with $S = \\{c, d\\}$: the upper bounds of $S$ are $e$, $f$, $g$ and the lower bounds are $a$, $b$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let E = poset({a, b, c, d, e, f, g}; a < b, a < c, b < c, b < d, c < e, d < e, c < f, d < f, e < g, f < g)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "upper(E, {c, d})",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "lower(E, {c, d})",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "inf(E, c, d)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "The infimum is $b$: of the lower bounds $\\{a, b\\}$, $b$ is the greatest. Now the supremum. The book's caption argues: “$e$ and $f$ are incomparable, so $\\sup S = g$.” Ask the engine:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "sup(E, c, d)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "It refuses — and it is right. A least upper bound must be an upper bound that is *below every other upper bound*. $g$ is an upper bound, but $g \\not\\le e$ and $g \\not\\le f$; and neither $e$ nor $f$ is below the other. The upper bounds $\\{e, f, g\\}$ have no least element, so $\\sup\\{c, d\\}$ does not exist in $E$. (This is the same shape as the no-minimum poset $T$ above, sitting on top of $S$.) The figure's caption is wrong, and a decided order catches what a hand-drawn one lets through — the point of a verified notebook in one cell.\n\n**Theorem (uniqueness of sup/inf).** If $\\sup S$ exists it is unique; likewise $\\inf S$.\n\n*Proof.* If $u$ and $v$ are both least upper bounds, then $v \\le u$ because $u$ is an upper bound and $v$ is least; symmetrically $u \\le v$; antisymmetry gives $u = v$. $\\square$",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "structure IsSupOf {α : Type} [PartialOrder α] (a b sup : α) : Prop where\n  ge_a  : a ≤ sup\n  ge_b  : b ≤ sup\n  least : ∀ (u : α), a ≤ u → b ≤ u → sup ≤ u\n\ntheorem sup_unique {α : Type} [PartialOrder α] {a b s t : α}\n    (hs : IsSupOf a b s) (ht : IsSupOf a b t) : s = t := by\n  apply PartialOrder.le_antisymm\n  · exact hs.least t ht.ge_a ht.ge_b\n  · exact ht.least s hs.ge_a hs.ge_b",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The engine's `join` is this specification made executable: the rule `order.least` picks the upper bound below every other, and `sup_spec` proves that is what it picked (and `sup_none` that when it finds nothing, nothing exists).\n\n## Monotone maps\n\n**Definition.** A function $f : (P, \\le_P) \\to (Q, \\le_Q)$ between posets is *monotone* (order-preserving) if $\\forall a, b,\\ a \\le_P b \\to f(a) \\le_Q f(b)$.\n\nMonotone maps are the morphisms of the category of posets, and they will be central to propagators: every propagator is a monotone function on a lattice.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "structure Monotone {α β : Type} [PartialOrder α] [PartialOrder β] (f : α → β) : Prop where\n  map_le : ∀ (a b : α), a ≤ b → f a ≤ f b\n\ntheorem Monotone.comp {α β γ : Type} [PartialOrder α] [PartialOrder β] [PartialOrder γ]\n    {f : α → β} {g : β → γ} (hf : Monotone f) (hg : Monotone g) : Monotone (g ∘ f) where\n  map_le := fun a b h => hg.map_le (f a) (f b) (hf.map_le a b h)",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The engine's maps are maps from a poset *to itself*, given as a table; elements not listed are fixed. The book's `double12` sends $n$ to $2n$ when that is still a divisor of $12$ and leaves it alone otherwise. Monotone: if $a \\mid b$ then $2a \\mid 2b$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let dbl = map(D; 1 -> 2, 2 -> 4, 3 -> 6, 6 -> 12)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "monotone(D, dbl)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "The book's picture of a *non*-monotone map is a pair $x \\le y$ with $g(x) > g(y)$ — the order violated. The check reports the first violating pair it finds, so the counterexample is the derivation:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let k = map(D; 2 -> 3)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "monotone(D, k)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "**Monotone functions.** $n \\mapsto n + 5$ on $(\\mathbb{N}, \\le)$; $S \\mapsto S \\cup \\{x\\}$ and $S \\mapsto S \\cap T$ on $(\\mathcal{P}(A), \\subseteq)$; every constant function; the identity. Two of these on $D$:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let one = map(D; 2 -> 1, 3 -> 1, 4 -> 1, 6 -> 1, 12 -> 1)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "monotone(D, one)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let idD = map(D; 1 -> 1)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "monotone(D, idD)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "## Computation interlude: running monotone maps\n\nThe book decides monotonicity by checking all pairs of `D12` — the engine's `monotone` is that check, over the pairs of the order, with the failing pair reported. Its most instructive example is the “complement” $n \\mapsto 12/n$, which *reverses* the order (it is antitone), and whose composite with itself is the identity:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let comp = map(D; 1 -> 12, 2 -> 6, 3 -> 4, 4 -> 3, 6 -> 2, 12 -> 1)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "monotone(D, comp)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "**Fixed points.** A fixed point of $f$ is an $x$ with $f(x) = x$. `fixpoints` lists them all — every element for the identity, only $1$ for the constant, none for the complement:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "fixpoints(D, idD)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "fixpoints(D, one)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "fixpoints(D, comp)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "**Iterating a monotone map.** If $f$ is monotone and $a \\le f(a)$, the chain $a, f(a), f^2(a), \\ldots$ is ascending; on a finite poset it must stop. `lfp` iterates from $\\bot$ and shows the chain:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "lfp(D, dbl)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "Each application moves strictly upward in the divisibility order until it reaches a fixed point — the ascending chain theorem, watched. The book's comment claims `iterToFixpoint double12 1` is `[1, 2, 4, 12]`; the engine stops at $4$, and it is right: $2 \\cdot 4 = 8$ is not a divisor of $12$, so `double12` leaves $4$ where it is, and $4$ is the fixed point the chain reaches. ($12$ is a fixed point too — the *greatest* one, as Chapter 4 will show — but the chain from $\\bot$ never gets there.)\n\n## Exercises\n\n**2.1 Antitone composition.** Show that the composite of two *antitone* maps ($a \\le b \\to f(b) \\le f(a)$) is monotone. Example: `comp` above is antitone, and `comp ∘ comp` is the identity, which is monotone. In general $a \\le b \\Rightarrow f(b) \\le f(a) \\Rightarrow g(f(a)) \\le g(f(b))$: the two reversals cancel, and that is the whole Lean proof:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "def Antitone {α β : Type} [PartialOrder α] [PartialOrder β] (f : α → β) : Prop :=\n  ∀ (a b : α), a ≤ b → f b ≤ f a\n\ntheorem Antitone.comp {α β γ : Type} [PartialOrder α] [PartialOrder β] [PartialOrder γ]\n    {f : α → β} {g : β → γ} (hf : Antitone f) (hg : Antitone g) : Monotone (g ∘ f) where\n  map_le := fun a b h => hg (f b) (f a) (hf a b h)    -- two reversals cancel",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "**2.2 Fixed points.** Show that if $f$ is monotone and $a \\le f(a)$, the chain $a \\le f(a) \\le f^2(a) \\le \\cdots$ is indeed a chain. Induction: $f^n(a) \\le f^{n+1}(a)$ gives $f^{n+1}(a) \\le f^{n+2}(a)$ by monotonicity — each step of the `lfp` derivation above is one instance. In Lean, with `iter f n a` for $f^n(a)$:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "-- iter f n a is fⁿ(a)\ndef iter {α : Type} (f : α → α) : Nat → α → α\n  | 0,     a => a\n  | n + 1, a => f (iter f n a)\n\ntheorem iter_chain {α : Type} [PartialOrder α] {f : α → α} (hf : Monotone f) {a : α}\n    (h : a ≤ f a) : ∀ n, iter f n a ≤ iter f (n + 1) a := by\n  intro n\n  induction n with\n  | zero      => exact h\n  | succ n ih => exact hf.map_le _ _ ih",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "**2.3 The identity is monotone.** For any poset. The cell `monotone(D, idD)` above checks the instance; the Lean proof is one line:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem Monotone.id {α : Type} [PartialOrder α] : Monotone (fun a : α => a) := ⟨fun _ _ h => h⟩",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "upper(E, {c, d})",
+      "type": "exercise",
+      "prompt": "List the upper bounds of $c$ and $d$ in $E$.",
+      "hints": [
+        "Everything above both $c$ and $d$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "minimal(T)",
+      "type": "exercise",
+      "prompt": "List the minimal elements of $T$.",
+      "hints": [
+        "Nothing is strictly below a minimal element."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "join(D, 4, 6)",
+      "type": "exercise",
+      "prompt": "In the divisors of 12, what is $4 \\vee 6$?",
+      "hints": [
+        "The least common multiple."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "monotone(D, k)",
+      "type": "exercise",
+      "prompt": "Is the map `k` monotone? Answer `true` or `false`.",
+      "hints": [
+        "`k` sends 2 to 3 and fixes everything else. Look at $2 \\le 4$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> A maximum is above everything; a maximal element has nothing above it. The join of two elements is their least upper bound, when there is one. A monotone map keeps the order, and those are the maps whose fixed points the next lessons find.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

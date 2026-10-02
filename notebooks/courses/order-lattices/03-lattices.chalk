@@ -1,0 +1,471 @@
+{
+  "chalk": 1,
+  "name": "03-lattices.chalk",
+  "cells": [
+    {
+      "src": "3 · Lattices",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Decide whether a poset is a lattice, compute in the standard ones (Booleans, powersets, divisors), and see duality and the two lattices that are not distributive.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "From the earlier lessons, the names this one uses:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let D = divisors(12)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "let P3 = subsets({a, b, c})",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let Sq = poset({x00, x01, x10, x11}; x00 < x01, x00 < x10, x01 < x11, x10 < x11)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let Dop = poset({1, 2, 3, 4, 6, 12}; 12 < 4, 12 < 6, 4 < 2, 6 < 2, 6 < 3, 2 < 1, 3 < 1)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let E = poset({a, b, c, d, e, f, g}; a < b, a < c, b < c, b < d, c < e, d < e, c < f, d < f, e < g, f < g)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A poset in which every pair of elements has both a supremum and an infimum is a *lattice*. This apparently modest requirement yields a rich algebraic structure that shows up in logic, topology, computer science, and — in Part II — concurrency and constraint solving.\n\n## Meet and join\n\n**Definition.** A *lattice* is a poset $(L, \\le)$ in which every two elements $a, b$ have a *meet* (greatest lower bound) $a \\sqcap b$ and a *join* (least upper bound) $a \\sqcup b$.\n\nThe smallest picture of it is the diamond: $a \\sqcap b$ below both $a$ and $b$, $a \\sqcup b$ above both.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let L4 = poset({m, a, b, j}; m < a, m < b, a < j, b < j)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "meet(L4, a, b)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "join(L4, a, b)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "lattice(L4)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "Meet and join satisfy laws that can be taken as an equivalent *algebraic* definition of a lattice:\n\n$$\\begin{aligned}\na \\sqcap b &= b \\sqcap a, & a \\sqcup b &= b \\sqcup a & &\\text{(commutativity)} \\\\\n(a \\sqcap b) \\sqcap c &= a \\sqcap (b \\sqcap c), & (a \\sqcup b) \\sqcup c &= a \\sqcup (b \\sqcup c) & &\\text{(associativity)} \\\\\na \\sqcap a &= a, & a \\sqcup a &= a & &\\text{(idempotence)} \\\\\na \\sqcap (a \\sqcup b) &= a, & a \\sqcup (a \\sqcap b) &= a & &\\text{(absorption)}\n\\end{aligned}$$\n\nand the order can be recovered from either operation: $a \\le b \\iff a \\sqcap b = a \\iff a \\sqcup b = b$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "class Lattice (α : Type) extends PartialOrder α where\n  inf : α → α → α    -- meet  (⊓)\n  sup : α → α → α    -- join  (⊔)\n  inf_le_left  : ∀ (a b : α), inf a b ≤ a\n  inf_le_right : ∀ (a b : α), inf a b ≤ b\n  le_inf : ∀ (a b c : α), a ≤ b → a ≤ c → a ≤ inf b c\n  sup_le_left  : ∀ (a b : α), a ≤ sup a b\n  sup_le_right : ∀ (a b : α), b ≤ sup a b\n  le_sup : ∀ (a b c : α), a ≤ c → b ≤ c → sup a b ≤ c\n\ninfixl:69 \" ⊓ \" => Lattice.inf\ninfixl:68 \" ⊔ \" => Lattice.sup\nexport Lattice (inf_le_left inf_le_right le_inf sup_le_left sup_le_right le_sup)",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Commutativity and idempotence follow from the axioms alone; the book derives them by `le_antisymm` against `le_inf`. For instance:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem inf_comm {α : Type} [Lattice α] (a b : α) : a ⊓ b = b ⊓ a := by\n  apply le_antisymm\n  · apply le_inf\n    · exact inf_le_right a b\n    · exact inf_le_left a b\n  · apply le_inf\n    · exact inf_le_right b a\n    · exact inf_le_left b a",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Those are theorems about every lattice. On a particular one the engine just computes both sides. Commutativity, idempotence and absorption in $D$ — the last as two cells, since the order world has no nesting: $4 \\sqcap 6 = 2$, and then $4 \\sqcup 2 = 4$:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "meet(D, 4, 6)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "meet(D, 6, 4)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "meet(D, 6, 6)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "join(D, 4, 2)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "And the order recovered from the meet: $2 \\le 6$ because $2 \\sqcap 6 = 2$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "meet(D, 2, 6)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "le(D, 2, 6)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "## The duality principle\n\nEvery lattice has a *dual*: swap $\\sqcap \\leftrightarrow \\sqcup$ and $\\le \\leftrightarrow \\ge$. Any theorem proved in a lattice has a dual theorem for free.\n\n**Theorem (duality principle).** If $\\varphi$ is a theorem about lattices, so is the statement obtained by replacing every $\\sqcap$ with $\\sqcup$, $\\sqcup$ with $\\sqcap$, $\\le$ with $\\ge$, $\\bot$ with $\\top$ and $\\top$ with $\\bot$.\n\nIn Lean the dual is a wrapper type whose order flips the original's, and whose lattice instance swaps `inf` and `sup`:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "structure Dual (α : Type) where\n  val : α\n\ninstance {α : Type} [PartialOrder α] : PartialOrder (Dual α) where\n  le a b := b.val ≤ a.val                    -- the order, flipped\n  le_refl a := le_refl a.val\n  le_antisymm := fun ⟨a⟩ ⟨b⟩ h1 h2 => congrArg Dual.mk (le_antisymm a b h2 h1)\n  le_trans _ _ _ h1 h2 := le_trans _ _ _ h2 h1\n\ninstance {α : Type} [Lattice α] : Lattice (Dual α) where\n  inf a b := ⟨a.val ⊔ b.val⟩                -- meet and join, swapped\n  sup a b := ⟨a.val ⊓ b.val⟩\n  inf_le_left  a b := sup_le_left  a.val b.val\n  inf_le_right a b := sup_le_right a.val b.val\n  sup_le_left  a b := inf_le_left  a.val b.val\n  sup_le_right a b := inf_le_right a.val b.val\n  le_inf a b c h1 h2 := le_sup b.val c.val a.val h1 h2\n  le_sup a b c h1 h2 := le_inf c.val a.val b.val h1 h2",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Turning the Hasse diagram upside down exchanges every meet with every join. `Dop` from Exercise 1.4 is $D$ upside down, and its meet of $4$ and $6$ is $D$'s join:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "meet(Dop, 4, 6)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "join(Dop, 4, 6)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "bottom(Dop)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "## Important lattice examples\n\n**The two-element lattice $\\mathbf{2}$.** `Bool` with `false < true`; meet is `&&`, join is `||`, and every axiom is `by decide` because the type is finite and the statements decidable:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "instance : Lattice Bool where\n  le a b := a = true → b = true             -- false ≤ true\n  inf := (· && ·)\n  sup := (· || ·)\n  le_refl      := by decide\n  le_antisymm  := by decide\n  le_trans     := by decide\n  inf_le_left  := by decide\n  inf_le_right := by decide\n  le_inf       := by decide\n  sup_le_left  := by decide\n  sup_le_right := by decide\n  le_sup       := by decide\n\n#eval (false ⊔ true, false ⊓ true)",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The engine's version is decided the same way:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let B = poset({false, true}; false < true)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "join(B, false, true)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "meet(B, false, true)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "lattice(B)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "**The powerset lattice.** Sets under inclusion, with meet $\\cap$ and join $\\cup$; the Lean instance's proof obligations are the introduction and elimination rules for $\\wedge$ and $\\vee$. In $\\mathcal{P}(\\{x, y\\})$, $\\{x\\}$ and $\\{y\\}$ are incomparable, their join is the whole set and their meet is empty:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let P2 = subsets({x, y})",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "join(P2, {x}, {y})",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "meet(P2, {x}, {y})",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "lattice(P3)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "**The divisibility lattice.** On the divisors of a fixed $n$, meet is $\\gcd$ and join is $\\mathrm{lcm}$ — the Lean instance is a list of core lemmas, `Nat.gcd_dvd_left`, `Nat.dvd_gcd`, `Nat.lcm_dvd`, and so on. The book's figure annotates the diagram of $D$ with $4 \\sqcap 6 = \\gcd(4, 6) = 2$, $4 \\sqcup 6 = \\mathrm{lcm}(4, 6) = 12$, $3 \\sqcap 4 = 1$, $3 \\sqcup 4 = 12$. Every incomparable pair still has a gcd and an lcm in the set, confirming this is a lattice:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "join(D, 4, 6)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "meet(D, 3, 4)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "join(D, 3, 4)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "lattice(D)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "**Not every poset is a lattice.** The smallest failure is the “vee”: $a$ below both $b$ and $c$, which have no join because nothing is above both. `lattice` names the pair that fails:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let V = poset({a, b, c}; a < b, a < c)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "lattice(V)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "lattice(E)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "— and $E$, the poset from §2.2, fails at exactly the pair the book's caption got wrong.\n\n## Distributive lattices\n\n**Definition.** A lattice is *distributive* if $a \\sqcap (b \\sqcup c) = (a \\sqcap b) \\sqcup (a \\sqcap c)$ (equivalently, the dual law holds too).\n\nThe powerset lattice and Boolean lattices are distributive. The two smallest non-distributive lattices are $\\mathbf{M}_3$ — three mutually incomparable middle elements — and the pentagon $\\mathbf{N}_5$; a classical theorem says a lattice is distributive if and only if it contains neither as a sublattice.\n\n$\\mathbf{M}_3$ is a lattice:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let M3 = poset({bot, a, b, c, top}; bot < a, bot < b, bot < c, a < top, b < top, c < top)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "lattice(M3)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "but the distributive law fails at $a \\sqcap (b \\sqcup c)$. The left side is $a \\sqcap \\top = a$; the right side is $\\bot \\sqcup \\bot = \\bot$; and $a \\ne \\bot$:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "join(M3, b, c)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "meet(M3, a, top)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "meet(M3, a, b)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "meet(M3, a, c)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "join(M3, bot, bot)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In $\\mathbf{N}_5$ — $\\bot < p < \\top$ and $\\bot < q < r < \\top$ — take $r \\sqcap (p \\sqcup q)$: the left side is $r \\sqcap \\top = r$, the right side $(r \\sqcap p) \\sqcup (r \\sqcap q) = \\bot \\sqcup q = q$, and $r \\ne q$:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let N5 = poset({bot, p, q, r, top}; bot < p, bot < q, q < r, p < top, r < top)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "lattice(N5)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "join(N5, p, q)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "meet(N5, r, top)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "meet(N5, r, p)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "meet(N5, r, q)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "join(N5, bot, q)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "## Exercises\n\n**3.1 Lattice of intervals.** Define `Interval` as pairs $[l, h]$ with $l \\le h$, ordered by $[l_1, h_1] \\le [l_2, h_2] \\iff l_2 \\le l_1 \\wedge h_1 \\le h_2$ — “containment by a smaller interval”, the *precision* or *information* order. Prove it is a partial order; what are meet and join? (Meet is the smallest interval containing both — the convex hull; join is the intersection, when it is non-empty. Chapter 7 makes this the interval lattice of the propagators.)\n\n**3.2 Absorption.** In any lattice, $a \\sqcap (a \\sqcup b) = a$. The instance in $D$ with $a = 4$, $b = 6$: $4 \\sqcup 6 = 12$ and $4 \\sqcap 12 = 4$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "join(D, 4, 6)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "meet(D, 4, 12)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "**3.3 Characterising the order.** $a \\le b \\iff a \\sqcup b = b$, from the lattice axioms alone:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem le_iff_sup_eq {α : Type} [Lattice α] (a b : α) : a ≤ b ↔ a ⊔ b = b := by\n  constructor\n  · intro h\n    apply PartialOrder.le_antisymm\n    · exact Lattice.le_sup a b b h (PartialOrder.le_refl b)\n    · exact Lattice.sup_le_right a b\n  · intro h\n    have : b = a ⊔ b := h.symm\n    rw [this]\n    exact Lattice.sup_le_left a b",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Checked at one instance — $2 \\le 6$ in $D$, and $2 \\sqcup 6 = 6$:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "join(D, 2, 6)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "**3.4 The product lattice.** Given lattices $\\alpha$ and $\\beta$, the component-wise order on $\\alpha \\times \\beta$ is a lattice with component-wise meet and join; each of the eight axioms reduces to the corresponding axiom in one component. `Sq` from Exercise 1.3 is $\\mathbf{2} \\times \\mathbf{2}$, and its join of $(0,1)$ and $(1,0)$ is $(1, 1)$ — the join in each coordinate:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "lattice(Sq)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "join(Sq, x01, x10)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "lattice(V)",
+      "type": "exercise",
+      "prompt": "Is the \"vee\" $V$ a lattice?",
+      "hints": [
+        "Do $b$ and $c$ have a join?"
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "meet(D, 4, 6)",
+      "type": "exercise",
+      "prompt": "In the divisors of 12, what is $4 \\wedge 6$?",
+      "hints": [
+        "The greatest common divisor."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "join(Dop, 4, 6)",
+      "type": "exercise",
+      "prompt": "In the dual of the divisors of 12, what is $4 \\vee 6$?",
+      "hints": [
+        "In the dual, joins are the original meets."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> A lattice has every pairwise join and meet. Turning the order upside down swaps them (duality). Booleans, powersets and divisors are lattices; the vee is not, and M₃ and N₅ are lattices that fail the distributive law.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

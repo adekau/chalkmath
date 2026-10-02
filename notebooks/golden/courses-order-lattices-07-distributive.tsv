@@ -1,0 +1,17 @@
+3	let M3 = poset({bot, a, b, c, top}; bot < a, bot < b, bot < c, a < top, b < top, c < top)	= poset {bot, a, b, c, top}   [a poset with 5 elements]
+4	distributive(M3)	= false   [not distributive at a, b, c]
+5	let N5 = poset({bot, p, q, r, top}; bot < p, bot < q, q < r, p < top, r < top)	= poset {bot, p, q, r, top}   [a poset with 5 elements]
+6	distributive(N5)	= false   [not distributive at r, p, q]
+8	let D = divisors(12)	= poset {1, 2, 3, 4, 6, 12}   [the divisors of 12 under divisibility]
+9	distributive(D)	= true   [distributive]
+12	complement(M3, a)	= {b, c}   [2 complements]
+13	complement(D, 4)	= {3}   [one complement]
+14	complement(D, 2)	= {}   [2 has no complement]
+18	let P = subsets({x, y, z})	= poset {{}, {z}, {y}, {y,z}, {x}, {x,z}, {x,y}, {x,y,z}}   [the 8 subsets of a 3-element set under inclusion]
+19	boolean(P)	= true   [a Boolean lattice]
+20	let D30 = divisors(30)	= poset {1, 2, 3, 5, 6, 10, 15, 30}   [the divisors of 30 under divisibility]
+21	boolean(D30)	= true   [a Boolean lattice]
+22	complement(D30, 6)	= {5}   [one complement]
+27	complement(M3, b)	= {a, c}
+28	boolean(D)	= false
+29	complement(D30, 10)	= {3}

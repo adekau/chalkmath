@@ -1,0 +1,16 @@
+5	let DO = op({na, permit, deny}; [na, permit, deny; permit, permit, deny; deny, deny, deny])	= [na, permit, deny; permit, permit, deny; deny, deny, deny]   [an operation on 3 elements]
+6	semilattice(DO)	= true   [a semilattice]
+7	order(DO)	= poset {na, permit, deny}   [the order of the semilattice]
+8	identity(DO)	= na   [the identity is na]
+10	fold(DO; permit, na, deny, permit)	= deny   [= deny]
+11	fold(DO; deny, permit, permit, na)	= deny   [= deny]
+14	let PO = op({na, permit, deny}; [na, permit, deny; permit, permit, permit; deny, permit, deny])	= [na, permit, deny; permit, permit, permit; deny, permit, deny]   [an operation on 3 elements]
+15	semilattice(PO)	= true   [a semilattice]
+16	order(PO)	= poset {na, permit, deny}   [the order of the semilattice]
+19	let FA = op({na, permit, deny}; [na, permit, deny; permit, permit, permit; deny, deny, deny])	= [na, permit, deny; permit, permit, permit; deny, deny, deny]   [an operation on 3 elements]
+20	commutative(FA)	= false   [not commutative]
+21	fold(FA; na, permit, deny)	= permit   [= permit]
+22	fold(FA; na, deny, permit)	= deny   [= deny]
+29	fold(DO; na, permit, na)	= permit
+30	fold(FA; permit, deny)	= permit
+31	identity(PO)	= na

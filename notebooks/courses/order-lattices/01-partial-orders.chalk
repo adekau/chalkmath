@@ -1,0 +1,384 @@
+{
+  "chalk": 1,
+  "name": "01-partial-orders.chalk",
+  "cells": [
+    {
+      "src": "1 · Relations and Partial Orders",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Recognize a partial order, compute in one (divisibility, subsets, chains), read its Hasse diagram, and state the definitions in Lean.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> *“The concept of an ordering is one of the most basic in all of mathematics, and yet we rarely pause to examine what it actually requires.”*\n\nThis notebook is the first part of *From Zero to Propagators*, a book that builds up from binary relations to lattices and fixed points and then uses them to write verified propagator networks in Lean 4. Part I — relations, partial orders, special elements, monotone maps, lattices, and the Knaster–Tarski fixed-point theorem — is *finite* mathematics, and the ChalkMath engine has a small world for exactly that. So where the book stops to run a Lean `#eval`, this notebook runs a cell, and where the book draws a Hasse diagram by hand, the engine draws it from the order.\n\n**How to read it.** A cell whose head is one of the order-world commands is evaluated by the engine's finite-poset world rather than as an algebraic expression:\n\n- `let P = poset({a,b,c}; a<b, a<c)` — a poset from a generating relation; the engine takes the reflexive-transitive closure and *checks* reflexivity, antisymmetry and transitivity. `divisors(n)`, `subsets({…})` and `chain(n)` are the three families the book uses most.\n- `hasse(P)` draws the covers; `le(P, a, b)` decides $a \\le b$ by exhibiting a chain of covers.\n- `upper(P, {a,b})`, `lower`, `join` (or `sup`), `meet` (or `inf`), `top`, `bottom`, `maximal`, `minimal`, `lattice`.\n- `let f = map(P; a->b, c->d)` — a map given as a table (elements not listed are fixed); `monotone(P, f)`, `fixpoints(P, f)`, `lfp(P, f)`, `gfp(P, f)`.\n\nTurn on **show work** for a cell (the ▸ beside it) to see the derivation: which elements are the upper bounds, why the least of them is the join, the Kleene chain climbing to a fixed point. Every rule these cells use is in the verified column of the ledger — `PosetProofs.lean` proves the decisions correct (`checkPartialOrder_none`, `covers_spec`, `sup_spec`, `iter_le_fixed`).\n\nWhere the book proves a theorem in Lean, the proof is a **Lean cell**: Lean 4 itself, running in your browser, checks it, and checks it again as you edit it. Put the cursor inside a proof and the panel's **Lean goals** tab shows what is left to prove at that point. The Lean cells are one Lean file read top to bottom, so a definition in one cell is in scope in every cell after it. The engine decides facts about *particular* finite posets; the Lean proofs are about *all* of them.\n\nThe first time, Lean and its library are a large download (about 140 MB, which the browser then keeps), so the Lean cells can take a minute to check while the engine's cells are already answering.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Before we can study lattices or build propagator networks, we need a precise vocabulary for talking about *order*: what it means for one thing to be “at most” another, how such a concept can be captured in a type, and which algebraic laws make it useful.\n\n## Binary relations\n\n**Definition (binary relation).** A *binary relation* on a set $A$ is a subset $R \\subseteq A \\times A$. We write $a \\mathrel{R} b$ for $(a, b) \\in R$.\n\nLean 4 encodes a relation as a function returning `Prop`:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "def Rel (α : Type) : Type := α → α → Prop",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Using `Prop` rather than `Bool` is crucial: proofs are computationally irrelevant, and we can state facts like “this relation is a partial order” as types.\n\n**Common relations.** $\\le$ on $\\mathbb{N}$; divisibility $m \\mid n \\iff \\exists k,\\ n = mk$; subset inclusion on $\\mathcal{P}(S)$; equality; the *discrete* relation $a \\mathrel{R} b \\iff a = b$; the *trivial* relation that relates everything to everything.\n\n## Properties of relations\n\nFour properties will occupy us throughout.\n\n$$\\begin{aligned}\n\\text{Reflexive} &\\iff \\forall a,\\; a \\mathrel{R} a \\\\\n\\text{Symmetric} &\\iff \\forall a\\, b,\\; a \\mathrel{R} b \\to b \\mathrel{R} a \\\\\n\\text{Antisymmetric} &\\iff \\forall a\\, b,\\; a \\mathrel{R} b \\to b \\mathrel{R} a \\to a = b \\\\\n\\text{Transitive} &\\iff \\forall a\\, b\\, c,\\; a \\mathrel{R} b \\to b \\mathrel{R} c \\to a \\mathrel{R} c\n\\end{aligned}$$\n\nIn Lean each property is a predicate on relations, and an `example` is a statement Lean checks and then forgets — here, two instances:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "def Reflexive  {α : Type} (r : Rel α) : Prop := ∀ a, r a a\ndef Symmetric  {α : Type} (r : Rel α) : Prop := ∀ a b, r a b → r b a\ndef Antisymm   {α : Type} (r : Rel α) : Prop := ∀ a b, r a b → r b a → a = b\ndef Transitive {α : Type} (r : Rel α) : Prop := ∀ a b c, r a b → r b c → r a c\n\n-- ≤ on Nat is transitive; equality is symmetric\nexample : Transitive (fun a b : Nat => a ≤ b) := fun _ _ _ => Nat.le_trans\nexample {α : Type} : Symmetric (fun a b : α => a = b) := fun _ _ h => h.symm",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> **Symmetry vs antisymmetry.** These are not negations of each other. A relation can be both (equality), neither (“$a$ is a parent of $b$”), or only one. Antisymmetry says: if you can go *both* ways, the elements must be equal.\n\n## Partial orders\n\n**Definition.** A *partial order* on $A$ is a relation $\\le$ that is reflexive, antisymmetric and transitive. The pair $(A, \\le)$ is a *partially ordered set*, or *poset*.\n\nThe word *partial* means not every two elements need be comparable: there may be $a, b$ with neither $a \\le b$ nor $b \\le a$. In Lean the definition is a typeclass. The `instance` after it lets any partial order write `a ≤ b`, and `export` lets the laws be used by their short names:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "class PartialOrder (α : Type) where\n  le          : α → α → Prop\n  le_refl     : ∀ (a : α), le a a\n  le_antisymm : ∀ (a b : α), le a b → le b a → a = b\n  le_trans    : ∀ (a b c : α), le a b → le b c → le a c\n\n-- write a ≤ b for any partial order\ninstance (priority := low) {α : Type} [PartialOrder α] : LE α := ⟨PartialOrder.le⟩\nexport PartialOrder (le_refl le_antisymm le_trans)",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The engine's `poset` takes a finite set and a *generating* relation, closes it under reflexivity and transitivity, and then checks all three laws — so the order below contains $a \\le c$ although only $a < b$ and $b < c$ were written:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let C = poset({a, b, c}; a < b, b < c)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "le(C, a, c)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "The check is not decoration. Give it a relation that is not antisymmetric and the *error is the answer*, with the witness:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "poset({a, b}; a < b, b < a)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "## The natural numbers\n\nThe natural numbers with the usual $\\le$ are the first instance; Lean's core library already has `Nat.le_refl`, `Nat.le_antisymm`, `Nat.le_trans`, so the instance just reuses them:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "instance : PartialOrder Nat where\n  le          := Nat.le\n  le_refl     := Nat.le_refl\n  le_antisymm := fun _ _ => Nat.le_antisymm\n  le_trans    := fun _ _ _ => Nat.le_trans",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A finite initial segment is `chain(n)`: the elements $0 < 1 < \\cdots < n-1$, every pair comparable, which is what *total* order looks like as a Hasse diagram — a single line.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let N5 = chain(5)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "## Divisibility\n\nDivisibility is a partial order on $\\mathbb{N}$: $n \\le m$ means $n \\mid m$, i.e. $\\exists k,\\ m = n k$. It is a genuinely different order from $\\le$: $3 \\mid 12$ but $4 \\nmid 6$. In Lean the first is proved by its witness, and the second is decided:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "example : (3 : Nat) ∣ 12 := ⟨4, rfl⟩     -- the witness: 12 = 3 * 4\nexample : ¬ (4 : Nat) ∣ 6 := by decide",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In the book this is where the first real proof lives. Reflexivity has the explicit witness $k = 1$; transitivity composes witnesses, $b = ak$ and $c = bj$ give $c = a(kj)$; but antisymmetry — if $a \\mid b$ and $b \\mid a$ then $a = b$ — needs three lemmas: that only $0$ is divisible by $0$, that $kj = 1$ in $\\mathbb{N}$ forces $k = 1$, and cancellation of $a > 0$. The mathematical core is the middle one:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem mul_eq_one_left {k j : Nat} (h : k * j = 1) : k = 1 := by\n  match k with\n  | 0     => simp [Nat.zero_mul] at h          -- 0 * j = 0 ≠ 1\n  | 1     => rfl\n  | k + 2 =>                                    -- (k+2) * j ≥ 2 ≠ 1\n    exfalso\n    have hj : j ≥ 1 := by\n      cases j with\n      | zero   => simp [Nat.mul_zero] at h\n      | succ j => exact Nat.succ_le_succ (Nat.zero_le j)\n    have hbig : 2 ≤ (k + 2) * j :=\n      calc 2 ≤ k + 2           := Nat.le_add_left 2 k\n        _ = (k + 2) * 1       := (Nat.mul_one (k + 2)).symm\n        _ ≤ (k + 2) * j       := Nat.mul_le_mul_left (k + 2) hj\n    omega",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Everything else is bookkeeping. When reading an unfamiliar proof it is always worth asking where the actual mathematical content is; here it is entirely in that one lemma.\n\nFor a *finite* set of naturals the engine simply decides the order. `divisors(12)` is the divisors of $12$ under $\\mid$, and the engine draws its Hasse diagram:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let D = divisors(12)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "le(D, 3, 12)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "le(D, 4, 6)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "## Sets\n\nSets, represented as predicates $\\alpha \\to \\mathsf{Prop}$, are ordered by inclusion $s \\subseteq t \\iff \\forall a,\\ s\\,a \\to t\\,a$. This is the first non-trivial Lean proof in the book: antisymmetry needs *function extensionality* and *propositional extensionality* to turn $s\\,a \\leftrightarrow t\\,a$ for all $a$ into $s = t$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "def Set (α : Type) : Type := α → Prop\ndef Set.subset {α : Type} (s t : Set α) : Prop := ∀ a, s a → t a\n\ninstance {α : Type} : PartialOrder (Set α) where\n  le          := Set.subset\n  le_refl     := fun _ _ ha => ha\n  le_antisymm := fun _ _ h1 h2 => funext (fun a => propext ⟨h1 a, h2 a⟩)\n  le_trans    := fun _ _ _ h1 h2 a ha => h2 a (h1 a ha)",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The finite version is `subsets({…})`: all subsets of a finite set under $\\subseteq$. The book's first Hasse diagram is $\\mathcal{P}(\\{a, b, c\\})$:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let P3 = subsets({a, b, c})",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "le(P3, {a}, {a, b, c})",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "## Hasse diagrams\n\nPosets are best understood visually. A *Hasse diagram* draws elements as nodes and *covers* as upward edges: $a$ is covered by $b$, written $a \\lessdot b$, if $a < b$ and there is no $c$ with $a < c < b$. Reflexive loops and transitive edges are left out — they can be recovered.\n\nThe engine's diagrams above are exactly this. `hasse(D)` lists the covers it drew; the rule `order.covers` is proved to produce exactly the pairs $x < y$ with nothing strictly between (`covers_spec`).",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "hasse(D)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "That is the book's `printHasse` output — $1 \\to 2$, $1 \\to 3$, $2 \\to 4$, $2 \\to 6$, $3 \\to 6$, $4 \\to 12$, $6 \\to 12$ — computed from the order rather than written down.\n\n## Computation interlude: running the divisibility order\n\nThe book's interlude defines `D12`, `dvd12`, `upperBounds`, `sup12`, `lowerBounds`, `inf12` as Lean functions and evaluates them. Here they are the engine's own commands. The upper bounds of $\\{4, 6\\}$ in $D$ are the common multiples in the set; the *least* of them is the join — which for divisibility is the lcm:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "upper(D, {4, 6})",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "sup(D, 4, 6)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "sup(D, 2, 3)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "Dually, the lower bounds are the common divisors and the greatest of them — the meet — is the gcd:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "lower(D, {4, 6})",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "inf(D, 4, 6)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "inf(D, 3, 4)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "The book's Lean versions are a few list functions over `D12`, run with `#eval`. Lean and the engine agree: the common multiples of $4$ and $6$ in the set are just $12$, the join is $12$ and the meet is $2$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "def D12 : List Nat := [1, 2, 3, 4, 6, 12]\ndef upper12 (a b : Nat) : List Nat := D12.filter (fun u => u % a == 0 && u % b == 0)\ndef sup12 (a b : Nat) : Option Nat := (upper12 a b).find? (fun s => (upper12 a b).all (· % s == 0))\ndef lower12 (a b : Nat) : List Nat := D12.filter (fun l => a % l == 0 && b % l == 0)\ndef inf12 (a b : Nat) : Option Nat := (lower12 a b).find? (fun s => (lower12 a b).all (s % · == 0))\n\n#eval upper12 4 6    -- common multiples in D12\n#eval sup12 4 6      -- their least: the lcm\n#eval inf12 4 6      -- the gcd",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "## Exercises\n\n**1.1 Reflexivity and symmetry.** Show that a relation that is both symmetric and antisymmetric must be a subset of equality: $a \\mathrel{R} b \\to a = b$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem symm_antisymm_eq {α : Type} (r : Rel α)\n    (hs : Symmetric r) (ha : Antisymm r) :\n    ∀ a b : α, r a b → a = b := by\n  intro a b h\n  exact ha a b h (hs a b h)",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "This one is about *all* relations, so it is a Lean cell and not an engine cell: Lean checks the proof once, for every type and every relation.\n\n**1.2 Divisibility on a small set.** For divisibility on $\\{1, 2, 3, 4, 6, 12\\}$: (a) draw its Hasse diagram — that is $D$ above; (b) which pairs are incomparable? Ask the engine. An element is incomparable with another when `le` fails in both directions:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "le(D, 2, 3)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "le(D, 3, 2)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "le(D, 3, 4)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "le(D, 4, 6)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "le(D, 6, 4)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "So the incomparable pairs are $\\{2, 3\\}$, $\\{3, 4\\}$, $\\{4, 6\\}$ — and $\\{4,6\\}$'s derivation shows the engine looked for a chain of covers from $4$ to $6$ and found none.\n\n**1.3 Product order.** Given posets $(A, \\le_A)$ and $(B, \\le_B)$, the *product order* on $A \\times B$ is $(a_1, b_1) \\le (a_2, b_2) \\iff a_1 \\le_A a_2 \\wedge b_1 \\le_B b_2$. The Lean instance proves each law component-wise:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "instance {α β : Type} [PartialOrder α] [PartialOrder β] : PartialOrder (α × β) where\n  le p q := p.1 ≤ q.1 ∧ p.2 ≤ q.2\n  le_refl p := ⟨le_refl p.1, le_refl p.2⟩\n  le_antisymm _ _ h1 h2 := Prod.ext (le_antisymm _ _ h1.1 h2.1) (le_antisymm _ _ h1.2 h2.2)\n  le_trans _ _ _ h1 h2 := ⟨le_trans _ _ _ h1.1 h2.1, le_trans _ _ _ h1.2 h2.2⟩",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The engine has no product constructor (yet), but a small product can be written out: $\\mathbf{2} \\times \\mathbf{2}$, with $x_{ij}$ standing for the pair $(i, j)$ —",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let Sq = poset({x00, x01, x10, x11}; x00 < x01, x00 < x10, x01 < x11, x10 < x11)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "le(Sq, x01, x10)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "— which is the same diagram as $\\mathcal{P}(\\{x, y\\})$: the product of two two-element chains *is* the powerset of a two-element set (each coordinate says whether one element is in).\n\n**1.4 Reverse order.** If $(A, \\le)$ is a partial order, so is $(A, \\ge)$ — the *dual* or *opposite* order, the Hasse diagram turned upside down. Sudoku domains in Chapter 8 use this. Reversing every generating pair of $D$:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let Dop = poset({1, 2, 3, 4, 6, 12}; 12 < 4, 12 < 6, 4 < 2, 6 < 2, 6 < 3, 2 < 1, 3 < 1)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "le(Dop, 12, 1)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Answer `true` or `false`, or with an element or a set.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "le(D, 4, 12)",
+      "type": "exercise",
+      "prompt": "In the divisors of 12, is $4 \\le 12$?",
+      "hints": [
+        "$a \\le b$ here means $a$ divides $b$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "le(D, 4, 6)",
+      "type": "exercise",
+      "prompt": "In the divisors of 12, is $4 \\le 6$?",
+      "hints": [
+        "Does 4 divide 6?"
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "le(P3, {a}, {a, b})",
+      "type": "exercise",
+      "prompt": "Among the subsets of $\\{a, b, c\\}$, is $\\{a\\} \\le \\{a, b\\}$?",
+      "hints": [
+        "The order is inclusion."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> A partial order is reflexive, antisymmetric and transitive; not every two elements need be comparable. Divisibility, inclusion and $\\le$ on numbers are the first examples, and a Hasse diagram draws one by its covers.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

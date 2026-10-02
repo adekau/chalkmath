@@ -1,0 +1,143 @@
+{
+  "chalk": 1,
+  "name": "12-propagators.chalk",
+  "cells": [
+    {
+      "src": "The propagator model",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Model partial information as a lattice, merges as joins, and computations as monotone propagators; see why a propagator must never guess.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Cells and propagators\n> A **cell** holds what is known so far about a value, an element of a lattice ordered by information. New information is **merged** in with the join, so a cell's content only rises. A **propagator** reads cells and writes its conclusions to another cell; a network runs propagators until nothing changes.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The simplest information lattice for a number: nothing known, one of the values, or a contradiction.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let F = poset({unknown, 1, 2, 3, conflict}; unknown < 1, unknown < 2, unknown < 3, 1 < conflict, 2 < conflict, 3 < conflict)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "lattice(F)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "join(F, unknown, 2)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "join(F, 2, 3)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "Propagators are monotone",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A propagator must give at least as much output when it knows more. \"Add one\" is monotone; \"guess 1 when nothing is known\" is not, because learning the value is 2 would make it take back its answer.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let inc = map(F; 1->2, 2->3, 3->conflict)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "monotone(F, inc)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let guess = map(F; unknown->1)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "monotone(F, guess)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "> [!theorem] Networks of monotone propagators converge\n> Each propagator's output only rises as its inputs rise, and cells only rise under merges, so the cells' contents form an ascending chain. On a lattice with no infinite ascending chains the network reaches a fixed point, the least one, whatever order the propagators run in.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- What a cell knows: nothing yet, a value, or a contradiction. -/\ninductive Flat (α : Type) where\n  | unknown\n  | known (a : α)\n  | conflict\n  deriving Repr, DecidableEq\n\ndef Flat.merge {α : Type} [DecidableEq α] : Flat α → Flat α → Flat α\n  | .unknown, x => x\n  | x, .unknown => x\n  | .known a, .known b => if a = b then .known a else .conflict\n  | _, _ => .conflict\n\ninstance {α : Type} [DecidableEq α] : Semilattice (Flat α) where\n  merge := Flat.merge\n  merge_comm a b := by\n    cases a <;> cases b <;> simp only [Flat.merge]\n    rename_i x y\n    by_cases h : x = y\n    · subst h; rfl\n    · simp [h, Ne.symm h]\n  merge_assoc a b c := by\n    cases a <;> cases b <;> cases c <;> simp only [Flat.merge]\n    all_goals first\n      | rfl\n      | (rename_i x y z\n         by_cases h1 : x = y <;> by_cases h2 : y = z <;> simp_all)\n      | (rename_i x y\n         by_cases h1 : x = y <;> simp_all)\n  merge_idem a := by cases a <;> simp [Flat.merge]\n\ninstance {α : Type} [ToString α] : ToString (Flat α) where\n  toString\n    | .unknown => \"?\"\n    | .known a => toString a\n    | .conflict => \"conflict\"\n\n/-- The information order: unknown below everything, conflict above everything. -/\ndef Flat.below {α : Type} : Flat α → Flat α → Prop\n  | .unknown, _ => True\n  | _, .conflict => True\n  | .known a, .known b => a = b\n  | _, _ => False\n\n/-- Addition, on what is known: a sum needs both summands. -/\ndef Flat.add : Flat Nat → Flat Nat → Flat Nat\n  | .known a, .known b => .known (a + b)\n  | .conflict, _ | _, .conflict => .conflict\n  | _, _ => .unknown\n\n#eval (merge (Flat.known 3) .unknown, merge (Flat.known 3) (Flat.known 4))",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem Flat.add_mono (a a' b b' : Flat Nat) (ha : a.below a') (hb : b.below b') :\n    (Flat.add a b).below (Flat.add a' b') := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that addition is a monotone propagator: knowing more about the summands never makes it know less about the sum.",
+      "leanSolution": "  cases a <;> cases a' <;> cases b <;> cases b' <;> simp_all [Flat.add, Flat.below]",
+      "hints": [
+        "Case on all four arguments: `cases a <;> cases a' <;> cases b <;> cases b'`.",
+        "Each case unfolds with `simp_all [Flat.add, Flat.below]`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "join(F, 1, 1)",
+      "type": "exercise",
+      "prompt": "Merge the information \"the value is 1\" with itself.",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "monotone(F, guess)",
+      "type": "exercise",
+      "prompt": "Is guessing a monotone propagator? Answer `true` or `false`.",
+      "hints": [
+        "Compare what it says about `unknown` and about `2`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Partial information is a lattice; merging is the join; propagators are monotone maps. A network of them converges to the least fixed point, whatever order they run in, and a propagator that guesses breaks that.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

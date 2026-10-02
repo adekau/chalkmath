@@ -1,0 +1,169 @@
+{
+  "chalk": 1,
+  "name": "09-information-flow.chalk",
+  "cells": [
+    {
+      "src": "Information flow",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Build a lattice of security classes as a product, label data with classes, and check that every flow of information goes up the lattice; then prove the rule for combining inputs.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Security classes (Denning)\n> A **security class** is a level and a set of categories: $(\\mathrm{high}, \\{\\mathrm{fin}\\})$ is high-level data about finance. Classes are ordered componentwise, level by level and categories by inclusion, so they form a product lattice. Information may flow from class $a$ to class $b$ only when $a \\le b$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let Lv = poset({low, high}; low < high)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let Cat = subsets({fin, hr})",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let SC = product(Lv, Cat)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "lattice(SC)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Combining inputs",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A value computed from two inputs may reveal both, so its class must be at least each of theirs: at least their join.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "join(SC, (low, {fin}), (high, {}))",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "join(SC, (high, {hr}), (low, {fin}))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Checking flows",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A program's flows form a relation: $x \\to y$ when information about $x$ reaches $y$. It is secure when every flow goes up. A report built from salaries and then summarized for an audit:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let Fl = rel({salary, report, audit}; salary->report, report->audit)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "secure(SC, Fl; salary->(high, {hr}), report->(high, {hr, fin}), audit->(low, {fin}))",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "The audit summary is labelled $(\\mathrm{low}, \\{\\mathrm{fin}\\})$, below the report it reads: the flow goes down, and the graph marks it. Raising the audit's class fixes it:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "secure(SC, Fl; salary->(high, {hr}), report->(high, {hr, fin}), audit->(high, {hr, fin}))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Decisions and data: two lattices compared",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!note] The last lesson and this one\n> Both use a lattice to make \"more restrictive\" precise, but they order different things. In access decisions the lattice orders the *answers* to one request, and combining rules is a join: the policy's answer can only move up as rules are added. Here the lattice orders the *data*, every value carries a class, and the policy is a condition on every flow: a monotone labelling. One decides a request; the other constrains a computation.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- A security class: high or not, and two categories, each present or not. -/\nstructure SecClass where\n  high : Bool\n  fin  : Bool\n  hr   : Bool\n  deriving Repr, DecidableEq\n\n/-- a may flow to b: componentwise, false below true. -/\ndef SecClass.le (a b : SecClass) : Bool := (!a.high || b.high) && (!a.fin || b.fin) && (!a.hr || b.hr)\ndef SecClass.join (a b : SecClass) : SecClass := ⟨a.high || b.high, a.fin || b.fin, a.hr || b.hr⟩\n\n/-- The join is the least upper bound: data may flow from the join exactly when it may flow from both. -/\ntheorem join_le_iff (a b c : SecClass) : (a.join b).le c = (a.le c && b.le c) := by\n  cases a; cases b; cases c\n  rename_i a1 a2 a3 b1 b2 b3 c1 c2 c3\n  cases a1 <;> cases a2 <;> cases a3 <;> cases b1 <;> cases b2 <;> cases b3 <;> cases c1 <;> cases c2 <;> cases c3 <;> rfl",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem join_flow_left (a b c : SecClass) (h : (a.join b).le c = true) : a.le c = true := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "If a computation's output may flow to $c$, so may its first input.",
+      "leanSolution": "  rw [join_le_iff] at h\n  exact (Bool.and_eq_true _ _ |>.mp h).1",
+      "hints": [
+        "Rewrite `h` with `join_le_iff`.",
+        "`Bool.and_eq_true` splits a conjunction of Booleans."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "join(SC, (low, {fin}), (high, {hr}))",
+      "type": "exercise",
+      "prompt": "What class does a value computed from $(\\mathrm{low}, \\{\\mathrm{fin}\\})$ and $(\\mathrm{high}, \\{\\mathrm{hr}\\})$ data get? Write it as `(level, {categories})`.",
+      "hints": [
+        "Join componentwise: the higher level, the union of the categories."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "le(SC, (high, {}), (low, {fin}))",
+      "type": "exercise",
+      "prompt": "May information flow from $(\\mathrm{high}, \\{\\})$ to $(\\mathrm{low}, \\{\\mathrm{fin}\\})$? Answer `true` or `false`.",
+      "hints": [
+        "Compare the levels."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Security classes form a product lattice; data flows only upward, a computation's output gets the join of its inputs' classes, and a program is secure when its labelling is monotone along every flow.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

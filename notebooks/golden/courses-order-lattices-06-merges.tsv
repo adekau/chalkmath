@@ -1,0 +1,10 @@
+4	let M = op({0, 1, 2}; [0, 1, 2; 1, 1, 2; 2, 2, 2])	= [0, 1, 2; 1, 1, 2; 2, 2, 2]   [an operation on 3 elements]
+5	fold(M; 2, 0, 1)	= 2   [= 2]
+6	fold(M; 1, 0, 2, 2, 0)	= 2   [= 2]
+10	let C2 = chain(2)	= poset {0, 1}   [the chain of 2 elements]
+11	let R2 = product(C2, C2)	= poset {(0, 0), (0, 1), (1, 0), (1, 1)}   [a product of 2 × 2 = 4 elements]
+12	join(R2, (0, 1), (1, 0))	= (1, 1)   [(0, 1) ∨ (1, 0) = (1, 1)]
+13	let JR = joinop(R2)	= [(0, 0), (0, 1), (1, 0), (1, 1); (0, 1), (0, 1), (1, 1), (1, 1); (1, 0), (1, 1), (1, 0), (1, 1); (1, 1), (1, 1), (1, 1), (1, 1)]   [the join as an operation]
+14	semilattice(JR)	= true   [a semilattice]
+22	fold(M; 0, 2, 1, 0)	= 2
+23	join(R2, (1, 0), (0, 0))	= (1, 0)

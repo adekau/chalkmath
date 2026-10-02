@@ -1,0 +1,28 @@
+10	let C = poset({a, b, c}; a < b, b < c)	= poset {a, b, c}   [a poset with 3 elements]
+11	le(C, a, c)	= true   [a ≤ c]
+13	poset({a, b}; a < b, b < a)	✗ not a partial order: not antisymmetric: a ≤ b and b ≤ a with a ≠ b
+17	let N5 = chain(5)	= poset {0, 1, 2, 3, 4}   [the chain of 5 elements]
+23	let D = divisors(12)	= poset {1, 2, 3, 4, 6, 12}   [the divisors of 12 under divisibility]
+24	le(D, 3, 12)	= true   [3 ≤ 12]
+25	le(D, 4, 6)	= false   [4 ≰ 6]
+29	let P3 = subsets({a, b, c})	= poset {{}, {c}, {b}, {b,c}, {a}, {a,c}, {a,b}, {a,b,c}}   [the 8 subsets of a 3-element set under inclusion]
+30	le(P3, {a}, {a, b, c})	= true   [{a} ≤ {a,b,c}]
+32	hasse(D)	= poset {1, 2, 3, 4, 6, 12}   [7 covers]
+34	upper(D, {4, 6})	= {12}   [upper bounds]
+35	sup(D, 4, 6)	= 12   [4 ∨ 6 = 12]
+36	sup(D, 2, 3)	= 6   [2 ∨ 3 = 6]
+38	lower(D, {4, 6})	= {1, 2}   [lower bounds]
+39	inf(D, 4, 6)	= 2   [4 ∧ 6 = 2]
+40	inf(D, 3, 4)	= 1   [3 ∧ 4 = 1]
+46	le(D, 2, 3)	= false   [2 ≰ 3]
+47	le(D, 3, 2)	= false   [3 ≰ 2]
+48	le(D, 3, 4)	= false   [3 ≰ 4]
+49	le(D, 4, 6)	= false   [4 ≰ 6]
+50	le(D, 6, 4)	= false   [6 ≰ 4]
+54	let Sq = poset({x00, x01, x10, x11}; x00 < x01, x00 < x10, x01 < x11, x10 < x11)	= poset {x00, x01, x10, x11}   [a poset with 4 elements]
+55	le(Sq, x01, x10)	= false   [x01 ≰ x10]
+57	let Dop = poset({1, 2, 3, 4, 6, 12}; 12 < 4, 12 < 6, 4 < 2, 6 < 2, 6 < 3, 2 < 1, 3 < 1)	= poset {1, 2, 3, 4, 6, 12}   [a poset with 6 elements]
+58	le(Dop, 12, 1)	= true   [12 ≤ 1]
+61	le(D, 4, 12)	= true
+62	le(D, 4, 6)	= false
+63	le(P3, {a}, {a, b})	= true
