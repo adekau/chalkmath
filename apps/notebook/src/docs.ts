@@ -75,6 +75,10 @@ Add one with **+ Cell** in the toolbar, from the Edit menu, or by hovering betwe
 ‹let› binds a name for the rest of the notebook, or defines a function of its parameters. ‹%› is the previous answer, ‹%%› the one before it and ‹%n› is ‹Out[n]›.`,
       { try: ["let f = x^3 - 3x", "diff(f, x, 2)", "let sq(x) = x^2 + 1", "diff(sq(x), x)", "diff(%, x)"] },
       md`
+## Sliders
+
+A cell that binds a name to a number, ‹let n = 3›, can be a slider: its ⋮ menu › **Show as a slider**. Moving it rewrites the number, runs the cell, and runs every cell below that used ‹n›, and the cells that used what those defined, in order. **range** sets where it starts and ends and its step. A plot or an ‹epicycles› drawing that depends on ‹n› follows the slider.
+
 ## What a cell shows
 
 - **The input interpretation**: under the input, the engine's own reading of what you typed (with ‹%› and named values filled in), so you can see it read what you meant. View › Input interpretation hides it.

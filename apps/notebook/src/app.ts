@@ -218,6 +218,9 @@ interface Cell {
    *  cell run with another source starts again from `stepwise`. */
   revealed?: number;
   revealedFor?: string;
+  /** A `let name = number` cell shown as a slider: its range. Moving it rebinds the name and runs the
+   *  cells that read it (saved). */
+  slider?: { min: number; max: number; step: number };
   /** The notebook's names this cell read when it last ran, each with the version of its value then
    *  (`BIND_VER`); a name whose value has changed since makes the cell out of date (not saved). */
   deps?: Map<string, number>;
@@ -1017,7 +1020,7 @@ function renderTabs() {
 interface ChalkFile {
   /** Format version. Files written as `.lemma` before the rename carry `lemma: 1` instead and still open. */
   chalk?: 1; lemma?: 1; name: string;
-  cells: { src: string; type?: Cell["type"] | undefined; collapsed?: boolean | undefined; showWork: boolean; stepwise?: number | undefined; prompt?: string | undefined; hints?: string[] | undefined; hideQuestion?: boolean | undefined; attempt?: string | undefined; hintsShown?: number | undefined; verdict?: Verdict | undefined; solution?: boolean | undefined; label: number | null; outLatex?: string | undefined; outText?: string | undefined; form?: string | undefined; semantics?: "real" | "complex" | undefined; echoLatex?: string | undefined; steps?: Step[] | undefined; outline?: StepOutline[] | undefined; error?: Cell["error"] | undefined; plot?: PlotData | undefined; mode?: Cell["mode"] | undefined; ask?: AskResult | undefined; file?: FileMeta | undefined; noSuggest?: true | undefined }[];
+  cells: { src: string; type?: Cell["type"] | undefined; collapsed?: boolean | undefined; showWork: boolean; stepwise?: number | undefined; prompt?: string | undefined; hints?: string[] | undefined; hideQuestion?: boolean | undefined; attempt?: string | undefined; hintsShown?: number | undefined; verdict?: Verdict | undefined; solution?: boolean | undefined; slider?: { min: number; max: number; step: number } | undefined; label: number | null; outLatex?: string | undefined; outText?: string | undefined; form?: string | undefined; semantics?: "real" | "complex" | undefined; echoLatex?: string | undefined; steps?: Step[] | undefined; outline?: StepOutline[] | undefined; error?: Cell["error"] | undefined; plot?: PlotData | undefined; mode?: Cell["mode"] | undefined; ask?: AskResult | undefined; file?: FileMeta | undefined; noSuggest?: true | undefined }[];
   scenes: Scene[];
   /** Images attached to the notebook, by name. */
   assets?: Record<string, Asset>;
@@ -1047,7 +1050,7 @@ const outlineOf = (steps: Step[]): StepOutline[] => steps.map((st) => ({ rule: s
 function serializeNotebook(): string {
   const doc: ChalkFile = {
     chalk: 1, name: S.docName,
-    cells: S.cells.map((c) => ({ src: cellSrc(c), type: c.type, collapsed: c.collapsed || undefined, showWork: c.showWork, stepwise: c.stepwise, ...exerciseToSave(c), label: c.label, outLatex: c.outLatex, outText: c.outText, form: c.form, semantics: c.semantics, echoLatex: c.echoLatex, steps: stepsToSave(c), outline: outlineToSave(c), error: c.error, plot: c.plot, mode: c.mode, ask: c.ask, file: c.file, noSuggest: c.noSuggest || undefined })),
+    cells: S.cells.map((c) => ({ src: cellSrc(c), type: c.type, collapsed: c.collapsed || undefined, showWork: c.showWork, stepwise: c.stepwise, slider: c.slider, ...exerciseToSave(c), label: c.label, outLatex: c.outLatex, outText: c.outText, form: c.form, semantics: c.semantics, echoLatex: c.echoLatex, steps: stepsToSave(c), outline: outlineToSave(c), error: c.error, plot: c.plot, mode: c.mode, ask: c.ask, file: c.file, noSuggest: c.noSuggest || undefined })),
     scenes: ST.scenes,
     ...(Object.keys(S.assets).length ? { assets: S.assets } : {}),
   };
@@ -1130,6 +1133,8 @@ function cellsFromFile(doc: ChalkFile, foldWork = false): Cell[] {
     }
     if (c.mode === "raw" || c.mode === "visual") cell.mode = c.mode;
     if (c.noSuggest) cell.noSuggest = true;
+    const sl = c.slider;
+    if (sl && [sl.min, sl.max, sl.step].every((x) => typeof x === "number" && isFinite(x)) && sl.max > sl.min && sl.step > 0) cell.slider = { min: sl.min, max: sl.max, step: sl.step };
     const ask = savedAsk(c.ask);
     if (ask) cell.ask = ask;
     return cell;
@@ -1154,6 +1159,92 @@ function sectionOf(i: number): number {
   for (let k = Math.min(i, S.cells.length - 1); k >= 0; k--) if (S.cells[k]?.type === "section") return k;
   return -1;
 }
+// --- Sliders: `let n = 3` as a control -----------------------------------------------------------
+// Moving the slider rewrites the cell's number, runs it, and runs the cells below that are out of
+// date because of it (and so on down: a cell they bind may make another out of date). Runs do not
+// pile up behind a drag: while one is under way only the latest position waits.
+
+/** A cell a slider can drive: `let name = number`. */
+const SLIDER_SRC = /^\s*let\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(-?\d+(?:\.\d+)?)\s*$/;
+/** A first range for a number: around it, in steps of its precision. */
+function defaultRange(v: number): { min: number; max: number; step: number } {
+  const int = Number.isInteger(v), a = Math.abs(v);
+  const max = a === 0 ? 10 : int ? Math.max(2 * a, 10) : 2 * a;
+  const min = v < 0 ? -max : 0;
+  return { min, max, step: int ? 1 : Number(((max - min) / 100).toPrecision(1)) };
+}
+function toggleSlider(cell: Cell) {
+  if (cell.slider) delete cell.slider;
+  else {
+    const m = SLIDER_SRC.exec(cellSrc(cell)); if (!m) return;
+    cell.slider = defaultRange(Number(m[2]));
+    cell.mode = "raw";   // the source is rewritten as the slider moves: text, not a typeset tree
+  }
+  renderCells(); autosave();
+}
+/** A number as the slider writes it: no float noise from the step arithmetic. */
+const sliderNum = (x: number, step: number) => {
+  const d = Math.max(0, -Math.floor(Math.log10(step) + 1e-9));
+  return Number(x.toFixed(Math.min(10, d)));
+};
+/** Sliders whose cell is running, and the position each waits to run next. */
+const SLIDING = new WeakMap<Cell, number | null>();
+async function slideTo(cell: Cell, v: number) {
+  const m = SLIDER_SRC.exec(cellSrc(cell)); if (!m) return;
+  cell.src = `let ${m[1]} = ${v}`;
+  if (cell.input) { cell.input.value = cell.src; syncHighlight(cell); }
+  if (SLIDING.has(cell)) { SLIDING.set(cell, v); return; }
+  SLIDING.set(cell, null);
+  try {
+    for (;;) {
+      await runCell(cell);
+      await runOutOfDateBelow(cell);
+      const next = SLIDING.get(cell);
+      if (next === null || next === undefined) break;
+      SLIDING.set(cell, null);
+    }
+  } finally { SLIDING.delete(cell); }
+}
+/** Run, in order, the cells below `cell` that are out of date. */
+async function runOutOfDateBelow(cell: Cell) {
+  const d = docOf(cell), gen = runGen;
+  for (const c of S.cells.slice(S.cells.indexOf(cell) + 1)) {
+    if (gen !== runGen || (d && !S.docs.includes(d))) return;
+    if (staleNames(c).length) await runCell(c);
+  }
+}
+/** The slider under a `let name = number` cell: the control, its value, and its range to edit. */
+function sliderRow(cell: Cell): HTMLElement {
+  const sl = cell.slider!;
+  const m = SLIDER_SRC.exec(cellSrc(cell))!;
+  const row = h("div", "sliderrow");
+  const range = document.createElement("input");
+  range.type = "range"; range.min = String(sl.min); range.max = String(sl.max); range.step = String(sl.step); range.value = m[2]!;
+  range.setAttribute("aria-label", m[1]!);
+  const val = h("span", "sliderval", m[2]!);
+  range.addEventListener("input", () => { const v = sliderNum(Number(range.value), sl.step); val.textContent = String(v); void slideTo(cell, v); });
+  range.addEventListener("focus", () => { const i = S.cells.indexOf(cell); if (S.active !== i) { S.active = i; renderChrome(); renderSidebar(); markActive(); } });
+  const edit = h("span", "sliderrange");
+  edit.hidden = true;
+  const num = (label: string, key: "min" | "max" | "step") => {
+    const l = h("label"); const inp = document.createElement("input");
+    inp.type = "number"; inp.value = String(sl[key]); inp.step = "any";
+    inp.addEventListener("change", () => {
+      const x = Number(inp.value), next = { ...sl, [key]: x };
+      if (!isFinite(x) || next.max <= next.min || next.step <= 0) { inp.value = String(sl[key]); return; }
+      cell.slider = next; autosave(); renderCells();
+    });
+    l.append(document.createTextNode(label), inp);
+    return l;
+  };
+  edit.append(num("from ", "min"), num("to ", "max"), num("step ", "step"));
+  const gear = asButton(h("span", "sliderbtn", "range"), "Change the slider's range");
+  gear.title = "Change the slider's range and step";
+  gear.addEventListener("click", () => { edit.hidden = !edit.hidden; });
+  row.append(h("code", "slidername", m[1]!), range, val, gear, edit);
+  return row;
+}
+
 /** Run cell `i` and every cell below it, in order: what a change above leaves to do. */
 async function runFrom(i: number) {
   const cells = S.cells.slice(Math.max(0, i));
@@ -1457,7 +1548,7 @@ function importNotebook() {
 
 /** What a link carries: the name and every cell's text and kind. Outputs are not included: the
  *  engine recomputes them when the link opens, which is the point of a verified notebook. */
-interface LinkDoc { v: 1; n: string; c: { s: string; t?: "markdown" | "section" | "lean" | "exercise"; w?: 1; f?: 1; r?: number; p?: string; hs?: string[]; hq?: 1 }[]; a?: Record<string, { m: string; d: string; b?: 1 }> }
+interface LinkDoc { v: 1; n: string; c: { s: string; t?: "markdown" | "section" | "lean" | "exercise"; w?: 1; f?: 1; r?: number; p?: string; hs?: string[]; hq?: 1; sl?: [number, number, number] }[]; a?: Record<string, { m: string; d: string; b?: 1 }> }
 
 async function deflate(text: string): Promise<Uint8Array> {
   const cs = new CompressionStream("deflate-raw");
@@ -1484,7 +1575,8 @@ async function notebookLink(): Promise<string> {
   const doc: LinkDoc = {
     v: 1, n: S.docName,
     c: S.cells.filter((c) => cellSrc(c).trim()).map((c) => ({ s: cellSrc(c), ...(c.type ? { t: c.type } : {}), ...(c.showWork ? { w: 1 as const } : {}), ...(c.collapsed ? { f: 1 as const } : {}), ...(c.stepwise !== undefined ? { r: c.stepwise } : {}),
-      ...(c.prompt ? { p: c.prompt } : {}), ...(c.hints?.length ? { hs: c.hints } : {}), ...(c.hideQuestion ? { hq: 1 as const } : {}) })),
+      ...(c.prompt ? { p: c.prompt } : {}), ...(c.hints?.length ? { hs: c.hints } : {}), ...(c.hideQuestion ? { hq: 1 as const } : {}),
+      ...(c.slider ? { sl: [c.slider.min, c.slider.max, c.slider.step] as [number, number, number] } : {}) })),
     ...(Object.keys(S.assets).length ? { a: Object.fromEntries(Object.values(S.assets).map((a) => [a.name, { m: a.mime, d: a.data, ...(a.binary ? { b: 1 as const } : {}) }])) } : {}),
   };
   const json = JSON.stringify(doc);
@@ -1512,7 +1604,8 @@ async function openNotebookLink(hash: string): Promise<boolean> {
     const file: ChalkFile = {
       chalk: 1, name: doc.n || "shared.chalk",
       cells: doc.c.map((c) => ({ src: String(c.s ?? ""), type: c.t === "markdown" || c.t === "section" || c.t === "lean" || c.t === "exercise" ? c.t : undefined, collapsed: c.f ? true : undefined, showWork: !!c.w, stepwise: typeof c.r === "number" ? c.r : undefined,
-        prompt: typeof c.p === "string" ? c.p : undefined, hints: Array.isArray(c.hs) ? c.hs.map(String) : undefined, hideQuestion: c.hq ? true : undefined, label: null })),
+        prompt: typeof c.p === "string" ? c.p : undefined, hints: Array.isArray(c.hs) ? c.hs.map(String) : undefined, hideQuestion: c.hq ? true : undefined,
+        slider: Array.isArray(c.sl) && c.sl.length === 3 ? { min: Number(c.sl[0]), max: Number(c.sl[1]), step: Number(c.sl[2]) } : undefined, label: null })),
       scenes: [],
       ...(doc.a ? { assets: Object.fromEntries(Object.entries(doc.a).map(([name, a]) => [name, { name, mime: String(a.m), data: String(a.d), ...(a.b ? { binary: true } : {}) }])) } : {}),
     };
@@ -2927,6 +3020,9 @@ function renderCells() {
 
     const mid = h("div", "mid");
     mid.append(...inputEls(cell, i));
+    // a slider sits outside the body, which every evaluation redraws: a drag must survive the runs it starts
+    const slider = cell.slider && SLIDER_SRC.test(cellSrc(cell)) ? sliderRow(cell) : null;
+    if (slider) mid.append(slider);
 
     const body = h("div", "cellbody");
     mid.append(body);
@@ -4159,6 +4255,7 @@ function toggleCellMenu(cell: Cell, anchor: HTMLElement) {
     item(cell.collapsed ? "Unfold section" : "Fold section", () => { cell.collapsed = !cell.collapsed; renderCells(); renderSidebar(); autosave(); });
   } else if (sectionOf(i) >= 0) item("Run this section", () => void runSection(sectionOf(i)));
   item("Run this and below", () => void runFrom(i));
+  if (!cell.type && (cell.slider || SLIDER_SRC.test(cellSrc(cell)))) item(`${cell.slider ? "✓ " : ""}Show as a slider`, () => toggleSlider(cell));
   if ((!cell.type || (cell.type === "exercise" && cell.solution)) && workCount(cell)) {
     menu.append(h("div", "sep"));
     item(`${cell.stepwise !== undefined ? "✓ " : ""}Step through the work`, () => setStepwise(cell, cell.stepwise === undefined ? 0 : undefined));
