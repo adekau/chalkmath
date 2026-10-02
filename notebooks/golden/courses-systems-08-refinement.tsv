@@ -1,0 +1,7 @@
+4	let Two = system(var a in 0..2; var b in 0..2; init a = 0 ∧ b = 0; action ta when a < 2 do a := a + 1; action tb when b < 2 do b := b + 1)	= system({a, b}, {ta, tb})   [2 variables, 2 actions, 9 reachable states]
+5	let Sum = system(var s in 0..4; init s = 0; action t when s < 4 do s := s + 1)	= system({s}, {t})   [1 variable, 1 action, 5 reachable states]
+6	refines(Two, Sum; s := a + b)	= true   [refines]
+8	let Jump = system(var a in 0..2; var b in 0..2; init a = 0 ∧ b = 0; action both when a < 2 ∧ b < 2 do a := a + 1, b := b + 1)	= system({a, b}, {both})   [2 variables, 1 action, 3 reachable states]
+9	refines(Jump, Sum; s := a + b)	= false   [does not refine: both has no abstract counterpart]
+18	refines(Jump, Sum; s := a + b)	= false
+19	refines(Two, Sum; s := a + b)	= true

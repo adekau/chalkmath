@@ -214,6 +214,57 @@
       ]
     },
     {
+      "id": "systems",
+      "title": "Transition systems, invariants and temporal logic",
+      "blurb": "State machines and their reachable states; invariants with counterexample traces and inductive proofs; mutual exclusion, safety and liveness under fairness; temporal logic as fixed points; happens-before, effectively-once delivery, and refinement.",
+      "kind": "course",
+      "level": "Distributed systems",
+      "path": "courses/systems",
+      "leanPrelude": true,
+      "lessons": [
+        {
+          "file": "01-state-machines.chalk",
+          "title": "State machines and executions",
+          "blurb": "Variables, an initial condition and guarded actions; executions as traces; the graph of reachable states."
+        },
+        {
+          "file": "02-invariants.chalk",
+          "title": "Invariants and induction",
+          "blurb": "Properties of every reachable state: refuted by a shortest trace, proved by induction, and strengthened when induction fails."
+        },
+        {
+          "file": "03-mutual-exclusion.chalk",
+          "title": "Mutual exclusion",
+          "blurb": "A check-then-act race as a stepped trace, the fix, its inductive proof, and the same model in TLA+."
+        },
+        {
+          "file": "04-safety-liveness.chalk",
+          "title": "Safety and liveness",
+          "blurb": "Nothing bad happens; something good eventually does. Deadlocks, lassos, and weak and strong fairness."
+        },
+        {
+          "file": "05-temporal-logic.chalk",
+          "title": "Temporal logic as fixed points",
+          "blurb": "EF, AF, EG and AG on the lattice of state sets: least and greatest fixed points, computed by Kleene iteration."
+        },
+        {
+          "file": "06-happens-before.chalk",
+          "title": "Happens-before",
+          "blurb": "Events of several processes as a partial order, vector clocks that compute it, and concurrency as incomparability."
+        },
+        {
+          "file": "07-effectively-once.chalk",
+          "title": "Effectively-once delivery",
+          "blurb": "A channel that duplicates; a handler that is idempotent keeps the effect exactly once, one that is not double-applies."
+        },
+        {
+          "file": "08-refinement.chalk",
+          "title": "Refinement",
+          "blurb": "An implementation's steps are the specification's steps or stutters; and a normalization of operations proved sound."
+        }
+      ]
+    },
+    {
       "id": "calculus",
       "title": "Calculus: derivatives and integrals",
       "blurb": "The rules of differentiation, the chain rule and tangent lines; then antiderivatives the engine checks by differentiating, definite integrals and Riemann sums.",

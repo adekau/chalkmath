@@ -1,0 +1,146 @@
+{
+  "chalk": 1,
+  "name": "02-invariants.chalk",
+  "cells": [
+    {
+      "src": "Invariants and induction",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Decide whether a property holds in every reachable state, read the shortest counterexample when it does not, and prove it by induction, strengthening it when the induction fails.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Invariant\n> A state formula is an **invariant** when it holds in every reachable state. A counterexample is an execution from an initial state to a state where it fails.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let C = system(\n  var x in 0..3\n  var y in 0..3\n  init x = 0 ∧ y = 0\n  action inc when x < 3 do x := x + 1\n  action move when x > 0 ∧ y < 3 do x := x - 1, y := y + 1\n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "invariant(C, x + y ≤ 3)",
+      "showWork": true,
+      "label": null,
+      "stepwise": 0
+    },
+    {
+      "src": "invariant(C, y ≤ 3)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Inductive invariants",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!theorem] Proof by induction\n> If $I$ holds in every initial state, and every step from a state where $I$ holds leads to one where $I$ holds, then $I$ holds in every reachable state. Such an $I$ is **inductive**.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Inductiveness is checked over *every* state, reachable or not, so it needs no search, and it is a proof. But an invariant need not be inductive. Two counters stepping together:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let Pair = system(\n  var x in 0..6\n  var y in 0..6\n  init x = 0 ∧ y = 0\n  action step when x < 5 do x := x + 1, y := y + 1\n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "invariant(Pair, y ≤ 5)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "inductive(Pair, y ≤ 5)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "The counterexample to induction is a state that no execution reaches ($y = 5$ with $x < 5$): $y \\le 5$ is true but too weak to prove itself. **Strengthen** it with what makes it true, that $x$ and $y$ move together:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "inductive(Pair, x = y ∧ y ≤ 5)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem invariant_of_inductive {σ : Type} (T : TS σ) (I : σ → Prop)\n    (hinit : ∀ s, T.init s → I s) (hstep : ∀ s t, I s → T.step s t → I t) :\n    ∀ s, Reachable T s → I s := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove the induction principle for invariants: by induction on reachability.",
+      "leanSolution": "  intro s h\n  induction h with\n  | init hs => exact hinit _ hs\n  | step _ hst ih => exact hstep _ _ ih hst",
+      "hints": [
+        "`intro s h`, then `induction h` gives a case per constructor of `Reachable`.",
+        "In the `step` case, the hypothesis says `I` holds before the step."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem counter_le_three : ∀ s, Reachable counter s → s ≤ 3 := by\n  apply invariant_of_inductive\n  · intro s hs; simp [counter] at hs; omega\n  · intro s t _ hst; simp [counter] at hst; omega",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "inductive(Pair, y ≤ 5)",
+      "type": "exercise",
+      "prompt": "Is $y \\le 5$ inductive for `Pair`?",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "inductive(Pair, x = y ∧ x ≤ 5)",
+      "type": "exercise",
+      "prompt": "Is $x = y \\land x \\le 5$ inductive?",
+      "hints": [
+        "Initially both are 0; the only step adds one to each, and only when $x < 5$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "invariant(C, x ≤ 3)",
+      "type": "exercise",
+      "prompt": "Is $x \\le 3$ an invariant of `C`?",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> An invariant holds in every reachable state; a shortest trace refutes it. An inductive invariant proves itself in one step, over all states; when induction fails at an unreachable state, strengthen the invariant with the fact that rules that state out.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

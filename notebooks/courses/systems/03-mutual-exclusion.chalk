@@ -1,0 +1,148 @@
+{
+  "chalk": 1,
+  "name": "03-mutual-exclusion.chalk",
+  "cells": [
+    {
+      "src": "Mutual exclusion",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Find a race by model checking, fix it, prove the fix by an inductive invariant, and see the model in TLA+.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A service must run at most one job per customer at a time. Each worker checks that no job is running, then starts one: **check, then act**. Two workers, one lock:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let Race = system(\n  var p in {idle, checked, crit}\n  var q in {idle, checked, crit}\n  var lock in bool\n  init p = idle ∧ q = idle ∧ lock = false\n  action pcheck when p = idle ∧ lock = false do p := checked\n  action pset when p = checked do lock := true, p := crit\n  action pexit when p = crit do p := idle, lock := false\n  action qcheck when q = idle ∧ lock = false do q := checked\n  action qset when q = checked do lock := true, q := crit\n  action qexit when q = crit do q := idle, lock := false\n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Step through the counterexample: both workers check while the lock is free, then both take it.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "invariant(Race, ¬(p = crit ∧ q = crit))",
+      "showWork": true,
+      "label": null,
+      "stepwise": 0
+    },
+    {
+      "src": "The fix",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Make the check and the taking one action, as a compare-and-set or a database's conditional write does:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let Fix = system(\n  var p in {idle, crit}\n  var q in {idle, crit}\n  var lock in bool\n  init p = idle ∧ q = idle ∧ lock = false\n  action penter when p = idle ∧ lock = false do lock := true, p := crit\n  action pexit when p = crit do p := idle, lock := false\n  action qenter when q = idle ∧ lock = false do lock := true, q := crit\n  action qexit when q = crit do q := idle, lock := false\n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "invariant(Fix, ¬(p = crit ∧ q = crit))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The model checker has tried every reachable state. A proof covers every state at once: the property is not inductive by itself (from an unreachable state where one is inside without the lock, the other can enter), but it is once strengthened with \"whoever is inside holds the lock\":",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "inductive(Fix, ¬(p = crit ∧ q = crit))",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "inductive(Fix, (p = crit → lock = true) ∧ (q = crit → lock = true) ∧ ¬(p = crit ∧ q = crit))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In TLA+",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The same model in TLA+, for the TLC model checker:\n\n```\nVARIABLES p, q, lock\nInit == p = \"idle\" /\\ q = \"idle\" /\\ lock = FALSE\nPEnter == p = \"idle\" /\\ lock = FALSE /\\ p' = \"crit\" /\\ lock' = TRUE /\\ UNCHANGED q\nPExit  == p = \"crit\" /\\ p' = \"idle\" /\\ lock' = FALSE /\\ UNCHANGED q\nQEnter == q = \"idle\" /\\ lock = FALSE /\\ q' = \"crit\" /\\ lock' = TRUE /\\ UNCHANGED p\nQExit  == q = \"crit\" /\\ q' = \"idle\" /\\ lock' = FALSE /\\ UNCHANGED p\nNext == PEnter \\/ PExit \\/ QEnter \\/ QExit\nMutualExclusion == ~(p = \"crit\" /\\ q = \"crit\")\n```\n\nThe primed variables are the next state's; `UNCHANGED` says what an action leaves alone, which here is implicit.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- Two processes and a lock: each is in its critical section or not. -/\nstructure Mutex where\n  p : Bool\n  q : Bool\n  lock : Bool\n  deriving DecidableEq, Repr\n\ndef mutex : TS Mutex where\n  init s := s = ⟨false, false, false⟩\n  step s t :=\n    (s.p = false ∧ s.lock = false ∧ t = { s with p := true, lock := true }) ∨\n    (s.p = true ∧ t = { s with p := false, lock := false }) ∨\n    (s.q = false ∧ s.lock = false ∧ t = { s with q := true, lock := true }) ∨\n    (s.q = true ∧ t = { s with q := false, lock := false })\n\n/-- The strengthened invariant: whoever is inside holds the lock, and not both are inside. -/\ndef MutexInv (s : Mutex) : Prop :=\n  (s.p = true → s.lock = true) ∧ (s.q = true → s.lock = true) ∧ ¬(s.p = true ∧ s.q = true)",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem mutexInv_init : MutexInv ⟨false, false, false⟩ := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that the strengthened invariant holds initially.",
+      "leanSolution": "  simp [MutexInv]",
+      "hints": [
+        "Unfold `MutexInv`: every part is about `false = true`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem mutex_safe : ∀ s, Reachable mutex s → ¬(s.p = true ∧ s.q = true) := by\n  intro s h\n  have : MutexInv s := by\n    apply invariant_of_inductive mutex MutexInv _ _ s h\n    · intro s hs; simp [mutex] at hs; subst hs; exact mutexInv_init\n    · intro s t hI hst\n      obtain ⟨hp, hq, hpq⟩ := hI\n      rcases s with ⟨p, q, l⟩\n      simp only [mutex] at hst\n      rcases hst with ⟨h1, h2, rfl⟩ | ⟨h1, rfl⟩ | ⟨h1, h2, rfl⟩ | ⟨h1, rfl⟩ <;>\n        simp_all [MutexInv] <;> cases p <;> cases q <;> simp_all\n  exact this.2.2",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "reach(Fix, p = crit ∧ q = crit)",
+      "type": "exercise",
+      "prompt": "Can both workers be inside at once in `Fix`?",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "reach(Race, p = crit ∧ q = crit)",
+      "type": "exercise",
+      "prompt": "And in `Race`?",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Check-then-act is a race whenever the check and the act are separate steps: the model checker finds the interleaving and shows it step by step. The fix makes them one step, and an inductive invariant (strengthened with \"inside means holding the lock\") proves it for every state.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

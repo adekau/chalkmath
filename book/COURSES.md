@@ -78,7 +78,12 @@ Follows *From Zero to Propagators* (lean4learning), with a Lean prelude across i
 12–14. The propagator model; a propagator network in Lean; the interval lattice.
 15. Capstones: a Sudoku solver, and type inference by propagation.
 
-### 3 · Transition systems, invariants and temporal logic (8 lessons)
+### 3 · Transition systems, invariants and temporal logic (8 lessons) — written
+
+`notebooks/courses/systems/`, with a Lean prelude: 26 exercises, 17 checked by the engine and 9 by
+Lean. Systems are written over several lines (N6). "One task per tenant" is taught as one job per
+customer. Lesson 8's normalization keeps only the rewrites that are sound from every starting state;
+"create; delete → ∅" is shown false when the key already existed.
 
 1. State machines and executions; reachable states, the state graph drawn. *E5, N3, N6*
 2. Invariants and inductive invariants: the shortest counterexample trace; a counterexample to
@@ -135,7 +140,7 @@ E5 events (version vectors), N8 replica simulation*
 | E2 | **Done.** Bounded quantifiers over finite sets, with witness or counterexample | decision spec |
 | E3 | **Done.** Relations: property checks with witnesses, closures as steps, partitions, quotients, refinement, acyclicity and measures | closure is least; partition specs |
 | E4 | **Done.** Finite algebra: operation tables and their laws, homomorphisms, products, maps between posets, distributive and Boolean checks, closure operators, Galois connections, concept lattices | a spec per check |
-| E5 | Systems: finite-domain variables, guarded actions, reachability, invariants with traces, inductiveness, deadlock, CTL by lfp/gfp, simulation; events → poset with vector clocks | invariant check sound and complete on finite graphs; CTL fixpoints correct |
+| E5 | **Done.** Systems: finite-domain variables, guarded actions, reachability, invariants with traces, inductiveness, deadlock, CTL by lfp/gfp, simulation; events → poset with vector clocks | invariant check sound and complete on finite graphs; CTL fixpoints correct |
 | E6 | Simply typed λ-calculus: annotations, type checking with a derivation, simple inference | checker sound against the rules |
 | E7 | (optional) user-defined rewriting systems: steps, termination by measure, critical pairs | per rule |
 
@@ -150,8 +155,10 @@ The λ world also grows for course 4: a choice of strategy, η, free variables, 
   comes with E4 and E5.
 - N3 Visual specs: truth tables and relation graphs (bad pairs marked, a closure's pairs dashed).
   **Done.** Operation tables, state graphs, derivation trees and space-time diagrams come with E4–E6.
-- N4 Traces stepped state by state, in step with the graph. With E5.
-- N6 Multi-line math cells, for system specifications and rewrite rules. With E5.
+- N4 Traces stepped state by state: a trace is the derivation (a step per action), so stepping
+  through it works as for any cell, and its transitions are marked on the layered state graph.
+  **Done**, except that the graph does not yet highlight the current step as you step.
+- N6 Multi-line math cells (Shift+Enter starts a new line, Enter runs). **Done.**
 - N7 A course's Lean prelude. **Done.**
 - N8 A replica simulation: replicas exchanging state, duplicated and reordered, converging. With
   course 6.
@@ -162,7 +169,7 @@ The λ world also grows for course 4: a choice of strategy, η, free variables, 
 2. **P1** — Course 1: E1, E2, E3, N2, N3. *Done.*
 3. **P2** — Course 2: E4. *Done.*
 4. **P3** — Course 6 (CRDTs): mostly Lean, little engine; needs only course 2. *Done* (without N8).
-5. **P4** — Course 3: E5, N4, N6.
+5. **P4** — Course 3: E5, N4, N6. *Done.*
 6. **P5** — Courses 4 and 5: the λ world's additions, E6.
 7. **P6** — Optional: E7, and probability for retries and backoff.
 

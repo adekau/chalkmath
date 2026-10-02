@@ -1,0 +1,7 @@
+4	let E = events({a1, a2, a3}, {b1, b2}; a1->b2, b1->a3)	= poset {a1, a2, a3, b1, b2}   [5 events on 2 processes, 2 messages]
+5	le(E, a1, b2)	= true   [a1 ≤ b2]
+6	concurrent(E, a2, b2)	= true   [concurrent]
+9	clocks({a1, a2, a3}, {b1, b2}; a1->b2, b1->a3)	= {a1↦(1, 0), a2↦(2, 0), a3↦(3, 1), b1↦(0, 1), b2↦(1, 2)}   [vector clocks of 5 events]
+12	events({a1, a2}, {b1, b2}; a2->b1, b2->a1)	✗ the messages make a cycle, so some event would happen before itself (not a partial order: not antisymmetric: a1 ≤ a2 and a2 ≤ a1 with a1 ≠ a2)
+17	concurrent(E, a1, b1)	= true
+18	le(E, b1, a3)	= true

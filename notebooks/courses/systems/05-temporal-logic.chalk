@@ -1,0 +1,120 @@
+{
+  "chalk": 1,
+  "name": "05-temporal-logic.chalk",
+  "cells": [
+    {
+      "src": "Temporal logic as fixed points",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Read CTL formulas, and compute them as least and greatest fixed points on the lattice of sets of states, one Kleene round at a time.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] CTL\n> **E** means \"on some path\" and **A** \"on every path\"; **F** means \"eventually\" and **G** \"always\"; **X** means \"next\". So $\\mathsf{EF}\\,\\varphi$: some path reaches $\\varphi$; $\\mathsf{AG}\\,\\varphi$: $\\varphi$ holds forever on every path; $\\mathsf{AF}\\,\\varphi$: every path reaches $\\varphi$; $\\mathsf{EG}\\,\\varphi$: some path keeps $\\varphi$ forever.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!theorem] As fixed points\n> On the lattice of sets of states, ordered by inclusion:\n> $\\mathsf{EF}\\,\\varphi$ is the least $Z$ with $Z = \\varphi \\cup \\mathsf{EX}\\,Z$, and $\\mathsf{AG}\\,\\varphi$ the greatest $Z$ with $Z = \\varphi \\cap \\mathsf{AX}\\,Z$. Both maps are monotone, so by Knaster–Tarski the fixed points exist, and on a finite lattice Kleene iteration reaches them: from $\\varnothing$ for the least, from all states for the greatest.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let C = system(\n  var x in 0..3\n  var y in 0..3\n  init x = 0 ∧ y = 0\n  action inc when x < 3 do x := x + 1\n  action move when x > 0 ∧ y < 3 do x := x - 1, y := y + 1\n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Step through the rounds: each adds the states one step further back from $y = 3$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "ctl(C, EF y = 3)",
+      "showWork": true,
+      "label": null,
+      "stepwise": 0
+    },
+    {
+      "src": "ctl(C, AG x + y ≤ 3)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "ctl(C, AF y = 3)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "This is *Order and lattices*' fixed-point lesson applied: the lattice is the powerset of the states, and the monotone map is a predicate transformer.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- EX P: some step leads to a state where P holds. -/\ndef EX {σ : Type} (T : TS σ) (P : σ → Prop) (s : σ) : Prop := ∃ t, T.step s t ∧ P t\n\n/-- The k-th approximation of EF P from below: P within k steps. -/\ndef EFk {σ : Type} (T : TS σ) (P : σ → Prop) : Nat → σ → Prop\n  | 0 => fun s => P s\n  | k + 1 => fun s => P s ∨ EX T (EFk T P k) s",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem EX_mono {σ : Type} (T : TS σ) (P Q : σ → Prop) (h : ∀ s, P s → Q s) :\n    ∀ s, EX T P s → EX T Q s := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that `EX` is monotone: the property the fixed-point argument needs.",
+      "leanSolution": "  intro s ⟨t, hst, hp⟩\n  exact ⟨t, hst, h t hp⟩",
+      "hints": [
+        "Take the witness step apart with `intro s ⟨t, hst, hp⟩`, and put it back with `h`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- The approximations only grow: the Kleene chain is increasing. -/\ntheorem EFk_mono {σ : Type} (T : TS σ) (P : σ → Prop) : ∀ k s, EFk T P k s → EFk T P (k + 1) s := by\n  intro k\n  induction k with\n  | zero => intro s h; exact Or.inl h\n  | succ k ih =>\n    intro s h\n    rcases h with h | h\n    · exact Or.inl h\n    · exact Or.inr (EX_mono T _ _ ih s h)",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "ctl(C, EF x = 3 ∧ y = 3)",
+      "type": "exercise",
+      "prompt": "Does $\\mathsf{EF}(x = 3 \\land y = 3)$ hold initially?",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "ctl(C, AG y ≤ 3)",
+      "type": "exercise",
+      "prompt": "Does $\\mathsf{AG}\\,(y \\le 3)$ hold?",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Temporal operators are fixed points of predicate transformers on sets of states: \"eventually\" a least one, \"always\" a greatest. Model checking a finite system is computing them by Kleene iteration.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

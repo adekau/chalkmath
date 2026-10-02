@@ -1,0 +1,141 @@
+{
+  "chalk": 1,
+  "name": "04-safety-liveness.chalk",
+  "cells": [
+    {
+      "src": "Safety and liveness",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Tell safety properties from liveness properties, find deadlocks, and decide \"eventually\" under fairness, reading a lasso when it fails.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Safety and liveness\n> A **safety** property says nothing bad ever happens; it is refuted by a finite trace (invariants are safety properties). A **liveness** property says something good eventually happens; it is refuted by an infinite execution, which on a finite system is a **lasso**: a path to a loop that repeats forever.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Deadlock",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Two workers each need two forks, and take them in opposite orders:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let Forks = system(\n  var a in {idle, one, both}\n  var b in {idle, one, both}\n  var f1 in bool\n  var f2 in bool\n  init a = idle ∧ b = idle ∧ f1 = false ∧ f2 = false\n  action a1 when a = idle ∧ f1 = false do a := one, f1 := true\n  action a2 when a = one ∧ f2 = false do a := both, f2 := true\n  action arel when a = both do a := idle, f1 := false, f2 := false\n  action b1 when b = idle ∧ f2 = false do b := one, f2 := true\n  action b2 when b = one ∧ f1 = false do b := both, f1 := true\n  action brel when b = both do b := idle, f1 := false, f2 := false\n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "deadlock(Forks)",
+      "showWork": true,
+      "label": null,
+      "stepwise": 0
+    },
+    {
+      "src": "Fairness",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Will a waiting worker ever get in? Not if the scheduler never lets it. A **fair** action is one the scheduler may not starve: **weakly fair** if it stays enabled it is taken; **strongly fair** if it is enabled again and again it is taken.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let W = system(\n  var p in {idle, crit}\n  var q in {wait, crit}\n  var lock in bool\n  init p = idle ∧ q = wait ∧ lock = false\n  action penter when p = idle ∧ lock = false do lock := true, p := crit\n  action pexit when p = crit do p := idle, lock := false\n  fair action qenter when q = wait ∧ lock = false do lock := true, q := crit\n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "eventually(W, q = crit)",
+      "showWork": true,
+      "label": null,
+      "stepwise": 0
+    },
+    {
+      "src": "Under weak fairness `q` can starve: `p` keeps taking the lock, so `qenter` is enabled only now and then, never continuously. Strong fairness rules that out:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let S = system(\n  var p in {idle, crit}\n  var q in {wait, crit}\n  var lock in bool\n  init p = idle ∧ q = wait ∧ lock = false\n  action penter when p = idle ∧ lock = false do lock := true, p := crit\n  action pexit when p = crit do p := idle, lock := false\n  strong fair action qenter when q = wait ∧ lock = false do lock := true, q := crit\n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "eventually(S, q = crit)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Termination is liveness too, and its proof is a measure: a natural number that every step decreases cannot decrease forever.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem no_infinite_descent (f : Nat → Nat) (h : ∀ n, f (n + 1) < f n) : False := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that no sequence of natural numbers decreases forever.",
+      "leanSolution": "  have key : ∀ n, f n + n ≤ f 0 := by\n    intro n\n    induction n with\n    | zero => simp\n    | succ k ih => have := h k; omega\n  have := key (f 0 + 1)\n  omega",
+      "hints": [
+        "Show first that $f(n) + n \\le f(0)$ for every $n$, by induction.",
+        "Then take $n = f(0) + 1$: impossible."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "deadlock(Forks)",
+      "type": "exercise",
+      "prompt": "Can the two workers deadlock?",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "eventually(W, q = crit)",
+      "type": "exercise",
+      "prompt": "Under weak fairness, does `q` always get in eventually?",
+      "hints": [
+        "Is `qenter` ever continuously enabled while `p` keeps cycling?"
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Safety fails on a finite trace, liveness on an infinite one: a lasso. Deadlocks are reachable states with nothing to do. Whether \"eventually\" holds depends on fairness: weak fairness only protects actions that stay enabled, strong fairness those that are enabled again and again.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

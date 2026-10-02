@@ -1,0 +1,138 @@
+{
+  "chalk": 1,
+  "name": "08-refinement.chalk",
+  "cells": [
+    {
+      "src": "Refinement",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Check that a detailed system implements an abstract one by mapping its states and matching its steps, and prove an operation-rewriting optimization sound against the semantics it preserves.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Refinement\n> A concrete system $C$ **refines** an abstract system $A$ under a mapping from $C$'s states to $A$'s when every initial state maps to an initial state, and every step of $C$ maps to a step of $A$ or to no change at all (a **stutter**). Then every behavior of $C$, seen through the mapping, is a behavior of $A$: properties proved of $A$ hold of $C$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Two counters, abstracted to their sum:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let Two = system(var a in 0..2; var b in 0..2; init a = 0 ∧ b = 0; action ta when a < 2 do a := a + 1; action tb when b < 2 do b := b + 1)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let Sum = system(var s in 0..4; init s = 0; action t when s < 4 do s := s + 1)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "refines(Two, Sum; s := a + b)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "An implementation that bumps both at once takes a step the specification does not have:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let Jump = system(var a in 0..2; var b in 0..2; init a = 0 ∧ b = 0; action both when a < 2 ∧ b < 2 do a := a + 1, b := b + 1)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "refines(Jump, Sum; s := a + b)",
+      "showWork": true,
+      "label": null,
+      "stepwise": 0
+    },
+    {
+      "src": "Normalizing operations, soundly",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A client queues operations on a key (create, update, delete) and sends them in a batch. An optimizer folds adjacent operations into one: $\\mathsf{update}\\,a;\\ \\mathsf{update}\\,b$ becomes $\\mathsf{update}\\,b$. It must not change what the batch does to the store. That is refinement again, for a rewriting: every rewrite must leave the store's final state the same, from every starting state.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- An operation on one key of a store: create (overwriting), update (only if present), delete. -/\ninductive Op where\n  | create (v : Nat)\n  | update (v : Nat)\n  | delete\n  deriving DecidableEq, Repr\n\ndef Op.apply : Option Nat → Op → Option Nat\n  | _, .create v => some v\n  | some _, .update v => some v\n  | none, .update _ => none\n  | _, .delete => none\n\ndef run (s : Option Nat) (ops : List Op) : Option Nat := ops.foldl Op.apply s\n\n/-- Two operations as one, when one does the work of both. -/\ndef combine : Op → Op → Option Op\n  | .create _, .update b => some (.create b)\n  | .update _, .update b => some (.update b)\n  | _, .create b => some (.create b)\n  | _, .delete => some .delete\n  | _, _ => none",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem combine_sound (a b c : Op) (h : combine a b = some c) (s : Option Nat) :\n    Op.apply (Op.apply s a) b = Op.apply s c := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove each combination sound: applying the two is applying the one, from any state.",
+      "leanSolution": "  cases a <;> cases b <;> simp [combine] at h <;> subst h <;> cases s <;> rfl",
+      "hints": [
+        "Case on both operations; the impossible combinations fall away with `simp [combine] at h`.",
+        "What is left: substitute `c` and try both starting states."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- Normalize a batch: fold each operation into the next one where they combine. -/\ndef normalize : List Op → List Op\n  | [] => []\n  | a :: rest =>\n    match normalize rest with\n    | b :: tl => match combine a b with\n      | some c => c :: tl\n      | none => a :: b :: tl\n    | [] => [a]\n\ntheorem normalize_sound : ∀ (ops : List Op) (s : Option Nat), run s (normalize ops) = run s ops := by\n  intro ops\n  induction ops with\n  | nil => intro s; rfl\n  | cons a rest ih =>\n    intro s\n    simp only [normalize, run, List.foldl_cons]\n    split\n    · rename_i b tl heq\n      split\n      · rename_i c hc\n        have := ih (Op.apply s a)\n        rw [heq] at this\n        simp only [run, List.foldl_cons] at this ⊢\n        rw [← this, ← combine_sound a b c hc s]\n      · have := ih (Op.apply s a)\n        rw [heq] at this\n        simp only [run, List.foldl_cons] at this ⊢\n        exact this\n    · rename_i heq\n      have := ih (Op.apply s a)\n      rw [heq] at this\n      simp only [run, List.foldl_cons, List.foldl_nil] at this ⊢\n      exact this\n\n#eval normalize [.create 1, .update 2, .update 3, .delete, .create 4]",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> \"Create then delete cancels out\" looks like a fine rewrite, and it is wrong: if the key already existed, the pair deletes it, and the empty batch would not. Lean finds the starting state:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "example : run (some 7) [.create 1, .delete] ≠ run (some 7) [] := by decide",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "refines(Jump, Sum; s := a + b)",
+      "type": "exercise",
+      "prompt": "Does `Jump` refine `Sum` under the sum mapping?",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "refines(Two, Sum; s := a + b)",
+      "type": "exercise",
+      "prompt": "Does `Two`?",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Refinement checks that an implementation only does what the specification allows, up to stuttering. A rewriting of operations is sound when it refines the same way: same effect from every state, which a structural induction proves once for every batch.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}
