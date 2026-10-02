@@ -157,6 +157,9 @@ async function manipulate() {
   const want3 = await reference.call("engine.manipulate", { sessionId: "e2e-manip", cellId: "c", source: src3 });
   assert.equal(want3.frames[2].parts?.length, 2, "the engine's column has two parts");
   await run(2, src3);
+  // wait for the output: the cell is evaluated after Enter, not by it
+  await all().nth(2).locator(".manip .manippart").nth(1).waitFor({ timeout: 30000 }).catch(async () =>
+    assert.fail(`the column's output did not appear: ${await all().nth(2).locator(".cellerr").textContent({ timeout: 1000 }).catch(() => "no error shown")}`));
   assert.equal(await all().nth(2).locator(".manip .manippart").count(), 2, "one place per part");
   const calc = want3.frames[2].parts[1];
   const shown = await lastLine(2, 1, calc.rendered.latex);
