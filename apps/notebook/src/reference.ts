@@ -257,7 +257,28 @@ export const FUNCTIONS: FnDoc[] = [
       basic("plot(sin(x)/x, x, -10, 10)", "plot([sin(x), cos(x)], x, 0, 2pi)"),
       section("Scope", note("A function and its derivative:"), "plot([x^2, diff(x^2, x)], x, -3, 3)", note("A complex-valued curve:"), "plot(exp(i*t), t, 0, 2pi)"),
     ],
-    see: ["epicycles", "diff"],
+    see: ["manipulate", "epicycles", "diff"],
+  },
+  {
+    name: "manipulate", area: "Calculus",
+    usage: [
+      ["manipulate(e, p, from, to)", "shows `e` with a slider for `p`, from `from` to `to`, and ▶ Play to animate it."],
+      ["manipulate(e, p, from, to, n)", "uses `n` values of `p` (40 unless given, at most 200)."],
+    ],
+    details: [
+      "Mathematica's `Manipulate`. `e` is any expression: a plot animates, and a derivative, a sum or a matrix shows its value at each `p`.",
+      "The engine evaluates `e` once for each value of `p`, evenly spaced from `from` to `to`, in one go; moving the slider and playing never wait for it.",
+      "`from` may be larger than `to`: the slider starts at `from`, so `manipulate(…, h, 1, 0.01)` plays `h` down toward 0.",
+      "A plot keeps one window for every frame, so the axes hold still while the curves move. While it plays, the page draws between neighbouring frames; where the slider stops, it shows the engine's own frame.",
+      "`p` is bound only inside the frames, and must not be the plot's own variable. The cell's value and work are its first frame's.",
+    ],
+    examples: [
+      basic("manipulate(plot(sin(a*x), x, 0, 2pi), a, 1, 4)", "manipulate(diff(x^n, x), n, 1, 5, 5)"),
+      section("Scope",
+        note("A secant turning into the tangent of x² at 1 as h shrinks toward 0:"),
+        "manipulate(plot([x^2, 1 + ((1 + h)^2 - 1)/h*(x - 1)], x, -0.5, 3), h, 2, 0.05)"),
+    ],
+    see: ["plot", "subst"],
   },
 
   // --- Complex numbers -------------------------------------------------------------------------

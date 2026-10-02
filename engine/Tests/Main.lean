@@ -488,6 +488,21 @@ def sessionTests : TestM Unit := do
   checkTrue "rpc plot list normalizes entries" (contains (rpc "engine.plot" "{\"source\":\"plot([diff(x^2, x), x + 0], x, -1, 1, 3)\"}") "\"series\":[{\"rendered\":{\"text\":\"2*x\"")
   checkTrue "rpc plot single is one series" (contains (rpc "engine.plot" "{\"source\":\"plot(x, x, 0, 1, 2)\"}") "\"series\":[{\"rendered\":{\"text\":\"x\",\"latex\":\"x\"},\"points\":[[")
   checkTrue "rpc plot rejects a matrix" (contains (rpc "engine.plot" "{\"source\":\"plot([1, 2; 3, 4], x, 0, 1)\"}") "not a matrix")
+  -- manipulate: any body, once per value of the parameter; a plot body is sampled per frame
+  let man := rpc "engine.manipulate" "{\"source\":\"manipulate(diff(x^n, x), n, 1, 3, 3)\"}"
+  checkTrue "rpc manipulate: kind and parameter" (contains man "\"kind\":\"manipulate\"" && contains man "\"param\":\"n\"") man
+  checkTrue "rpc manipulate: each frame's normal form" (contains man "\"rendered\":{\"text\":\"1\"" && contains man "\"rendered\":{\"text\":\"2*x\"" && contains man "\"rendered\":{\"text\":\"3*x^2\"") man
+  checkTrue "rpc manipulate: three frames" ((man.splitOn "\"valueRendered\"").length == 4) man
+  checkTrue "rpc manipulate: exact values, either way round" (contains (rpc "engine.manipulate" "{\"source\":\"manipulate(h, h, 1, 0, 3)\"}") "\"valueRendered\":{\"text\":\"1/2\"")
+  let manp := rpc "engine.manipulate" "{\"source\":\"manipulate(plot(h, x, 0, 1, 2), h, 0, 1, 2)\"}"
+  checkTrue "rpc manipulate plot: a frame's samples follow the parameter"
+    (contains manp s!"\"points\":[[{toString (0 : Float)},{toString (1 : Float)}],[{toString (1 : Float)},{toString (1 : Float)}]]") manp
+  checkTrue "rpc manipulate plot: the plot's own variable is refused" (contains (rpc "engine.manipulate" "{\"source\":\"manipulate(plot(x, x, 0, 1), x, 0, 1)\"}") "the plot's own variable")
+  checkTrue "rpc manipulate: the range must be numbers" (contains (rpc "engine.manipulate" "{\"source\":\"manipulate(h, h, 0, y)\"}") "the range must evaluate to numbers")
+  checkTrue "rpc manipulate: the cell's value is the first frame's" (contains (rpc "engine.manipulate" "{\"source\":\"manipulate(h + 1, h, 0, 1, 2)\"}") "\"value\":{\"k\":\"num\",\"v\":{\"num\":\"1\",\"den\":\"1\"}}")
+  let (stm, _) := handleS [] "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"engine.manipulate\",\"params\":{\"sessionId\":\"m\",\"cellId\":\"a\",\"source\":\"manipulate(h + 1, h, 0, 1, 2)\"}}"
+  let (_, hAfter) := handleS stm "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"engine.evaluate\",\"params\":{\"sessionId\":\"m\",\"cellId\":\"b\",\"source\":\"h\"}}"
+  checkTrue "rpc manipulate: the parameter is bound only inside the frames" (contains hAfter "\"rendered\":{\"text\":\"h\"") hAfter
   checkTrue "rpc value json" ((rpc "engine.evaluate" "{\"source\":\"2x\"}").startsWith "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"ok\":true,\"value\":{\"k\":\"mul\",\"args\":[{\"k\":\"num\",\"v\":{\"num\":\"2\",\"den\":\"1\"}},{\"k\":\"var\",\"name\":\"x\"}]}")
 
 /-- M2 golden test: `Tests/golden.tsv` holds the reference engine's rendered text for a corpus of

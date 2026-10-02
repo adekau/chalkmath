@@ -8,8 +8,9 @@
 // Then the notebook's teaching features, in a notebook of their own: a cell out of date when a name it
 // read changes, a slider driving the cells below it, work stepped through with the answer held back,
 // an exercise written in its editor and answered (wrong, right, and with the work), a Markdown
-// callout, a function's usage on hover, a slider played down (h → 0) animating the plot below it with
-// its axes held, and a course's lesson opened from the Courses tab, answered, and followed to the next. Each is held to the engine's own answers through a client of the test's.
+// callout, a function's usage on hover, manipulate (a plot and a derivative under their slider, played
+// and dragged, against the engine's own frames), and a course's lesson opened from the Courses tab,
+// answered, and followed to the next. Each is held to the engine's own answers through a client of the test's.
 // Chromium: playwright-core's own, or the executable named by CHROMIUM. The engine: MATHENGINE, or
 // engine/.lake/build/bin/mathengine.
 import { chromium } from "playwright-core";
@@ -107,52 +108,47 @@ const menu = async (m, item) => { await page.locator(".menus span", { hasText: m
 /** The engine's own answer, in a session of the test's that follows the notebook's. */
 const ref = (source, k) => reference.call("engine.evaluate", { sessionId: "e2e-features", cellId: `f${k}`, source, paths: true });
 
-/** An animated graph, in a notebook of its own: a slider set to play down, played, and the plot below
- *  it following every frame to the engine's last answer, with the axes it had when the play began. */
-async function animatedGraph() {
+/** manipulate, in a notebook of its own: a plot's slider played from the first frame to the last with
+ *  its axes held still, and a derivative's slider dragged, each frame the engine's own. */
+async function manipulate() {
   await menu("File", "New notebook");
-  await run(0, "let h = 2"); await out(0);
-  const line = "1 + (2 + h)*(x - 1)";
-  await run(1, `plot([x^2, ${line}], x, -0.5, 3)`);
-  await page.locator(".cell .plotbox svg").first().waitFor({ timeout: 30000 });
-  const svg = all().nth(1).locator(".plotbox svg");
-  const ticks = () => svg.locator("text.tl.r").allTextContents();
+  const src = "manipulate(plot([x^2, 1 + (2 + h)*(x - 1)], x, -0.5, 3), h, 2, 0.5, 4)";
+  const want = await reference.call("engine.manipulate", { sessionId: "e2e-manip", cellId: "p", source: src });
+  assert.equal(want.ok, true, `${src}: ${want.error?.message}`);
+  assert.deepEqual(want.frames.map((f) => f.value), [2, 1.5, 1, 0.5], "the engine's values of h");
+  await run(0, src);
+  const box = all().nth(0).locator(".manip");
+  await box.locator(".plotbox svg").waitFor({ timeout: 30000 });
+  const svg = box.locator(".plotbox svg");
+  const label = (f) => `Plot of ${f.plot.series.map((s) => s.rendered.text).join(" and ")}`;
+  assert.ok((await svg.getAttribute("aria-label")).startsWith(label(want.frames[0])), "the first frame is not the engine's");
+  assert.equal(await box.locator("input[type=range]").getAttribute("max"), "3", "one slider position per frame");
+  const ticks = () => box.locator(".plotbox svg text.tl.r").allTextContents();
   const before = await ticks();
-  await cellMenu(0, "Show as a slider");
-  // the range: from 0.5 to 2 in steps of 0.5, played down (each change redraws the row)
-  for (const [k, v] of [[0, "0.5"], [1, "2"], [2, "0.5"]]) {
-    await all().nth(0).locator(".sliderrow .sliderbtn", { hasText: "range" }).click();
-    const inp = all().nth(0).locator(".sliderrange input[type=number]").nth(k);
-    await inp.fill(v); await inp.dispatchEvent("change");
-  }
-  await all().nth(0).locator(".sliderrow .sliderbtn", { hasText: "range" }).click();
-  await all().nth(0).locator(".sliderrange select").selectOption("down");
-  const play = all().nth(0).locator(".sliderrow .sliderplay");
-  assert.equal((await play.textContent()).trim(), "▶ Play", "the slider has no ▶ Play");
+  const play = box.locator(".sliderplay");
+  assert.equal((await play.textContent()).trim(), "▶ Play", "no ▶ Play");
   await play.click();
-  await all().nth(0).locator(".sliderrow .sliderplay.on").waitFor({ timeout: 5000 });
-  await page.waitForFunction(() => {
-    const c = document.querySelectorAll(".cell")[0];
-    return c.querySelector("input.cellin")?.value === "let h = 0.5" && !c.querySelector(".sliderplay.on");
-  }, null, { timeout: 30000 });
-  assert.equal(await all().nth(0).locator(".sliderrow .sliderval").textContent(), "0.5", "the slider shows where the play ended");
-  await reference.call("engine.evaluate", { sessionId: "e2e-play", cellId: "h", source: "let h = 0.5" });
-  const want = await reference.call("engine.plot", { sessionId: "e2e-play", cellId: "p", source: `plot([x^2, ${line}], x, -0.5, 3)` });
-  const label = `Plot of ${want.series.map((s) => s.rendered.text).join(" and ")}`;
+  await box.locator(".sliderplay.on").waitFor({ timeout: 5000 });
+  await box.locator(".sliderplay:not(.on)").waitFor({ timeout: 15000 });
+  assert.ok((await svg.getAttribute("aria-label")).startsWith(label(want.frames[3])), `the play did not end on the engine's last frame: ${await svg.getAttribute("aria-label")}`);
+  assert.equal(await box.locator(".sliderval .katex-mathml annotation").textContent(), want.frames[3].valueRendered.latex, "the value shown at the end");
+  assert.deepEqual(await ticks(), before, "the axes moved while h played");
+  // any body: a derivative, its slider dragged to the last of its values
+  const src2 = "manipulate(diff(x^n, x), n, 1, 3, 3)";
+  const want2 = await reference.call("engine.manipulate", { sessionId: "e2e-manip", cellId: "d", source: src2 });
+  await run(1, src2);
+  const box2 = all().nth(1).locator(".manip");
+  await box2.locator(".manipview .katex").waitFor({ timeout: 30000 });
+  await box2.locator("input[type=range]").focus();
+  await page.keyboard.press("End");
   await page.waitForFunction(([want]) => {
-    const c = document.querySelectorAll(".cell")[1];
-    return !c.classList.contains("running") && c.querySelector(".plotbox svg")?.getAttribute("aria-label")?.startsWith(want);
-  }, [label], { timeout: 30000 }).catch(async () => {
-    assert.fail(`the plot shows ${JSON.stringify(await svg.getAttribute("aria-label"))}, not the engine's ${JSON.stringify(label)}`);
+    const t = document.querySelectorAll(".cell")[1]?.querySelector(".manipview .katex-mathml annotation")?.textContent ?? "";
+    const flat = (s) => s.replace(/\\htmlData\{[^}]*\}/g, "").replace(/[{}\s]/g, "");
+    return flat(t) === flat(want);
+  }, [want2.frames[2].rendered.latex], { timeout: 10000 }).catch(async () => {
+    assert.fail(`the derivative at n = 3 shows ${await box2.locator(".manipview .katex-mathml annotation").textContent()}, not ${want2.frames[2].rendered.latex}`);
   });
-  assert.deepEqual(await ticks(), before, "the plot's axes moved while the slider played");
-  // the plot's own run fits its window to its curves again
-  await cellMenu(1, "Run this and below");
-  await page.waitForFunction((b) => {
-    const t = [...document.querySelectorAll(".cell")[1].querySelectorAll(".plotbox svg text.tl.r")].map((e) => e.textContent);
-    return t.length && JSON.stringify(t) !== b;
-  }, JSON.stringify(before), { timeout: 30000 });
-  console.log("✓ animated graph: h played down from 2 to 0.5, the plot followed with its axes held, then refitted");
+  console.log(`✓ manipulate: h played over ${want.frames.length} frames with the axes held; diff(x^n, x) at n = 3 is ${want2.frames[2].rendered.text}`);
 }
 
 /** The teaching features, in a fresh notebook, then a course. */
@@ -244,7 +240,7 @@ async function features() {
   await page.locator(".usagetip .umore", { hasText: "subst" }).waitFor({ timeout: 5000 });
   await page.mouse.move(5, 5);
   console.log("✓ usage on hover: subst");
-  await animatedGraph();
+  await manipulate();
   // a course: the Courses tab, a lesson opened, answered, and followed to the next
   const manifest = JSON.parse(readFileSync(path.join(root, "notebooks/courses.json"), "utf8"));
   const course = manifest.projects.find((p) => p.kind === "course");

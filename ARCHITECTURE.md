@@ -87,6 +87,16 @@ differential test with zero mismatches.
 - **Plots are sampled by the engine and drawn by the notebook.** `engine.plot` simplifies the
   function under the session, records the cell, and returns a uniform sample with `null` where the
   value is not finite; the notebook's SVG and the studio's graph shot are presentation only.
+- **Manipulate is every frame at once.** `manipulate(e, p, from, to[, n])` (`engine.manipulate`,
+  `manipulateCell`) evaluates `e` as a cell would for `n` exact values of `p` from `from` to `to`, the
+  session's names substituted before `p` so a name bound to a term in `p` moves with it, and a `plot`
+  body sampled at every frame; the cell records the first frame. The notebook shows the frames under a
+  slider in the cell's output, as Mathematica does, so dragging and ▶ Play never wait for the engine;
+  a plot keeps one window for all its frames, and while it plays the page blends neighbouring frames'
+  samples (same grid) for smooth motion, showing the engine's own frame wherever the slider stops.
+  The frames are not saved: the cell runs again when its notebook opens. A slider on a `let` is the
+  other control: it re-runs every cell that read the name, which suits several cells following one
+  number but not animation.
 - **Integration is checked, not found.** `Antiderivative.lean` guesses an antiderivative with a
   few textbook rules and proves nothing; `cmdIntegrate` differentiates the guess with the pipeline
   and accepts it only if the normal form is the integrand itself. `cmdIntegrate_spec` states that;
@@ -176,13 +186,7 @@ place in the project (`project` in the file), a bar with the previous and next l
 exercises answered, which the page remembers per lesson in local storage. The lessons are built from
 what the shell offers for teaching: exercise cells (checked by `engine.check`, §3), steps held back
 to be revealed one at a time, sliders on `let n = number` that re-run the cells out of date because of
-them, and Markdown callouts. **An animated graph is a played slider**: ▶ Play moves the slider through
-its range (up, or down for `h → 0`, as `slider.play` says), and each frame is the runs a drag to that
-position would make, held until they finish, so anything below a slider animates (a plot, a number, a
-matrix) and the engine stays a pure function of the source. The secant that turns into the tangent in
-the first calculus lesson is a slider `h` and a `plot([f, L, T], …)`. A plot that a slider drives keeps
-its vertical window, widened but never narrowed (`animate.ts`), so the motion read is the curve's,
-not the axes'; it is page state, not saved, and a run of the plot's own cell lets it go. Every lesson's answers are pinned in `notebooks/golden/` and checked in CI.
+them, and Markdown callouts. Every lesson's answers are pinned in `notebooks/golden/` and checked in CI.
 
 **Help › Documentation** opens a tab beside the studio: a guide to the notebook (cells, input,
 reading the work, files, lookups and their set-up, Lean cells, the studio) and the reference pages.

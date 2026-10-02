@@ -55,7 +55,7 @@ structure Tok where
 def builtinFunctions : List String :=
   ["sin", "cos", "tan", "exp", "ln", "log", "sqrt", "abs", "conj", "re", "im",
    "diff", "simplify", "expand", "factor", "N", "det", "rref", "transpose", "solve", "subst", "integrate", "plot",
-   "sign", "dot", "norm", "sum", "exptotrig", "epicycles", "dft",
+   "sign", "dot", "norm", "sum", "exptotrig", "epicycles", "dft", "manipulate",
    "total", "mean", "variance", "stdev", "min", "max", "median"]
 
 /-- Lexer over the character list; `i` is the byte-free character index used for spans. -/
