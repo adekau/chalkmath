@@ -279,3 +279,32 @@ closureop(D, nc)	false
 let A = context({duck, eagle, dog, bat}, {flies, mammal, bird}; duck->flies, duck->bird, eagle->flies, eagle->bird, dog->mammal, bat->flies, bat->mammal)	{(duck, flies), (duck, bird), (eagle, flies), (eagle, bird), (dog, mammal), (bat, flies), (bat, mammal)}
 concepts(A)	poset {({duck,eagle,dog,bat}, {}), ({duck,eagle,bat}, {flies}), ({dog,bat}, {mammal}), ({bat}, {flies,mammal}), ({duck,eagle}, {flies,bird}), ({}, {flies,mammal,bird})}
 map(C7, C4; 0->0)	<error: 1 has no value: a map from C7 to C4 lists every element of C7>
+let Ct = system(var x in 0..3; var y in 0..3; init x = 0 ∧ y = 0; action inc when x < 3 do x := x + 1; action move when x > 0 ∧ y < 3 do x := x - 1, y := y + 1)	system({x, y}, {inc, move})
+states(Ct)	16
+invariant(Ct, x + y ≤ 3)	false
+inductive(Ct, y ≤ 3)	true
+reach(Ct, y = 3)	true
+deadlock(Ct)	true
+trace(Ct; inc, inc, move)	x = 1 ∧ y = 1
+trace(Ct; move)	<error: move is not enabled in (0, 0) (x > 0 ∧ y < 3 fails)>
+ctl(Ct, EF y = 3)	true
+ctl(Ct, AG x ≤ 2)	false
+let Fx = system(var p in {idle, crit}; var q in {idle, crit}; var lock in bool; init p = idle ∧ q = idle ∧ lock = false; action penter when p = idle ∧ lock = false do lock := true, p := crit; action pexit when p = crit do p := idle, lock := false; action qenter when q = idle ∧ lock = false do lock := true, q := crit; action qexit when q = crit do q := idle, lock := false)	system({p, q, lock}, {penter, pexit, qenter, qexit})
+invariant(Fx, ¬(p = crit ∧ q = crit))	true
+inductive(Fx, ¬(p = crit ∧ q = crit))	false
+inductive(Fx, (p = crit → lock = true) ∧ (q = crit → lock = true) ∧ ¬(p = crit ∧ q = crit))	true
+let Wk = system(var p in {idle, crit}; var q in {wait, crit}; var lock in bool; init p = idle ∧ q = wait ∧ lock = false; action penter when p = idle ∧ lock = false do lock := true, p := crit; action pexit when p = crit do p := idle, lock := false; fair action qenter when q = wait ∧ lock = false do lock := true, q := crit)	system({p, q, lock}, {penter, pexit, qenter})
+eventually(Wk, q = crit)	false
+let Sg = system(var p in {idle, crit}; var q in {wait, crit}; var lock in bool; init p = idle ∧ q = wait ∧ lock = false; action penter when p = idle ∧ lock = false do lock := true, p := crit; action pexit when p = crit do p := idle, lock := false; strong fair action qenter when q = wait ∧ lock = false do lock := true, q := crit)	system({p, q, lock}, {penter, pexit, qenter})
+eventually(Sg, q = crit)	true
+let Tw = system(var a in 0..2; var b in 0..2; init a = 0 ∧ b = 0; action ta when a < 2 do a := a + 1; action tb when b < 2 do b := b + 1)	system({a, b}, {ta, tb})
+let Sm = system(var s in 0..4; init s = 0; action t when s < 4 do s := s + 1)	system({s}, {t})
+refines(Tw, Sm; s := a + b)	true
+let Jp = system(var a in 0..2; var b in 0..2; init a = 0 ∧ b = 0; action both when a < 2 ∧ b < 2 do a := a + 1, b := b + 1)	system({a, b}, {both})
+refines(Jp, Sm; s := a + b)	false
+system(var x in 0..2; init x = 0; action up do x := x + 1)	<error: action up sets x to 3, outside its domain>
+system(var x in 0..2; action go do y := 1)	<error: action go updates y, which is not a variable>
+let Ev = events({a1, a2, a3}, {b1, b2}; a1->b2, b1->a3)	poset {a1, a2, a3, b1, b2}
+clocks({a1, a2, a3}, {b1, b2}; a1->b2, b1->a3)	{a1↦(1, 0), a2↦(2, 0), a3↦(3, 1), b1↦(0, 1), b2↦(1, 2)}
+concurrent(Ev, a2, b2)	true
+events({a1, a2}, {b1, b2}; a2->b1, b2->a1)	<error: the messages make a cycle, so some event would happen before itself (not a partial order: not antisymmetric: a1 ≤ a2 and a2 ≤ a1 with a1 ≠ a2)>

@@ -328,7 +328,9 @@ def commands : List String :=
    "closure", "classes", "finer", "wellfounded", "measure",
    -- finite algebra (Algebra.lean)
    "op", "joinop", "meetop", "table", "associative", "commutative", "idempotent", "semilattice", "identity", "fold", "order",
-   "distributive", "complement", "complemented", "boolean", "product", "galois", "closureop", "context", "concepts", "secure"]
+   "distributive", "complement", "complemented", "boolean", "product", "galois", "closureop", "context", "concepts", "secure",
+   -- happens-before
+   "events", "clocks", "concurrent"]
 
 /-- Is this an order-world cell? Its command (after an optional `let name =`) is one of ours. -/
 def isOrderSource (src : String) : Bool :=

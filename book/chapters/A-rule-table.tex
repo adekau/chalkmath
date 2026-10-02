@@ -82,6 +82,9 @@ the engine omits is unverified.
 \rt{rel.finer}{verified}{Every pair of the first checked in the second.}
 \rt{rel.wellfounded}{unverified}{On a finite set a relation is well-founded exactly when it has no cycle. A cycle found is shown and can be read off the relation; that the search finds one whenever there is one is not yet proved.}
 \rt{rel.measure}{verified}{Every step checked to decrease the measure, by definition; on a finite set a measure that goes down along every step leaves no room for a cycle.}
+\rt{order.happens-before}{verified}{The reflexive-transitive closure of program order and messages, checked to be a partial order (\lc{checkPartialOrder_none}).}
+\rt{order.clocks}{verified}{Each entry counts the events of a process below the event in the happens-before order, by definition.}
+\rt{order.concurrent}{verified}{Neither event is below the other in the happens-before order, by definition.}
 \midrule \multicolumn{3}{l}{\textbf{Finite algebra (order world)}} \\
 \rt{alg.from-order}{verified}{Each entry is the join (or meet) of its pair, found by the search that \lc{sup_spec} proves least; by definition a table.}
 \rt{alg.associative}{verified}{Every triple checked; when none fails the law holds on the whole set (\lc{assocFailure_none}).}
@@ -98,6 +101,24 @@ the engine omits is unverified.
 \rt{order.closure-operator}{verified}{Extensive, monotone and idempotent, each checked on every element or pair (\lc{closureOpFailure_none}).}
 \rt{order.concepts}{unverified}{Each concept's objects are an intersection of attribute extents, and its attributes are those the objects share; that every concept is found, and that each pair is closed, is not yet proved.}
 \rt{order.flow}{verified}{Every flow checked against the order of the classes (\lc{flowFailure_none}).}
+\midrule \multicolumn{3}{l}{\textbf{Systems world}} \\
+\rt{sys.init}{verified}{An initial state: the init condition evaluated on it, by definition.}
+\rt{sys.step}{checked}{Each step of a trace is re-run against the system: the action is enabled there and its updates give the next state.}
+\rt{sys.found}{checked}{The last state of a re-run trace, where the formula is evaluated.}
+\rt{sys.violated}{checked}{The last state of a re-run trace, where the formula is evaluated and fails: a concrete counterexample. That breadth-first search finds a shortest one is not yet proved.}
+\rt{sys.deadlock}{checked}{The last state of a re-run trace, with every action's guard evaluated false. That no deadlock is missed when none is reported is not yet proved.}
+\rt{sys.reach}{unverified}{Breadth-first search from the initial states; that it visits every reachable state is not yet proved.}
+\rt{sys.invariant}{unverified}{The formula holds in every state the search visited; that the search visits every reachable state is not yet proved.}
+\rt{sys.unreachable}{unverified}{No state the search visited satisfies the formula; the search's completeness is not yet proved.}
+\rt{sys.inductive}{unverified}{Every assignment of the domains is enumerated and every enabled action checked; the enumeration is not yet proved complete.}
+\rt{sys.cti}{checked}{A state where the formula holds and an action after which it fails (or leaves a domain): both evaluated, a concrete counterexample to induction.}
+\rt{sys.ctl}{unverified}{The CTL operator as a fixed point of a predicate transformer on the reachable states; the correspondence with paths is the standard theorem, not formalized here.}
+\rt{sys.iterate}{checked}{One round of the Kleene iteration: the transformer applied to the previous set.}
+\rt{sys.fixed}{checked}{The loop stops when a round changes nothing, so the set is a fixed point; that iterating from the bottom (or top) gives the least (or greatest) is Kleene's theorem, not formalized here.}
+\rt{sys.cycle}{unverified}{A step of the lasso's cycle, found within a strongly connected set of states avoiding the goal.}
+\rt{sys.lasso}{unverified}{A fair cycle avoiding the goal: each fair action is taken on it or disabled as its fairness requires; the search over strongly connected sets is not yet proved complete.}
+\rt{sys.eventually}{unverified}{No deadlock and no fair cycle avoids the goal among the reachable states; the search is not yet proved complete.}
+\rt{sys.refines}{unverified}{Every transition the search found maps to an abstract step or a stutter; the search's completeness is not yet proved.}
 \midrule \multicolumn{3}{l}{\textbf{Logic world}} \\
 \rt{logic.implication}{verified}{$a \to b$ and $\lnot a \lor b$ have the same value under every assignment, and the pass that applies it everywhere keeps the formula's value (\lc{arrows_sound}).}
 \rt{logic.biconditional}{verified}{$a \leftrightarrow b$ and $(a \to b) \land (b \to a)$ have the same value under every assignment; the pass keeps the formula's value (\lc{arrows_sound}).}

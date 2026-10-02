@@ -656,8 +656,20 @@ def algebraTests : TestM Unit := do
   let (_, xRaw) := handleS st (req "8" "let X = context({duck, dog}, {flies, mammal}; duck->flies, dog->mammal)")
   checkTrue "algebra: a context is drawn as its cross table" (contains xRaw "\"kind\":\"context.table\"" && contains xRaw "\"has\":[[true,false],[false,true]]") xRaw
 
+/-- The systems world: a system written over several lines, its state graph, a counterexample's
+trace marked on it, and the Kleene iterations of a CTL formula as steps. -/
+def systemsTests : TestM Unit := do
+  let req (id src : String) := s!"\{\"jsonrpc\":\"2.0\",\"id\":{id},\"method\":\"engine.evaluate\",\"params\":\{\"sessionId\":\"s\",\"cellId\":\"c{id}\",\"source\":\"{src}\",\"showWork\":true}}"
+  let (st, defRaw) := handleS [] (req "1" "let C = system(\\n  var x in 0..2\\n  init x = 0\\n  action inc when x < 2 do x := x + 1\\n)")
+  checkTrue "systems: a system over several lines, its graph drawn" (contains defRaw "\"kind\":\"system\"" && contains defRaw "\"edges\":[[\"0\",\"1\"],[\"1\",\"2\"]]") defRaw
+  let (st, invRaw) := handleS st (req "2" "invariant(C, x ≤ 1)")
+  checkTrue "systems: a counterexample's trace is marked on the graph" (contains invRaw "\"bad\":[[\"0\",\"1\"],[\"1\",\"2\"]]") invRaw
+  checkTrue "systems: each step of the trace names its action" (contains invRaw "\"explanation\":\"inc (x < 2 holds): x := x + 1.\"") invRaw
+  let (_, ctlRaw) := handleS st (req "3" "ctl(C, EF x = 2)")
+  checkTrue "systems: a CTL formula's fixed point, a round a step" (contains ctlRaw "\"rule\":\"sys.iterate\"" && contains ctlRaw "\"rule\":\"sys.fixed\"") ctlRaw
+
 def main : IO UInt32 := do
-  let ((), failures) ← (do tests; sessionTests; partStatTests; workTests; checkTests; logicRelTests; algebraTests; goldenTests).run #[]
+  let ((), failures) ← (do tests; sessionTests; partStatTests; workTests; checkTests; logicRelTests; algebraTests; systemsTests; goldenTests).run #[]
   for f in failures do
     IO.println s!"FAIL {f.name}\n  expected: {f.expected}\n  actual:   {f.actual}"
   IO.println s!"{failures.size} failures"

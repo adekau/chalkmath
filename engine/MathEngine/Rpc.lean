@@ -142,6 +142,26 @@ def ruleStatus : Json :=
     entry "order.closure-operator" "verified" "Extensive, monotone and idempotent, each checked on every element or pair (closureOpFailure_none).",
     entry "order.concepts" "unverified" "Each concept's objects are an intersection of attribute extents, and its attributes are those the objects share; that every concept is found, and that each pair is closed, is not yet proved.",
     entry "order.flow" "verified" "Every flow checked against the order of the classes (flowFailure_none).",
+    entry "sys.init" "verified" "An initial state: the init condition evaluated on it, by definition.",
+    entry "sys.step" "checked" "Each step of a trace is re-run against the system: the action is enabled there and its updates give the next state.",
+    entry "sys.found" "checked" "The last state of a re-run trace, where the formula is evaluated.",
+    entry "sys.violated" "checked" "The last state of a re-run trace, where the formula is evaluated and fails: a concrete counterexample. That breadth-first search finds a shortest one is not yet proved.",
+    entry "sys.deadlock" "checked" "The last state of a re-run trace, with every action's guard evaluated false. That no deadlock is missed when none is reported is not yet proved.",
+    entry "sys.reach" "unverified" "Breadth-first search from the initial states; that it visits every reachable state is not yet proved.",
+    entry "sys.invariant" "unverified" "The formula holds in every state the search visited; that the search visits every reachable state is not yet proved.",
+    entry "sys.unreachable" "unverified" "No state the search visited satisfies the formula; the search's completeness is not yet proved.",
+    entry "sys.inductive" "unverified" "Every assignment of the domains is enumerated and every enabled action checked; the enumeration is not yet proved complete.",
+    entry "sys.cti" "checked" "A state where the formula holds and an action after which it fails (or leaves a domain): both evaluated, a concrete counterexample to induction.",
+    entry "sys.ctl" "unverified" "The CTL operator as a fixed point of a predicate transformer on the reachable states; the correspondence with paths is the standard theorem, not formalized here.",
+    entry "sys.iterate" "checked" "One round of the Kleene iteration: the transformer applied to the previous set.",
+    entry "sys.fixed" "checked" "The loop stops when a round changes nothing, so the set is a fixed point; that iterating from the bottom (or top) gives the least (or greatest) is Kleene's theorem, not formalized here.",
+    entry "sys.cycle" "unverified" "A step of the lasso's cycle, found within a strongly connected set of states avoiding the goal.",
+    entry "sys.lasso" "unverified" "A fair cycle avoiding the goal: each fair action is taken on it or disabled as its fairness requires; the search over strongly connected sets is not yet proved complete.",
+    entry "sys.eventually" "unverified" "No deadlock and no fair cycle avoids the goal among the reachable states; the search is not yet proved complete.",
+    entry "sys.refines" "unverified" "Every transition the search found maps to an abstract step or a stutter; the search's completeness is not yet proved.",
+    entry "order.happens-before" "verified" "The reflexive-transitive closure of program order and messages, checked to be a partial order (checkPartialOrder_none).",
+    entry "order.clocks" "verified" "Each entry counts the events of a process below the event in the happens-before order, by definition.",
+    entry "order.concurrent" "verified" "Neither event is below the other in the happens-before order, by definition.",
     entry "logic.implication" "verified" "$a \\to b$ and $\\lnot a \\lor b$ have the same value under every assignment, and the pass that applies it everywhere keeps the formula's value (arrows_sound).",
     entry "logic.biconditional" "verified" "$a \\leftrightarrow b$ and $(a \\to b) \\land (b \\to a)$ have the same value under every assignment; the pass keeps the formula's value (arrows_sound).",
     entry "logic.de-morgan" "verified" "$\\lnot(a \\land b) = \\lnot a \\lor \\lnot b$ and its dual, over Bool; the negation pass keeps the value (nnf_sound).",
@@ -159,7 +179,7 @@ def ruleStatus : Json :=
 
 def capabilities : Json :=
   .obj #[("engine", .str "engine-lean"), ("version", .str "0.1.0-m8"), ("verified", .bool true),
-         ("features", .arr #[.str "simplify", .str "expand", .str "factor", .str "diff", .str "linalg", .str "numeric", .str "integrate", .str "plot", .str "lambda", .str "order", .str "sum", .str "exptotrig", .str "part", .str "statistics", .str "check", .str "logic"]),
+         ("features", .arr #[.str "simplify", .str "expand", .str "factor", .str "diff", .str "linalg", .str "numeric", .str "integrate", .str "plot", .str "lambda", .str "order", .str "sum", .str "exptotrig", .str "part", .str "statistics", .str "check", .str "logic", .str "systems"]),
          ("ruleStatus", ruleStatus),
          ("termination", .obj #[("status", .str "proven"), ("theorem", .str "MathEngine.pipelineOrdered"),
            ("summary", .str "Cell evaluation has no step budget: every pipeline rule decreases a five-tier ordering (commands, higher-order diff, matrix literals, the weight M, size) on nodes whose children are normal.")])]
@@ -272,6 +292,27 @@ def evaluateLogic (st : Store) (params : Json) (sessionId cellId src : String) :
     let r := match res.name with | some n => r.push ("bound", .arr #[.str n]) | none => r
     (st, .obj r)
 
+/-- A systems cell's reply: the value, the derivation (a trace is a step per action), a summary, and
+the state graph (`visuals`, kind `relation.digraph`) with a counterexample's transitions marked. -/
+def evaluateSystem (st : Store) (params : Json) (sessionId cellId src : String) : Store × Json :=
+  let (s, r) := systemCell (st.get sessionId) cellId src
+  let st := st.set sessionId s
+  match r with
+  | .error (code, msg, span) => (st, errorJson code msg span)
+  | .ok res =>
+    let paths := params.getBool "paths"
+    let r := #[("ok", .bool true), ("kind", .str "system"), ("value", res.value.toJson), ("rendered", Rendered.toJson res.value paths),
+      ("summary", .str res.summary)]
+    let r := match res.graph with
+      | some (R, bad, added) =>
+        let pairs (ps : List (String × String)) : Json := .arr (ps.map fun (a, b) => Json.arr #[.str a, .str b]).toArray
+        r.push ("visuals", .arr #[.obj #[("kind", .str "relation.digraph"), ("data", .obj #[
+          ("nodes", .arr (R.elems.map Json.str).toArray), ("edges", pairs R.pairs), ("bad", pairs bad), ("added", pairs added)])]])
+      | none => r
+    let r := r ++ workFields params res.derivation
+    let r := match res.name with | some n => r.push ("bound", .arr #[.str n]) | none => r
+    (st, .obj r)
+
 /-- Number the evaluation (`In[n]`), remember its output for `%`, and put the label in the reply. -/
 def withLabel (st : Store) (sessionId cellId : String) (j : Json) : Store × Json :=
   let s := st.get sessionId
@@ -293,6 +334,7 @@ def evaluate (st : Store) (params : Json) : Store × Json :=
     withLabel st sessionId cellId j
 where
   evaluateCore (st : Store) (params : Json) (sessionId cellId src : String) : Store × Json :=
+    if Sys.isSystemSource src then evaluateSystem st params sessionId cellId src else
     if Ord.isOrderSource src then evaluateOrder st params sessionId cellId src else
       if Logic.isLogicSource src then evaluateLogic st params sessionId cellId src else
       if isLambdaCell (st.get sessionId) src then evaluateLambda st params sessionId cellId src else

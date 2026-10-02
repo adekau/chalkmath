@@ -7,6 +7,7 @@ import MathEngine.Relation
 import MathEngine.Algebra
 import MathEngine.Fourier
 import MathEngine.Logic
+import MathEngine.Systems
 /-!
 # Sessions, commands and the evaluation pipeline
 
@@ -38,6 +39,8 @@ structure Session where
   /-- Operation tables and formal contexts (order world, `Algebra.lean`) bound by `let`, by name. -/
   ops : List (String × Ord.Op) := []
   ctxs : List (String × Ord.Ctx) := []
+  /-- Transition systems (`Systems.lean`) bound by `let`, by name. -/
+  systems : List (String × Sys.System) := []
   /-- Logic-world formulas bound by `let`, by name. -/
   formulas : List (String × Logic.Fm) := []
   cells : List (String × Cell) := []
@@ -507,6 +510,35 @@ def orderCell (s : Session) (cellId source : String) :
           match Ord.measureFailure R m with
           | none => done (bool true) #[step "rel.measure" "The measure goes down along every step, and a natural number cannot go down forever: well-founded." (relExpr' R) (bool true)] none "the measure decreases along every step"
           | some (x, y) => done (bool false) #[step "rel.measure" s!"The step ${x} \\to {y}$ does not decrease the measure ({(m x).getD 0} to {(m y).getD 0})." (relExpr' R) (bool false)] none s!"not decreasing at {x} → {y}" (graph := some (R, [(x, y)], []))
+    -- happens-before: each process's events in order, and messages from send to receipt
+    | "events", args | "clocks", args =>
+      let procs := args.filterMap fun a => match a with | .set xs => some xs | _ => none
+      let msgs := args.foldl (fun acc a => match a with | .maps ps => acc ++ ps | _ => acc) []
+      let all := procs.flatten
+      if procs.isEmpty then err s!"{head} takes each process's events in order, as sets, then the messages: {head}({"{"}a1, a2{"}"}, {"{"}b1{"}"}; a1->b1)" else
+      if all.eraseDups.length != all.length then err "an event appears twice" else
+      match msgs.find? fun (a, b) => !all.contains a || !all.contains b with
+      | some (a, b) => err s!"{a} -> {b}: a message joins two events"
+      | none =>
+        match Ord.mk all (procs.flatMap (fun p => p.zip p.tail) ++ msgs) with
+        | .error m => err s!"the messages make a cycle, so some event would happen before itself ({m})"
+        | .ok P =>
+          if head == "events" then
+            withPoset P #[step "order.happens-before" "Happens-before: each process's events in order, each message's sending before its receipt, and everything that follows by transitivity." (Ord.setExpr all) (Ord.posetExpr P)]
+              s!"{all.length} events on {procs.length} processes, {msgs.length} message{if msgs.length == 1 then "" else "s"}"
+          else
+            let tuple (ns : List Nat) := "(" ++ ", ".intercalate (ns.map toString) ++ ")"
+            let entries := all.map fun e => s!"{e}↦{tuple (procs.map fun p => (p.filter fun x => P.rel x e).length)}"
+            done (Ord.setExpr entries) #[step "order.clocks" "An event's vector clock counts, for each process, that process's events that happen before it or are it. One event happens before another exactly when its clock is below the other's in every entry." (Ord.setExpr all) (Ord.setExpr entries)] none
+              s!"vector clocks of {all.length} events"
+    | "concurrent", [p, a, b] =>
+      match getP p with
+      | .error m => err m
+      | .ok P => match getE P a, getE P b with
+        | .ok x, .ok y =>
+          let c := !P.rel x y && !P.rel y x
+          done (bool c) #[step "order.concurrent" (if c then s!"Neither ${nm x} \\le {nm y}$ nor ${nm y} \\le {nm x}$: concurrent." else s!"${nm (if P.rel x y then x else y)} \\le {nm (if P.rel x y then y else x)}$: one happens before the other.") (Ord.setExpr [x, y]) (bool c)] none (if c then "concurrent" else "ordered")
+        | .error m, _ | _, .error m => err m
     -- finite algebra (Algebra.lean): operation tables and their laws
     | "op", [.set xs, .table rows] =>
       match Ord.Op.ofRows xs rows with
@@ -795,6 +827,351 @@ def logicCell (s : Session) (cellId source : String) :
         if !Logic.hasShape head r then err s!"{head}: the result {r.toText} is not in {head.toUpper} (please report this)" else
         done name f.toExpr r steps s!"{head.toUpper}: {steps.size} step{if steps.size == 1 then "" else "s"}"
       | h, _ => err s!"{h}: wrong arguments (see the reference)"
+
+/-- What a systems cell produced: its value, derivation (a trace is a step per action), summary, and the
+state graph to draw, with a counterexample's transitions marked or a witness's added. -/
+structure SysResult where
+  name : Option String
+  value : Expr
+  derivation : Derivation
+  summary : String
+  graph : Option (Ord.Rel × List (String × String) × List (String × String)) := none
+
+namespace Sys
+
+def commands : List String := ["system", "states", "invariant", "inductive", "reach", "deadlock", "trace", "ctl", "eventually", "refines"]
+
+/-- `[let NAME =] command(…)` for a systems command. -/
+def splitLet (src : String) : Option String × String :=
+  let t := src.trimAscii.copy
+  if t.startsWith "let " then
+    match (t.drop 4).copy.splitOn "=" with
+    | n :: rest@(_ :: _) =>
+      let name := n.trimAscii.copy
+      if !name.isEmpty && name.all (fun c => c.isAlphanum || c == '_') then (some name, ("=".intercalate rest).trimAscii.copy) else (none, t)
+    | _ => (none, t)
+  else (none, t)
+
+def headOf (t : String) : String := String.ofList (t.toList.takeWhile fun c => c.isAlphanum || c == '_')
+
+def isSystemSource (src : String) : Bool :=
+  let (_, t) := splitLet src
+  let h := headOf t
+  commands.contains h && ((t.drop h.length).trimAscii.copy.startsWith "(")
+
+/-- The text between a command's outer brackets. -/
+def argsOf (t : String) (h : String) : Except String String :=
+  let rest := (t.drop h.length).trimAscii.copy
+  if rest.startsWith "(" && rest.endsWith ")" then .ok ((rest.drop 1).dropEnd 1).copy
+  else .error s!"{h}: write {h}(…)"
+
+/-- Split at the first top-level `,` or `;`. -/
+def splitFirst (s : String) : String × String :=
+  let rec go : List Char → Nat → List Char → String × String
+    | [], _, cur => (String.ofList cur.reverse, "")
+    | c :: cs, d, cur =>
+      if (c == ',' || c == ';') && d == 0 then (String.ofList cur.reverse, String.ofList cs)
+      else if c == '(' || c == '{' || c == '[' then go cs (d + 1) (c :: cur)
+      else if c == ')' || c == '}' || c == ']' then go cs (d - 1) (c :: cur)
+      else go cs d (c :: cur)
+  let (a, b) := go s.toList 0 []
+  (a.trimAscii.copy, b.trimAscii.copy)
+
+end Sys
+
+/-- Evaluate a systems cell. -/
+def systemCell (s : Session) (cellId source : String) :
+    Session × Except (String × String × Option (Nat × Nat)) SysResult :=
+  let (name, t) := Sys.splitLet source
+  let head := Sys.headOf t
+  let err (msg : String) : Session × Except (String × String × Option (Nat × Nat)) SysResult := (s, .error ("eval", msg, none))
+  let step (rule text : String) (before after : Expr) : Step := ⟨rule, text, [], before, after, none⟩
+  let bool (b : Bool) : Expr := .var (if b then "true" else "false")
+  let done (value : Expr) (steps : Array Step) (summary : String) (bindS : Option Sys.System := none)
+      (graph : Option (Ord.Rel × List (String × String) × List (String × String)) := none) :
+      Session × Except (String × String × Option (Nat × Nat)) SysResult :=
+    let input := match steps[0]? with | some st => st.before | none => value
+    let d : Derivation := ⟨input, steps, value⟩
+    let s := { s with cells := (cellId, { output := value, derivation := d }) :: s.cells.filter (·.1 != cellId) }
+    let s := match name, bindS with
+      | some n, some S => { s with systems := (n, S) :: s.systems.filter (·.1 != n) }
+      | _, _ => s
+    (s, .ok ⟨name, value, d, summary, graph⟩)
+  let getS (n : String) : Except String Sys.System :=
+    match s.systems.lookup n.trimAscii.copy with
+    | some S => .ok S
+    | none => .error s!"'{n.trimAscii}' is not a system (make one with let S = system(…))"
+  let result : Except String (Session × Except (String × String × Option (Nat × Nat)) SysResult) := do
+    let body ← Sys.argsOf t head
+    -- the graph to draw: small enough to read, with transitions marked
+    let draw (G : Sys.Graph) (bad added : List (Nat × Nat)) : Option (Ord.Rel × List (String × String) × List (String × String)) :=
+      if G.states.size > 40 then none else
+      let lbl (i : Nat) := Sys.stateLabel G.states[i]!
+      some (G.rel, bad.map fun (i, j) => (lbl i, lbl j), added.map fun (i, j) => (lbl i, lbl j))
+    -- a trace from an initial state to state `j` as steps, each re-checked against the system
+    let traceSteps (S : Sys.System) (G : Sys.Graph) (j : Nat) : Except String (Array Step × List (Nat × Nat)) := do
+      let (start, path) := G.pathTo j
+      let mut steps := #[step "sys.init" s!"Start: an initial state ({(S.init.toExpr).toText} holds)." (.var "init") (S.stateExpr G.states[start]!)]
+      let mut cur := start
+      let mut edges := []
+      for (a, k) in path do
+        let act := (S.actions.find? (·.name == a)).get!
+        -- re-run the action: the step must be one the system takes
+        let succ ← S.successors G.states[cur]!
+        if !(succ.any fun (b, u) => b == a && u == G.states[k]!) then throw s!"internal: the trace's step {a} does not check"
+        steps := steps.push (step "sys.step" s!"{act.describe}." (S.stateExpr G.states[cur]!) (S.stateExpr G.states[k]!))
+        edges := edges ++ [(cur, k)]
+        cur := k
+      return (steps, edges)
+    match head with
+    | "system" =>
+      let S ← Sys.parseSystem body
+      let G ← S.explore
+      let value := Expr.fn "system" [.fn "set" (S.vars.map (Expr.var ·.name)), .fn "set" (S.actions.map (Expr.var ·.name))]
+      return done value #[] s!"{S.vars.length} variable{if S.vars.length == 1 then "" else "s"}, {S.actions.length} action{if S.actions.length == 1 then "" else "s"}, {G.states.size} reachable state{if G.states.size == 1 then "" else "s"}" (bindS := some S) (graph := draw G [] [])
+    | "states" =>
+      let S ← getS body
+      let G ← S.explore
+      return done (.num (Q.ofInt G.states.size)) #[step "sys.reach" s!"Breadth-first from the initial states: {G.states.size} reachable states, {G.edges.length} transitions." (.var "init") (.num (Q.ofInt G.states.size))]
+        s!"{G.states.size} reachable states, {G.edges.length} transitions" (graph := draw G [] [])
+    | "invariant" | "reach" =>
+      let (sn, ftext) := Sys.splitFirst body
+      let S ← getS sn
+      let φ ← Logic.parseFormula ftext
+      let G ← S.explore
+      let target ← (List.range G.states.size).findM? fun i => do
+        let h ← S.holds φ G.states[i]!
+        return if head == "invariant" then !h else h
+      match target with
+      | some j =>
+        let (steps, edges) ← traceSteps S G j
+        if head == "invariant" then
+          let steps := steps.push (step "sys.violated" s!"Here {(φ.toExpr).toText} fails: a shortest trace to a state that breaks it." (S.stateExpr G.states[j]!) (bool false))
+          return done (bool false) steps s!"not invariant: fails after {edges.length} step{if edges.length == 1 then "" else "s"}" (graph := draw G edges [])
+        else
+          let steps := steps.push (step "sys.found" s!"Here {(φ.toExpr).toText} holds: a shortest trace to it." (S.stateExpr G.states[j]!) (bool true))
+          return done (bool true) steps s!"reachable in {edges.length} step{if edges.length == 1 then "" else "s"}" (graph := draw G [] edges)
+      | none =>
+        if head == "invariant" then
+          return done (bool true) #[step "sys.invariant" s!"{(φ.toExpr).toText} holds in every one of the {G.states.size} reachable states." (φ.toExpr) (bool true)] "invariant" (graph := draw G [] [])
+        else
+          return done (bool false) #[step "sys.unreachable" s!"None of the {G.states.size} reachable states satisfies {(φ.toExpr).toText}." (φ.toExpr) (bool false)] "unreachable" (graph := draw G [] [])
+    | "inductive" =>
+      let (sn, ftext) := Sys.splitFirst body
+      let S ← getS sn
+      let φ ← Logic.parseFormula ftext
+      let inits ← S.initStates
+      match ← inits.findM? fun x => do return !(← S.holds φ x) with
+      | some x => return done (bool false) #[step "sys.cti" s!"Not even initially: an initial state where {(φ.toExpr).toText} fails." (.var "init") (S.stateExpr x)] "fails in an initial state"
+      | none =>
+        let all ← S.allStates
+        let G ← S.explore
+        let reachable := G.states.toList
+        let mut cti : Option (Sys.State × String × Sys.State) := none
+        let mut outside : Option (Sys.State × String) := none
+        for x in all do
+          if cti.isSome || outside.isSome then break
+          if ← S.holds φ x then
+            for (a, y) in ← S.successorsE x do
+              match y with
+              | .ok y => if cti.isNone && !(← S.holds φ y) then cti := some (x, a, y)
+              | .error m => if outside.isNone then outside := some (x, m)
+        if let some (x, m) := outside then
+          return done (bool false) #[step "sys.cti" s!"A counterexample to induction: {(φ.toExpr).toText} holds here, and {m}. Add the variable's bounds to the formula." (φ.toExpr) (S.stateExpr x)]
+            s!"not inductive: a step from a state where it holds leaves a domain"
+        match cti with
+        | none =>
+          return done (bool true) #[step "sys.inductive" s!"{(φ.toExpr).toText} holds initially, and every action from a state where it holds (reachable or not: all {all.length} states checked) leads to one where it holds. So it is an invariant." (φ.toExpr) (bool true)] "inductive"
+        | some (x, a, y) =>
+          let note := if reachable.contains x then "This state is reachable, so the formula is not even an invariant." else "This state is not reachable: the formula may still be an invariant, but it is too weak to prove itself. Strengthen it."
+          return done (bool false) #[step "sys.cti" s!"A counterexample to induction: {(φ.toExpr).toText} holds here…" (φ.toExpr) (S.stateExpr x),
+            step "sys.cti" s!"{a}: …and fails after it. {note}" (S.stateExpr x) (S.stateExpr y)] s!"not inductive: {a} breaks it{if reachable.contains x then "" else " from an unreachable state"}"
+    | "deadlock" =>
+      let S ← getS body
+      let G ← S.explore
+      match (List.range G.states.size).find? fun i => !(G.edges.any fun (a, _, _) => a == i) with
+      | some j =>
+        let (steps, edges) ← traceSteps S G j
+        return done (bool true) (steps.push (step "sys.deadlock" "No action is enabled here: a deadlock." (S.stateExpr G.states[j]!) (bool true))) s!"a deadlock after {edges.length} step{if edges.length == 1 then "" else "s"}" (graph := draw G edges [])
+      | none => return done (bool false) #[step "sys.deadlock" s!"Every one of the {G.states.size} reachable states has an enabled action." (.var "init") (bool false)] "no deadlock" (graph := draw G [] [])
+    | "trace" =>
+      let (sn, rest) := Sys.splitFirst body
+      let S ← getS sn
+      let inits ← S.initStates
+      let start ← match inits with | [x] => pure x | [] => throw "no initial state" | _ => throw "trace needs a single initial state"
+      let names := (rest.splitOn ",").map (·.trimAscii.copy) |>.filter (· != "")
+      let mut cur := start
+      let mut steps := #[step "sys.init" s!"Start: the initial state ({(S.init.toExpr).toText})." (.var "init") (S.stateExpr start)]
+      for a in names do
+        let act ← match S.actions.find? (·.name == a) with | some x => pure x | none => throw s!"{a} is not an action of {sn}"
+        match (← S.successors cur).find? (·.1 == a) with
+        | none => throw s!"{a} is not enabled in {Sys.stateLabel cur} ({(act.guard.toExpr).toText} fails)"
+        | some (_, nxt) =>
+          steps := steps.push (step "sys.step" s!"{act.describe}." (S.stateExpr cur) (S.stateExpr nxt))
+          cur := nxt
+      return done (S.stateExpr cur) steps s!"{names.length} step{if names.length == 1 then "" else "s"}"
+    | "ctl" =>
+      let (sn, ftext) := Sys.splitFirst body
+      let S ← getS sn
+      let ftext := ftext.trimAscii.copy
+      let op := String.ofList (ftext.toList.take 2)
+      if !["EF", "AF", "EG", "AG", "EX", "AX"].contains op then throw "ctl takes EF, AF, EG, AG, EX or AX, then a formula: ctl(S, AG x ≤ 3)"
+      let φ ← Logic.parseFormula (ftext.drop 2).copy
+      let G ← S.explore
+      let n := G.states.size
+      let sat ← (List.range n).filterM fun i => S.holds φ G.states[i]!
+      let live := (List.range n).filter fun i => G.edges.any fun (a, _, _) => a == i
+      let preA (Z : List Nat) := (G.preA Z).filter live.contains
+      let (chain, least) : List (List Nat) × Bool := match op with
+        | "EX" => ([G.preE sat], true)
+        | "AX" => ([preA sat], true)
+        | "EF" => (Sys.iterateSets n (fun Z => sat ++ (G.preE Z).filter (!sat.contains ·)) [], true)
+        | "AF" => (Sys.iterateSets n (fun Z => sat ++ (preA Z).filter (!sat.contains ·)) [], true)
+        | "EG" => (Sys.iterateSets n (fun Z => sat.filter (G.preE Z).contains) (List.range n), false)
+        | _ => (Sys.iterateSets n (fun Z => sat.filter (G.preA Z).contains) (List.range n), false)
+      let final := chain.getLastD []
+      let what := match op with
+        | "EF" => "states with a path to one where φ holds: the least Z with Z = φ ∪ EX Z"
+        | "AF" => "states all of whose paths reach φ: the least Z with Z = φ ∪ AX Z (a state with no successor has no path onward)"
+        | "EG" => "states with an infinite path along which φ always holds: the greatest Z with Z = φ ∩ EX Z"
+        | "AG" => "states from which φ holds along every path: the greatest Z with Z = φ ∩ AX Z"
+        | "EX" => "states with a successor where φ holds"
+        | _ => "states that have successors, all of them where φ holds"
+      let mut steps : Array Step := #[step "sys.ctl" s!"{op} {(φ.toExpr).toText}: the {what}. φ holds in {sat.length} of the {n} reachable states." (φ.toExpr) (Sys.stateSet G sat)]
+      let mut k := 0
+      for (a, b) in chain.zip chain.tail do
+        k := k + 1
+        steps := steps.push (step "sys.iterate" s!"Round {k}: {b.length} state{if b.length == 1 then "" else "s"}." (Sys.stateSet G a) (Sys.stateSet G b))
+      if op != "EX" && op != "AX" then
+        steps := steps.push (step "sys.fixed" s!"No change: the {if least then "least" else "greatest"} fixed point, reached from {if least then "∅" else "all states"} (Kleene)." (Sys.stateSet G final) (Sys.stateSet G final))
+      let holds := G.inits.all final.contains
+      steps := steps.push (step "sys.ctl" s!"{if holds then "Every initial state is in it" else "An initial state is not in it"}: {op} {(φ.toExpr).toText} {if holds then "holds" else "fails"}." (Sys.stateSet G final) (bool holds))
+      return done (bool holds) steps s!"{op} holds in {final.length} of {n} states; {if holds then "true" else "false"} initially"
+    | "eventually" =>
+      let (sn, ftext) := Sys.splitFirst body
+      let S ← getS sn
+      let φ ← Logic.parseFormula ftext
+      let G ← S.explore
+      let n := G.states.size
+      let bad ← (List.range n).filterM fun i => do return !(← S.holds φ G.states[i]!)
+      -- the ¬φ part of the graph, and what can be reached inside it from an initial ¬φ state
+      let inside := G.edges.filter fun (a, _, b) => bad.contains a && bad.contains b
+      let reach (from_ : List Nat) (allowed : List Nat) : Std.HashMap Nat (Option (Nat × String)) := Id.run do
+        let mut seen : Std.HashMap Nat (Option (Nat × String)) := {}
+        let mut queue := from_.filter allowed.contains
+        for x in queue do seen := seen.insert x none
+        for _ in [0:n + 1] do
+          match queue with
+          | [] => break
+          | x :: rest =>
+            queue := rest
+            for (a, l, b) in inside do
+              if a == x && allowed.contains b && !seen.contains b then
+                seen := seen.insert b (some (x, l))
+                queue := queue ++ [b]
+        return seen
+      let fromInit := reach G.inits bad
+      let pathIn (seen : Std.HashMap Nat (Option (Nat × String))) (j : Nat) : List (Nat × String × Nat) := Id.run do
+        let mut cur := j
+        let mut acc := []
+        for _ in [0:n + 1] do
+          match seen.getD cur none with
+          | none => break
+          | some (p, l) => acc := (p, l, cur) :: acc; cur := p
+        return acc
+      -- a deadlock reached without φ: the run stops short of φ
+      let deadEnd := (List.range n).find? fun i => fromInit.contains i && !(G.edges.any fun (a, _, _) => a == i)
+      -- otherwise a fair cycle: a strongly connected set of ¬φ states, each fair action taken in it or disabled somewhere in it
+      let reachableBad := bad.filter fromInit.contains
+      let scc (x : Nat) : List Nat := reachableBad.filter fun y => (reach [x] bad).contains y && (reach [y] bad).contains x
+      let fairActs := S.actions.filter (·.fair)
+      let mut found : Option (Nat × List Nat) := none
+      for x in reachableBad do
+        if found.isNone then
+          let C := scc x
+          let internal := inside.filter fun (a, _, b) => C.contains a && C.contains b
+          if !internal.isEmpty then
+            let ok ← fairActs.allM fun act => do
+              if internal.any (fun (_, l, _) => l == act.name) then return true
+              -- weakly fair: disabled somewhere on the cycle; strongly fair: disabled everywhere on it
+              if act.strong then C.allM fun i => do return !(← S.holds act.guard G.states[i]!)
+              else C.anyM fun i => do return !(← S.holds act.guard G.states[i]!)
+            if ok then found := some (x, C)
+      let fmt := fun (i : Nat) => S.stateExpr G.states[i]!
+      let desc := fun (l : String) => ((S.actions.find? (·.name == l)).map (·.describe)).getD l
+      match deadEnd, found with
+      | some j, _ =>
+        let path := pathIn fromInit j
+        let start := (path.head?.map (·.1)).getD j
+        let steps := #[step "sys.init" "Start: an initial state." (.var "init") (fmt start)] ++ (path.map fun (a, l, b) => step "sys.step" s!"{desc l}." (fmt a) (fmt b)).toArray
+        return done (bool false) (steps.push (step "sys.deadlock" s!"No action is enabled, and {(φ.toExpr).toText} never held: the run stops without it." (fmt j) (bool false))) "never: a deadlock first" (graph := draw G (path.map fun (a, _, b) => (a, b)) [])
+      | none, some (x, C) =>
+        -- the lasso: a path to x, then a cycle through C covering every fair action's obligation
+        let path := pathIn fromInit x
+        let start := (path.head?.map (·.1)).getD x
+        let mut targets : List Nat := []
+        for act in fairActs do
+          match (inside.filter fun (a, l, b) => C.contains a && C.contains b && l == act.name).head? with
+          | some (a, _, _) => targets := targets ++ [a]
+          | none =>
+            if !act.strong then
+              match ← C.findM? fun i => do return !(← S.holds act.guard G.states[i]!) with
+              | some i => targets := targets ++ [i]
+              | none => pure ()
+        let mut cycle : List (Nat × String × Nat) := []
+        let mut cur := x
+        for tgt in targets ++ [x] do
+          let seen := reach [cur] C
+          cycle := cycle ++ pathIn seen tgt
+          cur := tgt
+        if cycle.isEmpty then
+          -- a self-loop or a cycle through x
+          match inside.find? fun (a, _, b) => a == x && C.contains b with
+          | some (a, l, b) => cycle := [(a, l, b)] ++ pathIn (reach [b] C) x
+          | none => pure ()
+        -- after a fair action's edge, the path to x continues
+        let steps := #[step "sys.init" "Start: an initial state." (.var "init") (fmt start)] ++
+          (path.map fun (a, l, b) => step "sys.step" s!"{desc l}." (fmt a) (fmt b)).toArray ++
+          (cycle.map fun (a, l, b) => step "sys.cycle" s!"{desc l} (on the cycle)." (fmt a) (fmt b)).toArray
+        let steps := steps.push (step "sys.lasso" s!"The cycle repeats forever and {(φ.toExpr).toText} never holds; every weakly fair action is taken on it or disabled somewhere on it, and every strongly fair one taken or never enabled, so the run is fair." (fmt x) (bool false))
+        return done (bool false) steps "never, on a fair run that loops" (graph := draw G ((path ++ cycle).map fun (a, _, b) => (a, b)) [])
+      | none, none =>
+        return done (bool true) #[step "sys.eventually" s!"Every fair run reaches {(φ.toExpr).toText}: no deadlock and no fair cycle avoids it." (φ.toExpr) (bool true)] "eventually, on every fair run" (graph := draw G [] [])
+    | "refines" =>
+      let (cn, rest) := Sys.splitFirst body
+      let (an, maptext) := Sys.splitFirst rest
+      let C ← getS cn
+      let A ← getS an
+      let mapping ← Sys.parseUpdates maptext
+      for v in A.vars do
+        if (mapping.lookup v.name).isNone then throw s!"the mapping gives no value for {an}'s variable {v.name}"
+      let abs (x : Sys.State) : Except String Sys.State := A.vars.mapM fun v => do
+        let val ← Sys.evalExpr (C.syms ++ A.syms) (C.env x) (mapping.lookup v.name).get!
+        if !v.dom.contains val then throw s!"the mapping sends {Sys.stateLabel x} to {v.name} = {val}, outside its domain"
+        return val
+      let G ← C.explore
+      for i in G.inits do
+        let a ← abs G.states[i]!
+        if !(← A.holds A.init a) then
+          return done (bool false) #[step "sys.refines" s!"The initial state {Sys.stateLabel G.states[i]!} maps to {Sys.stateLabel a}, which is not initial in {an}." (C.stateExpr G.states[i]!) (A.stateExpr a)] "an initial state maps outside the abstract initial states"
+      let mut bad : Option (Nat × String × Nat) := none
+      for (i, l, j) in G.edges do
+        if bad.isNone then
+          let a ← abs G.states[i]!
+          let b ← abs G.states[j]!
+          if a != b && !((← A.successors a).any fun (_, u) => u == b) then bad := some (i, l, j)
+      match bad with
+      | none => return done (bool true) #[step "sys.refines" s!"Every step of {cn} ({G.edges.length} transitions) maps to a step of {an} or leaves the abstract state unchanged (a stutter)." (.var cn) (bool true)] "refines"
+      | some (i, l, j) =>
+        let (steps, edges) ← traceSteps C G i
+        let a ← abs G.states[i]!
+        let b ← abs G.states[j]!
+        let steps := steps.push (step "sys.refines" s!"{l}: this step maps {Sys.stateLabel a} to {Sys.stateLabel b}, which is neither a step of {an} nor a stutter." (A.stateExpr a) (A.stateExpr b))
+        return done (bool false) steps s!"does not refine: {l} has no abstract counterpart" (graph := draw G (edges ++ [(i, j)]) [])
+    | h => throw s!"{h}: not a systems command"
+  match result with
+  | .ok r => r
+  | .error m => err m
 
 /-- A sampled plot: the variable, the range, and one series per function — its normalized term and
 `(t, y)` pairs (`none` where it has no finite value). A `parametric` series is a complex-valued

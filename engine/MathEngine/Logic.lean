@@ -213,7 +213,10 @@ where
 def predicates : List String := ["prime", "even", "odd"]
 
 private def mathOf (s : List Char) : Except String Expr :=
-  match parse (String.ofList (trim s)) with
+  -- `x = true` compares with the name, though the word became `⊤` with the glyphs
+  let t := String.ofList (trim s)
+  if t == "⊤" then .ok (.var "true") else if t == "⊥" then .ok (.var "false") else
+  match parse t with
   | .ok e => .ok e
   | .error e => .error s!"{String.ofList (trim s)}: {e.message}"
 
