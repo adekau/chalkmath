@@ -254,6 +254,28 @@ async function features() {
   await page.locator(".usagetip .umore", { hasText: "subst" }).waitFor({ timeout: 5000 });
   await page.mouse.move(5, 5);
   console.log("✓ usage on hover: subst");
+  // explain: each clickable part of an answer explains that part, the engine's own explain of its path
+  // (a negated product prints without its -1, and its factors keep their true paths)
+  const negSrc = "cos(t) - sin(t)^2/sqrt(2)";
+  const nI = await all().count() - 1;
+  await all().nth(nI).locator("input.cellin").fill(negSrc);
+  await all().nth(nI).locator("input.cellin").press("Enter");
+  await outIs(nI, (await ref(negSrc, 8)).rendered.latex, "the negated product");
+  const spans = all().nth(nI).locator(".outval .katex-html [data-path]");
+  const paths = await spans.evaluateAll((els) => els.map((e) => e.getAttribute("data-path")));
+  assert.ok(paths.includes("0.2.1"), `no clickable exponent among ${JSON.stringify(paths)}`);
+  for (const p of paths) {
+    const path = p === "root" ? [] : p.split(".").map(Number);
+    const want = await reference.call("engine.explain", { sessionId: "e2e-features", cellId: "f8", path });
+    await spans.and(page.locator(`[data-path="${p}"]`)).first().dispatchEvent("click");
+    // the notebook marks the part it explains once the engine has answered for it
+    await all().nth(nI).locator(`.outval [data-path="${p}"].sel`).waitFor({ timeout: 10000 })
+      .catch(async () => assert.fail(`explain ${p}: not selected; ${await page.locator(".toast.err").allTextContents()}`));
+    const shown = await page.locator(".panel .explain .sel .katex-mathml annotation").first().textContent();
+    assert.equal(flat(shown ?? ""), flat(want.rendered.latex), `explain ${p}: the panel shows another subterm`);
+  }
+  assert.equal(await page.locator(".toast.err").count(), 0, "an explain failed");
+  console.log(`✓ explain: ${paths.length} parts of ${negSrc}, each its own subterm`);
   await manipulate();
   // a course: the Courses tab, a lesson opened, answered, and followed to the next
   const manifest = JSON.parse(readFileSync(path.join(root, "notebooks/courses.json"), "utf8"));

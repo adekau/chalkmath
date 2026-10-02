@@ -260,9 +260,14 @@ mutual
               | none => T.wrap p (T.num absC)
               | some r =>
                 if absC.isOne then
-                  match restOff with
-                  | some off => print r (p ++ [off]) T P_MUL
-                  | none => print r p T P_MUL
+                  match restOff, r with
+                  -- `-(a·b)`: there is no node for the product without its `-1`, so it is the signed
+                  -- term's (`p`) and its factors keep their true paths, `p.1`, `p.2`, … (not `p.1.0`)
+                  | some off, .mul rs =>
+                    let (s, prec) := mulRaw rs p off T
+                    T.wrap p (if prec < P_MUL then T.parens s else s)
+                  | some off, _ => print r (p ++ [off]) T P_MUL
+                  | none, _ => print r p T P_MUL
                 else
                   -- the product printer, on the term with its sign dropped, so `− x²/4` and `x²/4` agree
                   -- (and the factors keep their true paths: the numeral is child 0, the rest follow)
@@ -270,46 +275,7 @@ mutual
             else child a i P_MUL
           acc ++ (if i == 0 then sign.trimAscii.copy else sign) ++ termStr
       (s, P_ADD)
-    | .mul args =>
-      match (if T.times != "*" then mulRadicalLatex T.num args else none) with
-      | some r => r
-      | none =>
-      -- Partition into numerator / denominator factors; a leading -1 becomes a unary minus.
-      let (sign, numer, denom) := (enum args).foldl (init := (("" : String), ([] : List String), ([] : List String)))
-          fun ((sign, numer, denom) : String × List String × List String) ((i, a) : Nat × Expr) =>
-        let p := path ++ [i]
-        match i, a with
-        | 0, .num q =>
-          -- a rational coefficient p/d puts p in the numerator and d in the denominator — `x/(2π)`,
-          -- as a hand derivation writes it, not `½·x/π`
-          let sign := if q.isNeg then ("-" : String) else sign
-          let a := q.abs
-          -- an integer (a `1` stays visible: the identity step removes it) or an approximate decimal prints as is
-          if a.isInt || q.approx then (sign, if q.isNeg && a.isOne then numer else numer ++ [T.wrap p (T.num a)], denom)
-          else
-            let pn := Q.ofInt a.val.num
-            let dn := Q.ofInt (Int.ofNat a.val.den)
-            (sign, if pn.isOne then numer else numer ++ [T.wrap p (T.num pn)], denom ++ [if pn.isOne then T.wrap p (T.num dn) else T.num dn])
-        | _, .pow b (.num q) =>
-          if q.isNeg then
-            let n := q.neg
-            let base := print b (p ++ [0]) T (if n.isOne then T.denomPrec else P_POW + 1)
-            let den := match (if T.times != "*" then radicalLatex b (.num n) else none) with
-              | some (r, _) => r
-              | none =>
-                if n.isOne then base
-                else if (Expr.num n).isNumEq (Q.ofRat (mkRat 1 2)) then T.sqrt (print b (p ++ [0]) T P_ADD)   -- ·x^(-1/2) → /sqrt(x)
-                else
-                  let e := T.wrap (p ++ [1]) (T.num n)
-                  T.pow base (if T.times == "*" && !n.isInt then T.parens e else e)
-            (sign, numer, denom ++ [T.wrap p den])
-          else (sign, numer ++ [print a p T P_MUL], denom)
-        | _, _ => (sign, numer ++ [print a p T (P_MUL + (if i > 0 && a.isNum then 1 else 0))], denom)
-      let n := if numer.isEmpty then T.num Q.one else T.times.intercalate numer
-      if denom.isEmpty then (sign ++ n, if sign.isEmpty then P_MUL else P_NEG)
-      else
-        let d := if denom.length > 1 && T.denomPrec > P_MUL then T.parens (T.times.intercalate denom) else T.times.intercalate denom
-        (sign ++ T.frac n d, if sign.isEmpty then P_MUL else P_NEG)
+    | .mul args => mulRaw args path 0 T
   where
     powRaw (b x : Expr) : String × Nat :=
       let bs := print b (path ++ [0]) T (P_POW + 1)  -- left of ^ needs parens for anything non-atomic incl. -3 and 2^3
@@ -318,6 +284,49 @@ mutual
       -- division and has them already; a decimal, 2^(0.5), does not)
       let xs := if T.times == "*" && (match x with | .num q => !q.isInt && q.approx | _ => false) then T.parens xs else xs
       (T.pow bs xs, P_POW)
+
+  /-- The product of `args`, its `i`-th factor at `path ++ [i + off]`: `off` is 1 for the factors
+  of `mul [-1, a, b]` printed without their sign. -/
+  partial def mulRaw (args : List Expr) (path : Path) (off : Nat) (T : Target) : String × Nat :=
+    match (if T.times != "*" then mulRadicalLatex T.num args else none) with
+    | some r => r
+    | none =>
+    -- Partition into numerator / denominator factors; a leading -1 becomes a unary minus.
+    let (sign, numer, denom) := (enum args).foldl (init := (("" : String), ([] : List String), ([] : List String)))
+        fun ((sign, numer, denom) : String × List String × List String) ((i, a) : Nat × Expr) =>
+      let p := path ++ [i + off]
+      match i, a with
+      | 0, .num q =>
+        -- a rational coefficient p/d puts p in the numerator and d in the denominator — `x/(2π)`,
+        -- as a hand derivation writes it, not `½·x/π`
+        let sign := if q.isNeg then ("-" : String) else sign
+        let a := q.abs
+        -- an integer (a `1` stays visible: the identity step removes it) or an approximate decimal prints as is
+        if a.isInt || q.approx then (sign, if q.isNeg && a.isOne then numer else numer ++ [T.wrap p (T.num a)], denom)
+        else
+          let pn := Q.ofInt a.val.num
+          let dn := Q.ofInt (Int.ofNat a.val.den)
+          (sign, if pn.isOne then numer else numer ++ [T.wrap p (T.num pn)], denom ++ [if pn.isOne then T.wrap p (T.num dn) else T.num dn])
+      | _, .pow b (.num q) =>
+        if q.isNeg then
+          let n := q.neg
+          let base := print b (p ++ [0]) T (if n.isOne then T.denomPrec else P_POW + 1)
+          let den := match (if T.times != "*" then radicalLatex b (.num n) else none) with
+            | some (r, _) => r
+            | none =>
+              if n.isOne then base
+              else if (Expr.num n).isNumEq (Q.ofRat (mkRat 1 2)) then T.sqrt (print b (p ++ [0]) T P_ADD)   -- ·x^(-1/2) → /sqrt(x)
+              else
+                let e := T.wrap (p ++ [1]) (T.num n)
+                T.pow base (if T.times == "*" && !n.isInt then T.parens e else e)
+          (sign, numer, denom ++ [T.wrap p den])
+        else (sign, numer ++ [print a p T P_MUL], denom)
+      | _, _ => (sign, numer ++ [print a p T (P_MUL + (if i > 0 && a.isNum then 1 else 0))], denom)
+    let n := if numer.isEmpty then T.num Q.one else T.times.intercalate numer
+    if denom.isEmpty then (sign ++ n, if sign.isEmpty then P_MUL else P_NEG)
+    else
+      let d := if denom.length > 1 && T.denomPrec > P_MUL then T.parens (T.times.intercalate denom) else T.times.intercalate denom
+      (sign ++ T.frac n d, if sign.isEmpty then P_MUL else P_NEG)
 end
 
 def Expr.toText (e : Expr) : String := print e [] textTarget P_ADD
