@@ -1,6 +1,62 @@
 {
   "projects": [
     {
+      "id": "logic",
+      "title": "Logic and proof technique",
+      "blurb": "Propositions and truth tables, normal forms, proofs as Lean tactics, quantifiers, three kinds of induction, relations and well-founded termination: the toolkit every later course uses.",
+      "kind": "course",
+      "level": "Discrete mathematics",
+      "path": "courses/logic",
+      "leanPrelude": true,
+      "lessons": [
+        {
+          "file": "01-truth-tables.chalk",
+          "title": "Propositions and truth tables",
+          "blurb": "Connectives, truth tables, tautologies, and satisfying assignments as witnesses."
+        },
+        {
+          "file": "02-normal-forms.chalk",
+          "title": "Equivalence and normal forms",
+          "blurb": "The laws of logic as rewrites: negation normal form, CNF and DNF, one law a step."
+        },
+        {
+          "file": "03-natural-deduction.chalk",
+          "title": "Proofs as Lean tactics",
+          "blurb": "Natural deduction in Lean: introduce and use each connective, and see proofs as programs."
+        },
+        {
+          "file": "04-quantifiers.chalk",
+          "title": "Predicates and quantifiers",
+          "blurb": "∀ and ∃ over finite sets, with the element that decides them; quantifiers in Lean."
+        },
+        {
+          "file": "05-induction.chalk",
+          "title": "Induction on the natural numbers",
+          "blurb": "Weak induction: check a formula for small n, then prove it for all n in Lean."
+        },
+        {
+          "file": "06-strong-induction.chalk",
+          "title": "Strong induction",
+          "blurb": "Course-of-values arguments: using every smaller case, and how strong induction, weak induction and well-ordering relate."
+        },
+        {
+          "file": "07-structural-induction.chalk",
+          "title": "Structural induction",
+          "blurb": "Induction on lists, trees and expressions, and a small simplifier proved sound."
+        },
+        {
+          "file": "08-relations.chalk",
+          "title": "Relations",
+          "blurb": "Properties with counterexamples, closures step by step, equivalence classes and partitions, and a deduplication bug."
+        },
+        {
+          "file": "09-well-founded.chalk",
+          "title": "Well-founded relations and termination",
+          "blurb": "No infinite descent: cycles as counterexamples, measures as proofs, and termination in Lean."
+        }
+      ]
+    },
+    {
       "id": "calculus",
       "title": "Calculus: derivatives and integrals",
       "blurb": "The rules of differentiation, the chain rule and tangent lines; then antiderivatives the engine checks by differentiating, definite integrals and Riemann sums.",

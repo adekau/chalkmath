@@ -21,7 +21,9 @@ mathematics (a dedupe-by-key bug, an information-flow lattice, a CRDT store, a t
 
 ## The courses
 
-### 1 · Logic and proof technique (9 lessons)
+### 1 · Logic and proof technique (9 lessons) — written
+
+`notebooks/courses/logic/`, with a Lean prelude: 39 exercises, 18 checked by the engine and 21 by Lean.
 
 1. Propositions and truth tables: tautologies, satisfying assignments as witnesses. *E1*
 2. Equivalence and normal forms: NNF, CNF and DNF as stepped rewrites, each law named. Equivalence
@@ -40,7 +42,7 @@ mathematics (a dedupe-by-key bug, an information-flow lattice, a CRDT store, a t
 9. Well-founded relations and termination: acyclicity with a cycle as counterexample, measures,
    lexicographic orders, `termination_by`; and the engine's own `pipelineOrdered`. *E3*
 
-### 2 · Order and lattices (about 14 lessons; one course, the book's Parts I and II)
+### 2 · Order and lattices (about 15 lessons; one course, the book's Parts I and II)
 
 Follows *From Zero to Propagators* (lean4learning), with a Lean prelude across its lessons.
 
@@ -51,14 +53,25 @@ Follows *From Zero to Propagators* (lean4learning), with a Lean prelude across i
 6. A merge is a join: last-writer-wins, max, union, records merged field by field (a product
    semilattice), proved in Lean for a generic field wrapper. *E4*
 7. Distributive and Boolean lattices: M3 and N5 as the witnesses, complements, powersets. *E4*
-8. Monotone policies: an information-flow lattice (Denning: levels × categories); "no flow down" as
-   monotonicity, checked on examples and proved. *E4 maps between posets*
-9. Closure operators and Galois connections; formal concept analysis (a context's concept lattice,
+8. Access decisions: combining permit and deny. A decision is one of permit, deny, not-applicable
+   (and indeterminate); rules are combined by an algorithm (deny-overrides, permit-overrides,
+   first-applicable, as in XACML). Deny-overrides is a join on the order NotApplicable < Permit < Deny,
+   so it is associative, commutative and idempotent and the order of the rules does not matter;
+   first-applicable is not commutative, and the engine finds the two rules whose order changes the
+   answer. Proved in Lean: deny-overrides is monotone (adding a rule never turns a deny into a
+   permit). *E4 operation tables and laws*
+9. Information flow: Denning's lattice of security classes (levels × sets of categories, ordered
+   componentwise). Data may flow only upward; combining two inputs gives their join, so a computation's
+   output class is the join of its inputs'. "No flow down" is monotonicity of the labelling, checked on
+   examples with a counterexample flow and proved in Lean. Set beside lesson 8: there the lattice
+   orders *decisions* about a request; here it orders *data*, and the policy is a constraint on every
+   flow. *E4 products, maps between posets*
+10. Closure operators and Galois connections; formal concept analysis (a context's concept lattice,
    drawn as a Hasse diagram). *E4*
-10. Fixed points in practice: idempotence, "apply until nothing changes" as a Kleene chain, termination
+11. Fixed points in practice: idempotence, "apply until nothing changes" as a Kleene chain, termination
     by the ascending chain condition.
-11–13. The propagator model; a propagator network in Lean; the interval lattice.
-14. Capstones: a Sudoku solver, and type inference by propagation.
+12–14. The propagator model; a propagator network in Lean; the interval lattice.
+15. Capstones: a Sudoku solver, and type inference by propagation.
 
 ### 3 · Transition systems, invariants and temporal logic (8 lessons)
 
@@ -106,9 +119,9 @@ E5 events (version vectors), N8 replica simulation*
 
 | | What | Proof obligations |
 |---|---|---|
-| E1 | Propositional world: formulas, truth tables, sat/taut with witness, exact equivalence, NNF/CNF/DNF with named laws | each law sound over Bool; decision specs; normalizer termination |
-| E2 | Bounded quantifiers over finite sets, with witness or counterexample | decision spec |
-| E3 | Relations: property checks with witnesses, closures as steps, partitions, quotients, refinement, acyclicity and measures | closure is least; partition specs |
+| E1 | **Done.** Propositional world: formulas, truth tables, sat/taut with witness, exact equivalence, NNF/CNF/DNF with named laws | each law sound over Bool; decision specs; normalizer termination |
+| E2 | **Done.** Bounded quantifiers over finite sets, with witness or counterexample | decision spec |
+| E3 | **Done.** Relations: property checks with witnesses, closures as steps, partitions, quotients, refinement, acyclicity and measures | closure is least; partition specs |
 | E4 | Finite algebra: operation tables and their laws, homomorphisms, products, maps between posets, distributive and Boolean checks, closure operators, Galois connections, concept lattices | a spec per check |
 | E5 | Systems: finite-domain variables, guarded actions, reachability, invariants with traces, inductiveness, deadlock, CTL by lfp/gfp, simulation; events → poset with vector clocks | invariant check sound and complete on finite graphs; CTL fixpoints correct |
 | E6 | Simply typed λ-calculus: annotations, type checking with a derivation, simple inference | checker sound against the rules |
@@ -119,10 +132,12 @@ The λ world also grows for course 4: a choice of strategy, η, free variables, 
 ## Notebook capabilities
 
 - N1 Lean exercises. **Done.**
-- N2 More exercise kinds: a witness or counterexample the engine checks (a pair, a triple, a trace),
-  and equality within each world (same truth table, same relation, same partition). With E1–E3.
-- N3 Visual specs (`EvaluateResult.visuals`, reserved and empty until now): directed graphs for
-  relations and state graphs, operation tables, derivation trees, space-time diagrams. With E3.
+- N2 More exercise kinds: equality within each world (same truth table, with the form a `cnf`/`dnf`
+  question asks for; any satisfying assignment for `sat`; the same relation, partition or set).
+  **Done for logic and relations.** A witness the engine checks (a trace, a counterexample triple)
+  comes with E4 and E5.
+- N3 Visual specs: truth tables and relation graphs (bad pairs marked, a closure's pairs dashed).
+  **Done.** Operation tables, state graphs, derivation trees and space-time diagrams come with E4–E6.
 - N4 Traces stepped state by state, in step with the graph. With E5.
 - N6 Multi-line math cells, for system specifications and rewrite rules. With E5.
 - N7 A course's Lean prelude. **Done.**
@@ -132,7 +147,7 @@ The λ world also grows for course 4: a choice of strategy, η, free variables, 
 ## Order
 
 1. **P0** — Lean exercises and a course's Lean prelude (N1, N7). *Done.*
-2. **P1** — Course 1: E1, E2, E3, N2, N3.
+2. **P1** — Course 1: E1, E2, E3, N2, N3. *Done.*
 3. **P2** — Course 2: E4.
 4. **P3** — Course 6 (CRDTs): mostly Lean, little engine; needs only course 2.
 5. **P4** — Course 3: E5, N4, N6.
@@ -141,7 +156,7 @@ The λ world also grows for course 4: a choice of strategy, η, free variables, 
 
 ## Open
 
-- An information-flow lattice in place of a permissions example (course 2, lesson 8)?
-- CRDTs before transition systems (as above), or after?
 - The lean4learning books are on Lean 4.31; the Lean cells run 4.34. Their Lean is ported as each
   course is written.
+- `wellfounded` is reported unverified: the cycle search is not yet proved complete (a cycle it finds
+  is real). A proof that "no cycle found" means well-founded on a finite set would make it verified.

@@ -1,0 +1,187 @@
+{
+  "chalk": 1,
+  "name": "02-normal-forms.chalk",
+  "cells": [
+    {
+      "src": "Equivalence and normal forms",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Rewrite a formula into negation normal form, conjunctive normal form and disjunctive normal form, naming the law used at each step, and check an answer by its truth table.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Logical equivalence\n> $\\varphi \\equiv \\psi$ when $\\varphi$ and $\\psi$ have the same value under every assignment: the same truth table. Replacing a subformula by an equivalent one does not change the value of the whole.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!theorem] The laws used below\n> $p \\to q \\equiv \\lnot p \\lor q$, $\\quad p \\leftrightarrow q \\equiv (p \\to q) \\land (q \\to p)$, $\\quad \\lnot\\lnot p \\equiv p$,\n>\n> De Morgan: $\\lnot(p \\land q) \\equiv \\lnot p \\lor \\lnot q$ and $\\lnot(p \\lor q) \\equiv \\lnot p \\land \\lnot q$,\n>\n> distribution: $p \\lor (q \\land r) \\equiv (p \\lor q) \\land (p \\lor r)$ and $p \\land (q \\lor r) \\equiv (p \\land q) \\lor (p \\land r)$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Each is proved in Lean over the booleans, and the engine's normal forms are proved to keep the value of the formula (the dot next to each step).",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Negation normal form",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Negation normal form (NNF)\n> No $\\to$ or $\\leftrightarrow$, and $\\lnot$ only directly on variables. Get there by eliminating the arrows, then pushing each negation inward with De Morgan's laws until it reaches a variable, cancelling double negations on the way.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Step through it: say which law comes next before you press `▸ Next step`.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "nnf(¬(p ∧ (q ∨ ¬r)))",
+      "showWork": true,
+      "label": null,
+      "stepwise": 0
+    },
+    {
+      "src": "nnf(¬(p → q))",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> $\\lnot(p \\land q)$ is **not** $\\lnot p \\land \\lnot q$: De Morgan's law swaps $\\land$ for $\\lor$. The engine finds the row where they differ:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "equiv(¬(p ∧ q), ¬p ∧ ¬q)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "Conjunctive and disjunctive normal form",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] CNF and DNF\n> A **literal** is a variable or its negation. A **clause** is an $\\lor$ of literals and a **term** an $\\land$ of them. A formula is in **conjunctive normal form** when it is an $\\land$ of clauses, and in **disjunctive normal form** when it is an $\\lor$ of terms.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "From NNF, distribute $\\lor$ over $\\land$ for CNF (or $\\land$ over $\\lor$ for DNF). A clause that contains both $p$ and $\\lnot p$ is always true and drops out; so does a term with both, which is always false.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "cnf(p ∨ (q ∧ r))",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "cnf(p ↔ q)",
+      "showWork": true,
+      "label": null,
+      "stepwise": 0
+    },
+    {
+      "src": "dnf(p ↔ q)",
+      "showWork": true,
+      "label": null,
+      "stepwise": 0
+    },
+    {
+      "src": "> [!note] Why CNF\n> A CNF is a list of constraints that must all hold, each satisfied by any one of its literals. SAT solvers, which decide satisfiability for formulas with millions of variables, take their input in CNF.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Your answer must be in the form asked for and equivalent to the formula. Equivalence is decided by truth table, so a \"not yet\" is definite: the answer differs from the formula in some row.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "nnf(¬(p ∨ ¬q))",
+      "type": "exercise",
+      "prompt": "Put $\\lnot(p \\lor \\lnot q)$ in negation normal form.",
+      "hints": [
+        "De Morgan: $\\lnot(a \\lor b) \\equiv \\lnot a \\land \\lnot b$.",
+        "Then $\\lnot\\lnot q \\equiv q$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "nnf(p → q)",
+      "type": "exercise",
+      "prompt": "Write $p \\to q$ without $\\to$: in negation normal form.",
+      "hints": [
+        "$p \\to q$ fails only when $p$ is true and $q$ false."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "cnf((p ∧ q) ∨ r)",
+      "type": "exercise",
+      "prompt": "Put $(p \\land q) \\lor r$ in conjunctive normal form.",
+      "hints": [
+        "Distribute $\\lor r$ over the $\\land$: each conjunct gets its own $\\lor r$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "dnf(p ∧ (q ∨ r))",
+      "type": "exercise",
+      "prompt": "Put $p \\land (q \\lor r)$ in disjunctive normal form.",
+      "hints": [
+        "Distribute $p \\land$ over the $\\lor$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "cnf(¬(p ∧ q) ∧ (p ∨ q))",
+      "type": "exercise",
+      "prompt": "Put $\\lnot(p \\land q) \\land (p \\lor q)$ in CNF. (It says \"exactly one of $p$, $q$\".)",
+      "hints": [
+        "Only the first part needs work: De Morgan."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> The laws of logic are rewrites that keep the truth table. NNF pushes negations onto the variables; CNF and DNF then distribute. Any formula has all three forms, and the truth table decides whether a proposed one is right.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

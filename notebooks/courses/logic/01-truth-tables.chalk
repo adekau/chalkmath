@@ -1,0 +1,233 @@
+{
+  "chalk": 1,
+  "name": "01-truth-tables.chalk",
+  "cells": [
+    {
+      "src": "Propositions and truth tables",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Read a formula of propositional logic, build its truth table, and decide whether it is always true, sometimes true, or never true, with a row that shows it.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Proposition, connective\n> A **proposition** is a statement that is either true or false. Variables $p, q, r$ stand for propositions, and the **connectives** build bigger ones: $\\lnot p$ (not), $p \\land q$ (and), $p \\lor q$ (or), $p \\to q$ (if … then), $p \\leftrightarrow q$ (if and only if). $\\top$ is true and $\\bot$ is false.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Type the glyphs, or their ASCII spellings: `!p`, `p && q`, `p || q`, `p -> q`, `p <-> q`, `true`, `false`. A cell with a connective in it is a logic cell.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "p && q -> p",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Truth tables",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Truth table\n> A formula's **truth table** lists every assignment of true and false to its variables, one row each, with the formula's value. $n$ variables make $2^n$ rows.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "truthtable(p ∧ q)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "truthtable(p ∨ q)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Implication\n> $p \\to q$ is false in exactly one row: $p$ true and $q$ false. When $p$ is false the implication holds whatever $q$ is (\"vacuously\"): a promise \"if it rains, I bring an umbrella\" is not broken on a dry day.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "truthtable(p → q)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Tautologies and counterexamples",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Tautology, satisfiable, contradiction\n> A formula is a **tautology** when every row is true, **satisfiable** when some row is, and a **contradiction** when none is. A row where it is false is a **counterexample**; a row where it is true is a **witness**.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`taut` decides by the table. When the answer is ⊥ the step names the row that falsifies it.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "taut((p → q) ∨ (q → p))",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "taut(p → q)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "truthtable((p → q) ∧ (q → r) → (p → r))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`sat` gives a satisfying assignment, written as a conjunction of literals, or ⊥ when there is none; `falsify` gives a counterexample.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "sat((p ∨ q) ∧ ¬p)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "sat(p ∧ ¬p)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "falsify(p ∧ q → r)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The converse and the contrapositive",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> $p \\to q$ does not say $q \\to p$ (the **converse**). \"If $n$ is divisible by 4 then $n$ is even\" is true; \"if $n$ is even then $n$ is divisible by 4\" is not. `equiv` decides whether two formulas have the same table, and names a row where they differ:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "equiv(p → q, q → p)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "The **contrapositive** $\\lnot q \\to \\lnot p$ is equivalent, which is why a proof \"suppose not $q$ … then not $p$\" proves $p \\to q$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "equiv(p → q, ¬q → ¬p)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Answer `true` or `false` (or ⊤, ⊥) for `taut` and `equiv`. For `sat` and `falsify`, give an assignment as a conjunction of literals, such as `p ∧ ¬q`; any assignment that works is right.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "taut(p → (q → p))",
+      "type": "exercise",
+      "prompt": "Is $p \\to (q \\to p)$ a tautology?",
+      "hints": [
+        "The only way an implication fails is a true premise and a false conclusion. Can $q \\to p$ be false while $p$ is true?"
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "taut((p → q) → (¬p → ¬q))",
+      "type": "exercise",
+      "prompt": "Is $(p \\to q) \\to (\\lnot p \\to \\lnot q)$ a tautology? (This is the converse in disguise.)",
+      "hints": [
+        "Look for $p$ false and $q$ true."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "falsify((p → q) → p)",
+      "type": "exercise",
+      "prompt": "Find a counterexample to $(p \\to q) \\to p$: an assignment that makes it false.",
+      "hints": [
+        "The conclusion $p$ has to be false. What does that make $p \\to q$?"
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "equiv(¬(p → q), p ∧ ¬q)",
+      "type": "exercise",
+      "prompt": "Are $\\lnot(p \\to q)$ and $p \\land \\lnot q$ equivalent?",
+      "hints": [
+        "$p \\to q$ is false in exactly one row."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Knights and knaves",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!example] A puzzle as a satisfiability question\n> On an island, knights always tell the truth and knaves always lie. $A$ says \"$B$ is a knave\". $B$ says \"$A$ and I are of the same kind\". Let $a$ mean \"$A$ is a knight\" and $b$ mean \"$B$ is a knight\". What a knight says is true and what a knave says is false, so each statement is equivalent to its speaker being a knight: $a \\leftrightarrow \\lnot b$ and $b \\leftrightarrow (a \\leftrightarrow b)$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "sat((a ↔ ¬b) ∧ (b ↔ (a ↔ b)))",
+      "type": "exercise",
+      "prompt": "Who is a knight and who is a knave? Answer with an assignment to $a$ and $b$, such as `a ∧ ¬b`.",
+      "hints": [
+        "Try $b$ true: then $a \\leftrightarrow b$ must be true, so $a$ is true. Does $a \\leftrightarrow \\lnot b$ hold?",
+        "So $b$ is false. Then $a \\leftrightarrow b$ must be false."
+      ],
+      "hideQuestion": true,
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> A propositional formula is decided by its truth table: true in every row (a tautology), in some row (satisfiable, with a witness), or in none (a contradiction). A counterexample is a single row, and one is enough.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

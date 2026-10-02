@@ -1,0 +1,225 @@
+{
+  "chalk": 1,
+  "name": "04-quantifiers.chalk",
+  "cells": [
+    {
+      "src": "Predicates and quantifiers",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Read and decide statements with $\\forall$ and $\\exists$ over a finite set, find the counterexample or the witness, negate them, and prove simple ones in Lean.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Quantifiers\n> $\\forall n \\in S,\\ \\varphi(n)$ says $\\varphi$ holds for every $n$ in $S$; $\\exists n \\in S,\\ \\varphi(n)$ says it holds for at least one. A $\\forall$ is refuted by one **counterexample**; an $\\exists$ is proved by one **witness**.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Over a finite set the engine checks every element in order, and names the one that decided. Type `forall n in 1..10, …` or the glyphs; the body can compare numbers and use `prime`, `even`, `odd` and `∣` (divides).",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "∀ n ∈ 1..10, n^2 ≥ n",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "∀ n ∈ 1..10, n^2 ≥ 2n",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "∃ n ∈ {4, 6, 9, 11}, prime(n)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "Checking is not proving",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> A statement about every natural number is not proved by checking some of them. Euler noticed that $n^2 + n + 41$ is prime for $n = 1, 2, 3, \\dots$, a long way:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "∀ n ∈ 1..39, prime(n^2 + n + 41)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "∀ n ∈ 1..40, prime(n^2 + n + 41)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "At $n = 40$ it is $41^2$. Checking finds counterexamples; only a proof covers all $n$. The induction lessons are about those proofs.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Negation and order",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!theorem] Negating a quantifier\n> $\\lnot \\forall n,\\ \\varphi(n) \\equiv \\exists n,\\ \\lnot\\varphi(n)$ and $\\lnot \\exists n,\\ \\varphi(n) \\equiv \\forall n,\\ \\lnot\\varphi(n)$: \"not every\" is \"some not\".",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "¬(∀ n ∈ 1..10, n^2 ≥ 2n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "∃ n ∈ 1..10, ¬(n^2 ≥ 2n)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> The order of quantifiers matters. \"Every $n$ has some $m$ different from it\" is true; \"some $m$ is different from every $n$\" is false, since $m$ would have to differ from itself.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "∀ n ∈ 1..6, ∃ m ∈ 1..6, m ≠ n",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "∃ m ∈ 1..6, ∀ n ∈ 1..6, m ≠ n",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Answer `true` or `false`.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "∀ n ∈ 1..20, prime(n) → odd(n)",
+      "type": "exercise",
+      "prompt": "Is every prime between 1 and 20 odd?",
+      "hints": [
+        "One prime is even."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "∃ n ∈ 3..30, n^2 = 2^n",
+      "type": "exercise",
+      "prompt": "Is there an $n$ between 3 and 30 with $n^2 = 2^n$?",
+      "hints": [
+        "Try small powers of 2."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "∀ n ∈ 1..12, 3 ∣ n^3 - n",
+      "type": "exercise",
+      "prompt": "Does 3 divide $n^3 - n$ for every $n$ from 1 to 12?",
+      "hints": [
+        "Factor it: $n^3 - n = (n-1)\\,n\\,(n+1)$. What is true of three consecutive numbers?"
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "∀ n ∈ 1..10, n^2 ≤ 2^n",
+      "type": "exercise",
+      "prompt": "Is $n^2 \\le 2^n$ for every $n$ from 1 to 10?",
+      "hints": [
+        "Compute both sides for $n = 3$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Quantifiers in Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean, a proof of $\\exists n, P(n)$ is a pair: the witness and a proof that it works. A proof of $\\forall n, P(n)$ is a function taking any $n$ to a proof of $P(n)$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "example : ∃ n : Nat, n * n = 16 := ⟨4, rfl⟩\n\nexample : ∀ n : Nat, n + 0 = n := fun _ => rfl",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem exists_sq_36 : ∃ n : Nat, n * n = 36 := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Give a witness.",
+      "leanSolution": "  exact ⟨6, rfl⟩",
+      "hints": [
+        "`exact ⟨w, rfl⟩`, with the right `w`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem forall_and_left (α : Type) (P Q : α → Prop) : (∀ x, P x ∧ Q x) → ∀ x, P x := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "If every $x$ has both properties, every $x$ has the first.",
+      "leanSolution": "  intro h x\n  exact (h x).1",
+      "hints": [
+        "`intro h x`, then `h x` is a proof of `P x ∧ Q x`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem not_exists_forall (α : Type) (P : α → Prop) : (¬ ∃ x, P x) → ∀ x, ¬ P x := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove one half of negating $\\exists$: if no $x$ has $P$, every $x$ lacks it.",
+      "leanSolution": "  intro h x hx\n  exact h ⟨x, hx⟩",
+      "hints": [
+        "`¬ P x` is `P x → False`: introduce the proof `hx` too.",
+        "Then `⟨x, hx⟩` proves the `∃` that `h` denies."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> A $\\forall$ falls to one counterexample and an $\\exists$ stands on one witness. Over a finite set both can be checked; over all numbers they must be proved. Negation swaps them, and their order changes the meaning.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}
