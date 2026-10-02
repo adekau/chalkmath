@@ -73,7 +73,7 @@ test("the tree is the engine's parse: precedence, implicit products, what the nu
 
 /** A golden source the engine reads in another world (logic, relations and posets), not as notation. */
 const otherWorld = (src) => /[∧∨¬→↔⊤⊥∀∃]|->|&&|\|\|/.test(src) || /^\s*(forall|exists)\b/.test(src)
-  || /^\s*(let\s+\w+\s*=\s*)?(truthtable|taut|sat|falsify|equiv|nnf|cnf|dnf|rel|kernel|divisors|closure|classes|reflexive|symmetric|antisymmetric|transitive|equivalence|preorder|finer|wellfounded|measure)\s*\(/.test(src);
+  || /^\s*(let\s+\w+\s*=\s*)?(truthtable|taut|sat|falsify|equiv|nnf|cnf|dnf|rel|kernel|divisors|closure|classes|reflexive|symmetric|antisymmetric|transitive|equivalence|preorder|finer|wellfounded|measure|op|joinop|meetop|table|associative|commutative|idempotent|semilattice|identity|fold|order|distributive|complement|complemented|boolean|product|map|monotone|galois|closureop|context|concepts|secure|subsets|chain|join|le)\s*\(/.test(src);
 
 test("parse errors are the engine's, with its spans", () => {
   for (const [src, answer] of golden) {

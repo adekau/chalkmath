@@ -638,8 +638,26 @@ def logicRelTests : TestM Unit := do
   checkTrue "check relations: a property" (eqvR "transitive(R)" "false" && !eqvR "transitive(R)" "true")
   checkTrue "check relations: classes, in any order" (eqvR "classes(K)" "{r2, r1}, {r3, r4}" && !eqvR "classes(K)" "{r1}, {r2, r3, r4}")
 
+/-- Finite algebra (`Algebra.lean`): the tables and contexts the notebook draws, the cells a failing law
+marks, and elements written as pairs or sets. -/
+def algebraTests : TestM Unit := do
+  let req (id src : String) := s!"\{\"jsonrpc\":\"2.0\",\"id\":{id},\"method\":\"engine.evaluate\",\"params\":\{\"sessionId\":\"a\",\"cellId\":\"c{id}\",\"source\":\"{src}\",\"showWork\":true}}"
+  let (st, opRaw) := handleS [] (req "1" "let F = op({na, permit, deny}; [na, permit, deny; permit, permit, permit; deny, deny, deny])")
+  checkTrue "algebra: an operation is drawn as its table" (contains opRaw "\"kind\":\"algebra.optable\"" && contains opRaw "\"rows\":[[\"na\",\"permit\",\"deny\"],[\"permit\",\"permit\",\"permit\"],[\"deny\",\"deny\",\"deny\"]]") opRaw
+  let (st, cRaw) := handleS st (req "2" "commutative(F)")
+  checkTrue "algebra: a failing law marks the two cells that differ" (contains cRaw "\"marks\":[[\"permit\",\"deny\"],[\"deny\",\"permit\"]]" && contains cRaw "\"rule\":\"alg.commutative\"") cRaw
+  let (st, fRaw) := handleS st (req "3" "fold(F; na, deny, permit)")
+  checkTrue "algebra: a fold is a step per element" (contains fRaw "\"text\":\"deny\"" && contains fRaw "\"rule\":\"alg.fold\"") fRaw
+  let (st, _) := handleS st (req "4" "let Lv = poset({low, high}; low < high)")
+  let (st, _) := handleS st (req "5" "let Cat = subsets({fin, hr})")
+  let (st, _) := handleS st (req "6" "let SC = product(Lv, Cat)")
+  let (st, jRaw) := handleS st (req "7" "join(SC, (low, {hr, fin}), ( high , {} ))")
+  checkTrue "algebra: pair elements, written with any spacing and set order" (contains jRaw "\"text\":\"(high, {fin,hr})\"") jRaw
+  let (_, xRaw) := handleS st (req "8" "let X = context({duck, dog}, {flies, mammal}; duck->flies, dog->mammal)")
+  checkTrue "algebra: a context is drawn as its cross table" (contains xRaw "\"kind\":\"context.table\"" && contains xRaw "\"has\":[[true,false],[false,true]]") xRaw
+
 def main : IO UInt32 := do
-  let ((), failures) ← (do tests; sessionTests; partStatTests; workTests; checkTests; logicRelTests; goldenTests).run #[]
+  let ((), failures) ← (do tests; sessionTests; partStatTests; workTests; checkTests; logicRelTests; algebraTests; goldenTests).run #[]
   for f in failures do
     IO.println s!"FAIL {f.name}\n  expected: {f.expected}\n  actual:   {f.actual}"
   IO.println s!"{failures.size} failures"

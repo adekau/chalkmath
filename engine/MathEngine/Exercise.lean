@@ -154,38 +154,48 @@ def checkLogic (s : Session) (cellId question : String) (answer : Option String)
     let eq := match given with | some (.ok (_, b)) => b | _ => false
     (s, .ok ⟨res.value, res.derivation, false, res.value, given.map (·.map (·.1)), eq⟩)
 
-/-- An order-world value, as something answers can be compared with: `kind` and a canonical form. -/
+/-- An order-world value, as something answers can be compared with: `kind` and a canonical form
+(elements by their canonical key, so a pair or a set element compares whatever its spacing). -/
 private def orderCanon : Expr → String × List String
   | .var "true" => ("bool", ["true"])
   | .var "false" => ("bool", ["false"])
-  | .fn "rel" [_, .fn "set" ps] => ("pairs", (ps.map fun p => match p with | .fn "pair" [a, b] => s!"{a.toText},{b.toText}" | e => e.toText).mergeSort)
+  | .fn "rel" [_, .fn "set" ps] => ("pairs", (ps.map fun p => match p with | .fn "pair" [a, b] => s!"{Ord.elemKey a.toText},{Ord.elemKey b.toText}" | e => e.toText).mergeSort)
   | .fn "set" xs =>
     if !xs.isEmpty && xs.all (fun x => x matches .fn "set" _) then
-      ("partition", (xs.map fun x => match x with | .fn "set" ys => ",".intercalate (ys.map (·.toText)).mergeSort | e => e.toText).mergeSort)
-    else ("set", (xs.map (·.toText)).mergeSort)
-  | e => ("element", [e.toText])
+      ("partition", (xs.map fun x => match x with | .fn "set" ys => ",".intercalate (ys.map (Ord.elemKey ·.toText)).mergeSort | e => e.toText).mergeSort)
+    else ("set", (xs.map (Ord.elemKey ·.toText)).mergeSort)
+  | e => ("element", [Ord.elemKey e.toText])
+
+/-- The items of a list written with or without its outer braces: `{a, b}` or `a, b`. -/
+private def topItems (s : String) : List String :=
+  let items := (Ord.splitTop s).map (·.trimAscii.copy) |>.filter (· != "")
+  match items with
+  | [one] => if one.startsWith "{" && one.endsWith "}" then (Ord.splitTop ((one.drop 1).dropEnd 1).copy).map (·.trimAscii.copy) |>.filter (· != "") else items
+  | _ => items
 
 /-- Parse an answer to an order-world question as the kind of value expected. -/
 private def parseOrderAnswer (kind : String) (src : String) : Option (List String) :=
   let s := src.trimAscii.copy
-  let strip (t : String) := (t.replace "{" "").replace "}" "" |>.replace "(" "" |>.replace ")" "" |>.trimAscii.copy
-  let items (t : String) := ((strip t).splitOn ",").map (·.trimAscii.copy) |>.filter (· != "")
   match kind with
   | "bool" => match s.toLower with | "true" | "⊤" => some ["true"] | "false" | "⊥" => some ["false"] | _ => none
   | "pairs" =>
+    let strip (t : String) := (t.replace "{" "").replace "}" "" |>.replace "(" "" |>.replace ")" "" |>.trimAscii.copy
     if (s.splitOn "->").length > 1 || (s.splitOn "→").length > 1 then
       let ps := (strip s).splitOn "," |>.map fun p => (p.replace "→" "->").splitOn "->" |>.map (·.trimAscii.copy)
-      if ps.all (·.length == 2) then some (ps.map (fun p => s!"{p[0]!},{p[1]!}")).mergeSort else none
+      if ps.all (·.length == 2) then some (ps.map (fun p => s!"{Ord.elemKey p[0]!},{Ord.elemKey p[1]!}")).mergeSort else none
     else
       -- (a, b), (c, d): the brackets pair them
       let groups := ((s.replace "{" "").replace "}" "").splitOn "(" |>.map (fun g => (g.splitOn ")").headD "") |>.map (·.trimAscii.copy) |>.filter (· != "")
       let ps := groups.map fun g => (g.splitOn ",").map (·.trimAscii.copy)
-      if !ps.isEmpty && ps.all (·.length == 2) then some (ps.map (fun p => s!"{p[0]!},{p[1]!}")).mergeSort else if s == "{}" then some [] else none
+      if !ps.isEmpty && ps.all (·.length == 2) then some (ps.map (fun p => s!"{Ord.elemKey p[0]!},{Ord.elemKey p[1]!}")).mergeSort else if s == "{}" then some [] else none
   | "partition" =>
-    let groups := (s.splitOn "{").map (fun g => (g.splitOn "}").headD "") |>.map (·.trimAscii.copy) |>.filter (fun g => g != "" && g != ",")
-    some (groups.map fun g => ",".intercalate ((g.splitOn ",").map (·.trimAscii.copy) |>.filter (· != "")).mergeSort).mergeSort
-  | "set" => some (items s).mergeSort
-  | _ => some [strip s]
+    -- {a, b}, {c} or {{a, b}, {c}}: each class a set
+    let classes := topItems s
+    if classes.all (fun c => c.startsWith "{" && c.endsWith "}") then
+      some (classes.map fun c => ",".intercalate ((Ord.splitTop ((c.drop 1).dropEnd 1).copy).map (·.trimAscii.copy) |>.filter (· != "") |>.map Ord.elemKey).mergeSort).mergeSort
+    else none
+  | "set" => some ((topItems s).map Ord.elemKey).mergeSort
+  | _ => some [Ord.elemKey s]
 
 /-- A parsed order-world answer as a value, to show. -/
 private def orderAnswerExpr (kind : String) (got : List String) : Expr :=

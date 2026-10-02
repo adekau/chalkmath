@@ -127,6 +127,21 @@ def ruleStatus : Json :=
     entry "rel.finer" "verified" "Every pair of the first checked in the second.",
     entry "rel.wellfounded" "unverified" "On a finite set a relation is well-founded exactly when it has no cycle. A cycle found is shown and can be read off the relation; that the search finds one whenever there is one is not yet proved.",
     entry "rel.measure" "verified" "Every step checked to decrease the measure, by definition; on a finite set a measure that goes down along every step leaves no room for a cycle.",
+    entry "alg.from-order" "verified" "Each entry is the join (or meet) of its pair, found by the search that order.sup_spec proves least; by definition a table.",
+    entry "alg.associative" "verified" "Every triple checked; when none fails the law holds on the whole set (assocFailure_none).",
+    entry "alg.commutative" "verified" "Every pair checked (commFailure_none).",
+    entry "alg.idempotent" "verified" "Every element checked (idemFailure_none); with the two laws above, a semilattice (isSemilattice_of_none).",
+    entry "alg.identity" "verified" "An element checked against every element on both sides, by definition.",
+    entry "alg.fold" "verified" "Each step is one entry of the table, by definition of a left fold.",
+    entry "alg.order" "verified" "$x \\le y \\iff x \\cdot y = y$ is a partial order in which $x \\cdot y$ is the least upper bound, for a semilattice whose table stays in its set (semilattice_order); the laws are checked first and the entries when the table is made.",
+    entry "order.distributive" "verified" "Every triple checked for $x \\land (y \\lor z) = (x \\land y) \\lor (x \\land z)$ (distribFailure_none).",
+    entry "order.complement" "verified" "Every element checked for $x \\lor y = \\top$ and $x \\land y = \\bot$, by definition.",
+    entry "order.boolean" "verified" "Distributive and complemented, each checked: the definition of a Boolean lattice.",
+    entry "order.product" "verified" "Pairs ordered componentwise, by definition: the order is the product of the two orders.",
+    entry "order.galois" "verified" "Every pair $(x, y)$ checked for $f(x) \\le y \\iff x \\le g(y)$ (galoisFailure_none).",
+    entry "order.closure-operator" "verified" "Extensive, monotone and idempotent, each checked on every element or pair (closureOpFailure_none).",
+    entry "order.concepts" "unverified" "Each concept's objects are an intersection of attribute extents, and its attributes are those the objects share; that every concept is found, and that each pair is closed, is not yet proved.",
+    entry "order.flow" "verified" "Every flow checked against the order of the classes (flowFailure_none).",
     entry "logic.implication" "verified" "$a \\to b$ and $\\lnot a \\lor b$ have the same value under every assignment, and the pass that applies it everywhere keeps the formula's value (arrows_sound).",
     entry "logic.biconditional" "verified" "$a \\leftrightarrow b$ and $(a \\to b) \\land (b \\to a)$ have the same value under every assignment; the pass keeps the formula's value (arrows_sound).",
     entry "logic.de-morgan" "verified" "$\\lnot(a \\land b) = \\lnot a \\lor \\lnot b$ and its dual, over Bool; the negation pass keeps the value (nnf_sound).",
@@ -214,12 +229,23 @@ def evaluateOrder (st : Store) (params : Json) (sessionId cellId src : String) :
           ("nodes", .arr (P.elems.map fun x => Json.obj #[("name", .str x), ("height", .num (toString (hs.getD x 0)))]).toArray),
           ("covers", .arr ((Ord.hasse P).map fun (a, b) => Json.arr #[.str a, .str b]).toArray)])
       | none => r
-    let r := match res.graph with
-      | some (R, bad, added) =>
-        let pairs (ps : List (String × String)) : Json := .arr (ps.map fun (a, b) => Json.arr #[.str a, .str b]).toArray
-        r.push ("visuals", .arr #[.obj #[("kind", .str "relation.digraph"), ("data", .obj #[
-          ("nodes", .arr (R.elems.map Json.str).toArray), ("edges", pairs R.pairs), ("bad", pairs bad), ("added", pairs added)])]])
-      | none => r
+    let pairs (ps : List (String × String)) : Json := .arr (ps.map fun (a, b) => Json.arr #[.str a, .str b]).toArray
+    let strs (xs : List String) : Json := .arr (xs.map Json.str).toArray
+    let visuals : Array Json :=
+      (match res.graph with
+        | some (R, bad, added) => #[.obj #[("kind", .str "relation.digraph"), ("data", .obj #[
+            ("nodes", strs R.elems), ("edges", pairs R.pairs), ("bad", pairs bad), ("added", pairs added)])]]
+        | none => #[]) ++
+      (match res.table with
+        | some (o, marks) => #[.obj #[("kind", .str "algebra.optable"), ("data", .obj #[
+            ("elems", strs o.elems), ("rows", .arr (o.rows.map strs).toArray), ("marks", pairs marks)])]]
+        | none => #[]) ++
+      (match res.context with
+        | some C => #[.obj #[("kind", .str "context.table"), ("data", .obj #[
+            ("objects", strs C.objs), ("attributes", strs C.attrs),
+            ("has", .arr (C.objs.map fun o => Json.arr (C.attrs.map fun a => Json.bool (C.has o a)).toArray).toArray)])]]
+        | none => #[])
+    let r := if visuals.isEmpty then r else r.push ("visuals", .arr visuals)
     let r := r ++ workFields params res.derivation
     let r := match res.name with | some n => r.push ("bound", .arr #[.str n]) | none => r
     (st, .obj r)

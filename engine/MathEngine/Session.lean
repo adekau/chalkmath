@@ -4,6 +4,7 @@ import MathEngine.Parser
 import MathEngine.Lambda
 import MathEngine.Poset
 import MathEngine.Relation
+import MathEngine.Algebra
 import MathEngine.Fourier
 import MathEngine.Logic
 /-!
@@ -34,6 +35,9 @@ structure Session where
   pmaps : List (String × Ord.PMap) := []
   /-- Relations (order world) bound by `let`, by name. -/
   rels : List (String × Ord.Rel) := []
+  /-- Operation tables and formal contexts (order world, `Algebra.lean`) bound by `let`, by name. -/
+  ops : List (String × Ord.Op) := []
+  ctxs : List (String × Ord.Ctx) := []
   /-- Logic-world formulas bound by `let`, by name. -/
   formulas : List (String × Logic.Fm) := []
   cells : List (String × Cell) := []
@@ -160,6 +164,33 @@ structure OrdResult where
   /-- A relation to draw as a directed graph: its elements and pairs, the pairs that show a property
   failing, and the pairs a closure added. -/
   graph : Option (Ord.Rel × List (String × String) × List (String × String)) := none
+  /-- An operation to draw as its table, and the cells that show a law failing. -/
+  table : Option (Ord.Op × List (String × String)) := none
+  /-- A formal context to draw as its cross table. -/
+  context : Option Ord.Ctx := none
+
+/-- An element's name in LaTeX: a word upright, a set's braces escaped. -/
+def nm (x : String) : String :=
+  let esc := (x.replace "{" "\\{").replace "}" "\\}"
+  if x.length > 1 && (x.toList.all fun c => c.isAlpha || c == '_') then "\\mathrm{" ++ esc ++ "}" else esc
+
+/-- An explanation's LaTeX as plain text, for an error message: `$`, `\\mathrm{…}` and the escapes dropped. -/
+def deTeX (t : String) : String :=
+  let t := t.replace "$" "" |>.replace "\\cdot" "·" |>.replace "\\{" "{" |>.replace "\\}" "}"
+  -- `\\mathrm{word}` → `word`
+  let parts := t.splitOn "\\mathrm{"
+  parts.headD "" ++ String.join (parts.tail.map fun p => match p.splitOn "}" with | w :: rest => w ++ "}".intercalate rest | [] => "")
+
+/-- The first failure of a law of an operation: its explanation, and the cells of the table to mark. -/
+def opLawFailure (o : Ord.Op) : String → Option (String × List (String × String))
+  | "associative" => (Ord.assocFailure o).map fun (x, y, z) =>
+      let xy := o.ap x y
+      let yz := o.ap y z
+      (s!"$({nm x} \\cdot {nm y}) \\cdot {nm z} = {nm xy} \\cdot {nm z} = {nm (o.ap xy z)}$, but ${nm x} \\cdot ({nm y} \\cdot {nm z}) = {nm x} \\cdot {nm yz} = {nm (o.ap x yz)}$",
+        [(x, y), (xy, z), (y, z), (x, yz)])
+  | "commutative" => (Ord.commFailure o).map fun (x, y) =>
+      (s!"${nm x} \\cdot {nm y} = {nm (o.ap x y)}$, but ${nm y} \\cdot {nm x} = {nm (o.ap y x)}$", [(x, y), (y, x)])
+  | _ => (Ord.idemFailure o).map fun x => (s!"${nm x} \\cdot {nm x} = {nm (o.ap x x)}$, not ${nm x}$", [(x, x)])
 
 /-- Evaluate an order-world cell. -/
 def orderCell (s : Session) (cellId source : String) :
@@ -185,23 +216,31 @@ def orderCell (s : Session) (cellId source : String) :
       | .elem n => match s.pmaps.lookup n with | some f => .ok f | none => .error s!"'{n}' is not a map"
       | _ => .error "expected the name of a map"
     -- an element of `P`, written as a name or, for a subsets poset, as a set literal
+    -- an element as typed: a name, a pair `(x, y)`, or a set `{a,b}` (a powerset's), matched whatever
+    -- the spacing and the order of a set's members
     let getE (P : Ord.Poset) (a : Ord.Arg) : Except String String := match a with
-      | .elem x => if P.elems.contains x then .ok x else .error s!"'{x}' is not an element of the poset"
+      | .elem x => match Ord.findElem P.elems x with | some e => .ok e | none => .error s!"'{x}' is not an element of the poset"
       | .set xs =>
-        -- a subsets-poset element is written `{a,b}`; match the literal as a set, whatever the order
-        let key := xs.eraseDups
-        let members (e : String) : List String := (((e.replace "{" "").replace "}" "").splitOn ",").filter (· != "")
-        match P.elems.find? fun e => e.startsWith "{" && (members e).length == key.length && key.all ((members e).contains ·) with
+        let typed := "{" ++ ",".intercalate xs ++ "}"
+        match Ord.findElem P.elems typed with
         | some e => .ok e
-        | none => .error ("{" ++ ",".intercalate xs ++ "} is not an element of the poset")
+        | none => .error (typed ++ " is not an element of the poset")
       | _ => .error "expected an element"
+    let getO (a : Ord.Arg) : Except String Ord.Op := match a with
+      | .elem n => match s.ops.lookup n with | some o => .ok o | none => .error s!"'{n}' is not an operation (make one with op or joinop)"
+      | _ => .error "expected the name of an operation"
+    let getC (a : Ord.Arg) : Except String Ord.Ctx := match a with
+      | .elem n => match s.ctxs.lookup n with | some c => .ok c | none => .error s!"'{n}' is not a context"
+      | _ => .error "expected the name of a context"
     let getS (P : Ord.Poset) (a : Ord.Arg) : Except String (List String) := match a with
       | .set xs => xs.mapM fun x => getE P (.elem x)
       | .elem x => (getE P (.elem x)).map ([·])
       | _ => .error "expected a set of elements"
     let step (rule text : String) (before after : Expr) : Step := ⟨rule, text, [], before, after, none⟩
     let done (value : Expr) (steps : Array Step) (P : Option Ord.Poset) (summary : String) (bindP : Option Ord.Poset := none) (bindF : Option Ord.PMap := none)
-        (bindR : Option Ord.Rel := none) (graph : Option (Ord.Rel × List (String × String) × List (String × String)) := none) :
+        (bindR : Option Ord.Rel := none) (graph : Option (Ord.Rel × List (String × String) × List (String × String)) := none)
+        (bindO : Option Ord.Op := none) (bindC : Option Ord.Ctx := none) (table : Option (Ord.Op × List (String × String)) := none)
+        (context : Option Ord.Ctx := none) :
         Session × Except (String × String × Option (Nat × Nat)) OrdResult :=
       -- the derivation starts where the first step does, so the echo shows the question, not the answer
       let input := match steps[0]? with | some st => st.before | none => value
@@ -216,7 +255,13 @@ def orderCell (s : Session) (cellId source : String) :
       let s := match name, bindR with
         | some n, some R => { s with rels := (n, R) :: s.rels.filter (·.1 != n) }
         | _, _ => s
-      (s, .ok ⟨name, value, d, P, summary, graph⟩)
+      let s := match name, bindO with
+        | some n, some o => { s with ops := (n, o) :: s.ops.filter (·.1 != n) }
+        | _, _ => s
+      let s := match name, bindC with
+        | some n, some c => { s with ctxs := (n, c) :: s.ctxs.filter (·.1 != n) }
+        | _, _ => s
+      (s, .ok ⟨name, value, d, P, summary, graph, table, context⟩)
     let withPoset (P : Ord.Poset) (steps : Array Step) (what : String) :=
       done (Ord.posetExpr P) steps (some P) what (bindP := some P)
     let bool (b : Bool) : Expr := .var (if b then "true" else "false")
@@ -461,6 +506,186 @@ def orderCell (s : Session) (cellId source : String) :
           match Ord.measureFailure R m with
           | none => done (bool true) #[step "rel.measure" "The measure goes down along every step, and a natural number cannot go down forever: well-founded." (relExpr' R) (bool true)] none "the measure decreases along every step"
           | some (x, y) => done (bool false) #[step "rel.measure" s!"The step ${x} \\to {y}$ does not decrease the measure ({(m x).getD 0} to {(m y).getD 0})." (relExpr' R) (bool false)] none s!"not decreasing at {x} → {y}" (graph := some (R, [(x, y)], []))
+    -- finite algebra (Algebra.lean): operation tables and their laws
+    | "op", [.set xs, .table rows] =>
+      match Ord.Op.ofRows xs rows with
+      | .error m => err m
+      | .ok o => done (Ord.opExpr o) #[] none s!"an operation on {xs.length} elements" (bindO := some o) (table := some (o, []))
+    | "joinop", [p] | "meetop", [p] =>
+      match getP p with
+      | .error m => err m
+      | .ok P =>
+        let which := if head == "joinop" then "join" else "meet"
+        match (if head == "joinop" then Ord.joinOp P else Ord.meetOp P) with
+        | some o => done (Ord.opExpr o) #[step "alg.from-order" s!"The {which} of each pair, read off the order, as a table." (Ord.setExpr P.elems) (Ord.opExpr o)] none s!"the {which} as an operation" (bindO := some o) (table := some (o, []))
+        | none =>
+          let pr := (Ord.allPairs P.elems).find? fun (x, y) => (if head == "joinop" then Ord.sup P [x, y] else Ord.inf P [x, y]).isNone
+          err (match pr with | some (x, y) => s!"{x} and {y} have no {which}, so there is no table" | none => s!"some pair has no {which}")
+    | "table", [j] =>
+      match getO j with
+      | .error m => err m
+      | .ok o => done (Ord.opExpr o) #[] none s!"an operation on {o.elems.length} elements" (table := some (o, []))
+    | "associative", [j] | "commutative", [j] | "idempotent", [j] | "semilattice", [j] =>
+      match getO j with
+      | .error m => err m
+      | .ok o =>
+        let laws := if head == "semilattice" then ["associative", "commutative", "idempotent"] else [head]
+        match laws.findSome? fun l => (opLawFailure o l).map (l, ·) with
+        | some (l, why, cells) =>
+          done (bool false) #[step s!"alg.{l}" s!"Not {l}: {why}." (Ord.opExpr o) (bool false)] none s!"not {l}" (table := some (o, cells))
+        | none =>
+          let what := if head == "semilattice" then "Associative, commutative and idempotent: a semilattice" else s!"{head.capitalize}: every {if head == "associative" then "triple" else if head == "commutative" then "pair" else "element"} checked"
+          done (bool true) #[step s!"alg.{laws.getLast!}" s!"{what}." (Ord.opExpr o) (bool true)] none (if head == "semilattice" then "a semilattice" else head) (table := some (o, []))
+    | "identity", [j] =>
+      match getO j with
+      | .error m => err m
+      | .ok o => match o.identity with
+        | some e => done (Ord.elemExpr e) #[step "alg.identity" s!"${nm e} \\cdot x = x = x \\cdot {nm e}$ for every $x$: the identity." (Ord.opExpr o) (Ord.elemExpr e)] none s!"the identity is {e}" (table := some (o, o.elems.map (e, ·)))
+        | none => err "no element is an identity: for each e, some x has e · x ≠ x or x · e ≠ x"
+    | "fold", j :: rest =>
+      match getO j with
+      | .error m => err m
+      | .ok o =>
+        let elems : Except String (List String) := rest.mapM fun a => match a with
+          | .elem x => match Ord.findElem o.elems x with | some e => Except.ok e | none => Except.error s!"'{x}' is not in the operation's set"
+          | _ => Except.error "fold takes elements"
+        match elems with
+        | .error m => err m
+        | .ok [] => match o.identity with
+          | some e => done (Ord.elemExpr e) #[step "alg.fold" s!"Nothing to combine: the identity, ${nm e}$." (Ord.setExpr []) (Ord.elemExpr e)] none s!"= {e}"
+          | none => err "fold of nothing needs an identity element, and this operation has none"
+        | .ok (x :: xs) =>
+          let (r, steps) := xs.foldl (fun (acc, st) y =>
+            let v := o.ap acc y
+            (v, st.push (step "alg.fold" s!"${nm acc} \\cdot {nm y} = {nm v}$." (Ord.elemExpr acc) (Ord.elemExpr v)))) (x, #[])
+          done (Ord.elemExpr r) steps none s!"= {r}" (table := some (o, (xs.foldl (fun (acc, cs) y => (o.ap acc y, cs ++ [(acc, y)])) (x, [])).2))
+    | "order", [j] =>
+      match getO j with
+      | .error m => err m
+      | .ok o =>
+        match ["associative", "commutative", "idempotent"].findSome? fun l => (opLawFailure o l).map (l, ·) with
+        | some (l, why, _) => err s!"the order needs a semilattice, and this operation is not {l}: {deTeX why}"
+        | none =>
+          let P := o.order
+          withPoset P #[step "alg.order" "$x \\le y$ when $x \\cdot y = y$: a partial order in which $x \\cdot y$ is the join (semilattice_order)." (Ord.opExpr o) (Ord.posetExpr P)] "the order of the semilattice"
+    -- lattice properties
+    | "distributive", [p] | "complemented", [p] | "boolean", [p] =>
+      match getP p with
+      | .error m => err m
+      | .ok P =>
+        match Ord.joinOp P, Ord.meetOp P with
+        | some J, some M =>
+          let distrib : Option (String × Array Step) := (Ord.distribFailure J M).map fun (x, y, z) =>
+            let l := M.ap x (J.ap y z)
+            let r := J.ap (M.ap x y) (M.ap x z)
+            (s!"not distributive at {x}, {y}, {z}", #[step "order.distributive" s!"Not distributive: ${nm x} \\land ({nm y} \\lor {nm z}) = {nm x} \\land {nm (J.ap y z)} = {nm l}$, but $({nm x} \\land {nm y}) \\lor ({nm x} \\land {nm z}) = {nm (M.ap x y)} \\lor {nm (M.ap x z)} = {nm r}$." (Ord.setExpr [x, y, z]) (bool false)])
+          let compl : Option (String × Array Step) := match Ord.top P, Ord.bottom P with
+            | some t, some b => (P.elems.find? fun x => (Ord.complementsOf J M t b x).isEmpty).map fun x =>
+                (s!"{x} has no complement", #[step "order.complement" s!"No complement: no $y$ has ${nm x} \\lor y = {nm t}$ and ${nm x} \\land y = {nm b}$." (Ord.elemExpr x) (bool false)])
+            | _, _ => some ("no top or no bottom", #[step "order.complement" "Complements need a top and a bottom, and this lattice lacks one." (Ord.setExpr P.elems) (bool false)])
+          let checks := match head with | "distributive" => [distrib] | "complemented" => [compl] | _ => [distrib, compl]
+          match checks.findSome? id with
+          | some (why, steps) => done (bool false) steps none why
+          | none =>
+            let what := match head with
+              | "distributive" => "$x \\land (y \\lor z) = (x \\land y) \\lor (x \\land z)$ for every triple: distributive."
+              | "complemented" => "Every element has a complement."
+              | _ => "Distributive and complemented: a Boolean lattice (each complement is unique)."
+            done (bool true) #[step s!"order.{if head == "boolean" then "boolean" else if head == "distributive" then "distributive" else "complement"}" what (Ord.setExpr P.elems) (bool true)] none head
+        | _, _ => match Ord.latticeFailure P with
+          | some (x, y, w) => err s!"not a lattice: {x} and {y} have no {w}"
+          | none => err "not a lattice"
+    | "complement", [p, a] =>
+      match getP p with
+      | .error m => err m
+      | .ok P => match getE P a, Ord.joinOp P, Ord.meetOp P, Ord.top P, Ord.bottom P with
+        | .error m, _, _, _, _ => err m
+        | .ok x, some J, some M, some t, some b =>
+          let cs := Ord.complementsOf J M t b x
+          done (Ord.setExpr cs) #[step "order.complement" s!"The $y$ with ${nm x} \\lor y = {nm t}$ and ${nm x} \\land y = {nm b}$." (Ord.elemExpr x) (Ord.setExpr cs)] none
+            (if cs.isEmpty then s!"{x} has no complement" else if cs.length == 1 then s!"one complement" else s!"{cs.length} complements")
+        | _, _, _, _, _ => err "complements need a lattice with a top and a bottom"
+    -- building and comparing orders
+    | "product", [p, q] =>
+      match getP p, getP q with
+      | .ok P, .ok Q =>
+        let R := Ord.product P Q
+        withPoset R #[step "order.product" "Pairs, ordered componentwise: $(a, c) \\le (b, d)$ when $a \\le b$ and $c \\le d$." (.fn "pair" [Ord.setExpr P.elems, Ord.setExpr Q.elems]) (Ord.posetExpr R)]
+          s!"a product of {P.elems.length} × {Q.elems.length} = {R.elems.length} elements"
+      | .error m, _ | _, .error m => err m
+    | "map", [.elem pn, .elem qn, .maps ps] =>
+      match getP (.elem pn), getP (.elem qn) with
+      | .ok P, .ok Q =>
+        let resolved : Except String (List (String × String)) := ps.mapM fun (a, b) => match Ord.findElem P.elems a, Ord.findElem Q.elems b with
+          | some a', some b' => Except.ok (a', b')
+          | none, _ => Except.error s!"{a} is not in {pn}"
+          | _, none => Except.error s!"{b} is not in {qn}"
+        match resolved with
+        | .error m => err m
+        | .ok tbl =>
+          match P.elems.find? fun x => (tbl.lookup x).isNone with
+          | some x => err s!"{x} has no value: a map from {pn} to {qn} lists every element of {pn}"
+          | none => done (Ord.setExpr (tbl.map fun (a, b) => s!"{a}↦{b}")) #[] none s!"a map from {pn} to {qn}" (bindF := some ⟨tbl⟩)
+      | .error m, _ | _, .error m => err m
+    | "monotone", [p, q, f] =>
+      match getP p, getP q, getF f with
+      | .ok P, .ok Q, .ok F => match Ord.monotoneFailure2 P Q F with
+        | none => done (bool true) #[step "order.monotone" "For every $x \\le y$, $f(x) \\le f(y)$: monotone." (Ord.setExpr P.elems) (bool true)] none "monotone"
+        | some (x, y) => done (bool false) #[step "order.monotone" s!"${nm x} \\le {nm y}$ but $f({nm x}) = {nm (F.apply x)} \\not\\le f({nm y}) = {nm (F.apply y)}$: not monotone." (Ord.setExpr [x, y]) (bool false)] none s!"not monotone at {x} ≤ {y}"
+      | .error m, _, _ | _, .error m, _ | _, _, .error m => err m
+    | "galois", [p, q, f, g] =>
+      match getP p, getP q, getF f, getF g with
+      | .ok P, .ok Q, .ok F, .ok G => match Ord.galoisFailure P Q F G with
+        | none => done (bool true) #[step "order.galois" "$f(x) \\le y \\iff x \\le g(y)$ for every $x$ and $y$: a Galois connection." (Ord.setExpr P.elems) (bool true)] none "a Galois connection"
+        | some (x, y) =>
+          let fx := F.apply x
+          let gy := G.apply y
+          let l := if Q.rel fx y then "\\le" else "\\not\\le"
+          let r := if P.rel x gy then "\\le" else "\\not\\le"
+          done (bool false) #[step "order.galois" s!"Not a Galois connection: $f({nm x}) = {nm fx} {l} {nm y}$ but ${nm x} {r} g({nm y}) = {nm gy}$." (Ord.setExpr [x, y]) (bool false)] none s!"not a Galois connection at {x}, {y}"
+      | .error m, _, _, _ | _, .error m, _, _ | _, _, .error m, _ | _, _, _, .error m => err m
+    | "closureop", [p, f] =>
+      match getP p, getF f with
+      | .ok P, .ok F => match Ord.closureOpFailure P F with
+        | none => done (bool true) #[step "order.closure-operator" "Extensive ($x \\le f(x)$), monotone and idempotent ($f(f(x)) = f(x)$): a closure operator." (Ord.setExpr P.elems) (bool true)] none "a closure operator"
+        | some (kind, x, y) =>
+          let why := match kind with
+            | "extensive" => s!"${nm x} \\not\\le f({nm x}) = {nm (F.apply x)}$"
+            | "monotone" => s!"${nm x} \\le {nm y}$ but $f({nm x}) = {nm (F.apply x)} \\not\\le f({nm y}) = {nm (F.apply y)}$"
+            | _ => s!"$f({nm x}) = {nm (F.apply x)}$ but $f(f({nm x})) = {nm (F.apply (F.apply x))}$"
+          done (bool false) #[step "order.closure-operator" s!"Not {kind}: {why}." (Ord.setExpr [x]) (bool false)] none s!"not a closure operator: not {kind}"
+      | .error m, _ | _, .error m => err m
+    -- formal concept analysis
+    | "context", [.set objs, .set attrs, .maps inc] =>
+      match inc.find? fun (o, a) => !objs.contains o || !attrs.contains a with
+      | some (o, a) => err s!"{o} -> {a}: {if objs.contains o then s!"{a} is not an attribute" else s!"{o} is not an object"}"
+      | none =>
+        let C : Ord.Ctx := ⟨objs.eraseDups, attrs.eraseDups, inc.eraseDups⟩
+        done (.fn "set" (C.inc.map Ord.pairExpr)) #[] none s!"a context: {C.objs.length} objects, {C.attrs.length} attributes" (bindC := some C) (context := some C)
+    | "concepts", [c] =>
+      match getC c with
+      | .error m => err m
+      | .ok C =>
+        let P := C.lattice
+        withPoset P #[step "order.concepts" s!"Each concept pairs a set of objects with a set of attributes: all the objects that have every one of the attributes, and all the attributes they share. Ordered by their objects: {P.elems.length} concepts, a complete lattice." (.fn "set" (C.inc.map Ord.pairExpr)) (Ord.posetExpr P)] s!"{P.elems.length} concepts"
+    -- information flow
+    | "secure", [p, r, .maps labels] =>
+      match getP p, getR r with
+      | .ok P, .ok R =>
+        let resolved : Except String (List (String × String)) := labels.mapM fun (x, c) => match Ord.findElem P.elems c with
+          | some c' => Except.ok (x, c')
+          | none => Except.error s!"{c} is not a class of the lattice"
+        match resolved with
+        | .error m => err m
+        | .ok lab =>
+          match R.elems.find? fun x => (lab.lookup x).isNone with
+          | some x => err s!"{x} has no class: label every variable"
+          | none =>
+            let L (x : String) : String := (lab.lookup x).getD x
+            match Ord.flowFailure P L R with
+            | none => done (bool true) #[step "order.flow" "Every flow goes from a class to one at least as high: no information flows down." (Ord.relExpr R) (bool true)] none "secure: every flow goes up" (graph := some (R, [], []))
+            | some (x, y) => done (bool false) #[step "order.flow" s!"Not secure: {x} flows to {y}, but the class of {x}, ${nm (L x)}$, is not below the class of {y}, ${nm (L y)}$." (Ord.relExpr R) (bool false)] none s!"insecure: {x} → {y} flows down" (graph := some (R, [(x, y)], []))
+      | .error m, _ | _, .error m => err m
     | h, _ => err s!"{h}: wrong arguments (see the reference)"
 
 /-- What a logic cell produced: its value (a formula, a truth value, or an assignment written as a

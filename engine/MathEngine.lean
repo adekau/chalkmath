@@ -15,6 +15,7 @@ import MathEngine.LambdaProofs
 import MathEngine.PosetProofs
 import MathEngine.LogicProofs
 import MathEngine.RelationProofs
+import MathEngine.AlgebraProofs
 import MathEngine.Json
 import MathEngine.Wire
 import MathEngine.Parser

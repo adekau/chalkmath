@@ -232,3 +232,50 @@ let D = divisors(12)	poset {1, 2, 3, 4, 6, 12}
 antisymmetric(D)	true
 preorder(D)	true
 rel({a, b}; a->z)	<error: a -> z mentions an element outside the set>
+let DO = op({na, permit, deny}; [na, permit, deny; permit, permit, deny; deny, deny, deny])	[na, permit, deny; permit, permit, deny; deny, deny, deny]
+semilattice(DO)	true
+identity(DO)	na
+fold(DO; permit, na, deny, permit)	deny
+let O = order(DO)	poset {na, permit, deny}
+let FA = op({na, permit, deny}; [na, permit, deny; permit, permit, permit; deny, deny, deny])	[na, permit, deny; permit, permit, permit; deny, deny, deny]
+commutative(FA)	false
+associative(FA)	true
+fold(FA; na, deny, permit)	deny
+let RPS = op({r, p, s}; [r, p, r; p, p, s; r, s, s])	[r, p, r; p, p, s; r, s, s]
+associative(RPS)	false
+order(RPS)	<error: the order needs a semilattice, and this operation is not associative: (r · p) · s = p · s = s, but r · (p · s) = r · s = r>
+op({a, b}; [a, b; a])	<error: row b has 1 entry, and it needs 2>
+op({a, b}; [a, z; b, b])	<error: z in the table is not in the set>
+let J = joinop(D)	[1, 2, 3, 4, 6, 12; 2, 2, 6, 4, 6, 12; 3, 6, 3, 12, 6, 12; 4, 4, 12, 4, 12, 12; 6, 6, 6, 12, 6, 12; 12, 12, 12, 12, 12, 12]
+idempotent(J)	true
+let M3 = poset({bot, a, b, c, top}; bot < a, bot < b, bot < c, a < top, b < top, c < top)	poset {bot, a, b, c, top}
+distributive(M3)	false
+complement(M3, a)	{b, c}
+let N5 = poset({bot, p, q, r, top}; bot < p, bot < q, q < r, p < top, r < top)	poset {bot, p, q, r, top}
+distributive(N5)	false
+complement(N5, r)	{p}
+boolean(D)	false
+let P2 = subsets({x, y})	poset {{}, {y}, {x}, {x,y}}
+boolean(P2)	true
+let Lv = poset({low, high}; low < high)	poset {low, high}
+let Cat = subsets({fin, hr})	poset {{}, {hr}, {fin}, {fin,hr}}
+let SC = product(Lv, Cat)	poset {(low, {}), (low, {hr}), (low, {fin}), (low, {fin,hr}), (high, {}), (high, {hr}), (high, {fin}), (high, {fin,hr})}
+join(SC, (low, {fin}), (high, {}))	(high, {fin})
+le(SC, (high, {}), (low, {fin}))	false
+let Fl = rel({salary, report, audit}; salary->report, report->audit)	{(salary, report), (report, audit)}
+secure(SC, Fl; salary->(high, {hr}), report->(high, {hr, fin}), audit->(low, {fin}))	false
+let C7 = chain(7)	poset {0, 1, 2, 3, 4, 5, 6}
+let C4 = chain(4)	poset {0, 1, 2, 3}
+let up = map(C7, C4; 0->0, 1->1, 2->1, 3->2, 4->2, 5->3, 6->3)	{0↦0, 1↦1, 2↦1, 3↦2, 4↦2, 5↦3, 6↦3}
+let dbl = map(C4, C7; 0->0, 1->2, 2->4, 3->6)	{0↦0, 1↦2, 2↦4, 3↦6}
+monotone(C7, C4, up)	true
+galois(C7, C4, up, dbl)	true
+let half = map(C4, C7; 0->0, 1->1, 2->2, 3->3)	{0↦0, 1↦1, 2↦2, 3↦3}
+galois(C7, C4, up, half)	false
+let cl = map(D; 3->6)	{3↦6}
+closureop(D, cl)	true
+let nc = map(D; 2->1)	{2↦1}
+closureop(D, nc)	false
+let A = context({duck, eagle, dog, bat}, {flies, mammal, bird}; duck->flies, duck->bird, eagle->flies, eagle->bird, dog->mammal, bat->flies, bat->mammal)	{(duck, flies), (duck, bird), (eagle, flies), (eagle, bird), (dog, mammal), (bat, flies), (bat, mammal)}
+concepts(A)	poset {({duck,eagle,dog,bat}, {}), ({duck,eagle,bat}, {flies}), ({dog,bat}, {mammal}), ({bat}, {flies,mammal}), ({duck,eagle}, {flies,bird}), ({}, {flies,mammal,bird})}
+map(C7, C4; 0->0)	<error: 1 has no value: a map from C7 to C4 lists every element of C7>

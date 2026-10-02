@@ -82,6 +82,22 @@ the engine omits is unverified.
 \rt{rel.finer}{verified}{Every pair of the first checked in the second.}
 \rt{rel.wellfounded}{unverified}{On a finite set a relation is well-founded exactly when it has no cycle. A cycle found is shown and can be read off the relation; that the search finds one whenever there is one is not yet proved.}
 \rt{rel.measure}{verified}{Every step checked to decrease the measure, by definition; on a finite set a measure that goes down along every step leaves no room for a cycle.}
+\midrule \multicolumn{3}{l}{\textbf{Finite algebra (order world)}} \\
+\rt{alg.from-order}{verified}{Each entry is the join (or meet) of its pair, found by the search that \lc{sup_spec} proves least; by definition a table.}
+\rt{alg.associative}{verified}{Every triple checked; when none fails the law holds on the whole set (\lc{assocFailure_none}).}
+\rt{alg.commutative}{verified}{Every pair checked (\lc{commFailure_none}).}
+\rt{alg.idempotent}{verified}{Every element checked (\lc{idemFailure_none}); with the two laws above, a semilattice (\lc{isSemilattice_of_none}).}
+\rt{alg.identity}{verified}{An element checked against every element on both sides, by definition.}
+\rt{alg.fold}{verified}{Each step is one entry of the table, by definition of a left fold.}
+\rt{alg.order}{verified}{$x \le y \iff x \cdot y = y$ is a partial order in which $x \cdot y$ is the least upper bound, for a semilattice whose table stays in its set (\lc{semilattice_order}); the laws are checked first and the entries when the table is made.}
+\rt{order.distributive}{verified}{Every triple checked for $x \land (y \lor z) = (x \land y) \lor (x \land z)$ (\lc{distribFailure_none}).}
+\rt{order.complement}{verified}{Every element checked for $x \lor y = \top$ and $x \land y = \bot$, by definition.}
+\rt{order.boolean}{verified}{Distributive and complemented, each checked: the definition of a Boolean lattice.}
+\rt{order.product}{verified}{Pairs ordered componentwise, by definition: the order is the product of the two orders.}
+\rt{order.galois}{verified}{Every pair $(x, y)$ checked for $f(x) \le y \iff x \le g(y)$ (\lc{galoisFailure_none}).}
+\rt{order.closure-operator}{verified}{Extensive, monotone and idempotent, each checked on every element or pair (\lc{closureOpFailure_none}).}
+\rt{order.concepts}{unverified}{Each concept's objects are an intersection of attribute extents, and its attributes are those the objects share; that every concept is found, and that each pair is closed, is not yet proved.}
+\rt{order.flow}{verified}{Every flow checked against the order of the classes (\lc{flowFailure_none}).}
 \midrule \multicolumn{3}{l}{\textbf{Logic world}} \\
 \rt{logic.implication}{verified}{$a \to b$ and $\lnot a \lor b$ have the same value under every assignment, and the pass that applies it everywhere keeps the formula's value (\lc{arrows_sound}).}
 \rt{logic.biconditional}{verified}{$a \leftrightarrow b$ and $(a \to b) \land (b \to a)$ have the same value under every assignment; the pass keeps the formula's value (\lc{arrows_sound}).}
