@@ -8,8 +8,8 @@
 // Then the notebook's teaching features, in a notebook of their own: a cell out of date when a name it
 // read changes, a slider driving the cells below it, work stepped through with the answer held back,
 // an exercise written in its editor and answered (wrong, right, and with the work), a Markdown
-// callout, a function's usage on hover, and a course's lesson opened from the Courses tab, answered,
-// and followed to the next. Each is held to the engine's own answers through a client of the test's.
+// callout, a function's usage on hover, a slider played down (h → 0) animating the plot below it with
+// its axes held, and a course's lesson opened from the Courses tab, answered, and followed to the next. Each is held to the engine's own answers through a client of the test's.
 // Chromium: playwright-core's own, or the executable named by CHROMIUM. The engine: MATHENGINE, or
 // engine/.lake/build/bin/mathengine.
 import { chromium } from "playwright-core";
@@ -107,6 +107,54 @@ const menu = async (m, item) => { await page.locator(".menus span", { hasText: m
 /** The engine's own answer, in a session of the test's that follows the notebook's. */
 const ref = (source, k) => reference.call("engine.evaluate", { sessionId: "e2e-features", cellId: `f${k}`, source, paths: true });
 
+/** An animated graph, in a notebook of its own: a slider set to play down, played, and the plot below
+ *  it following every frame to the engine's last answer, with the axes it had when the play began. */
+async function animatedGraph() {
+  await menu("File", "New notebook");
+  await run(0, "let h = 2"); await out(0);
+  const line = "1 + (2 + h)*(x - 1)";
+  await run(1, `plot([x^2, ${line}], x, -0.5, 3)`);
+  await page.locator(".cell .plotbox svg").first().waitFor({ timeout: 30000 });
+  const svg = all().nth(1).locator(".plotbox svg");
+  const ticks = () => svg.locator("text.tl.r").allTextContents();
+  const before = await ticks();
+  await cellMenu(0, "Show as a slider");
+  // the range: from 0.5 to 2 in steps of 0.5, played down (each change redraws the row)
+  for (const [k, v] of [[0, "0.5"], [1, "2"], [2, "0.5"]]) {
+    await all().nth(0).locator(".sliderrow .sliderbtn", { hasText: "range" }).click();
+    const inp = all().nth(0).locator(".sliderrange input[type=number]").nth(k);
+    await inp.fill(v); await inp.dispatchEvent("change");
+  }
+  await all().nth(0).locator(".sliderrow .sliderbtn", { hasText: "range" }).click();
+  await all().nth(0).locator(".sliderrange select").selectOption("down");
+  const play = all().nth(0).locator(".sliderrow .sliderplay");
+  assert.equal((await play.textContent()).trim(), "▶ Play", "the slider has no ▶ Play");
+  await play.click();
+  await all().nth(0).locator(".sliderrow .sliderplay.on").waitFor({ timeout: 5000 });
+  await page.waitForFunction(() => {
+    const c = document.querySelectorAll(".cell")[0];
+    return c.querySelector("input.cellin")?.value === "let h = 0.5" && !c.querySelector(".sliderplay.on");
+  }, null, { timeout: 30000 });
+  assert.equal(await all().nth(0).locator(".sliderrow .sliderval").textContent(), "0.5", "the slider shows where the play ended");
+  await reference.call("engine.evaluate", { sessionId: "e2e-play", cellId: "h", source: "let h = 0.5" });
+  const want = await reference.call("engine.plot", { sessionId: "e2e-play", cellId: "p", source: `plot([x^2, ${line}], x, -0.5, 3)` });
+  const label = `Plot of ${want.series.map((s) => s.rendered.text).join(" and ")}`;
+  await page.waitForFunction(([want]) => {
+    const c = document.querySelectorAll(".cell")[1];
+    return !c.classList.contains("running") && c.querySelector(".plotbox svg")?.getAttribute("aria-label")?.startsWith(want);
+  }, [label], { timeout: 30000 }).catch(async () => {
+    assert.fail(`the plot shows ${JSON.stringify(await svg.getAttribute("aria-label"))}, not the engine's ${JSON.stringify(label)}`);
+  });
+  assert.deepEqual(await ticks(), before, "the plot's axes moved while the slider played");
+  // the plot's own run fits its window to its curves again
+  await cellMenu(1, "Run this and below");
+  await page.waitForFunction((b) => {
+    const t = [...document.querySelectorAll(".cell")[1].querySelectorAll(".plotbox svg text.tl.r")].map((e) => e.textContent);
+    return t.length && JSON.stringify(t) !== b;
+  }, JSON.stringify(before), { timeout: 30000 });
+  console.log("✓ animated graph: h played down from 2 to 0.5, the plot followed with its axes held, then refitted");
+}
+
 /** The teaching features, in a fresh notebook, then a course. */
 async function features() {
   await menu("File", "New notebook");
@@ -196,6 +244,7 @@ async function features() {
   await page.locator(".usagetip .umore", { hasText: "subst" }).waitFor({ timeout: 5000 });
   await page.mouse.move(5, 5);
   console.log("✓ usage on hover: subst");
+  await animatedGraph();
   // a course: the Courses tab, a lesson opened, answered, and followed to the next
   const manifest = JSON.parse(readFileSync(path.join(root, "notebooks/courses.json"), "utf8"));
   const course = manifest.projects.find((p) => p.kind === "course");

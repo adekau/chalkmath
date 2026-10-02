@@ -21,6 +21,7 @@ import katex from "katex";
 import { ASK_CELL, AskError, askSettings, setAskSettings, runLookup, askSource, savedAsk, backendStatus, ollamaModels, openrouterModels, signInOpenRouter, testModel, WEBGPU_MODELS, type AskResult, type AskSettings } from "./ask-cells.js";
 import { fileCellOf, resolveFiles, importsIn, partContext, partHelp, fileExprValue, svgPoints, kindOf, tableOf, jsonOf, jsonTable, numericColumns, fileText, fileSize, fmtSize, mimeLabel, mimeFor, dataUrl, fileFromBytes, helpersFor, type FileValue, type FileRef, type FileScope, type Table } from "./files.js";
 import { dataGrid, matrixEntries } from "./datagrid.js";
+import { sliderNum, playFrames, frameMs, plotYRange, holdWindow, type SliderRange } from "./animate.js";
 import { DOC_PAGES, type DocPage, type DocPart } from "./docs.js";
 import { FUNCTIONS, FN_BY_NAME, AREAS, fnPage, evaluable, type FnDoc, type ExampleSection } from "./reference.js";
 import { ensureLean, syncLean, mountLean, unmountLean, focusLean, setLeanDark, infoview as leanInfoview, leanState, leanFailure, leanProgress, initLeanIsolation, type LeanMessage } from "./lean-cells.js";
@@ -167,6 +168,8 @@ interface Cell {
   /** The syntax-highlight overlay under the input (presentation). */
   hl?: HTMLElement;
   plot?: PlotData;
+  /** The vertical window a plot keeps while a slider drives it (not saved; a run of its own lets go). */
+  yHold?: [number, number];
   /** A file-valued cell (`import("url")`, `⟦name⟧`, or `let x =` one of them): the file it shows,
    *  by what it is. The engine never sees it; the contents are the attachment's or the import's. */
   file?: FileMeta;
@@ -218,9 +221,9 @@ interface Cell {
    *  cell run with another source starts again from `stepwise`. */
   revealed?: number;
   revealedFor?: string;
-  /** A `let name = number` cell shown as a slider: its range. Moving it rebinds the name and runs the
-   *  cells that read it (saved). */
-  slider?: { min: number; max: number; step: number };
+  /** A `let name = number` cell shown as a slider: its range, and which way ▶ Play moves it. Moving
+   *  it rebinds the name and runs the cells that read it (saved). */
+  slider?: SliderRange;
   /** The notebook's names this cell read when it last ran, each with the version of its value then
    *  (`BIND_VER`); a name whose value has changed since makes the cell out of date (not saved). */
   deps?: Map<string, number>;
@@ -585,6 +588,9 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
   renderChrome(); renderCellBody(cell);
   const t0 = performance.now();
   const isPlot = /^\s*(plot|epicycles|dft)\s*\(/.test(src);
+  // a plot a slider drives keeps its window, widened when a curve leaves it; a run of its own lets go
+  const driven = DRIVEN.has(cell);
+  if (!driven) delete cell.yHold;
   log("rpc", `${isPlot ? "engine.plot" : "engine.evaluate"} ${JSON.stringify(src)}`);
   try {
     // a question is looked up first (or its saved answer reused); the engine evaluates the answer
@@ -654,9 +660,14 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
       delete cell.error;
       // this output is a number: a file that had its label before a restart no longer does
       if (r.label) { LAST_LABEL.set(sessionId, r.label); FILE_OUTS.delete(`${sessionId}:${r.label}`); }
-      delete cell.plot; delete cell.outDeBruijn; delete cell.reading; delete cell.kind; delete cell.hasse; delete cell.summary;
+      const held = driven ? cell.yHold ?? (cell.plot ? plotYRange(cell.plot) : null) : null;
+      delete cell.plot; delete cell.outDeBruijn; delete cell.reading; delete cell.kind; delete cell.hasse; delete cell.summary; delete cell.yHold;
       if ("kind" in r && r.kind === "poset") { cell.kind = "order"; cell.hasse = r.hasse; cell.summary = r.summary; }
-      if ("kind" in r && r.kind === "plot") cell.plot = plotDataOf(r);
+      if ("kind" in r && r.kind === "plot") {
+        cell.plot = plotDataOf(r);
+        const w = driven ? holdWindow(held, cell.plot) : null;
+        if (w) cell.yHold = w;
+      }
       if ("kind" in r && r.kind === "lambda") { cell.outDeBruijn = r.renderedDeBruijn?.latex; cell.reading = r.reading; cell.kind = "λ-term"; }
       log("ok", `Out[${cell.label}] ${r.rendered.text}  (${cell.ms.toFixed(1)} ms, ${(cell.outline ?? cell.steps).length} steps)`);
       announce(`Out ${cell.label}: ${r.rendered.text}`);
@@ -1024,7 +1035,7 @@ function renderTabs() {
 interface ChalkFile {
   /** Format version. Files written as `.lemma` before the rename carry `lemma: 1` instead and still open. */
   chalk?: 1; lemma?: 1; name: string;
-  cells: { src: string; type?: Cell["type"] | undefined; collapsed?: boolean | undefined; showWork: boolean; stepwise?: number | undefined; prompt?: string | undefined; hints?: string[] | undefined; hideQuestion?: boolean | undefined; attempt?: string | undefined; hintsShown?: number | undefined; verdict?: Verdict | undefined; solution?: boolean | undefined; slider?: { min: number; max: number; step: number } | undefined; label: number | null; outLatex?: string | undefined; outText?: string | undefined; form?: string | undefined; semantics?: "real" | "complex" | undefined; echoLatex?: string | undefined; steps?: Step[] | undefined; outline?: StepOutline[] | undefined; error?: Cell["error"] | undefined; plot?: PlotData | undefined; mode?: Cell["mode"] | undefined; ask?: AskResult | undefined; file?: FileMeta | undefined; noSuggest?: true | undefined }[];
+  cells: { src: string; type?: Cell["type"] | undefined; collapsed?: boolean | undefined; showWork: boolean; stepwise?: number | undefined; prompt?: string | undefined; hints?: string[] | undefined; hideQuestion?: boolean | undefined; attempt?: string | undefined; hintsShown?: number | undefined; verdict?: Verdict | undefined; solution?: boolean | undefined; slider?: SliderRange | undefined; label: number | null; outLatex?: string | undefined; outText?: string | undefined; form?: string | undefined; semantics?: "real" | "complex" | undefined; echoLatex?: string | undefined; steps?: Step[] | undefined; outline?: StepOutline[] | undefined; error?: Cell["error"] | undefined; plot?: PlotData | undefined; mode?: Cell["mode"] | undefined; ask?: AskResult | undefined; file?: FileMeta | undefined; noSuggest?: true | undefined }[];
   scenes: Scene[];
   /** Images attached to the notebook, by name. */
   assets?: Record<string, Asset>;
@@ -1143,7 +1154,7 @@ function cellsFromFile(doc: ChalkFile, foldWork = false): Cell[] {
     if (c.mode === "raw" || c.mode === "visual") cell.mode = c.mode;
     if (c.noSuggest) cell.noSuggest = true;
     const sl = c.slider;
-    if (sl && [sl.min, sl.max, sl.step].every((x) => typeof x === "number" && isFinite(x)) && sl.max > sl.min && sl.step > 0) cell.slider = { min: sl.min, max: sl.max, step: sl.step };
+    if (sl && [sl.min, sl.max, sl.step].every((x) => typeof x === "number" && isFinite(x)) && sl.max > sl.min && sl.step > 0) cell.slider = { min: sl.min, max: sl.max, step: sl.step, ...(sl.play === "down" ? { play: "down" as const } : {}) };
     const ask = savedAsk(c.ask);
     if (ask) cell.ask = ask;
     return cell;
@@ -1171,7 +1182,9 @@ function sectionOf(i: number): number {
 // --- Sliders: `let n = 3` as a control -----------------------------------------------------------
 // Moving the slider rewrites the cell's number, runs it, and runs the cells below that are out of
 // date because of it (and so on down: a cell they bind may make another out of date). Runs do not
-// pile up behind a drag: while one is under way only the latest position waits.
+// pile up behind a drag: while one is under way only the latest position waits. ▶ Play moves the
+// slider itself, a frame at a time, each frame waiting for the runs it starts: an animated graph is
+// a plot below a played slider. A plot a slider drives keeps its window (animate.ts).
 
 /** A cell a slider can drive: `let name = number`. */
 const SLIDER_SRC = /^\s*let\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(-?\d+(?:\.\d+)?)\s*$/;
@@ -1191,11 +1204,6 @@ function toggleSlider(cell: Cell) {
   }
   renderCells(); autosave();
 }
-/** A number as the slider writes it: no float noise from the step arithmetic. */
-const sliderNum = (x: number, step: number) => {
-  const d = Math.max(0, -Math.floor(Math.log10(step) + 1e-9));
-  return Number(x.toFixed(Math.min(10, d)));
-};
 /** Sliders whose cell is running, and the position each waits to run next. */
 const SLIDING = new WeakMap<Cell, number | null>();
 async function slideTo(cell: Cell, v: number) {
@@ -1207,20 +1215,60 @@ async function slideTo(cell: Cell, v: number) {
   try {
     for (;;) {
       await runCell(cell);
-      await runOutOfDateBelow(cell);
+      await runOutOfDateBelow(cell, true);
       const next = SLIDING.get(cell);
       if (next === null || next === undefined) break;
       SLIDING.set(cell, null);
     }
   } finally { SLIDING.delete(cell); }
 }
-/** Run, in order, the cells below `cell` that are out of date. */
-async function runOutOfDateBelow(cell: Cell) {
+/** Cells being run because a slider moved: a plot among them keeps its window. */
+const DRIVEN = new WeakSet<Cell>();
+/** Run, in order, the cells below `cell` that are out of date; `driven`, because its slider moved. */
+async function runOutOfDateBelow(cell: Cell, driven = false) {
   const d = docOf(cell), gen = runGen;
   for (const c of S.cells.slice(S.cells.indexOf(cell) + 1)) {
     if (gen !== runGen || (d && !S.docs.includes(d))) return;
-    if (staleNames(c).length) await runCell(c);
+    if (!staleNames(c).length) continue;
+    if (driven) DRIVEN.add(c);
+    try { await runCell(c); } finally { DRIVEN.delete(c); }
   }
+}
+/** Sliders playing, each with its stop switch. */
+const PLAYING = new WeakMap<Cell, { stop: boolean }>();
+/** ▶ Play: move the slider through its range toward the end it plays to, one frame at a time, each
+ *  frame held until the cells it makes out of date have run. Again (❚❚) stops it, as does taking hold
+ *  of the slider, editing the cell, or closing its notebook. */
+async function playSlider(cell: Cell) {
+  const playing = PLAYING.get(cell);
+  if (playing) { playing.stop = true; return; }
+  const m = SLIDER_SRC.exec(cellSrc(cell)); if (!m || !cell.slider) return;
+  const run = { stop: false };
+  PLAYING.set(cell, run); showPlaying(cell);
+  const frames = playFrames(cell.slider, Number(m[2])), hold = frameMs(frames.length), gen = runGen;
+  let wrote = cellSrc(cell);   // what the cell says unless the reader has edited it meanwhile
+  try {
+    for (const v of frames) {
+      if (run.stop || gen !== runGen || !docOf(cell) || cellSrc(cell) !== wrote) break;
+      const t0 = performance.now();
+      const range = cell.el?.querySelector<HTMLInputElement>(".sliderrow input[type=range]");
+      if (range) range.value = String(v);
+      const val = cell.el?.querySelector(".sliderrow .sliderval");
+      if (val) val.textContent = String(v);
+      await slideTo(cell, v);
+      wrote = `let ${m[1]} = ${v}`;
+      const rest = hold - (performance.now() - t0);
+      if (rest > 0 && !run.stop) await new Promise((r) => setTimeout(r, rest));
+    }
+  } finally { PLAYING.delete(cell); showPlaying(cell); }
+}
+/** The play button's face: ▶ Play, or ❚❚ Pause while the slider plays. */
+function showPlaying(cell: Cell, b = cell.el?.querySelector<HTMLElement>(".sliderrow .sliderplay")) {
+  if (!b) return;
+  const on = PLAYING.has(cell);
+  b.textContent = on ? "❚❚ Pause" : "▶ Play";
+  b.setAttribute("aria-label", on ? "Pause the slider" : "Play the slider");
+  b.classList.toggle("on", on);
 }
 /** The slider under a `let name = number` cell: the control, its value, and its range to edit. */
 function sliderRow(cell: Cell): HTMLElement {
@@ -1231,7 +1279,10 @@ function sliderRow(cell: Cell): HTMLElement {
   range.type = "range"; range.min = String(sl.min); range.max = String(sl.max); range.step = String(sl.step); range.value = m[2]!;
   range.setAttribute("aria-label", m[1]!);
   const val = h("span", "sliderval", m[2]!);
-  range.addEventListener("input", () => { const v = sliderNum(Number(range.value), sl.step); val.textContent = String(v); void slideTo(cell, v); });
+  range.addEventListener("input", () => {
+    const p = PLAYING.get(cell); if (p) p.stop = true;   // taking hold of the slider stops a play
+    const v = sliderNum(Number(range.value), sl.step, sl.min); val.textContent = String(v); void slideTo(cell, v);
+  });
   range.addEventListener("focus", () => { const i = S.cells.indexOf(cell); if (S.active !== i) { S.active = i; renderChrome(); renderSidebar(); markActive(); } });
   const edit = h("span", "sliderrange");
   edit.hidden = true;
@@ -1246,11 +1297,24 @@ function sliderRow(cell: Cell): HTMLElement {
     l.append(document.createTextNode(label), inp);
     return l;
   };
-  edit.append(num("from ", "min"), num("to ", "max"), num("step ", "step"));
+  // which way ▶ Play goes: up toward "to", or down toward "from" (h → 0)
+  const dir = h("label"); const sel = document.createElement("select");
+  for (const [v, t] of [["up", "up"], ["down", "down"]] as const) { const o = document.createElement("option"); o.value = v; o.textContent = t; sel.append(o); }
+  sel.value = sl.play ?? "up";
+  sel.addEventListener("change", () => {
+    const next: SliderRange = { min: sl.min, max: sl.max, step: sl.step, ...(sel.value === "down" ? { play: "down" as const } : {}) };
+    cell.slider = next; autosave(); renderCells();
+  });
+  dir.append(document.createTextNode("play "), sel);
+  edit.append(num("from ", "min"), num("to ", "max"), num("step ", "step"), dir);
+  const play = asButton(h("span", "sliderbtn sliderplay"));
+  play.title = `Play: move ${m[1]} ${sl.play === "down" ? "down to" : "up to"} ${sl.play === "down" ? sl.min : sl.max} a step at a time, running the cells that use it`;
+  play.addEventListener("click", () => void playSlider(cell));
   const gear = asButton(h("span", "sliderbtn", "range"), "Change the slider's range");
   gear.title = "Change the slider's range and step";
   gear.addEventListener("click", () => { edit.hidden = !edit.hidden; });
-  row.append(h("code", "slidername", m[1]!), range, val, gear, edit);
+  showPlaying(cell, play);
+  row.append(h("code", "slidername", m[1]!), range, val, play, gear, edit);
   return row;
 }
 
@@ -1696,7 +1760,7 @@ function importNotebook() {
 
 /** What a link carries: the name and every cell's text and kind. Outputs are not included: the
  *  engine recomputes them when the link opens, which is the point of a verified notebook. */
-interface LinkDoc { v: 1; n: string; c: { s: string; t?: "markdown" | "section" | "lean" | "exercise"; w?: 1; f?: 1; r?: number; p?: string; hs?: string[]; hq?: 1; sl?: [number, number, number] }[]; a?: Record<string, { m: string; d: string; b?: 1 }> }
+interface LinkDoc { v: 1; n: string; c: { s: string; t?: "markdown" | "section" | "lean" | "exercise"; w?: 1; f?: 1; r?: number; p?: string; hs?: string[]; hq?: 1; sl?: [number, number, number] | [number, number, number, "down"] }[]; a?: Record<string, { m: string; d: string; b?: 1 }> }
 
 async function deflate(text: string): Promise<Uint8Array> {
   const cs = new CompressionStream("deflate-raw");
@@ -1724,7 +1788,7 @@ async function notebookLink(): Promise<string> {
     v: 1, n: S.docName,
     c: S.cells.filter((c) => cellSrc(c).trim()).map((c) => ({ s: cellSrc(c), ...(c.type ? { t: c.type } : {}), ...(c.showWork ? { w: 1 as const } : {}), ...(c.collapsed ? { f: 1 as const } : {}), ...(c.stepwise !== undefined ? { r: c.stepwise } : {}),
       ...(c.prompt ? { p: c.prompt } : {}), ...(c.hints?.length ? { hs: c.hints } : {}), ...(c.hideQuestion ? { hq: 1 as const } : {}),
-      ...(c.slider ? { sl: [c.slider.min, c.slider.max, c.slider.step] as [number, number, number] } : {}) })),
+      ...(c.slider ? { sl: c.slider.play === "down" ? [c.slider.min, c.slider.max, c.slider.step, "down"] as [number, number, number, "down"] : [c.slider.min, c.slider.max, c.slider.step] as [number, number, number] } : {}) })),
     ...(Object.keys(S.assets).length ? { a: Object.fromEntries(Object.values(S.assets).map((a) => [a.name, { m: a.mime, d: a.data, ...(a.binary ? { b: 1 as const } : {}) }])) } : {}),
   };
   const json = JSON.stringify(doc);
@@ -1753,7 +1817,7 @@ async function openNotebookLink(hash: string): Promise<boolean> {
       chalk: 1, name: doc.n || "shared.chalk",
       cells: doc.c.map((c) => ({ src: String(c.s ?? ""), type: c.t === "markdown" || c.t === "section" || c.t === "lean" || c.t === "exercise" ? c.t : undefined, collapsed: c.f ? true : undefined, showWork: !!c.w, stepwise: typeof c.r === "number" ? c.r : undefined,
         prompt: typeof c.p === "string" ? c.p : undefined, hints: Array.isArray(c.hs) ? c.hs.map(String) : undefined, hideQuestion: c.hq ? true : undefined,
-        slider: Array.isArray(c.sl) && c.sl.length === 3 ? { min: Number(c.sl[0]), max: Number(c.sl[1]), step: Number(c.sl[2]) } : undefined, label: null })),
+        slider: Array.isArray(c.sl) && c.sl.length >= 3 ? { min: Number(c.sl[0]), max: Number(c.sl[1]), step: Number(c.sl[2]), ...(c.sl[3] === "down" ? { play: "down" as const } : {}) } : undefined, label: null })),
       scenes: [],
       ...(doc.a ? { assets: Object.fromEntries(Object.entries(doc.a).map(([name, a]) => [name, { name, mime: String(a.m), data: String(a.d), ...(a.b ? { binary: true } : {}) }])) } : {}),
     };
@@ -2526,8 +2590,9 @@ function renderSidebar() {
 /** Draw sampled points: axes through the origin when in range, a few labelled ticks, the curve
  *  broken wherever the engine reported no finite value. `frac` draws the first part of the curve
  *  (the studio animates it). A parametric (complex-valued) plot is drawn in the plane with equal
- *  scales on the axes, so a circle is a circle. `t01` in [0, 1] adds the epicycles at that phase. */
-function plotSvg(p: PlotData, w: number, hgt: number, frac = 1, t01?: number): SVGSVGElement {
+ *  scales on the axes, so a circle is a circle. `t01` in [0, 1] adds the epicycles at that phase.
+ *  `yWin` is a window a graph keeps instead of its own (while a slider drives it). */
+function plotSvg(p: PlotData, w: number, hgt: number, frac = 1, t01?: number, yWin?: [number, number]): SVGSVGElement {
   const NS = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(NS, "svg");
   svg.setAttribute("viewBox", `0 0 ${w} ${hgt}`); svg.setAttribute("width", String(w)); svg.setAttribute("height", String(hgt));
@@ -2535,15 +2600,7 @@ function plotSvg(p: PlotData, w: number, hgt: number, frac = 1, t01?: number): S
   svg.setAttribute("aria-label", p.terms?.length ? `Epicycles: ${p.terms.length} circles drawing ${p.series.map((c) => c.text).join(", ")}`
     : `Plot of ${p.series.map((c) => c.text).join(" and ")} for ${p.var} from ${p.from} to ${p.to}`);
   const parametric = p.series.some((s) => s.parametric);
-  const ys = p.series.flatMap((s) => s.points.map((q) => q[1])).filter((y): y is number => y !== null).sort((a, b) => a - b);
-  let y0 = -1, y1 = 1, x0 = p.from, x1 = p.to;
-  if (ys.length) {
-    // trim the tails so an asymptote does not flatten the rest
-    const lo = ys[Math.floor(ys.length * 0.02)]!, hi = ys[Math.ceil(ys.length * 0.98) - 1]!;
-    y0 = Math.min(lo, 0); y1 = Math.max(hi, 0);
-    if (y1 - y0 < 1e-9) { y0 -= 1; y1 += 1; }
-    const pad = (y1 - y0) * 0.08; y0 -= pad; y1 += pad;
-  }
+  let [y0, y1] = !parametric && yWin ? yWin : plotYRange(p), x0 = p.from, x1 = p.to;
   if (parametric) {
     // the x range is the real parts', and both axes share one scale; the epicycles' reach counts too —
     // measured, not the sum of all radii (a worst case a llama of 60 circles never comes near)
@@ -3734,7 +3791,7 @@ function renderCellBody(cell: Cell) {
     } else if (cell.plot) {
       const epi = !!cell.plot.terms?.length;
       const box = epi ? epicycleBox(cell.plot, 520, 320) : h("div", "plotbox");
-      if (!epi) box.append(plotSvg(cell.plot, 520, cell.plot.series.some((s) => s.parametric) ? 320 : 240));
+      if (!epi) box.append(plotSvg(cell.plot, 520, cell.plot.series.some((s) => s.parametric) ? 320 : 240, 1, undefined, cell.yHold));
       const cap = h("div", "plotcap");
       if (epi) {
         const terms = cell.plot.terms!;
