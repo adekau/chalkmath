@@ -363,6 +363,25 @@ export const FUNCTIONS: FnDoc[] = [
     ref: "https://mathworld.wolfram.com/VectorNorm.html",
   },
 
+  {
+    name: "entrywise", title: "./ and .* (entrywise)", area: "Linear algebra", notation: true,
+    usage: [
+      ["A ./ B", "divides entry by entry: entry (i, j) is aᵢⱼ/bᵢⱼ."],
+      ["A .* B", "multiplies entry by entry (the Hadamard product): entry (i, j) is aᵢⱼ·bᵢⱼ."],
+    ],
+    details: [
+      "MATLAB's entrywise operators. The two matrices must have the same shape; a number on either side meets every entry.",
+      "Plain `/` and `*` keep their matrix meaning: `A / B` is `A·B⁻¹` and `A * B` is the matrix product, so `[1, 2] / [3, 10]` is an error while `[1, 2] ./ [3, 10]` is `[1/3, 1/5]`.",
+      "They bind like a product and group to the left: `a ./ b ./ c` is `(a ./ b) ./ c`.",
+      "Each entry's arithmetic shows as its own steps under one `la.entrywise` step.",
+    ],
+    examples: [
+      basic("[1, 2] ./ [3, 10]", "[1, 2; 3, 4] .* [5, 6; 7, 8]"),
+      section("Scope", "[2, 4] ./ 2", "1 ./ [2, 4]", "[x, y] .* [2, 3]"),
+    ],
+    see: ["dot", "transpose"],
+  },
+
   // --- Lists, tables and files -----------------------------------------------------------------
   {
     name: "part", title: "[[ ]] (part)", area: "Lists, tables and files", notation: true,

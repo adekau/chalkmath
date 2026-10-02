@@ -176,6 +176,35 @@ def laConj : PlainRule :=
         some ⟨.matrix (rows.map fun r => r.map fun a => .fn "conj" [a]), "The conjugate of a matrix is taken entrywise.", none, none⟩
       | _ => none }
 
+/-- `a ./ b` and `a .* b`, MATLAB's entrywise operators (the parser's `ediv` and `emul`): two matrices
+of the same shape combine entry by entry, and a scalar on either side meets every entry. Plain `/`
+and `*` keep their linear-algebra meaning: `A / B` is `A·B⁻¹` and `A * B` the matrix product. -/
+def entrywise (what sym : String) (f : Expr → Expr → Expr) (a b : Expr) : RuleResult :=
+  match a, b with
+  | .matrix x, .matrix y =>
+    let (r, c) := dims x
+    let (r', c') := dims y
+    if (r', c') != (r, c) then refuse s!"entrywise {what}: dimension mismatch ({r}×{c} and {r'}×{c'})"
+    else ⟨.matrix ((List.range r).map fun i => (List.range c).map fun j => f (entry x i j) (entry y i j)),
+      s!"Entrywise {what} ({sym}): entry $(i,j)$ of the result comes from entry $(i,j)$ of each side alone.", none, none⟩
+  | .matrix x, s => ⟨.matrix (x.map (·.map (f · s))), s!"Entrywise {what} ({sym}) by a scalar: every entry meets ${s.toText}$.", none, none⟩
+  | s, .matrix y => ⟨.matrix (y.map (·.map (f s ·))), s!"Entrywise {what} ({sym}) of a scalar: ${s.toText}$ meets every entry.", none, none⟩
+  | _, _ => refuse s!"{sym} works entry by entry on matrices; between scalars use {if sym == "./" then "/" else "*"}"
+
+/-- `a ./ b`: entry `(i, j)` is `aᵢⱼ / bᵢⱼ`. -/
+def laEdiv : PlainRule :=
+  { name := "la.ediv", apply := fun e => Option.map (checkedLit e) <|
+      match e with
+      | .fn "ediv" [a, b] => some (entrywise "division" "./" Expr.div a b)
+      | _ => none }
+
+/-- `a .* b`: entry `(i, j)` is `aᵢⱼ · bᵢⱼ`, the Hadamard product. -/
+def laEmul : PlainRule :=
+  { name := "la.emul", apply := fun e => Option.map (checkedLit e) <|
+      match e with
+      | .fn "emul" [a, b] => some (entrywise "multiplication" ".*" (fun x y => .mul [x, y]) a b)
+      | _ => none }
+
 /-! ## Part: `m[[i, j]]`, Mathematica's indexing
 
 Counting from 1, a negative index from the end (`-1` is the last), `All`, spans `a;;b;;s` (both
@@ -437,7 +466,7 @@ def statRule (st : Stat) : PlainRule :=
 
 def statRules : List PlainRule := stats.map statRule
 
-def matrixRules : List PlainRule := [laAdd, laScalarMul, laMul, laTranspose, laDet, laPow, laDot, laNorm, laConj, laPart] ++ statRules
+def matrixRules : List PlainRule := [laAdd, laScalarMul, laMul, laTranspose, laDet, laPow, laDot, laNorm, laConj, laEdiv, laEmul, laPart] ++ statRules
 
 /-- The catch-all: a matrix literal anywhere no rule above handles it is an error, not junk. -/
 def laContext : PlainRule :=

@@ -28,7 +28,9 @@ differential test with zero mismatches.
 ## 3. The engine
 
 - `Expr` is deliberately small (`num var add mul pow fn matrix`). Subtraction, division and
-  negation are derived forms; the printer recovers the notation. Fewer node kinds means fewer
+  negation are derived forms; the printer recovers the notation. Operators with no node of their
+  own are calls: MATLAB's entrywise `A ./ B` and `A .* B` parse to `ediv(A, B)` and `emul(A, B)`
+  (`la.ediv`, `la.emul`), so `/` and `*` keep their matrix meaning, `A·B⁻¹` and the product. Fewer node kinds means fewer
   rewrite rules and fewer proof cases.
 - **Numbers.** `Q` wraps core Lean's `Rat` (normalized by construction) plus a presentation-only
   "approximate" flag. Mathlib's `ℚ` *is* that `Rat`, so the identification is `rfl`

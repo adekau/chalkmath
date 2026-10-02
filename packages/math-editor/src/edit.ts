@@ -358,6 +358,12 @@ export class MathEdit {
     if (g && g.block === this.caret.block && g.i === this.caret.i && isIdChar(c)) this.insert(ch(" "));
     // anything but a letter or digit finishes a `\` command (a space is used up doing it)
     if (!/^[A-Za-z0-9]$/.test(c) && this.command() && c === " ") return true;
+    // `.` then `/` or `*` is an entrywise operator, one atom: the engine lexes `./` so even after a digit
+    const dot = this.caret.block[this.caret.i - 1];
+    if ((c === "/" || c === "*") && dot?.k === "ch" && dot.c === ".") {
+      this.caret.block.splice(this.caret.i - 1, 1, ch("." + c));
+      return true;
+    }
     switch (c) {
       case "/": return this.fraction();
       case "^": return this.power();

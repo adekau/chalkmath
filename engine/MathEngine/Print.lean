@@ -210,6 +210,13 @@ mutual
       | "span", [_, _, c], [a, b, cs] =>
         let sep := if T.times != "*" then "\\mathbin{;;}" else ";;"
         (if c.isOne then s!"{a}{sep}{b}" else s!"{a}{sep}{b}{sep}{cs}", P_ADD)
+      -- MATLAB's entrywise operators. Lower than a product as a whole, so it is grouped wherever a
+      -- factor or a left operand would otherwise take it in: `x*(a ./ b)`, `(a ./ b) ./ c`
+      | "ediv", [a, b], _ | "emul", [a, b], _ =>
+        let l := print a (path ++ [0]) T P_MUL
+        let r := print b (path ++ [1]) T P_POW
+        let op := if T.times != "*" then (if name == "ediv" then "\\oslash" else "\\odot") else (if name == "ediv" then "./" else ".*")
+        (s!"{l} {op} {r}", P_ADD)
       | "All", [], _ => (if T.times != "*" then "\\mathrm{All}" else "All", P_ATOM)
       | "List", _, _ =>
         let inner := ", ".intercalate as
