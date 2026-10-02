@@ -52,6 +52,11 @@ test("typing the raw syntax builds the structure and writes the same text", () =
   assert.equal(typed("1/(x-1)").e.stmt.body[0].den.map((a) => a.k).join(" "), "ch ch ch");
   // a power of a fraction brings its parentheses
   assert.equal(text("1/2{→}^2"), "(1/2)^2");
+  // `.` then `/` or `*` is an entrywise operator, not a fraction or a product
+  assert.equal(text("a./b"), "a ./ b");
+  assert.equal(text("a.*b"), "a .* b");
+  assert.equal(text("2./3"), "2 ./ 3");
+  assert.equal(text("2.5/3"), "2.5/3");
   // `f(` is a call only once f is a function
   assert.deepEqual(typed("f(x").e.stmt.body.map((a) => a.k), ["ch", "paren"]);
   assert.deepEqual(typed("f(x", "", ["f"]).e.stmt.body.map((a) => a.k), ["call"]);

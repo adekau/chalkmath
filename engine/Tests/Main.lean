@@ -176,6 +176,15 @@ def tests : TestM Unit := do
   check "parse matrix" (roundtrip "[1,2;3,4]") "[1, 2; 3, 4]"
   check "parse ragged" (roundtrip "[1,2;3]") "<syntax error: ragged matrix rows @0-1>"
   check "parse decimal" (roundtrip "2.5x + .5") "2.5*x + 0.5"
+  -- the entrywise operators: `./` and `.*` are tokens, and a `.` before a digit is still a numeral
+  check "parse ./" (roundtrip "a ./ b") "a ./ b"
+  check "parse .*" (roundtrip "a.*b") "a .* b"
+  check "parse 2./3" (roundtrip "2./3") "2 ./ 3"
+  check "parse ./ is left-associative" (roundtrip "a ./ b ./ c") "(a ./ b) ./ c"
+  check "parse ./ binds as a product" (roundtrip "a + b ./ c*d") "a + (b ./ c)*d"
+  check "print a factor ./ keeps its parentheses" (roundtrip "x*(a ./ b)") "x*(a ./ b)"
+  check "latex ./" (latexOf "[1,2] ./ [3,4]") "\\begin{bmatrix}1 & 2\\end{bmatrix} \\oslash \\begin{bmatrix}3 & 4\\end{bmatrix}"
+  check "latex .*" (latexOf "[1,2] .* [3,4]") "\\begin{bmatrix}1 & 2\\end{bmatrix} \\odot \\begin{bmatrix}3 & 4\\end{bmatrix}"
   -- printer: recovers -, /, sqrt and parenthesizes correctly
   check "print x/(y*z)" (roundtrip "x/(y*z)") "x/(y*z)"
   check "print (x+1)/(x-1)" (roundtrip "(x+1)/(x-1)") "(x + 1)/(x - 1)"

@@ -49,6 +49,11 @@ test("the tree is the engine's parse: precedence, implicit products, what the nu
     "[1,2;3,4]": "[(matrix [1] [2] ; [3] [4])]",
     "2.5x + .5": "[2 . 5 x + . 5]",
     "x_1 + π": "[x _ 1 + π]",
+    // the entrywise operators are one atom each, and a product's precedence: `/` after one takes it all
+    "[1,2] ./ [3,10]": "[(matrix [1] [2]) ./ (matrix [3] [1 0])]",
+    "a.*b": "[a .* b]",
+    "2./3": "[2 ./ 3]",
+    "a ./ b/c": "[(frac [a ./ b] [c])]",
   };
   for (const [src, want] of Object.entries(cases)) assert.equal(shape(src), want, src);
   // a name followed by `(` is a call only when it is a function
@@ -213,4 +218,13 @@ test("text in quotes and attached files read as atoms of their own and write bac
   assert.equal(call.k, "call");
   assert.deepEqual(call.args[0].map((a) => a.k), ["str"]);   // the URL's slashes are text, not fractions
   assert.deepEqual(read("⟦a.svg⟧").stmt.body, [{ k: "asset", name: "a.svg" }]);
+});
+
+test("the entrywise operators write back spaced, and draw as ⊘ and ⊙", () => {
+  for (const [src, want] of [["2./3", "2 ./ 3"], ["a.*b", "a .* b"], ["a ./ -b", "a ./ -b"], ["a ./ (b/c)", "a ./ (b/c)"], ["[1,2] ./ [3,10]", "[1, 2] ./ [3, 10]"]]) {
+    assert.equal(write(tree(src)).text, want, src);
+    assert.ok(sameStmt(tree(write(tree(src)).text), tree(src)), src);
+  }
+  assert.match(toLatex(tree("a ./ b")), /\\oslash/);
+  assert.match(toLatex(tree("a .* b")), /\\odot/);
 });

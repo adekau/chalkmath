@@ -67,6 +67,8 @@ def ruleStatus : Json :=
     entry "la.dot" "verified" "Σ uᵢvᵢ by definition; a matrix has no value in the ℝ semantics, so the claim is the definition (bilinear, as Mathematica's Dot — the Hermitian product is dot(u, conj(v))).",
     entry "la.norm" "verified" "(Σ vᵢ²)^(1/2) by definition, the Pythagorean length.",
     entry "la.conj" "verified" "Entrywise by definition.",
+    entry "la.ediv" "verified" "Entrywise by definition: entry (i, j) is aᵢⱼ/bᵢⱼ, and a scalar side meets every entry; each entry's arithmetic is its nested steps, with their statuses.",
+    entry "la.emul" "verified" "Entrywise by definition (the Hadamard product): entry (i, j) is aᵢⱼ·bᵢⱼ, and a scalar side meets every entry; each entry's arithmetic is its nested steps, with their statuses.",
     entry "la.entrywise" "verified" "A matrix equals the one whose entries equal its own: each entry is rewritten on its own, and the step is only as sound as the entries' steps nested below it, whose statuses it carries.",
     entry "la.part" "verified" "Mathematica's Part by definition: positions count from 1, negative ones from the end. Every position a spec selects is in range (partSpec_lt), so the selection is exactly the entries named, never a filler.",
     entry "stat.total" "verified" "Σ xᵢ by definition; over ℝ the value is the list's sum (total_soundR).",

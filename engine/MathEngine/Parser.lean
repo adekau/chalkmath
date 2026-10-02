@@ -7,7 +7,7 @@ Input language, identical to `parser.ts`:
 ```
 stmt   := 'let' IDENT '=' expr | expr
 expr   := term (('+' | '-') term)*
-term   := unary (('*' | '/') unary | <implicit> unary)*
+term   := unary (('*' | '/' | './' | '.*') unary | <implicit> unary)*
 unary  := '-' unary | power
 power  := part ('^' unary)?                       -- right-assoc; -x^2 parses as -(x^2)
 part   := atom ('[[' spec (',' spec)* ']]')*        -- Mathematica's Part: m[[2]], m[[All, 1;;3]]
@@ -19,6 +19,9 @@ row    := expr (',' expr)*
 `m[[s, t]]` is `part(m, s, t)`; a span `a;;b;;c` is `span(a, b, c)` with an omitted end read as
 Mathematica does (`;;b` from 1, `a;;` to the last, `-1`); `All` is `All()`, a list `{i, j}` is
 `List(i, j)`. `[[` after a term cannot be anything else: a nested matrix literal is refused.
+
+`a ./ b` and `a .* b` are MATLAB's entrywise division and product, `ediv(a, b)` and `emul(a, b)`
+(`la.ediv`, `la.emul`); `/` and `*` stay the matrix inverse and product.
 
 Implicit multiplication (`2x`, `2(x+1)`, `x y`) is allowed when the previous token ends an atom
 and the next begins one, except number-after-number (`3 4` is an error). `IDENT (` is a call
@@ -80,6 +83,9 @@ where
         let ds := (c :: cs).takeWhile isIdChar
         let text := String.ofList ds
         go ((c :: cs).drop ds.length) (i + ds.length) (acc.push ⟨.id, text, i, i + ds.length⟩)
+      -- `./` and `.*`, the entrywise operators: a `.` before a digit was a numeral above
+      else if c == '.' && (cs.head? == some '/' || cs.head? == some '*') then
+        go cs.tail (i + 2) (acc.push ⟨.op, String.ofList (c :: cs.take 1), i, i + 2⟩)
       else if "+-*/^()[],;=%{}".contains c then go cs (i + 1) (acc.push ⟨.op, c.toString, i, i + 1⟩)
       else .error ⟨s!"unexpected character '{c}'", i, i + 1⟩
 
@@ -116,6 +122,8 @@ mutual
     repeat
       let t ← peek
       if isOp t "*" then discard next; lhs := .mul [lhs, ← unary]
+      else if isOp t "./" then discard next; lhs := .fn "ediv" [lhs, ← unary]
+      else if isOp t ".*" then discard next; lhs := .fn "emul" [lhs, ← unary]
       else if isOp t "/" then
         discard next
         let rhs ← unary

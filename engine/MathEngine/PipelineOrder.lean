@@ -30,6 +30,7 @@ theorem mem_pipeline_iff (r : PlainRule) : r ∈ (pipelineRulesWith norm) ↔
     r = diffHigherOrder ∨ r = diffConstant ∨ r = diffVariable ∨ r = diffSum ∨ r = diffConstMul ∨
     r = diffProduct ∨ r = diffPower ∨ r = diffChain ∨ r = diffMatrix ∨
     r = laAdd ∨ r = laScalarMul ∨ r = laMul ∨ r = laTranspose ∨ r = laDet ∨ r = laPow ∨ r = laDot ∨ r = laNorm ∨ r = laConj ∨
+    r = laEdiv ∨ r = laEmul ∨
     r = laPart ∨ (∃ st ∈ stats, statRule st = r) ∨
     r = scalarOnly iPower ∨ r = scalarOnly cxArith ∨ r = scalarOnly cxPow ∨ r = scalarOnly cxConj ∨ r = scalarOnly cxReIm ∨
     r = scalarOnly cxAbs ∨ r = scalarOnly exactTrig ∨ r = scalarOnly euler ∨ r = scalarOnly eulerPower ∨ r = scalarOnly expProduct ∨
@@ -561,6 +562,22 @@ theorem dec_laConj : Dec norm laConj := dec_lit
     · exact ⟨by simp [cmdOwn, cmdNames], by simp [d3Own]⟩
     · simp at h)
   (fun e res h => by unfold laConj at h; obtain ⟨r₀, _, rfl⟩ := lit_apply h; exact ⟨r₀, rfl⟩)
+
+theorem dec_laEdiv : Dec norm laEdiv := dec_lit
+  (fun e res h => by
+    unfold laEdiv at h; obtain ⟨r₀, h, _⟩ := lit_apply h
+    split at h
+    · exact ⟨by simp [cmdOwn, cmdNames], by simp [d3Own]⟩
+    · simp at h)
+  (fun e res h => by unfold laEdiv at h; obtain ⟨r₀, _, rfl⟩ := lit_apply h; exact ⟨r₀, rfl⟩)
+
+theorem dec_laEmul : Dec norm laEmul := dec_lit
+  (fun e res h => by
+    unfold laEmul at h; obtain ⟨r₀, h, _⟩ := lit_apply h
+    split at h
+    · exact ⟨by simp [cmdOwn, cmdNames], by simp [d3Own]⟩
+    · simp at h)
+  (fun e res h => by unfold laEmul at h; obtain ⟨r₀, _, rfl⟩ := lit_apply h; exact ⟨r₀, rfl⟩)
 
 theorem target_spec {e : Expr} {p : Expr × String} (h : target e = some p) : e = .fn "diff" [p.1, .var p.2] := by
   unfold target at h
@@ -2820,9 +2837,9 @@ theorem dec_eulerPower : Dec norm (scalarOnly eulerPower) := dec_scalar fun e re
 With `normalizeT`'s innermost strategy this is exactly what makes cell evaluation terminate. -/
 theorem pipelineOrderedWith (norm : Norm) : Ordered (pipelineRulesWith norm) := ⟨fun r hr => by
   rw [mem_pipeline_iff] at hr
-  -- 27 commands, diff and la rules; la.part; the statistics; 25 scalar rules and la.context
+  -- 29 commands, diff and la rules; la.part; the statistics; 25 scalar rules and la.context
   rcases hr with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
-    rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
+    rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
     rfl | ⟨st, hst, rfl⟩ |
     rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
     rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
@@ -2853,6 +2870,8 @@ theorem pipelineOrderedWith (norm : Norm) : Ordered (pipelineRulesWith norm) := 
   · exact dec_laDot
   · exact dec_laNorm
   · exact dec_laConj
+  · exact dec_laEdiv
+  · exact dec_laEmul
   · exact dec_laPart
   · exact dec_statRule st (stat_heads st hst)
   · exact dec_iPower

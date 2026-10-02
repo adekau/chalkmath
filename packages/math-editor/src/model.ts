@@ -13,7 +13,8 @@ export type Block = Atom[];
 
 export type Atom =
   /** One character of a numeral, a name, an operator (`+ - *`), an output reference (`%`), or a
-   *  space: the product of two names (`x y`), which written together would be one name (`xy`). */
+   *  space: the product of two names (`x y`), which written together would be one name (`xy`).
+   *  The entrywise operators `./` and `.*` are the two atoms of two characters: one operator each. */
   | { k: "ch"; c: string }
   /** `num / den`. The numerator is everything the `/` takes on its left: `2x/3` is 2x over 3. */
   | { k: "frac"; num: Block; den: Block }
