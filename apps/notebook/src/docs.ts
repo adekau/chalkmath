@@ -57,7 +57,7 @@ A notebook is a list of cells, run top to bottom against one engine session. Eac
 
 - **Math cells** (the default) hold one expression or definition for the engine.
 - **Markdown cells** hold prose with mathematics in ‹$…$› ([Markdown cells](#doc:markdown)).
-- **Sections** are headings that group the cells below them, up to the next section. A section folds away (click its marker, or ⋮ › Fold section) and runs as a group (Run › Run section). The sidebar's outline lists them.
+- **Sections** are headings that group the cells below them, up to the next section. A section folds away (click its marker, or ⋮ › Fold section) and runs as a group (Run › Run section). The sidebar's outline lists them, numbered, with the cells of the section you are reading and how many of each section's exercises you have answered; **Every cell** lists them all.
 - **Lean cells** are Lean 4 itself, checked as you type ([Lean cells](#doc:lean)).
 - **Exercises** ask the reader a question and check the answer ([Exercises](#doc:exercises)).
 

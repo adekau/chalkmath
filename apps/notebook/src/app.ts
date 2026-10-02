@@ -2266,21 +2266,67 @@ function renderView() {
   if (S.tab === "studio") renderStudio();
 }
 
+/** The outline lists every cell (`all`), or the sections with only the current one's cells. */
+let outlineAll = prefOn("chalkmath.outlineall", false);
+/** The section the reader is in: the one heading the first cell on screen (−1 above the first). */
+let viewSection = -1;
+/** Follow the scroll: the section in view is the outline's current one. */
+function trackViewSection() {
+  const host = $(".cells");
+  let queued = false;
+  host.addEventListener("scroll", () => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => {
+      queued = false;
+      const top = host.getBoundingClientRect().top + 8;
+      const k = S.cells.findIndex((c) => c.el && c.el.getBoundingClientRect().bottom > top);
+      const sec = k < 0 ? -1 : sectionOf(k);
+      if (sec !== viewSection) { viewSection = sec; if (S.rail === "outline") renderSidebar(); }
+    });
+  }, { passive: true });
+}
+/** A section's exercises: how many there are and how many the reader has answered right. */
+function sectionProgress(i: number): { done: number; total: number } {
+  const [a, b] = sectionRange(i);
+  const ex = S.cells.slice(a, b).filter((c) => c.type === "exercise");
+  return { done: ex.filter((c) => c.verdict?.equivalent).length, total: ex.length };
+}
+
 function renderSidebar() {
   const side = $(".sidebar"); side.innerHTML = "";
-  side.append(h("h2", undefined, S.rail === "outline" ? "Notebook outline" : "Engine commands"));
+  const head = h("h2", undefined, S.rail === "outline" ? "Notebook outline" : "Engine commands");
+  const hasSections = S.cells.some((c) => c.type === "section");
+  if (S.rail === "outline" && hasSections) {
+    const t = asButton(h("span", "oltoggle", outlineAll ? "Sections" : "Every cell"), outlineAll ? "List the sections only" : "List every cell");
+    t.title = outlineAll ? "List the sections, with the cells of the one you are in" : "List every cell of every section";
+    t.addEventListener("click", () => { outlineAll = !outlineAll; setPref("chalkmath.outlineall", outlineAll); renderSidebar(); });
+    head.append(t);
+  }
+  side.append(head);
   const list = h("div", "list");
   if (S.rail === "outline") {
-    let inSection = false, folded = false;
+    let inSection = false, folded = false, here = false, number = 0;
+    // the current section: the one in view, or the active cell's when nothing has scrolled yet
+    const cur = viewSection >= 0 || !S.cells[S.active] ? viewSection : sectionOf(S.active);
     S.cells.forEach((c, i) => {
-      if (c.type === "section") { inSection = true; folded = !!c.collapsed; }
+      if (c.type === "section") { inSection = true; folded = !!c.collapsed; here = i === cur; number++; }
       else if (folded) return;
+      else if (inSection && !outlineAll && !here && hasSections) return;
       const row = asButton(h("div", `olrow${i === S.active ? " on" : ""}${c.type ? ` ${c.type}` : ""}${inSection && c.type !== "section" ? " in" : ""}`));
       if (c.type === "section") {
         const [a, b] = sectionRange(i);
-        row.append(h("span", "num", c.collapsed ? "▸" : "§"));
+        const p = sectionProgress(i);
+        row.append(h("span", "num", c.collapsed ? "▸" : `§${number}`));
+        if (i === cur) row.classList.add("here");
         const wrap = h("span");
-        wrap.append(h("span", "kind", c.src || "Untitled section"), h("span", "src", `${b - a} cell${b - a === 1 ? "" : "s"}${c.collapsed ? ", folded" : ""}`));
+        const meta = `${b - a} cell${b - a === 1 ? "" : "s"}${c.collapsed ? ", folded" : ""}${p.total ? ` · ${p.done} of ${p.total} exercise${p.total === 1 ? "" : "s"}` : ""}`;
+        wrap.append(h("span", "kind", c.src || "Untitled section"), h("span", "src", meta));
+        if (p.total) {
+          const bar = h("span", "olprog"); bar.setAttribute("aria-hidden", "true");
+          const fill = h("i"); fill.style.width = `${Math.round((p.done / p.total) * 100)}%`; bar.append(fill);
+          wrap.append(bar);
+        }
         row.append(wrap);
       } else if (c.type === "lean") {
         row.append(h("span", "num", "λ"));
@@ -5913,7 +5959,8 @@ renderPanelHead();
 renderPanel();
 renderView();
 document.addEventListener("click", () => { if (S.menu) { S.menu = null; renderChrome(); } closeCellMenu(); });
-document.querySelector(".cells")?.addEventListener("scroll", () => closeCellMenu(), { passive: true });   // a fixed menu must not float away from its cell
+document.querySelector(".cells")?.addEventListener("scroll", () => closeCellMenu(), { passive: true });
+trackViewSection();   // a fixed menu must not float away from its cell
 document.addEventListener("keydown", (ev) => {
   if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === "s") { ev.preventDefault(); if (ev.shiftKey) saveNotebookAs(); else saveNotebook(); }
   if ((ev.metaKey || ev.ctrlKey) && !ev.shiftKey && ev.key.toLowerCase() === "b") { ev.preventDefault(); toggleSidebar(); }
