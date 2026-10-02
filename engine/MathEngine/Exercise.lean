@@ -99,10 +99,125 @@ private def reduceLam (s : Session) (src : String) : Except Err (Lam.Term × Lam
     if !normal then throw ("eval", s!"λ: no normal form after {Lam.maxSteps} β-steps", none)
     pure (t, out, trace)
 
+/-! ## Logic and relations -/
+
+/-- A logic exercise. The answer is a formula; what it must be depends on the question:
+- `nnf(φ)`, `cnf(φ)`, `dnf(φ)`: equivalent to `φ` and in that form;
+- `sat(φ)` (`falsify(φ)`): any satisfiable formula that implies `φ` (`¬φ`) — an assignment written as
+  a conjunction of literals is one — or `⊥` when there is none;
+- `taut`, `equiv`, and a formula without variables: `⊤` or `⊥`;
+- a formula in variables: an equivalent one.
+Equivalence is decided by truth table, so a "not equivalent" here is definite. -/
+def checkLogic (s : Session) (cellId question : String) (answer : Option String) :
+    Session × Except Err CheckResult :=
+  match Logic.parseStmt question with
+  | .error msg => (s, .error ("syntax", msg, none))
+  | .ok (.cmd (some _) _ _) | .ok (.fm (some _) _) => (s, .error ("params", "an exercise compares values; a let has no value to compare", none))
+  | .ok stmt =>
+  match logicCell s cellId question with
+  | (s, .error e) => (s, .error e)
+  | (s, .ok res) =>
+    let prep (f : Logic.Fm) := Logic.expand s.formulas f
+    -- what the answer is held to
+    let mode : String × Option Logic.Fm := match stmt with
+      | .cmd _ h [f] => if ["nnf", "cnf", "dnf"].contains h then (h, some (prep f)) else if h == "sat" || h == "falsify" then (h, some (prep f)) else ("bool", none)
+      | .cmd _ _ _ => ("bool", none)
+      | .fm _ f => let f := prep f; if f.isProp && !f.vars.isEmpty then ("formula", some f) else ("bool", none)
+    let expectedBool : Bool := match res.value with | .fn "⊤" [] => true | _ => false
+    let compare (a : Logic.Fm) : Except Err (Compared × Bool) := do
+      let shown : Compared := ⟨a.toExpr, a.toExpr⟩
+      let equivTo (e : Logic.Fm) : Except Err Bool := do
+        let vs := (Logic.Fm.and a e).vars
+        if vs.length > Logic.maxVars then throw ("answer", s!"more than {Logic.maxVars} variables", none)
+        return (Logic.findRow vs fun σ => a.eval σ != e.eval σ).isNone
+      if !a.isProp then throw ("answer", "the answer must be a formula of propositional logic", none)
+      match mode with
+      | ("bool", _) =>
+        if !a.vars.isEmpty then throw ("answer", "the answer is ⊤ or ⊥ (true or false)", none)
+        return (shown, a.eval (fun _ => false) == expectedBool)
+      | ("sat", some f) | ("falsify", some f) =>
+        let target := if mode.1 == "sat" then f else .not f
+        let vs := (Logic.Fm.and a target).vars
+        let aSat := (Logic.findRow vs fun σ => a.eval σ).isSome
+        if !aSat then return (shown, res.value matches .fn "⊥" [])
+        return (shown, (Logic.findRow vs fun σ => a.eval σ && !target.eval σ).isNone)
+      | (h, some f) =>
+        let target := if ["nnf", "cnf", "dnf"].contains h then (Logic.toNormal h f).1 else f
+        if ["nnf", "cnf", "dnf"].contains h && !Logic.hasShape h a then
+          throw ("answer", s!"the answer must be in {h.toUpper}{if h == "cnf" then ": a conjunction of clauses, each a disjunction of literals" else if h == "dnf" then ": a disjunction of terms, each a conjunction of literals" else ": negations on variables only, no → or ↔"}", none)
+        return (shown, ← equivTo target)
+      | _ => return (shown, false)
+    let given : Option (Except Err (Compared × Bool)) := answer.map fun a =>
+      match Logic.parseFormula a with
+      | .error msg => .error ("syntax", msg, none)
+      | .ok f => compare (prep f)
+    let eq := match given with | some (.ok (_, b)) => b | _ => false
+    (s, .ok ⟨res.value, res.derivation, false, res.value, given.map (·.map (·.1)), eq⟩)
+
+/-- An order-world value, as something answers can be compared with: `kind` and a canonical form. -/
+private def orderCanon : Expr → String × List String
+  | .var "true" => ("bool", ["true"])
+  | .var "false" => ("bool", ["false"])
+  | .fn "rel" [_, .fn "set" ps] => ("pairs", (ps.map fun p => match p with | .fn "pair" [a, b] => s!"{a.toText},{b.toText}" | e => e.toText).mergeSort)
+  | .fn "set" xs =>
+    if !xs.isEmpty && xs.all (fun x => x matches .fn "set" _) then
+      ("partition", (xs.map fun x => match x with | .fn "set" ys => ",".intercalate (ys.map (·.toText)).mergeSort | e => e.toText).mergeSort)
+    else ("set", (xs.map (·.toText)).mergeSort)
+  | e => ("element", [e.toText])
+
+/-- Parse an answer to an order-world question as the kind of value expected. -/
+private def parseOrderAnswer (kind : String) (src : String) : Option (List String) :=
+  let s := src.trimAscii.copy
+  let strip (t : String) := (t.replace "{" "").replace "}" "" |>.replace "(" "" |>.replace ")" "" |>.trimAscii.copy
+  let items (t : String) := ((strip t).splitOn ",").map (·.trimAscii.copy) |>.filter (· != "")
+  match kind with
+  | "bool" => match s.toLower with | "true" | "⊤" => some ["true"] | "false" | "⊥" => some ["false"] | _ => none
+  | "pairs" =>
+    if (s.splitOn "->").length > 1 || (s.splitOn "→").length > 1 then
+      let ps := (strip s).splitOn "," |>.map fun p => (p.replace "→" "->").splitOn "->" |>.map (·.trimAscii.copy)
+      if ps.all (·.length == 2) then some (ps.map (fun p => s!"{p[0]!},{p[1]!}")).mergeSort else none
+    else
+      -- (a, b), (c, d): the brackets pair them
+      let groups := ((s.replace "{" "").replace "}" "").splitOn "(" |>.map (fun g => (g.splitOn ")").headD "") |>.map (·.trimAscii.copy) |>.filter (· != "")
+      let ps := groups.map fun g => (g.splitOn ",").map (·.trimAscii.copy)
+      if !ps.isEmpty && ps.all (·.length == 2) then some (ps.map (fun p => s!"{p[0]!},{p[1]!}")).mergeSort else if s == "{}" then some [] else none
+  | "partition" =>
+    let groups := (s.splitOn "{").map (fun g => (g.splitOn "}").headD "") |>.map (·.trimAscii.copy) |>.filter (fun g => g != "" && g != ",")
+    some (groups.map fun g => ",".intercalate ((g.splitOn ",").map (·.trimAscii.copy) |>.filter (· != "")).mergeSort).mergeSort
+  | "set" => some (items s).mergeSort
+  | _ => some [strip s]
+
+/-- An order-world exercise (posets and relations): the answer, written as a value of the kind the
+question has (`true`/`false`, pairs `a->b, b->c` or `(a, b), (b, c)`, classes `{a, b}, {c}`, a set, an
+element), is compared with the question's value as a set. -/
+def checkOrder (s : Session) (cellId question : String) (answer : Option String) :
+    Session × Except Err CheckResult :=
+  match Ord.parseStmt question with
+  | .ok (some _, _, _) => (s, .error ("params", "an exercise compares values; a let has no value to compare", none))
+  | _ =>
+  match orderCell s cellId question with
+  | (s, .error e) => (s, .error e)
+  | (s, .ok res) =>
+    let (kind, want) := orderCanon res.value
+    let given : Option (Except Err (Compared × Bool)) := answer.map fun a =>
+      if Ord.isOrderSource a then .error ("answer", "write the value itself, not the command that computes it", none) else
+      match parseOrderAnswer kind a with
+      | none => .error ("answer", match kind with
+          | "bool" => "the answer is true or false"
+          | "pairs" => "write the relation's pairs: a->b, b->c (or (a, b), (b, c))"
+          | _ => "write the value", none)
+      | some got =>
+        let shown := Expr.var (a.trimAscii.copy)
+        .ok (⟨shown, shown⟩, got.eraseDups == want.eraseDups)
+    let eq := match given with | some (.ok (_, b)) => b | _ => false
+    (s, .ok ⟨res.value, res.derivation, false, res.value, given.map (·.map (·.1)), eq⟩)
+
 /-- Check an exercise: evaluate the question (recorded as `cellId`, so its work can be fetched and
 explained, but neither bound nor numbered), and compare the answer, if one is given. -/
 def checkAnswer (s : Session) (cellId question : String) (answer : Option String) :
     Session × Except Err CheckResult :=
+  if Ord.isOrderSource question then checkOrder s cellId question answer else
+  if Logic.isLogicSource question then checkLogic s cellId question answer else
   if isLambdaCell s question then
     match Lam.parseStmt question with
     | .ok (some _, _) => (s, .error ("params", "an exercise compares λ-terms; a definition has no value to compare", none))

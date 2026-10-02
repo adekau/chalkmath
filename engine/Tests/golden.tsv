@@ -173,3 +173,59 @@ integrate(sqrt(x), x, 0, 4)	16/3
 integrate(x^(3/2), x, 0, 4)	64/5
 (4/9)^(3/2)	(4/9)^(3/2)
 (4/9)^x	(4/9)^x
+p ∧ q → p	p ∧ q → p
+p && q -> p	p ∧ q → p
+taut(p ∧ q → p)	⊤
+taut(p → q)	⊥
+taut((p → q) ∨ (q → p))	⊤
+sat(p ∧ ¬q)	p ∧ ¬q
+sat(p ∧ ¬p)	⊥
+falsify(p → q)	p ∧ ¬q
+falsify(p ∨ ¬p)	⊥
+equiv(p → q, ¬q → ¬p)	⊤
+equiv(p → q, q → p)	⊥
+equiv(¬(p ∧ q), ¬p ∨ ¬q)	⊤
+nnf(¬(p ∧ (q ∨ ¬r)))	¬p ∨ ¬q ∧ r
+nnf(¬¬p)	p
+cnf(p ∨ (q ∧ r))	(p ∨ q) ∧ (p ∨ r)
+cnf(p ↔ q)	(¬p ∨ q) ∧ (¬q ∨ p)
+cnf(¬(p → q))	p ∧ ¬q
+dnf((p ∨ q) ∧ r)	p ∧ r ∨ q ∧ r
+cnf(p ∧ ⊤)	p
+⊤ ∧ ¬⊥	⊤
+let phi = p → q	p → q
+cnf(¬phi)	p ∧ ¬q
+truthtable(p → q)	p → q
+forall n in 1..10, n^2 >= n	⊤
+∀ n ∈ 1..10, n^2 ≥ 2n	⊥
+exists n in {4, 6, 9}, prime(n)	⊥
+∃ n ∈ {4, 6, 9, 11}, prime(n)	⊤
+∀ n ∈ 2..30, ∃ p ∈ 2..n, prime(p) ∧ p ∣ n	⊤
+∀ n ∈ 1..5, even(n) ∨ odd(n)	⊤
+sat(p ∧ (n > 2))	<error: sat is for propositional formulas; p ∧ n > 2 has arithmetic or quantifiers in it (write it on its own to evaluate it)>
+cnf(p ∨)	<error: expected a formula>
+let R = rel({a, b, c}; a->b, b->c)	{(a, b), (b, c)}
+transitive(R)	false
+reflexive(R)	false
+symmetric(R)	false
+antisymmetric(R)	true
+closure(R, transitive)	{(a, b), (b, c), (a, c)}
+closure(R, reflexive)	{(a, b), (b, c), (a, a), (b, b), (c, c)}
+closure(R, symmetric)	{(a, b), (b, c), (b, a), (c, b)}
+closure(R, equivalence)	{(a, b), (b, c), (a, a), (b, b), (c, c), (b, a), (c, b), (a, c), (c, a)}
+classes(R)	<error: classes are for equivalence relations, and this one is not reflexive (closure(R, equivalence) makes it one)>
+let K = kernel({r1, r2, r3, r4}; r1->k1, r2->k1, r3->k2, r4->k2)	{(r1, r1), (r1, r2), (r2, r1), (r2, r2), (r3, r3), (r3, r4), (r4, r3), (r4, r4)}
+equivalence(K)	true
+classes(K)	{{r1, r2}, {r3, r4}}
+let A = kernel({r1, r2, r3, r4}; r1->a, r2->b, r3->c, r4->c)	{(r1, r1), (r2, r2), (r3, r3), (r3, r4), (r4, r3), (r4, r4)}
+finer(A, K)	true
+finer(K, A)	false
+wellfounded(R)	true
+let C = rel({x, y, z}; x->y, y->z, z->x)	{(x, y), (y, z), (z, x)}
+wellfounded(C)	false
+measure(R; a->2, b->1, c->0)	true
+measure(C; x->2, y->1, z->0)	false
+let D = divisors(12)	poset {1, 2, 3, 4, 6, 12}
+antisymmetric(D)	true
+preorder(D)	true
+rel({a, b}; a->z)	<error: a -> z mentions an element outside the set>

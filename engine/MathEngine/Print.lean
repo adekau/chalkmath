@@ -148,6 +148,11 @@ private def mulRadicalLatex (numStr : Q → String) : List Expr → Option (Stri
     else none
   | _ => none
 
+/-- The logic world's connectives, and how tightly each binds (quantifiers reach as far right as they can). -/
+def logicLevel : String → Nat
+  | "∀" | "∃" => 0 | "↔" => 1 | "→" => 2 | "∨" => 3 | "∧" => 4 | "¬" => 5 | _ => 6
+def isLogicHead (h : String) : Bool := ["∀", "∃", "↔", "→", "∨", "∧", "¬"].contains h
+
 mutual
   /-- Print `e` at `path` in a context demanding precedence `ctx`. -/
   partial def print (e : Expr) (path : Path) (T : Target) (ctx : Nat) : String :=
@@ -156,6 +161,12 @@ mutual
 
   partial def printRaw (e : Expr) (path : Path) (T : Target) : String × Nat :=
     let child (c : Expr) (i : Nat) (ctx : Nat) := print c (path ++ [i]) T ctx
+    -- a logic connective's operand: bracketed when it is a connective binding looser than `lvl`
+    let lchild (c : Expr) (i : Nat) (lvl : Nat) :=
+      let str := print c (path ++ [i]) T P_ADD
+      match c with
+      | .fn h _ => if isLogicHead h && logicLevel h < lvl then T.parens str else str
+      | _ => str
     match e with
     -- in text an exact non-integer numeral prints as a division, `4/9`, so it binds like one: the base
     -- of a power is `(4/9)^(3/2)`, not `4/9^(3/2)`, which reads back as 4/27 (`\frac` groups itself)
@@ -190,6 +201,8 @@ mutual
         (if T.times != "*" then "\\{" ++ inner ++ "\\}" else "{" ++ inner ++ "}", P_ATOM)
       | "poset", [_, _], [ss, _] =>
         (if T.times != "*" then "\\text{poset }" ++ ss else "poset " ++ ss, P_ATOM)
+      | "pair", [_, _], [a, b] => (if T.times != "*" then s!"({a}, {b})" else s!"({a}, {b})", P_ATOM)
+      | "rel", [_, _], [_, ps] => (ps, P_ATOM)
       | "covers", [_, _], [a, b] => (if T.times != "*" then s!"{a} \\lessdot {b}" else s!"{a} ⋖ {b}", P_MUL)
       -- the λ-calculus world: λx. body binds as far right as possible; application is juxtaposition
       | "λ", [_, body], [x, _] =>
@@ -217,6 +230,27 @@ mutual
         let r := print b (path ++ [1]) T P_POW
         let op := if T.times != "*" then (if name == "ediv" then "\\oslash" else "\\odot") else (if name == "ediv" then "./" else ".*")
         (s!"{l} {op} {r}", P_ADD)
+      -- the logic world: connectives by their own precedence (↔ < → < ∨ < ∧ < ¬), quantifiers reach right
+      | "⊤", [], _ => (if T.times != "*" then "\\top" else "⊤", P_ATOM)
+      | "⊥", [], _ => (if T.times != "*" then "\\bot" else "⊥", P_ATOM)
+      | "¬", [a], _ => ((if T.times != "*" then "\\lnot " else "¬") ++ lchild a 0 5, P_ATOM)
+      | "∧", [a, b], _ | "∨", [a, b], _ =>
+        let lvl := logicLevel name
+        let op := if T.times != "*" then (if name == "∧" then " \\land " else " \\lor ") else s!" {name} "
+        (lchild a 0 lvl ++ op ++ lchild b 1 (lvl + 1), P_ATOM)
+      | "→", [a, b], _ | "↔", [a, b], _ =>
+        let lvl := logicLevel name
+        let op := if T.times != "*" then (if name == "→" then " \\to " else " \\leftrightarrow ") else s!" {name} "
+        (lchild a 0 (lvl + 1) ++ op ++ lchild b 1 lvl, P_ATOM)
+      | "∀", [_, _, _], [x, d, _] | "∃", [_, _, _], [x, d, _] =>
+        let body := lchild (args.getD 2 default) 2 0
+        (if T.times != "*" then s!"{if name == "∀" then "\\forall" else "\\exists"} {x} \\in {d},\\ {body}" else s!"{name} {x} ∈ {d}, {body}", P_ATOM)
+      | "range", [_, _], [a, b] => (if T.times != "*" then "\\{" ++ a ++ ", \\dots, " ++ b ++ "\\}" else s!"{a}..{b}", P_ATOM)
+      | "<", [_, _], [a, b] | "≤", [_, _], [a, b] | ">", [_, _], [a, b] | "≥", [_, _], [a, b]
+      | "=", [_, _], [a, b] | "≠", [_, _], [a, b] | "∣", [_, _], [a, b] =>
+        let op := if T.times == "*" then name else match name with
+          | "≤" => "\\le" | "≥" => "\\ge" | "≠" => "\\ne" | "∣" => "\\mid" | o => o
+        (s!"{a} {op} {b}", P_ATOM)
       | "All", [], _ => (if T.times != "*" then "\\mathrm{All}" else "All", P_ATOM)
       | "List", _, _ =>
         let inner := ", ".intercalate as

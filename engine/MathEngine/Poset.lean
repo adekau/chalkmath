@@ -261,7 +261,10 @@ def parseStmt (src : String) : Except String (Option String × String × List Ar
 
 def commands : List String :=
   ["poset", "divisors", "subsets", "chain", "map", "hasse", "join", "meet", "sup", "inf", "upper", "lower",
-   "lattice", "top", "bottom", "le", "maximal", "minimal", "monotone", "lfp", "gfp", "fixpoints"]
+   "lattice", "top", "bottom", "le", "maximal", "minimal", "monotone", "lfp", "gfp", "fixpoints",
+   -- relations (Relation.lean)
+   "rel", "kernel", "reflexive", "symmetric", "antisymmetric", "transitive", "equivalence", "preorder",
+   "closure", "classes", "finer", "wellfounded", "measure"]
 
 /-- Is this an order-world cell? Its command (after an optional `let name =`) is one of ours. -/
 def isOrderSource (src : String) : Bool :=

@@ -3,7 +3,9 @@ import MathEngine.Origin
 import MathEngine.Parser
 import MathEngine.Lambda
 import MathEngine.Poset
+import MathEngine.Relation
 import MathEngine.Fourier
+import MathEngine.Logic
 /-!
 # Sessions, commands and the evaluation pipeline
 
@@ -30,6 +32,10 @@ structure Session where
   /-- Order-world values: posets and maps on them, by name. -/
   posets : List (String × Ord.Poset) := []
   pmaps : List (String × Ord.PMap) := []
+  /-- Relations (order world) bound by `let`, by name. -/
+  rels : List (String × Ord.Rel) := []
+  /-- Logic-world formulas bound by `let`, by name. -/
+  formulas : List (String × Logic.Fm) := []
   cells : List (String × Cell) := []
   /-- Outputs by evaluation number, for `%`, `%%` and `%n`; `nextOut` is the number the next
   evaluation gets (every evaluation takes one, error or not, like Mathematica's `In[n]`). -/
@@ -151,6 +157,9 @@ structure OrdResult where
   derivation : Derivation
   poset : Option Ord.Poset
   summary : String
+  /-- A relation to draw as a directed graph: its elements and pairs, the pairs that show a property
+  failing, and the pairs a closure added. -/
+  graph : Option (Ord.Rel × List (String × String) × List (String × String)) := none
 
 /-- Evaluate an order-world cell. -/
 def orderCell (s : Session) (cellId source : String) :
@@ -165,6 +174,13 @@ def orderCell (s : Session) (cellId source : String) :
     let getP (a : Ord.Arg) : Except String Ord.Poset := match a with
       | .elem n => match s.posets.lookup n with | some P => .ok P | none => .error s!"'{n}' is not a poset"
       | _ => .error "expected the name of a poset"
+    let getR (a : Ord.Arg) : Except String Ord.Rel := match a with
+      | .elem n => match s.rels.lookup n, s.posets.lookup n with
+        | some R, _ => .ok R
+        | none, some P => .ok (Ord.Rel.of P.elems P.le)
+        | none, none => .error s!"'{n}' is not a relation"
+      | _ => .error "expected the name of a relation"
+    let relExpr' := Ord.relExpr
     let getF (a : Ord.Arg) : Except String Ord.PMap := match a with
       | .elem n => match s.pmaps.lookup n with | some f => .ok f | none => .error s!"'{n}' is not a map"
       | _ => .error "expected the name of a map"
@@ -184,7 +200,8 @@ def orderCell (s : Session) (cellId source : String) :
       | .elem x => (getE P (.elem x)).map ([·])
       | _ => .error "expected a set of elements"
     let step (rule text : String) (before after : Expr) : Step := ⟨rule, text, [], before, after, none⟩
-    let done (value : Expr) (steps : Array Step) (P : Option Ord.Poset) (summary : String) (bindP : Option Ord.Poset := none) (bindF : Option Ord.PMap := none) :
+    let done (value : Expr) (steps : Array Step) (P : Option Ord.Poset) (summary : String) (bindP : Option Ord.Poset := none) (bindF : Option Ord.PMap := none)
+        (bindR : Option Ord.Rel := none) (graph : Option (Ord.Rel × List (String × String) × List (String × String)) := none) :
         Session × Except (String × String × Option (Nat × Nat)) OrdResult :=
       -- the derivation starts where the first step does, so the echo shows the question, not the answer
       let input := match steps[0]? with | some st => st.before | none => value
@@ -196,7 +213,10 @@ def orderCell (s : Session) (cellId source : String) :
       let s := match name, bindF with
         | some n, some f => { s with pmaps := (n, f) :: s.pmaps.filter (·.1 != n) }
         | _, _ => s
-      (s, .ok ⟨name, value, d, P, summary⟩)
+      let s := match name, bindR with
+        | some n, some R => { s with rels := (n, R) :: s.rels.filter (·.1 != n) }
+        | _, _ => s
+      (s, .ok ⟨name, value, d, P, summary, graph⟩)
     let withPoset (P : Ord.Poset) (steps : Array Step) (what : String) :=
       done (Ord.posetExpr P) steps (some P) what (bindP := some P)
     let bool (b : Bool) : Expr := .var (if b then "true" else "false")
@@ -337,7 +357,218 @@ def orderCell (s : Session) (cellId source : String) :
       match getP p, getF f with
       | .ok P, .ok F => done (Ord.setExpr (Ord.fixedPoints P F)) #[] none "fixed points"
       | .error m, _ | _, .error m => err m
+    -- relations: a relation's own name, or a poset's (its order, as a relation)
+    | "rel", (.set xs) :: rest =>
+      let ps := match rest with | [.maps ps] => ps | _ => []
+      match ps.find? fun (a, b) => !xs.contains a || !xs.contains b with
+      | some (a, b) => err s!"{a} -> {b} mentions an element outside the set"
+      | none =>
+        let R := Ord.Rel.of xs ps
+        done (Ord.relExpr R) #[] none s!"a relation on {R.elems.length} elements with {R.pairs.length} pairs" (bindR := some R) (graph := some (R, [], []))
+    | "kernel", [.set xs, .maps ps] =>
+      let R := Ord.kernel xs ps
+      done (Ord.relExpr R) #[step "rel.kernel" "Related when they have the same label: an equivalence relation (reflexive, symmetric and transitive, since equality of labels is)." (Ord.setExpr xs) (Ord.relExpr R)] none
+        s!"same label: {R.classes.length} classes" (bindR := some R) (graph := some (R, [], []))
+    | "reflexive", [r] | "symmetric", [r] | "antisymmetric", [r] | "transitive", [r] | "equivalence", [r] | "preorder", [r] =>
+      match getR r with
+      | .error m => err m
+      | .ok R =>
+        let props := match head with
+          | "equivalence" => ["reflexive", "symmetric", "transitive"]
+          | "preorder" => ["reflexive", "transitive"]
+          | p => [p]
+        -- the first property that fails, its witness as text and as the pairs to mark
+        let fail (p : String) : Option (String × List (String × String)) := match p with
+          | "reflexive" => (Ord.reflexiveFailure R).map fun x => (s!"${x} \\mathrel\{R} {x}$ fails", [(x, x)])
+          | "symmetric" => (Ord.symmetricFailure R).map fun (x, y) => (s!"${x} \\mathrel\{R} {y}$ but not ${y} \\mathrel\{R} {x}$", [(x, y)])
+          | "antisymmetric" => (Ord.antisymmetricFailure R).map fun (x, y) => (s!"${x} \\mathrel\{R} {y}$ and ${y} \\mathrel\{R} {x}$ with ${x} \\ne {y}$", [(x, y), (y, x)])
+          | _ => (Ord.transitiveFailure R).map fun (x, y, z) => (s!"${x} \\mathrel\{R} {y}$ and ${y} \\mathrel\{R} {z}$ but not ${x} \\mathrel\{R} {z}$", [(x, y), (y, z)])
+        match props.findSome? fun p => (fail p).map (p, ·) with
+        | some (p, why, bad) =>
+          done (bool false) #[step s!"rel.{p}" s!"Not {p}: {why}." (relExpr' R) (bool false)] none s!"not {p}" (graph := some (R, bad, []))
+        | none =>
+          done (bool true) #[step s!"rel.{props.getLast!}" s!"{", ".intercalate props |>.capitalize}: every {if props.length > 1 then "condition" else "case"} checked." (relExpr' R) (bool true)] none head (graph := some (R, [], []))
+    | "closure", [r, .elem kind] =>
+      match getR r with
+      | .error m => err m
+      | .ok R =>
+        let reflAdd := Ord.reflClosureAdds R
+        let symmAdd (R : Ord.Rel) := Ord.symmClosureAdds R
+        let addPairs (R : Ord.Rel) (ps : List (String × String)) : Ord.Rel := ⟨R.elems, R.pairs ++ ps⟩
+        let pairsText (ps : List (String × String)) := ", ".intercalate (ps.map fun (a, b) => s!"({a}, {b})")
+        let trans (R : Ord.Rel) : Except String (Ord.Rel × Array Step) :=
+          let (T, rounds, stable) := Ord.transClosure R
+          if !stable then .error "the transitive closure did not settle (please report this)" else
+          let (_, steps) := rounds.foldl (fun (cur, acc) add =>
+            let nxt := addPairs cur add
+            (nxt, acc.push (step "rel.transitive-closure" s!"Each pair forced by two that chain ($a \\mathrel\{R} b$ and $b \\mathrel\{R} c$ give $a \\mathrel\{R} c$): {pairsText add}." (relExpr' cur) (relExpr' nxt)))) (R, #[])
+          .ok (T, steps)
+        let finish (T : Ord.Rel) (steps : Array Step) := done (relExpr' T) steps none s!"{kind} closure: {T.pairs.length - R.pairs.length} pair{if T.pairs.length - R.pairs.length == 1 then "" else "s"} added" (bindR := some T)
+          (graph := some (T, [], T.pairs.filter fun (a, b) => !R.has a b))
+        match kind with
+        | "reflexive" =>
+          let T := addPairs R reflAdd
+          finish T (if reflAdd.isEmpty then #[] else #[step "rel.reflexive-closure" s!"Each element related to itself: {pairsText reflAdd}." (relExpr' R) (relExpr' T)])
+        | "symmetric" =>
+          let add := symmAdd R
+          let T := addPairs R add
+          finish T (if add.isEmpty then #[] else #[step "rel.symmetric-closure" s!"Each pair turned round: {pairsText add}." (relExpr' R) (relExpr' T)])
+        | "transitive" => match trans R with | .ok (T, st) => finish T st | .error m => err m
+        | "equivalence" =>
+          let R1 := addPairs R reflAdd
+          let a2 := symmAdd R1
+          let R2 := addPairs R1 a2
+          match trans R2 with
+          | .error m => err m
+          | .ok (T, st) =>
+            let s0 := if reflAdd.isEmpty then #[] else #[step "rel.reflexive-closure" s!"Each element related to itself: {pairsText reflAdd}." (relExpr' R) (relExpr' R1)]
+            let s1 := if a2.isEmpty then #[] else #[step "rel.symmetric-closure" s!"Each pair turned round: {pairsText a2}." (relExpr' R1) (relExpr' R2)]
+            finish T (s0 ++ s1 ++ st)
+        | k => err s!"closure: {k} is not reflexive, symmetric, transitive or equivalence"
+    | "classes", [r] =>
+      match getR r with
+      | .error m => err m
+      | .ok R =>
+        match (Ord.reflexiveFailure R).map (fun _ => "reflexive") <|> (Ord.symmetricFailure R).map (fun _ => "symmetric") <|> (Ord.transitiveFailure R).map (fun _ => "transitive") with
+        | some p => err s!"classes are for equivalence relations, and this one is not {p} (closure(R, equivalence) makes it one)"
+        | none =>
+          let cs := R.classes
+          done (Ord.partitionExpr cs) #[step "rel.classes" "Each element's class is everything related to it; for an equivalence relation the classes partition the set." (relExpr' R) (Ord.partitionExpr cs)] none s!"{cs.length} class{if cs.length == 1 then "" else "es"}" (graph := some (R, [], []))
+    | "finer", [r, t] =>
+      match getR r, getR t with
+      | .ok R, .ok T =>
+        match Ord.finerFailure R T with
+        | none => done (bool true) #[step "rel.finer" "Every pair of the first is a pair of the second: finer (for equivalences, each class of the first lies inside a class of the second)." (relExpr' R) (bool true)] none "finer"
+        | some (x, y) => done (bool false) #[step "rel.finer" s!"${x}$ and ${y}$ are related by the first but not by the second: not finer." (relExpr' R) (bool false)] none s!"not finer: ({x}, {y})" (graph := some (R, [(x, y)], []))
+      | .error m, _ | _, .error m => err m
+    | "wellfounded", [r] =>
+      match getR r with
+      | .error m => err m
+      | .ok R =>
+        match Ord.findCycle R with
+        | none => done (bool true) #[step "rel.wellfounded" "No cycle: on a finite set every chain of steps stops, so the relation is well-founded." (relExpr' R) (bool true)] none "well-founded" (graph := some (R, [], []))
+        | some c =>
+          let edges := c.zip c.tail
+          done (bool false) #[step "rel.wellfounded" s!"A cycle: {" → ".intercalate c}; following it never stops." (relExpr' R) (bool false)] none s!"not well-founded: {" → ".intercalate c}" (graph := some (R, edges, []))
+    | "measure", [r, .maps ps] =>
+      match getR r with
+      | .error m => err m
+      | .ok R =>
+        let m (x : String) : Option Int := (ps.lookup x).bind fun v => (if v.startsWith "-" then (v.drop 1).toNat?.map (- ·) else v.toNat?.map Int.ofNat)
+        match R.elems.find? fun x => (m x).isNone with
+        | some x => err s!"measure: no number for {x}"
+        | none =>
+          match Ord.measureFailure R m with
+          | none => done (bool true) #[step "rel.measure" "The measure goes down along every step, and a natural number cannot go down forever: well-founded." (relExpr' R) (bool true)] none "the measure decreases along every step"
+          | some (x, y) => done (bool false) #[step "rel.measure" s!"The step ${x} \\to {y}$ does not decrease the measure ({(m x).getD 0} to {(m y).getD 0})." (relExpr' R) (bool false)] none s!"not decreasing at {x} → {y}" (graph := some (R, [(x, y)], []))
     | h, _ => err s!"{h}: wrong arguments (see the reference)"
+
+/-- What a logic cell produced: its value (a formula, a truth value, or an assignment written as a
+conjunction of literals), its derivation, a one-line summary, and for `truthtable` the table. -/
+structure LogicResult where
+  name : Option String
+  value : Expr
+  derivation : Derivation
+  summary : String
+  /-- The variables, then one row per assignment: the variables' values and the formula's. -/
+  table : Option (List String × List (List Bool)) := none
+
+/-- A number from an expression of a logic cell: its bound variables (`env`) and the session's names
+put in, then the pipeline. -/
+def logicNum (s : Session) (env : List (String × Q)) (e : Expr) : Option Q :=
+  let e := substitute s.env (substituteFns s.fns (substitute (env.map fun (x, q) => (x, .num q)) e))
+  match (normalizeT pipelineRules pipelineOrdered e).run #[] with
+  | (.ok (.num q), _) => some q
+  | _ => none
+
+/-- Evaluate a logic cell. -/
+def logicCell (s : Session) (cellId source : String) :
+    Session × Except (String × String × Option (Nat × Nat)) LogicResult :=
+  match Logic.parseStmt source with
+  | .error msg => (s, .error ("syntax", msg, none))
+  | .ok stmt =>
+    let err (msg : String) : Session × Except (String × String × Option (Nat × Nat)) LogicResult := (s, .error ("eval", msg, none))
+    let prep (f : Logic.Fm) : Logic.Fm := Logic.expand s.formulas f
+    let tv (b : Bool) : Logic.Fm := if b then .tt else .ff
+    let step (rule text : String) (before after : Expr) : Step := ⟨rule, text, [], before, after, none⟩
+    let done (name : Option String) (input : Expr) (value : Logic.Fm) (steps : Array Step) (summary : String)
+        (table : Option (List String × List (List Bool)) := none) :
+        Session × Except (String × String × Option (Nat × Nat)) LogicResult :=
+      let out := value.toExpr
+      let d : Derivation := ⟨input, steps, out⟩
+      let s := { s with cells := (cellId, { output := out, derivation := d }) :: s.cells.filter (·.1 != cellId) }
+      let s := match name with
+        | some n => { s with formulas := (n, value) :: s.formulas.filter (·.1 != n) }
+        | none => s
+      (s, .ok ⟨name, out, d, summary, table⟩)
+    -- a propositional formula with at most `limit` variables, for the truth-table commands
+    let propOnly (f : Logic.Fm) (what : String) (limit := Logic.maxVars) : Except String (List String) :=
+      if !f.isProp then .error s!"{what} is for propositional formulas; {f.toText} has arithmetic or quantifiers in it (write it on its own to evaluate it)"
+      else if f.vars.length > limit then .error s!"{what}: {f.vars.length} variables, more than {limit}"
+      else .ok f.vars
+    let num := logicNum s
+    match stmt with
+    | .fm name f =>
+      let f := prep f
+      if f.isProp && !f.vars.isEmpty then
+        done name f.toExpr f #[] s!"a formula in {", ".intercalate f.vars}"
+      else if f.isProp then
+        let b := f.eval (fun _ => false)
+        done name f.toExpr (tv b) #[step "logic.evaluate" "A formula with no variables has one value, read off its connectives' truth tables." f.toExpr (tv b).toExpr] (if b then "true" else "false")
+      else
+        match Logic.decide num [] f, Logic.decidingElement num f with
+        | .error m, _ | _, .error m => err m
+        | .ok b, .ok el =>
+          let why := match el, f with
+            | some (x, v), .all _ _ body => s!"Not for every ${x}$: at ${x} = {v.toText}$, ${(Logic.instantiate x (.num v) body).toExpr.toLatex}$ is false."
+            | some (x, v), .ex _ _ body => s!"A witness: at ${x} = {v.toText}$, ${(Logic.instantiate x (.num v) body).toExpr.toLatex}$ holds."
+            | none, .all x _ _ => s!"Every ${x}$ of the domain was checked: the body holds for each."
+            | none, .ex x _ _ => s!"Every ${x}$ of the domain was checked: the body holds for none."
+            | _, _ => "Each atom evaluated, then the connectives."
+          let summary := match el with
+            | some (x, v) => s!"{if b then "true" else "false"} ({x} = {v.toText})"
+            | none => if b then "true" else "false"
+          done name f.toExpr (tv b) #[step "logic.bounded" why f.toExpr (tv b).toExpr] summary
+    | .cmd name head args =>
+      let args := args.map prep
+      match head, args with
+      | "truthtable", [f] =>
+        match propOnly f "truthtable" 8 with
+        | .error m => err m
+        | .ok vs =>
+          let rows := (Logic.rows vs).map fun r => r ++ [f.eval (Logic.assignment vs r)]
+          let k := (rows.filter fun r => r.getLastD false).length
+          done name (.fn "truthtable" [f.toExpr]) f #[] s!"true in {k} of {rows.length} rows" (some (vs, rows))
+      | "taut", [f] =>
+        match propOnly f "taut" with
+        | .error m => err m
+        | .ok vs =>
+          match Logic.findRow vs (fun σ => !f.eval σ) with
+          | none => done name (.fn "taut" [f.toExpr]) .tt #[step "logic.truthtable" s!"True in every one of the {(Logic.rows vs).length} rows of its truth table: a tautology." f.toExpr Logic.Fm.tt.toExpr] "a tautology"
+          | some r => done name (.fn "taut" [f.toExpr]) .ff #[step "logic.truthtable" s!"False when {Logic.rowText vs r}: not a tautology." f.toExpr Logic.Fm.ff.toExpr] s!"false when {Logic.rowText vs r}"
+      | "sat", [f] | "falsify", [f] =>
+        match propOnly f head with
+        | .error m => err m
+        | .ok vs =>
+          let want := head == "sat"
+          match Logic.findRow vs (fun σ => f.eval σ == want) with
+          | some r =>
+            let lit := Logic.literals vs r
+            done name (.fn head [f.toExpr]) lit #[step "logic.truthtable" s!"The first row of its truth table where it is {if want then "true" else "false"}: {Logic.rowText vs r}." f.toExpr lit.toExpr] s!"{if want then "satisfied" else "falsified"} by {Logic.rowText vs r}"
+          | none => done name (.fn head [f.toExpr]) .ff #[step "logic.truthtable" s!"{if want then "False" else "True"} in every row: {if want then "unsatisfiable" else "a tautology"}, so no assignment does it (⊥: none)." f.toExpr Logic.Fm.ff.toExpr] (if want then "unsatisfiable" else "a tautology: nothing falsifies it")
+      | "equiv", [f, g] =>
+        match propOnly (.and f g) "equiv" with
+        | .error m => err m
+        | .ok vs =>
+          match Logic.findRow vs (fun σ => f.eval σ != g.eval σ) with
+          | none => done name (.fn "equiv" [f.toExpr, g.toExpr]) .tt #[step "logic.truthtable" s!"The same value in each of the {(Logic.rows vs).length} rows: equivalent." (.fn "equiv" [f.toExpr, g.toExpr]) Logic.Fm.tt.toExpr] "equivalent"
+          | some r => done name (.fn "equiv" [f.toExpr, g.toExpr]) .ff #[step "logic.truthtable" s!"They differ when {Logic.rowText vs r}: the first is {f.eval (Logic.assignment vs r)}, the second {g.eval (Logic.assignment vs r)}." (.fn "equiv" [f.toExpr, g.toExpr]) Logic.Fm.ff.toExpr] s!"not equivalent: they differ when {Logic.rowText vs r}"
+      | "nnf", [f] | "cnf", [f] | "dnf", [f] =>
+        if !f.isProp then err s!"{head} is for propositional formulas; {f.toText} has arithmetic or quantifiers in it" else
+        let (r, steps) := Logic.toNormal head f
+        if !Logic.hasShape head r then err s!"{head}: the result {r.toText} is not in {head.toUpper} (please report this)" else
+        done name f.toExpr r steps s!"{head.toUpper}: {steps.size} step{if steps.size == 1 then "" else "s"}"
+      | h, _ => err s!"{h}: wrong arguments (see the reference)"
 
 /-- A sampled plot: the variable, the range, and one series per function — its normalized term and
 `(t, y)` pairs (`none` where it has no finite value). A `parametric` series is a complex-valued

@@ -599,8 +599,47 @@ def checkTests : TestM Unit := do
   let (_, praw) := handleS st (req "3" "engine.evaluate" "{\"sessionId\":\"p\",\"cellId\":\"b\",\"source\":\"%\"}")
   checkTrue "check: % is the last evaluation's" (contains praw "\"text\":\"x^3\"" && contains praw "\"label\":2") praw
 
+/-- The logic world and relations: the steps the normal forms take, the witnesses, the visuals. -/
+def logicRelTests : TestM Unit := do
+  let ev (src : String) := rpc "engine.evaluate" s!"\{\"sessionId\":\"lg\",\"cellId\":\"c\",\"source\":\"{src}\",\"showWork\":true}"
+  checkTrue "logic: cnf distributes, one law a step" (contains (ev "cnf(p ∨ (q ∧ r))") "\"rule\":\"logic.distribute\"")
+  checkTrue "logic: nnf names De Morgan" (contains (ev "nnf(¬(p ∧ q))") "\"rule\":\"logic.de-morgan\"")
+  checkTrue "logic: taut's counterexample row" (contains (ev "taut(p → q)") "false when p = true, q = false")
+  checkTrue "logic: equiv's distinguishing row" (contains (ev "equiv(p → q, q → p)") "they differ when p = true, q = false")
+  checkTrue "logic: a truth table is a visual" (contains (ev "truthtable(p ∧ q)") "\"kind\":\"logic.truthtable\"")
+  checkTrue "logic: a truth table's rows" (contains (ev "truthtable(p ∧ q)") "\"rows\":[[true,true,true],[true,false,false],[false,true,false],[false,false,false]]")
+  checkTrue "logic: a ∀ names its counterexample" (contains (ev "∀ n ∈ 1..10, n^2 ≥ 2n") "at $n = 1$")
+  checkTrue "logic: an ∃ names its witness" (contains (ev "∃ n ∈ {4, 6, 9, 11}, prime(n)") "at $n = 11$")
+  checkTrue "logic: a λ-cell stays a λ-cell" (contains (ev "(λx. x) y") "\"kind\":\"lambda\"")
+  checkTrue "logic: a math cell stays a math cell" (contains (ev "diff(x^2, x)") "\"text\":\"2*x\"")
+  let (st, _) := sessionEval [] "let R = rel({a, b, c}; a->b, b->c)"
+  let (_, traw) := handleS st "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"engine.evaluate\",\"params\":{\"sessionId\":\"t\",\"cellId\":\"x\",\"source\":\"transitive(R)\",\"showWork\":true}}"
+  checkTrue "relations: the pairs that break transitivity are marked" (contains traw "\"bad\":[[\"a\",\"b\"],[\"b\",\"c\"]]") traw
+  let (_, craw) := handleS st "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"engine.evaluate\",\"params\":{\"sessionId\":\"t\",\"cellId\":\"y\",\"source\":\"closure(R, transitive)\",\"showWork\":true}}"
+  checkTrue "relations: a closure marks what it added, a round a step" (contains craw "\"added\":[[\"a\",\"c\"]]" && contains craw "\"rule\":\"rel.transitive-closure\"") craw
+  -- exercises in these worlds
+  let ask (q a : String) := rpc "engine.check" s!"\{\"sessionId\":\"x\",\"cellId\":\"e\",\"source\":\"{q}\",\"answer\":\"{a}\"}"
+  let eqv (q a : String) := contains (ask q a) "\"equivalent\":true"
+  checkTrue "check logic: a CNF" (eqv "cnf(p → (q ∧ r))" "(¬p ∨ q) ∧ (¬p ∨ r)")
+  checkTrue "check logic: equivalent but not CNF" (contains (ask "cnf(p → (q ∧ r))" "¬p ∨ (q ∧ r)") "the answer must be in CNF")
+  checkTrue "check logic: a CNF of something else" (!eqv "cnf(p → (q ∧ r))" "(¬p ∨ q) ∧ (p ∨ r)")
+  checkTrue "check logic: a tautology is true" (eqv "taut(p ∨ ¬p)" "true" && !eqv "taut(p ∨ ¬p)" "⊥")
+  checkTrue "check logic: any satisfying assignment" (eqv "sat(p ∧ ¬q)" "p ∧ ¬q" && !eqv "sat(p ∧ ¬q)" "p")
+  checkTrue "check logic: unsatisfiable is ⊥" (eqv "sat(p ∧ ¬p)" "false")
+  checkTrue "check logic: an equivalent formula" (eqv "p → q" "¬p ∨ q" && !eqv "p → q" "q → p")
+  checkTrue "check logic: a bounded ∀" (eqv "∀ x ∈ 1..5, x < 6" "true")
+  let req (id src : String) := s!"\{\"jsonrpc\":\"2.0\",\"id\":{id},\"method\":\"engine.evaluate\",\"params\":\{\"sessionId\":\"r\",\"cellId\":\"d{id}\",\"source\":\"{src}\"}}"
+  let (st, _) := handleS [] (req "1" "let R = rel({a, b, c}; a->b, b->c)")
+  let (st, _) := handleS st (req "2" "let K = kernel({r1, r2, r3, r4}; r1->k1, r2->k1, r3->k2, r4->k2)")
+  let askR (q a : String) := (handleS st s!"\{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"engine.check\",\"params\":\{\"sessionId\":\"r\",\"cellId\":\"q\",\"source\":\"{q}\",\"answer\":\"{a}\"}}").2
+  let eqvR (q a : String) := contains (askR q a) "\"equivalent\":true"
+  checkTrue "check relations: a closure's pairs, in any order or notation" (eqvR "closure(R, transitive)" "a->b, b->c, a->c" && eqvR "closure(R, transitive)" "(a, c), (a, b), (b, c)")
+  checkTrue "check relations: a closure missing a pair" (!eqvR "closure(R, transitive)" "a->b, b->c")
+  checkTrue "check relations: a property" (eqvR "transitive(R)" "false" && !eqvR "transitive(R)" "true")
+  checkTrue "check relations: classes, in any order" (eqvR "classes(K)" "{r2, r1}, {r3, r4}" && !eqvR "classes(K)" "{r1}, {r2, r3, r4}")
+
 def main : IO UInt32 := do
-  let ((), failures) ← (do tests; sessionTests; partStatTests; workTests; checkTests; goldenTests).run #[]
+  let ((), failures) ← (do tests; sessionTests; partStatTests; workTests; checkTests; logicRelTests; goldenTests).run #[]
   for f in failures do
     IO.println s!"FAIL {f.name}\n  expected: {f.expected}\n  actual:   {f.actual}"
   IO.println s!"{failures.size} failures"

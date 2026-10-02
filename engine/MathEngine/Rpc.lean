@@ -113,13 +113,37 @@ def ruleStatus : Json :=
     entryC "cx.exact-trig" "verified" "sin, cos, tan at rational multiples of π: period, reflections and the reference angles (Real.sin_pi_div_four and friends)." "verified" "The real values, cast (Complex.ofReal_sin, ofReal_cos)." ,
     entryC "cx.euler" "unverified" "i has no real meaning; read in ℂ." "verified" "Euler's formula exp(iθ) = cos θ + i sin θ (Complex.exp_mul_I) with the exact values.",
     entryC "cx.euler-power" "verified" "(e¹)^b = e^b (Real.rpow_def_of_pos)." "verified" "(e¹)^b = e^b (Complex.cpow_def, log_exp with Im 1 = 0).",
+    entry "rel.kernel" "verified" "Equality of labels is reflexive, symmetric and transitive, so having the same label is too: by definition.",
+    entry "rel.reflexive" "verified" "Every element checked for $x \\mathrel{R} x$; the first that fails is the witness.",
+    entry "rel.symmetric" "verified" "Every pair checked for its reverse; the first without one is the witness.",
+    entry "rel.antisymmetric" "verified" "Every pair checked against its reverse with distinct ends.",
+    entry "rel.transitive" "verified" "Every two pairs that chain checked for the pair they force; the first missing one is the witness (transitiveFailure_none).",
+    entry "rel.equivalence" "verified" "Reflexive, symmetric and transitive, each checked.",
+    entry "rel.preorder" "verified" "Reflexive and transitive, each checked.",
+    entry "rel.reflexive-closure" "verified" "Adds exactly the missing $(x, x)$: the least reflexive relation containing the original, by definition.",
+    entry "rel.symmetric-closure" "verified" "Adds exactly the missing reverses: the least symmetric relation containing the original, by definition.",
+    entry "rel.transitive-closure" "verified" "Each round adds only pairs forced by two that chain, so every pair lies in any transitive relation containing the original (round_sub_transitive); the rounds stop when none is missing, and then the relation is transitive (stable_transitive): the least transitive relation containing it.",
+    entry "rel.classes" "verified" "Each element's class is everything related to it; for an equivalence the classes partition the set.",
+    entry "rel.finer" "verified" "Every pair of the first checked in the second.",
+    entry "rel.wellfounded" "verified" "On a finite set a relation is well-founded exactly when it has no cycle; the search follows steps from every element, and a cycle found is shown.",
+    entry "rel.measure" "verified" "Every step checked to decrease the measure, an integer; a decreasing measure bounded below cannot decrease forever.",
+    entry "logic.implication" "verified" "$a \\to b$ and $\\lnot a \\lor b$ have the same truth table (implication_sound); the pass that applies it everywhere keeps the formula's value (arrows_sound).",
+    entry "logic.biconditional" "verified" "$a \\leftrightarrow b$ and $(a \\to b) \\land (b \\to a)$ have the same truth table (biconditional_sound, arrows_sound).",
+    entry "logic.de-morgan" "verified" "$\\lnot(a \\land b) = \\lnot a \\lor \\lnot b$ and its dual, over Bool (deMorgan_sound); the negation pass keeps the value (nnf_sound).",
+    entry "logic.double-negation" "verified" "$\\lnot\\lnot a = a$ over Bool (nnf_sound).",
+    entry "logic.negate-constant" "verified" "$\\lnot\\top = \\bot$ and $\\lnot\\bot = \\top$ (nnf_sound).",
+    entry "logic.constants" "verified" "The identities and annihilators of $\\land$ and $\\lor$ over Bool (consts_sound).",
+    entry "logic.distribute" "verified" "$a \\lor (b \\land c) = (a \\lor b) \\land (a \\lor c)$ and its dual over Bool (distrib_sound, normal_sound).",
+    entry "logic.truthtable" "verified" "Every assignment to the formula's variables is a row (rows_complete), and a formula's value depends only on its variables (eval_congr): what holds in every row holds everywhere (taut_sound).",
+    entry "logic.evaluate" "verified" "A formula without variables: its value by definition of the connectives.",
+    entry "logic.bounded" "verified" "A quantifier over a finite set is checked element by element, by definition; the atoms are evaluated by the pipeline, whose steps' statuses apply.",
     entry "lambda.delta" "verified" "Unfolding a definition replaces a free name by its term; nothing to prove beyond that.",
     entry "lambda.beta" "unverified" "β-reduction with capture-avoiding substitution; the substitution lemma is not yet proved.",
     entry "lambda.alpha-beta" "unverified" "A binder renamed to avoid capture, then β; the renaming is not yet proved to preserve α-equivalence."]
 
 def capabilities : Json :=
   .obj #[("engine", .str "engine-lean"), ("version", .str "0.1.0-m8"), ("verified", .bool true),
-         ("features", .arr #[.str "simplify", .str "expand", .str "factor", .str "diff", .str "linalg", .str "numeric", .str "integrate", .str "plot", .str "lambda", .str "order", .str "sum", .str "exptotrig", .str "part", .str "statistics", .str "check"]),
+         ("features", .arr #[.str "simplify", .str "expand", .str "factor", .str "diff", .str "linalg", .str "numeric", .str "integrate", .str "plot", .str "lambda", .str "order", .str "sum", .str "exptotrig", .str "part", .str "statistics", .str "check", .str "logic"]),
          ("ruleStatus", ruleStatus),
          ("termination", .obj #[("status", .str "proven"), ("theorem", .str "MathEngine.pipelineOrdered"),
            ("summary", .str "Cell evaluation has no step budget: every pipeline rule decreases a five-tier ordering (commands, higher-order diff, matrix literals, the weight M, size) on nodes whose children are normal.")])]
@@ -189,6 +213,34 @@ def evaluateOrder (st : Store) (params : Json) (sessionId cellId src : String) :
           ("nodes", .arr (P.elems.map fun x => Json.obj #[("name", .str x), ("height", .num (toString (hs.getD x 0)))]).toArray),
           ("covers", .arr ((Ord.hasse P).map fun (a, b) => Json.arr #[.str a, .str b]).toArray)])
       | none => r
+    let r := match res.graph with
+      | some (R, bad, added) =>
+        let pairs (ps : List (String × String)) : Json := .arr (ps.map fun (a, b) => Json.arr #[.str a, .str b]).toArray
+        r.push ("visuals", .arr #[.obj #[("kind", .str "relation.digraph"), ("data", .obj #[
+          ("nodes", .arr (R.elems.map Json.str).toArray), ("edges", pairs R.pairs), ("bad", pairs bad), ("added", pairs added)])]])
+      | none => r
+    let r := r ++ workFields params res.derivation
+    let r := match res.name with | some n => r.push ("bound", .arr #[.str n]) | none => r
+    (st, .obj r)
+
+/-- A logic cell's reply: the value, the derivation, and for `truthtable` the table to draw
+(`visuals`, kind `logic.truthtable`). -/
+def evaluateLogic (st : Store) (params : Json) (sessionId cellId src : String) : Store × Json :=
+  let (s, r) := logicCell (st.get sessionId) cellId src
+  let st := st.set sessionId s
+  match r with
+  | .error (code, msg, span) => (st, errorJson code msg span)
+  | .ok res =>
+    let paths := params.getBool "paths"
+    let r := #[("ok", .bool true), ("kind", .str "logic"), ("value", res.value.toJson), ("rendered", Rendered.toJson res.value paths),
+      ("summary", .str res.summary)]
+    let r := match res.table with
+      | some (vs, rows) =>
+        let formula := match res.derivation.input with | .fn "truthtable" [f] => f | e => e
+        r.push ("visuals", .arr #[.obj #[("kind", .str "logic.truthtable"), ("data", .obj #[
+          ("vars", .arr (vs.map Json.str).toArray), ("formula", Rendered.toJson formula false),
+          ("rows", .arr (rows.map fun row => Json.arr (row.map Json.bool).toArray).toArray)])]])
+      | none => r
     let r := r ++ workFields params res.derivation
     let r := match res.name with | some n => r.push ("bound", .arr #[.str n]) | none => r
     (st, .obj r)
@@ -215,6 +267,7 @@ def evaluate (st : Store) (params : Json) : Store × Json :=
 where
   evaluateCore (st : Store) (params : Json) (sessionId cellId src : String) : Store × Json :=
     if Ord.isOrderSource src then evaluateOrder st params sessionId cellId src else
+      if Logic.isLogicSource src then evaluateLogic st params sessionId cellId src else
       if isLambdaCell (st.get sessionId) src then evaluateLambda st params sessionId cellId src else
       let (s, r) := evaluateCell (st.get sessionId) cellId src
       let st := st.set sessionId s
