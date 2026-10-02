@@ -93,6 +93,13 @@ differential test with zero mismatches.
   normalizes with that set, the pipeline is `pipelineRulesWith norm`, generic in the checker's
   normalizer, and `Integrate.lean` closes the knot: the checker is the pipeline with nested
   `integrate` refused, and the notebook's pipeline is the pipeline with that checker.
+- **An exercise is checked by normal forms.** `engine.check` (`Exercise.lean`) evaluates a question
+  like any cell (its value is the expected answer, its derivation the worked solution) and reduces the
+  reader's answer too; the two are equivalent when their canonical forms are equal — the integration
+  check's `identNorm` and `dist`, normalized — as two λ-terms are β-equivalent when they reduce to the
+  same normal form (λ answers are compared by their de Bruijn terms). "Not equivalent" is "not shown
+  equivalent". An answer that calls the question's own commands (`diff` for a `diff` question) is
+  refused, and a check is not an evaluation: no `In[n]`, no binding, `%` untouched.
 - **Soundness is a fold, over whichever semantics you bring.** `RewriteSound.normalize_sound_for`
   is stated for an abstract `Congruence` (reflexive, transitive, a congruence under `withChildren`,
   invariant under `canon`). Supply those four facts for a new semantics and normalization's

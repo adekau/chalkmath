@@ -232,6 +232,34 @@ export interface WorldExtras {
 export interface StepsParams { sessionId: string; cellId: string; paths?: boolean }
 export interface StepsResult { derivation: Derivation; inputRendered: Rendered }
 
+/** An exercise: `source` is the question (an expression or a λ-term), whose value is the expected
+ *  answer and whose derivation is the worked solution; `answer`, when sent, is compared with it. Both
+ *  are reduced to a normal form and the two forms compared, as two λ-terms are β-equivalent when they
+ *  reduce to the same normal form: expressions in the canonical form the integration check uses
+ *  (distributed, `cos² = 1 − sin²`, `(eᵘ)ᵏ = eᵏᵘ`, then simplified), λ-terms up to α. An answer that
+ *  calls a function the question uses for its work (other than the elementary functions) is refused,
+ *  and a λ answer must already be a normal form. The question is recorded as `cellId` (so
+ *  `engine.steps` and `engine.explain` work on the solution) but nothing is bound and no label is
+ *  taken: `%` is untouched. Optional method (rule 5). */
+export interface CheckParams {
+  sessionId: string; cellId: string; source: string;
+  answer?: string;
+  showWork?: boolean; paths?: boolean; outline?: boolean;
+}
+export interface CheckResult {
+  ok: true; kind: "exercise" | "lambda";
+  /** The expected answer, and the normal form answers are compared against. */
+  rendered: Rendered; normalForm: Rendered;
+  /** The question, as the engine reads it. */
+  inputRendered: Rendered;
+  derivation?: Derivation; outline?: Outline;
+  /** With `answer`: its value and normal form, or why it could not be compared. */
+  answer?: { ok: true; rendered: Rendered; normalForm: Rendered } | EvaluateError;
+  /** With `answer`: whether its normal form is the expected one. "Not equivalent" means "not shown
+   *  equivalent": the canonical form decides the identities it applies, not every identity. */
+  equivalent?: boolean;
+}
+
 export interface Methods {
   "engine.capabilities": { params: Record<string, never>; result: EngineCapabilities };
   "engine.evaluate":     { params: EvaluateParams; result: (EvaluateResult & WorldExtras) | EvaluateError };
@@ -239,6 +267,7 @@ export interface Methods {
   "engine.steps":        { params: StepsParams; result: StepsResult };
   "engine.resetSession": { params: { sessionId: string }; result: { ok: true } };
   "engine.plot":         { params: PlotParams; result: PlotResult | EvaluateError };
+  "engine.check":        { params: CheckParams; result: CheckResult | EvaluateError };
 }
 export type MethodName = keyof Methods;
 

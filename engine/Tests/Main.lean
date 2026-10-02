@@ -559,8 +559,32 @@ def workTests : TestM Unit := do
   let (st5, _) := handleS [] (req "10" "engine.evaluate" "{\"sessionId\":\"l\",\"cellId\":\"a\",\"source\":\"(λx. x) y\",\"showWork\":true,\"outline\":true}")
   checkTrue "engine.steps: a λ-cell's steps keep their de Bruijn view" (contains (handleS st5 (req "11" "engine.steps" "{\"sessionId\":\"l\",\"cellId\":\"a\"}")).2 "\"afterDeBruijn\"")
 
+/-- Exercises (`engine.check`): an answer is right when it reduces to the question's normal form. -/
+def checkTests : TestM Unit := do
+  let ask (q a : String) := rpc "engine.check" s!"\{\"sessionId\":\"x\",\"cellId\":\"e\",\"source\":\"{q}\",\"answer\":\"{a}\"}"
+  let eqv (q a : String) := contains (ask q a) "\"equivalent\":true"
+  checkTrue "check: the answer as the engine writes it" (eqv "diff(x^2*sin(x), x)" "2x sin(x) + x^2 cos(x)")
+  checkTrue "check: a factored answer" (eqv "diff(x^2*sin(x), x)" "x(2sin(x) + x cos(x))")
+  checkTrue "check: a wrong answer" (!eqv "diff(x^2*sin(x), x)" "2x sin(x)")
+  checkTrue "check: the identity the integration check knows" (eqv "integrate(cos(x)^2*sin(x), x)" "-cos(x)^3/3")
+  checkTrue "check: the work is not an answer" (contains (ask "diff(x^2, x)" "diff(x^2, x)") "the answer may not use diff")
+  checkTrue "check: elementary functions are allowed" (eqv "diff(sin(x^2), x)" "2x cos(x^2)")
+  checkTrue "check: a syntax error in the answer" (contains (ask "diff(x^2, x)" "2x +") "\"answer\":{\"ok\":false,\"error\":{\"code\":\"syntax\"")
+  checkTrue "check: λ normal forms up to α" (eqv "add 2 1" "λg. λy. g (g (g y))")
+  checkTrue "check: a different λ normal form" (!eqv "add 2 1" "λf. λx. f (f x)")
+  checkTrue "check: a λ answer with a redex" (contains (ask "add 2 1" "succ 2") "reduce it to normal form")
+  let noAnswer := rpc "engine.check" "{\"sessionId\":\"x\",\"cellId\":\"e\",\"source\":\"expand((x+1)^2)\",\"showWork\":true}"
+  checkTrue "check: without an answer, the solution and its work" (contains noAnswer "\"rendered\":{\"text\":\"x^2 + 2*x + 1\"" && contains noAnswer "\"derivation\"" && !contains noAnswer "\"equivalent\"") noAnswer
+  -- a check is not an evaluation: no label, no binding, and % is untouched
+  let req (id method params : String) := s!"\{\"jsonrpc\":\"2.0\",\"id\":{id},\"method\":\"{method}\",\"params\":{params}}"
+  let (st, _) := handleS [] (req "1" "engine.evaluate" "{\"sessionId\":\"p\",\"cellId\":\"a\",\"source\":\"let f = x^3\"}")
+  let (st, craw) := handleS st (req "2" "engine.check" "{\"sessionId\":\"p\",\"cellId\":\"q\",\"source\":\"diff(f, x)\",\"answer\":\"3x^2\"}")
+  checkTrue "check: the session's names" (contains craw "\"equivalent\":true" && !contains craw "\"label\"") craw
+  let (_, praw) := handleS st (req "3" "engine.evaluate" "{\"sessionId\":\"p\",\"cellId\":\"b\",\"source\":\"%\"}")
+  checkTrue "check: % is the last evaluation's" (contains praw "\"text\":\"x^3\"" && contains praw "\"label\":2") praw
+
 def main : IO UInt32 := do
-  let ((), failures) ← (do tests; partStatTests; workTests; goldenTests).run #[]
+  let ((), failures) ← (do tests; partStatTests; workTests; checkTests; goldenTests).run #[]
   for f in failures do
     IO.println s!"FAIL {f.name}\n  expected: {f.expected}\n  actual:   {f.actual}"
   IO.println s!"{failures.size} failures"

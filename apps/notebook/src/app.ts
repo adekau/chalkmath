@@ -148,7 +148,10 @@ function migratePlot(p: PlotData | { var: string; from: number; to: number; poin
 
 /** What a cell is: mathematics for the engine (the default), Markdown prose with `$…$` and code, or a
  *  section heading that groups the cells below it (run together, collapsible). */
-type CellType = "math" | "markdown" | "section" | "lean";
+type CellType = "math" | "markdown" | "section" | "lean" | "exercise";
+/** What the engine said of an exercise's answer: equivalent or not, with the answer as it reads it
+ *  and the normal form it compared; or why it could not compare it. */
+interface Verdict { equivalent: boolean; answerLatex?: string; normalLatex?: string; error?: { message: string; span?: { start: number; end: number } } }
 
 interface Cell {
   id: string;
@@ -201,6 +204,16 @@ interface Cell {
    *  last. The number is how many steps show at first (the author's choice, saved); absent shows the
    *  work at once. */
   stepwise?: number;
+  /** Exercise cells (`src` is the question, whose value is the answer and whose work is the
+   *  solution): the prompt (Markdown), the hints in order, whether the question is shown typeset, and
+   *  the reader's state — the answer typed, the hints open, the verdict, the solution shown. */
+  prompt?: string;
+  hints?: string[];
+  hideQuestion?: boolean;
+  attempt?: string;
+  hintsShown?: number;
+  verdict?: Verdict;
+  solution?: boolean;
   /** How many steps the reader has revealed (not saved), and the source that count belongs to: the
    *  cell run with another source starts again from `stepwise`. */
   revealed?: number;
@@ -552,7 +565,7 @@ async function runCell(cell: Cell) {
     // the cell is evaluated in its own notebook's session, which need not be the current one by now
     // (a notebook re-running when its tab was left); a closed notebook's cells are not evaluated
     const d = docOf(cell);
-    if (gen === runGen && client && d) await evaluateCell(cell, client, d.sessionId);
+    if (gen === runGen && client && d) await (cell.type === "exercise" ? checkExercise(cell, client, d.sessionId) : evaluateCell(cell, client, d.sessionId));
     else renderCellBody(cell);
   } finally { release(); }
 }
@@ -679,6 +692,52 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
   }
   finishEvaluation(cell);
 }
+
+/** Exercises whose next run is the reader's Check (the answer is sent); any other run of an exercise
+ *  (Run all, opening the notebook) re-checks only an answer that was checked before. */
+const CHECK_NOW = new WeakSet<Cell>();
+/** Run an exercise: the engine evaluates the question (its value is the answer, its work the
+ *  solution, both held back until the reader asks) and compares the reader's answer with it. */
+async function checkExercise(cell: Cell, client: EngineClient, sessionId: string) {
+  const answer = (CHECK_NOW.has(cell) || cell.verdict) && cell.attempt?.trim() ? cell.attempt : undefined;
+  CHECK_NOW.delete(cell);
+  S.busy = true; S.running = cell;
+  renderChrome(); renderCellBody(cell);
+  const t0 = performance.now();
+  log("rpc", `engine.check ${JSON.stringify(cell.src)}${answer !== undefined ? ` answer ${JSON.stringify(answer)}` : ""}`);
+  try {
+    const r = await client.call("engine.check", { sessionId, cellId: cell.id, source: cell.src, ...(answer !== undefined ? { answer } : {}), showWork: true, paths: true, outline: true });
+    cell.ms = performance.now() - t0;
+    queueMicrotask(autosave);
+    if (!r.ok) {
+      cell.error = r.error;
+      delete cell.outLatex; delete cell.outText; delete cell.echoLatex; cell.steps = []; delete cell.outline;
+      log("err", `${r.error.code}: ${r.error.message}`);
+    } else {
+      delete cell.error;
+      cell.echoLatex = r.inputRendered.latex;
+      cell.outLatex = r.rendered.latex; cell.outText = r.rendered.text;
+      cell.semantics = mentionsI(r.rendered.text) || mentionsI(cell.src) ? "complex" : "real";
+      cell.steps = r.derivation?.steps ?? []; cell.outline = r.outline?.steps;
+      delete cell.openEntries; WORK_FAILED.delete(cell);
+      if (r.kind === "lambda") cell.kind = "λ-term"; else delete cell.kind;
+      if (answer !== undefined && r.answer) {
+        cell.verdict = r.answer.ok
+          ? { equivalent: !!r.equivalent, answerLatex: r.answer.rendered.latex, normalLatex: r.answer.normalForm.latex }
+          : { equivalent: false, error: r.answer.error };
+        log(r.equivalent ? "ok" : "err", `answer ${r.equivalent ? "equivalent" : r.answer.ok ? "not equivalent" : r.answer.error.message}`);
+        announce(r.equivalent ? "Correct." : r.answer.ok ? "Not equivalent to the answer." : `Error: ${r.answer.error.message}`);
+      }
+    }
+  } catch (e) {
+    cell.error = { message: e instanceof Error ? e.message : String(e) };
+    log("err", cell.error.message);
+  }
+  S.busy = false; S.running = null;
+  renderCellBody(cell); renderChrome(); renderSidebar();
+}
+/** Whether a source mentions `i` (the complex unit), as the engine's `semantics` does. */
+const mentionsI = (src: string) => /(^|[^A-Za-z0-9_])i([^A-Za-z0-9_(]|$)/.test(src);
 
 /** A plot reply as the notebook draws it: each curve's term and samples, and an epicycle drawing's circles. */
 function plotDataOf(r: PlotResult): PlotData {
@@ -951,7 +1010,7 @@ function renderTabs() {
 interface ChalkFile {
   /** Format version. Files written as `.lemma` before the rename carry `lemma: 1` instead and still open. */
   chalk?: 1; lemma?: 1; name: string;
-  cells: { src: string; type?: Cell["type"] | undefined; collapsed?: boolean | undefined; showWork: boolean; stepwise?: number | undefined; label: number | null; outLatex?: string | undefined; outText?: string | undefined; form?: string | undefined; semantics?: "real" | "complex" | undefined; echoLatex?: string | undefined; steps?: Step[] | undefined; outline?: StepOutline[] | undefined; error?: Cell["error"] | undefined; plot?: PlotData | undefined; mode?: Cell["mode"] | undefined; ask?: AskResult | undefined; file?: FileMeta | undefined; noSuggest?: true | undefined }[];
+  cells: { src: string; type?: Cell["type"] | undefined; collapsed?: boolean | undefined; showWork: boolean; stepwise?: number | undefined; prompt?: string | undefined; hints?: string[] | undefined; hideQuestion?: boolean | undefined; attempt?: string | undefined; hintsShown?: number | undefined; verdict?: Verdict | undefined; solution?: boolean | undefined; label: number | null; outLatex?: string | undefined; outText?: string | undefined; form?: string | undefined; semantics?: "real" | "complex" | undefined; echoLatex?: string | undefined; steps?: Step[] | undefined; outline?: StepOutline[] | undefined; error?: Cell["error"] | undefined; plot?: PlotData | undefined; mode?: Cell["mode"] | undefined; ask?: AskResult | undefined; file?: FileMeta | undefined; noSuggest?: true | undefined }[];
   scenes: Scene[];
   /** Images attached to the notebook, by name. */
   assets?: Record<string, Asset>;
@@ -981,7 +1040,7 @@ const outlineOf = (steps: Step[]): StepOutline[] => steps.map((st) => ({ rule: s
 function serializeNotebook(): string {
   const doc: ChalkFile = {
     chalk: 1, name: S.docName,
-    cells: S.cells.map((c) => ({ src: cellSrc(c), type: c.type, collapsed: c.collapsed || undefined, showWork: c.showWork, stepwise: c.stepwise, label: c.label, outLatex: c.outLatex, outText: c.outText, form: c.form, semantics: c.semantics, echoLatex: c.echoLatex, steps: stepsToSave(c), outline: outlineToSave(c), error: c.error, plot: c.plot, mode: c.mode, ask: c.ask, file: c.file, noSuggest: c.noSuggest || undefined })),
+    cells: S.cells.map((c) => ({ src: cellSrc(c), type: c.type, collapsed: c.collapsed || undefined, showWork: c.showWork, stepwise: c.stepwise, ...exerciseToSave(c), label: c.label, outLatex: c.outLatex, outText: c.outText, form: c.form, semantics: c.semantics, echoLatex: c.echoLatex, steps: stepsToSave(c), outline: outlineToSave(c), error: c.error, plot: c.plot, mode: c.mode, ask: c.ask, file: c.file, noSuggest: c.noSuggest || undefined })),
     scenes: ST.scenes,
     ...(Object.keys(S.assets).length ? { assets: S.assets } : {}),
   };
@@ -1019,10 +1078,29 @@ function assetsFromFile(doc: ChalkFile): Record<string, Asset> {
   return out;
 }
 
+/** An exercise's own fields, as a file keeps them. */
+function exerciseToSave(c: Cell): Partial<ChalkFile["cells"][number]> {
+  if (c.type !== "exercise") return {};
+  return { prompt: c.prompt || undefined, hints: c.hints?.length ? c.hints : undefined, hideQuestion: c.hideQuestion || undefined,
+    attempt: c.attempt || undefined, hintsShown: c.hintsShown || undefined, verdict: c.verdict, solution: c.solution || undefined };
+}
+/** An exercise's fields from a file's record; only well-formed ones are kept. */
+function exerciseFromFile(cell: Cell, c: ChalkFile["cells"][number]) {
+  cell.editing = !c.src.trim();
+  if (typeof c.prompt === "string") cell.prompt = c.prompt;
+  if (Array.isArray(c.hints)) cell.hints = c.hints.filter((x) => typeof x === "string");
+  if (c.hideQuestion) cell.hideQuestion = true;
+  if (typeof c.attempt === "string") cell.attempt = c.attempt;
+  if (typeof c.hintsShown === "number") cell.hintsShown = c.hintsShown;
+  if (c.verdict && typeof c.verdict.equivalent === "boolean") cell.verdict = c.verdict;
+  if (c.solution) cell.solution = true;
+}
+
 /** Cells from a file's records (no DOM yet); `foldWork` folds every cell's work whatever was saved. */
 function cellsFromFile(doc: ChalkFile, foldWork = false): Cell[] {
   return doc.cells.map((c) => {
-    const cell = freshCell(c.src, c.type === "markdown" || c.type === "section" || c.type === "lean" ? c.type : "math");
+    const cell = freshCell(c.src, c.type === "markdown" || c.type === "section" || c.type === "lean" || c.type === "exercise" ? c.type : "math");
+    if (cell.type === "exercise") exerciseFromFile(cell, c);
     if (cell.type === "markdown") cell.editing = !c.src.trim();   // prose comes back rendered; an empty cell opens for typing
     if (c.collapsed) cell.collapsed = true;
     cell.showWork = !foldWork && (c.showWork ?? false); cell.label = c.label ?? null;
@@ -1313,7 +1391,7 @@ function importNotebook() {
 
 /** What a link carries: the name and every cell's text and kind. Outputs are not included: the
  *  engine recomputes them when the link opens, which is the point of a verified notebook. */
-interface LinkDoc { v: 1; n: string; c: { s: string; t?: "markdown" | "section" | "lean"; w?: 1; f?: 1; r?: number }[]; a?: Record<string, { m: string; d: string; b?: 1 }> }
+interface LinkDoc { v: 1; n: string; c: { s: string; t?: "markdown" | "section" | "lean" | "exercise"; w?: 1; f?: 1; r?: number; p?: string; hs?: string[]; hq?: 1 }[]; a?: Record<string, { m: string; d: string; b?: 1 }> }
 
 async function deflate(text: string): Promise<Uint8Array> {
   const cs = new CompressionStream("deflate-raw");
@@ -1339,7 +1417,8 @@ function unb64url(s: string): Uint8Array {
 async function notebookLink(): Promise<string> {
   const doc: LinkDoc = {
     v: 1, n: S.docName,
-    c: S.cells.filter((c) => cellSrc(c).trim()).map((c) => ({ s: cellSrc(c), ...(c.type ? { t: c.type } : {}), ...(c.showWork ? { w: 1 as const } : {}), ...(c.collapsed ? { f: 1 as const } : {}), ...(c.stepwise !== undefined ? { r: c.stepwise } : {}) })),
+    c: S.cells.filter((c) => cellSrc(c).trim()).map((c) => ({ s: cellSrc(c), ...(c.type ? { t: c.type } : {}), ...(c.showWork ? { w: 1 as const } : {}), ...(c.collapsed ? { f: 1 as const } : {}), ...(c.stepwise !== undefined ? { r: c.stepwise } : {}),
+      ...(c.prompt ? { p: c.prompt } : {}), ...(c.hints?.length ? { hs: c.hints } : {}), ...(c.hideQuestion ? { hq: 1 as const } : {}) })),
     ...(Object.keys(S.assets).length ? { a: Object.fromEntries(Object.values(S.assets).map((a) => [a.name, { m: a.mime, d: a.data, ...(a.binary ? { b: 1 as const } : {}) }])) } : {}),
   };
   const json = JSON.stringify(doc);
@@ -1366,7 +1445,8 @@ async function openNotebookLink(hash: string): Promise<boolean> {
     if (doc.v !== 1 || !Array.isArray(doc.c)) throw new Error("not a notebook link");
     const file: ChalkFile = {
       chalk: 1, name: doc.n || "shared.chalk",
-      cells: doc.c.map((c) => ({ src: String(c.s ?? ""), type: c.t === "markdown" || c.t === "section" || c.t === "lean" ? c.t : undefined, collapsed: c.f ? true : undefined, showWork: !!c.w, stepwise: typeof c.r === "number" ? c.r : undefined, label: null })),
+      cells: doc.c.map((c) => ({ src: String(c.s ?? ""), type: c.t === "markdown" || c.t === "section" || c.t === "lean" || c.t === "exercise" ? c.t : undefined, collapsed: c.f ? true : undefined, showWork: !!c.w, stepwise: typeof c.r === "number" ? c.r : undefined,
+        prompt: typeof c.p === "string" ? c.p : undefined, hints: Array.isArray(c.hs) ? c.hs.map(String) : undefined, hideQuestion: c.hq ? true : undefined, label: null })),
       scenes: [],
       ...(doc.a ? { assets: Object.fromEntries(Object.entries(doc.a).map(([name, a]) => [name, { name, mime: String(a.m), data: String(a.d), ...(a.b ? { binary: true } : {}) }])) } : {}),
     };
@@ -1659,6 +1739,7 @@ function freshCell(src = "", type: CellType = "math"): Cell {
   if (type === "markdown") { cell.type = "markdown"; cell.editing = true; }
   if (type === "section") cell.type = "section";
   if (type === "lean") cell.type = "lean";
+  if (type === "exercise") { cell.type = "exercise"; cell.editing = true; }
   return cell;
 }
 function addCell(src = "", type: CellType = "math"): Cell {
@@ -1683,6 +1764,9 @@ function convertCell(cell: Cell, type: CellType) {
   if (type !== "math") { delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.error; delete cell.plot; delete cell.hasse; delete cell.summary; delete cell.ask; delete cell.askTrail; cell.steps = []; delete cell.outline; cell.label = null; }
   if (type === "section") cell.src = cell.src.split("\n")[0]!.replace(/^#+\s*/, "");
   if (type !== "lean") delete cell.leanMessages;
+  if (type === "exercise") cell.editing = true;
+  else { delete cell.prompt; delete cell.hints; delete cell.hideQuestion; delete cell.attempt; delete cell.hintsShown; delete cell.verdict; delete cell.solution; }
+  if (cur === "exercise" && type === "math") { delete cell.stepwise; cell.showWork = false; }
   renderCells(); renderSidebar(); renderChrome(); autosave();
 }
 
@@ -1725,6 +1809,7 @@ function focusCell(i: number) {
   // after the render: it rebuilds the inputs, and focus on the old one is lost
   if (c?.mi) c.mi.focus();
   else if (c?.type === "lean") focusLean(c.id);
+  else if (c?.type === "exercise") c.el?.querySelector<HTMLElement>(".xc-edit textarea, .xc-in")?.focus();
   else (c?.input ?? c?.ta ?? c?.el?.querySelector<HTMLElement>(".mdout"))?.focus();
 }
 
@@ -1837,7 +1922,7 @@ function renderChrome() {
   const menus = h("div", "menus");
   const MENUS: Record<string, [string, () => void][]> = {
     File: [["New notebook", newNotebook], ["Open…", openNotebook], ["Examples…", showExamples], ["Save", () => saveNotebook()], ["Save as…", saveNotebookAs], ["Export to file…", exportNotebook], ["Import from file…", importNotebook], ["Attach file…", attachFile], ["Copy link to notebook", () => void copyNotebookLink()]],
-    Edit: [["Add math cell", () => { addCell(); focusCell(S.cells.length - 1); }], ["Add Markdown cell", () => { addCell("", "markdown"); focusCell(S.cells.length - 1); }], ["Add section", () => { addCell("", "section"); focusCell(S.cells.length - 1); }], ["Add Lean cell", () => { addCell("", "lean"); focusCell(S.cells.length - 1); }],
+    Edit: [["Add math cell", () => { addCell(); focusCell(S.cells.length - 1); }], ["Add Markdown cell", () => { addCell("", "markdown"); focusCell(S.cells.length - 1); }], ["Add section", () => { addCell("", "section"); focusCell(S.cells.length - 1); }], ["Add Lean cell", () => { addCell("", "lean"); focusCell(S.cells.length - 1); }], ["Add exercise", () => { addCell("", "exercise"); focusCell(S.cells.length - 1); }],
       ...(S.cells[S.active] ? CELL_TYPES.filter(([t]) => t !== (S.cells[S.active]!.type ?? "math")).map(([t, label]): [string, () => void] => [`Change to ${label.toLowerCase()}`, () => convertCell(S.cells[S.active]!, t)]) : []),
       ["Clear outputs", clearOutputs]],
     View: [["Toggle light / dark", () => { applyTheme(S.theme === "light" ? "dark" : "light"); renderChrome(); }], [`${S.sidebarOpen ? "✓ " : ""}Sidebar  (Ctrl+B)`, toggleSidebar], ["Explanation panel", () => setPanelOpen(!S.panelOpen)],
@@ -1960,7 +2045,7 @@ function renderChrome() {
     mk("↑", "Move the cell up", () => { if (cur) moveCell(cur, -1); }, false, i > 0),
     mk("↓", "Move the cell down", () => { if (cur) moveCell(cur, 1); }, false, i >= 0 && i < S.cells.length - 1),
     mk("Duplicate", "Duplicate the cell", () => { if (cur) duplicateCell(cur); }, false, !!cur),
-    ...(cur && workCount(cur) ? [mk(cur.showWork ? "Hide work" : "Show work", "Show or hide the cell's steps", () => { cur.showWork = !cur.showWork; renderCellBody(cur); renderChrome(); autosave(); })] : []),
+    ...(cur && workCount(cur) && cur.stepwise === undefined && cur.type !== "exercise" ? [mk(cur.showWork ? "Hide work" : "Show work", "Show or hide the cell's steps", () => { cur.showWork = !cur.showWork; renderCellBody(cur); renderChrome(); autosave(); })] : []),
     mk("Clear output", "Clear the cell's output", () => { if (cur) clearCellOutput(cur); }, false, !!cur && hasOutput(cur)),
     mk("Delete", "Delete the cell", () => { if (cur) deleteCell(cur); }, false, !!cur),
   );
@@ -1995,7 +2080,7 @@ function renderNotice() {
   } else if (S.kernel === "starting") {
     n.classList.add("wait");
     n.append(h("span", "msg", "Starting the engine…"));
-  } else if (d && !d.hydrated && !d.noticeDismissed && S.cells.some((c) => (c.type ?? "math") === "math" && c.src.trim())) {
+  } else if (d && !d.hydrated && !d.noticeDismissed && S.cells.some((c) => ((c.type ?? "math") === "math" || c.type === "exercise") && c.src.trim())) {
     const saved = S.cells.some((c) => c.outLatex || c.file || c.error);
     n.append(h("span", "msg", `This notebook has not been run yet.${saved ? " The outputs shown are the ones it was saved with." : ""}`),
       btn("Run all", () => void runAll().then(() => renderChrome())),
@@ -2041,6 +2126,11 @@ function renderSidebar() {
         row.append(h("span", "num", "λ"));
         const wrap = h("span");
         wrap.append(h("span", "kind", "Lean"), h("span", "src", c.src.split("\n").find((l) => l.trim()) || "…"));
+        row.append(wrap);
+      } else if (c.type === "exercise") {
+        row.append(h("span", "num", c.verdict?.equivalent ? "✓" : "?"));
+        const wrap = h("span");
+        wrap.append(h("span", "kind", "exercise"), h("span", "src", c.prompt?.split("\n").find((l) => l.trim())?.replace(/^#+\s*/, "") || c.src || "…"));
         row.append(wrap);
       } else if (c.type === "markdown") {
         row.append(h("span", "num", "¶"));
@@ -2718,6 +2808,20 @@ function renderCells() {
       renderCellBody(cell);
       return;
     }
+    if (cell.type === "exercise") {
+      el.append(h("div", "prompt", "Ex."));
+      const mid = h("div", "mid");
+      const box = h("div", "xc-box");
+      box.addEventListener("focusin", () => { if (S.active !== i) { S.active = i; renderChrome(); renderSidebar(); markActive(); } });
+      mid.append(box, h("div", "cellbody"));
+      el.append(mid);
+      const acts = h("div", "cellacts");
+      el.append(acts, h("div", "brk"));
+      insertGap(host, i);
+      host.append(el);
+      renderCellBody(cell);
+      return;
+    }
     if (cell.type === "section") {
       el.append(h("div", "prompt", "§"));
       const mid = h("div", "mid");
@@ -2799,6 +2903,7 @@ const CELL_TYPES: [CellType, string, string][] = [
   ["markdown", "Markdown text", "Prose with $math$, $$display math$$, `code` and ``` blocks"],
   ["section", "Section heading", "Groups the cells below it: run them together, fold them away"],
   ["lean", "Lean cell", "Lean 4, checked as you type; goals in the panel, definitions shared with the Lean cells below"],
+  ["exercise", "Exercise", "A question the reader answers; the engine checks the answer and holds the worked solution"],
 ];
 /** A small menu of the cell kinds under `anchor`; `pick` gets the chosen one. */
 function typeMenu(anchor: HTMLElement, pick: (t: CellType) => void, current?: CellType) {
@@ -3100,16 +3205,20 @@ function renderCellBody(cell: Cell) {
   if (cell.type === "markdown") return renderMdCell(cell);
   if (cell.type === "section") return appendMore(cell, el.querySelector(".cellacts")!);
   if (cell.type === "lean") return renderLeanBody(cell);
+  const exercise = cell.type === "exercise";
+  if (exercise) renderExercise(cell);
+  // an exercise shows its question's work and value only as the solution, when the reader asks
+  const solving = !exercise || !!cell.solution;
   el.classList.toggle("done", !!cell.label);
   const busy = cell.queued || S.running === cell;   // Mathematica's In[*]: waiting or being evaluated
   el.classList.toggle("running", busy);
-  el.querySelector(".prompt")!.textContent = `In[${busy ? "*" : cell.label ?? " "}]:=`;
+  if (!exercise) el.querySelector(".prompt")!.textContent = `In[${busy ? "*" : cell.label ?? " "}]:=`;
   const mid = el.querySelector(".mid")!;
   const body = mid.querySelector(".cellbody") as HTMLElement;
   body.innerHTML = "";
 
   // a visual input already shows what was typed, and a `%` in it as the output it names
-  if (cell.echoLatex && S.showEcho && !isVisual(cell)) {
+  if (!exercise && cell.echoLatex && S.showEcho && !isVisual(cell)) {
     const echo = h("div", "echo");
     echo.innerHTML = tex(cell.echoLatex, true);
     wireTerm(echo, cell, { kind: "input" });
@@ -3130,13 +3239,13 @@ function renderCellBody(cell: Cell) {
   if (busy && cell.askSteps?.length) body.append(askProgress(cell));
   if (cell.error && cell.askTrail?.length) body.append(askTrail(cell.askTrail));
 
-  if (cell.showWork && !cell.steps?.length && workCount(cell)) {
+  if (solving && cell.showWork && !cell.steps?.length && workCount(cell)) {
     // the outline is here, the terms are not yet: fetch them, then draw the work
     const failed = WORK_FAILED.get(cell);
     body.append(h("div", "work pending", failed ?? "Fetching the work…"));
     if (!failed) void loadWork(cell).then(() => { if (cell.el) renderCellBody(cell); });
   }
-  if (cell.showWork && cell.steps && shownSteps(cell.steps)) {
+  if (solving && cell.showWork && cell.steps && shownSteps(cell.steps)) {
     const work = h("div", "work");
     const stepRow = (st: Step, label: string, status: string, term?: TermRef, sub?: { steps: Step[]; index: number; top: number }): HTMLElement => {
       const row = h("div", "step");
@@ -3222,9 +3331,9 @@ function renderCellBody(cell: Cell) {
   }
 
   const old = el.querySelector(".outrow"); old?.remove();
-  if (cell.outLatex || cell.file) {
+  if (solving && (cell.outLatex || cell.file)) {
     const out = h("div", "outrow");
-    out.append(h("div", "prompt", `Out[${cell.label}]=`));
+    out.append(h("div", "prompt", exercise ? "Answer" : `Out[${cell.label}]=`));
     const val = h("div", "outval");
     if (answerHeld(cell)) {
       // stepping through: the answer is the last step's, and waits for it
@@ -3331,6 +3440,7 @@ function renderCellBody(cell: Cell) {
 
   // per-cell actions beyond Run exist only once there is output
   const acts = el.querySelector(".cellacts")!;
+  if (exercise) { exerciseActs(cell, acts); return; }
   while (acts.childElementCount > 1) acts.lastElementChild!.remove();
   if (workCount(cell) && cell.stepwise === undefined) {
     const tw = asButton(h("span", undefined, cell.showWork ? "▾ Hide work" : `▸ Work (${workCount(cell)})`));
@@ -3604,6 +3714,133 @@ async function showAskSettings() {
 }
 
 /** The ⋮ button at the end of a cell's actions (replacing any there). */
+// --- Exercises: a question the reader answers, checked by the engine -------------------------------
+// The question is an engine source; its value is the answer and its work the solution, both held
+// back until the reader asks. The engine compares answers (`engine.check`): two expressions are
+// equivalent when they reduce to the same normal form, as two λ-terms are β-equivalent.
+
+/** A small button for an exercise's row. */
+function exBtn(label: string, title: string, act: () => void, cls = "xc-btn"): HTMLElement {
+  const b = asButton(h("span", cls, label), title); b.title = title;
+  b.addEventListener("mousedown", (e) => e.preventDefault());
+  b.addEventListener("click", (ev) => { ev.stopPropagation(); act(); });
+  return b;
+}
+/** An exercise's question, answer box, verdict, hints and solution switch; its editor while editing. */
+function renderExercise(cell: Cell) {
+  const box = cell.el?.querySelector<HTMLElement>(".xc-box"); if (!box) return;
+  const i = S.cells.indexOf(cell);
+  box.innerHTML = "";
+  delete cell.input;
+  if (cell.editing) { box.append(exerciseEditor(cell)); return; }
+  if (cell.prompt?.trim()) box.append(mdRender(cell.prompt));
+  if (!cell.hideQuestion || !cell.prompt?.trim()) {
+    const q = h("div", "xc-q");
+    if (cell.echoLatex) q.innerHTML = tex(cell.echoLatex, true);
+    else q.append(h("code", "xc-src", cell.src || "No question yet: ⋮ › Edit exercise"));
+    box.append(q);
+  }
+  const row = h("div", "xc-row");
+  const inp = document.createElement("input");
+  inp.className = "xc-in"; inp.type = "text"; inp.spellcheck = false; inp.autocomplete = "off";
+  inp.value = cell.attempt ?? ""; inp.placeholder = "Your answer, typed as in a cell";
+  inp.setAttribute("aria-label", "Your answer");
+  const check = () => {
+    cell.attempt = inp.value;
+    if (!inp.value.trim()) return;
+    CHECK_NOW.add(cell); void runCell(cell);
+  };
+  inp.addEventListener("input", () => { cell.attempt = inp.value; box.querySelector(".xc-verdict")?.classList.add("old"); });
+  inp.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") { ev.preventDefault(); check(); }
+    if (ev.key === "ArrowDown" && i < S.cells.length - 1) { ev.preventDefault(); focusCell(i + 1); }
+    if (ev.key === "ArrowUp" && i > 0) { ev.preventDefault(); focusCell(i - 1); }
+  });
+  row.append(inp, exBtn("Check", "Check the answer (Enter)", check, "xc-btn primary"));
+  box.append(row);
+  const v = cell.verdict;
+  if (v) {
+    const out = h("div", `xc-verdict ${v.equivalent ? "right" : "wrong"}`);
+    if (v.error) {
+      out.append(h("span", "xc-mark", "✗"), document.createTextNode(` ${v.error.message[0]!.toUpperCase()}${v.error.message.slice(1)}.`));
+      if (v.error.span && cell.attempt) out.append(h("span", "caret", `${cell.attempt}\n${" ".repeat(v.error.span.start)}${"^".repeat(Math.max(1, v.error.span.end - v.error.span.start))}`));
+    } else if (v.equivalent) {
+      out.append(h("span", "xc-mark", "✓"), document.createTextNode(" Correct: "));
+      const m = h("span", "xc-math"); m.innerHTML = tex(v.answerLatex ?? ""); out.append(m);
+      out.append(document.createTextNode(" reduces to the answer's normal form."));
+    } else {
+      out.append(h("span", "xc-mark", "✗"), document.createTextNode(" Not yet: your answer reduces to "));
+      const m = h("span", "xc-math"); m.innerHTML = tex(v.normalLatex ?? ""); out.append(m);
+      out.append(document.createTextNode(", which is not the answer's normal form."));
+    }
+    box.append(out);
+  }
+  const hints = cell.hints ?? [];
+  const shown = Math.min(cell.hintsShown ?? 0, hints.length);
+  hints.slice(0, shown).forEach((t, k) => {
+    const hb = h("div", "xc-hint");
+    hb.append(h("span", "xc-hintno", hints.length > 1 ? `Hint ${k + 1}` : "Hint"), mdRender(t));
+    box.append(hb);
+  });
+  const tools = h("div", "xc-tools");
+  if (shown < hints.length) tools.append(exBtn(shown ? `Another hint (${shown + 1} of ${hints.length})` : hints.length > 1 ? `Hint (1 of ${hints.length})` : "Hint",
+    "Open the next hint", () => { cell.hintsShown = shown + 1; renderCellBody(cell); autosave(); }));
+  tools.append(exBtn(cell.solution ? "Hide the solution" : "Show the solution", cell.solution ? "Hide the worked solution" : "Step through the worked solution: the engine's own work on the question", () => {
+    cell.solution = !cell.solution;
+    if (cell.solution) { cell.showWork = true; if (cell.stepwise === undefined) cell.stepwise = 0; if (!cell.outLatex && !cell.error) void runCell(cell); }
+    renderCellBody(cell); renderSidebar(); autosave();
+  }));
+  box.append(tools);
+}
+/** The author's side of an exercise: the prompt, the question, the hints. */
+function exerciseEditor(cell: Cell): HTMLElement {
+  const f = h("div", "xc-edit");
+  const field = (label: string, input: HTMLElement, hint: string) => {
+    const l = h("label", "xc-field");
+    l.append(h("span", "xc-flabel", label), input, h("span", "xc-fhint", hint));
+    f.append(l);
+  };
+  const grow = (ta: HTMLTextAreaElement) => { ta.style.height = "auto"; ta.style.height = `${ta.scrollHeight + 2}px`; };
+  const prompt = document.createElement("textarea");
+  prompt.rows = 2; prompt.value = cell.prompt ?? ""; prompt.placeholder = "Differentiate, then simplify.";
+  prompt.addEventListener("input", () => { cell.prompt = prompt.value; grow(prompt); });
+  field("Prompt", prompt, "Markdown, with $math$: what the reader is asked to do.");
+  const q = document.createElement("input");
+  q.type = "text"; q.className = "xc-qin"; q.spellcheck = false; q.value = cell.src; q.placeholder = "diff(x^2 * sin(x), x)";
+  cell.input = q;   // what the cell's source is while it is edited (cellSrc)
+  q.addEventListener("input", () => { cell.src = q.value; renderSidebar(); });
+  field("Question", q, "An input for the engine. Its value is the answer the reader's is compared with, and its work is the solution.");
+  const hints = document.createElement("textarea");
+  hints.rows = 2; hints.value = (cell.hints ?? []).join("\n\n"); hints.placeholder = "Which rule applies to a product?\n\nThe product rule: (fg)′ = f′g + fg′.";
+  hints.addEventListener("input", () => { cell.hints = hints.value.split(/\n\s*\n/).map((x) => x.trim()).filter(Boolean); grow(hints); });
+  field("Hints", hints, "Opened one at a time, in order; a blank line between two hints.");
+  const show = document.createElement("input");
+  show.type = "checkbox"; show.checked = !cell.hideQuestion;
+  show.addEventListener("change", () => { if (show.checked) delete cell.hideQuestion; else cell.hideQuestion = true; });
+  const sl = h("label", "xc-check"); sl.append(show, document.createTextNode(" Show the question typeset under the prompt"));
+  f.append(sl);
+  for (const ta of [prompt, hints]) ta.addEventListener("keydown", (ev) => { if (ev.key === "Enter" && (ev.shiftKey || ev.metaKey || ev.ctrlKey)) { ev.preventDefault(); finishExerciseEdit(cell); } });
+  q.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); finishExerciseEdit(cell); } });
+  queueMicrotask(() => { grow(prompt); grow(hints); });
+  return f;
+}
+/** Leave an exercise's editor: a changed question makes the old verdict and solution the old question's. */
+function finishExerciseEdit(cell: Cell) {
+  const was = cell.src;
+  cell.src = cellSrc(cell);
+  cell.editing = false;
+  if (cell.src !== was || !cell.echoLatex) { delete cell.verdict; delete cell.solution; }
+  renderCellBody(cell); renderSidebar(); autosave();
+  if (cell.src.trim()) void runCell(cell);
+}
+/** An exercise's actions: edit (or done), and the ⋮ menu. */
+function exerciseActs(cell: Cell, acts: Element) {
+  acts.innerHTML = "";
+  acts.append(exBtn(cell.editing ? "✓ Done" : "✎ Edit", cell.editing ? "Finish editing the exercise (Shift+Enter)" : "Edit the prompt, the question and the hints",
+    () => { if (cell.editing) finishExerciseEdit(cell); else { cell.editing = true; renderCellBody(cell); focusCell(S.cells.indexOf(cell)); } }, ""));
+  appendMore(cell, acts);
+}
+
 function appendMore(cell: Cell, acts: Element) {
   acts.querySelector(".more")?.remove();
   const more = asButton(h("span", "more", "⋮"), "Cell actions"); more.title = "Cell actions";
@@ -3853,7 +4090,7 @@ function toggleCellMenu(cell: Cell, anchor: HTMLElement) {
     item("Run section", () => void runSection(i));
     item(cell.collapsed ? "Unfold section" : "Fold section", () => { cell.collapsed = !cell.collapsed; renderCells(); renderSidebar(); autosave(); });
   } else if (sectionOf(i) >= 0) item("Run this section", () => void runSection(sectionOf(i)));
-  if (!cell.type && workCount(cell)) {
+  if ((!cell.type || (cell.type === "exercise" && cell.solution)) && workCount(cell)) {
     menu.append(h("div", "sep"));
     item(`${cell.stepwise !== undefined ? "✓ " : ""}Step through the work`, () => setStepwise(cell, cell.stepwise === undefined ? 0 : undefined));
     // the author's starting point: as many steps as show now, the rest left to the reader

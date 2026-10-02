@@ -409,6 +409,35 @@ html[data-outsize="l"] { --sz-out:28px; --sz-echo:22px; --sz-work:19px; --sz-sub
 .askrow button { justify-self:start; font:12px var(--font); padding:4px 12px; border-radius:5px; border:1px solid var(--btn-edge); background:var(--btn); color:var(--ink-2); cursor:pointer; }
 .askrow button[disabled] { opacity:0.6; cursor:default; }
 .work { margin:12px 0 0 8px; display:flex; flex-direction:column; gap:5px; }
+.xc-box { display:flex; flex-direction:column; gap:10px; padding:4px 0 2px 8px; border-left:3px solid var(--p-acc-br); }
+.xc-box .mdout { padding:0; }
+.xc-q { font-size:var(--sz-out, 22px); color:var(--p-ink-strong); overflow-x:auto; overflow-y:hidden; }
+.xc-q .xc-src { font:13px var(--code); color:var(--p-mut); }
+.xc-row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.xc-row > .xc-btn { flex:0 0 auto; }
+.xc-row > .xc-in { flex:1 1 260px; }
+.xc-in, .xc-qin { width:auto; min-width:0; font:14px var(--code); padding:7px 10px; border-radius:6px; border:1px solid var(--p-input-br); background:var(--p-input-bg); color:var(--p-ink); }
+.xc-in:focus, .xc-qin:focus, .xc-edit textarea:focus { outline:none; border-color:var(--p-br-act); }
+.xc-btn { display:inline-flex; align-items:center; padding:5px 12px; border-radius:6px; border:1px solid var(--p-btn-br); background:linear-gradient(var(--p-btn-a), var(--p-btn-b)); color:var(--p-btn-ink); font:12px var(--font); cursor:pointer; }
+.xc-btn:hover { filter:brightness(1.1); }
+.xc-btn.primary { border-color:var(--p-acc-br); background:var(--p-acc-bg); color:var(--p-acc); font-weight:600; }
+.xc-verdict { font:13.5px var(--font); color:var(--p-ink-2); line-height:1.7; }
+.xc-verdict.old { opacity:0.55; }
+.xc-verdict .xc-mark { font-weight:700; }
+.xc-verdict.right .xc-mark { color:var(--ok); }
+.xc-verdict.wrong .xc-mark { color:var(--p-err); }
+.xc-verdict .caret { display:block; margin-top:4px; white-space:pre; font:12px var(--code); color:var(--p-err); }
+.xc-math { font-size:16px; }
+.xc-hint { display:grid; grid-template-columns:auto minmax(0,1fr); gap:10px; align-items:baseline; padding:6px 10px; border-radius:7px; background:var(--p-row-bg); }
+.xc-hintno { font:600 11px var(--font); text-transform:uppercase; letter-spacing:0.04em; color:var(--p-acc); }
+.xc-tools { display:flex; gap:8px; flex-wrap:wrap; }
+.xc-edit { display:flex; flex-direction:column; gap:12px; }
+.xc-field { display:flex; flex-direction:column; gap:4px; }
+.xc-flabel { font:600 11px var(--font); text-transform:uppercase; letter-spacing:0.04em; color:var(--p-mut); }
+.xc-fhint { font:11.5px var(--font); color:var(--p-mut); }
+.xc-edit textarea { font:14px var(--font); padding:7px 10px; border-radius:6px; border:1px solid var(--p-input-br); background:var(--p-input-bg); color:var(--p-ink); resize:vertical; min-height:2.4em; }
+.xc-check { font:12.5px var(--font); color:var(--p-ink-2); display:flex; align-items:center; gap:6px; }
+.cell.exercise > .prompt { color:var(--p-acc); }
 .stepnext { display:flex; align-items:center; flex-wrap:wrap; gap:10px; padding:6px 11px; font-family:var(--font); font-size:12px; color:var(--p-mut); }
 .stepnext .stepbtn { padding:4px 11px; border-radius:6px; border:1px solid var(--p-btn-br); background:linear-gradient(var(--p-btn-a), var(--p-btn-b)); color:var(--p-btn-ink); cursor:pointer; }
 .stepnext .stepbtn[data-next] { border-color:var(--p-acc-br); background:var(--p-acc-bg); color:var(--p-acc); font-weight:600; }

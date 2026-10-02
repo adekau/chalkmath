@@ -59,6 +59,7 @@ A notebook is a list of cells, run top to bottom against one engine session. Eac
 - **Markdown cells** hold prose with mathematics in ‹$…$› ([Markdown cells](#doc:markdown)).
 - **Sections** are headings that group the cells below them, up to the next section. A section folds away (click its marker, or ⋮ › Fold section) and runs as a group (Run › Run section). The sidebar's outline lists them.
 - **Lean cells** are Lean 4 itself, checked as you type ([Lean cells](#doc:lean)).
+- **Exercises** ask the reader a question and check the answer ([Exercises](#doc:exercises)).
 
 Add one with **+ Cell** in the toolbar, from the Edit menu, or by hovering between two cells: ‹+ cell› inserts a math cell there and ‹▾› offers the other kinds. The ⋮ menu at the end of a cell's actions changes its kind, moves, duplicates or deletes it, copies its input, its output or its output as LaTeX, and sends its derivation to [Manim Studio](#doc:studio).
 
@@ -153,6 +154,30 @@ ChalkMath's rules are proved correct in Lean 4 against a semantics of the expres
 - **unverified**: no theorem yet.
 
 A step that delegates work is only as verified as the weakest step under it. A cell that mentions ‹i› is read over the complex numbers and shows each rule's status over ℂ, where it may differ (a rule proved over ℝ only is unverified there).
+`],
+  },
+  {
+    id: "exercises", title: "Exercises", group: "Guide", parts: [md`
+# Exercises
+
+An exercise asks a question and checks the reader's answer. Its **question** is an input for the engine, such as ‹diff(x^2 * sin(x), x)›: the question's value is the answer, and its work is the solution. The reader never sees either until they ask.
+
+## Answering
+
+Type an answer in the box as you would in a cell (‹2x sin(x) + x^2 cos(x)›) and press **Enter** or **Check**. The engine reduces your answer and the question's value to a **normal form** and compares the two, the way two λ-terms are equal when they reduce to the same normal form. So ‹x(2 sin(x) + x cos(x))› is right too: written differently, it reduces to the same thing.
+
+- A wrong answer shows what it reduces to, so you can see where it parts from the answer.
+- An answer may not do the question's work: for a ‹diff› question, ‹diff(…)› is not an answer. The elementary functions (‹sin›, ‹exp›, ‹sqrt›, …) are always allowed.
+- For a λ-calculus question, the answer must be a normal form already; it is compared up to the names of its bound variables (α-equivalence).
+- "Not yet" means the engine could not show the two equal. The normal form decides the identities it applies (distributing products, $\cos^2 = 1 - \sin^2$, $(e^u)^k = e^{ku}$), not every identity there is.
+
+**Hint** opens the author's hints one at a time. **Show the solution** steps through the engine's own work on the question, one step at a time, with the answer last ([Stepping through](#doc:work)).
+
+## Writing one
+
+Add an exercise from Edit › Add exercise or the ‹▾› between cells. Its editor has a **prompt** (Markdown, what the reader is asked to do), the **question**, and **hints** (a blank line between two). The question is shown typeset under the prompt unless you untick that, for a prompt that says it in words ("the slope of $x^3$ at $x = 2$" for ‹subst(diff(x^3, x), x, 2)›). **✎ Edit** opens the editor again; **✓ Done** (or Shift+Enter) closes it.
+
+An exercise is not an evaluation: it takes no ‹In[n]› and ‹%› still means the cell before it. It sees the names defined above it, so a question can use them.
 `],
   },
   {
