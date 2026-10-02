@@ -11,6 +11,8 @@ const md = (text) => cells.push({ src: text.replace(/‹([^‹›\n]*)›/g, "`$
 // mode "visual": typeset whatever the reader chose under View › Math input (the cells that show it off)
 const m = (src, showWork = false, mode) => cells.push({ src, showWork, label: null, ...(mode ? { mode } : {}) });
 const r = String.raw;
+// an exercise: the question (its value is the answer), the prompt, the hints
+const ex = (src, prompt, hints = []) => cells.push({ src, type: "exercise", prompt: prompt.replace(/‹([^‹›\n]*)›/g, "`$1`").trim(), hints, showWork: false, label: null });
 
 sec("Welcome to ChalkMath");
 md(r`
@@ -24,7 +26,7 @@ That is the product rule, then the power rule, each a step you can read. A few t
 
 - **Show or hide the steps** with the ‹Work› button beside a cell (it appears when you hover), or View › Show all work.
 - **Click any part of an answer**, a single term or a whole fraction, and the panel below says which rule produced it and traces it back through the steps.
-- **Change a cell** and press Enter again. The cells below keep their answers until you run them.
+- **Change a cell** and press Enter again. The cells below keep their answers until you run them; a cell that used a name you changed says it is out of date.
 - Press **Enter in the empty cell at the bottom** to start your own work.
 `);
 
@@ -97,10 +99,24 @@ md(r`
 A notebook can also hold **Lean cells** (Edit › Add Lean cell): Lean 4 itself, running in your browser, checks definitions and proofs as you type them, and the panel's **Lean goals** tab shows what is left to prove at the cursor. Lean is a large download the first time, so this notebook has none; the orders-and-lattices example has its proofs in them.
 `);
 
+sec("Learning with it");
+md(r`
+A notebook can teach as well as answer. A cell can **hold its work back** so you try each step first (its ⋮ menu › Step through the work):
+`);
+cells.push({ src: "diff(x^3 * sin(x), x)", showWork: true, stepwise: 0, label: null });
+md(r`
+> [!try]
+> An **exercise** asks you a question and checks your answer by reducing it to a normal form, so any correct way of writing it is right. Answer this one, open the hint if you need it, or step through the solution.
+`);
+ex("diff(x^2 * cos(x), x)", r`Differentiate $x^2 \cos x$.`, [r`The product rule: $(fg)' = f'g + fg'$.`]);
+md(r`
+**File › Courses and examples** opens the **Courses** tab: lessons in calculus, linear algebra and the λ-calculus, each with worked examples, sliders and exercises, and the longer example notebooks.
+`);
+
 sec("Where to next");
 md(r`
 - **Help › Documentation** explains the notebook, lookups and Lean cells, and lists every command with examples you can click to run.
-- **File › Examples** opens longer notebooks: drawing a llama with Fourier series, and a course on orders and lattices with its proofs in Lean cells.
+- **File › Courses and examples** opens the courses, and longer notebooks: drawing a llama with Fourier series, and orders and lattices with their proofs in Lean cells.
 - **Help › Keyboard shortcuts** lists the keys. Type ‹\pi›, ‹\lam› or another ‹\›-name for a symbol, and **Tab** completes a command.
 - **File › Save** keeps a notebook in this browser. **Export to file** and **Copy link to notebook** are for sharing.
 `);

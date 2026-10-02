@@ -1,0 +1,10 @@
+4	integrate(x^2, x, 0, 1)	= 1/3
+5	integrate(sin(x), x, 0, pi)	= 2
+8	sum(k, k, 1, 10)	= 55
+9	sum(k^2, k, 1, 5)	= 55
+12	let n = 10	= 10
+13	let R = sum((k/n)^2 / n, k, 1, n)	= 77/200
+14	N(R)	= 0.385
+16	integrate(x, x, 0, 2)	= 2
+17	integrate(x^2, x, 1, 3)	= 26/3
+18	sum(2k - 1, k, 1, 6)	= 36

@@ -6,10 +6,17 @@ import { read, write, toLatex, show, sameStmt, atomsInSpan, letHead, hasNotation
 
 const root = new URL("../../../", import.meta.url);
 const golden = readFileSync(new URL("engine/Tests/golden.tsv", root), "utf8").split("\n").filter(Boolean).map((l) => l.split("\t"));
+/** The bundled notebooks: notebooks/*.chalk and the courses' lessons, notebooks/courses/<course>/*.chalk. */
+const chalkFiles = () => [
+  ...readdirSync(new URL("notebooks/", root)).filter((f) => f.endsWith(".chalk")),
+  ...readdirSync(new URL("notebooks/courses/", root)).flatMap((c) => readdirSync(new URL(`notebooks/courses/${c}/`, root)).filter((f) => f.endsWith(".chalk")).map((f) => `courses/${c}/${f}`)),
+];
+/** A cell the engine reads as notation: a math cell, or an exercise's question. */
+const mathCell = (c) => !c.type || c.type === "math" || c.type === "exercise";
 /** Every math cell of the bundled notebooks, in order, with the functions defined above it. */
-const notebookCells = readdirSync(new URL("notebooks/", root)).filter((f) => f.endsWith(".chalk")).flatMap((f) => {
+const notebookCells = chalkFiles().flatMap((f) => {
   const known = [];
-  return JSON.parse(readFileSync(new URL(`notebooks/${f}`, root), "utf8")).cells.filter((c) => !c.type || c.type === "math").map((c) => {
+  return JSON.parse(readFileSync(new URL(`notebooks/${f}`, root), "utf8")).cells.filter(mathCell).map((c) => {
     const cell = { file: f, src: c.src, known: [...known] };
     const r = read(c.src, known);
     if (r.ok && letHead(r.stmt)?.params) known.push(letHead(r.stmt).name);

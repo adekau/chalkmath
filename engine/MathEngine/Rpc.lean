@@ -3,6 +3,7 @@ import MathEngine.Wire
 import MathEngine.Parser
 import MathEngine.Print
 import MathEngine.Session
+import MathEngine.Exercise
 /-!
 # JSON-RPC surface
 
@@ -118,7 +119,7 @@ def ruleStatus : Json :=
 
 def capabilities : Json :=
   .obj #[("engine", .str "engine-lean"), ("version", .str "0.1.0-m8"), ("verified", .bool true),
-         ("features", .arr #[.str "simplify", .str "expand", .str "factor", .str "diff", .str "linalg", .str "numeric", .str "integrate", .str "plot", .str "lambda", .str "order", .str "sum", .str "exptotrig", .str "part", .str "statistics"]),
+         ("features", .arr #[.str "simplify", .str "expand", .str "factor", .str "diff", .str "linalg", .str "numeric", .str "integrate", .str "plot", .str "lambda", .str "order", .str "sum", .str "exptotrig", .str "part", .str "statistics", .str "check"]),
          ("ruleStatus", ruleStatus),
          ("termination", .obj #[("status", .str "proven"), ("theorem", .str "MathEngine.pipelineOrdered"),
            ("summary", .str "Cell evaluation has no step budget: every pipeline rule decreases a five-tier ordering (commands, higher-order diff, matrix literals, the weight M, size) on nodes whose children are normal.")])]
@@ -285,6 +286,34 @@ def steps (st : Store) (params : Json) : Except String Json := do
     let d := cell.derivation
     pure (.obj #[("derivation", derivationJson d paths cell.lambda), ("inputRendered", Rendered.toJson d.input paths)])
 
+/-- An exercise (`Exercise.lean`): the question's value and worked solution, and whether the
+answer, if one is sent, reduces to the same normal form. Nothing is bound or numbered. -/
+def check (st : Store) (params : Json) : Store × Json :=
+  match params.getStr? "source" with
+  | none => (st, errorJson "params" "missing source")
+  | some src =>
+    let sessionId := (params.getStr? "sessionId").getD ""
+    let cellId := (params.getStr? "cellId").getD ""
+    let answer := (params.getStr? "answer").filter (!·.trimAscii.isEmpty)
+    let (s, r) := checkAnswer (st.get sessionId) cellId src answer
+    let st := st.set sessionId s
+    match r with
+    | .error (code, msg, span) => (st, errorJson code msg span)
+    | .ok res =>
+      let paths := params.getBool "paths"
+      let r := #[("ok", .bool true), ("kind", .str (if res.lambda then "lambda" else "exercise")),
+        ("rendered", Rendered.toJson res.expected paths), ("normalForm", Rendered.toJson res.expectedCanon false),
+        ("inputRendered", Rendered.toJson res.derivation.input paths)]
+      let r := r ++ (workFields params res.derivation res.lambda).filter (·.1 != "inputRendered")
+      let r := match res.given with
+        | none => r
+        | some (.ok c) => (r.push ("answer", .obj #[("ok", .bool true), ("rendered", Rendered.toJson c.value false),
+            ("normalForm", Rendered.toJson c.canon false)])).push ("equivalent", .bool res.equivalent)
+        | some (.error (code, msg, span)) =>
+          let e := errorJson code msg span
+          (r.push ("answer", e)).push ("equivalent", .bool false)
+      (st, .obj r)
+
 def dispatch (st : Store) (req : Json) : Store × Json :=
   let id := (req.get? "id").getD .null
   let params := (req.get? "params").getD (.obj #[])
@@ -295,6 +324,7 @@ def dispatch (st : Store) (req : Json) : Store × Json :=
   | some "engine.capabilities" => (st, reply capabilities)
   | some "engine.evaluate" => let (st, r) := evaluate st params; (st, reply r)
   | some "engine.plot" => let (st, r) := plot st params; (st, reply r)
+  | some "engine.check" => let (st, r) := check st params; (st, reply r)
   | some "engine.explain" =>
     match explain st params with
     | .ok r => (st, reply r)

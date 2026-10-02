@@ -57,8 +57,9 @@ A notebook is a list of cells, run top to bottom against one engine session. Eac
 
 - **Math cells** (the default) hold one expression or definition for the engine.
 - **Markdown cells** hold prose with mathematics in ‹$…$› ([Markdown cells](#doc:markdown)).
-- **Sections** are headings that group the cells below them, up to the next section. A section folds away (click its marker, or ⋮ › Fold section) and runs as a group (Run › Run section). The sidebar's outline lists them.
+- **Sections** are headings that group the cells below them, up to the next section. A section folds away (click its marker, or ⋮ › Fold section) and runs as a group (Run › Run section). The sidebar's outline lists them, numbered, with the cells of the section you are reading and how many of each section's exercises you have answered; **Every cell** lists them all.
 - **Lean cells** are Lean 4 itself, checked as you type ([Lean cells](#doc:lean)).
+- **Exercises** ask the reader a question and check the answer ([Exercises](#doc:exercises)).
 
 Add one with **+ Cell** in the toolbar, from the Edit menu, or by hovering between two cells: ‹+ cell› inserts a math cell there and ‹▾› offers the other kinds. The ⋮ menu at the end of a cell's actions changes its kind, moves, duplicates or deletes it, copies its input, its output or its output as LaTeX, and sends its derivation to [Manim Studio](#doc:studio).
 
@@ -66,7 +67,7 @@ Add one with **+ Cell** in the toolbar, from the Edit menu, or by hovering betwe
 
 - **Enter** runs the cell; **▶ Run** in the toolbar runs the active cell, **▶▶ All** runs every cell in order.
 - A cell that has run is labelled ‹In[n]› and its answer ‹Out[n]›, numbered in the order they ran, as in Mathematica. A cell waiting its turn shows ‹In[*]›.
-- Changing a cell does not re-run the cells below it; they keep their answers until you run them.
+- Changing a cell does not re-run the cells below it; they keep their answers until you run them. When ‹let› gives a name a new value, every cell that used the old one is marked **out of date**, its answer dimmed, with **Run again** and **Run this and below** (also in Run › Run this cell and below, and the cell's ⋮ menu).
 - **■ Stop** (or Kernel › Interrupt) stops an evaluation that is taking too long. Kernel › Restart kernel starts a fresh session; Restart and run all rebuilds it from the cells.
 
 ## Names, functions and earlier answers
@@ -74,6 +75,10 @@ Add one with **+ Cell** in the toolbar, from the Edit menu, or by hovering betwe
 ‹let› binds a name for the rest of the notebook, or defines a function of its parameters. ‹%› is the previous answer, ‹%%› the one before it and ‹%n› is ‹Out[n]›.`,
       { try: ["let f = x^3 - 3x", "diff(f, x, 2)", "let sq(x) = x^2 + 1", "diff(sq(x), x)", "diff(%, x)"] },
       md`
+## Sliders
+
+A cell that binds a name to a number, ‹let n = 3›, can be a slider: its ⋮ menu › **Show as a slider**. Moving it rewrites the number, runs the cell, and runs every cell below that used ‹n›, and the cells that used what those defined, in order. **range** sets where it starts and ends and its step. A plot or an ‹epicycles› drawing that depends on ‹n› follows the slider.
+
 ## What a cell shows
 
 - **The input interpretation**: under the input, the engine's own reading of what you typed (with ‹%› and named values filled in), so you can see it read what you meant. View › Input interpretation hides it.
@@ -110,6 +115,7 @@ Type ‹\› and a name, then space or Tab, for a symbol: ‹\pi› is π, ‹\l
 ## Help while typing
 
 - **Completion**: **Tab** completes a command's name, a ‹\›-symbol, or inside ‹t[[…]]› a table's column name or a JSON key.
+- **Usage on hover**: rest the pointer on a command's or a function's name in a cell, and after a moment its usage lines show, with a link to its page.
 - **Signature help**: inside a call, the command's signature shows above the cell with the argument you are in highlighted. View › Signature help turns it off; Esc hides it for that call.
 - **Syntax highlighting** colours numbers, commands, your own definitions and bound variables (the ‹k› of a sum, the ‹x› of a derivative). View › Syntax highlighting turns it off.
 - **The math keypad** (View › Math keypad, on by default on a phone) puts fractions, powers, roots, integrals and the common symbols above the keyboard.
@@ -129,6 +135,12 @@ Every answer is the end of a derivation: the engine rewrites your input one rule
 
 View › Show all work and Hide all work set every cell at once; View › Hide work in opened notebooks keeps files and links folded when they open.
 
+## Stepping through
+
+A cell can hold its work back so you can try each step yourself first: its ⋮ menu › **Step through the work**. The steps then come one at a time with ‹▸ Next step›, and the answer stays a ‹?› until the last one shows (click the ‹?› to see everything at once). ‹↺ Step through again› hides them again.
+
+Writing a lesson, reveal as many steps as the reader should start with and choose ⋮ › **Begin with n steps shown**: the notebook saves that, so a worked example can stop just before the step you want the reader to find.
+
 ## Clicking an answer
 
 Any part of an answer, of the input interpretation or of a step can be clicked. The panel's **Explanation** then shows:
@@ -147,6 +159,30 @@ ChalkMath's rules are proved correct in Lean 4 against a semantics of the expres
 - **unverified**: no theorem yet.
 
 A step that delegates work is only as verified as the weakest step under it. A cell that mentions ‹i› is read over the complex numbers and shows each rule's status over ℂ, where it may differ (a rule proved over ℝ only is unverified there).
+`],
+  },
+  {
+    id: "exercises", title: "Exercises", group: "Guide", parts: [md`
+# Exercises
+
+An exercise asks a question and checks the reader's answer. Its **question** is an input for the engine, such as ‹diff(x^2 * sin(x), x)›: the question's value is the answer, and its work is the solution. The reader never sees either until they ask.
+
+## Answering
+
+Type an answer in the box as you would in a cell (‹2x sin(x) + x^2 cos(x)›) and press **Enter** or **Check**. The engine reduces your answer and the question's value to a **normal form** and compares the two, the way two λ-terms are equal when they reduce to the same normal form. So ‹x(2 sin(x) + x cos(x))› is right too: written differently, it reduces to the same thing.
+
+- A wrong answer shows what it reduces to, so you can see where it parts from the answer.
+- An answer may not do the question's work: for a ‹diff› question, ‹diff(…)› is not an answer. The elementary functions (‹sin›, ‹exp›, ‹sqrt›, …) are always allowed.
+- For a λ-calculus question, the answer must be a normal form already; it is compared up to the names of its bound variables (α-equivalence).
+- "Not yet" means the engine could not show the two equal. The normal form decides the identities it applies (distributing products, $\cos^2 = 1 - \sin^2$, $(e^u)^k = e^{ku}$), not every identity there is.
+
+**Hint** opens the author's hints one at a time. **Show the solution** steps through the engine's own work on the question, one step at a time, with the answer last ([Stepping through](#doc:work)).
+
+## Writing one
+
+Add an exercise from Edit › Add exercise or the ‹▾› between cells. Its editor has a **prompt** (Markdown, what the reader is asked to do), the **question**, and **hints** (a blank line between two). The question is shown typeset under the prompt unless you untick that, for a prompt that says it in words ("the slope of $x^3$ at $x = 2$" for ‹subst(diff(x^3, x), x, 2)›). **✎ Edit** opens the editor again; **✓ Done** (or Shift+Enter) closes it.
+
+An exercise is not an evaluation: it takes no ‹In[n]› and ‹%› still means the cell before it. It sees the names defined above it, so a question can use them.
 `],
   },
   {
@@ -190,6 +226,7 @@ What it understands:
 - lists (‹-› or ‹1.›), ‹>› quotes, ‹---› rules, and fenced code blocks (a line of three backticks before and after)
 - links ‹[text](https://…)› and images ‹![caption](https://…)›; an image alone in a paragraph is a figure with its caption under it
 - an attached file by name, ‹⟦name⟧›: an image shows as the image, a table as a table
+- callouts, the blocks a lesson is built from: a quote whose first line is ‹[!kind]›, with an optional title after it, such as ‹> [!theorem] Fundamental theorem of calculus›. The kinds are **definition**, **theorem** (also lemma, corollary, proposition), **proof** (ends with ∎), **example**, **try** (Try it), **mistake** (Common mistake; also warning), **note** (also tip) and **summary** (also goal)
 
 An image from another site is loaded from that site when the cell is shown.
 `],
@@ -308,10 +345,12 @@ The page writes only the storyboard; rendering the video is Manim's job, outside
 `],
   },
   {
-    id: "examples", title: "Example notebooks", group: "Guide", parts: [md`
-# Example notebooks
+    id: "examples", title: "Courses and examples", group: "Guide", parts: [md`
+# Courses and examples
 
-Notebooks that come with ChalkMath. Each opens in its own tab (File › Examples… lists them too); change anything, and save your copy with File › Save.
+Notebooks that come with ChalkMath, grouped into **projects**: a **course** is a sequence of lessons that build on each other, with exercises the engine checks; a **collection** is notebooks to explore in any order. File › Courses and examples opens the **Courses** tab, which lists them all.
+
+A lesson opens in its own tab with a bar above it: the course it belongs to, where it is in it, how many of its exercises you have answered, and **‹ Previous** and **Next ›**. The Courses tab remembers, in this browser, which lessons you have opened and finished. Change anything in a lesson; File › Save keeps your copy.
 `, { insert: "examples" }],
   },
   {

@@ -1,0 +1,113 @@
+{
+  "projects": [
+    {
+      "id": "calculus",
+      "title": "Calculus: derivatives and integrals",
+      "blurb": "The rules of differentiation, the chain rule and tangent lines; then antiderivatives the engine checks by differentiating, definite integrals and Riemann sums.",
+      "kind": "course",
+      "level": "Calculus I–II",
+      "path": "courses/calculus",
+      "lessons": [
+        {
+          "file": "01-rules.chalk",
+          "title": "The rules of differentiation",
+          "blurb": "Powers, sums, constant multiples and products: four rules, every step named."
+        },
+        {
+          "file": "02-chain-rule.chalk",
+          "title": "The chain rule",
+          "blurb": "Functions of functions: the outer derivative times the inner one, with a slider to watch the inner factor."
+        },
+        {
+          "file": "03-tangent-lines.chalk",
+          "title": "Higher derivatives and tangent lines",
+          "blurb": "Derivatives of derivatives, slopes at a point, and the tangent line that follows a slider."
+        },
+        {
+          "file": "04-antiderivatives.chalk",
+          "title": "Antiderivatives, checked",
+          "blurb": "Integration as the search for a function whose derivative you know, accepted only after the engine differentiates it back."
+        },
+        {
+          "file": "05-definite-integrals.chalk",
+          "title": "Definite integrals and sums",
+          "blurb": "The fundamental theorem of calculus, finite sums, and Riemann sums that close in on the area as a slider adds rectangles."
+        }
+      ]
+    },
+    {
+      "id": "linear-algebra",
+      "title": "Linear algebra: vectors, matrices and systems",
+      "blurb": "Vectors and the dot product, matrix arithmetic, solving systems by row reduction with verified row operations, and determinants.",
+      "kind": "course",
+      "level": "Linear algebra",
+      "path": "courses/linear-algebra",
+      "lessons": [
+        {
+          "file": "01-vectors.chalk",
+          "title": "Vectors and the dot product",
+          "blurb": "Adding and scaling vectors, lengths, and the dot product that measures angles."
+        },
+        {
+          "file": "02-matrices.chalk",
+          "title": "Matrices",
+          "blurb": "Matrix arithmetic, the product that is not commutative, the transpose, and a matrix acting on a vector."
+        },
+        {
+          "file": "03-systems.chalk",
+          "title": "Solving systems by row reduction",
+          "blurb": "An augmented matrix, the three row operations (each proved to keep the solutions), and reading the answer off the reduced form."
+        },
+        {
+          "file": "04-determinants.chalk",
+          "title": "Determinants",
+          "blurb": "The determinant of 2×2 and 3×3 matrices, the product rule, and what a zero determinant means."
+        }
+      ]
+    },
+    {
+      "id": "lambda",
+      "title": "λ-calculus: computing by reduction",
+      "blurb": "Terms, β-reduction in normal order and why substitution must avoid capture; then numbers, arithmetic and booleans built from functions alone.",
+      "kind": "course",
+      "level": "Logic and computation",
+      "path": "courses/lambda",
+      "lessons": [
+        {
+          "file": "01-beta-reduction.chalk",
+          "title": "β-reduction",
+          "blurb": "Applying a function by substituting its argument, one redex at a time, and the renaming that keeps substitution honest."
+        },
+        {
+          "file": "02-church-numerals.chalk",
+          "title": "Church numerals and booleans",
+          "blurb": "Numbers as repeated application, arithmetic as composition, and booleans as choice."
+        }
+      ]
+    },
+    {
+      "id": "explorations",
+      "title": "Explorations",
+      "kind": "collection",
+      "path": "",
+      "blurb": "Notebooks that show what ChalkMath does: a tour, Fourier series drawing a llama, and order theory with its proofs in Lean.",
+      "lessons": [
+        {
+          "file": "welcome.chalk",
+          "title": "Welcome to ChalkMath",
+          "blurb": "A short tour: running cells, reading the steps, and one example from each area."
+        },
+        {
+          "file": "llamas.chalk",
+          "title": "Drawing llamas with circles",
+          "blurb": "Fourier series from inner products to epicycles, ending with a llama drawn by spinning circles."
+        },
+        {
+          "file": "order-lattices.chalk",
+          "title": "Order and lattices",
+          "blurb": "Part I of From Zero to Propagators: partial orders, joins and meets, monotone maps and fixed points, with the proofs in Lean cells."
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+2	diff(x^2 * sin(x), x)	= x^2*cos(x) + 2*x*sin(x)
+6	integrate(x/(x^2 + 1), x)	= ln(x^2 + 1)/2
+7	sum(1/2^k, k, 0, 5)	= 63/32
+9	expand((x+1)^3)	= x^3 + 3*x^2 + 3*x + 1
+10	factor(x^2 + 2*x)	= x*(x + 2)
+11	subst(x^2 + 1, x, 3)	= 10
+13	sqrt(8) + sqrt(18)	= 5*sqrt(2)
+14	N(sqrt(2))	= 1.4142135623731
+17	let f = x^3 - 3x	= x^3 - 3*x
+18	diff(f, x, 2)	= 6*x
+19	let sq(x) = x^2 + 1	= x^2 + 1
+20	diff(sq(x), x)	= 2*x
+21	diff(%, x)	= 2
+23	diff(sin(x^2), x)	= 2*x*cos(x^2)
+25	integrate(x^2 + sin(x), x)	= x^3/3 - cos(x)
+26	integrate(cos(t)*sin(t), t, 0, 2pi)	= 0
+27	sum(k^2, k, 1, 10)	= 385
+30	rref([1,2,3;4,5,6;7,8,10])	= [1, 0, 0; 0, 1, 0; 0, 0, 1]
+31	det([a,b;c,d])	= a*d - b*c
+32	dot([1,2,3],[4,5,6])	= 32
+34	plot([sin(x), cos(x)], x, 0, 2pi)	= [sin(x), cos(x)]
+35	plot([x^2, diff(x^2, x)], x, -3, 3)	= [x^2, 2*x]
+37	ℯ^(pi*i)	= -1
+38	(1+i)*(2-i)	= 3 + i
+39	abs(3+4i)	= 5
+42	epicycles(ℯ^(i*t) + 1/2*ℯ^(-3i*t), t)	= exp(-3*i*t)/2 + exp(i*t)
+43	let D = divisors(12)	= poset {1, 2, 3, 4, 6, 12}   [the divisors of 12 under divisibility]
+44	join(D, 4, 6)	= 12   [4 ∨ 6 = 12]
+45	add 2 3	= λf. λx. f (f (f (f (f x))))   (the Church numeral 5)
+49	diff(x^3 * sin(x), x)	= x^3*cos(x) + 3*x^2*sin(x)
+51	diff(x^2 * cos(x), x)	= -x^2*sin(x) + 2*x*cos(x)

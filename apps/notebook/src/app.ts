@@ -148,7 +148,10 @@ function migratePlot(p: PlotData | { var: string; from: number; to: number; poin
 
 /** What a cell is: mathematics for the engine (the default), Markdown prose with `$…$` and code, or a
  *  section heading that groups the cells below it (run together, collapsible). */
-type CellType = "math" | "markdown" | "section" | "lean";
+type CellType = "math" | "markdown" | "section" | "lean" | "exercise";
+/** What the engine said of an exercise's answer: equivalent or not, with the answer as it reads it
+ *  and the normal form it compared; or why it could not compare it. */
+interface Verdict { equivalent: boolean; answerLatex?: string; normalLatex?: string; error?: { message: string; span?: { start: number; end: number } } }
 
 interface Cell {
   id: string;
@@ -197,6 +200,30 @@ interface Cell {
   openEntries?: Set<string>;
   error?: { message: string; span?: { start: number; end: number } };
   showWork: boolean;
+  /** Step through the work: the reader reveals the steps one at a time and the output waits for the
+   *  last. The number is how many steps show at first (the author's choice, saved); absent shows the
+   *  work at once. */
+  stepwise?: number;
+  /** Exercise cells (`src` is the question, whose value is the answer and whose work is the
+   *  solution): the prompt (Markdown), the hints in order, whether the question is shown typeset, and
+   *  the reader's state — the answer typed, the hints open, the verdict, the solution shown. */
+  prompt?: string;
+  hints?: string[];
+  hideQuestion?: boolean;
+  attempt?: string;
+  hintsShown?: number;
+  verdict?: Verdict;
+  solution?: boolean;
+  /** How many steps the reader has revealed (not saved), and the source that count belongs to: the
+   *  cell run with another source starts again from `stepwise`. */
+  revealed?: number;
+  revealedFor?: string;
+  /** A `let name = number` cell shown as a slider: its range. Moving it rebinds the name and runs the
+   *  cells that read it (saved). */
+  slider?: { min: number; max: number; step: number };
+  /** The notebook's names this cell read when it last ran, each with the version of its value then
+   *  (`BIND_VER`); a name whose value has changed since makes the cell out of date (not saved). */
+  deps?: Map<string, number>;
   /** Waiting its turn behind the cell the engine is evaluating (shown as In[*]). */
   queued?: boolean;
   el?: HTMLElement;
@@ -260,7 +287,7 @@ interface LogLine { time: string; level: "rpc" | "ok" | "err"; text: string }
 interface Shot { id: number; label: string; tex: string; anim: string; dur: number; note: string; on: boolean; cell: number | null; plot?: PlotData }
 interface Scene { id: number; name: string; shots: Shot[] }
 
-type Tab = "notebook" | "studio" | "docs";
+type Tab = "notebook" | "studio" | "docs" | "courses";
 
 /** One open notebook: its cells, its studio scenes and its own engine session. The globals below
  *  (`S.cells`, `S.docName`, `ST.scenes`, `sessionId`) are views of the current one; `stashDoc` and
@@ -282,6 +309,8 @@ interface Nb {
   hydrated: boolean;
   /** The "not run yet" notice was dismissed for this notebook. */
   noticeDismissed?: boolean;
+  /** A lesson of a course (or a notebook of a collection): which project, and which of its notebooks. */
+  project?: ProjectRef;
 }
 
 /** A phone-sized screen: the sidebar floats over the paper and starts closed, the panel starts folded. */
@@ -365,6 +394,7 @@ const S = {
   dev: prefOn("chalkmath.dev", false) || new URLSearchParams(location.search).has("dev"),
   /** Help › Documentation: whether its tab is open, the page shown, and the contents' search. */
   guide: { open: false, page: "start", query: "" },
+  courses: { open: false, project: null as string | null },
   studio: { scenes: [] as Scene[], active: 0, playing: false, t: 0, speed: 1, codeOpen: true, copied: false },
 };
 
@@ -544,7 +574,7 @@ async function runCell(cell: Cell) {
     // the cell is evaluated in its own notebook's session, which need not be the current one by now
     // (a notebook re-running when its tab was left); a closed notebook's cells are not evaluated
     const d = docOf(cell);
-    if (gen === runGen && client && d) await evaluateCell(cell, client, d.sessionId);
+    if (gen === runGen && client && d) await (cell.type === "exercise" ? checkExercise(cell, client, d.sessionId) : evaluateCell(cell, client, d.sessionId));
     else renderCellBody(cell);
   } finally { release(); }
 }
@@ -630,6 +660,7 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
       if ("kind" in r && r.kind === "lambda") { cell.outDeBruijn = r.renderedDeBruijn?.latex; cell.reading = r.reading; cell.kind = "λ-term"; }
       log("ok", `Out[${cell.label}] ${r.rendered.text}  (${cell.ms.toFixed(1)} ms, ${(cell.outline ?? cell.steps).length} steps)`);
       announce(`Out ${cell.label}: ${r.rendered.text}`);
+      recordRun(cell, sessionId, "bound" in r ? r.bound?.[0] : undefined, r.rendered.text);
       if ("bound" in r && r.bound?.length) {
         log("ok", `bound ${r.bound.join(", ")}`);
         const k = `${sessionId}:${r.bound[0]}`;
@@ -646,6 +677,7 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
       if (r.label) { LAST_LABEL.set(sessionId, r.label); FILE_OUTS.delete(`${sessionId}:${r.label}`); }
       delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.plot; delete cell.file; cell.steps = []; delete cell.outline;
       cell.error = r.error;
+      recordRun(cell, sessionId);
       log("err", `${r.error.code}: ${r.error.message}`);
       announce(`Error: ${r.error.message}`);
     }
@@ -671,6 +703,54 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
   }
   finishEvaluation(cell);
 }
+
+/** Exercises whose next run is the reader's Check (the answer is sent); any other run of an exercise
+ *  (Run all, opening the notebook) re-checks only an answer that was checked before. */
+const CHECK_NOW = new WeakSet<Cell>();
+/** Run an exercise: the engine evaluates the question (its value is the answer, its work the
+ *  solution, both held back until the reader asks) and compares the reader's answer with it. */
+async function checkExercise(cell: Cell, client: EngineClient, sessionId: string) {
+  const answer = (CHECK_NOW.has(cell) || cell.verdict) && cell.attempt?.trim() ? cell.attempt : undefined;
+  CHECK_NOW.delete(cell);
+  S.busy = true; S.running = cell;
+  renderChrome(); renderCellBody(cell);
+  const t0 = performance.now();
+  log("rpc", `engine.check ${JSON.stringify(cell.src)}${answer !== undefined ? ` answer ${JSON.stringify(answer)}` : ""}`);
+  try {
+    const r = await client.call("engine.check", { sessionId, cellId: cell.id, source: cell.src, ...(answer !== undefined ? { answer } : {}), showWork: true, paths: true, outline: true });
+    cell.ms = performance.now() - t0;
+    queueMicrotask(autosave);
+    recordRun(cell, sessionId);
+    if (!r.ok) {
+      cell.error = r.error;
+      delete cell.outLatex; delete cell.outText; delete cell.echoLatex; cell.steps = []; delete cell.outline;
+      log("err", `${r.error.code}: ${r.error.message}`);
+    } else {
+      delete cell.error;
+      cell.echoLatex = r.inputRendered.latex;
+      cell.outLatex = r.rendered.latex; cell.outText = r.rendered.text;
+      cell.semantics = mentionsI(r.rendered.text) || mentionsI(cell.src) ? "complex" : "real";
+      cell.steps = r.derivation?.steps ?? []; cell.outline = r.outline?.steps;
+      delete cell.openEntries; WORK_FAILED.delete(cell);
+      if (r.kind === "lambda") cell.kind = "λ-term"; else delete cell.kind;
+      if (answer !== undefined && r.answer) {
+        cell.verdict = r.answer.ok
+          ? { equivalent: !!r.equivalent, answerLatex: r.answer.rendered.latex, normalLatex: r.answer.normalForm.latex }
+          : { equivalent: false, error: r.answer.error };
+        log(r.equivalent ? "ok" : "err", `answer ${r.equivalent ? "equivalent" : r.answer.ok ? "not equivalent" : r.answer.error.message}`);
+        if (docOf(cell) === currentDoc()) queueMicrotask(recordProgress);
+        announce(r.equivalent ? "Correct." : r.answer.ok ? "Not equivalent to the answer." : `Error: ${r.answer.error.message}`);
+      }
+    }
+  } catch (e) {
+    cell.error = { message: e instanceof Error ? e.message : String(e) };
+    log("err", cell.error.message);
+  }
+  S.busy = false; S.running = null;
+  renderCellBody(cell); renderChrome(); renderSidebar();
+}
+/** Whether a source mentions `i` (the complex unit), as the engine's `semantics` does. */
+const mentionsI = (src: string) => /(^|[^A-Za-z0-9_])i([^A-Za-z0-9_(]|$)/.test(src);
 
 /** A plot reply as the notebook draws it: each curve's term and samples, and an epicycle drawing's circles. */
 function plotDataOf(r: PlotResult): PlotData {
@@ -702,6 +782,7 @@ async function evaluateFileCell(cell: Cell, fc: { bind?: string; file: FileValue
   cell.ms = performance.now() - t0;
   cell.label = r.label ?? cell.label ?? nextLabel++;
   if (r.label) { LAST_LABEL.set(sessionId, r.label); FILE_OUTS.set(`${sessionId}:${r.label}`, file); }
+  recordRun(cell, sessionId, bind, `${file.name} ${fileSize(file)} ${JSON.stringify(file.origin)}`);
   if (bind) {
     const k = `${sessionId}:${bind}`;
     FILE_VARS.set(k, file); USER_NAMES.add(k); USER_FNS.delete(k);
@@ -845,7 +926,7 @@ function loadDoc(i: number) {
   S.docName = d.name; S.cells = d.cells; S.assets = d.assets; ST.scenes = d.scenes; ST.active = d.studioActive; ST.t = 0; stopPlayback();
   S.active = Math.min(d.active, Math.max(0, d.cells.length - 1)); nextLabel = d.nextLabel; sessionId = d.sessionId;
   S.sel = null; hideCompletions(); hideSigHelp(); hideHover();
-  renderChrome(); renderCells(); renderSidebar(); renderPanelHead(); renderPanel();
+  renderChrome(); renderCells(); renderSidebar(); renderPanelHead(); renderPanel(); renderLessonBar();
   if (S.tab === "studio") renderStudio();
   if (!d.hydrated && S.kernel === "ready" && S.runOnOpen) hydrate(d);
 }
@@ -921,13 +1002,13 @@ function renderTabs() {
     t.addEventListener("click", () => { if (i !== S.doc) loadDoc(i); switchTab("notebook"); });
     tabs.append(t);
   });
-  for (const [key, label] of [["studio", "manim studio"], ...(S.guide.open ? [["docs", "documentation"] as const] : [])] as const) {
+  for (const [key, label] of [["studio", "manim studio"], ...(S.courses.open ? [["courses", "courses"] as const] : []), ...(S.guide.open ? [["docs", "documentation"] as const] : [])] as const) {
     const t = asButton(h("div", `tab${S.tab === key ? " on" : ""}`), label);
     t.setAttribute("aria-current", String(S.tab === key));
     t.append(h("span", "label", label));
-    if (key === "docs") {
-      const x = asButton(h("span", "x", "×"), "Close the documentation"); x.title = "Close";
-      x.addEventListener("click", (ev) => { ev.stopPropagation(); closeDocs(); });
+    if (key === "docs" || key === "courses") {
+      const x = asButton(h("span", "x", "×"), key === "docs" ? "Close the documentation" : "Close the courses"); x.title = "Close";
+      x.addEventListener("click", (ev) => { ev.stopPropagation(); if (key === "docs") closeDocs(); else closeCourses(); });
       t.append(x);
     }
     t.addEventListener("click", () => switchTab(key));
@@ -943,10 +1024,12 @@ function renderTabs() {
 interface ChalkFile {
   /** Format version. Files written as `.lemma` before the rename carry `lemma: 1` instead and still open. */
   chalk?: 1; lemma?: 1; name: string;
-  cells: { src: string; type?: Cell["type"] | undefined; collapsed?: boolean | undefined; showWork: boolean; label: number | null; outLatex?: string | undefined; outText?: string | undefined; form?: string | undefined; semantics?: "real" | "complex" | undefined; echoLatex?: string | undefined; steps?: Step[] | undefined; outline?: StepOutline[] | undefined; error?: Cell["error"] | undefined; plot?: PlotData | undefined; mode?: Cell["mode"] | undefined; ask?: AskResult | undefined; file?: FileMeta | undefined; noSuggest?: true | undefined }[];
+  cells: { src: string; type?: Cell["type"] | undefined; collapsed?: boolean | undefined; showWork: boolean; stepwise?: number | undefined; prompt?: string | undefined; hints?: string[] | undefined; hideQuestion?: boolean | undefined; attempt?: string | undefined; hintsShown?: number | undefined; verdict?: Verdict | undefined; solution?: boolean | undefined; slider?: { min: number; max: number; step: number } | undefined; label: number | null; outLatex?: string | undefined; outText?: string | undefined; form?: string | undefined; semantics?: "real" | "complex" | undefined; echoLatex?: string | undefined; steps?: Step[] | undefined; outline?: StepOutline[] | undefined; error?: Cell["error"] | undefined; plot?: PlotData | undefined; mode?: Cell["mode"] | undefined; ask?: AskResult | undefined; file?: FileMeta | undefined; noSuggest?: true | undefined }[];
   scenes: Scene[];
   /** Images attached to the notebook, by name. */
   assets?: Record<string, Asset>;
+  /** The project the notebook was opened from (a course's lesson), so it keeps its place in it. */
+  project?: ProjectRef;
 }
 
 /** A cell's source as the user has it now: the live editor's text when there is one. */
@@ -973,21 +1056,24 @@ const outlineOf = (steps: Step[]): StepOutline[] => steps.map((st) => ({ rule: s
 function serializeNotebook(): string {
   const doc: ChalkFile = {
     chalk: 1, name: S.docName,
-    cells: S.cells.map((c) => ({ src: cellSrc(c), type: c.type, collapsed: c.collapsed || undefined, showWork: c.showWork, label: c.label, outLatex: c.outLatex, outText: c.outText, form: c.form, semantics: c.semantics, echoLatex: c.echoLatex, steps: stepsToSave(c), outline: outlineToSave(c), error: c.error, plot: c.plot, mode: c.mode, ask: c.ask, file: c.file, noSuggest: c.noSuggest || undefined })),
+    cells: S.cells.map((c) => ({ src: cellSrc(c), type: c.type, collapsed: c.collapsed || undefined, showWork: c.showWork, stepwise: c.stepwise, slider: c.slider, ...exerciseToSave(c), label: c.label, outLatex: c.outLatex, outText: c.outText, form: c.form, semantics: c.semantics, echoLatex: c.echoLatex, steps: stepsToSave(c), outline: outlineToSave(c), error: c.error, plot: c.plot, mode: c.mode, ask: c.ask, file: c.file, noSuggest: c.noSuggest || undefined })),
     scenes: ST.scenes,
     ...(Object.keys(S.assets).length ? { assets: S.assets } : {}),
+    ...(currentDoc()?.project ? { project: currentDoc()!.project } : {}),
   };
   return JSON.stringify(doc, null, 2);
 }
 
 /** Replace the notebook with a file's contents: saved outputs show at once, then every cell is
  *  re-run in order so the engine's session (and with it `explain`) matches what is shown. */
-async function loadNotebook(text: string, name?: string) {
+async function loadNotebook(text: string, name?: string, project?: ProjectRef) {
   let doc: ChalkFile;
   try { doc = JSON.parse(text) as ChalkFile; } catch { notify("err", "That file is not a ChalkMath notebook (it is not valid JSON)."); return; }
   if ((doc.chalk !== 1 && doc.lemma !== 1) || !Array.isArray(doc.cells)) { notify("err", "That file is not a ChalkMath notebook."); return; }
   const d = makeDoc(name ?? doc.name ?? "untitled.chalk", cellsFromFile(doc, S.foldWorkOnOpen), Array.isArray(doc.scenes) ? doc.scenes : [], assetsFromFile(doc));
   if (!d.cells.length) d.cells.push(freshCell());
+  const pr = project ?? projectRefOf(doc);
+  if (pr) d.project = pr;
   // an untouched new notebook is replaced; otherwise the file gets its own tab
   const cur = currentDoc();
   if (cur && docPristine(cur)) { stashDoc(); S.docs[S.doc] = d; S.doc = -1; loadDoc(S.docs.indexOf(d)); }
@@ -1011,13 +1097,34 @@ function assetsFromFile(doc: ChalkFile): Record<string, Asset> {
   return out;
 }
 
+/** An exercise's own fields, as a file keeps them. */
+function exerciseToSave(c: Cell): Partial<ChalkFile["cells"][number]> {
+  if (c.type !== "exercise") return {};
+  return { prompt: c.prompt || undefined, hints: c.hints?.length ? c.hints : undefined, hideQuestion: c.hideQuestion || undefined,
+    attempt: c.attempt || undefined, hintsShown: c.hintsShown || undefined, verdict: c.verdict, solution: c.solution || undefined };
+}
+/** An exercise's fields from a file's record; only well-formed ones are kept. */
+function exerciseFromFile(cell: Cell, c: ChalkFile["cells"][number]) {
+  cell.editing = !c.src.trim();
+  if (typeof c.prompt === "string") cell.prompt = c.prompt;
+  if (Array.isArray(c.hints)) cell.hints = c.hints.filter((x) => typeof x === "string");
+  if (c.hideQuestion) cell.hideQuestion = true;
+  if (typeof c.attempt === "string") cell.attempt = c.attempt;
+  if (typeof c.hintsShown === "number") cell.hintsShown = c.hintsShown;
+  if (c.verdict && typeof c.verdict.equivalent === "boolean") cell.verdict = c.verdict;
+  if (c.solution) cell.solution = true;
+}
+
 /** Cells from a file's records (no DOM yet); `foldWork` folds every cell's work whatever was saved. */
 function cellsFromFile(doc: ChalkFile, foldWork = false): Cell[] {
   return doc.cells.map((c) => {
-    const cell = freshCell(c.src, c.type === "markdown" || c.type === "section" || c.type === "lean" ? c.type : "math");
+    const cell = freshCell(c.src, c.type === "markdown" || c.type === "section" || c.type === "lean" || c.type === "exercise" ? c.type : "math");
+    if (cell.type === "exercise") exerciseFromFile(cell, c);
     if (cell.type === "markdown") cell.editing = !c.src.trim();   // prose comes back rendered; an empty cell opens for typing
     if (c.collapsed) cell.collapsed = true;
     cell.showWork = !foldWork && (c.showWork ?? false); cell.label = c.label ?? null;
+    // a cell to step through shows its work whatever the reader folds: the steps are the exercise
+    if (typeof c.stepwise === "number" && c.stepwise >= 0) { cell.stepwise = Math.floor(c.stepwise); cell.showWork = true; }
     if (c.outLatex) cell.outLatex = c.outLatex;
     if (c.outText) cell.outText = c.outText;
     if (c.form) cell.form = c.form;
@@ -1035,6 +1142,8 @@ function cellsFromFile(doc: ChalkFile, foldWork = false): Cell[] {
     }
     if (c.mode === "raw" || c.mode === "visual") cell.mode = c.mode;
     if (c.noSuggest) cell.noSuggest = true;
+    const sl = c.slider;
+    if (sl && [sl.min, sl.max, sl.step].every((x) => typeof x === "number" && isFinite(x)) && sl.max > sl.min && sl.step > 0) cell.slider = { min: sl.min, max: sl.max, step: sl.step };
     const ask = savedAsk(c.ask);
     if (ask) cell.ask = ask;
     return cell;
@@ -1059,6 +1168,150 @@ function sectionOf(i: number): number {
   for (let k = Math.min(i, S.cells.length - 1); k >= 0; k--) if (S.cells[k]?.type === "section") return k;
   return -1;
 }
+// --- Sliders: `let n = 3` as a control -----------------------------------------------------------
+// Moving the slider rewrites the cell's number, runs it, and runs the cells below that are out of
+// date because of it (and so on down: a cell they bind may make another out of date). Runs do not
+// pile up behind a drag: while one is under way only the latest position waits.
+
+/** A cell a slider can drive: `let name = number`. */
+const SLIDER_SRC = /^\s*let\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(-?\d+(?:\.\d+)?)\s*$/;
+/** A first range for a number: around it, in steps of its precision. */
+function defaultRange(v: number): { min: number; max: number; step: number } {
+  const int = Number.isInteger(v), a = Math.abs(v);
+  const max = a === 0 ? 10 : int ? Math.max(2 * a, 10) : 2 * a;
+  const min = v < 0 ? -max : 0;
+  return { min, max, step: int ? 1 : Number(((max - min) / 100).toPrecision(1)) };
+}
+function toggleSlider(cell: Cell) {
+  if (cell.slider) delete cell.slider;
+  else {
+    const m = SLIDER_SRC.exec(cellSrc(cell)); if (!m) return;
+    cell.slider = defaultRange(Number(m[2]));
+    cell.mode = "raw";   // the source is rewritten as the slider moves: text, not a typeset tree
+  }
+  renderCells(); autosave();
+}
+/** A number as the slider writes it: no float noise from the step arithmetic. */
+const sliderNum = (x: number, step: number) => {
+  const d = Math.max(0, -Math.floor(Math.log10(step) + 1e-9));
+  return Number(x.toFixed(Math.min(10, d)));
+};
+/** Sliders whose cell is running, and the position each waits to run next. */
+const SLIDING = new WeakMap<Cell, number | null>();
+async function slideTo(cell: Cell, v: number) {
+  const m = SLIDER_SRC.exec(cellSrc(cell)); if (!m) return;
+  cell.src = `let ${m[1]} = ${v}`;
+  if (cell.input) { cell.input.value = cell.src; syncHighlight(cell); }
+  if (SLIDING.has(cell)) { SLIDING.set(cell, v); return; }
+  SLIDING.set(cell, null);
+  try {
+    for (;;) {
+      await runCell(cell);
+      await runOutOfDateBelow(cell);
+      const next = SLIDING.get(cell);
+      if (next === null || next === undefined) break;
+      SLIDING.set(cell, null);
+    }
+  } finally { SLIDING.delete(cell); }
+}
+/** Run, in order, the cells below `cell` that are out of date. */
+async function runOutOfDateBelow(cell: Cell) {
+  const d = docOf(cell), gen = runGen;
+  for (const c of S.cells.slice(S.cells.indexOf(cell) + 1)) {
+    if (gen !== runGen || (d && !S.docs.includes(d))) return;
+    if (staleNames(c).length) await runCell(c);
+  }
+}
+/** The slider under a `let name = number` cell: the control, its value, and its range to edit. */
+function sliderRow(cell: Cell): HTMLElement {
+  const sl = cell.slider!;
+  const m = SLIDER_SRC.exec(cellSrc(cell))!;
+  const row = h("div", "sliderrow");
+  const range = document.createElement("input");
+  range.type = "range"; range.min = String(sl.min); range.max = String(sl.max); range.step = String(sl.step); range.value = m[2]!;
+  range.setAttribute("aria-label", m[1]!);
+  const val = h("span", "sliderval", m[2]!);
+  range.addEventListener("input", () => { const v = sliderNum(Number(range.value), sl.step); val.textContent = String(v); void slideTo(cell, v); });
+  range.addEventListener("focus", () => { const i = S.cells.indexOf(cell); if (S.active !== i) { S.active = i; renderChrome(); renderSidebar(); markActive(); } });
+  const edit = h("span", "sliderrange");
+  edit.hidden = true;
+  const num = (label: string, key: "min" | "max" | "step") => {
+    const l = h("label"); const inp = document.createElement("input");
+    inp.type = "number"; inp.value = String(sl[key]); inp.step = "any";
+    inp.addEventListener("change", () => {
+      const x = Number(inp.value), next = { ...sl, [key]: x };
+      if (!isFinite(x) || next.max <= next.min || next.step <= 0) { inp.value = String(sl[key]); return; }
+      cell.slider = next; autosave(); renderCells();
+    });
+    l.append(document.createTextNode(label), inp);
+    return l;
+  };
+  edit.append(num("from ", "min"), num("to ", "max"), num("step ", "step"));
+  const gear = asButton(h("span", "sliderbtn", "range"), "Change the slider's range");
+  gear.title = "Change the slider's range and step";
+  gear.addEventListener("click", () => { edit.hidden = !edit.hidden; });
+  row.append(h("code", "slidername", m[1]!), range, val, gear, edit);
+  return row;
+}
+
+/** Run cell `i` and every cell below it, in order: what a change above leaves to do. */
+async function runFrom(i: number) {
+  const cells = S.cells.slice(Math.max(0, i));
+  const d = currentDoc();
+  const gen = runGen;
+  for (const c of cells) { if (gen !== runGen || (d && !S.docs.includes(d))) return; if (cellSrc(c).trim()) await runCell(c); }
+}
+
+// --- Out of date: a cell whose names have changed since it ran -----------------------------------
+// When `let x = …` gives x a new value, the cells that read x keep the answers they had: they are
+// marked out of date until they run again. What a cell reads is the session's names in its source.
+
+/** Each name a session binds (`session:name`), with how many times its value has changed and the value. */
+const BIND_VER = new Map<string, { v: number; text: string }>();
+/** After a cell's evaluation: the names it read and their versions; and, when it bound a name to a
+ *  new value, that name's next version (the cells that read it become out of date). */
+function recordRun(cell: Cell, sessionId: string, bound?: string, value?: string) {
+  const own = bound ?? /^\s*let\s+([A-Za-z_][A-Za-z0-9_]*)/.exec(cell.src)?.[1];
+  const read = new Map<string, number>();
+  for (const t of tokenize(cell.src)) {
+    const b = t.kind === "id" && t.text !== own ? BIND_VER.get(`${sessionId}:${t.text}`) : undefined;
+    if (b) read.set(t.text, b.v);
+  }
+  cell.deps = read;
+  if (!bound) { renderStale(cell); return; }
+  const k = `${sessionId}:${bound}`, prev = BIND_VER.get(k);
+  if (prev && prev.text === value) return;
+  BIND_VER.set(k, { v: (prev?.v ?? 0) + 1, text: value ?? "" });
+  if (prev) for (const c of docOf(cell)?.cells ?? []) if (c !== cell && c.deps?.has(bound)) renderStale(c);
+}
+/** The names a cell read whose values have changed since it ran. */
+function staleNames(cell: Cell): string[] {
+  const d = docOf(cell); if (!d || !cell.deps?.size) return [];
+  return [...cell.deps].filter(([n, v]) => { const b = BIND_VER.get(`${d.sessionId}:${n}`); return !!b && b.v !== v; }).map(([n]) => n);
+}
+/** Mark a cell out of date (or not): its output dims and a bar says which names changed. */
+function renderStale(cell: Cell) {
+  const el = cell.el; if (!el) return;
+  const names = staleNames(cell);
+  el.classList.toggle("stale", names.length > 0);
+  el.querySelector(".stalebar")?.remove();
+  if (!names.length || S.running === cell || cell.queued) return;
+  const bar = h("div", "stalebar");
+  const text = h("span", "staletext", "Out of date: ");
+  names.forEach((n, k) => text.append(...(k === 0 ? [] : [document.createTextNode(k === names.length - 1 ? " and " : ", ")]), h("code", undefined, n)));
+  text.append(document.createTextNode(` changed since this cell ran.`));
+  bar.append(h("span", "stalemark", "⟳"), text);
+  const btn = (label: string, title: string, act: () => void) => {
+    const b = asButton(h("span", "stalebtn", label), title); b.title = title;
+    b.addEventListener("mousedown", (e) => e.preventDefault());
+    b.addEventListener("click", (ev) => { ev.stopPropagation(); act(); });
+    return b;
+  };
+  bar.append(btn("Run again", "Run this cell again", () => void runCell(cell)),
+    btn("Run this and below", "Run this cell and every cell after it, in order", () => void runFrom(S.cells.indexOf(cell))));
+  el.querySelector(".mid")?.append(bar);
+}
+
 /** Run every cell of the section headed by cell `i`, in order. */
 async function runSection(i: number) {
   const [a, b] = sectionRange(i);
@@ -1081,6 +1334,7 @@ async function restartKernel() {
   clearOutputs();
   for (const k of [...USER_FNS.keys()]) if (k.startsWith(`${sessionId}:`)) USER_FNS.delete(k);
   for (const k of [...USER_NAMES]) if (k.startsWith(`${sessionId}:`)) USER_NAMES.delete(k);
+  for (const k of [...BIND_VER.keys()]) if (k.startsWith(`${sessionId}:`)) BIND_VER.delete(k);
   for (const m of [FILE_VARS, FILE_OUTS, MATRIX_SHAPES]) for (const k of [...m.keys()]) if (k.startsWith(`${sessionId}:`)) m.delete(k);
   LAST_LABEL.delete(sessionId);
   log("ok", "kernel restarted: the session is empty");
@@ -1201,14 +1455,17 @@ const EXAMPLES: { file: string; title: string; blurb: string }[] = [
   { file: "order-lattices.chalk", title: "Order and lattices", blurb: "Part I of From Zero to Propagators: partial orders, joins and meets, monotone maps and fixed points, with the proofs in Lean cells." },
 ];
 
-/** Open a bundled notebook in a tab (or show it, if it is open already). */
-async function openExample(file: string): Promise<boolean> {
-  const open = S.docs.findIndex((d) => d.name === file);
+/** Open a bundled notebook in a tab (or show it, if it is open already). `file` is its path under
+ *  examples/; a lesson opens with its place in its project. */
+async function openExample(file: string, project?: ProjectRef): Promise<boolean> {
+  const name = file.split("/").pop()!;
+  const open = S.docs.findIndex((d) => d.name === name && (!project || (d.project?.id === project.id && d.project.lesson === project.lesson)));
   if (open >= 0) { loadDoc(open); switchTab("notebook"); return true; }
   try {
     const res = await fetch(`examples/${file}?v=${typeof __BUILD_ID__ === "string" ? __BUILD_ID__ : "dev"}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    await loadNotebook(await res.text(), file);
+    await loadNotebook(await res.text(), name, project);
+    if (project) recordProgress();
     return true;
   } catch (e) {
     notify("err", `Could not open ${file}: ${e instanceof Error ? e.message : String(e)}`);
@@ -1216,17 +1473,153 @@ async function openExample(file: string): Promise<boolean> {
   }
 }
 
-function showExamples() {
-  const list = h("div", "liblist");
-  for (const ex of EXAMPLES) {
-    const row = h("button", "librow");
-    const main = h("div", "main");
-    main.append(h("div", "name", ex.title), h("div", "when", ex.blurb));
-    row.append(main);
-    row.addEventListener("click", () => { closeModal(); void openExample(ex.file); });
-    list.append(row);
+// --- Projects: notebooks that belong together ----------------------------------------------------
+// A project is a list of notebooks with a title: a course, whose lessons are read in order, or a
+// collection. The page ships some (notebooks/courses.json, examples/courses.json on the site); the
+// Courses tab lists them, a lesson opens with a bar that leads to the one before and after, and each
+// lesson's exercises answered are remembered in this browser.
+
+interface ProjectRef { id: string; lesson: number }
+interface Project {
+  id: string; title: string; blurb: string;
+  /** A course is read in order (lessons numbered, previous and next); a collection is not. */
+  kind: "course" | "collection";
+  /** The folder of its notebooks under examples/ ("" for the top). */
+  path: string;
+  level?: string;
+  lessons: { file: string; title: string; blurb: string }[];
+}
+/** What the page knows before courses.json arrives (or when it cannot): the example notebooks. */
+let PROJECTS: Project[] = [{ id: "explorations", title: "Explorations", kind: "collection", path: "",
+  blurb: "Notebooks that show what ChalkMath does: a tour, Fourier series drawing a llama, and order theory with its proofs in Lean.",
+  lessons: EXAMPLES.map((e) => ({ file: e.file, title: e.title, blurb: e.blurb })) }];
+const projectById = (id: string) => PROJECTS.find((p) => p.id === id);
+/** A project reference from a file, if it is well formed. */
+function projectRefOf(file: { project?: unknown }): ProjectRef | undefined {
+  const p = file.project as { id?: unknown; lesson?: unknown } | undefined;
+  return p && typeof p.id === "string" && typeof p.lesson === "number" && p.lesson >= 0 ? { id: p.id, lesson: Math.floor(p.lesson) } : undefined;
+}
+async function loadProjects() {
+  try {
+    const res = await fetch(`examples/courses.json?v=${typeof __BUILD_ID__ === "string" ? __BUILD_ID__ : "dev"}`);
+    if (!res.ok) return;
+    const j = await res.json() as { projects?: unknown };
+    const ok = Array.isArray(j.projects) ? (j.projects as Project[]).filter((p) => p && typeof p.id === "string" && typeof p.title === "string"
+      && Array.isArray(p.lessons) && p.lessons.every((l) => typeof l?.file === "string" && typeof l.title === "string")) : [];
+    if (ok.length) PROJECTS = ok.map((p) => ({ ...p, kind: p.kind === "collection" ? "collection" : "course", path: typeof p.path === "string" ? p.path : "", blurb: String(p.blurb ?? "") }));
+    if (S.tab === "courses") renderCourses();
+    renderLessonBar();
+  } catch { /* the built-in list stands */ }
+}
+const lessonPath = (p: Project, k: number) => `${p.path ? `${p.path}/` : ""}${p.lessons[k]!.file}`;
+function openLesson(p: Project, k: number) { if (p.lessons[k]) void openExample(lessonPath(p, k), { id: p.id, lesson: k }); }
+
+/** Exercises answered, by project and lesson file: `{ done, total }`, and that it was opened. */
+type Progress = Record<string, Record<string, { done: number; total: number }>>;
+function readProgress(): Progress {
+  try { const j = JSON.parse(localStorage.getItem("chalkmath.progress") ?? "{}") as Progress; return j && typeof j === "object" ? j : {}; } catch { return {}; }
+}
+/** Remember the current lesson's exercises answered (and that it was opened). */
+function recordProgress() {
+  const d = currentDoc(), pr = d?.project, p = pr && projectById(pr.id), l = p?.lessons[pr!.lesson];
+  if (!d || !pr || !l) return;
+  const ex = d.cells.filter((c) => c.type === "exercise");
+  const all = readProgress();
+  const was = all[pr.id]?.[l.file];
+  const now = { done: ex.filter((c) => c.verdict?.equivalent).length, total: ex.length };
+  if (was && was.done === now.done && was.total === now.total) return;
+  (all[pr.id] ??= {})[l.file] = now;
+  try { localStorage.setItem("chalkmath.progress", JSON.stringify(all)); } catch { /* private mode: progress is not kept */ }
+  renderLessonBar();
+}
+/** A lesson's state for the list: not opened, opened, partly done, or every exercise answered. */
+function lessonState(p: Project, k: number, prog = readProgress()): { label: string; cls: string; frac: number } {
+  const r = prog[p.id]?.[p.lessons[k]!.file];
+  if (!r) return { label: "", cls: "new", frac: 0 };
+  if (!r.total) return { label: "Read", cls: "seen", frac: 1 };
+  if (r.done >= r.total) return { label: `✓ ${r.total} of ${r.total}`, cls: "done", frac: 1 };
+  return { label: `${r.done} of ${r.total} exercises`, cls: "part", frac: r.done / r.total };
+}
+
+function openCourses(id: string | null = S.courses.project) {
+  S.courses.open = true;
+  S.courses.project = id && projectById(id) ? id : null;
+  switchTab("courses");
+}
+function closeCourses() {
+  S.courses.open = false;
+  if (S.tab === "courses") switchTab("notebook"); else renderTabs();
+}
+/** The Courses tab: every project as a card, or one project's lessons. */
+function renderCourses() {
+  const host = $(".courses"); host.innerHTML = "";
+  const page = h("div", "crspage");
+  const prog = readProgress();
+  const p = S.courses.project ? projectById(S.courses.project) : undefined;
+  if (!p) {
+    page.append(h("h1", undefined, "Courses"),
+      h("p", "crslead", "Lessons that build on each other, with exercises the engine checks, and collections of notebooks to explore. Each opens in its own tab; what you change stays in this browser."));
+    const grid = h("div", "crsgrid");
+    for (const q of PROJECTS) {
+      const card = asButton(h("div", `crscard ${q.kind}`), q.title);
+      const n = q.lessons.length;
+      const done = q.lessons.filter((_, k) => lessonState(q, k, prog).cls === "done" || lessonState(q, k, prog).cls === "seen").length;
+      card.append(h("div", "crskind", q.kind === "course" ? `Course · ${n} lesson${n === 1 ? "" : "s"}${q.level ? ` · ${q.level}` : ""}` : `Collection · ${n} notebook${n === 1 ? "" : "s"}`),
+        h("div", "crstitle", q.title), h("div", "crsblurb", q.blurb));
+      if (q.kind === "course") {
+        const bar = h("div", "crsbar"); const fill = h("i"); fill.style.width = `${Math.round((done / Math.max(1, n)) * 100)}%`; bar.append(fill);
+        const started = q.lessons.filter((_, k) => lessonState(q, k, prog).cls !== "new").length;
+        card.append(bar, h("div", "crsmeta", done ? `${done} of ${n} done` : started ? `Started: ${started} of ${n} opened` : "Not started"));
+      }
+      card.addEventListener("click", () => openCourses(q.id));
+      grid.append(card);
+    }
+    page.append(grid);
+  } else {
+    const back = asButton(h("span", "crsback", "‹ All courses"), "All courses");
+    back.addEventListener("click", () => openCourses(null));
+    page.append(back, h("h1", undefined, p.title), h("p", "crslead", p.blurb));
+    const list = h("ol", `crslessons ${p.kind}`);
+    const next = p.kind === "course" ? p.lessons.findIndex((_, k) => !["done", "seen"].includes(lessonState(p, k, prog).cls)) : -1;
+    p.lessons.forEach((l, k) => {
+      const st = lessonState(p, k, prog);
+      const li = h("li", `crslesson ${st.cls}${k === next ? " next" : ""}`);
+      const num = h("span", "crsnum", p.kind === "course" ? String(k + 1) : "•");
+      const main = h("div", "crsmain");
+      main.append(h("div", "crsltitle", l.title), h("div", "crsblurb", l.blurb));
+      if (st.label) main.append(h("div", "crsstate", st.label));
+      const go = asButton(h("span", "crsgo", st.cls === "new" ? (k === next || p.kind === "collection" ? "Start" : "Open") : st.cls === "done" ? "Review" : "Continue"), `Open ${l.title}`);
+      go.addEventListener("click", () => openLesson(p, k));
+      li.append(num, main, go);
+      li.addEventListener("dblclick", () => openLesson(p, k));
+      list.append(li);
+    });
+    page.append(list);
   }
-  showModal("Example notebooks", [list]);
+  host.append(page);
+}
+
+/** Above a lesson's cells: its course, where it is in it, its exercises, and the way on. */
+function renderLessonBar() {
+  const bar = document.querySelector<HTMLElement>(".lessonbar"); if (!bar) return;
+  const pr = currentDoc()?.project, p = pr && projectById(pr.id), l = p?.lessons[pr!.lesson];
+  bar.hidden = S.tab !== "notebook" || !p || !l;
+  bar.innerHTML = "";
+  if (!p || !l || bar.hidden) return;
+  const k = pr!.lesson;
+  const btn = (label: string, title: string, act: (() => void) | null) => {
+    const b = asButton(h("span", `lbbtn${act ? "" : " off"}`, label), title); b.title = title;
+    if (act) b.addEventListener("click", act); else b.setAttribute("aria-disabled", "true");
+    return b;
+  };
+  const where = h("span", "lbwhere");
+  const crs = asButton(h("span", "lbcourse", p.title), `${p.title}: all lessons`);
+  crs.addEventListener("click", () => openCourses(p.id));
+  where.append(crs, document.createTextNode(p.kind === "course" ? ` · Lesson ${k + 1} of ${p.lessons.length}` : ""));
+  const st = lessonState(p, k);
+  bar.append(where, h("span", "lbtitle", l.title), h("span", `lbstate ${st.cls}`, st.label && st.cls !== "seen" ? st.label : ""), h("span", "spacer"),
+    btn("‹ Previous", k > 0 ? p.lessons[k - 1]!.title : "", k > 0 ? () => openLesson(p, k - 1) : null),
+    btn("Next ›", k < p.lessons.length - 1 ? p.lessons[k + 1]!.title : "", k < p.lessons.length - 1 ? () => openLesson(p, k + 1) : null));
 }
 
 const SHORTCUTS: [string, string][] = [
@@ -1303,7 +1696,7 @@ function importNotebook() {
 
 /** What a link carries: the name and every cell's text and kind. Outputs are not included: the
  *  engine recomputes them when the link opens, which is the point of a verified notebook. */
-interface LinkDoc { v: 1; n: string; c: { s: string; t?: "markdown" | "section" | "lean"; w?: 1; f?: 1 }[]; a?: Record<string, { m: string; d: string; b?: 1 }> }
+interface LinkDoc { v: 1; n: string; c: { s: string; t?: "markdown" | "section" | "lean" | "exercise"; w?: 1; f?: 1; r?: number; p?: string; hs?: string[]; hq?: 1; sl?: [number, number, number] }[]; a?: Record<string, { m: string; d: string; b?: 1 }> }
 
 async function deflate(text: string): Promise<Uint8Array> {
   const cs = new CompressionStream("deflate-raw");
@@ -1329,7 +1722,9 @@ function unb64url(s: string): Uint8Array {
 async function notebookLink(): Promise<string> {
   const doc: LinkDoc = {
     v: 1, n: S.docName,
-    c: S.cells.filter((c) => cellSrc(c).trim()).map((c) => ({ s: cellSrc(c), ...(c.type ? { t: c.type } : {}), ...(c.showWork ? { w: 1 as const } : {}), ...(c.collapsed ? { f: 1 as const } : {}) })),
+    c: S.cells.filter((c) => cellSrc(c).trim()).map((c) => ({ s: cellSrc(c), ...(c.type ? { t: c.type } : {}), ...(c.showWork ? { w: 1 as const } : {}), ...(c.collapsed ? { f: 1 as const } : {}), ...(c.stepwise !== undefined ? { r: c.stepwise } : {}),
+      ...(c.prompt ? { p: c.prompt } : {}), ...(c.hints?.length ? { hs: c.hints } : {}), ...(c.hideQuestion ? { hq: 1 as const } : {}),
+      ...(c.slider ? { sl: [c.slider.min, c.slider.max, c.slider.step] as [number, number, number] } : {}) })),
     ...(Object.keys(S.assets).length ? { a: Object.fromEntries(Object.values(S.assets).map((a) => [a.name, { m: a.mime, d: a.data, ...(a.binary ? { b: 1 as const } : {}) }])) } : {}),
   };
   const json = JSON.stringify(doc);
@@ -1356,7 +1751,9 @@ async function openNotebookLink(hash: string): Promise<boolean> {
     if (doc.v !== 1 || !Array.isArray(doc.c)) throw new Error("not a notebook link");
     const file: ChalkFile = {
       chalk: 1, name: doc.n || "shared.chalk",
-      cells: doc.c.map((c) => ({ src: String(c.s ?? ""), type: c.t === "markdown" || c.t === "section" || c.t === "lean" ? c.t : undefined, collapsed: c.f ? true : undefined, showWork: !!c.w, label: null })),
+      cells: doc.c.map((c) => ({ src: String(c.s ?? ""), type: c.t === "markdown" || c.t === "section" || c.t === "lean" || c.t === "exercise" ? c.t : undefined, collapsed: c.f ? true : undefined, showWork: !!c.w, stepwise: typeof c.r === "number" ? c.r : undefined,
+        prompt: typeof c.p === "string" ? c.p : undefined, hints: Array.isArray(c.hs) ? c.hs.map(String) : undefined, hideQuestion: c.hq ? true : undefined,
+        slider: Array.isArray(c.sl) && c.sl.length === 3 ? { min: Number(c.sl[0]), max: Number(c.sl[1]), step: Number(c.sl[2]) } : undefined, label: null })),
       scenes: [],
       ...(doc.a ? { assets: Object.fromEntries(Object.entries(doc.a).map(([name, a]) => [name, { name, mime: String(a.m), data: String(a.d), ...(a.b ? { binary: true } : {}) }])) } : {}),
     };
@@ -1649,6 +2046,7 @@ function freshCell(src = "", type: CellType = "math"): Cell {
   if (type === "markdown") { cell.type = "markdown"; cell.editing = true; }
   if (type === "section") cell.type = "section";
   if (type === "lean") cell.type = "lean";
+  if (type === "exercise") { cell.type = "exercise"; cell.editing = true; }
   return cell;
 }
 function addCell(src = "", type: CellType = "math"): Cell {
@@ -1673,6 +2071,9 @@ function convertCell(cell: Cell, type: CellType) {
   if (type !== "math") { delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.error; delete cell.plot; delete cell.hasse; delete cell.summary; delete cell.ask; delete cell.askTrail; cell.steps = []; delete cell.outline; cell.label = null; }
   if (type === "section") cell.src = cell.src.split("\n")[0]!.replace(/^#+\s*/, "");
   if (type !== "lean") delete cell.leanMessages;
+  if (type === "exercise") cell.editing = true;
+  else { delete cell.prompt; delete cell.hints; delete cell.hideQuestion; delete cell.attempt; delete cell.hintsShown; delete cell.verdict; delete cell.solution; }
+  if (cur === "exercise" && type === "math") { delete cell.stepwise; cell.showWork = false; }
   renderCells(); renderSidebar(); renderChrome(); autosave();
 }
 
@@ -1715,6 +2116,7 @@ function focusCell(i: number) {
   // after the render: it rebuilds the inputs, and focus on the old one is lost
   if (c?.mi) c.mi.focus();
   else if (c?.type === "lean") focusLean(c.id);
+  else if (c?.type === "exercise") c.el?.querySelector<HTMLElement>(".xc-edit textarea, .xc-in")?.focus();
   else (c?.input ?? c?.ta ?? c?.el?.querySelector<HTMLElement>(".mdout"))?.focus();
 }
 
@@ -1807,7 +2209,7 @@ function shell() {
       const side = h("aside", "sidebar"); side.setAttribute("aria-label", "Sidebar");
       body.append(rail, side, (() => {
         const main = h("div", "main"); main.setAttribute("role", "main");
-        main.append(h("div", "toolbar"), h("div", "notice"), h("div", "cells"), h("div", "docs"), h("div", "studio"), h("div", "panel"));
+        main.append(h("div", "toolbar"), h("div", "lessonbar"), h("div", "notice"), h("div", "cells"), h("div", "docs"), h("div", "courses"), h("div", "studio"), h("div", "panel"));
         return main;
       })());
       return body;
@@ -1826,8 +2228,8 @@ function renderChrome() {
   brand.append(mark, h("h1", "name", "ChalkMath"));
   const menus = h("div", "menus");
   const MENUS: Record<string, [string, () => void][]> = {
-    File: [["New notebook", newNotebook], ["Open…", openNotebook], ["Examples…", showExamples], ["Save", () => saveNotebook()], ["Save as…", saveNotebookAs], ["Export to file…", exportNotebook], ["Import from file…", importNotebook], ["Attach file…", attachFile], ["Copy link to notebook", () => void copyNotebookLink()]],
-    Edit: [["Add math cell", () => { addCell(); focusCell(S.cells.length - 1); }], ["Add Markdown cell", () => { addCell("", "markdown"); focusCell(S.cells.length - 1); }], ["Add section", () => { addCell("", "section"); focusCell(S.cells.length - 1); }], ["Add Lean cell", () => { addCell("", "lean"); focusCell(S.cells.length - 1); }],
+    File: [["New notebook", newNotebook], ["Open…", openNotebook], ["Courses and examples…", () => openCourses()], ["Save", () => saveNotebook()], ["Save as…", saveNotebookAs], ["Export to file…", exportNotebook], ["Import from file…", importNotebook], ["Attach file…", attachFile], ["Copy link to notebook", () => void copyNotebookLink()]],
+    Edit: [["Add math cell", () => { addCell(); focusCell(S.cells.length - 1); }], ["Add Markdown cell", () => { addCell("", "markdown"); focusCell(S.cells.length - 1); }], ["Add section", () => { addCell("", "section"); focusCell(S.cells.length - 1); }], ["Add Lean cell", () => { addCell("", "lean"); focusCell(S.cells.length - 1); }], ["Add exercise", () => { addCell("", "exercise"); focusCell(S.cells.length - 1); }],
       ...(S.cells[S.active] ? CELL_TYPES.filter(([t]) => t !== (S.cells[S.active]!.type ?? "math")).map(([t, label]): [string, () => void] => [`Change to ${label.toLowerCase()}`, () => convertCell(S.cells[S.active]!, t)]) : []),
       ["Clear outputs", clearOutputs]],
     View: [["Toggle light / dark", () => { applyTheme(S.theme === "light" ? "dark" : "light"); renderChrome(); }], [`${S.sidebarOpen ? "✓ " : ""}Sidebar  (Ctrl+B)`, toggleSidebar], ["Explanation panel", () => setPanelOpen(!S.panelOpen)],
@@ -1850,12 +2252,13 @@ function renderChrome() {
         renderChrome();
       }])],
     Run: [["Run all", () => void runAll()], ["Run cell", () => { const c = S.cells[S.active]; if (c) void runCell(c); }],
+      ["Run this cell and below", () => void runFrom(S.active)],
       ...(sectionOf(S.active) >= 0 ? [[`Run section “${(cellSrc(S.cells[sectionOf(S.active)]!) || "untitled").slice(0, 24)}”`, () => void runSection(sectionOf(S.active))] as [string, () => void]] : []),
       [`${S.runOnOpen ? "✓ " : ""}Run notebooks when opened`, () => { S.runOnOpen = !S.runOnOpen; setPref("chalkmath.runonopen", S.runOnOpen); renderChrome(); }],
       ["Lookup settings…", () => void showAskSettings()]],
     Kernel: [...(S.running ? [["Interrupt", () => void interrupt()] as [string, () => void]] : []),
       ["Restart kernel", () => void restartKernel()], ["Restart and run all", async () => { await restartKernel(); await runAll(); }]],
-    Help: [["Documentation", () => openDocs()], ["Welcome notebook", () => void openExample("welcome.chalk")], ["Example notebooks…", showExamples], ["Keyboard shortcuts", showShortcuts],
+    Help: [["Documentation", () => openDocs()], ["Welcome notebook", () => void openExample("welcome.chalk")], ["Courses…", () => openCourses()], ["Keyboard shortcuts", showShortcuts],
       ["Manim Studio", () => switchTab("studio")], ["About ChalkMath", showAbout],
       [`${S.dev ? "✓ " : ""}Developer mode`, () => { S.dev = !S.dev; setPref("chalkmath.dev", S.dev); if (!S.dev && S.panelTab === "log") S.panelTab = "explain"; renderChrome(); renderPanelHead(); renderPanel(); }]],
   };
@@ -1950,7 +2353,7 @@ function renderChrome() {
     mk("↑", "Move the cell up", () => { if (cur) moveCell(cur, -1); }, false, i > 0),
     mk("↓", "Move the cell down", () => { if (cur) moveCell(cur, 1); }, false, i >= 0 && i < S.cells.length - 1),
     mk("Duplicate", "Duplicate the cell", () => { if (cur) duplicateCell(cur); }, false, !!cur),
-    ...(cur && workCount(cur) ? [mk(cur.showWork ? "Hide work" : "Show work", "Show or hide the cell's steps", () => { cur.showWork = !cur.showWork; renderCellBody(cur); renderChrome(); autosave(); })] : []),
+    ...(cur && workCount(cur) && cur.stepwise === undefined && cur.type !== "exercise" ? [mk(cur.showWork ? "Hide work" : "Show work", "Show or hide the cell's steps", () => { cur.showWork = !cur.showWork; renderCellBody(cur); renderChrome(); autosave(); })] : []),
     mk("Clear output", "Clear the cell's output", () => { if (cur) clearCellOutput(cur); }, false, !!cur && hasOutput(cur)),
     mk("Delete", "Delete the cell", () => { if (cur) deleteCell(cur); }, false, !!cur),
   );
@@ -1985,7 +2388,7 @@ function renderNotice() {
   } else if (S.kernel === "starting") {
     n.classList.add("wait");
     n.append(h("span", "msg", "Starting the engine…"));
-  } else if (d && !d.hydrated && !d.noticeDismissed && S.cells.some((c) => (c.type ?? "math") === "math" && c.src.trim())) {
+  } else if (d && !d.hydrated && !d.noticeDismissed && S.cells.some((c) => ((c.type ?? "math") === "math" || c.type === "exercise") && c.src.trim())) {
     const saved = S.cells.some((c) => c.outLatex || c.file || c.error);
     n.append(h("span", "msg", `This notebook has not been run yet.${saved ? " The outputs shown are the ones it was saved with." : ""}`),
       btn("Run all", () => void runAll().then(() => renderChrome())),
@@ -2005,32 +2408,86 @@ function renderView() {
   renderNotice();
   $(".toolbar").hidden = S.tab !== "notebook";
   $(".docs").hidden = S.tab !== "docs";
+  $(".courses").hidden = S.tab !== "courses";
   $(".studio").hidden = S.tab !== "studio";
   $(".panel").hidden = S.tab !== "notebook";
+  renderLessonBar();
   if (S.tab === "docs") renderDocs();
+  if (S.tab === "courses") renderCourses();
   if (S.tab === "studio") renderStudio();
+}
+
+/** The outline lists every cell (`all`), or the sections with only the current one's cells. */
+let outlineAll = prefOn("chalkmath.outlineall", false);
+/** The section the reader is in: the one heading the first cell on screen (−1 above the first). */
+let viewSection = -1;
+/** Follow the scroll: the section in view is the outline's current one. */
+function trackViewSection() {
+  const host = $(".cells");
+  let queued = false;
+  host.addEventListener("scroll", () => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => {
+      queued = false;
+      const top = host.getBoundingClientRect().top + 8;
+      const k = S.cells.findIndex((c) => c.el && c.el.getBoundingClientRect().bottom > top);
+      const sec = k < 0 ? -1 : sectionOf(k);
+      if (sec !== viewSection) { viewSection = sec; if (S.rail === "outline") renderSidebar(); }
+    });
+  }, { passive: true });
+}
+/** A section's exercises: how many there are and how many the reader has answered right. */
+function sectionProgress(i: number): { done: number; total: number } {
+  const [a, b] = sectionRange(i);
+  const ex = S.cells.slice(a, b).filter((c) => c.type === "exercise");
+  return { done: ex.filter((c) => c.verdict?.equivalent).length, total: ex.length };
 }
 
 function renderSidebar() {
   const side = $(".sidebar"); side.innerHTML = "";
-  side.append(h("h2", undefined, S.rail === "outline" ? "Notebook outline" : "Engine commands"));
+  const head = h("h2", undefined, S.rail === "outline" ? "Notebook outline" : "Engine commands");
+  const hasSections = S.cells.some((c) => c.type === "section");
+  if (S.rail === "outline" && hasSections) {
+    const t = asButton(h("span", "oltoggle", outlineAll ? "Sections" : "Every cell"), outlineAll ? "List the sections only" : "List every cell");
+    t.title = outlineAll ? "List the sections, with the cells of the one you are in" : "List every cell of every section";
+    t.addEventListener("click", () => { outlineAll = !outlineAll; setPref("chalkmath.outlineall", outlineAll); renderSidebar(); });
+    head.append(t);
+  }
+  side.append(head);
   const list = h("div", "list");
   if (S.rail === "outline") {
-    let inSection = false, folded = false;
+    let inSection = false, folded = false, here = false, number = 0;
+    // the current section: the one in view, or the active cell's when nothing has scrolled yet
+    const cur = viewSection >= 0 || !S.cells[S.active] ? viewSection : sectionOf(S.active);
     S.cells.forEach((c, i) => {
-      if (c.type === "section") { inSection = true; folded = !!c.collapsed; }
+      if (c.type === "section") { inSection = true; folded = !!c.collapsed; here = i === cur; number++; }
       else if (folded) return;
+      else if (inSection && !outlineAll && !here && hasSections) return;
       const row = asButton(h("div", `olrow${i === S.active ? " on" : ""}${c.type ? ` ${c.type}` : ""}${inSection && c.type !== "section" ? " in" : ""}`));
       if (c.type === "section") {
         const [a, b] = sectionRange(i);
-        row.append(h("span", "num", c.collapsed ? "▸" : "§"));
+        const p = sectionProgress(i);
+        row.append(h("span", "num", c.collapsed ? "▸" : `§${number}`));
+        if (i === cur) row.classList.add("here");
         const wrap = h("span");
-        wrap.append(h("span", "kind", c.src || "Untitled section"), h("span", "src", `${b - a} cell${b - a === 1 ? "" : "s"}${c.collapsed ? ", folded" : ""}`));
+        const meta = `${b - a} cell${b - a === 1 ? "" : "s"}${c.collapsed ? ", folded" : ""}${p.total ? ` · ${p.done} of ${p.total} exercise${p.total === 1 ? "" : "s"}` : ""}`;
+        wrap.append(h("span", "kind", c.src || "Untitled section"), h("span", "src", meta));
+        if (p.total) {
+          const bar = h("span", "olprog"); bar.setAttribute("aria-hidden", "true");
+          const fill = h("i"); fill.style.width = `${Math.round((p.done / p.total) * 100)}%`; bar.append(fill);
+          wrap.append(bar);
+        }
         row.append(wrap);
       } else if (c.type === "lean") {
         row.append(h("span", "num", "λ"));
         const wrap = h("span");
         wrap.append(h("span", "kind", "Lean"), h("span", "src", c.src.split("\n").find((l) => l.trim()) || "…"));
+        row.append(wrap);
+      } else if (c.type === "exercise") {
+        row.append(h("span", "num", c.verdict?.equivalent ? "✓" : "?"));
+        const wrap = h("span");
+        wrap.append(h("span", "kind", "exercise"), h("span", "src", c.prompt?.split("\n").find((l) => l.trim())?.replace(/^#+\s*/, "") || c.src || "…"));
         row.append(wrap);
       } else if (c.type === "markdown") {
         row.append(h("span", "num", "¶"));
@@ -2708,6 +3165,20 @@ function renderCells() {
       renderCellBody(cell);
       return;
     }
+    if (cell.type === "exercise") {
+      el.append(h("div", "prompt", "Ex."));
+      const mid = h("div", "mid");
+      const box = h("div", "xc-box");
+      box.addEventListener("focusin", () => { if (S.active !== i) { S.active = i; renderChrome(); renderSidebar(); markActive(); } });
+      mid.append(box, h("div", "cellbody"));
+      el.append(mid);
+      const acts = h("div", "cellacts");
+      el.append(acts, h("div", "brk"));
+      insertGap(host, i);
+      host.append(el);
+      renderCellBody(cell);
+      return;
+    }
     if (cell.type === "section") {
       el.append(h("div", "prompt", "§"));
       const mid = h("div", "mid");
@@ -2746,6 +3217,9 @@ function renderCells() {
 
     const mid = h("div", "mid");
     mid.append(...inputEls(cell, i));
+    // a slider sits outside the body, which every evaluation redraws: a drag must survive the runs it starts
+    const slider = cell.slider && SLIDER_SRC.test(cellSrc(cell)) ? sliderRow(cell) : null;
+    if (slider) mid.append(slider);
 
     const body = h("div", "cellbody");
     mid.append(body);
@@ -2789,6 +3263,7 @@ const CELL_TYPES: [CellType, string, string][] = [
   ["markdown", "Markdown text", "Prose with $math$, $$display math$$, `code` and ``` blocks"],
   ["section", "Section heading", "Groups the cells below it: run them together, fold them away"],
   ["lean", "Lean cell", "Lean 4, checked as you type; goals in the panel, definitions shared with the Lean cells below"],
+  ["exercise", "Exercise", "A question the reader answers; the engine checks the answer and holds the worked solution"],
 ];
 /** A small menu of the cell kinds under `anchor`; `pick` gets the chosen one. */
 function typeMenu(anchor: HTMLElement, pick: (t: CellType) => void, current?: CellType) {
@@ -2897,6 +3372,50 @@ const shownSteps = (steps: Step[] | undefined): number => (steps ?? []).filter((
  *  (the engine marks the steps that print the same `quiet`, by the comparison `printsUnchanged` makes). */
 const workCount = (cell: Cell): number =>
   cell.steps?.length ? shownSteps(cell.steps) : (cell.outline ?? []).filter((st) => !st.quiet).length;
+
+/** How many of a cell's shown steps are on the page: all of them, unless the cell is stepped through. */
+function revealedCount(cell: Cell): number {
+  if (cell.stepwise === undefined) return Infinity;
+  if (cell.revealedFor !== cell.src) { cell.revealed = cell.stepwise; cell.revealedFor = cell.src; }
+  return cell.revealed ?? cell.stepwise;
+}
+/** Whether a stepped-through cell still holds its answer back: steps remain to reveal. */
+const answerHeld = (cell: Cell): boolean => cell.stepwise !== undefined && !cell.error && revealedCount(cell) < workCount(cell);
+/** Reveal a stepped-through cell's steps up to `n` (Infinity: all), keeping the focus on its controls. */
+function revealSteps(cell: Cell, n: number) {
+  const had = !!cell.el?.contains(document.activeElement) && !!document.activeElement?.closest(".stepnext, .outheld");
+  revealedCount(cell);
+  cell.revealed = Math.max(0, Math.min(n, workCount(cell)));
+  renderCellBody(cell);
+  if (had) cell.el?.querySelector<HTMLElement>(".stepnext [data-next], .stepnext [data-again]")?.focus();
+}
+/** Under a stepped-through cell's revealed steps: the next one, all of them, or (once all show) again. */
+function stepControls(cell: Cell): HTMLElement {
+  const row = h("div", "stepnext");
+  const n = workCount(cell), k = revealedCount(cell);
+  const btn = (label: string, title: string, act: () => void, key?: string) => {
+    const b = asButton(h("span", "stepbtn", label), title); b.title = title;
+    if (key) b.dataset[key] = "";
+    b.addEventListener("mousedown", (e) => e.preventDefault());
+    b.addEventListener("click", (ev) => { ev.stopPropagation(); act(); });
+    return b;
+  };
+  if (k < n) {
+    row.append(btn(k === 0 ? "▸ First step" : "▸ Next step", "Show the next step (try to say what it is first)", () => revealSteps(cell, k + 1), "next"),
+      h("span", "stepof", `${k} of ${n} step${n === 1 ? "" : "s"} shown`),
+      btn("Show all", "Show every step and the answer", () => revealSteps(cell, Infinity)));
+  } else {
+    row.append(h("span", "stepof", `All ${n} step${n === 1 ? "" : "s"} shown`),
+      btn("↺ Step through again", "Hide the steps and the answer again", () => revealSteps(cell, cell.stepwise ?? 0), "again"));
+  }
+  return row;
+}
+/** Make a cell one to step through (from `from` steps shown), or show its work at once again. */
+function setStepwise(cell: Cell, from: number | undefined) {
+  if (from === undefined) { delete cell.stepwise; delete cell.revealed; delete cell.revealedFor; }
+  else { cell.stepwise = from; cell.showWork = true; cell.revealed = from; cell.revealedFor = cell.src; }
+  renderCellBody(cell); renderChrome(); autosave();
+}
 
 /** The fetch of a cell's steps under way, so opening the work twice asks once. */
 const WORK_LOADS = new WeakMap<Cell, Promise<void>>();
@@ -3046,16 +3565,20 @@ function renderCellBody(cell: Cell) {
   if (cell.type === "markdown") return renderMdCell(cell);
   if (cell.type === "section") return appendMore(cell, el.querySelector(".cellacts")!);
   if (cell.type === "lean") return renderLeanBody(cell);
+  const exercise = cell.type === "exercise";
+  if (exercise) renderExercise(cell);
+  // an exercise shows its question's work and value only as the solution, when the reader asks
+  const solving = !exercise || !!cell.solution;
   el.classList.toggle("done", !!cell.label);
   const busy = cell.queued || S.running === cell;   // Mathematica's In[*]: waiting or being evaluated
   el.classList.toggle("running", busy);
-  el.querySelector(".prompt")!.textContent = `In[${busy ? "*" : cell.label ?? " "}]:=`;
+  if (!exercise) el.querySelector(".prompt")!.textContent = `In[${busy ? "*" : cell.label ?? " "}]:=`;
   const mid = el.querySelector(".mid")!;
   const body = mid.querySelector(".cellbody") as HTMLElement;
   body.innerHTML = "";
 
   // a visual input already shows what was typed, and a `%` in it as the output it names
-  if (cell.echoLatex && S.showEcho && !isVisual(cell)) {
+  if (!exercise && cell.echoLatex && S.showEcho && !isVisual(cell)) {
     const echo = h("div", "echo");
     echo.innerHTML = tex(cell.echoLatex, true);
     wireTerm(echo, cell, { kind: "input" });
@@ -3076,13 +3599,13 @@ function renderCellBody(cell: Cell) {
   if (busy && cell.askSteps?.length) body.append(askProgress(cell));
   if (cell.error && cell.askTrail?.length) body.append(askTrail(cell.askTrail));
 
-  if (cell.showWork && !cell.steps?.length && workCount(cell)) {
+  if (solving && cell.showWork && !cell.steps?.length && workCount(cell)) {
     // the outline is here, the terms are not yet: fetch them, then draw the work
     const failed = WORK_FAILED.get(cell);
     body.append(h("div", "work pending", failed ?? "Fetching the work…"));
     if (!failed) void loadWork(cell).then(() => { if (cell.el) renderCellBody(cell); });
   }
-  if (cell.showWork && cell.steps && shownSteps(cell.steps)) {
+  if (solving && cell.showWork && cell.steps && shownSteps(cell.steps)) {
     const work = h("div", "work");
     const stepRow = (st: Step, label: string, status: string, term?: TermRef, sub?: { steps: Step[]; index: number; top: number }): HTMLElement => {
       const row = h("div", "step");
@@ -3151,8 +3674,9 @@ function renderCellBody(cell: Cell) {
     };
     const rows: HTMLElement[] = [];   // by step index, which is what `engine.explain` takes; a folded step has none
     const nums = stepNumbers(cell.steps);
+    const upTo = revealedCount(cell);
     cell.steps.forEach((st, n) => {
-      if (nums[n] === undefined) return;
+      if (nums[n] === undefined || nums[n]! > upTo) return;
       const row = stepRow(st, String(nums[n]), statusOf(st, cellComplex(cell)), { kind: "step", index: n });
       row.addEventListener("click", () => void explain(cell, { kind: "step", index: n }, []));
       work.append(row);
@@ -3162,15 +3686,22 @@ function renderCellBody(cell: Cell) {
     // the cell keeps the steps, not the derivation: its input is the first step's before, rendered as the echo
     const first = cell.steps[0]!;
     markChanges(rows, { input: first.before, steps: cell.steps, output: cell.steps[cell.steps.length - 1]!.after, ...(cell.echoLatex ? { inputRendered: { text: "", latex: cell.echoLatex } } : {}) });
+    if (cell.stepwise !== undefined) work.append(stepControls(cell));
     body.append(work);
   }
 
   const old = el.querySelector(".outrow"); old?.remove();
-  if (cell.outLatex || cell.file) {
+  if (solving && (cell.outLatex || cell.file)) {
     const out = h("div", "outrow");
-    out.append(h("div", "prompt", `Out[${cell.label}]=`));
+    out.append(h("div", "prompt", exercise ? "Answer" : `Out[${cell.label}]=`));
     const val = h("div", "outval");
-    if (cell.hasse) {
+    if (answerHeld(cell)) {
+      // stepping through: the answer is the last step's, and waits for it
+      const held = asButton(h("span", "outheld", "?"), "Reveal the answer");
+      held.title = "The answer shows after the last step. Click to reveal every step and the answer.";
+      held.addEventListener("click", () => { revealSteps(cell, Infinity); });
+      val.append(held);
+    } else if (cell.hasse) {
       const box = h("div", "plotbox");
       box.append(hasseSvg(cell.hasse));
       const cap = h("div", "plotcap", cell.summary ?? "");
@@ -3251,7 +3782,7 @@ function renderCellBody(cell: Cell) {
       wireTerm(val, cell, { kind: "output" });
     }
     // the output form: a per-cell choice of typesetting, like Mathematica's //MatrixForm
-    if (!cell.hasse && !cell.plot && (!cell.file || tabularCell(cell))) {
+    if (!cell.hasse && !cell.plot && (!cell.file || tabularCell(cell)) && !answerHeld(cell)) {
       const forms = formsFor(cell);
       const fs = document.createElement("select"); fs.className = "formsel"; fs.title = "Output form"; fs.setAttribute("aria-label", "Output form");
       for (const [v, label] of forms) { const o = document.createElement("option"); o.value = v; o.textContent = label; o.selected = formOf(cell) === v; fs.append(o); }
@@ -3266,11 +3797,13 @@ function renderCellBody(cell: Cell) {
     if (cell.ask && ASK_CELL.test(cell.src)) out.append(h("div"), askInfo(cell, !!ASK_CELL.exec(cell.src)?.[1]), h("div"));
   }
   markSelection();
+  renderStale(cell);
 
   // per-cell actions beyond Run exist only once there is output
   const acts = el.querySelector(".cellacts")!;
+  if (exercise) { exerciseActs(cell, acts); return; }
   while (acts.childElementCount > 1) acts.lastElementChild!.remove();
-  if (workCount(cell)) {
+  if (workCount(cell) && cell.stepwise === undefined) {
     const tw = asButton(h("span", undefined, cell.showWork ? "▾ Hide work" : `▸ Work (${workCount(cell)})`));
     tw.setAttribute("aria-expanded", String(cell.showWork));
     tw.addEventListener("mousedown", (e) => e.preventDefault());
@@ -3542,6 +4075,133 @@ async function showAskSettings() {
 }
 
 /** The ⋮ button at the end of a cell's actions (replacing any there). */
+// --- Exercises: a question the reader answers, checked by the engine -------------------------------
+// The question is an engine source; its value is the answer and its work the solution, both held
+// back until the reader asks. The engine compares answers (`engine.check`): two expressions are
+// equivalent when they reduce to the same normal form, as two λ-terms are β-equivalent.
+
+/** A small button for an exercise's row. */
+function exBtn(label: string, title: string, act: () => void, cls = "xc-btn"): HTMLElement {
+  const b = asButton(h("span", cls, label), title); b.title = title;
+  b.addEventListener("mousedown", (e) => e.preventDefault());
+  b.addEventListener("click", (ev) => { ev.stopPropagation(); act(); });
+  return b;
+}
+/** An exercise's question, answer box, verdict, hints and solution switch; its editor while editing. */
+function renderExercise(cell: Cell) {
+  const box = cell.el?.querySelector<HTMLElement>(".xc-box"); if (!box) return;
+  const i = S.cells.indexOf(cell);
+  box.innerHTML = "";
+  delete cell.input;
+  if (cell.editing) { box.append(exerciseEditor(cell)); return; }
+  if (cell.prompt?.trim()) box.append(mdRender(cell.prompt));
+  if (!cell.hideQuestion || !cell.prompt?.trim()) {
+    const q = h("div", "xc-q");
+    if (cell.echoLatex) q.innerHTML = tex(cell.echoLatex, true);
+    else q.append(h("code", "xc-src", cell.src || "No question yet: ⋮ › Edit exercise"));
+    box.append(q);
+  }
+  const row = h("div", "xc-row");
+  const inp = document.createElement("input");
+  inp.className = "xc-in"; inp.type = "text"; inp.spellcheck = false; inp.autocomplete = "off";
+  inp.value = cell.attempt ?? ""; inp.placeholder = "Your answer, typed as in a cell";
+  inp.setAttribute("aria-label", "Your answer");
+  const check = () => {
+    cell.attempt = inp.value;
+    if (!inp.value.trim()) return;
+    CHECK_NOW.add(cell); void runCell(cell);
+  };
+  inp.addEventListener("input", () => { cell.attempt = inp.value; box.querySelector(".xc-verdict")?.classList.add("old"); });
+  inp.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") { ev.preventDefault(); check(); }
+    if (ev.key === "ArrowDown" && i < S.cells.length - 1) { ev.preventDefault(); focusCell(i + 1); }
+    if (ev.key === "ArrowUp" && i > 0) { ev.preventDefault(); focusCell(i - 1); }
+  });
+  row.append(inp, exBtn("Check", "Check the answer (Enter)", check, "xc-btn primary"));
+  box.append(row);
+  const v = cell.verdict;
+  if (v) {
+    const out = h("div", `xc-verdict ${v.equivalent ? "right" : "wrong"}`);
+    if (v.error) {
+      out.append(h("span", "xc-mark", "✗"), document.createTextNode(` ${v.error.message[0]!.toUpperCase()}${v.error.message.slice(1)}.`));
+      if (v.error.span && cell.attempt) out.append(h("span", "caret", `${cell.attempt}\n${" ".repeat(v.error.span.start)}${"^".repeat(Math.max(1, v.error.span.end - v.error.span.start))}`));
+    } else if (v.equivalent) {
+      out.append(h("span", "xc-mark", "✓"), document.createTextNode(" Correct: "));
+      const m = h("span", "xc-math"); m.innerHTML = tex(v.answerLatex ?? ""); out.append(m);
+      out.append(document.createTextNode(" reduces to the answer's normal form."));
+    } else {
+      out.append(h("span", "xc-mark", "✗"), document.createTextNode(" Not yet: your answer reduces to "));
+      const m = h("span", "xc-math"); m.innerHTML = tex(v.normalLatex ?? ""); out.append(m);
+      out.append(document.createTextNode(", which is not the answer's normal form."));
+    }
+    box.append(out);
+  }
+  const hints = cell.hints ?? [];
+  const shown = Math.min(cell.hintsShown ?? 0, hints.length);
+  hints.slice(0, shown).forEach((t, k) => {
+    const hb = h("div", "xc-hint");
+    hb.append(h("span", "xc-hintno", hints.length > 1 ? `Hint ${k + 1}` : "Hint"), mdRender(t));
+    box.append(hb);
+  });
+  const tools = h("div", "xc-tools");
+  if (shown < hints.length) tools.append(exBtn(shown ? `Another hint (${shown + 1} of ${hints.length})` : hints.length > 1 ? `Hint (1 of ${hints.length})` : "Hint",
+    "Open the next hint", () => { cell.hintsShown = shown + 1; renderCellBody(cell); autosave(); }));
+  tools.append(exBtn(cell.solution ? "Hide the solution" : "Show the solution", cell.solution ? "Hide the worked solution" : "Step through the worked solution: the engine's own work on the question", () => {
+    cell.solution = !cell.solution;
+    if (cell.solution) { cell.showWork = true; if (cell.stepwise === undefined) cell.stepwise = 0; if (!cell.outLatex && !cell.error) void runCell(cell); }
+    renderCellBody(cell); renderSidebar(); autosave();
+  }));
+  box.append(tools);
+}
+/** The author's side of an exercise: the prompt, the question, the hints. */
+function exerciseEditor(cell: Cell): HTMLElement {
+  const f = h("div", "xc-edit");
+  const field = (label: string, input: HTMLElement, hint: string) => {
+    const l = h("label", "xc-field");
+    l.append(h("span", "xc-flabel", label), input, h("span", "xc-fhint", hint));
+    f.append(l);
+  };
+  const grow = (ta: HTMLTextAreaElement) => { ta.style.height = "auto"; ta.style.height = `${ta.scrollHeight + 2}px`; };
+  const prompt = document.createElement("textarea");
+  prompt.rows = 2; prompt.value = cell.prompt ?? ""; prompt.placeholder = "Differentiate, then simplify.";
+  prompt.addEventListener("input", () => { cell.prompt = prompt.value; grow(prompt); });
+  field("Prompt", prompt, "Markdown, with $math$: what the reader is asked to do.");
+  const q = document.createElement("input");
+  q.type = "text"; q.className = "xc-qin"; q.spellcheck = false; q.value = cell.src; q.placeholder = "diff(x^2 * sin(x), x)";
+  cell.input = q;   // what the cell's source is while it is edited (cellSrc)
+  q.addEventListener("input", () => { cell.src = q.value; renderSidebar(); });
+  field("Question", q, "An input for the engine. Its value is the answer the reader's is compared with, and its work is the solution.");
+  const hints = document.createElement("textarea");
+  hints.rows = 2; hints.value = (cell.hints ?? []).join("\n\n"); hints.placeholder = "Which rule applies to a product?\n\nThe product rule: (fg)′ = f′g + fg′.";
+  hints.addEventListener("input", () => { cell.hints = hints.value.split(/\n\s*\n/).map((x) => x.trim()).filter(Boolean); grow(hints); });
+  field("Hints", hints, "Opened one at a time, in order; a blank line between two hints.");
+  const show = document.createElement("input");
+  show.type = "checkbox"; show.checked = !cell.hideQuestion;
+  show.addEventListener("change", () => { if (show.checked) delete cell.hideQuestion; else cell.hideQuestion = true; });
+  const sl = h("label", "xc-check"); sl.append(show, document.createTextNode(" Show the question typeset under the prompt"));
+  f.append(sl);
+  for (const ta of [prompt, hints]) ta.addEventListener("keydown", (ev) => { if (ev.key === "Enter" && (ev.shiftKey || ev.metaKey || ev.ctrlKey)) { ev.preventDefault(); finishExerciseEdit(cell); } });
+  q.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); finishExerciseEdit(cell); } });
+  queueMicrotask(() => { grow(prompt); grow(hints); });
+  return f;
+}
+/** Leave an exercise's editor: a changed question makes the old verdict and solution the old question's. */
+function finishExerciseEdit(cell: Cell) {
+  const was = cell.src;
+  cell.src = cellSrc(cell);
+  cell.editing = false;
+  if (cell.src !== was || !cell.echoLatex) { delete cell.verdict; delete cell.solution; }
+  renderCellBody(cell); renderSidebar(); autosave();
+  if (cell.src.trim()) void runCell(cell);
+}
+/** An exercise's actions: edit (or done), and the ⋮ menu. */
+function exerciseActs(cell: Cell, acts: Element) {
+  acts.innerHTML = "";
+  acts.append(exBtn(cell.editing ? "✓ Done" : "✎ Edit", cell.editing ? "Finish editing the exercise (Shift+Enter)" : "Edit the prompt, the question and the hints",
+    () => { if (cell.editing) finishExerciseEdit(cell); else { cell.editing = true; renderCellBody(cell); focusCell(S.cells.indexOf(cell)); } }, ""));
+  appendMore(cell, acts);
+}
+
 function appendMore(cell: Cell, acts: Element) {
   acts.querySelector(".more")?.remove();
   const more = asButton(h("span", "more", "⋮"), "Cell actions"); more.title = "Cell actions";
@@ -3675,6 +4335,18 @@ function mdInline(host: HTMLElement, text: string) {
 }
 
 /** Block-level Markdown: the cell's rendering. */
+/** The callouts a Markdown cell knows (`> [!kind] title`), by the name written, and how each is labelled. */
+const CALLOUTS: Record<string, { cls: string; label: string }> = {
+  definition: { cls: "definition", label: "Definition" },
+  theorem: { cls: "theorem", label: "Theorem" }, lemma: { cls: "theorem", label: "Lemma" }, corollary: { cls: "theorem", label: "Corollary" },
+  proposition: { cls: "theorem", label: "Proposition" },
+  proof: { cls: "proof", label: "Proof" },
+  example: { cls: "example", label: "Example" },
+  try: { cls: "try", label: "Try it" }, "try-it": { cls: "try", label: "Try it" },
+  mistake: { cls: "mistake", label: "Common mistake" }, warning: { cls: "mistake", label: "Careful" },
+  note: { cls: "note", label: "Note" }, tip: { cls: "note", label: "Tip" },
+  summary: { cls: "summary", label: "Summary" }, goal: { cls: "summary", label: "Goal" },
+};
 function mdRender(src: string): HTMLElement {
   const out = h("div", "mdout");
   const lines = src.replace(/\r\n?/g, "\n").split("\n");
@@ -3718,6 +4390,17 @@ function mdRender(src: string): HTMLElement {
     if (/^\s*>/.test(line)) {
       flush(); const buf: string[] = [];
       while (i < lines.length && /^\s*>/.test(lines[i]!)) buf.push(lines[i++]!.replace(/^\s*>\s?/, ""));
+      // `> [!theorem] Title`: a callout, the blocks a lesson is made of; anything else is a quote
+      const call = /^\[!([A-Za-z-]+)\]\s*(.*)$/.exec(buf[0] ?? "");
+      const kind = call ? CALLOUTS[call[1]!.toLowerCase()] : undefined;
+      if (call && kind) {
+        const box = h("aside", `callout ${kind.cls}`);
+        const head = h("div", "callhead", kind.label);
+        if (call[2]!.trim()) { const t = h("span", "calltitle"); mdInline(t, call[2]!.trim()); head.append(t); }
+        box.append(head, ...Array.from(mdRender(buf.slice(1).join("\n")).childNodes));
+        if (kind.cls === "proof") box.append(h("span", "qed", "∎"));
+        out.append(box); continue;
+      }
       const q = h("blockquote"); q.append(...Array.from(mdRender(buf.join("\n")).childNodes)); out.append(q); continue;
     }
     const li = /^\s*(?:[-*+]|\d+[.)])\s+/.exec(line);
@@ -3791,6 +4474,15 @@ function toggleCellMenu(cell: Cell, anchor: HTMLElement) {
     item("Run section", () => void runSection(i));
     item(cell.collapsed ? "Unfold section" : "Fold section", () => { cell.collapsed = !cell.collapsed; renderCells(); renderSidebar(); autosave(); });
   } else if (sectionOf(i) >= 0) item("Run this section", () => void runSection(sectionOf(i)));
+  item("Run this and below", () => void runFrom(i));
+  if (!cell.type && (cell.slider || SLIDER_SRC.test(cellSrc(cell)))) item(`${cell.slider ? "✓ " : ""}Show as a slider`, () => toggleSlider(cell));
+  if ((!cell.type || (cell.type === "exercise" && cell.solution)) && workCount(cell)) {
+    menu.append(h("div", "sep"));
+    item(`${cell.stepwise !== undefined ? "✓ " : ""}Step through the work`, () => setStepwise(cell, cell.stepwise === undefined ? 0 : undefined));
+    // the author's starting point: as many steps as show now, the rest left to the reader
+    const k = cell.stepwise !== undefined ? revealedCount(cell) : 0;
+    if (cell.stepwise !== undefined && k !== cell.stepwise && k < workCount(cell)) item(`Begin with ${k} step${k === 1 ? "" : "s"} shown`, () => setStepwise(cell, k));
+  }
   menu.append(h("div", "sep"));
   item("Duplicate cell", () => duplicateCell(cell));
   item("Move up", i > 0 ? () => moveCell(cell, -1) : null);
@@ -4145,10 +4837,10 @@ function docPart(part: DocPart): HTMLElement {
     }
     case "examples": {
       const list = h("div", "exlist");
-      for (const ex of EXAMPLES) {
+      for (const p of PROJECTS) {
         const card = asButton(h("div", "excard"));
-        card.append(h("div", "t", ex.title), h("div", "b", ex.blurb));
-        card.addEventListener("click", () => void openExample(ex.file));
+        card.append(h("div", "t", p.title), h("div", "b", `${p.kind === "course" ? `A course in ${p.lessons.length} lessons` : `${p.lessons.length} notebooks`}: ${p.blurb}`));
+        card.addEventListener("click", () => openCourses(p.id));
         list.append(card);
       }
       return list;
@@ -5382,6 +6074,72 @@ function showHover(doc: Doc, ev: MouseEvent) {
 }
 function hideHover() { document.querySelector(".hoverdoc")?.remove(); }
 
+// --- Usage on hover: a function's usage lines over its name in a cell, after a pause -----------------
+// Mathematica shows a symbol's usage when the pointer rests on it. Here the name of a command or a
+// function in a cell's input (text or typeset) shows its usage lines after a pause, with a link to
+// its page; the tip stays while the pointer is on it, so the link can be followed.
+
+const USAGE_DELAY = 650;
+let usageTimer = 0;
+let usageFor: { name: string; el: Element } | null = null;
+/** The function name under the pointer in a cell's input, with the element it is drawn in. */
+function nameAt(ev: MouseEvent): { name: string; rect: DOMRect; el: Element } | null {
+  const t = ev.target as Element | null;
+  if (!t) return null;
+  // typeset input: the editor marks a call's name with its highlight class
+  const typeset = t.closest?.('.mi [data-hl="hcmd"], .mi [data-hl="hfn"]');
+  if (typeset) { const name = typeset.textContent?.trim() ?? ""; return FN_BY_NAME.has(name) ? { name, rect: typeset.getBoundingClientRect(), el: typeset } : null; }
+  // text input: the highlight overlay under it has a span per token
+  if (t instanceof HTMLInputElement && t.classList.contains("cellin")) {
+    const hl = t.parentElement?.querySelector(".hl");
+    for (const sp of hl?.querySelectorAll(".hcmd, .hfn") ?? []) {
+      const r = sp.getBoundingClientRect();
+      if (ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom) {
+        const name = sp.textContent ?? "";
+        return FN_BY_NAME.has(name) ? { name, rect: r, el: sp } : null;
+      }
+    }
+  }
+  return null;
+}
+function hideUsage() { clearTimeout(usageTimer); usageFor = null; document.querySelector(".usagetip")?.remove(); }
+/** The usage tip for `name`, under `rect`. */
+function showUsage(name: string, rect: DOMRect) {
+  document.querySelector(".usagetip")?.remove();
+  const f = FN_BY_NAME.get(name); if (!f) return;
+  const tip = h("div", "usagetip");
+  tip.setAttribute("role", "tooltip");
+  for (const [form, what] of f.usage) {
+    const row = h("div", "ur");
+    row.append(h("code", "uf", plainUsage(form)), inlineMath(plainUsage(what), "uw"));
+    tip.append(row);
+  }
+  const more = document.createElement("a");
+  more.href = `#fn:${name}`; more.className = "umore"; more.textContent = `${f.title ?? name} — documentation ›`;
+  more.addEventListener("click", (e) => { e.preventDefault(); hideUsage(); openDocs(`fn:${name}`); });
+  tip.append(more);
+  tip.addEventListener("mouseleave", hideUsage);
+  document.body.append(tip);
+  const w = tip.offsetWidth, hgt = tip.offsetHeight;
+  tip.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - w - 8))}px`;
+  tip.style.top = `${rect.bottom + 6 + hgt > window.innerHeight ? Math.max(8, rect.top - hgt - 6) : rect.bottom + 6}px`;
+}
+let usageHide = 0;
+document.addEventListener("mousemove", (ev) => {
+  if ((ev.target as Element | null)?.closest?.(".usagetip")) { clearTimeout(usageHide); return; }
+  const at = nameAt(ev);
+  if (at && usageFor && usageFor.name === at.name && usageFor.el === at.el) { clearTimeout(usageHide); return; }
+  // a tip on screen waits a moment, so the pointer can cross to it and follow its link
+  if (!at && document.querySelector(".usagetip")) { clearTimeout(usageHide); usageHide = window.setTimeout(hideUsage, 300); return; }
+  clearTimeout(usageHide);
+  hideUsage();
+  if (!at || S.comp) return;
+  usageFor = { name: at.name, el: at.el };
+  usageTimer = window.setTimeout(() => { if (usageFor?.el === at.el) showUsage(at.name, at.el.getBoundingClientRect()); }, USAGE_DELAY);
+}, { passive: true });
+document.addEventListener("keydown", hideUsage, true);
+document.addEventListener("scroll", hideUsage, { capture: true, passive: true });
+
 // ---------------------------------------------------------------------------
 // Keyboard
 // ---------------------------------------------------------------------------
@@ -5442,6 +6200,7 @@ renderPanel();
 renderView();
 document.addEventListener("click", () => { if (S.menu) { S.menu = null; renderChrome(); } closeCellMenu(); });
 document.querySelector(".cells")?.addEventListener("scroll", () => closeCellMenu(), { passive: true });   // a fixed menu must not float away from its cell
+trackViewSection();
 document.addEventListener("keydown", (ev) => {
   if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === "s") { ev.preventDefault(); if (ev.shiftKey) saveNotebookAs(); else saveNotebook(); }
   if ((ev.metaKey || ev.ctrlKey) && !ev.shiftKey && ev.key.toLowerCase() === "b") { ev.preventDefault(); toggleSidebar(); }
@@ -5461,9 +6220,11 @@ if (saved) {
       const d = makeDoc(file.name ?? "untitled.chalk", cellsFromFile(file), Array.isArray(file.scenes) ? file.scenes : [], assetsFromFile(file));
       if (!d.cells.length) d.cells.push(freshCell());
       d.hydrated = false;
+      const pr = projectRefOf(file);
+      if (pr) d.project = pr;
       S.docs.push(d);
       // the saved text is what the tab compares against; a dirty document compares against nothing
-      d.text = JSON.stringify({ chalk: 1, name: d.name, cells: file.cells, scenes: d.scenes, ...(Object.keys(d.assets).length ? { assets: d.assets } : {}) }, null, 2);
+      d.text = JSON.stringify({ chalk: 1, name: d.name, cells: file.cells, scenes: d.scenes, ...(Object.keys(d.assets).length ? { assets: d.assets } : {}), ...(pr ? { project: pr } : {}) }, null, 2);
       d.savedText = dirty ? "" : d.text;
     }
     restoredActive = "chalkmath" in parsed && typeof parsed.active === "number" ? parsed.active : 0;
@@ -5482,6 +6243,7 @@ if (firstVisit) void openExample("welcome.chalk").then((ok) => {
   S.cells.splice(0, S.cells.length, ...SAMPLES.map((src) => freshCell(src)), freshCell());
   d.savedText = serializeNotebook(); renderCells(); renderSidebar(); renderChrome();
 });
+void loadProjects();
 void connect().then(async () => {
   // a link with a notebook in its fragment opens that notebook (in its own tab unless the current one is untouched)
   if (location.hash.startsWith("#nb") && await openNotebookLink(location.hash)) return;

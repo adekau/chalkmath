@@ -1,0 +1,140 @@
+{
+  "chalk": 1,
+  "name": "04-antiderivatives.chalk",
+  "cells": [
+    {
+      "src": "Antiderivatives, checked",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Find antiderivatives, including by substitution and by parts, and see why every answer the engine gives is checked.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Antiderivative\n> $F$ is an antiderivative of $f$ when $F' = f$. Any two differ by a constant, so the engine gives one and leaves out the $+\\,C$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`integrate(f, x)` searches for an antiderivative with a few textbook rules. The search proves nothing, so its steps are marked **checked** (a hollow dot): the answer is accepted only when the engine differentiates it and gets $f$ back. Open the work to see the guess and the check.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "integrate(x^3, x)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "integrate(3x^2 + 2x + 1, x)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Substitution",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!theorem] Substitution\n> $\\int f(g(x))\\, g'(x)\\, dx = F(g(x))$ where $F' = f$: the chain rule, read backwards.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "integrate(2x*cos(x^2), x)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "By parts",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!theorem] Integration by parts\n> $\\int u\\, dv = uv - \\int v\\, du$: the product rule, read backwards.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "integrate(x*exp(x), x)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "Check it yourself: differentiate the answer, and the integrand comes back.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "diff(x*exp(x) - exp(x), x)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> An antiderivative is not unique: $x^4$ and $x^4 + 1$ both have derivative $4x^3$. The exercises compare answers exactly, so give them **without** the $+\\,C$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "integrate(4x^3, x)",
+      "type": "exercise",
+      "prompt": "Find an antiderivative of $4x^3$.",
+      "hints": [
+        "Which power has derivative $4x^3$?"
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "integrate(cos(3x), x)",
+      "type": "exercise",
+      "prompt": "Find an antiderivative of $\\cos 3x$.",
+      "hints": [
+        "$\\sin 3x$ is close: its derivative is $3\\cos 3x$.",
+        "Divide by the inner derivative $3$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "integrate(2x*exp(x^2), x)",
+      "type": "exercise",
+      "prompt": "Find an antiderivative of $2x\\,e^{x^2}$.",
+      "hints": [
+        "Substitute $u = x^2$: then $du = 2x\\,dx$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "integrate(x*cos(x), x)",
+      "type": "exercise",
+      "prompt": "Find an antiderivative of $x \\cos x$.",
+      "hints": [
+        "By parts, with $u = x$ and $dv = \\cos x\\,dx$.",
+        "$uv - \\int v\\,du = x \\sin x - \\int \\sin x\\,dx$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Integration is guessing; differentiation is checking. Substitution undoes the chain rule and parts undoes the product rule.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

@@ -20,7 +20,7 @@
       "label": null
     },
     {
-      "src": "That is the product rule, then the power rule, each a step you can read. A few things to try:\n\n- **Show or hide the steps** with the `Work` button beside a cell (it appears when you hover), or View › Show all work.\n- **Click any part of an answer**, a single term or a whole fraction, and the panel below says which rule produced it and traces it back through the steps.\n- **Change a cell** and press Enter again. The cells below keep their answers until you run them.\n- Press **Enter in the empty cell at the bottom** to start your own work.",
+      "src": "That is the product rule, then the power rule, each a step you can read. A few things to try:\n\n- **Show or hide the steps** with the `Work` button beside a cell (it appears when you hover), or View › Show all work.\n- **Click any part of an answer**, a single term or a whole fraction, and the panel below says which rule produced it and traces it back through the steps.\n- **Change a cell** and press Enter again. The cells below keep their answers until you run them; a cell that used a name you changed says it is out of date.\n- Press **Enter in the empty cell at the bottom** to start your own work.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -258,13 +258,53 @@
       "label": null
     },
     {
+      "src": "Learning with it",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A notebook can teach as well as answer. A cell can **hold its work back** so you try each step first (its ⋮ menu › Step through the work):",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "diff(x^3 * sin(x), x)",
+      "showWork": true,
+      "stepwise": 0,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> An **exercise** asks you a question and checks your answer by reducing it to a normal form, so any correct way of writing it is right. Answer this one, open the hint if you need it, or step through the solution.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "diff(x^2 * cos(x), x)",
+      "type": "exercise",
+      "prompt": "Differentiate $x^2 \\cos x$.",
+      "hints": [
+        "The product rule: $(fg)' = f'g + fg'$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "**File › Courses and examples** opens the **Courses** tab: lessons in calculus, linear algebra and the λ-calculus, each with worked examples, sliders and exercises, and the longer example notebooks.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "Where to next",
       "type": "section",
       "showWork": false,
       "label": null
     },
     {
-      "src": "- **Help › Documentation** explains the notebook, lookups and Lean cells, and lists every command with examples you can click to run.\n- **File › Examples** opens longer notebooks: drawing a llama with Fourier series, and a course on orders and lattices with its proofs in Lean cells.\n- **Help › Keyboard shortcuts** lists the keys. Type `\\pi`, `\\lam` or another `\\`-name for a symbol, and **Tab** completes a command.\n- **File › Save** keeps a notebook in this browser. **Export to file** and **Copy link to notebook** are for sharing.",
+      "src": "- **Help › Documentation** explains the notebook, lookups and Lean cells, and lists every command with examples you can click to run.\n- **File › Courses and examples** opens the courses, and longer notebooks: drawing a llama with Fourier series, and orders and lattices with their proofs in Lean cells.\n- **Help › Keyboard shortcuts** lists the keys. Type `\\pi`, `\\lam` or another `\\`-name for a symbol, and **Tab** completes a command.\n- **File › Save** keeps a notebook in this browser. **Export to file** and **Copy link to notebook** are for sharing.",
       "type": "markdown",
       "showWork": false,
       "label": null

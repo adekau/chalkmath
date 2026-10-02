@@ -1,0 +1,10 @@
+4	succ 2	= λf. λx. f (f (f x))   (the Church numeral 3)
+5	add 2 3	= λf. λx. f (f (f (f (f x))))   (the Church numeral 5)
+6	mul 2 3	= λf. λx. f (f (f (f (f (f x)))))   (the Church numeral 6)
+9	twice := λf. λx. f (f x)	= λf. λx. f (f x)   (the Church numeral 2)
+10	twice twice g z	= g (g (g (g z)))
+13	and true false	= λt. λf. f   (the Church numeral 0)
+14	if true a b	= a
+15	succ 1	= λf. λx. f (f x)
+16	mul 2 2	= λf. λx. f (f (f (f x)))
+17	not true	= λt. λf. f

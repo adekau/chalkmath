@@ -5,6 +5,11 @@
 // carries `let` bindings from one cell to the next, an error shows as the cell's error, and opening a
 // cell's work shows the step that produced the answer, under the notebook's name for its rule.
 //   node scripts/e2e-math.mjs [screenshot.png]
+// Then the notebook's teaching features, in a notebook of their own: a cell out of date when a name it
+// read changes, a slider driving the cells below it, work stepped through with the answer held back,
+// an exercise written in its editor and answered (wrong, right, and with the work), a Markdown
+// callout, a function's usage on hover, and a course's lesson opened from the Courses tab, answered,
+// and followed to the next. Each is held to the engine's own answers through a client of the test's.
 // Chromium: playwright-core's own, or the executable named by CHROMIUM. The engine: MATHENGINE, or
 // engine/.lake/build/bin/mathengine.
 import { chromium } from "playwright-core";
@@ -79,6 +84,145 @@ async function work(i) {
   return cell.locator(".work .step .rule").allTextContents();
 }
 
+const all = () => page.locator(".cell");
+/** Wait until cell `i` (of every kind) shows `latex` as its output. */
+async function outIs(i, latex, what) {
+  await page.waitForFunction(([k, want]) => {
+    const c = document.querySelectorAll(".cell")[k];
+    const tex = c?.querySelector(".outval .katex-mathml annotation")?.textContent ?? "";
+    const flat = (t) => t.replace(/\\htmlData\{[^}]*\}/g, "").replace(/[{}\s]/g, "");
+    return !c?.classList.contains("running") && flat(tex) === want;
+  }, [i, flat(latex)], { timeout: 30000 }).catch(async () => {
+    const tex = await all().nth(i).locator(".outval .katex-mathml annotation").first().textContent().catch(() => null);
+    assert.fail(`${what}: the cell shows ${JSON.stringify(tex)}, not ${JSON.stringify(latex)}`);
+  });
+}
+/** A cell's ⋮ menu item. */
+async function cellMenu(i, item) {
+  await all().nth(i).hover();
+  await all().nth(i).locator(".cellacts .more").click();
+  await page.locator(".cellmenu .item", { hasText: item }).first().click();
+}
+const menu = async (m, item) => { await page.locator(".menus span", { hasText: m }).click(); await page.locator(".dropdown .item", { hasText: item }).first().click(); };
+/** The engine's own answer, in a session of the test's that follows the notebook's. */
+const ref = (source, k) => reference.call("engine.evaluate", { sessionId: "e2e-features", cellId: `f${k}`, source, paths: true });
+
+/** The teaching features, in a fresh notebook, then a course. */
+async function features() {
+  await menu("File", "New notebook");
+  // out of date: a cell that read a name whose value has changed says so, and runs again
+  await run(0, "let a = 2"); await out(0);
+  await run(1, "diff(sin(a*x), x)");
+  await ref("let a = 2", 0);
+  await outIs(1, (await ref("diff(sin(a*x), x)", 1)).rendered.latex, "diff with a = 2");
+  await run(0, "let a = 3");
+  await page.locator(".cell.stale .stalebar code", { hasText: "a" }).first().waitFor({ timeout: 30000 });
+  await all().nth(1).locator(".stalebtn", { hasText: "Run again" }).click();
+  await ref("let a = 3", 2);
+  await outIs(1, (await ref("diff(sin(a*x), x)", 3)).rendered.latex, "diff with a = 3, run again");
+  assert.equal(await page.locator(".cell.stale").count(), 0, "a cell is still out of date after running again");
+  console.log("✓ out of date: a changed, the cell said so, and ran again");
+  // a slider: one step right rewrites the number and runs the cell below
+  await cellMenu(0, "Show as a slider");
+  await all().nth(0).locator(".sliderrow input[type=range]").focus();
+  await page.keyboard.press("ArrowRight");
+  await ref("let a = 4", 4);
+  await outIs(1, (await ref("diff(sin(a*x), x)", 5)).rendered.latex, "diff after the slider moved to 4");
+  assert.equal(await all().nth(0).locator("input.cellin").inputValue(), "let a = 4", "the slider rewrites its cell");
+  console.log("✓ slider: a = 4, and the cell below followed");
+  // step through: the work comes one step at a time, the answer last
+  await cellMenu(1, "Step through the work");
+  const c1 = all().nth(1);
+  await c1.locator(".stepnext [data-next]").waitFor({ timeout: 30000 });
+  assert.equal(await c1.locator(".work .step").count(), 0, "steps shown before the first was asked for");
+  assert.equal(await c1.locator(".outheld").count(), 1, "the answer is not held back");
+  await c1.locator(".stepnext [data-next]").click();
+  assert.equal(await c1.locator(".work .step:not(.sub)").count(), 1, "one step after ▸ First step");
+  await c1.locator(".stepnext .stepbtn", { hasText: "Show all" }).click();
+  assert.equal(await c1.locator(".outheld").count(), 0, "the answer is still held after Show all");
+  await outIs(1, (await ref("diff(sin(a*x), x)", 6)).rendered.latex, "the answer after every step");
+  console.log("✓ step through: no steps, then one, then all with the answer");
+  // an exercise: written in its editor, answered wrong, right, and with the work itself
+  const question = "diff(x^2 * sin(x), x)";
+  await menu("Edit", "Add exercise");
+  const exI = await all().count() - 1;
+  const ex = all().nth(exI);
+  await ex.locator(".xc-edit textarea").first().fill("Differentiate $x^2 \\sin x$.");
+  await ex.locator(".xc-qin").fill(question);
+  await ex.locator(".xc-edit textarea").nth(1).fill("A product.\n\nThe product rule.");
+  await ex.locator(".xc-qin").press("Enter");
+  await ex.locator(".xc-q .katex").waitFor({ timeout: 30000 });
+  const answer = async (a) => {
+    await ex.locator(".xc-in").fill(a); await ex.locator(".xc-in").press("Enter");
+    await page.waitForFunction(([k, a]) => {
+      const c = document.querySelectorAll(".cell")[k];
+      return !c.classList.contains("running") && c.querySelector(".xc-verdict:not(.old)") && c.querySelector(".xc-in")?.value === a;
+    }, [exI, a], { timeout: 30000 });
+    const engine = await reference.call("engine.check", { sessionId: "e2e-features", cellId: "q", source: question, answer: a });
+    return { shown: await ex.locator(".xc-verdict").getAttribute("class"), text: await ex.locator(".xc-verdict").textContent(), engine };
+  };
+  let v = await answer("2x sin(x)");
+  assert.equal(v.engine.equivalent, false, "the engine accepted a wrong answer");
+  assert.match(v.shown, /wrong/, "the page did not mark the wrong answer");
+  v = await answer("x(2 sin(x) + x cos(x))");
+  assert.equal(v.engine.equivalent, true, "the engine refused a factored right answer");
+  assert.match(v.shown, /right/, `the page did not mark the right answer: ${v.text}`);
+  v = await answer(question);
+  assert.match(v.shown, /wrong/, "the question itself was accepted as its answer");
+  assert.ok(v.text.toLowerCase().includes(v.engine.answer.error.message.toLowerCase()), `the page shows ${JSON.stringify(v.text)}, not the engine's refusal`);
+  await ex.locator(".xc-btn", { hasText: "Hint" }).click();
+  assert.equal(await ex.locator(".xc-hint").count(), 1, "one hint opened");
+  await ex.locator(".xc-btn", { hasText: "Show the solution" }).click();
+  await ex.locator(".stepnext [data-next]").waitFor({ timeout: 30000 });
+  await ex.locator(".stepnext .stepbtn", { hasText: "Show all" }).click();
+  const solution = await reference.call("engine.check", { sessionId: "e2e-features", cellId: "q", source: question, paths: true });
+  await outIs(exI, solution.rendered.latex, "the exercise's solution");
+  console.log("✓ exercise: wrong, right in another form, the question refused, a hint, the solution stepped through");
+  // a Markdown callout
+  await menu("Edit", "Add Markdown cell");
+  const md = all().nth(await all().count() - 1);
+  await md.locator("textarea.mdin").fill("> [!theorem] Product rule\n> $(fg)' = f'g + fg'$");
+  await md.locator("textarea.mdin").press("Shift+Enter");
+  await md.locator("aside.callout.theorem .calltitle", { hasText: "Product rule" }).waitFor({ timeout: 10000 });
+  console.log("✓ callout: a theorem with its title");
+  // usage on hover: the name of a command in a cell, after a pause
+  const last = await all().count() - 1;
+  await all().nth(last).locator("input.cellin").fill("subst(x^2, x, 3)");
+  await all().nth(last).locator("input.cellin").press("Enter");
+  await outIs(last, (await ref("subst(x^2, x, 3)", 7)).rendered.latex, "subst");
+  const name = all().nth(last).locator('.hl .hcmd, .mi [data-hl="hcmd"]').filter({ hasText: "subst" }).first();
+  const box = await name.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.locator(".usagetip .umore", { hasText: "subst" }).waitFor({ timeout: 5000 });
+  await page.mouse.move(5, 5);
+  console.log("✓ usage on hover: subst");
+  // a course: the Courses tab, a lesson opened, answered, and followed to the next
+  const manifest = JSON.parse(readFileSync(path.join(root, "notebooks/courses.json"), "utf8"));
+  const course = manifest.projects.find((p) => p.kind === "course");
+  await menu("File", "Courses and examples");
+  await page.locator(".crscard").first().waitFor({ timeout: 10000 });
+  assert.equal(await page.locator(".crscard").count(), manifest.projects.length, "one card per project");
+  await page.locator(".crscard", { has: page.locator(".crstitle", { hasText: course.title }) }).click();
+  assert.equal(await page.locator(".crslesson").count(), course.lessons.length, "one row per lesson");
+  await page.locator(".crslesson").first().locator(".crsgo").click();
+  await page.locator(".lessonbar .lbwhere", { hasText: `Lesson 1 of ${course.lessons.length}` }).waitFor({ timeout: 30000 });
+  const lesson = JSON.parse(readFileSync(path.join(root, "notebooks", course.path, course.lessons[0].file), "utf8"));
+  assert.equal(await page.locator(".sidebar .olrow.section").count(), lesson.cells.filter((c) => c.type === "section").length, "the outline lists the lesson's sections");
+  const first = lesson.cells.find((c) => c.type === "exercise");
+  const lex = page.locator(".cell.exercise").first();
+  await lex.locator(".xc-q .katex").waitFor({ timeout: 60000 });
+  const expected = await reference.call("engine.check", { sessionId: "e2e-lesson", cellId: "l", source: first.src });
+  await lex.locator(".xc-in").fill(expected.rendered.text); await lex.locator(".xc-in").press("Enter");
+  await lex.locator(".xc-verdict.right").waitFor({ timeout: 30000 });
+  const total = lesson.cells.filter((c) => c.type === "exercise").length;
+  await page.locator(".lessonbar .lbstate", { hasText: `1 of ${total} exercises` }).waitFor({ timeout: 10000 });
+  await page.locator(".lessonbar .lbbtn", { hasText: "Next" }).click();
+  await page.locator(".lessonbar .lbwhere", { hasText: `Lesson 2 of ${course.lessons.length}` }).waitFor({ timeout: 30000 });
+  await page.locator(".lessonbar .lbcourse").click();
+  await page.locator(".crslesson").first().locator(".crsstate", { hasText: `1 of ${total} exercises` }).waitFor({ timeout: 10000 });
+  console.log(`✓ course: ${course.title}, lesson 1 answered (1 of ${total}), lesson 2 opened, progress remembered`);
+}
+
 let failed = false;
 try {
   // the notebook, on the engine over HTTP (?dev shows the switch)
@@ -112,8 +256,10 @@ try {
     }
     console.log(`✓ ${c.src}  = ${c.text}${c.step ? `   (${c.step})` : ""}`);
   }
+  console.log(`\n${CASES.length} cells, end to end\n`);
+  await features();
   assert.deepEqual(pageErrors, [], "errors on the page");
-  console.log(`\n${CASES.length} cells, end to end`);
+  console.log("\nthe notebook's teaching features, end to end");
 } catch (e) {
   failed = true;
   console.error(e);
