@@ -11,7 +11,7 @@
 
 export type Area =
   | "Algebra" | "Elementary functions" | "Calculus" | "Complex numbers" | "Linear algebra"
-  | "Lists, tables and files" | "Statistics" | "Fourier series" | "Logic" | "Order theory" | "λ-calculus" | "The notebook language";
+  | "Lists, tables and files" | "Statistics" | "Fourier series" | "Logic" | "Order theory" | "Transition systems" | "λ-calculus" | "The notebook language";
 
 /** The areas in the order the index lists them, each with a line saying what is there. */
 export const AREAS: [Area, string][] = [
@@ -25,6 +25,7 @@ export const AREAS: [Area, string][] = [
   ["Fourier series", "Finite Fourier sums drawn as circles, and the discrete Fourier transform."],
   ["Logic", "Propositional formulas, truth tables, normal forms, and quantifiers over finite sets."],
   ["Order theory", "Finite partial orders, lattices, monotone maps and their fixed points; relations and their properties."],
+  ["Transition systems", "Finite state machines: reachable states, invariants with counterexample traces, induction, temporal logic, fairness, refinement."],
   ["λ-calculus", "The untyped λ-calculus, reduced one β-step at a time, and the Church encodings."],
   ["The notebook language", "Names and functions, earlier answers, questions."],
 ];
@@ -806,6 +807,27 @@ export const FUNCTIONS: FnDoc[] = [
     see: ["wellfounded"],
   },
 
+  // happens-before
+  {
+    name: "events", area: "Order theory",
+    usage: [["events({a1, a2}, {b1, b2}; a1->b2)", "gives the happens-before order of events on processes: each set is one process's events in order, each arrow a message from its sending to its receipt."]],
+    details: ["Messages that would make an event happen before itself are refused."],
+    examples: [basic("let E = events({a1, a2, a3}, {b1, b2}; a1->b2, b1->a3)", "le(E, a1, b2)", "concurrent(E, a2, b2)")],
+    see: ["clocks", "concurrent"],
+  },
+  {
+    name: "clocks", area: "Order theory",
+    usage: [["clocks({a1, a2}, {b1, b2}; a1->b2)", "gives each event's vector clock: for each process, how many of its events happen before the event or are it."]],
+    details: ["One event happens before another exactly when its clock is below the other's in every entry."],
+    examples: [basic("clocks({a1, a2, a3}, {b1, b2}; a1->b2, b1->a3)")],
+    see: ["events"],
+  },
+  {
+    name: "concurrent", area: "Order theory",
+    usage: [["concurrent(E, a, b)", "gives `true` when neither event happens before the other."]],
+    examples: [basic("let E = events({a1, a2}, {b1, b2}; a1->b2)", "concurrent(E, a2, b2)", "concurrent(E, a1, b2)")],
+    see: ["events"],
+  },
   // finite algebra: a lattice read as operations with laws, and the bridges between the two readings
   {
     name: "op", area: "Order theory",
@@ -967,6 +989,81 @@ export const FUNCTIONS: FnDoc[] = [
     details: ["Denning's model: information may flow up the lattice of security classes, never down. When a flow goes down, the graph marks it."],
     examples: [basic("let Lv = poset({low, high}; low < high)", "let Cat = subsets({a, b})", "let SC = product(Lv, Cat)", "let F = rel({x, y, z}; x->y, y->z)", "secure(SC, F; x->(low, {a}), y->(high, {a}), z->(low, {a, b}))")],
     see: ["product", "rel"],
+  },
+
+  // --- Transition systems ----------------------------------------------------------------------
+  {
+    name: "system", area: "Transition systems",
+    usage: [["system(var x in 0..3; init x = 0; action inc when x < 3 do x := x + 1)", "is the transition system with those variables, initial condition and actions."]],
+    details: [
+      "Clauses are separated by `;` or by line breaks (Shift+Enter starts a new line in a cell): `var x in lo..hi`, `var p in {idle, crit}`, `var b in bool`; one `init` condition; and `action NAME when GUARD do x := e, y := e'`.",
+      "Updates in one action happen together, reading the old values. The guard may be left out. `fair action` and `strong fair action` mark actions for `eventually`.",
+      "Bind it with `let`; the cell draws the reachable states (up to 40) as a graph.",
+    ],
+    examples: [basic("let C = system(var x in 0..3; var y in 0..3; init x = 0 ∧ y = 0; action inc when x < 3 do x := x + 1; action move when x > 0 ∧ y < 3 do x := x - 1, y := y + 1)", "states(C)")],
+    see: ["states", "invariant", "trace"],
+  },
+  {
+    name: "states", area: "Transition systems",
+    usage: [["states(S)", "gives the number of reachable states of `S` and draws its state graph."]],
+    examples: [basic("let C = system(var x in 0..3; var y in 0..3; init x = 0 ∧ y = 0; action inc when x < 3 do x := x + 1; action move when x > 0 ∧ y < 3 do x := x - 1, y := y + 1)", "states(C)")],
+    see: ["system", "reach"],
+  },
+  {
+    name: "invariant", area: "Transition systems",
+    usage: [["invariant(S, φ)", "gives `true` when φ holds in every reachable state, and otherwise `false` with a shortest trace to a state that breaks it."]],
+    details: ["The trace is the work: a step per action, which can be stepped through, and its transitions are marked on the graph."],
+    examples: [basic("let C = system(var x in 0..3; var y in 0..3; init x = 0 ∧ y = 0; action inc when x < 3 do x := x + 1; action move when x > 0 ∧ y < 3 do x := x - 1, y := y + 1)", "invariant(C, x + y ≤ 3)", "invariant(C, y ≤ 3)"), section("Mutual exclusion", "let L = system(var p in {idle, crit}; var q in {idle, crit}; var lock in bool; init p = idle ∧ q = idle ∧ lock = false; action penter when p = idle ∧ lock = false do lock := true, p := crit; action pexit when p = crit do p := idle, lock := false; action qenter when q = idle ∧ lock = false do lock := true, q := crit; action qexit when q = crit do q := idle, lock := false)", "invariant(L, ¬(p = crit ∧ q = crit))")],
+    see: ["inductive", "reach", "trace"],
+  },
+  {
+    name: "inductive", area: "Transition systems",
+    usage: [["inductive(S, φ)", "gives `true` when φ holds initially and every action from any state where it holds (reachable or not) leads to one where it holds."]],
+    details: ["An inductive formula is an invariant with a one-step proof. When it fails, the step shows a counterexample to induction and says whether that state is reachable: if not, the formula may be an invariant that needs strengthening."],
+    examples: [basic("let L = system(var p in {idle, crit}; var q in {idle, crit}; var lock in bool; init p = idle ∧ q = idle ∧ lock = false; action penter when p = idle ∧ lock = false do lock := true, p := crit; action pexit when p = crit do p := idle, lock := false; action qenter when q = idle ∧ lock = false do lock := true, q := crit; action qexit when q = crit do q := idle, lock := false)", "inductive(L, ¬(p = crit ∧ q = crit))", "inductive(L, (p = crit → lock = true) ∧ (q = crit → lock = true) ∧ ¬(p = crit ∧ q = crit))")],
+    see: ["invariant"],
+  },
+  {
+    name: "reach", area: "Transition systems",
+    usage: [["reach(S, φ)", "gives `true` with a shortest trace when some reachable state satisfies φ."]],
+    examples: [basic("let C = system(var x in 0..3; var y in 0..3; init x = 0 ∧ y = 0; action inc when x < 3 do x := x + 1; action move when x > 0 ∧ y < 3 do x := x - 1, y := y + 1)", "reach(C, y = 3)")],
+    see: ["invariant", "states"],
+  },
+  {
+    name: "deadlock", area: "Transition systems",
+    usage: [["deadlock(S)", "gives `true` with a trace when a reachable state has no enabled action."]],
+    examples: [basic("let C = system(var x in 0..3; var y in 0..3; init x = 0 ∧ y = 0; action inc when x < 3 do x := x + 1; action move when x > 0 ∧ y < 3 do x := x - 1, y := y + 1)", "deadlock(C)")],
+    see: ["eventually"],
+  },
+  {
+    name: "trace", area: "Transition systems",
+    usage: [["trace(S; a, b, …)", "runs the actions in order from the initial state and gives the state reached, a step per action."]],
+    details: ["The system must have one initial state; an action that is not enabled is an error naming the guard that fails."],
+    examples: [basic("let C = system(var x in 0..3; var y in 0..3; init x = 0 ∧ y = 0; action inc when x < 3 do x := x + 1; action move when x > 0 ∧ y < 3 do x := x - 1, y := y + 1)", "trace(C; inc, inc, move)")],
+    see: ["system", "invariant"],
+  },
+  {
+    name: "ctl", area: "Transition systems",
+    usage: [["ctl(S, EF φ)", "decides a CTL formula at the initial states: EF, AF, EG, AG, EX or AX applied to a state formula φ."]],
+    details: [
+      "EF and AF are least fixed points, EG and AG greatest ones, on the lattice of sets of reachable states; each round of the Kleene iteration is a step.",
+      "A state with no successor has no path onward: it satisfies AF φ only where φ holds, and EG φ nowhere.",
+    ],
+    examples: [basic("let C = system(var x in 0..3; var y in 0..3; init x = 0 ∧ y = 0; action inc when x < 3 do x := x + 1; action move when x > 0 ∧ y < 3 do x := x - 1, y := y + 1)", "ctl(C, EF y = 3)", "ctl(C, AG x ≤ 2)", "ctl(C, AF y = 3)")],
+    see: ["eventually", "lfp"],
+  },
+  {
+    name: "eventually", area: "Transition systems",
+    usage: [["eventually(S, φ)", "gives `true` when every fair run reaches φ, and otherwise a deadlock or a fair loop that avoids it forever."]],
+    details: ["`fair action` is weak fairness: if it stays enabled it is taken. `strong fair action` is strong fairness: if it is enabled again and again it is taken."],
+    examples: [section("Weak and strong fairness", "let W = system(var p in {idle, crit}; var q in {wait, crit}; var lock in bool; init p = idle ∧ q = wait ∧ lock = false; action penter when p = idle ∧ lock = false do lock := true, p := crit; action pexit when p = crit do p := idle, lock := false; fair action qenter when q = wait ∧ lock = false do lock := true, q := crit)", "eventually(W, q = crit)", "let S = system(var p in {idle, crit}; var q in {wait, crit}; var lock in bool; init p = idle ∧ q = wait ∧ lock = false; action penter when p = idle ∧ lock = false do lock := true, p := crit; action pexit when p = crit do p := idle, lock := false; strong fair action qenter when q = wait ∧ lock = false do lock := true, q := crit)", "eventually(S, q = crit)")],
+    see: ["ctl", "deadlock"],
+  },
+  {
+    name: "refines", area: "Transition systems",
+    usage: [["refines(C, A; X := e, …)", "gives `true` when every step of `C`, mapped to `A`'s variables by the expressions, is a step of `A` or leaves the mapped state unchanged."]],
+    examples: [basic("let Two = system(var a in 0..2; var b in 0..2; init a = 0 ∧ b = 0; action ta when a < 2 do a := a + 1; action tb when b < 2 do b := b + 1)", "let Sum = system(var s in 0..4; init s = 0; action t when s < 4 do s := s + 1)", "refines(Two, Sum; s := a + b)")],
+    see: ["system"],
   },
 
   // --- Logic -----------------------------------------------------------------------------------

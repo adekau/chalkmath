@@ -42,6 +42,10 @@ const CASES = [
   { src: "fold(FA; na, deny, permit)", text: "deny", step: "Combine" },
   { src: "let RPS = op({r, p, s}; [r, p, r; p, p, s; r, s, s])", text: "[r, p, r; p, p, s; r, s, s]" },
   { src: "associative(RPS)", text: "false", step: "Not associative" },
+  // transition systems
+  { src: "let Ct = system(var x in 0..2; init x = 0; action inc when x < 2 do x := x + 1)", text: "system({x}, {inc})" },
+  { src: "invariant(Ct, x ≤ 1)", text: "false", step: "inc (x < 2 holds)" },
+  { src: "ctl(Ct, EF x = 2)", text: "true", step: "Round 1" },
 ];
 
 const root = path.resolve(import.meta.dirname, "..");
@@ -266,6 +270,26 @@ async function features() {
   assert.match(lv.shown, /right/, `the page did not mark the right answer: ${lv.text}`);
   assert.match(lv.text, /truth table/, "the verdict does not say how it was decided");
   console.log("✓ logic exercise: not CNF refused, a CNF in another order accepted by truth table");
+  // a cell of several lines: Shift+Enter starts a new line, Enter runs it; the counterexample's steps are marked on the graph
+  const lines = ["let M = system(", "var p in {idle, crit}", "var lock in bool", "init p = idle ∧ lock = false", "action enter when p = idle do p := crit", "action leave when p = crit do p := idle, lock := false", ")"];
+  await menu("Edit", "Add math cell");
+  const mk = await all().count() - 1;
+  const mcell = all().nth(mk);
+  await mcell.locator(".cellin").click();
+  for (const [k, l] of lines.entries()) {
+    await page.keyboard.type(l);
+    if (k < lines.length - 1) await page.keyboard.press("Shift+Enter");
+  }
+  assert.equal(await mcell.locator("textarea.cellin").inputValue(), lines.join("\n"), "Shift+Enter made a cell of several lines");
+  await page.keyboard.press("Enter");
+  await page.waitForFunction((k) => { const c = document.querySelectorAll(".cell")[k]; return c && !c.classList.contains("running") && (c.querySelector(".outval") || c.querySelector(".cellerr")); }, mk, { timeout: 30000 });
+  const mWant = await ref(lines.join("\n"), 14);
+  assert.equal(mWant.ok, true, `the system: ${mWant.error?.message}`);
+  assert.equal(await mcell.locator(".cellerr").count(), 0, "the system cell shows an error");
+  const inv = await runLast("invariant(M, p = crit → lock = true)");
+  const invWant = (await ref("invariant(M, p = crit → lock = true)", 15)).visuals.find((v) => v.kind === "relation.digraph").data;
+  assert.equal(await inv.locator("svg path.redge.bad").count(), invWant.bad.length, "the counterexample's transitions are marked");
+  console.log(`✓ several lines: a system typed with Shift+Enter, ${invWant.nodes.length} states, a ${invWant.bad.length}-step counterexample marked`);
   // a course: the Courses tab, a lesson opened, answered, and followed to the next
   const manifest = JSON.parse(readFileSync(path.join(root, "notebooks/courses.json"), "utf8"));
   const course = manifest.projects.find((p) => p.kind === "course");

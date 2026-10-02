@@ -104,6 +104,17 @@ differential test with zero mismatches.
   check complete it. Elements can be pairs `(x, y)` (a product's) and sets `{a, b}` (a powerset's);
   the parser reads them anywhere an element goes, and names are compared by a canonical key (spacing
   dropped, a set's members sorted), in cells and in exercise answers.
+- **Transition systems are a fifth world.** `Systems.lean` reads a system (variables over finite
+  domains, an init condition, guarded actions with simultaneous updates; clauses separated by `;` or
+  line breaks) and decides questions on its finite state graph: reachability by breadth-first search,
+  so counterexamples are shortest traces; invariants; inductiveness, refuted by a counterexample to
+  induction that says whether its state is reachable; deadlocks; CTL by least and greatest fixed points
+  of predicate transformers, each Kleene round a step; liveness under weak and strong fairness,
+  refuted by a lasso found among strongly connected sets; refinement under an abstraction map. A trace
+  is the derivation, a step per action, so the notebook's stepping applies; each step is re-run against
+  the system before it is reported (`checked`), while "holds everywhere" answers rest on a search not
+  yet proved complete (`unverified`). Guards reuse the logic world's formulas, evaluated over the
+  state with names (`idle`, `true`) as values.
 - **Logic is a fourth world.** `Logic.lean` reads formulas of propositional logic and bounded
   first-order formulas over finite sets of numbers, with its own grammar (ASCII spellings read as
   the glyphs). Propositional questions are decided by truth table, and `LogicProofs.lean` proves the

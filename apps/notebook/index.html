@@ -284,6 +284,7 @@ button { font-family: var(--font); }
 .cell:hover .cellin, .cell.active .cellin { padding-right:150px; }
 .cell.active .cellin { background:var(--p-input-bg); box-shadow:inset 0 0 0 1px var(--p-input-br); }
 .cellin::placeholder { color:var(--p-ph); }
+textarea.cellin { display:block; resize:none; overflow:hidden; white-space:pre; }
 /* the visual input (packages/math-editor): typeset math with a caret, in the same box as the text input */
 .cell .mi { display:block; width:100%; box-sizing:border-box; min-height:36px; padding:5px 8px; border-radius:6px; color:var(--p-ink);
   font-size:var(--sz-echo);   /* View › Math size, as the input interpretation and a little under the outputs */

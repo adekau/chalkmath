@@ -142,7 +142,11 @@ export interface TruthTableData { vars: string[]; formula: Rendered; rows: boole
 /** `relation.digraph` (a relation cell): the elements, the pairs as arrows, and the arrows to mark —
  *  `bad`, those that show a property failing (a pair whose reverse is missing, two that chain without
  *  their composite, …), and `added`, those a closure added. */
-export interface DigraphData { nodes: string[]; edges: [string, string][]; bad: [string, string][]; added: [string, string][] }
+export interface DigraphData {
+  nodes: string[]; edges: [string, string][]; bad: [string, string][]; added: [string, string][];
+  /** Each node's layer (a state's distance from an initial one), for a layered drawing. Optional. */
+  layers?: number[];
+}
 /** `algebra.optable` (an operation cell, or a law checked on one): the set, the table row by row
  *  (`rows[i][j]` is `elems[i] · elems[j]`), and the cells to mark, as `[row element, column element]`. */
 export interface OpTableData { elems: string[]; rows: string[][]; marks: [string, string][] }
@@ -239,9 +243,11 @@ export interface HasseData { nodes: { name: string; height: number }[]; covers: 
  *  Church numeral or boolean. Order cells (`kind: "poset"`, relations included): what to draw
  *  (elements with their height, the covers = Hasse edges) and a one-line summary; a relation's graph
  *  comes as a `relation.digraph` visual. Logic cells (`kind: "logic"`): a one-line summary (the
- *  counterexample, witness or distinguishing row), and for `truthtable` a `logic.truthtable` visual. */
+ *  counterexample, witness or distinguishing row), and for `truthtable` a `logic.truthtable` visual.
+ *  Systems cells (`kind: "system"`): a summary, the state graph as a `relation.digraph` visual (a
+ *  counterexample's transitions marked), and a trace as the derivation, a step per action. */
 export interface WorldExtras {
-  kind?: "lambda" | "poset" | "logic";
+  kind?: "lambda" | "poset" | "logic" | "system";
   renderedDeBruijn?: Rendered; reading?: string;
   hasse?: HasseData; summary?: string;
 }

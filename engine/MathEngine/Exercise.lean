@@ -232,10 +232,39 @@ def checkOrder (s : Session) (cellId question : String) (answer : Option String)
     let eq := match given with | some (.ok (_, b)) => b | _ => false
     (s, .ok ⟨res.value, res.derivation, false, res.value, given.map (·.map (·.1)), eq⟩)
 
+/-- A state written as `x = 1 ∧ y = busy`, as its sorted equations (any order compares equal). -/
+private partial def stateKey : Expr → List String
+  | .fn "∧" [a, b] => stateKey a ++ stateKey b
+  | e => [String.ofList (e.toText.toList.filter (!·.isWhitespace))]
+
+/-- A systems exercise: the question's value is `true`/`false`, a number of states, or a state; the
+answer is written the same way (a state as `x = 1 ∧ y = 2`, in any order). -/
+def checkSystem (s : Session) (cellId question : String) (answer : Option String) :
+    Session × Except Err CheckResult :=
+  match systemCell s cellId question with
+  | (s, .error e) => (s, .error e)
+  | (s, .ok res) =>
+    let want := (stateKey res.value).mergeSort
+    let given : Option (Except Err (Compared × Bool)) := answer.map fun a =>
+      let t := a.trimAscii.copy
+      let parsed : Except String Expr :=
+        match t.toLower with
+        | "true" | "⊤" => .ok (.var "true")
+        | "false" | "⊥" => .ok (.var "false")
+        | _ => match t.toInt? with
+          | some n => .ok (.num (Q.ofInt n))
+          | none => (Logic.parseFormula t).map (·.toExpr)
+      match parsed with
+      | .error msg => .error ("syntax", msg, none)
+      | .ok e => .ok (⟨e, e⟩, (stateKey e).mergeSort == want)
+    let eq := match given with | some (.ok (_, b)) => b | _ => false
+    (s, .ok ⟨res.value, res.derivation, false, res.value, given.map (·.map (·.1)), eq⟩)
+
 /-- Check an exercise: evaluate the question (recorded as `cellId`, so its work can be fetched and
 explained, but neither bound nor numbered), and compare the answer, if one is given. -/
 def checkAnswer (s : Session) (cellId question : String) (answer : Option String) :
     Session × Except Err CheckResult :=
+  if Sys.isSystemSource question then checkSystem s cellId question answer else
   if Ord.isOrderSource question then checkOrder s cellId question answer else
   if Logic.isLogicSource question then checkLogic s cellId question answer else
   if isLambdaCell s question then

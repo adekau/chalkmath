@@ -85,10 +85,12 @@ type CompItem = { kind: "doc"; doc: Doc }
   | { kind: "part"; insert: string; label: string; hint: string; start: number };
 
 /** An order-theory cell, or a `let` binding one: the engine reads these in their own world. */
-const ORDER_CELL = /^(let\s+\w+\s*=\s*)?(poset|divisors|subsets|chain|map|hasse|join|meet|sup|inf|upper|lower|lattice|top|bottom|le|maximal|minimal|monotone|lfp|gfp|fixpoints|rel|kernel|reflexive|symmetric|antisymmetric|transitive|equivalence|preorder|closure|classes|finer|wellfounded|measure|op|joinop|meetop|table|associative|commutative|idempotent|semilattice|identity|fold|order|distributive|complement|complemented|boolean|product|galois|closureop|context|concepts|secure)\s*\(/;
+const ORDER_CELL = /^(let\s+\w+\s*=\s*)?(poset|divisors|subsets|chain|map|hasse|join|meet|sup|inf|upper|lower|lattice|top|bottom|le|maximal|minimal|monotone|lfp|gfp|fixpoints|rel|kernel|reflexive|symmetric|antisymmetric|transitive|equivalence|preorder|closure|classes|finer|wellfounded|measure|op|joinop|meetop|table|associative|commutative|idempotent|semilattice|identity|fold|order|distributive|complement|complemented|boolean|product|galois|closureop|context|concepts|secure|events|clocks|concurrent)\s*\(/;
 /** A logic cell: a logic command, or a formula with a connective or a quantifier (the engine's
  *  `Logic.isLogicSource`; a λ-term is not one). */
 const LOGIC_CELL = /^(let\s+\w+\s*=\s*)?(truthtable|taut|sat|falsify|equiv|nnf|cnf|dnf)\s*\(/;
+/** A systems-world cell: a system, or a question about one. */
+const SYSTEM_CELL = /^(let\s+\w+\s*=\s*)?(system|states|invariant|inductive|reach|deadlock|trace|ctl|eventually|refines)\s*\(/;
 const isLogicCell = (s: string) => !/[λ\\]/.test(s) && (LOGIC_CELL.test(s) || /[∧∨¬→↔⊤⊥∀∃]|<->|->|&&|\|\|/.test(s) || /^(let\s+\w+\s*=\s*)?(forall|exists)\b/.test(s));
 
 /** Label for a cell, from its source. Presentation only — the engine decides what it means. */
@@ -109,6 +111,7 @@ function cellKind(src: string): string | null {
     case "exptotrig": return "Euler";
   }
   if (/[λ\\]|:=/.test(s)) return "λ-term";
+  if (SYSTEM_CELL.test(s)) return "system";
   if (ORDER_CELL.test(s)) return "order";
   if (isLogicCell(s)) return "logic";
   switch (head) {
@@ -234,7 +237,8 @@ interface Cell {
   /** Waiting its turn behind the cell the engine is evaluating (shown as In[*]). */
   queued?: boolean;
   el?: HTMLElement;
-  input?: HTMLInputElement;
+  /** The text input: one line, or a textarea when the source runs over several. */
+  input?: HTMLInputElement | HTMLTextAreaElement;
   /** Visual (typeset, with holes) or raw text input; absent follows View › Visual math input. */
   mode?: "raw" | "visual";
   /** The visual input, when the cell has one. */
@@ -675,6 +679,7 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
       delete cell.plot; delete cell.outDeBruijn; delete cell.reading; delete cell.kind; delete cell.hasse; delete cell.summary; delete cell.visuals;
       if ("kind" in r && r.kind === "poset") { cell.kind = "order"; cell.hasse = r.hasse; cell.summary = r.summary; }
       if ("kind" in r && r.kind === "logic") { cell.kind = "logic"; cell.summary = r.summary; }
+      if ("kind" in r && r.kind === "system") { cell.kind = "system"; cell.summary = r.summary; }
       const vs = knownVisuals("visuals" in r ? r.visuals : undefined);
       if (vs.length) cell.visuals = vs;
       if ("kind" in r && r.kind === "plot") cell.plot = plotDataOf(r);
@@ -1684,6 +1689,7 @@ function renderLessonBar() {
 
 const SHORTCUTS: [string, string][] = [
   ["Enter", "Run the cell (in a Markdown cell: a new line)"],
+  ["Shift+Enter in a math cell", "A new line: a cell of several lines, such as a system (Enter still runs it)"],
   ["? at the start of a cell", "Ask a question: a number, list, table or formula, looked up (Run › Lookup settings)"],
   ["Shift+Enter or Esc", "Render a Markdown cell"],
   ["Enter on rendered Markdown, or double-click", "Edit it"],
@@ -2057,6 +2063,17 @@ function onPaste(ev: ClipboardEvent, cell: Cell) {
     return;
   }
   const text = dt.getData("text/plain");
+  if (cell.input instanceof HTMLInputElement && text.includes("\n") && !/<svg[\s>]/i.test(text)) {
+    // several lines into a one-line input: it becomes a textarea, the lines kept
+    ev.preventDefault();
+    const input = cell.input, a = input.selectionStart ?? input.value.length, b = input.selectionEnd ?? a;
+    const t = text.replace(/\r\n?/g, "\n");
+    cell.src = input.value.slice(0, a) + t + input.value.slice(b);
+    refreshInput(cell);
+    cell.input?.focus(); cell.input?.setSelectionRange(a + t.length, a + t.length);
+    renderSidebar(); autosave();
+    return;
+  }
   if (/^\s*(<\?xml[^>]*>\s*)?(<!--[\s\S]*?-->\s*)*(<!DOCTYPE[^>]*>\s*)?<svg[\s>]/i.test(text)) {
     ev.preventDefault();
     let k = 1; while (S.assets[`pasted-${k}.svg`]) k++;
@@ -2907,12 +2924,27 @@ function truthTable(d: TruthTableData): HTMLElement {
  *  arrows that show a property failing are marked, and the ones a closure added are dashed. */
 function digraphSvg(d: DigraphData): SVGSVGElement {
   const NS = "http://www.w3.org/2000/svg";
-  const n = d.nodes.length, r = n <= 1 ? 0 : Math.max(60, Math.min(150, 26 * n)), w = 2 * r + 120, hgt = 2 * r + 90;
+  const n = d.nodes.length;
+  const longest = Math.max(1, ...d.nodes.map((x) => x.length));
+  const layered = !!d.layers && d.layers.length === n;
   const pos = new Map<string, [number, number]>();
-  d.nodes.forEach((name, i) => {
-    const a = -Math.PI / 2 + (2 * Math.PI * i) / Math.max(1, n);
-    pos.set(name, [w / 2 + r * Math.cos(a), hgt / 2 + r * Math.sin(a)]);
-  });
+  let w: number, hgt: number;
+  if (layered) {
+    // a state graph: the initial states on top, each row one step further on
+    const rows = new Map<number, string[]>();
+    d.nodes.forEach((name, i) => { const l = d.layers![i]!; rows.set(l, [...(rows.get(l) ?? []), name]); });
+    const widest = Math.max(1, ...[...rows.values()].map((r) => r.length));
+    const colW = Math.max(70, longest * 7 + 24), rowH = 74;
+    w = Math.max(240, widest * colW + 40); hgt = (Math.max(0, ...rows.keys()) + 1) * rowH + 30;
+    for (const [l, names] of rows) names.forEach((name, k) => pos.set(name, [20 + (k + 0.5) * ((w - 40) / names.length), 24 + l * rowH]));
+  } else {
+    const r = n <= 1 ? 0 : Math.max(60, Math.min(150, 26 * n)), pad = Math.max(60, longest * 6.6 + 24);
+    w = 2 * r + 2 * pad; hgt = 2 * r + 90;
+    d.nodes.forEach((name, i) => {
+      const a = -Math.PI / 2 + (2 * Math.PI * i) / Math.max(1, n);
+      pos.set(name, [w / 2 + r * Math.cos(a), hgt / 2 + r * Math.sin(a)]);
+    });
+  }
   const key = ([a, b]: [string, string]) => `${a}\u0000${b}`;
   const bad = new Set(d.bad.map(key)), added = new Set(d.added.map(key)), all = new Set(d.edges.map(key));
   const svg = document.createElementNS(NS, "svg");
@@ -2943,7 +2975,8 @@ function digraphSvg(d: DigraphData): SVGSVGElement {
       // stop short of the nodes; bend when the reverse pair is drawn too, so the two do not overlap
       const dx = q[0] - p[0], dy = q[1] - p[1], len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
       const x1 = p[0] + ux * 8, y1 = p[1] + uy * 8, x2 = q[0] - ux * 9, y2 = q[1] - uy * 9;
-      const bend = all.has(key([b, a])) ? 14 : 0;
+      // bend a pair drawn both ways apart; in a layered drawing, bend edges within a row or back up it
+      const bend = all.has(key([b, a])) ? 14 : layered && q[1] <= p[1] ? 26 : 0;
       const mx = (x1 + x2) / 2 - uy * bend, my = (y1 + y2) / 2 + ux * bend;
       path.setAttribute("d", `M${x1},${y1} Q${mx},${my} ${x2},${y2}`);
     }
@@ -2955,9 +2988,15 @@ function digraphSvg(d: DigraphData): SVGSVGElement {
     const c = document.createElementNS(NS, "circle");
     c.setAttribute("cx", String(x)); c.setAttribute("cy", String(y)); c.setAttribute("r", "5"); c.setAttribute("class", "hnode"); svg.append(c);
     const t = document.createElementNS(NS, "text");
-    // outward from the centre, past the node's loop when it has one
-    const out = Math.atan2(y - hgt / 2, x - w / 2) || -Math.PI / 2, dist = d.edges.some(([a, b]) => a === name && b === name) ? 40 : 14;
-    t.setAttribute("x", String(x + dist * Math.cos(out) - 4)); t.setAttribute("y", String(y + dist * Math.sin(out) + 4)); t.setAttribute("class", "hlabel"); t.textContent = name; svg.append(t);
+    if (layered) {
+      // centred under the node
+      t.setAttribute("x", String(x)); t.setAttribute("y", String(y + 19)); t.setAttribute("text-anchor", "middle");
+    } else {
+      // outward from the centre, past the node's loop when it has one
+      const out = Math.atan2(y - hgt / 2, x - w / 2) || -Math.PI / 2, dist = d.edges.some(([a, b]) => a === name && b === name) ? 40 : 14;
+      t.setAttribute("x", String(x + dist * Math.cos(out) - (Math.cos(out) < -0.3 ? name.length * 6.6 : 4))); t.setAttribute("y", String(y + dist * Math.sin(out) + 4));
+    }
+    t.setAttribute("class", "hlabel"); t.textContent = name; svg.append(t);
   }
   return svg;
 }
@@ -3006,6 +3045,8 @@ function visualBlocked(cell: Cell): string | null {
   if (kind === "λ-term") return "λ-terms are edited as text";
   if (kind === "order" || ORDER_CELL.test(src.trim())) return "order theory is edited as text";
   if (kind === "logic" || isLogicCell(src.trim())) return "logic is edited as text";
+  if (kind === "system" || SYSTEM_CELL.test(src.trim())) return "systems are edited as text";
+  if (src.includes("\n")) return "a cell of several lines is edited as text";
   if (src.trim() && !readNotation(src, sessionFns()).ok) return "the text does not parse yet";
   return null;
 }
@@ -3261,27 +3302,34 @@ const promptLevel = new ResizeObserver((entries) => {
 function inputEls(cell: Cell, i: number): HTMLElement[] {
   const mi = isVisual(cell) ? visualInput(cell, i) : null;
   if (mi) { cell.mi = mi; promptLevel.observe(mi.el); return [mi.el]; }
-  const input = document.createElement("input");
-  input.className = "cellin"; input.type = "text"; input.value = cell.src;
+  // a source of several lines (a system, say) is a textarea; Shift+Enter starts a new line, Enter runs
+  const multi = cellSrc(cell).includes("\n");
+  const input = multi ? document.createElement("textarea") : document.createElement("input");
+  input.className = multi ? "cellin multi" : "cellin"; input.value = cell.src;
+  if (input instanceof HTMLInputElement) input.type = "text";
+  else { input.wrap = "off"; fitRows(input); }
   input.setAttribute("aria-label", `Cell ${i + 1}, math input`);
   input.autocapitalize = "off"; input.autocomplete = "off"; input.setAttribute("autocorrect", "off"); input.enterKeyHint = "go";
   input.placeholder = i === 0 ? "e.g. diff(x^2 * sin(x), x)" : "";
   input.spellcheck = false;
   cell.input = input;
   input.addEventListener("focus", () => { S.active = i; renderChrome(); renderSidebar(); markActive(); updateKeypad(); });
-  input.addEventListener("input", () => { cell.src = input.value; updateCompletions(cell); updateSigHelp(cell); syncHighlight(cell); renderSidebar(); renderTabs(); });
+  input.addEventListener("input", () => { cell.src = input.value; if (input instanceof HTMLTextAreaElement) fitRows(input); updateCompletions(cell); updateSigHelp(cell); syncHighlight(cell); renderSidebar(); renderTabs(); });
   input.addEventListener("keyup", () => { updateSigHelp(cell); syncHighlight(cell); });   // caret moves without an input event
   input.addEventListener("click", () => updateSigHelp(cell));
   input.addEventListener("scroll", () => syncHighlight(cell));
   input.addEventListener("blur", () => { hideCompletions(); hideSigHelp(); autoSettle(cell); updateKeypad(); });
-  input.addEventListener("keydown", (ev) => onKey(ev, cell, i));
-  input.addEventListener("paste", (ev) => onPaste(ev, cell));
+  input.addEventListener("keydown", (ev) => onKey(ev as KeyboardEvent, cell, i));
+  input.addEventListener("paste", (ev) => onPaste(ev as ClipboardEvent, cell));
   // the highlight overlay sits under the transparent text of the input; the input keeps caret and selection
   const hl = h("div", "hl"); hl.setAttribute("aria-hidden", "true");
   cell.hl = hl;
   syncHighlight(cell);
   return [hl, input];
 }
+
+/** A textarea as tall as its lines. */
+function fitRows(ta: HTMLTextAreaElement) { ta.rows = Math.max(1, ta.value.split("\n").length); }
 
 /** Swap one cell's input (typeset ↔ text) in place, without rebuilding the others. */
 function refreshInput(cell: Cell) {
@@ -3575,6 +3623,11 @@ const RULE_NAMES: Record<string, string> = {
   "alg.identity": "Identity element", "alg.fold": "Combine", "alg.order": "Order of a semilattice", "order.distributive": "Distributive",
   "order.complement": "Complement", "order.boolean": "Boolean lattice", "order.product": "Product order", "order.galois": "Galois connection",
   "order.closure-operator": "Closure operator", "order.concepts": "Concept lattice", "order.flow": "Information flow",
+  "order.happens-before": "Happens-before", "order.clocks": "Vector clocks", "order.concurrent": "Concurrent",
+  "sys.init": "Start", "sys.step": "Step", "sys.found": "Found", "sys.violated": "Violated", "sys.deadlock": "Deadlock", "sys.reach": "Reachable states",
+  "sys.invariant": "Invariant", "sys.unreachable": "Unreachable", "sys.inductive": "Inductive", "sys.cti": "Counterexample to induction",
+  "sys.ctl": "CTL", "sys.iterate": "Iterate", "sys.fixed": "Fixed point", "sys.cycle": "Cycle", "sys.lasso": "Fair loop",
+  "sys.eventually": "Eventually", "sys.refines": "Refinement",
   "cmd.rref": "Row reduce", "cmd.integrate": "Integrate", "cmd.expand": "Expand", "cmd.subst": "Substitute", "cmd.simplify": "Simplify", "cmd.sum": "Sum", "cmd.exptotrig": "Euler's formula",
 };
 
@@ -4437,7 +4490,7 @@ function renderExercise(cell: Cell) {
       if (v.error.span && cell.attempt) out.append(h("span", "caret", `${cell.attempt}\n${" ".repeat(v.error.span.start)}${"^".repeat(Math.max(1, v.error.span.end - v.error.span.start))}`));
     } else {
       // how the answer was compared: by truth table, as a set, or by normal form
-      const world = ORDER_CELL.test(cell.src.trim()) ? "order" : isLogicCell(cell.src.trim()) ? "logic" : "math";
+      const world = ORDER_CELL.test(cell.src.trim()) || SYSTEM_CELL.test(cell.src.trim()) ? "order" : isLogicCell(cell.src.trim()) ? "logic" : "math";
       const m = h("span", "xc-math"); m.innerHTML = tex((v.equivalent || world !== "math" ? v.answerLatex : v.normalLatex) ?? "");
       const [before, after] = v.equivalent
         ? world === "logic" ? [" Correct: ", " agrees with the answer on every row of the truth table."]
@@ -5176,7 +5229,7 @@ async function evaluateExamples(c: EngineClient, inputs: string[]): Promise<ExOu
       if ("kind" in r && r.kind === "plot") o.plot = plotDataOf(r);
       if ("kind" in r && r.kind === "poset" && r.hasse) { o.hasse = r.hasse; if (r.summary) o.summary = r.summary; }
       if ("kind" in r && r.kind === "lambda" && r.reading) o.summary = r.reading;
-      if ("kind" in r && r.kind === "logic" && r.summary) o.summary = r.summary;
+      if ("kind" in r && (r.kind === "logic" || r.kind === "system") && r.summary) o.summary = r.summary;
       const vs = knownVisuals("visuals" in r ? r.visuals : undefined);
       if (vs.length) o.visuals = vs;
       outs.push(o);
@@ -6072,7 +6125,7 @@ function renderStage() {
 // Completions and hover documentation
 // ---------------------------------------------------------------------------
 
-function currentWord(input: HTMLInputElement): { word: string; start: number } {
+function currentWord(input: HTMLInputElement | HTMLTextAreaElement): { word: string; start: number } {
   const caret = input.selectionStart ?? input.value.length;
   const before = input.value.slice(0, caret);
   // a word, or a backslash abbreviation (possibly still empty: a bare `\` lists every symbol)
@@ -6310,7 +6363,7 @@ const USER_FNS = new Map<string, string[]>();
 /** The innermost call the caret is inside: its name, where its `(` is, and which argument the caret
  *  is in. Balanced groups before the caret are skipped; an unclosed `[`/`{` or a bare grouping `(` is
  *  part of an argument, so the walk continues outward. */
-function callContext(input: HTMLInputElement): { name: string; open: number; arg: number; firstArg: string } | null {
+function callContext(input: HTMLInputElement | HTMLTextAreaElement): { name: string; open: number; arg: number; firstArg: string } | null {
   const s = input.value, caret = input.selectionStart ?? s.length;
   let depth = 0;
   for (let k = caret - 1; k >= 0; k--) {
@@ -6375,7 +6428,7 @@ function sigPieces(sig: string): SigPiece[] {
 
 /** Inside `x[[…]]` at the caret: what `x` is (a file, a part of one, or a bound matrix) and what the
  *  index being typed can be. */
-function partAt(cell: Cell, input: HTMLInputElement) {
+function partAt(cell: Cell, input: HTMLInputElement | HTMLTextAreaElement) {
   return partIn(cell, input.value.slice(0, input.selectionStart ?? input.value.length));
 }
 /** The same, given the cell's text up to the caret (a visual input writes it). */
@@ -6545,6 +6598,17 @@ document.addEventListener("scroll", hideUsage, { capture: true, passive: true })
 
 function onKey(ev: KeyboardEvent, cell: Cell, i: number) {
   if (modeKey(ev, cell)) return;
+  if (ev.key === "Enter" && ev.shiftKey && cell.input && !S.comp?.picked) {
+    // a new line: the cell becomes (or stays) a textarea, and Enter still runs it
+    ev.preventDefault(); hideCompletions();
+    const input = cell.input, a = input.selectionStart ?? input.value.length, b = input.selectionEnd ?? a;
+    const v = `${input.value.slice(0, a)}\n${input.value.slice(b)}`;
+    cell.src = v;
+    if (input instanceof HTMLTextAreaElement) { input.value = v; input.setSelectionRange(a + 1, a + 1); fitRows(input); syncHighlight(cell); }
+    else { refreshInput(cell); cell.input?.focus(); cell.input?.setSelectionRange(a + 1, a + 1); }
+    renderSidebar(); autosave();
+    return;
+  }
   if (ev.key === " " && cell.input) {
     // `\frac` then space in the text: the cell goes typeset with the template in place
     const input = cell.input, at = input.selectionStart ?? input.value.length;
@@ -6579,8 +6643,12 @@ function onKey(ev: KeyboardEvent, cell: Cell, i: number) {
     }
   }
   if (ev.key === "Enter") { ev.preventDefault(); void runCell(cell); return; }
-  if (ev.key === "ArrowDown" && i < S.cells.length - 1) { ev.preventDefault(); focusCell(i + 1); }
-  if (ev.key === "ArrowUp" && i > 0) { ev.preventDefault(); focusCell(i - 1); }
+  // in a cell of several lines the arrows move between lines, and leave the cell from its first or last
+  const ta = cell.input instanceof HTMLTextAreaElement ? cell.input : null;
+  const onFirst = !ta || !ta.value.slice(0, ta.selectionStart ?? 0).includes("\n");
+  const onLast = !ta || !ta.value.slice(ta.selectionEnd ?? ta.value.length).includes("\n");
+  if (ev.key === "ArrowDown" && onLast && i < S.cells.length - 1) { ev.preventDefault(); focusCell(i + 1); }
+  if (ev.key === "ArrowUp" && onFirst && i > 0) { ev.preventDefault(); focusCell(i - 1); }
 }
 
 // ---------------------------------------------------------------------------
