@@ -175,7 +175,20 @@ def ruleStatus : Json :=
     entry "logic.bounded" "verified" "A quantifier over a finite set is checked element by element, by definition; the atoms are evaluated by the pipeline, whose steps' statuses apply.",
     entry "lambda.delta" "verified" "Unfolding a definition replaces a free name by its term; nothing to prove beyond that.",
     entry "lambda.beta" "unverified" "β-reduction with capture-avoiding substitution; the substitution lemma is not yet proved.",
-    entry "lambda.alpha-beta" "unverified" "A binder renamed to avoid capture, then β; the renaming is not yet proved to preserve α-equivalence."]
+    entry "lambda.alpha-beta" "unverified" "A binder renamed to avoid capture, then β; the renaming is not yet proved to preserve α-equivalence.",
+    entry "lambda.eta" "verified" "η: λx. f x contracts to f only when x is not free in f (etaRedex_spec); η is an axiom of λβη, so nothing more to prove.",
+    entry "lambda.fv" "verified" "The free variables, computed by their definition (freeVars).",
+    entry "lambda.db" "verified" "De Bruijn indices, computed by their definition (toDB).",
+    entry "lambda.alpha-eq" "verified" "α-equivalence is taken to be equality of de Bruijn forms, which is how the engine defines it; that this agrees with renaming bound variables one at a time is the classical theorem, not proved here.",
+    entry "lambda.alpha" "unverified" "Binders renamed to avoid capture; the renaming is not yet proved to preserve α-equivalence.",
+    entry "lambda.subst" "unverified" "Capture-free substitution; it adds no free variable beyond the argument's (substRaw_freeVars), but the substitution lemma is not yet proved.",
+    entry "stlc.var" "verified" "Var: the checker's derivations are typing derivations (check_sound, StlcProofs.lean).",
+    entry "stlc.abs" "verified" "→I: the checker's derivations are typing derivations (check_sound).",
+    entry "stlc.app" "verified" "→E: the checker's derivations are typing derivations (check_sound).",
+    entry "stlc.constraints" "checked" "Inference's equations; the type found is re-checked by the verified checker on the annotated term.",
+    entry "stlc.split" "checked" "Unification splits an equation of arrows; the type found is re-checked by the verified checker.",
+    entry "stlc.unify" "checked" "Unification binds a type variable (with the occurs check); the type found is re-checked by the verified checker.",
+    entry "stlc.principal" "checked" "The solved type, its variables renamed; checked by the verified checker. That it is the most general type is Hindley's theorem, not proved here."]
 
 def capabilities : Json :=
   .obj #[("engine", .str "engine-lean"), ("version", .str "0.1.0-m8"), ("verified", .bool true),
@@ -216,6 +229,45 @@ private def pathOfJson : Json → Option Path
   | .arr xs => xs.toList.mapM fun j => match j with | .num s => s.toNat? | _ => none
   | _ => none
 
+/-- A context as a judgment shows it: each variable once (the innermost binding), outermost first. -/
+def ctxShown (Γ : Lam.Ctx) : Lam.Ctx :=
+  (Γ.foldl (fun acc (x, T) => if acc.any (·.1 == x) then acc else acc ++ [(x, T)]) []).reverse
+
+/-- The contexts of a derivation's judgments, root first, each once. -/
+partial def typingCtxs : Lam.Deriv → List Lam.Ctx
+  | .node _ Γ _ _ ps => (ctxShown Γ :: (ps.map typingCtxs).flatten).eraseDups
+
+/-- A typing derivation as a tree for the notebook: each node its judgment `Γ ⊢ t : T`, its rule,
+and its premises. When writing the contexts out would make a judgment long, each context is named
+(Γ₁, Γ₂, …, each by the one it extends) and the names are explained in a legend. -/
+def typingTreeVisual (d : Lam.Deriv) : Json :=
+  let tex (e : Expr) := e.toLatex false
+  let entryL (x : String) (A : Lam.Ty) := s!"{tex (.var x)} : {tex A.toExpr}"
+  let entryT (x : String) (A : Lam.Ty) := s!"{x} : {A.text}"
+  let full (Γ : Lam.Ctx) (f : String → Lam.Ty → String) := ", ".intercalate (Γ.map fun (x, A) => f x A)
+  let ctxs := (typingCtxs d).filter (!·.isEmpty)
+  let long := ctxs.any fun Γ => (full Γ entryT).length > 28
+  let named : List (Lam.Ctx × Nat) := if long then ctxs.zip (List.range' 1 ctxs.length) else []
+  let ctxL (Γ : Lam.Ctx) := match named.lookup Γ with
+    | some k => s!"\\Gamma_\{{k}}"
+    | none => full Γ entryL
+  -- a context named by the longest named one it extends
+  let legend := named.map fun (Γ, k) =>
+    let base := (named.filter fun (Δ, j) => j < k && Δ.length < Γ.length && Γ.take Δ.length == Δ).foldl
+      (fun best (Δ, j) => match best with | some (B, _) => if Δ.length > B.length then some (Δ, j) else best | none => some (Δ, j)) none
+    let (rest, prefL, prefT) := match base with
+      | some (Δ, j) => (Γ.drop Δ.length, s!"\\Gamma_\{{j}}, ", s!"Γ{j}, ")
+      | none => (Γ, "", "")
+    Json.obj #[("latex", .str (s!"\\Gamma_\{{k}} = " ++ prefL ++ full rest entryL)), ("text", .str (s!"Γ{k} = " ++ prefT ++ full rest entryT))]
+  let rec node : Lam.Deriv → Json
+    | .node rule Γ t T ps =>
+      let Γ := ctxShown Γ
+      let latex := (if Γ.isEmpty then "" else ctxL Γ ++ " ") ++ "\\vdash " ++ tex t.toExpr ++ " : " ++ tex T.toExpr
+      let text := (if Γ.isEmpty then "" else full Γ entryT ++ " ") ++ "⊢ " ++ t.text ++ " : " ++ T.text
+      let label := match rule with | "var" => "Var" | "abs" => "→I" | "app" => "→E" | r => r
+      .obj #[("rule", .str label), ("latex", .str latex), ("text", .str text), ("premises", .arr (ps.attach.map fun ⟨p, _⟩ => node p).toArray)]
+  .obj #[("root", node d), ("legend", .arr legend.toArray)]
+
 /-- A λ-cell's reply: like an ordinary one, plus the de Bruijn renderings and the reading. -/
 def evaluateLambda (st : Store) (params : Json) (sessionId cellId src : String) : Store × Json :=
   let (s, r) := lambdaCell (st.get sessionId) cellId src
@@ -224,10 +276,14 @@ def evaluateLambda (st : Store) (params : Json) (sessionId cellId src : String) 
   | .error (code, msg, span) => (st, errorJson code msg span)
   | .ok res =>
     let paths := params.getBool "paths"
-    let out := Lam.toExpr res.output
+    let out := res.value
+    let db := match res.term with | some t => Lam.dbToExpr (Lam.toDB [] t) | none => res.value
     let r := #[("ok", .bool true), ("kind", .str "lambda"), ("value", out.toJson), ("rendered", Rendered.toJson out paths),
-      ("renderedDeBruijn", Rendered.toJson (Lam.dbToExpr (Lam.toDB [] res.output)) false)]
+      ("renderedDeBruijn", Rendered.toJson db false)]
     let r := match res.reading with | some t => r.push ("reading", .str t) | none => r
+    let r := match res.tree with
+      | some d => r.push ("visuals", .arr #[.obj #[("kind", .str "typing.tree"), ("data", typingTreeVisual d)]])
+      | none => r
     let r := r ++ workFields params res.derivation (lambda := true)
     let r := match res.name with | some n => r.push ("bound", .arr #[.str n]) | none => r
     (st, .obj r)
@@ -335,9 +391,11 @@ def evaluate (st : Store) (params : Json) : Store × Json :=
     withLabel st sessionId cellId j
 where
   evaluateCore (st : Store) (params : Json) (sessionId cellId src : String) : Store × Json :=
-    if Sys.isSystemSource src then evaluateSystem st params sessionId cellId src else
-    if Ord.isOrderSource src then evaluateOrder st params sessionId cellId src else
-      if Logic.isLogicSource src then evaluateLogic st params sessionId cellId src else
+    -- a λ-command (`type: f : A → B ⊢ f`) may hold a connective or a call; it is the λ-world's
+    let lamCmd := (Lam.commandHead src).isSome
+    if !lamCmd && Sys.isSystemSource src then evaluateSystem st params sessionId cellId src else
+    if !lamCmd && Ord.isOrderSource src then evaluateOrder st params sessionId cellId src else
+      if !lamCmd && Logic.isLogicSource src then evaluateLogic st params sessionId cellId src else
       if isLambdaCell (st.get sessionId) src then evaluateLambda st params sessionId cellId src else
       let (s, r) := evaluateCell (st.get sessionId) cellId src
       let st := st.set sessionId s

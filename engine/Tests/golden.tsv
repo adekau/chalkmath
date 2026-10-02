@@ -308,3 +308,29 @@ let Ev = events({a1, a2, a3}, {b1, b2}; a1->b2, b1->a3)	poset {a1, a2, a3, b1, b
 clocks({a1, a2, a3}, {b1, b2}; a1->b2, b1->a3)	{a1↦(1, 0), a2↦(2, 0), a3↦(3, 1), b1↦(0, 1), b2↦(1, 2)}
 concurrent(Ev, a2, b2)	true
 events({a1, a2}, {b1, b2}; a2->b1, b2->a1)	<error: the messages make a cycle, so some event would happen before itself (not a partial order: not antisymmetric: a1 ≤ a2 and a2 ≤ a1 with a1 ≠ a2)>
+cbv: K I (omega omega)	<error: λ: no value after 1000 steps (call by value); the term had become (λy. λx. x) ((λx. x x) (λx. x x))>
+normal: K I (omega omega)	λx. x
+cbn: K I (omega omega)	λx. x
+applicative: (λx. a) ((λy. y) b)	a
+normal 3: omega omega	(λx. x x) (λx. x x)
+cbv: (λx. x) (λy. (λz. z) y)	λy. (λz. z) y
+cbn: x ((λy. y) z)	x ((λy. y) z)
+eta: λx. (λy. g y) x	g
+eta: λf. λx. f x	λf. f
+fv: λx. x y (λy. y z)	{y, z}
+db: λx. λy. x (λz. z y)	λ. λ. 1 (λ. 0 1)
+alpha: λx. λy. x y, λa. λb. a b	⊤
+alpha: λx. λy. x y, λa. λb. b a	⊥
+subst: λy. x y, x := y	λy'. y y'
+subst: λx. x, x := y	λx. x
+type: λf:A→B. λx:A. f x	(A → B) → A → B
+type: f : A → B, x : A ⊢ f x	B
+type: λx:A. x x	<error: x has type A, not a function type, so it cannot be applied>
+type: λx. x	<error: the binder x has no type: write λx:A. … (or ask `infer:` to find one)>
+type: λx:A. λy:B → B. y x	<error: y expects an argument of type B, but x has type A>
+infer: S	(α → β → γ) → (α → β) → α → γ
+infer: 2	(α → α) → α → α
+infer: λx. x x	<error: occurs check: τ1 = τ1 → τ2 has no solution (τ1 would have to contain itself), so the term has no simple type>
+infer: λx:A. λy:B. x y	<error: cannot unify A with B → τ1, so the term has no simple type>
+infer: λf:A→B. λx. f x	(A → B) → A → B
+(λx:A. x) y	y

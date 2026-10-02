@@ -79,7 +79,19 @@ differential test with zero mismatches.
 - **The λ-calculus is a second world in the same engine.** `Lambda.lean` has its own terms, parser
   and normal-order β-reducer; terms are encoded into `Expr` for the wire, so selection, explanation
   and origin tracking work unchanged. The de Bruijn view is computed with every step. Reduction is
-  on fuel, the one budget in the engine, because normalization is undecidable; `Ω` is refused.
+  on fuel, the one budget in the engine, because normalization is undecidable; `Ω` is refused, and so
+  is a term that grows past `maxSize` symbols (a fixed-point combinator unfolding under call by value).
+  A definition without a normal form (`fact := Y F`) is bound unreduced instead.
+  A cell may begin with a command and a colon: a strategy (`normal`, `cbn`, `cbv`, `applicative`,
+  each with an optional step count), `eta`, `fv`, `db`, `alpha` and `subst` are the untyped
+  calculus's questions, and `type`/`infer` the simply typed calculus's (`Stlc.lean`). Terms parse with
+  their binders' types (`λx:A. e`), which reduction erases. `type:` checks a fully annotated term and
+  returns the derivation tree, and `check_sound` (`StlcProofs.lean`) proves the checker's derivations
+  are typing derivations. `infer:` makes one type variable per missing annotation and per application,
+  solves the equations by unification with the occurs check, and then runs the term, annotated with its
+  answer, back through the checker. So an inferred type is checked rather than proved, and its
+  principality (Hindley's theorem) is not proved. A λ-command is routed before the other worlds,
+  since `type: f : A → B ⊢ f` holds a connective.
 - **Finite order theory is a third world.** `Poset.lean` decides everything over lists — closure,
   the partial-order check, covers, bounds, join and meet, lattices, monotone maps, fixed points by
   the Kleene chain — and `PosetProofs.lean` proves the decisions mean the textbook Props. Values
@@ -141,7 +153,9 @@ differential test with zero mismatches.
   like any cell (its value is the expected answer, its derivation the worked solution) and reduces the
   reader's answer too; the two are equivalent when their canonical forms are equal — the integration
   check's `identNorm` and `dist`, normalized — as two λ-terms are β-equivalent when they reduce to the
-  same normal form (λ answers are compared by their de Bruijn terms). "Not equivalent" is "not shown
+  same normal form (λ answers are compared by their de Bruijn terms; a λ-command's answer is compared
+  as written — a strategy's result up to α without reducing it, free variables as a set, `type:`'s
+  type exactly and `infer:`'s up to the names of its type variables). "Not equivalent" is "not shown
   equivalent". An answer that calls the question's own commands (`diff` for a `diff` question) is
   refused, and a check is not an evaluation: no `In[n]`, no binding, `%` untouched. In the logic
   world the comparison is decided rather than canonical: two formulas are equivalent exactly when
@@ -344,11 +358,12 @@ settings, the cell) is `apps/notebook/src/ask-cells.ts`.
 
 The engine never draws. It emits **visual specs**: declarative JSON next to `rendered`
 (`EvaluateResult.visuals`): a Cayley table, a graph, a commutative diagram, sampled plot data, a
-matrix heat map. Four kinds exist (`KnownVisual` in the protocol): `logic.truthtable`, the rows of a
+matrix heat map. Five kinds exist (`KnownVisual` in the protocol): `logic.truthtable`, the rows of a
 formula's table; `relation.digraph`, a relation's pairs with the ones that break a property (`bad`)
 and the ones a closure added (`added`); `algebra.optable`, an operation's table with the cells a
-failing law read (`marks`); and `context.table`, a formal context's cross table. The notebook draws the tables as HTML and the graph
-as SVG, keeps them with the cell in a saved file, and ignores a kind it does not know. The frontend owns
+failing law read (`marks`); `context.table`, a formal context's cross table; and `typing.tree`, a
+typing derivation as nested judgments, each with its rule and premises. The notebook draws the tables
+and the proof tree as HTML and the graph as SVG, keeps them with the cell in a saved file, and ignores a kind it does not know. The frontend owns
 rendering (SVG/canvas/WebGL) and can offer several renderers for one spec. This keeps the engine
 pure and portable (wasm has no canvas), keeps proofs about what is *shown* possible (the spec is
 data the engine can reason about), and lets exports (§6) reuse the same specs.

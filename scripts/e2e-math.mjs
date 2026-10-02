@@ -46,6 +46,11 @@ const CASES = [
   { src: "let Ct = system(var x in 0..2; init x = 0; action inc when x < 2 do x := x + 1)", text: "system({x}, {inc})" },
   { src: "invariant(Ct, x ≤ 1)", text: "false", step: "inc (x < 2 holds)" },
   { src: "ctl(Ct, EF x = 2)", text: "true", step: "Round 1" },
+  // the λ-calculus: a strategy, and the simply typed calculus
+  { src: "cbv: (λx. x) ((λy. y) z)", text: "z", step: "Beta" },
+  { src: "type: λf:A→B. λx:A. f x", text: "(A → B) → A → B", step: "→E (application)" },
+  { src: "infer: S", text: "(α → β → γ) → (α → β) → α → γ", step: "Unify" },
+  { src: "type: λx:A. x x", error: "not a function type" },
 ];
 
 const root = path.resolve(import.meta.dirname, "..");
@@ -245,6 +250,14 @@ async function features() {
   assert.deepEqual(await cm.locator("table.optable tbody tr").evaluateAll((trs) => trs.map((tr) => [...tr.querySelectorAll("td")].map((td) => td.textContent))), cmWant.rows, "the table is the engine's");
   assert.equal(await cm.locator("table.optable td.opmark").count(), cmWant.marks.length, "the cells that differ are marked");
   console.log(`✓ operation table: ${cmWant.rows.length}×${cmWant.rows.length}, ${cmWant.marks.length} cells marked where commutativity fails`);
+  // a typing derivation drawn as a proof tree: a judgment per node, its rule beside the bar
+  const ty = await runLast("type: λf:A→B. λx:A. f x");
+  const tyWant = (await ref("type: λf:A→B. λx:A. f x", 14)).visuals.find((v) => v.kind === "typing.tree").data;
+  // in the page a judgment follows its premises, as they sit above it
+  const flat = (n) => [...n.premises.flatMap(flat), n];
+  assert.deepEqual(await ty.locator(".typingtree .ptrule").allTextContents(), flat(tyWant.root).map((n) => n.rule), "a rule per judgment, as the engine derived it");
+  assert.deepEqual(await ty.locator(".typingtree .ptconc").evaluateAll((els) => els.map((e) => e.title)), flat(tyWant.root).map((n) => n.text), "the judgments are the engine's");
+  console.log(`✓ typing tree: ${flat(tyWant.root).length} judgments, rules ${flat(tyWant.root).map((n) => n.rule).join(" ")}`);
   // a logic exercise: an equivalent answer not in CNF is refused, one in CNF is right
   const lq = "cnf(p → (q ∧ r))";
   await menu("Edit", "Add exercise");

@@ -95,8 +95,8 @@ private def reduceLam (s : Session) (src : String) : Except Err (Lam.Term × Lam
   | .ok (some _, _) => throw ("params", "an exercise compares λ-terms; a definition has no value to compare", none)
   | .ok (none, t) =>
     let expanded := Lam.expandDefs (lambdaDefs s) t
-    let (out, trace, normal) := Lam.reduce expanded
-    if !normal then throw ("eval", s!"λ: no normal form after {Lam.maxSteps} β-steps", none)
+    let (out, trace, halt) := Lam.reduce expanded
+    if halt != .done then throw ("eval", s!"λ: no normal form after {trace.length} β-steps", none)
     pure (t, out, trace)
 
 /-! ## Logic and relations -/
@@ -260,21 +260,78 @@ def checkSystem (s : Session) (cellId question : String) (answer : Option String
     let eq := match given with | some (.ok (_, b)) => b | _ => false
     (s, .ok ⟨res.value, res.derivation, false, res.value, given.map (·.map (·.1)), eq⟩)
 
+/-- A set of names as an answer: `{x, y}`, `x, y`, or `{}` (`∅`) for none. -/
+private def parseNames (a : String) : Except Err (List String) :=
+  let cs := a.trimAscii.copy.toList
+  let cs := if cs.head? == some '{' && cs.getLast? == some '}' then (cs.drop 1).dropLast else cs
+  let inner := (String.ofList cs).trimAscii.copy
+  if inner.isEmpty || inner == "∅" then .ok [] else
+  let names := (inner.splitOn ",").map (·.trimAscii.copy)
+  if names.all Lam.isName then .ok names
+  else .error ("answer", "write the variables as a set, such as {x, y}, or {} for none", none)
+
+/-- Compare an answer to a λ-command's result: the answer as shown, and whether it is right.
+A term is compared up to the names of bound variables (definitions unfolded, not reduced); free
+variables as a set; a verdict as true or false; `type:`'s type exactly, and `infer:`'s up to the
+names of its type variables. -/
+def checkLamCmd (s : Session) (cmd : Lam.Cmd) (res : LamResult) (answer : String) : Except Err (Expr × Bool) := do
+  let asTerm (expand : Bool) : Except Err (Expr × Bool) :=
+    match Lam.parseTerm answer with
+    | .error m => .error ("syntax", m, none)
+    | .ok a =>
+      let a := if expand then Lam.expandDefs (lambdaDefs s) a else a
+      .ok (Lam.toExpr a, match res.term with | some t => Lam.toDB [] a == Lam.toDB [] t | none => false)
+  match cmd with
+  | .reduce .. | .eta .. => asTerm true
+  | .subst .. => asTerm false
+  | .fv t =>
+    let names ← parseNames answer
+    let fv := Lam.freeVars t.erase
+    pure (.fn "set" (names.map Expr.var), names.all fv.contains && fv.all names.contains)
+  | .alpha .. =>
+    let a := answer.trimAscii.copy.toLower
+    let v ← if ["true", "yes", "⊤"].contains a then pure true
+      else if ["false", "no", "⊥"].contains a then pure false
+      else throw ("answer", "answer true or false", none)
+    pure (.fn (if v then "⊤" else "⊥") [], (v && res.value == .fn "⊤" []) || (!v && res.value == .fn "⊥" []))
+  | .type .. | .infer .. =>
+    match Lam.parseType answer with
+    | .error m => throw ("syntax", m, none)
+    | .ok T =>
+      let ok := match cmd, res.ty with
+        | .type .., some U => T == U
+        | .infer .., some U => Lam.alikeUpToNames T U
+        | _, _ => false
+      pure (T.toExpr, ok)
+  | .db _ => throw ("params", "a de Bruijn form is shown, not checked: ask for a reduction, fv, alpha or a type instead", none)
+
 /-- Check an exercise: evaluate the question (recorded as `cellId`, so its work can be fetched and
 explained, but neither bound nor numbered), and compare the answer, if one is given. -/
 def checkAnswer (s : Session) (cellId question : String) (answer : Option String) :
     Session × Except Err CheckResult :=
-  if Sys.isSystemSource question then checkSystem s cellId question answer else
-  if Ord.isOrderSource question then checkOrder s cellId question answer else
-  if Logic.isLogicSource question then checkLogic s cellId question answer else
+  -- a λ-command (`type: f : A → B ⊢ f`) may hold a connective or a call; it is the λ-world's
+  let lamCmd := (Lam.commandHead question).isSome
+  if !lamCmd && Sys.isSystemSource question then checkSystem s cellId question answer else
+  if !lamCmd && Ord.isOrderSource question then checkOrder s cellId question answer else
+  if !lamCmd && Logic.isLogicSource question then checkLogic s cellId question answer else
   if isLambdaCell s question then
-    match Lam.parseStmt question with
-    | .ok (some _, _) => (s, .error ("params", "an exercise compares λ-terms; a definition has no value to compare", none))
-    | _ =>
+    match Lam.parseCmd question, Lam.parseStmt question with
+    | none, .ok (some _, _) => (s, .error ("params", "an exercise compares λ-terms; a definition has no value to compare", none))
+    | _, _ =>
     match lambdaCell s cellId question with
     | (s, .error e) => (s, .error e)
     | (s, .ok res) =>
-      let expCanon := Lam.dbToExpr (Lam.toDB [] res.output)
+      match res.command with
+      | some cmd =>
+        let given : Option (Except Err Compared) := answer.map fun a =>
+          (checkLamCmd s cmd res a).map fun (v, _) => ⟨v, v⟩
+        let eq := match answer with
+          | some a => match checkLamCmd s cmd res a with | .ok (_, b) => b | .error _ => false
+          | none => false
+        (s, .ok ⟨res.value, res.derivation, true, res.value, given, eq⟩)
+      | none =>
+      let out := res.term.getD (.var "?")
+      let expCanon := Lam.dbToExpr (Lam.toDB [] out)
       let given : Option (Except Err Compared) := answer.map fun a =>
         match reduceLam s a with
         | .error e => .error e
@@ -282,7 +339,7 @@ def checkAnswer (s : Session) (cellId question : String) (answer : Option String
           if !atrace.isEmpty then .error ("answer", "the answer still has a redex: reduce it to normal form", none)
           else .ok ⟨Lam.toExpr aout, Lam.dbToExpr (Lam.toDB [] aout)⟩
       let eq := match given with | some (.ok c) => equal c.canon expCanon | _ => false
-      (s, .ok ⟨Lam.toExpr res.output, res.derivation, true, expCanon, given, eq⟩)
+      (s, .ok ⟨res.value, res.derivation, true, expCanon, given, eq⟩)
   else
     match prepare s question with
     | .error e => (s, .error e)

@@ -31,11 +31,13 @@ const ORDER = ["poset", "divisors", "subsets", "chain", "map", "hasse", "join", 
 const SYSTEMS = ["system", "states", "invariant", "inductive", "reach", "deadlock", "trace", "ctl", "eventually", "refines"];
 // Logic.lean's commands
 const LOGIC = ["truthtable", "taut", "sat", "falsify", "equiv", "nnf", "cnf", "dnf"];
+// Lambda.lean's commands (`subst:` has its own page, lambda-subst, since `subst` is the math one's)
+const LAMBDA = ["normal", "cbn", "cbv", "applicative", "eta", "fv", "db", "alpha", "type", "infer", "lambda-subst"];
 // not documented: `log` is only numeric (N), and `solve` is a reserved name with nothing behind it yet
 const UNDOCUMENTED = ["log", "solve"];
 
 test("every engine function has a page", () => {
-  for (const name of [...M.BUILTIN_FUNCTIONS, ...ORDER, ...LOGIC, ...SYSTEMS]) {
+  for (const name of [...M.BUILTIN_FUNCTIONS, ...ORDER, ...LOGIC, ...SYSTEMS, ...LAMBDA]) {
     if (UNDOCUMENTED.includes(name)) continue;
     assert.ok(R.FN_BY_NAME.has(name), `${name} has no page`);
   }

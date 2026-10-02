@@ -152,11 +152,17 @@ export interface DigraphData {
 export interface OpTableData { elems: string[]; rows: string[][]; marks: [string, string][] }
 /** `context.table` (a formal context): objects, attributes, and which object has which. */
 export interface ContextTableData { objects: string[]; attributes: string[]; has: boolean[][] }
+/** `typing.tree` (a typing derivation): each node a judgment `Γ ⊢ t : T`, the rule that concludes it,
+ *  and the derivations of its premises (none for Var). Long contexts are named in the judgments' LaTeX
+ *  (Γ₁, Γ₂, …), and `legend` says what each name stands for; a node's `text` writes its context out. */
+export interface TypingNode { rule: string; latex: string; text: string; premises: TypingNode[] }
+export interface TypingTreeData { root: TypingNode; legend?: { latex: string; text: string }[] }
 export type KnownVisual =
   | { kind: "logic.truthtable"; title?: string; data: TruthTableData }
   | { kind: "relation.digraph"; title?: string; data: DigraphData }
   | { kind: "algebra.optable"; title?: string; data: OpTableData }
-  | { kind: "context.table"; title?: string; data: ContextTableData };
+  | { kind: "context.table"; title?: string; data: ContextTableData }
+  | { kind: "typing.tree"; title?: string; data: TypingTreeData };
 
 export interface EvaluateResult {
   ok: true;

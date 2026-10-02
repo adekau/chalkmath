@@ -71,8 +71,10 @@ test("the tree is the engine's parse: precedence, implicit products, what the nu
   assert.equal(show(s.body), "[(let [g] [a] [b]) a * b + (g [a] [1])]");
 });
 
-/** A golden source the engine reads in another world (logic, relations and posets), not as notation. */
-const otherWorld = (src) => /[∧∨¬→↔⊤⊥∀∃]|->|&&|\|\|/.test(src) || /^\s*(forall|exists)\b/.test(src)
+/** A golden source the engine reads in another world (λ-terms and λ-commands, logic, relations and
+ *  posets, systems), not as notation. */
+const otherWorld = (src) => /[∧∨¬→↔⊤⊥∀∃λ\\]|->|&&|\|\||:=/.test(src) || /^\s*(forall|exists)\b/.test(src)
+  || /^\s*(normal|cbn|cbv|applicative|eta|fv|db|alpha|subst|type|infer)\s*(\d+\s*)?:(?!=)/.test(src)
   || /^\s*(let\s+\w+\s*=\s*)?(truthtable|taut|sat|falsify|equiv|nnf|cnf|dnf|poset|divisors|subsets|chain|map|hasse|join|meet|sup|inf|upper|lower|lattice|top|bottom|le|maximal|minimal|monotone|lfp|gfp|fixpoints|rel|kernel|reflexive|symmetric|antisymmetric|transitive|equivalence|preorder|closure|classes|finer|wellfounded|measure|op|joinop|meetop|table|associative|commutative|idempotent|semilattice|identity|fold|order|distributive|complement|complemented|boolean|product|galois|closureop|context|concepts|secure|events|clocks|concurrent|system|states|invariant|inductive|reach|deadlock|trace|ctl|eventually|refines)\s*\(/.test(src);
 
 test("parse errors are the engine's, with its spans", () => {
@@ -87,7 +89,7 @@ test("parse errors are the engine's, with its spans", () => {
   const bad = read("x + )");
   assert.deepEqual(bad.ok ? null : bad.error, { message: "unexpected ')'", span: { start: 4, end: 5 } });
   // λ-terms and the other worlds are not this grammar: those cells stay raw
-  for (const src of ["(λx. x) y", "TWO := succ (succ zero)", "poset({a,b}; a<b)", "p ∧ q → p", "∀ n ∈ 1..10, n^2 ≥ n", "rel({a, b}; a->b)"]) assert.equal(read(src).ok, false, src);
+  for (const src of ["(λx. x) y", "TWO := succ (succ zero)", "cbv: K I (omega omega)", "type: λx:A. x", "poset({a,b}; a<b)", "p ∧ q → p", "∀ n ∈ 1..10, n^2 ≥ n", "rel({a, b}; a->b)"]) assert.equal(read(src).ok, false, src);
   // a quoted name outside a part is the engine's lexer error
   const q = read('x "a"');
   assert.deepEqual(q.ok ? null : q.error, { message: "unexpected character '\"'", span: { start: 2, end: 3 } });

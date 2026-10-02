@@ -1,7 +1,7 @@
 import MathEngine.Integrate
 import MathEngine.Origin
 import MathEngine.Parser
-import MathEngine.Lambda
+import MathEngine.Stlc
 import MathEngine.Poset
 import MathEngine.Relation
 import MathEngine.Algebra
@@ -101,19 +101,29 @@ def evaluateCell (s : Session) (cellId source : String) :
       (s, .ok (stmt, output, d))
 
 /-- The de Bruijn view of each step's result in a λ-cell's derivation, in step order. The steps
-store the encoded term; decode it. -/
+store the encoded term; decode it. A step whose result is not a term (a type, a set) shows as it is. -/
 def lambdaDbSteps (d : Derivation) : Array Expr :=
-  d.steps.map fun st => Lam.dbToExpr (Lam.toDB [] ((Lam.ofExpr st.after).getD (.var "?")))
+  d.steps.map fun st => match Lam.ofExpr st.after with
+    | some t => Lam.dbToExpr (Lam.toDB [] t)
+    | none => st.after
 
 /-- What a λ-cell produced. -/
 structure LamResult where
   name : Option String
-  input : Lam.Term
-  output : Lam.Term
+  /-- What the cell shows: a term, or, for a command, a type, a set of variables or a verdict. -/
+  value : Expr
+  /-- The value as a term, when it is one: it has a de Bruijn view and may be read as a numeral. -/
+  term : Option Lam.Term
   derivation : Derivation
   /-- The de Bruijn view of each step's result, in step order. -/
   dbSteps : Array Expr
   reading : Option String
+  /-- A typing derivation to draw (`type:` and `infer:`). -/
+  tree : Option Lam.Deriv := none
+  /-- The command the cell ran (`cbv`, `type`, …), if any. -/
+  command : Option Lam.Cmd := none
+  /-- The type found by `type:` or `infer:`. -/
+  ty : Option Lam.Ty := none
 
 /-- The names a λ-cell may use: the session's definitions, then the Church library. -/
 def lambdaDefs (s : Session) : List (String × Lam.Term) := s.lambdas ++ Lam.churchDefs
@@ -122,40 +132,205 @@ def lambdaDefs (s : Session) : List (String × Lam.Term) := s.lambdas ++ Lam.chu
 def isLambdaCell (s : Session) (source : String) : Bool :=
   Lam.isLambdaSource source ((lambdaDefs s).map (·.1))
 
-/-- Evaluate a λ-cell: unfold definitions (one δ-step), then reduce in normal order, one β-step at
-a time, every step recorded with its de Bruijn view. A term without a normal form after
-`Lam.maxSteps` steps is refused — the one budget in the engine, since the question is undecidable. -/
-def lambdaCell (s : Session) (cellId source : String) :
-    Session × Except (String × String × Option (Nat × Nat)) LamResult :=
+/-- What a normal form encodes, when it is a Church numeral or boolean. -/
+def churchReading (t : Lam.Term) : Option String :=
+  match Lam.readChurch t with
+  | some n => some s!"the Church numeral {n}"
+  | none => match Lam.readBool t with
+    | some true => some "the Church boolean true"
+    | some false => some "the Church boolean false"
+    | none => none
+
+private def lamTex (e : Expr) : String := "$" ++ e.toLatex false ++ "$"
+
+/-- Which redex a strategy contracts, for a step's explanation. -/
+private def redexText : Lam.Strategy → String
+  | .normal => "the leftmost-outermost redex $(\\lambda x.\\, b)\\ a$ contracts to $b[x := a]$."
+  | .cbn => "call by name: the leftmost-outermost redex outside every λ contracts to $b[x := a]$, its argument passed unevaluated."
+  | .cbv => "call by value: the leftmost redex whose argument is already a value (a variable or a λ) contracts to $b[x := a]$; arguments are evaluated before the call, and nothing under a λ is."
+  | .applicative => "applicative order: the leftmost-innermost redex contracts to $b[x := a]$; the function and its argument are reduced to normal form first, under λ too."
+
+private def lamStep (st : Lam.Strategy) (prev t' : Lam.Term) : Lam.StepKind → Step
+  | .beta => ⟨"lambda.beta", "β: " ++ redexText st, [], Lam.toExpr prev, Lam.toExpr t', none⟩
+  | .alphaBeta =>
+    if st == .normal then
+      ⟨"lambda.alpha-beta", "α then β: a binder of the body was renamed so the argument's free variables are not captured, then the leftmost-outermost redex $(\\lambda x.\\, b)\\ a$ contracted to $b[x := a]$.", [], Lam.toExpr prev, Lam.toExpr t', none⟩
+    else ⟨"lambda.alpha-beta", "α then β: a binder of the body was renamed so the argument's free variables are not captured; then, " ++ redexText st, [], Lam.toExpr prev, Lam.toExpr t', none⟩
+  | .eta => ⟨"lambda.eta", "η: $\\lambda x.\\, f\\ x$ contracts to $f$, since $x$ is not free in $f$: both give $f\\ a$ applied to any $a$.", [], Lam.toExpr prev, Lam.toExpr t', none⟩
+
+private abbrev LamErr := String × String × Option (Nat × Nat)
+
+/-- Unfold the definitions (one δ-step), then take the strategy's steps (β, or β and η) until none
+applies, `limit` steps are taken (`Lam.maxSteps` without one), or the term grows past `Lam.maxSize`.
+Returns the term reached, the steps, and why it stopped. -/
+private def lamRun (s : Session) (t : Lam.Term) (st : Lam.Strategy) (eta : Bool) (limit : Option Nat) :
+    Lam.Term × Lam.Term × Array Step × Lam.Halt :=
+  let expanded := Lam.expandDefs (lambdaDefs s) t
+  let δ : Array Step := if expanded != t then
+      #[⟨"lambda.delta", "δ: unfold the definitions used (the session's, then the Church library's).", [], Lam.toExpr t, Lam.toExpr expanded, none⟩]
+    else #[]
+  let (out, trace, halt) :=
+    if eta then Lam.runSteps Lam.betaEtaStep expanded (limit.getD Lam.maxSteps)
+    else Lam.runSteps (fun u => (st.step u).map fun (u', r) => (u', if r then Lam.StepKind.alphaBeta else .beta)) expanded (limit.getD Lam.maxSteps)
+  let (steps, _) := trace.foldl (fun (acc, prev) (t', k) => (acc.push (lamStep st prev t' k), t')) (δ, expanded)
+  (expanded, out, steps, halt)
+
+/-- Why a run that did not reach its goal is refused: the step budget, or the term's growth. -/
+private def haltError (halt : Lam.Halt) (goal how : String) (steps : Nat) (out : Lam.Term) : LamErr :=
+  if halt == .size then
+    ("eval", s!"λ: no {goal} yet after {steps} steps{how}, and the term has grown past {Lam.maxSize} symbols, so the reduction stops here", none)
+  else ("eval", s!"λ: no {goal} after {Lam.maxSteps} {if how.isEmpty then "β-steps" else "steps" ++ how}; the term had become {(Lam.toExpr out).toText}", none)
+
+/-- A typing derivation's steps, premises first: one per rule used. -/
+partial def typingSteps : Lam.Deriv → Array Step
+  | .node rule _ t T ps =>
+    let before := (ps.foldl (fun acc p => acc ++ typingSteps p) #[])
+    let tyOf : Lam.Deriv → Lam.Ty := fun | .node _ _ _ U _ => U
+    let expl := match rule, t, T, ps with
+      | "var", .var x, _, _ => s!"Var: {lamTex (.var x)} has type {lamTex T.toExpr} in the context."
+      | "abs", .lam x _ _, .arrow A B, _ =>
+        s!"→I (abstraction): with ${(Expr.var x).toLatex false} : {A.toExpr.toLatex false}$ added to the context the body has type {lamTex B.toExpr}, so the function has type {lamTex T.toExpr}."
+      | "app", _, _, [f, a] =>
+        s!"→E (application): the function has type {lamTex (tyOf f).toExpr} and the argument type {lamTex (tyOf a).toExpr}, which is the function's argument type, so the application has type {lamTex T.toExpr}."
+      | _, _, _, _ => rule
+    before.push ⟨"stlc." ++ rule, expl, [], t.toExpr, T.toExpr, none⟩
+
+/-- The type-variable equations, in LaTeX. -/
+private def eqsTex (eqs : List (Lam.Ty × Lam.Ty)) : String :=
+  "; ".intercalate (eqs.map fun (a, b) => lamTex (.fn "=" [a.toExpr, b.toExpr]))
+
+/-- Run a λ-command. -/
+def lambdaCommand (s : Session) (cmd : Lam.Cmd) : Except LamErr LamResult := do
+  let mk (value : Expr) (term : Option Lam.Term) (input : Expr) (steps : Array Step) (reading : Option String)
+      (tree : Option Lam.Deriv := none) : LamResult :=
+    let d : Derivation := ⟨input, steps, value⟩
+    ⟨none, value, term, d, lambdaDbSteps d, reading, tree, some cmd, none⟩
+  match cmd with
+  | .reduce st limit t =>
+    let t := t.erase
+    let goal := match st with
+      | .normal | .applicative => "normal form" | .cbn => "weak head normal form" | .cbv => "value"
+    let (_, out, steps, halt) := lamRun s t st false limit
+    if halt == .size || (halt == .fuel && limit.isNone) then
+      throw (haltError halt goal s!" ({st.name})" (steps.filter (·.rule != "lambda.delta")).size out)
+    let reading :=
+      if halt != .done then some s!"stopped after {limit.getD 0} steps: not yet a {goal}"
+      else match churchReading out with
+        | some r => some r
+        | none =>
+          if (Lam.betaStep out).isSome then
+            some (if st == .cbv then "a value: the redexes left are under a λ, where call by value does not look"
+              else "a weak head normal form: the redexes left are where call by name does not look")
+          else none
+    pure (mk (Lam.toExpr out) (some out) (Lam.toExpr t) steps reading)
+  | .eta limit t =>
+    let t := t.erase
+    let (_, out, steps, halt) := lamRun s t .normal true limit
+    if halt == .size || (halt == .fuel && limit.isNone) then
+      throw (haltError halt "βη-normal form" " (β and η)" (steps.filter (·.rule != "lambda.delta")).size out)
+    let reading := if halt != .done then some s!"stopped after {limit.getD 0} steps: not yet in βη-normal form" else churchReading out
+    pure (mk (Lam.toExpr out) (some out) (Lam.toExpr t) steps reading)
+  | .fv t =>
+    let t := t.erase
+    let fv := Lam.freeVars t
+    let value := Expr.fn "set" (fv.map Expr.var)
+    let bound := Lam.boundVars t
+    let reading := (if fv.isEmpty then "closed: no free variables" else s!"{fv.length} free") ++
+      (if bound.isEmpty then "" else "; bound: " ++ ", ".intercalate bound)
+    pure (mk value none (Lam.toExpr t)
+      #[⟨"lambda.fv", "The free variables: $FV(x) = \\{x\\}$, $FV(\\lambda x.\\, M) = FV(M) \\setminus \\{x\\}$, $FV(M\\ N) = FV(M) \\cup FV(N)$. A variable is bound where a λ above it has its name.", [], Lam.toExpr t, value, none⟩]
+      (some reading))
+  | .db t =>
+    let t := t.erase
+    let value := Lam.dbToExpr (Lam.toDB [] t)
+    pure (mk value none (Lam.toExpr t)
+      #[⟨"lambda.db", "De Bruijn indices: each bound variable becomes the number of λs between it and its own binder (0 for the nearest); a free variable keeps its name.", [], Lam.toExpr t, value, none⟩]
+      none)
+  | .alpha a b =>
+    let a := a.erase
+    let b := b.erase
+    let da := Lam.dbToExpr (Lam.toDB [] a)
+    let db := Lam.dbToExpr (Lam.toDB [] b)
+    let same := Lam.toDB [] a == Lam.toDB [] b
+    let value := if same then Expr.fn "⊤" [] else Expr.fn "⊥" []
+    let steps : Array Step := #[
+      ⟨"lambda.db", "The first term in de Bruijn indices: the bound names are gone.", [], Lam.toExpr a, da, none⟩,
+      ⟨"lambda.db", "The second term in de Bruijn indices.", [], Lam.toExpr b, db, none⟩,
+      ⟨"lambda.alpha-eq", if same then "The de Bruijn forms are the same, so the terms differ at most in the names of bound variables: they are α-equivalent."
+          else "The de Bruijn forms differ, so no renaming of bound variables turns one term into the other: they are not α-equivalent.",
+        [], .fn (if same then "=" else "≠") [da, db], value, none⟩]
+    pure (mk value none (.fn "pair" [Lam.toExpr a, Lam.toExpr b]) steps
+      (some (if same then "α-equivalent: the same term up to the names of bound variables" else "not α-equivalent")))
+  | .subst e x arg =>
+    let e := e.erase
+    let arg := arg.erase
+    let clash := (Lam.freeVars arg).filter (· != x)
+    let e' := Lam.renameFor x arg e
+    let out := Lam.substRaw x arg e'
+    let α : Array Step := if e' != e then
+        #[⟨"lambda.alpha", s!"α: rename the binders that would capture a free variable of the term put in ({", ".intercalate clash}): those over a free {lamTex (.var x)}.", [], Lam.toExpr e, Lam.toExpr e', none⟩]
+      else #[]
+    let steps := α.push ⟨"lambda.subst", s!"Substitute: every free {lamTex (.var x)} becomes {lamTex (Lam.toExpr arg)}; under a binder named {lamTex (.var x)} the occurrences are bound, and stay.", [], Lam.toExpr e', Lam.toExpr out, none⟩
+    pure (mk (Lam.toExpr out) (some out) (Lam.toExpr e) steps none)
+  | .type Γ t =>
+    match Lam.check Γ t with
+    | .error m => throw ("eval", m, none)
+    | .ok (d, T) => pure { mk T.toExpr none t.toExpr (typingSteps d) none (some d) with ty := some T }
+  | .infer Γ t =>
+    let defs := (lambdaDefs s).filter fun (n, _) => !Γ.any (·.1 == n)
+    let t' := t.expandDefs defs
+    let δ : Array Step := if t' != t then
+        #[⟨"lambda.delta", "δ: unfold the definitions used (the session's, then the Church library's).", [], t.toExpr, t'.toExpr, none⟩]
+      else #[]
+    match Lam.infer Γ t' with
+    | .error m => throw ("eval", m, none)
+    | .ok r =>
+      let eqText := if r.eqs.isEmpty then "there are no applications, so no equations to solve."
+        else s!"each application $f\\ a$ needs $f$'s type to be an arrow from $a$'s type to the result's: {eqsTex r.eqs}."
+      let gen : Step := ⟨"stlc.constraints", s!"Give each binder without a type, each application's result and each free variable a type variable. The term has type {lamTex r.initial.toExpr} when the equations hold: {eqText}", [], r.generated.toExpr, r.initial.toExpr, none⟩
+      let (moves, σ) := r.moves.foldl (fun (acc, σ) (m, σ') =>
+          let before := (r.initial.apply σ).toExpr
+          let after := (r.initial.apply σ').toExpr
+          let step : Step := match m with
+            | .split a b => ⟨"stlc.split", s!"Both sides of {lamTex (.fn "=" [a.toExpr, b.toExpr])} are arrows: their arguments must be equal, and so must their results.", [], before, after, none⟩
+            | .bind n u => ⟨"stlc.unify", s!"Solve {lamTex (.fn "=" [(Lam.Ty.tvar n).toExpr, u.toExpr])}: put {lamTex u.toExpr} for {lamTex (Lam.Ty.tvar n).toExpr} everywhere.", [], before, after, none⟩
+          (acc.push step, σ')) (#[], ([] : Lam.TSubst))
+      let fin : Step := ⟨"stlc.principal", "Every equation is solved. The variables left are named α, β, … : any type for them gives a type of the term. Checked: the term, annotated with this type, passes the type checker (the tree).", [], (r.initial.apply σ).toExpr, r.type.toExpr, none⟩
+      let reading := if r.frees.isEmpty then none
+        else some ("with " ++ ", ".intercalate (r.frees.map fun (x, A) => s!"{x} : {A.text}"))
+      pure { mk r.type.toExpr none t.toExpr ((δ.push gen) ++ moves |>.push fin) reading (some r.deriv) with ty := some r.type }
+
+/-- Evaluate a λ-cell: a command, or a term — unfold definitions (one δ-step), then reduce in
+normal order, one β-step at a time, every step recorded with its de Bruijn view. A term without a
+normal form after `Lam.maxSteps` steps, or grown past `Lam.maxSize` symbols, is refused — the one
+budget in the engine, since the question is undecidable — but a definition is bound unreduced. -/
+def lambdaCell (s : Session) (cellId source : String) : Session × Except LamErr LamResult :=
+  let record (s : Session) (res : LamResult) :=
+    { s with cells := (cellId, ⟨res.value, res.derivation, true⟩) :: s.cells.filter (·.1 != cellId) }
+  match Lam.parseCmd source with
+  | some (.error msg) => (s, .error ("syntax", msg, none))
+  | some (.ok cmd) =>
+    match lambdaCommand s cmd with
+    | .error e => (s, .error e)
+    | .ok res => (record s res, .ok res)
+  | none =>
   match Lam.parseStmt source with
   | .error msg => (s, .error ("syntax", msg, none))
   | .ok (name, t) =>
-    let expanded := Lam.expandDefs (lambdaDefs s) t
-    let (out, trace, normal) := Lam.reduce expanded
-    if !normal then
-      (s, .error ("eval", s!"λ: no normal form after {Lam.maxSteps} β-steps; the term had become {(Lam.toExpr out).toText}", none))
-    else
-      let δ : Array Step := if expanded != t then
-          #[⟨"lambda.delta", "δ: unfold the definitions used (the session's, then the Church library's).", [], Lam.toExpr t, Lam.toExpr expanded, none⟩]
-        else #[]
-      let (steps, _) := trace.foldl (fun (acc, prev) (t', renamed) =>
-          let step : Step := if renamed then
-              ⟨"lambda.alpha-beta", "α then β: a binder of the body was renamed so the argument's free variables are not captured, then the leftmost-outermost redex $(\\lambda x.\\, b)\\ a$ contracted to $b[x := a]$.", [], Lam.toExpr prev, Lam.toExpr t', none⟩
-            else ⟨"lambda.beta", "β: the leftmost-outermost redex $(\\lambda x.\\, b)\\ a$ contracts to $b[x := a]$.", [], Lam.toExpr prev, Lam.toExpr t', none⟩
-          (acc.push step, t')) (δ, expanded)
+    let (expanded, out, steps, halt) := lamRun s t .normal false none
+    let βs := (steps.filter (·.rule != "lambda.delta")).size
+    if halt != .done && name.isNone then (s, .error (haltError halt "normal form" "" βs out)) else
+      -- a definition with no normal form (`fact := Y F`) is bound as written, its names unfolded
+      let (out, steps, reading) := if halt == .done then (out, steps, churchReading out)
+        else (expanded, steps.filter (·.rule == "lambda.delta"),
+          some s!"no normal form within {βs} β-steps{if halt == .size then s!" (the term grew past {Lam.maxSize} symbols)" else ""}, so it is bound unreduced")
       let d : Derivation := ⟨Lam.toExpr t, steps, Lam.toExpr out⟩
-      let dbSteps := lambdaDbSteps d
-      let reading := match Lam.readChurch out with
-        | some n => some s!"the Church numeral {n}"
-        | none => match Lam.readBool out with
-          | some true => some "the Church boolean true"
-          | some false => some "the Church boolean false"
-          | none => none
-      let s := { s with cells := (cellId, ⟨Lam.toExpr out, d, true⟩) :: s.cells.filter (·.1 != cellId) }
+      let res : LamResult := ⟨name, Lam.toExpr out, some out, d, lambdaDbSteps d, reading, none, none, none⟩
+      let s := record s res
       let s := match name with
         | some n => { s with lambdas := (n, out) :: s.lambdas.filter (·.1 != n) }
         | none => s
-      (s, .ok ⟨name, t, out, d, dbSteps, reading⟩)
+      (s, .ok res)
 
 /-- What an order-world cell produced: a value (encoded), the derivation, and the poset to draw. -/
 structure OrdResult where

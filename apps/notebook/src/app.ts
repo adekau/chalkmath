@@ -1,4 +1,4 @@
-import { createClient, type EngineClient, type Step, type StepOutline, type Path, type RuleStatus, type Derivation, type WireExpr, type PlotResult, type HasseData, type KnownVisual, type TruthTableData, type DigraphData, type OpTableData, type ContextTableData } from "@chalkmath/protocol";
+import { createClient, type EngineClient, type Step, type StepOutline, type Path, type RuleStatus, type Derivation, type WireExpr, type PlotResult, type HasseData, type KnownVisual, type TruthTableData, type DigraphData, type OpTableData, type ContextTableData, type TypingNode, type TypingTreeData } from "@chalkmath/protocol";
 declare const __BUILD_ID__: string;
 import { workerTransport, httpTransport } from "@chalkmath/engine-host";
 import { read as readNotation, write as writeNotation, writeText, hasNotation, templateAt, templateInText, TEMPLATES, type Stmt, type Caret, type MathEdit } from "@chalkmath/math-editor";
@@ -91,7 +91,10 @@ const ORDER_CELL = /^(let\s+\w+\s*=\s*)?(poset|divisors|subsets|chain|map|hasse|
 const LOGIC_CELL = /^(let\s+\w+\s*=\s*)?(truthtable|taut|sat|falsify|equiv|nnf|cnf|dnf)\s*\(/;
 /** A systems-world cell: a system, or a question about one. */
 const SYSTEM_CELL = /^(let\s+\w+\s*=\s*)?(system|states|invariant|inductive|reach|deadlock|trace|ctl|eventually|refines)\s*\(/;
-const isLogicCell = (s: string) => !/[λ\\]/.test(s) && (LOGIC_CELL.test(s) || /[∧∨¬→↔⊤⊥∀∃]|<->|->|&&|\|\|/.test(s) || /^(let\s+\w+\s*=\s*)?(forall|exists)\b/.test(s));
+/** A λ-command: a strategy, `eta`, `fv`, `db`, `alpha`, `subst`, `type` or `infer`, then a colon (the
+ *  engine's `Lam.commandHead`; `type := …` is a definition). It may hold a connective, `type: f : A → B ⊢ f`. */
+const LAMBDA_CMD = /^(normal|cbn|cbv|applicative|eta|fv|db|alpha|subst|type|infer)\s*(\d+\s*)?:(?!=)/;
+const isLogicCell = (s: string) => !/[λ\\]/.test(s) && !LAMBDA_CMD.test(s) && (LOGIC_CELL.test(s) || /[∧∨¬→↔⊤⊥∀∃]|<->|->|&&|\|\|/.test(s) || /^(let\s+\w+\s*=\s*)?(forall|exists)\b/.test(s));
 
 /** Label for a cell, from its source. Presentation only — the engine decides what it means. */
 function cellKind(src: string): string | null {
@@ -110,7 +113,7 @@ function cellKind(src: string): string | null {
     case "sum": return "sum";
     case "exptotrig": return "Euler";
   }
-  if (/[λ\\]|:=/.test(s)) return "λ-term";
+  if (/[λ\\]|:=/.test(s) || LAMBDA_CMD.test(s)) return "λ-term";
   if (SYSTEM_CELL.test(s)) return "system";
   if (ORDER_CELL.test(s)) return "order";
   if (isLogicCell(s)) return "logic";
@@ -2848,6 +2851,7 @@ function knownVisuals(vs: unknown): KnownVisual[] {
     if (kind === "relation.digraph") return Array.isArray(d["nodes"]) && Array.isArray(d["edges"]) && Array.isArray(d["bad"]) && Array.isArray(d["added"]);
     if (kind === "algebra.optable") return Array.isArray(d["elems"]) && Array.isArray(d["rows"]) && Array.isArray(d["marks"]);
     if (kind === "context.table") return Array.isArray(d["objects"]) && Array.isArray(d["attributes"]) && Array.isArray(d["has"]);
+    if (kind === "typing.tree") return typeof (d["root"] as { latex?: unknown } | undefined)?.latex === "string";
     return false;
   });
 }
@@ -2858,8 +2862,42 @@ function visualBox(v: KnownVisual): HTMLElement {
   if (v.kind === "logic.truthtable") box.append(truthTable(v.data));
   else if (v.kind === "relation.digraph") box.append(digraphSvg(v.data), digraphLegend(v.data));
   else if (v.kind === "algebra.optable") box.append(opTable(v.data));
+  else if (v.kind === "typing.tree") box.append(typingTree(v.data));
   else box.append(contextTable(v.data));
   return box;
+}
+
+/** A typing derivation as a proof tree: each judgment under a bar, its premises above, the rule to the
+ *  bar's right. Var has no premises, so its bar stands alone. */
+function typingTree(d: TypingTreeData): HTMLElement {
+  const wrap = h("div", "typingtree");
+  wrap.setAttribute("role", "img");
+  wrap.setAttribute("aria-label", `Typing derivation of ${d.root.text}`);
+  const node = (n: TypingNode, depth: number): HTMLElement => {
+    const el = h("div", "ptnode");
+    if (n.premises.length) {
+      const prem = h("div", "ptprem");
+      // a deep tree is cut off rather than drawn past any width
+      if (depth < 12) for (const p of n.premises) prem.append(node(p, depth + 1));
+      else prem.append(h("span", "ptmore", "⋮"));
+      el.append(prem);
+    }
+    const concl = h("div", "ptconc");
+    concl.title = n.text;
+    concl.innerHTML = tex(n.latex);
+    concl.append(h("span", "ptrule", n.rule));
+    el.append(concl);
+    return el;
+  };
+  const tree = h("div", "pttree");
+  tree.append(node(d.root, 0));
+  wrap.append(tree);
+  if (d.legend?.length) {
+    const lg = h("div", "ptlegend");
+    for (const l of d.legend) { const row = h("div"); row.title = l.text; row.innerHTML = tex(l.latex); lg.append(row); }
+    wrap.append(lg);
+  }
+  return wrap;
 }
 
 /** An operation's table: the row's element times the column's, the marked cells (a law failing) shaded. */
@@ -3628,6 +3666,10 @@ const RULE_NAMES: Record<string, string> = {
   "sys.invariant": "Invariant", "sys.unreachable": "Unreachable", "sys.inductive": "Inductive", "sys.cti": "Counterexample to induction",
   "sys.ctl": "CTL", "sys.iterate": "Iterate", "sys.fixed": "Fixed point", "sys.cycle": "Cycle", "sys.lasso": "Fair loop",
   "sys.eventually": "Eventually", "sys.refines": "Refinement",
+  "lambda.eta": "η-reduction", "lambda.alpha": "Rename bound variables", "lambda.alpha-eq": "Compare", "lambda.subst": "Substitute",
+  "lambda.fv": "Free variables", "lambda.db": "De Bruijn indices",
+  "stlc.var": "Var", "stlc.abs": "→I (abstraction)", "stlc.app": "→E (application)", "stlc.constraints": "Type equations",
+  "stlc.split": "Split an arrow", "stlc.unify": "Unify", "stlc.principal": "Principal type",
   "cmd.rref": "Row reduce", "cmd.integrate": "Integrate", "cmd.expand": "Expand", "cmd.subst": "Substitute", "cmd.simplify": "Simplify", "cmd.sum": "Sum", "cmd.exptotrig": "Euler's formula",
 };
 
@@ -4490,7 +4532,7 @@ function renderExercise(cell: Cell) {
       if (v.error.span && cell.attempt) out.append(h("span", "caret", `${cell.attempt}\n${" ".repeat(v.error.span.start)}${"^".repeat(Math.max(1, v.error.span.end - v.error.span.start))}`));
     } else {
       // how the answer was compared: by truth table, as a set, or by normal form
-      const world = ORDER_CELL.test(cell.src.trim()) || SYSTEM_CELL.test(cell.src.trim()) ? "order" : isLogicCell(cell.src.trim()) ? "logic" : "math";
+      const world = ORDER_CELL.test(cell.src.trim()) || SYSTEM_CELL.test(cell.src.trim()) || LAMBDA_CMD.test(cell.src.trim()) ? "order" : isLogicCell(cell.src.trim()) ? "logic" : "math";
       const m = h("span", "xc-math"); m.innerHTML = tex((v.equivalent || world !== "math" ? v.answerLatex : v.normalLatex) ?? "");
       const [before, after] = v.equivalent
         ? world === "logic" ? [" Correct: ", " agrees with the answer on every row of the truth table."]
@@ -6322,7 +6364,7 @@ function highlightHtml(src: string): string {
   if (q) return `${q[1] ? highlightHtml(q[1]) : ""}<span class="hq">?</span><span class="hask">${esc(src.slice(q[0].length))}</span>`;
   const toks = tokenize(src);
   const bound = boundTokens(src, toks);
-  const lambdaCell = /[λ\\]|:=/.test(src);
+  const lambdaCell = /[λ\\]|:=/.test(src) || LAMBDA_CMD.test(src.trim());
   let out = "";
   toks.forEach((t, k) => {
     let cls = "";

@@ -26,7 +26,7 @@ export const AREAS: [Area, string][] = [
   ["Logic", "Propositional formulas, truth tables, normal forms, and quantifiers over finite sets."],
   ["Order theory", "Finite partial orders, lattices, monotone maps and their fixed points; relations and their properties."],
   ["Transition systems", "Finite state machines: reachable states, invariants with counterexample traces, induction, temporal logic, fairness, refinement."],
-  ["λ-calculus", "The untyped λ-calculus, reduced one β-step at a time, and the Church encodings."],
+  ["λ-calculus", "The untyped λ-calculus, reduced one β-step at a time by the strategy you choose, the Church encodings, and the simply typed calculus: type checking and inference."],
   ["The notebook language", "Names and functions, earlier answers, questions."],
 ];
 
@@ -103,7 +103,7 @@ export const FUNCTIONS: FnDoc[] = [
       basic("subst(x^2 + 1, x, 3)"),
       section("Scope", note("A value bound with `let`:"), "let f = x^2 + 3x", "subst(f, x, 2)", note("Another expression:"), "subst(f, x, y + 1)"),
     ],
-    see: ["let"],
+    see: ["let", "lambda-subst"],
   },
   {
     name: "N", area: "Algebra",
@@ -1160,13 +1160,16 @@ export const FUNCTIONS: FnDoc[] = [
       "The engine reduces in normal order, one β-step at a time, renaming bound variables to avoid capture.",
       "Digits are Church numerals, and the Church library is always there.",
       "A normal form that is a Church numeral or boolean is read out beside the result; View › de Bruijn indices shows the result with indices.",
-      "A term with no normal form, such as `omega omega`, is refused rather than reduced forever.",
+      "A term with no normal form, such as `omega omega`, is refused rather than reduced forever: after 1000 steps, or once it grows past 3000 symbols.",
+      "A definition with no normal form, such as `fact := Y F`, is bound as written, so recursion through `Y` works.",
+      "A binder may carry a type, `λx:A. e`; reduction ignores it, and `type:` checks it.",
+      "A cell can start with a command: a strategy (`cbv:`, `cbn:`, `applicative:`, `normal 5:`), `eta:`, `fv:`, `db:`, `alpha:`, `subst:`, `type:` or `infer:`.",
     ],
     examples: [
       basic("(λx. x) y", "(λx. λy. x) a b"),
       section("Scope", note("Capture is avoided:"), "(λx. λy. x y) y", note("Definitions:"), "TWO := succ (succ zero)", "add TWO 3"),
     ],
-    see: ["church"],
+    see: ["church", "cbv", "fv", "type"],
     ref: "https://mathworld.wolfram.com/Lambda-Calculus.html",
   },
   {
@@ -1179,6 +1182,128 @@ export const FUNCTIONS: FnDoc[] = [
     ],
     examples: [basic("if (iszero 0) a b", "fst (pair 1 2)", "mul 2 3")],
     see: ["lambda"],
+  },
+  {
+    name: "normal", title: "normal: (normal order)", area: "λ-calculus", notation: true,
+    usage: [["normal: t", "reduces `t` in normal order, the leftmost-outermost redex first, to its normal form."], ["normal n: t", "takes at most `n` steps and shows where they lead."]],
+    details: [
+      "A plain λ-cell reduces in normal order too; the command names the strategy, and the step count lets a term with no normal form be watched for a few steps.",
+      "Normal order finds a normal form whenever the term has one (the standardization theorem), even when an argument it never uses has none.",
+    ],
+    examples: [basic("normal: K I (omega omega)", "normal 3: omega omega", "normal 4: Y f")],
+    see: ["cbn", "cbv", "applicative", "eta"],
+  },
+  {
+    name: "cbn", title: "cbn: (call by name)", area: "λ-calculus", notation: true,
+    usage: [["cbn: t", "reduces `t` by name: the leftmost-outermost redex, never under a λ, the argument passed unevaluated."], ["cbn n: t", "takes at most `n` steps."]],
+    details: [
+      "It stops at a weak head normal form: a λ, or a variable applied to arguments. Redexes under a λ or in those arguments are left alone, and the reading says so.",
+      "An argument that is never used is never evaluated, so `K I (omega omega)` gives `I`.",
+    ],
+    examples: [basic("cbn: K I (omega omega)", "cbn: λx. (λy. y) x", "cbn: x ((λy. y) z)")],
+    see: ["cbv", "normal", "applicative"],
+  },
+  {
+    name: "cbv", title: "cbv: (call by value)", area: "λ-calculus", notation: true,
+    usage: [["cbv: t", "reduces `t` by value: the function and then the argument become values before the call, never under a λ."], ["cbv n: t", "takes at most `n` steps."]],
+    details: [
+      "A value is a λ or a variable (Plotkin's call by value). The result is a value, which may still have redexes under its λs.",
+      "Every argument is evaluated, used or not, so `K I (omega omega)` runs forever: the cell is refused after 1000 steps. `cbv 5:` shows the first five.",
+      "Most programming languages call by value.",
+    ],
+    examples: [basic("cbv: (λx. x) ((λy. y) z)", "cbv 4: K I (omega omega)", "cbv: (λx. x) (λy. (λz. z) y)")],
+    see: ["cbn", "normal", "applicative"],
+  },
+  {
+    name: "applicative", title: "applicative: (applicative order)", area: "λ-calculus", notation: true,
+    usage: [["applicative: t", "reduces `t` in applicative order, the leftmost-innermost redex first, under λ too, to its normal form."], ["applicative n: t", "takes at most `n` steps."]],
+    details: ["It is call by value that also reduces under λ. Like call by value it evaluates arguments it then throws away, so it can miss a normal form that normal order finds."],
+    examples: [basic("applicative: (λx. a) ((λy. y) b)", "applicative 3: K I (omega omega)")],
+    see: ["normal", "cbv"],
+  },
+  {
+    name: "eta", title: "eta: (β and η)", area: "λ-calculus", notation: true,
+    usage: [["eta: t", "reduces `t` with β and η, leftmost-outermost, to its βη-normal form."], ["eta n: t", "takes at most `n` steps."]],
+    details: [
+      "η contracts `λx. f x` to `f` when `x` is not free in `f`: both give `f a` for every `a`, so a function is determined by what it does (extensionality).",
+      "The side condition matters: `λx. x x` is not `x`.",
+    ],
+    examples: [basic("eta: λx. f x", "eta: λf. λx. f x", "eta: λx. x x", "eta: λx. (λy. g y) x")],
+    see: ["normal", "alpha"],
+  },
+  {
+    name: "fv", title: "fv: (free variables)", area: "λ-calculus", notation: true,
+    usage: [["fv: t", "gives the set of variables free in `t`, and names the bound ones."]],
+    details: [
+      "An occurrence is bound when a λ above it has its name, and free otherwise; the same name can be both in one term.",
+      "Names are not unfolded: in `fv: K`, `K` is just a variable. A term with no free variables is closed, a combinator.",
+    ],
+    examples: [basic("fv: λx. x y", "fv: λx. x y (λy. y z)", "fv: (λx. x) x", "fv: λf. λx. f x")],
+    see: ["db", "alpha", "lambda-subst"],
+  },
+  {
+    name: "db", title: "db: (de Bruijn indices)", area: "λ-calculus", notation: true,
+    usage: [["db: t", "writes `t` with de Bruijn indices: each bound variable becomes the number of λs between it and its binder."]],
+    details: [
+      "The nearest binder is 0. A free variable keeps its name.",
+      "Bound names are gone, so two terms are α-equivalent exactly when their de Bruijn forms are equal. View › de Bruijn indices shows every λ-cell this way.",
+    ],
+    examples: [basic("db: λx. x", "db: λx. λy. x", "db: λx. λy. x (λz. z y)", "db: λx. x y")],
+    see: ["alpha", "fv"],
+  },
+  {
+    name: "alpha", title: "alpha: (α-equivalence)", area: "λ-calculus", notation: true,
+    usage: [["alpha: s, t", "gives ⊤ when `s` and `t` differ only in the names of bound variables, and ⊥ otherwise."]],
+    details: ["The terms are compared by their de Bruijn forms, which the steps show. Free variables count: `λx. y` and `λx. z` are different functions."],
+    examples: [basic("alpha: λx. λy. x y, λa. λb. a b", "alpha: λx. λy. x y, λa. λb. b a", "alpha: λx. y, λy. y")],
+    see: ["db", "fv"],
+  },
+  {
+    name: "lambda-subst", title: "subst: (λ-terms)", area: "λ-calculus", notation: true,
+    usage: [["subst: e, x := s", "gives `e[x := s]`: every free `x` in `e` replaced by `s`, renaming binders so no free variable of `s` is captured."]],
+    details: [
+      "An `x` under a binder named `x` is bound, and stays.",
+      "If `s` has a free `y` and the replacement lands under a `λy`, that binder is renamed first (an α-step), so the `y` stays free.",
+      "This is the substitution a β-step does: `(λx. e) s` becomes `e[x := s]`.",
+    ],
+    examples: [basic("subst: x y, x := λz. z", "subst: λx. x, x := y", "subst: λy. x y, x := y")],
+    see: ["fv", "lambda"],
+  },
+  {
+    name: "type", title: "type: (simply typed)", area: "λ-calculus", notation: true,
+    usage: [
+      ["type: t", "gives the simple type of `t`, whose every binder has one (`λx:A. e`), with its derivation tree."],
+      ["type: x : A, f : A → B ⊢ t", "types `t` in a context that gives its free variables types."],
+    ],
+    details: [
+      "Types are base names (`A`, `Nat`) and arrows; `A → B → C` is `A → (B → C)`. Type `->` for → and `|-` for ⊢.",
+      "Three rules: Var looks a variable up in the context; →I types `λx:A. e` as `A → B` when `e` has type `B` with `x : A` added; →E types `f a` as `B` when `f : A → B` and `a : A`.",
+      "The steps are the rules, premises first, and the tree draws them. A term without a type is refused with the reason. The checker is proved sound: every tree it draws is a derivation.",
+    ],
+    examples: [
+      basic("type: λx:A. x", "type: λf:A→B. λx:A. f x", "type: f : A → B, x : A ⊢ f x"),
+      section("Errors", "type: λx:A. x x", "type: λx. x", "type: λx:A. λy:B → B. y x"),
+    ],
+    see: ["infer"],
+  },
+  {
+    name: "infer", title: "infer: (type inference)", area: "λ-calculus", notation: true,
+    usage: [
+      ["infer: t", "finds the most general simple type of `t`, whose binders need no types."],
+      ["infer: Γ ⊢ t", "infers in a context; a free variable not in it gets a type too."],
+    ],
+    details: [
+      "Each binder without a type and each application gets a type variable (τ₁, τ₂, …), and each application `f a` gives an equation: `f`'s type is an arrow from `a`'s type to the result's.",
+      "The equations are solved one at a time by unification. The occurs check refuses `τ = τ → σ`, which is why `λx. x x` and `Y` have no simple type.",
+      "The variables left are named α, β, …; any types put for them give a type of the term. The answer is checked by the type checker on the annotated term, and the tree shows that derivation.",
+      "Church library names are unfolded first, so `infer: S` works.",
+    ],
+    examples: [
+      basic("infer: λx. x", "infer: K", "infer: S", "infer: λf. λx. f (f x)"),
+      section("No simple type", "infer: λx. x x", "infer: Y"),
+      section("With some types given", "infer: λf:A→B. λx. f x", "infer: f x"),
+    ],
+    see: ["type"],
   },
 
   // --- The notebook language -------------------------------------------------------------------

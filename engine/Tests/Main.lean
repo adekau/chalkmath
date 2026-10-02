@@ -337,6 +337,30 @@ def sessionTests : TestM Unit := do
   (st, r) := ev st "add TWO 3"; check "λ: Church arithmetic" r "λf. λx. f (f (f (f (f x))))"
   (st, r) := ev st "if true a b"; check "λ: Church booleans" r "a"
   (st, r) := ev st "omega omega"; checkTrue "λ: Ω is refused, not looped" (r.startsWith "<error: λ: no normal form") r
+  -- λ-commands: a strategy, the typed calculus; a typed binder prints back as written
+  (st, r) := ev st "cbv: (λx. x) ((λy. y) z)"; check "λ: call by value reduces the argument first" r "z"
+  (st, r) := ev st "type := λx. x"; check "λ: `type :=` is a definition, not a command" r "λx. x"
+  (st, r) := ev st "type: λx:A→B. x"; check "λ: a typed binder" r "(A → B) → A → B"
+  (st, r) := ev st "type: λ(x:A) (y:B). x"; check "λ: binders in parentheses" r "A → B → A"
+  (st, r) := ev st "type: x : A, x : B ⊢ x"; check "λ: a later context entry shadows" r "B"
+  (st, r) := ev st "infer: λf. λx. f (f x)"; check "λ: infer a numeral's type" r "(α → α) → α → α"
+  (st, r) := ev st "alpha: λx. y, λy. y"; check "λ: a free variable is not a bound one" r "⊥"
+  (st, r) := ev st "fv: 3"; checkTrue "λ: fv does not unfold names" (r == "{3}") r
+  (st, r) := ev st "fv 2: x"; checkTrue "λ: a step count only on a reduction" (r.startsWith "<error: fv: takes no step count") r
+  (st, r) := ev st "p ∧ q"; checkTrue "λ: a formula is still logic" (r == "p ∧ q") r
+  -- a definition with no normal form is bound unreduced, and the reduction is cut off by size, not hung
+  (st, r) := ev st "pred := λn. fst (n (λp. pair (snd p) (succ (snd p))) (pair 0 0))"; checkTrue "λ: pred" (r.startsWith "λn.") r
+  (st, r) := ev st "fact := Y (λself. λn. if (iszero n) 1 (mul n (self (pred n))))"; checkTrue "λ: a Y definition is bound unreduced" (r.startsWith "(λf. (λx. f (x x))") r
+  (st, r) := ev st "fact 2"; check "λ: recursion through Y" r "λf. λx. f (f x)"
+  (st, r) := ev st "cbv: fact 1"; checkTrue "λ: call by value unfolds Y until the term is too big" (r.startsWith "<error: λ: no value yet after" && contains r "grown past") r
+  -- printing is linear in a term's depth: forty nested λs and a forty-deep arrow type
+  let deep := (List.range 40).foldr (fun i e => Expr.fn "λ" [.var s!"x{i}", e]) (.var "x0")
+  checkTrue "λ: a deep term prints" ((deep.toLatex false).length > 100)
+  let arrows := (List.range 40).foldr (fun i e => Expr.fn "→" [.var s!"A{i}", e]) (.var "B")
+  checkTrue "λ: a deep type prints" ((arrows.toLatex false).length > 100)
+  check "λ: a typed binder in LaTeX" ((Lam.ATerm.lam "x" (some (.arrow (.base "A") (.base "B"))) (.var "x")).toExpr.toLatex false) "\\lambda x{:}\\left(A \\to B\\right).\\, x"
+  check "λ: a type variable's index is a subscript" ((Lam.Ty.tvar 0).toExpr.toLatex false) "\\tau_{1}"
+  check "λ: a typed term reads back" (match Lam.parseATerm "λf:(A → B). λx:A. f x" with | .ok t => t.text | .error e => e) "λf:(A → B). λx:A. f x"
   (st, r) := ev st "x^2 + y"; check "an ordinary cell is still ordinary" r "x^2 + y"
   -- % output references, numbered like Mathematica's In/Out
   (st, r) := ev st "x^2 + 1"; check "%: seed" r "x^2 + 1"
@@ -589,6 +613,18 @@ def checkTests : TestM Unit := do
   checkTrue "check: λ normal forms up to α" (eqv "add 2 1" "λg. λy. g (g (g y))")
   checkTrue "check: a different λ normal form" (!eqv "add 2 1" "λf. λx. f (f x)")
   checkTrue "check: a λ answer with a redex" (contains (ask "add 2 1" "succ 2") "reduce it to normal form")
+  checkTrue "check: a cbv value, compared as written" (eqv "cbv: (λx. x) (λy. (λz. z) y)" "λa. (λb. b) a")
+  checkTrue "check: not a cbv value" (!eqv "cbv: (λx. x) (λy. (λz. z) y)" "λa. a")
+  checkTrue "check: free variables as a set" (eqv "fv: λx. x y (λy. y z)" "{z, y}")
+  checkTrue "check: free variables, one missing" (!eqv "fv: λx. x y (λy. y z)" "{y}")
+  checkTrue "check: α-equivalence" (eqv "alpha: λx. x, λy. y" "true")
+  checkTrue "check: a type" (eqv "type: λf:A→B. λx:A. f x" "(A -> B) -> A -> B")
+  checkTrue "check: a type is not up to renaming" (!eqv "type: λx:A. x" "B -> B")
+  checkTrue "check: an inferred type up to renaming" (eqv "infer: K" "a -> b -> a")
+  checkTrue "check: an inferred type, too special" (!eqv "infer: K" "a -> a -> a")
+  checkTrue "check: a substitution up to α" (eqv "subst: λy. x y, x := y" "λz. y z")
+  let tree := rpc "engine.evaluate" "{\"sessionId\":\"x\",\"cellId\":\"t\",\"source\":\"type: λx:A. x\"}"
+  checkTrue "λ: type: draws its derivation" (contains tree "\"kind\":\"typing.tree\"" && contains tree "\"rule\":\"→I\"" && contains tree "x : A \\\\vdash x : A") tree
   let noAnswer := rpc "engine.check" "{\"sessionId\":\"x\",\"cellId\":\"e\",\"source\":\"expand((x+1)^2)\",\"showWork\":true}"
   checkTrue "check: without an answer, the solution and its work" (contains noAnswer "\"rendered\":{\"text\":\"x^2 + 2*x + 1\"" && contains noAnswer "\"derivation\"" && !contains noAnswer "\"equivalent\"") noAnswer
   -- a check is not an evaluation: no label, no binding, and % is untouched

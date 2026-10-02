@@ -135,6 +135,20 @@ the engine omits is unverified.
 \rt{lambda.delta}{verified}{Unfolding a definition replaces a free name by its term; nothing to prove beyond that.}
 \rt{lambda.beta}{unverified}{$\beta$-reduction with capture-avoiding substitution; the substitution lemma is not yet proved.}
 \rt{lambda.alpha-beta}{unverified}{A binder renamed to avoid capture, then $\beta$; the renaming is not yet proved to preserve $\alpha$-equivalence.}
+\rt{lambda.eta}{verified}{$\eta$: $\lambda x.\, f\ x$ contracts to $f$ only when $x$ is not free in $f$ (\texttt{etaRedex\_spec}); $\eta$ is an axiom of $\lambda\beta\eta$, so nothing more to prove.}
+\rt{lambda.fv}{verified}{The free variables, computed by their definition (\texttt{freeVars}).}
+\rt{lambda.db}{verified}{De Bruijn indices, computed by their definition (\texttt{toDB}).}
+\rt{lambda.alpha-eq}{verified}{$\alpha$-equivalence is taken to be equality of de Bruijn forms, which is how the engine defines it; that this agrees with renaming bound variables one at a time is the classical theorem, not proved here.}
+\rt{lambda.alpha}{unverified}{Binders renamed to avoid capture; the renaming is not yet proved to preserve $\alpha$-equivalence.}
+\rt{lambda.subst}{unverified}{Capture-free substitution; it adds no free variable beyond the argument's (\texttt{substRaw\_freeVars}), but the substitution lemma is not yet proved.}
+\midrule \multicolumn{3}{l}{\textbf{Simply typed $\lambda$-calculus}} \\
+\rt{stlc.var}{verified}{Var: the checker's derivations are typing derivations (\texttt{check\_sound}, \texttt{StlcProofs.lean}).}
+\rt{stlc.abs}{verified}{$\to$I: the checker's derivations are typing derivations (\texttt{check\_sound}).}
+\rt{stlc.app}{verified}{$\to$E: the checker's derivations are typing derivations (\texttt{check\_sound}).}
+\rt{stlc.constraints}{checked}{Inference's equations; the type found is re-checked by the verified checker on the annotated term.}
+\rt{stlc.split}{checked}{Unification splits an equation of arrows; the type found is re-checked by the verified checker.}
+\rt{stlc.unify}{checked}{Unification binds a type variable (with the occurs check); the type found is re-checked by the verified checker.}
+\rt{stlc.principal}{checked}{The solved type, its variables renamed; checked by the verified checker. That it is the most general type is Hindley's theorem, not proved here.}
 \bottomrule
 \end{longtable}
 \normalsize
