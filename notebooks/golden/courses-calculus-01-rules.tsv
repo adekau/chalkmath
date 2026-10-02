@@ -1,9 +1,9 @@
 5	let f = x^2	= x^2
-6	let m = (subst(f, x, 1 + h) - subst(f, x, 1)) / h	= (pending: the engine answer, from CI)
-7	let L = subst(f, x, 1) + m*(x - 1)	= (pending: the engine answer, from CI)
-8	let T = subst(f, x, 1) + subst(diff(f, x), x, 1)*(x - 1)	= (pending: the engine answer, from CI)
-10	manipulate(plot([f, L, T], x, -0.5, 3), h, 2, 0.05)	= (pending: the engine answer, from CI)
-12	manipulate(m, h, 2, 0.05)	= (pending: the engine answer, from CI)
+6	let m = (subst(f, x, 1 + h) - subst(f, x, 1)) / h	= ((h + 1)^2 - 1)/h
+7	let L = subst(f, x, 1) + m*(x - 1)	= (x - 1)*((h + 1)^2 - 1)/h + 1
+8	let T = subst(f, x, 1) + subst(diff(f, x), x, 1)*(x - 1)	= 2*(x - 1) + 1
+10	manipulate(plot([f, L, T], x, -0.5, 3), h, 2, 0.05)	= [x^2, 4*(x - 1) + 1, 2*(x - 1) + 1]   [40 frames of h; at h = 0.05: [x^2, 2.05*(x - 1) + 1, 2*(x - 1) + 1]]
+12	manipulate(m, h, 2, 0.05)	= 4   [40 frames of h; at h = 0.05: 2.05]
 16	diff(x^5, x)	= 5*x^4
 18	diff(3x^4 - 2x + 7, x)	= 12*x^3 - 2
 19	diff(x^4 - 5x^2 + 2, x)	= 4*x^3 - 10*x
