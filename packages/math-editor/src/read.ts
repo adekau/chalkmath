@@ -67,6 +67,10 @@ export function lex(src: string): Tok[] {
       if (j >= cs.length) fail(`unexpected character '"'`, { start: i, stop: i + 1 });
       out.push({ kind: "str", s: cs.slice(i, j + 1).join(""), start: i, stop: j + 1 });
       i = j + 1;
+    } else if (c === "." && (cs[i + 1] === "/" || cs[i + 1] === "*")) {
+      // `./` and `.*`, the entrywise operators: a `.` before a digit was a numeral above
+      out.push({ kind: "op", s: c + cs[i + 1], start: i, stop: i + 2 });
+      i += 2;
     } else if ("+-*/^()[],;=%{}".includes(c)) {
       out.push({ kind: "op", s: c, start: i, stop: i + 1 });
       i++;
@@ -158,6 +162,8 @@ class Reader {
     for (;;) {
       const t = this.peek();
       if (this.isOp(t, "*")) { this.next(); out.push(ch("*"), ...this.unary()); }
+      // `./` and `.*` are one atom each, an operator like `*`; the fraction bar is `/` alone
+      else if (this.isOp(t, "./") || this.isOp(t, ".*")) { this.next(); out.push(ch(t.s), ...this.unary()); }
       else if (this.isOp(t, "/")) {
         this.next();
         const den = this.unary();

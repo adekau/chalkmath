@@ -176,6 +176,15 @@ def tests : TestM Unit := do
   check "parse matrix" (roundtrip "[1,2;3,4]") "[1, 2; 3, 4]"
   check "parse ragged" (roundtrip "[1,2;3]") "<syntax error: ragged matrix rows @0-1>"
   check "parse decimal" (roundtrip "2.5x + .5") "2.5*x + 0.5"
+  -- the entrywise operators: `./` and `.*` are tokens, and a `.` before a digit is still a numeral
+  check "parse ./" (roundtrip "a ./ b") "a ./ b"
+  check "parse .*" (roundtrip "a.*b") "a .* b"
+  check "parse 2./3" (roundtrip "2./3") "2 ./ 3"
+  check "parse ./ is left-associative" (roundtrip "a ./ b ./ c") "(a ./ b) ./ c"
+  check "parse ./ binds as a product" (roundtrip "a + b ./ c*d") "a + (b ./ c)*d"
+  check "print a factor ./ keeps its parentheses" (roundtrip "x*(a ./ b)") "x*(a ./ b)"
+  check "latex ./" (latexOf "[1,2] ./ [3,4]") "\\begin{bmatrix}1 & 2\\end{bmatrix} \\oslash \\begin{bmatrix}3 & 4\\end{bmatrix}"
+  check "latex .*" (latexOf "[1,2] .* [3,4]") "\\begin{bmatrix}1 & 2\\end{bmatrix} \\odot \\begin{bmatrix}3 & 4\\end{bmatrix}"
   -- printer: recovers -, /, sqrt and parenthesizes correctly
   check "print x/(y*z)" (roundtrip "x/(y*z)") "x/(y*z)"
   check "print (x+1)/(x-1)" (roundtrip "(x+1)/(x-1)") "(x + 1)/(x - 1)"
@@ -247,6 +256,11 @@ def tests : TestM Unit := do
   let d := match parse "0*x + 1*y" with | .ok e => derive simpRules e | .error _ => default
   check "simp derivation rules" (", ".intercalate (d.steps.toList.map (·.rule))) "simp.identity, simp.identity, simp.identity"
   check "simp derivation before/after" (showSteps d) "simp.identity@[0] 0*x + 1*y -> 0 + 1*y, simp.identity@[1] 0 + 1*y -> 0 + y, simp.identity@[] y + 0 -> y"  -- canonical order (constants last) is silent
+
+set_option maxRecDepth 2048 in
+/-- Step 4 onwards, through the stateful RPC surface. A definition of its own: one `do` block holding
+every test outgrows the compiler's heartbeat budget. -/
+def sessionTests : TestM Unit := do
   -- step 4: diff, linalg, session, show work, explain (through the stateful RPC surface)
   let mut st : Store := []
   let ev (st : Store) (src : String) : Store × String := sessionEval st src
@@ -586,7 +600,7 @@ def checkTests : TestM Unit := do
   checkTrue "check: % is the last evaluation's" (contains praw "\"text\":\"x^3\"" && contains praw "\"label\":2") praw
 
 def main : IO UInt32 := do
-  let ((), failures) ← (do tests; partStatTests; workTests; checkTests; goldenTests).run #[]
+  let ((), failures) ← (do tests; sessionTests; partStatTests; workTests; checkTests; goldenTests).run #[]
   for f in failures do
     IO.println s!"FAIL {f.name}\n  expected: {f.expected}\n  actual:   {f.actual}"
   IO.println s!"{failures.size} failures"

@@ -202,7 +202,7 @@ class Notation {
       return this.wrap(t.atoms, `\\htmlData{out=${outTag(text)}, rel=1}{${text.replace(/%/g, "\\%")}${n}}`);
     }
     // a `\` is a command still being typed (`\frac` before its space)
-    return this.chars(t.atoms, (c) => (c === "*" ? "\\cdot " : c === " " ? "\\," : c === "%" ? "\\%" : c === "\\" ? "\\backslash " : c));
+    return this.chars(t.atoms, (c) => (c === "*" ? "\\cdot " : c === "./" ? "\\oslash " : c === ".*" ? "\\odot " : c === " " ? "\\," : c === "%" ? "\\%" : c === "\\" ? "\\backslash " : c));
   }
 
   /** A slot shown in parentheses unless it is one factor already. */

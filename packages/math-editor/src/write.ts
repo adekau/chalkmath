@@ -25,10 +25,13 @@ export const writeText = (stmt: Stmt) => write(stmt).text;
 
 const isCh = (a: Atom | undefined, c?: string): a is Atom & { k: "ch" } => a?.k === "ch" && (c === undefined || a.c === c);
 
+/** The entrywise operators, each one atom (`model.ts`). */
+const ENTRYWISE = ["./", ".*"];
+
 /** Is the `-` at `j` a subtraction (something to subtract from on its left) rather than a negation? */
 export function binaryMinus(b: Block, j: number): boolean {
   const p = b[j - 1];
-  return !!p && p.k !== "let" && !(isCh(p) && "+-*".includes(p.c));
+  return !!p && p.k !== "let" && !(isCh(p) && (p.c === "+" || p.c === "-" || p.c === "*" || ENTRYWISE.includes(p.c)));
 }
 
 /** Does `b` have a sum or difference at its top level? */
@@ -90,7 +93,8 @@ class Writer {
   private atom(a: Atom, b: Block, j: number) {
     switch (a.k) {
       // a sum or difference is written the way people type it, `x + 1`; a negation stays `-x`
-      case "ch": this.out += a.c === "+" || (a.c === "-" && binaryMinus(b, j)) ? ` ${a.c} ` : a.c; return;
+      // so is an entrywise operator, `A ./ B`: `2./3` is the same, but reads as the decimal `2.`
+      case "ch": this.out += a.c === "+" || (a.c === "-" && binaryMinus(b, j)) || ENTRYWISE.includes(a.c) ? ` ${a.c} ` : a.c; return;
       case "frac": {
         // bare only where nothing on the left would join the numerator and no power follows
         const p = b[j - 1];

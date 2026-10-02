@@ -36,6 +36,8 @@ the engine omits is unverified.
 \rt{la.row-swap.symbolic}{unverified}{Symbolic entries: the pivot is assumed nonzero because simplify could not show it is zero.}
 \rt{la.row-scale.symbolic}{unverified}{Symbolic entries: division by a pivot that is only assumed nonzero.}
 \rt{la.row-add.symbolic}{unverified}{Symbolic entries: the arithmetic is the simplifier's, outside the $\mathbb{Q}$ theorem.}
+\rt{la.ediv}{verified}{\texttt{A ./ B}, entrywise by definition: entry $(i,j)$ is $a_{ij}/b_{ij}$, and a scalar side meets every entry; each entry's arithmetic is its nested steps, with their statuses.}
+\rt{la.emul}{verified}{\texttt{A .* B}, the Hadamard product, entrywise by definition: entry $(i,j)$ is $a_{ij} b_{ij}$.}
 \midrule \multicolumn{3}{l}{\textbf{Expansion}} \\
 \rt{cmd.expand}{verified}{Distribution is a total function proved sound over $\mathbb{R}$ (\lc{dist_sound}); the collection afterwards is the pipeline's own steps with their statuses.}
 \rt{expand.distribute}{verified}{Multiplying out a product of sums and collecting like monomials: \lc{dist_sound}.}

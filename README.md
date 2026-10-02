@@ -39,6 +39,10 @@ it, Lean cells say the build has no Lean. See ARCHITECTURE.md §4b.
 answers it was written with (`notebooks/golden/`, errors a notebook shows on purpose included); after an engine
 change that alters one deliberately, `--update` rewrites them. CI runs it.
 
+`npm run e2e` — math cells end to end in Chromium: the bundled notebook (`npm run bundle`) against the
+native engine (`lake build`) over HTTP, checking each answer, what the page shows, and the steps of its
+work. CI runs it; set `CHROMIUM` to a browser executable if playwright-core's own is not installed.
+
 `npm run smoke:ask` — `?` lookups end to end in Chromium, against the native engine (`lake build`) and the
 bundle, with a stand-in model and synthetic pages. See ARCHITECTURE.md §4c.
 
