@@ -9,8 +9,9 @@ all four of the following, in the same change:
 
 1. **Documentation.** Update whatever the feature touches:
    - syntax: the grammar comment at the top of `engine/MathEngine/Parser.lean`;
-   - anything a notebook user can type: the `DOCS` reference list in `apps/notebook/src/app.ts`
-     (signature, blurb, runnable examples), and the step label in the rule-name map there;
+   - anything a notebook user can type: its page in `apps/notebook/src/reference.ts` (usage,
+     details, runnable examples, see-also), and the step label in the rule-name map in
+     `apps/notebook/src/app.ts`;
    - a rewrite rule: its status and note in `ruleStatus` (`engine/MathEngine/Rpc.lean`) and the
      same row in `book/chapters/A-rule-table.tex`. Keep the status honest: `verified` only when a
      theorem (or a definition) backs it;

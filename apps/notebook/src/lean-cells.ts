@@ -61,6 +61,8 @@ export interface LeanHooks {
   onProgress(): void;
 }
 let hooks: LeanHooks | null = null;
+/** The theme Lean should show: the notebook's, which can change after Lean has started. */
+let dark = true;
 
 const setState = (s: LeanState, why = "") => { state = s; failure = why; hooks?.onState(); };
 
@@ -97,6 +99,7 @@ export function initLeanIsolation() {
 export function ensureLean(h: LeanHooks): Promise<LeanNotebook | null> {
   hooks = h;
   if (starting) return starting;
+  dark = h.dark;
   if (typeof __LEAN_BUILT__ === "boolean" && !__LEAN_BUILT__) {
     setState("failed", "this copy of ChalkMath was built without Lean itself (npm run lean-wasm, then npm run bundle)");
     return Promise.resolve(null);
@@ -119,8 +122,10 @@ export function ensureLean(h: LeanHooks): Promise<LeanNotebook | null> {
       setProgress({ phase: "starting" });   // a download is reported only for what this browser does not have
       const worker = new Worker(`lean/lean-server.worker.js?v=${stamp}&progress=${channel}`);
       worker.addEventListener("error", (e) => { setProgress(null); setState("failed", e.message || "Lean's server stopped"); });
-      session = await mod.startLean({ worker, infoview: infoview(), dark: h.dark,
+      const started = dark;
+      session = await mod.startLean({ worker, infoview: infoview(), dark: started,
         onSource: (id, src) => hooks?.onSource(id, src), onMessages: (id, ms) => hooks?.onMessages(id, ms) });
+      if (dark !== started) session.setDark(dark);   // the theme changed while Lean was starting
       setState("ready");
       if (docKey !== null) { session.setCells(lastCells); }
       for (const [id, p] of pending) if (p.el.isConnected) mountNow(id, p.el);
@@ -167,6 +172,9 @@ export function mountLean(id: string, el: HTMLElement, src: string) {
   if (session) mountNow(id, el);
   else { el.textContent = src; el.classList.add("pending"); pending.set(id, { el, src }); }
 }
+
+/** Follows the notebook's theme. */
+export function setLeanDark(d: boolean) { dark = d; session?.setDark(d); }
 
 export function focusLean(id: string) { views.get(id)?.view.focus(); }
 

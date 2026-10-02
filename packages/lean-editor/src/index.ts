@@ -32,13 +32,15 @@ const SEVERITY: Record<number, LeanMessage["severity"]> = {
   [monaco.MarkerSeverity.Info]: "info", [monaco.MarkerSeverity.Hint]: "hint",
 };
 
+const colorTheme = (dark: boolean | undefined) => dark ? "Default Dark Modern" : "Default Light Modern";
+
 export async function startLean(o: LeanOptions): Promise<LeanNotebook> {
   const lm = new WorkerLeanMonaco(o.worker);
   lm.setInfoviewElement(o.infoview);
   await lm.start({
     websocket: { url: "" },
     vscode: {
-      "workbench.colorTheme": o.dark ? "Default Dark Modern" : "Default Light Modern",
+      "workbench.colorTheme": colorTheme(o.dark),
       "editor.wordWrap": "on",
       "editor.minimap.enabled": false,
       "lean4.input.eagerReplacementEnabled": true,
@@ -215,6 +217,7 @@ export async function startLean(o: LeanOptions): Promise<LeanNotebook> {
         dispose() { editor.dispose(); views.get(id)?.delete(view); },
       };
     },
+    setDark(dark) { lm.updateVSCodeOptions({ "workbench.colorTheme": colorTheme(dark) }); },
     dispose() {
       markerSub.dispose();
       for (const set of views.values()) for (const v of set) v.editor.dispose();

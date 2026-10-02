@@ -166,6 +166,7 @@ button { font-family: var(--font); }
 .olrow .kind { display:block; font-size:11.5px; font-weight:600; color:var(--ink); }
 .olrow .src { display:block; font-family:var(--mono); font-size:10.5px; color:var(--ink-mut); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .plrow { padding:7px 10px; cursor:pointer; border-radius:8px; }
+.plhead { font-size:10px; font-weight:700; letter-spacing:0.09em; text-transform:uppercase; color:var(--ink-mut); padding:12px 10px 4px; }
 .plrow:hover { background:var(--panel-2); }
 .plrow .name { display:block; font-size:11.5px; font-weight:600; color:var(--acc-hi); }
 .plrow .sig { display:block; font-family:var(--mono); font-size:10.5px; color:var(--ink-mut); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -518,16 +519,94 @@ table.keys kbd { font:11.5px var(--mono); color:var(--ink); background:var(--pan
 .difftip .was { opacity:0.7; }
 .katex [data-path].sel { background:var(--p-sel); box-shadow:0 0 0 1px var(--p-acc-2); }
 
-/* --- reference view ------------------------------------------------------- */
-.reference { flex:1; overflow-y:auto; min-height:0; padding:14px 14px 40px; }
-.refgrid { max-width:900px; display:flex; flex-direction:column; gap:10px; }
-.refcard { display:grid; grid-template-columns:minmax(0,200px) minmax(0,1fr); gap:20px; padding:16px; border-radius:11px; background:var(--panel); border:1px solid var(--border); }
-.refcard .rname { font-size:13.5px; font-weight:700; color:var(--ink); }
-.refcard .rsig { font-family:var(--mono); font-size:11px; color:var(--ink-mut); margin-top:4px; }
-.refcard .rblurb { font-size:12.5px; line-height:1.6; color:var(--ink-2); max-width:70ch; }
-.refcard .rex { display:flex; gap:7px; flex-wrap:wrap; margin-top:11px; }
-.refcard .rex button { font-family:var(--mono); font-size:11px; color:var(--acc-hi); background:var(--acc-soft-bg); border:1px solid var(--acc-soft-br); border-radius:999px; padding:4px 11px; cursor:pointer; }
-.refcard .rex button:hover { filter:brightness(1.16); }
+/* --- documentation (Help › Documentation): contents beside a page on the paper -------- */
+.docs { flex:1; min-height:0; display:flex; }
+.docnav { flex:0 0 230px; width:230px; display:flex; flex-direction:column; min-height:0; background:var(--panel); border-right:1px solid var(--border); }
+.docsearch { margin:12px 12px 6px; padding:6px 9px; font-size:12px; color:var(--ink); background:var(--bg); border:1px solid var(--border); border-radius:6px; outline:none; }
+.docsearch:focus { border-color:var(--acc-soft-br); }
+.doclist { flex:1; overflow-y:auto; padding:0 8px 16px; }
+.docgroup { font-size:10px; font-weight:700; letter-spacing:0.09em; text-transform:uppercase; color:var(--ink-mut); padding:12px 8px 5px; }
+.docrow { font-size:12.5px; color:var(--ink-2); padding:5px 8px; border-radius:5px; cursor:pointer; }
+.docrow:hover { background:var(--hov); color:var(--ink); }
+.docrow.on { color:var(--acc-hi); background:var(--acc-soft-bg2); font-weight:600; }
+.docnone { font-size:12px; color:var(--ink-mut); padding:10px 8px; }
+.docmain { flex:1; min-width:0; overflow-y:auto; color:var(--p-ink);
+  background-color:var(--paper-bg); background-image:var(--paper-mottle), var(--paper-grain); background-attachment:local, local; background-size:300px 300px, 160px 160px; }
+.docmain::-webkit-scrollbar-thumb { background:var(--p-scroll); background-clip:content-box; }
+.docmain ::selection { background:var(--p-sel); }
+.docpage { max-width:840px; margin:0 auto; padding:26px 32px 60px; }
+.docpage .mdout { padding:0; max-width:76ch; }
+.docpage .mdout h1:first-child { margin-top:0.2em; }
+.docpage > * + * { margin-top:14px; }
+.doctry { display:flex; gap:7px; flex-wrap:wrap; align-items:center; }
+.doctry .lab { font-size:10px; font-weight:700; letter-spacing:0.09em; text-transform:uppercase; color:var(--p-mut); margin-right:3px; }
+.doctry button { font-family:var(--mono); font-size:11px; color:var(--acc-hi); background:var(--acc-soft-bg); border:1px solid var(--acc-soft-br); border-radius:999px; padding:4px 11px; cursor:pointer; }
+.doctry button:hover { filter:brightness(1.16); }
+.docfilter { font-size:13px; color:var(--p-mut); margin:0 0 12px; }
+.docpage .link { color:var(--p-acc); }
+table.doctable { border-collapse:collapse; font-size:14px; }
+table.doctable th { text-align:left; font-size:10px; font-weight:700; letter-spacing:0.09em; text-transform:uppercase; color:var(--p-mut); padding:0 18px 6px 0; }
+table.doctable td { padding:6px 18px 6px 0; vertical-align:top; color:var(--p-ink-2); border-top:1px solid var(--p-br-out); }
+table.doctable td.mono { font-family:var(--code); font-size:12.5px; color:var(--p-ink); white-space:pre; }
+.docpage table.keys kbd { color:var(--p-ink); background:var(--p-input-bg); border-color:var(--p-input-br); }
+.docfoot { display:flex; gap:12px; margin-top:40px; }
+.docstep { flex:1 1 0; display:flex; flex-direction:column; gap:3px; padding:10px 14px; border-radius:8px; border:1px solid var(--p-br-out); cursor:pointer; }
+.docstep:hover { border-color:var(--p-acc-br); background:var(--p-hov); }
+.docstep.next { text-align:right; }
+.docstep.none { border:0; cursor:default; }
+.docstep .dir { font-size:11px; color:var(--p-mut); }
+.docstep .t { font-size:14px; color:var(--p-ink-strong); }
+.docrow.fn { font-family:var(--mono); font-size:11.5px; padding:3px 8px 3px 20px; }
+.docarea { font-size:10.5px; font-weight:600; color:var(--ink-mut); padding:9px 8px 2px 20px; }
+/* a function's page: Mathematica's layout */
+.fnhead { display:flex; align-items:baseline; justify-content:space-between; gap:12px; flex-wrap:wrap; border-bottom:2px solid var(--p-acc-2); padding-bottom:8px; }
+.fnname { font-family:var(--code); font-size:30px; font-weight:600; color:var(--p-ink-strong); margin:0; letter-spacing:-0.01em; }
+.fnarea { font-size:11px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:var(--p-acc); cursor:pointer; }
+.fnusage { display:flex; flex-direction:column; gap:12px; padding:4px 0 6px; }
+.urow .uform { font-family:var(--code); font-size:14.5px; font-weight:600; color:var(--p-ink-strong); }
+.urow .uwhat { font-family:var(--serif); font-size:16px; line-height:1.55; color:var(--p-ink-2); margin:3px 0 0 22px; }
+.fndetails { border-top:1px solid var(--p-br-out); padding-top:10px; }
+.fndetails summary { font-size:12px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:var(--p-mut); cursor:pointer; margin-bottom:8px; }
+.fndetails .mdout { font-size:15px; }
+.fnsec { font-family:var(--serif); font-size:21px; font-weight:600; color:var(--p-ink-strong); margin:26px 0 0 !important; padding-top:12px; border-top:1px solid var(--p-br-out); }
+.fnpage > .smallbtn { margin-top:8px; }
+.exsec { margin-top:18px; }
+.exhead { display:flex; align-items:baseline; gap:12px; margin-bottom:8px; }
+.exhead h3 { font-size:12px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:var(--p-acc); margin:0; }
+.exhead .link { font-size:11.5px; }
+.exsec > .mdout { font-size:15px; margin:10px 0 6px; }
+.expair { padding:6px 0 8px; border-bottom:1px dashed var(--p-br-out); }
+.exrow { display:grid; grid-template-columns:72px minmax(0,1fr); align-items:baseline; gap:6px; }
+.exrow + .exrow { margin-top:6px; }
+.exprompt { font-family:var(--code); font-size:10.5px; color:var(--p-mut); text-align:right; white-space:nowrap; }
+.exout .exprompt { color:var(--p-acc); }
+.exout:has(.plotbox) { align-items:start; }
+.exout:has(.plotbox) .exprompt { padding-top:8px; }
+.exin { font-family:var(--code); font-size:13.5px; color:var(--p-ink); white-space:pre-wrap; overflow-wrap:anywhere; }
+.exval { font-size:19px; color:var(--p-ink-strong); min-width:0; overflow-x:auto; overflow-y:hidden; }
+.exval.pending { font-size:13px; color:var(--p-mut); }
+.exval.err { font-size:13px; color:var(--p-err); }
+.exval .plotbox { margin:2px 0; }
+.exsummary { display:block; font-size:12.5px; color:var(--p-mut); margin-top:2px; }
+.exnote { font-size:13px; color:var(--p-mut); margin:8px 0 0; }
+.fnsee { display:flex; flex-wrap:wrap; gap:6px 16px; font-family:var(--code); font-size:13.5px; }
+.fnsee a, .fnindex a { color:var(--p-acc); }
+.fnref { display:inline-block; margin-top:16px; font-size:12px; color:var(--p-acc); }
+/* the index of functions */
+.fnindex h2 { font-family:var(--serif); font-size:20px; font-weight:600; color:var(--p-ink-strong); margin:26px 0 2px; }
+.fnareawhat { font-size:13.5px; color:var(--p-mut); margin:0 0 10px; }
+.fngrid { display:grid; grid-template-columns:repeat(auto-fill, minmax(250px, 1fr)); gap:8px 22px; }
+.fnitem { display:flex; flex-direction:column; gap:1px; }
+.fnitem a { font-family:var(--code); font-size:13.5px; font-weight:600; }
+.fnitem .fnwhat { font-size:12.5px; line-height:1.45; color:var(--p-ink-3); }
+.exlist { display:flex; flex-direction:column; gap:10px; }
+.excard { padding:14px 16px; border-radius:10px; background:var(--p-input-bg); border:1px solid var(--p-br-out); cursor:pointer; }
+.excard:hover { border-color:var(--p-acc-br); }
+.excard .t { font-size:14px; font-weight:600; color:var(--p-ink-strong); }
+.excard .b { font-size:13px; line-height:1.5; color:var(--p-ink-2); margin-top:4px; }
+.link { color:var(--acc-hi); cursor:pointer; }
+.link:hover { text-decoration:underline; }
+.sellinks { margin-top:10px; font-size:11.5px; }
 
 /* --- Manim Studio --------------------------------------------------------- */
 .studio { flex:1; min-height:0; display:flex; flex-direction:column; }
@@ -701,7 +780,17 @@ table.keys kbd { font:11.5px var(--mono); color:var(--ink); background:var(--pan
   .step .el { grid-column:1 / -1; }
   .step.sub { margin-left:0 !important; }
   .explain { grid-template-columns:minmax(0,1fr); }
-  .refcard { grid-template-columns:minmax(0,1fr); gap:8px; }
+  .exrow { grid-template-columns:minmax(0,1fr); gap:0; }
+  .exprompt { text-align:left; }
+  /* the contents become a strip above the page */
+  .docs { flex-direction:column; }
+  .docnav { flex:0 0 auto; width:auto; border-right:0; border-bottom:1px solid var(--border); }
+  .docsearch { margin:8px 10px 4px; }
+  .doclist { display:flex; gap:2px; overflow-x:auto; scrollbar-width:none; padding:0 8px 6px; }
+  .docgroup, .docarea, .docrow.tree { display:none; }
+  .docrow { flex:0 0 auto; white-space:nowrap; }
+  .docpage { padding:16px 16px 40px; }
+  .docfoot { flex-direction:column; }
   .statusbar { display:none; }
   .studio-top { flex-direction:column; }
   .shots { width:auto; flex:0 0 auto; max-height:35vh; }
