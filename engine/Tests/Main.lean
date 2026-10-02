@@ -513,7 +513,7 @@ def sessionTests : TestM Unit := do
   checkTrue "rpc manipulate: one body has no parts" (!(contains manp "\"parts\"")) manp
   let (stl, _) := handleS [] "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"engine.evaluate\",\"params\":{\"sessionId\":\"l\",\"cellId\":\"a\",\"source\":\"let m = h + 1\"}}"
   let (_, lab) := handleS stl "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"engine.manipulate\",\"params\":{\"sessionId\":\"l\",\"cellId\":\"b\",\"source\":\"manipulate(column(m, h), h, 0, 1, 2)\"}}"
-  checkTrue "rpc manipulate column: a part that is a bound name is labelled with it" (contains lab "\"label\":\"m\"" && (lab.splitOn "\"label\"").length == 3) lab
+  checkTrue "rpc manipulate column: a part that is a bound name is labelled with it" ((lab.splitOn "\"label\":\"m\"").length == 3 && !(contains lab "\"label\":\"h\"")) lab
   checkTrue "rpc value json" ((rpc "engine.evaluate" "{\"source\":\"2x\"}").startsWith "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"ok\":true,\"value\":{\"k\":\"mul\",\"args\":[{\"k\":\"num\",\"v\":{\"num\":\"2\",\"den\":\"1\"}},{\"k\":\"var\",\"name\":\"x\"}]}")
 
 /-- M2 golden test: `Tests/golden.tsv` holds the reference engine's rendered text for a corpus of
