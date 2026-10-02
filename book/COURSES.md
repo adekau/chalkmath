@@ -111,7 +111,14 @@ trees; progress and preservation, proved in Lean; normalization (why Ω has no t
 intuitionistic logic (course 1's proofs as terms); a look at System F and the λ-cube; capstone: a
 language inside Lean (interpreter, type checker, soundness theorem). *E6, N3 trees*
 
-### 6 · CRDTs (about 12 lessons)
+### 6 · CRDTs (12 lessons) — written
+
+`notebooks/courses/crdt/`, with a Lean prelude: the book's whole development, ported to Lean 4.34 in
+`notebooks/sources/Crdt.lean` (two `Decidable` instances in chapter 10 built explicitly; 4.28-era
+deprecation notices switched off) and split at its chapter headings; its compiled solutions are the
+lessons' Lean exercises (9), beside 8 engine exercises on joins, folds and version vectors. N8 (a
+replica simulation in the notebook) is not built: the book's own gossip driver and capstone
+schedules run as Lean cells instead.
 
 Follows *From Propagators to Replicas* (lean4learning), with a Lean prelude across its lessons; needs
 course 2. Replicas and the price of coordination; the merge discipline; G-Counter; PN-Counter and
@@ -154,7 +161,7 @@ The λ world also grows for course 4: a choice of strategy, η, free variables, 
 1. **P0** — Lean exercises and a course's Lean prelude (N1, N7). *Done.*
 2. **P1** — Course 1: E1, E2, E3, N2, N3. *Done.*
 3. **P2** — Course 2: E4. *Done.*
-4. **P3** — Course 6 (CRDTs): mostly Lean, little engine; needs only course 2.
+4. **P3** — Course 6 (CRDTs): mostly Lean, little engine; needs only course 2. *Done* (without N8).
 5. **P4** — Course 3: E5, N4, N6.
 6. **P5** — Courses 4 and 5: the λ world's additions, E6.
 7. **P6** — Optional: E7, and probability for retries and backoff.

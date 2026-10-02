@@ -143,6 +143,77 @@
       ]
     },
     {
+      "id": "crdt",
+      "title": "CRDTs: replicated data that converges",
+      "blurb": "From Propagators to Replicas: counters, sets and registers that replicas update without coordinating and merge as joins; the main theorem that they converge; gossip, version vectors, op-based CRDTs, a replicated store, and the limits.",
+      "kind": "course",
+      "level": "Distributed systems",
+      "path": "courses/crdt",
+      "leanPrelude": true,
+      "lessons": [
+        {
+          "file": "01-replicas.chalk",
+          "title": "Replicas and the merge discipline",
+          "blurb": "Why merging copies is hard, and the one discipline that makes it easy: states in a semilattice, merge as join."
+        },
+        {
+          "file": "02-gcounter.chalk",
+          "title": "The G-Counter",
+          "blurb": "Counting without coordination: one slot per replica, merged by pointwise maximum."
+        },
+        {
+          "file": "03-pncounter.chalk",
+          "title": "The PN-Counter",
+          "blurb": "Counting down without going down: two grow-only counters, and a query that subtracts."
+        },
+        {
+          "file": "04-sets.chalk",
+          "title": "Sets that only grow",
+          "blurb": "G-Set and 2P-Set: union as the merge, finite sets as sorted lists, and the removal that cannot be undone."
+        },
+        {
+          "file": "05-lww.chalk",
+          "title": "Last writer wins",
+          "blurb": "Overwrite, done lawfully: timestamps in the state, ties broken by replica, and the LWW-Element-Set."
+        },
+        {
+          "file": "06-orset.chalk",
+          "title": "The OR-Set: add wins",
+          "blurb": "Observed-remove: a remove deletes only the adds it has seen, so a concurrent add survives."
+        },
+        {
+          "file": "07-convergence.chalk",
+          "title": "Multisets, folds and the main theorem",
+          "blurb": "Quotient types for 'the same updates, in any order', and strong eventual consistency proved once for every CRDT."
+        },
+        {
+          "file": "08-delivery.chalk",
+          "title": "Delivery: gossip, duplication and reordering",
+          "blurb": "A trace semantics for an at-least-once network, eventual delivery implies convergence, and a gossip driver that provably stops."
+        },
+        {
+          "file": "09-version-vectors.chalk",
+          "title": "Version vectors and causality",
+          "blurb": "Time without clocks: the G-Counter again, read as a causal history, and concurrency as incomparability."
+        },
+        {
+          "file": "10-op-based.chalk",
+          "title": "Op-based CRDTs",
+          "blurb": "Shipping operations instead of states: commutativity moves from the merge to the operations, and duplication becomes the network's problem."
+        },
+        {
+          "file": "11-capstone.chalk",
+          "title": "Capstone: a replicated store",
+          "blurb": "A collaborative shopping list from the course's parts: an OR-Set of items, each with a PN-Counter quantity, converging with no new proofs."
+        },
+        {
+          "file": "12-limits.chalk",
+          "title": "What CRDTs cannot do",
+          "blurb": "Agreement is not correctness: invariants that need coordination, and the axiom audit."
+        }
+      ]
+    },
+    {
       "id": "calculus",
       "title": "Calculus: derivatives and integrals",
       "blurb": "The rules of differentiation, the chain rule and tangent lines; then antiderivatives the engine checks by differentiating, definite integrals and Riemann sums.",

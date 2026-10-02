@@ -1,0 +1,3 @@
+4	let Naive = op({w1, w2}; [w1, w2; w1, w2])	= [w1, w2; w1, w2]   [an operation on 2 elements]
+5	commutative(Naive)	= false   [not commutative]
+18	associative(Naive)	= true

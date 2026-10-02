@@ -1,0 +1,9 @@
+5	let Ow = op({a, b}; [a, b; a, b])	= [a, b; a, b]   [an operation on 2 elements]
+6	commutative(Ow)	= false   [not commutative]
+7	fold(Ow; a, b)	= b   [= b]
+8	fold(Ow; b, a)	= a   [= a]
+10	let Mx = op({0, 1, 2}; [0, 1, 2; 1, 1, 2; 2, 2, 2])	= [0, 1, 2; 1, 1, 2; 2, 2, 2]   [an operation on 3 elements]
+11	semilattice(Mx)	= true   [a semilattice]
+12	fold(Mx; 2, 0, 1, 1)	= 2   [= 2]
+26	commutative(Mx)	= true
+27	fold(Ow; b, a, b, a)	= a

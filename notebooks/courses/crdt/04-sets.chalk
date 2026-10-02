@@ -1,0 +1,144 @@
+{
+  "chalk": 1,
+  "name": "04-sets.chalk",
+  "cells": [
+    {
+      "src": "Sets that only grow",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Replicate sets: a grow-only set merged by union, and a two-phase set that supports removal with a second grow-only set of tombstones, at the price of never re-adding.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A **G-Set** is the powerset lattice: states are finite sets, the order is inclusion, the merge is union. To compute with finite sets (print them, decide equalities) the book represents them as **strictly sorted lists**: same members, same list, which is what antisymmetry needs.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let S = subsets({x, y})",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "join(S, {x}, {y})",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Removal: the 2P-Set",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Removing from a G-Set would make the state go down. A **2P-Set** keeps two G-Sets, the added and the removed (tombstones); an element is in the set when it is added and not removed. Both halves only grow, so the pair is a product semilattice:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let TP = product(S, S)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "join(TP, ({x}, {}), ({x}, {x}))",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "join(TP, ({x}, {x}), ({x}, {}))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> A removed element can never come back: its tombstone outranks every later add, because the merge cannot tell a re-add from an old add it has already seen. The next lessons fix this two ways: with timestamps (last writer wins) and with unique tags (the OR-Set).",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/- ============================================================\n   Crdt.SList — Chapter 5: Sets That Only Grow\n   Finite sets as strictly sorted lists. Strict sortedness gives\n   duplicate-freeness for free, and — crucially — a *canonical*\n   representation: same members, same list. That canonicity is\n   what antisymmetry of ⊑ (and hence the semilattice) rests on.\n   ============================================================ -/\n\n/-- A decidable total order on the element type. `Nat` is the running\n    example; lexicographic products arrive in Chapter 6 and pay off in\n    Chapter 7. `≼`/`≺` are the *element* order — not to be confused\n    with the information order `⊑` on states. -/\nclass TotalOrder (α : Type) where\n  le : α → α → Prop\n  deq : DecidableEq α\n  decLe : (a b : α) → Decidable (le a b)\n  le_refl : ∀ (a : α), le a a\n  le_antisymm : ∀ {a b : α}, le a b → le b a → a = b\n  le_trans : ∀ {a b c : α}, le a b → le b c → le a c\n  le_total : ∀ (a b : α), le a b ∨ le b a\n\nattribute [instance] TotalOrder.deq TotalOrder.decLe\n\ninfix:55 \" ≼ \" => TotalOrder.le\n\n/-- Strictly below. -/\nabbrev TotalOrder.lt {α : Type} [TotalOrder α] (a b : α) : Prop :=\n  a ≼ b ∧ a ≠ b\n\ninfix:55 \" ≺ \" => TotalOrder.lt\n\nnamespace TotalOrder\n\nvariable {α : Type} [TotalOrder α]\n\ntheorem le_of_lt {a b : α} (h : a ≺ b) : a ≼ b := h.1\n\ntheorem lt_irrefl (a : α) : ¬ a ≺ a := fun h => h.2 rfl\n\ntheorem lt_of_not_le {a b : α} (h : ¬ a ≼ b) : b ≺ a := by\n  constructor\n  · exact (le_total a b).resolve_left h\n  · intro he\n    subst he\n    exact h (le_refl b)\n\ntheorem not_le_of_lt {a b : α} (h : a ≺ b) : ¬ b ≼ a :=\n  fun hba => h.2 (le_antisymm h.1 hba)\n\ntheorem lt_trans {a b c : α} (h₁ : a ≺ b) (h₂ : b ≺ c) : a ≺ c := by\n  refine ⟨le_trans h₁.1 h₂.1, fun he => ?_⟩\n  subst he\n  exact h₂.2 (le_antisymm h₂.1 h₁.1)\n\ntheorem lt_of_lt_of_le {a b c : α} (h₁ : a ≺ b) (h₂ : b ≼ c) : a ≺ c := by\n  refine ⟨le_trans h₁.1 h₂, fun he => ?_⟩\n  subst he\n  exact h₁.2 (le_antisymm h₁.1 h₂)\n\ninstance : TotalOrder Nat where\n  le          := Nat.le\n  deq         := inferInstance\n  decLe       := Nat.decLe\n  le_refl     := Nat.le_refl\n  le_antisymm := Nat.le_antisymm\n  le_trans    := Nat.le_trans\n  le_total    := Nat.le_total\n\nend TotalOrder\n\nnamespace SList\n\nopen TotalOrder\n\nvariable {α : Type} [TotalOrder α]\n\n/-- Strictly ascending — sorted *and* duplicate-free in one predicate. -/\ninductive Sorted : List α → Prop where\n  | nil : Sorted []\n  | single (a : α) : Sorted [a]\n  | cons {a b : α} {l : List α} (hab : a ≺ b) (h : Sorted (b :: l)) :\n      Sorted (a :: b :: l)\n\ntheorem sorted_tail {a : α} {l : List α} (h : Sorted (a :: l)) : Sorted l := by\n  cases h with\n  | single => exact .nil\n  | cons _ h => exact h\n\n/-- In a sorted list the head is strictly below everything in the tail. -/\ntheorem sorted_head_lt {a : α} {l : List α} :\n    Sorted (a :: l) → ∀ x ∈ l, a ≺ x := by\n  induction l generalizing a with\n  | nil => intro _ x hx; cases hx\n  | cons b t ih =>\n      intro h x hx\n      cases h with\n      | cons hab hbt =>\n          cases List.mem_cons.mp hx with\n          | inl he => subst he; exact hab\n          | inr ht => exact lt_trans hab (ih hbt x ht)\n\n/-- The head of a sorted list is its minimum. -/\ntheorem sorted_head_le {a : α} {l : List α}\n    (h : Sorted (a :: l)) : ∀ x ∈ a :: l, a ≼ x := by\n  intro x hx\n  cases List.mem_cons.mp hx with\n  | inl he => subst he; exact le_refl x\n  | inr ht => exact le_of_lt (sorted_head_lt h x ht)\n\ntheorem sorted_cons_of_lt {a : α} {l : List α}\n    (hl : Sorted l) (h : ∀ x ∈ l, a ≺ x) : Sorted (a :: l) := by\n  cases l with\n  | nil => exact .single a\n  | cons b t => exact .cons (h b List.mem_cons_self) hl\n\n/-- Ordered insert, skipping duplicates. Structural recursion, so every\n    counterexample in this chapter runs under `decide`. -/\ndef insertS (x : α) : List α → List α\n  | [] => [x]\n  | a :: l =>\n      if x = a then a :: l\n      else if x ≼ a then x :: a :: l\n      else a :: insertS x l\n\ntheorem mem_insertS {x y : α} : ∀ {l : List α},\n    x ∈ insertS y l ↔ x = y ∨ x ∈ l\n  | [] => by simp [insertS]\n  | a :: t => by\n      by_cases h₁ : y = a\n      · subst h₁\n        have hins : insertS y (y :: t) = y :: t := by simp [insertS]\n        rw [hins]\n        constructor\n        · exact Or.inr\n        · intro h\n          exact h.elim (fun he => List.mem_cons.mpr (Or.inl he)) id\n      · by_cases h₂ : y ≼ a\n        · simp only [insertS, if_neg h₁, if_pos h₂]\n          exact List.mem_cons\n        · simp only [insertS, if_neg h₁, if_neg h₂, List.mem_cons,\n                     mem_insertS (l := t)]\n          constructor\n          · intro h\n            cases h with\n            | inl he => exact Or.inr (Or.inl he)\n            | inr hm =>\n                cases hm with\n                | inl he => exact Or.inl he\n                | inr ht => exact Or.inr (Or.inr ht)\n          · intro h\n            cases h with\n            | inl he => exact Or.inr (Or.inl he)\n            | inr hm =>\n                cases hm with\n                | inl he => exact Or.inl he\n                | inr ht => exact Or.inr (Or.inr ht)\n\ntheorem sorted_insertS {y : α} : ∀ {l : List α},\n    Sorted l → Sorted (insertS y l)\n  | [], _ => .single y\n  | a :: t, h => by\n      by_cases h₁ : y = a\n      · simpa [insertS, if_pos h₁] using h\n      · by_cases h₂ : y ≼ a\n        · simp only [insertS, if_neg h₁, if_pos h₂]\n          exact .cons ⟨h₂, h₁⟩ h\n        · simp only [insertS, if_neg h₁, if_neg h₂]\n          have hay : a ≺ y := lt_of_not_le h₂\n          apply sorted_cons_of_lt (sorted_insertS (sorted_tail h))\n          intro x hx\n          cases mem_insertS.mp hx with\n          | inl he => subst he; exact hay\n          | inr ht => exact sorted_head_lt h x ht\n\n/-- Union of raw lists: insert everything from `l` into `m`. -/\ndef unionL (l m : List α) : List α := l.foldr insertS m\n\ntheorem mem_unionL {x : α} : ∀ {l m : List α},\n    x ∈ unionL l m ↔ x ∈ l ∨ x ∈ m\n  | [], m => by simp [unionL]\n  | a :: t, m => by\n      simp only [unionL, List.foldr_cons]\n      rw [show (List.foldr insertS m t) = unionL t m from rfl] at *\n      simp only [mem_insertS, mem_unionL (l := t), List.mem_cons, or_assoc]\n\ntheorem sorted_unionL {l m : List α} (hm : Sorted m) : Sorted (unionL l m) := by\n  induction l with\n  | nil => exact hm\n  | cons a t ih => exact sorted_insertS ih\n\n/-- Keep the members satisfying `p`; sortedness survives. -/\ntheorem sorted_filter (p : α → Bool) :\n    ∀ {l : List α}, Sorted l → Sorted (List.filter p l)\n  | [], _ => .nil\n  | a :: t, h => by\n      by_cases hp : p a\n      · rw [List.filter_cons_of_pos hp]\n        apply sorted_cons_of_lt (sorted_filter p (sorted_tail h))\n        intro x hx\n        exact sorted_head_lt h x (List.mem_filter.mp hx).1\n      · rw [List.filter_cons_of_neg hp]\n        exact sorted_filter p (sorted_tail h)\n\n/-- **The workhorse.** Two sorted, duplicate-free lists with the same\n    members are the same list: sortedness makes the representation\n    canonical, and canonicity is what the merge algebra stands on. -/\ntheorem sorted_ext : ∀ {l₁ l₂ : List α}, Sorted l₁ → Sorted l₂ →\n    (∀ x, x ∈ l₁ ↔ x ∈ l₂) → l₁ = l₂\n  | [], [], _, _, _ => rfl\n  | [], b :: _, _, _, h => by cases (h b).mpr List.mem_cons_self\n  | a :: _, [], _, _, h => by cases (h a).mp List.mem_cons_self\n  | a :: t₁, b :: t₂, h₁, h₂, h => by\n      have hab : a = b := by\n        have ha₂ : a ∈ b :: t₂ := (h a).mp List.mem_cons_self\n        have hb₁ : b ∈ a :: t₁ := (h b).mpr List.mem_cons_self\n        exact le_antisymm (sorted_head_le h₁ b hb₁) (sorted_head_le h₂ a ha₂)\n      subst hab\n      have htails : ∀ x, x ∈ t₁ ↔ x ∈ t₂ := by\n        intro x\n        constructor\n        · intro hx\n          have hne : x ≠ a :=\n            fun he => lt_irrefl a (he ▸ sorted_head_lt h₁ x hx)\n          cases List.mem_cons.mp ((h x).mp (List.mem_cons_of_mem a hx)) with\n          | inl he => exact absurd he hne\n          | inr hm => exact hm\n        · intro hx\n          have hne : x ≠ a :=\n            fun he => lt_irrefl a (he ▸ sorted_head_lt h₂ x hx)\n          cases List.mem_cons.mp ((h x).mpr (List.mem_cons_of_mem a hx)) with\n          | inl he => exact absurd he hne\n          | inr hm => exact hm\n      rw [sorted_ext (sorted_tail h₁) (sorted_tail h₂) htails]\n\nend SList\n\n/-- A finite set: a strictly sorted list plus the proof that it is one. -/\nstructure SList (α : Type) [TotalOrder α] where\n  val : List α\n  sorted : SList.Sorted val\n\nnamespace SList\n\nopen TotalOrder Order.PartialOrder Order.BoundedJoinSemilattice\n\nvariable {α : Type} [TotalOrder α]\n\ninstance : Membership α (SList α) := ⟨fun s x => x ∈ s.val⟩\n\ntheorem mem_def {x : α} {s : SList α} : x ∈ s ↔ x ∈ s.val := Iff.rfl\n\ninstance {x : α} {s : SList α} : Decidable (x ∈ s) :=\n  inferInstanceAs (Decidable (x ∈ s.val))\n\n/-- Same value, same set — the `Sorted` proof is irrelevant. -/\ntheorem val_inj {s t : SList α} (h : s.val = t.val) : s = t := by\n  cases s; cases t; cases h; rfl\n\n/-- Same members, same set. The `sorted_ext` payoff. -/\ntheorem ext_mem {s t : SList α} (h : ∀ x, x ∈ s ↔ x ∈ t) : s = t :=\n  val_inj (sorted_ext s.sorted t.sorted h)\n\ninstance : DecidableEq (SList α) := fun s t =>\n  if h : s.val = t.val then isTrue (val_inj h)\n  else isFalse (fun he => h (congrArg SList.val he))\n\ndef empty : SList α := ⟨[], .nil⟩\n\ndef insert (x : α) (s : SList α) : SList α :=\n  ⟨insertS x s.val, sorted_insertS s.sorted⟩\n\ndef union (s t : SList α) : SList α :=\n  ⟨unionL s.val t.val, sorted_unionL t.sorted⟩\n\ndef filter (p : α → Bool) (s : SList α) : SList α :=\n  ⟨s.val.filter p, sorted_filter p s.sorted⟩\n\ndef size (s : SList α) : Nat := s.val.length\n\n@[simp] theorem mem_insert {x y : α} {s : SList α} :\n    x ∈ insert y s ↔ x = y ∨ x ∈ s := mem_insertS\n\n@[simp] theorem mem_union {x : α} {s t : SList α} :\n    x ∈ union s t ↔ x ∈ s ∨ x ∈ t := mem_unionL\n\n@[simp] theorem mem_filter {x : α} {p : α → Bool} {s : SList α} :\n    x ∈ filter p s ↔ x ∈ s ∧ p x := List.mem_filter\n\n@[simp] theorem not_mem_empty (x : α) : ¬ x ∈ (empty : SList α) := by\n  intro h\n  cases h",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/- The information order: subset. Antisymmetry is exactly `ext_mem`,\n   which is exactly `sorted_ext` — canonicity is load-bearing. -/\n\ninstance : LE (SList α) := ⟨fun s t => ∀ x ∈ s, x ∈ t⟩\n\ntheorem le_def {s t : SList α} : s ⊑ t ↔ ∀ x ∈ s, x ∈ t := Iff.rfl\n\ninstance {s t : SList α} : Decidable (s ⊑ t) :=\n  List.decidableBAll (· ∈ t.val) s.val\n\ninstance : Order.PartialOrder (SList α) where\n  le_refl _ _ hx := hx\n  le_antisymm h₁ h₂ := ext_mem fun x => ⟨h₁ x, h₂ x⟩\n  le_trans h₁ h₂ x hx := h₂ x (h₁ x hx)\n\ninstance : BoundedJoinSemilattice (SList α) where\n  sup := union\n  bot := empty\n  le_sup_left _ _ _ hx := mem_union.mpr (Or.inl hx)\n  le_sup_right _ _ _ hx := mem_union.mpr (Or.inr hx)\n  sup_le _ _ _ h₁ h₂ x hx :=\n    match mem_union.mp hx with\n    | Or.inl hs => h₁ x hs\n    | Or.inr ht => h₂ x ht\n  bot_le _ x hx := absurd hx (not_mem_empty x)",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/- ACI for union now falls out of the generic algebra — the same three\n   laws, reached by a set-theoretic route. -/\n\ntheorem union_comm (s t : SList α) : union s t = union t s :=\n  Order.sup_comm s t\n\ntheorem union_assoc (s t u : SList α) :\n    union (union s t) u = union s (union t u) :=\n  Order.sup_assoc s t u\n\ntheorem union_idem (s : SList α) : union s s = s :=\n  Order.sup_idem s\n\n/-- Build a set from any list — the canonical form of its members. -/\ndef ofList (l : List α) : SList α := ⟨unionL l [], sorted_unionL .nil⟩\n\n@[simp] theorem mem_ofList {x : α} {l : List α} : x ∈ ofList l ↔ x ∈ l := by\n  show x ∈ unionL l [] ↔ x ∈ l\n  rw [mem_unionL]\n  simp\n\nend SList",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/- ============================================================\n   Crdt.GSet and Crdt.TwoPSet — Chapter 5 continued\n   ============================================================ -/\n\n/-- The grow-only set over `Nat`: an `SList` read as a CRDT.\n    Update = insert (inflationary), merge = union, query = membership. -/\nabbrev GSet := SList Nat\n\nnamespace GSet\n\nopen Order.BoundedJoinSemilattice\n\ndef add (x : Nat) (s : GSet) : GSet := SList.insert x s\n\ntheorem add_inflationary (x : Nat) : Order.Inflationary (add x) :=\n  fun _ _ hy => SList.mem_insert.mpr (Or.inr hy)\n\n/-- Refuted: \"remove-by-deletion is monotone\". Deleting moves *down*\n    the lattice, and a merge with any peer that still holds the element\n    resurrects it. -/\ndef naiveRemove (x : Nat) (s : GSet) : GSet := SList.filter (· != x) s\n\ntheorem naiveRemove_not_inflationary :\n    ¬ (add 1 (⊥ : GSet) ⊑ naiveRemove 1 (add 1 (⊥ : GSet))) := by decide\n\ntheorem naiveRemove_resurrects :\n    1 ∈ (naiveRemove 1 (add 1 (⊥ : GSet)) ⊔ add 1 (⊥ : GSet)) := by decide\n\nend GSet\n\n/-- The two-phase set: a grow-only set of adds and a grow-only set of\n    tombstones. Removal *adds* a tombstone — states only grow. -/\nabbrev TwoPSet := GSet × GSet\n\nnamespace TwoPSet\n\nopen Order.PartialOrder Order.BoundedJoinSemilattice\n\ndef adds (s : TwoPSet) : GSet := s.1\ndef tombs (s : TwoPSet) : GSet := s.2\n\ndef add (x : Nat) (s : TwoPSet) : TwoPSet := (SList.insert x s.1, s.2)\n\ndef remove (x : Nat) (s : TwoPSet) : TwoPSet := (s.1, SList.insert x s.2)\n\n/-- Membership: added and not tombstoned. -/\ndef mem (x : Nat) (s : TwoPSet) : Prop := x ∈ s.1 ∧ ¬ x ∈ s.2\n\ninstance {x : Nat} {s : TwoPSet} : Decidable (mem x s) :=\n  inferInstanceAs (Decidable (_ ∧ _))\n\n/-- Removal is inflationary *on state* — the tombstone is information. -/\ntheorem remove_inflationary (x : Nat) : Order.Inflationary (remove x) :=\n  fun s => ⟨le_refl s.1, fun _ hy => SList.mem_insert.mpr (Or.inr hy)⟩\n\n/-- Refuted: \"the 2P-Set supports re-adding\". Add, remove, add again:\n    membership stays false — the tombstone outvotes every later add.\n    This cliffhanger is resolved by the OR-Set (Chapter 7). -/\ntheorem no_readd :\n    ¬ mem 1 (add 1 (remove 1 (add 1 (⊥ : TwoPSet)))) := by decide\n\n/-- ... even though the element is in `adds` twice over. -/\ntheorem readd_recorded :\n    1 ∈ adds (add 1 (remove 1 (add 1 (⊥ : TwoPSet)))) := by decide\n\n/-- Interlude: the 2P-Set converges regardless of merge order — it just\n    converges to \"removed wins, forever\". -/\ndef interlude : List (String × Bool) :=\n  let atA := add 3 (add 1 (⊥ : TwoPSet))       -- A adds 1, 3\n  let atB := remove 1 (add 1 (⊥ : TwoPSet))    -- B adds 1 then removes it\n  [ (\"1 ∈ A ⊔ B\", decide (mem 1 (atA ⊔ atB))),\n    (\"1 ∈ B ⊔ A\", decide (mem 1 (atB ⊔ atA))),\n    (\"3 ∈ A ⊔ B\", decide (mem 3 (atA ⊔ atB))),\n    (\"re-add at A ⊔ B\", decide (mem 1 (add 1 (atA ⊔ atB)))) ]\n\n#eval interlude\n\nend TwoPSet",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A sorted, duplicate-free sublist is no longer than the list it sits in; so a G-Set's size can only grow.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "open Order.PartialOrder Order.BoundedJoinSemilattice in\ntheorem sorted_subset_length {α : Type} [TotalOrder α] :\n    ∀ {l₁ l₂ : List α}, SList.Sorted l₁ → SList.Sorted l₂ →\n      (∀ x ∈ l₁, x ∈ l₂) → l₁.length ≤ l₂.length\n  | [], _, _, _, _ => Nat.zero_le _\n  | a :: _, [], _, _, h => absurd (h a List.mem_cons_self) (by intro hx; cases hx)\n  | a :: t₁, b :: t₂, h₁, h₂, h => by\n      have hab : b ≼ a := SList.sorted_head_le h₂ a (h a List.mem_cons_self)\n      by_cases he : a = b\n      · subst he\n        apply Nat.succ_le_succ\n        apply sorted_subset_length (SList.sorted_tail h₁) (SList.sorted_tail h₂)\n        intro x hx\n        have hax : a ≺ x := SList.sorted_head_lt h₁ x hx\n        cases List.mem_cons.mp (h x (List.mem_cons_of_mem a hx)) with\n        | inl hxa => exact absurd (hxa ▸ hax) (TotalOrder.lt_irrefl a)\n        | inr hm => exact hm\n      · have hba : b ≺ a := ⟨hab, fun hc => he hc.symm⟩\n        have hsub : ∀ x ∈ a :: t₁, x ∈ t₂ := by\n          intro x hx\n          have hbx : b ≺ x :=\n            TotalOrder.lt_of_lt_of_le hba (SList.sorted_head_le h₁ x hx)\n          cases List.mem_cons.mp (h x hx) with\n          | inl hxb => exact absurd (hxb ▸ hbx) (TotalOrder.lt_irrefl b)\n          | inr hm => exact hm\n        have hlen := sorted_subset_length h₁ (SList.sorted_tail h₂) hsub\n        simp only [List.length_cons] at *\n        omega",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem size_monotone {s t : GSet} (h : s ⊑ t) :\n    SList.size s ≤ SList.size t := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that a G-Set's size never shrinks under the information order.",
+      "leanSolution": "  exact sorted_subset_length s.sorted t.sorted h",
+      "hints": [
+        "`sorted_subset_length` does the work; a G-Set carries the proof that its list is sorted (`s.sorted`)."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "join(TP, ({x, y}, {}), ({x}, {x}))",
+      "type": "exercise",
+      "prompt": "Merge the 2P-Set states $(\\{x, y\\}, \\{\\})$ and $(\\{x\\}, \\{x\\})$. Write it as `({…}, {…})`.",
+      "hints": [
+        "Union the added sets and the removed sets separately."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Union is a join, so grow-only sets replicate for free. Removal needs tombstones, which only grow too; the 2P-Set pays for that with \"removed once, removed forever\".",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

@@ -1,0 +1,135 @@
+{
+  "chalk": 1,
+  "name": "05-lww.chalk",
+  "cells": [
+    {
+      "src": "Last writer wins",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Recover overwrite semantics as a join, by putting time in the state; see why ties must be broken and what convergence still costs.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A display name, a thermostat set point: here the *last* write should win. The move is the one every design in this course makes: if the merge needs information, put it in the state. Each write carries a stamp, and merge keeps the write with the larger stamp, breaking ties by replica identity. That is a join on a lexicographic order.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Done naively (\"on a tie, keep the incoming one\"), the merge is not commutative:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let Naive = op({w1, w2}; [w1, w2; w1, w2])",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "commutative(Naive)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "In Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/- ============================================================\n   Crdt.LWW — Chapter 6: Last Writer Wins\n   Overwrite semantics recovered lawfully: reify time into the\n   state so that merge can order writes.\n   ============================================================ -/\n\nnamespace LWW\n\nopen TotalOrder Order.PartialOrder Order.BoundedJoinSemilattice",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/- Refuted: \"LWW merge with bare timestamps is commutative\".\n   On a tie, whoever is the left argument wins — replicas that merge\n   in opposite directions disagree forever. -/\n\n/-- A naive timestamped write `(timestamp, value)` merged by\n    timestamp alone. -/\ndef naiveMerge (a b : Nat × Nat) : Nat × Nat :=\n  if a.1 < b.1 then b else a\n\ntheorem naive_tie_breaks_comm :\n    naiveMerge (3, 10) (3, 20) ≠ naiveMerge (3, 20) (3, 10) := by decide\n\nend LWW",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/- The fix: totalize the order. First, more `TotalOrder` instances —\n   proved once, reused for stamps here and for tags in Chapter 7. -/\n\nnamespace TotalOrder\n\ninstance : TotalOrder Bool where\n  le a b := (!a || b) = true\n  deq := inferInstance\n  decLe _ _ := inferInstanceAs (Decidable (_ = true))\n  le_refl := by intro a; cases a <;> simp\n  le_antisymm := by intro a b h₁ h₂; cases a <;> cases b <;> simp_all\n  le_trans := by intro a b c h₁ h₂; cases a <;> cases b <;> cases c <;> simp_all\n  le_total := by intro a b; cases a <;> cases b <;> simp\n\ninstance {n : Nat} : TotalOrder (Fin n) where\n  le a b := a.val ≤ b.val\n  deq := inferInstance\n  decLe a b := Nat.decLe a.val b.val\n  le_refl a := Nat.le_refl a.val\n  le_antisymm h₁ h₂ := Fin.ext (Nat.le_antisymm h₁ h₂)\n  le_trans := Nat.le_trans\n  le_total a b := Nat.le_total a.val b.val\n\n/-- The lexicographic order on pairs: compare firsts, tie-break on\n    seconds. Total because ties in the first coordinate are *equalities*\n    (that is what antisymmetry buys). -/\ninstance instTotalOrderProd {α β : Type} [TotalOrder α] [TotalOrder β] :\n    TotalOrder (α × β) where\n  le p q := p.1 ≺ q.1 ∨ (p.1 = q.1 ∧ p.2 ≼ q.2)\n  deq := inferInstance\n  decLe _ _ := inferInstanceAs (Decidable (_ ∨ _))\n  le_refl p := Or.inr ⟨rfl, le_refl p.2⟩\n  le_antisymm {p q} h₁ h₂ := by\n    rcases h₁ with h₁ | ⟨he₁, hle₁⟩\n    · rcases h₂ with h₂ | ⟨he₂, _⟩\n      · exact absurd h₂.1 (not_le_of_lt h₁)\n      · rw [he₂] at h₁\n        exact absurd h₁ (lt_irrefl _)\n    · rcases h₂ with h₂ | ⟨_, hle₂⟩\n      · rw [he₁] at h₂\n        exact absurd h₂ (lt_irrefl _)\n      · cases p; cases q\n        simp_all\n        exact le_antisymm hle₁ hle₂\n  le_trans {p q r} h₁ h₂ := by\n    rcases h₁ with h₁ | ⟨he₁, hle₁⟩\n    · rcases h₂ with h₂ | ⟨he₂, _⟩\n      · exact Or.inl (lt_trans h₁ h₂)\n      · exact Or.inl (he₂ ▸ h₁)\n    · rcases h₂ with h₂ | ⟨he₂, hle₂⟩\n      · exact Or.inl (he₁ ▸ h₂)\n      · exact Or.inr ⟨he₁.trans he₂, le_trans hle₁ hle₂⟩\n  le_total p q := by\n    by_cases he : p.1 = q.1\n    · rcases le_total p.2 q.2 with h | h\n      · exact Or.inl (Or.inr ⟨he, h⟩)\n      · exact Or.inr (Or.inr ⟨he.symm, h⟩)\n    · rcases le_total p.1 q.1 with h | h\n      · exact Or.inl (Or.inl ⟨h, he⟩)\n      · exact Or.inr (Or.inl ⟨h, fun hc => he hc.symm⟩)",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/- ── max of a total order, abstractly ────────────────────────\n   The \"prove the abstract lemma once\" move: ACI for max-by-order\n   is one proof, instantiated for stamps in this chapter and reused\n   by every LWW-like design. -/\n\nvariable {α : Type} [TotalOrder α]\n\n/-- The larger of two elements. -/\ndef maxo (a b : α) : α := if a ≼ b then b else a\n\ntheorem le_maxo_left (a b : α) : a ≼ maxo a b := by\n  unfold maxo; split\n  · assumption\n  · exact le_refl a\n\ntheorem le_maxo_right (a b : α) : b ≼ maxo a b := by\n  unfold maxo; split\n  · exact le_refl b\n  · rename_i h\n    exact le_of_lt (lt_of_not_le h)\n\ntheorem maxo_le {a b c : α} (h₁ : a ≼ c) (h₂ : b ≼ c) : maxo a b ≼ c := by\n  unfold maxo; split <;> assumption\n\ntheorem maxo_idem (a : α) : maxo a a = a := by\n  simp [maxo]\n\ntheorem maxo_comm (a b : α) : maxo a b = maxo b a := by\n  unfold maxo\n  by_cases h₁ : a ≼ b <;> by_cases h₂ : b ≼ a <;> simp [h₁, h₂]\n  · exact le_antisymm h₂ h₁\n  · exact absurd ((le_total a b).resolve_left h₁) h₂\n\ntheorem maxo_assoc (a b c : α) : maxo (maxo a b) c = maxo a (maxo b c) := by\n  by_cases h₁ : a ≼ b <;> by_cases h₂ : b ≼ c\n  · simp [maxo, h₁, h₂, le_trans h₁ h₂]\n  · simp [maxo, h₁, h₂]\n  · simp [maxo, h₁, h₂]\n  · have hcb : c ≺ b := lt_of_not_le h₂\n    have hba : b ≺ a := lt_of_not_le h₁\n    have hca : ¬ a ≼ c := not_le_of_lt (lt_trans hcb hba)\n    simp [maxo, h₁, h₂, hca]\n\nend TotalOrder\n\nnamespace LWW\n\nopen TotalOrder Order.PartialOrder Order.BoundedJoinSemilattice\n\n/-- A stamp: `(timestamp, replicaId)`, ordered lexicographically.\n    Replica ids are distinct, so stamps of concurrently coexisting\n    writes never tie. -/\nabbrev Stamp (R : Nat) := Nat × Fin R\n\n/-- A write: a stamp plus the written value. The whole payload is\n    ordered lexicographically — the value-level tiebreak is unreachable\n    in real executions (stamps are unique per write) and exists to make\n    the algebra total on the carrier. -/\nabbrev Write (R : Nat) (α : Type) [TotalOrder α] := Stamp R × α",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/- ── The Option lattice over any total order ─────────────────\n   `none` is \"never written\" (the bottom); merge is max-by-order.\n   Proved once, generically; the LWW register is an instance. -/\n\n/-- \"Never written\" is below everything; two writes compare by order. -/\ndef leO {α : Type} [TotalOrder α] : Option α → Option α → Prop\n  | none, _ => True\n  | some _, none => False\n  | some a, some b => a ≼ b\n\ninstance {α : Type} [TotalOrder α] : LE (Option α) := ⟨leO⟩\n\n/-- Merging two optional writes: the larger one wins. -/\ndef mergeO {α : Type} [TotalOrder α] : Option α → Option α → Option α\n  | none, y => y\n  | x, none => x\n  | some a, some b => some (maxo a b)\n\ninstance {α : Type} [TotalOrder α] : Order.PartialOrder (Option α) where\n  le_refl x := by\n    cases x with\n    | none => trivial\n    | some a => exact TotalOrder.le_refl a\n  le_antisymm {x y} h₁ h₂ := by\n    cases x with\n    | none =>\n        cases y with\n        | none => rfl\n        | some b => exact False.elim h₂\n    | some a =>\n        cases y with\n        | none => exact False.elim h₁\n        | some b => exact congrArg some (TotalOrder.le_antisymm h₁ h₂)\n  le_trans {x y z} h₁ h₂ := by\n    cases x with\n    | none => trivial\n    | some a =>\n        cases y with\n        | none => exact False.elim h₁\n        | some b =>\n            cases z with\n            | none => exact False.elim h₂\n            | some c => exact TotalOrder.le_trans h₁ h₂\n\ninstance {α : Type} [TotalOrder α] : BoundedJoinSemilattice (Option α) where\n  sup := mergeO\n  bot := none\n  le_sup_left x y := by\n    cases x with\n    | none => trivial\n    | some a =>\n        cases y with\n        | none => exact TotalOrder.le_refl a\n        | some b => exact le_maxo_left a b\n  le_sup_right x y := by\n    cases y with\n    | none => cases x <;> trivial\n    | some b =>\n        cases x with\n        | none => exact TotalOrder.le_refl b\n        | some a => exact le_maxo_right a b\n  sup_le x y z h₁ h₂ := by\n    cases x with\n    | none =>\n        cases y with\n        | none => trivial\n        | some b => exact h₂\n    | some a =>\n        cases y with\n        | none => exact h₁\n        | some b =>\n            cases z with\n            | none => exact False.elim h₁\n            | some c => exact maxo_le h₁ h₂\n  bot_le x := by cases x <;> trivial\n\n/-- The LWW register: an optional stamped write, merged by taking the\n    lexicographically larger one. -/\nabbrev LWWReg (R : Nat) (α : Type) [TotalOrder α] := Option (Write R α)\n\n/-- Write at replica `i`, logical time `t`. Merging (not overwriting!)\n    keeps the update inflationary even if `t` is stale. -/\ndef write {R : Nat} {α : Type} [TotalOrder α]\n    (t : Nat) (i : Fin R) (v : α) (r : LWWReg R α) : LWWReg R α :=\n  r ⊔ some ((t, i), v)\n\n/-- The observable value. -/\ndef read {R : Nat} {α : Type} [TotalOrder α] (r : LWWReg R α) : Option α :=\n  r.map (·.2)\n\ntheorem write_inflationary {R : Nat} {α : Type} [TotalOrder α]\n    (t : Nat) (i : Fin R) (v : α) :\n    Order.Inflationary (write (R := R) t i v) :=\n  fun r => le_sup_left r (some ((t, i), v))",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/- The three ACI laws, now theorems about the register — reached by a\n   third route (linear-order max), same algebra. Stated for the generic\n   Option lattice; the register inherits them. -/\n\ntheorem merge_comm {α : Type} [TotalOrder α] (x y : Option α) :\n    x ⊔ y = y ⊔ x := Order.sup_comm x y\n\ntheorem merge_assoc {α : Type} [TotalOrder α] (x y z : Option α) :\n    x ⊔ y ⊔ z = x ⊔ (y ⊔ z) := Order.sup_assoc x y z\n\ntheorem merge_idem {α : Type} [TotalOrder α] (x : Option α) :\n    x ⊔ x = x := Order.sup_idem x\n\n/-- The tie that broke `naiveMerge`, resolved: same timestamp, distinct\n    replicas, both merge orders give the same winner. -/\ntheorem tie_resolved :\n    (write 3 (0 : Fin 2) 10 ⊥ ⊔ write 3 1 20 ⊥)\n      = (write 3 1 20 ⊥ ⊔ write 3 (0 : Fin 2) 10 ⊥) := by decide\n\n/-- Interlude demo: reads after out-of-order, duplicated merges. -/\ndef interlude : List (String × Option Nat) :=\n  let w₁ : LWWReg 2 Nat := write 1 0 100 ⊥   -- replica 0 writes 100 at t=1\n  let w₂ : LWWReg 2 Nat := write 2 1 200 ⊥   -- replica 1 writes 200 at t=2\n  let w₃ : LWWReg 2 Nat := write 2 0 150 ⊥   -- replica 0 writes 150 at t=2 (tie!)\n  [ (\"read (w₁ ⊔ w₂)\", read (w₁ ⊔ w₂)),\n    (\"read (w₂ ⊔ w₁)\", read (w₂ ⊔ w₁)),\n    (\"read (w₂ ⊔ w₃)  -- t=2 tie, replica 1 wins\", read (w₂ ⊔ w₃)),\n    (\"read (w₃ ⊔ w₂)\", read (w₃ ⊔ w₂)),\n    (\"read ((w₁ ⊔ w₂) ⊔ w₂)\", read ((w₁ ⊔ w₂) ⊔ w₂)) ]\n\n#eval interlude\n\nend LWW",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/- ── The pointwise function lattice ───────────────────────────\n   States indexed by keys: if the per-key state is a semilattice, the\n   whole map is, key by key. (Requires a semilattice codomain, so it\n   never collides with the hand-built `GCounter` instance — `Nat`\n   itself is not a `BoundedJoinSemilattice` here.) -/\n\nnamespace Order\n\ninstance instFunLE {ι α : Type} [BoundedJoinSemilattice α] : LE (ι → α) :=\n  ⟨fun f g => ∀ i, f i ≤ g i⟩\n\ninstance instFunPartialOrder {ι α : Type} [BoundedJoinSemilattice α] :\n    PartialOrder (ι → α) where\n  le_refl f i := PartialOrder.le_refl (f i)\n  le_antisymm h₁ h₂ := funext fun i => PartialOrder.le_antisymm (h₁ i) (h₂ i)\n  le_trans h₁ h₂ i := PartialOrder.le_trans (h₁ i) (h₂ i)\n\ninstance instFunBJS {ι α : Type} [BoundedJoinSemilattice α] :\n    BoundedJoinSemilattice (ι → α) where\n  sup f g := fun i => f i ⊔ g i\n  bot := fun _ => ⊥\n  le_sup_left f g i := BoundedJoinSemilattice.le_sup_left (f i) (g i)\n  le_sup_right f g i := BoundedJoinSemilattice.le_sup_right (f i) (g i)\n  sup_le f g h h₁ h₂ i := BoundedJoinSemilattice.sup_le (f i) (g i) (h i) (h₁ i) (h₂ i)\n  bot_le f i := BoundedJoinSemilattice.bot_le (f i)\n\nend Order\n\nnamespace LWW\n\nopen TotalOrder Order.PartialOrder Order.BoundedJoinSemilattice\n\n/-- The LWW-Element-Set: one Boolean LWW register per element.\n    `true` = \"last word was add\", `false` = \"last word was remove\". -/\nabbrev LWWElementSet (R : Nat) := Nat → LWWReg R Bool\n\nnamespace LWWElementSet\n\nvariable {R : Nat}\n\ndef stampWrite (e : Nat) (t : Nat) (i : Fin R) (b : Bool)\n    (s : LWWElementSet R) : LWWElementSet R :=\n  fun e' => if e' = e then write t i b (s e') else s e'\n\ndef add (e t : Nat) (i : Fin R) (s : LWWElementSet R) : LWWElementSet R :=\n  stampWrite e t i true s\n\ndef remove (e t : Nat) (i : Fin R) (s : LWWElementSet R) : LWWElementSet R :=\n  stampWrite e t i false s\n\ndef mem (e : Nat) (s : LWWElementSet R) : Bool :=\n  match s e with\n  | some (_, b) => b\n  | none => false\n\ntheorem stampWrite_inflationary (e t : Nat) (i : Fin R) (b : Bool) :\n    Order.Inflationary (stampWrite e t i b) := by\n  intro s e'\n  by_cases h : e' = e <;> simp [stampWrite, h]\n  · exact write_inflationary t i b (s e)\n  · exact le_refl (s e')\n\n/-- Merging maps merges each element's register — by definition. -/\ntheorem mem_merge (e : Nat) (s t : LWWElementSet R) :\n    mem e (s ⊔ t) = mem e (fun e' => s e' ⊔ t e') := rfl\n\n/-- Interlude: concurrent add and remove of the same element resolve\n    by stamp, identically at every replica. -/\ndef interlude : List (String × Bool) :=\n  let s₀ : LWWElementSet 2 := ⊥\n  let atA := add 1 1 0 (add 7 1 0 s₀)          -- A adds 1 and 7 at t=1\n  let atB := remove 1 2 1 s₀                    -- B removes 1 at t=2\n  [ (\"1 ∈ A ⊔ B\", mem 1 (atA ⊔ atB)),\n    (\"1 ∈ B ⊔ A\", mem 1 (atB ⊔ atA)),\n    (\"7 ∈ A ⊔ B\", mem 7 (atA ⊔ atB)),\n    (\"re-add 1 at t=3\", mem 1 (add 1 3 0 (atA ⊔ atB))) ]\n\n#eval interlude\n\nend LWWElementSet\n\nend LWW",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Three replicas with tied naive timestamps: grouping one merge differently changes the answer.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "example :\n    LWW.naiveMerge (LWW.naiveMerge (3, 1) (3, 2)) (3, 3)\n      ≠ LWW.naiveMerge (LWW.naiveMerge (3, 2) (3, 1)) (3, 3) := by decide",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "open Order.PartialOrder Order.BoundedJoinSemilattice in\ntheorem lww_merge_bot {R : Nat} (x : LWW.LWWReg R Nat) : ⊥ ⊔ x = x := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that the never-written register is the identity of merge.",
+      "leanSolution": "  exact Order.sup_bot_left x",
+      "hints": [
+        "Every bounded join-semilattice has $\\bot \\sqcup x = x$: look in the merge discipline's toolkit for `sup_bot_left`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "associative(Naive)",
+      "type": "exercise",
+      "prompt": "Is the naive merge associative? Answer `true` or `false`.",
+      "hints": [
+        "$(x \\cdot y) \\cdot z$ and $x \\cdot (y \\cdot z)$ both give $z$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Timestamps in the state turn overwrite into a join. Ties must be broken deterministically, or merging stops being commutative. The register converges, but one of two concurrent writes is silently discarded: convergence is not the same as keeping what users meant.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

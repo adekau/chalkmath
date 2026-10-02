@@ -1578,6 +1578,443 @@ def inferExample : IO Unit := do
 }, { leanPrelude: true });
 
 // ---------------------------------------------------------------------------------------------------
+// Course 6. The Lean is the book's own (From Propagators to Replicas, adekau/lean4learning), ported to
+// Lean 4.34 in notebooks/sources/Crdt.lean and split here at its chapter headings; the book's
+// compiled solutions become the lessons' Lean exercises.
+const crdtLines = readFileSync(new URL("../../notebooks/sources/Crdt.lean", import.meta.url), "utf8").split("\n");
+/** The line where the chapter block headed `name` starts (its `/- ====` line). */
+const crdtAt = (name) => {
+  const i = crdtLines.findIndex((l, k) => l.startsWith("/- ====") && (crdtLines[k + 1] ?? "").trimStart().startsWith(name));
+  if (i < 0) throw new Error(`Crdt.lean: no chapter headed ${name}`);
+  return i;
+};
+/** Lines `from`–`to` as Lean cells, one per top-level comment block (the book's own sections). */
+function crdtCells(from, to) {
+  const cells = [];
+  let cur = [];
+  for (const l of crdtLines.slice(from, to)) {
+    if (l.startsWith("/- ") && cur.some((x) => x.trim())) { cells.push(cur.join("\n").trim()); cur = []; }
+    cur.push(l);
+  }
+  if (cur.some((x) => x.trim())) cells.push(cur.join("\n").trim());
+  return cells;
+}
+const crdtChapters = ["Crdt.GCounter", "Crdt.PNCounter", "Crdt.SList", "Crdt.LWW", "Crdt.ORSet", "Crdt.Perm", "Crdt.Delivery", "Crdt.VV", "Crdt.OpBased", "Crdt.Capstone", "Crdt.Limits", "Crdt.Solutions"];
+/** Lesson `k`'s Lean (0-based): the first lesson starts at the top of the file. */
+const crdtLesson = (k) => crdtCells(k === 0 ? 0 : crdtAt(crdtChapters[k - 1]), crdtAt(crdtChapters[k]));
+const crdtAudit = crdtCells(crdtLines.findIndex((l, k) => l.startsWith("/- ====") && (crdtLines[k + 1] ?? "").includes("Axiom audit")), crdtLines.length);
+const OPEN = "open Order.PartialOrder Order.BoundedJoinSemilattice in\n";
+
+course("crdt", "CRDTs: replicated data that converges",
+  "From Propagators to Replicas: counters, sets and registers that replicas update without coordinating and merge as joins; the main theorem that they converge; gossip, version vectors, op-based CRDTs, a replicated store, and the limits.",
+  "Distributed systems", (add) => {
+
+  add("01-replicas.chalk", "Replicas and the merge discipline", "Why merging copies is hard, and the one discipline that makes it easy: states in a semilattice, merge as join.", ({ sec, md, m, ex, lean }) => {
+    sec("Replicas and the merge discipline");
+    md(r`
+> [!goal]
+> See how replicas that accept updates locally diverge, why "overwrite" and other casual merges lose updates, and state the discipline every design in this course obeys: the state is a bounded join-semilattice, updates go up, and merge is the join.
+`);
+    md(r`Several machines keep a copy (a **replica**) of the same logical value, accept updates locally without waiting for each other, and reconcile later over a network that delays, drops, duplicates and reorders. Accepting updates locally is easy. Merging afterwards, so that every replica ends with the same state and that state reflects every update, is the hard part.`);
+    sec("Overwrite is not a merge");
+    md(r`"Keep the incoming value" depends on who hears from whom last. As an operation it is not commutative, so two replicas that exchange states end up swapped rather than equal:`);
+    m("let Ow = op({a, b}; [a, b; a, b])");
+    m("commutative(Ow)", { work: true });
+    m("fold(Ow; a, b)");
+    m("fold(Ow; b, a)");
+    md(r`"Keep the larger" is a join. Any order of exchanges, any grouping, any duplicates, the same result:`);
+    m("let Mx = op({0, 1, 2}; [0, 1, 2; 1, 1, 2; 2, 2, 2])");
+    m("semilattice(Mx)");
+    m("fold(Mx; 2, 0, 1, 1)");
+    md(r`
+> [!definition] The merge discipline
+> A **state-based CRDT** keeps its state in a bounded join-semilattice, makes every update **inflationary** (the new state is above the old), and merges by the **join**. Then a replica stores not a value but everything it has heard about the value, and hearing the same things in any order gives the same state.
+`);
+    md(r`This is the propagator cell from *Order and lattices*, read again: there a cell gathered partial information from propagators on one scheduler; here a replica gathers it from other replicas over an unreliable network. The algebra is the same.`);
+    sec("In Lean");
+    md(r`The book's Lean, chapter by chapter, runs in this course's lessons; each lesson sees the ones before it. First the merge discipline as classes (with notation $\sqcup$ for the join, $\bot$ for the bottom, $\sqsubseteq$ for "knows at least as much"), the laws every join obeys (the ACI toolkit), the propagator machinery re-read as replicas, and the chapter 1 demonstrations of naive merges going wrong.`);
+    for (const c of crdtLesson(0)) lean(c);
+    sec("Exercises");
+    ex("commutative(Mx)", r`Is "keep the larger" commutative?`, []);
+    ex("fold(Ow; b, a, b, a)", r`Under overwrite, a replica hears $b$, $a$, $b$, $a$ in that order. What does it hold?`, [r`The last one heard wins.`]);
+    md(r`
+> [!summary]
+> Replicas that accept updates locally must reconcile, and reconciliation must remember rather than choose. Keeping states in a semilattice and merging by the join makes the order, grouping and repetition of messages irrelevant.
+`);
+  });
+
+  add("02-gcounter.chalk", "The G-Counter", "Counting without coordination: one slot per replica, merged by pointwise maximum.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("The G-Counter");
+    md(r`
+> [!goal]
+> Build a grow-only counter that replicas increment independently and merge without losing or double-counting, and see why one slot per replica is forced.
+`);
+    md(r`A like button: taps land on the nearest replica, replicas exchange states when they can, and everyone should eventually see the same total. A single shared number cannot be merged (max loses taps, sum double-counts repeats). The **G-Counter** keeps one slot per replica, each replica only increments its own slot, merge takes the maximum slot by slot, and the value is the sum of the slots.`);
+    md(r`Two replicas' slots form a product of chains, and merge is its join:`);
+    m("let C4 = chain(4)");
+    m("let G = product(C4, C4)");
+    m("join(G, (2, 0), (1, 3))", { work: true });
+    md(r`Replica 1 has counted 2 taps and replica 2 has counted 3: merged, $(2, 3)$, total 5. Merging the same states again changes nothing; merging an older state ($(1, 0)$) changes nothing either.`);
+    m("join(G, (2, 3), (1, 0))");
+    sec("In Lean");
+    for (const c of crdtLesson(1)) lean(c);
+    md(r`The executable G-Counter renders as a list; rendering a merge is zipping the renders with $\max$. The lemma behind it:`);
+    lx(`theorem zipWith_map_map {α β : Type} (f : β → β → β) (g h : α → β) :
+    ∀ (l : List α), List.zipWith f (l.map g) (l.map h) = l.map (fun i => f (g i) (h i)) := by`,
+      r`Prove that zipping two maps of a list is mapping the combined function.`, `  intro l
+  induction l with
+  | nil => rfl
+  | cons x t ih =>
+    simp only [List.map_cons, List.zipWith_cons_cons]
+    rw [ih]`, [r`Induction on the list.`, r`In the ‹cons› case, ‹simp only [List.map_cons, List.zipWith_cons_cons]› exposes the head, and the hypothesis handles the tail.`]);
+    lean(`${OPEN}theorem toList_sup {R : Nat} (g h : GCounter R) :
+    GCounter.toList (g ⊔ h)
+      = List.zipWith Nat.max (GCounter.toList g) (GCounter.toList h) :=
+  (zipWith_map_map Nat.max g h (List.finRange R)).symm
+
+/-- A merge's value is at most the sum of the values... -/
+theorem foldl_add_pair {ι : Type} (f g : ι → Nat) :
+    ∀ (l : List ι) (a b : Nat),
+      l.foldl (fun acc i => acc + (f i + g i)) (a + b)
+        = l.foldl (fun acc i => acc + f i) a
+            + l.foldl (fun acc i => acc + g i) b
+  | [], _, _ => rfl
+  | x :: t, a, b => by
+      rw [List.foldl_cons, List.foldl_cons, List.foldl_cons,
+          show a + b + (f x + g x) = (a + f x) + (b + g x) by omega]
+      exact foldl_add_pair f g t (a + f x) (b + g x)
+
+${OPEN}theorem value_sup_le {R : Nat} (g h : GCounter R) :
+    GCounter.value (g ⊔ h) ≤ GCounter.value g + GCounter.value h := by
+  have hle : ∀ i : Fin R, (g ⊔ h) i ≤ g i + h i := fun i =>
+    Nat.max_le.mpr ⟨Nat.le_add_right _ _, Nat.le_add_left _ _⟩
+  calc GCounter.value (g ⊔ h)
+      ≤ (List.finRange R).foldl (fun acc i => acc + (g i + h i)) 0 :=
+        GCounter.foldl_add_le hle _ (Nat.le_refl 0)
+    _ = GCounter.value g + GCounter.value h := foldl_add_pair g h _ 0 0
+
+/-- ... and strictly less as soon as the two have counted the same taps. -/
+example :
+    GCounter.value
+        (GCounter.increment 0 (⊥ : GCounter 1) ⊔ GCounter.increment 0 ⊥)
+      < GCounter.value (GCounter.increment 0 (⊥ : GCounter 1))
+          + GCounter.value (GCounter.increment 0 (⊥ : GCounter 1)) := by
+  decide`);
+    sec("Exercises");
+    ex("join(G, (3, 1), (2, 2))", r`Merge the G-Counter states $(3, 1)$ and $(2, 2)$. Write the pair as ‹(x, y)›.`, [r`Slot by slot, the maximum.`]);
+    md(r`
+> [!summary]
+> A G-Counter gives each replica its own slot; increments touch only one's own slot, merge is the pointwise maximum, and the value is the sum. Merging twice or merging stale states changes nothing, so the network may duplicate and reorder freely.
+`);
+  });
+
+  add("03-pncounter.chalk", "The PN-Counter", "Counting down without going down: two grow-only counters, and a query that subtracts.", ({ sec, md, m, ex, lean }) => {
+    sec("The PN-Counter");
+    md(r`
+> [!goal]
+> Support decrements while keeping every update inflationary, by separating the state (which only grows) from the query (which may go down).
+`);
+    md(r`A decrement makes the number smaller, but the discipline requires updates to go up. The way out: a decrement is not the removal of an increment but a new event in its own right. Keep two G-Counters, $P$ for increments and $N$ for decrements, and let the **query** compute $P - N$. The state never goes down; the report does.`);
+    md(r`For one replica the state is a pair $(p, n)$, ordered componentwise:`);
+    m("let C3 = chain(3)");
+    m("let PN = product(C3, C3)");
+    m("le(PN, (1, 0), (1, 1))", { work: true });
+    md(r`$(1, 0) \sqsubseteq (1, 1)$: a decrement moved the state up, while the value went from 1 to 0. Information grows even when the number shrinks.`);
+    sec("In Lean");
+    for (const c of crdtLesson(2)) lean(c);
+    md(r`A query that clamps at zero hides the negative truth: a seed for the last lesson.`);
+    lean(`def clampedValue {R : Nat} (p : PNCounter R) : Nat :=
+  (PNCounter.value p).toNat
+
+example : clampedValue (PNCounter.decr 0 (⊥ : PNCounter 1)) = 0 := by decide
+example : PNCounter.value (PNCounter.decr 0 (⊥ : PNCounter 1)) < 0 := by decide`);
+    sec("Exercises");
+    ex("le(PN, (2, 0), (1, 1))", r`Is the state $(2, 0)$ below $(1, 1)$? Answer ‹true› or ‹false›.`, [r`Compare componentwise.`]);
+    md(r`
+> [!summary]
+> Split state from query: the state is a pair of grow-only counters and only rises; the query $P - N$ may fall. The value is not monotone in the state, and that is fine, because only the state is merged.
+`);
+  });
+
+  add("04-sets.chalk", "Sets that only grow", "G-Set and 2P-Set: union as the merge, finite sets as sorted lists, and the removal that cannot be undone.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Sets that only grow");
+    md(r`
+> [!goal]
+> Replicate sets: a grow-only set merged by union, and a two-phase set that supports removal with a second grow-only set of tombstones, at the price of never re-adding.
+`);
+    md(r`A **G-Set** is the powerset lattice: states are finite sets, the order is inclusion, the merge is union. To compute with finite sets (print them, decide equalities) the book represents them as **strictly sorted lists**: same members, same list, which is what antisymmetry needs.`);
+    m("let S = subsets({x, y})");
+    m("join(S, {x}, {y})");
+    sec("Removal: the 2P-Set");
+    md(r`Removing from a G-Set would make the state go down. A **2P-Set** keeps two G-Sets, the added and the removed (tombstones); an element is in the set when it is added and not removed. Both halves only grow, so the pair is a product semilattice:`);
+    m("let TP = product(S, S)");
+    m("join(TP, ({x}, {}), ({x}, {x}))", { work: true });
+    m("join(TP, ({x}, {x}), ({x}, {}))");
+    md(r`
+> [!mistake]
+> A removed element can never come back: its tombstone outranks every later add, because the merge cannot tell a re-add from an old add it has already seen. The next lessons fix this two ways: with timestamps (last writer wins) and with unique tags (the OR-Set).
+`);
+    sec("In Lean");
+    for (const c of crdtLesson(3)) lean(c);
+    md(r`A sorted, duplicate-free sublist is no longer than the list it sits in; so a G-Set's size can only grow.`);
+    lean(`${OPEN}theorem sorted_subset_length {α : Type} [TotalOrder α] :
+    ∀ {l₁ l₂ : List α}, SList.Sorted l₁ → SList.Sorted l₂ →
+      (∀ x ∈ l₁, x ∈ l₂) → l₁.length ≤ l₂.length
+  | [], _, _, _, _ => Nat.zero_le _
+  | a :: _, [], _, _, h => absurd (h a List.mem_cons_self) (by intro hx; cases hx)
+  | a :: t₁, b :: t₂, h₁, h₂, h => by
+      have hab : b ≼ a := SList.sorted_head_le h₂ a (h a List.mem_cons_self)
+      by_cases he : a = b
+      · subst he
+        apply Nat.succ_le_succ
+        apply sorted_subset_length (SList.sorted_tail h₁) (SList.sorted_tail h₂)
+        intro x hx
+        have hax : a ≺ x := SList.sorted_head_lt h₁ x hx
+        cases List.mem_cons.mp (h x (List.mem_cons_of_mem a hx)) with
+        | inl hxa => exact absurd (hxa ▸ hax) (TotalOrder.lt_irrefl a)
+        | inr hm => exact hm
+      · have hba : b ≺ a := ⟨hab, fun hc => he hc.symm⟩
+        have hsub : ∀ x ∈ a :: t₁, x ∈ t₂ := by
+          intro x hx
+          have hbx : b ≺ x :=
+            TotalOrder.lt_of_lt_of_le hba (SList.sorted_head_le h₁ x hx)
+          cases List.mem_cons.mp (h x hx) with
+          | inl hxb => exact absurd (hxb ▸ hbx) (TotalOrder.lt_irrefl b)
+          | inr hm => exact hm
+        have hlen := sorted_subset_length h₁ (SList.sorted_tail h₂) hsub
+        simp only [List.length_cons] at *
+        omega`);
+    lx(`theorem size_monotone {s t : GSet} (h : s ⊑ t) :
+    SList.size s ≤ SList.size t := by`, r`Prove that a G-Set's size never shrinks under the information order.`, `  exact sorted_subset_length s.sorted t.sorted h`, [r`‹sorted_subset_length› does the work; a G-Set carries the proof that its list is sorted (‹s.sorted›).`]);
+    sec("Exercises");
+    ex("join(TP, ({x, y}, {}), ({x}, {x}))", r`Merge the 2P-Set states $(\{x, y\}, \{\})$ and $(\{x\}, \{x\})$. Write it as ‹({…}, {…})›.`, [r`Union the added sets and the removed sets separately.`]);
+    md(r`
+> [!summary]
+> Union is a join, so grow-only sets replicate for free. Removal needs tombstones, which only grow too; the 2P-Set pays for that with "removed once, removed forever".
+`);
+  });
+
+  add("05-lww.chalk", "Last writer wins", "Overwrite, done lawfully: timestamps in the state, ties broken by replica, and the LWW-Element-Set.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Last writer wins");
+    md(r`
+> [!goal]
+> Recover overwrite semantics as a join, by putting time in the state; see why ties must be broken and what convergence still costs.
+`);
+    md(r`A display name, a thermostat set point: here the *last* write should win. The move is the one every design in this course makes: if the merge needs information, put it in the state. Each write carries a stamp, and merge keeps the write with the larger stamp, breaking ties by replica identity. That is a join on a lexicographic order.`);
+    md(r`Done naively ("on a tie, keep the incoming one"), the merge is not commutative:`);
+    m("let Naive = op({w1, w2}; [w1, w2; w1, w2])");
+    m("commutative(Naive)", { work: true });
+    sec("In Lean");
+    for (const c of crdtLesson(4)) lean(c);
+    md(r`Three replicas with tied naive timestamps: grouping one merge differently changes the answer.`);
+    lean(`example :
+    LWW.naiveMerge (LWW.naiveMerge (3, 1) (3, 2)) (3, 3)
+      ≠ LWW.naiveMerge (LWW.naiveMerge (3, 2) (3, 1)) (3, 3) := by decide`);
+    lx(`${OPEN}theorem lww_merge_bot {R : Nat} (x : LWW.LWWReg R Nat) : ⊥ ⊔ x = x := by`, r`Prove that the never-written register is the identity of merge.`, `  exact Order.sup_bot_left x`, [r`Every bounded join-semilattice has $\bot \sqcup x = x$: look in the merge discipline's toolkit for ‹sup_bot_left›.`]);
+    sec("Exercises");
+    ex("associative(Naive)", r`Is the naive merge associative? Answer ‹true› or ‹false›.`, [r`$(x \cdot y) \cdot z$ and $x \cdot (y \cdot z)$ both give $z$.`]);
+    md(r`
+> [!summary]
+> Timestamps in the state turn overwrite into a join. Ties must be broken deterministically, or merging stops being commutative. The register converges, but one of two concurrent writes is silently discarded: convergence is not the same as keeping what users meant.
+`);
+  });
+
+  add("06-orset.chalk", "The OR-Set: add wins", "Observed-remove: a remove deletes only the adds it has seen, so a concurrent add survives.", ({ sec, md, lean, lx }) => {
+    sec("The OR-Set: add wins");
+    md(r`
+> [!goal]
+> Build a set where removal only cancels the additions the remover observed, so that when an add and a remove race the add wins, and follow the book's proof of that slogan.
+`);
+    md(r`The G-Set never forgets, the 2P-Set forgets once and forever, and the LWW-Element-Set lets a clock decide, so a remove can cancel an add its issuer never saw. The **observed-remove set** tags every add with a unique identifier; a remove tombstones the tags it has seen. An element is present when some tag of it is not tombstoned. A concurrent add carries a tag the remove never saw, so it survives: **add wins**.`);
+    md(r`
+> [!theorem] Add wins
+> If an add of $e$ is concurrent with a remove of $e$, then after both are merged $e$ is in the set. The proof (the longest in the book) runs on an invariant of reachable states, not on the algebra alone.
+`);
+    sec("In Lean");
+    for (const c of crdtLesson(5)) lean(c);
+    md(r`Tombstones are the price: they only ever accumulate.`);
+    lx(`theorem orset_tombs_size_monotone {R : Nat} {s t : ORSet R} (h : s ⊑ t) :
+    SList.size s.tombs ≤ SList.size t.tombs := by`, r`Prove that an OR-Set's tombstones never shrink.`, `  exact sorted_subset_length s.tombs.sorted t.tombs.sorted h.2.1`, [r`The order on OR-Set states compares the tombstone sets as its second component: ‹h.2.1›.`, r`Lesson 4's ‹sorted_subset_length› finishes it.`]);
+    md(r`
+> [!summary]
+> Unique tags make removal precise: a remove deletes what it observed and nothing else. Add wins, re-adds work, and the cost is tombstones that never go away.
+`);
+  });
+
+  add("07-convergence.chalk", "Multisets, folds and the main theorem", "Quotient types for 'the same updates, in any order', and strong eventual consistency proved once for every CRDT.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Multisets, folds and the main theorem");
+    md(r`
+> [!goal]
+> State and prove the main theorem: replicas that have received the same updates, in any order and with any repetitions, are in the same state. Along the way, learn quotient types.
+`);
+    md(r`Each earlier lesson ended with replicas agreeing after scrambled deliveries; none proved they must. A replica receives a *sequence* of updates, but what should matter is the *collection* of them, order and repetition being noise. The honest type for that is a **quotient**: lists modulo permutation are multisets.`);
+    md(r`
+> [!theorem] Strong eventual consistency
+> For any state-based CRDT, folding the join over two delivery sequences with the same members gives the same state. Order does not matter (commutativity and associativity), and repeats do not matter (idempotence).
+`);
+    md(r`On a small table, any order and any repetition of the same updates:`);
+    m("let Mx = op({0, 1, 2, 3}; [0, 1, 2, 3; 1, 1, 2, 3; 2, 2, 2, 3; 3, 3, 3, 3])");
+    m("fold(Mx; 1, 3, 2)");
+    m("fold(Mx; 2, 2, 1, 3, 1)");
+    sec("In Lean");
+    for (const c of crdtLesson(6)) lean(c);
+    md(r`Multiset union is well-defined on the quotient because appending respects permutation, on either side:`);
+    lean(`theorem perm_append_right {α : Type} (m : List α) {l₁ l₂ : List α}
+    (h : Perm l₁ l₂) : Perm (l₁ ++ m) (l₂ ++ m) := by
+  induction h with
+  | nil => exact Perm.refl m
+  | cons x _ ih => exact .cons x ih
+  | swap x y l => exact .swap x y (l ++ m)
+  | trans _ _ ih₁ ih₂ => exact .trans ih₁ ih₂`);
+    lx(`theorem perm_append_left {α : Type} (m : List α) {l₁ l₂ : List α}
+    (h : Perm l₁ l₂) : Perm (m ++ l₁) (m ++ l₂) := by`, r`Prove that prepending a list respects permutation.`, `  induction m with
+  | nil => exact h
+  | cons x t ih => exact .cons x ih`, [r`Induction on ‹m›, the list in front.`, r`‹Perm.cons x› extends a permutation by the same head.`]);
+    lean(`def msetUnion {α : Type} : MSet α → MSet α → MSet α :=
+  Quotient.lift₂ (fun l₁ l₂ => MSet.ofList (l₁ ++ l₂))
+    (fun _ _ _ _ h₁ h₂ => Quotient.sound
+      (.trans (perm_append_right _ h₁) (perm_append_left _ h₂)))
+
+example : msetUnion (MSet.ofList [1, 2]) (MSet.ofList [3])
+    = MSet.ofList [1, 2, 3] := rfl`);
+    sec("Exercises");
+    ex("fold(Mx; 3, 0, 3, 1)", r`A replica receives $3, 0, 3, 1$. What is its state?`, []);
+    md(r`
+> [!summary]
+> The main theorem is proved once: for any CRDT whose merge is a join, the same multiset of updates gives the same state. Quotient types make "same updates, any order" a type, and the fold over it well-defined.
+`);
+  });
+
+  add("08-delivery.chalk", "Delivery: gossip, duplication and reordering", "A trace semantics for an at-least-once network, eventual delivery implies convergence, and a gossip driver that provably stops.", ({ sec, md, lean, lx }) => {
+    sec("Delivery: gossip, duplication and reordering");
+    md(r`
+> [!goal]
+> Model the network: every execution an adversarial at-least-once network could produce, as a relation; prove that eventual delivery gives convergence; and write a gossip driver whose termination Lean accepts.
+`);
+    md(r`The main theorem assumed replicas had received the same set of updates. Where do those sets come from? This lesson builds the network twice: as an inductive **trace semantics** (a step relation: update, send, deliver, with messages duplicated and reordered at will), and as an **executable gossip driver** run to quiescence, whose termination is proved by well-founded recursion.`);
+    sec("In Lean");
+    for (const c of crdtLesson(7)) lean(c);
+    md(r`Replicas never forget: what a replica has seen only grows along any execution.`);
+    lx(`${OPEN}theorem seen_monotone {R : Nat} {σ : Type} [BoundedJoinSemilattice σ]
+    {c₁ c₂ : Delivery.Config R σ} (h : Delivery.Reachable c₁ c₂)
+    (r : Fin R) : ∀ x ∈ c₁.seen r, x ∈ c₂.seen r := by`, r`Prove that a replica's seen updates only grow along any execution.`, `  induction h with
+  | refl => intro _ hx; exact hx
+  | tail _ hs ih =>
+      intro x hx
+      have hx₂ := ih x hx
+      cases hs with
+      | update r' v =>
+          show x ∈ (if r = r' then v :: _ else _)
+          by_cases hr : r = r'
+          · subst hr; simp; exact Or.inr hx₂
+          · simp [hr]; exact hx₂
+      | send r' r'' => exact hx₂
+      | deliver r' p hp =>
+          show x ∈ (if r = r' then p.2 ++ _ else _)
+          by_cases hr : r = r'
+          · subst hr; simp; exact Or.inr hx₂
+          · simp [hr]; exact hx₂`, [
+      r`Induction on the reachability derivation: ‹refl› and ‹tail›.`,
+      r`In the ‹tail› case, case on the last step: an update or a delivery may add to some replica's list (‹by_cases› on whether it is ‹r›); a send changes nothing.`,
+    ]);
+    md(r`
+> [!summary]
+> An at-least-once network is a relation on configurations; eventual delivery is a property of executions; and under it, every state-based CRDT converges. The gossip driver runs that argument as a program, and its termination is a theorem.
+`);
+  });
+
+  add("09-version-vectors.chalk", "Version vectors and causality", "Time without clocks: the G-Counter again, read as a causal history, and concurrency as incomparability.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Version vectors and causality");
+    md(r`
+> [!goal]
+> Track causality without clocks: a version vector records how many events of each replica have been seen; happened-before is its order, and concurrency is incomparability.
+`);
+    md(r`A **version vector** has one entry per replica: how many of that replica's events have been seen. Its merge is the pointwise maximum and its bottom is all zeroes: it is exactly the G-Counter, read differently. Event $e$ **happened before** $f$ when $e$'s vector is below $f$'s; two events are **concurrent** when neither vector is below the other.`);
+    m("let C3 = chain(3)");
+    m("let V = product(C3, C3)");
+    m("le(V, (1, 0), (0, 1))", { work: true });
+    m("le(V, (0, 1), (1, 0))");
+    m("join(V, (1, 0), (0, 1))");
+    md(r`A tick at replica 1 and a tick at replica 2 are concurrent: neither saw the other. Concurrency is not a failure to know the order; it is a fact about what each replica had seen.`);
+    sec("In Lean");
+    for (const c of crdtLesson(8)) lean(c);
+    lx(`${OPEN}theorem vv_merge_lub {R : Nat} {v w u : VV R} (hv : v ⊑ u) (hw : w ⊑ u) :
+    v ⊔ w ⊑ u := by`, r`Prove that the merged version vector is below any vector above both: it is the least upper bound of the two histories.`, `  exact sup_le v w u hv hw`, [r`It is the join's defining property, ‹sup_le›.`]);
+    sec("Exercises");
+    ex("le(V, (1, 1), (2, 1))", r`Did the event with vector $(1, 1)$ happen before the one with $(2, 1)$? Answer ‹true› or ‹false›.`, []);
+    ex("join(V, (2, 0), (0, 1))", r`Merge the version vectors $(2, 0)$ and $(0, 1)$.`, [r`Pointwise maximum.`]);
+    md(r`
+> [!summary]
+> Version vectors are G-Counters that count events; their order is causality, their join is merging histories, and incomparable vectors are concurrent events. Causal delivery waits until a message is the next event of its sender and everything it depends on has been seen.
+`);
+  });
+
+  add("10-op-based.chalk", "Op-based CRDTs", "Shipping operations instead of states: commutativity moves from the merge to the operations, and duplication becomes the network's problem.", ({ sec, md, lean, lx }) => {
+    sec("Op-based CRDTs");
+    md(r`
+> [!goal]
+> Compare the two traditions: state-based replicas ship states and join them; operation-based replicas ship operations and apply them. See what each asks of the network, and how one simulates the other.
+`);
+    md(r`In an **op-based** CRDT a replica ships the operation it performed ("increment slot 3", "add element 7"), and every receiver applies it. Messages are small, but there is no join to hide behind: if operations arrive out of order they must **commute**, and if one arrives twice it is applied twice, so the transport must deliver **exactly once**. The burden moves from the algebra to the network.`);
+    sec("In Lean");
+    for (const c of crdtLesson(9)) lean(c);
+    md(r`Increments commute, so the G-Counter is also an op-based CRDT:`);
+    lx(`theorem increment_comm {R : Nat} (i j : Fin R) (g : GCounter R) :
+    GCounter.increment i (GCounter.increment j g)
+      = GCounter.increment j (GCounter.increment i g) := by`, r`Prove that increments commute, at any two slots (even the same one).`, `  exact (OpBased.opCounter R).comm i j g`, [r`The op-based counter above already carries this fact as its ‹comm› field.`]);
+    md(r`The op-based PN-Counter: an operation is a signed increment, and everything commutes.`);
+    lean(`${OPEN}def opPNCounter (R : Nat) : OpBased.OpCRDT (Bool × Fin R) (PNCounter R) where
+  init := ⊥
+  apply o p :=
+    if o.1 then (GCounter.increment o.2 p.1, p.2)
+    else (p.1, GCounter.increment o.2 p.2)
+  comm o₁ o₂ s := by
+    by_cases h₁ : o₁.1 <;> by_cases h₂ : o₂.1 <;> simp [h₁, h₂]
+    · rw [increment_comm]
+    · rw [increment_comm]`);
+    md(r`
+> [!summary]
+> State-based CRDTs tolerate any network that eventually delivers; op-based CRDTs need commuting operations and exactly-once delivery, in exchange for small messages. Each can simulate the other.
+`);
+  });
+
+  add("11-capstone.chalk", "Capstone: a replicated store", "A collaborative shopping list from the course's parts: an OR-Set of items, each with a PN-Counter quantity, converging with no new proofs.", ({ sec, md, lean }) => {
+    sec("Capstone: a replicated store");
+    md(r`
+> [!goal]
+> Assemble a collaborative shopping list from the earlier designs, run three replicas under an adversarial schedule, and see that its convergence needs no new proof.
+`);
+    md(r`The list is an OR-Set of items (adds must win, re-adds must work), and each item has a quantity that goes up and down, a PN-Counter, one per item: a pointwise function lattice. Products and function spaces of semilattices are semilattices, so the store is one, and the main theorem applies to it as it is. Alice, Bob and Carol edit concurrently; their messages are reordered and duplicated; they agree.`);
+    sec("In Lean");
+    for (const c of crdtLesson(10)) lean(c);
+    md(r`
+> [!summary]
+> Composition is the payoff: a store built from verified parts, with lattice products and function spaces, inherits strong eventual consistency without a single new proof.
+`);
+  });
+
+  add("12-limits.chalk", "What CRDTs cannot do", "Agreement is not correctness: invariants that need coordination, and the axiom audit.", ({ sec, md, lean }) => {
+    sec("What CRDTs cannot do");
+    md(r`
+> [!goal]
+> Walk the boundary of the promise: strong eventual consistency says replicas agree, not that what they agree on is right; some invariants cannot be kept without coordination.
+`);
+    md(r`A last-writer-wins register converges while discarding one of two concurrent writes. A bank balance that must never go negative cannot be a CRDT: two replicas can each approve a withdrawal that is fine locally, and no merge can make both right. Invariants that span replicas need coordination (a lock, consensus, an escrow of rights) somewhere; CRDTs are for the state that does not.`);
+    sec("In Lean");
+    for (const c of crdtLesson(11)) lean(c);
+    md(r`
+> [!note] The axiom audit
+> The book closes by printing the axioms every headline theorem depends on. Nothing beyond propositional extensionality and quotient soundness: the whole chain, the main theorem included, is constructive.
+`);
+    for (const c of crdtAudit) lean(c);
+    md(r`
+> [!summary]
+> CRDTs buy availability and convergence without coordination, and they cannot buy invariants that relate replicas. Knowing which state needs which is the design decision this course leaves you with.
+`);
+  });
+}, { leanPrelude: true });
+
+// ---------------------------------------------------------------------------------------------------
 course("calculus", "Calculus: derivatives and integrals",
   "The rules of differentiation, the chain rule and tangent lines; then antiderivatives the engine checks by differentiating, definite integrals and Riemann sums.",
   "Calculus I–II", (add) => {

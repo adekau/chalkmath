@@ -1,0 +1,109 @@
+{
+  "chalk": 1,
+  "name": "09-version-vectors.chalk",
+  "cells": [
+    {
+      "src": "Version vectors and causality",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Track causality without clocks: a version vector records how many events of each replica have been seen; happened-before is its order, and concurrency is incomparability.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A **version vector** has one entry per replica: how many of that replica's events have been seen. Its merge is the pointwise maximum and its bottom is all zeroes: it is exactly the G-Counter, read differently. Event $e$ **happened before** $f$ when $e$'s vector is below $f$'s; two events are **concurrent** when neither vector is below the other.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let C3 = chain(3)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let V = product(C3, C3)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "le(V, (1, 0), (0, 1))",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "le(V, (0, 1), (1, 0))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "join(V, (1, 0), (0, 1))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A tick at replica 1 and a tick at replica 2 are concurrent: neither saw the other. Concurrency is not a failure to know the order; it is a fact about what each replica had seen.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/- ============================================================\n   Crdt.VV — Chapter 10: Time Without Clocks\n   The version vector is *literally* the G-Counter carrier with the\n   same pointwise-max merge — shared code, new reading: `v ⊑ w`\n   means \"w has seen everything v has seen\". A CRDT about CRDTs.\n   ============================================================ -/\n\nnamespace GCounter\n\n/-- The information order on `Fin R → Nat` is decidable — needed to\n    `decide` concurrency facts in Chapter 10. -/\ninstance {R : Nat} {g h : GCounter R} : Decidable (g ⊑ h) :=\n  @Nat.decidableForallFin R (fun i => g i ≤ h i) (fun i => Nat.decLe (g i) (h i))\n\nend GCounter\n\n/-- A version vector: how many events of each replica have been seen. -/\nabbrev VV (R : Nat) := GCounter R\n\nnamespace VV\n\nopen Order.PartialOrder Order.BoundedJoinSemilattice\n\nvariable {R : Nat}\n\n/-- Replica `i` performs an event: tick its own entry.\n    (`tick` *is* `increment`; the meaning changed, not the code.) -/\ndef tick (i : Fin R) (v : VV R) : VV R := GCounter.increment i v\n\ntheorem tick_inflationary (i : Fin R) : Order.Inflationary (tick (R := R) i) :=\n  GCounter.increment_inflationary i\n\n/-- Causal order: `v` happened before `w` when `w` has seen everything\n    `v` has, and more. -/\ndef happensBefore (v w : VV R) : Prop := v ⊑ w ∧ v ≠ w\n\n/-- Neither saw the other: genuinely concurrent. -/\ndef Concurrent (v w : VV R) : Prop := ¬ v ⊑ w ∧ ¬ w ⊑ v\n\ninstance {v w : VV R} : Decidable (Concurrent v w) :=\n  inferInstanceAs (Decidable (¬ _ ∧ ¬ _))\n\ntheorem vv_le_iff {v w : VV R} : v ⊑ w ↔ ∀ i, v i ≤ w i := Iff.rfl\n\ntheorem happensBefore_irrefl (v : VV R) : ¬ happensBefore v v :=\n  fun h => h.2 rfl\n\ntheorem happensBefore_trans {u v w : VV R}\n    (h₁ : happensBefore u v) (h₂ : happensBefore v w) :\n    happensBefore u w := by\n  refine ⟨le_trans h₁.1 h₂.1, fun he => ?_⟩\n  subst he\n  exact h₂.2 (le_antisymm h₂.1 h₁.1)\n\ntheorem concurrent_symm {v w : VV R} (h : Concurrent v w) :\n    Concurrent w v := ⟨h.2, h.1⟩\n\ntheorem concurrent_irrefl (v : VV R) : ¬ Concurrent v v :=\n  fun h => h.1 (le_refl v)\n\n/-- Refuted: \"version vectors totally order events\". Two ticks at\n    different replicas are comparable in neither direction. Concurrency\n    is not a failure to know; it is a fact about the world. -/\ntheorem ticks_concurrent :\n    Concurrent (tick 0 (⊥ : VV 2)) (tick 1 (⊥ : VV 2)) := by decide\n\n/-- Merging version vectors is joining causal histories. -/\ntheorem merge_seen_left (v w : VV R) : v ⊑ v ⊔ w := le_sup_left v w\n\n/-- Causal delivery: replica `recv` may apply the message stamped `s`\n    from replica `i` when it is the very next event of `i` and every\n    other dependency is already seen. -/\ndef deliverable (i : Fin R) (s recv : VV R) : Prop :=\n  s i = recv i + 1 ∧ ∀ j, j ≠ i → s j ≤ recv j\n\ninstance {i : Fin R} {s recv : VV R} : Decidable (deliverable i s recv) :=\n  @instDecidableAnd _ _ (Nat.decEq _ _) (@Nat.decidableForallFin R (fun j => j ≠ i → s j ≤ recv j)\n    (fun j => match Nat.decEq j.val i.val, Nat.decLe (s j) (recv j) with\n      | isTrue hv, _ => isTrue (fun hne => absurd (Fin.ext hv) hne)\n      | isFalse _, isTrue hle => isTrue (fun _ => hle)\n      | isFalse hv, isFalse hle => isFalse (fun h => hle (h (fun he => hv (congrArg Fin.val he))))))\n\n/-- Interlude: causal facts, decided. -/\ndef interlude : List (String × Bool) :=\n  let vA := tick 0 (tick 0 (⊥ : VV 3))        -- A ticked twice\n  let vB := tick 1 (tick 0 (⊥ : VV 3))        -- B ticked after seeing A's first\n  [ (\"A's first tick ⊑ vB\", decide ((GCounter.increment 0 (⊥ : VV 3)) ⊑ vB)),\n    (\"vA concurrent with vB\", decide (Concurrent vA vB)),\n    (\"vA ⊔ vB dominates both\", decide (vA ⊑ vA ⊔ vB ∧ vB ⊑ vA ⊔ vB)),\n    (\"deliverable: B's msg at A\", decide (deliverable 1 vB (tick 0 (tick 0 (⊥ : VV 3))))) ]\n\n#eval interlude\n\nend VV",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "open Order.PartialOrder Order.BoundedJoinSemilattice in\ntheorem vv_merge_lub {R : Nat} {v w u : VV R} (hv : v ⊑ u) (hw : w ⊑ u) :\n    v ⊔ w ⊑ u := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that the merged version vector is below any vector above both: it is the least upper bound of the two histories.",
+      "leanSolution": "  exact sup_le v w u hv hw",
+      "hints": [
+        "It is the join's defining property, `sup_le`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "le(V, (1, 1), (2, 1))",
+      "type": "exercise",
+      "prompt": "Did the event with vector $(1, 1)$ happen before the one with $(2, 1)$? Answer `true` or `false`.",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "join(V, (2, 0), (0, 1))",
+      "type": "exercise",
+      "prompt": "Merge the version vectors $(2, 0)$ and $(0, 1)$.",
+      "hints": [
+        "Pointwise maximum."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Version vectors are G-Counters that count events; their order is causality, their join is merging histories, and incomparable vectors are concurrent events. Causal delivery waits until a message is the next event of its sender and everything it depends on has been seen.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}
