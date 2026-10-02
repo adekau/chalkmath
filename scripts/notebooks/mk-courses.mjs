@@ -66,13 +66,12 @@ course("calculus", "Calculus: derivatives and integrals",
     m("let m = (subst(f, x, 1 + h) - subst(f, x, 1)) / h");
     m("let L = subst(f, x, 1) + m*(x - 1)");
     m("let T = subst(f, x, 1) + subst(diff(f, x), x, 1)*(x - 1)");
-    md(r`‹manipulate(e, h, from, to)› shows ‹e› with a slider for $h$ and a ‹▶ Play› button, like Mathematica's ‹Manipulate›. Here $h$ runs from $2$ down to $0.05$.`);
-    m("manipulate(plot([f, L, T], x, -0.5, 3), h, 2, 0.05)");
+    md(r`‹manipulate(e, h, from, to)› shows ‹e› with a slider for $h$ and a ‹▶ Play› button, like Mathematica's ‹Manipulate›, and ‹column(…)› puts several things under the one slider, like its ‹Column›: here the picture, then the calculation of ‹m›, ‹L› and ‹T› at the same $h$. $h$ runs from $2$ down to $0.05$.`);
+    m("manipulate(column(plot([f, L, T], x, -0.5, 3), m, L, T), h, 2, 0.05)");
     md(r`
 > [!try]
-> Press ‹▶ Play›. As $h$ shrinks toward $0$ the second point slides down the curve toward $(1, 1)$, and the secant ‹L› turns onto the tangent ‹T›. Drag the slider to stop anywhere. Below, the secant's slope at the same values of $h$: $m = \dfrac{(1 + h)^2 - 1}{h} = 2 + h$ closes in on $f'(1) = 2$.
+> Press ‹▶ Play›. As $h$ shrinks toward $0$ the second point slides down the curve toward $(1, 1)$, and the secant ‹L› turns onto the tangent ‹T›. Under the picture, ‹m› is worked out at each $h$: rise over run, $\dfrac{(1 + h)^2 - 1}{h}$ with $h$ put in, closing in on $f'(1) = 2$. Drag the slider to stop anywhere and read the calculation there.
 `);
-    m("manipulate(m, h, 2, 0.05)");
     md(r`The slope is never computed *at* $h = 0$, where the fraction is $\frac00$: the derivative is the number the slopes approach.`);
     sec("Powers, sums and constants");
     md(r`

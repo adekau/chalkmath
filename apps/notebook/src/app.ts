@@ -21,7 +21,7 @@ import katex from "katex";
 import { ASK_CELL, AskError, askSettings, setAskSettings, runLookup, askSource, savedAsk, backendStatus, ollamaModels, openrouterModels, signInOpenRouter, testModel, WEBGPU_MODELS, type AskResult, type AskSettings } from "./ask-cells.js";
 import { fileCellOf, resolveFiles, importsIn, partContext, partHelp, fileExprValue, svgPoints, kindOf, tableOf, jsonOf, jsonTable, numericColumns, fileText, fileSize, fmtSize, mimeLabel, mimeFor, dataUrl, fileFromBytes, helpersFor, type FileValue, type FileRef, type FileScope, type Table } from "./files.js";
 import { dataGrid, matrixEntries } from "./datagrid.js";
-import { plotYRange, framesWindow, blendable, blend, playPosition } from "./animate.js";
+import { plotYRange, framesWindow, blendable, blend, playPosition, workLine } from "./animate.js";
 import { DOC_PAGES, type DocPage, type DocPart } from "./docs.js";
 import { FUNCTIONS, FN_BY_NAME, AREAS, fnPage, evaluable, type FnDoc, type ExampleSection } from "./reference.js";
 import { ensureLean, syncLean, mountLean, unmountLean, focusLean, setLeanDark, infoview as leanInfoview, leanState, leanFailure, leanProgress, initLeanIsolation, type LeanMessage } from "./lean-cells.js";
@@ -142,7 +142,10 @@ interface Epicycle { k: number; re: number; im: number; latex?: string }
 interface PlotData { var: string; from: number; to: number; series: PlotSeries[]; terms?: Epicycle[] }
 /** `manipulate(e, p, from, to)`: the parameter and the engine's frames — each value of `p` (where it
  *  sits, and as the engine prints it) and the body there, as a term and, for a plot, its samples. */
-interface ManipData { param: string; frames: { value: number; label: string; latex: string; plot?: PlotData }[] }
+interface ManipData { param: string; frames: { value: number; label: string; latex: string; parts: ManipPart[] }[] }
+/** One part of a frame: a body of one part, or each part of a `column(…)`. Its value, the name it was
+ *  written as, and its samples (a plot) or its calculation (each step's term, LaTeX). */
+interface ManipPart { latex: string; name?: string; plot?: PlotData; work?: string[] }
 /** How many curve colours the stylesheet defines (`svg .curve.c0` … ). */
 const CURVE_COLOURS = 6;
 /** A `.chalk` file from before lists in `plot` stored one curve as `points` + `text`. */
@@ -777,7 +780,11 @@ function plotDataOf(r: Pick<PlotResult, "var" | "from" | "to" | "series" | "term
 
 /** A manipulate reply as the notebook shows it: each frame's value and term, and its plot. */
 function manipDataOf(r: ManipulateResult): ManipData {
-  return { param: r.param, frames: r.frames.map((f) => ({ value: f.value, label: f.valueRendered.latex, latex: f.rendered.latex, ...(f.plot ? { plot: plotDataOf(f.plot) } : {}) })) };
+  const part = (p: { rendered: { latex: string }; label?: string; plot?: Parameters<typeof plotDataOf>[0]; work?: { latex: string }[] }): ManipPart => ({
+    latex: p.rendered.latex, ...(p.label ? { name: p.label } : {}), ...(p.plot ? { plot: plotDataOf(p.plot) } : {}),
+    ...(p.work?.length ? { work: p.work.map((w) => w.latex) } : {}),
+  });
+  return { param: r.param, frames: r.frames.map((f) => ({ value: f.value, label: f.valueRendered.latex, latex: f.rendered.latex, parts: f.parts?.length ? f.parts.map(part) : [part(f)] })) };
 }
 
 /** After a cell's evaluation: the notebook is free, and the cell shows what it got. */
@@ -2697,8 +2704,8 @@ function manipPlay(cell: Cell) {
   MANIP_UI.get(cell)?.face();
 }
 /** A manipulate cell's output, like Mathematica's: the parameter's slider with its value and ▶ Play,
- *  and the body at that value — a plot, in one window for every frame and blended between frames
- *  while it plays, or the body's term. */
+ *  and the body at that value, part by part (one part, or each of a `column(…)`): a plot, in one
+ *  window for every frame and blended between frames while it plays, or the part's calculation. */
 function manipBox(cell: Cell): HTMLElement {
   const m = cell.manip!, n = m.frames.length;
   const box = h("div", "manip");
@@ -2709,34 +2716,47 @@ function manipBox(cell: Cell): HTMLElement {
   const val = h("span", "sliderval");
   const play = asButton(h("span", "sliderbtn sliderplay"));
   row.append(h("code", "slidername", m.param), range, val, play);
-  const view = h("div", "manipview"), cap = h("div", "plotcap");
-  box.append(row, view, cap);
-  const plots = m.frames.every((f) => f.plot && !f.plot.terms?.length) ? m.frames.map((f) => f.plot!) : null;
-  const win = plots ? framesWindow(plots) : null;
-  let shown = -1;   // the frame whose value, term and legend are on screen
+  const view = h("div", "manipview");
+  box.append(row, view);
+  // each part's place, and for a plot its frames and the one window they share
+  const slots = (m.frames[0]?.parts ?? []).map((_, j) => {
+    const el = h("div", "manippart"), body = h("div", "manipbody"), cap = h("div", "plotcap");
+    el.append(body, cap); view.append(el);
+    const plots = m.frames.every((f) => f.parts[j]?.plot && !f.parts[j]!.plot!.terms?.length) ? m.frames.map((f) => f.parts[j]!.plot!) : null;
+    return { body, cap, plots, win: plots ? framesWindow(plots) : null };
+  });
+  const plotBox = (p: PlotData, win: [number, number] | null) => {
+    const pb = h("div", "plotbox");
+    pb.append(plotSvg(p, 520, p.series.some((s) => s.parametric) ? 320 : 240, 1, undefined, win));
+    return pb;
+  };
+  let shown = -1;   // the frame whose value, terms and legends are on screen
   const draw = (at: number) => {
     const i = Math.max(0, Math.min(n - 1, Math.round(at))), f = m.frames[i]!;
     if (i !== shown) {
       range.value = String(i);
       val.innerHTML = tex(f.label);
-      cap.replaceChildren();
-      if (f.plot && f.plot.series.length > 1) {
-        f.plot.series.forEach((s, k) => {
-          const it = h("span", `legend c${k % CURVE_COLOURS}`);
-          it.append(h("i", "swatch")); it.insertAdjacentHTML("beforeend", tex(s.latex));
-          cap.append(it);
-        });
-      } else if (f.plot) cap.innerHTML = tex(f.latex, true);
-      if (!plots) view.innerHTML = tex(f.latex, true);
+      slots.forEach((sl, j) => {
+        const pt = f.parts[j];
+        sl.cap.replaceChildren();
+        if (!pt) { sl.body.replaceChildren(); return; }
+        if (!pt.plot) { sl.body.innerHTML = tex(workLine(pt.work, pt.latex, pt.name), true); return; }
+        if (!sl.plots) sl.body.replaceChildren(plotBox(pt.plot, null));   // a curve in the plane: its own frame
+        if (pt.plot.series.length > 1) {
+          pt.plot.series.forEach((s, k) => {
+            const it = h("span", `legend c${k % CURVE_COLOURS}`);
+            it.append(h("i", "swatch")); it.insertAdjacentHTML("beforeend", tex(s.latex));
+            sl.cap.append(it);
+          });
+        } else sl.cap.innerHTML = tex(pt.latex, true);
+      });
       shown = i;
     }
-    if (plots) {
+    for (const sl of slots) {
+      if (!sl.plots) continue;
       const lo = Math.floor(at), hi = Math.min(n - 1, lo + 1), t = at - lo;
-      const a = plots[lo] ?? plots[i]!, b = plots[hi]!;
-      const p: PlotData = t > 1e-6 && blendable(a, b) ? { ...a, series: blend(a, b, t) } : plots[i]!;
-      const box = h("div", "plotbox");
-      box.append(plotSvg(p, 520, p.series.some((s) => s.parametric) ? 320 : 240, 1, undefined, win));
-      view.replaceChildren(box);
+      const a = sl.plots[lo] ?? sl.plots[i]!, b = sl.plots[hi]!;
+      sl.body.replaceChildren(plotBox(t > 1e-6 && blendable(a, b) ? { ...a, series: blend(a, b, t) } : sl.plots[i]!, sl.win));
     }
   };
   const face = () => {
@@ -4890,7 +4910,8 @@ async function evaluateExamples(c: EngineClient, inputs: string[]): Promise<ExOu
       if ("kind" in r && r.kind === "manipulate") {
         // the page shows the first frame; the slider is a notebook's
         const f = r.frames[0];
-        if (f?.plot) o.plot = plotDataOf(f.plot);
+        const pl = f?.plot ?? f?.parts?.find((pt) => pt.plot)?.plot;
+        if (pl) o.plot = plotDataOf(pl);
         o.summary = `the first of ${r.frames.length} frames, ${r.param} = ${f?.valueRendered.text ?? ""}: open it in a notebook to move ${r.param}`;
       }
       if ("kind" in r && r.kind === "poset" && r.hasse) { o.hasse = r.hasse; if (r.summary) o.summary = r.summary; }

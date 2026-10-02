@@ -53,3 +53,10 @@ test("a play moves at a steady pace from where it starts and stops on the last f
   assert.equal(A.playPosition(10, ms * 10, n), n - 1);
   assert.equal(A.playPosition(0, 100, 1), 0);
 });
+
+test("a calculation reads as one line: the name, the steps, the value; a long one keeps its ends", () => {
+  assert.equal(A.workLine(["((2 + 1)^2 - 1)/2", "8/2", "4"], "4", "m"), "m = ((2 + 1)^2 - 1)/2 = 8/2 = 4");
+  assert.equal(A.workLine(undefined, "4", "slope"), "\\mathrm{slope} = 4");
+  assert.equal(A.workLine(["4"], "4"), "4");
+  assert.equal(A.workLine(["a", "b", "c", "d", "e", "f", "g", "h"], "h", undefined, 6), "a = \\cdots = e = f = g = h");
+});

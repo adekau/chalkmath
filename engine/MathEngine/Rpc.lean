@@ -275,9 +275,17 @@ def manipulate (st : Store) (params : Json) : Store × Json :=
     | .error (code, msg, span) => (st, errorJson code msg span)
     | .ok (out, d, p, frames) =>
       let paths := params.getBool "paths"
+      -- a calculation is sent when it has more than its result
+      let workJson (w : Array Expr) : Array (String × Json) :=
+        if w.size ≤ 1 then #[] else #[("work", Json.arr (w.map fun e => Rendered.toJson e false))]
+      let plotJson (pl : Option Plot) : Array (String × Json) :=
+        match pl with | some pl => #[("plot", Json.obj (plotFields pl))] | none => #[]
+      let partJson (pt : FramePart) : Json := Json.obj (#[("rendered", Rendered.toJson pt.output false)] ++
+        (match pt.label with | some l => #[("label", Json.str l)] | none => #[]) ++ plotJson pt.plot ++ workJson pt.work)
       let frameJson (f : Frame) : Json := Json.obj (#[("value", floatJson f.value.toFloat),
         ("valueRendered", Rendered.toJson (.num f.value) false), ("rendered", Rendered.toJson f.output false)] ++
-        (match f.plot with | some pl => #[("plot", Json.obj (plotFields pl))] | none => #[]))
+        plotJson f.plot ++ workJson f.work ++
+        (if f.parts.isEmpty then #[] else #[("parts", Json.arr (f.parts.map partJson))]))
       let res := #[("ok", .bool true), ("kind", .str "manipulate"), ("value", out.toJson), ("rendered", Rendered.toJson out paths),
         ("param", .str p), ("frames", .arr (frames.map frameJson))]
       (st, .obj (res ++ workFields params d))
