@@ -27,7 +27,7 @@
       "label": null
     },
     {
-      "src": "The fraction in the definition is the slope of a **secant**: the line through two points of the graph, $(x, f(x))$ and $(x + h, f(x + h))$. Take $f(x) = x^2$ at $x = 1$: `m` is the secant's slope, `L` the secant, and `T` the tangent, the line through $(1, 1)$ with slope $f'(1)$.",
+      "src": "The fraction in the definition is the slope of a **secant**: the line through two points of the graph, $(x, f(x))$ and $(x + h, f(x + h))$. Take $f(x) = x^2$ at $x = 1$, and leave $h$ a letter: `m` is the secant's slope in terms of $h$, `L` the secant, and `T` the tangent, the line through $(1, 1)$ with slope $f'(1)$.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -36,18 +36,6 @@
       "src": "let f = x^2",
       "showWork": false,
       "label": null
-    },
-    {
-      "src": "let h = 2",
-      "showWork": false,
-      "label": null,
-      "slider": {
-        "min": 0.05,
-        "max": 2,
-        "step": 0.05,
-        "play": "down"
-      },
-      "mode": "raw"
     },
     {
       "src": "let m = (subst(f, x, 1 + h) - subst(f, x, 1)) / h",
@@ -65,12 +53,29 @@
       "label": null
     },
     {
-      "src": "plot([f, L, T], x, -0.5, 3)",
+      "src": "`manipulate(e, h, from, to)` shows `e` with a slider for $h$ and a `▶ Play` button, like Mathematica's `Manipulate`. Here $h$ runs from $2$ down to $0.05$.",
+      "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!try]\n> Press `▶ Play` on `h`. As $h$ shrinks toward $0$ the second point slides down the curve toward $(1, 1)$, and the secant `L` turns onto the tangent `T`. Its slope $m = \\dfrac{(1 + h)^2 - 1}{h} = 2 + h$ closes in on $f'(1) = 2$. The slope is never computed *at* $h = 0$, where the fraction is $\\frac00$: the derivative is the number the slopes approach. Drag `h` to stop anywhere.",
+      "src": "manipulate(plot([f, L, T], x, -0.5, 3), h, 2, 0.05)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> Press `▶ Play`. As $h$ shrinks toward $0$ the second point slides down the curve toward $(1, 1)$, and the secant `L` turns onto the tangent `T`. Drag the slider to stop anywhere. Below, the secant's slope at the same values of $h$: $m = \\dfrac{(1 + h)^2 - 1}{h} = 2 + h$ closes in on $f'(1) = 2$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "manipulate(m, h, 2, 0.05)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The slope is never computed *at* $h = 0$, where the fraction is $\\frac00$: the derivative is the number the slopes approach.",
       "type": "markdown",
       "showWork": false,
       "label": null

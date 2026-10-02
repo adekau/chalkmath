@@ -29,6 +29,7 @@ test("what the editor writes means what the source meant, to the engine", { skip
   ];
   const answer = (r) => JSON.stringify(r.ok === false ? { error: r.error.message } : {
     value: r.rendered?.text, input: r.inputRendered?.text, series: r.series?.map((s) => s.rendered.text),
+    frames: r.frames?.map((f) => f.rendered.text),
   });
   let compared = 0;
   for (const { name, cells } of suites) {
@@ -38,7 +39,7 @@ test("what the editor writes means what the source meant, to the engine", { skip
       // cells this grammar does not read (λ, order theory, import) go to both sessions unchanged
       const rewritten = r.ok ? write(r.stmt).text : src;
       if (r.ok && letHead(r.stmt)?.params) known.push(letHead(r.stmt).name);
-      const method = /^\s*(plot|epicycles|dft)\s*\(/.test(src) ? "engine.plot" : "engine.evaluate";
+      const method = /^\s*(plot|epicycles|dft)\s*\(/.test(src) ? "engine.plot" : /^\s*manipulate\s*\(/.test(src) ? "engine.manipulate" : "engine.evaluate";
       const call = (sessionId, source) => c.call(method, { sessionId, cellId: `c${i}`, source, showWork: true })
         .catch((e) => ({ ok: false, error: { message: `rpc: ${e.message}` } }));
       const [a, b] = await Promise.all([call(`${name}:source`, src), call(`${name}:written`, rewritten)]);

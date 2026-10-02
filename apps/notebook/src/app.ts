@@ -1,4 +1,4 @@
-import { createClient, type EngineClient, type Step, type StepOutline, type Path, type RuleStatus, type Derivation, type WireExpr, type PlotResult, type HasseData } from "@chalkmath/protocol";
+import { createClient, type EngineClient, type Step, type StepOutline, type Path, type RuleStatus, type Derivation, type WireExpr, type PlotResult, type ManipulateResult, type HasseData } from "@chalkmath/protocol";
 declare const __BUILD_ID__: string;
 import { workerTransport, httpTransport } from "@chalkmath/engine-host";
 import { read as readNotation, write as writeNotation, writeText, hasNotation, templateAt, templateInText, TEMPLATES, type Stmt, type Caret, type MathEdit } from "@chalkmath/math-editor";
@@ -21,7 +21,7 @@ import katex from "katex";
 import { ASK_CELL, AskError, askSettings, setAskSettings, runLookup, askSource, savedAsk, backendStatus, ollamaModels, openrouterModels, signInOpenRouter, testModel, WEBGPU_MODELS, type AskResult, type AskSettings } from "./ask-cells.js";
 import { fileCellOf, resolveFiles, importsIn, partContext, partHelp, fileExprValue, svgPoints, kindOf, tableOf, jsonOf, jsonTable, numericColumns, fileText, fileSize, fmtSize, mimeLabel, mimeFor, dataUrl, fileFromBytes, helpersFor, type FileValue, type FileRef, type FileScope, type Table } from "./files.js";
 import { dataGrid, matrixEntries } from "./datagrid.js";
-import { sliderNum, playFrames, frameMs, plotYRange, holdWindow, type SliderRange } from "./animate.js";
+import { plotYRange, framesWindow, blendable, blend, playPosition } from "./animate.js";
 import { DOC_PAGES, type DocPage, type DocPart } from "./docs.js";
 import { FUNCTIONS, FN_BY_NAME, AREAS, fnPage, evaluable, type FnDoc, type ExampleSection } from "./reference.js";
 import { ensureLean, syncLean, mountLean, unmountLean, focusLean, setLeanDark, infoview as leanInfoview, leanState, leanFailure, leanProgress, initLeanIsolation, type LeanMessage } from "./lean-cells.js";
@@ -94,7 +94,7 @@ function cellKind(src: string): string | null {
   if (!s) return null;
   if (ASK_CELL.test(s)) return "lookup";
   if (/^let\s/.test(s)) return "definition";
-  if (/⟦|\bimport\(/.test(s) && !/^(epicycles|dft|plot)\s*\(/.test(s)) return "file";
+  if (/⟦|\bimport\(/.test(s) && !/^(epicycles|dft|plot|manipulate)\s*\(/.test(s)) return "file";
   const m = /^([A-Za-z_][A-Za-z0-9_]*)\s*\(/.exec(s);
   const head = m?.[1];
   switch (head) {
@@ -102,6 +102,7 @@ function cellKind(src: string): string | null {
     case "integrate": return "integral";
     case "plot": return "plot";
     case "epicycles": case "dft": return "epicycles";
+    case "manipulate": return "manipulate";
     case "sum": return "sum";
     case "exptotrig": return "Euler";
   }
@@ -139,6 +140,9 @@ interface PlotSeries { latex: string; text: string; points: [number, number | nu
 /** One epicycle: frequency k and coefficient c_k (with its exact term's LaTeX when there is one). */
 interface Epicycle { k: number; re: number; im: number; latex?: string }
 interface PlotData { var: string; from: number; to: number; series: PlotSeries[]; terms?: Epicycle[] }
+/** `manipulate(e, p, from, to)`: the parameter and the engine's frames — each value of `p` (where it
+ *  sits, and as the engine prints it) and the body there, as a term and, for a plot, its samples. */
+interface ManipData { param: string; frames: { value: number; label: string; latex: string; plot?: PlotData }[] }
 /** How many curve colours the stylesheet defines (`svg .curve.c0` … ). */
 const CURVE_COLOURS = 6;
 /** A `.chalk` file from before lists in `plot` stored one curve as `points` + `text`. */
@@ -168,8 +172,10 @@ interface Cell {
   /** The syntax-highlight overlay under the input (presentation). */
   hl?: HTMLElement;
   plot?: PlotData;
-  /** The vertical window a plot keeps while a slider drives it (not saved; a run of its own lets go). */
-  yHold?: [number, number];
+  /** A `manipulate` cell's frames (not saved: the cell runs again when its notebook opens), and
+   *  where its slider is (a frame index; fractional while it plays). */
+  manip?: ManipData;
+  manipAt?: number;
   /** A file-valued cell (`import("url")`, `⟦name⟧`, or `let x =` one of them): the file it shows,
    *  by what it is. The engine never sees it; the contents are the attachment's or the import's. */
   file?: FileMeta;
@@ -221,9 +227,9 @@ interface Cell {
    *  cell run with another source starts again from `stepwise`. */
   revealed?: number;
   revealedFor?: string;
-  /** A `let name = number` cell shown as a slider: its range, and which way ▶ Play moves it. Moving
-   *  it rebinds the name and runs the cells that read it (saved). */
-  slider?: SliderRange;
+  /** A `let name = number` cell shown as a slider: its range. Moving it rebinds the name and runs the
+   *  cells that read it (saved). */
+  slider?: { min: number; max: number; step: number };
   /** The notebook's names this cell read when it last ran, each with the version of its value then
    *  (`BIND_VER`); a name whose value has changed since makes the cell out of date (not saved). */
   deps?: Map<string, number>;
@@ -587,11 +593,8 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
   S.busy = true; S.running = cell;
   renderChrome(); renderCellBody(cell);
   const t0 = performance.now();
-  const isPlot = /^\s*(plot|epicycles|dft)\s*\(/.test(src);
-  // a plot a slider drives keeps its window, widened when a curve leaves it; a run of its own lets go
-  const driven = DRIVEN.has(cell);
-  if (!driven) delete cell.yHold;
-  log("rpc", `${isPlot ? "engine.plot" : "engine.evaluate"} ${JSON.stringify(src)}`);
+  const isPlot = /^\s*(plot|epicycles|dft)\s*\(/.test(src), isManip = /^\s*manipulate\s*\(/.test(src);
+  log("rpc", `${isPlot ? "engine.plot" : isManip ? "engine.manipulate" : "engine.evaluate"} ${JSON.stringify(src)}`);
   try {
     // a question is looked up first (or its saved answer reused); the engine evaluates the answer
     const askM = ASK_CELL.exec(src);
@@ -629,9 +632,10 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
     const fc = asked === null ? fileCellOf(src, scope) : null;
     if (fc) return await evaluateFileCell(cell, fc, client, sessionId, t0);
     const { src: sent, notes } = asked !== null ? { src: asked, notes: [] as string[] } : resolveFiles(src, scope);
-    const r = isPlot
-      ? await client.call("engine.plot", { sessionId, cellId: cell.id, source: sent, showWork: true, paths: true, outline: true })
-      : await client.call("engine.evaluate", { sessionId, cellId: cell.id, source: sent, showWork: true, paths: true, outline: true });
+    const params = { sessionId, cellId: cell.id, source: sent, showWork: true, paths: true, outline: true };
+    const r = isPlot ? await client.call("engine.plot", params)
+      : isManip ? await client.call("engine.manipulate", params)
+      : await client.call("engine.evaluate", params);
     cell.ms = performance.now() - t0;
     queueMicrotask(autosave);
     if (r.ok) {
@@ -660,14 +664,15 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
       delete cell.error;
       // this output is a number: a file that had its label before a restart no longer does
       if (r.label) { LAST_LABEL.set(sessionId, r.label); FILE_OUTS.delete(`${sessionId}:${r.label}`); }
-      const held = driven ? cell.yHold ?? (cell.plot ? plotYRange(cell.plot) : null) : null;
-      delete cell.plot; delete cell.outDeBruijn; delete cell.reading; delete cell.kind; delete cell.hasse; delete cell.summary; delete cell.yHold;
+      delete cell.plot; delete cell.manip; delete cell.outDeBruijn; delete cell.reading; delete cell.kind; delete cell.hasse; delete cell.summary;
       if ("kind" in r && r.kind === "poset") { cell.kind = "order"; cell.hasse = r.hasse; cell.summary = r.summary; }
-      if ("kind" in r && r.kind === "plot") {
-        cell.plot = plotDataOf(r);
-        const w = driven ? holdWindow(held, cell.plot) : null;
-        if (w) cell.yHold = w;
-      }
+      if ("kind" in r && r.kind === "plot") cell.plot = plotDataOf(r);
+      if ("kind" in r && r.kind === "manipulate") {
+        // the slider stays where the reader left it, when the cell still has a frame there
+        const before = cell.manipAt ?? 0;
+        cell.manip = manipDataOf(r);
+        cell.manipAt = Math.min(Math.round(before), cell.manip.frames.length - 1);
+      } else { delete cell.manip; delete cell.manipAt; }
       if ("kind" in r && r.kind === "lambda") { cell.outDeBruijn = r.renderedDeBruijn?.latex; cell.reading = r.reading; cell.kind = "λ-term"; }
       log("ok", `Out[${cell.label}] ${r.rendered.text}  (${cell.ms.toFixed(1)} ms, ${(cell.outline ?? cell.steps).length} steps)`);
       announce(`Out ${cell.label}: ${r.rendered.text}`);
@@ -686,7 +691,7 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
     } else {
       cell.label = r.label ?? cell.label ?? nextLabel++;
       if (r.label) { LAST_LABEL.set(sessionId, r.label); FILE_OUTS.delete(`${sessionId}:${r.label}`); }
-      delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.plot; delete cell.file; cell.steps = []; delete cell.outline;
+      delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.plot; delete cell.manip; delete cell.file; cell.steps = []; delete cell.outline;
       cell.error = r.error;
       recordRun(cell, sessionId);
       log("err", `${r.error.code}: ${r.error.message}`);
@@ -699,7 +704,7 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
       cell.label = cell.label ?? nextLabel++;
       cell.error = { message: e.message === "Stopped." ? "Stopped." : `No answer: ${e.message}` };
       cell.askTrail = e.trail;
-      delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.plot; delete cell.file; cell.steps = []; delete cell.outline;
+      delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.plot; delete cell.manip; delete cell.file; cell.steps = []; delete cell.outline;
       log("err", `lookup: ${e.message}`);
       finishEvaluation(cell);
       return;
@@ -709,7 +714,7 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
       : S.kernel === "failed" ? "The engine stopped while evaluating this cell." : e instanceof Error ? e.message : String(e) };
     if (cell === stoppedCell) stoppedCell = null;
     // the output shown must be this run's: a stale one would also be replayed after a restart
-    delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.plot; delete cell.file; cell.steps = []; delete cell.outline;
+    delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.plot; delete cell.manip; delete cell.file; cell.steps = []; delete cell.outline;
     log("err", cell.error.message);
   }
   finishEvaluation(cell);
@@ -764,10 +769,15 @@ async function checkExercise(cell: Cell, client: EngineClient, sessionId: string
 const mentionsI = (src: string) => /(^|[^A-Za-z0-9_])i([^A-Za-z0-9_(]|$)/.test(src);
 
 /** A plot reply as the notebook draws it: each curve's term and samples, and an epicycle drawing's circles. */
-function plotDataOf(r: PlotResult): PlotData {
+function plotDataOf(r: Pick<PlotResult, "var" | "from" | "to" | "series" | "terms">): PlotData {
   const p: PlotData = { var: r.var, from: r.from, to: r.to, series: r.series.map((s) => ({ latex: s.rendered.latex, text: s.rendered.text, points: s.points, ...(s.parametric ? { parametric: true } : {}) })) };
   if (r.terms?.length) p.terms = r.terms.map((t) => ({ k: t.k, re: t.re, im: t.im, ...(t.rendered ? { latex: t.rendered.latex } : {}) }));
   return p;
+}
+
+/** A manipulate reply as the notebook shows it: each frame's value and term, and its plot. */
+function manipDataOf(r: ManipulateResult): ManipData {
+  return { param: r.param, frames: r.frames.map((f) => ({ value: f.value, label: f.valueRendered.latex, latex: f.rendered.latex, ...(f.plot ? { plot: plotDataOf(f.plot) } : {}) })) };
 }
 
 /** After a cell's evaluation: the notebook is free, and the cell shows what it got. */
@@ -799,7 +809,7 @@ async function evaluateFileCell(cell: Cell, fc: { bind?: string; file: FileValue
     FILE_VARS.set(k, file); USER_NAMES.add(k); USER_FNS.delete(k);
     renderHighlights();
   }
-  delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.plot; delete cell.error;
+  delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.plot; delete cell.manip; delete cell.error;
   delete cell.outDeBruijn; delete cell.reading; delete cell.kind; delete cell.hasse; delete cell.summary;
   cell.steps = []; delete cell.outline;
   cell.file = { name: file.name, mime: file.mime, size: fileSize(file), origin: file.origin };
@@ -1035,7 +1045,7 @@ function renderTabs() {
 interface ChalkFile {
   /** Format version. Files written as `.lemma` before the rename carry `lemma: 1` instead and still open. */
   chalk?: 1; lemma?: 1; name: string;
-  cells: { src: string; type?: Cell["type"] | undefined; collapsed?: boolean | undefined; showWork: boolean; stepwise?: number | undefined; prompt?: string | undefined; hints?: string[] | undefined; hideQuestion?: boolean | undefined; attempt?: string | undefined; hintsShown?: number | undefined; verdict?: Verdict | undefined; solution?: boolean | undefined; slider?: SliderRange | undefined; label: number | null; outLatex?: string | undefined; outText?: string | undefined; form?: string | undefined; semantics?: "real" | "complex" | undefined; echoLatex?: string | undefined; steps?: Step[] | undefined; outline?: StepOutline[] | undefined; error?: Cell["error"] | undefined; plot?: PlotData | undefined; mode?: Cell["mode"] | undefined; ask?: AskResult | undefined; file?: FileMeta | undefined; noSuggest?: true | undefined }[];
+  cells: { src: string; type?: Cell["type"] | undefined; collapsed?: boolean | undefined; showWork: boolean; stepwise?: number | undefined; prompt?: string | undefined; hints?: string[] | undefined; hideQuestion?: boolean | undefined; attempt?: string | undefined; hintsShown?: number | undefined; verdict?: Verdict | undefined; solution?: boolean | undefined; slider?: { min: number; max: number; step: number } | undefined; label: number | null; outLatex?: string | undefined; outText?: string | undefined; form?: string | undefined; semantics?: "real" | "complex" | undefined; echoLatex?: string | undefined; steps?: Step[] | undefined; outline?: StepOutline[] | undefined; error?: Cell["error"] | undefined; plot?: PlotData | undefined; mode?: Cell["mode"] | undefined; ask?: AskResult | undefined; file?: FileMeta | undefined; noSuggest?: true | undefined }[];
   scenes: Scene[];
   /** Images attached to the notebook, by name. */
   assets?: Record<string, Asset>;
@@ -1154,7 +1164,7 @@ function cellsFromFile(doc: ChalkFile, foldWork = false): Cell[] {
     if (c.mode === "raw" || c.mode === "visual") cell.mode = c.mode;
     if (c.noSuggest) cell.noSuggest = true;
     const sl = c.slider;
-    if (sl && [sl.min, sl.max, sl.step].every((x) => typeof x === "number" && isFinite(x)) && sl.max > sl.min && sl.step > 0) cell.slider = { min: sl.min, max: sl.max, step: sl.step, ...(sl.play === "down" ? { play: "down" as const } : {}) };
+    if (sl && [sl.min, sl.max, sl.step].every((x) => typeof x === "number" && isFinite(x)) && sl.max > sl.min && sl.step > 0) cell.slider = { min: sl.min, max: sl.max, step: sl.step };
     const ask = savedAsk(c.ask);
     if (ask) cell.ask = ask;
     return cell;
@@ -1182,9 +1192,7 @@ function sectionOf(i: number): number {
 // --- Sliders: `let n = 3` as a control -----------------------------------------------------------
 // Moving the slider rewrites the cell's number, runs it, and runs the cells below that are out of
 // date because of it (and so on down: a cell they bind may make another out of date). Runs do not
-// pile up behind a drag: while one is under way only the latest position waits. ▶ Play moves the
-// slider itself, a frame at a time, each frame waiting for the runs it starts: an animated graph is
-// a plot below a played slider. A plot a slider drives keeps its window (animate.ts).
+// pile up behind a drag: while one is under way only the latest position waits.
 
 /** A cell a slider can drive: `let name = number`. */
 const SLIDER_SRC = /^\s*let\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(-?\d+(?:\.\d+)?)\s*$/;
@@ -1204,6 +1212,11 @@ function toggleSlider(cell: Cell) {
   }
   renderCells(); autosave();
 }
+/** A number as the slider writes it: no float noise from the step arithmetic. */
+const sliderNum = (x: number, step: number) => {
+  const d = Math.max(0, -Math.floor(Math.log10(step) + 1e-9));
+  return Number(x.toFixed(Math.min(10, d)));
+};
 /** Sliders whose cell is running, and the position each waits to run next. */
 const SLIDING = new WeakMap<Cell, number | null>();
 async function slideTo(cell: Cell, v: number) {
@@ -1215,60 +1228,20 @@ async function slideTo(cell: Cell, v: number) {
   try {
     for (;;) {
       await runCell(cell);
-      await runOutOfDateBelow(cell, true);
+      await runOutOfDateBelow(cell);
       const next = SLIDING.get(cell);
       if (next === null || next === undefined) break;
       SLIDING.set(cell, null);
     }
   } finally { SLIDING.delete(cell); }
 }
-/** Cells being run because a slider moved: a plot among them keeps its window. */
-const DRIVEN = new WeakSet<Cell>();
-/** Run, in order, the cells below `cell` that are out of date; `driven`, because its slider moved. */
-async function runOutOfDateBelow(cell: Cell, driven = false) {
+/** Run, in order, the cells below `cell` that are out of date. */
+async function runOutOfDateBelow(cell: Cell) {
   const d = docOf(cell), gen = runGen;
   for (const c of S.cells.slice(S.cells.indexOf(cell) + 1)) {
     if (gen !== runGen || (d && !S.docs.includes(d))) return;
-    if (!staleNames(c).length) continue;
-    if (driven) DRIVEN.add(c);
-    try { await runCell(c); } finally { DRIVEN.delete(c); }
+    if (staleNames(c).length) await runCell(c);
   }
-}
-/** Sliders playing, each with its stop switch. */
-const PLAYING = new WeakMap<Cell, { stop: boolean }>();
-/** ▶ Play: move the slider through its range toward the end it plays to, one frame at a time, each
- *  frame held until the cells it makes out of date have run. Again (❚❚) stops it, as does taking hold
- *  of the slider, editing the cell, or closing its notebook. */
-async function playSlider(cell: Cell) {
-  const playing = PLAYING.get(cell);
-  if (playing) { playing.stop = true; return; }
-  const m = SLIDER_SRC.exec(cellSrc(cell)); if (!m || !cell.slider) return;
-  const run = { stop: false };
-  PLAYING.set(cell, run); showPlaying(cell);
-  const frames = playFrames(cell.slider, Number(m[2])), hold = frameMs(frames.length), gen = runGen;
-  let wrote = cellSrc(cell);   // what the cell says unless the reader has edited it meanwhile
-  try {
-    for (const v of frames) {
-      if (run.stop || gen !== runGen || !docOf(cell) || cellSrc(cell) !== wrote) break;
-      const t0 = performance.now();
-      const range = cell.el?.querySelector<HTMLInputElement>(".sliderrow input[type=range]");
-      if (range) range.value = String(v);
-      const val = cell.el?.querySelector(".sliderrow .sliderval");
-      if (val) val.textContent = String(v);
-      await slideTo(cell, v);
-      wrote = `let ${m[1]} = ${v}`;
-      const rest = hold - (performance.now() - t0);
-      if (rest > 0 && !run.stop) await new Promise((r) => setTimeout(r, rest));
-    }
-  } finally { PLAYING.delete(cell); showPlaying(cell); }
-}
-/** The play button's face: ▶ Play, or ❚❚ Pause while the slider plays. */
-function showPlaying(cell: Cell, b = cell.el?.querySelector<HTMLElement>(".sliderrow .sliderplay")) {
-  if (!b) return;
-  const on = PLAYING.has(cell);
-  b.textContent = on ? "❚❚ Pause" : "▶ Play";
-  b.setAttribute("aria-label", on ? "Pause the slider" : "Play the slider");
-  b.classList.toggle("on", on);
 }
 /** The slider under a `let name = number` cell: the control, its value, and its range to edit. */
 function sliderRow(cell: Cell): HTMLElement {
@@ -1279,10 +1252,7 @@ function sliderRow(cell: Cell): HTMLElement {
   range.type = "range"; range.min = String(sl.min); range.max = String(sl.max); range.step = String(sl.step); range.value = m[2]!;
   range.setAttribute("aria-label", m[1]!);
   const val = h("span", "sliderval", m[2]!);
-  range.addEventListener("input", () => {
-    const p = PLAYING.get(cell); if (p) p.stop = true;   // taking hold of the slider stops a play
-    const v = sliderNum(Number(range.value), sl.step, sl.min); val.textContent = String(v); void slideTo(cell, v);
-  });
+  range.addEventListener("input", () => { const v = sliderNum(Number(range.value), sl.step); val.textContent = String(v); void slideTo(cell, v); });
   range.addEventListener("focus", () => { const i = S.cells.indexOf(cell); if (S.active !== i) { S.active = i; renderChrome(); renderSidebar(); markActive(); } });
   const edit = h("span", "sliderrange");
   edit.hidden = true;
@@ -1297,24 +1267,11 @@ function sliderRow(cell: Cell): HTMLElement {
     l.append(document.createTextNode(label), inp);
     return l;
   };
-  // which way ▶ Play goes: up toward "to", or down toward "from" (h → 0)
-  const dir = h("label"); const sel = document.createElement("select");
-  for (const [v, t] of [["up", "up"], ["down", "down"]] as const) { const o = document.createElement("option"); o.value = v; o.textContent = t; sel.append(o); }
-  sel.value = sl.play ?? "up";
-  sel.addEventListener("change", () => {
-    const next: SliderRange = { min: sl.min, max: sl.max, step: sl.step, ...(sel.value === "down" ? { play: "down" as const } : {}) };
-    cell.slider = next; autosave(); renderCells();
-  });
-  dir.append(document.createTextNode("play "), sel);
-  edit.append(num("from ", "min"), num("to ", "max"), num("step ", "step"), dir);
-  const play = asButton(h("span", "sliderbtn sliderplay"));
-  play.title = `Play: move ${m[1]} ${sl.play === "down" ? "down to" : "up to"} ${sl.play === "down" ? sl.min : sl.max} a step at a time, running the cells that use it`;
-  play.addEventListener("click", () => void playSlider(cell));
+  edit.append(num("from ", "min"), num("to ", "max"), num("step ", "step"));
   const gear = asButton(h("span", "sliderbtn", "range"), "Change the slider's range");
   gear.title = "Change the slider's range and step";
   gear.addEventListener("click", () => { edit.hidden = !edit.hidden; });
-  showPlaying(cell, play);
-  row.append(h("code", "slidername", m[1]!), range, val, play, gear, edit);
+  row.append(h("code", "slidername", m[1]!), range, val, gear, edit);
   return row;
 }
 
@@ -1760,7 +1717,7 @@ function importNotebook() {
 
 /** What a link carries: the name and every cell's text and kind. Outputs are not included: the
  *  engine recomputes them when the link opens, which is the point of a verified notebook. */
-interface LinkDoc { v: 1; n: string; c: { s: string; t?: "markdown" | "section" | "lean" | "exercise"; w?: 1; f?: 1; r?: number; p?: string; hs?: string[]; hq?: 1; sl?: [number, number, number] | [number, number, number, "down"] }[]; a?: Record<string, { m: string; d: string; b?: 1 }> }
+interface LinkDoc { v: 1; n: string; c: { s: string; t?: "markdown" | "section" | "lean" | "exercise"; w?: 1; f?: 1; r?: number; p?: string; hs?: string[]; hq?: 1; sl?: [number, number, number] }[]; a?: Record<string, { m: string; d: string; b?: 1 }> }
 
 async function deflate(text: string): Promise<Uint8Array> {
   const cs = new CompressionStream("deflate-raw");
@@ -1788,7 +1745,7 @@ async function notebookLink(): Promise<string> {
     v: 1, n: S.docName,
     c: S.cells.filter((c) => cellSrc(c).trim()).map((c) => ({ s: cellSrc(c), ...(c.type ? { t: c.type } : {}), ...(c.showWork ? { w: 1 as const } : {}), ...(c.collapsed ? { f: 1 as const } : {}), ...(c.stepwise !== undefined ? { r: c.stepwise } : {}),
       ...(c.prompt ? { p: c.prompt } : {}), ...(c.hints?.length ? { hs: c.hints } : {}), ...(c.hideQuestion ? { hq: 1 as const } : {}),
-      ...(c.slider ? { sl: c.slider.play === "down" ? [c.slider.min, c.slider.max, c.slider.step, "down"] as [number, number, number, "down"] : [c.slider.min, c.slider.max, c.slider.step] as [number, number, number] } : {}) })),
+      ...(c.slider ? { sl: [c.slider.min, c.slider.max, c.slider.step] as [number, number, number] } : {}) })),
     ...(Object.keys(S.assets).length ? { a: Object.fromEntries(Object.values(S.assets).map((a) => [a.name, { m: a.mime, d: a.data, ...(a.binary ? { b: 1 as const } : {}) }])) } : {}),
   };
   const json = JSON.stringify(doc);
@@ -1817,7 +1774,7 @@ async function openNotebookLink(hash: string): Promise<boolean> {
       chalk: 1, name: doc.n || "shared.chalk",
       cells: doc.c.map((c) => ({ src: String(c.s ?? ""), type: c.t === "markdown" || c.t === "section" || c.t === "lean" || c.t === "exercise" ? c.t : undefined, collapsed: c.f ? true : undefined, showWork: !!c.w, stepwise: typeof c.r === "number" ? c.r : undefined,
         prompt: typeof c.p === "string" ? c.p : undefined, hints: Array.isArray(c.hs) ? c.hs.map(String) : undefined, hideQuestion: c.hq ? true : undefined,
-        slider: Array.isArray(c.sl) && c.sl.length >= 3 ? { min: Number(c.sl[0]), max: Number(c.sl[1]), step: Number(c.sl[2]), ...(c.sl[3] === "down" ? { play: "down" as const } : {}) } : undefined, label: null })),
+        slider: Array.isArray(c.sl) && c.sl.length === 3 ? { min: Number(c.sl[0]), max: Number(c.sl[1]), step: Number(c.sl[2]) } : undefined, label: null })),
       scenes: [],
       ...(doc.a ? { assets: Object.fromEntries(Object.entries(doc.a).map(([name, a]) => [name, { name, mime: String(a.m), data: String(a.d), ...(a.b ? { binary: true } : {}) }])) } : {}),
     };
@@ -2132,7 +2089,7 @@ function convertCell(cell: Cell, type: CellType) {
   if (type === "math") delete cell.type; else cell.type = type;
   delete cell.editing; delete cell.collapsed;
   if (type === "markdown") cell.editing = !cell.src.trim();
-  if (type !== "math") { delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.error; delete cell.plot; delete cell.hasse; delete cell.summary; delete cell.ask; delete cell.askTrail; cell.steps = []; delete cell.outline; cell.label = null; }
+  if (type !== "math") { delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.error; delete cell.plot; delete cell.manip; delete cell.hasse; delete cell.summary; delete cell.ask; delete cell.askTrail; cell.steps = []; delete cell.outline; cell.label = null; }
   if (type === "section") cell.src = cell.src.split("\n")[0]!.replace(/^#+\s*/, "");
   if (type !== "lean") delete cell.leanMessages;
   if (type === "exercise") cell.editing = true;
@@ -2155,7 +2112,7 @@ function moveCell(cell: Cell, by: -1 | 1) {
 }
 const hasOutput = (cell: Cell) => !!(cell.outLatex || cell.file || cell.error);
 function clearCellOutput(cell: Cell) {
-  delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.error; delete cell.plot; delete cell.hasse; delete cell.summary; delete cell.file; delete cell.outDeBruijn; delete cell.reading;
+  delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.error; delete cell.plot; delete cell.manip; delete cell.hasse; delete cell.summary; delete cell.file; delete cell.outDeBruijn; delete cell.reading;
   delete cell.ask; delete cell.askTrail;
   cell.steps = []; delete cell.outline; cell.label = null;
   renderCellBody(cell); renderChrome(); renderSidebar(); autosave();
@@ -2185,7 +2142,7 @@ function focusCell(i: number) {
 }
 
 function clearOutputs() {
-  for (const c of S.cells) { delete c.outLatex; delete c.outText; delete c.echoLatex; delete c.error; delete c.plot; delete c.file; c.steps = []; delete c.outline; c.label = null; c.ms = undefined; }
+  for (const c of S.cells) { delete c.outLatex; delete c.outText; delete c.echoLatex; delete c.error; delete c.plot; delete c.manip; delete c.file; c.steps = []; delete c.outline; c.label = null; c.ms = undefined; }
   nextLabel = 1; S.sel = null;
   renderCells(); renderSidebar(); renderPanel();
   log("ok", "outputs cleared");
@@ -2590,9 +2547,8 @@ function renderSidebar() {
 /** Draw sampled points: axes through the origin when in range, a few labelled ticks, the curve
  *  broken wherever the engine reported no finite value. `frac` draws the first part of the curve
  *  (the studio animates it). A parametric (complex-valued) plot is drawn in the plane with equal
- *  scales on the axes, so a circle is a circle. `t01` in [0, 1] adds the epicycles at that phase.
- *  `yWin` is a window a graph keeps instead of its own (while a slider drives it). */
-function plotSvg(p: PlotData, w: number, hgt: number, frac = 1, t01?: number, yWin?: [number, number]): SVGSVGElement {
+ *  scales on the axes, so a circle is a circle. `t01` in [0, 1] adds the epicycles at that phase. */
+function plotSvg(p: PlotData, w: number, hgt: number, frac = 1, t01?: number, yWin?: [number, number] | null): SVGSVGElement {
   const NS = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(NS, "svg");
   svg.setAttribute("viewBox", `0 0 ${w} ${hgt}`); svg.setAttribute("width", String(w)); svg.setAttribute("height", String(hgt));
@@ -2600,6 +2556,7 @@ function plotSvg(p: PlotData, w: number, hgt: number, frac = 1, t01?: number, yW
   svg.setAttribute("aria-label", p.terms?.length ? `Epicycles: ${p.terms.length} circles drawing ${p.series.map((c) => c.text).join(", ")}`
     : `Plot of ${p.series.map((c) => c.text).join(" and ")} for ${p.var} from ${p.from} to ${p.to}`);
   const parametric = p.series.some((s) => s.parametric);
+  // the window: the one given (a manipulated plot's, over all its frames), or the curves' own
   let [y0, y1] = !parametric && yWin ? yWin : plotYRange(p), x0 = p.from, x1 = p.to;
   if (parametric) {
     // the x range is the real parts', and both axes share one scale; the epicycles' reach counts too —
@@ -2709,6 +2666,96 @@ function epiExtent(terms: Epicycle[]): [number, number, number, number] {
     x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
   }
   return [x0, x1, y0, y1];
+}
+
+/** The live view of each manipulate cell (its newest drawing, so a play survives a redraw) and the
+ *  animation frame of the play under way. */
+const MANIP_UI = new WeakMap<Cell, { draw: (at: number) => void; face: () => void }>();
+const MANIP_PLAY = new WeakMap<Cell, number>();
+function manipStop(cell: Cell) {
+  const id = MANIP_PLAY.get(cell);
+  if (id !== undefined) { cancelAnimationFrame(id); MANIP_PLAY.delete(cell); }
+  MANIP_UI.get(cell)?.face();
+}
+/** ▶ Play: from where the slider is (or the first frame, from the last) to the last frame, drawn
+ *  every animation frame. No engine call: the frames are already here. */
+function manipPlay(cell: Cell) {
+  const m = cell.manip, n = m?.frames.length ?? 0;
+  if (!m || n < 2) return;
+  let start = Math.round(cell.manipAt ?? 0);
+  if (start >= n - 1) start = 0;
+  const t0 = performance.now();
+  const done = () => { MANIP_PLAY.delete(cell); MANIP_UI.get(cell)?.face(); };
+  const tick = (now: number) => {
+    if (cell.manip !== m || !cell.el?.isConnected) return done();   // run again, or its notebook left
+    const at = playPosition(start, now - t0, n);
+    cell.manipAt = at; MANIP_UI.get(cell)?.draw(at);
+    if (at >= n - 1) return done();
+    MANIP_PLAY.set(cell, requestAnimationFrame(tick));
+  };
+  MANIP_PLAY.set(cell, requestAnimationFrame(tick));
+  MANIP_UI.get(cell)?.face();
+}
+/** A manipulate cell's output, like Mathematica's: the parameter's slider with its value and ▶ Play,
+ *  and the body at that value — a plot, in one window for every frame and blended between frames
+ *  while it plays, or the body's term. */
+function manipBox(cell: Cell): HTMLElement {
+  const m = cell.manip!, n = m.frames.length;
+  const box = h("div", "manip");
+  const row = h("div", "sliderrow manipctl");
+  const range = document.createElement("input");
+  range.type = "range"; range.min = "0"; range.max = String(n - 1); range.step = "1";
+  range.setAttribute("aria-label", m.param);
+  const val = h("span", "sliderval");
+  const play = asButton(h("span", "sliderbtn sliderplay"));
+  row.append(h("code", "slidername", m.param), range, val, play);
+  const view = h("div", "manipview"), cap = h("div", "plotcap");
+  box.append(row, view, cap);
+  const plots = m.frames.every((f) => f.plot && !f.plot.terms?.length) ? m.frames.map((f) => f.plot!) : null;
+  const win = plots ? framesWindow(plots) : null;
+  let shown = -1;   // the frame whose value, term and legend are on screen
+  const draw = (at: number) => {
+    const i = Math.max(0, Math.min(n - 1, Math.round(at))), f = m.frames[i]!;
+    if (i !== shown) {
+      range.value = String(i);
+      val.innerHTML = tex(f.label);
+      cap.replaceChildren();
+      if (f.plot && f.plot.series.length > 1) {
+        f.plot.series.forEach((s, k) => {
+          const it = h("span", `legend c${k % CURVE_COLOURS}`);
+          it.append(h("i", "swatch")); it.insertAdjacentHTML("beforeend", tex(s.latex));
+          cap.append(it);
+        });
+      } else if (f.plot) cap.innerHTML = tex(f.latex, true);
+      if (!plots) view.innerHTML = tex(f.latex, true);
+      shown = i;
+    }
+    if (plots) {
+      const lo = Math.floor(at), hi = Math.min(n - 1, lo + 1), t = at - lo;
+      const a = plots[lo] ?? plots[i]!, b = plots[hi]!;
+      const p: PlotData = t > 1e-6 && blendable(a, b) ? { ...a, series: blend(a, b, t) } : plots[i]!;
+      const box = h("div", "plotbox");
+      box.append(plotSvg(p, 520, p.series.some((s) => s.parametric) ? 320 : 240, 1, undefined, win));
+      view.replaceChildren(box);
+    }
+  };
+  const face = () => {
+    const on = MANIP_PLAY.has(cell);
+    play.textContent = on ? "❚❚ Pause" : "▶ Play";
+    play.title = on ? "Pause" : `Play: move ${m.param} through its ${n} values`;
+    play.setAttribute("aria-label", on ? `Pause ${m.param}` : `Play ${m.param}`);
+    play.classList.toggle("on", on);
+  };
+  play.addEventListener("click", () => {
+    if (!MANIP_PLAY.has(cell)) return manipPlay(cell);
+    manipStop(cell);
+    cell.manipAt = Math.round(cell.manipAt ?? 0); draw(cell.manipAt);   // at rest, the engine's own frame
+  });
+  // taking hold of the slider stops a play
+  range.addEventListener("input", () => { manipStop(cell); cell.manipAt = Number(range.value); draw(cell.manipAt); });
+  MANIP_UI.set(cell, { draw, face });
+  draw(cell.manipAt ?? 0); face();
+  return box;
 }
 
 /** A plot's mapping from data to pixels, kept beside the SVG so an animation can move things in it. */
@@ -3788,10 +3835,13 @@ function renderCellBody(cell: Cell) {
         val.append(card);
       }
       val.classList.add("isplot");
+    } else if (cell.manip) {
+      val.classList.add("isplot");
+      val.append(manipBox(cell));
     } else if (cell.plot) {
       const epi = !!cell.plot.terms?.length;
       const box = epi ? epicycleBox(cell.plot, 520, 320) : h("div", "plotbox");
-      if (!epi) box.append(plotSvg(cell.plot, 520, cell.plot.series.some((s) => s.parametric) ? 320 : 240, 1, undefined, cell.yHold));
+      if (!epi) box.append(plotSvg(cell.plot, 520, cell.plot.series.some((s) => s.parametric) ? 320 : 240));
       const cap = h("div", "plotcap");
       if (epi) {
         const terms = cell.plot.terms!;
@@ -4831,10 +4881,18 @@ async function evaluateExamples(c: EngineClient, inputs: string[]): Promise<ExOu
   try {
     for (const [k, source] of inputs.entries()) {
       const params = { sessionId: sid, cellId: `ex${k}`, source, showWork: false, paths: false };
-      const r = /^\s*(plot|epicycles|dft)\s*\(/.test(source) ? await c.call("engine.plot", params) : await c.call("engine.evaluate", params);
+      const r = /^\s*(plot|epicycles|dft)\s*\(/.test(source) ? await c.call("engine.plot", params)
+        : /^\s*manipulate\s*\(/.test(source) ? await c.call("engine.manipulate", params)
+        : await c.call("engine.evaluate", params);
       if (!r.ok) { outs.push({ ...(r.label ? { label: r.label } : {}), error: r.error.message }); continue; }
       const o: ExOut = { latex: r.rendered.latex, ...(r.label ? { label: r.label } : {}) };
       if ("kind" in r && r.kind === "plot") o.plot = plotDataOf(r);
+      if ("kind" in r && r.kind === "manipulate") {
+        // the page shows the first frame; the slider is a notebook's
+        const f = r.frames[0];
+        if (f?.plot) o.plot = plotDataOf(f.plot);
+        o.summary = `the first of ${r.frames.length} frames, ${r.param} = ${f?.valueRendered.text ?? ""}: open it in a notebook to move ${r.param}`;
+      }
       if ("kind" in r && r.kind === "poset" && r.hasse) { o.hasse = r.hasse; if (r.summary) o.summary = r.summary; }
       if ("kind" in r && r.kind === "lambda" && r.reading) o.summary = r.reading;
       outs.push(o);
@@ -5854,10 +5912,10 @@ function renderCompletions() {
 const USER_NAMES = new Set<string>();
 
 /** Commands whose argument at `arg` is a variable bound over the call: `diff(f, x)`, `plot(f, x, …)`. */
-const BINDERS: Record<string, number> = { diff: 1, integrate: 1, plot: 1, epicycles: 1, sum: 1, subst: 1 };
+const BINDERS: Record<string, number> = { diff: 1, integrate: 1, plot: 1, epicycles: 1, sum: 1, subst: 1, manipulate: 1 };
 const BUILTIN_FN = new Set(["sin", "cos", "tan", "exp", "ln", "log", "sqrt", "abs", "conj", "re", "im", "sign", "det", "rref", "transpose", "dot", "norm", "solve",
   "total", "mean", "variance", "stdev", "min", "max", "median"]);
-const COMMANDS = new Set(["diff", "integrate", "plot", "epicycles", "dft", "import", "samplePoints", "matrix", "dimensions", "sum", "exptotrig", "expand", "factor", "simplify", "N", "subst", "poset", "map", "monotone", "lfp", "gfp", "fixpoints", "hasse", "join", "meet", "sup", "inf", "upper", "lower", "top", "bottom", "maximal", "minimal", "lattice", "le", "divisors", "subsets", "chain"]);
+const COMMANDS = new Set(["diff", "integrate", "plot", "manipulate", "epicycles", "dft", "import", "samplePoints", "matrix", "dimensions", "sum", "exptotrig", "expand", "factor", "simplify", "N", "subst", "poset", "map", "monotone", "lfp", "gfp", "fixpoints", "hasse", "join", "meet", "sup", "inf", "upper", "lower", "top", "bottom", "maximal", "minimal", "lattice", "le", "divisors", "subsets", "chain"]);
 const CONSTANTS = new Set(["pi", "π", "e", "ℯ", "i", "phi", "φ", "All"]);
 
 type Tok = { kind: "id" | "num" | "op" | "ws" | "kw" | "asset" | "str"; text: string; start: number };

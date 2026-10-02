@@ -20,7 +20,7 @@ export type ReadResult = { ok: true; stmt: Stmt } | { ok: false; error: ReadErro
  *  or a function the session defined (`known`); otherwise it is a product, `f·(x)`. */
 export const BUILTIN_FUNCTIONS = ["sin", "cos", "tan", "exp", "ln", "log", "sqrt", "abs", "conj", "re", "im",
   "diff", "simplify", "expand", "factor", "N", "det", "rref", "transpose", "solve", "subst", "integrate", "plot",
-  "sign", "dot", "norm", "sum", "exptotrig", "epicycles", "dft",
+  "sign", "dot", "norm", "sum", "exptotrig", "epicycles", "dft", "manipulate",
   "total", "mean", "variance", "stdev", "min", "max", "median"];
 
 /** `sin^2(y)` is `sin(y)^2` for these. */

@@ -1,8 +1,8 @@
 // node scripts/notebooks/mk-courses.mjs
 // Generates the courses: notebooks/courses/<course>/<nn-lesson>.chalk and notebooks/courses.json, the
 // list of projects the Courses tab shows (the courses, then the example notebooks as a collection).
-// A lesson is short: a goal, worked examples to step through, a slider where a picture moves (and
-// ▶ Play to animate it: a plot below a played slider is an animated graph), and exercises the engine checks by normal form. Every cell is checked against the engine by
+// A lesson is short: a goal, worked examples to step through, a slider where a picture moves, and
+// exercises the engine checks by normal form. Every cell is checked against the engine by
 // `drive.mjs --check` (notebooks/golden/), so a lesson cannot quietly stop working.
 // Inline code is written ‹like this› (template literals cannot hold backticks).
 import { writeFileSync, mkdirSync } from "node:fs";
@@ -17,12 +17,11 @@ function lesson() {
     cells,
     sec: (title) => cells.push({ src: title, type: "section", showWork: false, label: null }),
     md: (text) => cells.push({ src: code(text), type: "markdown", showWork: false, label: null }),
-    /** A math cell. `work`: show the steps; `step`: step through them from that many; `slider`: [min, max, step];
-     *  `play`: "down" when the slider's ▶ Play should move it toward min (h → 0) rather than max. */
+    /** A math cell. `work`: show the steps; `step`: step through them from that many; `slider`: [min, max, step]. */
     m: (src, o = {}) => cells.push({
       src, showWork: !!(o.work || o.step !== undefined), label: null,
       ...(o.step !== undefined ? { stepwise: o.step } : {}),
-      ...(o.slider ? { slider: { min: o.slider[0], max: o.slider[1], step: o.slider[2], ...(o.play === "down" ? { play: "down" } : {}) }, mode: "raw" } : {}),
+      ...(o.slider ? { slider: { min: o.slider[0], max: o.slider[1], step: o.slider[2] }, mode: "raw" } : {}),
     }),
     /** An exercise: the question (its value is the answer), the prompt, the hints. */
     ex: (question, prompt, hints = [], o = {}) => cells.push({
@@ -62,17 +61,19 @@ course("calculus", "Calculus: derivatives and integrals",
 > The derivative of $f$ at $x$ is $f'(x) = \lim_{h \to 0} \dfrac{f(x + h) - f(x)}{h}$, the slope of the graph there. The rules below are consequences of this definition, so they can be applied without taking a limit each time.
 `);
     sec("From secant to tangent");
-    md(r`The fraction in the definition is the slope of a **secant**: the line through two points of the graph, $(x, f(x))$ and $(x + h, f(x + h))$. Take $f(x) = x^2$ at $x = 1$: ‹m› is the secant's slope, ‹L› the secant, and ‹T› the tangent, the line through $(1, 1)$ with slope $f'(1)$.`);
+    md(r`The fraction in the definition is the slope of a **secant**: the line through two points of the graph, $(x, f(x))$ and $(x + h, f(x + h))$. Take $f(x) = x^2$ at $x = 1$, and leave $h$ a letter: ‹m› is the secant's slope in terms of $h$, ‹L› the secant, and ‹T› the tangent, the line through $(1, 1)$ with slope $f'(1)$.`);
     m("let f = x^2");
-    m("let h = 2", { slider: [0.05, 2, 0.05], play: "down" });
     m("let m = (subst(f, x, 1 + h) - subst(f, x, 1)) / h");
     m("let L = subst(f, x, 1) + m*(x - 1)");
     m("let T = subst(f, x, 1) + subst(diff(f, x), x, 1)*(x - 1)");
-    m("plot([f, L, T], x, -0.5, 3)");
+    md(r`‹manipulate(e, h, from, to)› shows ‹e› with a slider for $h$ and a ‹▶ Play› button, like Mathematica's ‹Manipulate›. Here $h$ runs from $2$ down to $0.05$.`);
+    m("manipulate(plot([f, L, T], x, -0.5, 3), h, 2, 0.05)");
     md(r`
 > [!try]
-> Press ‹▶ Play› on ‹h›. As $h$ shrinks toward $0$ the second point slides down the curve toward $(1, 1)$, and the secant ‹L› turns onto the tangent ‹T›. Its slope $m = \dfrac{(1 + h)^2 - 1}{h} = 2 + h$ closes in on $f'(1) = 2$. The slope is never computed *at* $h = 0$, where the fraction is $\frac00$: the derivative is the number the slopes approach. Drag ‹h› to stop anywhere.
+> Press ‹▶ Play›. As $h$ shrinks toward $0$ the second point slides down the curve toward $(1, 1)$, and the secant ‹L› turns onto the tangent ‹T›. Drag the slider to stop anywhere. Below, the secant's slope at the same values of $h$: $m = \dfrac{(1 + h)^2 - 1}{h} = 2 + h$ closes in on $f'(1) = 2$.
 `);
+    m("manipulate(m, h, 2, 0.05)");
+    md(r`The slope is never computed *at* $h = 0$, where the fraction is $\frac00$: the derivative is the number the slopes approach.`);
     sec("Powers, sums and constants");
     md(r`
 > [!theorem] Power, sum and constant-multiple rules
