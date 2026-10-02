@@ -29,12 +29,15 @@ all four of the following, in the same change:
    (`npm run e2e`, run in CI). It types the source into a math cell of the bundled notebook in
    Chromium, against the native engine over HTTP, and checks the engine's answer as text, that the
    page shows exactly that answer, and, given `step`, that the cell's work shows a step by that
-   name. Errors are checked too (`error`). Next to it:
+   name. Errors are checked too (`error`). A notebook feature beyond a math cell's answer (a cell
+   kind, an action, a tab) adds a check to `features()` in the same script, held to the engine's own
+   answers through the test's reference client. Next to it:
    - `packages/math-editor/test/engine.test.mjs` sends every `golden.tsv` source and every bundled
      notebook cell through the editor's reader and writer and then to the native engine, checking
      that the text the editor writes back means what the source meant (no browser);
-   - CI evaluates every cell of `notebooks/welcome.chalk` against the native engine
-     (`scripts/notebooks/drive.mjs`);
+   - CI evaluates every cell of `notebooks/welcome.chalk` against the native engine, and holds every
+     example notebook and course lesson to its golden outcomes in `notebooks/golden/`
+     (`scripts/notebooks/drive.mjs --check`; `--update` after a deliberate change);
    - `npm run smoke:lean` and `npm run smoke:ask` drive Lean cells and `?` lookups in Chromium. They
      are run by hand and are not in CI; run them when a change touches those.
 

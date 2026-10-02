@@ -4,7 +4,7 @@ name: CI
 # `lake test` (the ported reference suite and the golden corpus), engine/ stays free of Mathlib, the
 # TypeScript packages build and pass their tests against the native engine, the notebook page
 # type-checks and bundles, and math cells typed into the bundled page in Chromium show the native
-# engine's answers and work (scripts/e2e-math.mjs). pages.yml deploys a main commit only after this has passed on it.
+# engine's answers and work, as do the notebook's teaching features (scripts/e2e-math.mjs). pages.yml deploys a main commit only after this has passed on it.
 
 on:
   push:
@@ -61,7 +61,7 @@ jobs:
         run: npm test
       - name: Bundle the notebook
         run: npm run bundle
-      - name: Math cells end to end in Chromium (the bundled notebook against the native engine)
+      - name: Math cells and the teaching features end to end in Chromium (the bundled notebook against the native engine)
         # the runner's Chrome: playwright-core ships no browser of its own
         run: CHROMIUM="${CHROME_BIN:-$(command -v google-chrome)}" node scripts/e2e-math.mjs e2e-math.png
       - name: Keep the end-to-end screenshot when it fails
