@@ -8,8 +8,11 @@
 // Then the notebook's teaching features, in a notebook of their own: a cell out of date when a name it
 // read changes, a slider driving the cells below it, work stepped through with the answer held back,
 // an exercise written in its editor and answered (wrong, right, and with the work), a Markdown
-// callout, a function's usage on hover, a truth table and a relation's graph, a logic exercise, and
-// a course's lesson opened from the Courses tab, answered, and followed to the next. Each is held to the engine's own answers through a client of the test's.
+// callout, a function's usage on hover, a truth table and a relation's graph, an operation table, a
+// typing tree, a logic exercise, a system typed over several lines, manipulate (a plot played, a
+// derivative and a column of a plot and a calculation dragged, against the engine's own frames), and a
+// course's lesson opened from the Courses tab, answered, and followed to the next. Each is held to the
+// engine's own answers through a client of the test's.
 // Chromium: playwright-core's own, or the executable named by CHROMIUM. The engine: MATHENGINE, or
 // engine/.lake/build/bin/mathengine.
 import { chromium } from "playwright-core";
@@ -128,6 +131,66 @@ const menu = async (m, item) => { await page.locator(".menus span", { hasText: m
 /** The engine's own answer, in a session of the test's that follows the notebook's. */
 const ref = (source, k) => reference.call("engine.evaluate", { sessionId: "e2e-features", cellId: `f${k}`, source, paths: true });
 
+/** manipulate, in a notebook of its own: a plot's slider played from the first frame to the last with
+ *  its axes held still, and a derivative's slider dragged, each frame the engine's own. */
+async function manipulate() {
+  await menu("File", "New notebook");
+  const src = "manipulate(plot([x^2, 1 + (2 + h)*(x - 1)], x, -0.5, 3), h, 2, 0.5, 4)";
+  const want = await reference.call("engine.manipulate", { sessionId: "e2e-manip", cellId: "p", source: src });
+  assert.equal(want.ok, true, `${src}: ${want.error?.message}`);
+  assert.deepEqual(want.frames.map((f) => f.value), [2, 1.5, 1, 0.5], "the engine's values of h");
+  await run(0, src);
+  const box = all().nth(0).locator(".manip");
+  await box.locator(".plotbox svg").waitFor({ timeout: 30000 });
+  const svg = box.locator(".plotbox svg");
+  const label = (f) => `Plot of ${f.plot.series.map((s) => s.rendered.text).join(" and ")}`;
+  assert.ok((await svg.getAttribute("aria-label")).startsWith(label(want.frames[0])), "the first frame is not the engine's");
+  assert.equal(await box.locator("input[type=range]").getAttribute("max"), "3", "one slider position per frame");
+  const ticks = () => box.locator(".plotbox svg text.tl.r").allTextContents();
+  const before = await ticks();
+  const play = box.locator(".sliderplay");
+  assert.equal((await play.textContent()).trim(), "▶ Play", "no ▶ Play");
+  await play.click();
+  await box.locator(".sliderplay.on").waitFor({ timeout: 5000 });
+  await box.locator(".sliderplay:not(.on)").waitFor({ timeout: 15000 });
+  assert.ok((await svg.getAttribute("aria-label")).startsWith(label(want.frames[3])), `the play did not end on the engine's last frame: ${await svg.getAttribute("aria-label")}`);
+  assert.equal(await box.locator(".sliderval .katex-mathml annotation").textContent(), want.frames[3].valueRendered.latex, "the value shown at the end");
+  assert.deepEqual(await ticks(), before, "the axes moved while h played");
+  // any body: a derivative, its slider dragged to the last of its values, shown as its calculation
+  const flatTex = (t) => t.replace(/\\htmlData\{[^}]*\}/g, "").replace(/[{}\s]/g, "");
+  /** The text a part shows once its slider is at the last value: wait for it to end in `want`. */
+  async function lastLine(i, part, want) {
+    const box = all().nth(i).locator(".manip");
+    await box.locator(".manipbody").first().waitFor({ timeout: 30000 });
+    await box.locator("input[type=range]").focus();
+    await page.keyboard.press("End");
+    const line = () => box.locator(".manippart").nth(part).locator(".manipbody .katex-mathml annotation").textContent();
+    await page.waitForFunction(([k, j, w]) => {
+      const t = document.querySelectorAll(".cell")[k]?.querySelectorAll(".manippart")[j]?.querySelector(".manipbody .katex-mathml annotation")?.textContent ?? "";
+      return t.replace(/\\htmlData\{[^}]*\}/g, "").replace(/[{}\s]/g, "").endsWith(w);
+    }, [i, part, flatTex(want)], { timeout: 10000 }).catch(async () => assert.fail(`cell ${i}, part ${part} shows ${await line()}, which does not end in ${want}`));
+    return flatTex(await line());
+  }
+  const src2 = "manipulate(diff(x^n, x), n, 1, 3, 3)";
+  const want2 = await reference.call("engine.manipulate", { sessionId: "e2e-manip", cellId: "d", source: src2 });
+  await run(1, src2);
+  await lastLine(1, 0, want2.frames[2].rendered.latex);
+  // a column: a plot and a calculation under one slider, the calculation from h put in to the value
+  const src3 = "manipulate(column(plot([x, h*x], x, 0, 1), h^2 + 1), h, 1, 3, 3)";
+  const want3 = await reference.call("engine.manipulate", { sessionId: "e2e-manip", cellId: "c", source: src3 });
+  assert.equal(want3.frames[2].parts?.length, 2, "the engine's column has two parts");
+  await run(2, src3);
+  // wait for the output: the cell is evaluated after Enter, not by it
+  await all().nth(2).locator(".manip .manippart").nth(1).waitFor({ timeout: 30000 }).catch(async () =>
+    assert.fail(`the column's output did not appear: ${await all().nth(2).locator(".cellerr").textContent({ timeout: 1000 }).catch(() => "no error shown")}`));
+  assert.equal(await all().nth(2).locator(".manip .manippart").count(), 2, "one place per part");
+  const calc = want3.frames[2].parts[1];
+  const shown = await lastLine(2, 1, calc.rendered.latex);
+  assert.ok(!calc.work || shown.startsWith(flatTex(calc.work[0].latex)), `the calculation does not start from h put in: ${shown}`);
+  assert.ok(await all().nth(2).locator(".manip .manippart").nth(0).locator(".plotbox svg").count(), "the column's plot is not drawn");
+  console.log(`✓ manipulate: h played over ${want.frames.length} frames with the axes held; diff(x^n, x) at n = 3 is ${want2.frames[2].rendered.text}; a column's plot and calculation, h^2 + 1 = ${calc.rendered.text} at h = 3`);
+}
+
 /** The teaching features, in a fresh notebook, then a course. */
 async function features() {
   await menu("File", "New notebook");
@@ -217,6 +280,28 @@ async function features() {
   await page.locator(".usagetip .umore", { hasText: "subst" }).waitFor({ timeout: 5000 });
   await page.mouse.move(5, 5);
   console.log("✓ usage on hover: subst");
+  // explain: each clickable part of an answer explains that part, the engine's own explain of its path
+  // (a negated product prints without its -1, and its factors keep their true paths)
+  const negSrc = "cos(t) - sin(t)^2/sqrt(2)";
+  const nI = await all().count() - 1;
+  await all().nth(nI).locator("input.cellin").fill(negSrc);
+  await all().nth(nI).locator("input.cellin").press("Enter");
+  await outIs(nI, (await ref(negSrc, 8)).rendered.latex, "the negated product");
+  const spans = all().nth(nI).locator(".outval .katex-html [data-path]");
+  const paths = await spans.evaluateAll((els) => els.map((e) => e.getAttribute("data-path")));
+  assert.ok(paths.includes("0.2.1"), `no clickable exponent among ${JSON.stringify(paths)}`);
+  for (const p of paths) {
+    const path = p === "root" ? [] : p.split(".").map(Number);
+    const want = await reference.call("engine.explain", { sessionId: "e2e-features", cellId: "f8", path });
+    await spans.and(page.locator(`[data-path="${p}"]`)).first().dispatchEvent("click");
+    // the notebook marks the part it explains once the engine has answered for it
+    await all().nth(nI).locator(`.outval [data-path="${p}"].sel`).waitFor({ timeout: 10000 })
+      .catch(async () => assert.fail(`explain ${p}: not selected; ${await page.locator(".toast.err").allTextContents()}`));
+    const shown = await page.locator(".panel .explain .sel .katex-mathml annotation").first().textContent();
+    assert.equal(flat(shown ?? ""), flat(want.rendered.latex), `explain ${p}: the panel shows another subterm`);
+  }
+  assert.equal(await page.locator(".toast.err").count(), 0, "an explain failed");
+  console.log(`✓ explain: ${paths.length} parts of ${negSrc}, each its own subterm`);
   // a truth table, and a relation's graph with the pairs that break a property marked
   const runLast = async (src) => {
     const k = await all().count() - 1;
@@ -254,10 +339,10 @@ async function features() {
   const ty = await runLast("type: λf:A→B. λx:A. f x");
   const tyWant = (await ref("type: λf:A→B. λx:A. f x", 14)).visuals.find((v) => v.kind === "typing.tree").data;
   // in the page a judgment follows its premises, as they sit above it
-  const flat = (n) => [...n.premises.flatMap(flat), n];
-  assert.deepEqual(await ty.locator(".typingtree .ptrule").allTextContents(), flat(tyWant.root).map((n) => n.rule), "a rule per judgment, as the engine derived it");
-  assert.deepEqual(await ty.locator(".typingtree .ptconc").evaluateAll((els) => els.map((e) => e.title)), flat(tyWant.root).map((n) => n.text), "the judgments are the engine's");
-  console.log(`✓ typing tree: ${flat(tyWant.root).length} judgments, rules ${flat(tyWant.root).map((n) => n.rule).join(" ")}`);
+  const nodesOf = (n) => [...n.premises.flatMap(nodesOf), n];
+  assert.deepEqual(await ty.locator(".typingtree .ptrule").allTextContents(), nodesOf(tyWant.root).map((n) => n.rule), "a rule per judgment, as the engine derived it");
+  assert.deepEqual(await ty.locator(".typingtree .ptconc").evaluateAll((els) => els.map((e) => e.title)), nodesOf(tyWant.root).map((n) => n.text), "the judgments are the engine's");
+  console.log(`✓ typing tree: ${nodesOf(tyWant.root).length} judgments, rules ${nodesOf(tyWant.root).map((n) => n.rule).join(" ")}`);
   // a logic exercise: an equivalent answer not in CNF is refused, one in CNF is right
   const lq = "cnf(p → (q ∧ r))";
   await menu("Edit", "Add exercise");
@@ -303,6 +388,7 @@ async function features() {
   const invWant = (await ref("invariant(M, p = crit → lock = true)", 15)).visuals.find((v) => v.kind === "relation.digraph").data;
   assert.equal(await inv.locator("svg path.redge.bad").count(), invWant.bad.length, "the counterexample's transitions are marked");
   console.log(`✓ several lines: a system typed with Shift+Enter, ${invWant.nodes.length} states, a ${invWant.bad.length}-step counterexample marked`);
+  await manipulate();
   // a course: the Courses tab, a lesson opened, answered, and followed to the next
   const manifest = JSON.parse(readFileSync(path.join(root, "notebooks/courses.json"), "utf8"));
   const course = manifest.projects.find((p) => p.kind === "course");

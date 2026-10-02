@@ -192,7 +192,7 @@ def ruleStatus : Json :=
 
 def capabilities : Json :=
   .obj #[("engine", .str "engine-lean"), ("version", .str "0.1.0-m8"), ("verified", .bool true),
-         ("features", .arr #[.str "simplify", .str "expand", .str "factor", .str "diff", .str "linalg", .str "numeric", .str "integrate", .str "plot", .str "lambda", .str "order", .str "sum", .str "exptotrig", .str "part", .str "statistics", .str "check", .str "logic", .str "systems"]),
+         ("features", .arr #[.str "simplify", .str "expand", .str "factor", .str "diff", .str "linalg", .str "numeric", .str "integrate", .str "plot", .str "manipulate", .str "lambda", .str "order", .str "sum", .str "exptotrig", .str "part", .str "statistics", .str "check", .str "logic", .str "systems"]),
          ("ruleStatus", ruleStatus),
          ("termination", .obj #[("status", .str "proven"), ("theorem", .str "MathEngine.pipelineOrdered"),
            ("summary", .str "Cell evaluation has no step budget: every pipeline rule decreases a five-tier ordering (commands, higher-order diff, matrix literals, the weight M, size) on nodes whose children are normal.")])]
@@ -414,6 +414,16 @@ where
 
 private def floatJson (x : Float) : Json := .num (toString x)
 
+/-- A plot's own fields on the wire: the variable and range, each curve's term and samples, and
+the epicycles' circles. -/
+def plotFields (pl : Plot) : Array (String × Json) :=
+  let ptsJson (pts : Array (Float × Option Float)) : Json :=
+    .arr (pts.map fun (t, y) => Json.arr #[floatJson t, match y with | some v => floatJson v | none => .null])
+  let series := pl.series.map fun sr => Json.obj #[("rendered", Rendered.toJson sr.term false), ("points", ptsJson sr.points), ("parametric", .bool sr.parametric)]
+  let terms := pl.terms.map fun (k, c, ex) => Json.obj (#[("k", .num (toString k)), ("re", floatJson c.re), ("im", floatJson c.im)] ++
+    (match ex with | some e => #[("rendered", Rendered.toJson e false)] | none => #[]))
+  #[("var", .str pl.var), ("from", floatJson pl.from_), ("to", floatJson pl.to), ("series", .arr series), ("terms", .arr terms)]
+
 def plot (st : Store) (params : Json) : Store × Json :=
   match params.getStr? "source" with
   | none => (st, errorJson "params" "missing source")
@@ -426,16 +436,40 @@ def plot (st : Store) (params : Json) : Store × Json :=
     | .error (code, msg, span) => (st, errorJson code msg span)
     | .ok (_, out, d, pl) =>
       let paths := params.getBool "paths"
-      let ptsJson (pts : Array (Float × Option Float)) : Json :=
-        .arr (pts.map fun (t, y) => Json.arr #[floatJson t, match y with | some v => floatJson v | none => .null])
-      let series := pl.series.map fun sr => Json.obj #[("rendered", Rendered.toJson sr.term false), ("points", ptsJson sr.points), ("parametric", .bool sr.parametric)]
-      let terms := pl.terms.map fun (k, c, ex) => Json.obj (#[("k", .num (toString k)), ("re", floatJson c.re), ("im", floatJson c.im)] ++
-        (match ex with | some e => #[("rendered", Rendered.toJson e false)] | none => #[]))
-      let res := #[("ok", .bool true), ("kind", .str "plot"), ("value", out.toJson), ("rendered", Rendered.toJson out paths),
-        ("var", .str pl.var), ("from", floatJson pl.from_), ("to", floatJson pl.to), ("series", .arr series),
-        ("terms", .arr terms)]
+      let res := #[("ok", .bool true), ("kind", .str "plot"), ("value", out.toJson), ("rendered", Rendered.toJson out paths)] ++ plotFields pl
       let res := res ++ workFields params d
       (st, .obj res)
+    withLabel st sessionId cellId j
+
+/-- `manipulate(e, p, from, to[, frames])`: every frame's value of `p` (as a number and as the
+engine prints it), the body's normal form there, and a plot body's samples; the cell's own value,
+rendering and work are the first frame's. -/
+def manipulate (st : Store) (params : Json) : Store × Json :=
+  match params.getStr? "source" with
+  | none => (st, errorJson "params" "missing source")
+  | some src =>
+    let sessionId := (params.getStr? "sessionId").getD ""
+    let cellId := (params.getStr? "cellId").getD ""
+    let (s, r) := manipulateCell (st.get sessionId) cellId src
+    let st := st.set sessionId s
+    let (st, j) := match r with
+    | .error (code, msg, span) => (st, errorJson code msg span)
+    | .ok (out, d, p, frames) =>
+      let paths := params.getBool "paths"
+      -- a calculation is sent when it has more than its result
+      let workJson (w : Array Expr) : Array (String × Json) :=
+        if w.size ≤ 1 then #[] else #[("work", Json.arr (w.map fun e => Rendered.toJson e false))]
+      let plotJson (pl : Option Plot) : Array (String × Json) :=
+        match pl with | some pl => #[("plot", Json.obj (plotFields pl))] | none => #[]
+      let partJson (pt : FramePart) : Json := Json.obj (#[("rendered", Rendered.toJson pt.output false)] ++
+        (match pt.label with | some l => #[("label", Json.str l)] | none => #[]) ++ plotJson pt.plot ++ workJson pt.work)
+      let frameJson (f : Frame) : Json := Json.obj (#[("value", floatJson f.value.toFloat),
+        ("valueRendered", Rendered.toJson (.num f.value) false), ("rendered", Rendered.toJson f.output false)] ++
+        plotJson f.plot ++ workJson f.work ++
+        (if f.parts.isEmpty then #[] else #[("parts", Json.arr (f.parts.map partJson))]))
+      let res := #[("ok", .bool true), ("kind", .str "manipulate"), ("value", out.toJson), ("rendered", Rendered.toJson out paths),
+        ("param", .str p), ("frames", .arr (frames.map frameJson))]
+      (st, .obj (res ++ workFields params d))
     withLabel st sessionId cellId j
 
 def explain (st : Store) (params : Json) : Except String Json := do
@@ -505,6 +539,7 @@ def dispatch (st : Store) (req : Json) : Store × Json :=
   | some "engine.capabilities" => (st, reply capabilities)
   | some "engine.evaluate" => let (st, r) := evaluate st params; (st, reply r)
   | some "engine.plot" => let (st, r) := plot st params; (st, reply r)
+  | some "engine.manipulate" => let (st, r) := manipulate st params; (st, reply r)
   | some "engine.check" => let (st, r) := check st params; (st, reply r)
   | some "engine.explain" =>
     match explain st params with

@@ -259,7 +259,44 @@ export const FUNCTIONS: FnDoc[] = [
       basic("plot(sin(x)/x, x, -10, 10)", "plot([sin(x), cos(x)], x, 0, 2pi)"),
       section("Scope", note("A function and its derivative:"), "plot([x^2, diff(x^2, x)], x, -3, 3)", note("A complex-valued curve:"), "plot(exp(i*t), t, 0, 2pi)"),
     ],
-    see: ["epicycles", "diff"],
+    see: ["manipulate", "epicycles", "diff"],
+  },
+  {
+    name: "manipulate", area: "Calculus",
+    usage: [
+      ["manipulate(e, p, from, to)", "shows `e` with a slider for `p`, from `from` to `to`, and ▶ Play to animate it."],
+      ["manipulate(e, p, from, to, n)", "uses `n` values of `p` (40 unless given, at most 200)."],
+    ],
+    details: [
+      "Mathematica's `Manipulate`. `e` is any expression: a plot animates, and a derivative, a sum or a matrix shows its value at each `p`.",
+      "The engine evaluates `e` once for each value of `p`, evenly spaced from `from` to `to`, in one go; moving the slider and playing never wait for it.",
+      "`from` may be larger than `to`: the slider starts at `from`, so `manipulate(…, h, 1, 0.01)` plays `h` down toward 0.",
+      "A plot keeps one window for every frame, so the axes hold still while the curves move. While it plays, the page draws between neighbouring frames; where the slider stops, it shows the engine's own frame.",
+      "Beside a plot, any other value shows its calculation at each `p`: the expression with `p` put in, the engine's steps, and the value, as `m = ((2 + 1)^2 - 1)/2 = (9 - 1)/2 = 4`.",
+      "`column(e₁, e₂, …)` puts several things under the one slider, like Mathematica's `Column`: each is evaluated as its own cell. A part that is a name (`m`) is labelled with it.",
+      "`p` is bound only inside the frames, and must not be the plot's own variable. The cell's value and work are its first frame's.",
+    ],
+    examples: [
+      basic("manipulate(plot(sin(a*x), x, 0, 2pi), a, 1, 4)", "manipulate(diff(x^n, x), n, 1, 5, 5)"),
+      section("Scope",
+        note("A secant turning into the tangent of x² at 1 as h shrinks toward 0:"),
+        "manipulate(plot([x^2, 1 + ((1 + h)^2 - 1)/h*(x - 1)], x, -0.5, 3), h, 2, 0.05)",
+        note("With the slope worked out beside it:"),
+        "let m = ((1 + h)^2 - 1)/h",
+        "manipulate(column(plot([x^2, 1 + m*(x - 1)], x, -0.5, 3), m), h, 2, 0.05)"),
+    ],
+    see: ["column", "plot", "subst"],
+  },
+  {
+    name: "column", area: "Calculus",
+    usage: [["column(e₁, e₂, …)", "inside `manipulate`, shows each `eᵢ` under the one slider, one below the other."]],
+    details: [
+      "Mathematica's `Column`. Each part is evaluated as its own cell would be, at every value of the slider: a plot animates, and any other part shows its calculation there.",
+      "A part that is a name the notebook has bound (`let m = …`) is labelled with the name.",
+      "Outside `manipulate` it is only its parts, evaluated.",
+    ],
+    examples: [basic("manipulate(column(plot(x^n, x, 0, 2), diff(x^n, x)), n, 1, 4, 4)")],
+    see: ["manipulate", "plot"],
   },
 
   // --- Complex numbers -------------------------------------------------------------------------

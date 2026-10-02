@@ -241,6 +241,34 @@ export interface PlotResult {
   derivation?: Derivation; outline?: Outline; inputRendered?: Rendered; label?: number;
 }
 
+/** `manipulate(e, p, from, to[, frames])`, Mathematica's `Manipulate`: the body `e` evaluated as a
+ *  cell would be, once for each of `frames` values of `p` evenly spaced from `from` to `to` (either
+ *  way round; the first is where the slider starts). Each frame carries `p`'s value (as a number to
+ *  place it and as the engine prints it), the body's normal form there, and, when the body is a
+ *  `plot`, that frame's samples. The cell's value, rendering and work are the first frame's.
+ *  Optional method (rule 5). */
+export interface ManipulateFrame {
+  value: number; valueRendered: Rendered; rendered: Rendered;
+  plot?: ManipulatePlot;
+  /** A body that is not a plot: its calculation at this value, from the body with `p` put in to the
+   *  value, each step's whole term (one that prints like the one before left out). Absent when the
+   *  value is all there is. */
+  work?: Rendered[];
+  /** A `column(e₁, e₂, …)` body (Mathematica's `Column`): each part, evaluated as its own cell. */
+  parts?: ManipulatePart[];
+}
+export interface ManipulatePlot { var: string; from: number; to: number; series: PlotSeries[]; terms?: Epicycle[] }
+/** One part of a column: its value, the session name it was written as (`m`), and its samples when
+ *  it is a plot or its calculation otherwise. */
+export interface ManipulatePart { rendered: Rendered; label?: string; plot?: ManipulatePlot; work?: Rendered[] }
+export interface ManipulateResult {
+  ok: true; kind: "manipulate";
+  value: WireExpr; rendered: Rendered;
+  param: string;
+  frames: ManipulateFrame[];
+  derivation?: Derivation; outline?: Outline; inputRendered?: Rendered; label?: number;
+}
+
 /** M-λ: a λ-cell's reply carries the de Bruijn view of the result and of every step
  *  (`Step.afterDeBruijn`), and a reading when the normal form is a Church numeral or boolean. */
 export interface HasseData { nodes: { name: string; height: number }[]; covers: [string, string][] }
@@ -298,6 +326,7 @@ export interface Methods {
   "engine.steps":        { params: StepsParams; result: StepsResult };
   "engine.resetSession": { params: { sessionId: string }; result: { ok: true } };
   "engine.plot":         { params: PlotParams; result: PlotResult | EvaluateError };
+  "engine.manipulate":   { params: PlotParams; result: ManipulateResult | EvaluateError };
   "engine.check":        { params: CheckParams; result: CheckResult | EvaluateError };
 }
 export type MethodName = keyof Methods;

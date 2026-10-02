@@ -26,7 +26,7 @@ export interface NotationOptions {
 
 /** Commands whose argument at this index is a variable bound over the call (the notebook's
  *  highlighter has the same list). */
-const BINDERS: Record<string, number> = { diff: 1, integrate: 1, plot: 1, epicycles: 1, sum: 1, subst: 1 };
+const BINDERS: Record<string, number> = { diff: 1, integrate: 1, plot: 1, epicycles: 1, sum: 1, subst: 1, manipulate: 1 };
 
 /** An output reference's tag: `%` is `p1`, `%%` is `p2`, `%3` is `n3` (a `data-out` the view reads back). */
 export const outTag = (ref: string) => (/^%\d+$/.test(ref) ? `n${ref.slice(1)}` : `p${ref.length}`);

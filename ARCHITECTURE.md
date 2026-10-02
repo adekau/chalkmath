@@ -141,6 +141,19 @@ differential test with zero mismatches.
 - **Plots are sampled by the engine and drawn by the notebook.** `engine.plot` simplifies the
   function under the session, records the cell, and returns a uniform sample with `null` where the
   value is not finite; the notebook's SVG and the studio's graph shot are presentation only.
+- **Manipulate is every frame at once.** `manipulate(e, p, from, to[, n])` (`engine.manipulate`,
+  `manipulateCell`) evaluates `e` as a cell would for `n` exact values of `p` from `from` to `to`, the
+  session's names substituted before `p` so a name bound to a term in `p` moves with it, and a `plot`
+  body sampled at every frame; the cell records the first frame. Any other body keeps its calculation
+  at each frame (`workChain`: the body with `p` put in, then each step's whole term), and
+  `column(e₁, e₂, …)`, Mathematica's `Column`, makes a frame of several parts, each evaluated as its
+  own cell. The notebook shows the frames under a
+  slider in the cell's output, as Mathematica does, so dragging and ▶ Play never wait for the engine;
+  a plot keeps one window for all its frames, and while it plays the page blends neighbouring frames'
+  samples (same grid) for smooth motion, showing the engine's own frame wherever the slider stops.
+  The frames are not saved: the cell runs again when its notebook opens. A slider on a `let` is the
+  other control: it re-runs every cell that read the name, which suits several cells following one
+  number but not animation.
 - **Integration is checked, not found.** `Antiderivative.lean` guesses an antiderivative with a
   few textbook rules and proves nothing; `cmdIntegrate` differentiates the guess with the pipeline
   and accepts it only if the normal form is the integrand itself. `cmdIntegrate_spec` states that;

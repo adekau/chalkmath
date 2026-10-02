@@ -53,14 +53,16 @@ async function drive(file, session) {
       continue;
     }
     if (bind) pageNames.delete(bind);
-    const isPlot = /^\s*(plot|epicycles|dft)\s*\(/.test(src);
-    const method = exercise ? "engine.check" : isPlot ? "engine.plot" : "engine.evaluate";
+    const isPlot = /^\s*(plot|epicycles|dft)\s*\(/.test(src), isManip = /^\s*manipulate\s*\(/.test(src);
+    const method = exercise ? "engine.check" : isPlot ? "engine.plot" : isManip ? "engine.manipulate" : "engine.evaluate";
     const r = await call(method, { sessionId: session, cellId: `c${i}`, source: src, showWork: true, paths: false });
     const res = r.result ?? r.error;
     const failed = res?.ok === false || !!r.error;
     const text = res?.rendered?.text ?? (res?.series ? `plot: ${res.series.length} series` : "");
     const message = res?.error?.message ?? res?.message ?? (failed ? JSON.stringify(res).slice(0, 200) : "");
-    const outcome = failed ? `✗ ${message}` : `= ${text}${res?.summary ? `   [${res.summary}]` : ""}${res?.reading ? `   (${res.reading})` : ""}`;
+    // a manipulate cell: its first frame's answer, and how many frames to the last one's
+    const frames = res?.frames?.length ? `   [${res.frames.length} frames of ${res.param}; at ${res.param} = ${res.frames.at(-1).valueRendered.text}: ${res.frames.at(-1).rendered.text}]` : "";
+    const outcome = failed ? `✗ ${message}` : `= ${text}${frames}${res?.summary ? `   [${res.summary}]` : ""}${res?.reading ? `   (${res.reading})` : ""}`;
     const steps = res?.derivation?.steps ?? [];
     results.push({ i, src, ok: !failed, outcome, text, summary: res?.summary, error: failed ? message : undefined, steps: steps.length, hasse: res?.hasse, stepList: steps });
   }

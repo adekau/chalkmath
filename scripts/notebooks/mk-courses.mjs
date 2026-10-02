@@ -2553,6 +2553,19 @@ course("calculus", "Calculus: derivatives and integrals",
 > [!definition] Derivative
 > The derivative of $f$ at $x$ is $f'(x) = \lim_{h \to 0} \dfrac{f(x + h) - f(x)}{h}$, the slope of the graph there. The rules below are consequences of this definition, so they can be applied without taking a limit each time.
 `);
+    sec("From secant to tangent");
+    md(r`The fraction in the definition is the slope of a **secant**: the line through two points of the graph, $(x, f(x))$ and $(x + h, f(x + h))$. Take $f(x) = x^2$ at $x = 1$, and leave $h$ a letter: ‹m› is the secant's slope in terms of $h$, ‹L› the secant, and ‹T› the tangent, the line through $(1, 1)$ with slope $f'(1)$.`);
+    m("let f = x^2");
+    m("let m = (subst(f, x, 1 + h) - subst(f, x, 1)) / h");
+    m("let L = subst(f, x, 1) + m*(x - 1)");
+    m("let T = subst(f, x, 1) + subst(diff(f, x), x, 1)*(x - 1)");
+    md(r`‹manipulate(e, h, from, to)› shows ‹e› with a slider for $h$ and a ‹▶ Play› button, like Mathematica's ‹Manipulate›, and ‹column(…)› puts several things under the one slider, like its ‹Column›: here the picture, then the calculation of ‹m›, ‹L› and ‹T› at the same $h$. $h$ runs from $2$ down to $0.05$.`);
+    m("manipulate(column(plot([f, L, T], x, -0.5, 3), m, L, T), h, 2, 0.05)");
+    md(r`
+> [!try]
+> Press ‹▶ Play›. As $h$ shrinks toward $0$ the second point slides down the curve toward $(1, 1)$, and the secant ‹L› turns onto the tangent ‹T›. Under the picture, ‹m› is worked out at each $h$: rise over run, $\dfrac{(1 + h)^2 - 1}{h}$ with $h$ put in, closing in on $f'(1) = 2$. Drag the slider to stop anywhere and read the calculation there.
+`);
+    md(r`The slope is never computed *at* $h = 0$, where the fraction is $\frac00$: the derivative is the number the slopes approach.`);
     sec("Powers, sums and constants");
     md(r`
 > [!theorem] Power, sum and constant-multiple rules

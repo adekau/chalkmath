@@ -68,6 +68,15 @@ def sessionEval (st : Store) (src : String) (extra := "") : Store × String :=
         | none => (st, s!"<unexpected: {raw}>")
   | .error m => (st, s!"<bad json: {m}>")
 
+/-- The paths a LaTeX rendering with `paths := true` wraps its subterms in, as printed. -/
+def latexPaths (latex : String) : List String :=
+  (latex.splitOn "\\htmlData{path=").drop 1 |>.map fun s => (s.splitOn "}").head!
+
+/-- Paths a printed term names that are not in it: each one must reach a subterm (`Expr.at?`). -/
+def badPaths (e : Expr) : List String :=
+  (latexPaths (e.toLatex true)).filter fun p =>
+    p != "root" && (e.at? ((p.splitOn ".").map String.toNat!)).isNone
+
 /-- Rule names of a cell's derivation (needs `showWork`). -/
 def derivationRules (st : Store) (src : String) : List String :=
   match (st.get "t").cells.lookup src with
@@ -203,6 +212,13 @@ def tests : TestM Unit := do
   check "latex set-literal elements" ((Expr.fn "set" [.var "{}", .var "{x,y}"]).toLatex false) "\\{\\varnothing, \\{x,y\\}\\}"
   check "latex matrix" (latexOf "[1,2;3,4]") "\\begin{bmatrix}1 & 2 \\\\ 3 & 4\\end{bmatrix}"
   check "latex paths" (latexOf "x^3" true) "\\htmlData{path=root}{{\\htmlData{path=0}{x}}^{\\htmlData{path=1}{3}}}"
+  -- `-(a·b)` prints without its `-1`: the product is the signed term's, and each factor keeps its own
+  -- index (`0.2.1`, not `0.1.1.1`, which names nothing)
+  let negProd := Expr.add [.mul [.num Q.minusOne, .pow (.num (Q.ofInt 2)) (.num (Q.ofRat (mkRat (-1) 2))),
+    .pow (.fn "sin" [.var "t"]) (.num (Q.ofInt 2))], .fn "cos" [.var "t"]]
+  check "latex paths: a negated product" (negProd.toLatex true)
+    "\\htmlData{path=root}{-\\htmlData{path=0}{\\frac{\\htmlData{path=0.2}{{\\htmlData{path=0.2.0}{\\sin\\left(\\htmlData{path=0.2.0.0}{t}\\right)}}^{\\htmlData{path=0.2.1}{2}}}}{\\htmlData{path=0.1}{\\sqrt{2}}}} + \\htmlData{path=1}{\\cos\\left(\\htmlData{path=1.0}{t}\\right)}}"
+  check "latex paths: a negated product, every path reaches a subterm" (toString (badPaths negProd)) "[]"
   -- step 2: normalize records whole-term before/after and the path; innermost order
   let x := Expr.var "x"; let y := Expr.var "y"
   let d := derive [unwrap] (.add [x, .add [y]])
@@ -512,6 +528,32 @@ def sessionTests : TestM Unit := do
   checkTrue "rpc plot list normalizes entries" (contains (rpc "engine.plot" "{\"source\":\"plot([diff(x^2, x), x + 0], x, -1, 1, 3)\"}") "\"series\":[{\"rendered\":{\"text\":\"2*x\"")
   checkTrue "rpc plot single is one series" (contains (rpc "engine.plot" "{\"source\":\"plot(x, x, 0, 1, 2)\"}") "\"series\":[{\"rendered\":{\"text\":\"x\",\"latex\":\"x\"},\"points\":[[")
   checkTrue "rpc plot rejects a matrix" (contains (rpc "engine.plot" "{\"source\":\"plot([1, 2; 3, 4], x, 0, 1)\"}") "not a matrix")
+  -- manipulate: any body, once per value of the parameter; a plot body is sampled per frame
+  let man := rpc "engine.manipulate" "{\"source\":\"manipulate(diff(x^n, x), n, 1, 3, 3)\"}"
+  checkTrue "rpc manipulate: kind and parameter" (contains man "\"kind\":\"manipulate\"" && contains man "\"param\":\"n\"") man
+  checkTrue "rpc manipulate: each frame's normal form" (contains man "\"rendered\":{\"text\":\"1\"" && contains man "\"rendered\":{\"text\":\"2*x\"" && contains man "\"rendered\":{\"text\":\"3*x^2\"") man
+  checkTrue "rpc manipulate: three frames" ((man.splitOn "\"valueRendered\"").length == 4) man
+  checkTrue "rpc manipulate: exact values, either way round" (contains (rpc "engine.manipulate" "{\"source\":\"manipulate(h, h, 1, 0, 3)\"}") "\"valueRendered\":{\"text\":\"1/2\"")
+  let manp := rpc "engine.manipulate" "{\"source\":\"manipulate(plot(h, x, 0, 1, 2), h, 0, 1, 2)\"}"
+  checkTrue "rpc manipulate plot: a frame's samples follow the parameter"
+    (contains manp s!"\"points\":[[{toString (0 : Float)},{toString (1 : Float)}],[{toString (1 : Float)},{toString (1 : Float)}]]") manp
+  checkTrue "rpc manipulate plot: the plot's own variable is refused" (contains (rpc "engine.manipulate" "{\"source\":\"manipulate(plot(x, x, 0, 1), x, 0, 1)\"}") "the plot's own variable")
+  checkTrue "rpc manipulate: the range must be numbers" (contains (rpc "engine.manipulate" "{\"source\":\"manipulate(h, h, 0, y)\"}") "the range must evaluate to numbers")
+  checkTrue "rpc manipulate: the cell's value is the first frame's" (contains (rpc "engine.manipulate" "{\"source\":\"manipulate(h + 1, h, 0, 1, 2)\"}") "\"value\":{\"k\":\"num\",\"v\":{\"num\":\"1\",\"den\":\"1\"}}")
+  let (stm, _) := handleS [] "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"engine.manipulate\",\"params\":{\"sessionId\":\"m\",\"cellId\":\"a\",\"source\":\"manipulate(h + 1, h, 0, 1, 2)\"}}"
+  let (_, hAfter) := handleS stm "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"engine.evaluate\",\"params\":{\"sessionId\":\"m\",\"cellId\":\"b\",\"source\":\"h\"}}"
+  checkTrue "rpc manipulate: the parameter is bound only inside the frames" (contains hAfter "\"rendered\":{\"text\":\"h\"") hAfter
+  -- column: each part evaluated as its own cell; a term keeps its calculation, ending in its value
+  let col := rpc "engine.manipulate" "{\"source\":\"manipulate(column(h + 1, plot(h, x, 0, 1, 2)), h, 0, 1, 2)\"}"
+  checkTrue "rpc manipulate column: each frame's parts" (contains col "\"parts\":[{\"rendered\":{\"text\":\"1\"" && contains col "\"parts\":[{\"rendered\":{\"text\":\"2\"") col
+  checkTrue "rpc manipulate column: a plot part is sampled" (contains col "\"plot\":{\"var\":\"x\"") col
+  checkTrue "rpc manipulate column: the cell's value is the column" (contains col "\"rendered\":{\"text\":\"column(") col
+  let wk := rpc "engine.manipulate" "{\"source\":\"manipulate(h*h + 1, h, 3, 4, 2)\"}"
+  checkTrue "rpc manipulate: a term's calculation, ending in its value" (contains wk "\"work\":[" && contains wk "{\"text\":\"10\",\"latex\":\"10\"}]") wk
+  checkTrue "rpc manipulate: one body has no parts" (!(contains manp "\"parts\"")) manp
+  let (stl, _) := handleS [] "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"engine.evaluate\",\"params\":{\"sessionId\":\"l\",\"cellId\":\"a\",\"source\":\"let m = h + 1\"}}"
+  let (_, lab) := handleS stl "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"engine.manipulate\",\"params\":{\"sessionId\":\"l\",\"cellId\":\"b\",\"source\":\"manipulate(column(m, h), h, 0, 1, 2)\"}}"
+  checkTrue "rpc manipulate column: a part that is a bound name is labelled with it" ((lab.splitOn "\"label\":\"m\"").length == 3 && !(contains lab "\"label\":\"h\"")) lab
   checkTrue "rpc value json" ((rpc "engine.evaluate" "{\"source\":\"2x\"}").startsWith "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"ok\":true,\"value\":{\"k\":\"mul\",\"args\":[{\"k\":\"num\",\"v\":{\"num\":\"2\",\"den\":\"1\"}},{\"k\":\"var\",\"name\":\"x\"}]}")
 
 /-- M2 golden test: `Tests/golden.tsv` holds the reference engine's rendered text for a corpus of
@@ -529,6 +571,10 @@ def goldenTests : TestM Unit := do
       let (st', actual) := sessionEval st source
       st := st'
       check s!"golden: {source}" actual expected
+      -- every subterm the notebook can click names a real path (`engine.explain` takes it)
+      match (st.get "t").cells.lookup source with
+      | some cell => check s!"golden paths: {source}" (toString (badPaths cell.output)) "[]"
+      | none => pure ()
     | _ => pure ()
 
 /-- Part (`m[[…]]`) and the statistics. -/

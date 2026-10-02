@@ -1420,15 +1420,9 @@ sample. A curve that mentions `i` is complex-valued and is drawn in the plane (`
 `epicycles` reads the `(k, c_k)` off a finite Fourier sum and samples the curve over `[0, 2π]`;
 `dft` computes the coefficients of sample points numerically, keeps the `modes` largest, and does
 the same. Sampling and the DFT are presentation: the derivation shown is the term's. -/
-def plotCell (s : Session) (cellId source : String) :
+def plotValue (s : Session) (cellId : String) (value : Expr) :
     Session × Except (String × String × Option (Nat × Nat)) (Expr × Expr × Derivation × Plot) :=
-  match parseStmt source (s.fns.map (·.1)) with
-  | .error e => (s, .error ("syntax", e.message, some (e.start, e.stop)))
-  | .ok stmt =>
     let bad := (s, .error ("eval", "plot takes a function, a variable, and the range: plot(f, x, from, to); epicycles(f, t); dft(points)", none))
-    match s.resolveOuts stmt.value with
-    | .error msg => (s, .error ("eval", msg, none))
-    | .ok value =>
     let num (e : Expr) : Option Float := (evalNumeric [] (substitute s.env (substituteFns s.fns e))).toOption
     -- normalize a term under the session, record the cell, and hand back the derivation
     let record (x : String) (f : Expr) : Session × Except String (Expr × Derivation) :=
@@ -1489,6 +1483,110 @@ def plotCell (s : Session) (cellId source : String) :
         let s := { s with cells := (cellId, { output := value, derivation := d }) :: s.cells.filter (·.1 != cellId) }
         (s, .ok (p, value, d, ⟨"t", 0, 2 * 3.141592653589793, #[⟨value, trace, true⟩], terms⟩))
     | _ => bad
+
+/-- `plotValue` of a cell's source: parse it and resolve `%`, `%%` and `%n` first. -/
+def plotCell (s : Session) (cellId source : String) :
+    Session × Except (String × String × Option (Nat × Nat)) (Expr × Expr × Derivation × Plot) :=
+  match parseStmt source (s.fns.map (·.1)) with
+  | .error e => (s, .error ("syntax", e.message, some (e.start, e.stop)))
+  | .ok stmt =>
+    match s.resolveOuts stmt.value with
+    | .error msg => (s, .error ("eval", msg, none))
+    | .ok value => plotValue s cellId value
+
+/-- The number the session reads `e` as, exactly: its normal form, when that is a numeral. -/
+def Session.exactNum (s : Session) (e : Expr) : Option Q :=
+  match (normalizeT pipelineRules pipelineOrdered (substitute s.env (substituteFns s.fns e))).run #[] with
+  | (.ok (.num q), _) => some q
+  | _ => none
+
+/-- A calculation as it reads: the term it starts from, then each step's whole term, skipping a
+step that prints the same as the one before (a silent rule). -/
+def workChain (input : Expr) (steps : Array Step) : Array Expr :=
+  (steps.map (·.after)).foldl (fun acc e => if (acc.back?.map (·.toText)) == some e.toText then acc else acc.push e) #[input]
+
+/-- One part of a `manipulate` frame, evaluated as its own cell would be: its normal form, its
+samples when it is a plot, and otherwise its calculation (`workChain`). A part that is a name the
+session binds is labelled with it. -/
+structure FramePart where
+  label : Option String := none
+  output : Expr
+  plot : Option Plot := none
+  work : Array Expr := #[]
+
+/-- One frame of `manipulate`: the parameter's value and the body evaluated with it. A body of one
+part is the frame itself (`plot`, `work`); a `column(…)` body has its `parts`. -/
+structure Frame where
+  value : Q
+  output : Expr
+  plot : Option Plot := none
+  work : Array Expr := #[]
+  parts : Array FramePart := #[]
+
+/-- `manipulate(e, p, from, to[, frames])`, Mathematica's `Manipulate`: `e` evaluated as a cell
+would be, once for each of `frames` values of `p` (40 unless given, at most 200) evenly spaced from
+`from` to `to`, either way round (the first is where the slider starts). `from` and `to` must
+normalize to numbers, so the values are exact (approximate when an end is a decimal). `e` may be
+`column(e₁, e₂, …)`, Mathematica's `Column`: each part is evaluated as its own cell, so a plot and
+the calculations beside it move together. A plot is sampled at every frame; any other part keeps its
+calculation with `p` put in. The session's names are put in before `p`, so a name bound to a term in
+`p` (`let m = … h …`) moves with it. The cell records the first frame; `p` is bound only inside the
+frames. The frames are presentation, like a plot's samples: only the first frame's work is kept as
+the cell's. -/
+def manipulateCell (s : Session) (cellId source : String) :
+    Session × Except (String × String × Option (Nat × Nat)) (Expr × Derivation × String × Array Frame) :=
+  match parseStmt source (s.fns.map (·.1)) with
+  | .error e => (s, .error ("syntax", e.message, some (e.start, e.stop)))
+  | .ok stmt =>
+    match s.resolveOuts stmt.value with
+    | .error msg => (s, .error ("eval", msg, none))
+    | .ok (.fn "manipulate" (body :: .var p :: a :: b :: more)) =>
+      match s.exactNum a, s.exactNum b with
+      | some q0, some q1 =>
+        let k := match more with
+          | [.num m] => min 200 (max 2 m.val.num.toNat)
+          | _ => 40
+        let isColumn := match body with | .fn "column" _ => true | _ => false
+        let partsSrc : List Expr := match body with | .fn "column" ps => ps | e => [e]
+        let varOf (e : Expr) : Option String := match e with | .fn "plot" (_ :: .var x :: _) => some x | _ => none
+        if partsSrc.any (fun e => varOf e == some p) then (s, .error ("eval", s!"manipulate: {p} is the plot's own variable; manipulate another name", none)) else
+        let values := (List.range k).map fun (j : Nat) => q0 + (q1 - q0) * Q.ofInt (j : Int) / Q.ofInt ((k - 1 : Nat) : Int)
+        -- the session's names first, then `p`: a name bound to a term in `p` (`let m = … h …`) moves
+        -- with it. A plot's own variable is its binder and stays.
+        let sp : Session := { s with env := s.env.filter (·.1 != p) }
+        let prepared : List (Option String × Expr) := partsSrc.map fun e =>
+          let label := match e with | .var n => if (sp.env.lookup n).isSome then some n else none | _ => none
+          (label, substitute (sp.env.filter (·.1 != (varOf e).getD p)) (substituteFns s.fns e))
+        -- one part at one value: a plot sampled, any other term normalized with its calculation
+        let part (label : Option String) (e : Expr) : Except String (FramePart × Derivation) :=
+          match e with
+          | .fn "plot" _ =>
+            match plotValue sp cellId e with
+            | (_, .error (_, msg, _)) => .error msg
+            | (_, .ok (_, out, d, pl)) => .ok ({ label := label, output := out, plot := some pl }, d)
+          | _ =>
+            match (normalizeT pipelineRules pipelineOrdered e).run #[] with
+            | (.error msg, _) => .error msg
+            | (.ok out, steps) => .ok ({ label := label, output := out, work := workChain e steps }, ⟨e, steps, out⟩)
+        let record (out : Expr) (d : Derivation) : Session :=
+          { s with cells := (cellId, { output := out, derivation := d }) :: s.cells.filter (·.1 != cellId) }
+        -- one frame: every part with `p` set to `v`; the session keeps the cell, not the binding
+        let frame (v : Q) : Except String (Session × Frame × Derivation) := do
+          let put (e : Expr) : Expr := substitute [(p, .num v)] e
+          let ps ← prepared.mapM fun (label, e) => part label (put e)
+          match isColumn, ps with
+          | false, [(pt, d)] =>
+            pure (record pt.output d, { value := v, output := pt.output, plot := pt.plot, work := pt.work }, d)
+          | _, _ =>
+            let out := Expr.fn "column" (ps.map (·.1.output))
+            let d : Derivation := ⟨Expr.fn "column" (prepared.map fun (_, e) => put e), #[], out⟩
+            pure (record out d, { value := v, output := out, parts := (ps.map (·.1)).toArray }, d)
+        match values.mapM frame with
+        | .error msg => (s, .error ("eval", s!"manipulate: {msg}", none))
+        | .ok [] => (s, .error ("eval", "manipulate: no frames", none))
+        | .ok ((s0, f0, d0) :: rest) => (s0, .ok (f0.output, d0, p, (f0 :: rest.map (·.2.1)).toArray))
+      | _, _ => (s, .error ("eval", "manipulate: the range must evaluate to numbers", none))
+    | .ok _ => (s, .error ("eval", "manipulate takes an expression, a parameter and its range: manipulate(e, p, from, to[, frames])", none))
 
 def isPrefix : Path → Path → Bool
   | [], _ => true
