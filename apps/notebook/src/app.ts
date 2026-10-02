@@ -23,7 +23,7 @@ import { fileCellOf, resolveFiles, importsIn, partContext, partHelp, fileExprVal
 import { dataGrid, matrixEntries } from "./datagrid.js";
 import { DOC_PAGES, type DocPage, type DocPart } from "./docs.js";
 import { FUNCTIONS, FN_BY_NAME, AREAS, fnPage, evaluable, type FnDoc, type ExampleSection } from "./reference.js";
-import { ensureLean, syncLean, mountLean, unmountLean, focusLean, infoview as leanInfoview, leanState, leanFailure, leanProgress, initLeanIsolation, type LeanMessage } from "./lean-cells.js";
+import { ensureLean, syncLean, mountLean, unmountLean, focusLean, setLeanDark, infoview as leanInfoview, leanState, leanFailure, leanProgress, initLeanIsolation, type LeanMessage } from "./lean-cells.js";
 /** The one trusted KaTeX command is `\htmlData`, which carries the engine's subterm paths. LaTeX can
  *  come from a file someone else wrote (saved outputs render before any re-run), and a blanket
  *  `trust: true` would let it add `\href{javascript:…}`, arbitrary styles, or remote images. */
@@ -402,6 +402,7 @@ function notify(level: "ok" | "err", text: string) {
 function applyTheme(t: "dark" | "light") {
   S.theme = t;
   document.documentElement.setAttribute("data-theme", t);
+  setLeanDark(t !== "light");
   try { localStorage.setItem("chalkmath.theme", t); } catch { /* private mode */ }
 }
 function initTheme() {

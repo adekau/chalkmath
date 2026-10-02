@@ -24,6 +24,8 @@ export interface LeanNotebook {
   messages(id: string): LeanMessage[];
   /** Shows cell `id` in `el`, which grows with its content. */
   mount(id: string, el: HTMLElement): CellView;
+  /** Switches the editors and the infoview to the dark or light theme. */
+  setDark(dark: boolean): void;
   dispose(): void;
 }
 
