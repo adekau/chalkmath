@@ -507,7 +507,7 @@ def manipulateCell (s : Session) (cellId source : String) :
         let isPlot := match body with | .fn "plot" _ => true | _ => false
         let plotVar := match body with | .fn "plot" (_ :: .var x :: _) => x | _ => p
         if isPlot && plotVar == p then (s, .error ("eval", s!"manipulate: {p} is the plot's own variable; manipulate another name", none)) else
-        let values := (List.range k).map fun j => q0 + (q1 - q0) * Q.ofInt j / Q.ofInt (k - 1)
+        let values := (List.range k).map fun (j : Nat) => q0 + (q1 - q0) * Q.ofInt (j : Int) / Q.ofInt ((k - 1 : Nat) : Int)
         -- the session's names first, then `p`: a name bound to a term in `p` (`let m = … h …`) moves
         -- with it. The plot's own variable is its binder and stays.
         let sp : Session := { s with env := s.env.filter (·.1 != p) }
