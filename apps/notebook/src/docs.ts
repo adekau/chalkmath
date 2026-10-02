@@ -115,6 +115,7 @@ Type ‹\› and a name, then space or Tab, for a symbol: ‹\pi› is π, ‹\l
 ## Help while typing
 
 - **Completion**: **Tab** completes a command's name, a ‹\›-symbol, or inside ‹t[[…]]› a table's column name or a JSON key.
+- **Usage on hover**: rest the pointer on a command's or a function's name in a cell, and after a moment its usage lines show, with a link to its page.
 - **Signature help**: inside a call, the command's signature shows above the cell with the argument you are in highlighted. View › Signature help turns it off; Esc hides it for that call.
 - **Syntax highlighting** colours numbers, commands, your own definitions and bound variables (the ‹k› of a sum, the ‹x› of a derivative). View › Syntax highlighting turns it off.
 - **The math keypad** (View › Math keypad, on by default on a phone) puts fractions, powers, roots, integrals and the common symbols above the keyboard.

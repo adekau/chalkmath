@@ -805,6 +805,10 @@ table.doctable td.mono { font-family:var(--code); font-size:12.5px; color:var(--
 .hoverdoc .hn { font-size:13px; font-weight:700; }
 .hoverdoc .hs { font-family:var(--mono); font-size:11px; color:var(--acc-hi); margin:8px 0; }
 .hoverdoc .hb { font-size:12px; line-height:1.55; color:var(--ink-2); }
+.usagetip { position:fixed; z-index:60; max-width:min(460px, calc(100vw - 16px)); background:var(--panel-2); border:1px solid var(--border); border-radius:8px; box-shadow:var(--pop); padding:9px 12px; display:flex; flex-direction:column; gap:5px; }
+.usagetip .ur { font-size:12px; line-height:1.5; color:var(--ink-2); }
+.usagetip .uf { font-family:var(--mono); font-size:11.5px; color:var(--acc-hi); margin-right:6px; }
+.usagetip .umore { align-self:flex-start; margin-top:2px; font-size:11.5px; }
 .toasts { position:fixed; right:16px; bottom:38px; z-index:80; display:flex; flex-direction:column; align-items:flex-end; gap:6px; pointer-events:none; }
 .toast { max-width:min(440px, calc(100vw - 32px)); padding:8px 13px; border-radius:8px; font:12.5px/1.5 var(--font); color:var(--ink); background:var(--panel-2); border:1px solid var(--border); border-left:3px solid var(--ok); box-shadow:var(--pop); pointer-events:auto; cursor:default; animation:toast-in .15s ease-out; }
 .toast.err { border-left-color:var(--danger-2); }

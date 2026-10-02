@@ -5923,6 +5923,72 @@ function showHover(doc: Doc, ev: MouseEvent) {
 }
 function hideHover() { document.querySelector(".hoverdoc")?.remove(); }
 
+// --- Usage on hover: a function's usage lines over its name in a cell, after a pause -----------------
+// Mathematica shows a symbol's usage when the pointer rests on it. Here the name of a command or a
+// function in a cell's input (text or typeset) shows its usage lines after a pause, with a link to
+// its page; the tip stays while the pointer is on it, so the link can be followed.
+
+const USAGE_DELAY = 650;
+let usageTimer = 0;
+let usageFor: { name: string; el: Element } | null = null;
+/** The function name under the pointer in a cell's input, with the element it is drawn in. */
+function nameAt(ev: MouseEvent): { name: string; rect: DOMRect; el: Element } | null {
+  const t = ev.target as Element | null;
+  if (!t) return null;
+  // typeset input: the editor marks a call's name with its highlight class
+  const typeset = t.closest?.('.mi [data-hl="hcmd"], .mi [data-hl="hfn"]');
+  if (typeset) { const name = typeset.textContent?.trim() ?? ""; return FN_BY_NAME.has(name) ? { name, rect: typeset.getBoundingClientRect(), el: typeset } : null; }
+  // text input: the highlight overlay under it has a span per token
+  if (t instanceof HTMLInputElement && t.classList.contains("cellin")) {
+    const hl = t.parentElement?.querySelector(".hl");
+    for (const sp of hl?.querySelectorAll(".hcmd, .hfn") ?? []) {
+      const r = sp.getBoundingClientRect();
+      if (ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom) {
+        const name = sp.textContent ?? "";
+        return FN_BY_NAME.has(name) ? { name, rect: r, el: sp } : null;
+      }
+    }
+  }
+  return null;
+}
+function hideUsage() { clearTimeout(usageTimer); usageFor = null; document.querySelector(".usagetip")?.remove(); }
+/** The usage tip for `name`, under `rect`. */
+function showUsage(name: string, rect: DOMRect) {
+  document.querySelector(".usagetip")?.remove();
+  const f = FN_BY_NAME.get(name); if (!f) return;
+  const tip = h("div", "usagetip");
+  tip.setAttribute("role", "tooltip");
+  for (const [form, what] of f.usage) {
+    const row = h("div", "ur");
+    row.append(h("code", "uf", plainUsage(form)), inlineMath(plainUsage(what), "uw"));
+    tip.append(row);
+  }
+  const more = document.createElement("a");
+  more.href = `#fn:${name}`; more.className = "umore"; more.textContent = `${f.title ?? name} — documentation ›`;
+  more.addEventListener("click", (e) => { e.preventDefault(); hideUsage(); openDocs(`fn:${name}`); });
+  tip.append(more);
+  tip.addEventListener("mouseleave", hideUsage);
+  document.body.append(tip);
+  const w = tip.offsetWidth, hgt = tip.offsetHeight;
+  tip.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - w - 8))}px`;
+  tip.style.top = `${rect.bottom + 6 + hgt > window.innerHeight ? Math.max(8, rect.top - hgt - 6) : rect.bottom + 6}px`;
+}
+let usageHide = 0;
+document.addEventListener("mousemove", (ev) => {
+  if ((ev.target as Element | null)?.closest?.(".usagetip")) { clearTimeout(usageHide); return; }
+  const at = nameAt(ev);
+  if (at && usageFor && usageFor.name === at.name && usageFor.el === at.el) { clearTimeout(usageHide); return; }
+  // a tip on screen waits a moment, so the pointer can cross to it and follow its link
+  if (!at && document.querySelector(".usagetip")) { clearTimeout(usageHide); usageHide = window.setTimeout(hideUsage, 300); return; }
+  clearTimeout(usageHide);
+  hideUsage();
+  if (!at || S.comp) return;
+  usageFor = { name: at.name, el: at.el };
+  usageTimer = window.setTimeout(() => { if (usageFor?.el === at.el) showUsage(at.name, at.el.getBoundingClientRect()); }, USAGE_DELAY);
+}, { passive: true });
+document.addEventListener("keydown", hideUsage, true);
+document.addEventListener("scroll", hideUsage, { capture: true, passive: true });
+
 // ---------------------------------------------------------------------------
 // Keyboard
 // ---------------------------------------------------------------------------
