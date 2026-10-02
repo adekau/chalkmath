@@ -4184,6 +4184,18 @@ function mdInline(host: HTMLElement, text: string) {
 }
 
 /** Block-level Markdown: the cell's rendering. */
+/** The callouts a Markdown cell knows (`> [!kind] title`), by the name written, and how each is labelled. */
+const CALLOUTS: Record<string, { cls: string; label: string }> = {
+  definition: { cls: "definition", label: "Definition" },
+  theorem: { cls: "theorem", label: "Theorem" }, lemma: { cls: "theorem", label: "Lemma" }, corollary: { cls: "theorem", label: "Corollary" },
+  proposition: { cls: "theorem", label: "Proposition" },
+  proof: { cls: "proof", label: "Proof" },
+  example: { cls: "example", label: "Example" },
+  try: { cls: "try", label: "Try it" }, "try-it": { cls: "try", label: "Try it" },
+  mistake: { cls: "mistake", label: "Common mistake" }, warning: { cls: "mistake", label: "Careful" },
+  note: { cls: "note", label: "Note" }, tip: { cls: "note", label: "Tip" },
+  summary: { cls: "summary", label: "Summary" }, goal: { cls: "summary", label: "Goal" },
+};
 function mdRender(src: string): HTMLElement {
   const out = h("div", "mdout");
   const lines = src.replace(/\r\n?/g, "\n").split("\n");
@@ -4227,6 +4239,17 @@ function mdRender(src: string): HTMLElement {
     if (/^\s*>/.test(line)) {
       flush(); const buf: string[] = [];
       while (i < lines.length && /^\s*>/.test(lines[i]!)) buf.push(lines[i++]!.replace(/^\s*>\s?/, ""));
+      // `> [!theorem] Title`: a callout, the blocks a lesson is made of; anything else is a quote
+      const call = /^\[!([A-Za-z-]+)\]\s*(.*)$/.exec(buf[0] ?? "");
+      const kind = call ? CALLOUTS[call[1]!.toLowerCase()] : undefined;
+      if (call && kind) {
+        const box = h("aside", `callout ${kind.cls}`);
+        const head = h("div", "callhead", kind.label);
+        if (call[2]!.trim()) { const t = h("span", "calltitle"); mdInline(t, call[2]!.trim()); head.append(t); }
+        box.append(head, ...Array.from(mdRender(buf.slice(1).join("\n")).childNodes));
+        if (kind.cls === "proof") box.append(h("span", "qed", "∎"));
+        out.append(box); continue;
+      }
       const q = h("blockquote"); q.append(...Array.from(mdRender(buf.join("\n")).childNodes)); out.append(q); continue;
     }
     const li = /^\s*(?:[-*+]|\d+[.)])\s+/.exec(line);

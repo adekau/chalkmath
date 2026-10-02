@@ -225,6 +225,7 @@ What it understands:
 - lists (‹-› or ‹1.›), ‹>› quotes, ‹---› rules, and fenced code blocks (a line of three backticks before and after)
 - links ‹[text](https://…)› and images ‹![caption](https://…)›; an image alone in a paragraph is a figure with its caption under it
 - an attached file by name, ‹⟦name⟧›: an image shows as the image, a table as a table
+- callouts, the blocks a lesson is built from: a quote whose first line is ‹[!kind]›, with an optional title after it, such as ‹> [!theorem] Fundamental theorem of calculus›. The kinds are **definition**, **theorem** (also lemma, corollary, proposition), **proof** (ends with ∎), **example**, **try** (Try it), **mistake** (Common mistake; also warning), **note** (also tip) and **summary** (also goal)
 
 An image from another site is loaded from that site when the cell is shown.
 `],

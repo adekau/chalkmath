@@ -243,6 +243,18 @@ button { font-family: var(--font); }
 .mdout code.mdcode { font-family:var(--code); font-size:0.86em; background:var(--p-input-bg); box-shadow:inset 0 0 0 1px var(--p-input-br); border-radius:4px; padding:1px 4px; }
 .mdout pre.mdpre { font-family:var(--code); font-size:12.5px; line-height:1.5; background:var(--p-input-bg); box-shadow:inset 0 0 0 1px var(--p-input-br); border-radius:6px; padding:9px 11px; overflow-x:auto; white-space:pre; }
 .mdout blockquote { padding:0 0 0 12px; border-left:3px solid var(--p-br-idle); color:var(--p-ink-3); }
+.mdout .callout { --c:var(--p-acc); position:relative; margin:0 0 0.9em; padding:10px 14px 4px; border-left:3px solid var(--c); border-radius:0 8px 8px 0; background:color-mix(in srgb, var(--c) 9%, transparent); }
+.mdout .callout > :last-child { margin-bottom:0.6em; }
+.mdout .callhead { font:700 11px var(--font); text-transform:uppercase; letter-spacing:0.06em; color:var(--c); margin-bottom:4px; }
+.mdout .callhead .calltitle { margin-left:8px; font:600 italic 15px var(--serif); text-transform:none; letter-spacing:0; color:var(--p-ink-strong); }
+.mdout .callout.theorem { --c:var(--curve1); }
+.mdout .callout.proof { --c:var(--p-br-hov); background:transparent; }
+.mdout .callout.proof .qed { position:absolute; right:12px; bottom:8px; color:var(--p-mut); }
+.mdout .callout.example { --c:var(--curve4); }
+.mdout .callout.try { --c:var(--curve2); }
+.mdout .callout.mistake { --c:var(--p-err); }
+.mdout .callout.note { --c:var(--p-mut); }
+.mdout .callout.summary { --c:var(--curve3); }
 .mdout ul, .mdout ol { padding-left:1.6em; }
 .mdout li { margin:0.15em 0; }
 .mdout hr { border:0; border-top:1px solid var(--p-br-idle); margin:1em 0; }
