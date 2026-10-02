@@ -15,8 +15,9 @@ are β-equivalent when they reduce to the same normal form:
   so "not equivalent" is "not shown equivalent".
 - **λ-terms.** Both are reduced to β-normal form and compared up to α (their de Bruijn terms).
 
-An answer that does the work itself (`diff(…)` typed back as the answer to a `diff` question) is
-refused: an answer may call only the elementary functions and the functions the question does not.
+An answer that does the work itself (`diff(…)` typed back as the answer to a `diff` question, or the
+question retyped) is refused: an answer may call only the elementary functions and the functions the
+question does not.
 A λ answer must already be a normal form. Nothing is bound and nothing is numbered: an exercise is
 not an evaluation of the notebook, so `%` and `In[n]` are untouched.
 -/
@@ -74,8 +75,9 @@ private def prepare (s : Session) (src : String) : Except Err (Expr × Expr) := 
 
 /-- The reader's expression answer, compared in canonical form; `forbidden` are the functions that
 would do the question's work. -/
-private def compareExpr (s : Session) (forbidden : List String) (src : String) : Except Err Compared := do
+private def compareExpr (s : Session) (question : Expr) (forbidden : List String) (src : String) : Except Err Compared := do
   let (parsed, input) ← prepare s src
+  if equal parsed question then throw ("answer", "that is the question itself: write its value", none)
   match (fnNames parsed).find? forbidden.contains with
   | some f => throw ("answer", s!"the answer may not use {f}: write the result, not the work", none)
   | none => pure ()
@@ -128,7 +130,7 @@ def checkAnswer (s : Session) (cellId question : String) (answer : Option String
         | .error msg => (s, .error ("eval", msg, none))
         | .ok expCanon =>
           let forbidden := (fnNames parsed).filter (!answerFns.contains ·)
-          let given := answer.map (compareExpr s forbidden)
+          let given := answer.map (compareExpr s parsed forbidden)
           let eq := match given with | some (.ok c) => equal c.canon expCanon | _ => false
           (s, .ok ⟨output, d, false, expCanon, given, eq⟩)
 
