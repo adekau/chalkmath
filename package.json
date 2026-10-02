@@ -16,7 +16,8 @@
     "smoke:lean": "node scripts/smoke-lean-server.mjs && node scripts/smoke-lean-cells.mjs",
     "test:proofs": "cd proofs && lake build",
     "check:engine": "scripts/check-engine-deps.sh",
-    "smoke:ask": "node scripts/smoke-ask.mjs"
+    "smoke:ask": "node scripts/smoke-ask.mjs",
+    "e2e": "node scripts/e2e-math.mjs"
   },
   "devDependencies": {
     "@fontsource-variable/literata": "^5.3.0",

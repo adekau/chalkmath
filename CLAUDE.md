@@ -25,19 +25,19 @@ all four of the following, in the same change:
    `<error: …>`), and parser or printer details in `engine/Tests/Main.lean`. New syntax also has to
    be mirrored in the visual editor's reader (`packages/math-editor/src/read.ts` copies
    `Parser.lean` rule for rule), with tests in `packages/math-editor/test/`.
-4. **End-to-end tests.** What exists today:
+4. **End-to-end tests.** A user-facing feature adds a case to `CASES` in `scripts/e2e-math.mjs`
+   (`npm run e2e`, run in CI). It types the source into a math cell of the bundled notebook in
+   Chromium, against the native engine over HTTP, and checks the engine's answer as text, that the
+   page shows exactly that answer, and, given `step`, that the cell's work shows a step by that
+   name. Errors are checked too (`error`). Next to it:
    - `packages/math-editor/test/engine.test.mjs` sends every `golden.tsv` source and every bundled
-     notebook cell through the editor's reader and writer and then to the native engine over stdio.
-     It checks that the text the editor writes back means what the source meant. A new golden line
-     is covered by it automatically.
+     notebook cell through the editor's reader and writer and then to the native engine, checking
+     that the text the editor writes back means what the source meant (no browser);
    - CI evaluates every cell of `notebooks/welcome.chalk` against the native engine
-     (`scripts/notebooks/drive.mjs`).
-   - The browser smoke tests, `npm run smoke:lean` and `npm run smoke:ask`, use Playwright and
-     Chromium against the bundled notebook. They are run by hand and are not in CI.
+     (`scripts/notebooks/drive.mjs`);
+   - `npm run smoke:lean` and `npm run smoke:ask` drive Lean cells and `?` lookups in Chromium. They
+     are run by hand and are not in CI; run them when a change touches those.
 
-   There is no browser end-to-end test of a math cell yet. Until there is, a feature's end-to-end
-   coverage is its golden lines (run through `engine.test.mjs`), plus a manual browser check when
-   the change touches the notebook UI. Say which of these you did.
-
-Before pushing: `cd engine && lake build && lake test`, then `npm run build && npm test && npm run typecheck`.
+Before pushing: `cd engine && lake build && lake test`, then `npm run build && npm test && npm run typecheck`,
+then `npm run bundle && npm run e2e`.
 If any of these could not be run, say so plainly rather than reporting the change as tested.
