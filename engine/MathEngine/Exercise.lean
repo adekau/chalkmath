@@ -187,6 +187,16 @@ private def parseOrderAnswer (kind : String) (src : String) : Option (List Strin
   | "set" => some (items s).mergeSort
   | _ => some [strip s]
 
+/-- A parsed order-world answer as a value, to show. -/
+private def orderAnswerExpr (kind : String) (got : List String) : Expr :=
+  let parts (g : String) := (g.splitOn ",").filter (· != "")
+  match kind with
+  | "bool" => .var (got.headD "false")
+  | "pairs" => .fn "set" (got.map fun p => match parts p with | [a, b] => Ord.pairExpr (a, b) | _ => .var p)
+  | "partition" => .fn "set" (got.map fun g => Ord.setExpr (parts g))
+  | "set" => Ord.setExpr got
+  | _ => Ord.elemExpr (got.headD "")
+
 /-- An order-world exercise (posets and relations): the answer, written as a value of the kind the
 question has (`true`/`false`, pairs `a->b, b->c` or `(a, b), (b, c)`, classes `{a, b}, {c}`, a set, an
 element), is compared with the question's value as a set. -/
@@ -207,7 +217,7 @@ def checkOrder (s : Session) (cellId question : String) (answer : Option String)
           | "pairs" => "write the relation's pairs: a->b, b->c (or (a, b), (b, c))"
           | _ => "write the value", none)
       | some got =>
-        let shown := Expr.var (a.trimAscii.copy)
+        let shown := orderAnswerExpr kind got
         .ok (⟨shown, shown⟩, got.eraseDups == want.eraseDups)
     let eq := match given with | some (.ok (_, b)) => b | _ => false
     (s, .ok ⟨res.value, res.derivation, false, res.value, given.map (·.map (·.1)), eq⟩)

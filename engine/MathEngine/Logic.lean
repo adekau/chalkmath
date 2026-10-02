@@ -20,6 +20,29 @@ the heads.
 - **Bounded quantifiers** `∀ n ∈ D, φ` and `∃ n ∈ D, φ` range over a finite set of numbers (`{1, 2, 3}`
   or `1..10`); their atoms are comparisons of expressions (`n^2 ≥ n`, `d ∣ n`) and a few predicates
   (`prime`, `even`, `odd`), evaluated by the pipeline. The answer names the element that decided it.
+
+The grammar (ASCII and words are read as the glyphs: `->`, `<->`, `&&`/`and`, `||`/`or`, `!`/`not`,
+`true`, `false`, `forall … in`, `exists … in`, `<=`, `>=`, `!=`):
+
+```
+stmt    := 'let' IDENT '=' formula | CMD '(' formula (',' formula)? ')' | formula
+CMD     := truthtable | taut | sat | falsify | nnf | cnf | dnf | equiv     -- equiv takes two
+formula := ('∀' | '∃') IDENT '∈' dom ',' formula | iff
+iff     := imp ('↔' iff)?                         -- right-assoc
+imp     := or ('→' imp)?                          -- right-assoc
+or      := and ('∨' and)*
+and     := not ('∧' not)*
+not     := '¬' not | atom
+atom    := '⊤' | '⊥' | '(' formula ')' | PRED '(' expr,* ')' | expr CMP expr | IDENT
+dom     := expr '..' expr | '{' expr,* '}'
+PRED    := prime | even | odd
+CMP     := '<' | '≤' | '>' | '≥' | '=' | '≠' | '∣'
+```
+
+`expr` is the math grammar (`Parser.lean`); an `IDENT` alone is a propositional variable, or a formula
+bound by `let`. A quantifier's body is everything after its comma, so in the middle of a formula a
+quantifier goes in brackets. `=>`, `/\`, `\/` and `~` are read too. In a CNF answer, the pass after distributing turns a clause with `p` and `¬p` into `⊤`
+(a DNF term with them into `⊥`), and constants are simplified again.
 -/
 namespace MathEngine
 namespace Logic
@@ -490,14 +513,55 @@ def normal (cnf : Bool) (ctx : Fm → Fm) (path : Path) : Fm → Fm × Array Ste
     else (.or a' b', s1 ++ s2)
   | f => (f, #[])
 
+/-- The variables a term (`cnf = false`: an `∧` of literals) or a clause (`cnf = true`: an `∨` of
+them) has as literals: plainly, and negated. -/
+def litVars (cnf : Bool) : Fm → List String × List String
+  | .var x => ([x], [])
+  | .not (.var x) => ([], [x])
+  | .and a b => if cnf then ([], []) else ((litVars cnf a).1 ++ (litVars cnf b).1, (litVars cnf a).2 ++ (litVars cnf b).2)
+  | .or a b => if cnf then ((litVars cnf a).1 ++ (litVars cnf b).1, (litVars cnf a).2 ++ (litVars cnf b).2) else ([], [])
+  | _ => ([], [])
+
+/-- A variable the term or clause has both plainly and negated. -/
+def clash (cnf : Bool) (c : Fm) : Option String := (litVars cnf c).1.find? fun x => (litVars cnf c).2.contains x
+
+/-- A term with `p` and `¬p` is `⊥`; a clause with them is `⊤`. -/
+def complementLeaf (cnf : Bool) (ctx : Fm → Fm) (path : Path) (c : Fm) : Fm × Array Step :=
+  match clash cnf c with
+  | some x =>
+    let r := if cnf then Fm.tt else Fm.ff
+    let law := if cnf then s!"A clause with ${x}$ and $\\lnot {x}$ is true: $p \\lor \\lnot p \\equiv \\top$."
+      else s!"A term with ${x}$ and $\\lnot {x}$ is false: $p \\land \\lnot p \\equiv \\bot$."
+    (r, #[st "logic.complement" law path (ctx c) (ctx r)])
+  | none => (c, #[])
+
+/-- In a CNF, every clause with complementary literals becomes `⊤`; in a DNF, every such term `⊥`. -/
+def complement (cnf : Bool) (ctx : Fm → Fm) (path : Path) : Fm → Fm × Array Step
+  | .and a b =>
+    if cnf then
+      let (a', s1) := complement cnf (fun x => ctx (.and x b)) (path ++ [0]) a
+      let (b', s2) := complement cnf (fun x => ctx (.and a' x)) (path ++ [1]) b
+      (.and a' b', s1 ++ s2)
+    else complementLeaf cnf ctx path (.and a b)
+  | .or a b =>
+    if cnf then complementLeaf cnf ctx path (.or a b)
+    else
+      let (a', s1) := complement cnf (fun x => ctx (.or x b)) (path ++ [0]) a
+      let (b', s2) := complement cnf (fun x => ctx (.or a' x)) (path ++ [1]) b
+      (.or a' b', s1 ++ s2)
+  | f => complementLeaf cnf ctx path f
+
 /-- What `nnf`, `cnf` and `dnf` produce: the passes in order, every step on the whole formula. -/
 def toNormal (target : String) (f : Fm) : Fm × Array Step :=
   let r1 := arrows id [] f
   let r2 := nnf false id [] r1.1
   let r3 := consts id [] r2.1
   if target == "nnf" then (r3.1, r1.2 ++ r2.2 ++ r3.2) else
-  let r4 := normal (target == "cnf") id [] r3.1
-  (r4.1, r1.2 ++ r2.2 ++ r3.2 ++ r4.2)
+  let cnf := target == "cnf"
+  let r4 := normal cnf id [] r3.1
+  let r5 := complement cnf id [] r4.1
+  let r6 := consts id [] r5.1
+  (r6.1, r1.2 ++ r2.2 ++ r3.2 ++ r4.2 ++ r5.2 ++ r6.2)
 
 /-! ## The shapes the normal forms have (checked on every result) -/
 

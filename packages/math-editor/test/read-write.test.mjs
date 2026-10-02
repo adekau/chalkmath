@@ -71,18 +71,23 @@ test("the tree is the engine's parse: precedence, implicit products, what the nu
   assert.equal(show(s.body), "[(let [g] [a] [b]) a * b + (g [a] [1])]");
 });
 
+/** A golden source the engine reads in another world (logic, relations and posets), not as notation. */
+const otherWorld = (src) => /[∧∨¬→↔⊤⊥∀∃]|->|&&|\|\|/.test(src) || /^\s*(forall|exists)\b/.test(src)
+  || /^\s*(let\s+\w+\s*=\s*)?(truthtable|taut|sat|falsify|equiv|nnf|cnf|dnf|rel|kernel|divisors|closure|classes|reflexive|symmetric|antisymmetric|transitive|equivalence|preorder|finer|wellfounded|measure)\s*\(/.test(src);
+
 test("parse errors are the engine's, with its spans", () => {
   for (const [src, answer] of golden) {
     const m = /^<error: (.*)>$/.exec(answer);
     const r = read(src);
     const parseError = m && /^(unexpected|expected|ragged|bad number)/.test(m[1]);
+    if (otherWorld(src)) continue;
     if (parseError) assert.equal(r.ok ? "(read)" : r.error.message, m[1], src);
     else assert.ok(r.ok, `${src}: ${r.ok ? "" : r.error.message}`);
   }
   const bad = read("x + )");
   assert.deepEqual(bad.ok ? null : bad.error, { message: "unexpected ')'", span: { start: 4, end: 5 } });
   // λ-terms and the other worlds are not this grammar: those cells stay raw
-  for (const src of ["(λx. x) y", "TWO := succ (succ zero)", "poset({a,b}; a<b)"]) assert.equal(read(src).ok, false, src);
+  for (const src of ["(λx. x) y", "TWO := succ (succ zero)", "poset({a,b}; a<b)", "p ∧ q → p", "∀ n ∈ 1..10, n^2 ≥ n", "rel({a, b}; a->b)"]) assert.equal(read(src).ok, false, src);
   // a quoted name outside a part is the engine's lexer error
   const q = read('x "a"');
   assert.deepEqual(q.ok ? null : q.error, { message: "unexpected character '\"'", span: { start: 2, end: 3 } });

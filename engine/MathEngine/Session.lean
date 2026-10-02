@@ -364,11 +364,11 @@ def orderCell (s : Session) (cellId source : String) :
       | some (a, b) => err s!"{a} -> {b} mentions an element outside the set"
       | none =>
         let R := Ord.Rel.of xs ps
-        done (Ord.relExpr R) #[] none s!"a relation on {R.elems.length} elements with {R.pairs.length} pairs" (bindR := some R) (graph := some (R, [], []))
+        done (Ord.relExpr R) #[] none s!"a relation on {R.elems.length} element{if R.elems.length == 1 then "" else "s"} with {R.pairs.length} pair{if R.pairs.length == 1 then "" else "s"}" (bindR := some R) (graph := some (R, [], []))
     | "kernel", [.set xs, .maps ps] =>
       let R := Ord.kernel xs ps
       done (Ord.relExpr R) #[step "rel.kernel" "Related when they have the same label: an equivalence relation (reflexive, symmetric and transitive, since equality of labels is)." (Ord.setExpr xs) (Ord.relExpr R)] none
-        s!"same label: {R.classes.length} classes" (bindR := some R) (graph := some (R, [], []))
+        s!"same label: {R.classes.length} class{if R.classes.length == 1 then "" else "es"}" (bindR := some R) (graph := some (R, [], []))
     | "reflexive", [r] | "symmetric", [r] | "antisymmetric", [r] | "transitive", [r] | "equivalence", [r] | "preorder", [r] =>
       match getR r with
       | .error m => err m

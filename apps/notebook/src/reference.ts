@@ -11,7 +11,7 @@
 
 export type Area =
   | "Algebra" | "Elementary functions" | "Calculus" | "Complex numbers" | "Linear algebra"
-  | "Lists, tables and files" | "Statistics" | "Fourier series" | "Order theory" | "λ-calculus" | "The notebook language";
+  | "Lists, tables and files" | "Statistics" | "Fourier series" | "Logic" | "Order theory" | "λ-calculus" | "The notebook language";
 
 /** The areas in the order the index lists them, each with a line saying what is there. */
 export const AREAS: [Area, string][] = [
@@ -23,7 +23,8 @@ export const AREAS: [Area, string][] = [
   ["Lists, tables and files", "Parts of matrices, tables and JSON; files as values."],
   ["Statistics", "Totals, means, medians, spread, of vectors and of a matrix's columns."],
   ["Fourier series", "Finite Fourier sums drawn as circles, and the discrete Fourier transform."],
-  ["Order theory", "Finite partial orders, lattices, monotone maps and their fixed points."],
+  ["Logic", "Propositional formulas, truth tables, normal forms, and quantifiers over finite sets."],
+  ["Order theory", "Finite partial orders, lattices, monotone maps and their fixed points; relations and their properties."],
   ["λ-calculus", "The untyped λ-calculus, reduced one β-step at a time, and the Church encodings."],
   ["The notebook language", "Names and functions, earlier answers, questions."],
 ];
@@ -684,6 +685,203 @@ export const FUNCTIONS: FnDoc[] = [
     usage: [["fixpoints(P, f)", "gives every `x` in `P` with f(x) = x."]],
     examples: [basic("let D = divisors(12)", "let f = map(D; 1->2, 3->6)", "fixpoints(D, f)", "lfp(D, f)")],
     see: ["lfp", "gfp"],
+  },
+  // relations: a poset is a relation with three properties built in; here the properties are the question
+  {
+    name: "rel", area: "Order theory",
+    usage: [["rel({a, b, c}; a->b, b->c)", "is the relation on the set whose pairs are the arrows listed."]],
+    details: [
+      "`x->y` is the pair $(x, y)$: read it as $x \\mathrel{R} y$, or as \"x steps to y\".",
+      "A relation's commands take a name: bind a relation with `let` to ask about it, or about its closure.",
+      "The answer is the set of pairs, and the cell draws the relation as a graph.",
+      "Unlike `poset`, nothing is assumed: whether it is reflexive, symmetric or transitive is for `reflexive`, `symmetric` and `transitive` to say.",
+    ],
+    examples: [basic("let R = rel({a, b, c}; a->b, b->c)", "transitive(R)", "closure(R, transitive)")],
+    see: ["kernel", "transitive", "closure", "poset"],
+    ref: "https://mathworld.wolfram.com/Relation.html",
+  },
+  {
+    name: "kernel", area: "Order theory",
+    usage: [["kernel({x, y, …}; x->k, y->k, …)", "is the relation \"has the same label as\": x and y are related when they are sent to the same label."]],
+    details: [
+      "The kernel of a map is always an equivalence relation; its classes are the map's fibres.",
+      "An element given no label is its own label.",
+    ],
+    examples: [basic("let K = kernel({r1, r2, r3, r4}; r1->k1, r2->k1, r3->k2, r4->k2)", "equivalence(K)", "classes(K)")],
+    see: ["classes", "equivalence", "finer"],
+  },
+  {
+    name: "reflexive", area: "Order theory",
+    usage: [["reflexive(R)", "gives `true` when every element is related to itself."]],
+    details: ["When it does not hold, the step names an element $x$ without $x \\mathrel{R} x$."],
+    examples: [basic("let R = rel({a, b, c}; a->b, b->c)", "reflexive(R)", "let S = closure(R, reflexive)", "reflexive(S)")],
+    see: ["symmetric", "transitive", "closure"],
+  },
+  {
+    name: "symmetric", area: "Order theory",
+    usage: [["symmetric(R)", "gives `true` when every pair's reverse is a pair too."]],
+    details: ["When it does not hold, the graph marks a pair whose reverse is missing."],
+    examples: [basic("let R = rel({a, b, c}; a->b, b->c)", "symmetric(R)", "closure(R, symmetric)")],
+    see: ["antisymmetric", "closure"],
+  },
+  {
+    name: "antisymmetric", area: "Order theory",
+    usage: [["antisymmetric(R)", "gives `true` when no two different elements are related both ways."]],
+    examples: [basic("let R = rel({a, b, c}; a->b, b->a)", "antisymmetric(R)", "let D = divisors(12)", "antisymmetric(D)")],
+    see: ["symmetric", "preorder"],
+  },
+  {
+    name: "transitive", area: "Order theory",
+    usage: [["transitive(R)", "gives `true` when x R y and y R z always give x R z."]],
+    details: ["When it does not hold, the graph marks two pairs that chain without their composite."],
+    examples: [basic("let R = rel({a, b, c}; a->b, b->c)", "transitive(R)", "let T = closure(R, transitive)", "transitive(T)")],
+    see: ["closure", "preorder"],
+    ref: "https://mathworld.wolfram.com/Transitive.html",
+  },
+  {
+    name: "equivalence", area: "Order theory",
+    usage: [["equivalence(R)", "gives `true` when `R` is reflexive, symmetric and transitive."]],
+    details: ["When it does not hold, the step says which property fails, with its witness."],
+    examples: [basic("let K = kernel({r1, r2, r3}; r1->k, r2->k)", "equivalence(K)", "let R = rel({a, b}; a->b)", "equivalence(R)")],
+    see: ["classes", "kernel", "closure"],
+    ref: "https://mathworld.wolfram.com/EquivalenceRelation.html",
+  },
+  {
+    name: "preorder", area: "Order theory",
+    usage: [["preorder(R)", "gives `true` when `R` is reflexive and transitive."]],
+    details: ["A preorder that is also antisymmetric is a partial order."],
+    examples: [basic("let D = divisors(12)", "preorder(D)", "let R = rel({a, b}; a->a, b->b, a->b, b->a)", "preorder(R)", "antisymmetric(R)")],
+    see: ["antisymmetric", "poset"],
+  },
+  {
+    name: "closure", area: "Order theory",
+    usage: [["closure(R, p)", "gives the least relation containing `R` with property `p`: reflexive, symmetric, transitive or equivalence."]],
+    details: [
+      "Each round of the transitive closure is a step: the pairs forced by two that chain. It stops when a round adds nothing.",
+      "The transitive closure is proved transitive and inside every transitive relation containing `R`, so it is the least (`transClosure_transitive`, `transClosure_sub`).",
+      "The graph shows the added pairs dashed.",
+    ],
+    examples: [
+      basic("let R = rel({a, b, c, d}; a->b, b->c, c->d)", "closure(R, transitive)"),
+      section("Scope", "let R = rel({a, b, c}; a->b, b->c)", "closure(R, reflexive)", "closure(R, symmetric)", "let E = closure(R, equivalence)", "classes(E)"),
+    ],
+    see: ["transitive", "equivalence", "classes"],
+    ref: "https://mathworld.wolfram.com/TransitiveClosure.html",
+  },
+  {
+    name: "classes", area: "Order theory",
+    usage: [["classes(R)", "gives the equivalence classes of the equivalence relation `R`: a partition of its set."]],
+    examples: [basic("let K = kernel({r1, r2, r3, r4}; r1->k1, r2->k1, r3->k2, r4->k2)", "classes(K)")],
+    see: ["kernel", "equivalence", "finer"],
+    ref: "https://mathworld.wolfram.com/EquivalenceClass.html",
+  },
+  {
+    name: "finer", area: "Order theory",
+    usage: [["finer(R, S)", "gives `true` when every pair of `R` is a pair of `S`."]],
+    details: ["For equivalence relations: every class of `R` lies inside a class of `S`. When it does not hold, the step names a pair of `R` that `S` lacks."],
+    examples: [basic("let K = kernel({r1, r2, r3, r4}; r1->k1, r2->k1, r3->k2, r4->k2)", "let A = kernel({r1, r2, r3, r4}; r1->a, r2->b, r3->c, r4->c)", "finer(A, K)", "finer(K, A)")],
+    see: ["classes", "kernel"],
+  },
+  {
+    name: "wellfounded", area: "Order theory",
+    usage: [["wellfounded(R)", "gives `true` when there is no infinite chain of steps x R y R z …."]],
+    details: ["On a finite set that is the same as having no cycle; when there is one, the step shows it."],
+    examples: [basic("let R = rel({a, b, c}; a->b, b->c)", "wellfounded(R)", "let C = rel({x, y, z}; x->y, y->z, z->x)", "wellfounded(C)")],
+    see: ["measure"],
+  },
+  {
+    name: "measure", area: "Order theory",
+    usage: [["measure(R; x->n, …)", "gives `true` when every step x R y goes down: m(y) < m(x)."]],
+    details: [
+      "A measure into the natural numbers proves a relation well-founded: a chain of steps is a decreasing chain of numbers, which cannot go on forever.",
+      "When it does not hold, the step names a step the measure does not decrease along.",
+    ],
+    examples: [basic("let R = rel({a, b, c}; a->b, b->c)", "measure(R; a->2, b->1, c->0)", "measure(R; a->0, b->1, c->2)")],
+    see: ["wellfounded"],
+  },
+
+  // --- Logic -----------------------------------------------------------------------------------
+  {
+    name: "connectives", title: "∧ ∨ ¬ → ↔", area: "Logic", notation: true,
+    usage: [
+      ["p ∧ q", "is p and q; type `&&` or `and`."], ["p ∨ q", "is p or q; type `||` or `or`."], ["¬p", "is not p; type `!` or `not`."],
+      ["p → q", "is if p then q; type `->`."], ["p ↔ q", "is p if and only if q; type `<->`."], ["⊤, ⊥", "are true and false; type `true` and `false`."],
+    ],
+    details: [
+      "A formula with a connective is a logic cell: its value is the formula, and the commands on this page's see-also act on it.",
+      "¬ binds tightest, then ∧, ∨, →, ↔; → and ↔ group to the right, ∧ and ∨ to the left.",
+      "`let φ = p → q` names a formula for the cells after.",
+    ],
+    examples: [basic("p && q -> p", "let phi = p → q", "taut(phi ∨ (q → p))")],
+    see: ["truthtable", "taut", "cnf", "forall"],
+  },
+  {
+    name: "forall", title: "∀ ∃", area: "Logic", notation: true,
+    usage: [["∀ x ∈ S, φ", "is true when φ holds for every x in the finite set S; type `forall x in S, …`."], ["∃ x ∈ S, φ", "is true when φ holds for some x in S; type `exists x in S, …`."]],
+    details: [
+      "`S` is a range `1..10` or a set `{4, 6, 9}`; the body can compare numbers (`<`, `≤`, `=`, `≠`, `∣` for divides) and use `prime`, `even` and `odd`.",
+      "The engine checks every element in order; the step names the counterexample of a false ∀ or the witness of a true ∃.",
+    ],
+    examples: [basic("∀ n ∈ 1..10, n^2 ≥ n", "∀ n ∈ 1..10, n^2 ≥ 2n", "∃ n ∈ {4, 6, 9, 11}, prime(n)"),
+      section("Nested", "∀ n ∈ 2..30, ∃ p ∈ 2..n, prime(p) ∧ p ∣ n")],
+    see: ["connectives"],
+  },
+  {
+    name: "truthtable", area: "Logic",
+    usage: [["truthtable(φ)", "draws the truth table of φ: a row for each assignment to its variables."]],
+    details: ["Up to 8 variables (256 rows). The rows where φ is false are shaded."],
+    examples: [basic("truthtable(p → q)", "truthtable((p → q) ∧ (q → r) → (p → r))")],
+    see: ["taut", "sat", "equiv"],
+    ref: "https://mathworld.wolfram.com/TruthTable.html",
+  },
+  {
+    name: "taut", area: "Logic",
+    usage: [["taut(φ)", "gives ⊤ when φ is true under every assignment, and otherwise ⊥ with a row that falsifies it."]],
+    details: ["Decided by truth table, which is proved to decide (`taut_sound`)."],
+    examples: [basic("taut(p ∧ q → p)", "taut(p → q)", "taut((p → q) ∨ (q → p))")],
+    see: ["sat", "falsify", "truthtable"],
+    ref: "https://mathworld.wolfram.com/Tautology.html",
+  },
+  {
+    name: "sat", area: "Logic",
+    usage: [["sat(φ)", "gives an assignment that makes φ true, as a conjunction of literals, or ⊥ when there is none."]],
+    details: ["As an exercise, any satisfiable formula that implies φ is an answer."],
+    examples: [basic("sat(p ∧ ¬q)", "sat((p ∨ q) ∧ ¬p)", "sat(p ∧ ¬p)")],
+    see: ["falsify", "taut"],
+  },
+  {
+    name: "falsify", area: "Logic",
+    usage: [["falsify(φ)", "gives an assignment that makes φ false, or ⊥ when φ is a tautology."]],
+    examples: [basic("falsify(p → q)", "falsify(p ∨ ¬p)")],
+    see: ["sat", "taut"],
+  },
+  {
+    name: "equiv", area: "Logic",
+    usage: [["equiv(φ, ψ)", "gives ⊤ when φ and ψ have the same value under every assignment, and otherwise ⊥ with a row where they differ."]],
+    examples: [basic("equiv(p → q, ¬q → ¬p)", "equiv(p → q, q → p)", "equiv(¬(p ∧ q), ¬p ∨ ¬q)")],
+    see: ["taut", "nnf"],
+  },
+  {
+    name: "nnf", area: "Logic",
+    usage: [["nnf(φ)", "gives φ in negation normal form: no → or ↔, and ¬ only on variables."]],
+    details: ["Each law applied is a step: eliminating → and ↔, De Morgan's laws, double negation. Every step is proved to keep the value (`toNormal_sound`)."],
+    examples: [basic("nnf(¬(p ∧ (q ∨ ¬r)))", "nnf(¬(p → q))")],
+    see: ["cnf", "dnf", "equiv"],
+  },
+  {
+    name: "cnf", area: "Logic",
+    usage: [["cnf(φ)", "gives φ in conjunctive normal form: an ∧ of clauses, each an ∨ of literals."]],
+    details: ["The negation normal form first, then ∨ distributed over ∧, one distribution a step."],
+    examples: [basic("cnf(p ∨ (q ∧ r))", "cnf(p ↔ q)"), section("Exercises", note("As an exercise, an answer must be in CNF and equivalent; the truth table decides."), "cnf(¬(p → q))")],
+    see: ["dnf", "nnf"],
+    ref: "https://mathworld.wolfram.com/ConjunctiveNormalForm.html",
+  },
+  {
+    name: "dnf", area: "Logic",
+    usage: [["dnf(φ)", "gives φ in disjunctive normal form: an ∨ of terms, each an ∧ of literals."]],
+    examples: [basic("dnf((p ∨ q) ∧ r)", "dnf(p ↔ q)")],
+    see: ["cnf", "nnf"],
+    ref: "https://mathworld.wolfram.com/DisjunctiveNormalForm.html",
   },
 
   // --- λ-calculus ------------------------------------------------------------------------------

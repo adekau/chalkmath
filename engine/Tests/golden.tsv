@@ -191,6 +191,9 @@ cnf(p ∨ (q ∧ r))	(p ∨ q) ∧ (p ∨ r)
 cnf(p ↔ q)	(¬p ∨ q) ∧ (¬q ∨ p)
 cnf(¬(p → q))	p ∧ ¬q
 dnf((p ∨ q) ∧ r)	p ∧ r ∨ q ∧ r
+dnf(p ↔ q)	¬p ∧ ¬q ∨ q ∧ p
+cnf((p ∧ ¬p) ∨ q)	(p ∨ q) ∧ (¬p ∨ q)
+dnf(p ∧ ¬p)	⊥
 cnf(p ∧ ⊤)	p
 ⊤ ∧ ¬⊥	⊤
 let phi = p → q	p → q

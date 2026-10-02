@@ -84,6 +84,27 @@ differential test with zero mismatches.
   the partial-order check, covers, bounds, join and meet, lattices, monotone maps, fixed points by
   the Kleene chain — and `PosetProofs.lean` proves the decisions mean the textbook Props. Values
   are encoded into `Expr`; the notebook draws Hasse diagrams from the covers.
+- **Relations live in the order world.** A poset is a relation with three properties built in; a
+  relation (`Relation.lean`) is elements and pairs with nothing assumed, so the properties become
+  questions. Each check names the elements that break it, and the reply marks those pairs on the
+  graph it sends. Closures add the pairs a property forces, the transitive one round by round, a
+  round a step, until a round adds nothing; `RelationProofs.lean` proves the result transitive and
+  inside every transitive relation containing the original, so the least. The round loop has fuel
+  `n² + 1` and reports whether it settled, and the proof of transitivity is conditional on that
+  report, which the engine checks: a closure that did not settle would be an error, not an answer.
+  Kernels, classes, refinement, cycles and measures complete the set that well-founded induction
+  and quotients need.
+- **Logic is a fourth world.** `Logic.lean` reads formulas of propositional logic and bounded
+  first-order formulas over finite sets of numbers, with its own grammar (ASCII spellings read as
+  the glyphs). Propositional questions are decided by truth table, and `LogicProofs.lean` proves the
+  table decides: a formula's value depends only on its variables, every assignment to them is a row,
+  so what holds in every row holds everywhere. Normal forms are rewrites, one law a step (→ and ↔
+  eliminated, De Morgan, double negation, constants, distribution, complementary literals), each
+  pass a total structural function proved to keep the value under every assignment. Bounded
+  quantifiers evaluate their atoms with the math pipeline and name the element that decided them.
+  These rules are outside the notebook pipeline's termination ordering because they never run in
+  it: each is a pass over the formula, structurally recursive, and Lean's own termination check is
+  the obligation. A `truthtable` reply carries the table as a visual spec.
 - **Plots are sampled by the engine and drawn by the notebook.** `engine.plot` simplifies the
   function under the session, records the cell, and returns a uniform sample with `null` where the
   value is not finite; the notebook's SVG and the studio's graph shot are presentation only.
@@ -101,7 +122,12 @@ differential test with zero mismatches.
   check's `identNorm` and `dist`, normalized — as two λ-terms are β-equivalent when they reduce to the
   same normal form (λ answers are compared by their de Bruijn terms). "Not equivalent" is "not shown
   equivalent". An answer that calls the question's own commands (`diff` for a `diff` question) is
-  refused, and a check is not an evaluation: no `In[n]`, no binding, `%` untouched.
+  refused, and a check is not an evaluation: no `In[n]`, no binding, `%` untouched. In the logic
+  world the comparison is decided rather than canonical: two formulas are equivalent exactly when
+  their truth tables agree, a `cnf`/`dnf`/`nnf` answer must also have that shape, and a `sat` answer
+  may be any satisfiable formula that implies the question's (an assignment is one). In the order
+  world an answer is the value itself (`a->b, b->c`, classes `{a, b}, {c}`, `true`), compared as a
+  set, so order does not matter.
 - **Soundness is a fold, over whichever semantics you bring.** `RewriteSound.normalize_sound_for`
   is stated for an abstract `Congruence` (reflexive, transitive, a congruence under `withChildren`,
   invariant under `canon`). Supply those four facts for a new semantics and normalization's
@@ -296,8 +322,11 @@ settings, the cell) is `apps/notebook/src/ask-cells.ts`.
 ## 5. Visuals
 
 The engine never draws. It emits **visual specs**: declarative JSON next to `rendered`
-(`EvaluateResult.visuals`, reserved in the protocol, empty until a module uses it): a Cayley
-table, a graph, a commutative diagram, sampled plot data, a matrix heat map. The frontend owns
+(`EvaluateResult.visuals`): a Cayley table, a graph, a commutative diagram, sampled plot data, a
+matrix heat map. Two kinds exist (`KnownVisual` in the protocol): `logic.truthtable`, the rows of a
+formula's table, and `relation.digraph`, a relation's pairs with the ones that break a property
+(`bad`) and the ones a closure added (`added`). The notebook draws the table as HTML and the graph
+as SVG, keeps them with the cell in a saved file, and ignores a kind it does not know. The frontend owns
 rendering (SVG/canvas/WebGL) and can offer several renderers for one spec. This keeps the engine
 pure and portable (wasm has no canvas), keeps proofs about what is *shown* possible (the spec is
 data the engine can reason about), and lets exports (§6) reuse the same specs.

@@ -8,8 +8,8 @@
 // Then the notebook's teaching features, in a notebook of their own: a cell out of date when a name it
 // read changes, a slider driving the cells below it, work stepped through with the answer held back,
 // an exercise written in its editor and answered (wrong, right, and with the work), a Markdown
-// callout, a function's usage on hover, and a course's lesson opened from the Courses tab, answered,
-// and followed to the next. Each is held to the engine's own answers through a client of the test's.
+// callout, a function's usage on hover, a truth table and a relation's graph, a logic exercise, and
+// a course's lesson opened from the Courses tab, answered, and followed to the next. Each is held to the engine's own answers through a client of the test's.
 // Chromium: playwright-core's own, or the executable named by CHROMIUM. The engine: MATHENGINE, or
 // engine/.lake/build/bin/mathengine.
 import { chromium } from "playwright-core";
@@ -30,6 +30,13 @@ const CASES = [
   { src: "[1, 2] ./ [3, 10]", text: "[1/3, 1/5]", step: "Entrywise division" },
   { src: "rref([1,2;2,4])", text: "[1, 2; 0, 0]", step: "Add a multiple of a row" },
   { src: "[1,2] * [1,2]", error: "inner dimensions must match" },
+  // the logic world, and relations in the order world
+  { src: "cnf(p ∨ (q ∧ r))", text: "(p ∨ q) ∧ (p ∨ r)", step: "Distribute" },
+  { src: "taut(p → q)", text: "⊥", step: "False when p = true, q = false" },
+  { src: "∀ n ∈ 1..10, n^2 ≥ 2n", text: "⊥", step: "Check every element" },
+  { src: "let R = rel({a, b, c}; a->b, b->c)", text: "{(a, b), (b, c)}" },
+  { src: "closure(R, transitive)", text: "{(a, b), (b, c), (a, c)}", step: "Transitive closure" },
+  { src: "cnf(p ∨)", error: "expected a formula" },
 ];
 
 const root = path.resolve(import.meta.dirname, "..");
@@ -196,6 +203,56 @@ async function features() {
   await page.locator(".usagetip .umore", { hasText: "subst" }).waitFor({ timeout: 5000 });
   await page.mouse.move(5, 5);
   console.log("✓ usage on hover: subst");
+  // a truth table, and a relation's graph with the pairs that break a property marked
+  const runLast = async (src) => {
+    const k = await all().count() - 1;
+    await all().nth(k).locator("input.cellin").fill(src); await all().nth(k).locator("input.cellin").press("Enter");
+    await page.waitForFunction((k) => {
+      const c = document.querySelectorAll(".cell")[k];
+      return c && !c.classList.contains("running") && (c.querySelector(".outval") || c.querySelector(".cellerr"));
+    }, k, { timeout: 30000 });
+    return all().nth(k);
+  };
+  const tt = await runLast("truthtable(p → q)");
+  const ttWant = (await ref("truthtable(p → q)", 8)).visuals.find((v) => v.kind === "logic.truthtable").data;
+  assert.equal(await tt.locator("table.truthtable tbody tr").count(), ttWant.rows.length, "one row per assignment");
+  assert.equal(await tt.locator("table.truthtable tbody tr.ttfalse").count(), ttWant.rows.filter((r) => !r.at(-1)).length, "the false rows are marked");
+  assert.deepEqual(await tt.locator("table.truthtable tbody tr").evaluateAll((trs) => trs.map((tr) => [...tr.children].map((td) => td.textContent === "T"))), ttWant.rows, "the table is the engine's");
+  await runLast("let S = rel({a, b, c}; a->b, b->c)");
+  await ref("let S = rel({a, b, c}; a->b, b->c)", 9);
+  const tr = await runLast("transitive(S)");
+  const trWant = (await ref("transitive(S)", 10)).visuals.find((v) => v.kind === "relation.digraph").data;
+  assert.equal(await tr.locator("svg path.redge").count(), trWant.edges.length, "an arrow per pair");
+  assert.equal(await tr.locator("svg path.redge.bad").count(), trWant.bad.length, "the pairs that break transitivity are marked");
+  const cl = await runLast("closure(S, transitive)");
+  const clWant = (await ref("closure(S, transitive)", 11)).visuals.find((v) => v.kind === "relation.digraph").data;
+  assert.equal(await cl.locator("svg path.redge.added").count(), clWant.added.length, "the closure's pairs are dashed");
+  console.log(`✓ visuals: a truth table of ${ttWant.rows.length} rows, a relation with ${trWant.bad.length} marked and ${clWant.added.length} added`);
+  // a logic exercise: an equivalent answer not in CNF is refused, one in CNF is right
+  const lq = "cnf(p → (q ∧ r))";
+  await menu("Edit", "Add exercise");
+  const lxI = await all().count() - 1;
+  const lx = all().nth(lxI);
+  await lx.locator(".xc-qin").fill(lq);
+  await lx.locator(".xc-qin").press("Enter");
+  await lx.locator(".xc-q .katex").waitFor({ timeout: 30000 });
+  const lanswer = async (a) => {
+    await lx.locator(".xc-in").fill(a); await lx.locator(".xc-in").press("Enter");
+    await page.waitForFunction(([k, a]) => {
+      const c = document.querySelectorAll(".cell")[k];
+      return !c.classList.contains("running") && c.querySelector(".xc-verdict:not(.old)") && c.querySelector(".xc-in")?.value === a;
+    }, [lxI, a], { timeout: 30000 });
+    const engine = await reference.call("engine.check", { sessionId: "e2e-features", cellId: "lq", source: lq, answer: a });
+    return { shown: await lx.locator(".xc-verdict").getAttribute("class"), text: await lx.locator(".xc-verdict").textContent(), engine };
+  };
+  let lv = await lanswer("¬p ∨ (q ∧ r)");
+  assert.equal(lv.engine.equivalent, false, "the engine accepted an answer not in CNF");
+  assert.ok(lv.text.toLowerCase().includes(lv.engine.answer.error.message.toLowerCase()), `the page shows ${JSON.stringify(lv.text)}, not the engine's refusal`);
+  lv = await lanswer("(!p || r) && (!p || q)");
+  assert.equal(lv.engine.equivalent, true, "the engine refused a CNF in another order");
+  assert.match(lv.shown, /right/, `the page did not mark the right answer: ${lv.text}`);
+  assert.match(lv.text, /truth table/, "the verdict does not say how it was decided");
+  console.log("✓ logic exercise: not CNF refused, a CNF in another order accepted by truth table");
   // a course: the Courses tab, a lesson opened, answered, and followed to the next
   const manifest = JSON.parse(readFileSync(path.join(root, "notebooks/courses.json"), "utf8"));
   const course = manifest.projects.find((p) => p.kind === "course");

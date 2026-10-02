@@ -68,6 +68,32 @@ the engine omits is unverified.
 \rt{order.monotone}{verified}{Every pair $x \le y$ of the order checked; the witness is reported when it fails.}
 \rt{order.iterate}{verified}{One step of the Kleene chain; each element of the chain is below every fixed point (\lc{iter_le_fixed}).}
 \rt{order.fixed}{verified}{The chain stopped at a fixed point (checked), which \lc{iter_le_fixed} makes the least (dually, the greatest).}
+\rt{rel.kernel}{verified}{Equality of labels is reflexive, symmetric and transitive, so having the same label is too: by definition.}
+\rt{rel.reflexive}{verified}{Every element checked for $x \mathrel{R} x$; the first that fails is the witness.}
+\rt{rel.symmetric}{verified}{Every pair checked for its reverse; the first without one is the witness.}
+\rt{rel.antisymmetric}{verified}{Every pair checked against its reverse with distinct ends.}
+\rt{rel.transitive}{verified}{Every two pairs that chain checked for the pair they force; the first missing one is the witness (\lc{transitiveFailure_none}).}
+\rt{rel.equivalence}{verified}{Reflexive, symmetric and transitive, each checked.}
+\rt{rel.preorder}{verified}{Reflexive and transitive, each checked.}
+\rt{rel.reflexive-closure}{verified}{Adds exactly the missing $(x, x)$: the least reflexive relation containing the original, by definition.}
+\rt{rel.symmetric-closure}{verified}{Adds exactly the missing reverses: the least symmetric relation containing the original, by definition.}
+\rt{rel.transitive-closure}{verified}{Each round adds only pairs forced by two that chain, so every pair lies in any transitive relation containing the original (\lc{round_sub_transitive}); the rounds stop when none is missing, and then the relation is transitive (\lc{stable_transitive}): the least transitive relation containing it.}
+\rt{rel.classes}{verified}{Each element's class is everything related to it; for an equivalence the classes partition the set.}
+\rt{rel.finer}{verified}{Every pair of the first checked in the second.}
+\rt{rel.wellfounded}{unverified}{On a finite set a relation is well-founded exactly when it has no cycle. A cycle found is shown and can be read off the relation; that the search finds one whenever there is one is not yet proved.}
+\rt{rel.measure}{verified}{Every step checked to decrease the measure, by definition; on a finite set a measure that goes down along every step leaves no room for a cycle.}
+\midrule \multicolumn{3}{l}{\textbf{Logic world}} \\
+\rt{logic.implication}{verified}{$a \to b$ and $\lnot a \lor b$ have the same value under every assignment, and the pass that applies it everywhere keeps the formula's value (\lc{arrows_sound}).}
+\rt{logic.biconditional}{verified}{$a \leftrightarrow b$ and $(a \to b) \land (b \to a)$ have the same value under every assignment; the pass keeps the formula's value (\lc{arrows_sound}).}
+\rt{logic.de-morgan}{verified}{$\lnot(a \land b) = \lnot a \lor \lnot b$ and its dual, over Bool; the negation pass keeps the value (\lc{nnf_sound}).}
+\rt{logic.double-negation}{verified}{$\lnot\lnot a = a$ over Bool (\lc{nnf_sound}).}
+\rt{logic.negate-constant}{verified}{$\lnot\top = \bot$ and $\lnot\bot = \top$ (\lc{nnf_sound}).}
+\rt{logic.constants}{verified}{The identities and annihilators of $\land$ and $\lor$ over Bool (\lc{consts_sound}).}
+\rt{logic.distribute}{verified}{$a \lor (b \land c) = (a \lor b) \land (a \lor c)$ and its dual over Bool (\lc{distrib_sound}, \lc{normal_sound}).}
+\rt{logic.complement}{verified}{A term with $p$ and $\lnot p$ is false, a clause with them true, under every assignment (\lc{complement_sound}).}
+\rt{logic.truthtable}{verified}{Every assignment to the formula's variables is a row (\lc{rows_complete}), and a formula's value depends only on its variables (\lc{eval_congr}): what holds in every row holds everywhere (\lc{taut_sound}, \lc{unsat_sound}), and a row returned as a witness is one (\lc{findRow_spec}).}
+\rt{logic.evaluate}{verified}{A formula without variables: its value by definition of the connectives.}
+\rt{logic.bounded}{verified}{A quantifier over a finite set is checked element by element, by definition; the atoms are evaluated by the pipeline, whose steps' statuses apply.}
 \midrule \multicolumn{3}{l}{\textbf{$\lambda$-calculus}} \\
 \rt{lambda.delta}{verified}{Unfolding a definition replaces a free name by its term; nothing to prove beyond that.}
 \rt{lambda.beta}{unverified}{$\beta$-reduction with capture-avoiding substitution; the substitution lemma is not yet proved.}

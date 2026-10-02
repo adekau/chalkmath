@@ -1,4 +1,4 @@
-import { createClient, type EngineClient, type Step, type StepOutline, type Path, type RuleStatus, type Derivation, type WireExpr, type PlotResult, type HasseData } from "@chalkmath/protocol";
+import { createClient, type EngineClient, type Step, type StepOutline, type Path, type RuleStatus, type Derivation, type WireExpr, type PlotResult, type HasseData, type KnownVisual, type TruthTableData, type DigraphData } from "@chalkmath/protocol";
 declare const __BUILD_ID__: string;
 import { workerTransport, httpTransport } from "@chalkmath/engine-host";
 import { read as readNotation, write as writeNotation, writeText, hasNotation, templateAt, templateInText, TEMPLATES, type Stmt, type Caret, type MathEdit } from "@chalkmath/math-editor";
@@ -85,7 +85,11 @@ type CompItem = { kind: "doc"; doc: Doc }
   | { kind: "part"; insert: string; label: string; hint: string; start: number };
 
 /** An order-theory cell, or a `let` binding one: the engine reads these in their own world. */
-const ORDER_CELL = /^(let\s+\w+\s*=\s*)?(poset|divisors|subsets|chain|map|hasse|join|meet|sup|inf|upper|lower|lattice|top|bottom|le|maximal|minimal|monotone|lfp|gfp|fixpoints)\s*\(/;
+const ORDER_CELL = /^(let\s+\w+\s*=\s*)?(poset|divisors|subsets|chain|map|hasse|join|meet|sup|inf|upper|lower|lattice|top|bottom|le|maximal|minimal|monotone|lfp|gfp|fixpoints|rel|kernel|reflexive|symmetric|antisymmetric|transitive|equivalence|preorder|closure|classes|finer|wellfounded|measure)\s*\(/;
+/** A logic cell: a logic command, or a formula with a connective or a quantifier (the engine's
+ *  `Logic.isLogicSource`; a λ-term is not one). */
+const LOGIC_CELL = /^(let\s+\w+\s*=\s*)?(truthtable|taut|sat|falsify|equiv|nnf|cnf|dnf)\s*\(/;
+const isLogicCell = (s: string) => !/[λ\\]/.test(s) && (LOGIC_CELL.test(s) || /[∧∨¬→↔⊤⊥∀∃]|<->|->|&&|\|\|/.test(s) || /^(let\s+\w+\s*=\s*)?(forall|exists)\b/.test(s));
 
 /** Label for a cell, from its source. Presentation only — the engine decides what it means. */
 function cellKind(src: string): string | null {
@@ -106,6 +110,7 @@ function cellKind(src: string): string | null {
   }
   if (/[λ\\]|:=/.test(s)) return "λ-term";
   if (ORDER_CELL.test(s)) return "order";
+  if (isLogicCell(s)) return "logic";
   switch (head) {
     case "rref": return "row reduce";
     case "det": return "determinant";
@@ -180,6 +185,8 @@ interface Cell {
   /** Order-world cells: the Hasse diagram to draw, and the one-line summary. */
   hasse?: { nodes: { name: string; height: number }[]; covers: [string, string][] } | undefined;
   summary?: string | undefined;
+  /** What the engine sent to draw beside the value: a truth table, a relation's graph. */
+  visuals?: KnownVisual[] | undefined;
   label: number | null;
   ms?: number | undefined;
   outLatex?: string;
@@ -665,8 +672,11 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
       delete cell.error;
       // this output is a number: a file that had its label before a restart no longer does
       if (r.label) { LAST_LABEL.set(sessionId, r.label); FILE_OUTS.delete(`${sessionId}:${r.label}`); }
-      delete cell.plot; delete cell.outDeBruijn; delete cell.reading; delete cell.kind; delete cell.hasse; delete cell.summary;
+      delete cell.plot; delete cell.outDeBruijn; delete cell.reading; delete cell.kind; delete cell.hasse; delete cell.summary; delete cell.visuals;
       if ("kind" in r && r.kind === "poset") { cell.kind = "order"; cell.hasse = r.hasse; cell.summary = r.summary; }
+      if ("kind" in r && r.kind === "logic") { cell.kind = "logic"; cell.summary = r.summary; }
+      const vs = knownVisuals("visuals" in r ? r.visuals : undefined);
+      if (vs.length) cell.visuals = vs;
       if ("kind" in r && r.kind === "plot") cell.plot = plotDataOf(r);
       if ("kind" in r && r.kind === "lambda") { cell.outDeBruijn = r.renderedDeBruijn?.latex; cell.reading = r.reading; cell.kind = "λ-term"; }
       log("ok", `Out[${cell.label}] ${r.rendered.text}  (${cell.ms.toFixed(1)} ms, ${(cell.outline ?? cell.steps).length} steps)`);
@@ -800,7 +810,7 @@ async function evaluateFileCell(cell: Cell, fc: { bind?: string; file: FileValue
     renderHighlights();
   }
   delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.plot; delete cell.error;
-  delete cell.outDeBruijn; delete cell.reading; delete cell.kind; delete cell.hasse; delete cell.summary;
+  delete cell.outDeBruijn; delete cell.reading; delete cell.kind; delete cell.hasse; delete cell.summary; delete cell.visuals;
   cell.steps = []; delete cell.outline;
   cell.file = { name: file.name, mime: file.mime, size: fileSize(file), origin: file.origin };
   CELL_FILES.set(cell, file);
@@ -1035,7 +1045,7 @@ function renderTabs() {
 interface ChalkFile {
   /** Format version. Files written as `.lemma` before the rename carry `lemma: 1` instead and still open. */
   chalk?: 1; lemma?: 1; name: string;
-  cells: { src: string; type?: Cell["type"] | undefined; collapsed?: boolean | undefined; showWork: boolean; stepwise?: number | undefined; prompt?: string | undefined; hints?: string[] | undefined; hideQuestion?: boolean | undefined; attempt?: string | undefined; hintsShown?: number | undefined; verdict?: Verdict | undefined; solution?: boolean | undefined; lean?: boolean | undefined; leanStart?: string | undefined; leanSolution?: string | undefined; slider?: { min: number; max: number; step: number } | undefined; label: number | null; outLatex?: string | undefined; outText?: string | undefined; form?: string | undefined; semantics?: "real" | "complex" | undefined; echoLatex?: string | undefined; steps?: Step[] | undefined; outline?: StepOutline[] | undefined; error?: Cell["error"] | undefined; plot?: PlotData | undefined; mode?: Cell["mode"] | undefined; ask?: AskResult | undefined; file?: FileMeta | undefined; noSuggest?: true | undefined }[];
+  cells: { src: string; type?: Cell["type"] | undefined; collapsed?: boolean | undefined; showWork: boolean; stepwise?: number | undefined; prompt?: string | undefined; hints?: string[] | undefined; hideQuestion?: boolean | undefined; attempt?: string | undefined; hintsShown?: number | undefined; verdict?: Verdict | undefined; solution?: boolean | undefined; lean?: boolean | undefined; leanStart?: string | undefined; leanSolution?: string | undefined; slider?: { min: number; max: number; step: number } | undefined; label: number | null; outLatex?: string | undefined; outText?: string | undefined; form?: string | undefined; semantics?: "real" | "complex" | undefined; echoLatex?: string | undefined; steps?: Step[] | undefined; outline?: StepOutline[] | undefined; error?: Cell["error"] | undefined; plot?: PlotData | undefined; visuals?: KnownVisual[] | undefined; summary?: string | undefined; mode?: Cell["mode"] | undefined; ask?: AskResult | undefined; file?: FileMeta | undefined; noSuggest?: true | undefined }[];
   scenes: Scene[];
   /** Images attached to the notebook, by name. */
   assets?: Record<string, Asset>;
@@ -1069,7 +1079,7 @@ const outlineOf = (steps: Step[]): StepOutline[] => steps.map((st) => ({ rule: s
 function serializeNotebook(): string {
   const doc: ChalkFile = {
     chalk: 1, name: S.docName,
-    cells: S.cells.map((c) => ({ src: cellSrc(c), type: c.type, collapsed: c.collapsed || undefined, showWork: c.showWork, stepwise: c.stepwise, slider: c.slider, ...exerciseToSave(c), label: c.label, outLatex: c.outLatex, outText: c.outText, form: c.form, semantics: c.semantics, echoLatex: c.echoLatex, steps: stepsToSave(c), outline: outlineToSave(c), error: c.error, plot: c.plot, mode: c.mode, ask: c.ask, file: c.file, noSuggest: c.noSuggest || undefined })),
+    cells: S.cells.map((c) => ({ src: cellSrc(c), type: c.type, collapsed: c.collapsed || undefined, showWork: c.showWork, stepwise: c.stepwise, slider: c.slider, ...exerciseToSave(c), label: c.label, outLatex: c.outLatex, outText: c.outText, form: c.form, semantics: c.semantics, echoLatex: c.echoLatex, steps: stepsToSave(c), outline: outlineToSave(c), error: c.error, plot: c.plot, visuals: c.visuals, summary: c.visuals ? c.summary : undefined, mode: c.mode, ask: c.ask, file: c.file, noSuggest: c.noSuggest || undefined })),
     scenes: ST.scenes,
     ...(Object.keys(S.assets).length ? { assets: S.assets } : {}),
     ...(currentDoc()?.project ? { project: currentDoc()!.project } : {}),
@@ -1156,6 +1166,8 @@ function cellsFromFile(doc: ChalkFile, foldWork = false): Cell[] {
     if (c.outline && !c.steps?.length) cell.outline = c.outline;
     if (c.error) cell.error = c.error;
     if (c.plot) cell.plot = migratePlot(c.plot);
+    const vs = knownVisuals(c.visuals);
+    if (vs.length) { cell.visuals = vs; if (typeof c.summary === "string") cell.summary = c.summary; }
     const f = c.file;
     const o = f?.origin as { url?: unknown; asset?: unknown; derived?: unknown } | undefined;
     if (f && typeof f.name === "string" && typeof f.mime === "string" && o) {
@@ -2120,7 +2132,7 @@ function convertCell(cell: Cell, type: CellType) {
   if (type === "math") delete cell.type; else cell.type = type;
   delete cell.editing; delete cell.collapsed;
   if (type === "markdown") cell.editing = !cell.src.trim();
-  if (type !== "math") { delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.error; delete cell.plot; delete cell.hasse; delete cell.summary; delete cell.ask; delete cell.askTrail; cell.steps = []; delete cell.outline; cell.label = null; }
+  if (type !== "math") { delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.error; delete cell.plot; delete cell.hasse; delete cell.summary; delete cell.visuals; delete cell.ask; delete cell.askTrail; cell.steps = []; delete cell.outline; cell.label = null; }
   if (type === "section") cell.src = cell.src.split("\n")[0]!.replace(/^#+\s*/, "");
   if (type !== "lean") delete cell.leanMessages;
   if (type === "exercise") cell.editing = true;
@@ -2143,7 +2155,7 @@ function moveCell(cell: Cell, by: -1 | 1) {
 }
 const hasOutput = (cell: Cell) => !!(cell.outLatex || cell.file || cell.error);
 function clearCellOutput(cell: Cell) {
-  delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.error; delete cell.plot; delete cell.hasse; delete cell.summary; delete cell.file; delete cell.outDeBruijn; delete cell.reading;
+  delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.error; delete cell.plot; delete cell.hasse; delete cell.summary; delete cell.visuals; delete cell.file; delete cell.outDeBruijn; delete cell.reading;
   delete cell.ask; delete cell.askTrail;
   cell.steps = []; delete cell.outline; cell.label = null;
   renderCellBody(cell); renderChrome(); renderSidebar(); autosave();
@@ -2808,6 +2820,113 @@ function hasseSvg(d: { nodes: { name: string; height: number }[]; covers: [strin
   return svg;
 }
 
+/** The visuals this notebook knows how to draw, from a reply or a file: others are left out. */
+function knownVisuals(vs: unknown): KnownVisual[] {
+  if (!Array.isArray(vs)) return [];
+  return vs.filter((v): v is KnownVisual => {
+    const d = (v as { data?: Record<string, unknown> } | null)?.data;
+    if (!d) return false;
+    const kind = (v as { kind?: unknown }).kind;
+    if (kind === "logic.truthtable") return Array.isArray(d["vars"]) && Array.isArray(d["rows"]) && typeof (d["formula"] as { latex?: unknown } | undefined)?.latex === "string";
+    if (kind === "relation.digraph") return Array.isArray(d["nodes"]) && Array.isArray(d["edges"]) && Array.isArray(d["bad"]) && Array.isArray(d["added"]);
+    return false;
+  });
+}
+
+/** A visual, boxed and captioned as a plot is. */
+function visualBox(v: KnownVisual): HTMLElement {
+  const box = h("div", "visualbox");
+  if (v.kind === "logic.truthtable") box.append(truthTable(v.data));
+  else box.append(digraphSvg(v.data), digraphLegend(v.data));
+  return box;
+}
+
+/** A truth table: a column per variable, then the formula; T and F, the formula's false rows marked. */
+function truthTable(d: TruthTableData): HTMLElement {
+  const t = h("table", "truthtable");
+  t.setAttribute("aria-label", `Truth table of ${d.formula.text}: ${d.rows.length} rows`);
+  const head = h("tr");
+  for (const v of d.vars) { const th = h("th"); th.innerHTML = tex(v); head.append(th); }
+  const fth = h("th", "ttf"); fth.innerHTML = tex(d.formula.latex); head.append(fth);
+  const thead = h("thead"); thead.append(head); t.append(thead);
+  const body = h("tbody");
+  for (const row of d.rows) {
+    const tr = h("tr", row[row.length - 1] ? "" : "ttfalse");
+    row.forEach((b, i) => tr.append(h("td", i === row.length - 1 ? "ttf" : "", b ? "T" : "F")));
+    body.append(tr);
+  }
+  t.append(body);
+  return t;
+}
+
+/** A relation as a directed graph: elements on a circle, a pair as an arrow (a loop for `x R x`). The
+ *  arrows that show a property failing are marked, and the ones a closure added are dashed. */
+function digraphSvg(d: DigraphData): SVGSVGElement {
+  const NS = "http://www.w3.org/2000/svg";
+  const n = d.nodes.length, r = n <= 1 ? 0 : Math.max(60, Math.min(150, 26 * n)), w = 2 * r + 120, hgt = 2 * r + 90;
+  const pos = new Map<string, [number, number]>();
+  d.nodes.forEach((name, i) => {
+    const a = -Math.PI / 2 + (2 * Math.PI * i) / Math.max(1, n);
+    pos.set(name, [w / 2 + r * Math.cos(a), hgt / 2 + r * Math.sin(a)]);
+  });
+  const key = ([a, b]: [string, string]) => `${a}\u0000${b}`;
+  const bad = new Set(d.bad.map(key)), added = new Set(d.added.map(key)), all = new Set(d.edges.map(key));
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", `A relation on ${n} element${n === 1 ? "" : "s"}${d.edges.length ? `; pairs: ${d.edges.map(([a, b]) => `${a} to ${b}`).join(", ")}` : ", no pairs"}`);
+  svg.setAttribute("viewBox", `0 0 ${w} ${hgt}`); svg.setAttribute("width", String(w)); svg.setAttribute("height", String(hgt));
+  const defs = document.createElementNS(NS, "defs");
+  for (const cls of ["", "bad", "added"]) {
+    const m = document.createElementNS(NS, "marker");
+    m.setAttribute("id", `rel-arrow${cls ? `-${cls}` : ""}`); m.setAttribute("viewBox", "0 0 10 10"); m.setAttribute("refX", "9"); m.setAttribute("refY", "5");
+    m.setAttribute("markerWidth", "7"); m.setAttribute("markerHeight", "7"); m.setAttribute("orient", "auto-start-reverse");
+    const path = document.createElementNS(NS, "path"); path.setAttribute("d", "M0,0 L10,5 L0,10 z"); path.setAttribute("class", `rhead ${cls}`);
+    m.append(path); defs.append(m);
+  }
+  svg.append(defs);
+  for (const e of d.edges) {
+    const [a, b] = e;
+    const p = pos.get(a), q = pos.get(b); if (!p || !q) continue;
+    const cls = bad.has(key(e)) ? "bad" : added.has(key(e)) ? "added" : "";
+    const path = document.createElementNS(NS, "path");
+    if (a === b) {
+      // a loop, outward from the centre
+      const ang = Math.atan2(p[1] - hgt / 2, p[0] - w / 2) || -Math.PI / 2;
+      const cx = p[0] + 18 * Math.cos(ang), cy = p[1] + 18 * Math.sin(ang);
+      const s1 = [p[0] + 7 * Math.cos(ang - 0.6), p[1] + 7 * Math.sin(ang - 0.6)], s2 = [p[0] + 7 * Math.cos(ang + 0.6), p[1] + 7 * Math.sin(ang + 0.6)];
+      path.setAttribute("d", `M${s1[0]},${s1[1]} Q${cx + 14 * Math.cos(ang - 1.2)},${cy + 14 * Math.sin(ang - 1.2)} ${cx},${cy} Q${cx + 14 * Math.cos(ang + 1.2)},${cy + 14 * Math.sin(ang + 1.2)} ${s2[0]},${s2[1]}`);
+    } else {
+      // stop short of the nodes; bend when the reverse pair is drawn too, so the two do not overlap
+      const dx = q[0] - p[0], dy = q[1] - p[1], len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
+      const x1 = p[0] + ux * 8, y1 = p[1] + uy * 8, x2 = q[0] - ux * 9, y2 = q[1] - uy * 9;
+      const bend = all.has(key([b, a])) ? 14 : 0;
+      const mx = (x1 + x2) / 2 - uy * bend, my = (y1 + y2) / 2 + ux * bend;
+      path.setAttribute("d", `M${x1},${y1} Q${mx},${my} ${x2},${y2}`);
+    }
+    path.setAttribute("class", `redge ${cls}`);
+    path.setAttribute("marker-end", `url(#rel-arrow${cls ? `-${cls}` : ""})`);
+    svg.append(path);
+  }
+  for (const [name, [x, y]] of pos) {
+    const c = document.createElementNS(NS, "circle");
+    c.setAttribute("cx", String(x)); c.setAttribute("cy", String(y)); c.setAttribute("r", "5"); c.setAttribute("class", "hnode"); svg.append(c);
+    const t = document.createElementNS(NS, "text");
+    // outward from the centre, past the node's loop when it has one
+    const out = Math.atan2(y - hgt / 2, x - w / 2) || -Math.PI / 2, dist = d.edges.some(([a, b]) => a === name && b === name) ? 40 : 14;
+    t.setAttribute("x", String(x + dist * Math.cos(out) - 4)); t.setAttribute("y", String(y + dist * Math.sin(out) + 4)); t.setAttribute("class", "hlabel"); t.textContent = name; svg.append(t);
+  }
+  return svg;
+}
+
+/** What the marked arrows mean, when there are any. */
+function digraphLegend(d: DigraphData): HTMLElement {
+  const cap = h("div", "plotcap");
+  const pairs = (ps: [string, string][]) => ps.map(([a, b]) => `${a}→${b}`).join(", ");
+  if (d.bad.length) cap.append(h("span", "legend relbad", `marked: ${pairs(d.bad)}`), " ");
+  if (d.added.length) cap.append(h("span", "legend reladded", `added: ${pairs(d.added)}`));
+  return cap;
+}
+
 /** A complex number as LaTeX, to a few digits. */
 function fmtC(re: number, im: number): string {
   const f = (v: number) => (Math.abs(v) < 1e-12 ? "0" : String(Math.round(v * 1000) / 1000));
@@ -2842,6 +2961,7 @@ function visualBlocked(cell: Cell): string | null {
   if (kind === "lookup") return "questions are edited as text";
   if (kind === "λ-term") return "λ-terms are edited as text";
   if (kind === "order" || ORDER_CELL.test(src.trim())) return "order theory is edited as text";
+  if (kind === "logic" || isLogicCell(src.trim())) return "logic is edited as text";
   if (src.trim() && !readNotation(src, sessionFns()).ok) return "the text does not parse yet";
   return null;
 }
@@ -3401,6 +3521,12 @@ const RULE_NAMES: Record<string, string> = {
   "order.closure": "Closure", "order.covers": "Covers", "order.upper-bounds": "Upper bounds", "order.least": "Least upper bound",
   "order.lower-bounds": "Lower bounds", "order.greatest": "Greatest lower bound", "order.lattice": "Lattice", "order.cover": "Cover",
   "order.incomparable": "Incomparable", "order.monotone": "Monotone", "order.iterate": "Iterate", "order.fixed": "Fixed point",
+  "rel.reflexive": "Reflexive", "rel.symmetric": "Symmetric", "rel.antisymmetric": "Antisymmetric", "rel.transitive": "Transitive",
+  "rel.equivalence": "Equivalence relation", "rel.preorder": "Preorder", "rel.reflexive-closure": "Reflexive closure", "rel.symmetric-closure": "Symmetric closure",
+  "rel.transitive-closure": "Transitive closure", "rel.kernel": "Kernel", "rel.classes": "Equivalence classes", "rel.finer": "Finer", "rel.wellfounded": "Well-founded", "rel.measure": "Measure",
+  "logic.implication": "Eliminate →", "logic.biconditional": "Eliminate ↔", "logic.de-morgan": "De Morgan's law", "logic.double-negation": "Double negation",
+  "logic.negate-constant": "Negate a constant", "logic.constants": "Simplify constants", "logic.distribute": "Distribute", "logic.complement": "Complementary literals", "logic.truthtable": "Truth table",
+  "logic.evaluate": "Evaluate", "logic.bounded": "Check every element",
   "cmd.rref": "Row reduce", "cmd.integrate": "Integrate", "cmd.expand": "Expand", "cmd.subst": "Substitute", "cmd.simplify": "Simplify", "cmd.sum": "Sum", "cmd.exptotrig": "Euler's formula",
 };
 
@@ -3926,6 +4052,7 @@ function renderCellBody(cell: Cell) {
     }
     if (cell.reading) { const rd = h("span", "reading", `≡ ${cell.reading}`); rd.title = "What the normal form encodes"; val.append(rd); }
     if (cell.summary && !cell.hasse) { const rd = h("span", "reading", cell.summary); val.append(rd); }
+    if (cell.visuals?.length && !answerHeld(cell)) for (const v of cell.visuals) val.append(visualBox(v));
     out.append(val, h("div", "brk"));
     el.append(out);
     if (cell.ask && ASK_CELL.test(cell.src)) out.append(h("div"), askInfo(cell, !!ASK_CELL.exec(cell.src)?.[1]), h("div"));
@@ -4260,14 +4387,18 @@ function renderExercise(cell: Cell) {
     if (v.error) {
       out.append(h("span", "xc-mark", "✗"), document.createTextNode(` ${v.error.message[0]!.toUpperCase()}${v.error.message.slice(1)}.`));
       if (v.error.span && cell.attempt) out.append(h("span", "caret", `${cell.attempt}\n${" ".repeat(v.error.span.start)}${"^".repeat(Math.max(1, v.error.span.end - v.error.span.start))}`));
-    } else if (v.equivalent) {
-      out.append(h("span", "xc-mark", "✓"), document.createTextNode(" Correct: "));
-      const m = h("span", "xc-math"); m.innerHTML = tex(v.answerLatex ?? ""); out.append(m);
-      out.append(document.createTextNode(" reduces to the answer's normal form."));
     } else {
-      out.append(h("span", "xc-mark", "✗"), document.createTextNode(" Not yet: your answer reduces to "));
-      const m = h("span", "xc-math"); m.innerHTML = tex(v.normalLatex ?? ""); out.append(m);
-      out.append(document.createTextNode(", which is not the answer's normal form."));
+      // how the answer was compared: by truth table, as a set, or by normal form
+      const world = ORDER_CELL.test(cell.src.trim()) ? "order" : isLogicCell(cell.src.trim()) ? "logic" : "math";
+      const m = h("span", "xc-math"); m.innerHTML = tex((v.equivalent || world !== "math" ? v.answerLatex : v.normalLatex) ?? "");
+      const [before, after] = v.equivalent
+        ? world === "logic" ? [" Correct: ", " agrees with the answer on every row of the truth table."]
+        : world === "order" ? [" Correct: ", " is the answer."]
+        : [" Correct: ", " reduces to the answer's normal form."]
+        : world === "logic" ? [" Not yet: ", " does not agree with the answer on every row of the truth table."]
+        : world === "order" ? [" Not yet: ", " is not the answer."]
+        : [" Not yet: your answer reduces to ", ", which is not the answer's normal form."];
+      out.append(h("span", "xc-mark", v.equivalent ? "✓" : "✗"), document.createTextNode(before), m, document.createTextNode(after));
     }
     box.append(out);
   }
@@ -4949,7 +5080,7 @@ function exampleSection(f: FnDoc, sec: ExampleSection, k: number): HTMLElement {
 }
 
 /** The outputs of a section's inputs, evaluated once per page view in a session of their own. */
-interface ExOut { label?: number; latex?: string; plot?: PlotData; hasse?: HasseData; summary?: string; error?: string }
+interface ExOut { label?: number; latex?: string; plot?: PlotData; hasse?: HasseData; summary?: string; visuals?: KnownVisual[]; error?: string }
 const EXAMPLE_OUTS = new Map<string, Promise<ExOut[]>>();
 async function fillOutputs(key: string, sec: ExampleSection, rows: HTMLElement[]) {
   const val = (r: HTMLElement) => r.querySelector(".exval") as HTMLElement;
@@ -4982,6 +5113,7 @@ async function fillOutputs(key: string, sec: ExampleSection, rows: HTMLElement[]
       const pb = h("div", "plotbox"); pb.append(hasseSvg(o.hasse)); v.append(pb);
     } else v.innerHTML = tex(o.latex ?? "");
     if (o.summary) v.append(h("span", "exsummary", o.summary));
+    for (const vis of o.visuals ?? []) v.append(visualBox(vis));
   });
 }
 async function evaluateExamples(c: EngineClient, inputs: string[]): Promise<ExOut[]> {
@@ -4996,6 +5128,9 @@ async function evaluateExamples(c: EngineClient, inputs: string[]): Promise<ExOu
       if ("kind" in r && r.kind === "plot") o.plot = plotDataOf(r);
       if ("kind" in r && r.kind === "poset" && r.hasse) { o.hasse = r.hasse; if (r.summary) o.summary = r.summary; }
       if ("kind" in r && r.kind === "lambda" && r.reading) o.summary = r.reading;
+      if ("kind" in r && r.kind === "logic" && r.summary) o.summary = r.summary;
+      const vs = knownVisuals("visuals" in r ? r.visuals : undefined);
+      if (vs.length) o.visuals = vs;
       outs.push(o);
     }
   } finally { void c.call("engine.resetSession", { sessionId: sid }).catch(() => undefined); }

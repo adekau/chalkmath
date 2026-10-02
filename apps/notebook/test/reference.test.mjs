@@ -22,12 +22,15 @@ const M = await load(new URL("../../../packages/math-editor/src/index.ts", impor
 
 // the engine's own lists (Parser.lean's builtins, mirrored by the math editor; Poset.lean's heads)
 const ORDER = ["poset", "divisors", "subsets", "chain", "map", "hasse", "join", "meet", "upper", "lower",
-  "lattice", "top", "bottom", "le", "maximal", "minimal", "monotone", "lfp", "gfp", "fixpoints"];
+  "lattice", "top", "bottom", "le", "maximal", "minimal", "monotone", "lfp", "gfp", "fixpoints",
+  "rel", "kernel", "reflexive", "symmetric", "antisymmetric", "transitive", "equivalence", "preorder", "closure", "classes", "finer", "wellfounded", "measure"];
+// Logic.lean's commands
+const LOGIC = ["truthtable", "taut", "sat", "falsify", "equiv", "nnf", "cnf", "dnf"];
 // not documented: `log` is only numeric (N), and `solve` is a reserved name with nothing behind it yet
 const UNDOCUMENTED = ["log", "solve"];
 
 test("every engine function has a page", () => {
-  for (const name of [...M.BUILTIN_FUNCTIONS, ...ORDER]) {
+  for (const name of [...M.BUILTIN_FUNCTIONS, ...ORDER, ...LOGIC]) {
     if (UNDOCUMENTED.includes(name)) continue;
     assert.ok(R.FN_BY_NAME.has(name), `${name} has no page`);
   }
@@ -51,7 +54,7 @@ test("pages are unique, complete, and link to pages that exist", () => {
 test("every example input reads in the engine's grammar", () => {
   const bad = [];
   for (const f of R.FUNCTIONS) {
-    if (f.area === "Order theory" || f.area === "λ-calculus") continue;   // their own grammars
+    if (f.area === "Order theory" || f.area === "λ-calculus" || f.area === "Logic") continue;   // their own grammars
     for (const sec of f.examples) {
       const known = [];
       for (const src of sec.items.filter((it) => typeof it === "string")) {
