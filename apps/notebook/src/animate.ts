@@ -53,3 +53,13 @@ export function playPosition(start: number, elapsed: number, frames: number): nu
   if (last <= 0) return 0;
   return Math.min(last, start + (elapsed / playMs(frames)) * last);
 }
+
+/** A calculation as one line of LaTeX: `name = w₀ = w₁ = … = value`, from the part with the
+ *  parameter put in to its value (the engine's steps). A long one keeps its start and its last
+ *  steps, with `⋯` between. Without a calculation it is the value alone (after the name). */
+export function workLine(work: string[] | undefined, value: string, name?: string, max = 6): string {
+  let chain = work && work.length > 1 ? work : [value];
+  if (chain.length > max) chain = [chain[0]!, "\\cdots", ...chain.slice(-(max - 2))];
+  const label = name === undefined ? [] : [name.length === 1 ? name : `\\mathrm{${name}}`];
+  return [...label, ...chain].join(" = ");
+}

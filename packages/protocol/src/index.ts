@@ -222,8 +222,18 @@ export interface PlotResult {
  *  Optional method (rule 5). */
 export interface ManipulateFrame {
   value: number; valueRendered: Rendered; rendered: Rendered;
-  plot?: { var: string; from: number; to: number; series: PlotSeries[]; terms?: Epicycle[] };
+  plot?: ManipulatePlot;
+  /** A body that is not a plot: its calculation at this value, from the body with `p` put in to the
+   *  value, each step's whole term (one that prints like the one before left out). Absent when the
+   *  value is all there is. */
+  work?: Rendered[];
+  /** A `column(e₁, e₂, …)` body (Mathematica's `Column`): each part, evaluated as its own cell. */
+  parts?: ManipulatePart[];
 }
+export interface ManipulatePlot { var: string; from: number; to: number; series: PlotSeries[]; terms?: Epicycle[] }
+/** One part of a column: its value, the session name it was written as (`m`), and its samples when
+ *  it is a plot or its calculation otherwise. */
+export interface ManipulatePart { rendered: Rendered; label?: string; plot?: ManipulatePlot; work?: Rendered[] }
 export interface ManipulateResult {
   ok: true; kind: "manipulate";
   value: WireExpr; rendered: Rendered;

@@ -503,6 +503,17 @@ def sessionTests : TestM Unit := do
   let (stm, _) := handleS [] "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"engine.manipulate\",\"params\":{\"sessionId\":\"m\",\"cellId\":\"a\",\"source\":\"manipulate(h + 1, h, 0, 1, 2)\"}}"
   let (_, hAfter) := handleS stm "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"engine.evaluate\",\"params\":{\"sessionId\":\"m\",\"cellId\":\"b\",\"source\":\"h\"}}"
   checkTrue "rpc manipulate: the parameter is bound only inside the frames" (contains hAfter "\"rendered\":{\"text\":\"h\"") hAfter
+  -- column: each part evaluated as its own cell; a term keeps its calculation, ending in its value
+  let col := rpc "engine.manipulate" "{\"source\":\"manipulate(column(h + 1, plot(h, x, 0, 1, 2)), h, 0, 1, 2)\"}"
+  checkTrue "rpc manipulate column: each frame's parts" (contains col "\"parts\":[{\"rendered\":{\"text\":\"1\"" && contains col "\"parts\":[{\"rendered\":{\"text\":\"2\"") col
+  checkTrue "rpc manipulate column: a plot part is sampled" (contains col "\"plot\":{\"var\":\"x\"") col
+  checkTrue "rpc manipulate column: the cell's value is the column" (contains col "\"rendered\":{\"text\":\"column(") col
+  let wk := rpc "engine.manipulate" "{\"source\":\"manipulate(h*h + 1, h, 3, 4, 2)\"}"
+  checkTrue "rpc manipulate: a term's calculation, ending in its value" (contains wk "\"work\":[" && contains wk "{\"text\":\"10\",\"latex\":\"10\"}]") wk
+  checkTrue "rpc manipulate: one body has no parts" (!(contains manp "\"parts\"")) manp
+  let (stl, _) := handleS [] "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"engine.evaluate\",\"params\":{\"sessionId\":\"l\",\"cellId\":\"a\",\"source\":\"let m = h + 1\"}}"
+  let (_, lab) := handleS stl "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"engine.manipulate\",\"params\":{\"sessionId\":\"l\",\"cellId\":\"b\",\"source\":\"manipulate(column(m, h), h, 0, 1, 2)\"}}"
+  checkTrue "rpc manipulate column: a part that is a bound name is labelled with it" ((lab.splitOn "\"label\":\"m\"").length == 3 && !(contains lab "\"label\":\"h\"")) lab
   checkTrue "rpc value json" ((rpc "engine.evaluate" "{\"source\":\"2x\"}").startsWith "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"ok\":true,\"value\":{\"k\":\"mul\",\"args\":[{\"k\":\"num\",\"v\":{\"num\":\"2\",\"den\":\"1\"}},{\"k\":\"var\",\"name\":\"x\"}]}")
 
 /-- M2 golden test: `Tests/golden.tsv` holds the reference engine's rendered text for a corpus of

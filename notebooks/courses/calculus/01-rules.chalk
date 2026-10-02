@@ -53,24 +53,19 @@
       "label": null
     },
     {
-      "src": "`manipulate(e, h, from, to)` shows `e` with a slider for $h$ and a `▶ Play` button, like Mathematica's `Manipulate`. Here $h$ runs from $2$ down to $0.05$.",
+      "src": "`manipulate(e, h, from, to)` shows `e` with a slider for $h$ and a `▶ Play` button, like Mathematica's `Manipulate`, and `column(…)` puts several things under the one slider, like its `Column`: here the picture, then the calculation of `m`, `L` and `T` at the same $h$. $h$ runs from $2$ down to $0.05$.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "manipulate(plot([f, L, T], x, -0.5, 3), h, 2, 0.05)",
+      "src": "manipulate(column(plot([f, L, T], x, -0.5, 3), m, L, T), h, 2, 0.05)",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!try]\n> Press `▶ Play`. As $h$ shrinks toward $0$ the second point slides down the curve toward $(1, 1)$, and the secant `L` turns onto the tangent `T`. Drag the slider to stop anywhere. Below, the secant's slope at the same values of $h$: $m = \\dfrac{(1 + h)^2 - 1}{h} = 2 + h$ closes in on $f'(1) = 2$.",
+      "src": "> [!try]\n> Press `▶ Play`. As $h$ shrinks toward $0$ the second point slides down the curve toward $(1, 1)$, and the secant `L` turns onto the tangent `T`. Under the picture, `m` is worked out at each $h$: rise over run, $\\dfrac{(1 + h)^2 - 1}{h}$ with $h$ put in, closing in on $f'(1) = 2$. Drag the slider to stop anywhere and read the calculation there.",
       "type": "markdown",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "manipulate(m, h, 2, 0.05)",
       "showWork": false,
       "label": null
     },

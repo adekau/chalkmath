@@ -81,7 +81,7 @@ A cell that binds a name to a number, ‹let n = 3›, can be a slider: its ⋮ 
 
 ## Animating with manipulate
 
-‹manipulate(e, p, from, to)› is Mathematica's ‹Manipulate›: its output is ‹e› with a slider for ‹p› and **▶ Play**, all in the one cell. The engine works out ‹e› for 40 values of ‹p› at once (a fifth argument sets how many), so the slider moves as fast as you drag it and a play is smooth. ‹e› can be anything a cell can be: a plot animates, keeping its axes still, and a derivative or a sum shows its value as ‹p› moves. ‹from› can be larger than ‹to›: the slider starts at ‹from›, so ‹h, 1, 0.01› plays ‹h› down toward ‹0›. Use a slider on a ‹let› when several cells should follow one number; use ‹manipulate› to animate one result.
+‹manipulate(e, p, from, to)› is Mathematica's ‹Manipulate›: its output is ‹e› with a slider for ‹p› and **▶ Play**, all in the one cell. The engine works out ‹e› for 40 values of ‹p› at once (a fifth argument sets how many), so the slider moves as fast as you drag it and a play is smooth. ‹e› can be anything a cell can be: a plot animates, keeping its axes still, and a derivative or a sum shows its calculation at each ‹p›, from ‹e› with ‹p› put in to its value. ‹column(e₁, e₂, …)›, Mathematica's ‹Column›, puts several things under the one slider: ‹manipulate(column(plot([f, L], x, 0, 3), m, L), h, 2, 0.05)› draws the curves and works out ‹m› and ‹L› at the same ‹h›, each labelled with its name. ‹from› can be larger than ‹to›: the slider starts at ‹from›, so ‹h, 1, 0.01› plays ‹h› down toward ‹0›. Use a slider on a ‹let› when several cells should follow one number; use ‹manipulate› to animate one result.
 
 ## What a cell shows
 

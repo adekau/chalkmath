@@ -8,8 +8,8 @@
 // Then the notebook's teaching features, in a notebook of their own: a cell out of date when a name it
 // read changes, a slider driving the cells below it, work stepped through with the answer held back,
 // an exercise written in its editor and answered (wrong, right, and with the work), a Markdown
-// callout, a function's usage on hover, manipulate (a plot and a derivative under their slider, played
-// and dragged, against the engine's own frames), and a course's lesson opened from the Courses tab,
+// callout, a function's usage on hover, manipulate (a plot played, a derivative and a column of a plot
+// and a calculation dragged, against the engine's own frames), and a course's lesson opened from the Courses tab,
 // answered, and followed to the next. Each is held to the engine's own answers through a client of the test's.
 // Chromium: playwright-core's own, or the executable named by CHROMIUM. The engine: MATHENGINE, or
 // engine/.lake/build/bin/mathengine.
@@ -133,22 +133,36 @@ async function manipulate() {
   assert.ok((await svg.getAttribute("aria-label")).startsWith(label(want.frames[3])), `the play did not end on the engine's last frame: ${await svg.getAttribute("aria-label")}`);
   assert.equal(await box.locator(".sliderval .katex-mathml annotation").textContent(), want.frames[3].valueRendered.latex, "the value shown at the end");
   assert.deepEqual(await ticks(), before, "the axes moved while h played");
-  // any body: a derivative, its slider dragged to the last of its values
+  // any body: a derivative, its slider dragged to the last of its values, shown as its calculation
+  const flatTex = (t) => t.replace(/\\htmlData\{[^}]*\}/g, "").replace(/[{}\s]/g, "");
+  /** The text a part shows once its slider is at the last value: wait for it to end in `want`. */
+  async function lastLine(i, part, want) {
+    const box = all().nth(i).locator(".manip");
+    await box.locator(".manipbody").first().waitFor({ timeout: 30000 });
+    await box.locator("input[type=range]").focus();
+    await page.keyboard.press("End");
+    const line = () => box.locator(".manippart").nth(part).locator(".manipbody .katex-mathml annotation").textContent();
+    await page.waitForFunction(([k, j, w]) => {
+      const t = document.querySelectorAll(".cell")[k]?.querySelectorAll(".manippart")[j]?.querySelector(".manipbody .katex-mathml annotation")?.textContent ?? "";
+      return t.replace(/\\htmlData\{[^}]*\}/g, "").replace(/[{}\s]/g, "").endsWith(w);
+    }, [i, part, flatTex(want)], { timeout: 10000 }).catch(async () => assert.fail(`cell ${i}, part ${part} shows ${await line()}, which does not end in ${want}`));
+    return flatTex(await line());
+  }
   const src2 = "manipulate(diff(x^n, x), n, 1, 3, 3)";
   const want2 = await reference.call("engine.manipulate", { sessionId: "e2e-manip", cellId: "d", source: src2 });
   await run(1, src2);
-  const box2 = all().nth(1).locator(".manip");
-  await box2.locator(".manipview .katex").waitFor({ timeout: 30000 });
-  await box2.locator("input[type=range]").focus();
-  await page.keyboard.press("End");
-  await page.waitForFunction(([want]) => {
-    const t = document.querySelectorAll(".cell")[1]?.querySelector(".manipview .katex-mathml annotation")?.textContent ?? "";
-    const flat = (s) => s.replace(/\\htmlData\{[^}]*\}/g, "").replace(/[{}\s]/g, "");
-    return flat(t) === flat(want);
-  }, [want2.frames[2].rendered.latex], { timeout: 10000 }).catch(async () => {
-    assert.fail(`the derivative at n = 3 shows ${await box2.locator(".manipview .katex-mathml annotation").textContent()}, not ${want2.frames[2].rendered.latex}`);
-  });
-  console.log(`✓ manipulate: h played over ${want.frames.length} frames with the axes held; diff(x^n, x) at n = 3 is ${want2.frames[2].rendered.text}`);
+  await lastLine(1, 0, want2.frames[2].rendered.latex);
+  // a column: a plot and a calculation under one slider, the calculation from h put in to the value
+  const src3 = "manipulate(column(plot([x, h*x], x, 0, 1), h^2 + 1), h, 1, 3, 3)";
+  const want3 = await reference.call("engine.manipulate", { sessionId: "e2e-manip", cellId: "c", source: src3 });
+  assert.equal(want3.frames[2].parts?.length, 2, "the engine's column has two parts");
+  await run(2, src3);
+  assert.equal(await all().nth(2).locator(".manip .manippart").count(), 2, "one place per part");
+  const calc = want3.frames[2].parts[1];
+  const shown = await lastLine(2, 1, calc.rendered.latex);
+  assert.ok(!calc.work || shown.startsWith(flatTex(calc.work[0].latex)), `the calculation does not start from h put in: ${shown}`);
+  assert.ok(await all().nth(2).locator(".manip .manippart").nth(0).locator(".plotbox svg").count(), "the column's plot is not drawn");
+  console.log(`✓ manipulate: h played over ${want.frames.length} frames with the axes held; diff(x^n, x) at n = 3 is ${want2.frames[2].rendered.text}; a column's plot and calculation, h^2 + 1 = ${calc.rendered.text} at h = 3`);
 }
 
 /** The teaching features, in a fresh notebook, then a course. */

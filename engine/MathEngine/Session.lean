@@ -477,20 +477,39 @@ def Session.exactNum (s : Session) (e : Expr) : Option Q :=
   | (.ok (.num q), _) => some q
   | _ => none
 
-/-- One frame of `manipulate`: the parameter's value, and the body evaluated with it — its normal
-form, and its samples when the body is a plot. -/
+/-- A calculation as it reads: the term it starts from, then each step's whole term, skipping a
+step that prints the same as the one before (a silent rule). -/
+def workChain (input : Expr) (steps : Array Step) : Array Expr :=
+  (steps.map (·.after)).foldl (fun acc e => if (acc.back?.map (·.toText)) == some e.toText then acc else acc.push e) #[input]
+
+/-- One part of a `manipulate` frame, evaluated as its own cell would be: its normal form, its
+samples when it is a plot, and otherwise its calculation (`workChain`). A part that is a name the
+session binds is labelled with it. -/
+structure FramePart where
+  label : Option String := none
+  output : Expr
+  plot : Option Plot := none
+  work : Array Expr := #[]
+
+/-- One frame of `manipulate`: the parameter's value and the body evaluated with it. A body of one
+part is the frame itself (`plot`, `work`); a `column(…)` body has its `parts`. -/
 structure Frame where
   value : Q
   output : Expr
   plot : Option Plot := none
+  work : Array Expr := #[]
+  parts : Array FramePart := #[]
 
 /-- `manipulate(e, p, from, to[, frames])`, Mathematica's `Manipulate`: `e` evaluated as a cell
 would be, once for each of `frames` values of `p` (40 unless given, at most 200) evenly spaced from
 `from` to `to`, either way round (the first is where the slider starts). `from` and `to` must
-normalize to numbers, so the values are exact (approximate when an end is a decimal). A body that is
-a `plot` is sampled at every frame. The cell records the first frame; `p` is bound only inside the
-frames. The frames are presentation, like a plot's samples: each frame's term is the pipeline's
-normal form, but only the first frame's work is kept. -/
+normalize to numbers, so the values are exact (approximate when an end is a decimal). `e` may be
+`column(e₁, e₂, …)`, Mathematica's `Column`: each part is evaluated as its own cell, so a plot and
+the calculations beside it move together. A plot is sampled at every frame; any other part keeps its
+calculation with `p` put in. The session's names are put in before `p`, so a name bound to a term in
+`p` (`let m = … h …`) moves with it. The cell records the first frame; `p` is bound only inside the
+frames. The frames are presentation, like a plot's samples: only the first frame's work is kept as
+the cell's. -/
 def manipulateCell (s : Session) (cellId source : String) :
     Session × Except (String × String × Option (Nat × Nat)) (Expr × Derivation × String × Array Frame) :=
   match parseStmt source (s.fns.map (·.1)) with
@@ -504,28 +523,41 @@ def manipulateCell (s : Session) (cellId source : String) :
         let k := match more with
           | [.num m] => min 200 (max 2 m.val.num.toNat)
           | _ => 40
-        let isPlot := match body with | .fn "plot" _ => true | _ => false
-        let plotVar := match body with | .fn "plot" (_ :: .var x :: _) => x | _ => p
-        if isPlot && plotVar == p then (s, .error ("eval", s!"manipulate: {p} is the plot's own variable; manipulate another name", none)) else
+        let isColumn := match body with | .fn "column" _ => true | _ => false
+        let partsSrc : List Expr := match body with | .fn "column" ps => ps | e => [e]
+        let varOf (e : Expr) : Option String := match e with | .fn "plot" (_ :: .var x :: _) => some x | _ => none
+        if partsSrc.any (fun e => varOf e == some p) then (s, .error ("eval", s!"manipulate: {p} is the plot's own variable; manipulate another name", none)) else
         let values := (List.range k).map fun (j : Nat) => q0 + (q1 - q0) * Q.ofInt (j : Int) / Q.ofInt ((k - 1 : Nat) : Int)
         -- the session's names first, then `p`: a name bound to a term in `p` (`let m = … h …`) moves
-        -- with it. The plot's own variable is its binder and stays.
+        -- with it. A plot's own variable is its binder and stays.
         let sp : Session := { s with env := s.env.filter (·.1 != p) }
-        let named := substitute (sp.env.filter (·.1 != plotVar)) (substituteFns s.fns body)
-        -- one frame: the body with `p` set to `v`; the session keeps the cell, not the binding
-        let frame (v : Q) : Except String (Session × Frame × Derivation) :=
-          let body' := substitute [(p, .num v)] named
-          if isPlot then
-            match plotValue sp cellId body' with
+        let prepared : List (Option String × Expr) := partsSrc.map fun e =>
+          let label := match e with | .var n => if (sp.env.lookup n).isSome then some n else none | _ => none
+          (label, substitute (sp.env.filter (·.1 != (varOf e).getD p)) (substituteFns s.fns e))
+        -- one part at one value: a plot sampled, any other term normalized with its calculation
+        let part (label : Option String) (e : Expr) : Except String (FramePart × Derivation) :=
+          match e with
+          | .fn "plot" _ =>
+            match plotValue sp cellId e with
             | (_, .error (_, msg, _)) => .error msg
-            | (sv', .ok (_, out, d, pl)) => .ok ({ sv' with env := s.env }, ⟨v, out, some pl⟩, d)
-          else
-            let input := body'
-            match (normalizeT pipelineRules pipelineOrdered input).run #[] with
+            | (_, .ok (_, out, d, pl)) => .ok ({ label := label, output := out, plot := some pl }, d)
+          | _ =>
+            match (normalizeT pipelineRules pipelineOrdered e).run #[] with
             | (.error msg, _) => .error msg
-            | (.ok out, steps) =>
-              let d : Derivation := ⟨input, steps, out⟩
-              .ok ({ s with cells := (cellId, { output := out, derivation := d }) :: s.cells.filter (·.1 != cellId) }, ⟨v, out, none⟩, d)
+            | (.ok out, steps) => .ok ({ label := label, output := out, work := workChain e steps }, ⟨e, steps, out⟩)
+        let record (out : Expr) (d : Derivation) : Session :=
+          { s with cells := (cellId, { output := out, derivation := d }) :: s.cells.filter (·.1 != cellId) }
+        -- one frame: every part with `p` set to `v`; the session keeps the cell, not the binding
+        let frame (v : Q) : Except String (Session × Frame × Derivation) := do
+          let put (e : Expr) : Expr := substitute [(p, .num v)] e
+          let ps ← prepared.mapM fun (label, e) => part label (put e)
+          match isColumn, ps with
+          | false, [(pt, d)] =>
+            pure (record pt.output d, { value := v, output := pt.output, plot := pt.plot, work := pt.work }, d)
+          | _, _ =>
+            let out := Expr.fn "column" (ps.map (·.1.output))
+            let d : Derivation := ⟨Expr.fn "column" (prepared.map fun (_, e) => put e), #[], out⟩
+            pure (record out d, { value := v, output := out, parts := (ps.map (·.1)).toArray }, d)
         match values.mapM frame with
         | .error msg => (s, .error ("eval", s!"manipulate: {msg}", none))
         | .ok [] => (s, .error ("eval", "manipulate: no frames", none))
