@@ -1,0 +1,8 @@
+4	λx y z. x z (y z)	= λx. λy. λz. x z (y z)
+5	(λx. (λy. (x y)))	= λx. λy. x y   (the Church numeral 1)
+8	(λx. x) y	= y
+10	(λx. x) (λy. y) z	= z
+12	λx. (λy. y) x	= λx. x
+19	(λx. λy. x) a b	= a
+20	(λf. f a) (λx. x)	= a
+21	(λx. x x) (λy. y)	= λy. y

@@ -1,0 +1,2 @@
+12	type: λf:A→A. λg:A→A. λx:A. f (g x)	= (A → A) → (A → A) → A → A
+13	infer: λx. λy. λz. x z (y z)	= (α → β → γ) → (α → β) → α → γ

@@ -1,0 +1,127 @@
+{
+  "chalk": 1,
+  "name": "06-safety.chalk",
+  "cells": [
+    {
+      "src": "Type safety",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> State type safety, see preservation at work, and prove safety for a small typed language.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!theorem] Type safety (Milner: \"well-typed programs cannot go wrong\")\n> - **Preservation**: if $\\Gamma \\vdash M : T$ and $M$ takes a step to $M'$, then $\\Gamma \\vdash M' : T$.\n> - **Progress**: a closed, typed term is a value or can take a step.\n>\n> Together: a typed program never gets stuck on a type error.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Preservation, on one step. The redex has type $A$:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "type: x:A ⊢ (λy:A. y) x",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "normal: (λy:A. y) x",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "type: x:A ⊢ x",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "and so does what it reduces to. (Reduction erases the binders' types: they say which terms are allowed, not how they compute.)",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Small steps and big steps",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Operational semantics\n> A **small-step** semantics says what one step does, $M \to M'$: the β-steps of every cell so far. A **big-step** semantics says what a whole program evaluates to, $M \\Downarrow v$, in one judgment, by recursion on the program. Progress and preservation are about small steps; the Lean evaluator below is big-step, so its safety theorem says it in one go: a typed program evaluates, and to a value of its type.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Safety in Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "For the typed language of lesson 4, safety is one theorem: a program with a type evaluates to a value of that type. It never gets stuck, and it never comes back with the wrong kind of value.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- A value's type: a number is a nat, a boolean a bool. -/\ndef Val.ty : Val → T\n  | .num _ => .nat\n  | .bool _ => .bool\n\ntheorem safety : ∀ (e : Expr) (τ : T), typeOfE e = some τ → ∃ v, evalE e = some v ∧ v.ty = τ := by\n  intro e\n  induction e with\n  | num n => intro τ h; cases h; exact ⟨.num n, rfl, rfl⟩\n  | tt => intro τ h; cases h; exact ⟨.bool true, rfl, rfl⟩\n  | ff => intro τ h; cases h; exact ⟨.bool false, rfl, rfl⟩\n  | add a b iha ihb =>\n    intro τ h\n    simp only [typeOfE] at h\n    split at h\n    · rename_i ha hb\n      cases h\n      obtain ⟨va, ea, ta⟩ := iha _ ha\n      obtain ⟨vb, eb, tb⟩ := ihb _ hb\n      cases va <;> cases vb <;> simp_all [Val.ty, evalE]\n    · cases h\n  | isZero a iha =>\n    intro τ h\n    simp only [typeOfE] at h\n    split at h\n    · rename_i ha\n      cases h\n      obtain ⟨va, ea, ta⟩ := iha _ ha\n      cases va <;> simp_all [Val.ty, evalE]\n    · cases h\n  | ite c t e ihc iht ihe =>\n    intro τ h\n    simp only [typeOfE] at h\n    split at h\n    · rename_i A B hc ht he\n      split at h\n      · rename_i hAB\n        cases h; subst hAB\n        obtain ⟨vc, ec, tc⟩ := ihc _ hc\n        cases vc with\n        | num _ => simp [Val.ty] at tc\n        | bool b =>\n          cases b\n          · obtain ⟨v, ev, tv⟩ := ihe _ he; exact ⟨v, by simp [evalE, ec, ev], tv⟩\n          · obtain ⟨v, ev, tv⟩ := iht _ ht; exact ⟨v, by simp [evalE, ec, ev], tv⟩\n      · cases h\n    · cases h",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem typed_add_evaluates (a b : Expr) (ha : typeOfE a = some .nat) (hb : typeOfE b = some .nat) :\n    ∃ n, evalE (.add a b) = some (.num n) := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Use safety: adding two typed numbers gives a number.",
+      "leanSolution": "  obtain ⟨va, ea, ta⟩ := safety a _ ha\n  obtain ⟨vb, eb, tb⟩ := safety b _ hb\n  cases va <;> cases vb <;> simp_all [Val.ty, evalE]",
+      "hints": [
+        "`safety a _ ha` gives a value of `a` and that its type is `nat`; the same for `b`.",
+        "Split both values with `cases`: a boolean contradicts its type, two numbers add. `simp_all [Val.ty, evalE]`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "type: f : A → B, x : A ⊢ (λg:A→B. g x) f",
+      "type": "exercise",
+      "prompt": "What type does $(\\lambda g{:}A \\to B.\\, g\\ x)\\ f$ have, in the context $f : A \\to B,\\ x : A$?",
+      "hints": [
+        "The function returns $g\\ x : B$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "normal: (λg:A→B. g x) f",
+      "type": "exercise",
+      "prompt": "Reduce $(\\lambda g{:}A \\to B.\\, g\\ x)\\ f$. By preservation, the result has the same type.",
+      "hints": [
+        "One β-step."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Preservation keeps a term's type as it reduces, and progress says a typed term is never stuck. Together they are type safety: well-typed programs do not go wrong.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

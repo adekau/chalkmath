@@ -1,0 +1,132 @@
+{
+  "chalk": 1,
+  "name": "06-de-bruijn.chalk",
+  "cells": [
+    {
+      "src": "De Bruijn indices",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Write a term with de Bruijn indices, and use them to decide α-equivalence.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] De Bruijn indices\n> Replace each bound variable by the number of λs between it and its binder: $0$ for the nearest. The λs lose their names. $\\lambda x.\\, \\lambda y.\\, x$ becomes $\\lambda.\\, \\lambda.\\, 1$. A free variable keeps its name.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "db: λx. λy. x",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "db: λf. λx. f (f x)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "db: λx. λy. x (λz. z y)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The same variable can have different indices in different places: in the last term $y$ is $0$ under one λ and $1$ under two.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "α-equivalence is equality",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Two terms are α-equivalent exactly when their de Bruijn forms are equal: there are no bound names left to differ. That is how `alpha:` decides.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "alpha: λx. λy. x (λz. z y), λa. λb. a (λc. c b)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "The View menu's de Bruijn indices shows every λ-cell's result, and every step, this way.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "An interpreter on de Bruijn terms needs no renaming at all; the price is **shifting**: a term moved under a λ has its free indices raised by one.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- De Bruijn terms: a bound variable is the number of λs between it and its binder. -/\ninductive DB where\n  | bvar : Nat → DB\n  | free : String → DB\n  | lam : DB → DB\n  | app : DB → DB → DB\n  deriving Repr, DecidableEq\n\n/-- Translate, keeping the binders in scope innermost first. -/\ndef toDB (ctx : List String) : Term → DB\n  | var x => match ctx.idxOf? x with\n    | some i => .bvar i\n    | none => .free x\n  | lam x b => .lam (toDB (x :: ctx) b)\n  | app f a => .app (toDB ctx f) (toDB ctx a)\n\n/-- α-equivalence: the same term up to the names of bound variables. -/\ndef alphaEq (s t : Term) : Bool := toDB [] s == toDB [] t\n\n#eval toDB [] K\nexample : alphaEq (lam \"x\" (var \"x\")) (lam \"y\" (var \"y\")) = true := by decide\nexample : alphaEq (lam \"x\" (var \"y\")) (lam \"y\" (var \"y\")) = false := by decide\n\n/-- Shift the free indices (those ≥ c) by d. -/\ndef DB.shift (d : Nat) (c : Nat) : DB → DB\n  | bvar n => if n ≥ c then bvar (n + d) else bvar n\n  | free x => free x\n  | lam b => lam (shift d (c + 1) b)\n  | app f a => app (shift d c f) (shift d c a)\n\nexample : (DB.lam (.bvar 1)).shift 1 0 = .lam (.bvar 2) := by decide",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem DB.shift_zero (c : Nat) (t : DB) : t.shift 0 c = t := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Shifting by zero changes nothing. Prove it by induction; the cutoff `c` changes under a λ, so generalize it.",
+      "leanSolution": "  induction t generalizing c with\n  | bvar n => simp [DB.shift]\n  | free x => rfl\n  | lam b ih => simp [DB.shift, ih]\n  | app f a ihf iha => simp [DB.shift, ihf, iha]",
+      "hints": [
+        "`induction t generalizing c with` lets the hypothesis for the body hold at `c + 1`.",
+        "Each case is `simp [DB.shift]`, with the induction hypotheses where there are some; `free` is `rfl`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "alpha: λx. λy. y (λz. x), λa. λb. b (λb. a)",
+      "type": "exercise",
+      "prompt": "Are $\\lambda x.\\, \\lambda y.\\, y\\ (\\lambda z.\\, x)$ and $\\lambda a.\\, \\lambda b.\\, b\\ (\\lambda b.\\, a)$ α-equivalent?",
+      "hints": [
+        "Write both with indices: the inner $x$ and $a$ are two λs up."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "alpha: λx. λy. x, λy. λx. x",
+      "type": "exercise",
+      "prompt": "Are $\\lambda x.\\, \\lambda y.\\, x$ and $\\lambda y.\\, \\lambda x.\\, x$ α-equivalent?",
+      "hints": [
+        "In indices: $\\lambda.\\, \\lambda.\\, 1$ and $\\lambda.\\, \\lambda.\\, 0$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> De Bruijn indices count binders instead of naming them. Bound names disappear, so α-equivalent terms are equal, and substitution needs shifting instead of renaming.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

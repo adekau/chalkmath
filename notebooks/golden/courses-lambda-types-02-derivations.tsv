@@ -1,0 +1,7 @@
+3	type: λf:A→B. λg:B→C. λx:A. g (f x)	= (A → B) → (B → C) → A → C
+6	type: λx:A. x x	✗ x has type A, not a function type, so it cannot be applied
+7	type: λf:A→B. λx:B. f x	✗ f expects an argument of type A, but x has type B
+8	type: λx:A. y	✗ y is free and has no type: give it one in the context, as in `y : A ⊢ …`
+10	type: λx:A. λx:B. x	= A → B → B
+16	type: f : A → B, g : B → C ⊢ λx:A. g (f x)	= A → C
+17	type: λx:A→B→C. λy:A→B. λz:A. x z (y z)	= (A → B → C) → (A → B) → A → C

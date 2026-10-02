@@ -1,0 +1,9 @@
+4	fv: λx. x y	= {y}   (1 free; bound: x)
+6	fv: (λx. x y) (λy. x y)	= {y, x}   (2 free; bound: x, y)
+7	fv: λf. λx. f (f x)	= {}   (closed: no free variables; bound: f, x)
+11	alpha: λx. λy. x y, λa. λb. a b	= ⊤   (α-equivalent: the same term up to the names of bound variables)
+12	alpha: λx. y, λy. y	= ⊥   (not α-equivalent)
+19	fv: λx. x y (λy. y z)	= {y, z}
+20	fv: (λx. λy. x) y	= {y}
+21	alpha: λx. λy. y x, λy. λx. x y	= ⊤
+22	alpha: λx. x y, λy. y y	= ⊥

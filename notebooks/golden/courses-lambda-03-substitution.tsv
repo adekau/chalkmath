@@ -1,0 +1,8 @@
+4	subst: x y, x := λz. z	= (λz. z) y
+5	subst: λx. x y, x := z	= λx. x y
+8	subst: λy. x y, x := y	= λy'. y y'
+9	subst: λy. λx. x y z, z := x y	= λy'. λx'. x' y' (x y)
+11	(λx. λy. x y) y	= λy'. y y'
+20	subst: (λx. x) x, x := y	= (λx. x) y
+21	subst: λz. x z, x := z	= λz'. z z'
+22	subst: λy. x, x := λw. w	= λy. λw. w

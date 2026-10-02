@@ -1,0 +1,143 @@
+{
+  "chalk": 1,
+  "name": "05-curry-howard.chalk",
+  "cells": [
+    {
+      "src": "Propositions as types",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Read a type as a proposition and a term as its proof; prove implications by writing functions, and see where classical logic needs more.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!theorem] Curry–Howard\n> Read $A \\to B$ as \"$A$ implies $B$\". Then a closed term of type $T$ is a proof of $T$ in intuitionistic propositional logic, and the typing rules are the rules of proof:\n> - Var is using an assumption;\n> - →I is proving $A \\to B$ by assuming $A$ and proving $B$;\n> - →E is modus ponens: from $A \\to B$ and $A$, conclude $B$.\n>\n> β-reduction simplifies a proof that introduces an implication only to eliminate it at once.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "$K$ proves $A \\to B \\to A$: from $A$, anything implies $A$. $S$ proves $(A \\to B \\to C) \\to (A \\to B) \\to A \\to C$. Composition proves that implication is transitive:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "type: λf:A→B. λg:B→C. λx:A. g (f x)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "Each of these is a tautology, as the logic world confirms:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "taut((p → q) → (q → r) → p → r)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Where classical logic differs",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "**Peirce's law**, $((A \\to B) \\to A) \\to A$, is a tautology:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "taut(((p → q) → p) → p)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "but no λ-term has that type: it is not provable intuitionistically. Classical logic adds the excluded middle, $A \\lor \\lnot A$, as an axiom, a proof with no program inside.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean propositions are types and proofs are terms, literally. A proof by tactics builds a term; `fun` writes one directly.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem K_prop (P Q : Prop) : P → Q → P := fun p _ => p\ntheorem S_prop (P Q R : Prop) : (P → Q → R) → (P → Q) → P → R := fun f g p => f p (g p)\n\n/-- Peirce's law needs the excluded middle. -/\ntheorem peirce (P Q : Prop) : ((P → Q) → P) → P := by\n  intro h\n  cases Classical.em P with\n  | inl p => exact p\n  | inr np => exact h (fun p => absurd p np)",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem imp_trans (P Q R : Prop) : (P → Q) → (Q → R) → P → R := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that implication is transitive. The proof is the composition function.",
+      "leanSolution": "  intro f g p\n  exact g (f p)",
+      "hints": [
+        "`intro f g p` names the assumptions.",
+        "Apply `f` to `p`, then `g` to that."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem and_swap (P Q : Prop) : P ∧ Q → Q ∧ P := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that ∧ commutes. A proof of `P ∧ Q` is a pair.",
+      "leanSolution": "  intro ⟨p, q⟩\n  exact ⟨q, p⟩",
+      "hints": [
+        "`intro ⟨p, q⟩` takes the pair apart.",
+        "Build the swapped pair with `⟨q, p⟩`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "type: λf:A→B→C. λb:B. λa:A. f a b",
+      "type": "exercise",
+      "prompt": "What does $\\lambda f{:}A \\to B \\to C.\\, \\lambda b{:}B.\\, \\lambda a{:}A.\\, f\\ a\\ b$ prove? Give its type.",
+      "hints": [
+        "It swaps the order of two assumptions."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "taut((p → q) → (¬q → ¬p))",
+      "type": "exercise",
+      "prompt": "Is contraposition a tautology? Answer `⊤` or `⊥`.",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Types are propositions and terms are proofs: →I is assuming, →E is modus ponens, β simplifies proofs. The simply typed calculus proves exactly the intuitionistic implications; Peirce's law needs classical logic.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

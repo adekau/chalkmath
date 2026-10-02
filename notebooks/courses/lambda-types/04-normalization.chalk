@@ -1,0 +1,148 @@
+{
+  "chalk": 1,
+  "name": "04-normalization.chalk",
+  "cells": [
+    {
+      "src": "What types rule out",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> See which untyped terms have no simple type, know the theorem that every typed term has a normal form, and what that costs.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "$\\Omega$ and $Y$ are built on self-application, and the occurs check refuses both:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "infer: omega",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "infer: Y",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!theorem] Strong normalization\n> In the simply typed λ-calculus every reduction sequence of a typed term is finite: every typed term has a normal form, and every strategy reaches it (Tait, 1967).",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "So the engine's step budget is never needed for a typed term. The price: no fixed-point combinator, so no unbounded recursion. The simply typed λ-calculus is not Turing complete, and real typed languages add recursion back as a primitive (`fix`, `let rec`).",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Typed numerals",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A Church numeral has type $(\\alpha \\to \\alpha) \\to \\alpha \\to \\alpha$, and arithmetic is typed at those types:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "infer: 3",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "infer: mul",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Not everything survives. Church's $\\mathsf{and} = \\lambda p.\\, \\lambda q.\\, p\\ q\\ p$ passes $p$ to itself, at a second type:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "infer: and",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A simple type cannot be used at two types. Polymorphism (lesson 7) can.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A small typed language: numbers, booleans, addition, a test for zero and `if`. Its evaluator is structurally recursive, so Lean accepts it as total: it always stops, the strong normalization of this language. A program can still be stuck: `1 + true` has no value.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "inductive Expr where\n  | num : Nat → Expr\n  | tt : Expr\n  | ff : Expr\n  | add : Expr → Expr → Expr\n  | isZero : Expr → Expr\n  | ite : Expr → Expr → Expr → Expr\n\ninductive T where\n  | nat | bool\n  deriving DecidableEq, Repr\n\ndef typeOfE : Expr → Option T\n  | .num _ => some .nat\n  | .tt | .ff => some .bool\n  | .add a b => match typeOfE a, typeOfE b with\n    | some .nat, some .nat => some .nat\n    | _, _ => none\n  | .isZero a => match typeOfE a with\n    | some .nat => some .bool\n    | _ => none\n  | .ite c t e => match typeOfE c, typeOfE t, typeOfE e with\n    | some .bool, some A, some B => if A = B then some A else none\n    | _, _, _ => none\n\ninductive Val where\n  | num : Nat → Val\n  | bool : Bool → Val\n  deriving DecidableEq, Repr\n\n/-- Evaluation; none is a program stuck on a type error. -/\ndef evalE : Expr → Option Val\n  | .num n => some (.num n)\n  | .tt => some (.bool true)\n  | .ff => some (.bool false)\n  | .add a b => match evalE a, evalE b with\n    | some (.num m), some (.num n) => some (.num (m + n))\n    | _, _ => none\n  | .isZero a => match evalE a with\n    | some (.num n) => some (.bool (n == 0))\n    | _ => none\n  | .ite c t e => match evalE c with\n    | some (.bool true) => evalE t\n    | some (.bool false) => evalE e\n    | _ => none\n\n#eval evalE (.ite (.isZero (.num 0)) (.num 1) (.num 2))\n#eval evalE (.add (.num 1) .tt)",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem rejects : typeOfE (.add (.num 1) .tt) = none := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "The type checker refuses `1 + true`, the program that gets stuck.",
+      "leanSolution": "  rfl",
+      "hints": [
+        "Both sides compute: `rfl`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "infer: λx. λy. x y y",
+      "type": "exercise",
+      "prompt": "Infer the type of $\\lambda x.\\, \\lambda y.\\, x\\ y\\ y$.",
+      "hints": [
+        "$x$ takes $y$ twice."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "infer: λf. f (λx. x)",
+      "type": "exercise",
+      "prompt": "Infer the type of $\\lambda f.\\, f\\ (\\lambda x.\\, x)$.",
+      "hints": [
+        "$f$ is given the identity, of type $\\alpha \\to \\alpha$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Self-application has no simple type, so neither $\\Omega$ nor $Y$ does. Every typed term has a normal form; the cost is that the simply typed calculus cannot express unbounded recursion.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

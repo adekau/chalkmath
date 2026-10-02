@@ -1,0 +1,11 @@
+3	(λx. λy. y x) a (λz. z)	= a
+4	S K K a	= a
+7	normal 2: omega omega	= (λx. x x) (λx. x x)   (stopped after 2 steps: not yet a normal form)
+8	omega omega	✗ λ: no normal form after 1000 β-steps; the term had become (λx. x x) (λx. x x)
+10	(λx. x x x) (λx. x x x)	✗ λ: no normal form yet after 427 steps, and the term has grown past 3000 symbols, so the reduction stops here
+12	normal: (λx. λy. y) (omega omega)	= λy. y
+18	eta: λx. λy. f x y	= f
+19	eta: λx. x x	= λx. x x
+26	(λx. λy. x) y	= λy'. y
+27	(λf. λx. f (f x)) (λy. y y)	= λx. x x (x x)
+28	eta: λx. (λy. g y) x	= g

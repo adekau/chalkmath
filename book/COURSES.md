@@ -102,19 +102,28 @@ customer. Lesson 8's normalization keeps only the rewrites that are sound from e
 *Process Calculi and Concurrency* (lean4learning: LTS, CCS, bisimulation, Hennessy–Milner logic) can
 replace lesson 8's simulation with bisimulation, or be a course of its own later.
 
-### 4 · λ-calculus I: untyped (8 lessons; replaces today's two-lesson course)
+### 4 · λ-calculus I: untyped (8 lessons) — written
 
-Follows Part I of the lean4learning λ-calculus book: syntax and notation; free and bound variables;
-α-conversion; β-reduction; evaluation strategies (normal order, call by name, call by value); η;
-Church encodings (numerals, booleans, pairs, lists); de Bruijn indices; recursion (fixed-point
-combinators, and what has no normal form). *λ world: strategies, η, free variables, α-equivalence*
+`notebooks/courses/lambda/`, replacing the old two-lesson course, with a Lean prelude: an interpreter
+grown a piece per lesson (terms; free variables; naive and capture-avoiding substitution, the latter
+with its termination proved; normal-order and call-by-value steps; de Bruijn terms with shifting;
+Church numerals at one type; factorial as a fixed point), after Part I of the lean4learning
+λ-calculus book. Lessons: terms and notation; free and bound variables and α-equivalence;
+substitution and capture; β-reduction, normal forms, Church–Rosser and η; evaluation strategies
+(normal order, call by name, call by value, applicative); de Bruijn indices; Church encodings
+(booleans, numerals, pairs and the predecessor, lists); recursion by fixed points (Y, and Z for call
+by value). *λ world: `normal:`, `cbn:`, `cbv:`, `applicative:` with step counts, `eta:`, `fv:`,
+`db:`, `alpha:`, `subst:`*
 
-### 5 · λ-calculus II: types and semantics (8 lessons)
+### 5 · λ-calculus II: types and proofs (8 lessons) — written
 
-Small-step and big-step semantics; the simply typed λ-calculus with typing derivations drawn as
-trees; progress and preservation, proved in Lean; normalization (why Ω has no type); Curry–Howard and
-intuitionistic logic (course 1's proofs as terms); a look at System F and the λ-cube; capstone: a
-language inside Lean (interpreter, type checker, soundness theorem). *E6, N3 trees*
+`notebooks/courses/lambda-types/`, with a Lean prelude. Lessons: simple types and the three rules,
+with derivation trees; derivations in a context, why a term fails, the checker proved sound and types
+unique; inference by unification and the occurs check; what types rule out (Ω, Y, Church `and`) and
+strong normalization; propositions as types and where classical logic differs (Peirce's law, checked
+against the logic world's `taut`); type safety, small and big steps, and a typed language whose
+safety theorem is proved in Lean (the capstone); polymorphism and System F, Church numerals at every
+type in Lean; dependent types and Lean's type checking as proof checking. *E6, N3 trees*
 
 ### 6 · CRDTs (12 lessons) — written
 
@@ -141,10 +150,11 @@ E5 events (version vectors), N8 replica simulation*
 | E3 | **Done.** Relations: property checks with witnesses, closures as steps, partitions, quotients, refinement, acyclicity and measures | closure is least; partition specs |
 | E4 | **Done.** Finite algebra: operation tables and their laws, homomorphisms, products, maps between posets, distributive and Boolean checks, closure operators, Galois connections, concept lattices | a spec per check |
 | E5 | **Done.** Systems: finite-domain variables, guarded actions, reachability, invariants with traces, inductiveness, deadlock, CTL by lfp/gfp, simulation; events → poset with vector clocks | invariant check sound and complete on finite graphs; CTL fixpoints correct |
-| E6 | Simply typed λ-calculus: annotations, type checking with a derivation, simple inference | checker sound against the rules |
+| E6 | **Done.** Simply typed λ-calculus: annotations, type checking with a derivation tree, inference by unification (checked by the checker) | checker sound against the rules |
 | E7 | (optional) user-defined rewriting systems: steps, termination by measure, critical pairs | per rule |
 
-The λ world also grows for course 4: a choice of strategy, η, free variables, α-equivalence.
+The λ world also grew for course 4: a choice of strategy, η, free variables, α-equivalence,
+substitution and de Bruijn indices as commands. **Done.**
 
 ## Notebook capabilities
 
@@ -154,7 +164,9 @@ The λ world also grows for course 4: a choice of strategy, η, free variables, 
   **Done for logic and relations.** A witness the engine checks (a trace, a counterexample triple)
   comes with E4 and E5.
 - N3 Visual specs: truth tables and relation graphs (bad pairs marked, a closure's pairs dashed).
-  **Done.** Operation tables, state graphs, derivation trees and space-time diagrams come with E4–E6.
+  **Done.** Operation tables (E4), layered state graphs (E5) and typing derivation trees (E6) too;
+  space-time diagrams are not built (events are drawn as their Hasse diagram, and vector clocks
+  printed as values).
 - N4 Traces stepped state by state: a trace is the derivation (a step per action), so stepping
   through it works as for any cell, and its transitions are marked on the layered state graph.
   **Done**, except that the graph does not yet highlight the current step as you step.
@@ -170,8 +182,8 @@ The λ world also grows for course 4: a choice of strategy, η, free variables, 
 3. **P2** — Course 2: E4. *Done.*
 4. **P3** — Course 6 (CRDTs): mostly Lean, little engine; needs only course 2. *Done* (without N8).
 5. **P4** — Course 3: E5, N4, N6. *Done.*
-6. **P5** — Courses 4 and 5: the λ world's additions, E6.
-7. **P6** — Optional: E7, and probability for retries and backoff.
+6. **P5** — Courses 4 and 5: the λ world's additions, E6. *Done.*
+7. **P6** — Optional: E7, and probability for retries and backoff. *Not started.*
 
 ## Open
 
@@ -179,3 +191,7 @@ The λ world also grows for course 4: a choice of strategy, η, free variables, 
   course is written.
 - `wellfounded` is reported unverified: the cycle search is not yet proved complete (a cycle it finds
   is real). A proof that "no cycle found" means well-founded on a finite set would make it verified.
+- In the λ world the β-steps stay unverified (the substitution lemma, and that renaming preserves
+  α-equivalence, are not proved), and an inferred type is checked rather than proved principal.
+  Church arithmetic in normal order is slow: `fact 3` through `Y` needs more than the 1000-step
+  budget, so the course stops at `fact 2`.

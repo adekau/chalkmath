@@ -1,7 +1,0 @@
-4	(λx. x) y	= y
-5	(λx. x x) (λy. y)	= λy. y
-6	(λx. λy. x) a b	= a
-10	(λx. λy. y x) a (λz. z)	= a
-11	(λx. x x) (λy. y)	= λy. y
-14	(λx. λy. x) y	= λy'. y
-15	(λx. λy. x) y	= λy'. y

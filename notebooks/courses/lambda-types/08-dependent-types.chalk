@@ -1,0 +1,109 @@
+{
+  "chalk": 1,
+  "name": "08-dependent-types.chalk",
+  "cells": [
+    {
+      "src": "Dependent types",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Use a type that depends on a value, and see that Lean's type checker, checking a proof, is the same idea as the first lesson's three rules.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] The λ-cube\n> Starting from simple types, let terms depend on types (polymorphism: System F), types depend on types (type operators: $F_\\omega$), and types depend on **terms** (dependent types). All three together is the **calculus of constructions**; Lean's type theory extends it with inductive types and universes.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Π-types\n> A dependent function $(x : A) \\to B(x)$ returns a value whose **type** depends on the argument. When $B$ does not mention $x$ it is the arrow $A \\to B$. Read as a proposition it is $\\forall x : A,\\ B(x)$: Curry–Howard extends to quantifiers.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Vectors carry their length in their type, so taking the head of an empty one is not an error at run time: it is a type error, and needs no case at all.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- Vectors: lists whose length is in their type. -/\ninductive Vec (α : Type) : Nat → Type where\n  | nil : Vec α 0\n  | cons : α → Vec α n → Vec α (n + 1)\n\nnamespace Vec\n\n/-- The head of a nonempty vector: there is no case for nil, because the type rules it out. -/\ndef head : Vec α (n + 1) → α\n  | cons x _ => x\n\ndef toList : Vec α n → List α\n  | nil => []\n  | cons x xs => x :: xs.toList\n\ndef append : Vec α n → Vec α m → Vec α (m + n)\n  | nil, ys => ys\n  | cons x xs, ys => cons x (append xs ys)\n\nend Vec\n\n#eval (Vec.cons 1 (Vec.cons 2 Vec.nil)).head\n#eval (Vec.append (Vec.cons 1 (Vec.cons 2 Vec.nil)) (Vec.cons 3 Vec.nil)).toList",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem Vec.toList_length : ∀ (v : Vec α n), v.toList.length = n := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "The list of a vector of length $n$ has length $n$: the type was telling the truth.",
+      "leanSolution": "  intro v\n  induction v with\n  | nil => rfl\n  | cons x xs ih => simp [Vec.toList, ih]",
+      "hints": [
+        "`induction v with`: `nil` is `rfl`.",
+        "For `cons`, unfold `toList` and use the hypothesis: `simp [Vec.toList, ih]`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!theorem] Type checking is proof checking\n> A Lean proof is a term, and checking the proof is type checking the term: the kernel applies rules like Var, →I and →E (generalized to Π-types and inductive types). `rfl : 2 + 2 = 4` type checks because both sides reduce to the same normal form.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem two_plus_two : 2 + 2 = 4 := rfl",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A last review in the simply typed calculus.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "type: λf:A→A. λg:A→A. λx:A. f (g x)",
+      "type": "exercise",
+      "prompt": "What type does $\\lambda f{:}A \\to A.\\, \\lambda g{:}A \\to A.\\, \\lambda x{:}A.\\, f\\ (g\\ x)$ have?",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "infer: λx. λy. λz. x z (y z)",
+      "type": "exercise",
+      "prompt": "Infer the type of $S$ without annotations.",
+      "hints": [
+        "It is the type of the axiom $(A \\to B \\to C) \\to (A \\to B) \\to A \\to C$, with variables."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Dependent types let types mention values: a vector's length, a proposition's quantified variable. Lean's type theory has them, and its kernel checks proofs by checking types, as the three rules of the first lesson do.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

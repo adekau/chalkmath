@@ -1,0 +1,131 @@
+{
+  "chalk": 1,
+  "name": "02-derivations.chalk",
+  "cells": [
+    {
+      "src": "Typing derivations",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Build and read derivations in a context, say exactly why an ill-typed term fails, and know that a term's type is unique.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The checker works bottom-up: to type $\\lambda x{:}A.\\, M$ it adds $x : A$ to the context and types $M$; to type $M\\ N$ it types both and checks that they fit. The tree is read the other way, from the axioms down. Long contexts are named $\\Gamma_1, \\Gamma_2, \\ldots$ under the tree.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "type: λf:A→B. λg:B→C. λx:A. g (f x)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "Why a term has no type",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Three things can go wrong, and each has its message:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "type: λx:A. x x",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "type: λf:A→B. λx:B. f x",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "type: λx:A. y",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "An inner binder hides an outer one of the same name, and the context remembers only the nearest:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "type: λx:A. λx:B. x",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The checker, as a function, and the proof that it is right: whatever type it returns, the term has that type by the rules. The engine's `type:` is the same checker, with the same theorem (`check_sound`), which is why its steps are marked verified.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- The checker: the type, if the term has one. -/\ndef typeOf (Γ : Ctx) : Tm → Option Ty\n  | .var x => Γ.lookup x\n  | .lam x A b => (typeOf ((x, A) :: Γ) b).map (A ⇒ ·)\n  | .app f a =>\n    match typeOf Γ f, typeOf Γ a with\n    | some (.arrow A B), some A' => if A = A' then some B else none\n    | _, _ => none\n\n#eval typeOf [] (.lam \"x\" A (.var \"x\"))\n#eval typeOf [] (.lam \"x\" A (.app (.var \"x\") (.var \"x\")))\n\n/-- What the checker says is so. -/\ntheorem typeOf_sound : ∀ (t : Tm) (Γ : Ctx) (T : Ty), typeOf Γ t = some T → HasType Γ t T := by\n  intro t\n  induction t with\n  | var x => intro Γ T h; exact .var h\n  | lam x A b ih =>\n    intro Γ T h\n    simp only [typeOf, Option.map_eq_some_iff] at h\n    obtain ⟨B, hb, rfl⟩ := h\n    exact .abs (ih _ _ hb)\n  | app f a ihf iha =>\n    intro Γ T h\n    simp only [typeOf] at h\n    split at h\n    · rename_i A B A' hf ha\n      split at h\n      · rename_i hA; subst hA; cases h; exact .app (ihf _ _ hf) (iha _ _ ha)\n      · cases h\n    · cases h",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem HasType.unique {Γ : Ctx} {t : Tm} {T U : Ty} (h₁ : HasType Γ t T) (h₂ : HasType Γ t U) : T = U := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "A term has at most one type in a context. Prove it by induction on the first derivation.",
+      "leanSolution": "  induction h₁ generalizing U with\n  | var h => cases h₂ with | var h' => rw [h] at h'; exact Option.some.inj h'\n  | abs _ ih => cases h₂ with | abs h' => rw [ih h']\n  | app _ _ ihf _ => cases h₂ with | app hf' _ => cases ihf hf'; rfl",
+      "hints": [
+        "`induction h₁ generalizing U with`, and in each case `cases h₂`: the second derivation must end with the same rule.",
+        "Var: both lookups give `some _`, so the types are equal (`Option.some.inj`). →I: the bodies' types agree by the hypothesis. →E: the functions' types `A ⇒ T` and `A' ⇒ U` agree, so `T = U`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "type: f : A → B, g : B → C ⊢ λx:A. g (f x)",
+      "type": "exercise",
+      "prompt": "In the context $f : A \\to B,\\ g : B \\to C$, what type does $\\lambda x{:}A.\\, g\\ (f\\ x)$ have?",
+      "hints": [
+        "$f\\ x : B$, then $g$ takes it to $C$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "type: λx:A→B→C. λy:A→B. λz:A. x z (y z)",
+      "type": "exercise",
+      "prompt": "What type does $\\lambda x{:}A \\to B \\to C.\\, \\lambda y{:}A \\to B.\\, \\lambda z{:}A.\\, x\\ z\\ (y\\ z)$ have? (It is $S$.)",
+      "hints": [
+        "The body has type $C$; put the three binders' types in front."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> A derivation types a term from its parts in a context. A term fails when a variable has no type, an argument has the wrong type, or a non-function is applied. The checker is sound, and types are unique.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

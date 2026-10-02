@@ -331,21 +331,103 @@
     },
     {
       "id": "lambda",
-      "title": "λ-calculus: computing by reduction",
-      "blurb": "Terms, β-reduction in normal order and why substitution must avoid capture; then numbers, arithmetic and booleans built from functions alone.",
+      "title": "λ-calculus I: computing with functions",
+      "blurb": "Terms, free and bound variables, substitution without capture, β-reduction and normal forms, evaluation strategies, de Bruijn indices, Church encodings and recursion by fixed points; an interpreter built in Lean alongside.",
       "kind": "course",
       "level": "Logic and computation",
       "path": "courses/lambda",
+      "leanPrelude": true,
       "lessons": [
         {
-          "file": "01-beta-reduction.chalk",
-          "title": "β-reduction",
-          "blurb": "Applying a function by substituting its argument, one redex at a time, and the renaming that keeps substitution honest."
+          "file": "01-terms.chalk",
+          "title": "Terms and notation",
+          "blurb": "Variables, functions and applications; how terms are written and read; a first β-step."
         },
         {
-          "file": "02-church-numerals.chalk",
-          "title": "Church numerals and booleans",
-          "blurb": "Numbers as repeated application, arithmetic as composition, and booleans as choice."
+          "file": "02-free-bound.chalk",
+          "title": "Free and bound variables",
+          "blurb": "Which variables a λ binds, which are free, and why the names of bound ones do not matter."
+        },
+        {
+          "file": "03-substitution.chalk",
+          "title": "Substitution and capture",
+          "blurb": "Putting a term in for a variable, without capturing its free variables."
+        },
+        {
+          "file": "04-beta.chalk",
+          "title": "β-reduction and normal forms",
+          "blurb": "Reducing to normal form; terms that never stop; why the normal form is unique; η."
+        },
+        {
+          "file": "05-strategies.chalk",
+          "title": "Evaluation strategies",
+          "blurb": "Which redex next: normal order, call by name, call by value, applicative order."
+        },
+        {
+          "file": "06-de-bruijn.chalk",
+          "title": "De Bruijn indices",
+          "blurb": "Terms without bound names: indices count the λs, and α-equivalence becomes equality."
+        },
+        {
+          "file": "07-church.chalk",
+          "title": "Church encodings",
+          "blurb": "Booleans, numbers, arithmetic, pairs and lists, built from functions alone."
+        },
+        {
+          "file": "08-recursion.chalk",
+          "title": "Recursion and fixed points",
+          "blurb": "No names, yet recursion: fixed-point combinators, factorial, and Y under call by value."
+        }
+      ]
+    },
+    {
+      "id": "lambda-types",
+      "title": "λ-calculus II: types and proofs",
+      "blurb": "The simply typed λ-calculus: typing rules and derivation trees, type inference by unification, what types rule out, propositions as types, type safety, polymorphism and dependent types, with the theory proved in Lean.",
+      "kind": "course",
+      "level": "Logic and computation",
+      "path": "courses/lambda-types",
+      "leanPrelude": true,
+      "lessons": [
+        {
+          "file": "01-simple-types.chalk",
+          "title": "Simple types",
+          "blurb": "Types for terms: base types and arrows, annotated binders, and the three typing rules."
+        },
+        {
+          "file": "02-derivations.chalk",
+          "title": "Typing derivations",
+          "blurb": "Contexts and judgments, why a term fails to type, and the checker proved sound."
+        },
+        {
+          "file": "03-inference.chalk",
+          "title": "Type inference",
+          "blurb": "Types without annotations: type variables, equations, unification and the occurs check."
+        },
+        {
+          "file": "04-normalization.chalk",
+          "title": "What types rule out",
+          "blurb": "No Ω, no Y: typed terms always stop. The cost, and a typed language that cannot loop."
+        },
+        {
+          "file": "05-curry-howard.chalk",
+          "title": "Propositions as types",
+          "blurb": "A type is a proposition, a term of it a proof: the Curry–Howard correspondence."
+        },
+        {
+          "file": "06-safety.chalk",
+          "title": "Type safety",
+          "blurb": "Well-typed programs do not go wrong: progress and preservation, and a safety proof in Lean."
+        },
+        {
+          "file": "07-polymorphism.chalk",
+          "title": "Polymorphism",
+          "blurb": "One term at many types: type schemes, System F, and Church numerals that work at every type."
+        },
+        {
+          "file": "08-dependent-types.chalk",
+          "title": "Dependent types",
+          "blurb": "Types that depend on values; Lean's type theory; type checking is proof checking."
         }
       ]
     },

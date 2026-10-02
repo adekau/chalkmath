@@ -1,0 +1,6 @@
+5	type: λx:A. x	= A → A
+9	type: λf:A→B. λx:A. f x	= (A → B) → A → B
+11	type: f : A → B, x : A ⊢ f x	= B
+18	type: λx:A. λy:B. x	= A → B → A
+19	type: λf:A→A. λx:A. f (f x)	= (A → A) → A → A
+20	type: f : A → B ⊢ λx:A. f x	= A → B

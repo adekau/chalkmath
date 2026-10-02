@@ -94,6 +94,17 @@ const SYSTEM_CELL = /^(let\s+\w+\s*=\s*)?(system|states|invariant|inductive|reac
 /** A λ-command: a strategy, `eta`, `fv`, `db`, `alpha`, `subst`, `type` or `infer`, then a colon (the
  *  engine's `Lam.commandHead`; `type := …` is a definition). It may hold a connective, `type: f : A → B ⊢ f`. */
 const LAMBDA_CMD = /^(normal|cbn|cbv|applicative|eta|fv|db|alpha|subst|type|infer)\s*(\d+\s*)?:(?!=)/;
+/** The Church library's names (the engine's `Lam.churchDefs`). */
+const CHURCH = ["true", "false", "and", "or", "not", "if", "zero", "succ", "add", "mul", "pow", "iszero", "pair", "fst", "snd", "id", "const", "K", "S", "I", "omega", "Y"];
+/** Names bound by λ-cells (`pred := …`), keyed `session:name`. */
+const LAMBDA_NAMES = new Set<string>();
+/** A λ-cell without a λ (the engine's `Lam.isLambdaSource`): its first word is a λ-definition, the
+ *  session's or the Church library's, and it has no parenthesis or goes on after a space — `fst (pair a b)`. */
+function lambdaHeaded(s: string): boolean {
+  const w = s.trim().split(" ")[0] ?? "";
+  if (w === "let" || !(CHURCH.includes(w) || LAMBDA_NAMES.has(`${sessionId}:${w}`))) return false;
+  return !s.includes("(") || s.includes(" ");
+}
 const isLogicCell = (s: string) => !/[λ\\]/.test(s) && !LAMBDA_CMD.test(s) && (LOGIC_CELL.test(s) || /[∧∨¬→↔⊤⊥∀∃]|<->|->|&&|\|\|/.test(s) || /^(let\s+\w+\s*=\s*)?(forall|exists)\b/.test(s));
 
 /** Label for a cell, from its source. Presentation only — the engine decides what it means. */
@@ -113,7 +124,7 @@ function cellKind(src: string): string | null {
     case "sum": return "sum";
     case "exptotrig": return "Euler";
   }
-  if (/[λ\\]|:=/.test(s) || LAMBDA_CMD.test(s)) return "λ-term";
+  if (/[λ\\]|:=/.test(s) || LAMBDA_CMD.test(s) || lambdaHeaded(s)) return "λ-term";
   if (SYSTEM_CELL.test(s)) return "system";
   if (ORDER_CELL.test(s)) return "order";
   if (isLogicCell(s)) return "logic";
@@ -695,6 +706,7 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
         const k = `${sessionId}:${r.bound[0]}`;
         if (r.params?.length) USER_FNS.set(k, r.params); else USER_FNS.delete(k);
         USER_NAMES.add(k);
+        if ("kind" in r && r.kind === "lambda") LAMBDA_NAMES.add(k); else LAMBDA_NAMES.delete(k);
         FILE_VARS.delete(k);   // a name bound to a number is no longer the file it was
         // a bound matrix's shape, for what `name[[` offers
         const m = matrixEntries(r.rendered.latex);

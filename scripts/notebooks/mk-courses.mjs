@@ -2903,81 +2903,1094 @@ course("linear-algebra", "Linear algebra: vectors, matrices and systems",
 });
 
 // ---------------------------------------------------------------------------------------------------
-course("lambda", "λ-calculus: computing by reduction",
-  "Terms, β-reduction in normal order and why substitution must avoid capture; then numbers, arithmetic and booleans built from functions alone.",
+// λ-calculus I and II. The Lean of each course is one development, grown lesson by lesson (a Lean
+// prelude): an interpreter for the untyped calculus, then a typed calculus, a typed language and its
+// safety proof. After "A Programmer's Guide to Lambda Calculus", whose Lean the first course follows.
+course("lambda", "λ-calculus I: computing with functions",
+  "Terms, free and bound variables, substitution without capture, β-reduction and normal forms, evaluation strategies, de Bruijn indices, Church encodings and recursion by fixed points; an interpreter built in Lean alongside.",
   "Logic and computation", (add) => {
 
-  add("01-beta-reduction.chalk", "β-reduction", "Applying a function by substituting its argument, one redex at a time, and the renaming that keeps substitution honest.", ({ sec, md, m, ex }) => {
-    sec("β-reduction");
+  add("01-terms.chalk", "Terms and notation", "Variables, functions and applications; how terms are written and read; a first β-step.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Terms and notation");
     md(r`
 > [!goal]
-> Reduce λ-terms to normal form by β-reduction, and see why substitution must rename bound variables.
+> Read and write λ-terms: know where a function's body ends, how applications group, and what a term means as a tree.
 `);
     md(r`
-> [!definition] Terms and β-reduction
-> A term is a variable $x$, a function $\lambda x.\, M$, or an application $M\ N$. A **redex** is a function applied to an argument, $(\lambda x.\, M)\ N$, and β-reduction replaces it by $M[x := N]$: the body with the argument put in for the parameter.
+> [!definition] λ-terms
+> A **term** is one of three things: a **variable** $x$; a **function** (an abstraction) $\lambda x.\, M$, which takes $x$ and gives $M$; or an **application** $M\ N$, the function $M$ applied to the argument $N$. Nothing else: no numbers, no booleans, no names for functions. Everything else will be built from these three.
 `);
-    md(r`Type λ as ‹\lam› then space (or a backslash). The engine reduces in **normal order**: always the leftmost, outermost redex first.`);
+    md(r`Type λ as ‹\lam› then space, or a backslash: ‹\x. x› is $\lambda x.\, x$. Three conventions keep the parentheses down:
+
+- application groups to the left: $f\ a\ b$ is $(f\ a)\ b$;
+- a λ's body reaches as far right as it can: $\lambda x.\, f\ x$ is $\lambda x.\, (f\ x)$, not $(\lambda x.\, f)\ x$;
+- $\lambda x\ y.\, M$ is short for $\lambda x.\, \lambda y.\, M$, a function returning a function.
+
+A cell with only a term prints it back with as few parentheses as these rules allow.`);
+    m("λx y z. x z (y z)");
+    m("(λx. (λy. (x y)))");
+    sec("A first β-step");
+    md(r`
+> [!definition] β-reduction
+> A **redex** is a function applied to an argument, $(\lambda x.\, M)\ N$. It **reduces** to $M[x := N]$: the body with $N$ put in for every $x$. One such step is a **β-step**.
+`);
     m("(λx. x) y", { work: true });
-    m("(λx. x x) (λy. y)", { step: 0 });
-    m("(λx. λy. x) a b", { work: true });
-    sec("Normal forms");
-    md(r`
-> [!definition] Normal form
-> A term with no redex left is in **normal form**. Two terms are equal as programs when they reduce to the same normal form, up to the names of bound variables ($\lambda x.\, x$ and $\lambda y.\, y$ are the same function).
-`);
-    md(r`The exercises use exactly this: your answer and the question are both reduced, and compared by their normal forms. So any name for a bound variable is right.`);
-    ex("(λx. λy. y x) a (λz. z)", r`Reduce to normal form.`, [r`The first redex puts $a$ for $x$: $(\lambda y.\, y\ a)\ (\lambda z.\, z)$.`]);
-    ex("(λx. x x) (λy. y)", r`Reduce to normal form. Any name for the bound variable will do.`, [r`$x$ is replaced by $\lambda y.\, y$ twice: $(\lambda y.\, y)(\lambda y.\, y)$.`]);
-    sec("Capture");
-    md(r`
-> [!mistake]
-> Substituting blindly can **capture** a variable. In $(\lambda x.\, \lambda y.\, x)\ y$, putting $y$ for $x$ naively gives $\lambda y.\, y$, the identity, but the $y$ that was passed in is free, not the parameter. The engine renames the binder first (an α-step) and gets $\lambda y'.\, y$, the function that ignores its argument and returns $y$.
-`);
-    m("(λx. λy. x) y", { work: true });
-    ex("(λx. λy. x) y", r`Reduce $(\lambda x.\, \lambda y.\, x)\ y$ to normal form. (The trap: $\lambda y.\, y$ is wrong.)`, [
-      r`Rename the inner binder first, say to $z$: $\lambda x.\, \lambda z.\, x$.`,
-    ], { hide: true });
+    md(r`Application groups left, so the identity is applied to $\lambda y.\, y$ first, and the result to $z$:`);
+    m("(λx. x) (λy. y) z", { step: 0 });
+    md(r`A redex can sit inside a function body; normal order (the engine's default, lesson 5) reduces it there too:`);
+    m("λx. (λy. y) x", { work: true });
+    sec("In Lean");
+    md(r`This course builds an interpreter for the λ-calculus in Lean, a piece per lesson; each lesson's Lean sees the lessons' before it. First the terms: an inductive type with one constructor per kind of term.`);
+    lean(r`/-- λ-terms with named variables: a variable, a function λx. body, an application f a. -/
+inductive Term where
+  | var : String → Term
+  | lam : String → Term → Term
+  | app : Term → Term → Term
+  deriving Repr, DecidableEq, Inhabited
+
+namespace Term
+
+/-- Fully parenthesized, so the structure is plain. -/
+def pretty : Term → String
+  | var x => x
+  | lam x b => s!"(λ{x}. {b.pretty})"
+  | app f a => s!"({f.pretty} {a.pretty})"
+
+def I : Term := lam "x" (var "x")
+def K : Term := lam "x" (lam "y" (var "x"))
+def ω : Term := lam "x" (app (var "x") (var "x"))
+
+#eval (app K I).pretty
+
+/-- The number of nodes: variables, λs and applications. -/
+def size : Term → Nat
+  | var _ => 1
+  | lam _ b => 1 + b.size
+  | app f a => 1 + f.size + a.size
+
+end Term
+open Term
+
+example : K.size = 3 := rfl`);
+    lx(`theorem size_pos (t : Term) : 0 < t.size := by`, r`Every term has at least one node. Prove it.`, `  cases t <;> simp [Term.size] <;> omega`, [
+      r`Split into the three kinds of term with ‹cases t›.`,
+      r`‹simp [Term.size]› unfolds the size; ‹omega› finishes the arithmetic. Combine them with ‹<;>›.`,
+    ]);
+    sec("Exercises");
+    md(r`Reduce each term to the end. An answer is compared after reducing it too, so any name for a bound variable is right.`);
+    ex("(λx. λy. x) a b", r`Reduce $(\lambda x.\, \lambda y.\, x)\ a\ b$.`, [r`Application groups left: first $(\lambda x.\, \lambda y.\, x)\ a$.`]);
+    ex("(λf. f a) (λx. x)", r`Reduce $(\lambda f.\, f\ a)\ (\lambda x.\, x)$.`, [r`Put $\lambda x.\, x$ for $f$, then reduce again.`]);
+    ex("(λx. x x) (λy. y)", r`Reduce $(\lambda x.\, x\ x)\ (\lambda y.\, y)$.`, [r`$x$ is replaced by $\lambda y.\, y$ twice: $(\lambda y.\, y)\ (\lambda y.\, y)$.`]);
     md(r`
 > [!summary]
-> Computation in the λ-calculus is substitution: find the leftmost outermost redex, put the argument in for the parameter, renaming binders that would capture, and repeat until nothing is left to reduce.
+> Terms are variables, functions and applications. Application groups left and a λ reaches right. Computation is the β-step: a function applied to an argument becomes its body, with the argument put in.
 `);
   });
 
-  add("02-church-numerals.chalk", "Church numerals and booleans", "Numbers as repeated application, arithmetic as composition, and booleans as choice.", ({ sec, md, m, ex }) => {
-    sec("Church numerals and booleans");
+  add("02-free-bound.chalk", "Free and bound variables", "Which variables a λ binds, which are free, and why the names of bound ones do not matter.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Free and bound variables");
     md(r`
 > [!goal]
-> Represent numbers and truth values as functions, and compute with them by reduction alone.
+> Tell bound variables from free ones, compute the free variables of a term, and decide when two terms are the same up to renaming.
 `);
     md(r`
-> [!definition] Church numerals
-> The number $n$ is the function that applies $f$ to $x$ $n$ times: $0 = \lambda f.\, \lambda x.\, x$, $1 = \lambda f.\, \lambda x.\, f\ x$, $2 = \lambda f.\, \lambda x.\, f\,(f\ x)$, and so on.
+> [!definition] Free and bound
+> In $\lambda x.\, M$ the λ **binds** $x$: every $x$ in $M$ (not under another $\lambda x$) refers to it. An occurrence of a variable is **bound** when some λ above it has its name, and **free** otherwise. The free variables:
+> $$FV(x) = \{x\}, \quad FV(\lambda x.\, M) = FV(M) \setminus \{x\}, \quad FV(M\ N) = FV(M) \cup FV(N).$$
+> A term with no free variables is **closed**, a **combinator**.
 `);
-    md(r`The engine knows the numerals and a small library (‹succ›, ‹add›, ‹mul›, ‹pow›, ‹true›, ‹false›, ‹not›, ‹and›, ‹or›, ‹if›, ‹iszero›, ‹pair›, ‹fst›, ‹snd›). It unfolds the names first, in one δ-step, then reduces, and reads a numeral back when the result is one.`);
-    m("succ 2", { step: 0 });
-    m("add 2 3", { work: true });
-    m("mul 2 3");
-    sec("Your own definitions");
-    md(r`‹name := term› defines a term for the rest of the notebook.`);
-    m("twice := λf. λx. f (f x)");
-    m("twice twice g z", { work: true });
+    md(r`The command ‹fv:› computes them and names the bound ones:`);
+    m("fv: λx. x y", { work: true });
+    md(r`The same name can be free in one place and bound in another. Here the first $x$ is bound by its λ, and the second is outside it:`);
+    m("fv: (λx. x y) (λy. x y)");
+    m("fv: λf. λx. f (f x)");
+    sec("α-equivalence");
+    md(r`
+> [!definition] α-equivalence
+> Renaming a bound variable, together with every occurrence it binds, gives the same function: $\lambda x.\, x$ and $\lambda y.\, y$ are both the identity. Terms that differ only so are **α-equivalent**, and are treated as equal. The new name must not be one that is free in the body, or it would be captured: $\lambda x.\, y$ (the constant function giving $y$) is not $\lambda y.\, y$.
+`);
+    md(r`‹alpha: s, t› decides it, by comparing the terms with their bound names removed (lesson 6 shows how):`);
+    m("alpha: λx. λy. x y, λa. λb. a b", { work: true });
+    m("alpha: λx. y, λy. y");
+    sec("In Lean");
+    md(r`Free variables follow the definition clause by clause.`);
+    lean(r`/-- The free variables: FV(x) = {x}, FV(λx. b) = FV(b) \ {x}, FV(f a) = FV(f) ∪ FV(a). -/
+def freeVars : Term → List String
+  | var x => [x]
+  | lam x b => (freeVars b).filter (· != x)
+  | app f a => freeVars f ++ freeVars a
+
+#eval freeVars (lam "x" (app (var "x") (var "y")))
+#eval freeVars K
+
+/-- A term is closed (a combinator) when it has no free variables. -/
+def closed (t : Term) : Bool := (freeVars t).isEmpty
+
+example : closed K = true := by decide
+example : closed (lam "x" (var "y")) = false := by decide`);
+    lx(`theorem freeVars_lam_self (x : String) (b : Term) : x ∉ freeVars (lam x b) := by`, r`A λ binds its own variable: $x$ is never free in $\lambda x.\, b$.`, `  simp [freeVars]`, [
+      r`Unfold ‹freeVars›: what does ‹filter (· != x)› leave out?`,
+      r`‹simp [freeVars]› does it.`,
+    ]);
+    sec("Exercises");
+    md(r`Answer ‹fv› questions with a set, like ‹{a, b}› (‹{}› for none), and ‹alpha› questions with ‹true› or ‹false›.`);
+    ex("fv: λx. x y (λy. y z)", r`Which variables are free in $\lambda x.\, x\ y\ (\lambda y.\, y\ z)$?`, [r`The $y$ inside $\lambda y$ is bound there; the first $y$ is not under it.`]);
+    ex("fv: (λx. λy. x) y", r`Which variables are free in $(\lambda x.\, \lambda y.\, x)\ y$?`, [r`The last $y$ is the argument, outside both λs.`]);
+    ex("alpha: λx. λy. y x, λy. λx. x y", r`Are $\lambda x.\, \lambda y.\, y\ x$ and $\lambda y.\, \lambda x.\, x\ y$ α-equivalent?`, [r`Both take two arguments and apply the second to the first.`]);
+    ex("alpha: λx. x y, λy. y y", r`Are $\lambda x.\, x\ y$ and $\lambda y.\, y\ y$ α-equivalent?`, [r`Renaming $x$ to $y$ would capture the free $y$.`]);
+    md(r`
+> [!summary]
+> A λ binds its variable in its body; everything else is free. Bound names can be changed at will, as long as no free variable gets captured. That is α-equivalence, and terms are equal up to it.
+`);
+  });
+
+  add("03-substitution.chalk", "Substitution and capture", "Putting a term in for a variable, without capturing its free variables.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Substitution and capture");
+    md(r`
+> [!goal]
+> Compute $M[x := N]$, renaming bound variables where the substitution would otherwise capture a free variable of $N$.
+`);
+    md(r`
+> [!definition] Substitution
+> $M[x := N]$ replaces the free occurrences of $x$ in $M$ by $N$:
+> - $x[x := N] = N$, and $y[x := N] = y$ for another variable $y$;
+> - $(M_1\ M_2)[x := N] = M_1[x := N]\ M_2[x := N]$;
+> - $(\lambda x.\, M)[x := N] = \lambda x.\, M$: here $x$ is bound, so there is nothing to replace;
+> - $(\lambda y.\, M)[x := N] = \lambda y.\, M[x := N]$ when $y$ is not free in $N$;
+> - otherwise rename $y$ first, to a fresh $z$: $\lambda z.\, M[y := z][x := N]$.
+`);
+    md(r`‹subst: M, x := N› does it, the renaming as its own step:`);
+    m("subst: x y, x := λz. z", { work: true });
+    m("subst: λx. x y, x := z", { work: true });
+    sec("Capture");
+    md(r`
+> [!mistake] Capture
+> Substituting blindly into $\lambda y.\, x$ for $x := y$ gives $\lambda y.\, y$: the identity. But $\lambda y.\, x$ ignores its argument, and so should the result, returning the free $y$. The $y$ that was put in has been **captured** by the λ. The fifth rule renames the binder first: $\lambda y'.\, y$.
+`);
+    m("subst: λy. x y, x := y", { work: true });
+    m("subst: λy. λx. x y z, z := x y", { work: true });
+    md(r`A β-step is a substitution, so it renames too:`);
+    m("(λx. λy. x y) y", { work: true });
+    sec("In Lean");
+    md(r`The naive substitution first, to see it capture:`);
+    lean(r`/-- Substitution as it first comes to mind: put s for every free x, stopping under a binder named x. -/
+def substNaive (x : String) (s : Term) : Term → Term
+  | var y => if y = x then s else var y
+  | lam y b => if y = x then lam y b else lam y (substNaive x s b)
+  | app f a => app (substNaive x s f) (substNaive x s a)
+
+-- (λy. x)[x := y] should ignore its argument and return the free y
+#eval (substNaive "x" (var "y") (lam "y" (var "x"))).pretty`);
+    lx(`theorem substNaive_self (x : String) (t : Term) : substNaive x (var x) t = t := by`, r`Substituting a variable for itself changes nothing. Prove it by induction on the term.`, `  induction t with
+  | var y => by_cases h : y = x <;> simp [substNaive, h]
+  | lam y b ih => by_cases h : y = x <;> simp [substNaive, h, ih]
+  | app f a ihf iha => simp [substNaive, ihf, iha]`, [
+      r`‹induction t with› gives a case per constructor, with induction hypotheses for the subterms.`,
+      r`In the ‹var› and ‹lam› cases, split on ‹y = x› with ‹by_cases h : y = x›, then ‹simp [substNaive, h]› (add ‹ih› where there is one).`,
+    ]);
+    md(r`The real one renames. Its recursive call is on a renamed body, which is not a subterm, so Lean cannot see on its own that it stops: we say why (renaming keeps the size) and Lean checks it.`);
+    lean(r`/-- A name not in avoid: x, x', x'', … (avoid is finite, so one of the first length + 1 is free). -/
+def fresh (avoid : List String) (x : String) : String :=
+  go x avoid.length
+where
+  go (c : String) : Nat → String
+    | 0 => c
+    | n + 1 => if c ∈ avoid then go (c ++ "'") n else c
+
+/-- Rename the variable y to z. -/
+def rename (y z : String) (b : Term) : Term := substNaive y (var z) b
+
+/-- Renaming keeps the size: the measure capture-avoiding substitution recurses on. -/
+theorem size_rename (y z : String) (t : Term) : (rename y z t).size = t.size := by
+  induction t with
+  | var w => by_cases h : w = y <;> simp [rename, substNaive, h, Term.size]
+  | lam w b ih => by_cases h : w = y <;> simp_all [rename, substNaive, Term.size]
+  | app f a ihf iha => simp_all [rename, substNaive, Term.size]
+
+/-- Capture-avoiding substitution t[x := s]. -/
+def subst (x : String) (s : Term) : Term → Term
+  | var y => if y = x then s else var y
+  | app f a => app (subst x s f) (subst x s a)
+  | lam y b =>
+    if y = x then lam y b
+    else if y ∈ freeVars s then
+      let z := fresh (freeVars s ++ freeVars b ++ [x]) y
+      lam z (subst x s (rename y z b))
+    else lam y (subst x s b)
+termination_by t => t.size
+decreasing_by all_goals simp_wf <;> simp [size_rename, Term.size] <;> omega
+
+#eval (subst "x" (var "y") (lam "y" (var "x"))).pretty`);
+    sec("Exercises");
+    md(r`An answer is compared with the result up to the names of bound variables, and is not reduced: write the term the substitution gives.`);
+    ex("subst: (λx. x) x, x := y", r`Compute $((\lambda x.\, x)\ x)[x := y]$.`, [r`Only the free $x$ changes; the one under $\lambda x$ is bound.`]);
+    ex("subst: λz. x z, x := z", r`Compute $(\lambda z.\, x\ z)[x := z]$.`, [r`The binder $z$ would capture the $z$ put in: rename it first.`]);
+    ex("subst: λy. x, x := λw. w", r`Compute $(\lambda y.\, x)[x := \lambda w.\, w]$.`, [r`$\lambda w.\, w$ has no free variables, so nothing can be captured.`]);
+    md(r`
+> [!summary]
+> Substitution replaces free occurrences only, and renames a binder that would capture a free variable of what is put in. It is the whole of β-reduction's work.
+`);
+  });
+
+  add("04-beta.chalk", "β-reduction and normal forms", "Reducing to normal form; terms that never stop; why the normal form is unique; η.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("β-reduction and normal forms");
+    md(r`
+> [!goal]
+> Reduce a term to normal form, recognise terms that have none, and know why the normal form, when there is one, does not depend on the order of the steps.
+`);
+    md(r`
+> [!definition] Normal form
+> A term with no redex is in **normal form**. A term **has** a normal form when some sequence of β-steps reaches one.
+`);
+    m("(λx. λy. y x) a (λz. z)", { step: 0 });
+    m("S K K a", { work: true });
+    sec("Terms that never stop");
+    md(r`$\Omega = (\lambda x.\, x\ x)\ (\lambda x.\, x\ x)$ reduces to itself, for ever. The library calls $\lambda x.\, x\ x$ ‹omega›. A step count after the strategy's name shows the first few steps instead of refusing:`);
+    m("normal 2: omega omega", { work: true });
+    m("omega omega");
+    md(r`Some terms grow as they go, and the engine stops them once they are too big:`);
+    m("(λx. x x x) (λx. x x x)");
+    md(r`And some have a normal form even though a careless order of steps would never find it: $K\ I\ \Omega$ throws $\Omega$ away.`);
+    m("normal: (λx. λy. y) (omega omega)", { work: true });
+    sec("Confluence");
+    md(r`
+> [!theorem] Church–Rosser
+> If $M$ reduces to $N_1$ and to $N_2$, then $N_1$ and $N_2$ both reduce to some common $P$. So a term has **at most one** normal form, up to α: the order of the steps can change whether you get there, never where.
+`);
+    md(r`That is why a λ-term has a meaning, and why an exercise can compare normal forms.`);
+    sec("η");
+    md(r`
+> [!definition] η-reduction
+> $\lambda x.\, f\ x$ reduces to $f$ when $x$ is not free in $f$: both give $f\ a$ for every $a$. Adding this rule says that a function is determined by what it does (**extensionality**).
+`);
+    m("eta: λx. λy. f x y", { work: true });
+    m("eta: λx. x x");
+    md(r`$\lambda x.\, x\ x$ is not an η-redex: $x$ is free in the function part.`);
+    sec("In Lean");
+    md(r`A step contracts the leftmost-outermost redex; evaluation takes steps on fuel, because some terms never stop.`);
+    lean(r`/-- One normal-order step: contract the leftmost-outermost redex, if there is one. -/
+def betaStep : Term → Option Term
+  | app (lam x b) a => some (subst x a b)
+  | app f a =>
+    match betaStep f with
+    | some f' => some (app f' a)
+    | none => (betaStep a).map (app f ·)
+  | lam x b => (betaStep b).map (lam x ·)
+  | var _ => none
+
+/-- Take up to fuel steps. -/
+def eval : Nat → Term → Term
+  | 0, t => t
+  | n + 1, t =>
+    match betaStep t with
+    | none => t
+    | some t' => eval n t'
+
+#eval (eval 10 (app (app K (var "a")) (var "b"))).pretty
+#eval (eval 3 (app ω ω)).pretty`);
+    lx(`theorem eval_normal (t : Term) (h : betaStep t = none) : ∀ n, eval n t = t := by`, r`A normal form stays put: evaluating it, with any fuel, gives it back.`, `  intro n
+  cases n <;> simp [eval, h]`, [r`Introduce ‹n› and split ‹cases n›: no fuel, or some.`, r`‹simp [eval, h]› settles both.`]);
+    sec("Exercises");
+    ex("(λx. λy. x) y", r`Reduce $(\lambda x.\, \lambda y.\, x)\ y$ to normal form. (The trap: $\lambda y.\, y$ is wrong.)`, [r`Rename the inner binder first, say to $z$: $\lambda z.\, y$.`], { hide: true });
+    ex("(λf. λx. f (f x)) (λy. y y)", r`Reduce $(\lambda f.\, \lambda x.\, f\ (f\ x))\ (\lambda y.\, y\ y)$ to normal form.`, [r`After the first step: $\lambda x.\, (\lambda y.\, y\ y)\ ((\lambda y.\, y\ y)\ x)$. Normal order then reduces the outer redex.`]);
+    ex("eta: λx. (λy. g y) x", r`Reduce $\lambda x.\, (\lambda y.\, g\ y)\ x$ with β and η.`, [r`$\lambda y.\, g\ y$ is an η-redex.`]);
+    md(r`
+> [!summary]
+> A normal form is a term with no redex. Some terms have none, and some have one only along the right path. By Church–Rosser, a term has at most one normal form. η adds extensionality: $\lambda x.\, f\ x$ is $f$.
+`);
+  });
+
+  add("05-strategies.chalk", "Evaluation strategies", "Which redex next: normal order, call by name, call by value, applicative order.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Evaluation strategies");
+    md(r`
+> [!goal]
+> Reduce a term under each of the four classic strategies, and say what each finds, what it misses, and what it costs.
+`);
+    md(r`
+> [!definition] Strategies
+> - **Normal order** (‹normal:›): the leftmost-outermost redex, also under λ, to the normal form.
+> - **Call by name** (‹cbn:›): the leftmost-outermost redex, never under a λ, the argument passed unevaluated. It stops at a **weak head normal form**: a λ, or a variable applied to arguments.
+> - **Call by value** (‹cbv:›): the function, then the argument, are reduced to **values** (a λ or a variable) before the call; never under a λ.
+> - **Applicative order** (‹applicative:›): the leftmost-innermost redex, under λ too: call by value that goes all the way.
+`);
+    sec("Which terminate");
+    md(r`$K\ I\ \Omega$ ignores $\Omega$. The strategies that pass arguments unevaluated never touch it:`);
+    m("normal: K I (omega omega)", { work: true });
+    m("cbn: K I (omega omega)");
+    md(r`The ones that evaluate arguments first never finish. A step count shows how they go round:`);
+    m("cbv 4: K I (omega omega)", { work: true });
+    m("applicative: K I (omega omega)");
+    md(r`
+> [!theorem] Standardization
+> If a term has a normal form, normal order reaches it.
+`);
+    sec("What they stop at");
+    md(r`Call by name and call by value do not look inside a λ: a function is already a result.`);
+    m("cbn: λx. (λy. y) x");
+    m("cbv: (λx. x) (λy. (λz. z) y)");
+    sec("What they cost");
+    md(r`Call by name copies an unevaluated argument, and may evaluate the copy twice; call by value evaluates it once, first:`);
+    m("cbn: (λx. x x) ((λy. y) z)", { work: true });
+    m("cbv: (λx. x x) ((λy. y) z)", { work: true });
+    md(r`Call by name never even reached the redex in the argument: $z\ ((\lambda y.\, y)\ z)$ is a weak head normal form. Normal order goes on to $z\ z$. Most languages call by value; Haskell calls by **need**, call by name that remembers an argument once evaluated.`);
+    sec("In Lean");
+    lean(r`/-- Call by value treats variables and λs as values. -/
+def isValue : Term → Bool
+  | app _ _ => false
+  | _ => true
+
+/-- One call-by-value step: the function, then the argument, become values before the call; never under a λ. -/
+def cbvStep : Term → Option Term
+  | app (lam x b) a =>
+    if isValue a then some (subst x a b)
+    else (cbvStep a).map (app (lam x b) ·)
+  | app f a =>
+    match cbvStep f with
+    | some f' => some (app f' a)
+    | none => (cbvStep a).map (app f ·)
+  | _ => none
+
+/-- Take up to fuel steps with any strategy. -/
+def run (step : Term → Option Term) : Nat → Term → Term
+  | 0, t => t
+  | n + 1, t => match step t with
+    | none => t
+    | some t' => run step n t'
+
+def KIΩ : Term := app (app K I) (app ω ω)
+#eval (run betaStep 10 KIΩ).pretty   -- normal order: I
+#eval (run cbvStep 10 KIΩ).pretty    -- call by value: still evaluating Ω`);
+    lx(`theorem cbvStep_lam (x : String) (b : Term) : cbvStep (lam x b) = none := by`, r`Call by value does not reduce under a λ: a function takes no step.`, `  simp [cbvStep]`, [r`Unfold ‹cbvStep›: which clause does ‹lam x b› match?`]);
+    sec("Exercises");
+    md(r`Write the term the strategy stops at; it is compared up to bound names, not reduced further.`);
+    ex("cbv: (λx. λy. y) ((λz. z) w)", r`Reduce $(\lambda x.\, \lambda y.\, y)\ ((\lambda z.\, z)\ w)$ by value.`, [r`The argument is reduced first, to $w$; then the call.`]);
+    ex("cbn: (λx. x x) ((λy. y) z)", r`Reduce $(\lambda x.\, x\ x)\ ((\lambda y.\, y)\ z)$ by name. Where does it stop?`, [r`The argument goes in unevaluated, twice. Then the head is reduced, and only the head.`]);
+    ex("cbn: λx. (λy. y) x", r`Reduce $\lambda x.\, (\lambda y.\, y)\ x$ by name.`, [r`Call by name does not reduce under a λ.`]);
+    md(r`
+> [!summary]
+> Normal order finds every normal form there is. Call by name and call by value stop at functions; call by value evaluates arguments first, once, and can loop on an argument nobody needs.
+`);
+  });
+
+  add("06-de-bruijn.chalk", "De Bruijn indices", "Terms without bound names: indices count the λs, and α-equivalence becomes equality.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("De Bruijn indices");
+    md(r`
+> [!goal]
+> Write a term with de Bruijn indices, and use them to decide α-equivalence.
+`);
+    md(r`
+> [!definition] De Bruijn indices
+> Replace each bound variable by the number of λs between it and its binder: $0$ for the nearest. The λs lose their names. $\lambda x.\, \lambda y.\, x$ becomes $\lambda.\, \lambda.\, 1$. A free variable keeps its name.
+`);
+    m("db: λx. λy. x", { work: true });
+    m("db: λf. λx. f (f x)");
+    m("db: λx. λy. x (λz. z y)");
+    md(r`The same variable can have different indices in different places: in the last term $y$ is $0$ under one λ and $1$ under two.`);
+    sec("α-equivalence is equality");
+    md(r`Two terms are α-equivalent exactly when their de Bruijn forms are equal: there are no bound names left to differ. That is how ‹alpha:› decides.`);
+    m("alpha: λx. λy. x (λz. z y), λa. λb. a (λc. c b)", { work: true });
+    md(r`The View menu's de Bruijn indices shows every λ-cell's result, and every step, this way.`);
+    sec("In Lean");
+    md(r`An interpreter on de Bruijn terms needs no renaming at all; the price is **shifting**: a term moved under a λ has its free indices raised by one.`);
+    lean(r`/-- De Bruijn terms: a bound variable is the number of λs between it and its binder. -/
+inductive DB where
+  | bvar : Nat → DB
+  | free : String → DB
+  | lam : DB → DB
+  | app : DB → DB → DB
+  deriving Repr, DecidableEq
+
+/-- Translate, keeping the binders in scope innermost first. -/
+def toDB (ctx : List String) : Term → DB
+  | var x => match ctx.idxOf? x with
+    | some i => .bvar i
+    | none => .free x
+  | lam x b => .lam (toDB (x :: ctx) b)
+  | app f a => .app (toDB ctx f) (toDB ctx a)
+
+/-- α-equivalence: the same term up to the names of bound variables. -/
+def alphaEq (s t : Term) : Bool := toDB [] s == toDB [] t
+
+#eval toDB [] K
+example : alphaEq (lam "x" (var "x")) (lam "y" (var "y")) = true := by decide
+example : alphaEq (lam "x" (var "y")) (lam "y" (var "y")) = false := by decide
+
+/-- Shift the free indices (those ≥ c) by d. -/
+def DB.shift (d : Nat) (c : Nat) : DB → DB
+  | bvar n => if n ≥ c then bvar (n + d) else bvar n
+  | free x => free x
+  | lam b => lam (shift d (c + 1) b)
+  | app f a => app (shift d c f) (shift d c a)
+
+example : (DB.lam (.bvar 1)).shift 1 0 = .lam (.bvar 2) := by decide`);
+    lx(`theorem DB.shift_zero (c : Nat) (t : DB) : t.shift 0 c = t := by`, r`Shifting by zero changes nothing. Prove it by induction; the cutoff ‹c› changes under a λ, so generalize it.`, `  induction t generalizing c with
+  | bvar n => simp [DB.shift]
+  | free x => rfl
+  | lam b ih => simp [DB.shift, ih]
+  | app f a ihf iha => simp [DB.shift, ihf, iha]`, [
+      r`‹induction t generalizing c with› lets the hypothesis for the body hold at ‹c + 1›.`,
+      r`Each case is ‹simp [DB.shift]›, with the induction hypotheses where there are some; ‹free› is ‹rfl›.`,
+    ]);
+    sec("Exercises");
+    ex("alpha: λx. λy. y (λz. x), λa. λb. b (λb. a)", r`Are $\lambda x.\, \lambda y.\, y\ (\lambda z.\, x)$ and $\lambda a.\, \lambda b.\, b\ (\lambda b.\, a)$ α-equivalent?`, [r`Write both with indices: the inner $x$ and $a$ are two λs up.`]);
+    ex("alpha: λx. λy. x, λy. λx. x", r`Are $\lambda x.\, \lambda y.\, x$ and $\lambda y.\, \lambda x.\, x$ α-equivalent?`, [r`In indices: $\lambda.\, \lambda.\, 1$ and $\lambda.\, \lambda.\, 0$.`]);
+    md(r`
+> [!summary]
+> De Bruijn indices count binders instead of naming them. Bound names disappear, so α-equivalent terms are equal, and substitution needs shifting instead of renaming.
+`);
+  });
+
+  add("07-church.chalk", "Church encodings", "Booleans, numbers, arithmetic, pairs and lists, built from functions alone.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Church encodings");
+    md(r`
+> [!goal]
+> Represent booleans, natural numbers, pairs and lists as functions, compute with them by reduction, and write new operations.
+`);
     sec("Booleans");
     md(r`
 > [!definition] Church booleans
-> $\mathsf{true} = \lambda t.\, \lambda f.\, t$ and $\mathsf{false} = \lambda t.\, \lambda f.\, f$: a boolean chooses one of two things. Then $\mathsf{if}\ b\ x\ y$ is just $b\ x\ y$.
+> $\mathsf{true} = \lambda t.\, \lambda f.\, t$ and $\mathsf{false} = \lambda t.\, \lambda f.\, f$: a boolean chooses one of two things. Then $\mathsf{if}\ b\ x\ y$ is just $b\ x\ y$, and $\mathsf{not}\ b = b\ \mathsf{false}\ \mathsf{true}$.
 `);
+    md(r`The library has ‹true›, ‹false›, ‹if›, ‹not›, ‹and›, ‹or›. Names are unfolded in one δ-step; the result is read back when it is a boolean or a numeral.`);
+    m("if true a b", { work: true });
     m("and true false");
-    m("if true a b");
-    ex("succ 1", r`Reduce $\mathsf{succ}\ 1$. Write the numeral out as a λ-term (or by its name).`, [r`$\mathsf{succ}$ adds one more application of $f$.`]);
-    ex("mul 2 2", r`Reduce $\mathsf{mul}\ 2\ 2$ to a numeral.`, [r`$2 \cdot 2 = 4$: four applications of $f$.`]);
-    ex("not true", r`Reduce $\mathsf{not}\ \mathsf{true}$.`, [r`The answer is a boolean: which one chooses its second argument?`]);
+    md(r`A definition, ‹name := term›, is there for the cells after it:`);
+    m("xor := λp. λq. p (not q) q");
+    m("xor true false");
+    m("xor true true");
+    md(r`$\mathsf{false}$ and $0$ are the same term, $\lambda t.\, \lambda f.\, f$: the reading names it as the numeral.`);
+    sec("Numbers");
+    md(r`
+> [!definition] Church numerals
+> $n$ is the function that applies $f$ to $x$ $n$ times: $0 = \lambda f.\, \lambda x.\, x$, $1 = \lambda f.\, \lambda x.\, f\ x$, $2 = \lambda f.\, \lambda x.\, f\ (f\ x)$. Then $\mathsf{succ}\ n$ applies $f$ once more, $\mathsf{add}\ m\ n$ applies it $n$ times and then $m$ times, and $\mathsf{mul}\ m\ n$ applies "$f$ $n$ times" $m$ times.
+`);
+    m("succ 2", { work: true });
+    m("add 2 3");
+    m("mul 2 3");
+    m("pow 2 3");
+    md(r`A function that applies its argument twice is the numeral 2, and applying it to itself applies four times:`);
+    m("twice := λf. λx. f (f x)");
+    m("twice twice succ 0");
+    sec("Pairs, and the predecessor");
+    md(r`
+> [!definition] Pairs
+> $\mathsf{pair}\ a\ b = \lambda s.\, s\ a\ b$ holds $a$ and $b$ until a selector comes: $\mathsf{fst}\ p = p\ \mathsf{true}$ and $\mathsf{snd}\ p = p\ \mathsf{false}$.
+`);
+    m("fst (pair a b)", { work: true });
+    md(r`Subtracting one is hard: a numeral can only apply $f$, never undo it. Kleene's trick counts up with pairs, $(0, 0) \to (0, 1) \to (1, 2) \to \cdots$, keeping the previous number in the first place. After $n$ steps the first place holds $n - 1$.`);
+    m("pred := λn. fst (n (λp. pair (snd p) (succ (snd p))) (pair 0 0))");
+    m("pred 3");
+    m("sub := λm. λn. n pred m");
+    m("sub 3 1");
+    m("iszero (pred 1)");
+    sec("Lists");
+    md(r`
+> [!definition] Church lists
+> A list is its own fold: given what to do with a head and the rest ($c$) and what to give for the empty list ($n$), it does it. $\mathsf{nil} = \lambda c.\, \lambda n.\, n$ and $\mathsf{cons}\ h\ t = \lambda c.\, \lambda n.\, c\ h\ (t\ c\ n)$, so $[1, 2]$ is $\lambda c.\, \lambda n.\, c\ 1\ (c\ 2\ n)$.
+`);
+    m("nil := λc. λn. n");
+    m("cons := λh. λt. λc. λn. c h (t c n)");
+    md(r`($\mathsf{nil}$ is $\lambda c.\, \lambda n.\, n$ again: the same term as $0$ and $\mathsf{false}$.) Folding with $\mathsf{add}$ from $0$ sums a list, and counting the heads gives its length:`);
+    m("cons 1 (cons 2 nil) add 0");
+    m("length := λl. l (λh. λr. succ r) 0");
+    m("length (cons a (cons b (cons c nil)))");
+    sec("In Lean");
+    md(r`Lean is typed, so a Church numeral is used at one type at a time; inside that type it is iteration.`);
+    lean(r`/-- The Church numeral n at one type: apply f to x, n times. -/
+def church {α : Type} : Nat → (α → α) → α → α
+  | 0, _, x => x
+  | n + 1, f, x => f (church n f x)
+
+#eval church 3 (· + 1) 0
+#eval church 3 (· ++ "!") "hi"`);
+    lx(`theorem church_add {α : Type} (f : α → α) (x : α) : ∀ m n, church (m + n) f x = church m f (church n f x) := by`, r`Adding numerals is composing: $m + n$ applications are $n$ and then $m$ more. Prove it by induction on $m$.`, `  intro m n
+  induction m with
+  | zero => simp [church]
+  | succ k ih => rw [Nat.succ_add]; simp [church, ih]`, [
+      r`‹intro m n›, then ‹induction m with›.`,
+      r`In the successor case ‹(k + 1) + n› is not syntactically ‹(k + n) + 1›: rewrite with ‹Nat.succ_add› first, then ‹simp [church, ih]›.`,
+    ]);
+    sec("Exercises");
+    ex("pred 2", r`Reduce $\mathsf{pred}\ 2$. Answer with a numeral, or the λ-term.`, [r`Two steps of the pair counter: $(0, 0) \to (0, 1) \to (1, 2)$.`]);
+    ex("pow 2 2", r`Reduce $\mathsf{pow}\ 2\ 2$.`, [r`$2^2$.`]);
+    ex("or false (not false)", r`Reduce $\mathsf{or}\ \mathsf{false}\ (\mathsf{not}\ \mathsf{false})$. Answer ‹true› or ‹false›.`, [r`$\mathsf{not}\ \mathsf{false}$ is $\mathsf{true}$.`]);
+    ex("snd (pair 1 (succ 1))", r`Reduce $\mathsf{snd}\ (\mathsf{pair}\ 1\ (\mathsf{succ}\ 1))$.`, []);
+    ex("cons 1 (cons 1 (cons 1 nil)) add 0", r`Sum the list $[1, 1, 1]$: reduce $\mathsf{cons}\ 1\ (\mathsf{cons}\ 1\ (\mathsf{cons}\ 1\ \mathsf{nil}))\ \mathsf{add}\ 0$.`, [r`The list puts $\mathsf{add}$ between its elements and $0$ at the end: $1 + (1 + (1 + 0))$.`]);
     md(r`
 > [!summary]
-> With nothing but functions and substitution you get numbers, arithmetic and logic: the λ-calculus computes everything a computer can.
+> With functions alone: booleans choose, numerals iterate, pairs wait for a selector, lists are their own folds. Arithmetic is composition of iterations, and the predecessor is a counter carried in a pair.
 `);
   });
-});
+
+  add("08-recursion.chalk", "Recursion and fixed points", "No names, yet recursion: fixed-point combinators, factorial, and Y under call by value.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Recursion and fixed points");
+    md(r`
+> [!goal]
+> Write a recursive function without naming it, using a fixed-point combinator, and see why call by value needs a different one.
+`);
+    md(r`A recursive definition, $\mathsf{fact} = \lambda n.\, \mathsf{if}\ (n = 0)\ 1\ (n \cdot \mathsf{fact}\ (n - 1))$, mentions itself, and λ-terms cannot. Abstract the self-reference instead: $F = \lambda \mathit{self}.\, \lambda n.\, \ldots\ \mathit{self}\ (n-1)$. A factorial is a **fixed point** of $F$: a $g$ with $F\ g = g$.`);
+    md(r`
+> [!definition] The Y combinator
+> $Y = \lambda f.\, (\lambda x.\, f\ (x\ x))\ (\lambda x.\, f\ (x\ x))$ satisfies $Y\ g = g\ (Y\ g)$ for every $g$: $Y\ g$ is a fixed point of $g$.
+`);
+    m("normal 2: Y g", { work: true });
+    md(r`Each unfolding hands $g$ another copy of $Y\ g$, as many as it asks for.`);
+    sec("Factorial");
+    md(r`$Y\ F$ has no normal form (it unfolds for ever), so the definition is kept as written; applied to a number, $F$'s test stops the unfolding.`);
+    m("pred := λn. fst (n (λp. pair (snd p) (succ (snd p))) (pair 0 0))");
+    m("fact := Y (λself. λn. if (iszero n) 1 (mul n (self (pred n))))");
+    m("fact 2");
+    md(r`$\mathsf{fact}\ 3$ needs more than the engine's thousand steps: Church arithmetic in normal order is slow, which is why real languages build numbers in.`);
+    sec("Under call by value");
+    md(r`Call by value evaluates $Y\ g$'s argument $(\lambda x.\, g\ (x\ x))\ (\lambda x.\, g\ (x\ x))$ before calling $g$, and that unfolds again first, for ever:`);
+    m("cbv 3: Y g", { work: true });
+    md(r`
+> [!definition] The Z combinator
+> $Z = \lambda f.\, (\lambda x.\, f\ (\lambda v.\, x\ x\ v))\ (\lambda x.\, f\ (\lambda v.\, x\ x\ v))$ wraps the self-application in a λ (an η-expansion), so it is a value and waits until it is called.
+`);
+    m("Z := λf. (λx. f (λv. x x v)) (λx. f (λv. x x v))");
+    m("cbv: Z g");
+    md(r`
+> [!theorem] Turing completeness
+> With booleans, numerals, pairs and a fixed-point combinator, every computable function on the numbers can be written as a λ-term (Kleene; Turing showed λ-definable and Turing-computable coincide). Which terms have a normal form is then undecidable, which is why the engine reduces on a budget.
+`);
+    sec("In Lean");
+    md(r`Lean has no Y: every function must be shown to terminate, and a recursion on a smaller number does. Yet the factorial is still a fixed point of its defining step.`);
+    lean(r`def fact : Nat → Nat
+  | 0 => 1
+  | n + 1 => (n + 1) * fact n
+
+#eval fact 5
+
+/-- The step that defines the factorial, with the recursive call abstracted. -/
+def F (self : Nat → Nat) : Nat → Nat
+  | 0 => 1
+  | n + 1 => (n + 1) * self n
+
+theorem fact_fixed : ∀ n, F fact n = fact n := by
+  intro n; cases n <;> rfl`);
+    lx(`theorem fact_pos : ∀ n, 0 < fact n := by`, r`The factorial is never zero. Prove it by induction.`, `  intro n
+  induction n with
+  | zero => decide
+  | succ k ih => simp [fact, ih]`, [r`‹induction n with›: ‹fact 0 = 1›, and ‹(k + 1) * fact k› is positive when ‹fact k› is.`, r`‹simp [fact, ih]› knows a product of positives is positive.`]);
+    sec("Exercises");
+    ex("normal 1: Y g", r`Take one step of $Y\ g$ in normal order. What is the term?`, [r`Put $g$ for $f$ in $Y$'s body.`]);
+    ex("fact 1", r`Reduce $\mathsf{fact}\ 1$.`, [r`$1 \cdot \mathsf{fact}\ 0 = 1$.`]);
+    md(r`
+> [!summary]
+> Recursion without names is a fixed point: $Y\ g = g\ (Y\ g)$. Call by value needs $Z$, which delays the self-application. With fixed points the λ-calculus computes everything a computer can, and so whether a term stops is undecidable.
+`);
+  });
+}, { leanPrelude: true });
+
+course("lambda-types", "λ-calculus II: types and proofs",
+  "The simply typed λ-calculus: typing rules and derivation trees, type inference by unification, what types rule out, propositions as types, type safety, polymorphism and dependent types, with the theory proved in Lean.",
+  "Logic and computation", (add) => {
+
+  add("01-simple-types.chalk", "Simple types", "Types for terms: base types and arrows, annotated binders, and the three typing rules.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Simple types");
+    md(r`
+> [!goal]
+> Give a type to a λ-term with typed binders, by the three rules of the simply typed λ-calculus, and read its derivation tree.
+`);
+    md(r`In the untyped calculus anything can be applied to anything: $\mathsf{true}\ 1\ 0$ reduces happily, and $\Omega$ runs for ever. Types sort terms by what they can be given and what they give back, and refuse the rest before anything runs.`);
+    md(r`
+> [!definition] Simple types
+> A **type** is a **base type** ($A$, $B$, $\mathsf{Nat}$, …) or an **arrow** $A \to B$, the type of functions from $A$ to $B$. The arrow groups to the right: $A \to B \to C$ is $A \to (B \to C)$, a function returning a function. A binder carries its type: $\lambda x{:}A.\, M$.
+`);
+    md(r`Type ‹->› for → and write the type after a colon: ‹type: \x:A. x›.`);
+    m("type: λx:A. x");
+    sec("The rules");
+    md(r`
+> [!definition] Typing rules
+> A **context** $\Gamma$ lists the types of the variables in scope; a **judgment** $\Gamma \vdash M : T$ says $M$ has type $T$ there.
+> - **Var**: if $x : T$ is in $\Gamma$, then $\Gamma \vdash x : T$.
+> - **→I** (abstraction): if $\Gamma, x : A \vdash M : B$, then $\Gamma \vdash \lambda x{:}A.\, M : A \to B$.
+> - **→E** (application): if $\Gamma \vdash M : A \to B$ and $\Gamma \vdash N : A$, then $\Gamma \vdash M\ N : B$.
+`);
+    md(r`Every typed term has a **derivation**: a tree of rules, the judgment at the bottom, axioms (Var) at the top. ‹type:› draws it, and lists its steps from the top down.`);
+    m("type: λf:A→B. λx:A. f x", { work: true });
+    md(r`Free variables get their types from a context written before ‹⊢› (or ‹|-›):`);
+    m("type: f : A → B, x : A ⊢ f x");
+    sec("In Lean");
+    md(r`The typing relation, as an inductive proposition with one constructor per rule; a derivation is a proof built from them.`);
+    lean(r`/-- Simple types: base types and arrows. -/
+inductive Ty where
+  | base : String → Ty
+  | arrow : Ty → Ty → Ty
+  deriving Repr, DecidableEq
+
+infixr:30 " ⇒ " => Ty.arrow
+
+/-- Terms whose binders carry their types: λx:A. b. -/
+inductive Tm where
+  | var : String → Tm
+  | lam : String → Ty → Tm → Tm
+  | app : Tm → Tm → Tm
+  deriving Repr, DecidableEq
+
+/-- A context, innermost binding first. -/
+abbrev Ctx := List (String × Ty)
+
+/-- The typing relation, one constructor per rule. -/
+inductive HasType : Ctx → Tm → Ty → Prop where
+  | var {Γ x T} : Γ.lookup x = some T → HasType Γ (.var x) T
+  | abs {Γ x A b B} : HasType ((x, A) :: Γ) b B → HasType Γ (.lam x A b) (A ⇒ B)
+  | app {Γ f a A B} : HasType Γ f (A ⇒ B) → HasType Γ a A → HasType Γ (.app f a) B
+
+def A : Ty := .base "A"
+def B : Ty := .base "B"
+
+/-- λx:A. x : A → A, as a derivation: →I over Var. -/
+example : HasType [] (.lam "x" A (.var "x")) (A ⇒ A) := .abs (.var rfl)`);
+    lx(`theorem K_typed : HasType [] (.lam "x" A (.lam "y" B (.var "x"))) (A ⇒ B ⇒ A) := by`, r`Build the derivation of $\vdash \lambda x{:}A.\, \lambda y{:}B.\, x : A \to B \to A$.`, `  exact .abs (.abs (.var rfl))`, [
+      r`Two →I, then Var: ‹.abs (.abs (.var _))›.`,
+      r`Var needs ‹x› to have type ‹A› in the context ‹[("y", B), ("x", A)]›; ‹rfl› computes the lookup.`,
+    ]);
+    sec("Exercises");
+    md(r`Answer with a type, writing ‹->› for →: ‹(A -> B) -> A -> B›.`);
+    ex("type: λx:A. λy:B. x", r`What type does $\lambda x{:}A.\, \lambda y{:}B.\, x$ have?`, [r`Two arguments, $A$ then $B$; it returns the first.`]);
+    ex("type: λf:A→A. λx:A. f (f x)", r`What type does $\lambda f{:}A \to A.\, \lambda x{:}A.\, f\ (f\ x)$ have?`, [r`$f\ x : A$, so $f\ (f\ x) : A$ too.`]);
+    ex("type: f : A → B ⊢ λx:A. f x", r`In the context $f : A \to B$, what type does $\lambda x{:}A.\, f\ x$ have?`, []);
+    md(r`
+> [!summary]
+> Types are base types and arrows. Three rules type every term that has a type: Var reads the context, →I types a function by its body, →E types an application when the argument fits. A derivation is the tree of rules used.
+`);
+  });
+
+  add("02-derivations.chalk", "Typing derivations", "Contexts and judgments, why a term fails to type, and the checker proved sound.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Typing derivations");
+    md(r`
+> [!goal]
+> Build and read derivations in a context, say exactly why an ill-typed term fails, and know that a term's type is unique.
+`);
+    md(r`The checker works bottom-up: to type $\lambda x{:}A.\, M$ it adds $x : A$ to the context and types $M$; to type $M\ N$ it types both and checks that they fit. The tree is read the other way, from the axioms down. Long contexts are named $\Gamma_1, \Gamma_2, \ldots$ under the tree.`);
+    m("type: λf:A→B. λg:B→C. λx:A. g (f x)", { work: true });
+    sec("Why a term has no type");
+    md(r`Three things can go wrong, and each has its message:`);
+    m("type: λx:A. x x");
+    m("type: λf:A→B. λx:B. f x");
+    m("type: λx:A. y");
+    md(r`An inner binder hides an outer one of the same name, and the context remembers only the nearest:`);
+    m("type: λx:A. λx:B. x");
+    sec("In Lean");
+    md(r`The checker, as a function, and the proof that it is right: whatever type it returns, the term has that type by the rules. The engine's ‹type:› is the same checker, with the same theorem (‹check_sound›), which is why its steps are marked verified.`);
+    lean(r`/-- The checker: the type, if the term has one. -/
+def typeOf (Γ : Ctx) : Tm → Option Ty
+  | .var x => Γ.lookup x
+  | .lam x A b => (typeOf ((x, A) :: Γ) b).map (A ⇒ ·)
+  | .app f a =>
+    match typeOf Γ f, typeOf Γ a with
+    | some (.arrow A B), some A' => if A = A' then some B else none
+    | _, _ => none
+
+#eval typeOf [] (.lam "x" A (.var "x"))
+#eval typeOf [] (.lam "x" A (.app (.var "x") (.var "x")))
+
+/-- What the checker says is so. -/
+theorem typeOf_sound : ∀ (t : Tm) (Γ : Ctx) (T : Ty), typeOf Γ t = some T → HasType Γ t T := by
+  intro t
+  induction t with
+  | var x => intro Γ T h; exact .var h
+  | lam x A b ih =>
+    intro Γ T h
+    simp only [typeOf, Option.map_eq_some_iff] at h
+    obtain ⟨B, hb, rfl⟩ := h
+    exact .abs (ih _ _ hb)
+  | app f a ihf iha =>
+    intro Γ T h
+    simp only [typeOf] at h
+    split at h
+    · rename_i A B A' hf ha
+      split at h
+      · rename_i hA; subst hA; cases h; exact .app (ihf _ _ hf) (iha _ _ ha)
+      · cases h
+    · cases h`);
+    lx(`theorem HasType.unique {Γ : Ctx} {t : Tm} {T U : Ty} (h₁ : HasType Γ t T) (h₂ : HasType Γ t U) : T = U := by`, r`A term has at most one type in a context. Prove it by induction on the first derivation.`, `  induction h₁ generalizing U with
+  | var h => cases h₂ with | var h' => rw [h] at h'; exact Option.some.inj h'
+  | abs _ ih => cases h₂ with | abs h' => rw [ih h']
+  | app _ _ ihf _ => cases h₂ with | app hf' _ => cases ihf hf'; rfl`, [
+      r`‹induction h₁ generalizing U with›, and in each case ‹cases h₂›: the second derivation must end with the same rule.`,
+      r`Var: both lookups give ‹some _›, so the types are equal (‹Option.some.inj›). →I: the bodies' types agree by the hypothesis. →E: the functions' types ‹A ⇒ T› and ‹A' ⇒ U› agree, so ‹T = U›.`,
+    ]);
+    sec("Exercises");
+    ex("type: f : A → B, g : B → C ⊢ λx:A. g (f x)", r`In the context $f : A \to B,\ g : B \to C$, what type does $\lambda x{:}A.\, g\ (f\ x)$ have?`, [r`$f\ x : B$, then $g$ takes it to $C$.`]);
+    ex("type: λx:A→B→C. λy:A→B. λz:A. x z (y z)", r`What type does $\lambda x{:}A \to B \to C.\, \lambda y{:}A \to B.\, \lambda z{:}A.\, x\ z\ (y\ z)$ have? (It is $S$.)`, [r`The body has type $C$; put the three binders' types in front.`]);
+    md(r`
+> [!summary]
+> A derivation types a term from its parts in a context. A term fails when a variable has no type, an argument has the wrong type, or a non-function is applied. The checker is sound, and types are unique.
+`);
+  });
+
+  add("03-inference.chalk", "Type inference", "Types without annotations: type variables, equations, unification and the occurs check.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Type inference");
+    md(r`
+> [!goal]
+> Find the most general type of a term whose binders have no types, by setting up equations between types and solving them.
+`);
+    md(r`
+> [!definition] Inference
+> 1. Give each binder without a type, and each application's result, a **type variable** $\tau_1, \tau_2, \ldots$.
+> 2. Each application $M\ N$ gives an equation: $M$'s type $= N$'s type $\to$ the result's.
+> 3. Solve the equations one at a time (**unification**): an equation $\tau = T$ puts $T$ for $\tau$ everywhere; two arrows are equal when their arguments and their results are.
+> 4. The variables left are named $\alpha, \beta, \ldots$: any types put for them give a type of the term.
+`);
+    m("infer: λf. λx. f x", { work: true });
+    m("infer: S", { work: true });
+    md(r`The result is the **principal type**: every other type of the term is an instance of it (Hindley). $K$ has type $A \to B \to A$, and also $(A \to A) \to B \to A \to A$:`);
+    m("infer: K");
+    sec("The occurs check");
+    md(r`
+> [!mistake] Self-application
+> In $\lambda x.\, x\ x$, $x$ is applied to itself, so its type would satisfy $\tau = \tau \to \sigma$: a type containing itself. Unification refuses (the **occurs check**), and the term has no simple type.
+`);
+    m("infer: λx. x x");
+    md(r`Types given and types found mix: annotated binders keep their types, and the rest is inferred around them.`);
+    m("infer: λf:A→B. λx. f x");
+    m("infer: f x");
+    md(r`Every inferred type is checked: the term, annotated with it, goes through the type checker, and the tree shown is that check.`);
+    sec("In Lean");
+    md(r`Lean infers too, by the same kind of unification: give it some types and it finds the rest.`);
+    lean(r`#check fun (f : Nat → Bool) x => f x
+#check fun (x : Nat) (_ : String) => x`);
+    lx(`theorem typing_by_inference : ∃ T, HasType [] (.lam "f" (A ⇒ B) (.lam "x" A (.app (.var "f") (.var "x")))) T := by`, r`Show that $\lambda f{:}A \to B.\, \lambda x{:}A.\, f\ x$ has a type, without writing it: let Lean infer it from the derivation.`, `  exact ⟨_, .abs (.abs (.app (.var rfl) (.var rfl)))⟩`, [
+      r`‹exact ⟨_, derivation⟩›: the underscore is solved by unification with the derivation's conclusion.`,
+      r`The derivation is →I, →I, then →E over two Vars.`,
+    ]);
+    sec("Exercises");
+    md(r`Answer with letters for the type variables, like ‹a -> b -> a›; any names will do, as long as the shape matches.`);
+    ex("infer: λx. λy. y", r`Infer the type of $\lambda x.\, \lambda y.\, y$.`, [r`Two arguments of unrelated types; it returns the second.`]);
+    ex("infer: λf. λg. λx. g (f x)", r`Infer the type of composition, $\lambda f.\, \lambda g.\, \lambda x.\, g\ (f\ x)$.`, [r`$x : \alpha$, $f : \alpha \to \beta$, $g : \beta \to \gamma$.`]);
+    ex("infer: λx. λf. f x", r`Infer the type of $\lambda x.\, \lambda f.\, f\ x$.`, [r`$f$ is applied to $x$.`]);
+    md(r`
+> [!summary]
+> Inference gives unknown types variables, turns each application into an equation, and solves the equations by unification. The occurs check rejects a type that would contain itself. The answer is the most general type, and every other type is an instance of it.
+`);
+  });
+
+  add("04-normalization.chalk", "What types rule out", "No Ω, no Y: typed terms always stop. The cost, and a typed language that cannot loop.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("What types rule out");
+    md(r`
+> [!goal]
+> See which untyped terms have no simple type, know the theorem that every typed term has a normal form, and what that costs.
+`);
+    md(r`$\Omega$ and $Y$ are built on self-application, and the occurs check refuses both:`);
+    m("infer: omega");
+    m("infer: Y");
+    md(r`
+> [!theorem] Strong normalization
+> In the simply typed λ-calculus every reduction sequence of a typed term is finite: every typed term has a normal form, and every strategy reaches it (Tait, 1967).
+`);
+    md(r`So the engine's step budget is never needed for a typed term. The price: no fixed-point combinator, so no unbounded recursion. The simply typed λ-calculus is not Turing complete, and real typed languages add recursion back as a primitive (‹fix›, ‹let rec›).`);
+    sec("Typed numerals");
+    md(r`A Church numeral has type $(\alpha \to \alpha) \to \alpha \to \alpha$, and arithmetic is typed at those types:`);
+    m("infer: 3");
+    m("infer: mul");
+    md(r`Not everything survives. Church's $\mathsf{and} = \lambda p.\, \lambda q.\, p\ q\ p$ passes $p$ to itself, at a second type:`);
+    m("infer: and");
+    md(r`A simple type cannot be used at two types. Polymorphism (lesson 7) can.`);
+    sec("In Lean");
+    md(r`A small typed language: numbers, booleans, addition, a test for zero and ‹if›. Its evaluator is structurally recursive, so Lean accepts it as total: it always stops, the strong normalization of this language. A program can still be stuck: ‹1 + true› has no value.`);
+    lean(r`inductive Expr where
+  | num : Nat → Expr
+  | tt : Expr
+  | ff : Expr
+  | add : Expr → Expr → Expr
+  | isZero : Expr → Expr
+  | ite : Expr → Expr → Expr → Expr
+
+inductive T where
+  | nat | bool
+  deriving DecidableEq, Repr
+
+def typeOfE : Expr → Option T
+  | .num _ => some .nat
+  | .tt | .ff => some .bool
+  | .add a b => match typeOfE a, typeOfE b with
+    | some .nat, some .nat => some .nat
+    | _, _ => none
+  | .isZero a => match typeOfE a with
+    | some .nat => some .bool
+    | _ => none
+  | .ite c t e => match typeOfE c, typeOfE t, typeOfE e with
+    | some .bool, some A, some B => if A = B then some A else none
+    | _, _, _ => none
+
+inductive Val where
+  | num : Nat → Val
+  | bool : Bool → Val
+  deriving DecidableEq, Repr
+
+/-- Evaluation; none is a program stuck on a type error. -/
+def evalE : Expr → Option Val
+  | .num n => some (.num n)
+  | .tt => some (.bool true)
+  | .ff => some (.bool false)
+  | .add a b => match evalE a, evalE b with
+    | some (.num m), some (.num n) => some (.num (m + n))
+    | _, _ => none
+  | .isZero a => match evalE a with
+    | some (.num n) => some (.bool (n == 0))
+    | _ => none
+  | .ite c t e => match evalE c with
+    | some (.bool true) => evalE t
+    | some (.bool false) => evalE e
+    | _ => none
+
+#eval evalE (.ite (.isZero (.num 0)) (.num 1) (.num 2))
+#eval evalE (.add (.num 1) .tt)`);
+    lx(`theorem rejects : typeOfE (.add (.num 1) .tt) = none := by`, r`The type checker refuses ‹1 + true›, the program that gets stuck.`, `  rfl`, [r`Both sides compute: ‹rfl›.`]);
+    sec("Exercises");
+    ex("infer: λx. λy. x y y", r`Infer the type of $\lambda x.\, \lambda y.\, x\ y\ y$.`, [r`$x$ takes $y$ twice.`]);
+    ex("infer: λf. f (λx. x)", r`Infer the type of $\lambda f.\, f\ (\lambda x.\, x)$.`, [r`$f$ is given the identity, of type $\alpha \to \alpha$.`]);
+    md(r`
+> [!summary]
+> Self-application has no simple type, so neither $\Omega$ nor $Y$ does. Every typed term has a normal form; the cost is that the simply typed calculus cannot express unbounded recursion.
+`);
+  });
+
+  add("05-curry-howard.chalk", "Propositions as types", "A type is a proposition, a term of it a proof: the Curry–Howard correspondence.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Propositions as types");
+    md(r`
+> [!goal]
+> Read a type as a proposition and a term as its proof; prove implications by writing functions, and see where classical logic needs more.
+`);
+    md(r`
+> [!theorem] Curry–Howard
+> Read $A \to B$ as "$A$ implies $B$". Then a closed term of type $T$ is a proof of $T$ in intuitionistic propositional logic, and the typing rules are the rules of proof:
+> - Var is using an assumption;
+> - →I is proving $A \to B$ by assuming $A$ and proving $B$;
+> - →E is modus ponens: from $A \to B$ and $A$, conclude $B$.
+>
+> β-reduction simplifies a proof that introduces an implication only to eliminate it at once.
+`);
+    md(r`$K$ proves $A \to B \to A$: from $A$, anything implies $A$. $S$ proves $(A \to B \to C) \to (A \to B) \to A \to C$. Composition proves that implication is transitive:`);
+    m("type: λf:A→B. λg:B→C. λx:A. g (f x)", { work: true });
+    md(r`Each of these is a tautology, as the logic world confirms:`);
+    m("taut((p → q) → (q → r) → p → r)");
+    sec("Where classical logic differs");
+    md(r`**Peirce's law**, $((A \to B) \to A) \to A$, is a tautology:`);
+    m("taut(((p → q) → p) → p)");
+    md(r`but no λ-term has that type: it is not provable intuitionistically. Classical logic adds the excluded middle, $A \lor \lnot A$, as an axiom, a proof with no program inside.`);
+    sec("In Lean");
+    md(r`In Lean propositions are types and proofs are terms, literally. A proof by tactics builds a term; ‹fun› writes one directly.`);
+    lean(r`theorem K_prop (P Q : Prop) : P → Q → P := fun p _ => p
+theorem S_prop (P Q R : Prop) : (P → Q → R) → (P → Q) → P → R := fun f g p => f p (g p)
+
+/-- Peirce's law needs the excluded middle. -/
+theorem peirce (P Q : Prop) : ((P → Q) → P) → P := by
+  intro h
+  cases Classical.em P with
+  | inl p => exact p
+  | inr np => exact h (fun p => absurd p np)`);
+    lx(`theorem imp_trans (P Q R : Prop) : (P → Q) → (Q → R) → P → R := by`, r`Prove that implication is transitive. The proof is the composition function.`, `  intro f g p
+  exact g (f p)`, [r`‹intro f g p› names the assumptions.`, r`Apply ‹f› to ‹p›, then ‹g› to that.`]);
+    lx(`theorem and_swap (P Q : Prop) : P ∧ Q → Q ∧ P := by`, r`Prove that ∧ commutes. A proof of ‹P ∧ Q› is a pair.`, `  intro ⟨p, q⟩
+  exact ⟨q, p⟩`, [r`‹intro ⟨p, q⟩› takes the pair apart.`, r`Build the swapped pair with ‹⟨q, p⟩›.`]);
+    sec("Exercises");
+    ex("type: λf:A→B→C. λb:B. λa:A. f a b", r`What does $\lambda f{:}A \to B \to C.\, \lambda b{:}B.\, \lambda a{:}A.\, f\ a\ b$ prove? Give its type.`, [r`It swaps the order of two assumptions.`]);
+    ex("taut((p → q) → (¬q → ¬p))", r`Is contraposition a tautology? Answer ‹⊤› or ‹⊥›.`, []);
+    md(r`
+> [!summary]
+> Types are propositions and terms are proofs: →I is assuming, →E is modus ponens, β simplifies proofs. The simply typed calculus proves exactly the intuitionistic implications; Peirce's law needs classical logic.
+`);
+  });
+
+  add("06-safety.chalk", "Type safety", "Well-typed programs do not go wrong: progress and preservation, and a safety proof in Lean.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Type safety");
+    md(r`
+> [!goal]
+> State type safety, see preservation at work, and prove safety for a small typed language.
+`);
+    md(r`
+> [!theorem] Type safety (Milner: "well-typed programs cannot go wrong")
+> - **Preservation**: if $\Gamma \vdash M : T$ and $M$ takes a step to $M'$, then $\Gamma \vdash M' : T$.
+> - **Progress**: a closed, typed term is a value or can take a step.
+>
+> Together: a typed program never gets stuck on a type error.
+`);
+    md(r`Preservation, on one step. The redex has type $A$:`);
+    m("type: x:A ⊢ (λy:A. y) x", { work: true });
+    m("normal: (λy:A. y) x");
+    m("type: x:A ⊢ x");
+    md(r`and so does what it reduces to. (Reduction erases the binders' types: they say which terms are allowed, not how they compute.)`);
+    sec("Small steps and big steps");
+    md(r`
+> [!definition] Operational semantics
+> A **small-step** semantics says what one step does, $M 	o M'$: the β-steps of every cell so far. A **big-step** semantics says what a whole program evaluates to, $M \Downarrow v$, in one judgment, by recursion on the program. Progress and preservation are about small steps; the Lean evaluator below is big-step, so its safety theorem says it in one go: a typed program evaluates, and to a value of its type.
+`);
+    sec("Safety in Lean");
+    md(r`For the typed language of lesson 4, safety is one theorem: a program with a type evaluates to a value of that type. It never gets stuck, and it never comes back with the wrong kind of value.`);
+    lean(r`/-- A value's type: a number is a nat, a boolean a bool. -/
+def Val.ty : Val → T
+  | .num _ => .nat
+  | .bool _ => .bool
+
+theorem safety : ∀ (e : Expr) (τ : T), typeOfE e = some τ → ∃ v, evalE e = some v ∧ v.ty = τ := by
+  intro e
+  induction e with
+  | num n => intro τ h; cases h; exact ⟨.num n, rfl, rfl⟩
+  | tt => intro τ h; cases h; exact ⟨.bool true, rfl, rfl⟩
+  | ff => intro τ h; cases h; exact ⟨.bool false, rfl, rfl⟩
+  | add a b iha ihb =>
+    intro τ h
+    simp only [typeOfE] at h
+    split at h
+    · rename_i ha hb
+      cases h
+      obtain ⟨va, ea, ta⟩ := iha _ ha
+      obtain ⟨vb, eb, tb⟩ := ihb _ hb
+      cases va <;> cases vb <;> simp_all [Val.ty, evalE]
+    · cases h
+  | isZero a iha =>
+    intro τ h
+    simp only [typeOfE] at h
+    split at h
+    · rename_i ha
+      cases h
+      obtain ⟨va, ea, ta⟩ := iha _ ha
+      cases va <;> simp_all [Val.ty, evalE]
+    · cases h
+  | ite c t e ihc iht ihe =>
+    intro τ h
+    simp only [typeOfE] at h
+    split at h
+    · rename_i A B hc ht he
+      split at h
+      · rename_i hAB
+        cases h; subst hAB
+        obtain ⟨vc, ec, tc⟩ := ihc _ hc
+        cases vc with
+        | num _ => simp [Val.ty] at tc
+        | bool b =>
+          cases b
+          · obtain ⟨v, ev, tv⟩ := ihe _ he; exact ⟨v, by simp [evalE, ec, ev], tv⟩
+          · obtain ⟨v, ev, tv⟩ := iht _ ht; exact ⟨v, by simp [evalE, ec, ev], tv⟩
+      · cases h
+    · cases h`);
+    lx(`theorem typed_add_evaluates (a b : Expr) (ha : typeOfE a = some .nat) (hb : typeOfE b = some .nat) :
+    ∃ n, evalE (.add a b) = some (.num n) := by`, r`Use safety: adding two typed numbers gives a number.`, `  obtain ⟨va, ea, ta⟩ := safety a _ ha
+  obtain ⟨vb, eb, tb⟩ := safety b _ hb
+  cases va <;> cases vb <;> simp_all [Val.ty, evalE]`, [
+      r`‹safety a _ ha› gives a value of ‹a› and that its type is ‹nat›; the same for ‹b›.`,
+      r`Split both values with ‹cases›: a boolean contradicts its type, two numbers add. ‹simp_all [Val.ty, evalE]›.`,
+    ]);
+    sec("Exercises");
+    ex("type: f : A → B, x : A ⊢ (λg:A→B. g x) f", r`What type does $(\lambda g{:}A \to B.\, g\ x)\ f$ have, in the context $f : A \to B,\ x : A$?`, [r`The function returns $g\ x : B$.`]);
+    ex("normal: (λg:A→B. g x) f", r`Reduce $(\lambda g{:}A \to B.\, g\ x)\ f$. By preservation, the result has the same type.`, [r`One β-step.`]);
+    md(r`
+> [!summary]
+> Preservation keeps a term's type as it reduces, and progress says a typed term is never stuck. Together they are type safety: well-typed programs do not go wrong.
+`);
+  });
+
+  add("07-polymorphism.chalk", "Polymorphism", "One term at many types: type schemes, System F, and Church numerals that work at every type.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Polymorphism");
+    md(r`
+> [!goal]
+> Read an inferred type as a scheme for all its instances, and use System F's explicit polymorphism to type what simple types cannot.
+`);
+    md(r`The identity has type $\alpha \to \alpha$ for every $\alpha$: the type variables of an inferred type are implicitly **for all**. That is a type **scheme**, $\forall \alpha.\, \alpha \to \alpha$.`);
+    m("infer: λx. x");
+    m("infer: λf. λx. f (f x)");
+    md(r`In the simply typed calculus, though, one occurrence of a variable has one type. Church's $\mathsf{and}$ uses its argument at two types, and fails:`);
+    m("infer: and");
+    sec("System F");
+    md(r`
+> [!definition] System F (Girard, Reynolds)
+> Types may quantify over types: $\forall \alpha.\, T$. Terms may take a type as an argument, $\Lambda \alpha.\, M$, and be given one, $M\ [T]$. The polymorphic identity is $\Lambda \alpha.\, \lambda x{:}\alpha.\, x : \forall \alpha.\, \alpha \to \alpha$, and $\mathit{id}\ [\mathsf{Nat}] : \mathsf{Nat} \to \mathsf{Nat}$.
+`);
+    md(r`In System F a Church numeral has the one type $\forall \alpha.\, (\alpha \to \alpha) \to \alpha \to \alpha$, and can be used at many. Even self-application has a type: $\lambda x{:}\forall \alpha.\, \alpha \to \alpha.\, x\ [\forall \alpha.\, \alpha \to \alpha]\ x$. System F still normalizes, but inference for it is undecidable (Wells, 1994), so ML and Haskell allow polymorphism only at ‹let› (Hindley–Milner), where inference stays decidable.`);
+    sec("In Lean");
+    md(r`Lean's ‹∀ α : Type› is System F's quantifier. A Church numeral is a polymorphic function, used at ‹Nat› to read it and at ‹String› for fun.`);
+    lean(r`/-- Church numerals in System F: a numeral works at every type. -/
+def CNat := ∀ α : Type, (α → α) → α → α
+
+def czero : CNat := fun _ _ x => x
+def csucc (n : CNat) : CNat := fun α f x => f (n α f x)
+def cadd (m n : CNat) : CNat := fun α f x => m α f (n α f x)
+def cmul (m n : CNat) : CNat := fun α f => m α (n α f)
+def two : CNat := csucc (csucc czero)
+def three : CNat := csucc two
+
+/-- Read a numeral by using it at Nat. -/
+def CNat.toNat (n : CNat) : Nat := n Nat (· + 1) 0
+
+#eval (cadd two three).toNat
+-- the same numeral, used at String
+#eval three String (· ++ "!") "go"
+
+/-- The polymorphic identity has one type for every type. -/
+def polyId : ∀ α : Type, α → α := fun _ x => x`);
+    lx(`theorem six : (cmul two three).toNat = 6 := by`, r`Check that $2 \cdot 3 = 6$ with System F numerals.`, `  rfl`, [r`Everything computes: ‹rfl›.`]);
+    sec("Exercises");
+    md(r`Answer with letters for type variables.`);
+    ex("infer: λf. λg. λx. f (g x)", r`Infer the most general type of $\lambda f.\, \lambda g.\, \lambda x.\, f\ (g\ x)$.`, [r`$g$ first, then $f$.`]);
+    ex("infer: pair", r`Infer the type of $\mathsf{pair} = \lambda a.\, \lambda b.\, \lambda s.\, s\ a\ b$.`, [r`$s$ takes $a$ and $b$ and returns anything.`]);
+    md(r`
+> [!summary]
+> An inferred type is a scheme, true at every instance. System F makes the quantifier explicit and types more terms (Church $\mathsf{and}$, self-application), at the cost of decidable inference.
+`);
+  });
+
+  add("08-dependent-types.chalk", "Dependent types", "Types that depend on values; Lean's type theory; type checking is proof checking.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Dependent types");
+    md(r`
+> [!goal]
+> Use a type that depends on a value, and see that Lean's type checker, checking a proof, is the same idea as the first lesson's three rules.
+`);
+    md(r`
+> [!definition] The λ-cube
+> Starting from simple types, let terms depend on types (polymorphism: System F), types depend on types (type operators: $F_\omega$), and types depend on **terms** (dependent types). All three together is the **calculus of constructions**; Lean's type theory extends it with inductive types and universes.
+`);
+    md(r`
+> [!definition] Π-types
+> A dependent function $(x : A) \to B(x)$ returns a value whose **type** depends on the argument. When $B$ does not mention $x$ it is the arrow $A \to B$. Read as a proposition it is $\forall x : A,\ B(x)$: Curry–Howard extends to quantifiers.
+`);
+    sec("In Lean");
+    md(r`Vectors carry their length in their type, so taking the head of an empty one is not an error at run time: it is a type error, and needs no case at all.`);
+    lean(r`/-- Vectors: lists whose length is in their type. -/
+inductive Vec (α : Type) : Nat → Type where
+  | nil : Vec α 0
+  | cons : α → Vec α n → Vec α (n + 1)
+
+namespace Vec
+
+/-- The head of a nonempty vector: there is no case for nil, because the type rules it out. -/
+def head : Vec α (n + 1) → α
+  | cons x _ => x
+
+def toList : Vec α n → List α
+  | nil => []
+  | cons x xs => x :: xs.toList
+
+def append : Vec α n → Vec α m → Vec α (m + n)
+  | nil, ys => ys
+  | cons x xs, ys => cons x (append xs ys)
+
+end Vec
+
+#eval (Vec.cons 1 (Vec.cons 2 Vec.nil)).head
+#eval (Vec.append (Vec.cons 1 (Vec.cons 2 Vec.nil)) (Vec.cons 3 Vec.nil)).toList`);
+    lx(`theorem Vec.toList_length : ∀ (v : Vec α n), v.toList.length = n := by`, r`The list of a vector of length $n$ has length $n$: the type was telling the truth.`, `  intro v
+  induction v with
+  | nil => rfl
+  | cons x xs ih => simp [Vec.toList, ih]`, [r`‹induction v with›: ‹nil› is ‹rfl›.`, r`For ‹cons›, unfold ‹toList› and use the hypothesis: ‹simp [Vec.toList, ih]›.`]);
+    md(r`
+> [!theorem] Type checking is proof checking
+> A Lean proof is a term, and checking the proof is type checking the term: the kernel applies rules like Var, →I and →E (generalized to Π-types and inductive types). ‹rfl : 2 + 2 = 4› type checks because both sides reduce to the same normal form.
+`);
+    lean(r`theorem two_plus_two : 2 + 2 = 4 := rfl`);
+    sec("Exercises");
+    md(r`A last review in the simply typed calculus.`);
+    ex("type: λf:A→A. λg:A→A. λx:A. f (g x)", r`What type does $\lambda f{:}A \to A.\, \lambda g{:}A \to A.\, \lambda x{:}A.\, f\ (g\ x)$ have?`, []);
+    ex("infer: λx. λy. λz. x z (y z)", r`Infer the type of $S$ without annotations.`, [r`It is the type of the axiom $(A \to B \to C) \to (A \to B) \to A \to C$, with variables.`]);
+    md(r`
+> [!summary]
+> Dependent types let types mention values: a vector's length, a proposition's quantified variable. Lean's type theory has them, and its kernel checks proofs by checking types, as the three rules of the first lesson do.
+`);
+  });
+}, { leanPrelude: true });
 
 // ---------------------------------------------------------------------------------------------------
 const manifest = {

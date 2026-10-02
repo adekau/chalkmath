@@ -1,0 +1,152 @@
+{
+  "chalk": 1,
+  "name": "01-simple-types.chalk",
+  "cells": [
+    {
+      "src": "Simple types",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Give a type to a λ-term with typed binders, by the three rules of the simply typed λ-calculus, and read its derivation tree.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In the untyped calculus anything can be applied to anything: $\\mathsf{true}\\ 1\\ 0$ reduces happily, and $\\Omega$ runs for ever. Types sort terms by what they can be given and what they give back, and refuse the rest before anything runs.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Simple types\n> A **type** is a **base type** ($A$, $B$, $\\mathsf{Nat}$, …) or an **arrow** $A \\to B$, the type of functions from $A$ to $B$. The arrow groups to the right: $A \\to B \\to C$ is $A \\to (B \\to C)$, a function returning a function. A binder carries its type: $\\lambda x{:}A.\\, M$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Type `->` for → and write the type after a colon: `type: \\x:A. x`.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "type: λx:A. x",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The rules",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Typing rules\n> A **context** $\\Gamma$ lists the types of the variables in scope; a **judgment** $\\Gamma \\vdash M : T$ says $M$ has type $T$ there.\n> - **Var**: if $x : T$ is in $\\Gamma$, then $\\Gamma \\vdash x : T$.\n> - **→I** (abstraction): if $\\Gamma, x : A \\vdash M : B$, then $\\Gamma \\vdash \\lambda x{:}A.\\, M : A \\to B$.\n> - **→E** (application): if $\\Gamma \\vdash M : A \\to B$ and $\\Gamma \\vdash N : A$, then $\\Gamma \\vdash M\\ N : B$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Every typed term has a **derivation**: a tree of rules, the judgment at the bottom, axioms (Var) at the top. `type:` draws it, and lists its steps from the top down.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "type: λf:A→B. λx:A. f x",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "Free variables get their types from a context written before `⊢` (or `|-`):",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "type: f : A → B, x : A ⊢ f x",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The typing relation, as an inductive proposition with one constructor per rule; a derivation is a proof built from them.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- Simple types: base types and arrows. -/\ninductive Ty where\n  | base : String → Ty\n  | arrow : Ty → Ty → Ty\n  deriving Repr, DecidableEq\n\ninfixr:30 \" ⇒ \" => Ty.arrow\n\n/-- Terms whose binders carry their types: λx:A. b. -/\ninductive Tm where\n  | var : String → Tm\n  | lam : String → Ty → Tm → Tm\n  | app : Tm → Tm → Tm\n  deriving Repr, DecidableEq\n\n/-- A context, innermost binding first. -/\nabbrev Ctx := List (String × Ty)\n\n/-- The typing relation, one constructor per rule. -/\ninductive HasType : Ctx → Tm → Ty → Prop where\n  | var {Γ x T} : Γ.lookup x = some T → HasType Γ (.var x) T\n  | abs {Γ x A b B} : HasType ((x, A) :: Γ) b B → HasType Γ (.lam x A b) (A ⇒ B)\n  | app {Γ f a A B} : HasType Γ f (A ⇒ B) → HasType Γ a A → HasType Γ (.app f a) B\n\ndef A : Ty := .base \"A\"\ndef B : Ty := .base \"B\"\n\n/-- λx:A. x : A → A, as a derivation: →I over Var. -/\nexample : HasType [] (.lam \"x\" A (.var \"x\")) (A ⇒ A) := .abs (.var rfl)",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem K_typed : HasType [] (.lam \"x\" A (.lam \"y\" B (.var \"x\"))) (A ⇒ B ⇒ A) := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Build the derivation of $\\vdash \\lambda x{:}A.\\, \\lambda y{:}B.\\, x : A \\to B \\to A$.",
+      "leanSolution": "  exact .abs (.abs (.var rfl))",
+      "hints": [
+        "Two →I, then Var: `.abs (.abs (.var _))`.",
+        "Var needs `x` to have type `A` in the context `[(\"y\", B), (\"x\", A)]`; `rfl` computes the lookup."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Answer with a type, writing `->` for →: `(A -> B) -> A -> B`.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "type: λx:A. λy:B. x",
+      "type": "exercise",
+      "prompt": "What type does $\\lambda x{:}A.\\, \\lambda y{:}B.\\, x$ have?",
+      "hints": [
+        "Two arguments, $A$ then $B$; it returns the first."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "type: λf:A→A. λx:A. f (f x)",
+      "type": "exercise",
+      "prompt": "What type does $\\lambda f{:}A \\to A.\\, \\lambda x{:}A.\\, f\\ (f\\ x)$ have?",
+      "hints": [
+        "$f\\ x : A$, so $f\\ (f\\ x) : A$ too."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "type: f : A → B ⊢ λx:A. f x",
+      "type": "exercise",
+      "prompt": "In the context $f : A \\to B$, what type does $\\lambda x{:}A.\\, f\\ x$ have?",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Types are base types and arrows. Three rules type every term that has a type: Var reads the context, →I types a function by its body, →E types an application when the argument fits. A derivation is the tree of rules used.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

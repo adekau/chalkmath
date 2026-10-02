@@ -1,0 +1,160 @@
+{
+  "chalk": 1,
+  "name": "01-terms.chalk",
+  "cells": [
+    {
+      "src": "Terms and notation",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Read and write λ-terms: know where a function's body ends, how applications group, and what a term means as a tree.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] λ-terms\n> A **term** is one of three things: a **variable** $x$; a **function** (an abstraction) $\\lambda x.\\, M$, which takes $x$ and gives $M$; or an **application** $M\\ N$, the function $M$ applied to the argument $N$. Nothing else: no numbers, no booleans, no names for functions. Everything else will be built from these three.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Type λ as `\\lam` then space, or a backslash: `\\x. x` is $\\lambda x.\\, x$. Three conventions keep the parentheses down:\n\n- application groups to the left: $f\\ a\\ b$ is $(f\\ a)\\ b$;\n- a λ's body reaches as far right as it can: $\\lambda x.\\, f\\ x$ is $\\lambda x.\\, (f\\ x)$, not $(\\lambda x.\\, f)\\ x$;\n- $\\lambda x\\ y.\\, M$ is short for $\\lambda x.\\, \\lambda y.\\, M$, a function returning a function.\n\nA cell with only a term prints it back with as few parentheses as these rules allow.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "λx y z. x z (y z)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "(λx. (λy. (x y)))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A first β-step",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] β-reduction\n> A **redex** is a function applied to an argument, $(\\lambda x.\\, M)\\ N$. It **reduces** to $M[x := N]$: the body with $N$ put in for every $x$. One such step is a **β-step**.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "(λx. x) y",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "Application groups left, so the identity is applied to $\\lambda y.\\, y$ first, and the result to $z$:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "(λx. x) (λy. y) z",
+      "showWork": true,
+      "label": null,
+      "stepwise": 0
+    },
+    {
+      "src": "A redex can sit inside a function body; normal order (the engine's default, lesson 5) reduces it there too:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "λx. (λy. y) x",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "In Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "This course builds an interpreter for the λ-calculus in Lean, a piece per lesson; each lesson's Lean sees the lessons' before it. First the terms: an inductive type with one constructor per kind of term.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- λ-terms with named variables: a variable, a function λx. body, an application f a. -/\ninductive Term where\n  | var : String → Term\n  | lam : String → Term → Term\n  | app : Term → Term → Term\n  deriving Repr, DecidableEq, Inhabited\n\nnamespace Term\n\n/-- Fully parenthesized, so the structure is plain. -/\ndef pretty : Term → String\n  | var x => x\n  | lam x b => s!\"(λ{x}. {b.pretty})\"\n  | app f a => s!\"({f.pretty} {a.pretty})\"\n\ndef I : Term := lam \"x\" (var \"x\")\ndef K : Term := lam \"x\" (lam \"y\" (var \"x\"))\ndef ω : Term := lam \"x\" (app (var \"x\") (var \"x\"))\n\n#eval (app K I).pretty\n\n/-- The number of nodes: variables, λs and applications. -/\ndef size : Term → Nat\n  | var _ => 1\n  | lam _ b => 1 + b.size\n  | app f a => 1 + f.size + a.size\n\nend Term\nopen Term\n\nexample : K.size = 3 := rfl",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem size_pos (t : Term) : 0 < t.size := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Every term has at least one node. Prove it.",
+      "leanSolution": "  cases t <;> simp [Term.size] <;> omega",
+      "hints": [
+        "Split into the three kinds of term with `cases t`.",
+        "`simp [Term.size]` unfolds the size; `omega` finishes the arithmetic. Combine them with `<;>`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Reduce each term to the end. An answer is compared after reducing it too, so any name for a bound variable is right.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "(λx. λy. x) a b",
+      "type": "exercise",
+      "prompt": "Reduce $(\\lambda x.\\, \\lambda y.\\, x)\\ a\\ b$.",
+      "hints": [
+        "Application groups left: first $(\\lambda x.\\, \\lambda y.\\, x)\\ a$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "(λf. f a) (λx. x)",
+      "type": "exercise",
+      "prompt": "Reduce $(\\lambda f.\\, f\\ a)\\ (\\lambda x.\\, x)$.",
+      "hints": [
+        "Put $\\lambda x.\\, x$ for $f$, then reduce again."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "(λx. x x) (λy. y)",
+      "type": "exercise",
+      "prompt": "Reduce $(\\lambda x.\\, x\\ x)\\ (\\lambda y.\\, y)$.",
+      "hints": [
+        "$x$ is replaced by $\\lambda y.\\, y$ twice: $(\\lambda y.\\, y)\\ (\\lambda y.\\, y)$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Terms are variables, functions and applications. Application groups left and a λ reaches right. Computation is the β-step: a function applied to an argument becomes its body, with the argument put in.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

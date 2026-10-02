@@ -1,0 +1,9 @@
+3	infer: λf. λx. f x	= (α → β) → α → β
+4	infer: S	= (α → β → γ) → (α → β) → α → γ
+6	infer: K	= α → β → α
+9	infer: λx. x x	✗ occurs check: τ1 = τ1 → τ2 has no solution (τ1 would have to contain itself), so the term has no simple type
+11	infer: λf:A→B. λx. f x	= (A → B) → A → B
+12	infer: f x	= α   (with f : β → α, x : β)
+20	infer: λx. λy. y	= α → β → β
+21	infer: λf. λg. λx. g (f x)	= (α → β) → (β → γ) → α → γ
+22	infer: λx. λf. f x	= α → (α → β) → β

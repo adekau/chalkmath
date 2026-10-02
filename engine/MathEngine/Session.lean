@@ -179,7 +179,11 @@ private def lamRun (s : Session) (t : Lam.Term) (st : Lam.Strategy) (eta : Bool)
 private def haltError (halt : Lam.Halt) (goal how : String) (steps : Nat) (out : Lam.Term) : LamErr :=
   if halt == .size then
     ("eval", s!"λ: no {goal} yet after {steps} steps{how}, and the term has grown past {Lam.maxSize} symbols, so the reduction stops here", none)
-  else ("eval", s!"λ: no {goal} after {Lam.maxSteps} {if how.isEmpty then "β-steps" else "steps" ++ how}; the term had become {(Lam.toExpr out).toText}", none)
+  else
+    -- a long term is cut short: the message is to read, and the head says what is happening
+    let txt := (Lam.toExpr out).toText
+    let txt := if txt.length > 240 then (txt.take 240).copy ++ " …" else txt
+    ("eval", s!"λ: no {goal} after {Lam.maxSteps} {if how.isEmpty then "β-steps" else "steps" ++ how}; the term had become {txt}", none)
 
 /-- A typing derivation's steps, premises first: one per rule used. -/
 partial def typingSteps : Lam.Deriv → Array Step

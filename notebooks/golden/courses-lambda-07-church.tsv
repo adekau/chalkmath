@@ -1,0 +1,27 @@
+5	if true a b	= a
+6	and true false	= λt. λf. f   (the Church numeral 0)
+8	xor := λp. λq. p (not q) q	= λp. λq. p (q (λt. λf. f) (λt. λf. t)) q
+9	xor true false	= λt. λf. t   (the Church boolean true)
+10	xor true true	= λt. λf. f   (the Church numeral 0)
+14	succ 2	= λf. λx. f (f (f x))   (the Church numeral 3)
+15	add 2 3	= λf. λx. f (f (f (f (f x))))   (the Church numeral 5)
+16	mul 2 3	= λf. λx. f (f (f (f (f (f x)))))   (the Church numeral 6)
+17	pow 2 3	= λx. λx'. x (x (x (x (x (x (x (x x')))))))   (the Church numeral 8)
+19	twice := λf. λx. f (f x)	= λf. λx. f (f x)   (the Church numeral 2)
+20	twice twice succ 0	= λf. λx. f (f (f (f x)))   (the Church numeral 4)
+23	fst (pair a b)	= a
+25	pred := λn. fst (n (λp. pair (snd p) (succ (snd p))) (pair 0 0))	= λn. n (λp. λs. s (p (λa. λb. b)) (λf. λx. f (p (λa. λb. b) f x))) (λs. s (λf. λx. x) (λf. λx. x)) (λa. λb. a)
+26	pred 3	= λf. λx. f (f x)   (the Church numeral 2)
+27	sub := λm. λn. n pred m	= λm. λn. n (λn. n (λp. λs. s (p (λa. λb. b)) (λf. λx. f (p (λa. λb. b) f x))) (λs. s (λf. λx. x) (λf. λx. x)) (λa. λb. a)) m
+28	sub 3 1	= λf. λx. f (f x)   (the Church numeral 2)
+29	iszero (pred 1)	= λt. λf. t   (the Church boolean true)
+32	nil := λc. λn. n	= λc. λn. n   (the Church numeral 0)
+33	cons := λh. λt. λc. λn. c h (t c n)	= λh. λt. λc. λn. c h (t c n)
+35	cons 1 (cons 2 nil) add 0	= λf. λx. f (f (f x))   (the Church numeral 3)
+36	length := λl. l (λh. λr. succ r) 0	= λl. l (λh. λr. λf. λx. f (r f x)) (λf. λx. x)
+37	length (cons a (cons b (cons c nil)))	= λf. λx. f (f (f x))   (the Church numeral 3)
+43	pred 2	= λf. λx. f x
+44	pow 2 2	= λx. λx'. x (x (x (x x')))
+45	or false (not false)	= λt. λf. t
+46	snd (pair 1 (succ 1))	= λf. λx. f (f x)
+47	cons 1 (cons 1 (cons 1 nil)) add 0	= λf. λx. f (f (f x))

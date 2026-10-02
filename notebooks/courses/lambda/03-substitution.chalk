@@ -1,0 +1,165 @@
+{
+  "chalk": 1,
+  "name": "03-substitution.chalk",
+  "cells": [
+    {
+      "src": "Substitution and capture",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Compute $M[x := N]$, renaming bound variables where the substitution would otherwise capture a free variable of $N$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Substitution\n> $M[x := N]$ replaces the free occurrences of $x$ in $M$ by $N$:\n> - $x[x := N] = N$, and $y[x := N] = y$ for another variable $y$;\n> - $(M_1\\ M_2)[x := N] = M_1[x := N]\\ M_2[x := N]$;\n> - $(\\lambda x.\\, M)[x := N] = \\lambda x.\\, M$: here $x$ is bound, so there is nothing to replace;\n> - $(\\lambda y.\\, M)[x := N] = \\lambda y.\\, M[x := N]$ when $y$ is not free in $N$;\n> - otherwise rename $y$ first, to a fresh $z$: $\\lambda z.\\, M[y := z][x := N]$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`subst: M, x := N` does it, the renaming as its own step:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "subst: x y, x := λz. z",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "subst: λx. x y, x := z",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "Capture",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake] Capture\n> Substituting blindly into $\\lambda y.\\, x$ for $x := y$ gives $\\lambda y.\\, y$: the identity. But $\\lambda y.\\, x$ ignores its argument, and so should the result, returning the free $y$. The $y$ that was put in has been **captured** by the λ. The fifth rule renames the binder first: $\\lambda y'.\\, y$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "subst: λy. x y, x := y",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "subst: λy. λx. x y z, z := x y",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "A β-step is a substitution, so it renames too:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "(λx. λy. x y) y",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "In Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The naive substitution first, to see it capture:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- Substitution as it first comes to mind: put s for every free x, stopping under a binder named x. -/\ndef substNaive (x : String) (s : Term) : Term → Term\n  | var y => if y = x then s else var y\n  | lam y b => if y = x then lam y b else lam y (substNaive x s b)\n  | app f a => app (substNaive x s f) (substNaive x s a)\n\n-- (λy. x)[x := y] should ignore its argument and return the free y\n#eval (substNaive \"x\" (var \"y\") (lam \"y\" (var \"x\"))).pretty",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem substNaive_self (x : String) (t : Term) : substNaive x (var x) t = t := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Substituting a variable for itself changes nothing. Prove it by induction on the term.",
+      "leanSolution": "  induction t with\n  | var y => by_cases h : y = x <;> simp [substNaive, h]\n  | lam y b ih => by_cases h : y = x <;> simp [substNaive, h, ih]\n  | app f a ihf iha => simp [substNaive, ihf, iha]",
+      "hints": [
+        "`induction t with` gives a case per constructor, with induction hypotheses for the subterms.",
+        "In the `var` and `lam` cases, split on `y = x` with `by_cases h : y = x`, then `simp [substNaive, h]` (add `ih` where there is one)."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The real one renames. Its recursive call is on a renamed body, which is not a subterm, so Lean cannot see on its own that it stops: we say why (renaming keeps the size) and Lean checks it.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- A name not in avoid: x, x', x'', … (avoid is finite, so one of the first length + 1 is free). -/\ndef fresh (avoid : List String) (x : String) : String :=\n  go x avoid.length\nwhere\n  go (c : String) : Nat → String\n    | 0 => c\n    | n + 1 => if c ∈ avoid then go (c ++ \"'\") n else c\n\n/-- Rename the variable y to z. -/\ndef rename (y z : String) (b : Term) : Term := substNaive y (var z) b\n\n/-- Renaming keeps the size: the measure capture-avoiding substitution recurses on. -/\ntheorem size_rename (y z : String) (t : Term) : (rename y z t).size = t.size := by\n  induction t with\n  | var w => by_cases h : w = y <;> simp [rename, substNaive, h, Term.size]\n  | lam w b ih => by_cases h : w = y <;> simp_all [rename, substNaive, Term.size]\n  | app f a ihf iha => simp_all [rename, substNaive, Term.size]\n\n/-- Capture-avoiding substitution t[x := s]. -/\ndef subst (x : String) (s : Term) : Term → Term\n  | var y => if y = x then s else var y\n  | app f a => app (subst x s f) (subst x s a)\n  | lam y b =>\n    if y = x then lam y b\n    else if y ∈ freeVars s then\n      let z := fresh (freeVars s ++ freeVars b ++ [x]) y\n      lam z (subst x s (rename y z b))\n    else lam y (subst x s b)\ntermination_by t => t.size\ndecreasing_by all_goals simp_wf <;> simp [size_rename, Term.size] <;> omega\n\n#eval (subst \"x\" (var \"y\") (lam \"y\" (var \"x\"))).pretty",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "An answer is compared with the result up to the names of bound variables, and is not reduced: write the term the substitution gives.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "subst: (λx. x) x, x := y",
+      "type": "exercise",
+      "prompt": "Compute $((\\lambda x.\\, x)\\ x)[x := y]$.",
+      "hints": [
+        "Only the free $x$ changes; the one under $\\lambda x$ is bound."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "subst: λz. x z, x := z",
+      "type": "exercise",
+      "prompt": "Compute $(\\lambda z.\\, x\\ z)[x := z]$.",
+      "hints": [
+        "The binder $z$ would capture the $z$ put in: rename it first."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "subst: λy. x, x := λw. w",
+      "type": "exercise",
+      "prompt": "Compute $(\\lambda y.\\, x)[x := \\lambda w.\\, w]$.",
+      "hints": [
+        "$\\lambda w.\\, w$ has no free variables, so nothing can be captured."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Substitution replaces free occurrences only, and renames a binder that would capture a free variable of what is put in. It is the whole of β-reduction's work.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

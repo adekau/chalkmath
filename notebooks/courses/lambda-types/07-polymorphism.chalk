@@ -1,0 +1,132 @@
+{
+  "chalk": 1,
+  "name": "07-polymorphism.chalk",
+  "cells": [
+    {
+      "src": "Polymorphism",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Read an inferred type as a scheme for all its instances, and use System F's explicit polymorphism to type what simple types cannot.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The identity has type $\\alpha \\to \\alpha$ for every $\\alpha$: the type variables of an inferred type are implicitly **for all**. That is a type **scheme**, $\\forall \\alpha.\\, \\alpha \\to \\alpha$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "infer: λx. x",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "infer: λf. λx. f (f x)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In the simply typed calculus, though, one occurrence of a variable has one type. Church's $\\mathsf{and}$ uses its argument at two types, and fails:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "infer: and",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "System F",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] System F (Girard, Reynolds)\n> Types may quantify over types: $\\forall \\alpha.\\, T$. Terms may take a type as an argument, $\\Lambda \\alpha.\\, M$, and be given one, $M\\ [T]$. The polymorphic identity is $\\Lambda \\alpha.\\, \\lambda x{:}\\alpha.\\, x : \\forall \\alpha.\\, \\alpha \\to \\alpha$, and $\\mathit{id}\\ [\\mathsf{Nat}] : \\mathsf{Nat} \\to \\mathsf{Nat}$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In System F a Church numeral has the one type $\\forall \\alpha.\\, (\\alpha \\to \\alpha) \\to \\alpha \\to \\alpha$, and can be used at many. Even self-application has a type: $\\lambda x{:}\\forall \\alpha.\\, \\alpha \\to \\alpha.\\, x\\ [\\forall \\alpha.\\, \\alpha \\to \\alpha]\\ x$. System F still normalizes, but inference for it is undecidable (Wells, 1994), so ML and Haskell allow polymorphism only at `let` (Hindley–Milner), where inference stays decidable.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Lean's `∀ α : Type` is System F's quantifier. A Church numeral is a polymorphic function, used at `Nat` to read it and at `String` for fun.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- Church numerals in System F: a numeral works at every type. -/\ndef CNat := ∀ α : Type, (α → α) → α → α\n\ndef czero : CNat := fun _ _ x => x\ndef csucc (n : CNat) : CNat := fun α f x => f (n α f x)\ndef cadd (m n : CNat) : CNat := fun α f x => m α f (n α f x)\ndef cmul (m n : CNat) : CNat := fun α f => m α (n α f)\ndef two : CNat := csucc (csucc czero)\ndef three : CNat := csucc two\n\n/-- Read a numeral by using it at Nat. -/\ndef CNat.toNat (n : CNat) : Nat := n Nat (· + 1) 0\n\n#eval (cadd two three).toNat\n-- the same numeral, used at String\n#eval three String (· ++ \"!\") \"go\"\n\n/-- The polymorphic identity has one type for every type. -/\ndef polyId : ∀ α : Type, α → α := fun _ x => x",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem six : (cmul two three).toNat = 6 := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Check that $2 \\cdot 3 = 6$ with System F numerals.",
+      "leanSolution": "  rfl",
+      "hints": [
+        "Everything computes: `rfl`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Answer with letters for type variables.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "infer: λf. λg. λx. f (g x)",
+      "type": "exercise",
+      "prompt": "Infer the most general type of $\\lambda f.\\, \\lambda g.\\, \\lambda x.\\, f\\ (g\\ x)$.",
+      "hints": [
+        "$g$ first, then $f$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "infer: pair",
+      "type": "exercise",
+      "prompt": "Infer the type of $\\mathsf{pair} = \\lambda a.\\, \\lambda b.\\, \\lambda s.\\, s\\ a\\ b$.",
+      "hints": [
+        "$s$ takes $a$ and $b$ and returns anything."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> An inferred type is a scheme, true at every instance. System F makes the quantifier explicit and types more terms (Church $\\mathsf{and}$, self-application), at the cost of decidable inference.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}
