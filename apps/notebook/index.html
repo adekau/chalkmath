@@ -409,6 +409,12 @@ html[data-outsize="l"] { --sz-out:28px; --sz-echo:22px; --sz-work:19px; --sz-sub
 .askrow button { justify-self:start; font:12px var(--font); padding:4px 12px; border-radius:5px; border:1px solid var(--btn-edge); background:var(--btn); color:var(--ink-2); cursor:pointer; }
 .askrow button[disabled] { opacity:0.6; cursor:default; }
 .work { margin:12px 0 0 8px; display:flex; flex-direction:column; gap:5px; }
+.stepnext { display:flex; align-items:center; flex-wrap:wrap; gap:10px; padding:6px 11px; font-family:var(--font); font-size:12px; color:var(--p-mut); }
+.stepnext .stepbtn { padding:4px 11px; border-radius:6px; border:1px solid var(--p-btn-br); background:linear-gradient(var(--p-btn-a), var(--p-btn-b)); color:var(--p-btn-ink); cursor:pointer; }
+.stepnext .stepbtn[data-next] { border-color:var(--p-acc-br); background:var(--p-acc-bg); color:var(--p-acc); font-weight:600; }
+.stepnext .stepbtn:hover { filter:brightness(1.1); }
+.outheld { display:inline-block; min-width:2.2em; padding:0 12px; border:1px dashed var(--p-acc-br); border-radius:7px; color:var(--p-acc); text-align:center; cursor:pointer; font-family:var(--font); }
+.outheld:hover { background:var(--p-hov); }
 .step { display:grid; grid-template-columns:24px minmax(0,250px) minmax(0,1fr); gap:12px; align-items:center; padding:7px 11px; border-radius:7px; cursor:pointer; background:var(--p-row-bg); }
 .step:hover { filter:brightness(1.14); }
 .outval.isplot { display:block; }

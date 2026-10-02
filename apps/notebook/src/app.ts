@@ -197,6 +197,14 @@ interface Cell {
   openEntries?: Set<string>;
   error?: { message: string; span?: { start: number; end: number } };
   showWork: boolean;
+  /** Step through the work: the reader reveals the steps one at a time and the output waits for the
+   *  last. The number is how many steps show at first (the author's choice, saved); absent shows the
+   *  work at once. */
+  stepwise?: number;
+  /** How many steps the reader has revealed (not saved), and the source that count belongs to: the
+   *  cell run with another source starts again from `stepwise`. */
+  revealed?: number;
+  revealedFor?: string;
   /** Waiting its turn behind the cell the engine is evaluating (shown as In[*]). */
   queued?: boolean;
   el?: HTMLElement;
@@ -943,7 +951,7 @@ function renderTabs() {
 interface ChalkFile {
   /** Format version. Files written as `.lemma` before the rename carry `lemma: 1` instead and still open. */
   chalk?: 1; lemma?: 1; name: string;
-  cells: { src: string; type?: Cell["type"] | undefined; collapsed?: boolean | undefined; showWork: boolean; label: number | null; outLatex?: string | undefined; outText?: string | undefined; form?: string | undefined; semantics?: "real" | "complex" | undefined; echoLatex?: string | undefined; steps?: Step[] | undefined; outline?: StepOutline[] | undefined; error?: Cell["error"] | undefined; plot?: PlotData | undefined; mode?: Cell["mode"] | undefined; ask?: AskResult | undefined; file?: FileMeta | undefined; noSuggest?: true | undefined }[];
+  cells: { src: string; type?: Cell["type"] | undefined; collapsed?: boolean | undefined; showWork: boolean; stepwise?: number | undefined; label: number | null; outLatex?: string | undefined; outText?: string | undefined; form?: string | undefined; semantics?: "real" | "complex" | undefined; echoLatex?: string | undefined; steps?: Step[] | undefined; outline?: StepOutline[] | undefined; error?: Cell["error"] | undefined; plot?: PlotData | undefined; mode?: Cell["mode"] | undefined; ask?: AskResult | undefined; file?: FileMeta | undefined; noSuggest?: true | undefined }[];
   scenes: Scene[];
   /** Images attached to the notebook, by name. */
   assets?: Record<string, Asset>;
@@ -973,7 +981,7 @@ const outlineOf = (steps: Step[]): StepOutline[] => steps.map((st) => ({ rule: s
 function serializeNotebook(): string {
   const doc: ChalkFile = {
     chalk: 1, name: S.docName,
-    cells: S.cells.map((c) => ({ src: cellSrc(c), type: c.type, collapsed: c.collapsed || undefined, showWork: c.showWork, label: c.label, outLatex: c.outLatex, outText: c.outText, form: c.form, semantics: c.semantics, echoLatex: c.echoLatex, steps: stepsToSave(c), outline: outlineToSave(c), error: c.error, plot: c.plot, mode: c.mode, ask: c.ask, file: c.file, noSuggest: c.noSuggest || undefined })),
+    cells: S.cells.map((c) => ({ src: cellSrc(c), type: c.type, collapsed: c.collapsed || undefined, showWork: c.showWork, stepwise: c.stepwise, label: c.label, outLatex: c.outLatex, outText: c.outText, form: c.form, semantics: c.semantics, echoLatex: c.echoLatex, steps: stepsToSave(c), outline: outlineToSave(c), error: c.error, plot: c.plot, mode: c.mode, ask: c.ask, file: c.file, noSuggest: c.noSuggest || undefined })),
     scenes: ST.scenes,
     ...(Object.keys(S.assets).length ? { assets: S.assets } : {}),
   };
@@ -1018,6 +1026,8 @@ function cellsFromFile(doc: ChalkFile, foldWork = false): Cell[] {
     if (cell.type === "markdown") cell.editing = !c.src.trim();   // prose comes back rendered; an empty cell opens for typing
     if (c.collapsed) cell.collapsed = true;
     cell.showWork = !foldWork && (c.showWork ?? false); cell.label = c.label ?? null;
+    // a cell to step through shows its work whatever the reader folds: the steps are the exercise
+    if (typeof c.stepwise === "number" && c.stepwise >= 0) { cell.stepwise = Math.floor(c.stepwise); cell.showWork = true; }
     if (c.outLatex) cell.outLatex = c.outLatex;
     if (c.outText) cell.outText = c.outText;
     if (c.form) cell.form = c.form;
@@ -1303,7 +1313,7 @@ function importNotebook() {
 
 /** What a link carries: the name and every cell's text and kind. Outputs are not included: the
  *  engine recomputes them when the link opens, which is the point of a verified notebook. */
-interface LinkDoc { v: 1; n: string; c: { s: string; t?: "markdown" | "section" | "lean"; w?: 1; f?: 1 }[]; a?: Record<string, { m: string; d: string; b?: 1 }> }
+interface LinkDoc { v: 1; n: string; c: { s: string; t?: "markdown" | "section" | "lean"; w?: 1; f?: 1; r?: number }[]; a?: Record<string, { m: string; d: string; b?: 1 }> }
 
 async function deflate(text: string): Promise<Uint8Array> {
   const cs = new CompressionStream("deflate-raw");
@@ -1329,7 +1339,7 @@ function unb64url(s: string): Uint8Array {
 async function notebookLink(): Promise<string> {
   const doc: LinkDoc = {
     v: 1, n: S.docName,
-    c: S.cells.filter((c) => cellSrc(c).trim()).map((c) => ({ s: cellSrc(c), ...(c.type ? { t: c.type } : {}), ...(c.showWork ? { w: 1 as const } : {}), ...(c.collapsed ? { f: 1 as const } : {}) })),
+    c: S.cells.filter((c) => cellSrc(c).trim()).map((c) => ({ s: cellSrc(c), ...(c.type ? { t: c.type } : {}), ...(c.showWork ? { w: 1 as const } : {}), ...(c.collapsed ? { f: 1 as const } : {}), ...(c.stepwise !== undefined ? { r: c.stepwise } : {}) })),
     ...(Object.keys(S.assets).length ? { a: Object.fromEntries(Object.values(S.assets).map((a) => [a.name, { m: a.mime, d: a.data, ...(a.binary ? { b: 1 as const } : {}) }])) } : {}),
   };
   const json = JSON.stringify(doc);
@@ -1356,7 +1366,7 @@ async function openNotebookLink(hash: string): Promise<boolean> {
     if (doc.v !== 1 || !Array.isArray(doc.c)) throw new Error("not a notebook link");
     const file: ChalkFile = {
       chalk: 1, name: doc.n || "shared.chalk",
-      cells: doc.c.map((c) => ({ src: String(c.s ?? ""), type: c.t === "markdown" || c.t === "section" || c.t === "lean" ? c.t : undefined, collapsed: c.f ? true : undefined, showWork: !!c.w, label: null })),
+      cells: doc.c.map((c) => ({ src: String(c.s ?? ""), type: c.t === "markdown" || c.t === "section" || c.t === "lean" ? c.t : undefined, collapsed: c.f ? true : undefined, showWork: !!c.w, stepwise: typeof c.r === "number" ? c.r : undefined, label: null })),
       scenes: [],
       ...(doc.a ? { assets: Object.fromEntries(Object.entries(doc.a).map(([name, a]) => [name, { name, mime: String(a.m), data: String(a.d), ...(a.b ? { binary: true } : {}) }])) } : {}),
     };
@@ -2898,6 +2908,50 @@ const shownSteps = (steps: Step[] | undefined): number => (steps ?? []).filter((
 const workCount = (cell: Cell): number =>
   cell.steps?.length ? shownSteps(cell.steps) : (cell.outline ?? []).filter((st) => !st.quiet).length;
 
+/** How many of a cell's shown steps are on the page: all of them, unless the cell is stepped through. */
+function revealedCount(cell: Cell): number {
+  if (cell.stepwise === undefined) return Infinity;
+  if (cell.revealedFor !== cell.src) { cell.revealed = cell.stepwise; cell.revealedFor = cell.src; }
+  return cell.revealed ?? cell.stepwise;
+}
+/** Whether a stepped-through cell still holds its answer back: steps remain to reveal. */
+const answerHeld = (cell: Cell): boolean => cell.stepwise !== undefined && !cell.error && revealedCount(cell) < workCount(cell);
+/** Reveal a stepped-through cell's steps up to `n` (Infinity: all), keeping the focus on its controls. */
+function revealSteps(cell: Cell, n: number) {
+  const had = !!cell.el?.contains(document.activeElement) && !!document.activeElement?.closest(".stepnext, .outheld");
+  revealedCount(cell);
+  cell.revealed = Math.max(0, Math.min(n, workCount(cell)));
+  renderCellBody(cell);
+  if (had) cell.el?.querySelector<HTMLElement>(".stepnext [data-next], .stepnext [data-again]")?.focus();
+}
+/** Under a stepped-through cell's revealed steps: the next one, all of them, or (once all show) again. */
+function stepControls(cell: Cell): HTMLElement {
+  const row = h("div", "stepnext");
+  const n = workCount(cell), k = revealedCount(cell);
+  const btn = (label: string, title: string, act: () => void, key?: string) => {
+    const b = asButton(h("span", "stepbtn", label), title); b.title = title;
+    if (key) b.dataset[key] = "";
+    b.addEventListener("mousedown", (e) => e.preventDefault());
+    b.addEventListener("click", (ev) => { ev.stopPropagation(); act(); });
+    return b;
+  };
+  if (k < n) {
+    row.append(btn(k === 0 ? "▸ First step" : "▸ Next step", "Show the next step (try to say what it is first)", () => revealSteps(cell, k + 1), "next"),
+      h("span", "stepof", `${k} of ${n} step${n === 1 ? "" : "s"} shown`),
+      btn("Show all", "Show every step and the answer", () => revealSteps(cell, Infinity)));
+  } else {
+    row.append(h("span", "stepof", `All ${n} step${n === 1 ? "" : "s"} shown`),
+      btn("↺ Step through again", "Hide the steps and the answer again", () => revealSteps(cell, cell.stepwise ?? 0), "again"));
+  }
+  return row;
+}
+/** Make a cell one to step through (from `from` steps shown), or show its work at once again. */
+function setStepwise(cell: Cell, from: number | undefined) {
+  if (from === undefined) { delete cell.stepwise; delete cell.revealed; delete cell.revealedFor; }
+  else { cell.stepwise = from; cell.showWork = true; cell.revealed = from; cell.revealedFor = cell.src; }
+  renderCellBody(cell); renderChrome(); autosave();
+}
+
 /** The fetch of a cell's steps under way, so opening the work twice asks once. */
 const WORK_LOADS = new WeakMap<Cell, Promise<void>>();
 /** Why a cell's steps could not be fetched, until the cell is evaluated again (not saved). */
@@ -3151,8 +3205,9 @@ function renderCellBody(cell: Cell) {
     };
     const rows: HTMLElement[] = [];   // by step index, which is what `engine.explain` takes; a folded step has none
     const nums = stepNumbers(cell.steps);
+    const upTo = revealedCount(cell);
     cell.steps.forEach((st, n) => {
-      if (nums[n] === undefined) return;
+      if (nums[n] === undefined || nums[n]! > upTo) return;
       const row = stepRow(st, String(nums[n]), statusOf(st, cellComplex(cell)), { kind: "step", index: n });
       row.addEventListener("click", () => void explain(cell, { kind: "step", index: n }, []));
       work.append(row);
@@ -3162,6 +3217,7 @@ function renderCellBody(cell: Cell) {
     // the cell keeps the steps, not the derivation: its input is the first step's before, rendered as the echo
     const first = cell.steps[0]!;
     markChanges(rows, { input: first.before, steps: cell.steps, output: cell.steps[cell.steps.length - 1]!.after, ...(cell.echoLatex ? { inputRendered: { text: "", latex: cell.echoLatex } } : {}) });
+    if (cell.stepwise !== undefined) work.append(stepControls(cell));
     body.append(work);
   }
 
@@ -3170,7 +3226,13 @@ function renderCellBody(cell: Cell) {
     const out = h("div", "outrow");
     out.append(h("div", "prompt", `Out[${cell.label}]=`));
     const val = h("div", "outval");
-    if (cell.hasse) {
+    if (answerHeld(cell)) {
+      // stepping through: the answer is the last step's, and waits for it
+      const held = asButton(h("span", "outheld", "?"), "Reveal the answer");
+      held.title = "The answer shows after the last step. Click to reveal every step and the answer.";
+      held.addEventListener("click", () => { revealSteps(cell, Infinity); });
+      val.append(held);
+    } else if (cell.hasse) {
       const box = h("div", "plotbox");
       box.append(hasseSvg(cell.hasse));
       const cap = h("div", "plotcap", cell.summary ?? "");
@@ -3251,7 +3313,7 @@ function renderCellBody(cell: Cell) {
       wireTerm(val, cell, { kind: "output" });
     }
     // the output form: a per-cell choice of typesetting, like Mathematica's //MatrixForm
-    if (!cell.hasse && !cell.plot && (!cell.file || tabularCell(cell))) {
+    if (!cell.hasse && !cell.plot && (!cell.file || tabularCell(cell)) && !answerHeld(cell)) {
       const forms = formsFor(cell);
       const fs = document.createElement("select"); fs.className = "formsel"; fs.title = "Output form"; fs.setAttribute("aria-label", "Output form");
       for (const [v, label] of forms) { const o = document.createElement("option"); o.value = v; o.textContent = label; o.selected = formOf(cell) === v; fs.append(o); }
@@ -3270,7 +3332,7 @@ function renderCellBody(cell: Cell) {
   // per-cell actions beyond Run exist only once there is output
   const acts = el.querySelector(".cellacts")!;
   while (acts.childElementCount > 1) acts.lastElementChild!.remove();
-  if (workCount(cell)) {
+  if (workCount(cell) && cell.stepwise === undefined) {
     const tw = asButton(h("span", undefined, cell.showWork ? "▾ Hide work" : `▸ Work (${workCount(cell)})`));
     tw.setAttribute("aria-expanded", String(cell.showWork));
     tw.addEventListener("mousedown", (e) => e.preventDefault());
@@ -3791,6 +3853,13 @@ function toggleCellMenu(cell: Cell, anchor: HTMLElement) {
     item("Run section", () => void runSection(i));
     item(cell.collapsed ? "Unfold section" : "Fold section", () => { cell.collapsed = !cell.collapsed; renderCells(); renderSidebar(); autosave(); });
   } else if (sectionOf(i) >= 0) item("Run this section", () => void runSection(sectionOf(i)));
+  if (!cell.type && workCount(cell)) {
+    menu.append(h("div", "sep"));
+    item(`${cell.stepwise !== undefined ? "✓ " : ""}Step through the work`, () => setStepwise(cell, cell.stepwise === undefined ? 0 : undefined));
+    // the author's starting point: as many steps as show now, the rest left to the reader
+    const k = cell.stepwise !== undefined ? revealedCount(cell) : 0;
+    if (cell.stepwise !== undefined && k !== cell.stepwise && k < workCount(cell)) item(`Begin with ${k} step${k === 1 ? "" : "s"} shown`, () => setStepwise(cell, k));
+  }
   menu.append(h("div", "sep"));
   item("Duplicate cell", () => duplicateCell(cell));
   item("Move up", i > 0 ? () => moveCell(cell, -1) : null);

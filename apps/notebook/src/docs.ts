@@ -129,6 +129,12 @@ Every answer is the end of a derivation: the engine rewrites your input one rule
 
 View › Show all work and Hide all work set every cell at once; View › Hide work in opened notebooks keeps files and links folded when they open.
 
+## Stepping through
+
+A cell can hold its work back so you can try each step yourself first: its ⋮ menu › **Step through the work**. The steps then come one at a time with ‹▸ Next step›, and the answer stays a ‹?› until the last one shows (click the ‹?› to see everything at once). ‹↺ Step through again› hides them again.
+
+Writing a lesson, reveal as many steps as the reader should start with and choose ⋮ › **Begin with n steps shown**: the notebook saves that, so a worked example can stop just before the step you want the reader to find.
+
 ## Clicking an answer
 
 Any part of an answer, of the input interpretation or of a step can be clicked. The panel's **Explanation** then shows:
