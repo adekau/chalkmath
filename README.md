@@ -35,7 +35,7 @@ cached under `engine/toolchains/` (or unpack a `lean-wasm-*` release and set `LE
 Node and Chromium (set `CHROMIUM` to a browser executable if playwright-core's own is not installed). Without
 it, Lean cells say the build has no Lean. See ARCHITECTURE.md §4b.
 
-`node scripts/notebooks/drive.mjs --check notebooks/*.chalk` — every example notebook's cells against the
+`node scripts/notebooks/drive.mjs --check notebooks/*.chalk notebooks/courses/*/*.chalk` — every example notebook and lesson's cells against the
 answers it was written with (`notebooks/golden/`, errors a notebook shows on purpose included); after an engine
 change that alters one deliberately, `--update` rewrites them. CI runs it.
 

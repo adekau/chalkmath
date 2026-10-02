@@ -1,0 +1,121 @@
+{
+  "chalk": 1,
+  "name": "01-vectors.chalk",
+  "cells": [
+    {
+      "src": "Vectors and the dot product",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Add and scale vectors, find lengths, and use the dot product to tell when two vectors are perpendicular.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A vector is a list of numbers in brackets, `[1, 2, 3]`. Vectors add and scale entry by entry.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let u = [1, 2, 3]",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let v = [4, -1, 2]",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "u + v",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "2u",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The dot product",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Dot product and length\n> $u \\cdot v = \\sum_i u_i v_i$, and the length of $v$ is $\\lVert v \\rVert = \\sqrt{v \\cdot v}$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "dot(u, v)",
+      "showWork": true,
+      "label": null,
+      "stepwise": 0
+    },
+    {
+      "src": "norm([3, 4])",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "norm(u)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!theorem] Angle\n> $u \\cdot v = \\lVert u \\rVert\\, \\lVert v \\rVert \\cos\\theta$, where $\\theta$ is the angle between them. So $u \\cdot v = 0$ exactly when $u$ and $v$ are perpendicular.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "dot([1, 2], [2, -1])",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "dot([1, 2, 3], [4, 5, 6])",
+      "type": "exercise",
+      "prompt": "Compute $(1, 2, 3) \\cdot (4, 5, 6)$.",
+      "hints": [
+        "Multiply entry by entry and add: $1 \\cdot 4 + 2 \\cdot 5 + 3 \\cdot 6$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "norm([6, 8])",
+      "type": "exercise",
+      "prompt": "How long is the vector $(6, 8)$?",
+      "hints": [
+        "$\\sqrt{6^2 + 8^2}$."
+      ],
+      "hideQuestion": true,
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "dot([2, 3], [3, -2])",
+      "type": "exercise",
+      "prompt": "Compute $(2, 3) \\cdot (3, -2)$. What does the answer say about the two vectors?",
+      "hints": [
+        "Zero means perpendicular."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Vectors add and scale entrywise; the dot product turns two vectors into a number that is zero exactly when they are perpendicular.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

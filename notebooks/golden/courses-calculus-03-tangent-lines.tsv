@@ -1,0 +1,11 @@
+2	let f = x^3 - 3x	= x^3 - 3*x
+3	diff(f, x)	= 3*x^2 - 3
+5	diff(f, x, 2)	= 6*x
+8	subst(diff(f, x), x, 2)	= 9
+11	let a = 2	= 2
+12	let s = subst(diff(f, x), x, a)	= 9
+13	let t = subst(f, x, a) + s*(x - a)	= 9*(x - 2) + 2
+14	plot([f, t], x, -2.5, 2.5)	= [x^3 - 3*x, 9*(x - 2) + 2]
+16	subst(diff(x^2, x), x, 3)	= 6
+17	diff(x^4, x, 2)	= 12*x^2
+18	subst(diff(f, x, 2), x, 1)	= 6

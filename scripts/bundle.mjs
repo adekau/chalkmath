@@ -18,7 +18,7 @@ await build({ ...out, entryPoints: ["apps/notebook/src/app.ts"], format: "esm", 
 await build({ entryPoints: ["apps/notebook/src/fonts.css"], bundle: true, minify: true, outfile: "apps/notebook/dist/style.css", logLevel: "info",
   loader: { ".woff2": "file", ".woff": "file", ".ttf": "file" }, assetNames: "fonts/[name]-[hash]" });
 cpSync("apps/notebook/assets", "apps/notebook/dist", { recursive: true });   // logo.svg and any other static asset
-cpSync("notebooks", "apps/notebook/dist/examples", { recursive: true });       // File › Examples, and the welcome notebook
+cpSync("notebooks", "apps/notebook/dist/examples", { recursive: true, filter: (src) => !/[\\/]golden([\\/]|$)/.test(src) });   // the courses, the examples and the welcome notebook (the golden outcomes are CI's)
 // the licenses of everything the page ships (the fonts' OFL requires its text to travel with them)
 mkdirSync("apps/notebook/dist/licenses", { recursive: true });
 for (const [from, to] of [

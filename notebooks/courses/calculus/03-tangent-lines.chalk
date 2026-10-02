@@ -1,0 +1,139 @@
+{
+  "chalk": 1,
+  "name": "03-tangent-lines.chalk",
+  "cells": [
+    {
+      "src": "Higher derivatives and tangent lines",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Take second derivatives, find the slope of a curve at a point, and draw the tangent line there.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let f = x^3 - 3x",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "diff(f, x)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`diff(f, x, 2)` differentiates twice: the second derivative, which measures how the slope itself changes.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "diff(f, x, 2)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "Slope at a point",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The slope at one point is the derivative with a number put in for $x$: `subst(e, x, v)` substitutes.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "subst(diff(f, x), x, 2)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "The tangent line",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Tangent line\n> The tangent line to $y = f(x)$ at $x = a$ is $y = f(a) + f'(a)\\,(x - a)$: the line through the point with the curve's slope there.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let a = 2",
+      "showWork": false,
+      "label": null,
+      "slider": {
+        "min": -2,
+        "max": 2,
+        "step": 1
+      },
+      "mode": "raw"
+    },
+    {
+      "src": "let s = subst(diff(f, x), x, a)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let t = subst(f, x, a) + s*(x - a)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "plot([f, t], x, -2.5, 2.5)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> Drag `a`. At which points is the tangent flat? There $f'(a) = 3a^2 - 3 = 0$, so $a = \\pm 1$: the top of the hump and the bottom of the dip.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "subst(diff(x^2, x), x, 3)",
+      "type": "exercise",
+      "prompt": "What is the slope of $y = x^2$ at $x = 3$?",
+      "hints": [
+        "The slope is the derivative, $2x$, at $x = 3$."
+      ],
+      "hideQuestion": true,
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "diff(x^4, x, 2)",
+      "type": "exercise",
+      "prompt": "Find the second derivative of $x^4$.",
+      "hints": [
+        "Differentiate twice: $x^4 \\to 4x^3 \\to \\dots$"
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "subst(diff(f, x, 2), x, 1)",
+      "type": "exercise",
+      "prompt": "For the $f$ above, what is $f''(1)$?",
+      "hints": [
+        "$f''(x) = 6x$ (the cell above shows it)."
+      ],
+      "hideQuestion": true,
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> The derivative at a point is a number, the slope there; the tangent line is the straight line with that slope through the point. Where the slope is zero the curve turns.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

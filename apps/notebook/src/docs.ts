@@ -345,10 +345,12 @@ The page writes only the storyboard; rendering the video is Manim's job, outside
 `],
   },
   {
-    id: "examples", title: "Example notebooks", group: "Guide", parts: [md`
-# Example notebooks
+    id: "examples", title: "Courses and examples", group: "Guide", parts: [md`
+# Courses and examples
 
-Notebooks that come with ChalkMath. Each opens in its own tab (File › Examples… lists them too); change anything, and save your copy with File › Save.
+Notebooks that come with ChalkMath, grouped into **projects**: a **course** is a sequence of lessons that build on each other, with exercises the engine checks; a **collection** is notebooks to explore in any order. File › Courses and examples opens the **Courses** tab, which lists them all.
+
+A lesson opens in its own tab with a bar above it: the course it belongs to, where it is in it, how many of its exercises you have answered, and **‹ Previous** and **Next ›**. The Courses tab remembers, in this browser, which lessons you have opened and finished. Change anything in a lesson; File › Save keeps your copy.
 `, { insert: "examples" }],
   },
   {

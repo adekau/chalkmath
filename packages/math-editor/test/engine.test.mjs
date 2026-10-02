@@ -10,13 +10,21 @@ import { read, write, letHead } from "../dist/index.js";
 const root = new URL("../../../", import.meta.url);
 const exe = new URL("engine/.lake/build/bin/mathengine", root).pathname;
 
+/** The bundled notebooks: notebooks/*.chalk and the courses' lessons, notebooks/courses/<course>/*.chalk. */
+const chalkFiles = () => [
+  ...readdirSync(new URL("notebooks/", root)).filter((f) => f.endsWith(".chalk")),
+  ...readdirSync(new URL("notebooks/courses/", root)).flatMap((c) => readdirSync(new URL(`notebooks/courses/${c}/`, root)).filter((f) => f.endsWith(".chalk")).map((f) => `courses/${c}/${f}`)),
+];
+/** A cell the engine reads as notation: a math cell, or an exercise's question. */
+const mathCell = (c) => !c.type || c.type === "math" || c.type === "exercise";
+
 test("what the editor writes means what the source meant, to the engine", { skip: !existsSync(exe) && "no native engine build" }, async () => {
   const { leanNativeClient } = await import("@chalkmath/engine-host/lean-native");
   const c = leanNativeClient(exe);
   const suites = [
     { name: "golden.tsv", cells: readFileSync(new URL("engine/Tests/golden.tsv", root), "utf8").split("\n").filter(Boolean).map((l) => l.split("\t")[0]) },
-    ...readdirSync(new URL("notebooks/", root)).filter((f) => f.endsWith(".chalk")).map((f) => ({
-      name: f, cells: JSON.parse(readFileSync(new URL(`notebooks/${f}`, root), "utf8")).cells.filter((x) => !x.type || x.type === "math").map((x) => x.src),
+    ...chalkFiles().map((f) => ({
+      name: f, cells: JSON.parse(readFileSync(new URL(`notebooks/${f}`, root), "utf8")).cells.filter(mathCell).map((x) => x.src),
     })),
   ];
   const answer = (r) => JSON.stringify(r.ok === false ? { error: r.error.message } : {

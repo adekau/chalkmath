@@ -1,0 +1,122 @@
+{
+  "chalk": 1,
+  "name": "01-rules.chalk",
+  "cells": [
+    {
+      "src": "The rules of differentiation",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Differentiate polynomials and products with four rules, and read every step the engine takes.\n\n`diff(f, x)` is the derivative of $f$ with respect to $x$. The engine does not look the answer up: it applies one rule at a time, and each rule is a step you can read, with a dot that says whether the rule is proved in Lean.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Derivative\n> The derivative of $f$ at $x$ is $f'(x) = \\lim_{h \\to 0} \\dfrac{f(x + h) - f(x)}{h}$, the slope of the graph there. The rules below are consequences of this definition, so they can be applied without taking a limit each time.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Powers, sums and constants",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!theorem] Power, sum and constant-multiple rules\n> $\\dfrac{d}{dx} x^n = n x^{n-1}$, $\\quad (f + g)' = f' + g'$, $\\quad (c f)' = c f'$, and a constant has derivative $0$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "diff(x^5, x)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "A polynomial takes all four. Step through it: before each `▸ Next step`, say which rule comes next.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "diff(3x^4 - 2x + 7, x)",
+      "showWork": true,
+      "label": null,
+      "stepwise": 0
+    },
+    {
+      "src": "diff(x^4 - 5x^2 + 2, x)",
+      "type": "exercise",
+      "prompt": "Differentiate $x^4 - 5x^2 + 2$.",
+      "hints": [
+        "Differentiate term by term: the sum rule.",
+        "Each term: $\\frac{d}{dx}\\, a x^n = a n x^{n-1}$, and the constant $2$ has derivative $0$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Products",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!theorem] Product rule\n> $(fg)' = f'g + fg'$: differentiate one factor at a time and add.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "diff(x^2 * sin(x), x)",
+      "showWork": true,
+      "label": null,
+      "stepwise": 0
+    },
+    {
+      "src": "> [!mistake]\n> The derivative of a product is **not** the product of the derivatives. Here is $f' \\cdot g'$ for the same $f = x^2$ and $g = \\sin x$, which is not the answer above:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "diff(x^2, x) * diff(sin(x), x)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "diff(x^3 * cos(x), x)",
+      "type": "exercise",
+      "prompt": "Differentiate $x^3 \\cos x$.",
+      "hints": [
+        "It is a product: $f = x^3$ and $g = \\cos x$.",
+        "$f' = 3x^2$ and $g' = -\\sin x$; now $f'g + fg'$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "diff(exp(x) * cos(x), x)",
+      "type": "exercise",
+      "prompt": "Differentiate $e^x \\cos x$. (Type $e^x$ as `exp(x)`.)",
+      "hints": [
+        "$(e^x)' = e^x$: the exponential is its own derivative.",
+        "Any correct form is accepted: $e^x \\cos x - e^x \\sin x$ and $e^x(\\cos x - \\sin x)$ reduce to the same normal form."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Four rules differentiate every polynomial and every product of functions you know: power, sum, constant multiple, product. The next lesson adds the fifth, for functions inside functions.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

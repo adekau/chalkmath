@@ -5,8 +5,8 @@
 // With --check, every file given is compared with its golden outcomes in notebooks/golden/<name>.tsv:
 // each cell's answer, or its error (a notebook may show one on purpose: the poset that is not
 // antisymmetric), must be the one the notebook was written with. --update writes the golden files.
-//   node scripts/notebooks/drive.mjs --check notebooks/*.chalk
-//   node scripts/notebooks/drive.mjs --update notebooks/*.chalk
+//   node scripts/notebooks/drive.mjs --check notebooks/*.chalk notebooks/courses/*/*.chalk
+//   node scripts/notebooks/drive.mjs --update notebooks/*.chalk notebooks/courses/*/*.chalk
 //
 // Exercise cells are checked through `engine.check`: the question must evaluate, to its golden answer.
 // A cell that reads a file (import("…"), ⟦name⟧) is the page's to evaluate (files.ts), not the
@@ -84,7 +84,9 @@ for (const [k, file] of files.entries()) {
     continue;
   }
   const tsv = results.map((r) => `${r.i}\t${esc(r.src)}\t${esc(r.outcome)}`).join("\n") + "\n";
-  const gfile = path.join(goldenDir, `${path.basename(file, ".chalk")}.tsv`);
+  // notebooks/x.chalk → golden/x.tsv; notebooks/courses/c/l.chalk → golden/courses-c-l.tsv
+  const rel = path.relative(path.join(goldenDir, ".."), path.resolve(file)).replace(/\.chalk$/, "");
+  const gfile = path.join(goldenDir, `${rel.startsWith("..") ? path.basename(rel) : rel.split(path.sep).join("-")}.tsv`);
   if (flags.has("--update")) {
     mkdirSync(goldenDir, { recursive: true });
     writeFileSync(gfile, tsv);

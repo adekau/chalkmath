@@ -287,7 +287,7 @@ interface LogLine { time: string; level: "rpc" | "ok" | "err"; text: string }
 interface Shot { id: number; label: string; tex: string; anim: string; dur: number; note: string; on: boolean; cell: number | null; plot?: PlotData }
 interface Scene { id: number; name: string; shots: Shot[] }
 
-type Tab = "notebook" | "studio" | "docs";
+type Tab = "notebook" | "studio" | "docs" | "courses";
 
 /** One open notebook: its cells, its studio scenes and its own engine session. The globals below
  *  (`S.cells`, `S.docName`, `ST.scenes`, `sessionId`) are views of the current one; `stashDoc` and
@@ -309,6 +309,8 @@ interface Nb {
   hydrated: boolean;
   /** The "not run yet" notice was dismissed for this notebook. */
   noticeDismissed?: boolean;
+  /** A lesson of a course (or a notebook of a collection): which project, and which of its notebooks. */
+  project?: ProjectRef;
 }
 
 /** A phone-sized screen: the sidebar floats over the paper and starts closed, the panel starts folded. */
@@ -392,6 +394,7 @@ const S = {
   dev: prefOn("chalkmath.dev", false) || new URLSearchParams(location.search).has("dev"),
   /** Help › Documentation: whether its tab is open, the page shown, and the contents' search. */
   guide: { open: false, page: "start", query: "" },
+  courses: { open: false, project: null as string | null },
   studio: { scenes: [] as Scene[], active: 0, playing: false, t: 0, speed: 1, codeOpen: true, copied: false },
 };
 
@@ -735,6 +738,7 @@ async function checkExercise(cell: Cell, client: EngineClient, sessionId: string
           ? { equivalent: !!r.equivalent, answerLatex: r.answer.rendered.latex, normalLatex: r.answer.normalForm.latex }
           : { equivalent: false, error: r.answer.error };
         log(r.equivalent ? "ok" : "err", `answer ${r.equivalent ? "equivalent" : r.answer.ok ? "not equivalent" : r.answer.error.message}`);
+        if (docOf(cell) === currentDoc()) queueMicrotask(recordProgress);
         announce(r.equivalent ? "Correct." : r.answer.ok ? "Not equivalent to the answer." : `Error: ${r.answer.error.message}`);
       }
     }
@@ -922,7 +926,7 @@ function loadDoc(i: number) {
   S.docName = d.name; S.cells = d.cells; S.assets = d.assets; ST.scenes = d.scenes; ST.active = d.studioActive; ST.t = 0; stopPlayback();
   S.active = Math.min(d.active, Math.max(0, d.cells.length - 1)); nextLabel = d.nextLabel; sessionId = d.sessionId;
   S.sel = null; hideCompletions(); hideSigHelp(); hideHover();
-  renderChrome(); renderCells(); renderSidebar(); renderPanelHead(); renderPanel();
+  renderChrome(); renderCells(); renderSidebar(); renderPanelHead(); renderPanel(); renderLessonBar();
   if (S.tab === "studio") renderStudio();
   if (!d.hydrated && S.kernel === "ready" && S.runOnOpen) hydrate(d);
 }
@@ -998,13 +1002,13 @@ function renderTabs() {
     t.addEventListener("click", () => { if (i !== S.doc) loadDoc(i); switchTab("notebook"); });
     tabs.append(t);
   });
-  for (const [key, label] of [["studio", "manim studio"], ...(S.guide.open ? [["docs", "documentation"] as const] : [])] as const) {
+  for (const [key, label] of [["studio", "manim studio"], ...(S.courses.open ? [["courses", "courses"] as const] : []), ...(S.guide.open ? [["docs", "documentation"] as const] : [])] as const) {
     const t = asButton(h("div", `tab${S.tab === key ? " on" : ""}`), label);
     t.setAttribute("aria-current", String(S.tab === key));
     t.append(h("span", "label", label));
-    if (key === "docs") {
-      const x = asButton(h("span", "x", "×"), "Close the documentation"); x.title = "Close";
-      x.addEventListener("click", (ev) => { ev.stopPropagation(); closeDocs(); });
+    if (key === "docs" || key === "courses") {
+      const x = asButton(h("span", "x", "×"), key === "docs" ? "Close the documentation" : "Close the courses"); x.title = "Close";
+      x.addEventListener("click", (ev) => { ev.stopPropagation(); if (key === "docs") closeDocs(); else closeCourses(); });
       t.append(x);
     }
     t.addEventListener("click", () => switchTab(key));
@@ -1024,6 +1028,8 @@ interface ChalkFile {
   scenes: Scene[];
   /** Images attached to the notebook, by name. */
   assets?: Record<string, Asset>;
+  /** The project the notebook was opened from (a course's lesson), so it keeps its place in it. */
+  project?: ProjectRef;
 }
 
 /** A cell's source as the user has it now: the live editor's text when there is one. */
@@ -1053,18 +1059,21 @@ function serializeNotebook(): string {
     cells: S.cells.map((c) => ({ src: cellSrc(c), type: c.type, collapsed: c.collapsed || undefined, showWork: c.showWork, stepwise: c.stepwise, slider: c.slider, ...exerciseToSave(c), label: c.label, outLatex: c.outLatex, outText: c.outText, form: c.form, semantics: c.semantics, echoLatex: c.echoLatex, steps: stepsToSave(c), outline: outlineToSave(c), error: c.error, plot: c.plot, mode: c.mode, ask: c.ask, file: c.file, noSuggest: c.noSuggest || undefined })),
     scenes: ST.scenes,
     ...(Object.keys(S.assets).length ? { assets: S.assets } : {}),
+    ...(currentDoc()?.project ? { project: currentDoc()!.project } : {}),
   };
   return JSON.stringify(doc, null, 2);
 }
 
 /** Replace the notebook with a file's contents: saved outputs show at once, then every cell is
  *  re-run in order so the engine's session (and with it `explain`) matches what is shown. */
-async function loadNotebook(text: string, name?: string) {
+async function loadNotebook(text: string, name?: string, project?: ProjectRef) {
   let doc: ChalkFile;
   try { doc = JSON.parse(text) as ChalkFile; } catch { notify("err", "That file is not a ChalkMath notebook (it is not valid JSON)."); return; }
   if ((doc.chalk !== 1 && doc.lemma !== 1) || !Array.isArray(doc.cells)) { notify("err", "That file is not a ChalkMath notebook."); return; }
   const d = makeDoc(name ?? doc.name ?? "untitled.chalk", cellsFromFile(doc, S.foldWorkOnOpen), Array.isArray(doc.scenes) ? doc.scenes : [], assetsFromFile(doc));
   if (!d.cells.length) d.cells.push(freshCell());
+  const pr = project ?? projectRefOf(doc);
+  if (pr) d.project = pr;
   // an untouched new notebook is replaced; otherwise the file gets its own tab
   const cur = currentDoc();
   if (cur && docPristine(cur)) { stashDoc(); S.docs[S.doc] = d; S.doc = -1; loadDoc(S.docs.indexOf(d)); }
@@ -1446,14 +1455,17 @@ const EXAMPLES: { file: string; title: string; blurb: string }[] = [
   { file: "order-lattices.chalk", title: "Order and lattices", blurb: "Part I of From Zero to Propagators: partial orders, joins and meets, monotone maps and fixed points, with the proofs in Lean cells." },
 ];
 
-/** Open a bundled notebook in a tab (or show it, if it is open already). */
-async function openExample(file: string): Promise<boolean> {
-  const open = S.docs.findIndex((d) => d.name === file);
+/** Open a bundled notebook in a tab (or show it, if it is open already). `file` is its path under
+ *  examples/; a lesson opens with its place in its project. */
+async function openExample(file: string, project?: ProjectRef): Promise<boolean> {
+  const name = file.split("/").pop()!;
+  const open = S.docs.findIndex((d) => d.name === name && (!project || (d.project?.id === project.id && d.project.lesson === project.lesson)));
   if (open >= 0) { loadDoc(open); switchTab("notebook"); return true; }
   try {
     const res = await fetch(`examples/${file}?v=${typeof __BUILD_ID__ === "string" ? __BUILD_ID__ : "dev"}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    await loadNotebook(await res.text(), file);
+    await loadNotebook(await res.text(), name, project);
+    if (project) recordProgress();
     return true;
   } catch (e) {
     notify("err", `Could not open ${file}: ${e instanceof Error ? e.message : String(e)}`);
@@ -1461,17 +1473,153 @@ async function openExample(file: string): Promise<boolean> {
   }
 }
 
-function showExamples() {
-  const list = h("div", "liblist");
-  for (const ex of EXAMPLES) {
-    const row = h("button", "librow");
-    const main = h("div", "main");
-    main.append(h("div", "name", ex.title), h("div", "when", ex.blurb));
-    row.append(main);
-    row.addEventListener("click", () => { closeModal(); void openExample(ex.file); });
-    list.append(row);
+// --- Projects: notebooks that belong together ----------------------------------------------------
+// A project is a list of notebooks with a title: a course, whose lessons are read in order, or a
+// collection. The page ships some (notebooks/courses.json, examples/courses.json on the site); the
+// Courses tab lists them, a lesson opens with a bar that leads to the one before and after, and each
+// lesson's exercises answered are remembered in this browser.
+
+interface ProjectRef { id: string; lesson: number }
+interface Project {
+  id: string; title: string; blurb: string;
+  /** A course is read in order (lessons numbered, previous and next); a collection is not. */
+  kind: "course" | "collection";
+  /** The folder of its notebooks under examples/ ("" for the top). */
+  path: string;
+  level?: string;
+  lessons: { file: string; title: string; blurb: string }[];
+}
+/** What the page knows before courses.json arrives (or when it cannot): the example notebooks. */
+let PROJECTS: Project[] = [{ id: "explorations", title: "Explorations", kind: "collection", path: "",
+  blurb: "Notebooks that show what ChalkMath does: a tour, Fourier series drawing a llama, and order theory with its proofs in Lean.",
+  lessons: EXAMPLES.map((e) => ({ file: e.file, title: e.title, blurb: e.blurb })) }];
+const projectById = (id: string) => PROJECTS.find((p) => p.id === id);
+/** A project reference from a file, if it is well formed. */
+function projectRefOf(file: { project?: unknown }): ProjectRef | undefined {
+  const p = file.project as { id?: unknown; lesson?: unknown } | undefined;
+  return p && typeof p.id === "string" && typeof p.lesson === "number" && p.lesson >= 0 ? { id: p.id, lesson: Math.floor(p.lesson) } : undefined;
+}
+async function loadProjects() {
+  try {
+    const res = await fetch(`examples/courses.json?v=${typeof __BUILD_ID__ === "string" ? __BUILD_ID__ : "dev"}`);
+    if (!res.ok) return;
+    const j = await res.json() as { projects?: unknown };
+    const ok = Array.isArray(j.projects) ? (j.projects as Project[]).filter((p) => p && typeof p.id === "string" && typeof p.title === "string"
+      && Array.isArray(p.lessons) && p.lessons.every((l) => typeof l?.file === "string" && typeof l.title === "string")) : [];
+    if (ok.length) PROJECTS = ok.map((p) => ({ ...p, kind: p.kind === "collection" ? "collection" : "course", path: typeof p.path === "string" ? p.path : "", blurb: String(p.blurb ?? "") }));
+    if (S.tab === "courses") renderCourses();
+    renderLessonBar();
+  } catch { /* the built-in list stands */ }
+}
+const lessonPath = (p: Project, k: number) => `${p.path ? `${p.path}/` : ""}${p.lessons[k]!.file}`;
+function openLesson(p: Project, k: number) { if (p.lessons[k]) void openExample(lessonPath(p, k), { id: p.id, lesson: k }); }
+
+/** Exercises answered, by project and lesson file: `{ done, total }`, and that it was opened. */
+type Progress = Record<string, Record<string, { done: number; total: number }>>;
+function readProgress(): Progress {
+  try { const j = JSON.parse(localStorage.getItem("chalkmath.progress") ?? "{}") as Progress; return j && typeof j === "object" ? j : {}; } catch { return {}; }
+}
+/** Remember the current lesson's exercises answered (and that it was opened). */
+function recordProgress() {
+  const d = currentDoc(), pr = d?.project, p = pr && projectById(pr.id), l = p?.lessons[pr!.lesson];
+  if (!d || !pr || !l) return;
+  const ex = d.cells.filter((c) => c.type === "exercise");
+  const all = readProgress();
+  const was = all[pr.id]?.[l.file];
+  const now = { done: ex.filter((c) => c.verdict?.equivalent).length, total: ex.length };
+  if (was && was.done === now.done && was.total === now.total) return;
+  (all[pr.id] ??= {})[l.file] = now;
+  try { localStorage.setItem("chalkmath.progress", JSON.stringify(all)); } catch { /* private mode: progress is not kept */ }
+  renderLessonBar();
+}
+/** A lesson's state for the list: not opened, opened, partly done, or every exercise answered. */
+function lessonState(p: Project, k: number, prog = readProgress()): { label: string; cls: string; frac: number } {
+  const r = prog[p.id]?.[p.lessons[k]!.file];
+  if (!r) return { label: "", cls: "new", frac: 0 };
+  if (!r.total) return { label: "Read", cls: "seen", frac: 1 };
+  if (r.done >= r.total) return { label: `✓ ${r.total} of ${r.total}`, cls: "done", frac: 1 };
+  return { label: `${r.done} of ${r.total} exercises`, cls: "part", frac: r.done / r.total };
+}
+
+function openCourses(id: string | null = S.courses.project) {
+  S.courses.open = true;
+  S.courses.project = id && projectById(id) ? id : null;
+  switchTab("courses");
+}
+function closeCourses() {
+  S.courses.open = false;
+  if (S.tab === "courses") switchTab("notebook"); else renderTabs();
+}
+/** The Courses tab: every project as a card, or one project's lessons. */
+function renderCourses() {
+  const host = $(".courses"); host.innerHTML = "";
+  const page = h("div", "crspage");
+  const prog = readProgress();
+  const p = S.courses.project ? projectById(S.courses.project) : undefined;
+  if (!p) {
+    page.append(h("h1", undefined, "Courses"),
+      h("p", "crslead", "Lessons that build on each other, with exercises the engine checks, and collections of notebooks to explore. Each opens in its own tab; what you change stays in this browser."));
+    const grid = h("div", "crsgrid");
+    for (const q of PROJECTS) {
+      const card = asButton(h("div", `crscard ${q.kind}`), q.title);
+      const n = q.lessons.length;
+      const done = q.lessons.filter((_, k) => lessonState(q, k, prog).cls === "done" || lessonState(q, k, prog).cls === "seen").length;
+      card.append(h("div", "crskind", q.kind === "course" ? `Course · ${n} lesson${n === 1 ? "" : "s"}${q.level ? ` · ${q.level}` : ""}` : `Collection · ${n} notebook${n === 1 ? "" : "s"}`),
+        h("div", "crstitle", q.title), h("div", "crsblurb", q.blurb));
+      if (q.kind === "course") {
+        const bar = h("div", "crsbar"); const fill = h("i"); fill.style.width = `${Math.round((done / Math.max(1, n)) * 100)}%`; bar.append(fill);
+        const started = q.lessons.filter((_, k) => lessonState(q, k, prog).cls !== "new").length;
+        card.append(bar, h("div", "crsmeta", done ? `${done} of ${n} done` : started ? `Started: ${started} of ${n} opened` : "Not started"));
+      }
+      card.addEventListener("click", () => openCourses(q.id));
+      grid.append(card);
+    }
+    page.append(grid);
+  } else {
+    const back = asButton(h("span", "crsback", "‹ All courses"), "All courses");
+    back.addEventListener("click", () => openCourses(null));
+    page.append(back, h("h1", undefined, p.title), h("p", "crslead", p.blurb));
+    const list = h("ol", `crslessons ${p.kind}`);
+    const next = p.kind === "course" ? p.lessons.findIndex((_, k) => !["done", "seen"].includes(lessonState(p, k, prog).cls)) : -1;
+    p.lessons.forEach((l, k) => {
+      const st = lessonState(p, k, prog);
+      const li = h("li", `crslesson ${st.cls}${k === next ? " next" : ""}`);
+      const num = h("span", "crsnum", p.kind === "course" ? String(k + 1) : "•");
+      const main = h("div", "crsmain");
+      main.append(h("div", "crsltitle", l.title), h("div", "crsblurb", l.blurb));
+      if (st.label) main.append(h("div", "crsstate", st.label));
+      const go = asButton(h("span", "crsgo", st.cls === "new" ? (k === next || p.kind === "collection" ? "Start" : "Open") : st.cls === "done" ? "Review" : "Continue"), `Open ${l.title}`);
+      go.addEventListener("click", () => openLesson(p, k));
+      li.append(num, main, go);
+      li.addEventListener("dblclick", () => openLesson(p, k));
+      list.append(li);
+    });
+    page.append(list);
   }
-  showModal("Example notebooks", [list]);
+  host.append(page);
+}
+
+/** Above a lesson's cells: its course, where it is in it, its exercises, and the way on. */
+function renderLessonBar() {
+  const bar = document.querySelector<HTMLElement>(".lessonbar"); if (!bar) return;
+  const pr = currentDoc()?.project, p = pr && projectById(pr.id), l = p?.lessons[pr!.lesson];
+  bar.hidden = S.tab !== "notebook" || !p || !l;
+  bar.innerHTML = "";
+  if (!p || !l || bar.hidden) return;
+  const k = pr!.lesson;
+  const btn = (label: string, title: string, act: (() => void) | null) => {
+    const b = asButton(h("span", `lbbtn${act ? "" : " off"}`, label), title); b.title = title;
+    if (act) b.addEventListener("click", act); else b.setAttribute("aria-disabled", "true");
+    return b;
+  };
+  const where = h("span", "lbwhere");
+  const crs = asButton(h("span", "lbcourse", p.title), `${p.title}: all lessons`);
+  crs.addEventListener("click", () => openCourses(p.id));
+  where.append(crs, document.createTextNode(p.kind === "course" ? ` · Lesson ${k + 1} of ${p.lessons.length}` : ""));
+  const st = lessonState(p, k);
+  bar.append(where, h("span", "lbtitle", l.title), h("span", `lbstate ${st.cls}`, st.label && st.cls !== "seen" ? st.label : ""), h("span", "spacer"),
+    btn("‹ Previous", k > 0 ? p.lessons[k - 1]!.title : "", k > 0 ? () => openLesson(p, k - 1) : null),
+    btn("Next ›", k < p.lessons.length - 1 ? p.lessons[k + 1]!.title : "", k < p.lessons.length - 1 ? () => openLesson(p, k + 1) : null));
 }
 
 const SHORTCUTS: [string, string][] = [
@@ -2061,7 +2209,7 @@ function shell() {
       const side = h("aside", "sidebar"); side.setAttribute("aria-label", "Sidebar");
       body.append(rail, side, (() => {
         const main = h("div", "main"); main.setAttribute("role", "main");
-        main.append(h("div", "toolbar"), h("div", "notice"), h("div", "cells"), h("div", "docs"), h("div", "studio"), h("div", "panel"));
+        main.append(h("div", "toolbar"), h("div", "lessonbar"), h("div", "notice"), h("div", "cells"), h("div", "docs"), h("div", "courses"), h("div", "studio"), h("div", "panel"));
         return main;
       })());
       return body;
@@ -2080,7 +2228,7 @@ function renderChrome() {
   brand.append(mark, h("h1", "name", "ChalkMath"));
   const menus = h("div", "menus");
   const MENUS: Record<string, [string, () => void][]> = {
-    File: [["New notebook", newNotebook], ["Open…", openNotebook], ["Examples…", showExamples], ["Save", () => saveNotebook()], ["Save as…", saveNotebookAs], ["Export to file…", exportNotebook], ["Import from file…", importNotebook], ["Attach file…", attachFile], ["Copy link to notebook", () => void copyNotebookLink()]],
+    File: [["New notebook", newNotebook], ["Open…", openNotebook], ["Courses and examples…", () => openCourses()], ["Save", () => saveNotebook()], ["Save as…", saveNotebookAs], ["Export to file…", exportNotebook], ["Import from file…", importNotebook], ["Attach file…", attachFile], ["Copy link to notebook", () => void copyNotebookLink()]],
     Edit: [["Add math cell", () => { addCell(); focusCell(S.cells.length - 1); }], ["Add Markdown cell", () => { addCell("", "markdown"); focusCell(S.cells.length - 1); }], ["Add section", () => { addCell("", "section"); focusCell(S.cells.length - 1); }], ["Add Lean cell", () => { addCell("", "lean"); focusCell(S.cells.length - 1); }], ["Add exercise", () => { addCell("", "exercise"); focusCell(S.cells.length - 1); }],
       ...(S.cells[S.active] ? CELL_TYPES.filter(([t]) => t !== (S.cells[S.active]!.type ?? "math")).map(([t, label]): [string, () => void] => [`Change to ${label.toLowerCase()}`, () => convertCell(S.cells[S.active]!, t)]) : []),
       ["Clear outputs", clearOutputs]],
@@ -2110,7 +2258,7 @@ function renderChrome() {
       ["Lookup settings…", () => void showAskSettings()]],
     Kernel: [...(S.running ? [["Interrupt", () => void interrupt()] as [string, () => void]] : []),
       ["Restart kernel", () => void restartKernel()], ["Restart and run all", async () => { await restartKernel(); await runAll(); }]],
-    Help: [["Documentation", () => openDocs()], ["Welcome notebook", () => void openExample("welcome.chalk")], ["Example notebooks…", showExamples], ["Keyboard shortcuts", showShortcuts],
+    Help: [["Documentation", () => openDocs()], ["Welcome notebook", () => void openExample("welcome.chalk")], ["Courses…", () => openCourses()], ["Keyboard shortcuts", showShortcuts],
       ["Manim Studio", () => switchTab("studio")], ["About ChalkMath", showAbout],
       [`${S.dev ? "✓ " : ""}Developer mode`, () => { S.dev = !S.dev; setPref("chalkmath.dev", S.dev); if (!S.dev && S.panelTab === "log") S.panelTab = "explain"; renderChrome(); renderPanelHead(); renderPanel(); }]],
   };
@@ -2260,9 +2408,12 @@ function renderView() {
   renderNotice();
   $(".toolbar").hidden = S.tab !== "notebook";
   $(".docs").hidden = S.tab !== "docs";
+  $(".courses").hidden = S.tab !== "courses";
   $(".studio").hidden = S.tab !== "studio";
   $(".panel").hidden = S.tab !== "notebook";
+  renderLessonBar();
   if (S.tab === "docs") renderDocs();
+  if (S.tab === "courses") renderCourses();
   if (S.tab === "studio") renderStudio();
 }
 
@@ -4686,10 +4837,10 @@ function docPart(part: DocPart): HTMLElement {
     }
     case "examples": {
       const list = h("div", "exlist");
-      for (const ex of EXAMPLES) {
+      for (const p of PROJECTS) {
         const card = asButton(h("div", "excard"));
-        card.append(h("div", "t", ex.title), h("div", "b", ex.blurb));
-        card.addEventListener("click", () => void openExample(ex.file));
+        card.append(h("div", "t", p.title), h("div", "b", `${p.kind === "course" ? `A course in ${p.lessons.length} lessons` : `${p.lessons.length} notebooks`}: ${p.blurb}`));
+        card.addEventListener("click", () => openCourses(p.id));
         list.append(card);
       }
       return list;
@@ -6048,8 +6199,8 @@ renderPanelHead();
 renderPanel();
 renderView();
 document.addEventListener("click", () => { if (S.menu) { S.menu = null; renderChrome(); } closeCellMenu(); });
-document.querySelector(".cells")?.addEventListener("scroll", () => closeCellMenu(), { passive: true });
-trackViewSection();   // a fixed menu must not float away from its cell
+document.querySelector(".cells")?.addEventListener("scroll", () => closeCellMenu(), { passive: true });   // a fixed menu must not float away from its cell
+trackViewSection();
 document.addEventListener("keydown", (ev) => {
   if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === "s") { ev.preventDefault(); if (ev.shiftKey) saveNotebookAs(); else saveNotebook(); }
   if ((ev.metaKey || ev.ctrlKey) && !ev.shiftKey && ev.key.toLowerCase() === "b") { ev.preventDefault(); toggleSidebar(); }
@@ -6069,9 +6220,11 @@ if (saved) {
       const d = makeDoc(file.name ?? "untitled.chalk", cellsFromFile(file), Array.isArray(file.scenes) ? file.scenes : [], assetsFromFile(file));
       if (!d.cells.length) d.cells.push(freshCell());
       d.hydrated = false;
+      const pr = projectRefOf(file);
+      if (pr) d.project = pr;
       S.docs.push(d);
       // the saved text is what the tab compares against; a dirty document compares against nothing
-      d.text = JSON.stringify({ chalk: 1, name: d.name, cells: file.cells, scenes: d.scenes, ...(Object.keys(d.assets).length ? { assets: d.assets } : {}) }, null, 2);
+      d.text = JSON.stringify({ chalk: 1, name: d.name, cells: file.cells, scenes: d.scenes, ...(Object.keys(d.assets).length ? { assets: d.assets } : {}), ...(pr ? { project: pr } : {}) }, null, 2);
       d.savedText = dirty ? "" : d.text;
     }
     restoredActive = "chalkmath" in parsed && typeof parsed.active === "number" ? parsed.active : 0;
@@ -6090,6 +6243,7 @@ if (firstVisit) void openExample("welcome.chalk").then((ok) => {
   S.cells.splice(0, S.cells.length, ...SAMPLES.map((src) => freshCell(src)), freshCell());
   d.savedText = serializeNotebook(); renderCells(); renderSidebar(); renderChrome();
 });
+void loadProjects();
 void connect().then(async () => {
   // a link with a notebook in its fragment opens that notebook (in its own tab unless the current one is untouched)
   if (location.hash.startsWith("#nb") && await openNotebookLink(location.hash)) return;

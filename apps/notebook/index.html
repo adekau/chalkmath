@@ -586,6 +586,48 @@ table.keys kbd { font:11.5px var(--mono); color:var(--ink); background:var(--pan
 .difftip .was { opacity:0.7; }
 .katex [data-path].sel { background:var(--p-sel); box-shadow:0 0 0 1px var(--p-acc-2); }
 
+/* --- courses (File › Courses and examples): projects as cards, a course's lessons in order ---- */
+.courses { flex:1; min-height:0; overflow-y:auto; color:var(--p-ink);
+  background-color:var(--paper-bg); background-image:var(--paper-mottle), var(--paper-grain); background-attachment:local, local; background-size:300px 300px, 160px 160px; }
+.courses[hidden], .lessonbar[hidden] { display:none; }
+.crspage { max-width:880px; margin:0 auto; padding:28px 24px 60px; }
+.crspage h1 { font-family:var(--serif); font-size:30px; font-weight:600; color:var(--p-ink-strong); margin:6px 0 8px; }
+.crslead { font-family:var(--serif); font-size:16px; line-height:1.6; color:var(--p-ink-2); margin:0 0 22px; max-width:66ch; }
+.crsgrid { display:grid; grid-template-columns:repeat(auto-fill, minmax(250px, 1fr)); gap:14px; }
+.crscard { display:flex; flex-direction:column; gap:6px; padding:16px 18px; border-radius:10px; border:1px solid var(--p-br-idle); background:var(--p-row-bg); cursor:pointer; }
+.crscard:hover { border-color:var(--p-br-hov); background:var(--p-hov); }
+.crskind { font:700 10px var(--font); letter-spacing:0.07em; text-transform:uppercase; color:var(--p-acc); }
+.crscard.collection .crskind { color:var(--p-mut); }
+.crstitle { font-family:var(--serif); font-size:19px; font-weight:600; color:var(--p-ink-strong); }
+.crsblurb { font-size:13px; line-height:1.55; color:var(--p-ink-3); }
+.crsbar { height:4px; border-radius:2px; background:var(--p-no-bg); overflow:hidden; margin-top:6px; }
+.crsbar i { display:block; height:100%; background:var(--ok); }
+.crsmeta { font:11.5px var(--font); color:var(--p-mut); }
+.crsback { display:inline-block; font:12.5px var(--font); color:var(--p-acc); cursor:pointer; }
+.crsback:hover { text-decoration:underline; }
+.crslessons { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px; }
+.crslesson { display:grid; grid-template-columns:36px minmax(0,1fr) auto; gap:14px; align-items:center; padding:12px 16px; border-radius:9px; border:1px solid var(--p-br-idle); background:var(--p-row-bg); }
+.crslesson.next { border-color:var(--p-acc-br); background:var(--p-acc-bg); }
+.crsnum { width:28px; height:28px; border-radius:50%; display:grid; place-items:center; font:700 12.5px var(--font); color:var(--p-mut); background:var(--p-no-bg); }
+.crslesson.done .crsnum, .crslesson.seen .crsnum { color:var(--on-acc); background:var(--ok); }
+.crslesson.next .crsnum { color:var(--on-acc); background:var(--p-acc-2); }
+.crsltitle { font-family:var(--serif); font-size:16.5px; font-weight:600; color:var(--p-ink-strong); }
+.crsstate { margin-top:3px; font:11.5px var(--font); color:var(--p-mut); }
+.crslesson.done .crsstate { color:var(--ok); }
+.crsgo { padding:5px 13px; border-radius:6px; border:1px solid var(--p-btn-br); background:linear-gradient(var(--p-btn-a), var(--p-btn-b)); color:var(--p-btn-ink); font:600 12px var(--font); cursor:pointer; white-space:nowrap; }
+.crslesson.next .crsgo { border-color:var(--p-acc-br); color:var(--p-acc); background:var(--p-acc-bg); }
+.lessonbar { display:flex; align-items:center; flex-wrap:wrap; gap:10px; flex:0 0 auto; padding:6px 14px; font-size:12px; color:var(--ink-2); background:var(--panel-2); border-bottom:1px solid var(--border); }
+.lessonbar .lbcourse { color:var(--acc-hi); font-weight:600; cursor:pointer; }
+.lessonbar .lbcourse:hover { text-decoration:underline; }
+.lessonbar .lbwhere { color:var(--ink-mut); }
+.lessonbar .lbtitle { font-weight:600; color:var(--ink); }
+.lessonbar .lbstate.done { color:var(--ok); }
+.lessonbar .lbstate { color:var(--ink-mut); }
+.lessonbar .spacer { flex:1; }
+.lessonbar .lbbtn { padding:3px 10px; border-radius:5px; border:1px solid var(--border); background:var(--panel); color:var(--ink-2); cursor:pointer; }
+.lessonbar .lbbtn:hover { color:var(--ink); background:var(--hov); }
+.lessonbar .lbbtn.off { opacity:0.4; cursor:default; }
+
 /* --- documentation (Help › Documentation): contents beside a page on the paper -------- */
 .docs { flex:1; min-height:0; display:flex; }
 .docnav { flex:0 0 230px; width:230px; display:flex; flex-direction:column; min-height:0; background:var(--panel); border-right:1px solid var(--border); }
