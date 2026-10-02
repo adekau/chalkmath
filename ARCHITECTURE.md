@@ -176,7 +176,13 @@ place in the project (`project` in the file), a bar with the previous and next l
 exercises answered, which the page remembers per lesson in local storage. The lessons are built from
 what the shell offers for teaching: exercise cells (checked by `engine.check`, §3), steps held back
 to be revealed one at a time, sliders on `let n = number` that re-run the cells out of date because of
-them, and Markdown callouts. Every lesson's answers are pinned in `notebooks/golden/` and checked in CI.
+them, and Markdown callouts. **An animated graph is a played slider**: ▶ Play moves the slider through
+its range (up, or down for `h → 0`, as `slider.play` says), and each frame is the runs a drag to that
+position would make, held until they finish, so anything below a slider animates (a plot, a number, a
+matrix) and the engine stays a pure function of the source. The secant that turns into the tangent in
+the first calculus lesson is a slider `h` and a `plot([f, L, T], …)`. A plot that a slider drives keeps
+its vertical window, widened but never narrowed (`animate.ts`), so the motion read is the curve's,
+not the axes'; it is page state, not saved, and a run of the plot's own cell lets it go. Every lesson's answers are pinned in `notebooks/golden/` and checked in CI.
 
 **Help › Documentation** opens a tab beside the studio: a guide to the notebook (cells, input,
 reading the work, files, lookups and their set-up, Lean cells, the studio) and the reference pages.

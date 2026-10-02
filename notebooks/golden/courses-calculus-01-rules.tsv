@@ -1,7 +1,13 @@
-5	diff(x^5, x)	= 5*x^4
-7	diff(3x^4 - 2x + 7, x)	= 12*x^3 - 2
-8	diff(x^4 - 5x^2 + 2, x)	= 4*x^3 - 10*x
-11	diff(x^2 * sin(x), x)	= x^2*cos(x) + 2*x*sin(x)
-13	diff(x^2, x) * diff(sin(x), x)	= 2*x*cos(x)
-14	diff(x^3 * cos(x), x)	= -x^3*sin(x) + 3*x^2*cos(x)
-15	diff(exp(x) * cos(x), x)	= cos(x)*exp(x) - exp(x)*sin(x)
+5	let f = x^2	= x^2
+6	let h = 2	= 2
+7	let m = (subst(f, x, 1 + h) - subst(f, x, 1)) / h	= 4
+8	let L = subst(f, x, 1) + m*(x - 1)	= 4*(x - 1) + 1
+9	let T = subst(f, x, 1) + subst(diff(f, x), x, 1)*(x - 1)	= 2*(x - 1) + 1
+10	plot([f, L, T], x, -0.5, 3)	= [x^2, 4*(x - 1) + 1, 2*(x - 1) + 1]
+14	diff(x^5, x)	= 5*x^4
+16	diff(3x^4 - 2x + 7, x)	= 12*x^3 - 2
+17	diff(x^4 - 5x^2 + 2, x)	= 4*x^3 - 10*x
+20	diff(x^2 * sin(x), x)	= x^2*cos(x) + 2*x*sin(x)
+22	diff(x^2, x) * diff(sin(x), x)	= 2*x*cos(x)
+23	diff(x^3 * cos(x), x)	= -x^3*sin(x) + 3*x^2*cos(x)
+24	diff(exp(x) * cos(x), x)	= cos(x)*exp(x) - exp(x)*sin(x)

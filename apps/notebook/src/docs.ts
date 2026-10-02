@@ -79,6 +79,8 @@ Add one with **+ Cell** in the toolbar, from the Edit menu, or by hovering betwe
 
 A cell that binds a name to a number, ‹let n = 3›, can be a slider: its ⋮ menu › **Show as a slider**. Moving it rewrites the number, runs the cell, and runs every cell below that used ‹n›, and the cells that used what those defined, in order. **range** sets where it starts and ends and its step. A plot or an ‹epicycles› drawing that depends on ‹n› follows the slider.
 
+**▶ Play** animates it: the slider moves on its own, a step at a time, and every frame waits for the cells it runs, so a plot below it becomes an animated graph. It plays up toward the end of its range, or down toward the start when **range › play** says *down* (to let ‹h› shrink toward ‹0›, say); from the end it plays toward, it starts over. **❚❚ Pause**, or taking hold of the slider, stops it. While a slider drives a graph, the graph keeps its axes: the window only widens when a curve would leave it, so what moves is the curve and not the scale. Running the plot's own cell fits the window again.
+
 ## What a cell shows
 
 - **The input interpretation**: under the input, the engine's own reading of what you typed (with ‹%› and named values filled in), so you can see it read what you meant. View › Input interpretation hides it.

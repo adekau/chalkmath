@@ -42,7 +42,7 @@ change that alters one deliberately, `--update` rewrites them. CI runs it.
 `npm run e2e` — math cells end to end in Chromium: the bundled notebook (`npm run bundle`) against the
 native engine (`lake build`) over HTTP, checking each answer, what the page shows, and the steps of its
 work; then the notebook's teaching features (out-of-date cells, sliders, stepping through, exercises, callouts,
-usage on hover, a course's lessons). CI runs it; set `CHROMIUM` to a browser executable if playwright-core's own is not installed.
+usage on hover, a slider played to animate a plot, a course's lessons). CI runs it; set `CHROMIUM` to a browser executable if playwright-core's own is not installed.
 
 `npm run smoke:ask` — `?` lookups end to end in Chromium, against the native engine (`lake build`) and the
 bundle, with a stand-in model and synthetic pages. See ARCHITECTURE.md §4c.
