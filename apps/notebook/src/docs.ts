@@ -67,7 +67,7 @@ Add one with **+ Cell** in the toolbar, from the Edit menu, or by hovering betwe
 
 - **Enter** runs the cell; **▶ Run** in the toolbar runs the active cell, **▶▶ All** runs every cell in order.
 - A cell that has run is labelled ‹In[n]› and its answer ‹Out[n]›, numbered in the order they ran, as in Mathematica. A cell waiting its turn shows ‹In[*]›.
-- Changing a cell does not re-run the cells below it; they keep their answers until you run them.
+- Changing a cell does not re-run the cells below it; they keep their answers until you run them. When ‹let› gives a name a new value, every cell that used the old one is marked **out of date**, its answer dimmed, with **Run again** and **Run this and below** (also in Run › Run this cell and below, and the cell's ⋮ menu).
 - **■ Stop** (or Kernel › Interrupt) stops an evaluation that is taking too long. Kernel › Restart kernel starts a fresh session; Restart and run all rebuilds it from the cells.
 
 ## Names, functions and earlier answers

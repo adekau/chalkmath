@@ -218,6 +218,9 @@ interface Cell {
    *  cell run with another source starts again from `stepwise`. */
   revealed?: number;
   revealedFor?: string;
+  /** The notebook's names this cell read when it last ran, each with the version of its value then
+   *  (`BIND_VER`); a name whose value has changed since makes the cell out of date (not saved). */
+  deps?: Map<string, number>;
   /** Waiting its turn behind the cell the engine is evaluating (shown as In[*]). */
   queued?: boolean;
   el?: HTMLElement;
@@ -651,6 +654,7 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
       if ("kind" in r && r.kind === "lambda") { cell.outDeBruijn = r.renderedDeBruijn?.latex; cell.reading = r.reading; cell.kind = "λ-term"; }
       log("ok", `Out[${cell.label}] ${r.rendered.text}  (${cell.ms.toFixed(1)} ms, ${(cell.outline ?? cell.steps).length} steps)`);
       announce(`Out ${cell.label}: ${r.rendered.text}`);
+      recordRun(cell, sessionId, "bound" in r ? r.bound?.[0] : undefined, r.rendered.text);
       if ("bound" in r && r.bound?.length) {
         log("ok", `bound ${r.bound.join(", ")}`);
         const k = `${sessionId}:${r.bound[0]}`;
@@ -667,6 +671,7 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
       if (r.label) { LAST_LABEL.set(sessionId, r.label); FILE_OUTS.delete(`${sessionId}:${r.label}`); }
       delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.plot; delete cell.file; cell.steps = []; delete cell.outline;
       cell.error = r.error;
+      recordRun(cell, sessionId);
       log("err", `${r.error.code}: ${r.error.message}`);
       announce(`Error: ${r.error.message}`);
     }
@@ -709,6 +714,7 @@ async function checkExercise(cell: Cell, client: EngineClient, sessionId: string
     const r = await client.call("engine.check", { sessionId, cellId: cell.id, source: cell.src, ...(answer !== undefined ? { answer } : {}), showWork: true, paths: true, outline: true });
     cell.ms = performance.now() - t0;
     queueMicrotask(autosave);
+    recordRun(cell, sessionId);
     if (!r.ok) {
       cell.error = r.error;
       delete cell.outLatex; delete cell.outText; delete cell.echoLatex; cell.steps = []; delete cell.outline;
@@ -769,6 +775,7 @@ async function evaluateFileCell(cell: Cell, fc: { bind?: string; file: FileValue
   cell.ms = performance.now() - t0;
   cell.label = r.label ?? cell.label ?? nextLabel++;
   if (r.label) { LAST_LABEL.set(sessionId, r.label); FILE_OUTS.set(`${sessionId}:${r.label}`, file); }
+  recordRun(cell, sessionId, bind, `${file.name} ${fileSize(file)} ${JSON.stringify(file.origin)}`);
   if (bind) {
     const k = `${sessionId}:${bind}`;
     FILE_VARS.set(k, file); USER_NAMES.add(k); USER_FNS.delete(k);
@@ -1147,6 +1154,64 @@ function sectionOf(i: number): number {
   for (let k = Math.min(i, S.cells.length - 1); k >= 0; k--) if (S.cells[k]?.type === "section") return k;
   return -1;
 }
+/** Run cell `i` and every cell below it, in order: what a change above leaves to do. */
+async function runFrom(i: number) {
+  const cells = S.cells.slice(Math.max(0, i));
+  const d = currentDoc();
+  const gen = runGen;
+  for (const c of cells) { if (gen !== runGen || (d && !S.docs.includes(d))) return; if (cellSrc(c).trim()) await runCell(c); }
+}
+
+// --- Out of date: a cell whose names have changed since it ran -----------------------------------
+// When `let x = …` gives x a new value, the cells that read x keep the answers they had: they are
+// marked out of date until they run again. What a cell reads is the session's names in its source.
+
+/** Each name a session binds (`session:name`), with how many times its value has changed and the value. */
+const BIND_VER = new Map<string, { v: number; text: string }>();
+/** After a cell's evaluation: the names it read and their versions; and, when it bound a name to a
+ *  new value, that name's next version (the cells that read it become out of date). */
+function recordRun(cell: Cell, sessionId: string, bound?: string, value?: string) {
+  const own = bound ?? /^\s*let\s+([A-Za-z_][A-Za-z0-9_]*)/.exec(cell.src)?.[1];
+  const read = new Map<string, number>();
+  for (const t of tokenize(cell.src)) {
+    const b = t.kind === "id" && t.text !== own ? BIND_VER.get(`${sessionId}:${t.text}`) : undefined;
+    if (b) read.set(t.text, b.v);
+  }
+  cell.deps = read;
+  if (!bound) { renderStale(cell); return; }
+  const k = `${sessionId}:${bound}`, prev = BIND_VER.get(k);
+  if (prev && prev.text === value) return;
+  BIND_VER.set(k, { v: (prev?.v ?? 0) + 1, text: value ?? "" });
+  if (prev) for (const c of docOf(cell)?.cells ?? []) if (c !== cell && c.deps?.has(bound)) renderStale(c);
+}
+/** The names a cell read whose values have changed since it ran. */
+function staleNames(cell: Cell): string[] {
+  const d = docOf(cell); if (!d || !cell.deps?.size) return [];
+  return [...cell.deps].filter(([n, v]) => { const b = BIND_VER.get(`${d.sessionId}:${n}`); return !!b && b.v !== v; }).map(([n]) => n);
+}
+/** Mark a cell out of date (or not): its output dims and a bar says which names changed. */
+function renderStale(cell: Cell) {
+  const el = cell.el; if (!el) return;
+  const names = staleNames(cell);
+  el.classList.toggle("stale", names.length > 0);
+  el.querySelector(".stalebar")?.remove();
+  if (!names.length || S.running === cell || cell.queued) return;
+  const bar = h("div", "stalebar");
+  const text = h("span", "staletext", "Out of date: ");
+  names.forEach((n, k) => text.append(...(k === 0 ? [] : [document.createTextNode(k === names.length - 1 ? " and " : ", ")]), h("code", undefined, n)));
+  text.append(document.createTextNode(` changed since this cell ran.`));
+  bar.append(h("span", "stalemark", "⟳"), text);
+  const btn = (label: string, title: string, act: () => void) => {
+    const b = asButton(h("span", "stalebtn", label), title); b.title = title;
+    b.addEventListener("mousedown", (e) => e.preventDefault());
+    b.addEventListener("click", (ev) => { ev.stopPropagation(); act(); });
+    return b;
+  };
+  bar.append(btn("Run again", "Run this cell again", () => void runCell(cell)),
+    btn("Run this and below", "Run this cell and every cell after it, in order", () => void runFrom(S.cells.indexOf(cell))));
+  el.querySelector(".mid")?.append(bar);
+}
+
 /** Run every cell of the section headed by cell `i`, in order. */
 async function runSection(i: number) {
   const [a, b] = sectionRange(i);
@@ -1169,6 +1234,7 @@ async function restartKernel() {
   clearOutputs();
   for (const k of [...USER_FNS.keys()]) if (k.startsWith(`${sessionId}:`)) USER_FNS.delete(k);
   for (const k of [...USER_NAMES]) if (k.startsWith(`${sessionId}:`)) USER_NAMES.delete(k);
+  for (const k of [...BIND_VER.keys()]) if (k.startsWith(`${sessionId}:`)) BIND_VER.delete(k);
   for (const m of [FILE_VARS, FILE_OUTS, MATRIX_SHAPES]) for (const k of [...m.keys()]) if (k.startsWith(`${sessionId}:`)) m.delete(k);
   LAST_LABEL.delete(sessionId);
   log("ok", "kernel restarted: the session is empty");
@@ -1945,6 +2011,7 @@ function renderChrome() {
         renderChrome();
       }])],
     Run: [["Run all", () => void runAll()], ["Run cell", () => { const c = S.cells[S.active]; if (c) void runCell(c); }],
+      ["Run this cell and below", () => void runFrom(S.active)],
       ...(sectionOf(S.active) >= 0 ? [[`Run section “${(cellSrc(S.cells[sectionOf(S.active)]!) || "untitled").slice(0, 24)}”`, () => void runSection(sectionOf(S.active))] as [string, () => void]] : []),
       [`${S.runOnOpen ? "✓ " : ""}Run notebooks when opened`, () => { S.runOnOpen = !S.runOnOpen; setPref("chalkmath.runonopen", S.runOnOpen); renderChrome(); }],
       ["Lookup settings…", () => void showAskSettings()]],
@@ -3437,6 +3504,7 @@ function renderCellBody(cell: Cell) {
     if (cell.ask && ASK_CELL.test(cell.src)) out.append(h("div"), askInfo(cell, !!ASK_CELL.exec(cell.src)?.[1]), h("div"));
   }
   markSelection();
+  renderStale(cell);
 
   // per-cell actions beyond Run exist only once there is output
   const acts = el.querySelector(".cellacts")!;
@@ -4090,6 +4158,7 @@ function toggleCellMenu(cell: Cell, anchor: HTMLElement) {
     item("Run section", () => void runSection(i));
     item(cell.collapsed ? "Unfold section" : "Fold section", () => { cell.collapsed = !cell.collapsed; renderCells(); renderSidebar(); autosave(); });
   } else if (sectionOf(i) >= 0) item("Run this section", () => void runSection(sectionOf(i)));
+  item("Run this and below", () => void runFrom(i));
   if ((!cell.type || (cell.type === "exercise" && cell.solution)) && workCount(cell)) {
     menu.append(h("div", "sep"));
     item(`${cell.stepwise !== undefined ? "✓ " : ""}Step through the work`, () => setStepwise(cell, cell.stepwise === undefined ? 0 : undefined));

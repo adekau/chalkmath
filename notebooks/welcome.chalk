@@ -20,7 +20,7 @@
       "label": null
     },
     {
-      "src": "That is the product rule, then the power rule, each a step you can read. A few things to try:\n\n- **Show or hide the steps** with the `Work` button beside a cell (it appears when you hover), or View › Show all work.\n- **Click any part of an answer**, a single term or a whole fraction, and the panel below says which rule produced it and traces it back through the steps.\n- **Change a cell** and press Enter again. The cells below keep their answers until you run them.\n- Press **Enter in the empty cell at the bottom** to start your own work.",
+      "src": "That is the product rule, then the power rule, each a step you can read. A few things to try:\n\n- **Show or hide the steps** with the `Work` button beside a cell (it appears when you hover), or View › Show all work.\n- **Click any part of an answer**, a single term or a whole fraction, and the panel below says which rule produced it and traces it back through the steps.\n- **Change a cell** and press Enter again. The cells below keep their answers until you run them; a cell that used a name you changed says it is out of date.\n- Press **Enter in the empty cell at the bottom** to start your own work.",
       "type": "markdown",
       "showWork": false,
       "label": null

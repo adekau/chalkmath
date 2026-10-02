@@ -24,7 +24,7 @@ That is the product rule, then the power rule, each a step you can read. A few t
 
 - **Show or hide the steps** with the ‹Work› button beside a cell (it appears when you hover), or View › Show all work.
 - **Click any part of an answer**, a single term or a whole fraction, and the panel below says which rule produced it and traces it back through the steps.
-- **Change a cell** and press Enter again. The cells below keep their answers until you run them.
+- **Change a cell** and press Enter again. The cells below keep their answers until you run them; a cell that used a name you changed says it is out of date.
 - Press **Enter in the empty cell at the bottom** to start your own work.
 `);
 

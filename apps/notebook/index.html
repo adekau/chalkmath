@@ -438,6 +438,12 @@ html[data-outsize="l"] { --sz-out:28px; --sz-echo:22px; --sz-work:19px; --sz-sub
 .xc-edit textarea { font:14px var(--font); padding:7px 10px; border-radius:6px; border:1px solid var(--p-input-br); background:var(--p-input-bg); color:var(--p-ink); resize:vertical; min-height:2.4em; }
 .xc-check { font:12.5px var(--font); color:var(--p-ink-2); display:flex; align-items:center; gap:6px; }
 .cell.exercise > .prompt { color:var(--p-acc); }
+.cell.stale .outval, .cell.stale .work, .cell.stale .echo { opacity:0.5; }
+.stalebar { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin:8px 0 0 8px; padding:5px 10px; border-radius:6px; font:12px var(--font); color:var(--p-ink-2); background:var(--p-acc-bg); border:1px solid var(--p-acc-br); }
+.stalebar .stalemark { color:var(--p-acc); font-weight:700; }
+.stalebar code { font:11.5px var(--code); color:var(--p-acc); }
+.stalebar .stalebtn { padding:2px 9px; border-radius:5px; border:1px solid var(--p-btn-br); background:linear-gradient(var(--p-btn-a), var(--p-btn-b)); color:var(--p-btn-ink); cursor:pointer; }
+.stalebar .stalebtn:hover { filter:brightness(1.1); }
 .stepnext { display:flex; align-items:center; flex-wrap:wrap; gap:10px; padding:6px 11px; font-family:var(--font); font-size:12px; color:var(--p-mut); }
 .stepnext .stepbtn { padding:4px 11px; border-radius:6px; border:1px solid var(--p-btn-br); background:linear-gradient(var(--p-btn-a), var(--p-btn-b)); color:var(--p-btn-ink); cursor:pointer; }
 .stepnext .stepbtn[data-next] { border-color:var(--p-acc-br); background:var(--p-acc-bg); color:var(--p-acc); font-weight:600; }
