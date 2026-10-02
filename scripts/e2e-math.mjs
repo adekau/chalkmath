@@ -37,6 +37,11 @@ const CASES = [
   { src: "let R = rel({a, b, c}; a->b, b->c)", text: "{(a, b), (b, c)}" },
   { src: "closure(R, transitive)", text: "{(a, b), (b, c), (a, c)}", step: "Transitive closure" },
   { src: "cnf(p ∨)", error: "expected a formula" },
+  // finite algebra
+  { src: "let FA = op({na, permit, deny}; [na, permit, deny; permit, permit, permit; deny, deny, deny])", text: "[na, permit, deny; permit, permit, permit; deny, deny, deny]" },
+  { src: "fold(FA; na, deny, permit)", text: "deny", step: "Combine" },
+  { src: "let RPS = op({r, p, s}; [r, p, r; p, p, s; r, s, s])", text: "[r, p, r; p, p, s; r, s, s]" },
+  { src: "associative(RPS)", text: "false", step: "Not associative" },
 ];
 
 const root = path.resolve(import.meta.dirname, "..");
@@ -228,6 +233,14 @@ async function features() {
   const clWant = (await ref("closure(S, transitive)", 11)).visuals.find((v) => v.kind === "relation.digraph").data;
   assert.equal(await cl.locator("svg path.redge.added").count(), clWant.added.length, "the closure's pairs are dashed");
   console.log(`✓ visuals: a truth table of ${ttWant.rows.length} rows, a relation with ${trWant.bad.length} marked and ${clWant.added.length} added`);
+  // an operation's table, with the cells a failing law read marked
+  await runLast("let G = op({na, permit, deny}; [na, permit, deny; permit, permit, permit; deny, deny, deny])");
+  await ref("let G = op({na, permit, deny}; [na, permit, deny; permit, permit, permit; deny, deny, deny])", 12);
+  const cm = await runLast("commutative(G)");
+  const cmWant = (await ref("commutative(G)", 13)).visuals.find((v) => v.kind === "algebra.optable").data;
+  assert.deepEqual(await cm.locator("table.optable tbody tr").evaluateAll((trs) => trs.map((tr) => [...tr.querySelectorAll("td")].map((td) => td.textContent))), cmWant.rows, "the table is the engine's");
+  assert.equal(await cm.locator("table.optable td.opmark").count(), cmWant.marks.length, "the cells that differ are marked");
+  console.log(`✓ operation table: ${cmWant.rows.length}×${cmWant.rows.length}, ${cmWant.marks.length} cells marked where commutativity fails`);
   // a logic exercise: an equivalent answer not in CNF is refused, one in CNF is right
   const lq = "cnf(p → (q ∧ r))";
   await menu("Edit", "Add exercise");

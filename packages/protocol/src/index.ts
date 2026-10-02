@@ -143,7 +143,16 @@ export interface TruthTableData { vars: string[]; formula: Rendered; rows: boole
  *  `bad`, those that show a property failing (a pair whose reverse is missing, two that chain without
  *  their composite, …), and `added`, those a closure added. */
 export interface DigraphData { nodes: string[]; edges: [string, string][]; bad: [string, string][]; added: [string, string][] }
-export type KnownVisual = { kind: "logic.truthtable"; title?: string; data: TruthTableData } | { kind: "relation.digraph"; title?: string; data: DigraphData };
+/** `algebra.optable` (an operation cell, or a law checked on one): the set, the table row by row
+ *  (`rows[i][j]` is `elems[i] · elems[j]`), and the cells to mark, as `[row element, column element]`. */
+export interface OpTableData { elems: string[]; rows: string[][]; marks: [string, string][] }
+/** `context.table` (a formal context): objects, attributes, and which object has which. */
+export interface ContextTableData { objects: string[]; attributes: string[]; has: boolean[][] }
+export type KnownVisual =
+  | { kind: "logic.truthtable"; title?: string; data: TruthTableData }
+  | { kind: "relation.digraph"; title?: string; data: DigraphData }
+  | { kind: "algebra.optable"; title?: string; data: OpTableData }
+  | { kind: "context.table"; title?: string; data: ContextTableData };
 
 export interface EvaluateResult {
   ok: true;

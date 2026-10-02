@@ -1,4 +1,4 @@
-import { createClient, type EngineClient, type Step, type StepOutline, type Path, type RuleStatus, type Derivation, type WireExpr, type PlotResult, type HasseData, type KnownVisual, type TruthTableData, type DigraphData } from "@chalkmath/protocol";
+import { createClient, type EngineClient, type Step, type StepOutline, type Path, type RuleStatus, type Derivation, type WireExpr, type PlotResult, type HasseData, type KnownVisual, type TruthTableData, type DigraphData, type OpTableData, type ContextTableData } from "@chalkmath/protocol";
 declare const __BUILD_ID__: string;
 import { workerTransport, httpTransport } from "@chalkmath/engine-host";
 import { read as readNotation, write as writeNotation, writeText, hasNotation, templateAt, templateInText, TEMPLATES, type Stmt, type Caret, type MathEdit } from "@chalkmath/math-editor";
@@ -85,7 +85,7 @@ type CompItem = { kind: "doc"; doc: Doc }
   | { kind: "part"; insert: string; label: string; hint: string; start: number };
 
 /** An order-theory cell, or a `let` binding one: the engine reads these in their own world. */
-const ORDER_CELL = /^(let\s+\w+\s*=\s*)?(poset|divisors|subsets|chain|map|hasse|join|meet|sup|inf|upper|lower|lattice|top|bottom|le|maximal|minimal|monotone|lfp|gfp|fixpoints|rel|kernel|reflexive|symmetric|antisymmetric|transitive|equivalence|preorder|closure|classes|finer|wellfounded|measure)\s*\(/;
+const ORDER_CELL = /^(let\s+\w+\s*=\s*)?(poset|divisors|subsets|chain|map|hasse|join|meet|sup|inf|upper|lower|lattice|top|bottom|le|maximal|minimal|monotone|lfp|gfp|fixpoints|rel|kernel|reflexive|symmetric|antisymmetric|transitive|equivalence|preorder|closure|classes|finer|wellfounded|measure|op|joinop|meetop|table|associative|commutative|idempotent|semilattice|identity|fold|order|distributive|complement|complemented|boolean|product|galois|closureop|context|concepts|secure)\s*\(/;
 /** A logic cell: a logic command, or a formula with a connective or a quantifier (the engine's
  *  `Logic.isLogicSource`; a λ-term is not one). */
 const LOGIC_CELL = /^(let\s+\w+\s*=\s*)?(truthtable|taut|sat|falsify|equiv|nnf|cnf|dnf)\s*\(/;
@@ -2829,6 +2829,8 @@ function knownVisuals(vs: unknown): KnownVisual[] {
     const kind = (v as { kind?: unknown }).kind;
     if (kind === "logic.truthtable") return Array.isArray(d["vars"]) && Array.isArray(d["rows"]) && typeof (d["formula"] as { latex?: unknown } | undefined)?.latex === "string";
     if (kind === "relation.digraph") return Array.isArray(d["nodes"]) && Array.isArray(d["edges"]) && Array.isArray(d["bad"]) && Array.isArray(d["added"]);
+    if (kind === "algebra.optable") return Array.isArray(d["elems"]) && Array.isArray(d["rows"]) && Array.isArray(d["marks"]);
+    if (kind === "context.table") return Array.isArray(d["objects"]) && Array.isArray(d["attributes"]) && Array.isArray(d["has"]);
     return false;
   });
 }
@@ -2837,8 +2839,50 @@ function knownVisuals(vs: unknown): KnownVisual[] {
 function visualBox(v: KnownVisual): HTMLElement {
   const box = h("div", "visualbox");
   if (v.kind === "logic.truthtable") box.append(truthTable(v.data));
-  else box.append(digraphSvg(v.data), digraphLegend(v.data));
+  else if (v.kind === "relation.digraph") box.append(digraphSvg(v.data), digraphLegend(v.data));
+  else if (v.kind === "algebra.optable") box.append(opTable(v.data));
+  else box.append(contextTable(v.data));
   return box;
+}
+
+/** An operation's table: the row's element times the column's, the marked cells (a law failing) shaded. */
+function opTable(d: OpTableData): HTMLElement {
+  const t = h("table", "truthtable optable");
+  t.setAttribute("aria-label", `Operation table on ${d.elems.length} elements${d.marks.length ? `; marked: ${d.marks.map(([a, b]) => `${a} · ${b}`).join(", ")}` : ""}`);
+  const marked = new Set(d.marks.map(([a, b]) => `${a}\u0000${b}`));
+  const head = h("tr");
+  head.append(h("th", "optcorner", "·"));
+  for (const y of d.elems) head.append(h("th", undefined, y));
+  const thead = h("thead"); thead.append(head); t.append(thead);
+  const body = h("tbody");
+  d.rows.forEach((row, i) => {
+    const x = d.elems[i] ?? "";
+    const tr = h("tr");
+    tr.append(h("th", "oprow", x));
+    row.forEach((v, j) => tr.append(h("td", marked.has(`${x}\u0000${d.elems[j] ?? ""}`) ? "opmark" : "", v)));
+    body.append(tr);
+  });
+  t.append(body);
+  return t;
+}
+
+/** A formal context: a row per object, a column per attribute, × where the object has it. */
+function contextTable(d: ContextTableData): HTMLElement {
+  const t = h("table", "truthtable ctxtable");
+  t.setAttribute("aria-label", `A context of ${d.objects.length} objects and ${d.attributes.length} attributes`);
+  const head = h("tr");
+  head.append(h("th"));
+  for (const a of d.attributes) head.append(h("th", undefined, a));
+  const thead = h("thead"); thead.append(head); t.append(thead);
+  const body = h("tbody");
+  d.objects.forEach((o, i) => {
+    const tr = h("tr");
+    tr.append(h("th", "oprow", o));
+    (d.has[i] ?? []).forEach((b) => tr.append(h("td", undefined, b ? "×" : "")));
+    body.append(tr);
+  });
+  t.append(body);
+  return t;
 }
 
 /** A truth table: a column per variable, then the formula; T and F, the formula's false rows marked. */
@@ -3527,6 +3571,10 @@ const RULE_NAMES: Record<string, string> = {
   "logic.implication": "Eliminate →", "logic.biconditional": "Eliminate ↔", "logic.de-morgan": "De Morgan's law", "logic.double-negation": "Double negation",
   "logic.negate-constant": "Negate a constant", "logic.constants": "Simplify constants", "logic.distribute": "Distribute", "logic.complement": "Complementary literals", "logic.truthtable": "Truth table",
   "logic.evaluate": "Evaluate", "logic.bounded": "Check every element",
+  "alg.from-order": "Table from the order", "alg.associative": "Associative", "alg.commutative": "Commutative", "alg.idempotent": "Idempotent",
+  "alg.identity": "Identity element", "alg.fold": "Combine", "alg.order": "Order of a semilattice", "order.distributive": "Distributive",
+  "order.complement": "Complement", "order.boolean": "Boolean lattice", "order.product": "Product order", "order.galois": "Galois connection",
+  "order.closure-operator": "Closure operator", "order.concepts": "Concept lattice", "order.flow": "Information flow",
   "cmd.rref": "Row reduce", "cmd.integrate": "Integrate", "cmd.expand": "Expand", "cmd.subst": "Substitute", "cmd.simplify": "Simplify", "cmd.sum": "Sum", "cmd.exptotrig": "Euler's formula",
 };
 

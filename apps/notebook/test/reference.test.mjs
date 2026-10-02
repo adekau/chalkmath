@@ -23,7 +23,9 @@ const M = await load(new URL("../../../packages/math-editor/src/index.ts", impor
 // the engine's own lists (Parser.lean's builtins, mirrored by the math editor; Poset.lean's heads)
 const ORDER = ["poset", "divisors", "subsets", "chain", "map", "hasse", "join", "meet", "upper", "lower",
   "lattice", "top", "bottom", "le", "maximal", "minimal", "monotone", "lfp", "gfp", "fixpoints",
-  "rel", "kernel", "reflexive", "symmetric", "antisymmetric", "transitive", "equivalence", "preorder", "closure", "classes", "finer", "wellfounded", "measure"];
+  "rel", "kernel", "reflexive", "symmetric", "antisymmetric", "transitive", "equivalence", "preorder", "closure", "classes", "finer", "wellfounded", "measure",
+  "op", "joinop", "meetop", "table", "associative", "commutative", "idempotent", "semilattice", "identity", "fold", "order",
+  "distributive", "complement", "complemented", "boolean", "product", "galois", "closureop", "context", "concepts", "secure"];
 // Logic.lean's commands
 const LOGIC = ["truthtable", "taut", "sat", "falsify", "equiv", "nnf", "cnf", "dnf"];
 // not documented: `log` is only numeric (N), and `solve` is a reserved name with nothing behind it yet

@@ -512,6 +512,10 @@ table.truthtable th, table.truthtable td { padding:3px 12px; text-align:center; 
 table.truthtable th { font-weight:normal; border-bottom:1.5px solid var(--ink-mut); }
 table.truthtable .ttf { border-left:1.5px solid var(--ink-mut); font-weight:600; }
 table.truthtable tr.ttfalse td { background:var(--danger-soft); }
+/* an operation's table and a formal context: headers on both sides, marked cells shaded */
+table.optable th.oprow, table.ctxtable th.oprow { border-bottom:1px solid var(--border); border-right:1.5px solid var(--ink-mut); text-align:right; }
+table.optable th.optcorner { border-right:1.5px solid var(--ink-mut); }
+table.optable td.opmark { background:var(--danger-soft); color:var(--danger); font-weight:600; }
 svg .curve { fill:none; stroke:var(--acc); stroke-width:2; stroke-linejoin:round; stroke-linecap:round; }
 svg .curve.c1 { stroke:var(--curve1); } svg .curve.c2 { stroke:var(--curve2); } svg .curve.c3 { stroke:var(--curve3); } svg .curve.c4 { stroke:var(--curve4); } svg .curve.c5 { stroke:var(--curve5); }
 .plotcap .legend { display:inline-flex; align-items:center; gap:7px; margin:2px 18px 2px 0; cursor:pointer; }

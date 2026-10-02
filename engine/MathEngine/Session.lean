@@ -296,7 +296,7 @@ def orderCell (s : Session) (cellId source : String) :
         | none =>
           let f : Ord.PMap := ⟨ps⟩
           let value := Ord.setExpr (ps.map fun (a, b) => s!"{a}↦{b}")
-          done value #[] none s!"a map on {pn} ({ps.length} explicit values; other elements are fixed)" (bindF := some f)
+          done value #[] none s!"a map on {pn} ({ps.length} explicit value{if ps.length == 1 then "" else "s"}; other elements are fixed)" (bindF := some f)
     | "hasse", [p] =>
       match getP p with
       | .error msg => err msg
@@ -591,7 +591,7 @@ def orderCell (s : Session) (cellId source : String) :
               | "distributive" => "$x \\land (y \\lor z) = (x \\land y) \\lor (x \\land z)$ for every triple: distributive."
               | "complemented" => "Every element has a complement."
               | _ => "Distributive and complemented: a Boolean lattice (each complement is unique)."
-            done (bool true) #[step s!"order.{if head == "boolean" then "boolean" else if head == "distributive" then "distributive" else "complement"}" what (Ord.setExpr P.elems) (bool true)] none head
+            done (bool true) #[step s!"order.{if head == "boolean" then "boolean" else if head == "distributive" then "distributive" else "complement"}" what (Ord.setExpr P.elems) (bool true)] none (if head == "boolean" then "a Boolean lattice" else head)
         | _, _ => match Ord.latticeFailure P with
           | some (x, y, w) => err s!"not a lattice: {x} and {y} have no {w}"
           | none => err "not a lattice"

@@ -94,6 +94,16 @@ differential test with zero mismatches.
   report, which the engine checks: a closure that did not settle would be an error, not an answer.
   Kernels, classes, refinement, cycles and measures complete the set that well-founded induction
   and quotients need.
+- **Finite algebra is the order world read the other way.** A lattice is an order with joins and
+  meets, or a set with operations obeying laws; `Algebra.lean` is the second reading and the bridges.
+  An operation is its table (`op`, or `joinop` of a lattice); its laws are decided over every pair or
+  triple, and a failure marks the table's cells it read. A semilattice induces an order
+  (`x ≤ y ⇔ x · y = y`), which `AlgebraProofs.lean` proves is a partial order whose join is the
+  operation, so the two readings meet. Distributivity, complements and Boolean lattices, products,
+  maps between posets, Galois connections, closure operators, concept lattices and Denning's flow
+  check complete it. Elements can be pairs `(x, y)` (a product's) and sets `{a, b}` (a powerset's);
+  the parser reads them anywhere an element goes, and names are compared by a canonical key (spacing
+  dropped, a set's members sorted), in cells and in exercise answers.
 - **Logic is a fourth world.** `Logic.lean` reads formulas of propositional logic and bounded
   first-order formulas over finite sets of numbers, with its own grammar (ASCII spellings read as
   the glyphs). Propositional questions are decided by truth table, and `LogicProofs.lean` proves the
@@ -323,9 +333,10 @@ settings, the cell) is `apps/notebook/src/ask-cells.ts`.
 
 The engine never draws. It emits **visual specs**: declarative JSON next to `rendered`
 (`EvaluateResult.visuals`): a Cayley table, a graph, a commutative diagram, sampled plot data, a
-matrix heat map. Two kinds exist (`KnownVisual` in the protocol): `logic.truthtable`, the rows of a
-formula's table, and `relation.digraph`, a relation's pairs with the ones that break a property
-(`bad`) and the ones a closure added (`added`). The notebook draws the table as HTML and the graph
+matrix heat map. Four kinds exist (`KnownVisual` in the protocol): `logic.truthtable`, the rows of a
+formula's table; `relation.digraph`, a relation's pairs with the ones that break a property (`bad`)
+and the ones a closure added (`added`); `algebra.optable`, an operation's table with the cells a
+failing law read (`marks`); and `context.table`, a formal context's cross table. The notebook draws the tables as HTML and the graph
 as SVG, keeps them with the cell in a saved file, and ignores a kind it does not know. The frontend owns
 rendering (SVG/canvas/WebGL) and can offer several renderers for one spec. This keeps the engine
 pure and portable (wasm has no canvas), keeps proofs about what is *shown* possible (the spec is
