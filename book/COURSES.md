@@ -169,7 +169,8 @@ substitution and de Bruijn indices as commands. **Done.**
   printed as values).
 - N4 Traces stepped state by state: a trace is the derivation (a step per action), so stepping
   through it works as for any cell, and its transitions are marked on the layered state graph.
-  **Done**, except that the graph does not yet highlight the current step as you step.
+  **Done**: stepping through the work, or clicking a step, marks its transition on the graph (the
+  reply's `steps` place each step), and `trace` draws the graph too.
 - N6 Multi-line math cells (Shift+Enter starts a new line, Enter runs). **Done.**
 - N7 A course's Lean prelude. **Done.**
 - N8 A replica simulation: replicas exchanging state, duplicated and reordered, converging. With

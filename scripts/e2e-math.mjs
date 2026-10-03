@@ -389,6 +389,16 @@ async function features() {
   const invWant = (await ref("invariant(M, p = crit → lock = true)", 15)).visuals.find((v) => v.kind === "relation.digraph").data;
   assert.equal(await inv.locator("svg path.redge.bad").count(), invWant.bad.length, "the counterexample's transitions are marked");
   console.log(`✓ several lines: a system typed with Shift+Enter, ${invWant.nodes.length} states, a ${invWant.bad.length}-step counterexample marked`);
+  // a step of the trace selected in the work: its transition is the current one on the graph
+  if (await inv.locator(".work .step").count() === 0) await inv.locator(".cellacts [aria-expanded]").click();
+  await inv.locator(".work:not(.pending) .step").first().waitFor({ timeout: 30000 });
+  const stepK = invWant.steps.findIndex((m) => m?.edge);
+  assert.ok(stepK >= 0, "the engine placed no step of the trace on the graph");
+  await inv.locator(".work .step:not(.sub)").nth(stepK).click();
+  await inv.locator("svg path.redge.cur").first().waitFor({ timeout: 10000 })
+    .catch(() => assert.fail(`selecting step ${stepK + 1} marked no transition on the graph`));
+  assert.equal(await inv.locator("svg path.redge.cur").first().getAttribute("data-edge"), JSON.stringify(invWant.steps[stepK].edge), "the marked transition is the step's");
+  console.log(`✓ trace on the graph: step ${stepK + 1} selected, its transition ${invWant.steps[stepK].edge.join(" → ")} marked`);
   await manipulate();
   // a course: the Courses tab, a lesson opened, answered, and followed to the next
   const manifest = JSON.parse(readFileSync(path.join(root, "notebooks/courses.json"), "utf8"));

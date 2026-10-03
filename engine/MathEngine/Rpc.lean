@@ -366,8 +366,19 @@ def evaluateSystem (st : Store) (params : Json) (sessionId cellId src : String) 
       | some (R, bad, added) =>
         let pairs (ps : List (String × String)) : Json := .arr (ps.map fun (a, b) => Json.arr #[.str a, .str b]).toArray
         let layers : Array (String × Json) := if res.layers.isEmpty then #[] else #[("layers", .arr (res.layers.map fun n => Json.num (toString n)).toArray)]
+        -- where each step of the work is on the graph: the transition it takes, or the state it is at
+        let mark (st : Step) : Json :=
+          match Sys.labelOfStateExpr st.before, Sys.labelOfStateExpr st.after with
+          | some b, some a =>
+            if R.pairs.contains (b, a) then .obj #[("edge", .arr #[.str b, .str a])]
+            else if R.elems.contains a then .obj #[("node", .str a)] else .null
+          | _, some a => if R.elems.contains a then .obj #[("node", .str a)] else .null
+          | some b, _ => if R.elems.contains b then .obj #[("node", .str b)] else .null
+          | none, none => .null
+        let marks := res.derivation.steps.map mark
+        let stepsField : Array (String × Json) := if marks.all (fun | .null => true | _ => false) then #[] else #[("steps", .arr marks)]
         r.push ("visuals", .arr #[.obj #[("kind", .str "relation.digraph"), ("data", .obj (#[
-          ("nodes", .arr (R.elems.map Json.str).toArray), ("edges", pairs R.pairs), ("bad", pairs bad), ("added", pairs added)] ++ layers))]])
+          ("nodes", .arr (R.elems.map Json.str).toArray), ("edges", pairs R.pairs), ("bad", pairs bad), ("added", pairs added)] ++ layers ++ stepsField))]])
       | none => r
     let r := r ++ workFields params res.derivation
     let r := match res.name with | some n => r.push ("bound", .arr #[.str n]) | none => r

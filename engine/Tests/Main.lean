@@ -375,6 +375,11 @@ def sessionTests : TestM Unit := do
   let reqN (id method params : String) := s!"\{\"jsonrpc\":\"2.0\",\"id\":{id},\"method\":\"{method}\",\"params\":{params}}"
   let (stN, _) := handleS [] (reqN "20" "engine.evaluate" "{\"sessionId\":\"n\",\"cellId\":\"a\",\"source\":\"lattice(chain(3))\"}")
   checkTrue "nested: engine.steps has the inner call too" (contains (handleS stN (reqN "21" "engine.steps" "{\"sessionId\":\"n\",\"cellId\":\"a\"}")).2 "\"rule\":\"order.inner\"")
+  let tr := rpc "engine.evaluate" "{\"sessionId\":\"tr\",\"cellId\":\"a\",\"source\":\"let L = system(var c in {red, green}; init c = red; action go when c = red do c := green)\"}"
+  checkTrue "trace: a system" (contains tr "\"ok\":true") tr
+  let (stT, _) := handleS [] (reqN "22" "engine.evaluate" "{\"sessionId\":\"tr\",\"cellId\":\"a\",\"source\":\"let L = system(var c in {red, green}; init c = red; action go when c = red do c := green)\"}")
+  let (_, trc) := handleS stT (reqN "23" "engine.evaluate" "{\"sessionId\":\"tr\",\"cellId\":\"b\",\"source\":\"trace(L; go)\"}")
+  checkTrue "trace: the graph places each step, the first at its state and the next on its transition" (contains trc "\"steps\":[{\"node\":\"red\"},{\"edge\":[\"red\",\"green\"]}]") trc
   -- a definition with no normal form is bound unreduced, and the reduction is cut off by size, not hung
   (st, r) := ev st "pred := λn. fst (n (λp. pair (snd p) (succ (snd p))) (pair 0 0))"; checkTrue "λ: pred" (r.startsWith "λn.") r
   (st, r) := ev st "fact := Y (λself. λn. if (iszero n) 1 (mul n (self (pred n))))"; checkTrue "λ: a Y definition is bound unreduced" (r.startsWith "(λf. (λx. f (x x))") r

@@ -1197,14 +1197,23 @@ def systemCell (s : Session) (cellId source : String) :
       let names := (rest.splitOn ",").map (·.trimAscii.copy) |>.filter (· != "")
       let mut cur := start
       let mut steps := #[step "sys.init" s!"Start: the initial state ({(S.init.toExpr).toText})." (.var "init") (S.stateExpr start)]
+      let mut visited : List Sys.State := [start]
       for a in names do
         let act ← match S.actions.find? (·.name == a) with | some x => pure x | none => throw s!"{a} is not an action of {sn}"
         match (← S.successors cur).find? (·.1 == a) with
         | none => throw s!"{a} is not enabled in {Sys.stateLabel cur} ({(act.guard.toExpr).toText} fails)"
         | some (_, nxt) =>
           steps := steps.push (step "sys.step" s!"{act.describe}." (S.stateExpr cur) (S.stateExpr nxt))
+          visited := visited ++ [nxt]
           cur := nxt
-      return done (S.stateExpr cur) steps s!"{names.length} step{if names.length == 1 then "" else "s"}"
+      -- the trace on the graph of reachable states, its transitions marked
+      let graph := match S.explore with
+        | .ok G =>
+          let idx (x : Sys.State) := (List.range G.states.size).find? fun i => G.states[i]! == x
+          let edges := (visited.zip visited.tail).filterMap fun (a, b) => do pure (← idx a, ← idx b)
+          draw G edges []
+        | .error _ => none
+      return done (S.stateExpr cur) steps s!"{names.length} step{if names.length == 1 then "" else "s"}" (graph := graph)
     | "ctl" =>
       let (sn, ftext) := Sys.splitFirst body
       let S ← getS sn

@@ -1082,7 +1082,10 @@ export const FUNCTIONS: FnDoc[] = [
   {
     name: "trace", area: "Transition systems",
     usage: [["trace(S; a, b, …)", "runs the actions in order from the initial state and gives the state reached, a step per action."]],
-    details: ["The system must have one initial state; an action that is not enabled is an error naming the guard that fails."],
+    details: [
+      "The system must have one initial state; an action that is not enabled is an error naming the guard that fails.",
+      "The graph of reachable states is drawn with the trace's transitions marked. Stepping through the work, or clicking a step, marks where that step is on the graph; the same holds for the traces `invariant`, `reach`, `deadlock` and `eventually` give.",
+    ],
     examples: [basic("let C = system(var x in 0..3; var y in 0..3; init x = 0 ∧ y = 0; action inc when x < 3 do x := x + 1; action move when x > 0 ∧ y < 3 do x := x - 1, y := y + 1)", "trace(C; inc, inc, move)")],
     see: ["system", "invariant"],
   },

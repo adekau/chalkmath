@@ -146,6 +146,9 @@ export interface DigraphData {
   nodes: string[]; edges: [string, string][]; bad: [string, string][]; added: [string, string][];
   /** Each node's layer (a state's distance from an initial one), for a layered drawing. Optional. */
   layers?: number[];
+  /** Where each step of the cell's derivation is on the graph, in step order: the transition it takes,
+   *  or the state it is at; `null` for a step that is not on it. Optional (a state graph's). */
+  steps?: ({ edge?: [string, string]; node?: string } | null)[];
 }
 /** `algebra.optable` (an operation cell, or a law checked on one): the set, the table row by row
  *  (`rows[i][j]` is `elems[i] · elems[j]`), and the cells to mark, as `[row element, column element]`. */

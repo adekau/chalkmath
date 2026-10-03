@@ -354,6 +354,18 @@ def stateLabel (s : State) : String :=
   | [x] => x.toString
   | _ => "(" ++ ", ".intercalate (s.map Val.toString) ++ ")"
 
+/-- The label of a state written as a formula, `x = 1 ∧ y = busy` (as `System.stateExpr` writes it),
+in `stateLabel`'s form: how a step of the work is found on the graph. -/
+def labelOfStateExpr (e : Expr) : Option String :=
+  let rec eqs : Expr → Option (List Expr)
+    | .fn "∧" [a, b] => do pure ((← eqs a) ++ (← eqs b))
+    | .fn "=" [.var _, v] => some [v]
+    | _ => none
+  match eqs e with
+  | some [v] => some v.toText
+  | some vs => some ("(" ++ ", ".intercalate (vs.map Expr.toText) ++ ")")
+  | none => none
+
 def stateSet (G : Graph) (xs : List Nat) : Expr := .fn "set" (xs.map fun i => .var (stateLabel G.states[i]!))
 
 /-- The graph as a relation, for the notebook's drawing. -/

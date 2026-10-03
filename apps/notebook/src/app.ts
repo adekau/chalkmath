@@ -891,6 +891,7 @@ async function explain(cell: Cell, term: TermRef, path: Path) {
 function markSelection() {
   document.querySelectorAll(".katex [data-path].sel").forEach((x) => x.classList.remove("sel"));
   document.querySelectorAll(".step.on").forEach((x) => x.classList.remove("on"));
+  remarkGraphs();
   const sel = S.sel; if (!sel) return;
   const cell = S.cells.find((c) => c.id === sel.cellId);
   const host = cell?.el?.querySelector(`[data-term="${sel.sub ? sel.sub.key : termKey(sel.term)}"]`);
@@ -2992,6 +2993,80 @@ function knownVisuals(vs: unknown): KnownVisual[] {
   });
 }
 
+/** Mark where steps of the work are on a state graph: the trail of steps so far, and the current one
+ *  (its arrow, or its state when it takes none). A step's arrow shows its own mark class too, so a
+ *  marked transition keeps its colour under the trail. */
+function markGraphSteps(box: HTMLElement, d: DigraphData, trail: number[], cur: number | undefined) {
+  box.querySelectorAll(".redge.trail, .redge.cur, .hnode.cur").forEach((x) => x.classList.remove("trail", "cur"));
+  box.querySelectorAll<SVGPathElement>(".redge").forEach((p) => {
+    const cls = p.classList.contains("bad") ? "-bad" : p.classList.contains("added") ? "-added" : "";
+    p.setAttribute("marker-end", `url(#rel-arrow${cls})`);
+  });
+  const mark = (k: number, cls: "trail" | "cur") => {
+    const m = d.steps?.[k];
+    if (!m) return;
+    if (m.edge) {
+      const want = JSON.stringify(m.edge);
+      box.querySelectorAll<SVGPathElement>(".redge").forEach((p) => {
+        if (p.getAttribute("data-edge") !== want) return;
+        p.classList.add(cls);
+        if (cls === "cur") p.setAttribute("marker-end", "url(#rel-arrow-cur)");
+      });
+    }
+    const at = m.node ?? (cls === "cur" ? m.edge?.[1] : undefined);
+    if (at !== undefined) box.querySelectorAll(".hnode").forEach((c) => { if (c.getAttribute("data-node") === at) c.classList.add(cls); });
+  };
+  for (const k of trail) mark(k, "trail");
+  if (cur !== undefined) mark(cur, "cur");
+}
+
+/** The indices of a cell's shown steps (those the work lists), in order. */
+function shownStepIndices(cell: Cell): number[] {
+  const steps: { quiet?: boolean }[] = cell.steps?.length ? cell.steps.map((st) => ({ quiet: printsUnchanged(st) })) : (cell.outline ?? []);
+  return steps.flatMap((st, i) => st.quiet ? [] : [i]);
+}
+
+/** Where a cell's state graph marks its steps: stepping through, the steps shown so far and the last of
+ *  them; otherwise the step selected in its work, if any. */
+function graphStepMarks(cell: Cell): { trail: number[]; cur: number | undefined } {
+  if (answerHeld(cell)) {
+    const shown = shownStepIndices(cell).slice(0, revealedCount(cell));
+    return { trail: shown, cur: shown[shown.length - 1] };
+  }
+  const sel = S.sel;
+  return { trail: [], cur: sel && sel.cellId === cell.id && sel.term.kind === "step" && !sel.sub ? sel.term.index : undefined };
+}
+
+/** A cell's visuals as its output shows them. Stepping through, only a state graph that places the
+ *  steps shows, without the answer's marks, so it does not give the answer away. */
+function cellVisuals(cell: Cell): HTMLElement[] {
+  const held = answerHeld(cell);
+  const out: HTMLElement[] = [];
+  for (const v of cell.visuals ?? []) {
+    const placed = v.kind === "relation.digraph" && !!v.data.steps;
+    if (held && !placed) continue;
+    const box = visualBox(held && v.kind === "relation.digraph" ? { ...v, data: { ...v.data, bad: [], added: [] } } : v);
+    if (placed) {
+      box.dataset["steps"] = "1";
+      const { trail, cur } = graphStepMarks(cell);
+      markGraphSteps(box, v.data, trail, cur);
+    }
+    out.push(box);
+  }
+  return out;
+}
+
+/** Re-mark every state graph on the page for the current selection. */
+function remarkGraphs() {
+  for (const cell of S.cells) {
+    const box = cell.el?.querySelector<HTMLElement>(".visualbox[data-steps]");
+    const v = cell.visuals?.find((x) => x.kind === "relation.digraph" && !!x.data.steps);
+    if (!box || !v || v.kind !== "relation.digraph") continue;
+    const { trail, cur } = graphStepMarks(cell);
+    markGraphSteps(box, v.data, trail, cur);
+  }
+}
+
 /** A visual, boxed and captioned as a plot is. */
 function visualBox(v: KnownVisual): HTMLElement {
   const box = h("div", "visualbox");
@@ -3126,10 +3201,12 @@ function digraphSvg(d: DigraphData): SVGSVGElement {
   svg.setAttribute("aria-label", `A relation on ${n} element${n === 1 ? "" : "s"}${d.edges.length ? `; pairs: ${d.edges.map(([a, b]) => `${a} to ${b}`).join(", ")}` : ", no pairs"}`);
   svg.setAttribute("viewBox", `0 0 ${w} ${hgt}`); svg.setAttribute("width", String(w)); svg.setAttribute("height", String(hgt));
   const defs = document.createElementNS(NS, "defs");
-  for (const cls of ["", "bad", "added"]) {
+  for (const cls of ["", "bad", "added", "cur"]) {
     const m = document.createElementNS(NS, "marker");
     m.setAttribute("id", `rel-arrow${cls ? `-${cls}` : ""}`); m.setAttribute("viewBox", "0 0 10 10"); m.setAttribute("refX", "9"); m.setAttribute("refY", "5");
-    m.setAttribute("markerWidth", "7"); m.setAttribute("markerHeight", "7"); m.setAttribute("orient", "auto-start-reverse");
+    // a marker scales with its arrow's stroke: the current arrow is drawn thicker, so its head is set smaller
+    const mw = cls === "cur" ? "4.5" : "7";
+    m.setAttribute("markerWidth", mw); m.setAttribute("markerHeight", mw); m.setAttribute("orient", "auto-start-reverse");
     const path = document.createElementNS(NS, "path"); path.setAttribute("d", "M0,0 L10,5 L0,10 z"); path.setAttribute("class", `rhead ${cls}`);
     m.append(path); defs.append(m);
   }
@@ -3156,11 +3233,12 @@ function digraphSvg(d: DigraphData): SVGSVGElement {
     }
     path.setAttribute("class", `redge ${cls}`);
     path.setAttribute("marker-end", `url(#rel-arrow${cls ? `-${cls}` : ""})`);
+    path.setAttribute("data-edge", JSON.stringify(e));
     svg.append(path);
   }
   for (const [name, [x, y]] of pos) {
     const c = document.createElementNS(NS, "circle");
-    c.setAttribute("cx", String(x)); c.setAttribute("cy", String(y)); c.setAttribute("r", "5"); c.setAttribute("class", "hnode"); svg.append(c);
+    c.setAttribute("cx", String(x)); c.setAttribute("cy", String(y)); c.setAttribute("r", "5"); c.setAttribute("class", "hnode"); c.setAttribute("data-node", name); svg.append(c);
     const t = document.createElementNS(NS, "text");
     if (layered) {
       // centred under the node
@@ -4182,6 +4260,9 @@ function renderCellBody(cell: Cell) {
       }
       else el.append(inlineMath(st.explanation));
       row.append(el);
+      // a top-level step is selected by a click anywhere on its row, as its whole result (its part of a
+      // state graph is marked); a click on a part of the result selects that part instead
+      if (term) row.addEventListener("click", () => { void explain(cell, term, []); });
       return row;
     };
     // Nested derivations (rref's row operations, integrate's finder and its check) render below
@@ -4335,7 +4416,7 @@ function renderCellBody(cell: Cell) {
     }
     if (cell.reading) { const rd = h("span", "reading", `≡ ${cell.reading}`); rd.title = "What the normal form encodes"; val.append(rd); }
     if (cell.summary && !cell.hasse) { const rd = h("span", "reading", cell.summary); val.append(rd); }
-    if (cell.visuals?.length && !answerHeld(cell)) for (const v of cell.visuals) val.append(visualBox(v));
+    for (const box of cellVisuals(cell)) val.append(box);
     out.append(val, h("div", "brk"));
     el.append(out);
     if (cell.ask && ASK_CELL.test(cell.src)) out.append(h("div"), askInfo(cell, !!ASK_CELL.exec(cell.src)?.[1]), h("div"));
