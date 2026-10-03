@@ -121,6 +121,14 @@ the engine omits is unverified.
 \rt{sys.lasso}{unverified}{A fair cycle avoiding the goal: each fair action is taken on it or disabled as its fairness requires; the search over strongly connected sets is not yet proved complete.}
 \rt{sys.eventually}{unverified}{No deadlock and no fair cycle avoids the goal among the reachable states; the search is not yet proved complete.}
 \rt{sys.refines}{unverified}{Every transition the search found maps to an abstract step or a stutter; the search's completeness is not yet proved.}
+\rt{trs.step}{verified}{An instance of one of the system's rules, rewritten at the position the step names (\lc{step\_sound}); the steps chain from the term to the answer (\lc{normalize\_chain}), and a normal form is one no rule applies to (\lc{normalize\_normal}).}
+\rt{trs.decrease}{verified}{A rule passes when its left side's linear form has a larger constant and no smaller coefficient: then the left side is worth more whatever the variables are (\lc{decreases\_sound}), and every step lowers the term's value (\lc{step\_decreases}), so no term rewrites for ever (\lc{no\_infinite\_rewriting}). A rule that fails has values that make its left side worth no more (\lc{decreases\_complete}).}
+\rt{trs.critical}{unverified}{The overlaps come from Robinson's unification, and each side is rewritten to normal form by verified steps; that unification finds every overlap, so that no critical pair is missed, is not yet proved.}
+\rt{crdt.update}{verified}{A local update only raises entries of the replica's state (\lc{update\_inflation}).}
+\rt{crdt.merge}{verified}{The entrywise maximum: a join, commutative, associative and idempotent (\lc{merge\_comm}, \lc{merge\_assoc}, \lc{merge\_idem}).}
+\rt{crdt.send}{verified}{A message is a copy of the state; nothing to prove.}
+\rt{crdt.converged}{verified}{Decided by comparing the states; equal states read equal values.}
+\rt{crdt.diverged}{verified}{Decided by comparing the states.}
 \midrule \multicolumn{3}{l}{\textbf{Logic world}} \\
 \rt{logic.implication}{verified}{$a \to b$ and $\lnot a \lor b$ have the same value under every assignment, and the pass that applies it everywhere keeps the formula's value (\lc{arrows_sound}).}
 \rt{logic.biconditional}{verified}{$a \leftrightarrow b$ and $(a \to b) \land (b \to a)$ have the same value under every assignment; the pass keeps the formula's value (\lc{arrows_sound}).}

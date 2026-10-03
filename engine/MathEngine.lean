@@ -14,6 +14,7 @@ import MathEngine.Session
 import MathEngine.LambdaProofs
 import MathEngine.LambdaBeta
 import MathEngine.ReplicasProofs
+import MathEngine.RewritingProofs
 import MathEngine.PosetProofs
 import MathEngine.LogicProofs
 import MathEngine.RelationProofs

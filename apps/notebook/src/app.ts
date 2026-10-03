@@ -91,7 +91,7 @@ const ORDER_CELL = /^(let\s+\w+\s*=\s*)?(poset|divisors|subsets|chain|map|hasse|
  *  `Logic.isLogicSource`; a λ-term is not one). */
 const LOGIC_CELL = /^(let\s+\w+\s*=\s*)?(truthtable|taut|sat|falsify|equiv|nnf|cnf|dnf)\s*\(/;
 /** A systems-world cell: a system, or a question about one. */
-const SYSTEM_CELL = /^(let\s+\w+\s*=\s*)?(system|states|invariant|inductive|reach|deadlock|trace|ctl|eventually|refines|replicas)\s*\(/;
+const SYSTEM_CELL = /^(let\s+\w+\s*=\s*)?(system|states|invariant|inductive|reach|deadlock|trace|ctl|eventually|refines|replicas|rules|rewrite|terminates|critical)\s*\(/;
 /** A λ-command: a strategy, `eta`, `fv`, `db`, `alpha`, `subst`, `type` or `infer`, then a colon (the
  *  engine's `Lam.commandHead`; `type := …` is a definition). It may hold a connective, `type: f : A → B ⊢ f`. */
 const LAMBDA_CMD = /^(normal|cbn|cbv|applicative|eta|fv|db|alpha|subst|type|infer)\s*(\d+\s*)?:(?!=)/;
@@ -3969,6 +3969,7 @@ const RULE_NAMES: Record<string, string> = {
   "sys.ctl": "CTL", "sys.iterate": "Iterate", "sys.fixed": "Fixed point", "sys.cycle": "Cycle", "sys.lasso": "Fair loop",
   "sys.eventually": "Eventually", "sys.refines": "Refinement",
   "order.inner": "Inner call", "sys.inner": "Inner call",
+  "trs.step": "Rewrite", "trs.decrease": "Decreases", "trs.critical": "Critical pair",
   "crdt.update": "Update", "crdt.merge": "Merge", "crdt.send": "Send", "crdt.converged": "Converged", "crdt.diverged": "Not converged",
   "lambda.eta": "η-reduction", "lambda.elided": "Steps not shown", "lambda.alpha": "Rename bound variables", "lambda.alpha-eq": "Compare", "lambda.subst": "Substitute",
   "lambda.fv": "Free variables", "lambda.db": "De Bruijn indices",

@@ -62,7 +62,7 @@ partial def unnest (cmds : List String) (src : String) (next : Nat := 1) : List 
 def Session.forget (s : Session) (ns : List String) (cells : List String) : Session :=
   let keep {α} (l : List (String × α)) := l.filter (!ns.contains ·.1)
   { s with posets := keep s.posets, pmaps := keep s.pmaps, rels := keep s.rels, ops := keep s.ops,
-           ctxs := keep s.ctxs, systems := keep s.systems, cells := s.cells.filter (!cells.contains ·.1) }
+           ctxs := keep s.ctxs, systems := keep s.systems, trss := keep s.trss, cells := s.cells.filter (!cells.contains ·.1) }
 
 /-- Evaluate a cell of a world whose commands take names, with its nested calls taken out first. The
 inner calls' derivations come back as steps to put in front of the outer one's. -/

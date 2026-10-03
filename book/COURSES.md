@@ -78,9 +78,9 @@ Follows *From Zero to Propagators* (lean4learning), with a Lean prelude across i
 12–14. The propagator model; a propagator network in Lean; the interval lattice.
 15. Capstones: a Sudoku solver, and type inference by propagation.
 
-### 3 · Transition systems, invariants and temporal logic (8 lessons) — written
+### 3 · Transition systems, invariants and temporal logic (10 lessons) — written
 
-`notebooks/courses/systems/`, with a Lean prelude: 26 exercises, 17 checked by the engine and 9 by
+`notebooks/courses/systems/`, with a Lean prelude: 35 exercises, 25 checked by the engine and 10 by
 Lean. Systems are written over several lines (N6). "One task per tenant" is taught as one job per
 customer. Lesson 8's normalization keeps only the rewrites that are sound from every starting state;
 "create; delete → ∅" is shown false when the key already existed.
@@ -98,6 +98,12 @@ customer. Lesson 8's normalization keeps only the rewrites that are sound from e
    "applied = sent", a non-idempotent one gives a double-apply trace. *E5*
 8. Refinement and simulation; CRUD-intent normalization (`create; delete → ∅`, `update; update →
    update`) proved sound against a store semantics, and terminating. *E5; E7 optional*
+9. Rewriting systems: lesson 8's normalization as rules on terms, rewritten step by step; termination
+   by size and by a linear interpretation; critical pairs, where "create; delete → ∅" fails to join.
+   Normalization never lengthens a batch, in Lean. *E7*
+10. Retries and backoff: independent failures, the chance that every attempt fails, the expected
+    attempts as a finite sum, how retries multiply load under overload, and the wait exponential
+    backoff costs, worst case and on average. *math world: `sum`, `manipulate`*
 
 *Process Calculi and Concurrency* (lean4learning: LTS, CCS, bisimulation, Hennessy–Milner logic) can
 replace lesson 8's simulation with bisimulation, or be a course of its own later.
@@ -150,7 +156,7 @@ E5 events (version vectors), N8 replica simulation (done)*
 | E4 | **Done.** Finite algebra: operation tables and their laws, homomorphisms, products, maps between posets, distributive and Boolean checks, closure operators, Galois connections, concept lattices | a spec per check |
 | E5 | **Done.** Systems: finite-domain variables, guarded actions, reachability, invariants with traces, inductiveness, deadlock, CTL by lfp/gfp, simulation; events → poset with vector clocks | invariant check sound and complete on finite graphs; CTL fixpoints correct |
 | E6 | **Done.** Simply typed λ-calculus: annotations, type checking with a derivation tree, inference by unification (checked by the checker) | checker sound against the rules |
-| E7 | (optional) user-defined rewriting systems: steps, termination by measure, critical pairs | per rule |
+| E7 | user-defined rewriting systems: steps, termination by measure, critical pairs — done: `rules`, `rewrite`, `terminates`, `critical` (`Rewriting.lean`); steps and the termination check proved (`RewritingProofs.lean`), unification not | per rule |
 
 The λ world also grew for course 4: a choice of strategy, η, free variables, α-equivalence,
 substitution and de Bruijn indices as commands. **Done.**
@@ -184,7 +190,8 @@ substitution and de Bruijn indices as commands. **Done.**
 4. **P3** — Course 6 (CRDTs): mostly Lean, little engine; needs only course 2. *Done* (without N8).
 5. **P4** — Course 3: E5, N4, N6. *Done.*
 6. **P5** — Courses 4 and 5: the λ world's additions, E6. *Done.*
-7. **P6** — Optional: E7, and probability for retries and backoff. *Not started.*
+7. **P6** — E7, and probability for retries and backoff. *Done: systems lessons 9 and 10. Open: that
+   unification finds every overlap (so `critical` misses no pair) is not proved.*
 
 ## Open
 

@@ -24,7 +24,8 @@ variables; updates are `x := e`. A system's text may run over several lines.
 
 The world's other command, `replicas(type; a, b, …; events…)`, simulates a CRDT on replicas
 (`Replicas.lean`): its events are `a: op [arg] [@ t]`, `a -> b`, `m := a` and `b <- m`, one per line
-or separated by `;`.
+or separated by `;`. And `rules(l -> r; …)`, `rewrite(R, t)`, `terminates(R[; interpretations])`
+and `critical(R)` are first-order term rewriting (`Rewriting.lean`).
 -/
 namespace MathEngine
 namespace Sys

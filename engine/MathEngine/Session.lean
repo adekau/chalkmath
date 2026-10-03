@@ -9,6 +9,7 @@ import MathEngine.Fourier
 import MathEngine.Logic
 import MathEngine.Systems
 import MathEngine.Replicas
+import MathEngine.Rewriting
 /-!
 # Sessions, commands and the evaluation pipeline
 
@@ -42,6 +43,8 @@ structure Session where
   ctxs : List (String × Ord.Ctx) := []
   /-- Transition systems (`Systems.lean`) bound by `let`, by name. -/
   systems : List (String × Sys.System) := []
+  /-- Rewriting systems (`let R = rules(…)`), by name. -/
+  trss : List (String × TRS.System) := []
   /-- Logic-world formulas bound by `let`, by name. -/
   formulas : List (String × Logic.Fm) := []
   cells : List (String × Cell) := []
@@ -1029,7 +1032,8 @@ structure SysResult where
 
 namespace Sys
 
-def commands : List String := ["system", "states", "invariant", "inductive", "reach", "deadlock", "trace", "ctl", "eventually", "refines", "replicas"]
+def commands : List String := ["system", "states", "invariant", "inductive", "reach", "deadlock", "trace", "ctl", "eventually", "refines", "replicas",
+  "rules", "rewrite", "terminates", "critical"]
 
 /-- `[let NAME =] command(…)` for a systems command. -/
 def splitLet (src : String) : Option String × String :=
@@ -1079,7 +1083,7 @@ def systemCell (s : Session) (cellId source : String) :
   let bool (b : Bool) : Expr := .var (if b then "true" else "false")
   -- the question as the engine read it: the command with its system and formula
   let question : Expr :=
-    if head == "system" then .var "system" else
+    if head == "system" || head == "rules" then .var head else
     if head == "replicas" then
       (match Sys.argsOf t head |>.toOption |>.bind (Rep.parse · |>.toOption) with
        | some (_, rs, _) => .fn "replicas" [.var ((Sys.splitFirst ((Sys.argsOf t head).toOption.getD "")).1), Ord.setExpr rs]
@@ -1091,7 +1095,7 @@ def systemCell (s : Session) (cellId source : String) :
       .fn head ([.var a] ++ (if rest.isEmpty then [] else [match Logic.parseFormula rest with | .ok f => f.toExpr | .error _ => .var rest]))
   let done (value : Expr) (steps : Array Step) (summary : String) (bindS : Option Sys.System := none)
       (graph : Option (Ord.Rel × List (String × String) × List (String × String) × List Nat) := none)
-      (spacetime : Option (Rep.Diagram × Array (List Nat)) := none) :
+      (spacetime : Option (Rep.Diagram × Array (List Nat)) := none) (bindT : Option TRS.System := none) :
       Session × Except (String × String × Option (Nat × Nat)) SysResult :=
     let input := if head == "system" then value else question
     let d : Derivation := ⟨input, steps, value⟩
@@ -1099,7 +1103,14 @@ def systemCell (s : Session) (cellId source : String) :
     let s := match name, bindS with
       | some n, some S => { s with systems := (n, S) :: s.systems.filter (·.1 != n) }
       | _, _ => s
+    let s := match name, bindT with
+      | some n, some T => { s with trss := (n, T) :: s.trss.filter (·.1 != n) }
+      | _, _ => s
     (s, .ok ⟨name, value, d, summary, graph.map (fun (R, b, a, _) => (R, b, a)), (graph.map (·.2.2.2)).getD [], spacetime⟩)
+  let getT (n : String) : Except String TRS.System :=
+    match s.trss.lookup n.trimAscii.copy with
+    | some T => .ok T
+    | none => .error s!"'{n.trimAscii}' is not a rewriting system (make one with let R = rules(…))"
   let getS (n : String) : Except String Sys.System :=
     match s.systems.lookup n.trimAscii.copy with
     | some S => .ok S
@@ -1197,6 +1208,54 @@ def systemCell (s : Session) (cellId source : String) :
         let (steps, edges) ← traceSteps S G j
         return done (bool true) (steps.push (step "sys.deadlock" "No action is enabled here: a deadlock." (S.stateExpr G.states[j]!) (bool true))) s!"a deadlock after {edges.length} step{if edges.length == 1 then "" else "s"}" (graph := draw G edges [])
       | none => return done (bool false) #[step "sys.deadlock" s!"Every one of the {G.states.size} reachable states has an enabled action." (.var "init") (bool false)] "no deadlock" (graph := draw G [] [])
+    | "rules" =>
+      let R ← TRS.parseSystem body
+      let value := Expr.fn "set" (R.rules.map TRS.Rule.toExpr)
+      return done value #[] s!"{R.rules.length} rule{if R.rules.length == 1 then "" else "s"}: {", ".intercalate (R.rules.map (·.name))}" (bindT := some R)
+    | "rewrite" =>
+      let (rn, tt) := Sys.splitFirst body
+      let R ← getT rn
+      let t ← TRS.parseTerm tt
+      let (trace, out, normal) := TRS.normalize R t
+      if !normal then
+        throw (if out.size > TRS.maxSize then s!"the term grew past {TRS.maxSize} symbols after {trace.length} rewrites (the system may not terminate on this term)"
+          else s!"no normal form after {trace.length} rewrites (the system may not terminate on this term)")
+      let (steps, _) := trace.foldl (fun (acc, prev) (ρ, p, t') =>
+          (acc.push ⟨"trs.step", s!"{ρ.name}: ${ρ.lhs.toExpr.toLatex false} \\to {ρ.rhs.toExpr.toLatex false}$, {if p.isEmpty then "at the root" else "at the marked subterm"}.", p, prev.toExpr, t'.toExpr, none⟩, t'))
+        (#[], t)
+      return done out.toExpr steps s!"a normal form after {trace.length} step{if trace.length == 1 then "" else "s"}"
+    | "terminates" =>
+      let (rn, rest) := Sys.splitFirst body
+      let R ← getT rn
+      let interps ← (TRS.topCommas rest).mapM TRS.parseInterp
+      let I := TRS.interpOf interps
+      let what := if interps.isEmpty then "size" else "interpretation"
+      let checks := R.rules.map fun ρ => (ρ, TRS.lin I ρ.lhs, TRS.lin I ρ.rhs)
+      let steps := (checks.map fun (ρ, l, r) =>
+        let ok := TRS.decreases l r
+        step "trs.decrease" (s!"{ρ.name}: the left side's {what} is {l.text}, the right side's {r.text}: " ++
+          (if ok then "larger, whatever the variables are." else "not larger for every value of the variables."))
+          ρ.toExpr (bool ok)).toArray
+      match checks.find? (fun (_, l, r) => !TRS.decreases l r) with
+      | some (ρ, _, _) => return done (bool false) steps s!"not shown to terminate: {ρ.name} does not decrease the {what}"
+      | none => return done (bool true) steps s!"terminates: every rule decreases the {what}, a natural number, so no term rewrites for ever"
+    | "critical" =>
+      let R ← getT body.trimAscii.copy
+      let cps := TRS.critical R
+      let results := cps.map fun c =>
+        let (_, nl, okl) := TRS.normalize R c.left
+        let (_, nr, okr) := TRS.normalize R c.right
+        (c, nl, nr, okl && okr && nl == nr)
+      let steps := (results.map fun (c, nl, nr, joined) =>
+        step "trs.critical" (s!"{c.outer.name} at the root and {c.inner.name} at position {c.pos} overlap on this term. It rewrites to {c.left} and to {c.right}, which reduce to {nl} and {nr}: " ++
+          (if joined then "joinable." else "not joinable."))
+          c.peak.toExpr (.fn (if joined then "=" else "≠") [nl.toExpr, nr.toExpr])).toArray
+      let value := Expr.fn "set" (cps.map fun c => .fn "pair" [c.left.toExpr, c.right.toExpr])
+      let bad := (results.filter fun (_, _, _, j) => !j).length
+      let say := if cps.isEmpty then "no critical pairs: locally confluent"
+        else if bad == 0 then s!"{cps.length} critical pair{if cps.length == 1 then "" else "s"}, all joinable: locally confluent, and confluent if it terminates (Newman's lemma)"
+        else s!"{cps.length} critical pair{if cps.length == 1 then "" else "s"}, {bad} not joinable: not confluent"
+      return done value steps say
     | "replicas" =>
       let (kind, replicas, evs) ← Rep.parse body
       let r ← Rep.run kind replicas evs

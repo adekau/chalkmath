@@ -25,7 +25,7 @@ export const AREAS: [Area, string][] = [
   ["Fourier series", "Finite Fourier sums drawn as circles, and the discrete Fourier transform."],
   ["Logic", "Propositional formulas, truth tables, normal forms, and quantifiers over finite sets."],
   ["Order theory", "Finite partial orders, lattices, monotone maps and their fixed points; relations and their properties."],
-  ["Transition systems", "Finite state machines: reachable states, invariants with counterexample traces, induction, temporal logic, fairness, refinement."],
+  ["Transition systems", "Finite state machines: reachable states, invariants with counterexample traces, induction, temporal logic, fairness, refinement; replicated data; term rewriting."],
   ["λ-calculus", "The untyped λ-calculus, reduced one β-step at a time by the strategy you choose, the Church encodings, and the simply typed calculus: type checking and inference."],
   ["The notebook language", "Names and functions, earlier answers, questions."],
 ];
@@ -1097,6 +1097,60 @@ export const FUNCTIONS: FnDoc[] = [
       section("Last writer wins", "replicas(lww; a, b; a: write red @ 5; b: write blue @ 3; a -> b; b -> a)"),
     ],
     see: ["clocks", "system"],
+  },
+  {
+    name: "rules", area: "Transition systems",
+    usage: [["let R = rules(l -> r; …)", "declares a rewriting system: rules between terms, applied left to right."]],
+    details: [
+      "A term is a variable, a constant, or a symbol applied to terms: `add(s(x), y)`. Variables are `u`, `v`, `w`, `x`, `y` and `z`, perhaps with digits or primes (`x1`, `y'`); any other name (`0`, `e`, `nil`) is a constant.",
+      "Rules go one per line or separated by `;`, and are named `r1`, `r2`, … in order, or by a name before a colon: `assoc: f(f(x, y), z) -> f(x, f(y, z))`.",
+      "A rule's left side cannot be a variable, and its right side can only use the left side's variables, so a step never invents a term.",
+    ],
+    examples: [basic("let A = rules(add(0, y) -> y; add(s(x), y) -> s(add(x, y)))", "rewrite(A, add(s(s(0)), s(0)))")],
+    see: ["rewrite", "terminates", "critical"],
+  },
+  {
+    name: "rewrite", area: "Transition systems",
+    usage: [["rewrite(R, t)", "rewrites the term `t` with the system's rules until none applies, and gives the normal form."]],
+    details: [
+      "Each step rewrites the leftmost-outermost redex: the first subterm, from the root and left to right, that is an instance of a rule's left side, with the first rule that matches. The work names the rule and marks the subterm.",
+      "A term that has not reached a normal form after 10,000 steps, or has grown past 6000 symbols, is an error: the system may not terminate on it. `terminates` can show that it always does.",
+    ],
+    examples: [
+      basic("let A = rules(add(0, y) -> y; add(s(x), y) -> s(add(x, y)))", "rewrite(A, add(s(s(0)), s(s(0))))"),
+      section("A term with variables", "let A = rules(add(0, y) -> y; add(s(x), y) -> s(add(x, y)))", "rewrite(A, add(s(x), y))"),
+    ],
+    see: ["rules", "terminates"],
+  },
+  {
+    name: "terminates", area: "Transition systems",
+    usage: [
+      ["terminates(R)", "checks that every rule makes the term smaller, so no term rewrites for ever."],
+      ["terminates(R; f(x, y) = 2x + y + 1, …)", "checks the same with a linear interpretation of the symbols in place of the size."],
+    ],
+    details: [
+      "An interpretation gives each symbol a value: a constant plus a coefficient, at least one, times each argument. A term is then worth a linear form in its variables, and a rule passes when its left side's form has a larger constant and no smaller coefficient than its right side's, so it is worth more whatever the variables are.",
+      "When every rule passes, every step lowers a natural number, so no term rewrites for ever. This is proved; so is the converse for each rule: one that fails is worth no more on the right for some values of the variables. Failing does not show that the system loops: another interpretation may work.",
+      "Symbols not given take the size: one, plus each argument.",
+    ],
+    examples: [
+      basic("let A = rules(add(0, y) -> y; add(s(x), y) -> s(add(x, y)))", "terminates(A)", "terminates(A; add(x, y) = 2x + y, s(x) = x + 1)"),
+      section("A rule that cannot pass", "let L = rules(f(x) -> f(f(x)))", "terminates(L)"),
+    ],
+    see: ["rewrite", "critical"],
+  },
+  {
+    name: "critical", area: "Transition systems",
+    usage: [["critical(R)", "finds where two rules overlap, and whether the two results of each overlap rewrite to the same normal form."]],
+    details: [
+      "A critical pair comes from a term where one rule applies at the root and another (or the same one, deeper) inside it; the two rewrites give the pair. Each side is rewritten to normal form: when every pair joins, the system is locally confluent, and if it also terminates, confluent (Newman's lemma), so every term has one normal form.",
+      "A pair that does not join is a choice the rules leave open; adding a rule between its two normal forms is the start of Knuth–Bendix completion.",
+    ],
+    examples: [
+      basic("let A = rules(add(0, y) -> y; add(s(x), y) -> s(add(x, y)))", "critical(A)"),
+      section("A group's axioms", "let G = rules(f(e, x) -> x; f(i(x), x) -> e; f(f(x, y), z) -> f(x, f(y, z)))", "critical(G)"),
+    ],
+    see: ["rules", "terminates"],
   },
   {
     name: "trace", area: "Transition systems",

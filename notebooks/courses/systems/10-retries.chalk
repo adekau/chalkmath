@@ -1,0 +1,216 @@
+{
+  "chalk": 1,
+  "name": "10-retries.chalk",
+  "cells": [
+    {
+      "src": "Retries and backoff",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Compute the chance that a retried call fails, the attempts it costs on average, and the time exponential backoff waits, as finite sums.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A call fails with probability $q$, each attempt independently of the others, and the client tries at most $n$ times. Take $q = 1/10$:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let q = 1/10",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Independent attempts\n> The attempts all fail with probability $q \\cdot q \\cdots q = q^n$. The first success comes at attempt $k$ with probability $q^{k-1}(1 - q)$: $k - 1$ failures, then a success.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "q^3",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "1 - q^5",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Adding up the chance of succeeding first at each attempt gives the same number, as it must:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "sum((1 - q)*q^(k - 1), k, 1, 5)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "That is the geometric sum. With a symbol for $q$, multiplying by $1 - r$ telescopes:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "expand((1 - r)*sum(r^k, k, 0, 4))",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "Expected attempts",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Expected value\n> The **expected** number of attempts is the sum of each count times its probability: $k$ attempts when the first success is at $k < n$, and $n$ when the first $n - 1$ fail.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "sum(k*(1 - q)*q^(k - 1), k, 1, 4) + 5*q^4",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "A shorter way: there is an attempt $k + 1$ exactly when the first $k$ failed, with probability $q^k$. Summing those chances counts the attempts:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "sum(q^k, k, 0, 4)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> Retries look free when failures are rare: $1.1111$ calls per request. But failures are rarely independent. When a server is overloaded, most calls fail, and the retries are more load on the server that is already failing:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "sum((9/10)^k, k, 0, 4)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "At $q = 9/10$ every request costs four calls: the retries quadruple the load just when the server can take the least. Hence retry budgets, which cap retries at a fraction of the traffic, and backoff.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exponential backoff",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Exponential backoff\n> Wait $d$ before the second attempt, $2d$ before the third, $4d$ before the fourth: the wait before attempt $k + 2$ is $2^k d$. Real clients also cap it and add **jitter**, a random part, so that clients that failed together do not retry together.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "With $d = 100$ ms and five attempts, the longest the client waits in all:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "sum(100*2^k, k, 0, 3)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "On average far less: the wait before attempt $k + 2$ only happens when the first $k + 1$ attempts failed.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "sum(100*2^k*q^(k + 1), k, 0, 3)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "The expected attempts as a function of the failure rate, with a slider:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "manipulate(sum(p^k, k, 0, 4), p, 0, 1)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!note]\n> Retries repeat requests. A request that the server applied but whose reply was lost is sent again: lesson 7's idempotent handler is what makes retrying safe.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "(1/5)^3",
+      "type": "exercise",
+      "prompt": "A call fails with probability $1/5$. What is the chance that three attempts all fail?",
+      "hints": [
+        "Independent attempts: multiply."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "1 - (1/2)^4",
+      "type": "exercise",
+      "prompt": "With $q = 1/2$ and four attempts, what is the chance that the call succeeds?",
+      "hints": [
+        "One minus the chance that all four fail."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "sum((1/2)^k, k, 0, 3)",
+      "type": "exercise",
+      "prompt": "With $q = 1/2$ and at most four attempts, how many attempts does a request cost on average?",
+      "hints": [
+        "Sum $q^k$ for $k$ from $0$ to $n - 1$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "sum(50*2^k, k, 0, 4)",
+      "type": "exercise",
+      "prompt": "Backoff starts at $50$ ms and doubles, with six attempts. How long does the client wait in all, at most?",
+      "hints": [
+        "Five waits: $50, 100, 200, 400, 800$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Independent attempts multiply: $q^n$ fail, and the expected attempts are $\\sum_{k<n} q^k$. Under overload $q$ is near one and retries multiply the load; backoff spaces them out, and on average costs little when failures are rare.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

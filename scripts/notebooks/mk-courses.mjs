@@ -2130,7 +2130,7 @@ inductive Reachable {σ : Type} (T : TS σ) : σ → Prop where
   | step {s t : σ} : Reachable T s → T.step s t → Reachable T t`;
 
 course("systems", "Transition systems, invariants and temporal logic",
-  "State machines and their reachable states; invariants with counterexample traces and inductive proofs; mutual exclusion, safety and liveness under fairness; temporal logic as fixed points; happens-before, effectively-once delivery, and refinement.",
+  "State machines and their reachable states; invariants with counterexample traces and inductive proofs; mutual exclusion, safety and liveness under fairness; temporal logic as fixed points; happens-before, effectively-once delivery, and refinement; rewriting systems, and retries under failure.",
   "Distributed systems", (add) => {
 
   add("01-state-machines.chalk", "State machines and executions", "Variables, an initial condition and guarded actions; executions as traces; the graph of reachable states.", ({ sec, md, m, ex, lean, lx }) => {
@@ -2608,6 +2608,130 @@ theorem normalize_sound : ∀ (ops : List Op) (s : Option Nat), run s (normalize
     md(r`
 > [!summary]
 > Refinement checks that an implementation only does what the specification allows, up to stuttering. A rewriting of operations is sound when it refines the same way: same effect from every state, which a structural induction proves once for every batch.
+`);
+  });
+
+  add("09-rewriting.chalk", "Rewriting systems", "The normalization of lesson 8 as rules on terms: rewriting to a normal form, termination by a measure, and confluence by critical pairs.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Rewriting systems");
+    md(r`
+> [!goal]
+> Write an optimization as rewrite rules, show that rewriting always stops, and check that the order the rules are applied in cannot change the answer.
+`);
+    md(r`
+> [!definition] Term, rule, normal form
+> A **term** is a variable or a symbol applied to terms: ‹then(create(1), done)›. A **rule** $l \to r$ rewrites any instance of $l$, anywhere in a term, to the same instance of $r$. A **normal form** is a term no rule applies to.
+`);
+    md(r`Lesson 8's batch of operations is a term: ‹then(op, rest)› puts an operation before the rest, and ‹done› is the empty batch. Its combinations are four rules. The variables are ‹u›, ‹v›, ‹w›, ‹x›, ‹y› and ‹z›; anything else is a symbol or a constant.`);
+    m("let N = rules(\n  cu: then(create(x), then(update(y), z)) -> then(create(y), z)\n  uu: then(update(x), then(update(y), z)) -> then(update(y), z)\n  xc: then(u, then(create(y), z)) -> then(create(y), z)\n  xd: then(u, then(delete, z)) -> then(delete, z)\n)");
+    m("rewrite(N, then(create(1), then(update(2), then(update(3), then(delete, then(create(4), done))))))", { step: 0 });
+    md(r`Each step names its rule and marks where in the term it applied: the leftmost-outermost redex, the first instance of a left side from the root.`);
+    sec("Termination");
+    md(r`
+> [!definition] Terminating
+> A system **terminates** when no term can be rewritten for ever. One way to show it: give every term a natural number that every step lowers. A natural number cannot go down for ever.
+`);
+    md(r`Here every rule drops an operation, so the size (the number of symbols) goes down:`);
+    m("terminates(N)", { work: true });
+    md(r`The size is not always enough. Addition on numerals ‹0›, ‹s(0)›, ‹s(s(0))›, … keeps the size in its second rule, but an **interpretation** that weighs ‹add›'s first argument double shows that it goes down:`);
+    m("let A = rules(add(0, y) -> y; add(s(x), y) -> s(add(x, y)))");
+    m("terminates(A)", { work: true });
+    m("terminates(A; add(x, y) = 2x + y, s(x) = x + 1)", { work: true });
+    md(r`
+> [!theorem] The check is sound
+> With coefficients of at least one, a rule whose left side has a larger constant and no smaller coefficient is worth more for every value of the variables, and so is every term around an instance of it. Every step lowers a natural number, so no term rewrites for ever. The engine's ‹RewritingProofs› proves this, and the converse for a single rule: one that fails is worth no more on the right for some values.
+`);
+    sec("Confluence and critical pairs");
+    md(r`
+> [!definition] Confluent
+> A system is **confluent** when any two ways of rewriting a term can be brought back together. A terminating, confluent system gives every term exactly one normal form: the optimizer's answer does not depend on which rule it tries first.
+`);
+    md(r`Two rules can only disagree where their left sides overlap. Each overlap gives a **critical pair**: the two results. If every pair rewrites to a common term (it is **joinable**), the system is locally confluent, and with termination, confluent (Newman's lemma).`);
+    m("critical(N)", { work: true });
+    md(r`
+> [!mistake]
+> Add lesson 8's tempting rule, "create then delete cancels out":
+`);
+    m("let M = rules(\n  cu: then(create(x), then(update(y), z)) -> then(create(y), z)\n  uu: then(update(x), then(update(y), z)) -> then(update(y), z)\n  xc: then(u, then(create(y), z)) -> then(create(y), z)\n  xd: then(u, then(delete, z)) -> then(delete, z)\n  cd: then(create(x), then(delete, z)) -> z\n)");
+    m("critical(M)", { work: true });
+    md(r`The pair $(\mathsf{then}(\mathsf{delete}, z),\ z)$ does not join: the same batch normalizes to "delete" or to nothing depending on which rule fires first. Lesson 8's Lean found the store state where the two differ (the key already existed). Here the rules themselves show that something is wrong, before any semantics.`);
+    sec("Normalization never lengthens a batch");
+    md(r`Back in Lean, with lesson 8's ‹normalize›: it never makes a batch longer. (Its termination Lean checks itself: the recursion is structural.)`);
+    lx(`theorem normalize_length : ∀ ops : List Op, (normalize ops).length ≤ ops.length := by`, r`Prove it by induction on the batch.`, `  intro ops
+  induction ops with
+  | nil => simp [normalize]
+  | cons a rest ih =>
+    simp only [normalize]
+    split
+    · rename_i b tl heq
+      rw [heq] at ih
+      split <;> simp at ih ⊢ <;> omega
+    · simp`, [r`‹induction ops›, then ‹simp only [normalize]› and ‹split› on what ‹normalize rest› gave.`, r`In the case ‹b :: tl›, rewrite ‹ih› with the equation ‹split› names, then ‹split› again on ‹combine a b›; ‹omega› finishes the arithmetic.`]);
+    sec("Exercises");
+    ex("rewrite(N, then(update(1), then(update(2), then(update(3), done))))", r`Normalize ‹then(update(1), then(update(2), then(update(3), done)))› with ‹N›. Write the term.`, [r`‹uu› keeps the second update.`]);
+    ex("rewrite(N, then(create(1), then(delete, then(update(2), done))))", r`And ‹then(create(1), then(delete, then(update(2), done)))›?`, [r`No rule folds an update into a delete before it: an update on a missing key does nothing, but the rules keep it.`]);
+    ex("terminates(A)", r`Does addition terminate by size alone?`, [r`Compare the sizes of ‹add(s(x), y)› and ‹s(add(x, y))›.`]);
+    ex("rewrite(A, add(s(s(0)), s(s(0))))", r`What is ‹add(s(s(0)), s(s(0)))›, rewritten with ‹A›?`, []);
+    md(r`
+> [!summary]
+> Rewrite rules are an optimization written as equations directed left to right. A measure every rule lowers shows termination; joinable critical pairs show local confluence; together they give each term one normal form. A pair that does not join points at a rule to fix, or one to add (Knuth–Bendix completion).
+`);
+  });
+
+  add("10-retries.chalk", "Retries and backoff", "Retrying a call that fails at random: the chance that every attempt fails, the expected number of attempts, and the load and wait that backoff trades.", ({ sec, md, m, ex }) => {
+    sec("Retries and backoff");
+    md(r`
+> [!goal]
+> Compute the chance that a retried call fails, the attempts it costs on average, and the time exponential backoff waits, as finite sums.
+`);
+    md(r`A call fails with probability $q$, each attempt independently of the others, and the client tries at most $n$ times. Take $q = 1/10$:`);
+    m("let q = 1/10");
+    md(r`
+> [!definition] Independent attempts
+> The attempts all fail with probability $q \cdot q \cdots q = q^n$. The first success comes at attempt $k$ with probability $q^{k-1}(1 - q)$: $k - 1$ failures, then a success.
+`);
+    m("q^3");
+    m("1 - q^5");
+    md(r`Adding up the chance of succeeding first at each attempt gives the same number, as it must:`);
+    m("sum((1 - q)*q^(k - 1), k, 1, 5)", { work: true });
+    md(r`That is the geometric sum. With a symbol for $q$, multiplying by $1 - r$ telescopes:`);
+    m("expand((1 - r)*sum(r^k, k, 0, 4))", { work: true });
+    sec("Expected attempts");
+    md(r`
+> [!definition] Expected value
+> The **expected** number of attempts is the sum of each count times its probability: $k$ attempts when the first success is at $k < n$, and $n$ when the first $n - 1$ fail.
+`);
+    m("sum(k*(1 - q)*q^(k - 1), k, 1, 4) + 5*q^4", { work: true });
+    md(r`A shorter way: there is an attempt $k + 1$ exactly when the first $k$ failed, with probability $q^k$. Summing those chances counts the attempts:`);
+    m("sum(q^k, k, 0, 4)");
+    md(r`
+> [!mistake]
+> Retries look free when failures are rare: $1.1111$ calls per request. But failures are rarely independent. When a server is overloaded, most calls fail, and the retries are more load on the server that is already failing:
+`);
+    m("sum((9/10)^k, k, 0, 4)");
+    md(r`At $q = 9/10$ every request costs four calls: the retries quadruple the load just when the server can take the least. Hence retry budgets, which cap retries at a fraction of the traffic, and backoff.`);
+    sec("Exponential backoff");
+    md(r`
+> [!definition] Exponential backoff
+> Wait $d$ before the second attempt, $2d$ before the third, $4d$ before the fourth: the wait before attempt $k + 2$ is $2^k d$. Real clients also cap it and add **jitter**, a random part, so that clients that failed together do not retry together.
+`);
+    md(r`With $d = 100$ ms and five attempts, the longest the client waits in all:`);
+    m("sum(100*2^k, k, 0, 3)");
+    md(r`On average far less: the wait before attempt $k + 2$ only happens when the first $k + 1$ attempts failed.`);
+    m("sum(100*2^k*q^(k + 1), k, 0, 3)", { work: true });
+    md(r`The expected attempts as a function of the failure rate, with a slider:`);
+    m("manipulate(sum(p^k, k, 0, 4), p, 0, 1)");
+    md(r`
+> [!note]
+> Retries repeat requests. A request that the server applied but whose reply was lost is sent again: lesson 7's idempotent handler is what makes retrying safe.
+`);
+    sec("Exercises");
+    ex("(1/5)^3", r`A call fails with probability $1/5$. What is the chance that three attempts all fail?`, [r`Independent attempts: multiply.`]);
+    ex("1 - (1/2)^4", r`With $q = 1/2$ and four attempts, what is the chance that the call succeeds?`, [r`One minus the chance that all four fail.`]);
+    ex("sum((1/2)^k, k, 0, 3)", r`With $q = 1/2$ and at most four attempts, how many attempts does a request cost on average?`, [r`Sum $q^k$ for $k$ from $0$ to $n - 1$.`]);
+    ex("sum(50*2^k, k, 0, 4)", r`Backoff starts at $50$ ms and doubles, with six attempts. How long does the client wait in all, at most?`, [r`Five waits: $50, 100, 200, 400, 800$.`]);
+    md(r`
+> [!summary]
+> Independent attempts multiply: $q^n$ fail, and the expected attempts are $\sum_{k<n} q^k$. Under overload $q$ is near one and retries multiply the load; backoff spaces them out, and on average costs little when failures are rare.
 `);
   });
 }, { leanPrelude: true });

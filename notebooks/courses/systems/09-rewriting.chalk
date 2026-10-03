@@ -1,0 +1,217 @@
+{
+  "chalk": 1,
+  "name": "09-rewriting.chalk",
+  "cells": [
+    {
+      "src": "Rewriting systems",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Write an optimization as rewrite rules, show that rewriting always stops, and check that the order the rules are applied in cannot change the answer.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Term, rule, normal form\n> A **term** is a variable or a symbol applied to terms: `then(create(1), done)`. A **rule** $l \\to r$ rewrites any instance of $l$, anywhere in a term, to the same instance of $r$. A **normal form** is a term no rule applies to.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Lesson 8's batch of operations is a term: `then(op, rest)` puts an operation before the rest, and `done` is the empty batch. Its combinations are four rules. The variables are `u`, `v`, `w`, `x`, `y` and `z`; anything else is a symbol or a constant.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let N = rules(\n  cu: then(create(x), then(update(y), z)) -> then(create(y), z)\n  uu: then(update(x), then(update(y), z)) -> then(update(y), z)\n  xc: then(u, then(create(y), z)) -> then(create(y), z)\n  xd: then(u, then(delete, z)) -> then(delete, z)\n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "rewrite(N, then(create(1), then(update(2), then(update(3), then(delete, then(create(4), done))))))",
+      "showWork": true,
+      "label": null,
+      "stepwise": 0
+    },
+    {
+      "src": "Each step names its rule and marks where in the term it applied: the leftmost-outermost redex, the first instance of a left side from the root.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Termination",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Terminating\n> A system **terminates** when no term can be rewritten for ever. One way to show it: give every term a natural number that every step lowers. A natural number cannot go down for ever.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Here every rule drops an operation, so the size (the number of symbols) goes down:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "terminates(N)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "The size is not always enough. Addition on numerals `0`, `s(0)`, `s(s(0))`, … keeps the size in its second rule, but an **interpretation** that weighs `add`'s first argument double shows that it goes down:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let A = rules(add(0, y) -> y; add(s(x), y) -> s(add(x, y)))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "terminates(A)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "terminates(A; add(x, y) = 2x + y, s(x) = x + 1)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "> [!theorem] The check is sound\n> With coefficients of at least one, a rule whose left side has a larger constant and no smaller coefficient is worth more for every value of the variables, and so is every term around an instance of it. Every step lowers a natural number, so no term rewrites for ever. The engine's `RewritingProofs` proves this, and the converse for a single rule: one that fails is worth no more on the right for some values.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Confluence and critical pairs",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Confluent\n> A system is **confluent** when any two ways of rewriting a term can be brought back together. A terminating, confluent system gives every term exactly one normal form: the optimizer's answer does not depend on which rule it tries first.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Two rules can only disagree where their left sides overlap. Each overlap gives a **critical pair**: the two results. If every pair rewrites to a common term (it is **joinable**), the system is locally confluent, and with termination, confluent (Newman's lemma).",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "critical(N)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> Add lesson 8's tempting rule, \"create then delete cancels out\":",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let M = rules(\n  cu: then(create(x), then(update(y), z)) -> then(create(y), z)\n  uu: then(update(x), then(update(y), z)) -> then(update(y), z)\n  xc: then(u, then(create(y), z)) -> then(create(y), z)\n  xd: then(u, then(delete, z)) -> then(delete, z)\n  cd: then(create(x), then(delete, z)) -> z\n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "critical(M)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "The pair $(\\mathsf{then}(\\mathsf{delete}, z),\\ z)$ does not join: the same batch normalizes to \"delete\" or to nothing depending on which rule fires first. Lesson 8's Lean found the store state where the two differ (the key already existed). Here the rules themselves show that something is wrong, before any semantics.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Normalization never lengthens a batch",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Back in Lean, with lesson 8's `normalize`: it never makes a batch longer. (Its termination Lean checks itself: the recursion is structural.)",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem normalize_length : ∀ ops : List Op, (normalize ops).length ≤ ops.length := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove it by induction on the batch.",
+      "leanSolution": "  intro ops\n  induction ops with\n  | nil => simp [normalize]\n  | cons a rest ih =>\n    simp only [normalize]\n    split\n    · rename_i b tl heq\n      rw [heq] at ih\n      split <;> simp at ih ⊢ <;> omega\n    · simp",
+      "hints": [
+        "`induction ops`, then `simp only [normalize]` and `split` on what `normalize rest` gave.",
+        "In the case `b :: tl`, rewrite `ih` with the equation `split` names, then `split` again on `combine a b`; `omega` finishes the arithmetic."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "rewrite(N, then(update(1), then(update(2), then(update(3), done))))",
+      "type": "exercise",
+      "prompt": "Normalize `then(update(1), then(update(2), then(update(3), done)))` with `N`. Write the term.",
+      "hints": [
+        "`uu` keeps the second update."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "rewrite(N, then(create(1), then(delete, then(update(2), done))))",
+      "type": "exercise",
+      "prompt": "And `then(create(1), then(delete, then(update(2), done)))`?",
+      "hints": [
+        "No rule folds an update into a delete before it: an update on a missing key does nothing, but the rules keep it."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "terminates(A)",
+      "type": "exercise",
+      "prompt": "Does addition terminate by size alone?",
+      "hints": [
+        "Compare the sizes of `add(s(x), y)` and `s(add(x, y))`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "rewrite(A, add(s(s(0)), s(s(0))))",
+      "type": "exercise",
+      "prompt": "What is `add(s(s(0)), s(s(0)))`, rewritten with `A`?",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Rewrite rules are an optimization written as equations directed left to right. A measure every rule lowers shows termination; joinable critical pairs show local confluence; together they give each term one normal form. A pair that does not join points at a rule to fix, or one to add (Knuth–Bendix completion).",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

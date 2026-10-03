@@ -384,6 +384,18 @@ def sessionTests : TestM Unit := do
   checkTrue "replicas: a space-time diagram, a message from the send to the delivery" (contains rep "\"kind\":\"replicas.spacetime\"" && contains rep "\"messages\":[[1,3]]") rep
   checkTrue "replicas: the run says it has not converged" (contains rep "not converged: a reads 2; b reads 1") rep
   checkTrue "replicas: a merge step" (contains rep "\"rule\":\"crdt.merge\"") rep
+  let trs (st : Store) (src : String) := handleS st s!"\{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"engine.evaluate\",\"params\":\{\"sessionId\":\"trs\",\"cellId\":\"{src.length}\",\"source\":\"{src}\",\"showWork\":true}}"
+  let (stT, _) := trs [] "let A = rules(add(0, y) -> y; add(s(x), y) -> s(add(x, y)))"
+  let (stT, _) := trs stT "let C = rules(f(f(x)) -> g(x))"
+  let rw := (trs stT "rewrite(A, add(s(0), add(0, 0)))").2
+  checkTrue "rewrite: the first step is r2 at the root" (contains rw "\"rule\":\"trs.step\",\"explanation\":\"r2: " && contains rw "\"path\":[]") rw
+  checkTrue "rewrite: an inner step names its position" (contains rw "\"path\":[0]") rw
+  let te := (trs stT "terminates(A; add(x, y) = 2x + y, s(x) = x + 1)").2
+  checkTrue "terminates: a step per rule, with its forms" (contains te "\"rule\":\"trs.decrease\"" && contains te "the left side's interpretation is 2x + y + 2, the right side's 2x + y + 1: larger") te
+  let cr := (trs stT "critical(C)").2
+  checkTrue "critical: an overlap of a rule with itself, not joinable" (contains cr "\"rule\":\"trs.critical\"" && contains cr "not joinable" && contains cr "position [0]") cr
+  check "rewriting: a variable keeps its name, a constant is a symbol" (toString ((TRS.parseTerm "f(x1, e, y')").toOption.getD default)) "f(x1, e, y')"
+  check "rewriting: renamed-apart variables get their names back" (toString (TRS.tidy [.f "f" [.v "x''", .v "z'", .v "x'"]])) "[f(x, z, x')]"
   check "replicas: the map prints in LaTeX" ((Expr.fn "set" [.fn "↦" [.var "a", .num (Q.ofInt 2)]]).toLatex false) "\\{a \\mapsto 2\\}"
   -- a definition with no normal form is bound unreduced, and the reduction is cut off by size, not hung
   (st, r) := ev st "pred := λn. fst (n (λp. pair (snd p) (succ (snd p))) (pair 0 0))"; checkTrue "λ: pred" (r.startsWith "λn.") r

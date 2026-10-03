@@ -105,6 +105,13 @@ differential test with zero mismatches.
   runs a state-based CRDT through a schedule of local updates, syncs and delayed or duplicated
   messages. Every type there is a vector of naturals merged by the entrywise maximum, so one merge
   serves them all, proved a join with every update an inflation (`ReplicasProofs.lean`).
+- **Term rewriting is in the systems world too.** `let R = rules(l -> r; …)` binds a first-order
+  rewriting system (`Rewriting.lean`, its terms a nested inductive with the recursion written as
+  mutual definitions so that it can be proved about). `rewrite` takes leftmost-outermost steps,
+  `terminates` checks a linear interpretation (the size by default) and `critical` finds critical
+  pairs by unification and joins them. `RewritingProofs.lean` proves the steps sound and the
+  termination check sound and exact; unification, and so the completeness of the critical pairs, is
+  not proved.
 - **Commands nest by naming.** Order and systems commands take names; a call written inside another,
   `product(chain(2), chain(3))`, is evaluated first, bound to a hidden name and put in its place
   (`Nested.lean`), its derivation a sub-derivation of the outer cell's first steps. It is a rewriting

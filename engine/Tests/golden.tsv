@@ -350,3 +350,19 @@ replicas(lww; a, b; a: write red @ 5; b: write blue @ 3; a -> b; b -> a)	{a↦re
 replicas(gset; a, b; a: remove x)	<error: a G-set has add x, not 'remove x'>
 replicas(gcounter; a, b; c: inc)	<error: 'c' is not one of the replicas (a, b)>
 replicas(gcounter; a, b; b <- m)	<error: no message 'm' has been sent (write m := replica first)>
+let A = rules(add(0, y) -> y; add(s(x), y) -> s(add(x, y)))	{add(0, y) → y, add(s(x), y) → s(add(x, y))}
+rewrite(A, add(s(s(0)), s(0)))	s(s(s(0)))
+rewrite(A, add(x, s(0)))	add(x, s(0))
+terminates(A)	false
+terminates(A; add(x, y) = 2x + y, s(x) = x + 1)	true
+critical(A)	{}
+let G = rules(f(e, x) -> x; f(i(x), x) -> e; f(f(x, y), z) -> f(x, f(y, z)))	{f(e, x) → x, f(i(x), x) → e, f(f(x, y), z) → f(x, f(y, z))}
+critical(G)	{(f(e, f(x, z)), f(x, z)), (f(i(x), f(x, z)), f(e, z)), (f(f(x, y), f(z, z')), f(f(x, f(y, z)), z'))}
+let L = rules(f(x) -> f(f(x)))	{f(x) → f(f(x))}
+rewrite(L, f(a))	<error: the term grew past 6000 symbols after 5999 rewrites (the system may not terminate on this term)>
+let K = rules(f(x) -> f(x))	{f(x) → f(x)}
+rewrite(K, f(a))	<error: no normal form after 10000 rewrites (the system may not terminate on this term)>
+terminates(A; add(x, y) = 0x + y)	<error: every argument of add needs a coefficient of at least 1, so that a smaller argument makes a smaller term>
+rules(x -> a)	<error: rule r1: the left side is a variable, so it would rewrite every term>
+rules(f(x) -> g(y))	<error: rule r1: y on the right does not occur on the left>
+rewrite(Q, a)	<error: 'Q' is not a rewriting system (make one with let R = rules(…))>

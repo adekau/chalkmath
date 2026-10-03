@@ -238,8 +238,8 @@ private partial def stateKey : Expr → List String
   | .fn "∧" [a, b] => stateKey a ++ stateKey b
   | e => [String.ofList (e.toText.toList.filter (!·.isWhitespace))]
 
-/-- A systems exercise: the question's value is `true`/`false`, a number of states, or a state; the
-answer is written the same way (a state as `x = 1 ∧ y = 2`, in any order). -/
+/-- A systems exercise: the question's value is `true`/`false`, a number of states, a state, or a
+rewrite's normal form; the answer is written the same way (a state as `x = 1 ∧ y = 2`, in any order). -/
 def checkSystem (s : Session) (cellId question : String) (answer : Option String) :
     Session × Except Err CheckResult :=
   match systemCellN s cellId question with
@@ -254,7 +254,10 @@ def checkSystem (s : Session) (cellId question : String) (answer : Option String
         | "false" | "⊥" => .ok (.var "false")
         | _ => match t.toInt? with
           | some n => .ok (.num (Q.ofInt n))
-          | none => (Logic.parseFormula t).map (·.toExpr)
+          | none =>
+            -- a rewrite's answer is a term
+            if (Sys.splitLet question).2.trimAscii.startsWith "rewrite" then (TRS.parseTerm t).map (·.toExpr)
+            else (Logic.parseFormula t).map (·.toExpr)
       match parsed with
       | .error msg => .error ("syntax", msg, none)
       | .ok e => .ok (⟨e, e⟩, (stateKey e).mergeSort == want)
