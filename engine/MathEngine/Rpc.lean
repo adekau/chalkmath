@@ -159,6 +159,16 @@ def ruleStatus : Json :=
     entry "sys.lasso" "unverified" "A fair cycle avoiding the goal: each fair action is taken on it or disabled as its fairness requires; the search over strongly connected sets is not yet proved complete.",
     entry "sys.eventually" "unverified" "No deadlock and no fair cycle avoids the goal among the reachable states; the search is not yet proved complete.",
     entry "sys.refines" "unverified" "Every transition the search found maps to an abstract step or a stutter; the search's completeness is not yet proved.",
+    entry "trs.step" "verified" "An instance of one of the system's rules, rewritten at the position the step names (step_sound); the steps chain from the term to the answer (normalize_chain), and a normal form is one no rule applies to (normalize_normal).",
+    entry "trs.decrease" "verified" "A rule passes when its left side's linear form has a larger constant and no smaller coefficient: then the left side is worth more whatever the variables are (decreases_sound), and every step lowers the term's value (step_decreases), so no term rewrites for ever (no_infinite_rewriting). A rule that fails has values that make its left side worth no more (decreases_complete).",
+    entry "trs.critical" "unverified" "The overlaps come from Robinson's unification, and each side is rewritten to normal form by verified steps; that unification finds every overlap, so that no critical pair is missed, is not yet proved.",
+    entry "order.inner" "verified" "A nested call evaluated first and named: a rewriting of the source, so the commands' own statuses apply.",
+    entry "crdt.update" "verified" "A local update only raises entries of the replica's state (update_inflation).",
+    entry "crdt.merge" "verified" "The entrywise maximum: a join, commutative, associative and idempotent (merge_comm, merge_assoc, merge_idem).",
+    entry "crdt.send" "verified" "A message is a copy of the state; nothing to prove.",
+    entry "crdt.converged" "verified" "Decided by comparing the states; equal states read equal values.",
+    entry "crdt.diverged" "verified" "Decided by comparing the states.",
+    entry "sys.inner" "verified" "A nested call evaluated first and named: a rewriting of the source, so the commands' own statuses apply.",
     entry "order.happens-before" "verified" "The reflexive-transitive closure of program order and messages, checked to be a partial order (checkPartialOrder_none).",
     entry "order.clocks" "verified" "Each entry counts the events of a process below the event in the happens-before order, by definition.",
     entry "order.concurrent" "verified" "Neither event is below the other in the happens-before order, by definition.",
@@ -174,21 +184,22 @@ def ruleStatus : Json :=
     entry "logic.evaluate" "verified" "A formula without variables: its value by definition of the connectives.",
     entry "logic.bounded" "verified" "A quantifier over a finite set is checked element by element, by definition; the atoms are evaluated by the pipeline, whose steps' statuses apply.",
     entry "lambda.delta" "verified" "Unfolding a definition replaces a free name by its term; nothing to prove beyond that.",
-    entry "lambda.beta" "unverified" "β-reduction with capture-avoiding substitution; the substitution lemma is not yet proved.",
-    entry "lambda.alpha-beta" "unverified" "A binder renamed to avoid capture, then β; the renaming is not yet proved to preserve α-equivalence.",
+    entry "lambda.beta" "verified" "Each step is one β-reduction of the de Bruijn terms: capture-avoiding substitution is de Bruijn substitution (toDB_subst), for every strategy (betaStep_beta, cbnStep_beta, cbvStep_beta, appStep_beta, betaEtaStep_beta).",
+    entry "lambda.alpha-beta" "verified" "A binder renamed to avoid capture, then β: the renaming keeps the de Bruijn form (toDB_renameFor) and leaves nothing to capture (captureFree_renameFor), so the step is one β-reduction (toDB_subst).",
+    entry "lambda.elided" "verified" "The β-steps of a long reduction that the work does not show, each a step of the same strategy, so a β-reduction as lambda.beta's are.",
     entry "lambda.eta" "verified" "η: λx. f x contracts to f only when x is not free in f (etaRedex_spec); η is an axiom of λβη, so nothing more to prove.",
     entry "lambda.fv" "verified" "The free variables, computed by their definition (freeVars).",
     entry "lambda.db" "verified" "De Bruijn indices, computed by their definition (toDB).",
     entry "lambda.alpha-eq" "verified" "α-equivalence is taken to be equality of de Bruijn forms, which is how the engine defines it; that this agrees with renaming bound variables one at a time is the classical theorem, not proved here.",
-    entry "lambda.alpha" "unverified" "Binders renamed to avoid capture; the renaming is not yet proved to preserve α-equivalence.",
-    entry "lambda.subst" "unverified" "Capture-free substitution; it adds no free variable beyond the argument's (substRaw_freeVars), but the substitution lemma is not yet proved.",
+    entry "lambda.alpha" "verified" "Binders renamed to avoid capture: the de Bruijn form is kept (toDB_renameFor), so the term is the same up to α.",
+    entry "lambda.subst" "verified" "Substitution after the renaming captures nothing (captureFree_renameFor) and is de Bruijn substitution (toDB_substRaw).",
     entry "stlc.var" "verified" "Var: the checker's derivations are typing derivations (check_sound, StlcProofs.lean).",
     entry "stlc.abs" "verified" "→I: the checker's derivations are typing derivations (check_sound).",
     entry "stlc.app" "verified" "→E: the checker's derivations are typing derivations (check_sound).",
     entry "stlc.constraints" "checked" "Inference's equations; the type found is re-checked by the verified checker on the annotated term.",
     entry "stlc.split" "checked" "Unification splits an equation of arrows; the type found is re-checked by the verified checker.",
     entry "stlc.unify" "checked" "Unification binds a type variable (with the occurs check); the type found is re-checked by the verified checker.",
-    entry "stlc.principal" "checked" "The solved type, its variables renamed; checked by the verified checker. That it is the most general type is Hindley's theorem, not proved here."]
+    entry "stlc.principal" "verified" "Most general (infer_principal, Hindley's theorem): every typing of the term, whatever types its unannotated binders and free variables get, has an instance of the solved type; and it is a type of the term (check_sound, by the checker). The type shown names its variables with names not otherwise in use."]
 
 def capabilities : Json :=
   .obj #[("engine", .str "engine-lean"), ("version", .str "0.1.0-m8"), ("verified", .bool true),
@@ -290,7 +301,7 @@ def evaluateLambda (st : Store) (params : Json) (sessionId cellId src : String) 
 
 /-- An order-world cell's reply: the value, the derivation, and the poset to draw. -/
 def evaluateOrder (st : Store) (params : Json) (sessionId cellId src : String) : Store × Json :=
-  let (s, r) := orderCell (st.get sessionId) cellId src
+  let (s, r) := orderCellN (st.get sessionId) cellId src
   let st := st.set sessionId s
   match r with
   | .error (code, msg, span) => (st, errorJson code msg span)
@@ -351,7 +362,7 @@ def evaluateLogic (st : Store) (params : Json) (sessionId cellId src : String) :
 /-- A systems cell's reply: the value, the derivation (a trace is a step per action), a summary, and
 the state graph (`visuals`, kind `relation.digraph`) with a counterexample's transitions marked. -/
 def evaluateSystem (st : Store) (params : Json) (sessionId cellId src : String) : Store × Json :=
-  let (s, r) := systemCell (st.get sessionId) cellId src
+  let (s, r) := systemCellN (st.get sessionId) cellId src
   let st := st.set sessionId s
   match r with
   | .error (code, msg, span) => (st, errorJson code msg span)
@@ -363,8 +374,27 @@ def evaluateSystem (st : Store) (params : Json) (sessionId cellId src : String) 
       | some (R, bad, added) =>
         let pairs (ps : List (String × String)) : Json := .arr (ps.map fun (a, b) => Json.arr #[.str a, .str b]).toArray
         let layers : Array (String × Json) := if res.layers.isEmpty then #[] else #[("layers", .arr (res.layers.map fun n => Json.num (toString n)).toArray)]
+        -- where each step of the work is on the graph: the transition it takes, or the state it is at
+        let mark (st : Step) : Json :=
+          match Sys.labelOfStateExpr st.before, Sys.labelOfStateExpr st.after with
+          | some b, some a =>
+            if R.pairs.contains (b, a) then .obj #[("edge", .arr #[.str b, .str a])]
+            else if R.elems.contains a then .obj #[("node", .str a)] else .null
+          | _, some a => if R.elems.contains a then .obj #[("node", .str a)] else .null
+          | some b, _ => if R.elems.contains b then .obj #[("node", .str b)] else .null
+          | none, none => .null
+        let marks := res.derivation.steps.map mark
+        let stepsField : Array (String × Json) := if marks.all (fun | .null => true | _ => false) then #[] else #[("steps", .arr marks)]
         r.push ("visuals", .arr #[.obj #[("kind", .str "relation.digraph"), ("data", .obj (#[
-          ("nodes", .arr (R.elems.map Json.str).toArray), ("edges", pairs R.pairs), ("bad", pairs bad), ("added", pairs added)] ++ layers))]])
+          ("nodes", .arr (R.elems.map Json.str).toArray), ("edges", pairs R.pairs), ("bad", pairs bad), ("added", pairs added)] ++ layers ++ stepsField))]])
+      | none => r
+    let r := match res.spacetime with
+      | some (D, evOf) =>
+        let ev (e : Rep.DEvent) : Json := .obj #[("lane", .str e.lane), ("label", .str e.label), ("state", .str e.state)]
+        r.push ("visuals", .arr #[.obj #[("kind", .str "replicas.spacetime"), ("data", .obj #[
+          ("lanes", .arr (D.lanes.map Json.str).toArray), ("events", .arr (D.events.map ev)),
+          ("messages", .arr (D.messages.map fun (a, b) => Json.arr #[.num (toString a), .num (toString b)]).toArray),
+          ("steps", .arr (evOf.map fun es => Json.arr (es.map fun i => Json.num (toString i)).toArray))])]])
       | none => r
     let r := r ++ workFields params res.derivation
     let r := match res.name with | some n => r.push ("bound", .arr #[.str n]) | none => r

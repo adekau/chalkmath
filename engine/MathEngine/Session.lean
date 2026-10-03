@@ -8,6 +8,8 @@ import MathEngine.Algebra
 import MathEngine.Fourier
 import MathEngine.Logic
 import MathEngine.Systems
+import MathEngine.Replicas
+import MathEngine.Rewriting
 /-!
 # Sessions, commands and the evaluation pipeline
 
@@ -41,6 +43,8 @@ structure Session where
   ctxs : List (String × Ord.Ctx) := []
   /-- Transition systems (`Systems.lean`) bound by `let`, by name. -/
   systems : List (String × Sys.System) := []
+  /-- Rewriting systems (`let R = rules(…)`), by name. -/
+  trss : List (String × TRS.System) := []
   /-- Logic-world formulas bound by `let`, by name. -/
   formulas : List (String × Logic.Fm) := []
   cells : List (String × Cell) := []
@@ -162,18 +166,25 @@ private abbrev LamErr := String × String × Option (Nat × Nat)
 
 /-- Unfold the definitions (one δ-step), then take the strategy's steps (β, or β and η) until none
 applies, `limit` steps are taken (`Lam.maxSteps` without one), or the term grows past `Lam.maxSize`.
-Returns the term reached, the steps, and why it stopped. -/
+Returns the term reached, the steps shown (a long run's middle is one step saying how many it
+leaves out), why it stopped, and how many steps it took. -/
 private def lamRun (s : Session) (t : Lam.Term) (st : Lam.Strategy) (eta : Bool) (limit : Option Nat) :
-    Lam.Term × Lam.Term × Array Step × Lam.Halt :=
+    Lam.Term × Lam.Term × Array Step × Lam.Halt × Nat :=
   let expanded := Lam.expandDefs (lambdaDefs s) t
   let δ : Array Step := if expanded != t then
       #[⟨"lambda.delta", "δ: unfold the definitions used (the session's, then the Church library's).", [], Lam.toExpr t, Lam.toExpr expanded, none⟩]
     else #[]
-  let (out, trace, halt) :=
+  let r : Lam.Run Lam.StepKind :=
     if eta then Lam.runSteps Lam.betaEtaStep expanded (limit.getD Lam.maxSteps)
     else Lam.runSteps (fun u => (st.step u).map fun (u', r) => (u', if r then Lam.StepKind.alphaBeta else .beta)) expanded (limit.getD Lam.maxSteps)
-  let (steps, _) := trace.foldl (fun (acc, prev) (t', k) => (acc.push (lamStep st prev t' k), t')) (δ, expanded)
-  (expanded, out, steps, halt)
+  let chain (acc : Array Step) (base : Lam.Term) (ts : List (Lam.Term × Lam.StepKind)) :=
+    (ts.foldl (fun (acc, prev) (t', k) => (acc.push (lamStep st prev t' k), t')) (acc, base)).1
+  let steps := chain δ expanded r.first
+  let steps := if r.dropped == 0 then steps else
+    let upTo := (r.first.getLast?.map (·.1)).getD expanded
+    steps.push ⟨"lambda.elided", s!"{r.dropped} more steps, the same rule each time, not shown: the work shows the first {r.first.length} and the last {r.last.length} of {r.count}.", [], Lam.toExpr upTo, Lam.toExpr r.lastFrom, none⟩
+  let steps := chain steps r.lastFrom r.last
+  (expanded, r.out, steps, r.halt, r.count)
 
 /-- Why a run that did not reach its goal is refused: the step budget, or the term's growth. -/
 private def haltError (halt : Lam.Halt) (goal how : String) (steps : Nat) (out : Lam.Term) : LamErr :=
@@ -214,9 +225,9 @@ def lambdaCommand (s : Session) (cmd : Lam.Cmd) : Except LamErr LamResult := do
     let t := t.erase
     let goal := match st with
       | .normal | .applicative => "normal form" | .cbn => "weak head normal form" | .cbv => "value"
-    let (_, out, steps, halt) := lamRun s t st false limit
+    let (_, out, steps, halt, count) := lamRun s t st false limit
     if halt == .size || (halt == .fuel && limit.isNone) then
-      throw (haltError halt goal s!" ({st.name})" (steps.filter (·.rule != "lambda.delta")).size out)
+      throw (haltError halt goal s!" ({st.name})" count out)
     let reading :=
       if halt != .done then some s!"stopped after {limit.getD 0} steps: not yet a {goal}"
       else match churchReading out with
@@ -229,9 +240,9 @@ def lambdaCommand (s : Session) (cmd : Lam.Cmd) : Except LamErr LamResult := do
     pure (mk (Lam.toExpr out) (some out) (Lam.toExpr t) steps reading)
   | .eta limit t =>
     let t := t.erase
-    let (_, out, steps, halt) := lamRun s t .normal true limit
+    let (_, out, steps, halt, count) := lamRun s t .normal true limit
     if halt == .size || (halt == .fuel && limit.isNone) then
-      throw (haltError halt "βη-normal form" " (β and η)" (steps.filter (·.rule != "lambda.delta")).size out)
+      throw (haltError halt "βη-normal form" " (β and η)" count out)
     let reading := if halt != .done then some s!"stopped after {limit.getD 0} steps: not yet in βη-normal form" else churchReading out
     pure (mk (Lam.toExpr out) (some out) (Lam.toExpr t) steps reading)
   | .fv t =>
@@ -321,8 +332,7 @@ def lambdaCell (s : Session) (cellId source : String) : Session × Except LamErr
   match Lam.parseStmt source with
   | .error msg => (s, .error ("syntax", msg, none))
   | .ok (name, t) =>
-    let (expanded, out, steps, halt) := lamRun s t .normal false none
-    let βs := (steps.filter (·.rule != "lambda.delta")).size
+    let (expanded, out, steps, halt, βs) := lamRun s t .normal false none
     if halt != .done && name.isNone then (s, .error (haltError halt "normal form" "" βs out)) else
       -- a definition with no normal form (`fact := Y F`) is bound as written, its names unfolded
       let (out, steps, reading) := if halt == .done then (out, steps, churchReading out)
@@ -1017,10 +1027,13 @@ structure SysResult where
   graph : Option (Ord.Rel × List (String × String) × List (String × String)) := none
   /-- Each drawn state's distance from an initial state, for a layered drawing. -/
   layers : List Nat := []
+  /-- A replica simulation's space-time diagram, and the diagram's events each step made. -/
+  spacetime : Option (Rep.Diagram × Array (List Nat)) := none
 
 namespace Sys
 
-def commands : List String := ["system", "states", "invariant", "inductive", "reach", "deadlock", "trace", "ctl", "eventually", "refines"]
+def commands : List String := ["system", "states", "invariant", "inductive", "reach", "deadlock", "trace", "ctl", "eventually", "refines", "replicas",
+  "rules", "rewrite", "terminates", "critical"]
 
 /-- `[let NAME =] command(…)` for a systems command. -/
 def splitLet (src : String) : Option String × String :=
@@ -1070,14 +1083,19 @@ def systemCell (s : Session) (cellId source : String) :
   let bool (b : Bool) : Expr := .var (if b then "true" else "false")
   -- the question as the engine read it: the command with its system and formula
   let question : Expr :=
-    if head == "system" then .var "system" else
+    if head == "system" || head == "rules" then .var head else
+    if head == "replicas" then
+      (match Sys.argsOf t head |>.toOption |>.bind (Rep.parse · |>.toOption) with
+       | some (_, rs, _) => .fn "replicas" [.var ((Sys.splitFirst ((Sys.argsOf t head).toOption.getD "")).1), Ord.setExpr rs]
+       | none => .var "replicas") else
     match Sys.argsOf t head with
     | .error _ => .var head
     | .ok body =>
       let (a, rest) := Sys.splitFirst body
       .fn head ([.var a] ++ (if rest.isEmpty then [] else [match Logic.parseFormula rest with | .ok f => f.toExpr | .error _ => .var rest]))
   let done (value : Expr) (steps : Array Step) (summary : String) (bindS : Option Sys.System := none)
-      (graph : Option (Ord.Rel × List (String × String) × List (String × String) × List Nat) := none) :
+      (graph : Option (Ord.Rel × List (String × String) × List (String × String) × List Nat) := none)
+      (spacetime : Option (Rep.Diagram × Array (List Nat)) := none) (bindT : Option TRS.System := none) :
       Session × Except (String × String × Option (Nat × Nat)) SysResult :=
     let input := if head == "system" then value else question
     let d : Derivation := ⟨input, steps, value⟩
@@ -1085,7 +1103,14 @@ def systemCell (s : Session) (cellId source : String) :
     let s := match name, bindS with
       | some n, some S => { s with systems := (n, S) :: s.systems.filter (·.1 != n) }
       | _, _ => s
-    (s, .ok ⟨name, value, d, summary, graph.map (fun (R, b, a, _) => (R, b, a)), (graph.map (·.2.2.2)).getD []⟩)
+    let s := match name, bindT with
+      | some n, some T => { s with trss := (n, T) :: s.trss.filter (·.1 != n) }
+      | _, _ => s
+    (s, .ok ⟨name, value, d, summary, graph.map (fun (R, b, a, _) => (R, b, a)), (graph.map (·.2.2.2)).getD [], spacetime⟩)
+  let getT (n : String) : Except String TRS.System :=
+    match s.trss.lookup n.trimAscii.copy with
+    | some T => .ok T
+    | none => .error s!"'{n.trimAscii}' is not a rewriting system (make one with let R = rules(…))"
   let getS (n : String) : Except String Sys.System :=
     match s.systems.lookup n.trimAscii.copy with
     | some S => .ok S
@@ -1183,6 +1208,64 @@ def systemCell (s : Session) (cellId source : String) :
         let (steps, edges) ← traceSteps S G j
         return done (bool true) (steps.push (step "sys.deadlock" "No action is enabled here: a deadlock." (S.stateExpr G.states[j]!) (bool true))) s!"a deadlock after {edges.length} step{if edges.length == 1 then "" else "s"}" (graph := draw G edges [])
       | none => return done (bool false) #[step "sys.deadlock" s!"Every one of the {G.states.size} reachable states has an enabled action." (.var "init") (bool false)] "no deadlock" (graph := draw G [] [])
+    | "rules" =>
+      let R ← TRS.parseSystem body
+      let value := Expr.fn "set" (R.rules.map TRS.Rule.toExpr)
+      return done value #[] s!"{R.rules.length} rule{if R.rules.length == 1 then "" else "s"}: {", ".intercalate (R.rules.map (·.name))}" (bindT := some R)
+    | "rewrite" =>
+      let (rn, tt) := Sys.splitFirst body
+      let R ← getT rn
+      let t ← TRS.parseTerm tt
+      let (trace, out, normal) := TRS.normalize R t
+      if !normal then
+        throw (if out.size > TRS.maxSize then s!"the term grew past {TRS.maxSize} symbols after {trace.length} rewrites (the system may not terminate on this term)"
+          else s!"no normal form after {trace.length} rewrites (the system may not terminate on this term)")
+      let (steps, _) := trace.foldl (fun (acc, prev) (ρ, p, t') =>
+          (acc.push ⟨"trs.step", s!"{ρ.name}: ${ρ.lhs.toExpr.toLatex false} \\to {ρ.rhs.toExpr.toLatex false}$, {if p.isEmpty then "at the root" else "at the marked subterm"}.", p, prev.toExpr, t'.toExpr, none⟩, t'))
+        (#[], t)
+      return done out.toExpr steps s!"a normal form after {trace.length} step{if trace.length == 1 then "" else "s"}"
+    | "terminates" =>
+      let (rn, rest) := Sys.splitFirst body
+      let R ← getT rn
+      let interps ← (TRS.topCommas rest).mapM TRS.parseInterp
+      let I := TRS.interpOf interps
+      let what := if interps.isEmpty then "size" else "interpretation"
+      let checks := R.rules.map fun ρ => (ρ, TRS.lin I ρ.lhs, TRS.lin I ρ.rhs)
+      let steps := (checks.map fun (ρ, l, r) =>
+        let ok := TRS.decreases l r
+        step "trs.decrease" (s!"{ρ.name}: the left side's {what} is {l.text}, the right side's {r.text}: " ++
+          (if ok then "larger, whatever the variables are." else "not larger for every value of the variables."))
+          ρ.toExpr (bool ok)).toArray
+      match checks.find? (fun (_, l, r) => !TRS.decreases l r) with
+      | some (ρ, _, _) => return done (bool false) steps s!"not shown to terminate: {ρ.name} does not decrease the {what}"
+      | none => return done (bool true) steps s!"terminates: every rule decreases the {what}, a natural number, so no term rewrites for ever"
+    | "critical" =>
+      let R ← getT body.trimAscii.copy
+      let cps := TRS.critical R
+      let results := cps.map fun c =>
+        let (_, nl, okl) := TRS.normalize R c.left
+        let (_, nr, okr) := TRS.normalize R c.right
+        (c, nl, nr, okl && okr && nl == nr)
+      let steps := (results.map fun (c, nl, nr, joined) =>
+        step "trs.critical" (s!"{c.outer.name} at the root and {c.inner.name} at position {c.pos} overlap on this term. It rewrites to {c.left} and to {c.right}, which reduce to {nl} and {nr}: " ++
+          (if joined then "joinable." else "not joinable."))
+          c.peak.toExpr (.fn (if joined then "=" else "≠") [nl.toExpr, nr.toExpr])).toArray
+      let value := Expr.fn "set" (cps.map fun c => .fn "pair" [c.left.toExpr, c.right.toExpr])
+      let bad := (results.filter fun (_, _, _, j) => !j).length
+      let say := if cps.isEmpty then "no critical pairs: locally confluent"
+        else if bad == 0 then s!"{cps.length} critical pair{if cps.length == 1 then "" else "s"}, all joinable: locally confluent, and confluent if it terminates (Newman's lemma)"
+        else s!"{cps.length} critical pair{if cps.length == 1 then "" else "s"}, {bad} not joinable: not confluent"
+      return done value steps say
+    | "replicas" =>
+      let (kind, replicas, evs) ← Rep.parse body
+      let r ← Rep.run kind replicas evs
+      let (value, say, same) := Rep.summary r
+      let steps := r.steps.map fun (rule, text, before, after, _) => step rule text before after
+      let steps := steps.push (step (if same then "crdt.converged" else "crdt.diverged")
+        (if same then "Every replica is in the same state, so every replica reads the same."
+         else "The replicas are not all in the same state: some have not received every update yet.") value (bool same))
+      let evOf := (r.steps.map (·.2.2.2.2)).push []
+      return done value steps say (spacetime := some (r.diagram, evOf))
     | "trace" =>
       let (sn, rest) := Sys.splitFirst body
       let S ← getS sn
@@ -1191,14 +1274,23 @@ def systemCell (s : Session) (cellId source : String) :
       let names := (rest.splitOn ",").map (·.trimAscii.copy) |>.filter (· != "")
       let mut cur := start
       let mut steps := #[step "sys.init" s!"Start: the initial state ({(S.init.toExpr).toText})." (.var "init") (S.stateExpr start)]
+      let mut visited : List Sys.State := [start]
       for a in names do
         let act ← match S.actions.find? (·.name == a) with | some x => pure x | none => throw s!"{a} is not an action of {sn}"
         match (← S.successors cur).find? (·.1 == a) with
         | none => throw s!"{a} is not enabled in {Sys.stateLabel cur} ({(act.guard.toExpr).toText} fails)"
         | some (_, nxt) =>
           steps := steps.push (step "sys.step" s!"{act.describe}." (S.stateExpr cur) (S.stateExpr nxt))
+          visited := visited ++ [nxt]
           cur := nxt
-      return done (S.stateExpr cur) steps s!"{names.length} step{if names.length == 1 then "" else "s"}"
+      -- the trace on the graph of reachable states, its transitions marked
+      let graph := match S.explore with
+        | .ok G =>
+          let idx (x : Sys.State) := (List.range G.states.size).find? fun i => G.states[i]! == x
+          let edges := (visited.zip visited.tail).filterMap fun (a, b) => do pure (← idx a, ← idx b)
+          draw G edges []
+        | .error _ => none
+      return done (S.stateExpr cur) steps s!"{names.length} step{if names.length == 1 then "" else "s"}" (graph := graph)
     | "ctl" =>
       let (sn, ftext) := Sys.splitFirst body
       let S ← getS sn

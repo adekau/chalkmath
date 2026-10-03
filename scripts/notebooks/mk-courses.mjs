@@ -1631,6 +1631,24 @@ course("crdt", "CRDTs: replicated data that converges",
 > A **state-based CRDT** keeps its state in a bounded join-semilattice, makes every update **inflationary** (the new state is above the old), and merges by the **join**. Then a replica stores not a value but everything it has heard about the value, and hearing the same things in any order gives the same state.
 `);
     md(r`This is the propagator cell from *Order and lattices*, read again: there a cell gathered partial information from propagators on one scheduler; here a replica gathers it from other replicas over an unreliable network. The algebra is the same.`);
+    sec("Replicas in the notebook");
+    md(r`‹replicas(…)› runs a CRDT on named replicas through a schedule of events, one per line: ‹a: inc› updates replica ‹a›, and ‹a -> b› has ‹b› merge ‹a›'s state. It answers with each replica's reading and whether they have converged, and draws a **space-time diagram**: a lane per replica, an arrow per message. Step through it: the diagram grows event by event.`);
+    m(`replicas(gcounter; a, b, c
+  a: inc
+  b: inc
+  b: inc
+  a -> b
+  b -> c
+)`, { step: 0 });
+    md(r`Replica ‹a› has not heard from anyone, so the replicas have not converged. One more message does it:`);
+    m(`replicas(gcounter; a, b, c
+  a: inc
+  b: inc
+  b: inc
+  a -> b
+  b -> c
+  c -> a
+)`);
     sec("In Lean");
     md(r`The book's Lean, chapter by chapter, runs in this course's lessons; each lesson sees the ones before it. First the merge discipline as classes (with notation $\sqcup$ for the join, $\bot$ for the bottom, $\sqsubseteq$ for "knows at least as much"), the laws every join obeys (the ACI toolkit), the propagator machinery re-read as replicas, and the chapter 1 demonstrations of naive merges going wrong.`);
     for (const c of crdtLesson(0)) lean(c);
@@ -1656,6 +1674,15 @@ course("crdt", "CRDTs: replicated data that converges",
     m("join(G, (2, 0), (1, 3))", { work: true });
     md(r`Replica 1 has counted 2 taps and replica 2 has counted 3: merged, $(2, 3)$, total 5. Merging the same states again changes nothing; merging an older state ($(1, 0)$) changes nothing either.`);
     m("join(G, (2, 3), (1, 0))");
+    sec("A G-Counter, run");
+    md(r`Each replica counts its own increments in its own slot; a merge takes the larger count, slot by slot. The work shows each state as a map from replicas to their slots.`);
+    m(`replicas(gcounter; a, b
+  a: inc
+  a: inc
+  b: inc
+  a -> b
+  b -> a
+)`, { work: true });
     sec("In Lean");
     for (const c of crdtLesson(1)) lean(c);
     md(r`The executable G-Counter renders as a list; rendering a merge is zipping the renders with $\max$. The lemma behind it:`);
@@ -1720,6 +1747,15 @@ example :
     m("let PN = product(C3, C3)");
     m("le(PN, (1, 0), (1, 1))", { work: true });
     md(r`$(1, 0) \sqsubseteq (1, 1)$: a decrement moved the state up, while the value went from 1 to 0. Information grows even when the number shrinks.`);
+    sec("A PN-Counter, run");
+    md(r`The state is a pair of G-Counters, increments and decrements; the reading subtracts.`);
+    m(`replicas(pncounter; a, b
+  a: inc
+  a: inc
+  b: dec
+  a -> b
+  b -> a
+)`, { work: true });
     sec("In Lean");
     for (const c of crdtLesson(2)) lean(c);
     md(r`A query that clamps at zero hides the negative truth: a seed for the last lesson.`);
@@ -1754,6 +1790,16 @@ example : PNCounter.value (PNCounter.decr 0 (⊥ : PNCounter 1)) < 0 := by decid
 > [!mistake]
 > A removed element can never come back: its tombstone outranks every later add, because the merge cannot tell a re-add from an old add it has already seen. The next lessons fix this two ways: with timestamps (last writer wins) and with unique tags (the OR-Set).
 `);
+    sec("Sets, run");
+    md(r`A G-Set merges by union. A 2P-Set keeps a second set of removed elements, also merged by union, and reads the added minus the removed: so a removal is for ever, and adding again does nothing.`);
+    m("replicas(gset; a, b; a: add x; b: add y; a -> b; b -> a)");
+    m(`replicas(twopset; a, b
+  a: add x
+  a -> b
+  b: remove x
+  a: add x
+  b -> a
+)`, { work: true });
     sec("In Lean");
     for (const c of crdtLesson(3)) lean(c);
     md(r`A sorted, duplicate-free sublist is no longer than the list it sits in; so a G-Set's size can only grow.`);
@@ -1804,6 +1850,14 @@ example : PNCounter.value (PNCounter.decr 0 (⊥ : PNCounter 1)) < 0 := by decid
     md(r`Done naively ("on a tie, keep the incoming one"), the merge is not commutative:`);
     m("let Naive = op({w1, w2}; [w1, w2; w1, w2])");
     m("commutative(Naive)", { work: true });
+    sec("A register, run");
+    md(r`An LWW-Register keeps the write with the latest timestamp, ties broken by replica. ‹write v @ t› gives the timestamp; without one, it is the event's number. The write that wins need not be the one made last in real time:`);
+    m(`replicas(lww; a, b
+  a: write red @ 5
+  b: write blue @ 3
+  a -> b
+  b -> a
+)`, { work: true });
     sec("In Lean");
     for (const c of crdtLesson(4)) lean(c);
     md(r`Three replicas with tied naive timestamps: grouping one merge differently changes the answer.`);
@@ -1819,7 +1873,7 @@ example : PNCounter.value (PNCounter.decr 0 (⊥ : PNCounter 1)) < 0 := by decid
 `);
   });
 
-  add("06-orset.chalk", "The OR-Set: add wins", "Observed-remove: a remove deletes only the adds it has seen, so a concurrent add survives.", ({ sec, md, lean, lx }) => {
+  add("06-orset.chalk", "The OR-Set: add wins", "Observed-remove: a remove deletes only the adds it has seen, so a concurrent add survives.", ({ sec, md, m, lean, lx }) => {
     sec("The OR-Set: add wins");
     md(r`
 > [!goal]
@@ -1830,6 +1884,16 @@ example : PNCounter.value (PNCounter.decr 0 (⊥ : PNCounter 1)) < 0 := by decid
 > [!theorem] Add wins
 > If an add of $e$ is concurrent with a remove of $e$, then after both are merged $e$ is in the set. The proof (the longest in the book) runs on an invariant of reachable states, not on the algebra alone.
 `);
+    sec("Add wins, run");
+    md(r`Each add makes a tag of its own (‹x@a1› is ‹a›'s first add); a remove removes the tags of that element its replica has seen. Here ‹b› removes ‹x› while ‹a› adds it again: the new tag was not seen, so it survives.`);
+    m(`replicas(orset; a, b
+  a: add x
+  a -> b
+  b: remove x
+  a: add x
+  b -> a
+  a -> b
+)`, { work: true });
     sec("In Lean");
     for (const c of crdtLesson(5)) lean(c);
     md(r`Tombstones are the price: they only ever accumulate.`);
@@ -1885,13 +1949,25 @@ example : msetUnion (MSet.ofList [1, 2]) (MSet.ofList [3])
 `);
   });
 
-  add("08-delivery.chalk", "Delivery: gossip, duplication and reordering", "A trace semantics for an at-least-once network, eventual delivery implies convergence, and a gossip driver that provably stops.", ({ sec, md, lean, lx }) => {
+  add("08-delivery.chalk", "Delivery: gossip, duplication and reordering", "A trace semantics for an at-least-once network, eventual delivery implies convergence, and a gossip driver that provably stops.", ({ sec, md, m, lean, lx }) => {
     sec("Delivery: gossip, duplication and reordering");
     md(r`
 > [!goal]
 > Model the network: every execution an adversarial at-least-once network could produce, as a relation; prove that eventual delivery gives convergence; and write a gossip driver whose termination Lean accepts.
 `);
     md(r`The main theorem assumed replicas had received the same set of updates. Where do those sets come from? This lesson builds the network twice: as an inductive **trace semantics** (a step relation: update, send, deliver, with messages duplicated and reordered at will), and as an **executable gossip driver** run to quiescence, whose termination is proved by well-founded recursion.`);
+    sec("Delayed and duplicated messages, run");
+    md(r`‹m := a› puts a copy of ‹a›'s state in flight; ‹b <- m› delivers it, possibly later, possibly twice. An old message delivered after newer ones, or twice, changes nothing more, because the merge is a join:`);
+    m(`replicas(gcounter; a, b, c
+  a: inc
+  m := a
+  a: inc
+  a -> b
+  b <- m
+  b <- m
+  c <- m
+  b -> c
+)`, { step: 0 });
     sec("In Lean");
     for (const c of crdtLesson(7)) lean(c);
     md(r`Replicas never forget: what a replica has seen only grows along any execution.`);
@@ -2054,7 +2130,7 @@ inductive Reachable {σ : Type} (T : TS σ) : σ → Prop where
   | step {s t : σ} : Reachable T s → T.step s t → Reachable T t`;
 
 course("systems", "Transition systems, invariants and temporal logic",
-  "State machines and their reachable states; invariants with counterexample traces and inductive proofs; mutual exclusion, safety and liveness under fairness; temporal logic as fixed points; happens-before, effectively-once delivery, and refinement.",
+  "State machines and their reachable states; invariants with counterexample traces and inductive proofs; mutual exclusion, safety and liveness under fairness; temporal logic as fixed points; happens-before, effectively-once delivery, and refinement; rewriting systems, and retries under failure.",
   "Distributed systems", (add) => {
 
   add("01-state-machines.chalk", "State machines and executions", "Variables, an initial condition and guarded actions; executions as traces; the graph of reachable states.", ({ sec, md, m, ex, lean, lx }) => {
@@ -2532,6 +2608,130 @@ theorem normalize_sound : ∀ (ops : List Op) (s : Option Nat), run s (normalize
     md(r`
 > [!summary]
 > Refinement checks that an implementation only does what the specification allows, up to stuttering. A rewriting of operations is sound when it refines the same way: same effect from every state, which a structural induction proves once for every batch.
+`);
+  });
+
+  add("09-rewriting.chalk", "Rewriting systems", "The normalization of lesson 8 as rules on terms: rewriting to a normal form, termination by a measure, and confluence by critical pairs.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Rewriting systems");
+    md(r`
+> [!goal]
+> Write an optimization as rewrite rules, show that rewriting always stops, and check that the order the rules are applied in cannot change the answer.
+`);
+    md(r`
+> [!definition] Term, rule, normal form
+> A **term** is a variable or a symbol applied to terms: ‹then(create(1), done)›. A **rule** $l \to r$ rewrites any instance of $l$, anywhere in a term, to the same instance of $r$. A **normal form** is a term no rule applies to.
+`);
+    md(r`Lesson 8's batch of operations is a term: ‹then(op, rest)› puts an operation before the rest, and ‹done› is the empty batch. Its combinations are four rules. The variables are ‹u›, ‹v›, ‹w›, ‹x›, ‹y› and ‹z›; anything else is a symbol or a constant.`);
+    m("let N = rules(\n  cu: then(create(x), then(update(y), z)) -> then(create(y), z)\n  uu: then(update(x), then(update(y), z)) -> then(update(y), z)\n  xc: then(u, then(create(y), z)) -> then(create(y), z)\n  xd: then(u, then(delete, z)) -> then(delete, z)\n)");
+    m("rewrite(N, then(create(1), then(update(2), then(update(3), then(delete, then(create(4), done))))))", { step: 0 });
+    md(r`Each step names its rule and marks where in the term it applied: the leftmost-outermost redex, the first instance of a left side from the root.`);
+    sec("Termination");
+    md(r`
+> [!definition] Terminating
+> A system **terminates** when no term can be rewritten for ever. One way to show it: give every term a natural number that every step lowers. A natural number cannot go down for ever.
+`);
+    md(r`Here every rule drops an operation, so the size (the number of symbols) goes down:`);
+    m("terminates(N)", { work: true });
+    md(r`The size is not always enough. Addition on numerals ‹0›, ‹s(0)›, ‹s(s(0))›, … keeps the size in its second rule, but an **interpretation** that weighs ‹add›'s first argument double shows that it goes down:`);
+    m("let A = rules(add(0, y) -> y; add(s(x), y) -> s(add(x, y)))");
+    m("terminates(A)", { work: true });
+    m("terminates(A; add(x, y) = 2x + y, s(x) = x + 1)", { work: true });
+    md(r`
+> [!theorem] The check is sound
+> With coefficients of at least one, a rule whose left side has a larger constant and no smaller coefficient is worth more for every value of the variables, and so is every term around an instance of it. Every step lowers a natural number, so no term rewrites for ever. The engine's ‹RewritingProofs› proves this, and the converse for a single rule: one that fails is worth no more on the right for some values.
+`);
+    sec("Confluence and critical pairs");
+    md(r`
+> [!definition] Confluent
+> A system is **confluent** when any two ways of rewriting a term can be brought back together. A terminating, confluent system gives every term exactly one normal form: the optimizer's answer does not depend on which rule it tries first.
+`);
+    md(r`Two rules can only disagree where their left sides overlap. Each overlap gives a **critical pair**: the two results. If every pair rewrites to a common term (it is **joinable**), the system is locally confluent, and with termination, confluent (Newman's lemma).`);
+    m("critical(N)", { work: true });
+    md(r`
+> [!mistake]
+> Add lesson 8's tempting rule, "create then delete cancels out":
+`);
+    m("let M = rules(\n  cu: then(create(x), then(update(y), z)) -> then(create(y), z)\n  uu: then(update(x), then(update(y), z)) -> then(update(y), z)\n  xc: then(u, then(create(y), z)) -> then(create(y), z)\n  xd: then(u, then(delete, z)) -> then(delete, z)\n  cd: then(create(x), then(delete, z)) -> z\n)");
+    m("critical(M)", { work: true });
+    md(r`The pair $(\mathsf{then}(\mathsf{delete}, z),\ z)$ does not join: the same batch normalizes to "delete" or to nothing depending on which rule fires first. Lesson 8's Lean found the store state where the two differ (the key already existed). Here the rules themselves show that something is wrong, before any semantics.`);
+    sec("Normalization never lengthens a batch");
+    md(r`Back in Lean, with lesson 8's ‹normalize›: it never makes a batch longer. (Its termination Lean checks itself: the recursion is structural.)`);
+    lx(`theorem normalize_length : ∀ ops : List Op, (normalize ops).length ≤ ops.length := by`, r`Prove it by induction on the batch.`, `  intro ops
+  induction ops with
+  | nil => simp [normalize]
+  | cons a rest ih =>
+    simp only [normalize]
+    split
+    · rename_i b tl heq
+      rw [heq] at ih
+      split <;> simp at ih ⊢ <;> omega
+    · simp`, [r`‹induction ops›, then ‹simp only [normalize]› and ‹split› on what ‹normalize rest› gave.`, r`In the case ‹b :: tl›, rewrite ‹ih› with the equation ‹split› names, then ‹split› again on ‹combine a b›; ‹omega› finishes the arithmetic.`]);
+    sec("Exercises");
+    ex("rewrite(N, then(update(1), then(update(2), then(update(3), done))))", r`Normalize ‹then(update(1), then(update(2), then(update(3), done)))› with ‹N›. Write the term.`, [r`‹uu› keeps the second update.`]);
+    ex("rewrite(N, then(create(1), then(delete, then(update(2), done))))", r`And ‹then(create(1), then(delete, then(update(2), done)))›?`, [r`No rule folds an update into a delete before it: an update on a missing key does nothing, but the rules keep it.`]);
+    ex("terminates(A)", r`Does addition terminate by size alone?`, [r`Compare the sizes of ‹add(s(x), y)› and ‹s(add(x, y))›.`]);
+    ex("rewrite(A, add(s(s(0)), s(s(0))))", r`What is ‹add(s(s(0)), s(s(0)))›, rewritten with ‹A›?`, []);
+    md(r`
+> [!summary]
+> Rewrite rules are an optimization written as equations directed left to right. A measure every rule lowers shows termination; joinable critical pairs show local confluence; together they give each term one normal form. A pair that does not join points at a rule to fix, or one to add (Knuth–Bendix completion).
+`);
+  });
+
+  add("10-retries.chalk", "Retries and backoff", "Retrying a call that fails at random: the chance that every attempt fails, the expected number of attempts, and the load and wait that backoff trades.", ({ sec, md, m, ex }) => {
+    sec("Retries and backoff");
+    md(r`
+> [!goal]
+> Compute the chance that a retried call fails, the attempts it costs on average, and the time exponential backoff waits, as finite sums.
+`);
+    md(r`A call fails with probability $q$, each attempt independently of the others, and the client tries at most $n$ times. Take $q = 1/10$:`);
+    m("let q = 1/10");
+    md(r`
+> [!definition] Independent attempts
+> The attempts all fail with probability $q \cdot q \cdots q = q^n$. The first success comes at attempt $k$ with probability $q^{k-1}(1 - q)$: $k - 1$ failures, then a success.
+`);
+    m("q^3");
+    m("1 - q^5");
+    md(r`Adding up the chance of succeeding first at each attempt gives the same number, as it must:`);
+    m("sum((1 - q)*q^(k - 1), k, 1, 5)", { work: true });
+    md(r`That is the geometric sum. With a symbol for $q$, multiplying by $1 - r$ telescopes:`);
+    m("expand((1 - r)*sum(r^k, k, 0, 4))", { work: true });
+    sec("Expected attempts");
+    md(r`
+> [!definition] Expected value
+> The **expected** number of attempts is the sum of each count times its probability: $k$ attempts when the first success is at $k < n$, and $n$ when the first $n - 1$ fail.
+`);
+    m("sum(k*(1 - q)*q^(k - 1), k, 1, 4) + 5*q^4", { work: true });
+    md(r`A shorter way: there is an attempt $k + 1$ exactly when the first $k$ failed, with probability $q^k$. Summing those chances counts the attempts:`);
+    m("sum(q^k, k, 0, 4)");
+    md(r`
+> [!mistake]
+> Retries look free when failures are rare: $1.1111$ calls per request. But failures are rarely independent. When a server is overloaded, most calls fail, and the retries are more load on the server that is already failing:
+`);
+    m("sum((9/10)^k, k, 0, 4)");
+    md(r`At $q = 9/10$ every request costs four calls: the retries quadruple the load just when the server can take the least. Hence retry budgets, which cap retries at a fraction of the traffic, and backoff.`);
+    sec("Exponential backoff");
+    md(r`
+> [!definition] Exponential backoff
+> Wait $d$ before the second attempt, $2d$ before the third, $4d$ before the fourth: the wait before attempt $k + 2$ is $2^k d$. Real clients also cap it and add **jitter**, a random part, so that clients that failed together do not retry together.
+`);
+    md(r`With $d = 100$ ms and five attempts, the longest the client waits in all:`);
+    m("sum(100*2^k, k, 0, 3)");
+    md(r`On average far less: the wait before attempt $k + 2$ only happens when the first $k + 1$ attempts failed.`);
+    m("sum(100*2^k*q^(k + 1), k, 0, 3)", { work: true });
+    md(r`The expected attempts as a function of the failure rate, with a slider:`);
+    m("manipulate(sum(p^k, k, 0, 4), p, 0, 1)");
+    md(r`
+> [!note]
+> Retries repeat requests. A request that the server applied but whose reply was lost is sent again: lesson 7's idempotent handler is what makes retrying safe.
+`);
+    sec("Exercises");
+    ex("(1/5)^3", r`A call fails with probability $1/5$. What is the chance that three attempts all fail?`, [r`Independent attempts: multiply.`]);
+    ex("1 - (1/2)^4", r`With $q = 1/2$ and four attempts, what is the chance that the call succeeds?`, [r`One minus the chance that all four fail.`]);
+    ex("sum((1/2)^k, k, 0, 3)", r`With $q = 1/2$ and at most four attempts, how many attempts does a request cost on average?`, [r`Sum $q^k$ for $k$ from $0$ to $n - 1$.`]);
+    ex("sum(50*2^k, k, 0, 4)", r`Backoff starts at $50$ ms and doubles, with six attempts. How long does the client wait in all, at most?`, [r`Five waits: $50, 100, 200, 400, 800$.`]);
+    md(r`
+> [!summary]
+> Independent attempts multiply: $q^n$ fail, and the expected attempts are $\sum_{k<n} q^k$. Under overload $q$ is near one and retries multiply the load; backoff spaces them out, and on average costs little when failures are rare.
 `);
   });
 }, { leanPrelude: true });
@@ -3453,7 +3653,8 @@ def church {α : Type} : Nat → (α → α) → α → α
     m("pred := λn. fst (n (λp. pair (snd p) (succ (snd p))) (pair 0 0))");
     m("fact := Y (λself. λn. if (iszero n) 1 (mul n (self (pred n))))");
     m("fact 2");
-    md(r`$\mathsf{fact}\ 3$ needs more than the engine's thousand steps: Church arithmetic in normal order is slow, which is why real languages build numbers in.`);
+    m("fact 3", { work: true });
+    md(r`That took 1525 β-steps, and $\mathsf{fact}\ 4$ takes over ten thousand: numerals in unary, a predecessor that counts up from $0$ every time, and arguments copied unevaluated and computed again. The work shows the first steps and the last, and says how many it leaves out. This is why real languages build numbers in.`);
     sec("Under call by value");
     md(r`Call by value evaluates $Y\ g$'s argument $(\lambda x.\, g\ (x\ x))\ (\lambda x.\, g\ (x\ x))$ before calling $g$, and that unfolds again first, for ever:`);
     m("cbv 3: Y g", { work: true });

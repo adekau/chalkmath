@@ -8,7 +8,7 @@ derivation. `infer: Γ ⊢ t` finds a type for a term whose binders need not be 
 type and every application's result gets a type variable, each application gives an equation, and the
 equations are solved one at a time by unification (Robinson's, with the occurs check, which is what
 rejects `λx. x x`). What inference finds is not taken on trust: the term, annotated with the solution,
-goes back through the checker.
+goes back through the checker. `StlcPrincipal.lean` proves it the most general type.
 -/
 namespace MathEngine
 namespace Lam
@@ -50,34 +50,32 @@ def check (Γ : Ctx) : ATerm → Except String (Deriv × Ty)
 structure Gen where
   next : Nat := 0
   /-- One equation per application, in the order they were made. -/
-  eqs : Array (Ty × Ty) := #[]
+  eqs : List (Ty × Ty) := []
   /-- The free variables not in the context, each given a type variable. -/
   frees : Ctx := []
 
-def freshTy : StateM Gen Ty := modifyGet fun g => (.tvar g.next, { g with next := g.next + 1 })
-
-/-- Annotate every binder (a type variable where none is written) and collect the equations. -/
-def gen (Γ : Ctx) : ATerm → StateM Gen (ATerm × Ty)
-  | .var x => do
+/-- Annotate every binder (a type variable where none is written) and collect the equations, from
+the state `g` (the next type variable, the equations so far, the free variables' types). -/
+def gen (Γ : Ctx) : ATerm → Gen → (ATerm × Ty) × Gen
+  | .var x, g =>
     match Γ.lookup x with
-    | some T => pure (.var x, T)
+    | some T => ((.var x, T), g)
     | none =>
-      match (← get).frees.lookup x with
-      | some T => pure (.var x, T)
-      | none =>
-        let T ← freshTy
-        modify fun g => { g with frees := g.frees ++ [(x, T)] }
-        pure (.var x, T)
-  | .lam x T e => do
-    let A ← match T with | some A => pure A | none => freshTy
-    let (e', B) ← gen ((x, A) :: Γ) e
-    pure (.lam x (some A) e', .arrow A B)
-  | .app f a => do
-    let (f', F) ← gen Γ f
-    let (a', A) ← gen Γ a
-    let B ← freshTy
-    modify fun g => { g with eqs := g.eqs.push (F, .arrow A B) }
-    pure (.app f' a', B)
+      match g.frees.lookup x with
+      | some T => ((.var x, T), g)
+      | none => ((.var x, .tvar g.next), { g with next := g.next + 1, frees := g.frees ++ [(x, .tvar g.next)] })
+  | .lam x (some A) e, g =>
+    let ((e', B), g') := gen ((x, A) :: Γ) e g
+    ((.lam x (some A) e', .arrow A B), g')
+  | .lam x none e, g =>
+    let A := Ty.tvar g.next
+    let ((e', B), g') := gen ((x, A) :: Γ) e { g with next := g.next + 1 }
+    ((.lam x (some A) e', .arrow A B), g')
+  | .app f a, g =>
+    let ((f', F), g₁) := gen Γ f g
+    let ((a', A), g₂) := gen Γ a g₁
+    let B := Ty.tvar g₂.next
+    ((.app f' a', B), { g₂ with next := g₂.next + 1, eqs := g₂.eqs ++ [(F, .arrow A B)] })
 
 /-- A substitution of types for type variables, kept idempotent. -/
 abbrev TSubst := List (Nat × Ty)
@@ -166,8 +164,8 @@ structure Inferred where
   deriv : Deriv
 
 def infer (Γ : Ctx) (t : ATerm) : Except String Inferred := do
-  let ((gt, T0), g) := (gen Γ t).run {}
-  let eqs := g.eqs.toList
+  let ((gt, T0), g) := gen Γ t {}
+  let eqs := g.eqs
   let (σ, moves) ← unify eqs
   let T := T0.apply σ
   let frees := g.frees.map fun (x, A) => (x, A.apply σ)

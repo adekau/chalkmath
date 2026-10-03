@@ -82,6 +82,8 @@ the engine omits is unverified.
 \rt{rel.finer}{verified}{Every pair of the first checked in the second.}
 \rt{rel.wellfounded}{unverified}{On a finite set a relation is well-founded exactly when it has no cycle. A cycle found is shown and can be read off the relation; that the search finds one whenever there is one is not yet proved.}
 \rt{rel.measure}{verified}{Every step checked to decrease the measure, by definition; on a finite set a measure that goes down along every step leaves no room for a cycle.}
+\rt{order.inner}{verified}{A nested call evaluated first and named: a rewriting of the source, so the commands' own statuses apply.}
+\rt{sys.inner}{verified}{A nested call evaluated first and named: a rewriting of the source, so the commands' own statuses apply.}
 \rt{order.happens-before}{verified}{The reflexive-transitive closure of program order and messages, checked to be a partial order (\lc{checkPartialOrder_none}).}
 \rt{order.clocks}{verified}{Each entry counts the events of a process below the event in the happens-before order, by definition.}
 \rt{order.concurrent}{verified}{Neither event is below the other in the happens-before order, by definition.}
@@ -119,6 +121,14 @@ the engine omits is unverified.
 \rt{sys.lasso}{unverified}{A fair cycle avoiding the goal: each fair action is taken on it or disabled as its fairness requires; the search over strongly connected sets is not yet proved complete.}
 \rt{sys.eventually}{unverified}{No deadlock and no fair cycle avoids the goal among the reachable states; the search is not yet proved complete.}
 \rt{sys.refines}{unverified}{Every transition the search found maps to an abstract step or a stutter; the search's completeness is not yet proved.}
+\rt{trs.step}{verified}{An instance of one of the system's rules, rewritten at the position the step names (\lc{step\_sound}); the steps chain from the term to the answer (\lc{normalize\_chain}), and a normal form is one no rule applies to (\lc{normalize\_normal}).}
+\rt{trs.decrease}{verified}{A rule passes when its left side's linear form has a larger constant and no smaller coefficient: then the left side is worth more whatever the variables are (\lc{decreases\_sound}), and every step lowers the term's value (\lc{step\_decreases}), so no term rewrites for ever (\lc{no\_infinite\_rewriting}). A rule that fails has values that make its left side worth no more (\lc{decreases\_complete}).}
+\rt{trs.critical}{unverified}{The overlaps come from Robinson's unification, and each side is rewritten to normal form by verified steps; that unification finds every overlap, so that no critical pair is missed, is not yet proved.}
+\rt{crdt.update}{verified}{A local update only raises entries of the replica's state (\lc{update\_inflation}).}
+\rt{crdt.merge}{verified}{The entrywise maximum: a join, commutative, associative and idempotent (\lc{merge\_comm}, \lc{merge\_assoc}, \lc{merge\_idem}).}
+\rt{crdt.send}{verified}{A message is a copy of the state; nothing to prove.}
+\rt{crdt.converged}{verified}{Decided by comparing the states; equal states read equal values.}
+\rt{crdt.diverged}{verified}{Decided by comparing the states.}
 \midrule \multicolumn{3}{l}{\textbf{Logic world}} \\
 \rt{logic.implication}{verified}{$a \to b$ and $\lnot a \lor b$ have the same value under every assignment, and the pass that applies it everywhere keeps the formula's value (\lc{arrows_sound}).}
 \rt{logic.biconditional}{verified}{$a \leftrightarrow b$ and $(a \to b) \land (b \to a)$ have the same value under every assignment; the pass keeps the formula's value (\lc{arrows_sound}).}
@@ -133,14 +143,15 @@ the engine omits is unverified.
 \rt{logic.bounded}{verified}{A quantifier over a finite set is checked element by element, by definition; the atoms are evaluated by the pipeline, whose steps' statuses apply.}
 \midrule \multicolumn{3}{l}{\textbf{$\lambda$-calculus}} \\
 \rt{lambda.delta}{verified}{Unfolding a definition replaces a free name by its term; nothing to prove beyond that.}
-\rt{lambda.beta}{unverified}{$\beta$-reduction with capture-avoiding substitution; the substitution lemma is not yet proved.}
-\rt{lambda.alpha-beta}{unverified}{A binder renamed to avoid capture, then $\beta$; the renaming is not yet proved to preserve $\alpha$-equivalence.}
+\rt{lambda.beta}{verified}{Each step is one $\beta$-reduction of the de Bruijn terms: capture-avoiding substitution is de Bruijn substitution (\texttt{toDB\_subst}), for every strategy (\texttt{betaStep\_beta}, \texttt{cbnStep\_beta}, \texttt{cbvStep\_beta}, \texttt{appStep\_beta}, \texttt{betaEtaStep\_beta}).}
+\rt{lambda.alpha-beta}{verified}{A binder renamed to avoid capture, then $\beta$: the renaming keeps the de Bruijn form (\texttt{toDB\_renameFor}) and leaves nothing to capture (\texttt{captureFree\_renameFor}), so the step is one $\beta$-reduction (\texttt{toDB\_subst}).}
+\rt{lambda.elided}{verified}{The $\beta$-steps of a long reduction that the work does not show, each a step of the same strategy, so a $\beta$-reduction as \texttt{lambda.beta}'s are.}
 \rt{lambda.eta}{verified}{$\eta$: $\lambda x.\, f\ x$ contracts to $f$ only when $x$ is not free in $f$ (\texttt{etaRedex\_spec}); $\eta$ is an axiom of $\lambda\beta\eta$, so nothing more to prove.}
 \rt{lambda.fv}{verified}{The free variables, computed by their definition (\texttt{freeVars}).}
 \rt{lambda.db}{verified}{De Bruijn indices, computed by their definition (\texttt{toDB}).}
 \rt{lambda.alpha-eq}{verified}{$\alpha$-equivalence is taken to be equality of de Bruijn forms, which is how the engine defines it; that this agrees with renaming bound variables one at a time is the classical theorem, not proved here.}
-\rt{lambda.alpha}{unverified}{Binders renamed to avoid capture; the renaming is not yet proved to preserve $\alpha$-equivalence.}
-\rt{lambda.subst}{unverified}{Capture-free substitution; it adds no free variable beyond the argument's (\texttt{substRaw\_freeVars}), but the substitution lemma is not yet proved.}
+\rt{lambda.alpha}{verified}{Binders renamed to avoid capture: the de Bruijn form is kept (\texttt{toDB\_renameFor}), so the term is the same up to $\alpha$.}
+\rt{lambda.subst}{verified}{Substitution after the renaming captures nothing (\texttt{captureFree\_renameFor}) and is de Bruijn substitution (\texttt{toDB\_substRaw}).}
 \midrule \multicolumn{3}{l}{\textbf{Simply typed $\lambda$-calculus}} \\
 \rt{stlc.var}{verified}{Var: the checker's derivations are typing derivations (\texttt{check\_sound}, \texttt{StlcProofs.lean}).}
 \rt{stlc.abs}{verified}{$\to$I: the checker's derivations are typing derivations (\texttt{check\_sound}).}
@@ -148,7 +159,7 @@ the engine omits is unverified.
 \rt{stlc.constraints}{checked}{Inference's equations; the type found is re-checked by the verified checker on the annotated term.}
 \rt{stlc.split}{checked}{Unification splits an equation of arrows; the type found is re-checked by the verified checker.}
 \rt{stlc.unify}{checked}{Unification binds a type variable (with the occurs check); the type found is re-checked by the verified checker.}
-\rt{stlc.principal}{checked}{The solved type, its variables renamed; checked by the verified checker. That it is the most general type is Hindley's theorem, not proved here.}
+\rt{stlc.principal}{verified}{Most general (\lc{infer\_principal}, Hindley's theorem): every typing of the term, whatever types its unannotated binders and free variables get, has an instance of the solved type; and it is a type of the term (\lc{check\_sound}, by the checker). The type shown names its variables with names not otherwise in use.}
 \bottomrule
 \end{longtable}
 \normalsize

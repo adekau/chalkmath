@@ -1,4 +1,5 @@
 import MathEngine.Session
+import MathEngine.Nested
 /-!
 # Exercises: is the reader's answer the expected one?
 
@@ -95,9 +96,9 @@ private def reduceLam (s : Session) (src : String) : Except Err (Lam.Term × Lam
   | .ok (some _, _) => throw ("params", "an exercise compares λ-terms; a definition has no value to compare", none)
   | .ok (none, t) =>
     let expanded := Lam.expandDefs (lambdaDefs s) t
-    let (out, trace, halt) := Lam.reduce expanded
-    if halt != .done then throw ("eval", s!"λ: no normal form after {trace.length} β-steps", none)
-    pure (t, out, trace)
+    let r := Lam.reduce expanded
+    if r.halt != .done then throw ("eval", s!"λ: no normal form after {r.count} β-steps", none)
+    pure (t, r.out, r.first)
 
 /-! ## Logic and relations -/
 
@@ -215,7 +216,7 @@ def checkOrder (s : Session) (cellId question : String) (answer : Option String)
   match Ord.parseStmt question with
   | .ok (some _, _, _) => (s, .error ("params", "an exercise compares values; a let has no value to compare", none))
   | _ =>
-  match orderCell s cellId question with
+  match orderCellN s cellId question with
   | (s, .error e) => (s, .error e)
   | (s, .ok res) =>
     let (kind, want) := orderCanon res.value
@@ -237,11 +238,11 @@ private partial def stateKey : Expr → List String
   | .fn "∧" [a, b] => stateKey a ++ stateKey b
   | e => [String.ofList (e.toText.toList.filter (!·.isWhitespace))]
 
-/-- A systems exercise: the question's value is `true`/`false`, a number of states, or a state; the
-answer is written the same way (a state as `x = 1 ∧ y = 2`, in any order). -/
+/-- A systems exercise: the question's value is `true`/`false`, a number of states, a state, or a
+rewrite's normal form; the answer is written the same way (a state as `x = 1 ∧ y = 2`, in any order). -/
 def checkSystem (s : Session) (cellId question : String) (answer : Option String) :
     Session × Except Err CheckResult :=
-  match systemCell s cellId question with
+  match systemCellN s cellId question with
   | (s, .error e) => (s, .error e)
   | (s, .ok res) =>
     let want := (stateKey res.value).mergeSort
@@ -253,7 +254,10 @@ def checkSystem (s : Session) (cellId question : String) (answer : Option String
         | "false" | "⊥" => .ok (.var "false")
         | _ => match t.toInt? with
           | some n => .ok (.num (Q.ofInt n))
-          | none => (Logic.parseFormula t).map (·.toExpr)
+          | none =>
+            -- a rewrite's answer is a term
+            if (Sys.splitLet question).2.trimAscii.startsWith "rewrite" then (TRS.parseTerm t).map (·.toExpr)
+            else (Logic.parseFormula t).map (·.toExpr)
       match parsed with
       | .error msg => .error ("syntax", msg, none)
       | .ok e => .ok (⟨e, e⟩, (stateKey e).mergeSort == want)

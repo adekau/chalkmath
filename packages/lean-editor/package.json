@@ -4,9 +4,19 @@
   "license": "Apache-2.0",
   "type": "module",
   "main": "src/index.ts",
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
   "exports": {
     ".": "./src/index.ts",
-    "./types": { "types": "./src/types.ts", "default": "./src/types.ts" }
+    "./types": {
+      "types": "./src/types.ts",
+      "default": "./src/types.ts"
+    },
+    "./prelude": {
+      "types": "./src/prelude.d.ts",
+      "default": "./src/prelude.js"
+    }
   },
   "dependencies": {
     "lean4monaco": "1.1.16",

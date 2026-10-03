@@ -1,6 +1,7 @@
-import { createClient, type EngineClient, type Step, type StepOutline, type Path, type RuleStatus, type Derivation, type WireExpr, type PlotResult, type ManipulateResult, type HasseData, type KnownVisual, type TruthTableData, type DigraphData, type OpTableData, type ContextTableData, type TypingNode, type TypingTreeData } from "@chalkmath/protocol";
+import { createClient, type EngineClient, type Step, type StepOutline, type Path, type RuleStatus, type Derivation, type WireExpr, type PlotResult, type ManipulateResult, type HasseData, type KnownVisual, type TruthTableData, type DigraphData, type OpTableData, type ContextTableData, type TypingNode, type TypingTreeData, type SpacetimeData } from "@chalkmath/protocol";
 declare const __BUILD_ID__: string;
 import { workerTransport, httpTransport } from "@chalkmath/engine-host";
+import { leanForPrelude } from "@chalkmath/lean-editor/prelude";
 import { read as readNotation, write as writeNotation, writeText, hasNotation, templateAt, templateInText, TEMPLATES, type Stmt, type Caret, type MathEdit } from "@chalkmath/math-editor";
 import { MathInput, type MathInputOptions } from "@chalkmath/math-editor/view";
 
@@ -91,7 +92,7 @@ const ORDER_CELL = /^(let\s+\w+\s*=\s*)?(poset|divisors|subsets|chain|map|hasse|
  *  `Logic.isLogicSource`; a λ-term is not one). */
 const LOGIC_CELL = /^(let\s+\w+\s*=\s*)?(truthtable|taut|sat|falsify|equiv|nnf|cnf|dnf)\s*\(/;
 /** A systems-world cell: a system, or a question about one. */
-const SYSTEM_CELL = /^(let\s+\w+\s*=\s*)?(system|states|invariant|inductive|reach|deadlock|trace|ctl|eventually|refines)\s*\(/;
+const SYSTEM_CELL = /^(let\s+\w+\s*=\s*)?(system|states|invariant|inductive|reach|deadlock|trace|ctl|eventually|refines|replicas|rules|rewrite|terminates|critical)\s*\(/;
 /** A λ-command: a strategy, `eta`, `fv`, `db`, `alpha`, `subst`, `type` or `infer`, then a colon (the
  *  engine's `Lam.commandHead`; `type := …` is a definition). It may hold a connective, `type: f : A → B ⊢ f`. */
 const LAMBDA_CMD = /^(normal|cbn|cbv|applicative|eta|fv|db|alpha|subst|type|infer)\s*(\d+\s*)?:(?!=)/;
@@ -891,6 +892,7 @@ async function explain(cell: Cell, term: TermRef, path: Path) {
 function markSelection() {
   document.querySelectorAll(".katex [data-path].sel").forEach((x) => x.classList.remove("sel"));
   document.querySelectorAll(".step.on").forEach((x) => x.classList.remove("on"));
+  remarkGraphs();
   const sel = S.sel; if (!sel) return;
   const cell = S.cells.find((c) => c.id === sel.cellId);
   const host = cell?.el?.querySelector(`[data-term="${sel.sub ? sel.sub.key : termKey(sel.term)}"]`);
@@ -1544,8 +1546,9 @@ async function fetchExample(file: string): Promise<string> {
   return res.text();
 }
 /** The Lean of a course's lessons before lesson `k`, in order: their Lean cells, and their Lean exercises
- *  as statement and the author's proof (a theorem proved there may be used later). Lessons that are not
- *  there are left out; what a lesson needs from them then shows as an error in its Lean. */
+ *  as statement and the author's proof (a theorem proved there may be used later), without the commands
+ *  that only show something (`leanForPrelude`: Lean elaborates the prelude each time a lesson opens).
+ *  Lessons that are not there are left out; what a lesson needs from them then shows as an error in its Lean. */
 async function leanPreludeOf(p: Project, k: number): Promise<string> {
   const parts: string[] = [];
   for (let j = 0; j < k; j++) {
@@ -1553,7 +1556,7 @@ async function leanPreludeOf(p: Project, k: number): Promise<string> {
       const doc = JSON.parse(await fetchExample(lessonPath(p, j))) as ChalkFile;
       const lean = doc.cells.flatMap((c) => c.type === "lean" ? [c.src]
         : c.type === "exercise" && c.lean && c.src.trim() ? [`${c.src}\n${c.leanSolution ?? LEAN_START}`] : []);
-      if (lean.length) parts.push(`-- ${p.lessons[j]!.title}\n${lean.join("\n\n")}`);
+      if (lean.length) parts.push(`-- ${p.lessons[j]!.title}\n${leanForPrelude(lean.join("\n\n"))}`);
     } catch (e) { log("err", `Lean prelude: ${lessonPath(p, j)}: ${e instanceof Error ? e.message : String(e)}`); }
   }
   return parts.join("\n\n");
@@ -2988,8 +2991,169 @@ function knownVisuals(vs: unknown): KnownVisual[] {
     if (kind === "algebra.optable") return Array.isArray(d["elems"]) && Array.isArray(d["rows"]) && Array.isArray(d["marks"]);
     if (kind === "context.table") return Array.isArray(d["objects"]) && Array.isArray(d["attributes"]) && Array.isArray(d["has"]);
     if (kind === "typing.tree") return typeof (d["root"] as { latex?: unknown } | undefined)?.latex === "string";
+    if (kind === "replicas.spacetime") return Array.isArray(d["lanes"]) && Array.isArray(d["events"]) && Array.isArray(d["messages"]) && Array.isArray(d["steps"]);
     return false;
   });
+}
+
+/** Mark where steps of the work are on a state graph: the trail of steps so far, and the current one
+ *  (its arrow, or its state when it takes none). A step's arrow shows its own mark class too, so a
+ *  marked transition keeps its colour under the trail. */
+function markGraphSteps(box: HTMLElement, d: DigraphData, trail: number[], cur: number | undefined) {
+  box.querySelectorAll(".redge.trail, .redge.cur, .hnode.cur").forEach((x) => x.classList.remove("trail", "cur"));
+  box.querySelectorAll<SVGPathElement>(".redge").forEach((p) => {
+    const cls = p.classList.contains("bad") ? "-bad" : p.classList.contains("added") ? "-added" : "";
+    p.setAttribute("marker-end", `url(#rel-arrow${cls})`);
+  });
+  const mark = (k: number, cls: "trail" | "cur") => {
+    const m = d.steps?.[k];
+    if (!m) return;
+    if (m.edge) {
+      const want = JSON.stringify(m.edge);
+      box.querySelectorAll<SVGPathElement>(".redge").forEach((p) => {
+        if (p.getAttribute("data-edge") !== want) return;
+        p.classList.add(cls);
+        if (cls === "cur") p.setAttribute("marker-end", "url(#rel-arrow-cur)");
+      });
+    }
+    const at = m.node ?? (cls === "cur" ? m.edge?.[1] : undefined);
+    if (at !== undefined) box.querySelectorAll(".hnode").forEach((c) => { if (c.getAttribute("data-node") === at) c.classList.add(cls); });
+  };
+  for (const k of trail) mark(k, "trail");
+  if (cur !== undefined) mark(cur, "cur");
+}
+
+/** A replica simulation as a space-time diagram: a lane per replica, left to right in the order of
+ *  events, a dot per event (its label above, the replica's state in its tooltip and, when short,
+ *  below), an arrow per message from the event that sent it to the one that delivered it. */
+function spacetimeSvg(d: SpacetimeData): SVGSVGElement {
+  const NS = "http://www.w3.org/2000/svg";
+  const longest = Math.max(1, ...d.lanes.map((x) => x.length));
+  // a column is as wide as the longest label or state shown under a dot (a long state goes in the tooltip only)
+  const shownLen = Math.max(1, ...d.events.map((e) => Math.max(e.label.length, e.state.length <= 18 ? e.state.length : 0)));
+  const left = longest * 8 + 24, colW = Math.max(64, Math.min(140, shownLen * 6.4 + 16)), laneH = 62, top = 30;
+  const w = left + Math.max(1, d.events.length) * colW + 24, hgt = top + d.lanes.length * laneH;
+  const laneY = (l: string) => top + Math.max(0, d.lanes.indexOf(l)) * laneH + 14;
+  const ex = (i: number) => left + 20 + i * colW;
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", `${d.lanes.length} replicas, ${d.events.length} events, ${d.messages.length} messages`);
+  svg.setAttribute("viewBox", `0 0 ${w} ${hgt}`); svg.setAttribute("width", String(w)); svg.setAttribute("height", String(hgt));
+  svg.classList.add("spacetime");
+  const defs = document.createElementNS(NS, "defs");
+  const m = document.createElementNS(NS, "marker");
+  m.setAttribute("id", "st-arrow"); m.setAttribute("viewBox", "0 0 10 10"); m.setAttribute("refX", "9"); m.setAttribute("refY", "5");
+  m.setAttribute("markerWidth", "6"); m.setAttribute("markerHeight", "6"); m.setAttribute("orient", "auto-start-reverse");
+  const head = document.createElementNS(NS, "path"); head.setAttribute("d", "M0,0 L10,5 L0,10 z"); head.setAttribute("class", "sthead");
+  m.append(head); defs.append(m); svg.append(defs);
+  for (const l of d.lanes) {
+    const y = laneY(l);
+    const t = document.createElementNS(NS, "text");
+    t.setAttribute("x", "8"); t.setAttribute("y", String(y + 4)); t.setAttribute("class", "stlane"); t.textContent = l; svg.append(t);
+    const ln = document.createElementNS(NS, "line");
+    ln.setAttribute("x1", String(left)); ln.setAttribute("x2", String(w - 12)); ln.setAttribute("y1", String(y)); ln.setAttribute("y2", String(y));
+    ln.setAttribute("class", "stline"); svg.append(ln);
+  }
+  d.messages.forEach(([a, b], k) => {
+    const ea = d.events[a], eb = d.events[b]; if (!ea || !eb) return;
+    const x1 = ex(a), y1 = laneY(ea.lane), x2 = ex(b), y2 = laneY(eb.lane);
+    const len = Math.hypot(x2 - x1, y2 - y1) || 1;
+    const p = document.createElementNS(NS, "line");
+    p.setAttribute("x1", String(x1 + (x2 - x1) * 6 / len)); p.setAttribute("y1", String(y1 + (y2 - y1) * 6 / len));
+    p.setAttribute("x2", String(x2 - (x2 - x1) * 7 / len)); p.setAttribute("y2", String(y2 - (y2 - y1) * 7 / len));
+    p.setAttribute("class", "stmsg"); p.setAttribute("marker-end", "url(#st-arrow)");
+    p.setAttribute("data-from", String(a)); p.setAttribute("data-to", String(b)); p.setAttribute("data-msg", String(k));
+    svg.append(p);
+  });
+  d.events.forEach((e, i) => {
+    const g = document.createElementNS(NS, "g");
+    g.setAttribute("data-event", String(i)); g.setAttribute("class", "stev");
+    const x = ex(i), y = laneY(e.lane);
+    const c = document.createElementNS(NS, "circle");
+    c.setAttribute("cx", String(x)); c.setAttribute("cy", String(y)); c.setAttribute("r", "5"); c.setAttribute("class", "stdot");
+    const title = document.createElementNS(NS, "title"); title.textContent = `${e.lane}: ${e.label} → ${e.state}`; c.append(title);
+    const lab = document.createElementNS(NS, "text");
+    lab.setAttribute("x", String(x)); lab.setAttribute("y", String(y - 10)); lab.setAttribute("text-anchor", "middle"); lab.setAttribute("class", "stlabel");
+    lab.textContent = e.label;
+    g.append(c, lab);
+    if (e.state.length <= 18) {
+      const st = document.createElementNS(NS, "text");
+      st.setAttribute("x", String(x)); st.setAttribute("y", String(y + 19)); st.setAttribute("text-anchor", "middle"); st.setAttribute("class", "ststate");
+      st.textContent = e.state; g.append(st);
+    }
+    svg.append(g);
+  });
+  return svg;
+}
+
+/** Mark a space-time diagram's events for the steps of the work: the steps so far as a trail, the
+ *  current one's events; while the answer is held back, the events of later steps are hidden. */
+function markSpacetime(box: HTMLElement, d: SpacetimeData, trail: number[], cur: number | undefined, held: boolean) {
+  const evs = (ks: number[]) => new Set(ks.flatMap((k) => d.steps[k] ?? []));
+  // every step up to the current one has happened, a folded one (a delivery that changed nothing) too
+  const upTo = cur === undefined ? -1 : cur;
+  const shown = held ? evs(d.steps.map((_, k) => k).filter((k) => k <= upTo)) : evs(trail);
+  const now = evs(cur === undefined ? [] : [cur]);
+  box.querySelectorAll<SVGGElement>("[data-event]").forEach((g) => {
+    const i = Number(g.getAttribute("data-event"));
+    g.classList.toggle("trail", shown.has(i) && !now.has(i));
+    g.classList.toggle("cur", now.has(i));
+    g.style.display = held && !shown.has(i) ? "none" : "";
+  });
+  box.querySelectorAll<SVGLineElement>("[data-msg]").forEach((l) => {
+    const to = Number(l.getAttribute("data-to"));
+    l.classList.toggle("cur", now.has(to));
+    l.style.display = held && !shown.has(to) ? "none" : "";
+  });
+}
+
+/** The indices of a cell's shown steps (those the work lists), in order. */
+function shownStepIndices(cell: Cell): number[] {
+  const steps: { quiet?: boolean }[] = cell.steps?.length ? cell.steps.map((st) => ({ quiet: printsUnchanged(st) })) : (cell.outline ?? []);
+  return steps.flatMap((st, i) => st.quiet ? [] : [i]);
+}
+
+/** Where a cell's state graph marks its steps: stepping through, the steps shown so far and the last of
+ *  them; otherwise the step selected in its work, if any. */
+function graphStepMarks(cell: Cell): { trail: number[]; cur: number | undefined } {
+  if (answerHeld(cell)) {
+    const shown = shownStepIndices(cell).slice(0, revealedCount(cell));
+    return { trail: shown, cur: shown[shown.length - 1] };
+  }
+  const sel = S.sel;
+  return { trail: [], cur: sel && sel.cellId === cell.id && sel.term.kind === "step" && !sel.sub ? sel.term.index : undefined };
+}
+
+/** A cell's visuals as its output shows them. Stepping through, only a state graph that places the
+ *  steps shows, without the answer's marks, so it does not give the answer away. */
+function cellVisuals(cell: Cell): HTMLElement[] {
+  const held = answerHeld(cell);
+  const out: HTMLElement[] = [];
+  for (const v of cell.visuals ?? []) {
+    const placed = (v.kind === "relation.digraph" && !!v.data.steps) || v.kind === "replicas.spacetime";
+    if (held && !placed) continue;
+    const box = visualBox(held && v.kind === "relation.digraph" ? { ...v, data: { ...v.data, bad: [], added: [] } } : v);
+    if (placed) {
+      box.dataset["steps"] = "1";
+      const { trail, cur } = graphStepMarks(cell);
+      if (v.kind === "relation.digraph") markGraphSteps(box, v.data, trail, cur);
+      else if (v.kind === "replicas.spacetime") markSpacetime(box, v.data, held ? trail : [], cur, held);
+    }
+    out.push(box);
+  }
+  return out;
+}
+
+/** Re-mark every state graph on the page for the current selection. */
+function remarkGraphs() {
+  for (const cell of S.cells) {
+    const box = cell.el?.querySelector<HTMLElement>(".visualbox[data-steps]");
+    const v = cell.visuals?.find((x) => (x.kind === "relation.digraph" && !!x.data.steps) || x.kind === "replicas.spacetime");
+    if (!box || !v) continue;
+    const { trail, cur } = graphStepMarks(cell);
+    if (v.kind === "relation.digraph") markGraphSteps(box, v.data, trail, cur);
+    else if (v.kind === "replicas.spacetime") markSpacetime(box, v.data, answerHeld(cell) ? trail : [], cur, answerHeld(cell));
+  }
 }
 
 /** A visual, boxed and captioned as a plot is. */
@@ -2999,6 +3163,7 @@ function visualBox(v: KnownVisual): HTMLElement {
   else if (v.kind === "relation.digraph") box.append(digraphSvg(v.data), digraphLegend(v.data));
   else if (v.kind === "algebra.optable") box.append(opTable(v.data));
   else if (v.kind === "typing.tree") box.append(typingTree(v.data));
+  else if (v.kind === "replicas.spacetime") box.append(spacetimeSvg(v.data));
   else box.append(contextTable(v.data));
   return box;
 }
@@ -3126,10 +3291,12 @@ function digraphSvg(d: DigraphData): SVGSVGElement {
   svg.setAttribute("aria-label", `A relation on ${n} element${n === 1 ? "" : "s"}${d.edges.length ? `; pairs: ${d.edges.map(([a, b]) => `${a} to ${b}`).join(", ")}` : ", no pairs"}`);
   svg.setAttribute("viewBox", `0 0 ${w} ${hgt}`); svg.setAttribute("width", String(w)); svg.setAttribute("height", String(hgt));
   const defs = document.createElementNS(NS, "defs");
-  for (const cls of ["", "bad", "added"]) {
+  for (const cls of ["", "bad", "added", "cur"]) {
     const m = document.createElementNS(NS, "marker");
     m.setAttribute("id", `rel-arrow${cls ? `-${cls}` : ""}`); m.setAttribute("viewBox", "0 0 10 10"); m.setAttribute("refX", "9"); m.setAttribute("refY", "5");
-    m.setAttribute("markerWidth", "7"); m.setAttribute("markerHeight", "7"); m.setAttribute("orient", "auto-start-reverse");
+    // a marker scales with its arrow's stroke: the current arrow is drawn thicker, so its head is set smaller
+    const mw = cls === "cur" ? "4.5" : "7";
+    m.setAttribute("markerWidth", mw); m.setAttribute("markerHeight", mw); m.setAttribute("orient", "auto-start-reverse");
     const path = document.createElementNS(NS, "path"); path.setAttribute("d", "M0,0 L10,5 L0,10 z"); path.setAttribute("class", `rhead ${cls}`);
     m.append(path); defs.append(m);
   }
@@ -3156,11 +3323,12 @@ function digraphSvg(d: DigraphData): SVGSVGElement {
     }
     path.setAttribute("class", `redge ${cls}`);
     path.setAttribute("marker-end", `url(#rel-arrow${cls ? `-${cls}` : ""})`);
+    path.setAttribute("data-edge", JSON.stringify(e));
     svg.append(path);
   }
   for (const [name, [x, y]] of pos) {
     const c = document.createElementNS(NS, "circle");
-    c.setAttribute("cx", String(x)); c.setAttribute("cy", String(y)); c.setAttribute("r", "5"); c.setAttribute("class", "hnode"); svg.append(c);
+    c.setAttribute("cx", String(x)); c.setAttribute("cy", String(y)); c.setAttribute("r", "5"); c.setAttribute("class", "hnode"); c.setAttribute("data-node", name); svg.append(c);
     const t = document.createElementNS(NS, "text");
     if (layered) {
       // centred under the node
@@ -3802,7 +3970,10 @@ const RULE_NAMES: Record<string, string> = {
   "sys.invariant": "Invariant", "sys.unreachable": "Unreachable", "sys.inductive": "Inductive", "sys.cti": "Counterexample to induction",
   "sys.ctl": "CTL", "sys.iterate": "Iterate", "sys.fixed": "Fixed point", "sys.cycle": "Cycle", "sys.lasso": "Fair loop",
   "sys.eventually": "Eventually", "sys.refines": "Refinement",
-  "lambda.eta": "η-reduction", "lambda.alpha": "Rename bound variables", "lambda.alpha-eq": "Compare", "lambda.subst": "Substitute",
+  "order.inner": "Inner call", "sys.inner": "Inner call",
+  "trs.step": "Rewrite", "trs.decrease": "Decreases", "trs.critical": "Critical pair",
+  "crdt.update": "Update", "crdt.merge": "Merge", "crdt.send": "Send", "crdt.converged": "Converged", "crdt.diverged": "Not converged",
+  "lambda.eta": "η-reduction", "lambda.elided": "Steps not shown", "lambda.alpha": "Rename bound variables", "lambda.alpha-eq": "Compare", "lambda.subst": "Substitute",
   "lambda.fv": "Free variables", "lambda.db": "De Bruijn indices",
   "stlc.var": "Var", "stlc.abs": "→I (abstraction)", "stlc.app": "→E (application)", "stlc.constraints": "Type equations",
   "stlc.split": "Split an arrow", "stlc.unify": "Unify", "stlc.principal": "Principal type",
@@ -4181,6 +4352,9 @@ function renderCellBody(cell: Cell) {
       }
       else el.append(inlineMath(st.explanation));
       row.append(el);
+      // a top-level step is selected by a click anywhere on its row, as its whole result (its part of a
+      // state graph is marked); a click on a part of the result selects that part instead
+      if (term) row.addEventListener("click", () => { void explain(cell, term, []); });
       return row;
     };
     // Nested derivations (rref's row operations, integrate's finder and its check) render below
@@ -4332,9 +4506,10 @@ function renderCellBody(cell: Cell) {
       fs.addEventListener("change", () => { if (fs.value === forms[0]![0]) delete cell.form; else cell.form = fs.value; renderCellBody(cell); autosave(); });
       out.querySelector(".prompt")!.append(fs);
     }
-    if (cell.reading) { const rd = h("span", "reading", `≡ ${cell.reading}`); rd.title = "What the normal form encodes"; val.append(rd); }
-    if (cell.summary && !cell.hasse) { const rd = h("span", "reading", cell.summary); val.append(rd); }
-    if (cell.visuals?.length && !answerHeld(cell)) for (const v of cell.visuals) val.append(visualBox(v));
+    // a reading or a summary says the answer, so it waits with it
+    if (cell.reading && !answerHeld(cell)) { const rd = h("span", "reading", `≡ ${cell.reading}`); rd.title = "What the normal form encodes"; val.append(rd); }
+    if (cell.summary && !cell.hasse && !answerHeld(cell)) { const rd = h("span", "reading", cell.summary); val.append(rd); }
+    for (const box of cellVisuals(cell)) val.append(box);
     out.append(val, h("div", "brk"));
     el.append(out);
     if (cell.ask && ASK_CELL.test(cell.src)) out.append(h("div"), askInfo(cell, !!ASK_CELL.exec(cell.src)?.[1]), h("div"));

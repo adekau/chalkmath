@@ -10,9 +10,8 @@ Two facts the notebook relies on, both Init-only:
 * `readChurch_church`: the reader that labels a normal form "the Church numeral n" is right on the
   numerals the engine itself builds.
 
-Not yet proved: that `freshen` (via `renameFor`) preserves α-equivalence, hence that a β-step under an α-renaming
-is a β-step of the original; and that the de Bruijn view commutes with β. The notebook reports the
-β-steps as unverified for that reason.
+That renaming preserves α-equivalence, and that every β-step the engine takes is a β-step of de
+Bruijn terms, is `LambdaBeta.lean`.
 -/
 namespace MathEngine
 namespace Lam

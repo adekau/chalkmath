@@ -86,6 +86,35 @@
       "label": null
     },
     {
+      "src": "Replicas in the notebook",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`replicas(…)` runs a CRDT on named replicas through a schedule of events, one per line: `a: inc` updates replica `a`, and `a -> b` has `b` merge `a`'s state. It answers with each replica's reading and whether they have converged, and draws a **space-time diagram**: a lane per replica, an arrow per message. Step through it: the diagram grows event by event.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "replicas(gcounter; a, b, c\n  a: inc\n  b: inc\n  b: inc\n  a -> b\n  b -> c\n)",
+      "showWork": true,
+      "label": null,
+      "stepwise": 0
+    },
+    {
+      "src": "Replica `a` has not heard from anyone, so the replicas have not converged. One more message does it:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "replicas(gcounter; a, b, c\n  a: inc\n  b: inc\n  b: inc\n  a -> b\n  b -> c\n  c -> a\n)",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "In Lean",
       "type": "section",
       "showWork": false,

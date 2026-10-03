@@ -65,7 +65,12 @@
       "label": null
     },
     {
-      "src": "$\\mathsf{fact}\\ 3$ needs more than the engine's thousand steps: Church arithmetic in normal order is slow, which is why real languages build numbers in.",
+      "src": "fact 3",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "That took 1525 β-steps, and $\\mathsf{fact}\\ 4$ takes over ten thousand: numerals in unary, a predecessor that counts up from $0$ every time, and arguments copied unevaluated and computed again. The work shows the first steps and the last, and says how many it leaves out. This is why real languages build numbers in.",
       "type": "markdown",
       "showWork": false,
       "label": null

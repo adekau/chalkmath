@@ -21,6 +21,24 @@
       "label": null
     },
     {
+      "src": "Delayed and duplicated messages, run",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`m := a` puts a copy of `a`'s state in flight; `b <- m` delivers it, possibly later, possibly twice. An old message delivered after newer ones, or twice, changes nothing more, because the merge is a join:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "replicas(gcounter; a, b, c\n  a: inc\n  m := a\n  a: inc\n  a -> b\n  b <- m\n  b <- m\n  c <- m\n  b -> c\n)",
+      "showWork": true,
+      "label": null,
+      "stepwise": 0
+    },
+    {
       "src": "In Lean",
       "type": "section",
       "showWork": false,

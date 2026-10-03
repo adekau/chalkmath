@@ -27,6 +27,23 @@
       "label": null
     },
     {
+      "src": "Add wins, run",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Each add makes a tag of its own (`x@a1` is `a`'s first add); a remove removes the tags of that element its replica has seen. Here `b` removes `x` while `a` adds it again: the new tag was not seen, so it survives.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "replicas(orset; a, b\n  a: add x\n  a -> b\n  b: remove x\n  a: add x\n  b -> a\n  a -> b\n)",
+      "showWork": true,
+      "label": null
+    },
+    {
       "src": "In Lean",
       "type": "section",
       "showWork": false,

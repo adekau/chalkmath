@@ -5,5 +5,7 @@
 10	let Mx = op({0, 1, 2}; [0, 1, 2; 1, 1, 2; 2, 2, 2])	= [0, 1, 2; 1, 1, 2; 2, 2, 2]   [an operation on 3 elements]
 11	semilattice(Mx)	= true   [a semilattice]
 12	fold(Mx; 2, 0, 1, 1)	= 2   [= 2]
-26	commutative(Mx)	= true
-27	fold(Ow; b, a, b, a)	= a
+17	replicas(gcounter; a, b, c\n  a: inc\n  b: inc\n  b: inc\n  a -> b\n  b -> c\n)	= {a↦1, b↦3, c↦3}   [not converged: a reads 1; b, c read 3]
+19	replicas(gcounter; a, b, c\n  a: inc\n  b: inc\n  b: inc\n  a -> b\n  b -> c\n  c -> a\n)	= {a↦3, b↦3, c↦3}   [converged: every replica reads 3]
+31	commutative(Mx)	= true
+32	fold(Ow; b, a, b, a)	= a
