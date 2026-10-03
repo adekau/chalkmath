@@ -216,7 +216,7 @@
     {
       "id": "systems",
       "title": "Transition systems, invariants and temporal logic",
-      "blurb": "State machines and their reachable states; invariants with counterexample traces and inductive proofs; mutual exclusion, safety and liveness under fairness; temporal logic as fixed points; happens-before, effectively-once delivery, and refinement.",
+      "blurb": "State machines and their reachable states; invariants with counterexample traces and inductive proofs; mutual exclusion, safety and liveness under fairness; temporal logic as fixed points; happens-before, effectively-once delivery, and refinement; rewriting systems, and retries under failure.",
       "kind": "course",
       "level": "Distributed systems",
       "path": "courses/systems",
@@ -261,6 +261,16 @@
           "file": "08-refinement.chalk",
           "title": "Refinement",
           "blurb": "An implementation's steps are the specification's steps or stutters; and a normalization of operations proved sound."
+        },
+        {
+          "file": "09-rewriting.chalk",
+          "title": "Rewriting systems",
+          "blurb": "The normalization of lesson 8 as rules on terms: rewriting to a normal form, termination by a measure, and confluence by critical pairs."
+        },
+        {
+          "file": "10-retries.chalk",
+          "title": "Retries and backoff",
+          "blurb": "Retrying a call that fails at random: the chance that every attempt fails, the expected number of attempts, and the load and wait that backoff trades."
         }
       ]
     },

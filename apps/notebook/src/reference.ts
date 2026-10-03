@@ -25,7 +25,7 @@ export const AREAS: [Area, string][] = [
   ["Fourier series", "Finite Fourier sums drawn as circles, and the discrete Fourier transform."],
   ["Logic", "Propositional formulas, truth tables, normal forms, and quantifiers over finite sets."],
   ["Order theory", "Finite partial orders, lattices, monotone maps and their fixed points; relations and their properties."],
-  ["Transition systems", "Finite state machines: reachable states, invariants with counterexample traces, induction, temporal logic, fairness, refinement."],
+  ["Transition systems", "Finite state machines: reachable states, invariants with counterexample traces, induction, temporal logic, fairness, refinement; replicated data; term rewriting."],
   ["λ-calculus", "The untyped λ-calculus, reduced one β-step at a time by the strategy you choose, the Church encodings, and the simply typed calculus: type checking and inference."],
   ["The notebook language", "Names and functions, earlier answers, questions."],
 ];
@@ -808,6 +808,7 @@ export const FUNCTIONS: FnDoc[] = [
     examples: [
       basic("let R = rel({a, b, c, d}; a->b, b->c, c->d)", "closure(R, transitive)"),
       section("Scope", "let R = rel({a, b, c}; a->b, b->c)", "closure(R, reflexive)", "closure(R, symmetric)", "let E = closure(R, equivalence)", "classes(E)"),
+      section("Calls inside calls", "transitive(closure(R, transitive))", "classes(closure(R, equivalence))"),
     ],
     see: ["transitive", "equivalence", "classes"],
     ref: "https://mathworld.wolfram.com/TransitiveClosure.html",
@@ -984,8 +985,14 @@ export const FUNCTIONS: FnDoc[] = [
   {
     name: "product", area: "Order theory",
     usage: [["product(P, Q)", "gives the pairs (x, y) ordered componentwise: (a, c) ≤ (b, d) when a ≤ b and c ≤ d."]],
-    details: ["Write a pair element as `(x, y)`, and a set element as `{a, b}`: `join(PQ, (low, {a}), (high, {}))`."],
-    examples: [basic("let Lv = poset({low, high}; low < high)", "let Cat = subsets({a, b})", "let SC = product(Lv, Cat)", "join(SC, (low, {a}), (high, {}))")],
+    details: [
+      "Write a pair element as `(x, y)`, and a set element as `{a, b}`: `join(PQ, (low, {a}), (high, {}))`.",
+      "Like every order and systems command, it takes a call where it takes a name: `product(chain(2), chain(3))` builds the chains first.",
+    ],
+    examples: [
+      basic("let Lv = poset({low, high}; low < high)", "let Cat = subsets({a, b})", "let SC = product(Lv, Cat)", "join(SC, (low, {a}), (high, {}))"),
+      section("Calls inside calls", "lattice(product(chain(2), chain(3)))"),
+    ],
     see: ["secure", "subsets"],
     ref: "https://mathworld.wolfram.com/ProductOrder.html",
   },
@@ -1073,9 +1080,85 @@ export const FUNCTIONS: FnDoc[] = [
     see: ["eventually"],
   },
   {
+    name: "replicas", area: "Transition systems",
+    usage: [
+      ["replicas(type; a, b, …; events…)", "runs a state-based CRDT on the replicas `a`, `b`, … through the events, and gives each replica's reading and whether they converged."],
+    ],
+    details: [
+      "The types: `gcounter` (`inc`), `pncounter` (`inc`, `dec`), `gset` (`add x`), `twopset` and `orset` (`add x`, `remove x`), and `lww` (`write v`, or `write v @ t` with a timestamp; by default the event's number).",
+      "Events, one per line or separated by `;`: `a: inc` updates `a`; `a -> b` has `b` merge `a`'s state now; `m := a` sends a message holding `a`'s state now, and `b <- m` delivers it, later, again, or after newer ones.",
+      "Every type is a vector of numbers merged by the entrywise maximum, which is proved a join (commutative, associative, idempotent), and every update only raises entries. So replicas that have received the same updates are in the same state, whatever the order, delays and duplicates.",
+      "The drawing is a space-time diagram: a lane per replica, an arrow per message. Stepping through the work builds it event by event.",
+    ],
+    examples: [
+      basic("replicas(gcounter; a, b, c; a: inc; b: inc; b: inc; a -> b; b -> c; c -> a)"),
+      section("Delayed and duplicated messages", "replicas(gcounter; a, b; a: inc; m := a; a: inc; b <- m; b <- m)", "replicas(gcounter; a, b; a: inc; m := a; a: inc; b <- m; a -> b)"),
+      section("Add and remove", "replicas(twopset; a, b; a: add x; a -> b; b: remove x; a: add x; b -> a)", "replicas(orset; a, b; a: add x; a -> b; b: remove x; a: add x; b -> a; a -> b)"),
+      section("Last writer wins", "replicas(lww; a, b; a: write red @ 5; b: write blue @ 3; a -> b; b -> a)"),
+    ],
+    see: ["clocks", "system"],
+  },
+  {
+    name: "rules", area: "Transition systems",
+    usage: [["let R = rules(l -> r; …)", "declares a rewriting system: rules between terms, applied left to right."]],
+    details: [
+      "A term is a variable, a constant, or a symbol applied to terms: `add(s(x), y)`. Variables are `u`, `v`, `w`, `x`, `y` and `z`, perhaps with digits or primes (`x1`, `y'`); any other name (`0`, `e`, `nil`) is a constant.",
+      "Rules go one per line or separated by `;`, and are named `r1`, `r2`, … in order, or by a name before a colon: `assoc: f(f(x, y), z) -> f(x, f(y, z))`.",
+      "A rule's left side cannot be a variable, and its right side can only use the left side's variables, so a step never invents a term.",
+    ],
+    examples: [basic("let A = rules(add(0, y) -> y; add(s(x), y) -> s(add(x, y)))", "rewrite(A, add(s(s(0)), s(0)))")],
+    see: ["rewrite", "terminates", "critical"],
+  },
+  {
+    name: "rewrite", area: "Transition systems",
+    usage: [["rewrite(R, t)", "rewrites the term `t` with the system's rules until none applies, and gives the normal form."]],
+    details: [
+      "Each step rewrites the leftmost-outermost redex: the first subterm, from the root and left to right, that is an instance of a rule's left side, with the first rule that matches. The work names the rule and marks the subterm.",
+      "A term that has not reached a normal form after 10,000 steps, or has grown past 6000 symbols, is an error: the system may not terminate on it. `terminates` can show that it always does.",
+    ],
+    examples: [
+      basic("let A = rules(add(0, y) -> y; add(s(x), y) -> s(add(x, y)))", "rewrite(A, add(s(s(0)), s(s(0))))"),
+      section("A term with variables", "let A = rules(add(0, y) -> y; add(s(x), y) -> s(add(x, y)))", "rewrite(A, add(s(x), y))"),
+    ],
+    see: ["rules", "terminates"],
+  },
+  {
+    name: "terminates", area: "Transition systems",
+    usage: [
+      ["terminates(R)", "checks that every rule makes the term smaller, so no term rewrites for ever."],
+      ["terminates(R; f(x, y) = 2x + y + 1, …)", "checks the same with a linear interpretation of the symbols in place of the size."],
+    ],
+    details: [
+      "An interpretation gives each symbol a value: a constant plus a coefficient, at least one, times each argument. A term is then worth a linear form in its variables, and a rule passes when its left side's form has a larger constant and no smaller coefficient than its right side's, so it is worth more whatever the variables are.",
+      "When every rule passes, every step lowers a natural number, so no term rewrites for ever. This is proved; so is the converse for each rule: one that fails is worth no more on the right for some values of the variables. Failing does not show that the system loops: another interpretation may work.",
+      "Symbols not given take the size: one, plus each argument.",
+    ],
+    examples: [
+      basic("let A = rules(add(0, y) -> y; add(s(x), y) -> s(add(x, y)))", "terminates(A)", "terminates(A; add(x, y) = 2x + y, s(x) = x + 1)"),
+      section("A rule that cannot pass", "let L = rules(f(x) -> f(f(x)))", "terminates(L)"),
+    ],
+    see: ["rewrite", "critical"],
+  },
+  {
+    name: "critical", area: "Transition systems",
+    usage: [["critical(R)", "finds where two rules overlap, and whether the two results of each overlap rewrite to the same normal form."]],
+    details: [
+      "A critical pair comes from a term where one rule applies at the root and another (or the same one, deeper) inside it; the two rewrites give the pair. Each side is rewritten to normal form: when every pair joins, the system is locally confluent, and if it also terminates, confluent (Newman's lemma), so every term has one normal form.",
+      "A pair that does not join is a choice the rules leave open; adding a rule between its two normal forms is the start of Knuth–Bendix completion.",
+    ],
+    examples: [
+      basic("let A = rules(add(0, y) -> y; add(s(x), y) -> s(add(x, y)))", "critical(A)"),
+      section("A group's axioms", "let G = rules(f(e, x) -> x; f(i(x), x) -> e; f(f(x, y), z) -> f(x, f(y, z)))", "critical(G)"),
+    ],
+    see: ["rules", "terminates"],
+  },
+  {
     name: "trace", area: "Transition systems",
     usage: [["trace(S; a, b, …)", "runs the actions in order from the initial state and gives the state reached, a step per action."]],
-    details: ["The system must have one initial state; an action that is not enabled is an error naming the guard that fails."],
+    details: [
+      "The system must have one initial state; an action that is not enabled is an error naming the guard that fails.",
+      "The graph of reachable states is drawn with the trace's transitions marked. Stepping through the work, or clicking a step, marks where that step is on the graph; the same holds for the traces `invariant`, `reach`, `deadlock` and `eventually` give.",
+    ],
     examples: [basic("let C = system(var x in 0..3; var y in 0..3; init x = 0 ∧ y = 0; action inc when x < 3 do x := x + 1; action move when x > 0 ∧ y < 3 do x := x - 1, y := y + 1)", "trace(C; inc, inc, move)")],
     see: ["system", "invariant"],
   },
@@ -1197,7 +1280,8 @@ export const FUNCTIONS: FnDoc[] = [
       "The engine reduces in normal order, one β-step at a time, renaming bound variables to avoid capture.",
       "Digits are Church numerals, and the Church library is always there.",
       "A normal form that is a Church numeral or boolean is read out beside the result; View › de Bruijn indices shows the result with indices.",
-      "A term with no normal form, such as `omega omega`, is refused rather than reduced forever: after 1000 steps, or once it grows past 3000 symbols.",
+      "A term with no normal form, such as `omega omega`, is refused rather than reduced forever: after 10,000 steps, or once it grows past 6000 symbols.",
+      "A long reduction shows its first steps and its last, and one step between saying how many it leaves out.",
       "A definition with no normal form, such as `fact := Y F`, is bound as written, so recursion through `Y` works.",
       "A binder may carry a type, `λx:A. e`; reduction ignores it, and `type:` checks it.",
       "A cell can start with a command: a strategy (`cbv:`, `cbn:`, `applicative:`, `normal 5:`), `eta:`, `fv:`, `db:`, `alpha:`, `subst:`, `type:` or `infer:`.",
@@ -1248,7 +1332,7 @@ export const FUNCTIONS: FnDoc[] = [
     usage: [["cbv: t", "reduces `t` by value: the function and then the argument become values before the call, never under a λ."], ["cbv n: t", "takes at most `n` steps."]],
     details: [
       "A value is a λ or a variable (Plotkin's call by value). The result is a value, which may still have redexes under its λs.",
-      "Every argument is evaluated, used or not, so `K I (omega omega)` runs forever: the cell is refused after 1000 steps. `cbv 5:` shows the first five.",
+      "Every argument is evaluated, used or not, so `K I (omega omega)` runs forever: the cell is refused after 10,000 steps. `cbv 5:` shows the first five.",
       "Most programming languages call by value.",
     ],
     examples: [basic("cbv: (λx. x) ((λy. y) z)", "cbv 4: K I (omega omega)", "cbv: (λx. x) (λy. (λz. z) y)")],

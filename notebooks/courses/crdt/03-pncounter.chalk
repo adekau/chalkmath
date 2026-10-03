@@ -48,6 +48,23 @@
       "label": null
     },
     {
+      "src": "A PN-Counter, run",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The state is a pair of G-Counters, increments and decrements; the reading subtracts.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "replicas(pncounter; a, b\n  a: inc\n  a: inc\n  b: dec\n  a -> b\n  b -> a\n)",
+      "showWork": true,
+      "label": null
+    },
+    {
       "src": "In Lean",
       "type": "section",
       "showWork": false,

@@ -263,6 +263,7 @@ mutual
         (if T.times != "*" then "\\text{poset }" ++ ss else "poset " ++ ss, P_ATOM)
       | "pair", [_, _], [a, b] => (if T.times != "*" then s!"({a}, {b})" else s!"({a}, {b})", P_ATOM)
       | "rel", [_, _], [_, ps] => (ps, P_ATOM)
+      | "↦", [_, _], [a, b] => (if T.times != "*" then s!"{a} \\mapsto {b}" else s!"{a}↦{b}", P_ADD)
       | "covers", [_, _], [a, b] => (if T.times != "*" then s!"{a} \\lessdot {b}" else s!"{a} ⋖ {b}", P_MUL)
       | "span", [_, _, c], [a, b, cs] =>
         let sep := if T.times != "*" then "\\mathbin{;;}" else ";;"

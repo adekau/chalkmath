@@ -21,6 +21,11 @@ simultaneously. Everything here is a decision on the finite graph of reachable s
 
 Guards and initial conditions are logic-world formulas whose atoms compare expressions over the
 variables; updates are `x := e`. A system's text may run over several lines.
+
+The world's other command, `replicas(type; a, b, …; events…)`, simulates a CRDT on replicas
+(`Replicas.lean`): its events are `a: op [arg] [@ t]`, `a -> b`, `m := a` and `b <- m`, one per line
+or separated by `;`. And `rules(l -> r; …)`, `rewrite(R, t)`, `terminates(R[; interpretations])`
+and `critical(R)` are first-order term rewriting (`Rewriting.lean`).
 -/
 namespace MathEngine
 namespace Sys
@@ -353,6 +358,18 @@ def stateLabel (s : State) : String :=
   match s with
   | [x] => x.toString
   | _ => "(" ++ ", ".intercalate (s.map Val.toString) ++ ")"
+
+/-- The label of a state written as a formula, `x = 1 ∧ y = busy` (as `System.stateExpr` writes it),
+in `stateLabel`'s form: how a step of the work is found on the graph. -/
+def labelOfStateExpr (e : Expr) : Option String :=
+  let rec eqs : Expr → Option (List Expr)
+    | .fn "∧" [a, b] => do pure ((← eqs a) ++ (← eqs b))
+    | .fn "=" [.var _, v] => some [v]
+    | _ => none
+  match eqs e with
+  | some [v] => some v.toText
+  | some vs => some ("(" ++ ", ".intercalate (vs.map Expr.toText) ++ ")")
+  | none => none
 
 def stateSet (G : Graph) (xs : List Nat) : Expr := .fn "set" (xs.map fun i => .var (stateLabel G.states[i]!))
 
