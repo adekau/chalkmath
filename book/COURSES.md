@@ -130,16 +130,15 @@ type in Lean; dependent types and Lean's type checking as proof checking. *E6, N
 `notebooks/courses/crdt/`, with a Lean prelude: the book's whole development, ported to Lean 4.34 in
 `notebooks/sources/Crdt.lean` (two `Decidable` instances in chapter 10 built explicitly; 4.28-era
 deprecation notices switched off) and split at its chapter headings; its compiled solutions are the
-lessons' Lean exercises (9), beside 8 engine exercises on joins, folds and version vectors. N8 (a
-replica simulation in the notebook) is not built: the book's own gossip driver and capstone
-schedules run as Lean cells instead.
+lessons' Lean exercises (9), beside 8 engine exercises on joins, folds and version vectors. Seven
+lessons also run their CRDT on replicas in the notebook (N8), drawn as a space-time diagram.
 
 Follows *From Propagators to Replicas* (lean4learning), with a Lean prelude across its lessons; needs
 course 2. Replicas and the price of coordination; the merge discipline; G-Counter; PN-Counter and
 the query/state split; G-Set and 2P-Set; LWW-Register and LWW-Element-Set; OR-Set; multisets, folds
 and the convergence theorem; delivery (gossip, duplication, reordering); version vectors and
 causality; op-based CRDTs; capstone: a replicated store; what CRDTs cannot do. *E4 (laws, products),
-E5 events (version vectors), N8 replica simulation*
+E5 events (version vectors), N8 replica simulation (done)*
 
 ## Engine additions
 
@@ -173,8 +172,9 @@ substitution and de Bruijn indices as commands. **Done.**
   reply's `steps` place each step), and `trace` draws the graph too.
 - N6 Multi-line math cells (Shift+Enter starts a new line, Enter runs). **Done.**
 - N7 A course's Lean prelude. **Done.**
-- N8 A replica simulation: replicas exchanging state, duplicated and reordered, converging. With
-  course 6.
+- N8 A replica simulation: replicas exchanging state, duplicated and reordered, converging. **Done**:
+  `replicas(…)` runs G- and PN-counters, G-, 2P- and OR-sets and an LWW-register through a schedule,
+  drawn as a space-time diagram that steps event by event; seven CRDT lessons run it.
 
 ## Order
 

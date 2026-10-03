@@ -1080,6 +1080,25 @@ export const FUNCTIONS: FnDoc[] = [
     see: ["eventually"],
   },
   {
+    name: "replicas", area: "Transition systems",
+    usage: [
+      ["replicas(type; a, b, …; events…)", "runs a state-based CRDT on the replicas `a`, `b`, … through the events, and gives each replica's reading and whether they converged."],
+    ],
+    details: [
+      "The types: `gcounter` (`inc`), `pncounter` (`inc`, `dec`), `gset` (`add x`), `twopset` and `orset` (`add x`, `remove x`), and `lww` (`write v`, or `write v @ t` with a timestamp; by default the event's number).",
+      "Events, one per line or separated by `;`: `a: inc` updates `a`; `a -> b` has `b` merge `a`'s state now; `m := a` sends a message holding `a`'s state now, and `b <- m` delivers it, later, again, or after newer ones.",
+      "Every type is a vector of numbers merged by the entrywise maximum, which is proved a join (commutative, associative, idempotent), and every update only raises entries. So replicas that have received the same updates are in the same state, whatever the order, delays and duplicates.",
+      "The drawing is a space-time diagram: a lane per replica, an arrow per message. Stepping through the work builds it event by event.",
+    ],
+    examples: [
+      basic("replicas(gcounter; a, b, c; a: inc; b: inc; b: inc; a -> b; b -> c; c -> a)"),
+      section("Delayed and duplicated messages", "replicas(gcounter; a, b; a: inc; m := a; a: inc; b <- m; b <- m)", "replicas(gcounter; a, b; a: inc; m := a; a: inc; b <- m; a -> b)"),
+      section("Add and remove", "replicas(twopset; a, b; a: add x; a -> b; b: remove x; a: add x; b -> a)", "replicas(orset; a, b; a: add x; a -> b; b: remove x; a: add x; b -> a; a -> b)"),
+      section("Last writer wins", "replicas(lww; a, b; a: write red @ 5; b: write blue @ 3; a -> b; b -> a)"),
+    ],
+    see: ["clocks", "system"],
+  },
+  {
     name: "trace", area: "Transition systems",
     usage: [["trace(S; a, b, …)", "runs the actions in order from the initial state and gives the state reached, a step per action."]],
     details: [

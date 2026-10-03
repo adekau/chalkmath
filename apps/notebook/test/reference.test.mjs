@@ -28,7 +28,7 @@ const ORDER = ["poset", "divisors", "subsets", "chain", "map", "hasse", "join", 
   "distributive", "complement", "complemented", "boolean", "product", "galois", "closureop", "context", "concepts", "secure",
   "events", "clocks", "concurrent"];
 // Systems.lean's commands
-const SYSTEMS = ["system", "states", "invariant", "inductive", "reach", "deadlock", "trace", "ctl", "eventually", "refines"];
+const SYSTEMS = ["system", "states", "invariant", "inductive", "reach", "deadlock", "trace", "ctl", "eventually", "refines", "replicas"];
 // Logic.lean's commands
 const LOGIC = ["truthtable", "taut", "sat", "falsify", "equiv", "nnf", "cnf", "dnf"];
 // Lambda.lean's commands (`subst:` has its own page, lambda-subst, since `subst` is the math one's)

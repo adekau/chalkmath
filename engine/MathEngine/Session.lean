@@ -8,6 +8,7 @@ import MathEngine.Algebra
 import MathEngine.Fourier
 import MathEngine.Logic
 import MathEngine.Systems
+import MathEngine.Replicas
 /-!
 # Sessions, commands and the evaluation pipeline
 
@@ -1023,10 +1024,12 @@ structure SysResult where
   graph : Option (Ord.Rel × List (String × String) × List (String × String)) := none
   /-- Each drawn state's distance from an initial state, for a layered drawing. -/
   layers : List Nat := []
+  /-- A replica simulation's space-time diagram, and the diagram's events each step made. -/
+  spacetime : Option (Rep.Diagram × Array (List Nat)) := none
 
 namespace Sys
 
-def commands : List String := ["system", "states", "invariant", "inductive", "reach", "deadlock", "trace", "ctl", "eventually", "refines"]
+def commands : List String := ["system", "states", "invariant", "inductive", "reach", "deadlock", "trace", "ctl", "eventually", "refines", "replicas"]
 
 /-- `[let NAME =] command(…)` for a systems command. -/
 def splitLet (src : String) : Option String × String :=
@@ -1077,13 +1080,18 @@ def systemCell (s : Session) (cellId source : String) :
   -- the question as the engine read it: the command with its system and formula
   let question : Expr :=
     if head == "system" then .var "system" else
+    if head == "replicas" then
+      (match Sys.argsOf t head |>.toOption |>.bind (Rep.parse · |>.toOption) with
+       | some (_, rs, _) => .fn "replicas" [.var ((Sys.splitFirst ((Sys.argsOf t head).toOption.getD "")).1), Ord.setExpr rs]
+       | none => .var "replicas") else
     match Sys.argsOf t head with
     | .error _ => .var head
     | .ok body =>
       let (a, rest) := Sys.splitFirst body
       .fn head ([.var a] ++ (if rest.isEmpty then [] else [match Logic.parseFormula rest with | .ok f => f.toExpr | .error _ => .var rest]))
   let done (value : Expr) (steps : Array Step) (summary : String) (bindS : Option Sys.System := none)
-      (graph : Option (Ord.Rel × List (String × String) × List (String × String) × List Nat) := none) :
+      (graph : Option (Ord.Rel × List (String × String) × List (String × String) × List Nat) := none)
+      (spacetime : Option (Rep.Diagram × Array (List Nat)) := none) :
       Session × Except (String × String × Option (Nat × Nat)) SysResult :=
     let input := if head == "system" then value else question
     let d : Derivation := ⟨input, steps, value⟩
@@ -1091,7 +1099,7 @@ def systemCell (s : Session) (cellId source : String) :
     let s := match name, bindS with
       | some n, some S => { s with systems := (n, S) :: s.systems.filter (·.1 != n) }
       | _, _ => s
-    (s, .ok ⟨name, value, d, summary, graph.map (fun (R, b, a, _) => (R, b, a)), (graph.map (·.2.2.2)).getD []⟩)
+    (s, .ok ⟨name, value, d, summary, graph.map (fun (R, b, a, _) => (R, b, a)), (graph.map (·.2.2.2)).getD [], spacetime⟩)
   let getS (n : String) : Except String Sys.System :=
     match s.systems.lookup n.trimAscii.copy with
     | some S => .ok S
@@ -1189,6 +1197,16 @@ def systemCell (s : Session) (cellId source : String) :
         let (steps, edges) ← traceSteps S G j
         return done (bool true) (steps.push (step "sys.deadlock" "No action is enabled here: a deadlock." (S.stateExpr G.states[j]!) (bool true))) s!"a deadlock after {edges.length} step{if edges.length == 1 then "" else "s"}" (graph := draw G edges [])
       | none => return done (bool false) #[step "sys.deadlock" s!"Every one of the {G.states.size} reachable states has an enabled action." (.var "init") (bool false)] "no deadlock" (graph := draw G [] [])
+    | "replicas" =>
+      let (kind, replicas, evs) ← Rep.parse body
+      let r ← Rep.run kind replicas evs
+      let (value, say, same) := Rep.summary r
+      let steps := r.steps.map fun (rule, text, before, after, _) => step rule text before after
+      let steps := steps.push (step (if same then "crdt.converged" else "crdt.diverged")
+        (if same then "Every replica is in the same state, so every replica reads the same."
+         else "The replicas are not all in the same state: some have not received every update yet.") value (bool same))
+      let evOf := (r.steps.map (·.2.2.2.2)).push []
+      return done value steps say (spacetime := some (r.diagram, evOf))
     | "trace" =>
       let (sn, rest) := Sys.splitFirst body
       let S ← getS sn

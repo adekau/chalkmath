@@ -46,6 +46,7 @@ const CASES = [
   { src: "let RPS = op({r, p, s}; [r, p, r; p, p, s; r, s, s])", text: "[r, p, r; p, p, s; r, s, s]" },
   { src: "associative(RPS)", text: "false", step: "Not associative" },
   { src: "lattice(product(chain(2), chain(3)))", text: "true", step: "Inner call" },
+  { src: "replicas(gcounter; a, b; a: inc; m := a; a: inc; b <- m; a -> b)", text: "{a↦2, b↦2}", step: "b merges the message m" },
   // transition systems
   { src: "let Ct = system(var x in 0..2; init x = 0; action inc when x < 2 do x := x + 1)", text: "system({x}, {inc})" },
   { src: "invariant(Ct, x ≤ 1)", text: "false", step: "inc (x < 2 holds)" },
@@ -399,6 +400,14 @@ async function features() {
     .catch(() => assert.fail(`selecting step ${stepK + 1} marked no transition on the graph`));
   assert.equal(await inv.locator("svg path.redge.cur").first().getAttribute("data-edge"), JSON.stringify(invWant.steps[stepK].edge), "the marked transition is the step's");
   console.log(`✓ trace on the graph: step ${stepK + 1} selected, its transition ${invWant.steps[stepK].edge.join(" → ")} marked`);
+  // a replica run drawn as a space-time diagram: a lane per replica, an arrow per message
+  const repSrc = "replicas(gcounter; a, b, c; a: inc; m := a; b: inc; c <- m; a -> b; b -> c; c <- m)";
+  const rep = await runLast(repSrc);
+  const repWant = (await ref(repSrc, 16)).visuals.find((v) => v.kind === "replicas.spacetime").data;
+  assert.equal(await rep.locator("svg.spacetime .stline").count(), repWant.lanes.length, "a lane per replica");
+  assert.equal(await rep.locator("svg.spacetime [data-event]").count(), repWant.events.length, "a dot per event");
+  assert.equal(await rep.locator("svg.spacetime .stmsg").count(), repWant.messages.length, "an arrow per message, a duplicate delivery too");
+  console.log(`✓ replicas: ${repWant.lanes.length} lanes, ${repWant.events.length} events, ${repWant.messages.length} messages drawn`);
   await manipulate();
   // a course: the Courses tab, a lesson opened, answered, and followed to the next
   const manifest = JSON.parse(readFileSync(path.join(root, "notebooks/courses.json"), "utf8"));

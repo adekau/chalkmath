@@ -21,6 +21,10 @@ simultaneously. Everything here is a decision on the finite graph of reachable s
 
 Guards and initial conditions are logic-world formulas whose atoms compare expressions over the
 variables; updates are `x := e`. A system's text may run over several lines.
+
+The world's other command, `replicas(type; a, b, …; events…)`, simulates a CRDT on replicas
+(`Replicas.lean`): its events are `a: op [arg] [@ t]`, `a -> b`, `m := a` and `b <- m`, one per line
+or separated by `;`.
 -/
 namespace MathEngine
 namespace Sys

@@ -1631,6 +1631,24 @@ course("crdt", "CRDTs: replicated data that converges",
 > A **state-based CRDT** keeps its state in a bounded join-semilattice, makes every update **inflationary** (the new state is above the old), and merges by the **join**. Then a replica stores not a value but everything it has heard about the value, and hearing the same things in any order gives the same state.
 `);
     md(r`This is the propagator cell from *Order and lattices*, read again: there a cell gathered partial information from propagators on one scheduler; here a replica gathers it from other replicas over an unreliable network. The algebra is the same.`);
+    sec("Replicas in the notebook");
+    md(r`‹replicas(…)› runs a CRDT on named replicas through a schedule of events, one per line: ‹a: inc› updates replica ‹a›, and ‹a -> b› has ‹b› merge ‹a›'s state. It answers with each replica's reading and whether they have converged, and draws a **space-time diagram**: a lane per replica, an arrow per message. Step through it: the diagram grows event by event.`);
+    m(`replicas(gcounter; a, b, c
+  a: inc
+  b: inc
+  b: inc
+  a -> b
+  b -> c
+)`, { step: 0 });
+    md(r`Replica ‹a› has not heard from anyone, so the replicas have not converged. One more message does it:`);
+    m(`replicas(gcounter; a, b, c
+  a: inc
+  b: inc
+  b: inc
+  a -> b
+  b -> c
+  c -> a
+)`);
     sec("In Lean");
     md(r`The book's Lean, chapter by chapter, runs in this course's lessons; each lesson sees the ones before it. First the merge discipline as classes (with notation $\sqcup$ for the join, $\bot$ for the bottom, $\sqsubseteq$ for "knows at least as much"), the laws every join obeys (the ACI toolkit), the propagator machinery re-read as replicas, and the chapter 1 demonstrations of naive merges going wrong.`);
     for (const c of crdtLesson(0)) lean(c);
@@ -1656,6 +1674,15 @@ course("crdt", "CRDTs: replicated data that converges",
     m("join(G, (2, 0), (1, 3))", { work: true });
     md(r`Replica 1 has counted 2 taps and replica 2 has counted 3: merged, $(2, 3)$, total 5. Merging the same states again changes nothing; merging an older state ($(1, 0)$) changes nothing either.`);
     m("join(G, (2, 3), (1, 0))");
+    sec("A G-Counter, run");
+    md(r`Each replica counts its own increments in its own slot; a merge takes the larger count, slot by slot. The work shows each state as a map from replicas to their slots.`);
+    m(`replicas(gcounter; a, b
+  a: inc
+  a: inc
+  b: inc
+  a -> b
+  b -> a
+)`, { work: true });
     sec("In Lean");
     for (const c of crdtLesson(1)) lean(c);
     md(r`The executable G-Counter renders as a list; rendering a merge is zipping the renders with $\max$. The lemma behind it:`);
@@ -1720,6 +1747,15 @@ example :
     m("let PN = product(C3, C3)");
     m("le(PN, (1, 0), (1, 1))", { work: true });
     md(r`$(1, 0) \sqsubseteq (1, 1)$: a decrement moved the state up, while the value went from 1 to 0. Information grows even when the number shrinks.`);
+    sec("A PN-Counter, run");
+    md(r`The state is a pair of G-Counters, increments and decrements; the reading subtracts.`);
+    m(`replicas(pncounter; a, b
+  a: inc
+  a: inc
+  b: dec
+  a -> b
+  b -> a
+)`, { work: true });
     sec("In Lean");
     for (const c of crdtLesson(2)) lean(c);
     md(r`A query that clamps at zero hides the negative truth: a seed for the last lesson.`);
@@ -1754,6 +1790,16 @@ example : PNCounter.value (PNCounter.decr 0 (⊥ : PNCounter 1)) < 0 := by decid
 > [!mistake]
 > A removed element can never come back: its tombstone outranks every later add, because the merge cannot tell a re-add from an old add it has already seen. The next lessons fix this two ways: with timestamps (last writer wins) and with unique tags (the OR-Set).
 `);
+    sec("Sets, run");
+    md(r`A G-Set merges by union. A 2P-Set keeps a second set of removed elements, also merged by union, and reads the added minus the removed: so a removal is for ever, and adding again does nothing.`);
+    m("replicas(gset; a, b; a: add x; b: add y; a -> b; b -> a)");
+    m(`replicas(twopset; a, b
+  a: add x
+  a -> b
+  b: remove x
+  a: add x
+  b -> a
+)`, { work: true });
     sec("In Lean");
     for (const c of crdtLesson(3)) lean(c);
     md(r`A sorted, duplicate-free sublist is no longer than the list it sits in; so a G-Set's size can only grow.`);
@@ -1804,6 +1850,14 @@ example : PNCounter.value (PNCounter.decr 0 (⊥ : PNCounter 1)) < 0 := by decid
     md(r`Done naively ("on a tie, keep the incoming one"), the merge is not commutative:`);
     m("let Naive = op({w1, w2}; [w1, w2; w1, w2])");
     m("commutative(Naive)", { work: true });
+    sec("A register, run");
+    md(r`An LWW-Register keeps the write with the latest timestamp, ties broken by replica. ‹write v @ t› gives the timestamp; without one, it is the event's number. The write that wins need not be the one made last in real time:`);
+    m(`replicas(lww; a, b
+  a: write red @ 5
+  b: write blue @ 3
+  a -> b
+  b -> a
+)`, { work: true });
     sec("In Lean");
     for (const c of crdtLesson(4)) lean(c);
     md(r`Three replicas with tied naive timestamps: grouping one merge differently changes the answer.`);
@@ -1819,7 +1873,7 @@ example : PNCounter.value (PNCounter.decr 0 (⊥ : PNCounter 1)) < 0 := by decid
 `);
   });
 
-  add("06-orset.chalk", "The OR-Set: add wins", "Observed-remove: a remove deletes only the adds it has seen, so a concurrent add survives.", ({ sec, md, lean, lx }) => {
+  add("06-orset.chalk", "The OR-Set: add wins", "Observed-remove: a remove deletes only the adds it has seen, so a concurrent add survives.", ({ sec, md, m, lean, lx }) => {
     sec("The OR-Set: add wins");
     md(r`
 > [!goal]
@@ -1830,6 +1884,16 @@ example : PNCounter.value (PNCounter.decr 0 (⊥ : PNCounter 1)) < 0 := by decid
 > [!theorem] Add wins
 > If an add of $e$ is concurrent with a remove of $e$, then after both are merged $e$ is in the set. The proof (the longest in the book) runs on an invariant of reachable states, not on the algebra alone.
 `);
+    sec("Add wins, run");
+    md(r`Each add makes a tag of its own (‹x@a1› is ‹a›'s first add); a remove removes the tags of that element its replica has seen. Here ‹b› removes ‹x› while ‹a› adds it again: the new tag was not seen, so it survives.`);
+    m(`replicas(orset; a, b
+  a: add x
+  a -> b
+  b: remove x
+  a: add x
+  b -> a
+  a -> b
+)`, { work: true });
     sec("In Lean");
     for (const c of crdtLesson(5)) lean(c);
     md(r`Tombstones are the price: they only ever accumulate.`);
@@ -1885,13 +1949,25 @@ example : msetUnion (MSet.ofList [1, 2]) (MSet.ofList [3])
 `);
   });
 
-  add("08-delivery.chalk", "Delivery: gossip, duplication and reordering", "A trace semantics for an at-least-once network, eventual delivery implies convergence, and a gossip driver that provably stops.", ({ sec, md, lean, lx }) => {
+  add("08-delivery.chalk", "Delivery: gossip, duplication and reordering", "A trace semantics for an at-least-once network, eventual delivery implies convergence, and a gossip driver that provably stops.", ({ sec, md, m, lean, lx }) => {
     sec("Delivery: gossip, duplication and reordering");
     md(r`
 > [!goal]
 > Model the network: every execution an adversarial at-least-once network could produce, as a relation; prove that eventual delivery gives convergence; and write a gossip driver whose termination Lean accepts.
 `);
     md(r`The main theorem assumed replicas had received the same set of updates. Where do those sets come from? This lesson builds the network twice: as an inductive **trace semantics** (a step relation: update, send, deliver, with messages duplicated and reordered at will), and as an **executable gossip driver** run to quiescence, whose termination is proved by well-founded recursion.`);
+    sec("Delayed and duplicated messages, run");
+    md(r`‹m := a› puts a copy of ‹a›'s state in flight; ‹b <- m› delivers it, possibly later, possibly twice. An old message delivered after newer ones, or twice, changes nothing more, because the merge is a join:`);
+    m(`replicas(gcounter; a, b, c
+  a: inc
+  m := a
+  a: inc
+  a -> b
+  b <- m
+  b <- m
+  c <- m
+  b -> c
+)`, { step: 0 });
     sec("In Lean");
     for (const c of crdtLesson(7)) lean(c);
     md(r`Replicas never forget: what a replica has seen only grows along any execution.`);

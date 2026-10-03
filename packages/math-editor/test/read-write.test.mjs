@@ -75,7 +75,7 @@ test("the tree is the engine's parse: precedence, implicit products, what the nu
  *  posets, systems), not as notation. */
 const otherWorld = (src) => /[∧∨¬→↔⊤⊥∀∃λ\\]|->|&&|\|\||:=/.test(src) || /^\s*(forall|exists)\b/.test(src)
   || /^\s*(normal|cbn|cbv|applicative|eta|fv|db|alpha|subst|type|infer)\s*(\d+\s*)?:(?!=)/.test(src)
-  || /^\s*(let\s+\w+\s*=\s*)?(truthtable|taut|sat|falsify|equiv|nnf|cnf|dnf|poset|divisors|subsets|chain|map|hasse|join|meet|sup|inf|upper|lower|lattice|top|bottom|le|maximal|minimal|monotone|lfp|gfp|fixpoints|rel|kernel|reflexive|symmetric|antisymmetric|transitive|equivalence|preorder|closure|classes|finer|wellfounded|measure|op|joinop|meetop|table|associative|commutative|idempotent|semilattice|identity|fold|order|distributive|complement|complemented|boolean|product|galois|closureop|context|concepts|secure|events|clocks|concurrent|system|states|invariant|inductive|reach|deadlock|trace|ctl|eventually|refines)\s*\(/.test(src);
+  || /^\s*(let\s+\w+\s*=\s*)?(truthtable|taut|sat|falsify|equiv|nnf|cnf|dnf|poset|divisors|subsets|chain|map|hasse|join|meet|sup|inf|upper|lower|lattice|top|bottom|le|maximal|minimal|monotone|lfp|gfp|fixpoints|rel|kernel|reflexive|symmetric|antisymmetric|transitive|equivalence|preorder|closure|classes|finer|wellfounded|measure|op|joinop|meetop|table|associative|commutative|idempotent|semilattice|identity|fold|order|distributive|complement|complemented|boolean|product|galois|closureop|context|concepts|secure|events|clocks|concurrent|system|states|invariant|inductive|reach|deadlock|trace|ctl|eventually|refines|replicas)\s*\(/.test(src);
 
 test("parse errors are the engine's, with its spans", () => {
   for (const [src, answer] of golden) {

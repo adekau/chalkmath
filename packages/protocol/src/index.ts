@@ -160,12 +160,20 @@ export interface ContextTableData { objects: string[]; attributes: string[]; has
  *  (Γ₁, Γ₂, …), and `legend` says what each name stands for; a node's `text` writes its context out. */
 export interface TypingNode { rule: string; latex: string; text: string; premises: TypingNode[] }
 export interface TypingTreeData { root: TypingNode; legend?: { latex: string; text: string }[] }
+/** `replicas.spacetime` (a replica simulation): a lane per replica, the events in order (each with its
+ *  lane, a label, and the replica's state after it), the messages as arrows from one event to another,
+ *  and, per step of the derivation, the events it made. */
+export interface SpacetimeData {
+  lanes: string[]; events: { lane: string; label: string; state: string }[]; messages: [number, number][];
+  steps: number[][];
+}
 export type KnownVisual =
   | { kind: "logic.truthtable"; title?: string; data: TruthTableData }
   | { kind: "relation.digraph"; title?: string; data: DigraphData }
   | { kind: "algebra.optable"; title?: string; data: OpTableData }
   | { kind: "context.table"; title?: string; data: ContextTableData }
-  | { kind: "typing.tree"; title?: string; data: TypingTreeData };
+  | { kind: "typing.tree"; title?: string; data: TypingTreeData }
+  | { kind: "replicas.spacetime"; title?: string; data: SpacetimeData };
 
 export interface EvaluateResult {
   ok: true;

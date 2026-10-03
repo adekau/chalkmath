@@ -101,6 +101,10 @@ differential test with zero mismatches.
   the partial-order check, covers, bounds, join and meet, lattices, monotone maps, fixed points by
   the Kleene chain — and `PosetProofs.lean` proves the decisions mean the textbook Props. Values
   are encoded into `Expr`; the notebook draws Hasse diagrams from the covers.
+- **Replicas are simulated in the systems world.** `replicas(type; a, b; events…)` (`Replicas.lean`)
+  runs a state-based CRDT through a schedule of local updates, syncs and delayed or duplicated
+  messages. Every type there is a vector of naturals merged by the entrywise maximum, so one merge
+  serves them all, proved a join with every update an inflation (`ReplicasProofs.lean`).
 - **Commands nest by naming.** Order and systems commands take names; a call written inside another,
   `product(chain(2), chain(3))`, is evaluated first, bound to a hidden name and put in its place
   (`Nested.lean`), its derivation a sub-derivation of the outer cell's first steps. It is a rewriting
@@ -380,13 +384,14 @@ settings, the cell) is `apps/notebook/src/ask-cells.ts`.
 
 The engine never draws. It emits **visual specs**: declarative JSON next to `rendered`
 (`EvaluateResult.visuals`): a Cayley table, a graph, a commutative diagram, sampled plot data, a
-matrix heat map. Five kinds exist (`KnownVisual` in the protocol): `logic.truthtable`, the rows of a
+matrix heat map. Six kinds exist (`KnownVisual` in the protocol): `logic.truthtable`, the rows of a
 formula's table; `relation.digraph`, a relation's pairs with the ones that break a property (`bad`)
 and the ones a closure added (`added`), and, for a state graph, where each step of the work is on it
 (`steps`: the transition it takes or the state it is at), so stepping through a trace marks the
 current transition (with the answer's marks held back until the answer shows); `algebra.optable`, an operation's table with the cells a
 failing law read (`marks`); `context.table`, a formal context's cross table; and `typing.tree`, a
-typing derivation as nested judgments, each with its rule and premises. The notebook draws the tables
+typing derivation as nested judgments, each with its rule and premises; and `replicas.spacetime`, a
+replica simulation's lanes, events and messages, with the events each step made. The notebook draws the tables
 and the proof tree as HTML and the graph as SVG, keeps them with the cell in a saved file, and ignores a kind it does not know. The frontend owns
 rendering (SVG/canvas/WebGL) and can offer several renderers for one spec. This keeps the engine
 pure and portable (wasm has no canvas), keeps proofs about what is *shown* possible (the spec is

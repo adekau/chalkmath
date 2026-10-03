@@ -340,3 +340,13 @@ transitive(closure(NR, transitive))	true
 classes(closure(rel({a, b, c}; a->b), equivalence))	{{a, b}, {c}}
 lattice(chain(nope))	<error: in chain(nope): chain takes a number>
 states(system(var x in 0..2; init x = 0; action inc when x < 2 do x := x + 1))	3
+replicas(gcounter; a, b, c; a: inc; b: inc; b: inc; a -> b; b -> c; c -> a)	{a↦3, b↦3, c↦3}
+replicas(gcounter; a, b; a: inc; m := a; a: inc; b <- m; b <- m)	{a↦2, b↦1}
+replicas(pncounter; a, b; a: inc; a: inc; b: dec; a -> b; b -> a)	{a↦1, b↦1}
+replicas(gset; a, b; a: add x; b: add y; a -> b; b -> a)	{a↦{x, y}, b↦{x, y}}
+replicas(twopset; a, b; a: add x; a -> b; b: remove x; a: add x; b -> a)	{a↦{}, b↦{}}
+replicas(orset; a, b; a: add x; a -> b; b: remove x; a: add x; b -> a; a -> b)	{a↦{x}, b↦{x}}
+replicas(lww; a, b; a: write red @ 5; b: write blue @ 3; a -> b; b -> a)	{a↦red, b↦red}
+replicas(gset; a, b; a: remove x)	<error: a G-set has add x, not 'remove x'>
+replicas(gcounter; a, b; c: inc)	<error: 'c' is not one of the replicas (a, b)>
+replicas(gcounter; a, b; b <- m)	<error: no message 'm' has been sent (write m := replica first)>

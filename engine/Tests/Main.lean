@@ -380,6 +380,11 @@ def sessionTests : TestM Unit := do
   let (stT, _) := handleS [] (reqN "22" "engine.evaluate" "{\"sessionId\":\"tr\",\"cellId\":\"a\",\"source\":\"let L = system(var c in {red, green}; init c = red; action go when c = red do c := green)\"}")
   let (_, trc) := handleS stT (reqN "23" "engine.evaluate" "{\"sessionId\":\"tr\",\"cellId\":\"b\",\"source\":\"trace(L; go)\"}")
   checkTrue "trace: the graph places each step, the first at its state and the next on its transition" (contains trc "\"steps\":[{\"node\":\"red\"},{\"edge\":[\"red\",\"green\"]}]") trc
+  let rep := rpc "engine.evaluate" "{\"sessionId\":\"rp\",\"cellId\":\"a\",\"source\":\"replicas(gcounter; a, b; a: inc; m := a; a: inc; b <- m)\",\"showWork\":true}"
+  checkTrue "replicas: a space-time diagram, a message from the send to the delivery" (contains rep "\"kind\":\"replicas.spacetime\"" && contains rep "\"messages\":[[1,3]]") rep
+  checkTrue "replicas: the run says it has not converged" (contains rep "not converged: a reads 2; b reads 1") rep
+  checkTrue "replicas: a merge step" (contains rep "\"rule\":\"crdt.merge\"") rep
+  check "replicas: the map prints in LaTeX" ((Expr.fn "set" [.fn "↦" [.var "a", .num (Q.ofInt 2)]]).toLatex false) "\\{a \\mapsto 2\\}"
   -- a definition with no normal form is bound unreduced, and the reduction is cut off by size, not hung
   (st, r) := ev st "pred := λn. fst (n (λp. pair (snd p) (succ (snd p))) (pair 0 0))"; checkTrue "λ: pred" (r.startsWith "λn.") r
   (st, r) := ev st "fact := Y (λself. λn. if (iszero n) 1 (mul n (self (pred n))))"; checkTrue "λ: a Y definition is bound unreduced" (r.startsWith "(λf. (λx. f (x x))") r

@@ -160,6 +160,11 @@ def ruleStatus : Json :=
     entry "sys.eventually" "unverified" "No deadlock and no fair cycle avoids the goal among the reachable states; the search is not yet proved complete.",
     entry "sys.refines" "unverified" "Every transition the search found maps to an abstract step or a stutter; the search's completeness is not yet proved.",
     entry "order.inner" "verified" "A nested call evaluated first and named: a rewriting of the source, so the commands' own statuses apply.",
+    entry "crdt.update" "verified" "A local update only raises entries of the replica's state (update_inflation).",
+    entry "crdt.merge" "verified" "The entrywise maximum: a join, commutative, associative and idempotent (merge_comm, merge_assoc, merge_idem).",
+    entry "crdt.send" "verified" "A message is a copy of the state; nothing to prove.",
+    entry "crdt.converged" "verified" "Decided by comparing the states; equal states read equal values.",
+    entry "crdt.diverged" "verified" "Decided by comparing the states.",
     entry "sys.inner" "verified" "A nested call evaluated first and named: a rewriting of the source, so the commands' own statuses apply.",
     entry "order.happens-before" "verified" "The reflexive-transitive closure of program order and messages, checked to be a partial order (checkPartialOrder_none).",
     entry "order.clocks" "verified" "Each entry counts the events of a process below the event in the happens-before order, by definition.",
@@ -379,6 +384,14 @@ def evaluateSystem (st : Store) (params : Json) (sessionId cellId src : String) 
         let stepsField : Array (String × Json) := if marks.all (fun | .null => true | _ => false) then #[] else #[("steps", .arr marks)]
         r.push ("visuals", .arr #[.obj #[("kind", .str "relation.digraph"), ("data", .obj (#[
           ("nodes", .arr (R.elems.map Json.str).toArray), ("edges", pairs R.pairs), ("bad", pairs bad), ("added", pairs added)] ++ layers ++ stepsField))]])
+      | none => r
+    let r := match res.spacetime with
+      | some (D, evOf) =>
+        let ev (e : Rep.DEvent) : Json := .obj #[("lane", .str e.lane), ("label", .str e.label), ("state", .str e.state)]
+        r.push ("visuals", .arr #[.obj #[("kind", .str "replicas.spacetime"), ("data", .obj #[
+          ("lanes", .arr (D.lanes.map Json.str).toArray), ("events", .arr (D.events.map ev)),
+          ("messages", .arr (D.messages.map fun (a, b) => Json.arr #[.num (toString a), .num (toString b)]).toArray),
+          ("steps", .arr (evOf.map fun es => Json.arr (es.map fun i => Json.num (toString i)).toArray))])]])
       | none => r
     let r := r ++ workFields params res.derivation
     let r := match res.name with | some n => r.push ("bound", .arr #[.str n]) | none => r
