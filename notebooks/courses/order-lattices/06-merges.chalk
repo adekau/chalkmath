@@ -1,0 +1,161 @@
+{
+  "chalk": 1,
+  "name": "06-merges.chalk",
+  "cells": [
+    {
+      "src": "A merge is a join",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> See why a merge that is a join can be applied in any order and any number of times with the same result, build merges for numbers, flags, timestamped values and records, and prove their laws in Lean.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Two copies of some data (replicas) change independently and later exchange states. Each **merges** the other's state into its own. They end up equal, whatever order the messages arrive in and however often they are repeated, exactly when the merge is associative, commutative and idempotent: a join.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Order and repetition do not matter",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let M = op({0, 1, 2}; [0, 1, 2; 1, 1, 2; 2, 2, 2])",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "fold(M; 2, 0, 1)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "fold(M; 1, 0, 2, 2, 0)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "Associativity lets the merges be grouped any way, commutativity lets them arrive in any order, and idempotence lets a message be delivered twice.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Records merge field by field",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!theorem] Products of semilattices\n> If $A$ and $B$ are semilattices, so is $A \\times B$ with $(a, b) \\cdot (a', b') = (a \\cdot a', b \\cdot b')$. Its order is the product order.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let C2 = chain(2)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let R2 = product(C2, C2)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "join(R2, (0, 1), (1, 0))",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "let JR = joinop(R2)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "semilattice(JR)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "instance : Semilattice Nat where\n  merge := max\n  merge_comm := Nat.max_comm\n  merge_assoc := Nat.max_assoc\n  merge_idem := Nat.max_self\n\ninstance : Semilattice Bool where\n  merge := (· || ·)\n  merge_comm := by decide\n  merge_assoc := by decide\n  merge_idem := by decide\n\n/-- A record merges field by field: proved once, for any two field types. -/\ninstance {α β : Type} [Semilattice α] [Semilattice β] : Semilattice (α × β) where\n  merge p q := (merge p.1 q.1, merge p.2 q.2)\n  merge_comm p q := by rw [merge_comm p.1, merge_comm p.2]\n  merge_assoc p q r := by simp only [merge_assoc]\n  merge_idem p := by simp only [merge_idem]\n\n#eval merge (3, true) (5, false)",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Last-writer-wins register\n> A value with a timestamp; the merge keeps the later one, and on a tie the larger value, so that the merge is commutative even when two replicas write at the same time.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- A last-writer-wins register: a timestamp and a value. -/\nstructure LWW where\n  ts  : Nat\n  val : Nat\n  deriving Repr, DecidableEq\n\n/-- a wins over b: a later timestamp, or the same one and a value at least as large. -/\ndef LWW.beats (a b : LWW) : Prop := b.ts < a.ts ∨ (b.ts = a.ts ∧ b.val ≤ a.val)\ninstance (a b : LWW) : Decidable (a.beats b) := inferInstanceAs (Decidable (_ ∨ _))\n\ndef LWW.merge (a b : LWW) : LWW := if a.beats b then a else b\n\ntheorem LWW.merge_comm (a b : LWW) : a.merge b = b.merge a := by\n  rcases a with ⟨t1, v1⟩; rcases b with ⟨t2, v2⟩\n  simp only [LWW.merge]\n  by_cases h1 : (LWW.mk t1 v1).beats ⟨t2, v2⟩ <;> by_cases h2 : (LWW.mk t2 v2).beats ⟨t1, v1⟩ <;>\n    simp only [h1, h2, ↓reduceIte, LWW.mk.injEq] <;> simp only [LWW.beats] at * <;> omega\n\ntheorem LWW.merge_assoc (a b c : LWW) : (a.merge b).merge c = a.merge (b.merge c) := by\n  rcases a with ⟨t1, v1⟩; rcases b with ⟨t2, v2⟩; rcases c with ⟨t3, v3⟩\n  simp only [LWW.merge]\n  by_cases h12 : (LWW.mk t1 v1).beats ⟨t2, v2⟩ <;> by_cases h23 : (LWW.mk t2 v2).beats ⟨t3, v3⟩ <;>\n    by_cases h13 : (LWW.mk t1 v1).beats ⟨t3, v3⟩ <;> simp only [h12, h23, h13, ↓reduceIte] <;>\n    simp only [LWW.beats] at * <;> first | rfl | omega\n\ntheorem LWW.merge_idem (a : LWW) : a.merge a = a := by\n  simp [LWW.merge, LWW.beats]\n\ninstance : Semilattice LWW where\n  merge := LWW.merge\n  merge_comm := LWW.merge_comm\n  merge_assoc := LWW.merge_assoc\n  merge_idem := LWW.merge_idem\n\n#eval merge (LWW.mk 3 10) (LWW.mk 5 7)",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> Without the tie-break (\"keep the second on a tie\") the merge is not commutative: two replicas that each received the other's write last would keep different values forever.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem three_replicas {α : Type} [Semilattice α] (a b c : α) :\n    merge (merge a b) c = merge (merge c a) b := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Three replicas merge their states in two different orders. Prove they agree.",
+      "leanSolution": "  rw [merge_assoc, merge_comm b c, ← merge_assoc, merge_comm a c]",
+      "hints": [
+        "Rewrite the left side into the right with `merge_assoc` and `merge_comm`.",
+        "`merge (merge a b) c = merge a (merge b c) = merge a (merge c b) = merge (merge a c) b`, and then swap `a` and `c`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "fold(M; 0, 2, 1, 0)",
+      "type": "exercise",
+      "prompt": "Merge the states $0, 2, 1, 0$ with $\\max$.",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "join(R2, (1, 0), (0, 0))",
+      "type": "exercise",
+      "prompt": "Merge the records $(1, 0)$ and $(0, 0)$ field by field. Write the pair as `(x, y)`.",
+      "hints": [
+        "Take the larger value in each field."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> A merge that is a join can be applied in any grouping, any order and any number of times: replicas that exchange states converge. Maxima, unions, last-writer-wins registers and records of them are all joins, and the product proof is written once for every record.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

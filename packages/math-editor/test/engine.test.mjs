@@ -15,8 +15,8 @@ const chalkFiles = () => [
   ...readdirSync(new URL("notebooks/", root)).filter((f) => f.endsWith(".chalk")),
   ...readdirSync(new URL("notebooks/courses/", root)).flatMap((c) => readdirSync(new URL(`notebooks/courses/${c}/`, root)).filter((f) => f.endsWith(".chalk")).map((f) => `courses/${c}/${f}`)),
 ];
-/** A cell the engine reads as notation: a math cell, or an exercise's question. */
-const mathCell = (c) => !c.type || c.type === "math" || c.type === "exercise";
+/** A cell the engine reads as notation: a math cell, or an exercise's question (a Lean exercise's is Lean). */
+const mathCell = (c) => !c.type || c.type === "math" || (c.type === "exercise" && !c.lean);
 
 test("what the editor writes means what the source meant, to the engine", { skip: !existsSync(exe) && "no native engine build" }, async () => {
   const { leanNativeClient } = await import("@chalkmath/engine-host/lean-native");
@@ -32,10 +32,22 @@ test("what the editor writes means what the source meant, to the engine", { skip
     frames: r.frames?.map((f) => f.rendered.text),
   });
   let compared = 0;
+  // the engine's `Lam.isLambdaSource`: a λ, a definition or a λ-command, or a first word that is a
+  // λ-definition (the cells' own or the Church library's) — `fst (pair a b)` has no λ but is a λ-term
+  const church = ["true", "false", "and", "or", "not", "if", "zero", "succ", "add", "mul", "pow", "iszero", "pair", "fst", "snd", "id", "const", "K", "S", "I", "omega", "Y"];
+  const lambdaCell = (src, defs) => {
+    if (/[λ\\]|:=/.test(src) || /^\s*(normal|cbn|cbv|applicative|eta|fv|db|alpha|subst|type|infer)\s*(\d+\s*)?:(?!=)/.test(src)) return true;
+    const w = src.trim().split(" ")[0] ?? "";
+    return w !== "let" && (church.includes(w) || defs.includes(w)) && (!src.includes("(") || src.includes(" "));
+  };
   for (const { name, cells } of suites) {
     const known = [];
+    const defs = [];
     for (const [i, src] of cells.entries()) {
-      const r = read(src, known);
+      const def = /^\s*([A-Za-z_][\w']*)\s*:=/.exec(src);
+      const lambda = lambdaCell(src, defs);
+      if (def) defs.push(def[1]);
+      const r = lambda ? { ok: false } : read(src, known);
       // cells this grammar does not read (λ, order theory, import) go to both sessions unchanged
       const rewritten = r.ok ? write(r.stmt).text : src;
       if (r.ok && letHead(r.stmt)?.params) known.push(letHead(r.stmt).name);

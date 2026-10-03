@@ -1,0 +1,55 @@
+{
+  "chalk": 1,
+  "name": "12-limits.chalk",
+  "cells": [
+    {
+      "src": "What CRDTs cannot do",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Walk the boundary of the promise: strong eventual consistency says replicas agree, not that what they agree on is right; some invariants cannot be kept without coordination.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A last-writer-wins register converges while discarding one of two concurrent writes. A bank balance that must never go negative cannot be a CRDT: two replicas can each approve a withdrawal that is fine locally, and no merge can make both right. Invariants that span replicas need coordination (a lock, consensus, an escrow of rights) somewhere; CRDTs are for the state that does not.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/- ============================================================\n   Crdt.Limits — Chapter 13: What CRDTs Cannot Do\n   ============================================================ -/\n\nnamespace Limits\n\n/-- Refuted: \"there is a merge for non-negative bank accounts\".\n    Suppose a merge that is duplicate-safe (idempotent) and honors\n    both replicas' withdrawals from a shared initial balance of 100.\n    Two concurrent withdrawals of 80 force `merge 20 20` to be both\n    `20` (idempotence) and `-60` (honoring both). No such function\n    exists — availability under partition cannot preserve \"balance\n    never goes negative\" while accepting every withdrawal. -/\ntheorem no_bank_merge :\n    ¬ ∃ merge : Int → Int → Int,\n        (∀ a, merge a a = a) ∧\n        (∀ x y : Nat, x ≤ 100 → y ≤ 100 →\n          merge (100 - (x : Int)) (100 - (y : Int))\n            = 100 - (x : Int) - (y : Int)) := by\n  intro ⟨merge, hidem, hboth⟩\n  have h₂ := hboth 80 80 (by omega) (by omega)\n  have he : (100 : Int) - (80 : Nat) = 20 := by decide\n  rw [he, hidem 20] at h₂\n  exact absurd h₂ (by decide)\n\n/-- The PN-Counter happily goes negative: convergence is not\n    correctness. (The Chapter 4 `clampedValue` exercise hid the\n    problem; it did not solve it.) -/\ntheorem pn_goes_negative :\n    PNCounter.value (PNCounter.decr 0 (⊥ : PNCounter 1)) < 0 := by decide\n\nend Limits",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!note] The axiom audit\n> The book closes by printing the axioms every headline theorem depends on. Nothing beyond propositional extensionality and quotient soundness: the whole chain, the main theorem included, is constructive.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/- ============================================================\n   Axiom audit — every headline theorem, `#print axioms`.\n   Result: nothing beyond `propext` (propositional extensionality,\n   used through `funext`/`ext`-style reasoning) and `Quot.sound`\n   (quotients, Chapter 8; also inside core `simp` lemmas about\n   lists). `Classical.choice` appears nowhere: the entire chain,\n   `sec_state_based` included, is constructive.\n   ============================================================ -/\n\n#print axioms Order.sup_comm\n#print axioms Order.sup_assoc\n#print axioms GCounter.value_increment\n#print axioms PNCounter.value_not_monotone\n#print axioms SList.sorted_ext\n#print axioms TotalOrder.maxo_assoc\n#print axioms TwoPSet.no_readd\n#print axioms ORSet.addWins\n#print axioms SEC.foldJoin_eq_of_same_mems\n#print axioms SEC.foldJoin_perm\n#print axioms MSet.foldJoin\n#print axioms SEC.sec_state_based\n#print axioms Delivery.converged_of_allShared\n#print axioms Delivery.gossipUntilQuiescent\n#print axioms Delivery.quiescent_shares\n#print axioms VV.ticks_concurrent\n#print axioms OpBased.opGCounter_simulates\n#print axioms Capstone.sec_store\n#print axioms Limits.no_bank_merge\n\nend Crdt",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> CRDTs buy availability and convergence without coordination, and they cannot buy invariants that relate replicas. Knowing which state needs which is the design decision this course leaves you with.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

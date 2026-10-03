@@ -1,0 +1,197 @@
+{
+  "chalk": 1,
+  "name": "07-distributive.chalk",
+  "cells": [
+    {
+      "src": "Distributive and Boolean lattices",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Decide distributivity with a witness triple when it fails, find complements, and recognize Boolean lattices.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Distributive lattice\n> A lattice is **distributive** when $x \\wedge (y \\vee z) = (x \\wedge y) \\vee (x \\wedge z)$ for all $x, y, z$ (the dual law then follows).",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let M3 = poset({bot, a, b, c, top}; bot < a, bot < b, bot < c, a < top, b < top, c < top)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "distributive(M3)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "let N5 = poset({bot, p, q, r, top}; bot < p, bot < q, q < r, p < top, r < top)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "distributive(N5)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "> [!theorem] Birkhoff\n> A lattice is distributive exactly when it contains neither M₃ nor N₅ as a sublattice. They are the witnesses every failure contains.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let D = divisors(12)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "distributive(D)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Complements",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Complement\n> In a lattice with $\\bot$ and $\\top$, a **complement** of $x$ is a $y$ with $x \\vee y = \\top$ and $x \\wedge y = \\bot$. In a distributive lattice an element has at most one.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "complement(M3, a)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "complement(D, 4)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "complement(D, 2)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "$2$ has no complement among the divisors of 12: any $y$ with $\\operatorname{lcm}(2, y) = 12$ is a multiple of 4 or of 3 times 4, and then $\\gcd(2, y) = 2$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Boolean lattices",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Boolean lattice\n> A **Boolean lattice** is distributive and complemented. The subsets of a set are the model: complement is set complement.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let P = subsets({x, y, z})",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "boolean(P)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let D30 = divisors(30)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "boolean(D30)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "complement(D30, 6)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The divisors of 30 are the subsets of $\\{2, 3, 5\\}$ in disguise: a squarefree number is the set of its primes.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem bool_distrib (a b c : Bool) : (a && (b || c)) = ((a && b) || (a && c)) := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that the Booleans are distributive.",
+      "leanSolution": "  cases a <;> cases b <;> cases c <;> rfl",
+      "hints": [
+        "There are eight cases: `cases a <;> cases b <;> cases c`, and each is `rfl`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "complement(M3, b)",
+      "type": "exercise",
+      "prompt": "List the complements of $b$ in M₃.",
+      "hints": [
+        "Which elements join with $b$ to $\\top$ and meet it at $\\bot$?"
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "boolean(D)",
+      "type": "exercise",
+      "prompt": "Are the divisors of 12 a Boolean lattice?",
+      "hints": [
+        "Does every element have a complement?"
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "complement(D30, 10)",
+      "type": "exercise",
+      "prompt": "List the complements of 10 among the divisors of 30.",
+      "hints": [
+        "$10 = 2 \\cdot 5$: which primes are missing?"
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Distributivity can fail, and M₃ and N₅ are why. Boolean lattices are distributive with complements; the subsets of a set, and the divisors of a squarefree number, are the examples.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

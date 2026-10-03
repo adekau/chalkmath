@@ -1,0 +1,5 @@
+3	infer: λx. x	= α → α
+4	infer: λf. λx. f (f x)	= (α → α) → α → α
+6	infer: and	✗ occurs check: τ3 = (τ2 → τ3) → τ4 has no solution (τ3 would have to contain itself), so the term has no simple type
+16	infer: λf. λg. λx. f (g x)	= (α → β) → (γ → α) → γ → β
+17	infer: pair	= α → β → (α → β → γ) → γ

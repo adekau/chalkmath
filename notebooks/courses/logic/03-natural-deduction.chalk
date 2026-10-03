@@ -1,0 +1,155 @@
+{
+  "chalk": 1,
+  "name": "03-natural-deduction.chalk",
+  "cells": [
+    {
+      "src": "Proofs as Lean tactics",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Prove propositional statements in Lean with the rules of natural deduction, written as tactics: `intro`, `exact`, `constructor`, `cases`, `left` and `right`.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A truth table checks a formula by trying every row. A **proof** derives it by rules, each a small, obviously valid step, and it works where a table cannot: for statements about infinitely many numbers, or with variables that are not just true or false. Lean checks every step.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Introduction and elimination\n> Each connective has rules that **introduce** it (how to prove it) and rules that **eliminate** it (how to use it):\n>\n> - $p \\to q$: to prove it, assume $p$ and prove $q$ (`intro`); to use it, apply it to a proof of $p$.\n> - $p \\land q$: prove both (`constructor`, or `⟨hp, hq⟩`); from it, take either (`h.1`, `h.2`).\n> - $p \\lor q$: prove one (`left`, `right`); to use it, prove the goal in both cases (`cases`).\n> - $\\lnot p$ is $p \\to \\bot$: to prove it, assume $p$ and reach a contradiction.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "example (p q : Prop) (hp : p) (hq : q) : p ∧ q := by\n  constructor\n  · exact hp\n  · exact hq\n\nexample (p q : Prop) : p ∧ q → q := by\n  intro h\n  exact h.2\n\nexample (p q : Prop) : p → p ∨ q := by\n  intro hp\n  left\n  exact hp",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Put the cursor after a tactic to see the goal it leaves: the hypotheses above the line, what is left to prove below it.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Replace `sorry` with a proof. Lean checks it as you type; the exercise is done when Lean accepts it with nothing left unproved.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem and_swap' (p q : Prop) : p ∧ q → q ∧ p := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that $\\land$ commutes.",
+      "leanSolution": "  intro ⟨hp, hq⟩\n  exact ⟨hq, hp⟩",
+      "hints": [
+        "`intro ⟨hp, hq⟩` takes the conjunction apart as it introduces it.",
+        "`exact ⟨hq, hp⟩` builds the conjunction the other way round."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem or_swap' (p q : Prop) : p ∨ q → q ∨ p := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that $\\lor$ commutes.",
+      "leanSolution": "  intro h\n  cases h with\n  | inl hp => exact Or.inr hp\n  | inr hq => exact Or.inl hq",
+      "hints": [
+        "After `intro h`, `cases h` gives two goals: one with `hp : p`, one with `hq : q`.",
+        "`Or.inr hp` proves `q ∨ p` from `p`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem modus_tollens (p q : Prop) : (p → q) → ¬q → ¬p := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove *modus tollens*: if $p$ implies $q$ and $q$ is false, then $p$ is false.",
+      "leanSolution": "  intro hpq hnq hp\n  exact hnq (hpq hp)",
+      "hints": [
+        "`¬p` is `p → False`, so `intro` can take a proof of `p` too.",
+        "`hpq hp` is a proof of `q`, and `hnq` turns it into `False`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem curry' (p q r : Prop) : (p ∧ q → r) → (p → q → r) := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that a function of a pair can take its arguments one at a time.",
+      "leanSolution": "  intro h hp hq\n  exact h ⟨hp, hq⟩",
+      "hints": [
+        "Introduce all three hypotheses, then feed `h` the pair."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem not_or_split (p q : Prop) : ¬(p ∨ q) → ¬p ∧ ¬q := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove one of De Morgan's laws: if neither $p \\lor q$, then not $p$ and not $q$.",
+      "leanSolution": "  intro h\n  exact ⟨fun hp => h (Or.inl hp), fun hq => h (Or.inr hq)⟩",
+      "hints": [
+        "A proof of `¬p` is a function from `p` to `False`.",
+        "Given `hp : p`, `Or.inl hp` proves `p ∨ q`, which `h` refutes."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Proofs are programs",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!note] Curry–Howard\n> The term `fun hp => h (Or.inl hp)` above is a program: a function taking a proof of $p$ to a proof of $\\bot$. In Lean a proof of $p \\to q$ *is* a function from proofs of $p$ to proofs of $q$, and a proof of $p \\land q$ is a pair. Propositions are types and proofs are their values; checking a proof is type checking. The λ-calculus courses come back to this.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "example (p q : Prop) : p ∧ q → q ∧ p := fun ⟨hp, hq⟩ => ⟨hq, hp⟩",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> Every tautology has a truth table, but not every tautology has a proof by these rules alone. $\\lnot\\lnot p \\to p$ is a tautology, yet the rules above only give $p$ from evidence for $p$. It needs one more principle, the excluded middle (`Classical.em p : p ∨ ¬p`), or proof by contradiction:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem dne (p : Prop) : ¬¬p → p := by\n  intro h\n  exact Classical.byContradiction h",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Natural deduction gives each connective rules to introduce and to eliminate it, and Lean's tactics are those rules. A proof of an implication is a function; a proof of a conjunction is a pair.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

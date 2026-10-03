@@ -1,0 +1,73 @@
+{
+  "chalk": 1,
+  "name": "10-op-based.chalk",
+  "cells": [
+    {
+      "src": "Op-based CRDTs",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Compare the two traditions: state-based replicas ship states and join them; operation-based replicas ship operations and apply them. See what each asks of the network, and how one simulates the other.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In an **op-based** CRDT a replica ships the operation it performed (\"increment slot 3\", \"add element 7\"), and every receiver applies it. Messages are small, but there is no join to hide behind: if operations arrive out of order they must **commute**, and if one arrives twice it is applied twice, so the transport must deliver **exactly once**. The burden moves from the algebra to the network.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/- ============================================================\n   Crdt.OpBased — Chapter 11: Op-Based CRDTs and the\n   Correspondence. Ship operations, not states; the burden moves\n   from the algebra to the transport.\n   ============================================================ -/\n\nnamespace OpBased\n\nopen Order.PartialOrder Order.BoundedJoinSemilattice\n\n/-- An operation-based CRDT (simplified to the fully-commutative case,\n    which is all the counter needs): local state, an interpreter for\n    operations, and the law that operations commute. -/\nstructure OpCRDT (Op σ : Type) where\n  init  : σ\n  apply : Op → σ → σ\n  comm  : ∀ (o₁ o₂ : Op) (s : σ),\n    apply o₁ (apply o₂ s) = apply o₂ (apply o₁ s)\n\n/-- Replay a log of received operations. -/\ndef applyLog {Op σ : Type} (c : OpCRDT Op σ) (log : List Op) (s : σ) : σ :=\n  log.foldl (fun s o => c.apply o s) s\n\n/-- Commutativity absorbs reordering (but *nothing* absorbs\n    duplication — see the refutation below). -/\ntheorem applyLog_perm {Op σ : Type} (c : OpCRDT Op σ) {l₁ l₂ : List Op}\n    (h : Perm l₁ l₂) : ∀ s, applyLog c l₁ s = applyLog c l₂ s := by\n  induction h with\n  | nil => intro _; rfl\n  | cons x _ ih => intro s; exact ih (c.apply x s)\n  | swap x y l =>\n      intro s\n      show applyLog c l (c.apply y (c.apply x s))\n          = applyLog c l (c.apply x (c.apply y s))\n      rw [c.comm]\n  | trans _ _ ih₁ ih₂ => intro s; exact (ih₁ s).trans (ih₂ s)\n\n/-- The op-based G-Counter: an operation is \"increment at replica i\". -/\ndef opCounter (R : Nat) : OpCRDT (Fin R) (GCounter R) where\n  init := ⊥\n  apply := GCounter.increment\n  comm o₁ o₂ s := by\n    funext j\n    by_cases h₁ : j = o₁ <;> by_cases h₂ : j = o₂\n    · subst h₁; subst h₂; rfl\n    · subst h₁; simp [GCounter.increment, h₂]\n    · subst h₂; simp [GCounter.increment, h₁]\n    · simp [GCounter.increment, h₁, h₂]\n\n/-- The state each replica would *ship* after each operation. -/\ndef statesAlong {Op σ : Type} (c : OpCRDT Op σ) : List Op → σ → List σ\n  | [], _ => []\n  | o :: log, s =>\n      let s' := c.apply o s\n      s' :: statesAlong c log s'\n\n/-- **The correspondence, for inflationary interpreters.** Folding the\n    stream of shipped states by join replays the op log exactly: the\n    state-based and op-based readings of the same history agree. -/\ntheorem foldJoin_statesAlong {Op σ : Type} [BoundedJoinSemilattice σ]\n    (c : OpCRDT Op σ) (hinf : ∀ o, Order.Inflationary (c.apply o)) :\n    ∀ (log : List Op) (s : σ),\n      SEC.foldJoinFrom s (statesAlong c log s) = applyLog c log s\n  | [], _ => rfl\n  | o :: log, s => by\n      show SEC.foldJoinFrom (s ⊔ c.apply o s) (statesAlong c log (c.apply o s))\n          = applyLog c log (c.apply o s)\n      rw [Order.le_iff_sup_eq.mp (hinf o s)]\n      exact foldJoin_statesAlong c hinf log (c.apply o s)\n\n/-- Instantiated at the G-Counter: op-log replay = join of state deltas. -/\ntheorem opGCounter_simulates (R : Nat) (log : List (Fin R)) :\n    SEC.foldJoin (statesAlong (opCounter R) log ⊥)\n      = applyLog (opCounter R) log ⊥ :=\n  foldJoin_statesAlong (opCounter R) GCounter.increment_inflationary log ⊥\n\n/-- Refuted: \"the op-based counter tolerates at-least-once delivery\".\n    A duplicated increment op counts twice; the algebra has no\n    idempotence to hide behind. -/\ntheorem op_dup_overcounts :\n    GCounter.value (applyLog (opCounter 1) [0, 0] ⊥)\n      ≠ GCounter.value (applyLog (opCounter 1) [0] ⊥) := by decide\n\n/-- A tiny op-based set, to break in two ways. -/\ninductive SetOp where\n  | add (e : Nat)\n  | remove (e : Nat)\n\ndef applySetOp : SetOp → GSet → GSet\n  | .add e, s => SList.insert e s\n  | .remove e, s => SList.filter (· != e) s\n\n/-- Refuted: \"op-based OR-style sets tolerate duplicated delivery\".\n    Add, remove, re-add; then the network redelivers the old remove:\n    the re-add dies. Exactly-once (or causal tagging) is load-bearing. -/\ntheorem op_set_dup_kills_readd :\n    let exactlyOnce := [SetOp.add 1, .remove 1, .add 1]\n    let withDup := [SetOp.add 1, .remove 1, .add 1, .remove 1]\n    (1 ∈ withDup.foldl (fun s o => applySetOp o s) (⊥ : GSet))\n      ≠ (1 ∈ exactlyOnce.foldl (fun s o => applySetOp o s) (⊥ : GSet)) := by\n  decide\n\n/-- ... and add/remove of the same element do not commute, so op-based\n    sets also need causal delivery, not just dup-suppression. -/\ntheorem setops_not_comm :\n    applySetOp (.add 1) (applySetOp (.remove 1) (⊥ : GSet))\n      ≠ applySetOp (.remove 1) (applySetOp (.add 1) (⊥ : GSet)) := by decide\n\nend OpBased",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Increments commute, so the G-Counter is also an op-based CRDT:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem increment_comm {R : Nat} (i j : Fin R) (g : GCounter R) :\n    GCounter.increment i (GCounter.increment j g)\n      = GCounter.increment j (GCounter.increment i g) := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that increments commute, at any two slots (even the same one).",
+      "leanSolution": "  exact (OpBased.opCounter R).comm i j g",
+      "hints": [
+        "The op-based counter above already carries this fact as its `comm` field."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The op-based PN-Counter: an operation is a signed increment, and everything commutes.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "open Order.PartialOrder Order.BoundedJoinSemilattice in\ndef opPNCounter (R : Nat) : OpBased.OpCRDT (Bool × Fin R) (PNCounter R) where\n  init := ⊥\n  apply o p :=\n    if o.1 then (GCounter.increment o.2 p.1, p.2)\n    else (p.1, GCounter.increment o.2 p.2)\n  comm o₁ o₂ s := by\n    by_cases h₁ : o₁.1 <;> by_cases h₂ : o₂.1 <;> simp [h₁, h₂]\n    · rw [increment_comm]\n    · rw [increment_comm]",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> State-based CRDTs tolerate any network that eventually delivers; op-based CRDTs need commuting operations and exactly-once delivery, in exchange for small messages. Each can simulate the other.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

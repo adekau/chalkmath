@@ -1,0 +1,6 @@
+4	let C = system(\n  var x in 0..3\n  var y in 0..3\n  init x = 0 ∧ y = 0\n  action inc when x < 3 do x := x + 1\n  action move when x > 0 ∧ y < 3 do x := x - 1, y := y + 1\n)	= system({x, y}, {inc, move})   [2 variables, 2 actions, 16 reachable states]
+6	ctl(C, EF y = 3)	= true   [EF holds in 16 of 16 states; true initially]
+7	ctl(C, AG x + y ≤ 3)	= false   [AG holds in 0 of 16 states; false initially]
+8	ctl(C, AF y = 3)	= true   [AF holds in 16 of 16 states; true initially]
+15	ctl(C, EF x = 3 ∧ y = 3)	= true
+16	ctl(C, AG y ≤ 3)	= true

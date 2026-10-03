@@ -11,8 +11,8 @@ const chalkFiles = () => [
   ...readdirSync(new URL("notebooks/", root)).filter((f) => f.endsWith(".chalk")),
   ...readdirSync(new URL("notebooks/courses/", root)).flatMap((c) => readdirSync(new URL(`notebooks/courses/${c}/`, root)).filter((f) => f.endsWith(".chalk")).map((f) => `courses/${c}/${f}`)),
 ];
-/** A cell the engine reads as notation: a math cell, or an exercise's question. */
-const mathCell = (c) => !c.type || c.type === "math" || c.type === "exercise";
+/** A cell the engine reads as notation: a math cell, or an exercise's question (a Lean exercise's is Lean). */
+const mathCell = (c) => !c.type || c.type === "math" || (c.type === "exercise" && !c.lean);
 /** Every math cell of the bundled notebooks, in order, with the functions defined above it. */
 const notebookCells = chalkFiles().flatMap((f) => {
   const known = [];
@@ -71,18 +71,25 @@ test("the tree is the engine's parse: precedence, implicit products, what the nu
   assert.equal(show(s.body), "[(let [g] [a] [b]) a * b + (g [a] [1])]");
 });
 
+/** A golden source the engine reads in another world (λ-terms and λ-commands, logic, relations and
+ *  posets, systems), not as notation. */
+const otherWorld = (src) => /[∧∨¬→↔⊤⊥∀∃λ\\]|->|&&|\|\||:=/.test(src) || /^\s*(forall|exists)\b/.test(src)
+  || /^\s*(normal|cbn|cbv|applicative|eta|fv|db|alpha|subst|type|infer)\s*(\d+\s*)?:(?!=)/.test(src)
+  || /^\s*(let\s+\w+\s*=\s*)?(truthtable|taut|sat|falsify|equiv|nnf|cnf|dnf|poset|divisors|subsets|chain|map|hasse|join|meet|sup|inf|upper|lower|lattice|top|bottom|le|maximal|minimal|monotone|lfp|gfp|fixpoints|rel|kernel|reflexive|symmetric|antisymmetric|transitive|equivalence|preorder|closure|classes|finer|wellfounded|measure|op|joinop|meetop|table|associative|commutative|idempotent|semilattice|identity|fold|order|distributive|complement|complemented|boolean|product|galois|closureop|context|concepts|secure|events|clocks|concurrent|system|states|invariant|inductive|reach|deadlock|trace|ctl|eventually|refines)\s*\(/.test(src);
+
 test("parse errors are the engine's, with its spans", () => {
   for (const [src, answer] of golden) {
     const m = /^<error: (.*)>$/.exec(answer);
     const r = read(src);
     const parseError = m && /^(unexpected|expected|ragged|bad number)/.test(m[1]);
+    if (otherWorld(src)) continue;
     if (parseError) assert.equal(r.ok ? "(read)" : r.error.message, m[1], src);
     else assert.ok(r.ok, `${src}: ${r.ok ? "" : r.error.message}`);
   }
   const bad = read("x + )");
   assert.deepEqual(bad.ok ? null : bad.error, { message: "unexpected ')'", span: { start: 4, end: 5 } });
   // λ-terms and the other worlds are not this grammar: those cells stay raw
-  for (const src of ["(λx. x) y", "TWO := succ (succ zero)", "poset({a,b}; a<b)"]) assert.equal(read(src).ok, false, src);
+  for (const src of ["(λx. x) y", "TWO := succ (succ zero)", "cbv: K I (omega omega)", "type: λx:A. x", "poset({a,b}; a<b)", "p ∧ q → p", "∀ n ∈ 1..10, n^2 ≥ n", "rel({a, b}; a->b)"]) assert.equal(read(src).ok, false, src);
   // a quoted name outside a part is the engine's lexer error
   const q = read('x "a"');
   assert.deepEqual(q.ok ? null : q.error, { message: "unexpected character '\"'", span: { start: 2, end: 3 } });

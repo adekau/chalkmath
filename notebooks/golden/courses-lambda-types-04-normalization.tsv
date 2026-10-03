@@ -1,0 +1,7 @@
+3	infer: omega	✗ occurs check: τ1 = τ1 → τ2 has no solution (τ1 would have to contain itself), so the term has no simple type
+4	infer: Y	✗ occurs check: τ2 = τ2 → τ3 has no solution (τ2 would have to contain itself), so the term has no simple type
+9	infer: 3	= (α → α) → α → α
+10	infer: mul	= (α → β) → (γ → α) → γ → β
+12	infer: and	✗ occurs check: τ3 = (τ2 → τ3) → τ4 has no solution (τ3 would have to contain itself), so the term has no simple type
+19	infer: λx. λy. x y y	= (α → α → β) → α → β
+20	infer: λf. f (λx. x)	= ((α → α) → β) → β

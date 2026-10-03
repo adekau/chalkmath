@@ -1,0 +1,122 @@
+{
+  "chalk": 1,
+  "name": "11-fixed-points-in-practice.chalk",
+  "cells": [
+    {
+      "src": "Fixed points in practice",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Recognize \"apply until nothing changes\" as computing a least fixed point, compute one on a lattice of sets, and see why it stops.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Many algorithms keep applying a step until it has no effect: closing a set under rules, propagating facts, computing what can be reached. When the step is monotone and starts from the bottom, the result is the **least** fixed point (Kleene), and it is the smallest set closed under the step.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Reachability",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The nodes reachable from $a$ in the graph $a \\to b \\to c$, $d \\to a$ are the least set $S$ with $a \\in S$ and closed under successors: the least fixed point of $f(S) = \\{a\\} \\cup S \\cup \\mathrm{succ}(S)$ on the subsets of $\\{a, b, c, d\\}$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let P4 = subsets({a, b, c, d})",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let reach = map(P4; {}->{a}, {a}->{a,b}, {b}->{a,b,c}, {c}->{a,c}, {d}->{a,d}, {a,b}->{a,b,c}, {a,c}->{a,b,c}, {a,d}->{a,b,d}, {b,c}->{a,b,c}, {b,d}->{a,b,c,d}, {c,d}->{a,c,d}, {a,b,d}->{a,b,c,d}, {a,c,d}->{a,b,c,d}, {b,c,d}->{a,b,c,d})",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "monotone(P4, reach)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "lfp(P4, reach)",
+      "showWork": true,
+      "label": null,
+      "stepwise": 0
+    },
+    {
+      "src": "Each step adds one more layer of successors: $\\varnothing$, $\\{a\\}$, $\\{a, b\\}$, $\\{a, b, c\\}$, and then nothing changes. $d$ is not reachable from $a$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Why it stops",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!theorem] The ascending chain condition\n> If every increasing chain $x_0 \\le x_1 \\le \\cdots$ in a lattice is eventually constant (always true on a finite lattice), then iterating a monotone $f$ from $\\bot$ reaches a fixed point after finitely many steps, and it is the least one.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "On the subsets of an $n$-element set a chain has at most $n + 1$ distinct elements, so the iteration takes at most $n$ steps. In Lean, every iterate is below every fixed point above the start:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem iter_le_of_fixed {α : Type} [PartialOrder α] {f : α → α} (hf : Monotone f) {a x : α}\n    (ha : a ≤ x) (hx : f x = x) : ∀ n, iter f n a ≤ x := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that every iterate of $f$ from $a$ stays below a fixed point $x$ above $a$.",
+      "leanSolution": "  intro n\n  induction n with\n  | zero => exact ha\n  | succ n ih =>\n    show f (iter f n a) ≤ x\n    rw [← hx]\n    exact hf.map_le _ _ ih",
+      "hints": [
+        "Induction on `n`. The base case is `ha`.",
+        "For `n + 1`, the goal is `f (iter f n a) ≤ x`; rewrite `x` as `f x` and use monotonicity on the hypothesis."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let R3 = map(P4; {}->{d}, {a}->{a,b,d}, {b}->{b,c,d}, {c}->{c,d}, {d}->{a,d}, {a,b}->{a,b,c,d}, {a,c}->{a,b,c,d}, {a,d}->{a,b,d}, {b,c}->{b,c,d}, {b,d}->{a,b,c,d}, {c,d}->{a,c,d}, {a,b,c}->{a,b,c,d}, {a,b,d}->{a,b,c,d}, {a,c,d}->{a,b,c,d}, {b,c,d}->{a,b,c,d})",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "lfp(P4, R3)",
+      "type": "exercise",
+      "prompt": "`R3` is the reachability step from $d$. What can $d$ reach? Write the set, such as `{a, b}`.",
+      "hints": [
+        "Iterate from the empty set: $\\{d\\}$ first."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> \"Apply until nothing changes\" computes a least fixed point when the step is monotone and starts from the bottom. On a finite lattice it always stops, and what it finds is the smallest solution: everything forced, nothing more.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

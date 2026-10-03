@@ -1,0 +1,265 @@
+{
+  "chalk": 1,
+  "name": "08-relations.chalk",
+  "cells": [
+    {
+      "src": "Relations",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Decide the properties of a relation, with the pairs that break them; compute closures; and read an equivalence relation as a partition.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Relation\n> A **relation** on a set $S$ is a set of pairs $(x, y)$ of elements of $S$; write $x \\mathrel{R} y$ when $(x, y)$ is one of them. Draw it as a graph: an arrow from $x$ to $y$ for each pair.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let R = rel({a, b, c}; a->b, b->c, b->b)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Properties",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Reflexive, symmetric, antisymmetric, transitive\n> $R$ is **reflexive** when $x \\mathrel{R} x$ for every $x$; **symmetric** when $x \\mathrel{R} y$ gives $y \\mathrel{R} x$; **antisymmetric** when $x \\mathrel{R} y$ and $y \\mathrel{R} x$ give $x = y$; **transitive** when $x \\mathrel{R} y$ and $y \\mathrel{R} z$ give $x \\mathrel{R} z$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Each check shows the pairs that break the property in red.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "reflexive(R)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "symmetric(R)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "antisymmetric(R)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "transitive(R)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "Closures",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Closure\n> The **transitive closure** of $R$ is the least transitive relation containing it: add every pair forced by two that chain, and repeat until nothing new is forced. The reflexive and symmetric closures add $(x, x)$ and the reverse pairs.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Step through it: each round adds the pairs that the last round's pairs force. The added pairs are dashed.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let P = rel({a, b, c, d}; a->b, b->c, c->d)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "closure(P, transitive)",
+      "showWork": true,
+      "label": null,
+      "stepwise": 0
+    },
+    {
+      "src": "> [!theorem] The closure is the least\n> Every pair a round adds lies in any transitive relation containing $R$, and the rounds stop only when the relation is transitive. So the result is transitive and inside every transitive relation containing $R$. Both facts are proved in Lean (the dot on each step).",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Equivalence relations and partitions",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Equivalence relation, class, partition\n> An **equivalence relation** is reflexive, symmetric and transitive: it says when two elements count as the same. The **class** of $x$ is everything related to it, the classes **partition** the set (every element in exactly one), and the set of classes is the **quotient** $S/{\\sim}$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The commonest way to get one: give each element a label, and relate two elements when their labels are equal. That is the **kernel** of the labelling.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let K = kernel({r1, r2, r3, r4}; r1->k1, r2->k1, r3->k2, r4->k2)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "equivalence(K)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "classes(K)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "A relation that is not an equivalence has a closure that is one:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let E = closure(R, equivalence)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "classes(E)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Finer and coarser",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Refinement\n> $A$ is **finer** than $K$ when every pair of $A$ is a pair of $K$: each class of $A$ lies inside a class of $K$. Then $K$ is **coarser**, and merges more.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!example] Deduplicating by key\n> A service receives requests $r_1, \\dots, r_4$ and drops duplicates. Requests $r_1$ and $r_2$ carry key $k_1$ and the same action; $r_3$ and $r_4$ carry key $k_2$ but different actions. Deduplicating by key treats two requests as the same when their keys are equal (the relation $K$ above). What should count as the same is the same key *and* the same payload: the relation $A$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let A = kernel({r1, r2, r3, r4}; r1->a, r2->a, r3->b, r4->c)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "finer(A, K)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "finer(K, A)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "$K$ is strictly coarser: it merges $r_3$ and $r_4$, which $A$ keeps apart. Dropping $r_4$ as a duplicate of $r_3$ loses an action: the bug. Deduplication is safe exactly when the relation it uses is finer than \"same request\".",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Answer properties with `true` or `false`. Write a relation's pairs as `a->b, b->c` (in any order), and classes as `{a, b}, {c}`.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let S = rel({1, 2, 3}; 1->2, 2->1, 2->3)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "symmetric(S)",
+      "type": "exercise",
+      "prompt": "Is $S$ symmetric?",
+      "hints": [
+        "Look for a pair whose reverse is missing."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "closure(S, transitive)",
+      "type": "exercise",
+      "prompt": "Write the transitive closure of $S$: all its pairs.",
+      "hints": [
+        "$1 \\to 2 \\to 1$ forces $(1, 1)$; $2 \\to 1 \\to 2$ forces $(2, 2)$; $1 \\to 2 \\to 3$ forces $(1, 3)$.",
+        "Then check again: do the new pairs force any more?"
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let T = kernel({a, b, c, d, e}; a->x, b->y, c->x, d->y, e->z)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "classes(T)",
+      "type": "exercise",
+      "prompt": "Write the classes of $T$.",
+      "hints": [
+        "Group the elements by their label."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let U = kernel({a, b, c, d, e}; a->p, b->p, c->p, d->q, e->q)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "finer(T, U)",
+      "type": "exercise",
+      "prompt": "Is $T$ finer than $U$: does every class of $T$ lie inside a class of $U$?",
+      "hints": [
+        "Write out the classes of $U$, then look at the class of $T$ that contains $b$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> A relation's properties are checked pair by pair, and a failure is a pair you can point at. Closures add exactly what a property forces. An equivalence relation is a partition, and comparing two of them (finer, coarser) is how you find out which things get merged that should not be.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

@@ -1,0 +1,177 @@
+{
+  "chalk": 1,
+  "name": "08-recursion.chalk",
+  "cells": [
+    {
+      "src": "Recursion and fixed points",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Write a recursive function without naming it, using a fixed-point combinator, and see why call by value needs a different one.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A recursive definition, $\\mathsf{fact} = \\lambda n.\\, \\mathsf{if}\\ (n = 0)\\ 1\\ (n \\cdot \\mathsf{fact}\\ (n - 1))$, mentions itself, and λ-terms cannot. Abstract the self-reference instead: $F = \\lambda \\mathit{self}.\\, \\lambda n.\\, \\ldots\\ \\mathit{self}\\ (n-1)$. A factorial is a **fixed point** of $F$: a $g$ with $F\\ g = g$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] The Y combinator\n> $Y = \\lambda f.\\, (\\lambda x.\\, f\\ (x\\ x))\\ (\\lambda x.\\, f\\ (x\\ x))$ satisfies $Y\\ g = g\\ (Y\\ g)$ for every $g$: $Y\\ g$ is a fixed point of $g$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "normal 2: Y g",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "Each unfolding hands $g$ another copy of $Y\\ g$, as many as it asks for.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Factorial",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "$Y\\ F$ has no normal form (it unfolds for ever), so the definition is kept as written; applied to a number, $F$'s test stops the unfolding.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "pred := λn. fst (n (λp. pair (snd p) (succ (snd p))) (pair 0 0))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "fact := Y (λself. λn. if (iszero n) 1 (mul n (self (pred n))))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "fact 2",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "$\\mathsf{fact}\\ 3$ needs more than the engine's thousand steps: Church arithmetic in normal order is slow, which is why real languages build numbers in.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Under call by value",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Call by value evaluates $Y\\ g$'s argument $(\\lambda x.\\, g\\ (x\\ x))\\ (\\lambda x.\\, g\\ (x\\ x))$ before calling $g$, and that unfolds again first, for ever:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "cbv 3: Y g",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "> [!definition] The Z combinator\n> $Z = \\lambda f.\\, (\\lambda x.\\, f\\ (\\lambda v.\\, x\\ x\\ v))\\ (\\lambda x.\\, f\\ (\\lambda v.\\, x\\ x\\ v))$ wraps the self-application in a λ (an η-expansion), so it is a value and waits until it is called.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Z := λf. (λx. f (λv. x x v)) (λx. f (λv. x x v))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "cbv: Z g",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!theorem] Turing completeness\n> With booleans, numerals, pairs and a fixed-point combinator, every computable function on the numbers can be written as a λ-term (Kleene; Turing showed λ-definable and Turing-computable coincide). Which terms have a normal form is then undecidable, which is why the engine reduces on a budget.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Lean has no Y: every function must be shown to terminate, and a recursion on a smaller number does. Yet the factorial is still a fixed point of its defining step.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "def fact : Nat → Nat\n  | 0 => 1\n  | n + 1 => (n + 1) * fact n\n\n#eval fact 5\n\n/-- The step that defines the factorial, with the recursive call abstracted. -/\ndef F (self : Nat → Nat) : Nat → Nat\n  | 0 => 1\n  | n + 1 => (n + 1) * self n\n\ntheorem fact_fixed : ∀ n, F fact n = fact n := by\n  intro n; cases n <;> rfl",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem fact_pos : ∀ n, 0 < fact n := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "The factorial is never zero. Prove it by induction.",
+      "leanSolution": "  intro n\n  induction n with\n  | zero => decide\n  | succ k ih => simp [fact, ih]",
+      "hints": [
+        "`induction n with`: `fact 0 = 1`, and `(k + 1) * fact k` is positive when `fact k` is.",
+        "`simp [fact, ih]` knows a product of positives is positive."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "normal 1: Y g",
+      "type": "exercise",
+      "prompt": "Take one step of $Y\\ g$ in normal order. What is the term?",
+      "hints": [
+        "Put $g$ for $f$ in $Y$'s body."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "fact 1",
+      "type": "exercise",
+      "prompt": "Reduce $\\mathsf{fact}\\ 1$.",
+      "hints": [
+        "$1 \\cdot \\mathsf{fact}\\ 0 = 1$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Recursion without names is a fixed point: $Y\\ g = g\\ (Y\\ g)$. Call by value needs $Z$, which delays the self-application. With fixed points the λ-calculus computes everything a computer can, and so whether a term stops is undecidable.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

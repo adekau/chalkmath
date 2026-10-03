@@ -1,0 +1,125 @@
+{
+  "chalk": 1,
+  "name": "14-intervals.chalk",
+  "cells": [
+    {
+      "src": "The interval lattice",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Represent partial knowledge of a number as an interval, merge intervals by intersecting them, and propagate bounds through arithmetic.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "\"The value is between 1 and 5\" is partial information, more than \"unknown\" and less than \"it is 3\". Two such facts merge into their **intersection**; an empty intersection is a contradiction. Ordered by information, smaller intervals are higher.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "On the integers $0$ to $2$ (write `i01` for $[0, 1]$):",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let I = poset({i02, i01, i12, i00, i11, i22, empty}; i02 < i01, i02 < i12, i01 < i00, i01 < i11, i12 < i11, i12 < i22, i00 < empty, i11 < empty, i22 < empty)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "lattice(I)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "join(I, i01, i12)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "join(I, i00, i22)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "In Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- What is known about a number: it lies between lo and hi. -/\nstructure Ival where\n  lo : Int\n  hi : Int\n  deriving Repr, DecidableEq\n\ninstance : ToString Ival := ⟨fun a => if a.hi < a.lo then \"empty\" else s!\"[{a.lo}, {a.hi}]\"⟩\n\n/-- Merging two facts about one number: both hold, so it lies in the intersection. -/\ndef Ival.merge (a b : Ival) : Ival := ⟨max a.lo b.lo, min a.hi b.hi⟩\n\ninstance : Semilattice Ival where\n  merge := Ival.merge\n  merge_comm a b := by simp only [Ival.merge, Ival.mk.injEq]; omega\n  merge_assoc a b c := by simp only [Ival.merge, Ival.mk.injEq]; omega\n  merge_idem a := by simp only [Ival.merge]; cases a; simp only [Ival.mk.injEq]; omega\n\ndef Ival.add (a b : Ival) : Ival := ⟨a.lo + b.lo, a.hi + b.hi⟩\ndef Ival.sub (a b : Ival) : Ival := ⟨a.lo - b.hi, a.hi - b.lo⟩\n\n/-- a says at least as much as b: it is inside it. -/\ndef Ival.within (a b : Ival) : Prop := b.lo ≤ a.lo ∧ a.hi ≤ b.hi",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The same three propagators as for $x + y = z$, now on intervals. Bounds flow in every direction until they stop narrowing:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "def ivalSum (x y z : Cell Ival) : List Propagator :=\n  [ do z.write (Ival.add (← x.read) (← y.read)),\n    do y.write (Ival.sub (← z.read) (← x.read)),\n    do x.write (Ival.sub (← z.read) (← y.read)) ]\n\ndef ivalExample : IO Unit := do\n  let x ← Cell.new (⟨1, 5⟩ : Ival)\n  let y ← Cell.new (⟨2, 3⟩ : Ival)\n  let z ← Cell.new (⟨0, 6⟩ : Ival)\n  let rounds ← runToFixpoint (ivalSum x y z)\n  IO.println s!\"x ∈ {← x.read}, y ∈ {← y.read}, z ∈ {← z.read}  ({rounds} rounds)\"\n\n#eval ivalExample",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "From $x \\in [1, 5]$, $y \\in [2, 3]$ and $x + y \\in [0, 6]$: $z \\ge 3$, so $z \\in [3, 6]$, and $x = z - y \\le 4$, so $x \\in [1, 4]$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem Ival.add_mono (a a' b b' : Ival) (ha : a.within a') (hb : b.within b') :\n    (Ival.add a b).within (Ival.add a' b') := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that interval addition is monotone: narrower summands give a narrower sum.",
+      "leanSolution": "  simp only [Ival.within, Ival.add] at *\n  omega",
+      "hints": [
+        "Unfold `Ival.within` and `Ival.add` everywhere with `simp only`; what is left is linear arithmetic."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "join(I, i02, i12)",
+      "type": "exercise",
+      "prompt": "Merge $[0, 2]$ with $[1, 2]$. Answer with the element's name.",
+      "hints": [
+        "Intersect them."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "join(I, i01, i22)",
+      "type": "exercise",
+      "prompt": "Merge $[0, 1]$ with $[2, 2]$.",
+      "hints": [
+        "Do they overlap?"
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Intervals are partial information about numbers; merging is intersection, and an empty one is a contradiction. Interval arithmetic gives monotone propagators, so a network of them narrows every bound as far as the constraints force, and stops.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

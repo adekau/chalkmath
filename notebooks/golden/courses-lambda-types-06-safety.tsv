@@ -1,0 +1,5 @@
+4	type: x:A ⊢ (λy:A. y) x	= A
+5	normal: (λy:A. y) x	= x
+6	type: x:A ⊢ x	= A
+15	type: f : A → B, x : A ⊢ (λg:A→B. g x) f	= B
+16	normal: (λg:A→B. g x) f	= f x

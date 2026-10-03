@@ -52,7 +52,7 @@ jobs:
       - name: The example notebooks give the answers they were written with (notebooks/golden; --update after a deliberate change)
         run: node scripts/notebooks/drive.mjs --check notebooks/*.chalk notebooks/courses/*/*.chalk
       - name: The example notebooks' Lean cells check, with the Lean the browser runs (engine/lean-toolchain)
-        run: node scripts/notebooks/check-lean.mjs notebooks/*.chalk
+        run: node scripts/notebooks/check-lean.mjs notebooks/*.chalk notebooks/courses/*/*.chalk
       - name: Build the TypeScript packages and type-check the notebook
         run: |
           npm run build

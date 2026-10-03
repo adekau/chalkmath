@@ -1,0 +1,136 @@
+{
+  "chalk": 1,
+  "name": "07-structural-induction.chalk",
+  "cells": [
+    {
+      "src": "Structural induction",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Prove properties of recursive data (lists, trees, expressions) by induction on their structure, and prove a small program transformation correct.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Structural induction\n> A type defined by constructors (a list is `[]` or `x :: xs`) has an induction principle with a case per constructor, and a hypothesis for each recursive part. To prove $P$ for every list: prove $P([\\,])$, and $P(xs) \\to P(x :: xs)$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Natural numbers are the special case `zero` or `succ n`: the last two lessons were structural induction on `Nat`.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Lists",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "def len {α : Type} : List α → Nat\n  | [] => 0\n  | _ :: xs => len xs + 1\n\ntheorem len_append {α : Type} (xs ys : List α) : len (xs ++ ys) = len xs + len ys := by\n  induction xs with\n  | nil => simp [len]\n  | cons x xs ih => simp [len, ih]; omega",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Induction is on `xs`, the list that `++` recurses on: `(x :: xs) ++ ys = x :: (xs ++ ys)`, which is exactly where the hypothesis applies.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Trees",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "inductive Tree where\n  | leaf\n  | node (l : Tree) (v : Nat) (r : Tree)\n\ndef Tree.mirror : Tree → Tree\n  | .leaf => .leaf\n  | .node l v r => .node r.mirror v l.mirror\n\ndef Tree.size : Tree → Nat\n  | .leaf => 0\n  | .node l _ r => l.size + 1 + r.size",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A `node` has two recursive parts, so its case has two hypotheses, one for each subtree.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem Tree.mirror_mirror (t : Tree) : t.mirror.mirror = t := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Mirroring twice gives back the tree.",
+      "leanSolution": "  induction t with\n  | leaf => rfl\n  | node l v r ihl ihr => simp [Tree.mirror, ihl, ihr]",
+      "hints": [
+        "`induction t with | leaf => … | node l v r ihl ihr => …`.",
+        "In the `node` case, unfold `Tree.mirror` and use both hypotheses: `simp [Tree.mirror, ihl, ihr]`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem Tree.size_mirror (t : Tree) : t.mirror.size = t.size := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Mirroring keeps the size.",
+      "leanSolution": "  induction t with\n  | leaf => rfl\n  | node l v r ihl ihr => simp [Tree.mirror, Tree.size, ihl, ihr]; omega",
+      "hints": [
+        "As before, but `simp` leaves the sizes of the two sides in the other order: `omega` swaps them."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A simplifier, proved sound",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Expressions are trees too. Here is a tiny language of sums and products, what an expression means, and a simplifier that removes additions of zero:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "inductive Ex where\n  | num (n : Nat)\n  | add (a b : Ex)\n  | mul (a b : Ex)\n\ndef Ex.eval : Ex → Nat\n  | .num n => n\n  | .add a b => a.eval + b.eval\n  | .mul a b => a.eval * b.eval\n\ndef Ex.simp : Ex → Ex\n  | .add a b =>\n    match a.simp, b.simp with\n    | .num 0, b' => b'\n    | a', .num 0 => a'\n    | a', b' => .add a' b'\n  | .mul a b => .mul a.simp b.simp\n  | e => e\n\n#eval (Ex.add (.num 0) (.mul (.num 3) (.add (.num 4) (.num 0)))).simp.eval",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!note] Soundness is a fold\n> A simplifier is **sound** when it never changes what an expression means. ChalkMath's own engine is proved sound this way: each rewrite rule keeps the value, and a structural induction carries that through the whole term. Here is the same argument in miniature.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem Ex.simp_sound (e : Ex) : e.simp.eval = e.eval := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove the simplifier sound: it keeps the value of every expression.",
+      "leanSolution": "  induction e with\n  | num n => rfl\n  | add a b iha ihb =>\n    simp only [Ex.simp]\n    split <;> simp_all [Ex.eval]\n  | mul a b iha ihb => simp [Ex.simp, Ex.eval, iha, ihb]",
+      "hints": [
+        "Induction on `e`: three cases, and `add` and `mul` each get two hypotheses.",
+        "In the `add` case, `simp only [Ex.simp]` exposes the `match`, and `split` gives one goal per branch.",
+        "Each branch knows what `a.simp` and `b.simp` are; `simp_all [Ex.eval]` combines that with the hypotheses."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Every inductive type comes with its own induction: a case per constructor and a hypothesis per recursive part. Lists, trees and syntax trees are proved about the same way as numbers, and \"a transformation keeps the meaning\" is a structural induction.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

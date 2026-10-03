@@ -1,0 +1,134 @@
+{
+  "chalk": 1,
+  "name": "02-gcounter.chalk",
+  "cells": [
+    {
+      "src": "The G-Counter",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Build a grow-only counter that replicas increment independently and merge without losing or double-counting, and see why one slot per replica is forced.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A like button: taps land on the nearest replica, replicas exchange states when they can, and everyone should eventually see the same total. A single shared number cannot be merged (max loses taps, sum double-counts repeats). The **G-Counter** keeps one slot per replica, each replica only increments its own slot, merge takes the maximum slot by slot, and the value is the sum of the slots.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Two replicas' slots form a product of chains, and merge is its join:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let C4 = chain(4)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let G = product(C4, C4)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "join(G, (2, 0), (1, 3))",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "Replica 1 has counted 2 taps and replica 2 has counted 3: merged, $(2, 3)$, total 5. Merging the same states again changes nothing; merging an older state ($(1, 0)$) changes nothing either.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "join(G, (2, 3), (1, 0))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/- ============================================================\n   Crdt.GCounter — Chapter 3: Counting Without Coordination\n   ============================================================ -/",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/- Two refutations first; they derive the design.\n\n   Refuted: \"a distributed counter is a Nat with merge = max\".\n   Both replicas increment once from 0; the merge remembers one event. -/\ntheorem max_undercounts : Nat.max (0 + 1) (0 + 1) ≠ 2 := by decide",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/- Refuted: \"then use merge = (+)\".\n   Addition is not idempotent, so a duplicated delivery double-counts:\n   a replica holding 1 that receives its own state again jumps to 2. -/\ntheorem add_overcounts : 1 + 1 ≠ (1 : Nat) := by decide\n\n/-- The G-Counter: remember one tally *per replica*.\n    An indexed family — your first dependent-indexed carrier. -/\ndef GCounter (R : Nat) : Type := Fin R → Nat\n\nnamespace GCounter\n\nopen Order.PartialOrder Order.BoundedJoinSemilattice\n\nvariable {R : Nat}\n\ninstance : LE (GCounter R) := ⟨fun g h => ∀ i, g i ≤ h i⟩\n\ninstance : Order.PartialOrder (GCounter R) where\n  le_refl g i        := Nat.le_refl (g i)\n  le_antisymm h₁ h₂  := funext fun i => Nat.le_antisymm (h₁ i) (h₂ i)\n  le_trans h₁ h₂ i   := Nat.le_trans (h₁ i) (h₂ i)\n\ninstance : BoundedJoinSemilattice (GCounter R) where\n  sup g h            := fun i => Nat.max (g i) (h i)\n  bot                := fun _ => 0\n  le_sup_left g h i  := Nat.le_max_left (g i) (h i)\n  le_sup_right g h i := Nat.le_max_right (g i) (h i)\n  sup_le _ _ _ h₁ h₂ := fun i => Nat.max_le.mpr ⟨h₁ i, h₂ i⟩\n  bot_le g i         := Nat.zero_le (g i)\n\n/-- Replica `i` increments: bump exactly your own slot. -/\ndef increment (i : Fin R) (g : GCounter R) : GCounter R :=\n  fun j => if j = i then g j + 1 else g j\n\n/-- The query: total of all per-replica tallies. -/\ndef value (g : GCounter R) : Nat :=\n  (List.finRange R).foldl (fun acc i => acc + g i) 0\n\n/-- Render the state for the interludes. -/\ndef toList (g : GCounter R) : List Nat :=\n  (List.finRange R).map g\n\ntheorem increment_inflationary (i : Fin R) :\n    Order.Inflationary (increment i) := by\n  intro g j\n  by_cases h : j = i <;> simp [increment, h]\n\ntheorem increment_monotone {g h : GCounter R} (i : Fin R) (hle : g ⊑ h) :\n    increment i g ⊑ increment i h := by\n  intro j\n  by_cases hj : j = i <;> simp [increment, hj] <;> exact hle _\n\n/-- Merging can only help: an increment survives any merge. -/\ntheorem increment_le_sup (i : Fin R) (g h : GCounter R) :\n    increment i g ⊑ increment i g ⊔ h :=\n  le_sup_left (increment i g) h",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/- ── Fold helpers (generic; reused in Chapters 8, 9, 11) ──── -/\n\ntheorem foldl_add_shift {ι : Type} (f : ι → Nat) :\n    ∀ (l : List ι) (a : Nat),\n      l.foldl (fun acc j => acc + f j) (a + 1)\n        = l.foldl (fun acc j => acc + f j) a + 1\n  | [], _ => rfl\n  | j :: t, a => by\n      rw [List.foldl_cons, List.foldl_cons, Nat.add_right_comm]\n      exact foldl_add_shift f t (a + f j)\n\ntheorem foldl_add_congr {ι : Type} {f g : ι → Nat} :\n    ∀ (l : List ι), (∀ j ∈ l, f j = g j) → ∀ (a : Nat),\n      l.foldl (fun acc j => acc + f j) a\n        = l.foldl (fun acc j => acc + g j) a\n  | [], _, _ => rfl\n  | j :: t, h, a => by\n      rw [List.foldl_cons, List.foldl_cons, h j List.mem_cons_self]\n      exact foldl_add_congr t (fun k hk => h k (List.mem_cons_of_mem _ hk)) _\n\ntheorem foldl_add_le {ι : Type} {f g : ι → Nat} (h : ∀ j, f j ≤ g j) :\n    ∀ (l : List ι) {a b : Nat}, a ≤ b →\n      l.foldl (fun acc j => acc + f j) a ≤ l.foldl (fun acc j => acc + g j) b\n  | [], _, _, hab => hab\n  | j :: t, a, b, hab => by\n      rw [List.foldl_cons, List.foldl_cons]\n      exact foldl_add_le h t (Nat.add_le_add hab (h j))\n\n/-- Bump one slot of the summand and the sum grows by exactly one.\n    Proved by induction on `R` via `finRange_succ` — no Nodup needed. -/\ntheorem foldl_add_bump (n : Nat) :\n    ∀ (f g : Fin n → Nat) (i : Fin n),\n      (∀ j, j ≠ i → f j = g j) → f i = g i + 1 → ∀ (a : Nat),\n      (List.finRange n).foldl (fun acc j => acc + f j) a\n        = (List.finRange n).foldl (fun acc j => acc + g j) a + 1 := by\n  induction n with\n  | zero => intro _ _ i; exact i.elim0\n  | succ n ih =>\n      intro f g i hne hbump a\n      rw [List.finRange_succ, List.foldl_cons, List.foldl_cons,\n          List.foldl_map, List.foldl_map]\n      cases i using Fin.cases with\n      | zero =>\n          rw [hbump, ← Nat.add_assoc]\n          calc (List.finRange n).foldl (fun acc j => acc + f j.succ) (a + g 0 + 1)\n              = (List.finRange n).foldl (fun acc j => acc + f j.succ) (a + g 0) + 1 :=\n                foldl_add_shift _ _ _\n            _ = (List.finRange n).foldl (fun acc j => acc + g j.succ) (a + g 0) + 1 := by\n                rw [foldl_add_congr (List.finRange n)\n                      (fun j _ => hne j.succ (Fin.succ_ne_zero j))]\n      | succ i' =>\n          rw [hne 0 (Ne.symm (Fin.succ_ne_zero i'))]\n          exact ih (fun (j : Fin n) => f j.succ) (fun (j : Fin n) => g j.succ) i'\n            (fun j hj => hne j.succ (fun hc => hj (Fin.succ_inj.mp hc)))\n            hbump (a + g 0)\n\n/-- The G-Counter counts: every increment raises the value by exactly one,\n    no matter which replica performed it. -/\ntheorem value_increment (i : Fin R) (g : GCounter R) :\n    value (increment i g) = value g + 1 :=\n  foldl_add_bump R (increment i g) g i\n    (fun j hj => by simp [increment, hj])\n    (by simp [increment]) 0\n\n/-- The G-Counter's query happens to be monotone.\n    (Chapter 4 shows this is a coincidence, not a law.) -/\ntheorem value_le_value_of_le {g h : GCounter R} (hle : g ⊑ h) :\n    value g ≤ value h :=\n  foldl_add_le hle (List.finRange R) (Nat.le_refl 0)\n\ntheorem value_bot : value (⊥ : GCounter R) = 0 := by\n  have h : ∀ (l : List (Fin R)) (a : Nat),\n      l.foldl (fun acc i => acc + (⊥ : GCounter R) i) a = a := by\n    intro l\n    induction l with\n    | nil => intro a; rfl\n    | cons j t ih => intro a; rw [List.foldl_cons]; exact ih _\n  exact h _ 0\n\n/-- Interlude: three replicas, out-of-order and duplicated merges. -/\ndef interlude : List (String × List Nat × Nat) :=\n  let gA := increment 0 (increment 0 (⊥ : GCounter 3))  -- A increments twice\n  let gB := increment 1 (⊥ : GCounter 3)                 -- B increments once\n  let gC := increment 2 (⊥ : GCounter 3)                 -- C increments once\n  let atA := (gA ⊔ gB) ⊔ (gC ⊔ gB)   -- B delivered twice\n  let atB := gC ⊔ (gA ⊔ (gB ⊔ gA))   -- another order, A delivered twice\n  let atC := (gB ⊔ gC) ⊔ gA          -- a third order\n  [ (\"replica A\", toList atA, value atA),\n    (\"replica B\", toList atB, value atB),\n    (\"replica C\", toList atC, value atC) ]\n\n#eval interlude\n\nend GCounter",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The executable G-Counter renders as a list; rendering a merge is zipping the renders with $\\max$. The lemma behind it:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem zipWith_map_map {α β : Type} (f : β → β → β) (g h : α → β) :\n    ∀ (l : List α), List.zipWith f (l.map g) (l.map h) = l.map (fun i => f (g i) (h i)) := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that zipping two maps of a list is mapping the combined function.",
+      "leanSolution": "  intro l\n  induction l with\n  | nil => rfl\n  | cons x t ih =>\n    simp only [List.map_cons, List.zipWith_cons_cons]\n    rw [ih]",
+      "hints": [
+        "Induction on the list.",
+        "In the `cons` case, `simp only [List.map_cons, List.zipWith_cons_cons]` exposes the head, and the hypothesis handles the tail."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "open Order.PartialOrder Order.BoundedJoinSemilattice in\ntheorem toList_sup {R : Nat} (g h : GCounter R) :\n    GCounter.toList (g ⊔ h)\n      = List.zipWith Nat.max (GCounter.toList g) (GCounter.toList h) :=\n  (zipWith_map_map Nat.max g h (List.finRange R)).symm\n\n/-- A merge's value is at most the sum of the values... -/\ntheorem foldl_add_pair {ι : Type} (f g : ι → Nat) :\n    ∀ (l : List ι) (a b : Nat),\n      l.foldl (fun acc i => acc + (f i + g i)) (a + b)\n        = l.foldl (fun acc i => acc + f i) a\n            + l.foldl (fun acc i => acc + g i) b\n  | [], _, _ => rfl\n  | x :: t, a, b => by\n      rw [List.foldl_cons, List.foldl_cons, List.foldl_cons,\n          show a + b + (f x + g x) = (a + f x) + (b + g x) by omega]\n      exact foldl_add_pair f g t (a + f x) (b + g x)\n\nopen Order.PartialOrder Order.BoundedJoinSemilattice in\ntheorem value_sup_le {R : Nat} (g h : GCounter R) :\n    GCounter.value (g ⊔ h) ≤ GCounter.value g + GCounter.value h := by\n  have hle : ∀ i : Fin R, (g ⊔ h) i ≤ g i + h i := fun i =>\n    Nat.max_le.mpr ⟨Nat.le_add_right _ _, Nat.le_add_left _ _⟩\n  calc GCounter.value (g ⊔ h)\n      ≤ (List.finRange R).foldl (fun acc i => acc + (g i + h i)) 0 :=\n        GCounter.foldl_add_le hle _ (Nat.le_refl 0)\n    _ = GCounter.value g + GCounter.value h := foldl_add_pair g h _ 0 0\n\n/-- ... and strictly less as soon as the two have counted the same taps. -/\nexample :\n    GCounter.value\n        (GCounter.increment 0 (⊥ : GCounter 1) ⊔ GCounter.increment 0 ⊥)\n      < GCounter.value (GCounter.increment 0 (⊥ : GCounter 1))\n          + GCounter.value (GCounter.increment 0 (⊥ : GCounter 1)) := by\n  decide",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "join(G, (3, 1), (2, 2))",
+      "type": "exercise",
+      "prompt": "Merge the G-Counter states $(3, 1)$ and $(2, 2)$. Write the pair as `(x, y)`.",
+      "hints": [
+        "Slot by slot, the maximum."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> A G-Counter gives each replica its own slot; increments touch only one's own slot, merge is the pointwise maximum, and the value is the sum. Merging twice or merging stale states changes nothing, so the network may duplicate and reorder freely.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

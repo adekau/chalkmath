@@ -113,13 +113,86 @@ def ruleStatus : Json :=
     entryC "cx.exact-trig" "verified" "sin, cos, tan at rational multiples of π: period, reflections and the reference angles (Real.sin_pi_div_four and friends)." "verified" "The real values, cast (Complex.ofReal_sin, ofReal_cos)." ,
     entryC "cx.euler" "unverified" "i has no real meaning; read in ℂ." "verified" "Euler's formula exp(iθ) = cos θ + i sin θ (Complex.exp_mul_I) with the exact values.",
     entryC "cx.euler-power" "verified" "(e¹)^b = e^b (Real.rpow_def_of_pos)." "verified" "(e¹)^b = e^b (Complex.cpow_def, log_exp with Im 1 = 0).",
+    entry "rel.kernel" "verified" "Equality of labels is reflexive, symmetric and transitive, so having the same label is too: by definition.",
+    entry "rel.reflexive" "verified" "Every element checked for $x \\mathrel{R} x$; the first that fails is the witness.",
+    entry "rel.symmetric" "verified" "Every pair checked for its reverse; the first without one is the witness.",
+    entry "rel.antisymmetric" "verified" "Every pair checked against its reverse with distinct ends.",
+    entry "rel.transitive" "verified" "Every two pairs that chain checked for the pair they force; the first missing one is the witness (transitiveFailure_none).",
+    entry "rel.equivalence" "verified" "Reflexive, symmetric and transitive, each checked.",
+    entry "rel.preorder" "verified" "Reflexive and transitive, each checked.",
+    entry "rel.reflexive-closure" "verified" "Adds exactly the missing $(x, x)$: the least reflexive relation containing the original, by definition.",
+    entry "rel.symmetric-closure" "verified" "Adds exactly the missing reverses: the least symmetric relation containing the original, by definition.",
+    entry "rel.transitive-closure" "verified" "Each round adds only pairs forced by two that chain, so every pair lies in any transitive relation containing the original (round_sub_transitive); the rounds stop when none is missing, and then the relation is transitive (stable_transitive): the least transitive relation containing it.",
+    entry "rel.classes" "verified" "Each element's class is everything related to it; for an equivalence the classes partition the set.",
+    entry "rel.finer" "verified" "Every pair of the first checked in the second.",
+    entry "rel.wellfounded" "unverified" "On a finite set a relation is well-founded exactly when it has no cycle. A cycle found is shown and can be read off the relation; that the search finds one whenever there is one is not yet proved.",
+    entry "rel.measure" "verified" "Every step checked to decrease the measure, by definition; on a finite set a measure that goes down along every step leaves no room for a cycle.",
+    entry "alg.from-order" "verified" "Each entry is the join (or meet) of its pair, found by the search that order.sup_spec proves least; by definition a table.",
+    entry "alg.associative" "verified" "Every triple checked; when none fails the law holds on the whole set (assocFailure_none).",
+    entry "alg.commutative" "verified" "Every pair checked (commFailure_none).",
+    entry "alg.idempotent" "verified" "Every element checked (idemFailure_none); with the two laws above, a semilattice (isSemilattice_of_none).",
+    entry "alg.identity" "verified" "An element checked against every element on both sides, by definition.",
+    entry "alg.fold" "verified" "Each step is one entry of the table, by definition of a left fold.",
+    entry "alg.order" "verified" "$x \\le y \\iff x \\cdot y = y$ is a partial order in which $x \\cdot y$ is the least upper bound, for a semilattice whose table stays in its set (semilattice_order); the laws are checked first and the entries when the table is made.",
+    entry "order.distributive" "verified" "Every triple checked for $x \\land (y \\lor z) = (x \\land y) \\lor (x \\land z)$ (distribFailure_none).",
+    entry "order.complement" "verified" "Every element checked for $x \\lor y = \\top$ and $x \\land y = \\bot$, by definition.",
+    entry "order.boolean" "verified" "Distributive and complemented, each checked: the definition of a Boolean lattice.",
+    entry "order.product" "verified" "Pairs ordered componentwise, by definition: the order is the product of the two orders.",
+    entry "order.galois" "verified" "Every pair $(x, y)$ checked for $f(x) \\le y \\iff x \\le g(y)$ (galoisFailure_none).",
+    entry "order.closure-operator" "verified" "Extensive, monotone and idempotent, each checked on every element or pair (closureOpFailure_none).",
+    entry "order.concepts" "unverified" "Each concept's objects are an intersection of attribute extents, and its attributes are those the objects share; that every concept is found, and that each pair is closed, is not yet proved.",
+    entry "order.flow" "verified" "Every flow checked against the order of the classes (flowFailure_none).",
+    entry "sys.init" "verified" "An initial state: the init condition evaluated on it, by definition.",
+    entry "sys.step" "checked" "Each step of a trace is re-run against the system: the action is enabled there and its updates give the next state.",
+    entry "sys.found" "checked" "The last state of a re-run trace, where the formula is evaluated.",
+    entry "sys.violated" "checked" "The last state of a re-run trace, where the formula is evaluated and fails: a concrete counterexample. That breadth-first search finds a shortest one is not yet proved.",
+    entry "sys.deadlock" "checked" "The last state of a re-run trace, with every action's guard evaluated false. That no deadlock is missed when none is reported is not yet proved.",
+    entry "sys.reach" "unverified" "Breadth-first search from the initial states; that it visits every reachable state is not yet proved.",
+    entry "sys.invariant" "unverified" "The formula holds in every state the search visited; that the search visits every reachable state is not yet proved.",
+    entry "sys.unreachable" "unverified" "No state the search visited satisfies the formula; the search's completeness is not yet proved.",
+    entry "sys.inductive" "unverified" "Every assignment of the domains is enumerated and every enabled action checked; the enumeration is not yet proved complete.",
+    entry "sys.cti" "checked" "A state where the formula holds and an action after which it fails (or leaves a domain): both evaluated, a concrete counterexample to induction.",
+    entry "sys.ctl" "unverified" "The CTL operator as a fixed point of a predicate transformer on the reachable states; the correspondence with paths is the standard theorem, not formalized here.",
+    entry "sys.iterate" "checked" "One round of the Kleene iteration: the transformer applied to the previous set.",
+    entry "sys.fixed" "checked" "The loop stops when a round changes nothing, so the set is a fixed point; that iterating from the bottom (or top) gives the least (or greatest) is Kleene's theorem, not formalized here.",
+    entry "sys.cycle" "unverified" "A step of the lasso's cycle, found within a strongly connected set of states avoiding the goal.",
+    entry "sys.lasso" "unverified" "A fair cycle avoiding the goal: each fair action is taken on it or disabled as its fairness requires; the search over strongly connected sets is not yet proved complete.",
+    entry "sys.eventually" "unverified" "No deadlock and no fair cycle avoids the goal among the reachable states; the search is not yet proved complete.",
+    entry "sys.refines" "unverified" "Every transition the search found maps to an abstract step or a stutter; the search's completeness is not yet proved.",
+    entry "order.happens-before" "verified" "The reflexive-transitive closure of program order and messages, checked to be a partial order (checkPartialOrder_none).",
+    entry "order.clocks" "verified" "Each entry counts the events of a process below the event in the happens-before order, by definition.",
+    entry "order.concurrent" "verified" "Neither event is below the other in the happens-before order, by definition.",
+    entry "logic.implication" "verified" "$a \\to b$ and $\\lnot a \\lor b$ have the same value under every assignment, and the pass that applies it everywhere keeps the formula's value (arrows_sound).",
+    entry "logic.biconditional" "verified" "$a \\leftrightarrow b$ and $(a \\to b) \\land (b \\to a)$ have the same value under every assignment; the pass keeps the formula's value (arrows_sound).",
+    entry "logic.de-morgan" "verified" "$\\lnot(a \\land b) = \\lnot a \\lor \\lnot b$ and its dual, over Bool; the negation pass keeps the value (nnf_sound).",
+    entry "logic.double-negation" "verified" "$\\lnot\\lnot a = a$ over Bool (nnf_sound).",
+    entry "logic.negate-constant" "verified" "$\\lnot\\top = \\bot$ and $\\lnot\\bot = \\top$ (nnf_sound).",
+    entry "logic.constants" "verified" "The identities and annihilators of $\\land$ and $\\lor$ over Bool (consts_sound).",
+    entry "logic.distribute" "verified" "$a \\lor (b \\land c) = (a \\lor b) \\land (a \\lor c)$ and its dual over Bool (distrib_sound, normal_sound).",
+    entry "logic.complement" "verified" "A term with $p$ and $\\lnot p$ is false, a clause with them true, under every assignment (complement_sound).",
+    entry "logic.truthtable" "verified" "Every assignment to the formula's variables is a row (rows_complete), and a formula's value depends only on its variables (eval_congr): what holds in every row holds everywhere (taut_sound, unsat_sound), and a row returned as a witness is one (findRow_spec).",
+    entry "logic.evaluate" "verified" "A formula without variables: its value by definition of the connectives.",
+    entry "logic.bounded" "verified" "A quantifier over a finite set is checked element by element, by definition; the atoms are evaluated by the pipeline, whose steps' statuses apply.",
     entry "lambda.delta" "verified" "Unfolding a definition replaces a free name by its term; nothing to prove beyond that.",
     entry "lambda.beta" "unverified" "β-reduction with capture-avoiding substitution; the substitution lemma is not yet proved.",
-    entry "lambda.alpha-beta" "unverified" "A binder renamed to avoid capture, then β; the renaming is not yet proved to preserve α-equivalence."]
+    entry "lambda.alpha-beta" "unverified" "A binder renamed to avoid capture, then β; the renaming is not yet proved to preserve α-equivalence.",
+    entry "lambda.eta" "verified" "η: λx. f x contracts to f only when x is not free in f (etaRedex_spec); η is an axiom of λβη, so nothing more to prove.",
+    entry "lambda.fv" "verified" "The free variables, computed by their definition (freeVars).",
+    entry "lambda.db" "verified" "De Bruijn indices, computed by their definition (toDB).",
+    entry "lambda.alpha-eq" "verified" "α-equivalence is taken to be equality of de Bruijn forms, which is how the engine defines it; that this agrees with renaming bound variables one at a time is the classical theorem, not proved here.",
+    entry "lambda.alpha" "unverified" "Binders renamed to avoid capture; the renaming is not yet proved to preserve α-equivalence.",
+    entry "lambda.subst" "unverified" "Capture-free substitution; it adds no free variable beyond the argument's (substRaw_freeVars), but the substitution lemma is not yet proved.",
+    entry "stlc.var" "verified" "Var: the checker's derivations are typing derivations (check_sound, StlcProofs.lean).",
+    entry "stlc.abs" "verified" "→I: the checker's derivations are typing derivations (check_sound).",
+    entry "stlc.app" "verified" "→E: the checker's derivations are typing derivations (check_sound).",
+    entry "stlc.constraints" "checked" "Inference's equations; the type found is re-checked by the verified checker on the annotated term.",
+    entry "stlc.split" "checked" "Unification splits an equation of arrows; the type found is re-checked by the verified checker.",
+    entry "stlc.unify" "checked" "Unification binds a type variable (with the occurs check); the type found is re-checked by the verified checker.",
+    entry "stlc.principal" "checked" "The solved type, its variables renamed; checked by the verified checker. That it is the most general type is Hindley's theorem, not proved here."]
 
 def capabilities : Json :=
   .obj #[("engine", .str "engine-lean"), ("version", .str "0.1.0-m8"), ("verified", .bool true),
-         ("features", .arr #[.str "simplify", .str "expand", .str "factor", .str "diff", .str "linalg", .str "numeric", .str "integrate", .str "plot", .str "manipulate", .str "lambda", .str "order", .str "sum", .str "exptotrig", .str "part", .str "statistics", .str "check"]),
+         ("features", .arr #[.str "simplify", .str "expand", .str "factor", .str "diff", .str "linalg", .str "numeric", .str "integrate", .str "plot", .str "manipulate", .str "lambda", .str "order", .str "sum", .str "exptotrig", .str "part", .str "statistics", .str "check", .str "logic", .str "systems"]),
          ("ruleStatus", ruleStatus),
          ("termination", .obj #[("status", .str "proven"), ("theorem", .str "MathEngine.pipelineOrdered"),
            ("summary", .str "Cell evaluation has no step budget: every pipeline rule decreases a five-tier ordering (commands, higher-order diff, matrix literals, the weight M, size) on nodes whose children are normal.")])]
@@ -156,6 +229,45 @@ private def pathOfJson : Json → Option Path
   | .arr xs => xs.toList.mapM fun j => match j with | .num s => s.toNat? | _ => none
   | _ => none
 
+/-- A context as a judgment shows it: each variable once (the innermost binding), outermost first. -/
+def ctxShown (Γ : Lam.Ctx) : Lam.Ctx :=
+  (Γ.foldl (fun acc (x, T) => if acc.any (·.1 == x) then acc else acc ++ [(x, T)]) []).reverse
+
+/-- The contexts of a derivation's judgments, root first, each once. -/
+partial def typingCtxs : Lam.Deriv → List Lam.Ctx
+  | .node _ Γ _ _ ps => (ctxShown Γ :: (ps.map typingCtxs).flatten).eraseDups
+
+/-- A typing derivation as a tree for the notebook: each node its judgment `Γ ⊢ t : T`, its rule,
+and its premises. When writing the contexts out would make a judgment long, each context is named
+(Γ₁, Γ₂, …, each by the one it extends) and the names are explained in a legend. -/
+def typingTreeVisual (d : Lam.Deriv) : Json :=
+  let tex (e : Expr) := e.toLatex false
+  let entryL (x : String) (A : Lam.Ty) := s!"{tex (.var x)} : {tex A.toExpr}"
+  let entryT (x : String) (A : Lam.Ty) := s!"{x} : {A.text}"
+  let full (Γ : Lam.Ctx) (f : String → Lam.Ty → String) := ", ".intercalate (Γ.map fun (x, A) => f x A)
+  let ctxs := (typingCtxs d).filter (!·.isEmpty)
+  let long := ctxs.any fun Γ => (full Γ entryT).length > 28
+  let named : List (Lam.Ctx × Nat) := if long then ctxs.zip (List.range' 1 ctxs.length) else []
+  let ctxL (Γ : Lam.Ctx) := match named.lookup Γ with
+    | some k => s!"\\Gamma_\{{k}}"
+    | none => full Γ entryL
+  -- a context named by the longest named one it extends
+  let legend := named.map fun (Γ, k) =>
+    let base := (named.filter fun (Δ, j) => j < k && Δ.length < Γ.length && Γ.take Δ.length == Δ).foldl
+      (fun best (Δ, j) => match best with | some (B, _) => if Δ.length > B.length then some (Δ, j) else best | none => some (Δ, j)) none
+    let (rest, prefL, prefT) := match base with
+      | some (Δ, j) => (Γ.drop Δ.length, s!"\\Gamma_\{{j}}, ", s!"Γ{j}, ")
+      | none => (Γ, "", "")
+    Json.obj #[("latex", .str (s!"\\Gamma_\{{k}} = " ++ prefL ++ full rest entryL)), ("text", .str (s!"Γ{k} = " ++ prefT ++ full rest entryT))]
+  let rec node : Lam.Deriv → Json
+    | .node rule Γ t T ps =>
+      let Γ := ctxShown Γ
+      let latex := (if Γ.isEmpty then "" else ctxL Γ ++ " ") ++ "\\vdash " ++ tex t.toExpr ++ " : " ++ tex T.toExpr
+      let text := (if Γ.isEmpty then "" else full Γ entryT ++ " ") ++ "⊢ " ++ t.text ++ " : " ++ T.text
+      let label := match rule with | "var" => "Var" | "abs" => "→I" | "app" => "→E" | r => r
+      .obj #[("rule", .str label), ("latex", .str latex), ("text", .str text), ("premises", .arr (ps.attach.map fun ⟨p, _⟩ => node p).toArray)]
+  .obj #[("root", node d), ("legend", .arr legend.toArray)]
+
 /-- A λ-cell's reply: like an ordinary one, plus the de Bruijn renderings and the reading. -/
 def evaluateLambda (st : Store) (params : Json) (sessionId cellId src : String) : Store × Json :=
   let (s, r) := lambdaCell (st.get sessionId) cellId src
@@ -164,10 +276,14 @@ def evaluateLambda (st : Store) (params : Json) (sessionId cellId src : String) 
   | .error (code, msg, span) => (st, errorJson code msg span)
   | .ok res =>
     let paths := params.getBool "paths"
-    let out := Lam.toExpr res.output
+    let out := res.value
+    let db := match res.term with | some t => Lam.dbToExpr (Lam.toDB [] t) | none => res.value
     let r := #[("ok", .bool true), ("kind", .str "lambda"), ("value", out.toJson), ("rendered", Rendered.toJson out paths),
-      ("renderedDeBruijn", Rendered.toJson (Lam.dbToExpr (Lam.toDB [] res.output)) false)]
+      ("renderedDeBruijn", Rendered.toJson db false)]
     let r := match res.reading with | some t => r.push ("reading", .str t) | none => r
+    let r := match res.tree with
+      | some d => r.push ("visuals", .arr #[.obj #[("kind", .str "typing.tree"), ("data", typingTreeVisual d)]])
+      | none => r
     let r := r ++ workFields params res.derivation (lambda := true)
     let r := match res.name with | some n => r.push ("bound", .arr #[.str n]) | none => r
     (st, .obj r)
@@ -188,6 +304,67 @@ def evaluateOrder (st : Store) (params : Json) (sessionId cellId src : String) :
         r.push ("hasse", .obj #[
           ("nodes", .arr (P.elems.map fun x => Json.obj #[("name", .str x), ("height", .num (toString (hs.getD x 0)))]).toArray),
           ("covers", .arr ((Ord.hasse P).map fun (a, b) => Json.arr #[.str a, .str b]).toArray)])
+      | none => r
+    let pairs (ps : List (String × String)) : Json := .arr (ps.map fun (a, b) => Json.arr #[.str a, .str b]).toArray
+    let strs (xs : List String) : Json := .arr (xs.map Json.str).toArray
+    let visuals : Array Json :=
+      (match res.graph with
+        | some (R, bad, added) => #[.obj #[("kind", .str "relation.digraph"), ("data", .obj #[
+            ("nodes", strs R.elems), ("edges", pairs R.pairs), ("bad", pairs bad), ("added", pairs added)])]]
+        | none => #[]) ++
+      (match res.table with
+        | some (o, marks) => #[.obj #[("kind", .str "algebra.optable"), ("data", .obj #[
+            ("elems", strs o.elems), ("rows", .arr (o.rows.map strs).toArray), ("marks", pairs marks)])]]
+        | none => #[]) ++
+      (match res.context with
+        | some C => #[.obj #[("kind", .str "context.table"), ("data", .obj #[
+            ("objects", strs C.objs), ("attributes", strs C.attrs),
+            ("has", .arr (C.objs.map fun o => Json.arr (C.attrs.map fun a => Json.bool (C.has o a)).toArray).toArray)])]]
+        | none => #[])
+    let r := if visuals.isEmpty then r else r.push ("visuals", .arr visuals)
+    let r := r ++ workFields params res.derivation
+    let r := match res.name with | some n => r.push ("bound", .arr #[.str n]) | none => r
+    (st, .obj r)
+
+/-- A logic cell's reply: the value, the derivation, and for `truthtable` the table to draw
+(`visuals`, kind `logic.truthtable`). -/
+def evaluateLogic (st : Store) (params : Json) (sessionId cellId src : String) : Store × Json :=
+  let (s, r) := logicCell (st.get sessionId) cellId src
+  let st := st.set sessionId s
+  match r with
+  | .error (code, msg, span) => (st, errorJson code msg span)
+  | .ok res =>
+    let paths := params.getBool "paths"
+    let r := #[("ok", .bool true), ("kind", .str "logic"), ("value", res.value.toJson), ("rendered", Rendered.toJson res.value paths),
+      ("summary", .str res.summary)]
+    let r := match res.table with
+      | some (vs, rows) =>
+        let formula := match res.derivation.input with | .fn "truthtable" [f] => f | e => e
+        r.push ("visuals", .arr #[.obj #[("kind", .str "logic.truthtable"), ("data", .obj #[
+          ("vars", .arr (vs.map Json.str).toArray), ("formula", Rendered.toJson formula false),
+          ("rows", .arr (rows.map fun row => Json.arr (row.map Json.bool).toArray).toArray)])]])
+      | none => r
+    let r := r ++ workFields params res.derivation
+    let r := match res.name with | some n => r.push ("bound", .arr #[.str n]) | none => r
+    (st, .obj r)
+
+/-- A systems cell's reply: the value, the derivation (a trace is a step per action), a summary, and
+the state graph (`visuals`, kind `relation.digraph`) with a counterexample's transitions marked. -/
+def evaluateSystem (st : Store) (params : Json) (sessionId cellId src : String) : Store × Json :=
+  let (s, r) := systemCell (st.get sessionId) cellId src
+  let st := st.set sessionId s
+  match r with
+  | .error (code, msg, span) => (st, errorJson code msg span)
+  | .ok res =>
+    let paths := params.getBool "paths"
+    let r := #[("ok", .bool true), ("kind", .str "system"), ("value", res.value.toJson), ("rendered", Rendered.toJson res.value paths),
+      ("summary", .str res.summary)]
+    let r := match res.graph with
+      | some (R, bad, added) =>
+        let pairs (ps : List (String × String)) : Json := .arr (ps.map fun (a, b) => Json.arr #[.str a, .str b]).toArray
+        let layers : Array (String × Json) := if res.layers.isEmpty then #[] else #[("layers", .arr (res.layers.map fun n => Json.num (toString n)).toArray)]
+        r.push ("visuals", .arr #[.obj #[("kind", .str "relation.digraph"), ("data", .obj (#[
+          ("nodes", .arr (R.elems.map Json.str).toArray), ("edges", pairs R.pairs), ("bad", pairs bad), ("added", pairs added)] ++ layers))]])
       | none => r
     let r := r ++ workFields params res.derivation
     let r := match res.name with | some n => r.push ("bound", .arr #[.str n]) | none => r
@@ -214,7 +391,11 @@ def evaluate (st : Store) (params : Json) : Store × Json :=
     withLabel st sessionId cellId j
 where
   evaluateCore (st : Store) (params : Json) (sessionId cellId src : String) : Store × Json :=
-    if Ord.isOrderSource src then evaluateOrder st params sessionId cellId src else
+    -- a λ-command (`type: f : A → B ⊢ f`) may hold a connective or a call; it is the λ-world's
+    let lamCmd := (Lam.commandHead src).isSome
+    if !lamCmd && Sys.isSystemSource src then evaluateSystem st params sessionId cellId src else
+    if !lamCmd && Ord.isOrderSource src then evaluateOrder st params sessionId cellId src else
+      if !lamCmd && Logic.isLogicSource src then evaluateLogic st params sessionId cellId src else
       if isLambdaCell (st.get sessionId) src then evaluateLambda st params sessionId cellId src else
       let (s, r) := evaluateCell (st.get sessionId) cellId src
       let st := st.set sessionId s

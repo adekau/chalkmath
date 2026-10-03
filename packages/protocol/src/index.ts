@@ -136,6 +136,33 @@ export interface EvaluateParams {
  * "group.cayley-table", "plot.samples"); `data` is that kind's own JSON schema.
  */
 export interface VisualSpec { kind: string; title?: string; data: unknown }
+/** `logic.truthtable` (a `truthtable(φ)` cell): the variables, the formula, and one row per
+ *  assignment — the variables' values in order, then the formula's. */
+export interface TruthTableData { vars: string[]; formula: Rendered; rows: boolean[][] }
+/** `relation.digraph` (a relation cell): the elements, the pairs as arrows, and the arrows to mark —
+ *  `bad`, those that show a property failing (a pair whose reverse is missing, two that chain without
+ *  their composite, …), and `added`, those a closure added. */
+export interface DigraphData {
+  nodes: string[]; edges: [string, string][]; bad: [string, string][]; added: [string, string][];
+  /** Each node's layer (a state's distance from an initial one), for a layered drawing. Optional. */
+  layers?: number[];
+}
+/** `algebra.optable` (an operation cell, or a law checked on one): the set, the table row by row
+ *  (`rows[i][j]` is `elems[i] · elems[j]`), and the cells to mark, as `[row element, column element]`. */
+export interface OpTableData { elems: string[]; rows: string[][]; marks: [string, string][] }
+/** `context.table` (a formal context): objects, attributes, and which object has which. */
+export interface ContextTableData { objects: string[]; attributes: string[]; has: boolean[][] }
+/** `typing.tree` (a typing derivation): each node a judgment `Γ ⊢ t : T`, the rule that concludes it,
+ *  and the derivations of its premises (none for Var). Long contexts are named in the judgments' LaTeX
+ *  (Γ₁, Γ₂, …), and `legend` says what each name stands for; a node's `text` writes its context out. */
+export interface TypingNode { rule: string; latex: string; text: string; premises: TypingNode[] }
+export interface TypingTreeData { root: TypingNode; legend?: { latex: string; text: string }[] }
+export type KnownVisual =
+  | { kind: "logic.truthtable"; title?: string; data: TruthTableData }
+  | { kind: "relation.digraph"; title?: string; data: DigraphData }
+  | { kind: "algebra.optable"; title?: string; data: OpTableData }
+  | { kind: "context.table"; title?: string; data: ContextTableData }
+  | { kind: "typing.tree"; title?: string; data: TypingTreeData };
 
 export interface EvaluateResult {
   ok: true;
@@ -148,7 +175,7 @@ export interface EvaluateResult {
   bound?: string[];
   /** With `bound`: the parameters when the binding defined a function (`let f(x, y) = e`). */
   params?: string[];
-  /** Visual specs for this result. Reserved; empty until a module emits one. */
+  /** What to draw for this result, beside the value: `KnownVisual` lists the kinds the engine sends. Optional (rule 5). */
   visuals?: VisualSpec[];
   /** The parsed input, rendered by the engine (the frontend owns no printer). Sent with `showWork`. */
   inputRendered?: Rendered;
@@ -247,10 +274,14 @@ export interface ManipulateResult {
 export interface HasseData { nodes: { name: string; height: number }[]; covers: [string, string][] }
 /** The other worlds' extras on an evaluate reply. λ-cells (`kind: "lambda"`): the de Bruijn view of
  *  the result and of every step (`Step.afterDeBruijn`), and a reading when the normal form is a
- *  Church numeral or boolean. Order cells (`kind: "poset"`): what to draw (elements with their
- *  height, the covers = Hasse edges) and a one-line summary. */
+ *  Church numeral or boolean. Order cells (`kind: "poset"`, relations included): what to draw
+ *  (elements with their height, the covers = Hasse edges) and a one-line summary; a relation's graph
+ *  comes as a `relation.digraph` visual. Logic cells (`kind: "logic"`): a one-line summary (the
+ *  counterexample, witness or distinguishing row), and for `truthtable` a `logic.truthtable` visual.
+ *  Systems cells (`kind: "system"`): a summary, the state graph as a `relation.digraph` visual (a
+ *  counterexample's transitions marked), and a trace as the derivation, a step per action. */
 export interface WorldExtras {
-  kind?: "lambda" | "poset";
+  kind?: "lambda" | "poset" | "logic" | "system";
   renderedDeBruijn?: Rendered; reading?: string;
   hasse?: HasseData; summary?: string;
 }

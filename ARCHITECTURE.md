@@ -79,11 +79,65 @@ differential test with zero mismatches.
 - **The λ-calculus is a second world in the same engine.** `Lambda.lean` has its own terms, parser
   and normal-order β-reducer; terms are encoded into `Expr` for the wire, so selection, explanation
   and origin tracking work unchanged. The de Bruijn view is computed with every step. Reduction is
-  on fuel, the one budget in the engine, because normalization is undecidable; `Ω` is refused.
+  on fuel, the one budget in the engine, because normalization is undecidable; `Ω` is refused, and so
+  is a term that grows past `maxSize` symbols (a fixed-point combinator unfolding under call by value).
+  A definition without a normal form (`fact := Y F`) is bound unreduced instead.
+  A cell may begin with a command and a colon: a strategy (`normal`, `cbn`, `cbv`, `applicative`,
+  each with an optional step count), `eta`, `fv`, `db`, `alpha` and `subst` are the untyped
+  calculus's questions, and `type`/`infer` the simply typed calculus's (`Stlc.lean`). Terms parse with
+  their binders' types (`λx:A. e`), which reduction erases. `type:` checks a fully annotated term and
+  returns the derivation tree, and `check_sound` (`StlcProofs.lean`) proves the checker's derivations
+  are typing derivations. `infer:` makes one type variable per missing annotation and per application,
+  solves the equations by unification with the occurs check, and then runs the term, annotated with its
+  answer, back through the checker. So an inferred type is checked rather than proved, and its
+  principality (Hindley's theorem) is not proved. A λ-command is routed before the other worlds,
+  since `type: f : A → B ⊢ f` holds a connective.
 - **Finite order theory is a third world.** `Poset.lean` decides everything over lists — closure,
   the partial-order check, covers, bounds, join and meet, lattices, monotone maps, fixed points by
   the Kleene chain — and `PosetProofs.lean` proves the decisions mean the textbook Props. Values
   are encoded into `Expr`; the notebook draws Hasse diagrams from the covers.
+- **Relations live in the order world.** A poset is a relation with three properties built in; a
+  relation (`Relation.lean`) is elements and pairs with nothing assumed, so the properties become
+  questions. Each check names the elements that break it, and the reply marks those pairs on the
+  graph it sends. Closures add the pairs a property forces, the transitive one round by round, a
+  round a step, until a round adds nothing; `RelationProofs.lean` proves the result transitive and
+  inside every transitive relation containing the original, so the least. The round loop has fuel
+  `n² + 1` and reports whether it settled, and the proof of transitivity is conditional on that
+  report, which the engine checks: a closure that did not settle would be an error, not an answer.
+  Kernels, classes, refinement, cycles and measures complete the set that well-founded induction
+  and quotients need.
+- **Finite algebra is the order world read the other way.** A lattice is an order with joins and
+  meets, or a set with operations obeying laws; `Algebra.lean` is the second reading and the bridges.
+  An operation is its table (`op`, or `joinop` of a lattice); its laws are decided over every pair or
+  triple, and a failure marks the table's cells it read. A semilattice induces an order
+  (`x ≤ y ⇔ x · y = y`), which `AlgebraProofs.lean` proves is a partial order whose join is the
+  operation, so the two readings meet. Distributivity, complements and Boolean lattices, products,
+  maps between posets, Galois connections, closure operators, concept lattices and Denning's flow
+  check complete it. Elements can be pairs `(x, y)` (a product's) and sets `{a, b}` (a powerset's);
+  the parser reads them anywhere an element goes, and names are compared by a canonical key (spacing
+  dropped, a set's members sorted), in cells and in exercise answers.
+- **Transition systems are a fifth world.** `Systems.lean` reads a system (variables over finite
+  domains, an init condition, guarded actions with simultaneous updates; clauses separated by `;` or
+  line breaks) and decides questions on its finite state graph: reachability by breadth-first search,
+  so counterexamples are shortest traces; invariants; inductiveness, refuted by a counterexample to
+  induction that says whether its state is reachable; deadlocks; CTL by least and greatest fixed points
+  of predicate transformers, each Kleene round a step; liveness under weak and strong fairness,
+  refuted by a lasso found among strongly connected sets; refinement under an abstraction map. A trace
+  is the derivation, a step per action, so the notebook's stepping applies; each step is re-run against
+  the system before it is reported (`checked`), while "holds everywhere" answers rest on a search not
+  yet proved complete (`unverified`). Guards reuse the logic world's formulas, evaluated over the
+  state with names (`idle`, `true`) as values.
+- **Logic is a fourth world.** `Logic.lean` reads formulas of propositional logic and bounded
+  first-order formulas over finite sets of numbers, with its own grammar (ASCII spellings read as
+  the glyphs). Propositional questions are decided by truth table, and `LogicProofs.lean` proves the
+  table decides: a formula's value depends only on its variables, every assignment to them is a row,
+  so what holds in every row holds everywhere. Normal forms are rewrites, one law a step (→ and ↔
+  eliminated, De Morgan, double negation, constants, distribution, complementary literals), each
+  pass a total structural function proved to keep the value under every assignment. Bounded
+  quantifiers evaluate their atoms with the math pipeline and name the element that decided them.
+  These rules are outside the notebook pipeline's termination ordering because they never run in
+  it: each is a pass over the formula, structurally recursive, and Lean's own termination check is
+  the obligation. A `truthtable` reply carries the table as a visual spec.
 - **Plots are sampled by the engine and drawn by the notebook.** `engine.plot` simplifies the
   function under the session, records the cell, and returns a uniform sample with `null` where the
   value is not finite; the notebook's SVG and the studio's graph shot are presentation only.
@@ -112,9 +166,16 @@ differential test with zero mismatches.
   like any cell (its value is the expected answer, its derivation the worked solution) and reduces the
   reader's answer too; the two are equivalent when their canonical forms are equal — the integration
   check's `identNorm` and `dist`, normalized — as two λ-terms are β-equivalent when they reduce to the
-  same normal form (λ answers are compared by their de Bruijn terms). "Not equivalent" is "not shown
+  same normal form (λ answers are compared by their de Bruijn terms; a λ-command's answer is compared
+  as written — a strategy's result up to α without reducing it, free variables as a set, `type:`'s
+  type exactly and `infer:`'s up to the names of its type variables). "Not equivalent" is "not shown
   equivalent". An answer that calls the question's own commands (`diff` for a `diff` question) is
-  refused, and a check is not an evaluation: no `In[n]`, no binding, `%` untouched.
+  refused, and a check is not an evaluation: no `In[n]`, no binding, `%` untouched. In the logic
+  world the comparison is decided rather than canonical: two formulas are equivalent exactly when
+  their truth tables agree, a `cnf`/`dnf`/`nnf` answer must also have that shape, and a `sat` answer
+  may be any satisfiable formula that implies the question's (an assignment is one). In the order
+  world an answer is the value itself (`a->b, b->c`, classes `{a, b}, {c}`, `true`), compared as a
+  set, so order does not matter.
 - **Soundness is a fold, over whichever semantics you bring.** `RewriteSound.normalize_sound_for`
   is stated for an abstract `Congruence` (reflexive, transitive, a congruence under `withChildren`,
   invariant under `canon`). Supply those four facts for a new semantics and normalization's
@@ -231,6 +292,16 @@ language server answers LSP for Lean cells.
   other line (`packages/lean-editor`). Definitions carry from cell to cell, editing a cell re-elaborates
   it and the cells after it, and every position the extension and the infoview use is real — nothing is
   translated between cells and file.
+- **Lean exercises.** An exercise can ask for a proof instead of a value. Its statement (ending
+  `:= by`) and the reader's proof are two cells of the same Lean file: the statement a cell no view
+  shows (so it cannot be edited), the proof a view of its own. The verdict is Lean's: proved when the
+  two have no error and no `sorry`, read once Lean's `$/lean/fileProgress` says it has finished
+  checking the file's current version, so a verdict is never about text Lean has not seen. CI checks
+  every shipped Lean exercise with the author's proof (`scripts/notebooks/check-lean.mjs`).
+- **A course's Lean prelude.** A project with `leanPrelude` gives each lesson the Lean of the lessons
+  before it (their Lean cells, and their Lean exercises with the author's proofs) as a first cell no view
+  shows, so a course builds one development across its lessons. It is saved with the lesson, and CI
+  checks each lesson with it in front.
 - **Cost.** Nothing loads until a notebook has a Lean cell. Then, compressed: the editor (~3 MB), the
   server (~24 MB) and Init's 32-bit oleans (~114 MB: their private parts, proofs included, are most of it,
   and an ordinary file's implicit `import Init` needs them), once per browser: the worker keeps the large
@@ -299,8 +370,13 @@ settings, the cell) is `apps/notebook/src/ask-cells.ts`.
 ## 5. Visuals
 
 The engine never draws. It emits **visual specs**: declarative JSON next to `rendered`
-(`EvaluateResult.visuals`, reserved in the protocol, empty until a module uses it): a Cayley
-table, a graph, a commutative diagram, sampled plot data, a matrix heat map. The frontend owns
+(`EvaluateResult.visuals`): a Cayley table, a graph, a commutative diagram, sampled plot data, a
+matrix heat map. Five kinds exist (`KnownVisual` in the protocol): `logic.truthtable`, the rows of a
+formula's table; `relation.digraph`, a relation's pairs with the ones that break a property (`bad`)
+and the ones a closure added (`added`); `algebra.optable`, an operation's table with the cells a
+failing law read (`marks`); `context.table`, a formal context's cross table; and `typing.tree`, a
+typing derivation as nested judgments, each with its rule and premises. The notebook draws the tables
+and the proof tree as HTML and the graph as SVG, keeps them with the cell in a saved file, and ignores a kind it does not know. The frontend owns
 rendering (SVG/canvas/WebGL) and can offer several renderers for one spec. This keeps the engine
 pure and portable (wasm has no canvas), keeps proofs about what is *shown* possible (the spec is
 data the engine can reason about), and lets exports (§6) reuse the same specs.

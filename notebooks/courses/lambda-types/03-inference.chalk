@@ -1,0 +1,164 @@
+{
+  "chalk": 1,
+  "name": "03-inference.chalk",
+  "cells": [
+    {
+      "src": "Type inference",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Find the most general type of a term whose binders have no types, by setting up equations between types and solving them.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Inference\n> 1. Give each binder without a type, and each application's result, a **type variable** $\\tau_1, \\tau_2, \\ldots$.\n> 2. Each application $M\\ N$ gives an equation: $M$'s type $= N$'s type $\\to$ the result's.\n> 3. Solve the equations one at a time (**unification**): an equation $\\tau = T$ puts $T$ for $\\tau$ everywhere; two arrows are equal when their arguments and their results are.\n> 4. The variables left are named $\\alpha, \\beta, \\ldots$: any types put for them give a type of the term.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "infer: λf. λx. f x",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "infer: S",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "The result is the **principal type**: every other type of the term is an instance of it (Hindley). $K$ has type $A \\to B \\to A$, and also $(A \\to A) \\to B \\to A \\to A$:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "infer: K",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The occurs check",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake] Self-application\n> In $\\lambda x.\\, x\\ x$, $x$ is applied to itself, so its type would satisfy $\\tau = \\tau \\to \\sigma$: a type containing itself. Unification refuses (the **occurs check**), and the term has no simple type.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "infer: λx. x x",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Types given and types found mix: annotated binders keep their types, and the rest is inferred around them.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "infer: λf:A→B. λx. f x",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "infer: f x",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Every inferred type is checked: the term, annotated with it, goes through the type checker, and the tree shown is that check.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Lean infers too, by the same kind of unification: give it some types and it finds the rest.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "#check fun (f : Nat → Bool) x => f x\n#check fun (x : Nat) (_ : String) => x",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem typing_by_inference : ∃ T, HasType [] (.lam \"f\" (A ⇒ B) (.lam \"x\" A (.app (.var \"f\") (.var \"x\")))) T := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Show that $\\lambda f{:}A \\to B.\\, \\lambda x{:}A.\\, f\\ x$ has a type, without writing it: let Lean infer it from the derivation.",
+      "leanSolution": "  exact ⟨_, .abs (.abs (.app (.var rfl) (.var rfl)))⟩",
+      "hints": [
+        "`exact ⟨_, derivation⟩`: the underscore is solved by unification with the derivation's conclusion.",
+        "The derivation is →I, →I, then →E over two Vars."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Answer with letters for the type variables, like `a -> b -> a`; any names will do, as long as the shape matches.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "infer: λx. λy. y",
+      "type": "exercise",
+      "prompt": "Infer the type of $\\lambda x.\\, \\lambda y.\\, y$.",
+      "hints": [
+        "Two arguments of unrelated types; it returns the second."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "infer: λf. λg. λx. g (f x)",
+      "type": "exercise",
+      "prompt": "Infer the type of composition, $\\lambda f.\\, \\lambda g.\\, \\lambda x.\\, g\\ (f\\ x)$.",
+      "hints": [
+        "$x : \\alpha$, $f : \\alpha \\to \\beta$, $g : \\beta \\to \\gamma$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "infer: λx. λf. f x",
+      "type": "exercise",
+      "prompt": "Infer the type of $\\lambda x.\\, \\lambda f.\\, f\\ x$.",
+      "hints": [
+        "$f$ is applied to $x$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Inference gives unknown types variables, turns each application into an equation, and solves the equations by unification. The occurs check rejects a type that would contain itself. The answer is the most general type, and every other type is an instance of it.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

@@ -1,0 +1,4 @@
+4	let C3 = chain(3)	= poset {0, 1, 2}   [the chain of 3 elements]
+5	let PN = product(C3, C3)	= poset {(0, 0), (0, 1), (0, 2), (1, 0), (1, 1), (1, 2), (2, 0), (2, 1), (2, 2)}   [a product of 3 × 3 = 9 elements]
+6	le(PN, (1, 0), (1, 1))	= true   [(1, 0) ≤ (1, 1)]
+13	le(PN, (2, 0), (1, 1))	= false

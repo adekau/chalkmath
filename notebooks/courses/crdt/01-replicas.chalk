@@ -1,0 +1,179 @@
+{
+  "chalk": 1,
+  "name": "01-replicas.chalk",
+  "cells": [
+    {
+      "src": "Replicas and the merge discipline",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> See how replicas that accept updates locally diverge, why \"overwrite\" and other casual merges lose updates, and state the discipline every design in this course obeys: the state is a bounded join-semilattice, updates go up, and merge is the join.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Several machines keep a copy (a **replica**) of the same logical value, accept updates locally without waiting for each other, and reconcile later over a network that delays, drops, duplicates and reorders. Accepting updates locally is easy. Merging afterwards, so that every replica ends with the same state and that state reflects every update, is the hard part.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Overwrite is not a merge",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "\"Keep the incoming value\" depends on who hears from whom last. As an operation it is not commutative, so two replicas that exchange states end up swapped rather than equal:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let Ow = op({a, b}; [a, b; a, b])",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "commutative(Ow)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "fold(Ow; a, b)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "fold(Ow; b, a)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "\"Keep the larger\" is a join. Any order of exchanges, any grouping, any duplicates, the same result:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let Mx = op({0, 1, 2}; [0, 1, 2; 1, 1, 2; 2, 2, 2])",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "semilattice(Mx)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "fold(Mx; 2, 0, 1, 1)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] The merge discipline\n> A **state-based CRDT** keeps its state in a bounded join-semilattice, makes every update **inflationary** (the new state is above the old), and merges by the **join**. Then a replica stores not a value but everything it has heard about the value, and hearing the same things in any order gives the same state.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "This is the propagator cell from *Order and lattices*, read again: there a cell gathered partial information from propagators on one scheduler; here a replica gathers it from other replicas over an unreliable network. The algebra is the same.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The book's Lean, chapter by chapter, runs in this course's lessons; each lesson sees the ones before it. First the merge discipline as classes (with notation $\\sqcup$ for the join, $\\bot$ for the bottom, $\\sqsubseteq$ for \"knows at least as much\"), the laws every join obeys (the ACI toolkit), the propagator machinery re-read as replicas, and the chapter 1 demonstrations of naive merges going wrong.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "-- From adekau/lean4learning (crdt/Crdt.lean, the companion to \"From Propagators to Replicas\"),\n-- ported from Lean 4.28 to the notebook's 4.34: two Decidable instances in Chapter 10 are built\n-- explicitly (4.34's instance search no longer finds them through the book's TotalOrder instances),\n-- and the deprecation and class-reducibility notices 4.34 raises on 4.28 code are switched off.\n-- scripts/notebooks/mk-courses.mjs splits it into the lessons of the CRDT course.\nset_option linter.deprecated false\nset_option warn.classDefReducibility false",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/- ============================================================\n   Crdt.lean\n   Companion to \"From Propagators to Replicas:\n   Conflict-Free Replicated Data Types in Lean 4\"\n   (sequel to \"From Zero to Propagators\")\n\n   Series rules: zero dependencies beyond the prelude,\n   zero `sorry`, compiles with a bare `lean Crdt.lean`\n   (toolchain leanprover/lean4:v4.28.0).\n\n   Namespaces follow the book's chapters:\n     Crdt.Order      — Ch 2   the merge discipline\n     Crdt.Intro      — Ch 1   divergence demos\n     Crdt.GCounter   — Ch 3   grow-only counter\n     Crdt.PNCounter  — Ch 4   increment/decrement counter\n     Crdt.SList      — Ch 5   sorted duplicate-free lists\n     Crdt.GSet/TwoPSet — Ch 5 grow-only and two-phase sets\n     Crdt.LWW        — Ch 6   last-writer-wins registers\n     Crdt.ORSet      — Ch 7   observed-remove set, addWins\n     Crdt.Perm/MSet  — Ch 8   permutations, quotients, multisets\n     Crdt.SEC        — Ch 8   strong eventual consistency\n     Crdt.Delivery   — Ch 9   trace semantics, gossip driver\n     Crdt.VV         — Ch 10  version vectors\n     Crdt.OpBased    — Ch 11  operation-based CRDTs\n     Crdt.Capstone   — Ch 12  a replicated shopping list\n     Crdt.Limits     — Ch 13  what CRDTs cannot do\n     Crdt.Solutions  — App B  compiled exercise solutions\n   ============================================================ -/\n\nnamespace Crdt",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/- ============================================================\n   Crdt.Order — Chapter 2: The Merge Discipline\n   The same classes as the predecessor book, re-derived, not\n   imported: a bounded join-semilattice is the discipline every\n   replica obeys.\n   ============================================================ -/\n\nnamespace Order\n\n/-- A partial order: reflexive, antisymmetric, transitive.\n    (Identical to the predecessor's class, so muscle memory transfers.) -/\nclass PartialOrder (α : Type) [LE α] where\n  le_refl               : ∀ (a : α), a ≤ a\n  le_antisymm {a b : α} : a ≤ b → b ≤ a → a = b\n  le_trans {a b c : α}  : a ≤ b → b ≤ c → a ≤ c\n\n/-- A bounded join-semilattice: every pair has a least upper bound `sup`,\n    and there is a least element `bot`. The state space of every\n    state-based CRDT in this book is one of these. -/\nclass BoundedJoinSemilattice (α : Type) extends LE α, PartialOrder α where\n  sup : α → α → α\n  bot : α\n  le_sup_left   : ∀ (a b : α), a ≤ sup a b\n  le_sup_right  : ∀ (a b : α), b ≤ sup a b\n  sup_le        : ∀ (a b c : α), a ≤ c → b ≤ c → sup a b ≤ c\n  bot_le        : ∀ (a : α), bot ≤ a\n\nend Order\n\nopen Order\n\ninfixl:65 \" ⊔ \" => Order.BoundedJoinSemilattice.sup\nnotation  \"⊥\"   => Order.BoundedJoinSemilattice.bot\n/-- The information order. `a ⊑ b` is notation for `a ≤ b`, read\n    \"b knows at least as much as a\". -/\ninfix:50  \" ⊑ \"  => LE.le\n\nnamespace Order\n\nopen PartialOrder BoundedJoinSemilattice\n\nvariable {α : Type} [BoundedJoinSemilattice α]",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/- ── The ACI toolkit ─────────────────────────────────────────\n   Commutativity, associativity, idempotence: one law per\n   network sin (reordering, batching, duplication).           -/\n\ntheorem sup_comm (a b : α) : a ⊔ b = b ⊔ a := by\n  apply le_antisymm\n  · exact sup_le a b (b ⊔ a) (le_sup_right b a) (le_sup_left b a)\n  · exact sup_le b a (a ⊔ b) (le_sup_right a b) (le_sup_left a b)\n\ntheorem sup_assoc (a b c : α) : a ⊔ b ⊔ c = a ⊔ (b ⊔ c) := by\n  apply le_antisymm\n  · apply sup_le\n    · apply sup_le\n      · exact le_sup_left a (b ⊔ c)\n      · exact le_trans (le_sup_left b c) (le_sup_right a (b ⊔ c))\n    · exact le_trans (le_sup_right b c) (le_sup_right a (b ⊔ c))\n  · apply sup_le\n    · exact le_trans (le_sup_left a b) (le_sup_left (a ⊔ b) c)\n    · apply sup_le\n      · exact le_trans (le_sup_right a b) (le_sup_left (a ⊔ b) c)\n      · exact le_sup_right (a ⊔ b) c\n\ntheorem sup_idem (a : α) : a ⊔ a = a := by\n  apply le_antisymm\n  · exact sup_le a a a (le_refl a) (le_refl a)\n  · exact le_sup_left a a\n\ntheorem sup_bot_left (a : α) : ⊥ ⊔ a = a := by\n  apply le_antisymm\n  · exact sup_le ⊥ a a (bot_le a) (le_refl a)\n  · exact le_sup_right ⊥ a\n\ntheorem sup_bot_right (a : α) : a ⊔ ⊥ = a := by\n  rw [sup_comm]; exact sup_bot_left a\n\n/-- The order is recoverable from the join: `a ⊑ b` exactly when\n    merging `a` into `b` tells `b` nothing new. -/\ntheorem le_iff_sup_eq {a b : α} : a ⊑ b ↔ a ⊔ b = b := by\n  constructor\n  · intro h\n    apply le_antisymm\n    · exact sup_le a b b h (le_refl b)\n    · exact le_sup_right a b\n  · intro h\n    rw [← h]\n    exact le_sup_left a b\n\ntheorem sup_mono {a b c d : α} (h₁ : a ⊑ c) (h₂ : b ⊑ d) :\n    a ⊔ b ⊑ c ⊔ d :=\n  sup_le a b (c ⊔ d)\n    (le_trans h₁ (le_sup_left c d))\n    (le_trans h₂ (le_sup_right c d))\n\n/-- An update function may only move a replica's state upward:\n    it can add information, never retract it. -/\ndef Inflationary (f : α → α) : Prop := ∀ s, s ⊑ f s\n\n/-- Merging any value in is an inflationary update — the propagator\n    cell's `write` and the replica's `merge` in one lemma. -/\ntheorem sup_inflationary_left (v : α) : Inflationary (fun s => s ⊔ v) :=\n  fun s => le_sup_left s v\n\n/-- Monotone maps, carried over from the predecessor. -/\nstructure Monotone {α β : Type} [LE α] [LE β]\n    [PartialOrder α] [PartialOrder β] (f : α → β) : Prop where\n  map_le : ∀ (a b : α), a ≤ b → f a ≤ f b",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/- ── The product semilattice ─────────────────────────────────\n   Pair two replicable states and the pair is replicable:\n   composition is free. Load-bearing for the PN-Counter (Ch 4),\n   the 2P-Set (Ch 5), the OR-Set (Ch 7) and the capstone (Ch 12). -/\n\ninstance {α β : Type} [LE α] [LE β] : LE (α × β) where\n  le p q := p.1 ≤ q.1 ∧ p.2 ≤ q.2\n\ninstance {α β : Type} [LE α] [LE β] [PartialOrder α] [PartialOrder β] :\n    PartialOrder (α × β) where\n  le_refl p := ⟨le_refl p.1, le_refl p.2⟩\n  le_antisymm {p q} h₁ h₂ := by\n    cases p; cases q\n    have e₁ := le_antisymm h₁.1 h₂.1\n    have e₂ := le_antisymm h₁.2 h₂.2\n    simp_all\n  le_trans h₁ h₂ := ⟨le_trans h₁.1 h₂.1, le_trans h₁.2 h₂.2⟩\n\ninstance {α β : Type}\n    [BoundedJoinSemilattice α] [BoundedJoinSemilattice β] :\n    BoundedJoinSemilattice (α × β) where\n  sup p q := (p.1 ⊔ q.1, p.2 ⊔ q.2)\n  bot := (⊥, ⊥)\n  le_sup_left p q := ⟨le_sup_left p.1 q.1, le_sup_left p.2 q.2⟩\n  le_sup_right p q := ⟨le_sup_right p.1 q.1, le_sup_right p.2 q.2⟩\n  sup_le p q r h₁ h₂ :=\n    ⟨sup_le p.1 q.1 r.1 h₁.1 h₂.1, sup_le p.2 q.2 r.2 h₁.2 h₂.2⟩\n  bot_le p := ⟨bot_le p.1, bot_le p.2⟩\n\nend Order",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/- ============================================================\n   The propagator machinery, re-derived from the predecessor.\n   A cell accumulates partial information by joining; in Ch 2 we\n   re-read the same code as a *replica*, and in Ch 12 the capstone\n   runs replicas as cells with a network attached.\n   ============================================================ -/\n\nstructure Cell (α : Type) where\n  ref : IO.Ref α\n\ndef Cell.new {α} [BoundedJoinSemilattice α] : IO (Cell α) := do\n  let r ← IO.mkRef (⊥ : α)\n  return { ref := r }\n\ndef Cell.read {α} (c : Cell α) : IO α :=\n  c.ref.get\n\n/-- Writing is merging: `c ← c ⊔ v`. Returns whether anything changed. -/\ndef Cell.write {α} [BoundedJoinSemilattice α] [DecidableEq α]\n    (c : Cell α) (v : α) : IO Bool := do\n  let old ← c.ref.get\n  let merged := old ⊔ v\n  if merged = old then\n    return false\n  else\n    c.ref.set merged\n    return true\n\nabbrev PropStep := IO Bool\n\ndef runToFixpoint (steps : Array PropStep) : IO Unit := do\n  let mut changed := true\n  while changed do\n    changed := false\n    for step in steps do\n      let c ← step\n      if c then changed := true",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/- The flat lattice over Nat, exactly as in the predecessor:\n   unknown ⊑ known n ⊑ conflict. -/\n\ninductive FlatNat where\n  | unknown         : FlatNat\n  | known (n : Nat) : FlatNat\n  | conflict        : FlatNat\n  deriving Repr, DecidableEq\n\ninstance : ToString FlatNat where\n  toString a := match a with\n    | .unknown  => \"unknown\"\n    | .known n  => toString n\n    | .conflict => \"conflict\"\n\ndef FlatNat.le (a b : FlatNat) : Prop :=\n  match a, b with\n    | .unknown , _         => True\n    | _        , .conflict => True\n    | .known m , .known n  => m = n\n    | .conflict, .unknown  => False\n    | .conflict, .known _  => False\n    | .known _ , .unknown  => False\n\ninstance : LE FlatNat := ⟨FlatNat.le⟩\n\ninstance : Order.PartialOrder FlatNat where\n  le_refl := by\n    intro a\n    cases a <;> trivial\n  le_antisymm := by\n    intro a b hab hba\n    cases a <;> cases b <;> simp_all [LE.le, FlatNat.le]\n  le_trans := by\n    intro a b c hab hbc\n    cases a <;> cases b <;> cases c <;> simp_all [LE.le, FlatNat.le]\n\ninstance : BoundedJoinSemilattice FlatNat where\n  bot         := .unknown\n  sup a b     := match a, b with\n    | .unknown, x         => x\n    | x       , .unknown  => x\n    | .known m, .known n  => if m = n then .known m else .conflict\n    | _       , _         => .conflict\n  bot_le      := by\n    intro a\n    cases a <;> simp [LE.le, FlatNat.le]\n  le_sup_left := by\n    intro a b\n    cases a <;> cases b <;> simp_all [LE.le, FlatNat.le]\n    rename_i m n\n    by_cases h : m = n <;> simp [h]\n  le_sup_right := by\n    intro a b\n    cases a <;> cases b <;> simp_all [LE.le, FlatNat.le]\n    rename_i m n\n    by_cases h : m = n <;> simp [h]\n  sup_le      := by\n    intro a b c hac hbc\n    cases a <;> cases b <;> cases c <;> simp_all [LE.le, FlatNat.le]\n    rename_i m n\n    by_cases h : m = n <;> simp [h]\n\ndef FlatNat.add (x y : FlatNat) : FlatNat :=\n  match x, y with\n    | .known a  , .known b  => .known (a + b)\n    | .conflict , _         => .conflict\n    | _         , .conflict => .conflict\n    | _         , _         => .unknown\n\ndef addProp (cx cy csum : Cell FlatNat) : PropStep := do\n  let x ← cx.read\n  let y ← cy.read\n  csum.write (FlatNat.add x y)\n\n/-- The predecessor's example, replayed: a propagator network\n    computing a sum inside one process. -/\ndef propagatorReplay : IO Unit := do\n  let cx ← Cell.new (α := FlatNat)\n  let cy ← Cell.new (α := FlatNat)\n  let cs ← Cell.new (α := FlatNat)\n  let _ ← cx.write (.known 3)\n  let _ ← cy.write (.known 7)\n  runToFixpoint #[addProp cx cy cs]\n  IO.println s!\"sum is {← cs.read}\"\n\n#eval propagatorReplay\n\n/-- The same code, new reading: two *replicas* of one FlatNat cell.\n    Each hears a (consistent) observation, then each merges the\n    other's state — in different orders, twice. They agree. -/\ndef replicaReplay : IO Unit := do\n  let a ← Cell.new (α := FlatNat)   -- replica A\n  let b ← Cell.new (α := FlatNat)   -- replica B\n  let _ ← a.write (.known 42)       -- A hears the value\n  -- gossip, sloppily: B pulls from A, A pulls from B, B pulls again\n  let _ ← b.write (← a.read)\n  let _ ← a.write (← b.read)\n  let _ ← b.write (← a.read)        -- duplicate delivery: harmless\n  IO.println s!\"replica A holds {← a.read}, replica B holds {← b.read}\"\n\n#eval replicaReplay",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/- ============================================================\n   Crdt.Intro — Chapter 1: Replicas, Conflicts, and the Price\n   of Coordination\n   ============================================================ -/\n\nnamespace Intro\n\n/-- A naive replicated counter: the state is the count. -/\nabbrev NaiveCounter := Nat\n\ndef incr (c : NaiveCounter) : NaiveCounter := c + 1\n\n/-- The \"obvious\" sync strategy: take the other replica's value.\n    (Overwrite; a.k.a. naive last-write-wins.) -/\ndef overwrite (_mine theirs : NaiveCounter) : NaiveCounter := theirs\n\n/-- Two replicas, three increments, one sync. The truth is 3. -/\ndef divergenceDemo : List (String × Nat) :=\n  let a0 : NaiveCounter := 0\n  let b0 : NaiveCounter := 0\n  let a1 := incr (incr a0)      -- A observes two increments  → 2\n  let b1 := incr b0             -- B observes one increment   → 1\n  let bSynced := overwrite b1 a1  -- B pulls from A: B's increment is gone\n  let aSynced := overwrite a1 bSynced\n  [(\"replica A\", a1), (\"replica B\", b1),\n   (\"B after sync\", bSynced), (\"A after sync\", aSynced),\n   (\"ground truth\", 3)]\n\n#eval divergenceDemo\n\n/-- Refuted: \"last write wins is a merge strategy for free\".\n    The interleaving above loses B's increment: both replicas end\n    at 2 although three increments happened. -/\ntheorem overwrite_loses_an_update :\n    (overwrite (incr 0) (incr (incr 0))) ≠ 3 := by decide\n\n/-- Refuted (Exercise 1.3): overwrite-merge is not even commutative,\n    so replicas that sync in different directions disagree. -/\ntheorem overwrite_not_comm :\n    ¬ (∀ a b : NaiveCounter, overwrite a b = overwrite b a) :=\n  fun h => absurd (h 1 2) (by decide)\n\nexample : overwrite 1 2 ≠ overwrite 2 1 := by decide\n\nend Intro",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "commutative(Mx)",
+      "type": "exercise",
+      "prompt": "Is \"keep the larger\" commutative?",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "fold(Ow; b, a, b, a)",
+      "type": "exercise",
+      "prompt": "Under overwrite, a replica hears $b$, $a$, $b$, $a$ in that order. What does it hold?",
+      "hints": [
+        "The last one heard wins."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Replicas that accept updates locally must reconcile, and reconciliation must remember rather than choose. Keeping states in a semilattice and merging by the join makes the order, grouping and repetition of messages irrelevant.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

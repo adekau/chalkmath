@@ -1,0 +1,80 @@
+{
+  "chalk": 1,
+  "name": "06-orset.chalk",
+  "cells": [
+    {
+      "src": "The OR-Set: add wins",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Build a set where removal only cancels the additions the remover observed, so that when an add and a remove race the add wins, and follow the book's proof of that slogan.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The G-Set never forgets, the 2P-Set forgets once and forever, and the LWW-Element-Set lets a clock decide, so a remove can cancel an add its issuer never saw. The **observed-remove set** tags every add with a unique identifier; a remove tombstones the tags it has seen. An element is present when some tag of it is not tombstoned. A concurrent add carries a tag the remove never saw, so it survives: **add wins**.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!theorem] Add wins\n> If an add of $e$ is concurrent with a remove of $e$, then after both are merged $e$ is in the set. The proof (the longest in the book) runs on an invariant of reachable states, not on the algebra alone.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/- ============================================================\n   Crdt.ORSet — Chapter 7: The OR-Set. Add Wins.\n   Fix the 2P-Set's no-re-add and the LWW-Set's arbitration with\n   *unique tags*: every add mints a fresh tag; remove tombstones\n   only the tags it has observed. A later add carries a tag no\n   tombstone covers.\n   ============================================================ -/\n\nnamespace ORSet\n\n/-- A tag: `(replica, sequence number)` — never minted twice. -/\nabbrev Tag (R : Nat) := Fin R × Nat\n\n/-- An element paired with the tag of the add that produced it.\n    Lex-ordered, so the sorted-list machinery of Chapter 5 applies\n    unchanged. -/\nabbrev ETag (R : Nat) := Nat × Tag R\n\nend ORSet\n\n/-- Observed-remove set: tagged adds, tombstoned tags, and a per-replica\n    tag counter (a G-Counter — Chapter 3 pays rent again). -/\nstructure ORSet (R : Nat) where\n  adds  : SList (ORSet.ETag R)\n  tombs : SList (ORSet.ETag R)\n  ctr   : GCounter R\n\nnamespace ORSet\n\nopen Order.PartialOrder Order.BoundedJoinSemilattice\n\nvariable {R : Nat}",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/- The semilattice is componentwise — three known lattices glued. -/\n\ninstance : LE (ORSet R) :=\n  ⟨fun s t => s.adds ⊑ t.adds ∧ s.tombs ⊑ t.tombs ∧ s.ctr ⊑ t.ctr⟩\n\ninstance : Order.PartialOrder (ORSet R) where\n  le_refl s := ⟨le_refl s.adds, le_refl s.tombs, le_refl s.ctr⟩\n  le_antisymm {s t} h₁ h₂ := by\n    have e₁ := le_antisymm h₁.1 h₂.1\n    have e₂ := le_antisymm h₁.2.1 h₂.2.1\n    have e₃ := le_antisymm h₁.2.2 h₂.2.2\n    cases s; cases t\n    simp_all\n  le_trans h₁ h₂ :=\n    ⟨le_trans h₁.1 h₂.1, le_trans h₁.2.1 h₂.2.1, le_trans h₁.2.2 h₂.2.2⟩\n\ninstance : BoundedJoinSemilattice (ORSet R) where\n  sup s t := ⟨s.adds ⊔ t.adds, s.tombs ⊔ t.tombs, s.ctr ⊔ t.ctr⟩\n  bot := ⟨⊥, ⊥, ⊥⟩\n  le_sup_left s t :=\n    ⟨le_sup_left s.adds t.adds, le_sup_left s.tombs t.tombs,\n     le_sup_left s.ctr t.ctr⟩\n  le_sup_right s t :=\n    ⟨le_sup_right s.adds t.adds, le_sup_right s.tombs t.tombs,\n     le_sup_right s.ctr t.ctr⟩\n  sup_le s t u h₁ h₂ :=\n    ⟨sup_le s.adds t.adds u.adds h₁.1 h₂.1,\n     sup_le s.tombs t.tombs u.tombs h₁.2.1 h₂.2.1,\n     sup_le s.ctr t.ctr u.ctr h₁.2.2 h₂.2.2⟩\n  bot_le s := ⟨bot_le s.adds, bot_le s.tombs, bot_le s.ctr⟩\n\n@[simp] theorem sup_adds (s t : ORSet R) : (s ⊔ t).adds = s.adds ⊔ t.adds := rfl\n@[simp] theorem sup_tombs (s t : ORSet R) : (s ⊔ t).tombs = s.tombs ⊔ t.tombs := rfl\n@[simp] theorem sup_ctr (s t : ORSet R) : (s ⊔ t).ctr = s.ctr ⊔ t.ctr := rfl\n\n/-- Add at replica `i`: mint the fresh tag `(i, ctr i)`, record the\n    tagged add, and burn the tag by bumping the counter. -/\ndef add (i : Fin R) (e : Nat) (s : ORSet R) : ORSet R :=\n  { adds  := SList.insert (e, i, s.ctr i) s.adds\n    tombs := s.tombs\n    ctr   := GCounter.increment i s.ctr }\n\n/-- Remove: tombstone every *observed* tag for `e` — and only those. -/\ndef remove (e : Nat) (s : ORSet R) : ORSet R :=\n  { adds  := s.adds\n    tombs := s.tombs ⊔ SList.filter (fun p => p.1 == e) s.adds\n    ctr   := s.ctr }\n\n/-- Membership: some tagged add of `e` survives untombstoned. -/\ndef mem (e : Nat) (s : ORSet R) : Prop :=\n  ∃ t : Tag R, (e, t) ∈ s.adds ∧ ¬ (e, t) ∈ s.tombs\n\ntheorem mem_iff_bex {e : Nat} {s : ORSet R} :\n    mem e s ↔ ∃ p ∈ s.adds.val, p.1 = e ∧ ¬ p ∈ s.tombs := by\n  constructor\n  · intro ⟨t, hin, hnt⟩\n    exact ⟨(e, t), hin, rfl, hnt⟩\n  · intro ⟨p, hin, he, hnt⟩\n    obtain ⟨e', t⟩ := p\n    cases he\n    exact ⟨t, hin, hnt⟩\n\ninstance {e : Nat} {s : ORSet R} : Decidable (mem e s) :=\n  decidable_of_iff _ mem_iff_bex.symm\n\ntheorem add_inflationary (i : Fin R) (e : Nat) :\n    Order.Inflationary (add i e) :=\n  fun s => ⟨fun _ hx => SList.mem_insert.mpr (Or.inr hx),\n            le_refl s.tombs,\n            GCounter.increment_inflationary i s.ctr⟩\n\ntheorem remove_inflationary (e : Nat) :\n    Order.Inflationary (remove (R := R) e) :=\n  fun s => ⟨le_refl s.adds,\n            le_sup_left s.tombs _,\n            le_refl s.ctr⟩",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/- ── The freshness invariant ─────────────────────────────────\n   (i) tombstones only ever cover *observed* adds, and\n   (ii) the counter dominates every locally recorded tag.\n   Preserved by add, remove, and merge — the reader's first\n   inductive-invariant proof, the style Chapters 8–9 run on. -/\n\nstructure Wf (s : ORSet R) : Prop where\n  tombs_sub : ∀ p ∈ s.tombs, p ∈ s.adds\n  ctr_dom   : ∀ p ∈ s.adds, p.2.2 < s.ctr p.2.1\n\ntheorem wf_bot : Wf (⊥ : ORSet R) where\n  tombs_sub _ hp := absurd hp (SList.not_mem_empty _)\n  ctr_dom _ hp := absurd hp (SList.not_mem_empty _)\n\ntheorem wf_add {s : ORSet R} (h : Wf s) (i : Fin R) (e : Nat) :\n    Wf (add i e s) where\n  tombs_sub p hp :=\n    SList.mem_insert.mpr (Or.inr (h.tombs_sub p hp))\n  ctr_dom p hp := by\n    cases SList.mem_insert.mp hp with\n    | inl he =>\n        subst he\n        simp [add, GCounter.increment]\n    | inr hm =>\n        have hd := h.ctr_dom p hm\n        show p.2.2 < GCounter.increment i s.ctr p.2.1\n        by_cases hpi : p.2.1 = i\n        · rw [hpi] at hd ⊢\n          simp [GCounter.increment]\n          omega\n        · simp [GCounter.increment, hpi]\n          exact hd\n\ntheorem wf_remove {s : ORSet R} (h : Wf s) (e : Nat) :\n    Wf (remove e s) where\n  tombs_sub p hp := by\n    cases SList.mem_union.mp hp with\n    | inl ht => exact h.tombs_sub p ht\n    | inr hf => exact (SList.mem_filter.mp hf).1\n  ctr_dom := h.ctr_dom\n\ntheorem wf_merge {s t : ORSet R} (hs : Wf s) (ht : Wf t) :\n    Wf (s ⊔ t) where\n  tombs_sub p hp := by\n    rw [sup_tombs] at hp\n    rw [sup_adds]\n    cases SList.mem_union.mp hp with\n    | inl h => exact SList.mem_union.mpr (Or.inl (hs.tombs_sub p h))\n    | inr h => exact SList.mem_union.mpr (Or.inr (ht.tombs_sub p h))\n  ctr_dom p hp := by\n    rw [sup_adds] at hp\n    show p.2.2 < Nat.max (s.ctr p.2.1) (t.ctr p.2.1)\n    cases SList.mem_union.mp hp with\n    | inl h => exact Nat.lt_of_lt_of_le (hs.ctr_dom p h) (Nat.le_max_left _ _)\n    | inr h => exact Nat.lt_of_lt_of_le (ht.ctr_dom p h) (Nat.le_max_right _ _)\n\n/-- A replica's view of *someone else's* counter never overtakes the\n    owner's own view — and merging peers preserves that. This is why\n    the freshness hypothesis of `addWins` holds along real executions. -/\ntheorem ctr_view_merge {sA sB sC : ORSet R} (i : Fin R)\n    (hB : sB.ctr i ≤ sA.ctr i) (hC : sC.ctr i ≤ sA.ctr i) :\n    (sB ⊔ sC).ctr i ≤ sA.ctr i := by\n  show Nat.max (sB.ctr i) (sC.ctr i) ≤ sA.ctr i\n  exact Nat.max_le.mpr ⟨hB, hC⟩\n\n/-- **Add wins.** Replica `i` adds `e` to its state `sA`; concurrently a\n    peer removes `e` from its state `sB`. If `sB`'s view of `i`'s counter\n    is no fresher than `i`'s own (true in every real execution), then\n    after merging, `e` is a member: no tombstone can cover a tag that\n    had not been minted when the remove happened. -/\ntheorem addWins {sA sB : ORSet R} (i : Fin R) (e : Nat)\n    (hA : Wf sA) (hB : Wf sB)\n    (hfresh : sB.ctr i ≤ sA.ctr i) :\n    mem e (add i e sA ⊔ remove e sB) := by\n  refine ⟨(i, sA.ctr i), ?_, ?_⟩\n  · -- the fresh tagged add is in the merged adds\n    rw [sup_adds]\n    exact SList.mem_union.mpr (Or.inl (SList.mem_insert.mpr (Or.inl rfl)))\n  · -- and no tombstone covers it\n    intro htomb\n    rw [sup_tombs] at htomb\n    cases SList.mem_union.mp htomb with\n    | inl hin =>\n        -- a tombstone at A itself: then A had recorded tag (i, ctr i),\n        -- contradicting counter dominance\n        have := hA.ctr_dom _ (hA.tombs_sub _ hin)\n        exact Nat.lt_irrefl _ this\n    | inr hin =>\n        -- a tombstone from B's remove: B had observed tag (i, ctr A i),\n        -- contradicting B's view being no fresher than A's own\n        have hadds : (e, i, sA.ctr i) ∈ sB.adds := by\n          cases SList.mem_union.mp hin with\n          | inl ht => exact hB.tombs_sub _ ht\n          | inr hf => exact (SList.mem_filter.mp hf).1\n        have hlt := hB.ctr_dom _ hadds\n        simp at hlt\n        omega\n\n/-- Refuted: \"tags can be reused\". An add that recycles a tag can be\n    deleted by a remove that happened *before* it. -/\ndef badAdd (i : Fin R) (k : Nat) (e : Nat) (s : ORSet R) : ORSet R :=\n  { s with adds := SList.insert (e, i, k) s.adds }\n\ntheorem tag_reuse_bites :\n    -- A adds 1 with tag (0,0); B (having seen it) removes 1;\n    -- A \"re-adds\" 1 reusing tag (0,0); the merge has no member 1:\n    -- B's old remove killed A's later add.\n    let s₁ : ORSet 2 := badAdd 0 0 1 ⊥\n    let atB := remove 1 s₁\n    let atA := badAdd 0 0 1 s₁\n    ¬ mem 1 (atA ⊔ atB) := by decide\n\n/-- Interlude: the add/remove/re-add trace that broke the 2P-Set,\n    now passing, plus a duplicated-delivery run. -/\ndef interlude : List (String × Bool) :=\n  let s₀ : ORSet 2 := ⊥\n  let s₁ := add 0 1 s₀            -- A adds 1 (tag (0,0))\n  let s₂ := remove 1 s₁           -- A removes 1\n  let s₃ := add 0 1 s₂            -- A re-adds 1 (fresh tag (0,1))\n  let atB := remove 1 s₁          -- concurrently, B (having seen s₁) removes 1\n  [ (\"1 ∈ s₁ (added)\", decide (mem 1 s₁)),\n    (\"1 ∈ s₂ (removed)\", decide (mem 1 s₂)),\n    (\"1 ∈ s₃ (re-added!)\", decide (mem 1 s₃)),\n    (\"1 ∈ s₃ ⊔ B's remove (add wins)\", decide (mem 1 (s₃ ⊔ atB))),\n    (\"1 ∈ (s₃ ⊔ atB) ⊔ atB (duplicate delivery)\",\n      decide (mem 1 ((s₃ ⊔ atB) ⊔ atB))) ]\n\n#eval interlude\n\n/-- Tombstones never shrink: garbage is real (Exercise fodder; see\n    Chapter 13 for the coordination irony). -/\ntheorem tombs_monotone {s t : ORSet R} (h : s ⊑ t) :\n    s.tombs ⊑ t.tombs := h.2.1\n\nend ORSet",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Tombstones are the price: they only ever accumulate.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem orset_tombs_size_monotone {R : Nat} {s t : ORSet R} (h : s ⊑ t) :\n    SList.size s.tombs ≤ SList.size t.tombs := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that an OR-Set's tombstones never shrink.",
+      "leanSolution": "  exact sorted_subset_length s.tombs.sorted t.tombs.sorted h.2.1",
+      "hints": [
+        "The order on OR-Set states compares the tombstone sets as its second component: `h.2.1`.",
+        "Lesson 4's `sorted_subset_length` finishes it."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Unique tags make removal precise: a remove deletes what it observed and nothing else. Add wins, re-adds work, and the cost is tombstones that never go away.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

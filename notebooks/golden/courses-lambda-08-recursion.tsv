@@ -1,0 +1,9 @@
+4	normal 2: Y g	= g ((λx. g (x x)) (λx. g (x x)))   (stopped after 2 steps: not yet a normal form)
+8	pred := λn. fst (n (λp. pair (snd p) (succ (snd p))) (pair 0 0))	= λn. n (λp. λs. s (p (λa. λb. b)) (λf. λx. f (p (λa. λb. b) f x))) (λs. s (λf. λx. x) (λf. λx. x)) (λa. λb. a)
+9	fact := Y (λself. λn. if (iszero n) 1 (mul n (self (pred n))))	= (λf. (λx. f (x x)) (λx. f (x x))) (λself. λn. (λc. λa. λb. c a b) ((λn. n (λy. λt. λf. f) (λt. λf. t)) n) (λf. λx. f x) ((λm. λn. λf. m (n f)) n (self ((λn. n (λp. λs. s (p (λa. λb. b)) (λf. λx. f (p (λa. λb. b) f x))) (λs. s (λf. λx. x) (λf. λx. x)) (λa. λb. a)) n))))   (no normal form within 131 β-steps (the term grew past 3000 symbols), so it is bound unreduced)
+10	fact 2	= λf. λx. f (f x)   (the Church numeral 2)
+14	cbv 3: Y g	= g (g ((λx. g (x x)) (λx. g (x x))))   (stopped after 3 steps: not yet a value)
+16	Z := λf. (λx. f (λv. x x v)) (λx. f (λv. x x v))	= λf. (λx. f (λv. x x v)) (λx. f (λv. x x v))   (no normal form within 597 β-steps (the term grew past 3000 symbols), so it is bound unreduced)
+17	cbv: Z g	= g (λv. (λx. g (λv. x x v)) (λx. g (λv. x x v)) v)   (a value: the redexes left are under a λ, where call by value does not look)
+24	normal 1: Y g	= (λx. g (x x)) (λx. g (x x))
+25	fact 1	= λf. λx. f x

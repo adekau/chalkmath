@@ -26,6 +26,13 @@ Mathematica does (`;;b` from 1, `a;;` to the last, `-1`); `All` is `All()`, a li
 Implicit multiplication (`2x`, `2(x+1)`, `x y`) is allowed when the previous token ends an atom
 and the next begins one, except number-after-number (`3 4` is an error). `IDENT (` is a call
 only if IDENT is a builtin or a session-known function.
+
+Cells in the other worlds never reach this parser: a transition system or a question about one
+(`Sys.isSystemSource`, grammar in `Systems.lean`), an order-theory or relation command
+(`Ord.isOrderSource`, grammar in `Poset.lean`), a logic command or a formula with a connective or a
+quantifier (`Logic.isLogicSource`, grammar in `Logic.lean`), and a λ-term or λ-command
+(`Lam.isLambdaSource`, grammar in `Lambda.lean`) each have their own. A λ-command is routed first,
+since one such as `type: f : A → B ⊢ f` holds a connective.
 -/
 namespace MathEngine
 

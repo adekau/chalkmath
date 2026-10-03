@@ -1,0 +1,164 @@
+{
+  "chalk": 1,
+  "name": "06-strong-induction.chalk",
+  "cells": [
+    {
+      "src": "Strong induction",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Prove statements whose step needs not just the case before but any smaller case, and see why that is no stronger than ordinary induction.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!theorem] Strong induction\n> If, for every $n$, $P(m)$ for all $m < n$ implies $P(n)$, then $P(n)$ holds for every $n$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "There is no separate base case: for $n = 0$ the hypothesis is about no numbers at all, so $P(0)$ must be proved outright, and the same happens for any $n$ the argument cannot reduce.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Every number has a prime factor",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!example] Prime factors\n> Every $n \\ge 2$ has a prime factor. If $n$ is prime, it is its own. If not, $n = ab$ with $2 \\le a < n$, and $a$ has a prime factor by the hypothesis for $a$, which divides $n$ too. The step uses the case $a$, which can be any number below $n$, not $n - 1$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "∀ n ∈ 2..60, ∃ p ∈ 2..n, prime(p) ∧ p ∣ n",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Postage stamps",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "With stamps of 3 and 5, which amounts can you make exactly?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "∀ n ∈ 8..40, ∃ a ∈ 0..14, ∃ b ∈ 0..8, n = 3a + 5b",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "∃ a ∈ 0..3, ∃ b ∈ 0..2, 7 = 3a + 5b",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Every amount from 8 on: 8, 9 and 10 directly, and any $n \\ge 11$ from $n - 3$ plus one stamp of 3. The step reaches back three, so it needs three base cases.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem stamps (n : Nat) (h : 8 ≤ n) : ∃ a b, n = 3 * a + 5 * b := by\n  induction n using Nat.strongRecOn with\n  | _ n ih =>\n    if h8 : n = 8 then exact ⟨1, 1, by omega⟩\n    else if h9 : n = 9 then exact ⟨3, 0, by omega⟩\n    else if h10 : n = 10 then exact ⟨0, 2, by omega⟩\n    else\n      obtain ⟨a, b, hab⟩ := ih (n - 3) (by omega) (by omega)\n      exact ⟨a + 1, b, by omega⟩",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`induction n using Nat.strongRecOn` gives `ih : ∀ m < n, 8 ≤ m → ∃ a b, …`: the statement for every smaller `m`.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Fibonacci numbers",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "def fib : Nat → Nat\n  | 0 => 0\n  | 1 => 1\n  | n + 2 => fib n + fib (n + 1)\n\n#eval (List.range 12).map fib",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Each Fibonacci number uses the two before it, so a proof about them uses two earlier cases.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem fib_lt_two_pow (n : Nat) : fib n < 2 ^ n := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove $F_n < 2^n$ by strong induction.",
+      "leanSolution": "  induction n using Nat.strongRecOn with\n  | _ n ih =>\n    match n with\n    | 0 => decide\n    | 1 => decide\n    | k + 2 =>\n      have h1 := ih k (by omega)\n      have h2 := ih (k + 1) (by omega)\n      rw [fib, Nat.pow_succ, Nat.pow_succ]\n      rw [Nat.pow_succ] at h2\n      omega",
+      "hints": [
+        "Start with `induction n using Nat.strongRecOn with | _ n ih => `, then `match n with` for `0`, `1` and `k + 2`.",
+        "For `k + 2`: `ih k (by omega)` and `ih (k + 1) (by omega)` are the two earlier cases.",
+        "$F_k + F_{k+1} < 2^k + 2^{k+1} \\le 2^{k+2}$. Rewrite the powers with `Nat.pow_succ` so `omega` sees `2 ^ k` as one number."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Three forms of one principle",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!theorem] Weak induction, strong induction, well-ordering\n> These are equivalent: each proves the others.\n>\n> - Strong induction gives weak: its hypothesis includes the case $n - 1$.\n> - Weak gives strong: apply weak induction to $Q(n)$ = \"$P(m)$ for every $m < n$\".\n> - Well-ordering (every non-empty set of naturals has a least element) gives strong induction: if $P$ failed somewhere, take the least $n$ where it fails; $P$ holds below $n$, so the step gives $P(n)$, a contradiction.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The last form is the one lesson 9 generalizes: induction works on any relation with no infinite descending chains.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "∀ n ∈ 12..50, ∃ a ∈ 0..12, ∃ b ∈ 0..10, n = 4a + 5b",
+      "type": "exercise",
+      "prompt": "With stamps of 4 and 5, can every amount from 12 to 50 be made exactly? Answer `true` or `false`.",
+      "hints": [
+        "12, 13, 14 and 15 directly; then reach back by 4."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "∃ a ∈ 0..3, ∃ b ∈ 0..3, 11 = 4a + 5b",
+      "type": "exercise",
+      "prompt": "Can 11 be made from stamps of 4 and 5?",
+      "hints": [
+        "Try $b = 0, 1, 2$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Strong induction lets the step use every smaller case, with as many base cases as the step reaches back. It proves nothing ordinary induction cannot, but it fits arguments that split $n$ into smaller pieces.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

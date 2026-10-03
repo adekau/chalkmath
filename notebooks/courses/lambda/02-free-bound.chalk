@@ -1,0 +1,169 @@
+{
+  "chalk": 1,
+  "name": "02-free-bound.chalk",
+  "cells": [
+    {
+      "src": "Free and bound variables",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Tell bound variables from free ones, compute the free variables of a term, and decide when two terms are the same up to renaming.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Free and bound\n> In $\\lambda x.\\, M$ the λ **binds** $x$: every $x$ in $M$ (not under another $\\lambda x$) refers to it. An occurrence of a variable is **bound** when some λ above it has its name, and **free** otherwise. The free variables:\n> $$FV(x) = \\{x\\}, \\quad FV(\\lambda x.\\, M) = FV(M) \\setminus \\{x\\}, \\quad FV(M\\ N) = FV(M) \\cup FV(N).$$\n> A term with no free variables is **closed**, a **combinator**.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The command `fv:` computes them and names the bound ones:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "fv: λx. x y",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "The same name can be free in one place and bound in another. Here the first $x$ is bound by its λ, and the second is outside it:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "fv: (λx. x y) (λy. x y)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "fv: λf. λx. f (f x)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "α-equivalence",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] α-equivalence\n> Renaming a bound variable, together with every occurrence it binds, gives the same function: $\\lambda x.\\, x$ and $\\lambda y.\\, y$ are both the identity. Terms that differ only so are **α-equivalent**, and are treated as equal. The new name must not be one that is free in the body, or it would be captured: $\\lambda x.\\, y$ (the constant function giving $y$) is not $\\lambda y.\\, y$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`alpha: s, t` decides it, by comparing the terms with their bound names removed (lesson 6 shows how):",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "alpha: λx. λy. x y, λa. λb. a b",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "alpha: λx. y, λy. y",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Free variables follow the definition clause by clause.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- The free variables: FV(x) = {x}, FV(λx. b) = FV(b) \\ {x}, FV(f a) = FV(f) ∪ FV(a). -/\ndef freeVars : Term → List String\n  | var x => [x]\n  | lam x b => (freeVars b).filter (· != x)\n  | app f a => freeVars f ++ freeVars a\n\n#eval freeVars (lam \"x\" (app (var \"x\") (var \"y\")))\n#eval freeVars K\n\n/-- A term is closed (a combinator) when it has no free variables. -/\ndef closed (t : Term) : Bool := (freeVars t).isEmpty\n\nexample : closed K = true := by decide\nexample : closed (lam \"x\" (var \"y\")) = false := by decide",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem freeVars_lam_self (x : String) (b : Term) : x ∉ freeVars (lam x b) := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "A λ binds its own variable: $x$ is never free in $\\lambda x.\\, b$.",
+      "leanSolution": "  simp [freeVars]",
+      "hints": [
+        "Unfold `freeVars`: what does `filter (· != x)` leave out?",
+        "`simp [freeVars]` does it."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Answer `fv` questions with a set, like `{a, b}` (`{}` for none), and `alpha` questions with `true` or `false`.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "fv: λx. x y (λy. y z)",
+      "type": "exercise",
+      "prompt": "Which variables are free in $\\lambda x.\\, x\\ y\\ (\\lambda y.\\, y\\ z)$?",
+      "hints": [
+        "The $y$ inside $\\lambda y$ is bound there; the first $y$ is not under it."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "fv: (λx. λy. x) y",
+      "type": "exercise",
+      "prompt": "Which variables are free in $(\\lambda x.\\, \\lambda y.\\, x)\\ y$?",
+      "hints": [
+        "The last $y$ is the argument, outside both λs."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "alpha: λx. λy. y x, λy. λx. x y",
+      "type": "exercise",
+      "prompt": "Are $\\lambda x.\\, \\lambda y.\\, y\\ x$ and $\\lambda y.\\, \\lambda x.\\, x\\ y$ α-equivalent?",
+      "hints": [
+        "Both take two arguments and apply the second to the first."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "alpha: λx. x y, λy. y y",
+      "type": "exercise",
+      "prompt": "Are $\\lambda x.\\, x\\ y$ and $\\lambda y.\\, y\\ y$ α-equivalent?",
+      "hints": [
+        "Renaming $x$ to $y$ would capture the free $y$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> A λ binds its variable in its body; everything else is free. Bound names can be changed at will, as long as no free variable gets captured. That is α-equivalence, and terms are equal up to it.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

@@ -1,0 +1,169 @@
+{
+  "chalk": 1,
+  "name": "01-state-machines.chalk",
+  "cells": [
+    {
+      "src": "State machines and executions",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Describe a system by its variables, its initial states and its actions; run it step by step; and draw every state it can reach.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Transition system\n> A **state** gives each variable a value. A **transition system** says which states are **initial** and which **steps** from a state to the next are allowed. An **action** is a kind of step: a **guard** (when it may happen) and **updates** (what it changes, all at once). An **execution** is a sequence of states, each a step from the one before; a state is **reachable** when some execution from an initial state gets there.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A system cell lists its parts on separate lines (in a cell, Shift+Enter starts a new line and Enter runs it). A traffic light:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let Light = system(\n  var c in {red, green, yellow}\n  init c = red\n  action go when c = red do c := green\n  action slow when c = green do c := yellow\n  action stop when c = yellow do c := red\n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "trace(Light; go, slow, stop, go)",
+      "showWork": true,
+      "label": null,
+      "stepwise": 0
+    },
+    {
+      "src": "An action whose guard fails cannot be taken; asking for it is an error that says which condition failed.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "trace(Light; slow)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The reachable states",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Two variables: `inc` counts up, `move` moves one unit from `x` to `y`. The graph is drawn in rows, the initial state on top and each row one step further.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let C = system(\n  var x in 0..3\n  var y in 0..3\n  init x = 0 ∧ y = 0\n  action inc when x < 3 do x := x + 1\n  action move when x > 0 ∧ y < 3 do x := x - 1, y := y + 1\n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "states(C)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "reach(C, y = 3)",
+      "showWork": true,
+      "label": null,
+      "stepwise": 0
+    },
+    {
+      "src": "A shortest way to $y = 3$ takes six steps: the search is breadth-first, so the first trace it finds is a shortest one.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The same notions as definitions: a system is its initial predicate and its step relation, and reachability is the least set closed under steps.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- A transition system on states σ: which states are initial, and which steps are allowed. -/\nstructure TS (σ : Type) where\n  init : σ → Prop\n  step : σ → σ → Prop\n\n/-- The states a system can reach: an initial state, or a step from a reachable one. -/\ninductive Reachable {σ : Type} (T : TS σ) : σ → Prop where\n  | init {s : σ} : T.init s → Reachable T s\n  | step {s t : σ} : Reachable T s → T.step s t → Reachable T t",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- A counter that counts up to 3. -/\ndef counter : TS Nat where\n  init s := s = 0\n  step s t := s < 3 ∧ t = s + 1",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem counter_reaches_two : Reachable counter 2 := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that the counter can reach 2: build the execution.",
+      "leanSolution": "  exact .step (.step (.init rfl) ⟨by decide, rfl⟩) ⟨by decide, rfl⟩",
+      "hints": [
+        "Start from `.init rfl` (0 is initial), then take two `.step`s.",
+        "Each step needs a proof of `s < 3 ∧ t = s + 1`: `⟨by decide, rfl⟩`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Answer with a number, `true` or `false`, or a state written as `x = 1 ∧ y = 2`.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "states(Light)",
+      "type": "exercise",
+      "prompt": "How many states can the traffic light reach?",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "trace(C; inc, move, inc)",
+      "type": "exercise",
+      "prompt": "Run `inc`, `move`, `inc` from the initial state of `C`. Which state do you reach?",
+      "hints": [
+        "Updates in one action happen together: `move` takes one from `x` and gives it to `y`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "reach(C, x = 3 ∧ y = 3)",
+      "type": "exercise",
+      "prompt": "Can `C` reach $x = 3, y = 3$?",
+      "hints": [
+        "Count up to 3, move three times, count up again."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> A transition system is states, initial states and steps; actions describe steps by guards and updates. Its reachable states form a graph, and an execution is a path in it from an initial state.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

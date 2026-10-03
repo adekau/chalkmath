@@ -1,0 +1,6 @@
+3	let S = subsets({x, y})	= poset {{}, {y}, {x}, {x,y}}   [the 4 subsets of a 2-element set under inclusion]
+4	join(S, {x}, {y})	= {x,y}   [{x} ∨ {y} = {x,y}]
+7	let TP = product(S, S)	= poset {({}, {}), ({}, {y}), ({}, {x}), ({}, {x,y}), ({y}, {}), ({y}, {y}), ({y}, {x}), ({y}, {x,y}), ({x}, {}), ({x}, {y}), ({x}, {x}), ({x}, {x,y}), ({x,y}, {}), ({x,y}, {y}), ({x,y}, {x}), ({x,y}, {x,y})}   [a product of 4 × 4 = 16 elements]
+8	join(TP, ({x}, {}), ({x}, {x}))	= ({x}, {x})   [({x}, {}) ∨ ({x}, {x}) = ({x}, {x})]
+9	join(TP, ({x}, {x}), ({x}, {}))	= ({x}, {x})   [({x}, {x}) ∨ ({x}, {}) = ({x}, {x})]
+20	join(TP, ({x, y}, {}), ({x}, {x}))	= ({x,y}, {x})

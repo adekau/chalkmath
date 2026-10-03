@@ -1,6 +1,8 @@
 // Lean cells, end to end in Chromium: the bundled notebook (npm run lean-wasm && npm run bundle) opens a
 // notebook with Lean cells, Lean (compiled to wasm, in the browser) checks them, the #eval cell shows the
 // value computed from the cell above, and with the cursor in a proof the Lean goals tab shows its goals.
+// A Lean exercise is judged as Lean checks the reader's proof (a sorry, an error, then a proof), and a
+// lesson of a course with a Lean prelude proves a theorem with one from the lesson before it.
 //   node scripts/smoke-lean-cells.mjs [screenshot.png]
 // Chromium: playwright-core's own, or the executable named by CHROMIUM.
 import { chromium } from "playwright-core";
@@ -29,9 +31,22 @@ const doc = { v: 1, n: "lean-cells.chalk", c: [
   { s: "#eval double 21", t: "lean" },
   { s: "diff(x^2 * sin(x), x)" },
   { s: "theorem and_swap (p q : Prop) (hp : p) (hq : q) : q ∧ p := by\n  constructor\n  · exact hq\n  · exact hp", t: "lean" },
+  { s: "theorem double_eq (n : Nat) : double n = 2 * n := by", t: "exercise", ln: 1, p: "Prove it.", hs: ["Unfold `double`."], lso: "  unfold double\n  omega" },
 ] };
+// a course whose lessons share their Lean: the second proves a theorem with the first's
+const course = { projects: [{ id: "smoke", title: "Smoke course", blurb: "", kind: "course", path: "smoke", leanPrelude: true, lessons: [
+  { file: "one.chalk", title: "One", blurb: "" }, { file: "two.chalk", title: "Two", blurb: "" }] }] };
+const lessons = {
+  "one.chalk": { chalk: 1, name: "one.chalk", scenes: [], cells: [
+    { src: "def triple (n : Nat) : Nat := n + n + n", type: "lean", showWork: false, label: null },
+    { src: "theorem triple_eq (n : Nat) : triple n = 3 * n := by", type: "exercise", lean: true, leanSolution: "  unfold triple\n  omega", showWork: false, label: null }] },
+  "two.chalk": { chalk: 1, name: "two.chalk", scenes: [], cells: [
+    { src: "theorem triple_twice (n : Nat) : triple (triple n) = 9 * n := by", type: "exercise", lean: true, leanSolution: "  rw [triple_eq, triple_eq]\n  omega", showWork: false, label: null }] },
+};
 const browser = await chromium.launch({ ...(process.env.CHROMIUM ? { executablePath: process.env.CHROMIUM } : {}), args: ["--no-sandbox", "--disk-cache-size=100000000"] });   // an HTTP cache too small for the library: the worker's store must keep it
 const page = await browser.newPage({ viewport: { width: 1400, height: 950 } });
+await page.route("**/examples/courses.json*", (r) => r.fulfill({ contentType: "application/json", body: JSON.stringify(course) }));
+await page.route("**/examples/smoke/*", (r) => r.fulfill({ contentType: "application/json", body: JSON.stringify(lessons[new URL(r.request().url()).pathname.split("/").pop()]) }));
 page.on("pageerror", (e) => { if (!/^unsupported/.test(e.message)) console.log(`[page error] ${e.message}`); });   // "unsupported": a VS Code API lean4monaco does not provide, harmless
 // every loading status the page shows, as it shows them
 await page.addInitScript(() => {
@@ -67,6 +82,37 @@ const goals = await page.waitForFunction(() => {
 }, null, { timeout: 30000 }).then((h) => h.jsonValue(), () => false);
 check("the Lean goals tab shows the goals at the cursor", !!goals, goals ? goals.split("\n")[0] : "");
 if (shot) await page.screenshot({ path: shot });
+
+// a Lean exercise: the proof it starts with is a sorry; then an error; then a proof
+const verdict = (re, cell = ".cell.exercise") => page.waitForFunction(([sel, src]) => new RegExp(src).test(document.querySelector(`${sel} .xc-verdict`)?.textContent ?? ""),
+  [cell, re.source], { timeout: 60000 }).then(() => true, () => false);
+check("a Lean exercise starts not proved (its sorry)", await verdict(/Not yet: the proof still has a sorry/));
+/** Replace the reader's proof, line by line (Escape: no completion takes the newline). */
+async function prove(lines, cell = ".cell.exercise") {
+  const b = await page.locator(`${cell} .xc-leanproof`).last().boundingBox();
+  await page.mouse.click(b.x + 80, b.y + 10);
+  await page.keyboard.press("Control+A");
+  for (const [k, l] of lines.entries()) {
+    if (k) { await page.keyboard.press("Escape"); await page.keyboard.press("Enter"); await page.keyboard.press("Home"); await page.keyboard.press("Shift+End"); }
+    await page.keyboard.type(l);
+  }
+  await page.keyboard.press("Escape");
+}
+await prove(["  rfl"]);
+check("a proof Lean rejects is not proved, with Lean's message", await verdict(/Not yet: Lean reports an error/) && await page.locator(".cell.exercise .leanmsg.error").count() > 0);
+await prove(["  unfold double", "  omega"]);
+check("a proof Lean accepts is proved", await verdict(/Proved/));
+check("and the outline marks it", (await page.locator(".olrow.exercise .num").textContent()) === "✓");
+
+// a course with a Lean prelude: lesson two's theorem is proved with lesson one's
+await page.evaluate(() => [...document.querySelectorAll(".menus span")].find((m) => m.textContent === "File")?.click());
+await page.locator(".dropdown .item", { hasText: "Courses and examples" }).click();
+await page.locator(".crscard", { hasText: "Smoke course" }).click();
+await page.locator(".crslesson").nth(1).locator(".crsgo").click();
+await page.locator(".lessonbar .lbwhere", { hasText: "Lesson 2 of 2" }).waitFor({ timeout: 30000 });
+await prove(["  rw [triple_eq, triple_eq]", "  omega"]);
+check("a lesson proves a theorem with the lesson before it's (its Lean prelude)", await verdict(/Proved/));
+await page.locator(".tabbar .tab", { hasText: "lean-cells.chalk" }).click();
 
 // a reload loads Lean from the browser's store, not the network
 fetched.length = 0;

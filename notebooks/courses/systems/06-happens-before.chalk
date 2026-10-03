@@ -1,0 +1,131 @@
+{
+  "chalk": 1,
+  "name": "06-happens-before.chalk",
+  "cells": [
+    {
+      "src": "Happens-before",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Order the events of a distributed computation by what could have influenced what, compute that order with vector clocks, and recognize concurrent events.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Happens-before (Lamport)\n> Event $e$ **happens before** $f$ when $e$ comes earlier on the same process, or $e$ sends a message that $f$ receives, or a chain of these leads from $e$ to $f$. Events neither of which happens before the other are **concurrent**. Happens-before is a partial order.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Two processes; `a1` sends a message received at `b2`, and `b1` one received at `a3`:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let E = events({a1, a2, a3}, {b1, b2}; a1->b2, b1->a3)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "le(E, a1, b2)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "concurrent(E, a2, b2)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Vector clocks",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Vector clock\n> Each event gets a vector with an entry per process: how many of that process's events happen before it or are it. Then $e$ happens before $f$ exactly when $e$'s vector is below $f$'s in every entry.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "clocks({a1, a2, a3}, {b1, b2}; a1->b2, b1->a3)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "$a_2 = (2, 0)$ and $b_2 = (1, 2)$: neither is below the other, so they are concurrent. A process computes its clocks without a global clock: tick its own entry at each event, attach the vector to messages, and on receipt take the entrywise maximum.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> Messages cannot travel back in time: a pattern where an event would happen before itself is not a computation.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "events({a1, a2}, {b1, b2}; a2->b1, b2->a1)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- A vector clock, one entry per process. -/\nabbrev VC := List Nat\n\ndef VC.le (a b : VC) : Prop := a.length = b.length ∧ ∀ i (h₁ : i < a.length) (h₂ : i < b.length), a[i] ≤ b[i]\n\ndef VC.merge (a b : VC) : VC := List.zipWith max a b\n\n#eval VC.merge [2, 0, 1] [1, 3, 1]",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem VC.le_merge_left (a b : VC) (h : a.length = b.length) : VC.le a (VC.merge a b) := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that merging clocks on receipt never goes back: the receiver's old clock is below the merge.",
+      "leanSolution": "  refine ⟨by simp [VC.merge, h], ?_⟩\n  intro i h₁ h₂\n  simp [VC.merge]\n  omega",
+      "hints": [
+        "Two parts: the lengths agree, and each entry is below.",
+        "`simp [VC.merge]` turns an entry of the merge into a `max`; `omega` finishes."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "concurrent(E, a1, b1)",
+      "type": "exercise",
+      "prompt": "Are `a1` and `b1` concurrent?",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "le(E, b1, a3)",
+      "type": "exercise",
+      "prompt": "Does `b1` happen before `a3`?",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Happens-before is the partial order of possible influence; vector clocks compute it locally, and two events are concurrent exactly when their clocks are incomparable.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

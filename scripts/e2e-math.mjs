@@ -8,9 +8,11 @@
 // Then the notebook's teaching features, in a notebook of their own: a cell out of date when a name it
 // read changes, a slider driving the cells below it, work stepped through with the answer held back,
 // an exercise written in its editor and answered (wrong, right, and with the work), a Markdown
-// callout, a function's usage on hover, manipulate (a plot played, a derivative and a column of a plot
-// and a calculation dragged, against the engine's own frames), and a course's lesson opened from the Courses tab,
-// answered, and followed to the next. Each is held to the engine's own answers through a client of the test's.
+// callout, a function's usage on hover, a truth table and a relation's graph, an operation table, a
+// typing tree, a logic exercise, a system typed over several lines, manipulate (a plot played, a
+// derivative and a column of a plot and a calculation dragged, against the engine's own frames), and a
+// course's lesson opened from the Courses tab, answered, and followed to the next. Each is held to the
+// engine's own answers through a client of the test's.
 // Chromium: playwright-core's own, or the executable named by CHROMIUM. The engine: MATHENGINE, or
 // engine/.lake/build/bin/mathengine.
 import { chromium } from "playwright-core";
@@ -31,6 +33,27 @@ const CASES = [
   { src: "[1, 2] ./ [3, 10]", text: "[1/3, 1/5]", step: "Entrywise division" },
   { src: "rref([1,2;2,4])", text: "[1, 2; 0, 0]", step: "Add a multiple of a row" },
   { src: "[1,2] * [1,2]", error: "inner dimensions must match" },
+  // the logic world, and relations in the order world
+  { src: "cnf(p ∨ (q ∧ r))", text: "(p ∨ q) ∧ (p ∨ r)", step: "Distribute" },
+  { src: "taut(p → q)", text: "⊥", step: "False when p = true, q = false" },
+  { src: "∀ n ∈ 1..10, n^2 ≥ 2n", text: "⊥", step: "Check every element" },
+  { src: "let R = rel({a, b, c}; a->b, b->c)", text: "{(a, b), (b, c)}" },
+  { src: "closure(R, transitive)", text: "{(a, b), (b, c), (a, c)}", step: "Transitive closure" },
+  { src: "cnf(p ∨)", error: "expected a formula" },
+  // finite algebra
+  { src: "let FA = op({na, permit, deny}; [na, permit, deny; permit, permit, permit; deny, deny, deny])", text: "[na, permit, deny; permit, permit, permit; deny, deny, deny]" },
+  { src: "fold(FA; na, deny, permit)", text: "deny", step: "Combine" },
+  { src: "let RPS = op({r, p, s}; [r, p, r; p, p, s; r, s, s])", text: "[r, p, r; p, p, s; r, s, s]" },
+  { src: "associative(RPS)", text: "false", step: "Not associative" },
+  // transition systems
+  { src: "let Ct = system(var x in 0..2; init x = 0; action inc when x < 2 do x := x + 1)", text: "system({x}, {inc})" },
+  { src: "invariant(Ct, x ≤ 1)", text: "false", step: "inc (x < 2 holds)" },
+  { src: "ctl(Ct, EF x = 2)", text: "true", step: "Round 1" },
+  // the λ-calculus: a strategy, and the simply typed calculus
+  { src: "cbv: (λx. x) ((λy. y) z)", text: "z", step: "Beta" },
+  { src: "type: λf:A→B. λx:A. f x", text: "(A → B) → A → B", step: "→E (application)" },
+  { src: "infer: S", text: "(α → β → γ) → (α → β) → α → γ", step: "Unify" },
+  { src: "type: λx:A. x x", error: "not a function type" },
 ];
 
 const root = path.resolve(import.meta.dirname, "..");
@@ -279,6 +302,92 @@ async function features() {
   }
   assert.equal(await page.locator(".toast.err").count(), 0, "an explain failed");
   console.log(`✓ explain: ${paths.length} parts of ${negSrc}, each its own subterm`);
+  // a truth table, and a relation's graph with the pairs that break a property marked
+  const runLast = async (src) => {
+    const k = await all().count() - 1;
+    await all().nth(k).locator("input.cellin").fill(src); await all().nth(k).locator("input.cellin").press("Enter");
+    await page.waitForFunction((k) => {
+      const c = document.querySelectorAll(".cell")[k];
+      return c && !c.classList.contains("running") && (c.querySelector(".outval") || c.querySelector(".cellerr"));
+    }, k, { timeout: 30000 });
+    return all().nth(k);
+  };
+  const tt = await runLast("truthtable(p → q)");
+  const ttWant = (await ref("truthtable(p → q)", 8)).visuals.find((v) => v.kind === "logic.truthtable").data;
+  assert.equal(await tt.locator("table.truthtable tbody tr").count(), ttWant.rows.length, "one row per assignment");
+  assert.equal(await tt.locator("table.truthtable tbody tr.ttfalse").count(), ttWant.rows.filter((r) => !r.at(-1)).length, "the false rows are marked");
+  assert.deepEqual(await tt.locator("table.truthtable tbody tr").evaluateAll((trs) => trs.map((tr) => [...tr.children].map((td) => td.textContent === "T"))), ttWant.rows, "the table is the engine's");
+  await runLast("let S = rel({a, b, c}; a->b, b->c)");
+  await ref("let S = rel({a, b, c}; a->b, b->c)", 9);
+  const tr = await runLast("transitive(S)");
+  const trWant = (await ref("transitive(S)", 10)).visuals.find((v) => v.kind === "relation.digraph").data;
+  assert.equal(await tr.locator("svg path.redge").count(), trWant.edges.length, "an arrow per pair");
+  assert.equal(await tr.locator("svg path.redge.bad").count(), trWant.bad.length, "the pairs that break transitivity are marked");
+  const cl = await runLast("closure(S, transitive)");
+  const clWant = (await ref("closure(S, transitive)", 11)).visuals.find((v) => v.kind === "relation.digraph").data;
+  assert.equal(await cl.locator("svg path.redge.added").count(), clWant.added.length, "the closure's pairs are dashed");
+  console.log(`✓ visuals: a truth table of ${ttWant.rows.length} rows, a relation with ${trWant.bad.length} marked and ${clWant.added.length} added`);
+  // an operation's table, with the cells a failing law read marked
+  await runLast("let G = op({na, permit, deny}; [na, permit, deny; permit, permit, permit; deny, deny, deny])");
+  await ref("let G = op({na, permit, deny}; [na, permit, deny; permit, permit, permit; deny, deny, deny])", 12);
+  const cm = await runLast("commutative(G)");
+  const cmWant = (await ref("commutative(G)", 13)).visuals.find((v) => v.kind === "algebra.optable").data;
+  assert.deepEqual(await cm.locator("table.optable tbody tr").evaluateAll((trs) => trs.map((tr) => [...tr.querySelectorAll("td")].map((td) => td.textContent))), cmWant.rows, "the table is the engine's");
+  assert.equal(await cm.locator("table.optable td.opmark").count(), cmWant.marks.length, "the cells that differ are marked");
+  console.log(`✓ operation table: ${cmWant.rows.length}×${cmWant.rows.length}, ${cmWant.marks.length} cells marked where commutativity fails`);
+  // a typing derivation drawn as a proof tree: a judgment per node, its rule beside the bar
+  const ty = await runLast("type: λf:A→B. λx:A. f x");
+  const tyWant = (await ref("type: λf:A→B. λx:A. f x", 14)).visuals.find((v) => v.kind === "typing.tree").data;
+  // in the page a judgment follows its premises, as they sit above it
+  const nodesOf = (n) => [...n.premises.flatMap(nodesOf), n];
+  assert.deepEqual(await ty.locator(".typingtree .ptrule").allTextContents(), nodesOf(tyWant.root).map((n) => n.rule), "a rule per judgment, as the engine derived it");
+  assert.deepEqual(await ty.locator(".typingtree .ptconc").evaluateAll((els) => els.map((e) => e.title)), nodesOf(tyWant.root).map((n) => n.text), "the judgments are the engine's");
+  console.log(`✓ typing tree: ${nodesOf(tyWant.root).length} judgments, rules ${nodesOf(tyWant.root).map((n) => n.rule).join(" ")}`);
+  // a logic exercise: an equivalent answer not in CNF is refused, one in CNF is right
+  const lq = "cnf(p → (q ∧ r))";
+  await menu("Edit", "Add exercise");
+  const lxI = await all().count() - 1;
+  const lx = all().nth(lxI);
+  await lx.locator(".xc-qin").fill(lq);
+  await lx.locator(".xc-qin").press("Enter");
+  await lx.locator(".xc-q .katex").waitFor({ timeout: 30000 });
+  const lanswer = async (a) => {
+    await lx.locator(".xc-in").fill(a); await lx.locator(".xc-in").press("Enter");
+    await page.waitForFunction(([k, a]) => {
+      const c = document.querySelectorAll(".cell")[k];
+      return !c.classList.contains("running") && c.querySelector(".xc-verdict:not(.old)") && c.querySelector(".xc-in")?.value === a;
+    }, [lxI, a], { timeout: 30000 });
+    const engine = await reference.call("engine.check", { sessionId: "e2e-features", cellId: "lq", source: lq, answer: a });
+    return { shown: await lx.locator(".xc-verdict").getAttribute("class"), text: await lx.locator(".xc-verdict").textContent(), engine };
+  };
+  let lv = await lanswer("¬p ∨ (q ∧ r)");
+  assert.equal(lv.engine.equivalent, false, "the engine accepted an answer not in CNF");
+  assert.ok(lv.text.toLowerCase().includes(lv.engine.answer.error.message.toLowerCase()), `the page shows ${JSON.stringify(lv.text)}, not the engine's refusal`);
+  lv = await lanswer("(!p || r) && (!p || q)");
+  assert.equal(lv.engine.equivalent, true, "the engine refused a CNF in another order");
+  assert.match(lv.shown, /right/, `the page did not mark the right answer: ${lv.text}`);
+  assert.match(lv.text, /truth table/, "the verdict does not say how it was decided");
+  console.log("✓ logic exercise: not CNF refused, a CNF in another order accepted by truth table");
+  // a cell of several lines: Shift+Enter starts a new line, Enter runs it; the counterexample's steps are marked on the graph
+  const lines = ["let M = system(", "var p in {idle, crit}", "var lock in bool", "init p = idle ∧ lock = false", "action enter when p = idle do p := crit", "action leave when p = crit do p := idle, lock := false", ")"];
+  await menu("Edit", "Add math cell");
+  const mk = await all().count() - 1;
+  const mcell = all().nth(mk);
+  await mcell.locator(".cellin").click();
+  for (const [k, l] of lines.entries()) {
+    await page.keyboard.type(l);
+    if (k < lines.length - 1) await page.keyboard.press("Shift+Enter");
+  }
+  assert.equal(await mcell.locator("textarea.cellin").inputValue(), lines.join("\n"), "Shift+Enter made a cell of several lines");
+  await page.keyboard.press("Enter");
+  await page.waitForFunction((k) => { const c = document.querySelectorAll(".cell")[k]; return c && !c.classList.contains("running") && (c.querySelector(".outval") || c.querySelector(".cellerr")); }, mk, { timeout: 30000 });
+  const mWant = await ref(lines.join("\n"), 14);
+  assert.equal(mWant.ok, true, `the system: ${mWant.error?.message}`);
+  assert.equal(await mcell.locator(".cellerr").count(), 0, "the system cell shows an error");
+  const inv = await runLast("invariant(M, p = crit → lock = true)");
+  const invWant = (await ref("invariant(M, p = crit → lock = true)", 15)).visuals.find((v) => v.kind === "relation.digraph").data;
+  assert.equal(await inv.locator("svg path.redge.bad").count(), invWant.bad.length, "the counterexample's transitions are marked");
+  console.log(`✓ several lines: a system typed with Shift+Enter, ${invWant.nodes.length} states, a ${invWant.bad.length}-step counterexample marked`);
   await manipulate();
   // a course: the Courses tab, a lesson opened, answered, and followed to the next
   const manifest = JSON.parse(readFileSync(path.join(root, "notebooks/courses.json"), "utf8"));

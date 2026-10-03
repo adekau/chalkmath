@@ -1,0 +1,86 @@
+{
+  "chalk": 1,
+  "name": "13-propagator-network.chalk",
+  "cells": [
+    {
+      "src": "A propagator network in Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Build a running propagator network in Lean: cells as references that merge, propagators as small programs, and a loop that runs them until nothing changes.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A cell is a mutable reference whose writes merge. Writing reports whether the content changed, which is how the scheduler knows when to stop.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- A cell: a mutable reference that only ever grows, by merging. -/\nstructure Cell (α : Type) where\n  ref : IO.Ref α\n\ndef Cell.new {α : Type} (init : α) : IO (Cell α) := do\n  return ⟨← IO.mkRef init⟩\n\ndef Cell.read {α : Type} (c : Cell α) : IO α := c.ref.get\n\n/-- Merge new information into a cell, and say whether it changed. -/\ndef Cell.write {α : Type} [Semilattice α] [DecidableEq α] (c : Cell α) (v : α) : IO Bool := do\n  let old ← c.ref.get\n  let new := merge old v\n  if new = old then return false\n  c.ref.set new\n  return true\n\n/-- A propagator reads some cells and writes one; it says whether it changed anything. -/\nabbrev Propagator := IO Bool\n\n/-- Run every propagator until a whole round changes nothing; the number of rounds. -/\ndef runToFixpoint (ps : List Propagator) : IO Nat := do\n  let mut rounds := 0\n  let mut changed := true\n  while changed do\n    changed := false\n    rounds := rounds + 1\n    for p in ps do\n      if ← p then changed := true\n  return rounds",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A constraint in every direction",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "$x + y = z$ is three propagators: one computes $z$ from $x$ and $y$, the others compute $x$ or $y$ from the rest. Whichever two values become known, the third follows.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- Subtraction, on what is known; a negative difference is a contradiction. -/\ndef Flat.sub : Flat Nat → Flat Nat → Flat Nat\n  | .known t, .known a => if a ≤ t then .known (t - a) else .conflict\n  | .conflict, _ | _, .conflict => .conflict\n  | _, _ => .unknown\n\n/-- x + y = z, in every direction it can be read. -/\ndef sumConstraint (x y z : Cell (Flat Nat)) : List Propagator :=\n  [ do z.write (Flat.add (← x.read) (← y.read)),\n    do y.write (Flat.sub (← z.read) (← x.read)),\n    do x.write (Flat.sub (← z.read) (← y.read)) ]\n\ndef sumExample : IO Unit := do\n  let x ← Cell.new (Flat.known 3)\n  let y ← Cell.new (Flat.unknown : Flat Nat)\n  let z ← Cell.new (Flat.known 10)\n  let rounds ← runToFixpoint (sumConstraint x y z)\n  IO.println s!\"x = {← x.read}, y = {← y.read}, z = {← z.read}  ({rounds} rounds)\"\n\n#eval sumExample",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> Edit `sumExample`: start $z$ at `Flat.known 2` instead. The subtraction $2 - 3$ is impossible, $y$ becomes a contradiction, and the network still stops.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!note] Why the lattice is load-bearing\n> The loop stops because each write either changes nothing or moves a cell up a lattice with no infinite ascending chains, and it gives the same answer in any order because merges are joins. Replace the merge with \"overwrite\" and both guarantees are gone.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem Flat.below_merge (a b : Flat Nat) : a.below (merge a b) := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that merging never loses information: a cell's old content is below its new one.",
+      "leanSolution": "  cases a <;> cases b <;> simp [merge, Flat.merge, Flat.below]\n  rename_i x y\n  by_cases h : x = y <;> simp [h]",
+      "hints": [
+        "Case on both arguments and unfold: `simp [merge, Flat.merge, Flat.below]`.",
+        "One case is left, two known values: split on whether they are equal."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> A propagator network is cells that merge, propagators that read and write them, and a loop that runs until quiescence. Monotone propagators over a lattice make the loop stop, and make its answer independent of the order things run in.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

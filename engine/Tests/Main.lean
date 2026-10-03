@@ -353,6 +353,30 @@ def sessionTests : TestM Unit := do
   (st, r) := ev st "add TWO 3"; check "λ: Church arithmetic" r "λf. λx. f (f (f (f (f x))))"
   (st, r) := ev st "if true a b"; check "λ: Church booleans" r "a"
   (st, r) := ev st "omega omega"; checkTrue "λ: Ω is refused, not looped" (r.startsWith "<error: λ: no normal form") r
+  -- λ-commands: a strategy, the typed calculus; a typed binder prints back as written
+  (st, r) := ev st "cbv: (λx. x) ((λy. y) z)"; check "λ: call by value reduces the argument first" r "z"
+  (st, r) := ev st "type := λx. x"; check "λ: `type :=` is a definition, not a command" r "λx. x"
+  (st, r) := ev st "type: λx:A→B. x"; check "λ: a typed binder" r "(A → B) → A → B"
+  (st, r) := ev st "type: λ(x:A) (y:B). x"; check "λ: binders in parentheses" r "A → B → A"
+  (st, r) := ev st "type: x : A, x : B ⊢ x"; check "λ: a later context entry shadows" r "B"
+  (st, r) := ev st "infer: λf. λx. f (f x)"; check "λ: infer a numeral's type" r "(α → α) → α → α"
+  (st, r) := ev st "alpha: λx. y, λy. y"; check "λ: a free variable is not a bound one" r "⊥"
+  (st, r) := ev st "fv: 3"; checkTrue "λ: fv does not unfold names" (r == "{3}") r
+  (st, r) := ev st "fv 2: x"; checkTrue "λ: a step count only on a reduction" (r.startsWith "<error: fv: takes no step count") r
+  (st, r) := ev st "p ∧ q"; checkTrue "λ: a formula is still logic" (r == "p ∧ q") r
+  -- a definition with no normal form is bound unreduced, and the reduction is cut off by size, not hung
+  (st, r) := ev st "pred := λn. fst (n (λp. pair (snd p) (succ (snd p))) (pair 0 0))"; checkTrue "λ: pred" (r.startsWith "λn.") r
+  (st, r) := ev st "fact := Y (λself. λn. if (iszero n) 1 (mul n (self (pred n))))"; checkTrue "λ: a Y definition is bound unreduced" (r.startsWith "(λf. (λx. f (x x))") r
+  (st, r) := ev st "fact 2"; check "λ: recursion through Y" r "λf. λx. f (f x)"
+  (st, r) := ev st "cbv: fact 1"; checkTrue "λ: call by value unfolds Y until the term is too big" (r.startsWith "<error: λ: no value yet after" && contains r "grown past") r
+  -- printing is linear in a term's depth: forty nested λs and a forty-deep arrow type
+  let deep := (List.range 40).foldr (fun i e => Expr.fn "λ" [.var s!"x{i}", e]) (.var "x0")
+  checkTrue "λ: a deep term prints" ((deep.toLatex false).length > 100)
+  let arrows := (List.range 40).foldr (fun i e => Expr.fn "→" [.var s!"A{i}", e]) (.var "B")
+  checkTrue "λ: a deep type prints" ((arrows.toLatex false).length > 100)
+  check "λ: a typed binder in LaTeX" ((Lam.ATerm.lam "x" (some (.arrow (.base "A") (.base "B"))) (.var "x")).toExpr.toLatex false) "\\lambda x{:}\\left(A \\to B\\right).\\, x"
+  check "λ: a type variable's index is a subscript" ((Lam.Ty.tvar 0).toExpr.toLatex false) "\\tau_{1}"
+  check "λ: a typed term reads back" (match Lam.parseATerm "λf:(A → B). λx:A. f x" with | .ok t => t.text | .error e => e) "λf:(A → B). λx:A. f x"
   (st, r) := ev st "x^2 + y"; check "an ordinary cell is still ordinary" r "x^2 + y"
   -- % output references, numbered like Mathematica's In/Out
   (st, r) := ev st "x^2 + 1"; check "%: seed" r "x^2 + 1"
@@ -635,6 +659,18 @@ def checkTests : TestM Unit := do
   checkTrue "check: λ normal forms up to α" (eqv "add 2 1" "λg. λy. g (g (g y))")
   checkTrue "check: a different λ normal form" (!eqv "add 2 1" "λf. λx. f (f x)")
   checkTrue "check: a λ answer with a redex" (contains (ask "add 2 1" "succ 2") "reduce it to normal form")
+  checkTrue "check: a cbv value, compared as written" (eqv "cbv: (λx. x) (λy. (λz. z) y)" "λa. (λb. b) a")
+  checkTrue "check: not a cbv value" (!eqv "cbv: (λx. x) (λy. (λz. z) y)" "λa. a")
+  checkTrue "check: free variables as a set" (eqv "fv: λx. x y (λy. y z)" "{z, y}")
+  checkTrue "check: free variables, one missing" (!eqv "fv: λx. x y (λy. y z)" "{y}")
+  checkTrue "check: α-equivalence" (eqv "alpha: λx. x, λy. y" "true")
+  checkTrue "check: a type" (eqv "type: λf:A→B. λx:A. f x" "(A -> B) -> A -> B")
+  checkTrue "check: a type is not up to renaming" (!eqv "type: λx:A. x" "B -> B")
+  checkTrue "check: an inferred type up to renaming" (eqv "infer: K" "a -> b -> a")
+  checkTrue "check: an inferred type, too special" (!eqv "infer: K" "a -> a -> a")
+  checkTrue "check: a substitution up to α" (eqv "subst: λy. x y, x := y" "λz. y z")
+  let tree := rpc "engine.evaluate" "{\"sessionId\":\"x\",\"cellId\":\"t\",\"source\":\"type: λx:A. x\"}"
+  checkTrue "λ: type: draws its derivation" (contains tree "\"kind\":\"typing.tree\"" && contains tree "\"rule\":\"→I\"" && contains tree "x : A \\\\vdash x : A") tree
   let noAnswer := rpc "engine.check" "{\"sessionId\":\"x\",\"cellId\":\"e\",\"source\":\"expand((x+1)^2)\",\"showWork\":true}"
   checkTrue "check: without an answer, the solution and its work" (contains noAnswer "\"rendered\":{\"text\":\"x^2 + 2*x + 1\"" && contains noAnswer "\"derivation\"" && !contains noAnswer "\"equivalent\"") noAnswer
   -- a check is not an evaluation: no label, no binding, and % is untouched
@@ -645,8 +681,77 @@ def checkTests : TestM Unit := do
   let (_, praw) := handleS st (req "3" "engine.evaluate" "{\"sessionId\":\"p\",\"cellId\":\"b\",\"source\":\"%\"}")
   checkTrue "check: % is the last evaluation's" (contains praw "\"text\":\"x^3\"" && contains praw "\"label\":2") praw
 
+/-- The logic world and relations: the steps the normal forms take, the witnesses, the visuals. -/
+def logicRelTests : TestM Unit := do
+  let ev (src : String) := rpc "engine.evaluate" s!"\{\"sessionId\":\"lg\",\"cellId\":\"c\",\"source\":\"{src}\",\"showWork\":true}"
+  checkTrue "logic: cnf distributes, one law a step" (contains (ev "cnf(p ∨ (q ∧ r))") "\"rule\":\"logic.distribute\"")
+  checkTrue "logic: nnf names De Morgan" (contains (ev "nnf(¬(p ∧ q))") "\"rule\":\"logic.de-morgan\"")
+  checkTrue "logic: taut's counterexample row" (contains (ev "taut(p → q)") "false when p = true, q = false")
+  checkTrue "logic: equiv's distinguishing row" (contains (ev "equiv(p → q, q → p)") "they differ when p = true, q = false")
+  checkTrue "logic: a truth table is a visual" (contains (ev "truthtable(p ∧ q)") "\"kind\":\"logic.truthtable\"")
+  checkTrue "logic: a truth table's rows" (contains (ev "truthtable(p ∧ q)") "\"rows\":[[true,true,true],[true,false,false],[false,true,false],[false,false,false]]")
+  checkTrue "logic: a ∀ names its counterexample" (contains (ev "∀ n ∈ 1..10, n^2 ≥ 2n") "at $n = 1$")
+  checkTrue "logic: an ∃ names its witness" (contains (ev "∃ n ∈ {4, 6, 9, 11}, prime(n)") "at $n = 11$")
+  checkTrue "logic: a λ-cell stays a λ-cell" (contains (ev "(λx. x) y") "\"kind\":\"lambda\"")
+  checkTrue "logic: a math cell stays a math cell" (contains (ev "diff(x^2, x)") "\"text\":\"2*x\"")
+  let (st, _) := sessionEval [] "let R = rel({a, b, c}; a->b, b->c)"
+  let (_, traw) := handleS st "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"engine.evaluate\",\"params\":{\"sessionId\":\"t\",\"cellId\":\"x\",\"source\":\"transitive(R)\",\"showWork\":true}}"
+  checkTrue "relations: the pairs that break transitivity are marked" (contains traw "\"bad\":[[\"a\",\"b\"],[\"b\",\"c\"]]") traw
+  let (_, craw) := handleS st "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"engine.evaluate\",\"params\":{\"sessionId\":\"t\",\"cellId\":\"y\",\"source\":\"closure(R, transitive)\",\"showWork\":true}}"
+  checkTrue "relations: a closure marks what it added, a round a step" (contains craw "\"added\":[[\"a\",\"c\"]]" && contains craw "\"rule\":\"rel.transitive-closure\"") craw
+  -- exercises in these worlds
+  let ask (q a : String) := rpc "engine.check" s!"\{\"sessionId\":\"x\",\"cellId\":\"e\",\"source\":\"{q}\",\"answer\":\"{a}\"}"
+  let eqv (q a : String) := contains (ask q a) "\"equivalent\":true"
+  checkTrue "check logic: a CNF" (eqv "cnf(p → (q ∧ r))" "(¬p ∨ q) ∧ (¬p ∨ r)")
+  checkTrue "check logic: equivalent but not CNF" (contains (ask "cnf(p → (q ∧ r))" "¬p ∨ (q ∧ r)") "the answer must be in CNF")
+  checkTrue "check logic: a CNF of something else" (!eqv "cnf(p → (q ∧ r))" "(¬p ∨ q) ∧ (p ∨ r)")
+  checkTrue "check logic: a tautology is true" (eqv "taut(p ∨ ¬p)" "true" && !eqv "taut(p ∨ ¬p)" "⊥")
+  checkTrue "check logic: any satisfying assignment" (eqv "sat(p ∧ ¬q)" "p ∧ ¬q" && !eqv "sat(p ∧ ¬q)" "p")
+  checkTrue "check logic: unsatisfiable is ⊥" (eqv "sat(p ∧ ¬p)" "false")
+  checkTrue "check logic: an equivalent formula" (eqv "p → q" "¬p ∨ q" && !eqv "p → q" "q → p")
+  checkTrue "check logic: a bounded ∀" (eqv "∀ x ∈ 1..5, x < 6" "true")
+  let req (id src : String) := s!"\{\"jsonrpc\":\"2.0\",\"id\":{id},\"method\":\"engine.evaluate\",\"params\":\{\"sessionId\":\"r\",\"cellId\":\"d{id}\",\"source\":\"{src}\"}}"
+  let (st, _) := handleS [] (req "1" "let R = rel({a, b, c}; a->b, b->c)")
+  let (st, _) := handleS st (req "2" "let K = kernel({r1, r2, r3, r4}; r1->k1, r2->k1, r3->k2, r4->k2)")
+  let askR (q a : String) := (handleS st s!"\{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"engine.check\",\"params\":\{\"sessionId\":\"r\",\"cellId\":\"q\",\"source\":\"{q}\",\"answer\":\"{a}\"}}").2
+  let eqvR (q a : String) := contains (askR q a) "\"equivalent\":true"
+  checkTrue "check relations: a closure's pairs, in any order or notation" (eqvR "closure(R, transitive)" "a->b, b->c, a->c" && eqvR "closure(R, transitive)" "(a, c), (a, b), (b, c)")
+  checkTrue "check relations: a closure missing a pair" (!eqvR "closure(R, transitive)" "a->b, b->c")
+  checkTrue "check relations: a property" (eqvR "transitive(R)" "false" && !eqvR "transitive(R)" "true")
+  checkTrue "check relations: classes, in any order" (eqvR "classes(K)" "{r2, r1}, {r3, r4}" && !eqvR "classes(K)" "{r1}, {r2, r3, r4}")
+
+/-- Finite algebra (`Algebra.lean`): the tables and contexts the notebook draws, the cells a failing law
+marks, and elements written as pairs or sets. -/
+def algebraTests : TestM Unit := do
+  let req (id src : String) := s!"\{\"jsonrpc\":\"2.0\",\"id\":{id},\"method\":\"engine.evaluate\",\"params\":\{\"sessionId\":\"a\",\"cellId\":\"c{id}\",\"source\":\"{src}\",\"showWork\":true}}"
+  let (st, opRaw) := handleS [] (req "1" "let F = op({na, permit, deny}; [na, permit, deny; permit, permit, permit; deny, deny, deny])")
+  checkTrue "algebra: an operation is drawn as its table" (contains opRaw "\"kind\":\"algebra.optable\"" && contains opRaw "\"rows\":[[\"na\",\"permit\",\"deny\"],[\"permit\",\"permit\",\"permit\"],[\"deny\",\"deny\",\"deny\"]]") opRaw
+  let (st, cRaw) := handleS st (req "2" "commutative(F)")
+  checkTrue "algebra: a failing law marks the two cells that differ" (contains cRaw "\"marks\":[[\"permit\",\"deny\"],[\"deny\",\"permit\"]]" && contains cRaw "\"rule\":\"alg.commutative\"") cRaw
+  let (st, fRaw) := handleS st (req "3" "fold(F; na, deny, permit)")
+  checkTrue "algebra: a fold is a step per element" (contains fRaw "\"text\":\"deny\"" && contains fRaw "\"rule\":\"alg.fold\"") fRaw
+  let (st, _) := handleS st (req "4" "let Lv = poset({low, high}; low < high)")
+  let (st, _) := handleS st (req "5" "let Cat = subsets({fin, hr})")
+  let (st, _) := handleS st (req "6" "let SC = product(Lv, Cat)")
+  let (st, jRaw) := handleS st (req "7" "join(SC, (low, {hr, fin}), ( high , {} ))")
+  checkTrue "algebra: pair elements, written with any spacing and set order" (contains jRaw "\"text\":\"(high, {fin,hr})\"") jRaw
+  let (_, xRaw) := handleS st (req "8" "let X = context({duck, dog}, {flies, mammal}; duck->flies, dog->mammal)")
+  checkTrue "algebra: a context is drawn as its cross table" (contains xRaw "\"kind\":\"context.table\"" && contains xRaw "\"has\":[[true,false],[false,true]]") xRaw
+
+/-- The systems world: a system written over several lines, its state graph, a counterexample's
+trace marked on it, and the Kleene iterations of a CTL formula as steps. -/
+def systemsTests : TestM Unit := do
+  let req (id src : String) := s!"\{\"jsonrpc\":\"2.0\",\"id\":{id},\"method\":\"engine.evaluate\",\"params\":\{\"sessionId\":\"s\",\"cellId\":\"c{id}\",\"source\":\"{src}\",\"showWork\":true}}"
+  let (st, defRaw) := handleS [] (req "1" "let C = system(\\n  var x in 0..2\\n  init x = 0\\n  action inc when x < 2 do x := x + 1\\n)")
+  checkTrue "systems: a system over several lines, its graph drawn" (contains defRaw "\"kind\":\"system\"" && contains defRaw "\"edges\":[[\"0\",\"1\"],[\"1\",\"2\"]]") defRaw
+  let (st, invRaw) := handleS st (req "2" "invariant(C, x ≤ 1)")
+  checkTrue "systems: a counterexample's trace is marked on the graph" (contains invRaw "\"bad\":[[\"0\",\"1\"],[\"1\",\"2\"]]") invRaw
+  checkTrue "systems: each step of the trace names its action" (contains invRaw "\"explanation\":\"inc (x < 2 holds): x := x + 1.\"") invRaw
+  let (_, ctlRaw) := handleS st (req "3" "ctl(C, EF x = 2)")
+  checkTrue "systems: a CTL formula's fixed point, a round a step" (contains ctlRaw "\"rule\":\"sys.iterate\"" && contains ctlRaw "\"rule\":\"sys.fixed\"") ctlRaw
+
 def main : IO UInt32 := do
-  let ((), failures) ← (do tests; sessionTests; partStatTests; workTests; checkTests; goldenTests).run #[]
+  let ((), failures) ← (do tests; sessionTests; partStatTests; workTests; checkTests; logicRelTests; algebraTests; systemsTests; goldenTests).run #[]
   for f in failures do
     IO.println s!"FAIL {f.name}\n  expected: {f.expected}\n  actual:   {f.actual}"
   IO.println s!"{failures.size} failures"

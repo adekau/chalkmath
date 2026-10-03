@@ -1,0 +1,9 @@
+4	let Light = system(\n  var c in {red, green, yellow}\n  init c = red\n  action go when c = red do c := green\n  action slow when c = green do c := yellow\n  action stop when c = yellow do c := red\n)	= system({c}, {go, slow, stop})   [1 variable, 3 actions, 3 reachable states]
+5	trace(Light; go, slow, stop, go)	= c = green   [4 steps]
+7	trace(Light; slow)	✗ slow is not enabled in red (c = green fails)
+10	let C = system(\n  var x in 0..3\n  var y in 0..3\n  init x = 0 ∧ y = 0\n  action inc when x < 3 do x := x + 1\n  action move when x > 0 ∧ y < 3 do x := x - 1, y := y + 1\n)	= system({x, y}, {inc, move})   [2 variables, 2 actions, 16 reachable states]
+11	states(C)	= 16   [16 reachable states, 21 transitions]
+12	reach(C, y = 3)	= true   [reachable in 6 steps]
+21	states(Light)	= 3
+22	trace(C; inc, move, inc)	= x = 1 ∧ y = 1
+23	reach(C, x = 3 ∧ y = 3)	= true

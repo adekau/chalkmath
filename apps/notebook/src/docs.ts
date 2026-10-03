@@ -187,6 +187,17 @@ Type an answer in the box as you would in a cell (‹2x sin(x) + x^2 cos(x)›) 
 Add an exercise from Edit › Add exercise or the ‹▾› between cells. Its editor has a **prompt** (Markdown, what the reader is asked to do), the **question**, and **hints** (a blank line between two). The question is shown typeset under the prompt unless you untick that, for a prompt that says it in words ("the slope of $x^3$ at $x = 2$" for ‹subst(diff(x^3, x), x, 2)›). **✎ Edit** opens the editor again; **✓ Done** (or Shift+Enter) closes it.
 
 An exercise is not an evaluation: it takes no ‹In[n]› and ‹%› still means the cell before it. It sees the names defined above it, so a question can use them.
+
+## Lean exercises
+
+A **Lean exercise** asks for a proof. Its statement is Lean, such as ‹theorem and_swap (p q : Prop) (h : p ∧ q) : q ∧ p := by›, and you write the proof below it, in a Lean editor of its own. You cannot change the statement. Lean checks your proof as you type, with the notebook's Lean cells above it in scope; with the cursor in the proof, the panel's **Lean goals** tab shows what is left to prove.
+
+- It starts as ‹sorry›, which Lean accepts as "not proved yet": the exercise says so until the proof has none.
+- When Lean rejects the proof, its message shows under the editor.
+- **✓ Proved** means Lean accepts the declaration, statement and proof, with nothing left as ‹sorry›.
+- **Show a proof** shows the author's, to compare with yours.
+
+Add one from Edit › Add Lean exercise or the ‹▾› between cells. Its editor has the prompt, the **statement** (ending with ‹:= by›), the **starting proof** (indented; ‹sorry› if empty), **a proof** of your own, and the hints. Your proof is required for a notebook that ships with ChalkMath: CI checks it (‹scripts/notebooks/check-lean.mjs›).
 `],
   },
   {
@@ -355,6 +366,8 @@ The page writes only the storyboard; rendering the video is Manim's job, outside
 Notebooks that come with ChalkMath, grouped into **projects**: a **course** is a sequence of lessons that build on each other, with exercises the engine checks; a **collection** is notebooks to explore in any order. File › Courses and examples opens the **Courses** tab, which lists them all.
 
 A lesson opens in its own tab with a bar above it: the course it belongs to, where it is in it, how many of its exercises you have answered, and **‹ Previous** and **Next ›**. The Courses tab remembers, in this browser, which lessons you have opened and finished. Change anything in a lesson; File › Save keeps your copy.
+
+In a course that builds one Lean development across its lessons, each lesson's Lean sees the Lean of the lessons before it: their Lean cells, and their Lean exercises with the author's proofs. So a definition from lesson 1, or a theorem proved there, can be used in lesson 3.
 `, { insert: "examples" }],
   },
   {

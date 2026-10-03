@@ -1,0 +1,303 @@
+{
+  "chalk": 1,
+  "name": "07-church.chalk",
+  "cells": [
+    {
+      "src": "Church encodings",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Represent booleans, natural numbers, pairs and lists as functions, compute with them by reduction, and write new operations.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Booleans",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Church booleans\n> $\\mathsf{true} = \\lambda t.\\, \\lambda f.\\, t$ and $\\mathsf{false} = \\lambda t.\\, \\lambda f.\\, f$: a boolean chooses one of two things. Then $\\mathsf{if}\\ b\\ x\\ y$ is just $b\\ x\\ y$, and $\\mathsf{not}\\ b = b\\ \\mathsf{false}\\ \\mathsf{true}$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The library has `true`, `false`, `if`, `not`, `and`, `or`. Names are unfolded in one δ-step; the result is read back when it is a boolean or a numeral.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "if true a b",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "and true false",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A definition, `name := term`, is there for the cells after it:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "xor := λp. λq. p (not q) q",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "xor true false",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "xor true true",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "$\\mathsf{false}$ and $0$ are the same term, $\\lambda t.\\, \\lambda f.\\, f$: the reading names it as the numeral.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Numbers",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Church numerals\n> $n$ is the function that applies $f$ to $x$ $n$ times: $0 = \\lambda f.\\, \\lambda x.\\, x$, $1 = \\lambda f.\\, \\lambda x.\\, f\\ x$, $2 = \\lambda f.\\, \\lambda x.\\, f\\ (f\\ x)$. Then $\\mathsf{succ}\\ n$ applies $f$ once more, $\\mathsf{add}\\ m\\ n$ applies it $n$ times and then $m$ times, and $\\mathsf{mul}\\ m\\ n$ applies \"$f$ $n$ times\" $m$ times.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "succ 2",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "add 2 3",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "mul 2 3",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "pow 2 3",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A function that applies its argument twice is the numeral 2, and applying it to itself applies four times:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "twice := λf. λx. f (f x)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "twice twice succ 0",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Pairs, and the predecessor",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Pairs\n> $\\mathsf{pair}\\ a\\ b = \\lambda s.\\, s\\ a\\ b$ holds $a$ and $b$ until a selector comes: $\\mathsf{fst}\\ p = p\\ \\mathsf{true}$ and $\\mathsf{snd}\\ p = p\\ \\mathsf{false}$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "fst (pair a b)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "Subtracting one is hard: a numeral can only apply $f$, never undo it. Kleene's trick counts up with pairs, $(0, 0) \\to (0, 1) \\to (1, 2) \\to \\cdots$, keeping the previous number in the first place. After $n$ steps the first place holds $n - 1$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "pred := λn. fst (n (λp. pair (snd p) (succ (snd p))) (pair 0 0))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "pred 3",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "sub := λm. λn. n pred m",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "sub 3 1",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "iszero (pred 1)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Lists",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Church lists\n> A list is its own fold: given what to do with a head and the rest ($c$) and what to give for the empty list ($n$), it does it. $\\mathsf{nil} = \\lambda c.\\, \\lambda n.\\, n$ and $\\mathsf{cons}\\ h\\ t = \\lambda c.\\, \\lambda n.\\, c\\ h\\ (t\\ c\\ n)$, so $[1, 2]$ is $\\lambda c.\\, \\lambda n.\\, c\\ 1\\ (c\\ 2\\ n)$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "nil := λc. λn. n",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "cons := λh. λt. λc. λn. c h (t c n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "($\\mathsf{nil}$ is $\\lambda c.\\, \\lambda n.\\, n$ again: the same term as $0$ and $\\mathsf{false}$.) Folding with $\\mathsf{add}$ from $0$ sums a list, and counting the heads gives its length:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "cons 1 (cons 2 nil) add 0",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "length := λl. l (λh. λr. succ r) 0",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "length (cons a (cons b (cons c nil)))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Lean is typed, so a Church numeral is used at one type at a time; inside that type it is iteration.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- The Church numeral n at one type: apply f to x, n times. -/\ndef church {α : Type} : Nat → (α → α) → α → α\n  | 0, _, x => x\n  | n + 1, f, x => f (church n f x)\n\n#eval church 3 (· + 1) 0\n#eval church 3 (· ++ \"!\") \"hi\"",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem church_add {α : Type} (f : α → α) (x : α) : ∀ m n, church (m + n) f x = church m f (church n f x) := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Adding numerals is composing: $m + n$ applications are $n$ and then $m$ more. Prove it by induction on $m$.",
+      "leanSolution": "  intro m n\n  induction m with\n  | zero => simp [church]\n  | succ k ih => rw [Nat.succ_add]; simp [church, ih]",
+      "hints": [
+        "`intro m n`, then `induction m with`.",
+        "In the successor case `(k + 1) + n` is not syntactically `(k + n) + 1`: rewrite with `Nat.succ_add` first, then `simp [church, ih]`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "pred 2",
+      "type": "exercise",
+      "prompt": "Reduce $\\mathsf{pred}\\ 2$. Answer with a numeral, or the λ-term.",
+      "hints": [
+        "Two steps of the pair counter: $(0, 0) \\to (0, 1) \\to (1, 2)$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "pow 2 2",
+      "type": "exercise",
+      "prompt": "Reduce $\\mathsf{pow}\\ 2\\ 2$.",
+      "hints": [
+        "$2^2$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "or false (not false)",
+      "type": "exercise",
+      "prompt": "Reduce $\\mathsf{or}\\ \\mathsf{false}\\ (\\mathsf{not}\\ \\mathsf{false})$. Answer `true` or `false`.",
+      "hints": [
+        "$\\mathsf{not}\\ \\mathsf{false}$ is $\\mathsf{true}$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "snd (pair 1 (succ 1))",
+      "type": "exercise",
+      "prompt": "Reduce $\\mathsf{snd}\\ (\\mathsf{pair}\\ 1\\ (\\mathsf{succ}\\ 1))$.",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "cons 1 (cons 1 (cons 1 nil)) add 0",
+      "type": "exercise",
+      "prompt": "Sum the list $[1, 1, 1]$: reduce $\\mathsf{cons}\\ 1\\ (\\mathsf{cons}\\ 1\\ (\\mathsf{cons}\\ 1\\ \\mathsf{nil}))\\ \\mathsf{add}\\ 0$.",
+      "hints": [
+        "The list puts $\\mathsf{add}$ between its elements and $0$ at the end: $1 + (1 + (1 + 0))$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> With functions alone: booleans choose, numerals iterate, pairs wait for a selector, lists are their own folds. Arithmetic is composition of iterations, and the predecessor is a counter carried in a pair.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

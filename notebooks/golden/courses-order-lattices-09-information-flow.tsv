@@ -1,0 +1,11 @@
+3	let Lv = poset({low, high}; low < high)	= poset {low, high}   [a poset with 2 elements]
+4	let Cat = subsets({fin, hr})	= poset {{}, {hr}, {fin}, {fin,hr}}   [the 4 subsets of a 2-element set under inclusion]
+5	let SC = product(Lv, Cat)	= poset {(low, {}), (low, {hr}), (low, {fin}), (low, {fin,hr}), (high, {}), (high, {hr}), (high, {fin}), (high, {fin,hr})}   [a product of 2 × 4 = 8 elements]
+6	lattice(SC)	= true   [a lattice]
+9	join(SC, (low, {fin}), (high, {}))	= (high, {fin})   [(low, {fin}) ∨ (high, {}) = (high, {fin})]
+10	join(SC, (high, {hr}), (low, {fin}))	= (high, {fin,hr})   [(high, {hr}) ∨ (low, {fin}) = (high, {fin,hr})]
+13	let Fl = rel({salary, report, audit}; salary->report, report->audit)	= {(salary, report), (report, audit)}   [a relation on 3 elements with 2 pairs]
+14	secure(SC, Fl; salary->(high, {hr}), report->(high, {hr, fin}), audit->(low, {fin}))	= false   [insecure: report → audit flows down]
+16	secure(SC, Fl; salary->(high, {hr}), report->(high, {hr, fin}), audit->(high, {hr, fin}))	= true   [secure: every flow goes up]
+23	join(SC, (low, {fin}), (high, {hr}))	= (high, {fin,hr})
+24	le(SC, (high, {}), (low, {fin}))	= false

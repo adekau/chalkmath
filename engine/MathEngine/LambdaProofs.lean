@@ -10,7 +10,7 @@ Two facts the notebook relies on, both Init-only:
 * `readChurch_church`: the reader that labels a normal form "the Church numeral n" is right on the
   numerals the engine itself builds.
 
-Not yet proved: that `freshen` preserves α-equivalence, hence that a β-step under an α-renaming
+Not yet proved: that `freshen` (via `renameFor`) preserves α-equivalence, hence that a β-step under an α-renaming
 is a β-step of the original; and that the de Bruijn view commutes with β. The notebook reports the
 β-steps as unverified for that reason.
 -/
@@ -63,6 +63,27 @@ theorem readChurch_go_church : ∀ n, readChurch.go "f" "x" (church.go n) = some
 /-- The reading "the Church numeral n" is right on the numerals the engine builds. -/
 theorem readChurch_church (n : Nat) : readChurch (church n) = some n := by
   simp [church, readChurch, readChurch_go_church]
+
+end Lam
+end MathEngine
+
+namespace MathEngine
+namespace Lam
+
+/-- An η-step is taken only on `λx. f x` with `x` not free in `f`, and it gives `f`. -/
+theorem etaRedex_spec {t f : Term} (h : etaRedex t = some f) :
+    ∃ x, t = .lam x (.app f (.var x)) ∧ x ∉ freeVars f := by
+  unfold etaRedex at h
+  split at h
+  · rename_i x g y
+    split at h
+    · rename_i hc
+      simp only [Bool.and_eq_true, beq_iff_eq, Bool.not_eq_eq_eq_not, Bool.not_true] at hc
+      obtain ⟨rfl, hx⟩ := hc
+      cases h
+      exact ⟨y, rfl, fun hm => by simp [List.contains_iff_mem, hm] at hx⟩
+    · cases h
+  · cases h
 
 end Lam
 end MathEngine

@@ -43,11 +43,11 @@
 87	sup(E, c, d)	✗ c and d have no join: the upper bounds {e, f, g} have no least element
 93	let dbl = map(D; 1 -> 2, 2 -> 4, 3 -> 6, 6 -> 12)	= {1↦2, 2↦4, 3↦6, 6↦12}   [a map on D (4 explicit values; other elements are fixed)]
 94	monotone(D, dbl)	= true   [monotone]
-96	let k = map(D; 2 -> 3)	= {2↦3}   [a map on D (1 explicit values; other elements are fixed)]
+96	let k = map(D; 2 -> 3)	= {2↦3}   [a map on D (1 explicit value; other elements are fixed)]
 97	monotone(D, k)	= false   [not monotone at 2 ≤ 4]
 99	let one = map(D; 2 -> 1, 3 -> 1, 4 -> 1, 6 -> 1, 12 -> 1)	= {2↦1, 3↦1, 4↦1, 6↦1, 12↦1}   [a map on D (5 explicit values; other elements are fixed)]
 100	monotone(D, one)	= true   [monotone]
-101	let idD = map(D; 1 -> 1)	= {1↦1}   [a map on D (1 explicit values; other elements are fixed)]
+101	let idD = map(D; 1 -> 1)	= {1↦1}   [a map on D (1 explicit value; other elements are fixed)]
 102	monotone(D, idD)	= true   [monotone]
 104	let comp = map(D; 1 -> 12, 2 -> 6, 3 -> 4, 4 -> 3, 6 -> 2, 12 -> 1)	= {1↦12, 2↦6, 3↦4, 4↦3, 6↦2, 12↦1}   [a map on D (6 explicit values; other elements are fixed)]
 105	monotone(D, comp)	= false   [not monotone at 1 ≤ 2]

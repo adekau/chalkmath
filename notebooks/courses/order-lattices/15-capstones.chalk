@@ -1,0 +1,85 @@
+{
+  "chalk": 1,
+  "name": "15-capstones.chalk",
+  "cells": [
+    {
+      "src": "Capstones: Sudoku and type inference",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Solve a Sudoku and infer the types of a small program with the same machinery: cells of partial information, merges that are joins, and propagators run to a fixed point.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Sudoku",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Each square holds the set of digits still possible: a lattice ordered by reverse inclusion, where merging intersects. A square whose set is down to one digit removes that digit from its **peers**, the squares sharing its row, column or box. Here is a 4×4 grid; candidates are bits, so intersection is bitwise and.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- The candidates for one Sudoku square, as bits: bit d - 1 set when d is still possible. -/\nstructure Cands where\n  mask : Nat\n  deriving Repr, DecidableEq, Inhabited\n\ninstance : Semilattice Cands where\n  merge a b := ⟨a.mask &&& b.mask⟩\n  merge_comm a b := by rw [Nat.and_comm]\n  merge_assoc a b c := by simp only [Nat.and_assoc]\n  merge_idem a := by simp only [Nat.and_self]\n\ndef Cands.digits (c : Cands) : List Nat :=\n  (List.range 4).filterMap fun i => if c.mask &&& (1 <<< i) != 0 then some (i + 1) else none\n\n/-- The squares sharing a row, a column or a 2×2 box with square i of a 4×4 grid. -/\ndef peers (i : Nat) : List Nat :=\n  (List.range 16).filter fun j => j != i && (j / 4 == i / 4 || j % 4 == i % 4 || (j / 8 == i / 8 && j % 4 / 2 == i % 4 / 2))\n\n/-- One round: every square whose digit is known removes it from its peers. -/\ndef eliminate (g : Array Cands) : Array Cands :=\n  (List.range 16).foldl (fun g i =>\n    match (g[i]!).digits with\n    | [d] => (peers i).foldl (fun g j => g.set! j (merge g[j]! ⟨15 - (1 <<< (d - 1))⟩)) g\n    | _ => g) g\n\n/-- Rounds until nothing changes (at most n). -/\ndef solve (g : Array Cands) : Nat → Array Cands\n  | 0 => g\n  | n + 1 => let g' := eliminate g; if g' = g then g else solve g' n\n\ndef puzzle : List Nat := [1, 0, 0, 0,  0, 0, 3, 0,  0, 4, 0, 0,  0, 0, 0, 2]\ndef grid (p : List Nat) : Array Cands := (p.map fun d => if d == 0 then (⟨15⟩ : Cands) else ⟨1 <<< (d - 1)⟩).toArray\n\ndef showGrid (g : Array Cands) : String :=\n  String.intercalate \"\\n\" ((List.range 4).map fun r => String.intercalate \" \" ((List.range 4).map fun c =>\n    match (g[r * 4 + c]!).digits with | [d] => toString d | _ => \".\"))\n\n#eval IO.println (showGrid (solve (grid puzzle) 20))",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> Change `puzzle`: remove a clue and see which squares stay undecided (shown as `.`). Elimination alone does not solve every Sudoku; the book adds a second propagator (\"the only place a digit can go in a unit\") and, for hard ones, search.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem every_square_has_seven_peers : (List.range 16).all (fun i => (peers i).length == 7) = true := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Check that every square of a 4×4 grid has seven peers: three in its row, three in its column, and one more in its box.",
+      "leanSolution": "  decide",
+      "hints": [
+        "The statement is a finite computation: `decide` runs it."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Type inference by propagation",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A type checker can work the same way: a cell per expression holding what is known of its type, in the flat lattice (unknown, a type, or a conflict), and a propagator per typing rule. For `e := if c then x + 1 else y`: a condition is a boolean, `+` takes and gives integers, and both branches have the type of the result.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "inductive Ty where\n  | int | bool\n  deriving Repr, DecidableEq\n\ninstance : ToString Ty := ⟨fun | .int => \"int\" | .bool => \"bool\"⟩\n\n/-- a and b have the same type: whatever is known of one is known of the other. -/\ndef sameType (a b : Cell (Flat Ty)) : List Propagator :=\n  [ do a.write (← b.read), do b.write (← a.read) ]\n\ndef inferExample : IO Unit := do\n  let c ← Cell.new (Flat.unknown : Flat Ty)\n  let x ← Cell.new (Flat.unknown : Flat Ty)\n  let y ← Cell.new (Flat.unknown : Flat Ty)\n  let e ← Cell.new (Flat.unknown : Flat Ty)\n  let plus1 ← Cell.new (Flat.unknown : Flat Ty)\n  let ps : List Propagator :=\n    [ do c.write (.known .bool),          -- a condition is a bool\n      do x.write (.known .int),           -- x + 1 adds ints\n      do plus1.write (.known .int) ] ++   -- and gives an int\n    sameType plus1 e ++ sameType y e      -- the branches have the result's type\n  let rounds ← runToFixpoint ps\n  IO.println s!\"c : {← c.read}, x : {← x.read}, y : {← y.read}, e : {← e.read}  ({rounds} rounds)\"\n\n#eval inferExample",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The type of `y` was never written down: it flowed from `x + 1` through `e`. A program that used `y` as a boolean too would drive its cell to `conflict`: a type error, found by the same fixed point.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Sudoku and type inference are both \"partial information, merged and propagated to a fixed point\". The lattice makes the merges order-independent and the loop terminate; the propagators carry the problem's rules. That is the whole of the propagator model, from the first lesson's partial orders to a working solver.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

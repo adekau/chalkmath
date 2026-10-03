@@ -1,0 +1,126 @@
+{
+  "chalk": 1,
+  "name": "07-convergence.chalk",
+  "cells": [
+    {
+      "src": "Multisets, folds and the main theorem",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> State and prove the main theorem: replicas that have received the same updates, in any order and with any repetitions, are in the same state. Along the way, learn quotient types.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Each earlier lesson ended with replicas agreeing after scrambled deliveries; none proved they must. A replica receives a *sequence* of updates, but what should matter is the *collection* of them, order and repetition being noise. The honest type for that is a **quotient**: lists modulo permutation are multisets.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!theorem] Strong eventual consistency\n> For any state-based CRDT, folding the join over two delivery sequences with the same members gives the same state. Order does not matter (commutativity and associativity), and repeats do not matter (idempotence).",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "On a small table, any order and any repetition of the same updates:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let Mx = op({0, 1, 2, 3}; [0, 1, 2, 3; 1, 1, 2, 3; 2, 2, 2, 3; 3, 3, 3, 3])",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "fold(Mx; 1, 3, 2)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "fold(Mx; 2, 2, 1, 3, 1)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/- ============================================================\n   Crdt.Perm and Crdt.MSet — Chapter 8: Multisets, Folds, and\n   the Main Theorem.\n   What a replica has received is a *multiset* of updates: order\n   must not matter. A multiset is a quotient of lists by\n   permutation — the reader's first quotient type.\n   ============================================================ -/\n\n/-- Permutation of lists, hand-rolled (the stdlib has `List.Perm`;\n    series rule: understand every axiom, so we build our own). -/\ninductive Perm {α : Type} : List α → List α → Prop where\n  | nil : Perm [] []\n  | cons (x : α) {l₁ l₂ : List α} (h : Perm l₁ l₂) : Perm (x :: l₁) (x :: l₂)\n  | swap (x y : α) (l : List α) : Perm (x :: y :: l) (y :: x :: l)\n  | trans {l₁ l₂ l₃ : List α} (h₁ : Perm l₁ l₂) (h₂ : Perm l₂ l₃) :\n      Perm l₁ l₃\n\nnamespace Perm\n\nvariable {α : Type}\n\ntheorem refl : ∀ (l : List α), Perm l l\n  | [] => .nil\n  | x :: t => .cons x (refl t)\n\ntheorem symm {l₁ l₂ : List α} (h : Perm l₁ l₂) : Perm l₂ l₁ := by\n  induction h with\n  | nil => exact .nil\n  | cons x _ ih => exact .cons x ih\n  | swap x y l => exact .swap y x l\n  | trans _ _ ih₁ ih₂ => exact .trans ih₂ ih₁\n\n/-- Permutation preserves membership (so it preserves the *set* of\n    updates — only arrangement is forgotten). -/\ntheorem mem_iff {l₁ l₂ : List α} (h : Perm l₁ l₂) (x : α) :\n    x ∈ l₁ ↔ x ∈ l₂ := by\n  induction h with\n  | nil => exact Iff.rfl\n  | cons y _ ih => simp [List.mem_cons, ih]\n  | swap y z l =>\n      simp only [List.mem_cons]\n      constructor\n      · intro h\n        rcases h with h | h | h\n        · exact Or.inr (Or.inl h)\n        · exact Or.inl h\n        · exact Or.inr (Or.inr h)\n      · intro h\n        rcases h with h | h | h\n        · exact Or.inr (Or.inl h)\n        · exact Or.inl h\n        · exact Or.inr (Or.inr h)\n  | trans _ _ ih₁ ih₂ => exact ih₁.trans ih₂\n\nend Perm\n\n/-- Lists-up-to-permutation form a setoid; `≈` now means `Perm`. -/\ninstance permSetoid (α : Type) : Setoid (List α) where\n  r := Perm\n  iseqv := ⟨Perm.refl, Perm.symm, Perm.trans⟩",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/- ── Warm-up: the integers as a quotient of ℕ × ℕ ─────────────\n   Every quotient move the multiset needs — `Quotient.mk`, `lift`,\n   `sound`, `ind` — in the smallest interesting example first. -/\n\nnamespace IntPairs\n\n/-- A \"pre-integer\": the pair `(p, n)` intends the difference `p − n`. -/\ndef PreInt := Nat × Nat\n\n/-- Same intended difference (stated without subtraction). -/\ndef eqv (a b : PreInt) : Prop := a.1 + b.2 = b.1 + a.2\n\ninstance preIntSetoid : Setoid PreInt where\n  r := eqv\n  iseqv := {\n    refl := fun _ => rfl\n    symm := fun {a b} h => by\n      have h' : a.1 + b.2 = b.1 + a.2 := h\n      show b.1 + a.2 = a.1 + b.2\n      omega\n    trans := fun {a b c} h₁ h₂ => by\n      have h₁' : a.1 + b.2 = b.1 + a.2 := h₁\n      have h₂' : b.1 + c.2 = c.1 + b.2 := h₂\n      show a.1 + c.2 = c.1 + a.2\n      omega }\n\n/-- The integers: pre-integers, with intent made real by quotienting. -/\ndef MyInt := Quotient preIntSetoid\n\ndef mk (p n : Nat) : MyInt := Quotient.mk preIntSetoid (p, n)\n\n/-- `(3,5)` and `(10,12)` are *different pairs* but the *same* `MyInt`:\n    equality of quotients is `Quotient.sound` of relatedness. -/\nexample : mk 3 5 = mk 10 12 := Quotient.sound (rfl : 3 + 12 = 10 + 5)\n\n/-- To define a function out of a quotient, define it on representatives\n    and *prove it respects the relation* — that proof is the toll\n    `Quotient.lift` charges. -/\ndef toInt : MyInt → Int :=\n  Quotient.lift (fun a : PreInt => (a.1 : Int) - a.2)\n    (fun a b h => by\n      have h' : a.1 + b.2 = b.1 + a.2 := h\n      show (a.1 : Int) - a.2 = (b.1 : Int) - b.2\n      omega)\n\ndef neg : MyInt → MyInt :=\n  Quotient.lift (fun a : PreInt => mk a.2 a.1)\n    (fun a b h => Quotient.sound (by\n      have h' : a.1 + b.2 = b.1 + a.2 := h\n      show a.2 + b.1 = b.2 + a.1\n      omega))\n\n/-- To prove things about all quotient values, `Quotient.ind` hands you\n    a representative. -/\ntheorem toInt_neg (q : MyInt) : toInt (neg q) = - toInt q := by\n  induction q using Quotient.ind with\n  | _ a =>\n      show (a.2 : Int) - a.1 = -((a.1 : Int) - a.2)\n      omega\n\n#eval toInt (mk 3 5)              -- -2\n#eval toInt (neg (mk 3 5))        -- 2\n\nend IntPairs\n\n/-- A finite multiset: lists up to permutation. -/\ndef MSet (σ : Type) : Type := Quotient (permSetoid σ)\n\nnamespace MSet\n\ndef ofList {σ : Type} (l : List σ) : MSet σ :=\n  Quotient.mk (permSetoid σ) l\n\n/-- Different lists, same multiset. -/\nexample : ofList [1, 2] = ofList [2, 1] :=\n  Quotient.sound (.swap 1 2 [])\n\nend MSet",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/- ============================================================\n   Crdt.SEC — Chapter 8 continued: the main theorem.\n   ============================================================ -/\n\nnamespace SEC\n\nopen Order.PartialOrder Order.BoundedJoinSemilattice\n\nvariable {σ : Type} [BoundedJoinSemilattice σ]\n\n/-- A replica's state is the join of everything it has received,\n    folded starting from ⊥. -/\ndef foldJoin (l : List σ) : σ := l.foldl (· ⊔ ·) ⊥\n\n/-- The same fold from an arbitrary seed. Generalizing the accumulator\n    is what makes every lemma below go through by induction. -/\ndef foldJoinFrom (a : σ) (l : List σ) : σ := l.foldl (· ⊔ ·) a\n\ntheorem foldJoin_def (l : List σ) : foldJoin l = foldJoinFrom ⊥ l := rfl\n\n/-- The seed only grows. -/\ntheorem le_foldJoinFrom (l : List σ) : ∀ (a : σ), a ⊑ foldJoinFrom a l := by\n  induction l with\n  | nil => intro a; exact le_refl a\n  | cons x t ih => intro a; exact le_trans (le_sup_left a x) (ih (a ⊔ x))\n\n/-- Every delivered update is below the fold: the fold is an upper\n    bound of the list. -/\ntheorem le_foldJoinFrom_of_mem {x : σ} {l : List σ} (hx : x ∈ l) :\n    ∀ (a : σ), x ⊑ foldJoinFrom a l := by\n  induction l with\n  | nil => cases hx\n  | cons y t ih =>\n      intro a\n      cases List.mem_cons.mp hx with\n      | inl he =>\n          subst he\n          exact le_trans (le_sup_right a x) (le_foldJoinFrom t (a ⊔ x))\n      | inr hm => exact ih hm (a ⊔ y)\n\n/-- ... and the *least* one over the seed: fold = lub of seed and list. -/\ntheorem foldJoinFrom_le {c : σ} {l : List σ} : ∀ {a : σ},\n    a ⊑ c → (∀ x ∈ l, x ⊑ c) → foldJoinFrom a l ⊑ c := by\n  induction l with\n  | nil => intro a ha _; exact ha\n  | cons y t ih =>\n      intro a ha hl\n      exact ih (sup_le a y c ha (hl y List.mem_cons_self))\n        (fun x hx => hl x (List.mem_cons_of_mem y hx))\n\n/-- The seed pulls out of the fold as one more join. -/\ntheorem foldJoinFrom_eq_sup (a : σ) (l : List σ) :\n    foldJoinFrom a l = a ⊔ foldJoin l := by\n  apply le_antisymm\n  · apply foldJoinFrom_le\n    · exact le_sup_left a (foldJoin l)\n    · intro x hx\n      exact le_trans (le_foldJoinFrom_of_mem hx ⊥) (le_sup_right a (foldJoin l))\n  · apply sup_le\n    · exact le_foldJoinFrom l a\n    · exact foldJoinFrom_le (bot_le (foldJoinFrom a l))\n        (fun x hx => le_foldJoinFrom_of_mem hx a)\n\n/-- One more delivery is one more join. -/\ntheorem foldJoin_cons (x : σ) (l : List σ) :\n    foldJoin (x :: l) = x ⊔ foldJoin l := by\n  show foldJoinFrom (⊥ ⊔ x) l = x ⊔ foldJoin l\n  rw [sup_bot_left, foldJoinFrom_eq_sup]\n\n/-- Batching is free: delivering a peer's whole log at once is the same\n    as joining with the peer's state. Gossip is join-propagation. -/\ntheorem foldJoin_append (l₁ l₂ : List σ) :\n    foldJoin (l₁ ++ l₂) = foldJoin l₁ ⊔ foldJoin l₂ := by\n  show (l₁ ++ l₂).foldl (· ⊔ ·) ⊥ = foldJoin l₁ ⊔ foldJoin l₂\n  rw [List.foldl_append]\n  exact foldJoinFrom_eq_sup (foldJoin l₁) l₂\n\n/-- **The keystone.** Same members — any order, any multiplicities —\n    same fold. Not proved by list surgery: both folds are least upper\n    bounds of the same set, so antisymmetry finishes it. -/\ntheorem foldJoin_eq_of_same_mems {l₁ l₂ : List σ}\n    (h : ∀ x, x ∈ l₁ ↔ x ∈ l₂) : foldJoin l₁ = foldJoin l₂ := by\n  apply le_antisymm\n  · exact foldJoinFrom_le (bot_le _)\n      (fun x hx => le_foldJoinFrom_of_mem ((h x).mp hx) ⊥)\n  · exact foldJoinFrom_le (bot_le _)\n      (fun x hx => le_foldJoinFrom_of_mem ((h x).mpr hx) ⊥)\n\n/-- Reordering is absorbed (direct proof by induction on the\n    permutation — the shape `Quotient.lift` will ask for). -/\ntheorem foldJoinFrom_perm {l₁ l₂ : List σ} (h : Perm l₁ l₂) :\n    ∀ (a : σ), foldJoinFrom a l₁ = foldJoinFrom a l₂ := by\n  induction h with\n  | nil => intro _; rfl\n  | cons x _ ih => intro a; exact ih (a ⊔ x)\n  | swap x y l =>\n      intro a\n      show foldJoinFrom (a ⊔ x ⊔ y) l = foldJoinFrom (a ⊔ y ⊔ x) l\n      rw [sup_assoc, sup_assoc, sup_comm x y]\n  | trans _ _ ih₁ ih₂ => intro a; exact (ih₁ a).trans (ih₂ a)\n\ntheorem foldJoin_perm {l₁ l₂ : List σ} (h : Perm l₁ l₂) :\n    foldJoin l₁ = foldJoin l₂ :=\n  foldJoinFrom_perm h ⊥\n\n/-- Duplication is absorbed: idempotence, on duty. -/\ntheorem foldJoin_dup (x : σ) (l : List σ) :\n    foldJoin (x :: x :: l) = foldJoin (x :: l) := by\n  show foldJoinFrom (⊥ ⊔ x ⊔ x) l = foldJoinFrom (⊥ ⊔ x) l\n  rw [sup_assoc, sup_idem]\n\n/-- Refuted: \"commutativity and associativity alone suffice\".\n    Drop idempotence — `(Nat, +)` is commutative and associative —\n    and one duplicated delivery double-counts. -/\ntheorem comm_assoc_not_enough :\n    [1].foldl (· + ·) 0 ≠ [1, 1].foldl (· + ·) 0 := by decide\n\nend SEC\n\nnamespace MSet\n\nopen SEC\n\n/-- The fold descends to multisets: `Quotient.lift` demands exactly\n    `foldJoin_perm`, and Chapter 8 has already paid it. -/\ndef foldJoin {σ : Type} [BoundedJoinSemilattice σ] : MSet σ → σ :=\n  Quotient.lift SEC.foldJoin (fun _ _ h => SEC.foldJoin_perm h)\n\ntheorem foldJoin_mk {σ : Type} [BoundedJoinSemilattice σ] (l : List σ) :\n    foldJoin (ofList l) = SEC.foldJoin l := rfl\n\nend MSet\n\nnamespace SEC\n\nopen Order.PartialOrder Order.BoundedJoinSemilattice\n\nvariable {σ : Type} [BoundedJoinSemilattice σ]\n\n/-- A replica, abstracted to what it has received. -/\nstructure Replica (σ : Type) [BoundedJoinSemilattice σ] where\n  delivered : List σ\n\ndef Replica.state (r : Replica σ) : σ := foldJoin r.delivered\n\n/-- Two replicas have received the same *set* of updates — in any\n    order, with any multiplicities ≥ 1. -/\ndef SameDeliveredSet (r₁ r₂ : Replica σ) : Prop :=\n  ∀ x, x ∈ r₁.delivered ↔ x ∈ r₂.delivered\n\n/-- **Strong eventual consistency, state-based.** Replicas that have\n    heard the same news hold the same state — no matter who told them,\n    how often, or in what order. -/\ntheorem sec_state_based {r₁ r₂ : Replica σ}\n    (h : SameDeliveredSet r₁ r₂) : r₁.state = r₂.state :=\n  foldJoin_eq_of_same_mems h\n\n/-- Interlude: three G-Set update streams folded in wildly different\n    orders and multiplicities. -/\ndef interlude : List (String × List Nat) :=\n  let u₁ : GSet := GSet.add 1 ⊥\n  let u₂ : GSet := GSet.add 2 ⊥\n  let u₃ : GSet := GSet.add 3 ⊥\n  let r₁ : Replica GSet := ⟨[u₁, u₂, u₃]⟩\n  let r₂ : Replica GSet := ⟨[u₃, u₁, u₂, u₂, u₁]⟩\n  let r₃ : Replica GSet := ⟨[u₂, u₂, u₃, u₃, u₁, u₃]⟩\n  [ (\"replica 1\", r₁.state.val),\n    (\"replica 2\", r₂.state.val),\n    (\"replica 3\", r₃.state.val) ]\n\n#eval interlude\n\nend SEC",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Multiset union is well-defined on the quotient because appending respects permutation, on either side:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem perm_append_right {α : Type} (m : List α) {l₁ l₂ : List α}\n    (h : Perm l₁ l₂) : Perm (l₁ ++ m) (l₂ ++ m) := by\n  induction h with\n  | nil => exact Perm.refl m\n  | cons x _ ih => exact .cons x ih\n  | swap x y l => exact .swap x y (l ++ m)\n  | trans _ _ ih₁ ih₂ => exact .trans ih₁ ih₂",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem perm_append_left {α : Type} (m : List α) {l₁ l₂ : List α}\n    (h : Perm l₁ l₂) : Perm (m ++ l₁) (m ++ l₂) := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that prepending a list respects permutation.",
+      "leanSolution": "  induction m with\n  | nil => exact h\n  | cons x t ih => exact .cons x ih",
+      "hints": [
+        "Induction on `m`, the list in front.",
+        "`Perm.cons x` extends a permutation by the same head."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "def msetUnion {α : Type} : MSet α → MSet α → MSet α :=\n  Quotient.lift₂ (fun l₁ l₂ => MSet.ofList (l₁ ++ l₂))\n    (fun _ _ _ _ h₁ h₂ => Quotient.sound\n      (.trans (perm_append_right _ h₁) (perm_append_left _ h₂)))\n\nexample : msetUnion (MSet.ofList [1, 2]) (MSet.ofList [3])\n    = MSet.ofList [1, 2, 3] := rfl",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "fold(Mx; 3, 0, 3, 1)",
+      "type": "exercise",
+      "prompt": "A replica receives $3, 0, 3, 1$. What is its state?",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> The main theorem is proved once: for any CRDT whose merge is a join, the same multiset of updates gives the same state. Quotient types make \"same updates, any order\" a type, and the fold over it well-defined.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

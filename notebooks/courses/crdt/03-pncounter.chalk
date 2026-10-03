@@ -1,0 +1,98 @@
+{
+  "chalk": 1,
+  "name": "03-pncounter.chalk",
+  "cells": [
+    {
+      "src": "The PN-Counter",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Support decrements while keeping every update inflationary, by separating the state (which only grows) from the query (which may go down).",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A decrement makes the number smaller, but the discipline requires updates to go up. The way out: a decrement is not the removal of an increment but a new event in its own right. Keep two G-Counters, $P$ for increments and $N$ for decrements, and let the **query** compute $P - N$. The state never goes down; the report does.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "For one replica the state is a pair $(p, n)$, ordered componentwise:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let C3 = chain(3)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let PN = product(C3, C3)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "le(PN, (1, 0), (1, 1))",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "$(1, 0) \\sqsubseteq (1, 1)$: a decrement moved the state up, while the value went from 1 to 0. Information grows even when the number shrinks.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/- ============================================================\n   Crdt.PNCounter — Chapter 4: Decrements and the\n   Query/State Split\n   ============================================================ -/\n\n/-- Two G-Counters: increments land in `P` (first), decrements in `N`\n    (second). State only ever grows; the *query* subtracts. -/\nabbrev PNCounter (R : Nat) := GCounter R × GCounter R\n\nnamespace PNCounter\n\nopen Order.PartialOrder Order.BoundedJoinSemilattice\n\nvariable {R : Nat}\n\ndef incr (i : Fin R) (p : PNCounter R) : PNCounter R :=\n  (GCounter.increment i p.1, p.2)\n\ndef decr (i : Fin R) (p : PNCounter R) : PNCounter R :=\n  (p.1, GCounter.increment i p.2)\n\ndef value (p : PNCounter R) : Int :=\n  (GCounter.value p.1 : Int) - (GCounter.value p.2 : Int)\n\ntheorem incr_inflationary (i : Fin R) : Order.Inflationary (incr (R := R) i) :=\n  fun p => ⟨GCounter.increment_inflationary i p.1, le_refl p.2⟩\n\n/-- Even a decrement moves the *state* upward. -/\ntheorem decr_inflationary (i : Fin R) : Order.Inflationary (decr (R := R) i) :=\n  fun p => ⟨le_refl p.1, GCounter.increment_inflationary i p.2⟩\n\n/-- A decrement lowers the value while the state strictly grows. -/\ntheorem value_decr (i : Fin R) (p : PNCounter R) :\n    value (decr i p) = value p - 1 := by\n  show (GCounter.value p.1 : Int) - (GCounter.value (GCounter.increment i p.2) : Int)\n      = (GCounter.value p.1 : Int) - (GCounter.value p.2 : Int) - 1\n  rw [GCounter.value_increment]\n  omega\n\n/-- Refuted: \"the CRDT's value is monotone\".\n    States only grow; reports may fall. The lattice disciplines what is\n    *remembered*, not what is *reported*. -/\ntheorem value_not_monotone :\n    ¬ (∀ (p q : PNCounter 1), p ⊑ q → value p ≤ value q) := by\n  intro h\n  have hle : (⊥ : PNCounter 1) ⊑ (⊥, GCounter.increment 0 ⊥) :=\n    ⟨bot_le _, bot_le _⟩\n  exact absurd (h _ _ hle) (by decide)\n\n/-- Refuted: the value of a merge is not the max (nor min, nor either\n    argument) of the values — value is a *projection*, not a lattice map. -/\ntheorem value_merge_ne_max :\n    let p : PNCounter 1 := incr 0 ⊥\n    let q : PNCounter 1 := decr 0 ⊥\n    value (p ⊔ q) ≠ max (value p) (value q) := by decide\n\ntheorem value_bot : value (⊥ : PNCounter R) = 0 := by\n  show (GCounter.value (⊥ : GCounter R) : Int) - (GCounter.value (⊥ : GCounter R) : Int) = 0\n  rw [GCounter.value_bot]\n  decide\n\n/-- Interlude: concurrent increments and decrements at two replicas,\n    merged both ways. -/\ndef interlude : List (String × Int) :=\n  let atA := incr 0 (incr 0 (⊥ : PNCounter 2))  -- A: +2\n  let atB := decr 1 (incr 1 (⊥ : PNCounter 2))  -- B: +1 then −1\n  [ (\"A alone\", value atA),\n    (\"B alone\", value atB),\n    (\"A ⊔ B\", value (atA ⊔ atB)),\n    (\"B ⊔ A\", value (atB ⊔ atA)),\n    (\"(A ⊔ B) ⊔ B\", value ((atA ⊔ atB) ⊔ atB)) ]\n\n#eval interlude\n\nend PNCounter",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A query that clamps at zero hides the negative truth: a seed for the last lesson.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "def clampedValue {R : Nat} (p : PNCounter R) : Nat :=\n  (PNCounter.value p).toNat\n\nexample : clampedValue (PNCounter.decr 0 (⊥ : PNCounter 1)) = 0 := by decide\nexample : PNCounter.value (PNCounter.decr 0 (⊥ : PNCounter 1)) < 0 := by decide",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "le(PN, (2, 0), (1, 1))",
+      "type": "exercise",
+      "prompt": "Is the state $(2, 0)$ below $(1, 1)$? Answer `true` or `false`.",
+      "hints": [
+        "Compare componentwise."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Split state from query: the state is a pair of grow-only counters and only rises; the query $P - N$ may fall. The value is not monotone in the state, and that is fine, because only the state is merged.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

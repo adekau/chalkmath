@@ -1,0 +1,10 @@
+4	let R = rel({a, b, c, d}; a->b, b->c, a->c, c->d)	= {(a, b), (b, c), (a, c), (c, d)}   [a relation on 4 elements with 4 pairs]
+5	wellfounded(R)	= true   [well-founded]
+6	let C = rel({x, y, z}; x->y, y->z, z->x)	= {(x, y), (y, z), (z, x)}   [a relation on 3 elements with 3 pairs]
+7	wellfounded(C)	= false   [not well-founded: x → y → z → x]
+10	measure(R; a->3, b->2, c->1, d->0)	= true   [the measure decreases along every step]
+11	measure(R; a->3, b->2, c->2, d->0)	= false   [not decreasing at b → c]
+20	let G = rel({s, t, u, v}; s->t, t->u, u->s, u->v)	= {(s, t), (t, u), (u, s), (u, v)}   [a relation on 4 elements with 4 pairs]
+21	wellfounded(G)	= false
+22	let H = rel({1, 2, 3, 4, 5}; 5->3, 3->1, 4->2, 5->4, 2->1)	= {(5, 3), (3, 1), (4, 2), (5, 4), (2, 1)}   [a relation on 5 elements with 5 pairs]
+23	measure(H; 1->0, 2->1, 3->1, 4->2, 5->2)	= false

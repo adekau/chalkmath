@@ -1,0 +1,49 @@
+{
+  "chalk": 1,
+  "name": "11-capstone.chalk",
+  "cells": [
+    {
+      "src": "Capstone: a replicated store",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Assemble a collaborative shopping list from the earlier designs, run three replicas under an adversarial schedule, and see that its convergence needs no new proof.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The list is an OR-Set of items (adds must win, re-adds must work), and each item has a quantity that goes up and down, a PN-Counter, one per item: a pointwise function lattice. Products and function spaces of semilattices are semilattices, so the store is one, and the main theorem applies to it as it is. Alice, Bob and Carol edit concurrently; their messages are reordered and duplicated; they agree.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/- ============================================================\n   Crdt.Capstone — Chapter 12: A Replicated Store\n   A collaborative shopping list: an OR-Set of items with a\n   PN-Counter of quantities per item. Composition is free — that\n   is the capstone's actual theorem.\n   ============================================================ -/\n\nnamespace Capstone\n\nopen Order.PartialOrder Order.BoundedJoinSemilattice\n\n/-- The store. Every part is a semilattice we already built, so the\n    whole is one, with no new proofs: product of OR-Set and a pointwise\n    map of PN-Counters. -/\nabbrev Store (R : Nat) := ORSet R × (Nat → PNCounter R)\n\nvariable {R : Nat}\n\ndef addItem (i : Fin R) (item : Nat) (s : Store R) : Store R :=\n  (ORSet.add i item s.1, s.2)\n\ndef removeItem (item : Nat) (s : Store R) : Store R :=\n  (ORSet.remove item s.1, s.2)\n\ndef incrByAt (i : Fin R) : Nat → PNCounter R → PNCounter R\n  | 0, p => p\n  | k + 1, p => PNCounter.incr i (incrByAt i k p)\n\ndef addQty (i : Fin R) (item qty : Nat) (s : Store R) : Store R :=\n  (s.1, fun e => if e = item then incrByAt i qty (s.2 e) else s.2 e)\n\ndef hasItem (item : Nat) (s : Store R) : Prop := ORSet.mem item s.1\n\ninstance {item : Nat} {s : Store R} : Decidable (hasItem item s) :=\n  inferInstanceAs (Decidable (ORSet.mem item s.1))\n\ndef itemQty (item : Nat) (s : Store R) : Int := PNCounter.value (s.2 item)\n\ndef render (probe : List Nat) (s : Store R) : List (Nat × Bool × Int) :=\n  probe.map (fun e => (e, decide (hasItem e s), itemQty e s))\n\n/-- **The capstone theorem, in one line.** Strong eventual consistency\n    for the whole composed store is `sec_state_based` instantiated at\n    `Store` — the entire book is in how little there is to do here. -/\ntheorem sec_store {r₁ r₂ : SEC.Replica (Store R)}\n    (h : SEC.SameDeliveredSet r₁ r₂) : r₁.state = r₂.state :=\n  SEC.sec_state_based (σ := Store R) h",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/- ── The IO harness: replicas as cells with a network attached ── -/\n\nstructure Node (R : Nat) where\n  id : Fin R\n  ref : IO.Ref (Store R)\n\ndef Node.new (i : Fin R) : IO (Node R) := do\n  return ⟨i, ← IO.mkRef (⊥ : Store R)⟩\n\ndef Node.edit (n : Node R) (f : Store R → Store R) : IO Unit :=\n  n.ref.modify f\n\n/-- Anti-entropy: `dst` merges `src`'s state. Just a join. -/\ndef Node.pull (dst src : Node R) : IO Unit := do\n  let s ← src.ref.get\n  dst.ref.modify (· ⊔ s)\n\n/-- Fixed local edit scripts (bread = 1, milk = 2, eggs = 3):\n    Alice puts bread ×2; Bob puts milk ×1 and adds-then-removes eggs;\n    Carol also puts bread (concurrently with Alice!) and bumps it ×1. -/\ndef localEdits (alice bob carol : Node 3) : IO Unit := do\n  alice.edit (fun s => addQty 0 1 2 (addItem 0 1 s))\n  bob.edit (addItem 1 3)      -- Bob adds eggs ...\n  bob.edit (removeItem 3)     -- ... and thinks better of it\n  bob.edit (fun s => addQty 1 2 1 (addItem 1 2 s))\n  carol.edit (fun s => addQty 2 1 1 (addItem 2 1 s))\n\n/-- Run one delivery schedule: local edits, then the schedule's merges\n    (duplicated, reordered, self-merges — whatever it says), then one\n    final full anti-entropy sweep so that every update reaches everyone. -/\ndef runSchedule (name : String) (sched : List (Nat × Nat)) : IO Unit := do\n  let alice ← Node.new 0\n  let bob   ← Node.new 1\n  let carol ← Node.new 2\n  let node (k : Nat) : Node 3 :=\n    if k % 3 = 0 then alice else if k % 3 = 1 then bob else carol\n  localEdits alice bob carol\n  for (src, dst) in sched do\n    (node dst).pull (node src)\n  -- the sweep: two full rounds of everyone-pulls-everyone\n  for _ in [0, 1] do\n    for src in [0, 1, 2] do\n      for dst in [0, 1, 2] do\n        (node dst).pull (node src)\n  let sA ← alice.ref.get\n  let sB ← bob.ref.get\n  let sC ← carol.ref.get\n  IO.println s!\"{name}:\"\n  IO.println s!\"  alice: {render [1, 2, 3] sA}\"\n  IO.println s!\"  bob:   {render [1, 2, 3] sB}\"\n  IO.println s!\"  carol: {render [1, 2, 3] sC}\"\n\n/-- Three adversarial schedules, identical final states. -/\ndef demoConvergence : IO Unit := do\n  runSchedule \"schedule A (orderly)\" [(0, 1), (1, 2), (2, 0)]\n  runSchedule \"schedule B (reversed, duplicated)\"\n    [(2, 1), (2, 1), (1, 0), (1, 0), (0, 2)]\n  runSchedule \"schedule C (chaotic, self-merges)\"\n    [(1, 1), (2, 0), (0, 0), (1, 2), (2, 1), (2, 1), (0, 2)]\n\n#eval demoConvergence\n\nend Capstone",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Composition is the payoff: a store built from verified parts, with lattice products and function spaces, inherits strong eventual consistency without a single new proof.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

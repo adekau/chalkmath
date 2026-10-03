@@ -1,0 +1,200 @@
+{
+  "chalk": 1,
+  "name": "04-beta.chalk",
+  "cells": [
+    {
+      "src": "β-reduction and normal forms",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Reduce a term to normal form, recognise terms that have none, and know why the normal form, when there is one, does not depend on the order of the steps.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Normal form\n> A term with no redex is in **normal form**. A term **has** a normal form when some sequence of β-steps reaches one.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "(λx. λy. y x) a (λz. z)",
+      "showWork": true,
+      "label": null,
+      "stepwise": 0
+    },
+    {
+      "src": "S K K a",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "Terms that never stop",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "$\\Omega = (\\lambda x.\\, x\\ x)\\ (\\lambda x.\\, x\\ x)$ reduces to itself, for ever. The library calls $\\lambda x.\\, x\\ x$ `omega`. A step count after the strategy's name shows the first few steps instead of refusing:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "normal 2: omega omega",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "omega omega",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Some terms grow as they go, and the engine stops them once they are too big:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "(λx. x x x) (λx. x x x)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "And some have a normal form even though a careless order of steps would never find it: $K\\ I\\ \\Omega$ throws $\\Omega$ away.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "normal: (λx. λy. y) (omega omega)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "Confluence",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!theorem] Church–Rosser\n> If $M$ reduces to $N_1$ and to $N_2$, then $N_1$ and $N_2$ both reduce to some common $P$. So a term has **at most one** normal form, up to α: the order of the steps can change whether you get there, never where.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "That is why a λ-term has a meaning, and why an exercise can compare normal forms.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "η",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] η-reduction\n> $\\lambda x.\\, f\\ x$ reduces to $f$ when $x$ is not free in $f$: both give $f\\ a$ for every $a$. Adding this rule says that a function is determined by what it does (**extensionality**).",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "eta: λx. λy. f x y",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "eta: λx. x x",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "$\\lambda x.\\, x\\ x$ is not an η-redex: $x$ is free in the function part.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A step contracts the leftmost-outermost redex; evaluation takes steps on fuel, because some terms never stop.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- One normal-order step: contract the leftmost-outermost redex, if there is one. -/\ndef betaStep : Term → Option Term\n  | app (lam x b) a => some (subst x a b)\n  | app f a =>\n    match betaStep f with\n    | some f' => some (app f' a)\n    | none => (betaStep a).map (app f ·)\n  | lam x b => (betaStep b).map (lam x ·)\n  | var _ => none\n\n/-- Take up to fuel steps. -/\ndef eval : Nat → Term → Term\n  | 0, t => t\n  | n + 1, t =>\n    match betaStep t with\n    | none => t\n    | some t' => eval n t'\n\n#eval (eval 10 (app (app K (var \"a\")) (var \"b\"))).pretty\n#eval (eval 3 (app ω ω)).pretty",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem eval_normal (t : Term) (h : betaStep t = none) : ∀ n, eval n t = t := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "A normal form stays put: evaluating it, with any fuel, gives it back.",
+      "leanSolution": "  intro n\n  cases n <;> simp [eval, h]",
+      "hints": [
+        "Introduce `n` and split `cases n`: no fuel, or some.",
+        "`simp [eval, h]` settles both."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "(λx. λy. x) y",
+      "type": "exercise",
+      "prompt": "Reduce $(\\lambda x.\\, \\lambda y.\\, x)\\ y$ to normal form. (The trap: $\\lambda y.\\, y$ is wrong.)",
+      "hints": [
+        "Rename the inner binder first, say to $z$: $\\lambda z.\\, y$."
+      ],
+      "hideQuestion": true,
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "(λf. λx. f (f x)) (λy. y y)",
+      "type": "exercise",
+      "prompt": "Reduce $(\\lambda f.\\, \\lambda x.\\, f\\ (f\\ x))\\ (\\lambda y.\\, y\\ y)$ to normal form.",
+      "hints": [
+        "After the first step: $\\lambda x.\\, (\\lambda y.\\, y\\ y)\\ ((\\lambda y.\\, y\\ y)\\ x)$. Normal order then reduces the outer redex."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "eta: λx. (λy. g y) x",
+      "type": "exercise",
+      "prompt": "Reduce $\\lambda x.\\, (\\lambda y.\\, g\\ y)\\ x$ with β and η.",
+      "hints": [
+        "$\\lambda y.\\, g\\ y$ is an η-redex."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> A normal form is a term with no redex. Some terms have none, and some have one only along the right path. By Church–Rosser, a term has at most one normal form. η adds extensionality: $\\lambda x.\\, f\\ x$ is $f$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

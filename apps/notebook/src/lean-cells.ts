@@ -59,6 +59,8 @@ export interface LeanHooks {
   onMessages(id: string, messages: LeanMessage[]): void;
   onState(): void;
   onProgress(): void;
+  /** Lean has finished (or started) checking the document as it is now. */
+  onChecked?(): void;
 }
 let hooks: LeanHooks | null = null;
 /** The theme Lean should show: the notebook's, which can change after Lean has started. */
@@ -121,6 +123,13 @@ export function ensureLean(h: LeanHooks): Promise<LeanNotebook | null> {
       };
       setProgress({ phase: "starting" });   // a download is reported only for what this browser does not have
       const worker = new Worker(`lean/lean-server.worker.js?v=${stamp}&progress=${channel}`);
+      // Lean's own progress reports: which version of the document it is checking, and whether it is done
+      worker.addEventListener("message", (e: MessageEvent<{ method?: string; params?: { textDocument?: { version?: number }; processing?: unknown[] } }>) => {
+        if (e.data?.method !== "$/lean/fileProgress") return;
+        checkedVersion = e.data.params?.textDocument?.version ?? -1;
+        busy = (e.data.params?.processing?.length ?? 0) > 0;
+        hooks?.onChecked?.();
+      });
       worker.addEventListener("error", (e) => { setProgress(null); setState("failed", e.message || "Lean's server stopped"); });
       const started = dark;
       session = await mod.startLean({ worker, infoview: infoview(), dark: started,
@@ -140,14 +149,27 @@ export function ensureLean(h: LeanHooks): Promise<LeanNotebook | null> {
   return starting;
 }
 
+/** The version Lean last reported on, and whether it was still checking it. */
+let checkedVersion = -1;
+let busy = true;
+/** Whether Lean has finished checking the document as it is now, so its messages are the final word on it. */
+export const leanChecked = () => state === "ready" && !!session && !busy && checkedVersion === session.version();
+/** Replaces one cell's source from outside its views (an exercise's statement, a prelude). */
+export function setLeanSource(id: string, src: string) {
+  const c = lastCells.find((x) => x.id === id);
+  if (c) c.src = src;
+  session?.setSource(id, src);
+}
+
 let lastCells: { id: string; src: string }[] = [];
 /** Makes the document hold `doc`'s Lean cells, in order. Sources typed into a view are already there; a
  *  different notebook, or cells added, removed or reordered, replace the document (Lean re-checks it). */
-export function syncLean(doc: unknown, cells: { id: string; src: string }[]) {
+export function syncLean(doc: unknown, cells: { id: string; src: string; fixed?: boolean }[]) {
   const ids = cells.map((c) => c.id);
   const same = doc === docKey && ids.length === syncedIds.length && ids.every((id, i) => id === syncedIds[i]);
   lastCells = cells;
-  if (same) return;
+  // a cell no view edits (an exercise's statement, a course's prelude) is pushed when the notebook changes it
+  if (same) { for (const c of cells) if (c.fixed) session?.setSource(c.id, c.src); return; }
   docKey = doc; syncedIds = ids;
   session?.setCells(cells);
 }

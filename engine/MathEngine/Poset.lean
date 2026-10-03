@@ -161,7 +161,24 @@ def fixedPoints (P : Poset) (f : PMap) : List String := P.elems.filter fun x => 
 
 /-! ## Encoding for the wire -/
 
-def elemExpr (x : String) : Expr := match x.toNat? with | some n => .num (Q.ofInt n) | none => .var x
+/-- Split at the commas not inside brackets or braces. -/
+def splitTop (s : String) : List String :=
+  let rec go : List Char → Nat → List Char → List String → List String
+    | [], _, cur, acc => (String.ofList cur.reverse :: acc).reverse
+    | c :: cs, d, cur, acc =>
+      if c == ',' && d == 0 then go cs d [] (String.ofList cur.reverse :: acc)
+      else if c == '(' || c == '{' then go cs (d + 1) (c :: cur) acc
+      else if c == ')' || c == '}' then go cs (d - 1) (c :: cur) acc
+      else go cs d (c :: cur) acc
+  go s.toList 0 [] []
+
+/-- An element as a value: a number, a pair `(x, y)` (a product's elements), or a name. -/
+partial def elemExpr (x : String) : Expr :=
+  if x.startsWith "(" && x.endsWith ")" then
+    match splitTop ((x.drop 1).dropEnd 1).copy with
+    | [a, b] => .fn "pair" [elemExpr a.trimAscii.copy, elemExpr b.trimAscii.copy]
+    | _ => .var x
+  else match x.toNat? with | some n => .num (Q.ofInt n) | none => .var x
 def setExpr (xs : List String) : Expr := .fn "set" (xs.map elemExpr)
 def posetExpr (P : Poset) : Expr := .fn "poset" [setExpr P.elems, .fn "hasse" (hasse P |>.map fun (a, b) => .fn "covers" [elemExpr a, elemExpr b])]
 
@@ -174,7 +191,7 @@ namespace MathEngine
 namespace Ord
 
 inductive Tok where
-  | ident (s : String) | lp | rp | lb | rb | comma | semi | lt | arrow | eq | eof
+  | ident (s : String) | lp | rp | lb | rb | lsq | rsq | comma | semi | lt | arrow | eq | eof
   deriving Repr, BEq, Inhabited
 
 partial def lex (src : String) : Except String (List Tok) := go src.toList []
@@ -185,6 +202,7 @@ where
       if c.isWhitespace then go cs acc
       else if c == '(' then go cs (.lp :: acc) else if c == ')' then go cs (.rp :: acc)
       else if c == '{' then go cs (.lb :: acc) else if c == '}' then go cs (.rb :: acc)
+      else if c == '[' then go cs (.lsq :: acc) else if c == ']' then go cs (.rsq :: acc)
       else if c == ',' then go cs (.comma :: acc) else if c == ';' then go cs (.semi :: acc)
       else if c == '<' || c == '≤' then go cs (.lt :: acc)
       else if c == '=' then go cs (.eq :: acc)
@@ -201,50 +219,93 @@ inductive Arg where
   | set (xs : List String)
   | rels (ps : List (String × String))      -- a<b, c<d
   | maps (ps : List (String × String))      -- a->b, c->d
+  | table (rows : List (List String))       -- [a, b; b, b]: an operation's table, row by row
   deriving Repr, Inhabited
 
 /-- `head(arg; arg, …)`: arguments separated by commas, relation lists by `;` or commas after the
-first `<`/`->`. Returns the head, the arguments, and the tokens left. -/
+first `<`/`->`. An element is a name, a pair `(x, y)` (a product's), or a set `{a, b}` (a powerset's).
+Returns the head, the arguments, and the tokens left. -/
 partial def parseCall : List Tok → Except String (String × List Arg × List Tok)
   | .ident head :: .lp :: ts => do
     let (args, ts) ← args ts []
     pure (head, args, ts)
   | _ => throw "expected a command: name(…)"
 where
-  elemOrSet : List Tok → Except String (Arg × List Tok)
-    | .ident x :: ts => pure (.elem x, ts)
+  element : List Tok → Except String (String × List Tok)
+    | .ident x :: ts => pure (x, ts)
+    | .lp :: ts => do
+      let (a, ts) ← element ts
+      match ts with
+      | .comma :: ts =>
+        let (b, ts) ← element ts
+        match ts with
+        | .rp :: ts => pure (s!"({a}, {b})", ts)
+        | _ => throw "expected ')' to close a pair (x, y)"
+      | _ => throw "expected ',' in a pair (x, y)"
     | .lb :: ts => do
       let (xs, ts) ← setBody ts []
-      pure (.set xs, ts)
+      pure ("{" ++ ",".intercalate xs ++ "}", ts)
     | _ => throw "expected an element or a set"
   setBody : List Tok → List String → Except String (List String × List Tok)
     | .rb :: ts, acc => pure (acc.reverse, ts)
-    | .ident x :: .comma :: ts, acc => setBody ts (x :: acc)
-    | .ident x :: .rb :: ts, acc => pure ((x :: acc).reverse, ts)
-    | _, _ => throw "expected '}' or ',' in a set"
+    | ts, acc => do
+      let (x, ts) ← element ts
+      match ts with
+      | .comma :: ts => setBody ts (x :: acc)
+      | .rb :: ts => pure ((x :: acc).reverse, ts)
+      | _ => throw "expected '}' or ',' in a set"
+  rows : List Tok → List String → List (List String) → Except String (List (List String) × List Tok)
+    | .rsq :: ts, [], acc => pure (acc.reverse, ts)
+    | ts, cur, acc => do
+      let (x, ts) ← element ts
+      match ts with
+      | .comma :: ts => rows ts (x :: cur) acc
+      | .semi :: ts => rows ts [] ((x :: cur).reverse :: acc)
+      | .rsq :: ts => pure (((x :: cur).reverse :: acc).reverse, ts)
+      | _ => throw "expected ',', ';' or ']' in a table"
+  argument : List Tok → Except String (Arg × List Tok)
+    | .lb :: ts => do
+      let (xs, ts) ← setBody ts []
+      pure (.set xs, ts)
+    | .lsq :: ts => do
+      let (rs, ts) ← rows ts [] []
+      pure (.table rs, ts)
+    | ts => do
+      let (x, ts) ← element ts
+      pure (.elem x, ts)
   args : List Tok → List Arg → Except String (List Arg × List Tok)
     | .rp :: ts, acc => pure (acc.reverse, ts)
     | ts, acc => do
-      let (a, ts) ← elemOrSet ts
+      let (a, ts) ← argument ts
+      let x := match a with | .elem x => x | .set xs => "{" ++ ",".intercalate xs ++ "}" | _ => ""
       match ts with
-      | .lt :: .ident y :: ts =>
-        let x := match a with | .elem x => x | _ => ""
+      | .lt :: ts =>
+        let (y, ts) ← element ts
         let (ps, ts) ← pairs .lt ts [(x, y)]
         args ts (.rels ps :: acc)
-      | .arrow :: .ident y :: ts =>
-        let x := match a with | .elem x => x | _ => ""
+      | .arrow :: ts =>
+        let (y, ts) ← element ts
         let (ps, ts) ← pairs .arrow ts [(x, y)]
         args ts (.maps ps :: acc)
       | .comma :: ts | .semi :: ts => args ts (a :: acc)
       | .rp :: ts => pure ((a :: acc).reverse, ts)
       | _ => throw "expected ',' or ')' after an argument"
+  /-- More pairs `x sep y` after the first, until the list ends (at `)`, or at a separator followed
+  by something that is not a pair). -/
   pairs (sep : Tok) : List Tok → List (String × String) → Except String (List (String × String) × List Tok)
-    | .comma :: .ident x :: t :: .ident y :: ts, acc => if t == sep then pairs sep ts ((x, y) :: acc) else throw "mixed relation list"
-    | .semi :: .ident x :: t :: .ident y :: ts, acc => if t == sep then pairs sep ts ((x, y) :: acc) else throw "mixed relation list"
     | .rp :: ts, acc => pure (acc.reverse, .rp :: ts)
-    | .comma :: ts, acc => pure (acc.reverse, .comma :: ts)
-    | .semi :: ts, acc => pure (acc.reverse, .semi :: ts)
-    | _, _ => throw "expected the next pair, ',' or ')'"
+    | d :: ts, acc =>
+      if d == .comma || d == .semi then
+        match element ts with
+        | .ok (x, t :: rest) =>
+          if t == sep then do
+            let (y, rest) ← element rest
+            pairs sep rest ((x, y) :: acc)
+          else if t == .lt || t == .arrow then throw "mixed relation list"
+          else pure (acc.reverse, d :: ts)
+        | _ => pure (acc.reverse, d :: ts)
+      else throw "expected the next pair, ',' or ')'"
+    | [], _ => throw "expected ')'"
 
 /-- `[let name =] head(args)`. -/
 def parseStmt (src : String) : Except String (Option String × String × List Arg) := do
@@ -261,7 +322,15 @@ def parseStmt (src : String) : Except String (Option String × String × List Ar
 
 def commands : List String :=
   ["poset", "divisors", "subsets", "chain", "map", "hasse", "join", "meet", "sup", "inf", "upper", "lower",
-   "lattice", "top", "bottom", "le", "maximal", "minimal", "monotone", "lfp", "gfp", "fixpoints"]
+   "lattice", "top", "bottom", "le", "maximal", "minimal", "monotone", "lfp", "gfp", "fixpoints",
+   -- relations (Relation.lean)
+   "rel", "kernel", "reflexive", "symmetric", "antisymmetric", "transitive", "equivalence", "preorder",
+   "closure", "classes", "finer", "wellfounded", "measure",
+   -- finite algebra (Algebra.lean)
+   "op", "joinop", "meetop", "table", "associative", "commutative", "idempotent", "semilattice", "identity", "fold", "order",
+   "distributive", "complement", "complemented", "boolean", "product", "galois", "closureop", "context", "concepts", "secure",
+   -- happens-before
+   "events", "clocks", "concurrent"]
 
 /-- Is this an order-world cell? Its command (after an optional `let name =`) is one of ours. -/
 def isOrderSource (src : String) : Bool :=

@@ -1,6 +1,270 @@
 {
   "projects": [
     {
+      "id": "logic",
+      "title": "Logic and proof technique",
+      "blurb": "Propositions and truth tables, normal forms, proofs as Lean tactics, quantifiers, three kinds of induction, relations and well-founded termination: the toolkit every later course uses.",
+      "kind": "course",
+      "level": "Discrete mathematics",
+      "path": "courses/logic",
+      "leanPrelude": true,
+      "lessons": [
+        {
+          "file": "01-truth-tables.chalk",
+          "title": "Propositions and truth tables",
+          "blurb": "Connectives, truth tables, tautologies, and satisfying assignments as witnesses."
+        },
+        {
+          "file": "02-normal-forms.chalk",
+          "title": "Equivalence and normal forms",
+          "blurb": "The laws of logic as rewrites: negation normal form, CNF and DNF, one law a step."
+        },
+        {
+          "file": "03-natural-deduction.chalk",
+          "title": "Proofs as Lean tactics",
+          "blurb": "Natural deduction in Lean: introduce and use each connective, and see proofs as programs."
+        },
+        {
+          "file": "04-quantifiers.chalk",
+          "title": "Predicates and quantifiers",
+          "blurb": "∀ and ∃ over finite sets, with the element that decides them; quantifiers in Lean."
+        },
+        {
+          "file": "05-induction.chalk",
+          "title": "Induction on the natural numbers",
+          "blurb": "Weak induction: check a formula for small n, then prove it for all n in Lean."
+        },
+        {
+          "file": "06-strong-induction.chalk",
+          "title": "Strong induction",
+          "blurb": "Course-of-values arguments: using every smaller case, and how strong induction, weak induction and well-ordering relate."
+        },
+        {
+          "file": "07-structural-induction.chalk",
+          "title": "Structural induction",
+          "blurb": "Induction on lists, trees and expressions, and a small simplifier proved sound."
+        },
+        {
+          "file": "08-relations.chalk",
+          "title": "Relations",
+          "blurb": "Properties with counterexamples, closures step by step, equivalence classes and partitions, and a deduplication bug."
+        },
+        {
+          "file": "09-well-founded.chalk",
+          "title": "Well-founded relations and termination",
+          "blurb": "No infinite descent: cycles as counterexamples, measures as proofs, and termination in Lean."
+        }
+      ]
+    },
+    {
+      "id": "order-lattices",
+      "title": "Order and lattices",
+      "blurb": "From Zero to Propagators: partial orders, lattices and fixed points; semilattices as merges, access decisions and information flow; Galois connections; and propagator networks in Lean, ending with a Sudoku solver.",
+      "kind": "course",
+      "level": "Discrete mathematics",
+      "path": "courses/order-lattices",
+      "leanPrelude": true,
+      "lessons": [
+        {
+          "file": "01-partial-orders.chalk",
+          "title": "Relations and partial orders",
+          "blurb": "Partial orders on numbers, divisibility and sets, Hasse diagrams, and the definitions in Lean."
+        },
+        {
+          "file": "02-special-elements.chalk",
+          "title": "Special elements and monotone maps",
+          "blurb": "Least, greatest, maximal and minimal elements, bounds, joins and meets, and monotone maps."
+        },
+        {
+          "file": "03-lattices.chalk",
+          "title": "Lattices",
+          "blurb": "Posets where every pair has a join and a meet: duality, the standard examples, and distributivity."
+        },
+        {
+          "file": "04-fixed-points.chalk",
+          "title": "Complete lattices and fixed points",
+          "blurb": "Complete lattices, the Knaster–Tarski theorem, and least fixed points by iteration."
+        },
+        {
+          "file": "05-semilattices.chalk",
+          "title": "Semilattices as algebras",
+          "blurb": "Join as an operation with laws: associative, commutative, idempotent, and the order it gives back."
+        },
+        {
+          "file": "06-merges.chalk",
+          "title": "A merge is a join",
+          "blurb": "Max, union, last-writer-wins and records merged field by field: why replicas that merge this way agree."
+        },
+        {
+          "file": "07-distributive.chalk",
+          "title": "Distributive and Boolean lattices",
+          "blurb": "M₃ and N₅ as the witnesses, complements, and the Boolean lattices of sets and squarefree divisors."
+        },
+        {
+          "file": "08-access-decisions.chalk",
+          "title": "Access decisions",
+          "blurb": "Combining permit and deny: deny-overrides and permit-overrides are joins, first-applicable is not commutative."
+        },
+        {
+          "file": "09-information-flow.chalk",
+          "title": "Information flow",
+          "blurb": "Denning's lattice of security classes: data may only flow up, and a computation's output gets the join of its inputs' classes."
+        },
+        {
+          "file": "10-galois.chalk",
+          "title": "Closure operators and Galois connections",
+          "blurb": "Closure operators, Galois connections between two orders, and the concept lattice of a formal context."
+        },
+        {
+          "file": "11-fixed-points-in-practice.chalk",
+          "title": "Fixed points in practice",
+          "blurb": "Apply until nothing changes: reachability as a least fixed point, and why the iteration stops."
+        },
+        {
+          "file": "12-propagators.chalk",
+          "title": "The propagator model",
+          "blurb": "Cells that only gain information, in a lattice; propagators as monotone functions between them."
+        },
+        {
+          "file": "13-propagator-network.chalk",
+          "title": "A propagator network in Lean",
+          "blurb": "Mutable cells that only grow, a scheduler that runs to quiescence, and a constraint that runs in every direction."
+        },
+        {
+          "file": "14-intervals.chalk",
+          "title": "The interval lattice",
+          "blurb": "Bounds on a number as partial information: intersection as the merge, and interval arithmetic propagators."
+        },
+        {
+          "file": "15-capstones.chalk",
+          "title": "Capstones: Sudoku and type inference",
+          "blurb": "A Sudoku solver and a type checker, both as propagator networks over lattices of partial information."
+        }
+      ]
+    },
+    {
+      "id": "crdt",
+      "title": "CRDTs: replicated data that converges",
+      "blurb": "From Propagators to Replicas: counters, sets and registers that replicas update without coordinating and merge as joins; the main theorem that they converge; gossip, version vectors, op-based CRDTs, a replicated store, and the limits.",
+      "kind": "course",
+      "level": "Distributed systems",
+      "path": "courses/crdt",
+      "leanPrelude": true,
+      "lessons": [
+        {
+          "file": "01-replicas.chalk",
+          "title": "Replicas and the merge discipline",
+          "blurb": "Why merging copies is hard, and the one discipline that makes it easy: states in a semilattice, merge as join."
+        },
+        {
+          "file": "02-gcounter.chalk",
+          "title": "The G-Counter",
+          "blurb": "Counting without coordination: one slot per replica, merged by pointwise maximum."
+        },
+        {
+          "file": "03-pncounter.chalk",
+          "title": "The PN-Counter",
+          "blurb": "Counting down without going down: two grow-only counters, and a query that subtracts."
+        },
+        {
+          "file": "04-sets.chalk",
+          "title": "Sets that only grow",
+          "blurb": "G-Set and 2P-Set: union as the merge, finite sets as sorted lists, and the removal that cannot be undone."
+        },
+        {
+          "file": "05-lww.chalk",
+          "title": "Last writer wins",
+          "blurb": "Overwrite, done lawfully: timestamps in the state, ties broken by replica, and the LWW-Element-Set."
+        },
+        {
+          "file": "06-orset.chalk",
+          "title": "The OR-Set: add wins",
+          "blurb": "Observed-remove: a remove deletes only the adds it has seen, so a concurrent add survives."
+        },
+        {
+          "file": "07-convergence.chalk",
+          "title": "Multisets, folds and the main theorem",
+          "blurb": "Quotient types for 'the same updates, in any order', and strong eventual consistency proved once for every CRDT."
+        },
+        {
+          "file": "08-delivery.chalk",
+          "title": "Delivery: gossip, duplication and reordering",
+          "blurb": "A trace semantics for an at-least-once network, eventual delivery implies convergence, and a gossip driver that provably stops."
+        },
+        {
+          "file": "09-version-vectors.chalk",
+          "title": "Version vectors and causality",
+          "blurb": "Time without clocks: the G-Counter again, read as a causal history, and concurrency as incomparability."
+        },
+        {
+          "file": "10-op-based.chalk",
+          "title": "Op-based CRDTs",
+          "blurb": "Shipping operations instead of states: commutativity moves from the merge to the operations, and duplication becomes the network's problem."
+        },
+        {
+          "file": "11-capstone.chalk",
+          "title": "Capstone: a replicated store",
+          "blurb": "A collaborative shopping list from the course's parts: an OR-Set of items, each with a PN-Counter quantity, converging with no new proofs."
+        },
+        {
+          "file": "12-limits.chalk",
+          "title": "What CRDTs cannot do",
+          "blurb": "Agreement is not correctness: invariants that need coordination, and the axiom audit."
+        }
+      ]
+    },
+    {
+      "id": "systems",
+      "title": "Transition systems, invariants and temporal logic",
+      "blurb": "State machines and their reachable states; invariants with counterexample traces and inductive proofs; mutual exclusion, safety and liveness under fairness; temporal logic as fixed points; happens-before, effectively-once delivery, and refinement.",
+      "kind": "course",
+      "level": "Distributed systems",
+      "path": "courses/systems",
+      "leanPrelude": true,
+      "lessons": [
+        {
+          "file": "01-state-machines.chalk",
+          "title": "State machines and executions",
+          "blurb": "Variables, an initial condition and guarded actions; executions as traces; the graph of reachable states."
+        },
+        {
+          "file": "02-invariants.chalk",
+          "title": "Invariants and induction",
+          "blurb": "Properties of every reachable state: refuted by a shortest trace, proved by induction, and strengthened when induction fails."
+        },
+        {
+          "file": "03-mutual-exclusion.chalk",
+          "title": "Mutual exclusion",
+          "blurb": "A check-then-act race as a stepped trace, the fix, its inductive proof, and the same model in TLA+."
+        },
+        {
+          "file": "04-safety-liveness.chalk",
+          "title": "Safety and liveness",
+          "blurb": "Nothing bad happens; something good eventually does. Deadlocks, lassos, and weak and strong fairness."
+        },
+        {
+          "file": "05-temporal-logic.chalk",
+          "title": "Temporal logic as fixed points",
+          "blurb": "EF, AF, EG and AG on the lattice of state sets: least and greatest fixed points, computed by Kleene iteration."
+        },
+        {
+          "file": "06-happens-before.chalk",
+          "title": "Happens-before",
+          "blurb": "Events of several processes as a partial order, vector clocks that compute it, and concurrency as incomparability."
+        },
+        {
+          "file": "07-effectively-once.chalk",
+          "title": "Effectively-once delivery",
+          "blurb": "A channel that duplicates; a handler that is idempotent keeps the effect exactly once, one that is not double-applies."
+        },
+        {
+          "file": "08-refinement.chalk",
+          "title": "Refinement",
+          "blurb": "An implementation's steps are the specification's steps or stutters; and a normalization of operations proved sound."
+        }
+      ]
+    },
+    {
       "id": "calculus",
       "title": "Calculus: derivatives and integrals",
       "blurb": "The rules of differentiation, the chain rule and tangent lines; then antiderivatives the engine checks by differentiating, definite integrals and Riemann sums.",
@@ -67,21 +331,103 @@
     },
     {
       "id": "lambda",
-      "title": "λ-calculus: computing by reduction",
-      "blurb": "Terms, β-reduction in normal order and why substitution must avoid capture; then numbers, arithmetic and booleans built from functions alone.",
+      "title": "λ-calculus I: computing with functions",
+      "blurb": "Terms, free and bound variables, substitution without capture, β-reduction and normal forms, evaluation strategies, de Bruijn indices, Church encodings and recursion by fixed points; an interpreter built in Lean alongside.",
       "kind": "course",
       "level": "Logic and computation",
       "path": "courses/lambda",
+      "leanPrelude": true,
       "lessons": [
         {
-          "file": "01-beta-reduction.chalk",
-          "title": "β-reduction",
-          "blurb": "Applying a function by substituting its argument, one redex at a time, and the renaming that keeps substitution honest."
+          "file": "01-terms.chalk",
+          "title": "Terms and notation",
+          "blurb": "Variables, functions and applications; how terms are written and read; a first β-step."
         },
         {
-          "file": "02-church-numerals.chalk",
-          "title": "Church numerals and booleans",
-          "blurb": "Numbers as repeated application, arithmetic as composition, and booleans as choice."
+          "file": "02-free-bound.chalk",
+          "title": "Free and bound variables",
+          "blurb": "Which variables a λ binds, which are free, and why the names of bound ones do not matter."
+        },
+        {
+          "file": "03-substitution.chalk",
+          "title": "Substitution and capture",
+          "blurb": "Putting a term in for a variable, without capturing its free variables."
+        },
+        {
+          "file": "04-beta.chalk",
+          "title": "β-reduction and normal forms",
+          "blurb": "Reducing to normal form; terms that never stop; why the normal form is unique; η."
+        },
+        {
+          "file": "05-strategies.chalk",
+          "title": "Evaluation strategies",
+          "blurb": "Which redex next: normal order, call by name, call by value, applicative order."
+        },
+        {
+          "file": "06-de-bruijn.chalk",
+          "title": "De Bruijn indices",
+          "blurb": "Terms without bound names: indices count the λs, and α-equivalence becomes equality."
+        },
+        {
+          "file": "07-church.chalk",
+          "title": "Church encodings",
+          "blurb": "Booleans, numbers, arithmetic, pairs and lists, built from functions alone."
+        },
+        {
+          "file": "08-recursion.chalk",
+          "title": "Recursion and fixed points",
+          "blurb": "No names, yet recursion: fixed-point combinators, factorial, and Y under call by value."
+        }
+      ]
+    },
+    {
+      "id": "lambda-types",
+      "title": "λ-calculus II: types and proofs",
+      "blurb": "The simply typed λ-calculus: typing rules and derivation trees, type inference by unification, what types rule out, propositions as types, type safety, polymorphism and dependent types, with the theory proved in Lean.",
+      "kind": "course",
+      "level": "Logic and computation",
+      "path": "courses/lambda-types",
+      "leanPrelude": true,
+      "lessons": [
+        {
+          "file": "01-simple-types.chalk",
+          "title": "Simple types",
+          "blurb": "Types for terms: base types and arrows, annotated binders, and the three typing rules."
+        },
+        {
+          "file": "02-derivations.chalk",
+          "title": "Typing derivations",
+          "blurb": "Contexts and judgments, why a term fails to type, and the checker proved sound."
+        },
+        {
+          "file": "03-inference.chalk",
+          "title": "Type inference",
+          "blurb": "Types without annotations: type variables, equations, unification and the occurs check."
+        },
+        {
+          "file": "04-normalization.chalk",
+          "title": "What types rule out",
+          "blurb": "No Ω, no Y: typed terms always stop. The cost, and a typed language that cannot loop."
+        },
+        {
+          "file": "05-curry-howard.chalk",
+          "title": "Propositions as types",
+          "blurb": "A type is a proposition, a term of it a proof: the Curry–Howard correspondence."
+        },
+        {
+          "file": "06-safety.chalk",
+          "title": "Type safety",
+          "blurb": "Well-typed programs do not go wrong: progress and preservation, and a safety proof in Lean."
+        },
+        {
+          "file": "07-polymorphism.chalk",
+          "title": "Polymorphism",
+          "blurb": "One term at many types: type schemes, System F, and Church numerals that work at every type."
+        },
+        {
+          "file": "08-dependent-types.chalk",
+          "title": "Dependent types",
+          "blurb": "Types that depend on values; Lean's type theory; type checking is proof checking."
         }
       ]
     },

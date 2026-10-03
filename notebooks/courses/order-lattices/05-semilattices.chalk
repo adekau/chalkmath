@@ -1,0 +1,246 @@
+{
+  "chalk": 1,
+  "name": "05-semilattices.chalk",
+  "cells": [
+    {
+      "src": "Semilattices as algebras",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Read a join as an operation, check its three laws on a table (with the elements that break them when they fail), and recover the order from the operation.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The join of a lattice is an operation $x \\vee y$ on its elements, and it obeys laws whatever the lattice. Turned around, any operation with those laws defines an order.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Semilattice\n> A **semilattice** is a set with an operation $\\cdot$ that is **associative** ($(x \\cdot y) \\cdot z = x \\cdot (y \\cdot z)$), **commutative** ($x \\cdot y = y \\cdot x$) and **idempotent** ($x \\cdot x = x$).",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Operations as tables",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "An operation on a finite set is its table: row $x$, column $y$ holds $x \\cdot y$. Here is $\\max$ on $\\{0, 1, 2\\}$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let M = op({0, 1, 2}; [0, 1, 2; 1, 1, 2; 2, 2, 2])",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "semilattice(M)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "identity(M)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Union on the subsets of $\\{a, b\\}$ is another; set elements are written as sets:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let U = op({{}, {a}, {b}, {a,b}}; [{}, {a}, {b}, {a,b}; {a}, {a}, {a,b}, {a,b}; {b}, {a,b}, {b}, {a,b}; {a,b}, {a,b}, {a,b}, {a,b}])",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "semilattice(U)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The order an operation gives",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!theorem] A semilattice is a partial order\n> Define $x \\le y$ when $x \\cdot y = y$. Idempotence makes it reflexive, commutativity antisymmetric, associativity transitive, and then $x \\cdot y$ is the least upper bound of $x$ and $y$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "order(M)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "order(U)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The union table gives back the powerset's diamond. The engine's `order` is proved to produce a partial order whose join is the operation (`semilattice_order`).",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "When a law fails",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Rock, paper, scissors: $x \\cdot y$ is the winner of $x$ against $y$. Commutative and idempotent, but not associative, so there is no order behind it. The table marks the four entries the two sides of the law read.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let RPS = op({r, p, s}; [r, p, r; p, p, s; r, s, s])",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "commutative(RPS)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "associative(RPS)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "order(RPS)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "\"Keep the newer one\", $x \\cdot y = y$, is associative and idempotent but not commutative: the result depends on the order the values arrive in.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let K = op({a, b, c}; [a, b, c; a, b, c; a, b, c])",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "commutative(K)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "In Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The same definitions as a class, and the order it induces, proved a partial order:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "class Semilattice (α : Type) where\n  merge : α → α → α\n  merge_comm  : ∀ (a b : α), merge a b = merge b a\n  merge_assoc : ∀ (a b c : α), merge (merge a b) c = merge a (merge b c)\n  merge_idem  : ∀ (a : α), merge a a = a\n\nexport Semilattice (merge merge_comm merge_assoc merge_idem)\n\n/-- The order a semilattice induces: a is below b when merging a into b changes nothing. -/\ndef Semilattice.le {α : Type} [Semilattice α] (a b : α) : Prop := merge a b = b\n\ntheorem Semilattice.le_refl' {α : Type} [Semilattice α] (a : α) : Semilattice.le a a := merge_idem a\n\ntheorem Semilattice.le_antisymm' {α : Type} [Semilattice α] (a b : α)\n    (h1 : Semilattice.le a b) (h2 : Semilattice.le b a) : a = b := by\n  unfold Semilattice.le at h1 h2\n  rw [← h2, merge_comm, h1]\n\ntheorem Semilattice.le_trans' {α : Type} [Semilattice α] (a b c : α)\n    (h1 : Semilattice.le a b) (h2 : Semilattice.le b c) : Semilattice.le a c := by\n  unfold Semilattice.le at *\n  rw [← h2, ← merge_assoc, h1]\n\n/-- So every semilattice is a partial order. -/\n@[reducible] def Semilattice.toPartialOrder (α : Type) [Semilattice α] : PartialOrder α where\n  le := Semilattice.le\n  le_refl := Semilattice.le_refl'\n  le_antisymm := Semilattice.le_antisymm'\n  le_trans := Semilattice.le_trans'",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The merge of two elements is above both, and below anything above both: it is their join.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem Semilattice.le_merge_left {α : Type} [Semilattice α] (a b : α) : Semilattice.le a (merge a b) := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that $a \\le a \\cdot b$.",
+      "leanSolution": "  unfold Semilattice.le\n  rw [← merge_assoc, merge_idem]",
+      "hints": [
+        "`unfold Semilattice.le` turns the goal into `merge a (merge a b) = merge a b`.",
+        "Regroup with `merge_assoc` (right to left), then `merge_idem`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem Semilattice.le_merge_right {α : Type} [Semilattice α] (a b : α) : Semilattice.le b (merge a b) := by\n  unfold Semilattice.le\n  rw [merge_comm a b, ← merge_assoc, merge_idem]\n\ntheorem Semilattice.merge_le {α : Type} [Semilattice α] (a b c : α)\n    (h1 : Semilattice.le a c) (h2 : Semilattice.le b c) : Semilattice.le (merge a b) c := by\n  unfold Semilattice.le at *\n  rw [merge_assoc, h2, h1]",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Answer `true` or `false`, or with an element.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let W = op({0, 1, 2, 3}; [0, 1, 2, 3; 1, 1, 3, 3; 2, 3, 2, 3; 3, 3, 3, 3])",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "semilattice(W)",
+      "type": "exercise",
+      "prompt": "Is $W$ a semilattice?",
+      "hints": [
+        "Check the diagonal first, then whether the table is symmetric."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "identity(W)",
+      "type": "exercise",
+      "prompt": "What is the identity of $W$?",
+      "hints": [
+        "The row that copies the header."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "associative(K)",
+      "type": "exercise",
+      "prompt": "Is \"keep the newer one\" associative?",
+      "hints": [
+        "$(x \\cdot y) \\cdot z = z$ and $x \\cdot (y \\cdot z) = z$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> A semilattice is an associative, commutative, idempotent operation, and it is the same thing as an order with joins: $x \\le y$ exactly when $x \\cdot y = y$. A table decides the three laws, and a failure is a triple or a pair you can point at.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

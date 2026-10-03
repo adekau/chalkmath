@@ -59,6 +59,7 @@ private def greek : List (String × String) :=
   [("π", "\\pi"), ("alpha", "\\alpha"), ("beta", "\\beta"), ("theta", "\\theta"), ("lambda", "\\lambda"),
    ("α", "\\alpha"), ("β", "\\beta"), ("γ", "\\gamma"), ("δ", "\\delta"), ("ε", "\\varepsilon"), ("θ", "\\theta"),
    ("λ", "\\lambda"), ("μ", "\\mu"), ("σ", "\\sigma"), ("τ", "\\tau"), ("φ", "\\varphi"), ("ψ", "\\psi"), ("ω", "\\omega"),
+   ("ζ", "\\zeta"), ("η", "\\eta"), ("ι", "\\iota"), ("κ", "\\kappa"), ("ν", "\\nu"), ("ξ", "\\xi"), ("ρ", "\\rho"), ("χ", "\\chi"),
    ("Γ", "\\Gamma"), ("Δ", "\\Delta"), ("Θ", "\\Theta"), ("Λ", "\\Lambda"), ("Σ", "\\Sigma"), ("Φ", "\\Phi"), ("Ω", "\\Omega")]
 private def pathStr (p : Path) : String := if p.isEmpty then "root" else ".".intercalate (p.map toString)
 
@@ -68,6 +69,13 @@ def latexTarget (paths : Bool) : Target where
   var n := match greek.lookup n with
     | some g => g
     | none =>
+      -- a Greek letter and digits, as type variables are named (`τ1`): the digits a subscript
+      let cs := n.toList
+      let hd := String.ofList (cs.takeWhile (!·.isDigit))
+      let ds := String.ofList (cs.dropWhile (!·.isDigit))
+      match greek.lookup hd with
+      | some g => if !ds.isEmpty && ds.all Char.isDigit then g ++ "_{" ++ ds ++ "}" else s!"\\mathit\{{n}}"
+      | none =>
       -- a subsets-poset element is named by its set literal: braces are LaTeX grouping, so escape them
       if n.startsWith "{" then (if n == "{}" then "\\varnothing" else "\\{" ++ (n.drop 1).dropRight 1 ++ "\\}")
       else if n.length > 1 then s!"\\mathit\{{n}}" else n
@@ -148,6 +156,11 @@ private def mulRadicalLatex (numStr : Q → String) : List Expr → Option (Stri
     else none
   | _ => none
 
+/-- The logic world's connectives, and how tightly each binds (quantifiers reach as far right as they can). -/
+def logicLevel : String → Nat
+  | "∀" | "∃" => 0 | "↔" => 1 | "→" => 2 | "∨" => 3 | "∧" => 4 | "¬" => 5 | _ => 6
+def isLogicHead (h : String) : Bool := ["∀", "∃", "↔", "→", "∨", "∧", "¬"].contains h
+
 mutual
   /-- Print `e` at `path` in a context demanding precedence `ctx`. -/
   partial def print (e : Expr) (path : Path) (T : Target) (ctx : Nat) : String :=
@@ -156,6 +169,12 @@ mutual
 
   partial def printRaw (e : Expr) (path : Path) (T : Target) : String × Nat :=
     let child (c : Expr) (i : Nat) (ctx : Nat) := print c (path ++ [i]) T ctx
+    -- a logic connective's operand: bracketed when it is a connective binding looser than `lvl`
+    let lchild (c : Expr) (i : Nat) (lvl : Nat) :=
+      let str := print c (path ++ [i]) T P_ADD
+      match c with
+      | .fn h _ => if isLogicHead h && logicLevel h < lvl then T.parens str else str
+      | _ => str
     match e with
     -- in text an exact non-integer numeral prints as a division, `4/9`, so it binds like one: the base
     -- of a power is `(4/9)^(3/2)`, not `4/9^(3/2)`, which reads back as 4/27 (`\frac` groups itself)
@@ -166,6 +185,58 @@ mutual
       let rs := (enum rows).map fun (r, row) => (enum row).map fun (j, c) => child c (r * w + j) P_ADD
       (T.matrix rs, P_ATOM)
     | .fn name args =>
+      -- the heads that print their children at a precedence of their own come first, so no child is
+      -- printed twice (printing every child up front for these was exponential in a term's depth)
+      let own : Option (String × Nat) := match name, args with
+        -- the λ-calculus world: λx. body binds as far right as possible; application is juxtaposition
+        | "λ", [xv, body] =>
+          let x := child xv 0 P_ADD
+          let b := print body (path ++ [1]) T P_LAM
+          some (if T.times != "*" then s!"\\lambda {x}.\\, {b}" else s!"λ{x}. {b}", P_LAM)
+        | "λ:", [xv, ty, body] =>
+          let x := child xv 0 P_ADD
+          let ts := child ty 1 P_ADD
+          let b := print body (path ++ [2]) T P_LAM
+          let ts := match ty with | .fn "→" _ => T.parens ts | _ => ts
+          some (if T.times != "*" then s!"\\lambda {x}\{:}{ts}.\\, {b}" else s!"λ{x}:{ts}. {b}", P_LAM)
+        | "λ.", [body] =>
+          let b := print body (path ++ [0]) T P_LAM
+          some (if T.times != "*" then s!"\\lambda.\\, {b}" else s!"λ. {b}", P_LAM)
+        | "@", [f, a] =>
+          let fs := print f (path ++ [0]) T P_APP
+          let as := print a (path ++ [1]) T (P_APP + 1)
+          some (if T.times != "*" then s!"{fs}\\ {as}" else s!"{fs} {as}", P_APP)
+        -- Mathematica's Part: m[[2, 1;;3]], and the specs it takes
+        | "part", m :: specs =>
+          let ms := print m (path ++ [0]) T P_ATOM
+          let inner := ", ".intercalate ((enum specs).map fun (i, a) => child a (i + 1) P_ADD)
+          some (if T.times != "*" then s!"{ms}\\llbracket {inner}\\rrbracket" else s!"{ms}[[{inner}]]", P_ATOM)
+        -- MATLAB's entrywise operators. Lower than a product as a whole, so it is grouped wherever a
+        -- factor or a left operand would otherwise take it in: `x*(a ./ b)`, `(a ./ b) ./ c`
+        | "ediv", [a, b] | "emul", [a, b] =>
+          let l := print a (path ++ [0]) T P_MUL
+          let r := print b (path ++ [1]) T P_POW
+          let op := if T.times != "*" then (if name == "ediv" then "\\oslash" else "\\odot") else (if name == "ediv" then "./" else ".*")
+          some (s!"{l} {op} {r}", P_ADD)
+        -- the logic world: connectives by their own precedence (↔ < → < ∨ < ∧ < ¬), quantifiers reach right
+        | "¬", [a] => some ((if T.times != "*" then "\\lnot " else "¬") ++ lchild a 0 5, P_ATOM)
+        | "∧", [a, b] | "∨", [a, b] =>
+          let lvl := logicLevel name
+          let op := if T.times != "*" then (if name == "∧" then " \\land " else " \\lor ") else s!" {name} "
+          some (lchild a 0 lvl ++ op ++ lchild b 1 (lvl + 1), P_ATOM)
+        | "→", [a, b] | "↔", [a, b] =>
+          let lvl := logicLevel name
+          let op := if T.times != "*" then (if name == "→" then " \\to " else " \\leftrightarrow ") else s!" {name} "
+          some (lchild a 0 (lvl + 1) ++ op ++ lchild b 1 lvl, P_ATOM)
+        | "∀", [xv, dv, body] | "∃", [xv, dv, body] =>
+          let x := child xv 0 P_ADD
+          let d := child dv 1 P_ADD
+          let body := lchild body 2 0
+          some (if T.times != "*" then s!"{if name == "∀" then "\\forall" else "\\exists"} {x} \\in {d},\\ {body}" else s!"{name} {x} ∈ {d}, {body}", P_ATOM)
+        | _, _ => none
+      match own with
+      | some r => r
+      | none =>
       let as := (enum args).map fun (i, a) => child a i P_ADD
       match name, args, as with
       | "sqrt", [_], [a] => (T.sqrt a, P_ATOM)
@@ -190,33 +261,21 @@ mutual
         (if T.times != "*" then "\\{" ++ inner ++ "\\}" else "{" ++ inner ++ "}", P_ATOM)
       | "poset", [_, _], [ss, _] =>
         (if T.times != "*" then "\\text{poset }" ++ ss else "poset " ++ ss, P_ATOM)
+      | "pair", [_, _], [a, b] => (if T.times != "*" then s!"({a}, {b})" else s!"({a}, {b})", P_ATOM)
+      | "rel", [_, _], [_, ps] => (ps, P_ATOM)
       | "covers", [_, _], [a, b] => (if T.times != "*" then s!"{a} \\lessdot {b}" else s!"{a} ⋖ {b}", P_MUL)
-      -- the λ-calculus world: λx. body binds as far right as possible; application is juxtaposition
-      | "λ", [_, body], [x, _] =>
-        let b := print body (path ++ [1]) T P_LAM
-        (if T.times != "*" then s!"\\lambda {x}.\\, {b}" else s!"λ{x}. {b}", P_LAM)
-      | "λ.", [body], _ =>
-        let b := print body (path ++ [0]) T P_LAM
-        (if T.times != "*" then s!"\\lambda.\\, {b}" else s!"λ. {b}", P_LAM)
-      | "@", [f, a], _ =>
-        let fs := print f (path ++ [0]) T P_APP
-        let as := print a (path ++ [1]) T (P_APP + 1)
-        (if T.times != "*" then s!"{fs}\\ {as}" else s!"{fs} {as}", P_APP)
-      -- Mathematica's Part: m[[2, 1;;3]], and the specs it takes
-      | "part", m :: _, _ :: specs =>
-        let ms := print m (path ++ [0]) T P_ATOM
-        let inner := ", ".intercalate specs
-        (if T.times != "*" then s!"{ms}\\llbracket {inner}\\rrbracket" else s!"{ms}[[{inner}]]", P_ATOM)
       | "span", [_, _, c], [a, b, cs] =>
         let sep := if T.times != "*" then "\\mathbin{;;}" else ";;"
         (if c.isOne then s!"{a}{sep}{b}" else s!"{a}{sep}{b}{sep}{cs}", P_ADD)
-      -- MATLAB's entrywise operators. Lower than a product as a whole, so it is grouped wherever a
-      -- factor or a left operand would otherwise take it in: `x*(a ./ b)`, `(a ./ b) ./ c`
-      | "ediv", [a, b], _ | "emul", [a, b], _ =>
-        let l := print a (path ++ [0]) T P_MUL
-        let r := print b (path ++ [1]) T P_POW
-        let op := if T.times != "*" then (if name == "ediv" then "\\oslash" else "\\odot") else (if name == "ediv" then "./" else ".*")
-        (s!"{l} {op} {r}", P_ADD)
+      -- the logic world: connectives by their own precedence (↔ < → < ∨ < ∧ < ¬), quantifiers reach right
+      | "⊤", [], _ => (if T.times != "*" then "\\top" else "⊤", P_ATOM)
+      | "⊥", [], _ => (if T.times != "*" then "\\bot" else "⊥", P_ATOM)
+      | "range", [_, _], [a, b] => (if T.times != "*" then "\\{" ++ a ++ ", \\dots, " ++ b ++ "\\}" else s!"{a}..{b}", P_ATOM)
+      | "<", [_, _], [a, b] | "≤", [_, _], [a, b] | ">", [_, _], [a, b] | "≥", [_, _], [a, b]
+      | "=", [_, _], [a, b] | "≠", [_, _], [a, b] | "∣", [_, _], [a, b] =>
+        let op := if T.times == "*" then name else match name with
+          | "≤" => "\\le" | "≥" => "\\ge" | "≠" => "\\ne" | "∣" => "\\mid" | o => o
+        (s!"{a} {op} {b}", P_ATOM)
       | "All", [], _ => (if T.times != "*" then "\\mathrm{All}" else "All", P_ATOM)
       | "List", _, _ =>
         let inner := ", ".intercalate as

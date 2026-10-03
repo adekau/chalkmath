@@ -11,8 +11,29 @@ recomputation. Definitions (`name := term`, with the Church library preloaded) a
 as one δ-step.
 
 Reduction is on fuel — the one budget in the engine, and the honest one: whether a term has a
-normal form is undecidable, so a term that has not reached one after `maxSteps` β-steps is refused
-with what it has become so far. The parts that are proved are in `LambdaProofs.lean`.
+normal form is undecidable, so a term that has not reached one after `maxSteps` β-steps, or that grows
+past `maxSize` symbols, is refused with what it has become so far (a definition is then bound
+unreduced, as `fact := Y F` must be). The parts that are proved are in `LambdaProofs.lean`.
+
+The grammar of a λ-cell:
+
+    cell    ::= NAME ':=' term | 'let' NAME '=' term | command | term
+    command ::= STRATEGY [NUM] ':' term          -- STRATEGY: normal | cbn | cbv | applicative
+              | 'eta' [NUM] ':' term             -- β and η, leftmost-outermost
+              | 'fv' ':' term | 'db' ':' term
+              | 'alpha' ':' term ',' term
+              | 'subst' ':' term ',' NAME ':=' term
+              | ('type' | 'infer') ':' [ctx ('⊢' | '|-')] term
+    ctx     ::= NAME ':' type (',' NAME ':' type)*
+    term    ::= ('λ' | '\') binder+ '.' term | app
+    binder  ::= NAME [':' type] | '(' NAME ':' type ')'
+    app     ::= atom atom*                       -- application groups to the left
+    atom    ::= NAME | NUM | '(' term ')' | 'λ' …
+    type    ::= tatom [('→' | '->') type]        -- the arrow groups to the right
+    tatom   ::= NAME | '(' type ')'
+
+A NUM is a Church numeral; NAME may use Greek letters (type variables, `α → α`). A typed binder's type
+is erased when the term is reduced; `type:` and `infer:` are in `Stlc.lean`.
 -/
 namespace MathEngine
 namespace Lam
@@ -52,14 +73,30 @@ where
     | 0 => cand
     | n + 1 => if cand ∈ avoid then go (cand ++ "'") n else cand
 
-/-- Rename every binder whose name is in `clash` to a fresh name, so that a following substitution
-cannot capture. One structural pass with the renaming carried down (`ren`), hence total. -/
-def freshen (clash : List String) (ren : List (String × String)) : Term → Term
+/-- Does `x` occur free in the term? -/
+def occursFree (x : String) : Term → Bool
+  | .var y => y == x
+  | .lam y e => y != x && occursFree x e
+  | .app a b => occursFree x a || occursFree x b
+
+/-- Every name in the term, bound or free (with repeats). -/
+def names : Term → List String
+  | .var x => [x]
+  | .lam x e => x :: names e
+  | .app a b => names a ++ names b
+
+/-- Rename, before substituting for `x`, each binder that would capture: one whose name is in `clash`
+(the free variables of what is put in) over a body where `x` is free. Below a binder named `x` nothing
+is substituted, so nothing is renamed. A new name avoids `avoid` (every name in sight) and the names
+already given. One structural pass with the renaming carried down (`ren`), hence total. -/
+def freshen (x : String) (clash avoid : List String) (ren : List (String × String)) : Term → Term
   | .var w => .var ((ren.lookup w).getD w)
-  | .app a b => .app (freshen clash ren a) (freshen clash ren b)
+  | .app a b => .app (freshen x clash avoid ren a) (freshen x clash avoid ren b)
   | .lam y e =>
-    let y' := if y ∈ clash then freshVar (clash ++ freeVars e ++ ren.map (·.2)) y else y
-    .lam y' (freshen clash ((y, y') :: ren) e)
+    if y == x then .lam y (freshen x [] avoid ((y, y) :: ren) e)
+    else
+      let y' := if clash.contains y && occursFree x e then freshVar avoid y else y
+      .lam y' (freshen x clash (y' :: avoid) ((y, y') :: ren) e)
 
 /-- Capture-free substitution `e[x := s]`, assuming no binder of `e` is free in `s`. -/
 def substRaw (x : String) (s : Term) : Term → Term
@@ -67,11 +104,15 @@ def substRaw (x : String) (s : Term) : Term → Term
   | .app a b => .app (substRaw x s a) (substRaw x s b)
   | .lam y e => if y == x then .lam y e else .lam y (substRaw x s e)
 
+/-- The term with the binders that would capture a free variable of `s` renamed, ready for `substRaw`. -/
+def renameFor (x : String) (s : Term) (e : Term) : Term :=
+  let clash := (freeVars s).filter (· != x)
+  if clash.isEmpty then e else freshen x clash (x :: clash ++ names e) [] e
+
 /-- Capture-avoiding substitution: first rename the binders that would capture, then substitute.
 Whether any renaming happened is reported, so the derivation can show the α-step. -/
 def subst (x : String) (s : Term) (e : Term) : Term × Bool :=
-  let clash := (freeVars s).filter (· != x)
-  let e' := freshen clash [] e
+  let e' := renameFor x s e
   (substRaw x s e', e' != e)
 
 /-- One normal-order β-step: the leftmost-outermost redex. Returns the contractum and whether an
@@ -164,6 +205,7 @@ def toExpr : Term → Expr
 partial def ofExpr : Expr → Option Term
   | .var x => some (.var x)
   | .fn "λ" [.var x, e] => (ofExpr e).map (.lam x)
+  | .fn "λ:" [.var x, _, e] => (ofExpr e).map (.lam x)
   | .fn "@" [f, a] => do pure (.app (← ofExpr f) (← ofExpr a))
   | _ => none
 
@@ -173,10 +215,66 @@ def dbToExpr : DB → Expr
   | .lam e => .fn "λ." [dbToExpr e]
   | .app a b => .fn "@" [dbToExpr a, dbToExpr b]
 
-/-! ## Parsing: `λx y. e`, `\\x. e`, application by juxtaposition, numerals as Church numerals -/
+/-! ## Simple types and annotated terms
 
-inductive Tok where | lam | dot | lp | rp | ident (s : String) | num (n : Nat) | eof
+The simply typed λ-calculus writes a binder's type, `λx:A. e`. A term as parsed keeps its
+annotations (`ATerm`); reduction erases them (the types say which terms are allowed, not how they
+compute). Types are base names (`A`, `Nat`), arrows, and the type variables inference introduces. -/
+
+inductive Ty where
+  | base : String → Ty
+  | tvar : Nat → Ty
+  | arrow : Ty → Ty → Ty
+  deriving Repr, DecidableEq, Inhabited
+
+/-- Terms whose binders may carry a type. -/
+inductive ATerm where
+  | var : String → ATerm
+  | lam : String → Option Ty → ATerm → ATerm
+  | app : ATerm → ATerm → ATerm
+  deriving Repr, DecidableEq, Inhabited
+
+/-- A typing context, innermost binding first. -/
+abbrev Ctx := List (String × Ty)
+
+def ATerm.erase : ATerm → Term
+  | .var x => .var x
+  | .lam x _ e => .lam x e.erase
+  | .app a b => .app a.erase b.erase
+
+def ATerm.ofTerm : Term → ATerm
+  | .var x => .var x
+  | .lam x e => .lam x none (ofTerm e)
+  | .app a b => .app (ofTerm a) (ofTerm b)
+
+/-- Unfold definitions in an annotated term, as `expandDefs` does. -/
+def ATerm.expandDefs (defs : List (String × Term)) : ATerm → ATerm
+  | .var x =>
+    match defs.lookup x with
+    | some t => ofTerm t
+    | none => if x.all Char.isDigit && !x.isEmpty then ofTerm (church x.toNat!) else .var x
+  | .lam x T e => .lam x T (expandDefs (defs.filter (·.1 != x)) e)
+  | .app a b => .app (expandDefs defs a) (expandDefs defs b)
+
+/-- A type variable prints as τ₁, τ₂, … while inference works on it. -/
+def Ty.toExpr : Ty → Expr
+  | .base s => .var s
+  | .tvar n => .var ("τ" ++ toString (n + 1))
+  | .arrow a b => .fn "→" [a.toExpr, b.toExpr]
+
+def ATerm.toExpr : ATerm → Expr
+  | .var x => .var x
+  | .lam x none e => .fn "λ" [.var x, e.toExpr]
+  | .lam x (some T) e => .fn "λ:" [.var x, T.toExpr, e.toExpr]
+  | .app a b => .fn "@" [a.toExpr, b.toExpr]
+
+/-! ## Parsing: `λx y. e`, `λx:A. e`, `\\x. e`, application by juxtaposition, numerals as Church numerals -/
+
+inductive Tok where | lam | dot | lp | rp | colon | arrow | ident (s : String) | num (n : Nat) | eof
   deriving Repr, BEq, Inhabited
+
+/-- A Greek letter other than λ: type variables are written α, β, …. -/
+def isGreek (c : Char) : Bool := (c.val ≥ 0x3B1 && c.val ≤ 0x3C9 && c != 'λ') || (c.val ≥ 0x391 && c.val ≤ 0x3A9)
 
 partial def lex (src : String) : Except String (List Tok) := go src.toList []
 where
@@ -188,37 +286,66 @@ where
       else if c == '.' then go cs (.dot :: acc)
       else if c == '(' then go cs (.lp :: acc)
       else if c == ')' then go cs (.rp :: acc)
+      else if c == ':' then go cs (.colon :: acc)
+      else if c == '→' then go cs (.arrow :: acc)
+      else if c == '-' && cs.head? == some '>' then go cs.tail (.arrow :: acc)
       else if c.isDigit then
         let ds := (c :: cs).takeWhile Char.isDigit
         go ((c :: cs).drop ds.length) (.num ((String.ofList ds).toNat!) :: acc)
-      else if c.isAlpha || c == '_' then
-        let ds := (c :: cs).takeWhile fun d => d.isAlphanum || d == '_' || d == '\''
+      else if c.isAlpha || c == '_' || isGreek c then
+        let ds := (c :: cs).takeWhile fun d => d.isAlphanum || d == '_' || d == '\'' || isGreek d
         go ((c :: cs).drop ds.length) (.ident (String.ofList ds) :: acc)
       else .error s!"unexpected character '{c}' in a λ-term"
 
-/-- Recursive descent with an explicit fuel (the token list shrinks, but the parser is mutual). -/
-partial def parseExpr : List Tok → Except String (Term × List Tok)
+/-- A type: `A`, `A → B` (to the right: `A → B → C` is `A → (B → C)`), `(A → B) → C`. -/
+partial def parseTy (ts : List Tok) : Except String (Ty × List Tok) := do
+  let (a, ts) ← atom ts
+  match ts with
+  | .arrow :: ts => let (b, ts) ← parseTy ts; pure (.arrow a b, ts)
+  | ts => pure (a, ts)
+where
+  atom : List Tok → Except String (Ty × List Tok)
+    | .ident x :: ts => pure (.base x, ts)
+    | .lp :: ts => do
+      let (t, ts) ← parseTy ts
+      match ts with
+      | .rp :: ts => pure (t, ts)
+      | _ => throw "expected ')' in a type"
+    | _ => throw "expected a type: a name such as A, or an arrow A → B"
+
+/-- Recursive descent; the parser is mutual, hence `partial`. -/
+partial def parseExpr : List Tok → Except String (ATerm × List Tok)
   | .lam :: ts => do
     let (names, ts) ← binders ts
+    if names.isEmpty then throw "expected a variable after λ"
     match ts with
     | .dot :: ts =>
       let (body, ts) ← parseExpr ts
-      pure (names.foldr (fun x e => .lam x e) body, ts)
+      pure (names.foldr (fun (x, T) e => .lam x T e) body, ts)
     | _ => throw "expected '.' after the λ-binders"
   | ts => parseApp ts
 where
-  binders : List Tok → Except String (List String × List Tok)
-    | .ident x :: ts => do let (xs, ts) ← binders ts; pure (x :: xs, ts)
+  binders : List Tok → Except String (List (String × Option Ty) × List Tok)
+    | .ident x :: .colon :: ts => do
+      let (T, ts) ← parseTy ts
+      let (xs, ts) ← binders ts
+      pure ((x, some T) :: xs, ts)
+    | .ident x :: ts => do let (xs, ts) ← binders ts; pure ((x, none) :: xs, ts)
+    | .lp :: .ident x :: .colon :: ts => do
+      let (T, ts) ← parseTy ts
+      match ts with
+      | .rp :: ts => let (xs, ts) ← binders ts; pure ((x, some T) :: xs, ts)
+      | _ => throw "expected ')' after the binder's type"
     | ts => if ts.head? == some .dot then pure ([], ts) else throw "expected a variable after λ"
-  parseApp (ts : List Tok) : Except String (Term × List Tok) := do
+  parseApp (ts : List Tok) : Except String (ATerm × List Tok) := do
     let (f, ts) ← atom ts
     loop f ts
-  loop (f : Term) : List Tok → Except String (Term × List Tok)
+  loop (f : ATerm) : List Tok → Except String (ATerm × List Tok)
     | ts@(.ident _ :: _) | ts@(.num _ :: _) | ts@(.lp :: _) | ts@(.lam :: _) => do
       let (a, ts') ← if ts.head? == some .lam then parseExpr ts else atom ts
       loop (.app f a) ts'
     | ts => pure (f, ts)
-  atom : List Tok → Except String (Term × List Tok)
+  atom : List Tok → Except String (ATerm × List Tok)
     | .ident x :: ts => pure (.var x, ts)
     | .num n :: ts => pure (.var (toString n), ts)   -- a numeral is a name, unfolded by the δ-step
     | .lp :: ts => do
@@ -228,14 +355,23 @@ where
       | _ => throw "expected ')'"
     | .lam :: ts => parseExpr (.lam :: ts)
     | .eof :: _ => throw "unexpected end of the λ-term"
+    | .colon :: _ => throw "unexpected ':' (a type belongs after a binder: λx:A. e)"
     | _ => throw "unexpected token in the λ-term"
 
-def parseTerm (src : String) : Except String Term := do
+def parseATerm (src : String) : Except String ATerm := do
   let toks ← lex src
   let (t, rest) ← parseExpr toks
   match rest with
   | [.eof] | [] => pure t
   | _ => throw "unexpected input after the λ-term"
+
+/-- A term, its binders' types (if any) erased. -/
+def parseTerm (src : String) : Except String Term := (parseATerm src).map ATerm.erase
+
+/-- A type on its own, as an exercise's answer gives one. -/
+def parseType (src : String) : Except String Ty := do
+  let (T, rest) ← parseTy (← lex src)
+  if rest == [.eof] then pure T else throw "unexpected input after the type"
 
 /-- A λ-cell: `name := term`, `let name = term`, or a term. -/
 def parseStmt (src : String) : Except String (Option String × Term) := do
@@ -254,26 +390,226 @@ def parseStmt (src : String) : Except String (Option String × Term) := do
   | some n => if n.isEmpty || !(n.all fun c => c.isAlphanum || c == '_' || c == '\'') then throw s!"'{n}' is not a name" else pure (some n, t)
   | none => pure (none, t)
 
-/-- Is this cell a λ-cell? A λ or backslash anywhere, a `:=` definition, or a first word that is a
-λ-definition of the session or the Church library. -/
+/-! ## Commands
+
+A λ-cell may start with a command and a colon: a reduction strategy (`cbv: t`, with an optional
+step count, `normal 5: t`), `eta:`, `fv:`, `db:`, `alpha: s, t`, `subst: e, x := s`, and the typed
+calculus's `type: Γ ⊢ t` and `infer: Γ ⊢ t`. -/
+
+/-- Which redex a reduction contracts next. -/
+inductive Strategy where
+  | normal | cbn | cbv | applicative
+  deriving BEq, Repr, Inhabited
+
+inductive Cmd where
+  | reduce (s : Strategy) (limit : Option Nat) (t : ATerm)
+  | eta (limit : Option Nat) (t : ATerm)
+  | fv (t : ATerm)
+  | db (t : ATerm)
+  | alpha (a b : ATerm)
+  | subst (e : ATerm) (x : String) (s : ATerm)
+  | type (Γ : Ctx) (t : ATerm)
+  | infer (Γ : Ctx) (t : ATerm)
+
+def commandWords : List String := ["normal", "cbn", "cbv", "applicative", "eta", "fv", "db", "alpha", "subst", "type", "infer"]
+
+/-- A command's word, its step count, and the text after the colon (not a `:=` definition). -/
+def commandHead (src : String) : Option (String × Option Nat × String) :=
+  let cs := src.trimAscii.copy.toList
+  let w := cs.takeWhile Char.isAlpha
+  let rest := (cs.drop w.length).dropWhile Char.isWhitespace
+  let ds := rest.takeWhile Char.isDigit
+  let rest := (rest.drop ds.length).dropWhile Char.isWhitespace
+  let word := String.ofList w
+  match rest with
+  | ':' :: r =>
+    if commandWords.contains word && r.head? != some '=' then
+      some (word, if ds.isEmpty then none else some (String.ofList ds).toNat!, String.ofList r)
+    else none
+  | _ => none
+
+/-- `Γ ⊢ t` (or `|-`): the context and the term; no turnstile, an empty context. -/
+def splitTurnstile (s : String) : String × String :=
+  match s.splitOn "⊢" with
+  | [g, t] => (g, t)
+  | _ => match s.splitOn "|-" with
+    | [g, t] => (g, t)
+    | _ => ("", s)
+
+/-- A context, `x : A, f : A → B`, as written: the later entries shadow the earlier. -/
+def parseCtx (s : String) : Except String Ctx := do
+  if s.trimAscii.isEmpty then return []
+  let entries ← (s.splitOn ",").mapM fun (entry : String) => do
+    let bad : String := s!"expected 'name : type' in the context, not '{entry.trimAscii}'"
+    match ← lex entry with
+    | .ident x :: .colon :: ts =>
+      let (T, rest) ← parseTy ts
+      if rest == [.eof] then pure (x, T) else throw bad
+    | _ => throw bad
+  pure entries.reverse
+
+def isName (x : String) : Bool := !x.isEmpty && x.all fun c => c.isAlphanum || c == '_' || c == '\''
+
+/-- The command a source starts with, if it does, parsed. -/
+def parseCmd (src : String) : Option (Except String Cmd) :=
+  (commandHead src).map fun (w, n, rest) => do
+    if n.isSome && !["normal", "cbn", "cbv", "applicative", "eta"].contains w then
+      throw s!"{w}: takes no step count"
+    match w with
+    | "normal" => pure (.reduce .normal n (← parseATerm rest))
+    | "cbn" => pure (.reduce .cbn n (← parseATerm rest))
+    | "cbv" => pure (.reduce .cbv n (← parseATerm rest))
+    | "applicative" => pure (.reduce .applicative n (← parseATerm rest))
+    | "eta" => pure (.eta n (← parseATerm rest))
+    | "fv" => pure (.fv (← parseATerm rest))
+    | "db" => pure (.db (← parseATerm rest))
+    | "alpha" =>
+      match rest.splitOn "," with
+      | [a, b] => pure (.alpha (← parseATerm a) (← parseATerm b))
+      | _ => throw "alpha: give two terms, separated by a comma"
+    | "subst" =>
+      let usage := "subst: write `subst: term, x := term`"
+      match rest.splitOn "," with
+      | [e, b] =>
+        match b.splitOn ":=" with
+        | [x, s] =>
+          let x := x.trimAscii.copy
+          if !isName x then throw s!"subst: '{x}' is not a variable"
+          pure (.subst (← parseATerm e) x (← parseATerm s))
+        | _ => throw usage
+      | _ => throw usage
+    | "type" | "infer" =>
+      let (g, t) := splitTurnstile rest
+      let Γ ← parseCtx g
+      let t ← parseATerm t
+      pure (if w == "type" then .type Γ t else .infer Γ t)
+    | _ => throw s!"unknown λ-command {w}"
+
+/-- Is this cell a λ-cell? A command, a λ or backslash anywhere, a `:=` definition, or a first word
+that is a λ-definition of the session or the Church library. -/
 def isLambdaSource (src : String) (defs : List String) : Bool :=
+  (commandHead src).isSome ||
   src.any (fun c => c == 'λ' || c == '\\') || (src.splitOn ":=").length == 2 ||
   (let w := (src.trimAscii.copy.splitOn " ").headD ""
    let w := if w == "let" then "" else w
    defs.contains w && !src.contains '(' || (defs.contains w && src.contains ' '))
 
+/-! ## Reduction strategies and η -/
+
+/-- One call-by-name step: the leftmost-outermost redex, but never under a λ, and arguments are passed
+unevaluated. It stops at a weak head normal form. -/
+def cbnStep : Term → Option (Term × Bool)
+  | .app (.lam x body) arg => some (subst x arg body)
+  | .app a b => (cbnStep a).map fun (a', r) => (.app a' b, r)
+  | _ => none
+
+/-- A value of call by value: a variable or an abstraction (Plotkin's λ_V; for closed terms, just the
+abstractions). -/
+def isValue : Term → Bool
+  | .app _ _ => false
+  | _ => true
+
+/-- One call-by-value step: the function, then the argument, are reduced to values before the call;
+never under a λ. -/
+def cbvStep : Term → Option (Term × Bool)
+  | .app (.lam x body) arg =>
+    if isValue arg then some (subst x arg body)
+    else (cbvStep arg).map fun (a', r) => (.app (.lam x body) a', r)
+  | .app a b =>
+    match cbvStep a with
+    | some (a', r) => some (.app a' b, r)
+    | none => (cbvStep b).map fun (b', r) => (.app a b', r)
+  | _ => none
+
+/-- One applicative-order step: the leftmost-innermost redex — the function and the argument are
+reduced to normal form first, under λ too. -/
+def appStep : Term → Option (Term × Bool)
+  | .var _ => none
+  | .lam x e => (appStep e).map fun (e', r) => (.lam x e', r)
+  | .app a b =>
+    match appStep a with
+    | some (a', r) => some (.app a' b, r)
+    | none =>
+      match appStep b with
+      | some (b', r) => some (.app a b', r)
+      | none =>
+        match a with
+        | .lam x body => some (subst x b body)
+        | _ => none
+
+def Strategy.step : Strategy → Term → Option (Term × Bool)
+  | .normal => betaStep
+  | .cbn => cbnStep
+  | .cbv => cbvStep
+  | .applicative => appStep
+
+def Strategy.name : Strategy → String
+  | .normal => "normal order"
+  | .cbn => "call by name"
+  | .cbv => "call by value"
+  | .applicative => "applicative order"
+
+/-- An η-redex `λx. f x`, with `x` not free in `f`, contracts to `f`. -/
+def etaRedex : Term → Option Term
+  | .lam x (.app f (.var y)) => if y == x && !(freeVars f).contains x then some f else none
+  | _ => none
+
+inductive StepKind where
+  | beta | alphaBeta | eta
+  deriving BEq, Repr, Inhabited
+
+/-- One βη-step, leftmost-outermost: at each node an η- or β-redex is contracted before looking inside. -/
+def betaEtaStep : Term → Option (Term × StepKind)
+  | .var _ => none
+  | t@(.lam x e) =>
+    match etaRedex t with
+    | some f => some (f, .eta)
+    | none => (betaEtaStep e).map fun (e', k) => (.lam x e', k)
+  | .app (.lam x body) arg =>
+    let (r, ren) := subst x arg body
+    some (r, if ren then .alphaBeta else .beta)
+  | .app a b =>
+    match betaEtaStep a with
+    | some (a', k) => some (.app a' b, k)
+    | none => (betaEtaStep b).map fun (b', k) => (.app a b', k)
+
 def maxSteps : Nat := 1000
 
-/-- Reduce to normal form in normal order, recording every step. The result is the normal form, or
-the term after `maxSteps` steps with `false`. -/
-def reduce (t : Term) : Term × List (Term × Bool) × Bool := go t maxSteps []
+/-- The largest term reduction goes on with: a term that grows past it (a fixed-point combinator
+unfolding, say) is stopped, so a cell answers in time whatever it is given. -/
+def maxSize : Nat := 3000
+
+/-- Why a run of steps ended. -/
+inductive Halt where
+  /-- No step applies: the strategy's normal form. -/
+  | done
+  /-- The step count ran out. -/
+  | fuel
+  /-- The term grew past `maxSize`. -/
+  | size
+  deriving BEq, Repr, Inhabited
+
+/-- Take steps until none applies, the fuel runs out, or the term grows past `maxSize`, recording each. -/
+def runSteps (step : Term → Option (Term × α)) (t : Term) (fuel : Nat) : Term × List (Term × α) × Halt :=
+  go t fuel []
 where
-  go (t : Term) : Nat → List (Term × Bool) → Term × List (Term × Bool) × Bool
-    | 0, acc => (t, acc.reverse, false)
+  go (t : Term) : Nat → List (Term × α) → Term × List (Term × α) × Halt
+    | 0, acc => (t, acc.reverse, if (step t).isNone then .done else .fuel)
     | n + 1, acc =>
-      match betaStep t with
-      | none => (t, acc.reverse, true)
-      | some (t', renamed) => go t' n ((t', renamed) :: acc)
+      match step t with
+      | none => (t, acc.reverse, .done)
+      | some (t', k) =>
+        if size t' > maxSize then (t', ((t', k) :: acc).reverse, .size) else go t' n ((t', k) :: acc)
+
+/-- Reduce to normal form in normal order, recording every step: the normal form, or where the
+reduction stopped and why. -/
+def reduce (t : Term) : Term × List (Term × Bool) × Halt := runSteps betaStep t maxSteps
+
+/-- The binders' names, in order, each once. -/
+def boundVars : Term → List String
+  | .var _ => []
+  | .lam x e => (x :: boundVars e).eraseDups
+  | .app a b => (boundVars a ++ boundVars b).eraseDups
 
 end Lam
 end MathEngine

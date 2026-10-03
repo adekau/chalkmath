@@ -1,0 +1,205 @@
+{
+  "chalk": 1,
+  "name": "08-access-decisions.chalk",
+  "cells": [
+    {
+      "src": "Access decisions",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Model the combining algorithms of an access-control policy as operations, see which are semilattices (so rule order cannot matter) and which are not, and prove that adding a rule never turns a deny into a permit.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "An access policy has many rules. For a given request each rule says **permit**, **deny**, or **not applicable** (na), and a *combining algorithm* turns their answers into one. The standard ones (XACML's) are operations on $\\{\\mathrm{na}, \\mathrm{permit}, \\mathrm{deny}\\}$, so they are tables with laws.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Deny overrides",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A deny anywhere wins; otherwise a permit; otherwise not applicable.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let DO = op({na, permit, deny}; [na, permit, deny; permit, permit, deny; deny, deny, deny])",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "semilattice(DO)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "order(DO)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "identity(DO)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "It is the join of the chain $\\mathrm{na} < \\mathrm{permit} < \\mathrm{deny}$: a rule's decision can only push the result up. Because it is a semilattice, the decision for a list of rules does not depend on their order or grouping:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "fold(DO; permit, na, deny, permit)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "fold(DO; deny, permit, permit, na)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Permit overrides",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The same with the roles swapped: the join of $\\mathrm{na} < \\mathrm{deny} < \\mathrm{permit}$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let PO = op({na, permit, deny}; [na, permit, deny; permit, permit, permit; deny, permit, deny])",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "semilattice(PO)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "order(PO)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "First applicable",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The first rule that applies decides. Associative and idempotent, but not commutative:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let FA = op({na, permit, deny}; [na, permit, deny; permit, permit, permit; deny, deny, deny])",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "commutative(FA)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "fold(FA; na, permit, deny)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "fold(FA; na, deny, permit)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> With first-applicable, reordering two rules can turn a permit into a deny. That is not a bug in the algorithm: the order of the rules is part of the policy, and a tool that sorts or merges rule lists must keep it. With deny-overrides no order is part of the policy.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "inductive Decision where\n  | na | permit | deny\n  deriving Repr, DecidableEq\n\ndef denyOverrides : Decision → Decision → Decision\n  | .deny, _ | _, .deny => .deny\n  | .permit, _ | _, .permit => .permit\n  | .na, .na => .na\n\ndef firstApplicable : Decision → Decision → Decision\n  | .na, d => d\n  | d, _ => d\n\ntheorem denyOverrides_comm (a b : Decision) : denyOverrides a b = denyOverrides b a := by\n  cases a <;> cases b <;> rfl\ntheorem denyOverrides_assoc (a b c : Decision) :\n    denyOverrides (denyOverrides a b) c = denyOverrides a (denyOverrides b c) := by\n  cases a <;> cases b <;> cases c <;> rfl\ntheorem denyOverrides_idem (a : Decision) : denyOverrides a a = a := by cases a <;> rfl\n\ntheorem firstApplicable_not_comm : ¬ ∀ a b, firstApplicable a b = firstApplicable b a := by\n  intro h\n  cases h .permit .deny\n\ninstance : Semilattice Decision where\n  merge := denyOverrides\n  merge_comm := denyOverrides_comm\n  merge_assoc := denyOverrides_assoc\n  merge_idem := denyOverrides_idem\n\n/-- A policy's decision: its rules' decisions combined, starting from \"not applicable\". -/\ndef combine (ds : List Decision) : Decision := ds.foldl denyOverrides .na\n\n#eval combine [.permit, .na, .deny, .permit]",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Under deny-overrides, adding a rule is monotone: it can only move the decision up the chain. In particular a deny stays a deny.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem deny_stays (ds : List Decision) (d : Decision) (h : combine ds = .deny) :\n    combine (ds ++ [d]) = .deny := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that adding a rule to a policy that denies keeps it denying.",
+      "leanSolution": "  simp only [combine, List.foldl_append, List.foldl_cons, List.foldl_nil] at *\n  rw [h]\n  cases d <;> rfl",
+      "hints": [
+        "Unfold `combine`: `List.foldl_append` splits the fold over `ds ++ [d]`.",
+        "What is left is `denyOverrides (combine ds) d`; rewrite with `h`, then try each `d`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "fold(DO; na, permit, na)",
+      "type": "exercise",
+      "prompt": "Under deny-overrides, what is the decision of rules that say na, permit, na?",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "fold(FA; permit, deny)",
+      "type": "exercise",
+      "prompt": "Under first-applicable, rules say permit then deny. What is the decision?",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "identity(PO)",
+      "type": "exercise",
+      "prompt": "Which decision is the identity of permit-overrides?",
+      "hints": [
+        "The one that never changes the result."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Deny-overrides and permit-overrides are joins of a three-element chain, so a policy's decision under them does not depend on rule order. First-applicable is associative but not commutative: there the order of rules is part of the policy.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

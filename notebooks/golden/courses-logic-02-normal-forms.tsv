@@ -1,0 +1,11 @@
+8	nnf(¬(p ∧ (q ∨ ¬r)))	= ¬p ∨ ¬q ∧ r   [NNF: 3 steps]
+9	nnf(¬(p → q))	= p ∧ ¬q   [NNF: 3 steps]
+11	equiv(¬(p ∧ q), ¬p ∧ ¬q)	= ⊥   [not equivalent: they differ when p = true, q = false]
+15	cnf(p ∨ (q ∧ r))	= (p ∨ q) ∧ (p ∨ r)   [CNF: 1 step]
+16	cnf(p ↔ q)	= (¬p ∨ q) ∧ (¬q ∨ p)   [CNF: 3 steps]
+17	dnf(p ↔ q)	= ¬p ∧ ¬q ∨ q ∧ p   [DNF: 10 steps]
+21	nnf(¬(p ∨ ¬q))	= ¬p ∧ q
+22	nnf(p → q)	= ¬p ∨ q
+23	cnf((p ∧ q) ∨ r)	= (p ∨ r) ∧ (q ∨ r)
+24	dnf(p ∧ (q ∨ r))	= p ∧ q ∨ p ∧ r
+25	cnf(¬(p ∧ q) ∧ (p ∨ q))	= (¬p ∨ ¬q) ∧ (p ∨ q)

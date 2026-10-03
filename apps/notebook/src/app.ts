@@ -1,4 +1,4 @@
-import { createClient, type EngineClient, type Step, type StepOutline, type Path, type RuleStatus, type Derivation, type WireExpr, type PlotResult, type ManipulateResult, type HasseData } from "@chalkmath/protocol";
+import { createClient, type EngineClient, type Step, type StepOutline, type Path, type RuleStatus, type Derivation, type WireExpr, type PlotResult, type ManipulateResult, type HasseData, type KnownVisual, type TruthTableData, type DigraphData, type OpTableData, type ContextTableData, type TypingNode, type TypingTreeData } from "@chalkmath/protocol";
 declare const __BUILD_ID__: string;
 import { workerTransport, httpTransport } from "@chalkmath/engine-host";
 import { read as readNotation, write as writeNotation, writeText, hasNotation, templateAt, templateInText, TEMPLATES, type Stmt, type Caret, type MathEdit } from "@chalkmath/math-editor";
@@ -24,7 +24,7 @@ import { dataGrid, matrixEntries } from "./datagrid.js";
 import { plotYRange, framesWindow, blendable, blend, playPosition, workLine } from "./animate.js";
 import { DOC_PAGES, type DocPage, type DocPart } from "./docs.js";
 import { FUNCTIONS, FN_BY_NAME, AREAS, fnPage, evaluable, type FnDoc, type ExampleSection } from "./reference.js";
-import { ensureLean, syncLean, mountLean, unmountLean, focusLean, setLeanDark, infoview as leanInfoview, leanState, leanFailure, leanProgress, initLeanIsolation, type LeanMessage } from "./lean-cells.js";
+import { ensureLean, syncLean, mountLean, unmountLean, focusLean, setLeanDark, infoview as leanInfoview, leanState, leanFailure, leanProgress, leanChecked, initLeanIsolation, type LeanMessage } from "./lean-cells.js";
 /** The one trusted KaTeX command is `\htmlData`, which carries the engine's subterm paths. LaTeX can
  *  come from a file someone else wrote (saved outputs render before any re-run), and a blanket
  *  `trust: true` would let it add `\href{javascript:…}`, arbitrary styles, or remote images. */
@@ -86,7 +86,27 @@ type CompItem = { kind: "doc"; doc: Doc }
   | { kind: "part"; insert: string; label: string; hint: string; start: number };
 
 /** An order-theory cell, or a `let` binding one: the engine reads these in their own world. */
-const ORDER_CELL = /^(let\s+\w+\s*=\s*)?(poset|divisors|subsets|chain|map|hasse|join|meet|sup|inf|upper|lower|lattice|top|bottom|le|maximal|minimal|monotone|lfp|gfp|fixpoints)\s*\(/;
+const ORDER_CELL = /^(let\s+\w+\s*=\s*)?(poset|divisors|subsets|chain|map|hasse|join|meet|sup|inf|upper|lower|lattice|top|bottom|le|maximal|minimal|monotone|lfp|gfp|fixpoints|rel|kernel|reflexive|symmetric|antisymmetric|transitive|equivalence|preorder|closure|classes|finer|wellfounded|measure|op|joinop|meetop|table|associative|commutative|idempotent|semilattice|identity|fold|order|distributive|complement|complemented|boolean|product|galois|closureop|context|concepts|secure|events|clocks|concurrent)\s*\(/;
+/** A logic cell: a logic command, or a formula with a connective or a quantifier (the engine's
+ *  `Logic.isLogicSource`; a λ-term is not one). */
+const LOGIC_CELL = /^(let\s+\w+\s*=\s*)?(truthtable|taut|sat|falsify|equiv|nnf|cnf|dnf)\s*\(/;
+/** A systems-world cell: a system, or a question about one. */
+const SYSTEM_CELL = /^(let\s+\w+\s*=\s*)?(system|states|invariant|inductive|reach|deadlock|trace|ctl|eventually|refines)\s*\(/;
+/** A λ-command: a strategy, `eta`, `fv`, `db`, `alpha`, `subst`, `type` or `infer`, then a colon (the
+ *  engine's `Lam.commandHead`; `type := …` is a definition). It may hold a connective, `type: f : A → B ⊢ f`. */
+const LAMBDA_CMD = /^(normal|cbn|cbv|applicative|eta|fv|db|alpha|subst|type|infer)\s*(\d+\s*)?:(?!=)/;
+/** The Church library's names (the engine's `Lam.churchDefs`). */
+const CHURCH = ["true", "false", "and", "or", "not", "if", "zero", "succ", "add", "mul", "pow", "iszero", "pair", "fst", "snd", "id", "const", "K", "S", "I", "omega", "Y"];
+/** Names bound by λ-cells (`pred := …`), keyed `session:name`. */
+const LAMBDA_NAMES = new Set<string>();
+/** A λ-cell without a λ (the engine's `Lam.isLambdaSource`): its first word is a λ-definition, the
+ *  session's or the Church library's, and it has no parenthesis or goes on after a space — `fst (pair a b)`. */
+function lambdaHeaded(s: string): boolean {
+  const w = s.trim().split(" ")[0] ?? "";
+  if (w === "let" || !(CHURCH.includes(w) || LAMBDA_NAMES.has(`${sessionId}:${w}`))) return false;
+  return !s.includes("(") || s.includes(" ");
+}
+const isLogicCell = (s: string) => !/[λ\\]/.test(s) && !LAMBDA_CMD.test(s) && (LOGIC_CELL.test(s) || /[∧∨¬→↔⊤⊥∀∃]|<->|->|&&|\|\|/.test(s) || /^(let\s+\w+\s*=\s*)?(forall|exists)\b/.test(s));
 
 /** Label for a cell, from its source. Presentation only — the engine decides what it means. */
 function cellKind(src: string): string | null {
@@ -106,8 +126,10 @@ function cellKind(src: string): string | null {
     case "sum": return "sum";
     case "exptotrig": return "Euler";
   }
-  if (/[λ\\]|:=/.test(s)) return "λ-term";
+  if (/[λ\\]|:=/.test(s) || LAMBDA_CMD.test(s) || lambdaHeaded(s)) return "λ-term";
+  if (SYSTEM_CELL.test(s)) return "system";
   if (ORDER_CELL.test(s)) return "order";
+  if (isLogicCell(s)) return "logic";
   switch (head) {
     case "rref": return "row reduce";
     case "det": return "determinant";
@@ -192,6 +214,8 @@ interface Cell {
   /** Order-world cells: the Hasse diagram to draw, and the one-line summary. */
   hasse?: { nodes: { name: string; height: number }[]; covers: [string, string][] } | undefined;
   summary?: string | undefined;
+  /** What the engine sent to draw beside the value: a truth table, a relation's graph. */
+  visuals?: KnownVisual[] | undefined;
   label: number | null;
   ms?: number | undefined;
   outLatex?: string;
@@ -239,7 +263,8 @@ interface Cell {
   /** Waiting its turn behind the cell the engine is evaluating (shown as In[*]). */
   queued?: boolean;
   el?: HTMLElement;
-  input?: HTMLInputElement;
+  /** The text input: one line, or a textarea when the source runs over several. */
+  input?: HTMLInputElement | HTMLTextAreaElement;
   /** Visual (typeset, with holes) or raw text input; absent follows View › Visual math input. */
   mode?: "raw" | "visual";
   /** The visual input, when the cell has one. */
@@ -249,6 +274,14 @@ interface Cell {
   tree?: Stmt;
   /** Lean cells: what Lean reports on the cell's lines (lean-cells.ts), shown as its output. */
   leanMessages?: LeanMessage[];
+  /** A Lean exercise (an exercise with `lean`): `src` is the statement, ending `:= by`, which the reader
+   *  cannot change; `attempt` is the reader's proof, `leanStart` the proof it starts as, `leanSolution`
+   *  the author's, shown on request. Lean checks the two as one declaration of the notebook's Lean file. */
+  lean?: boolean;
+  leanStart?: string;
+  leanSolution?: string;
+  /** What Lean reports on the statement's lines (an unproved goal is reported at its `by`; not saved). */
+  leanStmtMessages?: LeanMessage[];
   /** Math input Auto: whether the cell is typeset, decided for this source (re-decided when the
    *  cell is left with a different source, never while it is being typed in). */
   autoVisual?: boolean;
@@ -323,6 +356,9 @@ interface Nb {
   noticeDismissed?: boolean;
   /** A lesson of a course (or a notebook of a collection): which project, and which of its notebooks. */
   project?: ProjectRef;
+  /** For a lesson of a course with a Lean prelude: the Lean of the lessons before it, in scope above the
+   *  lesson's own Lean (its cells, and its exercises' statements with the author's proofs). */
+  leanPrelude?: string;
 }
 
 /** A phone-sized screen: the sidebar floats over the paper and starts closed, the panel starts folded. */
@@ -566,7 +602,7 @@ async function runCell(cell: Cell) {
     return;
   }
   if (cell.type === "section") { cell.src = cellSrc(cell); return; }
-  if (cell.type === "lean") return;   // Lean checks as you type (lean-cells.ts)
+  if (cell.type === "lean" || (cell.type === "exercise" && cell.lean)) return;   // Lean checks as you type (lean-cells.ts)
   cell.src = cellSrc(cell);
   if (!cell.src.trim()) return;
   if (S.kernel === "failed") {
@@ -667,8 +703,12 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
       delete cell.error;
       // this output is a number: a file that had its label before a restart no longer does
       if (r.label) { LAST_LABEL.set(sessionId, r.label); FILE_OUTS.delete(`${sessionId}:${r.label}`); }
-      delete cell.plot; delete cell.manip; delete cell.outDeBruijn; delete cell.reading; delete cell.kind; delete cell.hasse; delete cell.summary;
+      delete cell.plot; delete cell.manip; delete cell.outDeBruijn; delete cell.reading; delete cell.kind; delete cell.hasse; delete cell.summary; delete cell.visuals;
       if ("kind" in r && r.kind === "poset") { cell.kind = "order"; cell.hasse = r.hasse; cell.summary = r.summary; }
+      if ("kind" in r && r.kind === "logic") { cell.kind = "logic"; cell.summary = r.summary; }
+      if ("kind" in r && r.kind === "system") { cell.kind = "system"; cell.summary = r.summary; }
+      const vs = knownVisuals("visuals" in r ? r.visuals : undefined);
+      if (vs.length) cell.visuals = vs;
       if ("kind" in r && r.kind === "plot") cell.plot = plotDataOf(r);
       if ("kind" in r && r.kind === "manipulate") {
         // the slider stays where the reader left it, when the cell still has a frame there
@@ -685,6 +725,7 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
         const k = `${sessionId}:${r.bound[0]}`;
         if (r.params?.length) USER_FNS.set(k, r.params); else USER_FNS.delete(k);
         USER_NAMES.add(k);
+        if ("kind" in r && r.kind === "lambda") LAMBDA_NAMES.add(k); else LAMBDA_NAMES.delete(k);
         FILE_VARS.delete(k);   // a name bound to a number is no longer the file it was
         // a bound matrix's shape, for what `name[[` offers
         const m = matrixEntries(r.rendered.latex);
@@ -817,7 +858,7 @@ async function evaluateFileCell(cell: Cell, fc: { bind?: string; file: FileValue
     renderHighlights();
   }
   delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.plot; delete cell.manip; delete cell.error;
-  delete cell.outDeBruijn; delete cell.reading; delete cell.kind; delete cell.hasse; delete cell.summary;
+  delete cell.outDeBruijn; delete cell.reading; delete cell.kind; delete cell.hasse; delete cell.summary; delete cell.visuals;
   cell.steps = []; delete cell.outline;
   cell.file = { name: file.name, mime: file.mime, size: fileSize(file), origin: file.origin };
   CELL_FILES.set(cell, file);
@@ -1052,12 +1093,14 @@ function renderTabs() {
 interface ChalkFile {
   /** Format version. Files written as `.lemma` before the rename carry `lemma: 1` instead and still open. */
   chalk?: 1; lemma?: 1; name: string;
-  cells: { src: string; type?: Cell["type"] | undefined; collapsed?: boolean | undefined; showWork: boolean; stepwise?: number | undefined; prompt?: string | undefined; hints?: string[] | undefined; hideQuestion?: boolean | undefined; attempt?: string | undefined; hintsShown?: number | undefined; verdict?: Verdict | undefined; solution?: boolean | undefined; slider?: { min: number; max: number; step: number } | undefined; label: number | null; outLatex?: string | undefined; outText?: string | undefined; form?: string | undefined; semantics?: "real" | "complex" | undefined; echoLatex?: string | undefined; steps?: Step[] | undefined; outline?: StepOutline[] | undefined; error?: Cell["error"] | undefined; plot?: PlotData | undefined; mode?: Cell["mode"] | undefined; ask?: AskResult | undefined; file?: FileMeta | undefined; noSuggest?: true | undefined }[];
+  cells: { src: string; type?: Cell["type"] | undefined; collapsed?: boolean | undefined; showWork: boolean; stepwise?: number | undefined; prompt?: string | undefined; hints?: string[] | undefined; hideQuestion?: boolean | undefined; attempt?: string | undefined; hintsShown?: number | undefined; verdict?: Verdict | undefined; solution?: boolean | undefined; lean?: boolean | undefined; leanStart?: string | undefined; leanSolution?: string | undefined; slider?: { min: number; max: number; step: number } | undefined; label: number | null; outLatex?: string | undefined; outText?: string | undefined; form?: string | undefined; semantics?: "real" | "complex" | undefined; echoLatex?: string | undefined; steps?: Step[] | undefined; outline?: StepOutline[] | undefined; error?: Cell["error"] | undefined; plot?: PlotData | undefined; visuals?: KnownVisual[] | undefined; summary?: string | undefined; mode?: Cell["mode"] | undefined; ask?: AskResult | undefined; file?: FileMeta | undefined; noSuggest?: true | undefined }[];
   scenes: Scene[];
   /** Images attached to the notebook, by name. */
   assets?: Record<string, Asset>;
   /** The project the notebook was opened from (a course's lesson), so it keeps its place in it. */
   project?: ProjectRef;
+  /** The Lean of the course's earlier lessons, in scope in this one (`Nb.leanPrelude`). */
+  leanPrelude?: string;
 }
 
 /** A cell's source as the user has it now: the live editor's text when there is one. */
@@ -1084,17 +1127,18 @@ const outlineOf = (steps: Step[]): StepOutline[] => steps.map((st) => ({ rule: s
 function serializeNotebook(): string {
   const doc: ChalkFile = {
     chalk: 1, name: S.docName,
-    cells: S.cells.map((c) => ({ src: cellSrc(c), type: c.type, collapsed: c.collapsed || undefined, showWork: c.showWork, stepwise: c.stepwise, slider: c.slider, ...exerciseToSave(c), label: c.label, outLatex: c.outLatex, outText: c.outText, form: c.form, semantics: c.semantics, echoLatex: c.echoLatex, steps: stepsToSave(c), outline: outlineToSave(c), error: c.error, plot: c.plot, mode: c.mode, ask: c.ask, file: c.file, noSuggest: c.noSuggest || undefined })),
+    cells: S.cells.map((c) => ({ src: cellSrc(c), type: c.type, collapsed: c.collapsed || undefined, showWork: c.showWork, stepwise: c.stepwise, slider: c.slider, ...exerciseToSave(c), label: c.label, outLatex: c.outLatex, outText: c.outText, form: c.form, semantics: c.semantics, echoLatex: c.echoLatex, steps: stepsToSave(c), outline: outlineToSave(c), error: c.error, plot: c.plot, visuals: c.visuals, summary: c.visuals ? c.summary : undefined, mode: c.mode, ask: c.ask, file: c.file, noSuggest: c.noSuggest || undefined })),
     scenes: ST.scenes,
     ...(Object.keys(S.assets).length ? { assets: S.assets } : {}),
     ...(currentDoc()?.project ? { project: currentDoc()!.project } : {}),
+    ...(currentDoc()?.leanPrelude ? { leanPrelude: currentDoc()!.leanPrelude } : {}),
   };
   return JSON.stringify(doc, null, 2);
 }
 
 /** Replace the notebook with a file's contents: saved outputs show at once, then every cell is
  *  re-run in order so the engine's session (and with it `explain`) matches what is shown. */
-async function loadNotebook(text: string, name?: string, project?: ProjectRef) {
+async function loadNotebook(text: string, name?: string, project?: ProjectRef, prelude?: string) {
   let doc: ChalkFile;
   try { doc = JSON.parse(text) as ChalkFile; } catch { notify("err", "That file is not a ChalkMath notebook (it is not valid JSON)."); return; }
   if ((doc.chalk !== 1 && doc.lemma !== 1) || !Array.isArray(doc.cells)) { notify("err", "That file is not a ChalkMath notebook."); return; }
@@ -1102,6 +1146,8 @@ async function loadNotebook(text: string, name?: string, project?: ProjectRef) {
   if (!d.cells.length) d.cells.push(freshCell());
   const pr = project ?? projectRefOf(doc);
   if (pr) d.project = pr;
+  const pre = prelude ?? (typeof doc.leanPrelude === "string" ? doc.leanPrelude : "");
+  if (pre) d.leanPrelude = pre;
   // an untouched new notebook is replaced; otherwise the file gets its own tab
   const cur = currentDoc();
   if (cur && docPristine(cur)) { stashDoc(); S.docs[S.doc] = d; S.doc = -1; loadDoc(S.docs.indexOf(d)); }
@@ -1129,7 +1175,8 @@ function assetsFromFile(doc: ChalkFile): Record<string, Asset> {
 function exerciseToSave(c: Cell): Partial<ChalkFile["cells"][number]> {
   if (c.type !== "exercise") return {};
   return { prompt: c.prompt || undefined, hints: c.hints?.length ? c.hints : undefined, hideQuestion: c.hideQuestion || undefined,
-    attempt: c.attempt || undefined, hintsShown: c.hintsShown || undefined, verdict: c.verdict, solution: c.solution || undefined };
+    attempt: c.attempt || undefined, hintsShown: c.hintsShown || undefined, verdict: c.verdict, solution: c.solution || undefined,
+    lean: c.lean || undefined, leanStart: c.lean ? c.leanStart : undefined, leanSolution: c.lean ? c.leanSolution : undefined };
 }
 /** An exercise's fields from a file's record; only well-formed ones are kept. */
 function exerciseFromFile(cell: Cell, c: ChalkFile["cells"][number]) {
@@ -1141,6 +1188,11 @@ function exerciseFromFile(cell: Cell, c: ChalkFile["cells"][number]) {
   if (typeof c.hintsShown === "number") cell.hintsShown = c.hintsShown;
   if (c.verdict && typeof c.verdict.equivalent === "boolean") cell.verdict = c.verdict;
   if (c.solution) cell.solution = true;
+  if (c.lean) {
+    cell.lean = true;
+    if (typeof c.leanStart === "string") cell.leanStart = c.leanStart;
+    if (typeof c.leanSolution === "string") cell.leanSolution = c.leanSolution;
+  }
 }
 
 /** Cells from a file's records (no DOM yet); `foldWork` folds every cell's work whatever was saved. */
@@ -1162,6 +1214,8 @@ function cellsFromFile(doc: ChalkFile, foldWork = false): Cell[] {
     if (c.outline && !c.steps?.length) cell.outline = c.outline;
     if (c.error) cell.error = c.error;
     if (c.plot) cell.plot = migratePlot(c.plot);
+    const vs = knownVisuals(c.visuals);
+    if (vs.length) { cell.visuals = vs; if (typeof c.summary === "string") cell.summary = c.summary; }
     const f = c.file;
     const o = f?.origin as { url?: unknown; asset?: unknown; derived?: unknown } | undefined;
     if (f && typeof f.name === "string" && typeof f.mime === "string" && o) {
@@ -1483,6 +1537,28 @@ const EXAMPLES: { file: string; title: string; blurb: string }[] = [
   { file: "order-lattices.chalk", title: "Order and lattices", blurb: "Part I of From Zero to Propagators: partial orders, joins and meets, monotone maps and fixed points, with the proofs in Lean cells." },
 ];
 
+/** A bundled notebook's text, by its path under examples/. */
+async function fetchExample(file: string): Promise<string> {
+  const res = await fetch(`examples/${file}?v=${typeof __BUILD_ID__ === "string" ? __BUILD_ID__ : "dev"}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.text();
+}
+/** The Lean of a course's lessons before lesson `k`, in order: their Lean cells, and their Lean exercises
+ *  as statement and the author's proof (a theorem proved there may be used later). Lessons that are not
+ *  there are left out; what a lesson needs from them then shows as an error in its Lean. */
+async function leanPreludeOf(p: Project, k: number): Promise<string> {
+  const parts: string[] = [];
+  for (let j = 0; j < k; j++) {
+    try {
+      const doc = JSON.parse(await fetchExample(lessonPath(p, j))) as ChalkFile;
+      const lean = doc.cells.flatMap((c) => c.type === "lean" ? [c.src]
+        : c.type === "exercise" && c.lean && c.src.trim() ? [`${c.src}\n${c.leanSolution ?? LEAN_START}`] : []);
+      if (lean.length) parts.push(`-- ${p.lessons[j]!.title}\n${lean.join("\n\n")}`);
+    } catch (e) { log("err", `Lean prelude: ${lessonPath(p, j)}: ${e instanceof Error ? e.message : String(e)}`); }
+  }
+  return parts.join("\n\n");
+}
+
 /** Open a bundled notebook in a tab (or show it, if it is open already). `file` is its path under
  *  examples/; a lesson opens with its place in its project. */
 async function openExample(file: string, project?: ProjectRef): Promise<boolean> {
@@ -1490,9 +1566,10 @@ async function openExample(file: string, project?: ProjectRef): Promise<boolean>
   const open = S.docs.findIndex((d) => d.name === name && (!project || (d.project?.id === project.id && d.project.lesson === project.lesson)));
   if (open >= 0) { loadDoc(open); switchTab("notebook"); return true; }
   try {
-    const res = await fetch(`examples/${file}?v=${typeof __BUILD_ID__ === "string" ? __BUILD_ID__ : "dev"}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    await loadNotebook(await res.text(), name, project);
+    const text = await fetchExample(file);
+    const p = project && projectById(project.id);
+    const prelude = p?.leanPrelude ? await leanPreludeOf(p, project!.lesson) : undefined;
+    await loadNotebook(text, name, project, prelude);
     if (project) recordProgress();
     return true;
   } catch (e) {
@@ -1515,6 +1592,9 @@ interface Project {
   /** The folder of its notebooks under examples/ ("" for the top). */
   path: string;
   level?: string;
+  /** Each lesson's Lean sees the Lean of the lessons before it (their cells, and their exercises proved
+   *  with the author's proofs), so a course builds one development across its lessons. */
+  leanPrelude?: boolean;
   lessons: { file: string; title: string; blurb: string }[];
 }
 /** What the page knows before courses.json arrives (or when it cannot): the example notebooks. */
@@ -1652,6 +1732,7 @@ function renderLessonBar() {
 
 const SHORTCUTS: [string, string][] = [
   ["Enter", "Run the cell (in a Markdown cell: a new line)"],
+  ["Shift+Enter in a math cell", "A new line: a cell of several lines, such as a system (Enter still runs it)"],
   ["? at the start of a cell", "Ask a question: a number, list, table or formula, looked up (Run › Lookup settings)"],
   ["Shift+Enter or Esc", "Render a Markdown cell"],
   ["Enter on rendered Markdown, or double-click", "Edit it"],
@@ -1724,7 +1805,7 @@ function importNotebook() {
 
 /** What a link carries: the name and every cell's text and kind. Outputs are not included: the
  *  engine recomputes them when the link opens, which is the point of a verified notebook. */
-interface LinkDoc { v: 1; n: string; c: { s: string; t?: "markdown" | "section" | "lean" | "exercise"; w?: 1; f?: 1; r?: number; p?: string; hs?: string[]; hq?: 1; sl?: [number, number, number] }[]; a?: Record<string, { m: string; d: string; b?: 1 }> }
+interface LinkDoc { v: 1; n: string; c: { s: string; t?: "markdown" | "section" | "lean" | "exercise"; w?: 1; f?: 1; r?: number; p?: string; hs?: string[]; hq?: 1; sl?: [number, number, number]; ln?: 1; lst?: string; lso?: string }[]; a?: Record<string, { m: string; d: string; b?: 1 }> }
 
 async function deflate(text: string): Promise<Uint8Array> {
   const cs = new CompressionStream("deflate-raw");
@@ -1752,7 +1833,8 @@ async function notebookLink(): Promise<string> {
     v: 1, n: S.docName,
     c: S.cells.filter((c) => cellSrc(c).trim()).map((c) => ({ s: cellSrc(c), ...(c.type ? { t: c.type } : {}), ...(c.showWork ? { w: 1 as const } : {}), ...(c.collapsed ? { f: 1 as const } : {}), ...(c.stepwise !== undefined ? { r: c.stepwise } : {}),
       ...(c.prompt ? { p: c.prompt } : {}), ...(c.hints?.length ? { hs: c.hints } : {}), ...(c.hideQuestion ? { hq: 1 as const } : {}),
-      ...(c.slider ? { sl: [c.slider.min, c.slider.max, c.slider.step] as [number, number, number] } : {}) })),
+      ...(c.slider ? { sl: [c.slider.min, c.slider.max, c.slider.step] as [number, number, number] } : {}),
+      ...(c.lean ? { ln: 1 as const, ...(c.leanStart ? { lst: c.leanStart } : {}), ...(c.leanSolution ? { lso: c.leanSolution } : {}) } : {}) })),
     ...(Object.keys(S.assets).length ? { a: Object.fromEntries(Object.values(S.assets).map((a) => [a.name, { m: a.mime, d: a.data, ...(a.binary ? { b: 1 as const } : {}) }])) } : {}),
   };
   const json = JSON.stringify(doc);
@@ -1781,7 +1863,8 @@ async function openNotebookLink(hash: string): Promise<boolean> {
       chalk: 1, name: doc.n || "shared.chalk",
       cells: doc.c.map((c) => ({ src: String(c.s ?? ""), type: c.t === "markdown" || c.t === "section" || c.t === "lean" || c.t === "exercise" ? c.t : undefined, collapsed: c.f ? true : undefined, showWork: !!c.w, stepwise: typeof c.r === "number" ? c.r : undefined,
         prompt: typeof c.p === "string" ? c.p : undefined, hints: Array.isArray(c.hs) ? c.hs.map(String) : undefined, hideQuestion: c.hq ? true : undefined,
-        slider: Array.isArray(c.sl) && c.sl.length === 3 ? { min: Number(c.sl[0]), max: Number(c.sl[1]), step: Number(c.sl[2]) } : undefined, label: null })),
+        slider: Array.isArray(c.sl) && c.sl.length === 3 ? { min: Number(c.sl[0]), max: Number(c.sl[1]), step: Number(c.sl[2]) } : undefined,
+        lean: c.ln ? true : undefined, leanStart: typeof c.lst === "string" ? c.lst : undefined, leanSolution: typeof c.lso === "string" ? c.lso : undefined, label: null })),
       scenes: [],
       ...(doc.a ? { assets: Object.fromEntries(Object.entries(doc.a).map(([name, a]) => [name, { name, mime: String(a.m), data: String(a.d), ...(a.b ? { binary: true } : {}) }])) } : {}),
     };
@@ -2023,6 +2106,17 @@ function onPaste(ev: ClipboardEvent, cell: Cell) {
     return;
   }
   const text = dt.getData("text/plain");
+  if (cell.input instanceof HTMLInputElement && text.includes("\n") && !/<svg[\s>]/i.test(text)) {
+    // several lines into a one-line input: it becomes a textarea, the lines kept
+    ev.preventDefault();
+    const input = cell.input, a = input.selectionStart ?? input.value.length, b = input.selectionEnd ?? a;
+    const t = text.replace(/\r\n?/g, "\n");
+    cell.src = input.value.slice(0, a) + t + input.value.slice(b);
+    refreshInput(cell);
+    cell.input?.focus(); cell.input?.setSelectionRange(a + t.length, a + t.length);
+    renderSidebar(); autosave();
+    return;
+  }
   if (/^\s*(<\?xml[^>]*>\s*)?(<!--[\s\S]*?-->\s*)*(<!DOCTYPE[^>]*>\s*)?<svg[\s>]/i.test(text)) {
     ev.preventDefault();
     let k = 1; while (S.assets[`pasted-${k}.svg`]) k++;
@@ -2084,8 +2178,10 @@ function addCell(src = "", type: CellType = "math"): Cell {
   return cell;
 }
 /** Insert a fresh cell at `at` and put the caret in it. */
-function insertCell(at: number, type: CellType = "math") {
-  S.cells.splice(at, 0, freshCell("", type));
+function insertCell(at: number, type: CellType = "math", lean = false) {
+  const c = freshCell("", type);
+  if (lean && type === "exercise") c.lean = true;
+  S.cells.splice(at, 0, c);
   renderCells(); renderSidebar(); focusCell(at); autosave();
 }
 /** Make a cell another kind, keeping its text. A cell that stops being mathematics loses its output. */
@@ -2096,7 +2192,7 @@ function convertCell(cell: Cell, type: CellType) {
   if (type === "math") delete cell.type; else cell.type = type;
   delete cell.editing; delete cell.collapsed;
   if (type === "markdown") cell.editing = !cell.src.trim();
-  if (type !== "math") { delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.error; delete cell.plot; delete cell.manip; delete cell.hasse; delete cell.summary; delete cell.ask; delete cell.askTrail; cell.steps = []; delete cell.outline; cell.label = null; }
+  if (type !== "math") { delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.error; delete cell.plot; delete cell.manip; delete cell.hasse; delete cell.summary; delete cell.visuals; delete cell.ask; delete cell.askTrail; cell.steps = []; delete cell.outline; cell.label = null; }
   if (type === "section") cell.src = cell.src.split("\n")[0]!.replace(/^#+\s*/, "");
   if (type !== "lean") delete cell.leanMessages;
   if (type === "exercise") cell.editing = true;
@@ -2119,7 +2215,7 @@ function moveCell(cell: Cell, by: -1 | 1) {
 }
 const hasOutput = (cell: Cell) => !!(cell.outLatex || cell.file || cell.error);
 function clearCellOutput(cell: Cell) {
-  delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.error; delete cell.plot; delete cell.manip; delete cell.hasse; delete cell.summary; delete cell.file; delete cell.outDeBruijn; delete cell.reading;
+  delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.error; delete cell.plot; delete cell.manip; delete cell.hasse; delete cell.summary; delete cell.visuals; delete cell.file; delete cell.outDeBruijn; delete cell.reading;
   delete cell.ask; delete cell.askTrail;
   cell.steps = []; delete cell.outline; cell.label = null;
   renderCellBody(cell); renderChrome(); renderSidebar(); autosave();
@@ -2144,6 +2240,7 @@ function focusCell(i: number) {
   // after the render: it rebuilds the inputs, and focus on the old one is lost
   if (c?.mi) c.mi.focus();
   else if (c?.type === "lean") focusLean(c.id);
+  else if (c?.type === "exercise" && c.lean && !c.editing) focusLean(c.id);
   else if (c?.type === "exercise") c.el?.querySelector<HTMLElement>(".xc-edit textarea, .xc-in")?.focus();
   else (c?.input ?? c?.ta ?? c?.el?.querySelector<HTMLElement>(".mdout"))?.focus();
 }
@@ -2257,7 +2354,7 @@ function renderChrome() {
   const menus = h("div", "menus");
   const MENUS: Record<string, [string, () => void][]> = {
     File: [["New notebook", newNotebook], ["Open…", openNotebook], ["Courses and examples…", () => openCourses()], ["Save", () => saveNotebook()], ["Save as…", saveNotebookAs], ["Export to file…", exportNotebook], ["Import from file…", importNotebook], ["Attach file…", attachFile], ["Copy link to notebook", () => void copyNotebookLink()]],
-    Edit: [["Add math cell", () => { addCell(); focusCell(S.cells.length - 1); }], ["Add Markdown cell", () => { addCell("", "markdown"); focusCell(S.cells.length - 1); }], ["Add section", () => { addCell("", "section"); focusCell(S.cells.length - 1); }], ["Add Lean cell", () => { addCell("", "lean"); focusCell(S.cells.length - 1); }], ["Add exercise", () => { addCell("", "exercise"); focusCell(S.cells.length - 1); }],
+    Edit: [["Add math cell", () => { addCell(); focusCell(S.cells.length - 1); }], ["Add Markdown cell", () => { addCell("", "markdown"); focusCell(S.cells.length - 1); }], ["Add section", () => { addCell("", "section"); focusCell(S.cells.length - 1); }], ["Add Lean cell", () => { addCell("", "lean"); focusCell(S.cells.length - 1); }], ["Add exercise", () => { addCell("", "exercise"); focusCell(S.cells.length - 1); }], ["Add Lean exercise", () => { insertCell(S.cells.length, "exercise", true); }],
       ...(S.cells[S.active] ? CELL_TYPES.filter(([t]) => t !== (S.cells[S.active]!.type ?? "math")).map(([t, label]): [string, () => void] => [`Change to ${label.toLowerCase()}`, () => convertCell(S.cells[S.active]!, t)]) : []),
       ["Clear outputs", clearOutputs]],
     View: [["Toggle light / dark", () => { applyTheme(S.theme === "light" ? "dark" : "light"); renderChrome(); }], [`${S.sidebarOpen ? "✓ " : ""}Sidebar  (Ctrl+B)`, toggleSidebar], ["Explanation panel", () => setPanelOpen(!S.panelOpen)],
@@ -2879,6 +2976,214 @@ function hasseSvg(d: { nodes: { name: string; height: number }[]; covers: [strin
   return svg;
 }
 
+/** The visuals this notebook knows how to draw, from a reply or a file: others are left out. */
+function knownVisuals(vs: unknown): KnownVisual[] {
+  if (!Array.isArray(vs)) return [];
+  return vs.filter((v): v is KnownVisual => {
+    const d = (v as { data?: Record<string, unknown> } | null)?.data;
+    if (!d) return false;
+    const kind = (v as { kind?: unknown }).kind;
+    if (kind === "logic.truthtable") return Array.isArray(d["vars"]) && Array.isArray(d["rows"]) && typeof (d["formula"] as { latex?: unknown } | undefined)?.latex === "string";
+    if (kind === "relation.digraph") return Array.isArray(d["nodes"]) && Array.isArray(d["edges"]) && Array.isArray(d["bad"]) && Array.isArray(d["added"]);
+    if (kind === "algebra.optable") return Array.isArray(d["elems"]) && Array.isArray(d["rows"]) && Array.isArray(d["marks"]);
+    if (kind === "context.table") return Array.isArray(d["objects"]) && Array.isArray(d["attributes"]) && Array.isArray(d["has"]);
+    if (kind === "typing.tree") return typeof (d["root"] as { latex?: unknown } | undefined)?.latex === "string";
+    return false;
+  });
+}
+
+/** A visual, boxed and captioned as a plot is. */
+function visualBox(v: KnownVisual): HTMLElement {
+  const box = h("div", "visualbox");
+  if (v.kind === "logic.truthtable") box.append(truthTable(v.data));
+  else if (v.kind === "relation.digraph") box.append(digraphSvg(v.data), digraphLegend(v.data));
+  else if (v.kind === "algebra.optable") box.append(opTable(v.data));
+  else if (v.kind === "typing.tree") box.append(typingTree(v.data));
+  else box.append(contextTable(v.data));
+  return box;
+}
+
+/** A typing derivation as a proof tree: each judgment under a bar, its premises above, the rule to the
+ *  bar's right. Var has no premises, so its bar stands alone. */
+function typingTree(d: TypingTreeData): HTMLElement {
+  const wrap = h("div", "typingtree");
+  wrap.setAttribute("role", "img");
+  wrap.setAttribute("aria-label", `Typing derivation of ${d.root.text}`);
+  const node = (n: TypingNode, depth: number): HTMLElement => {
+    const el = h("div", "ptnode");
+    if (n.premises.length) {
+      const prem = h("div", "ptprem");
+      // a deep tree is cut off rather than drawn past any width
+      if (depth < 12) for (const p of n.premises) prem.append(node(p, depth + 1));
+      else prem.append(h("span", "ptmore", "⋮"));
+      el.append(prem);
+    }
+    const concl = h("div", "ptconc");
+    concl.title = n.text;
+    concl.innerHTML = tex(n.latex);
+    concl.append(h("span", "ptrule", n.rule));
+    el.append(concl);
+    return el;
+  };
+  const tree = h("div", "pttree");
+  tree.append(node(d.root, 0));
+  wrap.append(tree);
+  if (d.legend?.length) {
+    const lg = h("div", "ptlegend");
+    for (const l of d.legend) { const row = h("div"); row.title = l.text; row.innerHTML = tex(l.latex); lg.append(row); }
+    wrap.append(lg);
+  }
+  return wrap;
+}
+
+/** An operation's table: the row's element times the column's, the marked cells (a law failing) shaded. */
+function opTable(d: OpTableData): HTMLElement {
+  const t = h("table", "truthtable optable");
+  t.setAttribute("aria-label", `Operation table on ${d.elems.length} elements${d.marks.length ? `; marked: ${d.marks.map(([a, b]) => `${a} · ${b}`).join(", ")}` : ""}`);
+  const marked = new Set(d.marks.map(([a, b]) => `${a}\u0000${b}`));
+  const head = h("tr");
+  head.append(h("th", "optcorner", "·"));
+  for (const y of d.elems) head.append(h("th", undefined, y));
+  const thead = h("thead"); thead.append(head); t.append(thead);
+  const body = h("tbody");
+  d.rows.forEach((row, i) => {
+    const x = d.elems[i] ?? "";
+    const tr = h("tr");
+    tr.append(h("th", "oprow", x));
+    row.forEach((v, j) => tr.append(h("td", marked.has(`${x}\u0000${d.elems[j] ?? ""}`) ? "opmark" : "", v)));
+    body.append(tr);
+  });
+  t.append(body);
+  return t;
+}
+
+/** A formal context: a row per object, a column per attribute, × where the object has it. */
+function contextTable(d: ContextTableData): HTMLElement {
+  const t = h("table", "truthtable ctxtable");
+  t.setAttribute("aria-label", `A context of ${d.objects.length} objects and ${d.attributes.length} attributes`);
+  const head = h("tr");
+  head.append(h("th"));
+  for (const a of d.attributes) head.append(h("th", undefined, a));
+  const thead = h("thead"); thead.append(head); t.append(thead);
+  const body = h("tbody");
+  d.objects.forEach((o, i) => {
+    const tr = h("tr");
+    tr.append(h("th", "oprow", o));
+    (d.has[i] ?? []).forEach((b) => tr.append(h("td", undefined, b ? "×" : "")));
+    body.append(tr);
+  });
+  t.append(body);
+  return t;
+}
+
+/** A truth table: a column per variable, then the formula; T and F, the formula's false rows marked. */
+function truthTable(d: TruthTableData): HTMLElement {
+  const t = h("table", "truthtable");
+  t.setAttribute("aria-label", `Truth table of ${d.formula.text}: ${d.rows.length} rows`);
+  const head = h("tr");
+  for (const v of d.vars) { const th = h("th"); th.innerHTML = tex(v); head.append(th); }
+  const fth = h("th", "ttf"); fth.innerHTML = tex(d.formula.latex); head.append(fth);
+  const thead = h("thead"); thead.append(head); t.append(thead);
+  const body = h("tbody");
+  for (const row of d.rows) {
+    const tr = h("tr", row[row.length - 1] ? "" : "ttfalse");
+    row.forEach((b, i) => tr.append(h("td", i === row.length - 1 ? "ttf" : "", b ? "T" : "F")));
+    body.append(tr);
+  }
+  t.append(body);
+  return t;
+}
+
+/** A relation as a directed graph: elements on a circle, a pair as an arrow (a loop for `x R x`). The
+ *  arrows that show a property failing are marked, and the ones a closure added are dashed. */
+function digraphSvg(d: DigraphData): SVGSVGElement {
+  const NS = "http://www.w3.org/2000/svg";
+  const n = d.nodes.length;
+  const longest = Math.max(1, ...d.nodes.map((x) => x.length));
+  const layered = !!d.layers && d.layers.length === n;
+  const pos = new Map<string, [number, number]>();
+  let w: number, hgt: number;
+  if (layered) {
+    // a state graph: the initial states on top, each row one step further on
+    const rows = new Map<number, string[]>();
+    d.nodes.forEach((name, i) => { const l = d.layers![i]!; rows.set(l, [...(rows.get(l) ?? []), name]); });
+    const widest = Math.max(1, ...[...rows.values()].map((r) => r.length));
+    const colW = Math.max(70, longest * 7 + 24), rowH = 74;
+    w = Math.max(240, widest * colW + 40); hgt = (Math.max(0, ...rows.keys()) + 1) * rowH + 30;
+    for (const [l, names] of rows) names.forEach((name, k) => pos.set(name, [20 + (k + 0.5) * ((w - 40) / names.length), 24 + l * rowH]));
+  } else {
+    const r = n <= 1 ? 0 : Math.max(60, Math.min(150, 26 * n)), pad = Math.max(60, longest * 6.6 + 24);
+    w = 2 * r + 2 * pad; hgt = 2 * r + 90;
+    d.nodes.forEach((name, i) => {
+      const a = -Math.PI / 2 + (2 * Math.PI * i) / Math.max(1, n);
+      pos.set(name, [w / 2 + r * Math.cos(a), hgt / 2 + r * Math.sin(a)]);
+    });
+  }
+  const key = ([a, b]: [string, string]) => `${a}\u0000${b}`;
+  const bad = new Set(d.bad.map(key)), added = new Set(d.added.map(key)), all = new Set(d.edges.map(key));
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", `A relation on ${n} element${n === 1 ? "" : "s"}${d.edges.length ? `; pairs: ${d.edges.map(([a, b]) => `${a} to ${b}`).join(", ")}` : ", no pairs"}`);
+  svg.setAttribute("viewBox", `0 0 ${w} ${hgt}`); svg.setAttribute("width", String(w)); svg.setAttribute("height", String(hgt));
+  const defs = document.createElementNS(NS, "defs");
+  for (const cls of ["", "bad", "added"]) {
+    const m = document.createElementNS(NS, "marker");
+    m.setAttribute("id", `rel-arrow${cls ? `-${cls}` : ""}`); m.setAttribute("viewBox", "0 0 10 10"); m.setAttribute("refX", "9"); m.setAttribute("refY", "5");
+    m.setAttribute("markerWidth", "7"); m.setAttribute("markerHeight", "7"); m.setAttribute("orient", "auto-start-reverse");
+    const path = document.createElementNS(NS, "path"); path.setAttribute("d", "M0,0 L10,5 L0,10 z"); path.setAttribute("class", `rhead ${cls}`);
+    m.append(path); defs.append(m);
+  }
+  svg.append(defs);
+  for (const e of d.edges) {
+    const [a, b] = e;
+    const p = pos.get(a), q = pos.get(b); if (!p || !q) continue;
+    const cls = bad.has(key(e)) ? "bad" : added.has(key(e)) ? "added" : "";
+    const path = document.createElementNS(NS, "path");
+    if (a === b) {
+      // a loop, outward from the centre
+      const ang = Math.atan2(p[1] - hgt / 2, p[0] - w / 2) || -Math.PI / 2;
+      const cx = p[0] + 18 * Math.cos(ang), cy = p[1] + 18 * Math.sin(ang);
+      const s1 = [p[0] + 7 * Math.cos(ang - 0.6), p[1] + 7 * Math.sin(ang - 0.6)], s2 = [p[0] + 7 * Math.cos(ang + 0.6), p[1] + 7 * Math.sin(ang + 0.6)];
+      path.setAttribute("d", `M${s1[0]},${s1[1]} Q${cx + 14 * Math.cos(ang - 1.2)},${cy + 14 * Math.sin(ang - 1.2)} ${cx},${cy} Q${cx + 14 * Math.cos(ang + 1.2)},${cy + 14 * Math.sin(ang + 1.2)} ${s2[0]},${s2[1]}`);
+    } else {
+      // stop short of the nodes; bend when the reverse pair is drawn too, so the two do not overlap
+      const dx = q[0] - p[0], dy = q[1] - p[1], len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
+      const x1 = p[0] + ux * 8, y1 = p[1] + uy * 8, x2 = q[0] - ux * 9, y2 = q[1] - uy * 9;
+      // bend a pair drawn both ways apart; in a layered drawing, bend edges within a row or back up it
+      const bend = all.has(key([b, a])) ? 14 : layered && q[1] <= p[1] ? 26 : 0;
+      const mx = (x1 + x2) / 2 - uy * bend, my = (y1 + y2) / 2 + ux * bend;
+      path.setAttribute("d", `M${x1},${y1} Q${mx},${my} ${x2},${y2}`);
+    }
+    path.setAttribute("class", `redge ${cls}`);
+    path.setAttribute("marker-end", `url(#rel-arrow${cls ? `-${cls}` : ""})`);
+    svg.append(path);
+  }
+  for (const [name, [x, y]] of pos) {
+    const c = document.createElementNS(NS, "circle");
+    c.setAttribute("cx", String(x)); c.setAttribute("cy", String(y)); c.setAttribute("r", "5"); c.setAttribute("class", "hnode"); svg.append(c);
+    const t = document.createElementNS(NS, "text");
+    if (layered) {
+      // centred under the node
+      t.setAttribute("x", String(x)); t.setAttribute("y", String(y + 19)); t.setAttribute("text-anchor", "middle");
+    } else {
+      // outward from the centre, past the node's loop when it has one
+      const out = Math.atan2(y - hgt / 2, x - w / 2) || -Math.PI / 2, dist = d.edges.some(([a, b]) => a === name && b === name) ? 40 : 14;
+      t.setAttribute("x", String(x + dist * Math.cos(out) - (Math.cos(out) < -0.3 ? name.length * 6.6 : 4))); t.setAttribute("y", String(y + dist * Math.sin(out) + 4));
+    }
+    t.setAttribute("class", "hlabel"); t.textContent = name; svg.append(t);
+  }
+  return svg;
+}
+
+/** What the marked arrows mean, when there are any. */
+function digraphLegend(d: DigraphData): HTMLElement {
+  const cap = h("div", "plotcap");
+  const pairs = (ps: [string, string][]) => ps.map(([a, b]) => `${a}→${b}`).join(", ");
+  if (d.bad.length) cap.append(h("span", "legend relbad", `marked: ${pairs(d.bad)}`), " ");
+  if (d.added.length) cap.append(h("span", "legend reladded", `added: ${pairs(d.added)}`));
+  return cap;
+}
+
 /** A complex number as LaTeX, to a few digits. */
 function fmtC(re: number, im: number): string {
   const f = (v: number) => (Math.abs(v) < 1e-12 ? "0" : String(Math.round(v * 1000) / 1000));
@@ -2913,6 +3218,9 @@ function visualBlocked(cell: Cell): string | null {
   if (kind === "lookup") return "questions are edited as text";
   if (kind === "λ-term") return "λ-terms are edited as text";
   if (kind === "order" || ORDER_CELL.test(src.trim())) return "order theory is edited as text";
+  if (kind === "logic" || isLogicCell(src.trim())) return "logic is edited as text";
+  if (kind === "system" || SYSTEM_CELL.test(src.trim())) return "systems are edited as text";
+  if (src.includes("\n")) return "a cell of several lines is edited as text";
   if (src.trim() && !readNotation(src, sessionFns()).ok) return "the text does not parse yet";
   return null;
 }
@@ -3168,27 +3476,34 @@ const promptLevel = new ResizeObserver((entries) => {
 function inputEls(cell: Cell, i: number): HTMLElement[] {
   const mi = isVisual(cell) ? visualInput(cell, i) : null;
   if (mi) { cell.mi = mi; promptLevel.observe(mi.el); return [mi.el]; }
-  const input = document.createElement("input");
-  input.className = "cellin"; input.type = "text"; input.value = cell.src;
+  // a source of several lines (a system, say) is a textarea; Shift+Enter starts a new line, Enter runs
+  const multi = cellSrc(cell).includes("\n");
+  const input = multi ? document.createElement("textarea") : document.createElement("input");
+  input.className = multi ? "cellin multi" : "cellin"; input.value = cell.src;
+  if (input instanceof HTMLInputElement) input.type = "text";
+  else { input.wrap = "off"; fitRows(input); }
   input.setAttribute("aria-label", `Cell ${i + 1}, math input`);
   input.autocapitalize = "off"; input.autocomplete = "off"; input.setAttribute("autocorrect", "off"); input.enterKeyHint = "go";
   input.placeholder = i === 0 ? "e.g. diff(x^2 * sin(x), x)" : "";
   input.spellcheck = false;
   cell.input = input;
   input.addEventListener("focus", () => { S.active = i; renderChrome(); renderSidebar(); markActive(); updateKeypad(); });
-  input.addEventListener("input", () => { cell.src = input.value; updateCompletions(cell); updateSigHelp(cell); syncHighlight(cell); renderSidebar(); renderTabs(); });
+  input.addEventListener("input", () => { cell.src = input.value; if (input instanceof HTMLTextAreaElement) fitRows(input); updateCompletions(cell); updateSigHelp(cell); syncHighlight(cell); renderSidebar(); renderTabs(); });
   input.addEventListener("keyup", () => { updateSigHelp(cell); syncHighlight(cell); });   // caret moves without an input event
   input.addEventListener("click", () => updateSigHelp(cell));
   input.addEventListener("scroll", () => syncHighlight(cell));
   input.addEventListener("blur", () => { hideCompletions(); hideSigHelp(); autoSettle(cell); updateKeypad(); });
-  input.addEventListener("keydown", (ev) => onKey(ev, cell, i));
-  input.addEventListener("paste", (ev) => onPaste(ev, cell));
+  input.addEventListener("keydown", (ev) => onKey(ev as KeyboardEvent, cell, i));
+  input.addEventListener("paste", (ev) => onPaste(ev as ClipboardEvent, cell));
   // the highlight overlay sits under the transparent text of the input; the input keeps caret and selection
   const hl = h("div", "hl"); hl.setAttribute("aria-hidden", "true");
   cell.hl = hl;
   syncHighlight(cell);
   return [hl, input];
 }
+
+/** A textarea as tall as its lines. */
+function fitRows(ta: HTMLTextAreaElement) { ta.rows = Math.max(1, ta.value.split("\n").length); }
 
 /** Swap one cell's input (typeset ↔ text) in place, without rebuilding the others. */
 function refreshInput(cell: Cell) {
@@ -3250,10 +3565,10 @@ function renderCells() {
   host.innerHTML = "";
   promptLevel.disconnect();
   // Lean cells: one document per notebook, whose views are rebuilt with the cells
-  const leanCells = S.cells.filter((c) => c.type === "lean");
+  const leanCells = leanDocCells();
   const leanIds = new Set(leanCells.map((c) => c.id));
   unmountLean((id) => leanIds.has(id));
-  syncLean(currentDoc(), leanCells.map((c) => ({ id: c.id, src: c.src })));
+  syncLean(currentDoc(), leanCells);
   if (leanCells.length) void ensureLean(leanHooks());
   let folded = false;   // inside a collapsed section: its cells are not built
   S.cells.forEach((cell, i) => {
@@ -3294,7 +3609,17 @@ function renderCells() {
       const mid = h("div", "mid");
       const box = h("div", "xc-box");
       box.addEventListener("focusin", () => { if (S.active !== i) { S.active = i; renderChrome(); renderSidebar(); markActive(); } });
-      mid.append(box, h("div", "cellbody"));
+      mid.append(box);
+      // a Lean exercise's proof is a view of the notebook's Lean file, made once: the parts around it are
+      // redrawn as Lean reports, the editor is not (it would lose its cursor)
+      if (isLeanCell(cell) && !cell.editing) {
+        const view = h("div", "leanview xc-leanproof");
+        view.setAttribute("aria-label", `Cell ${i + 1}, your proof in Lean`);
+        view.addEventListener("focusin", () => { if (S.active !== i) { S.active = i; renderChrome(); renderSidebar(); markActive(); } });
+        mid.append(view, h("div", "xc-below"));
+        mountLean(cell.id, view, cell.attempt ?? cell.leanStart ?? LEAN_START);
+      }
+      mid.append(h("div", "cellbody"));
       el.append(mid);
       const acts = h("div", "cellacts");
       el.append(acts, h("div", "brk"));
@@ -3378,7 +3703,7 @@ function insertGap(host: HTMLElement, at: number) {
   pill.append(main, more);
   gap.append(pill);
   gap.addEventListener("click", (ev) => { if (ev.target === more) return; insertCell(at); });
-  more.addEventListener("click", (ev) => { ev.stopPropagation(); closeCellMenu(); typeMenu(more, (t) => insertCell(at, t)); });
+  more.addEventListener("click", (ev) => { ev.stopPropagation(); closeCellMenu(); typeMenu(more, (t) => insertCell(at, t), undefined, LEAN_EXERCISE_KIND(() => insertCell(at, "exercise", true))); });
   host.append(gap);
 }
 
@@ -3389,13 +3714,22 @@ const CELL_TYPES: [CellType, string, string][] = [
   ["lean", "Lean cell", "Lean 4, checked as you type; goals in the panel, definitions shared with the Lean cells below"],
   ["exercise", "Exercise", "A question the reader answers; the engine checks the answer and holds the worked solution"],
 ];
+/** The one kind of cell that is not a `CellType` of its own: an exercise whose answer is a Lean proof. */
+const LEAN_EXERCISE_KIND = (act: () => void): [string, string, () => void] =>
+  ["Lean exercise", "A statement in Lean for the reader to prove; Lean checks the proof", act];
 /** A small menu of the cell kinds under `anchor`; `pick` gets the chosen one. */
-function typeMenu(anchor: HTMLElement, pick: (t: CellType) => void, current?: CellType) {
+function typeMenu(anchor: HTMLElement, pick: (t: CellType) => void, current?: CellType, extra?: [string, string, () => void]) {
   const menu = h("div", "cellmenu typemenu");
   for (const [t, label, hint] of CELL_TYPES) {
     const it = h("div", `item${t === current ? " on" : ""}`);
     it.append(h("span", undefined, `${t === current ? "✓ " : ""}${label}`), h("span", "hint", hint));
     it.addEventListener("click", (ev) => { ev.stopPropagation(); closeCellMenu(); pick(t); });
+    menu.append(it);
+  }
+  if (extra) {
+    const it = h("div", "item");
+    it.append(h("span", undefined, extra[0]), h("span", "hint", extra[1]));
+    it.addEventListener("click", (ev) => { ev.stopPropagation(); closeCellMenu(); extra[2](); });
     menu.append(it);
   }
   document.body.append(menu);
@@ -3453,6 +3787,25 @@ const RULE_NAMES: Record<string, string> = {
   "order.closure": "Closure", "order.covers": "Covers", "order.upper-bounds": "Upper bounds", "order.least": "Least upper bound",
   "order.lower-bounds": "Lower bounds", "order.greatest": "Greatest lower bound", "order.lattice": "Lattice", "order.cover": "Cover",
   "order.incomparable": "Incomparable", "order.monotone": "Monotone", "order.iterate": "Iterate", "order.fixed": "Fixed point",
+  "rel.reflexive": "Reflexive", "rel.symmetric": "Symmetric", "rel.antisymmetric": "Antisymmetric", "rel.transitive": "Transitive",
+  "rel.equivalence": "Equivalence relation", "rel.preorder": "Preorder", "rel.reflexive-closure": "Reflexive closure", "rel.symmetric-closure": "Symmetric closure",
+  "rel.transitive-closure": "Transitive closure", "rel.kernel": "Kernel", "rel.classes": "Equivalence classes", "rel.finer": "Finer", "rel.wellfounded": "Well-founded", "rel.measure": "Measure",
+  "logic.implication": "Eliminate →", "logic.biconditional": "Eliminate ↔", "logic.de-morgan": "De Morgan's law", "logic.double-negation": "Double negation",
+  "logic.negate-constant": "Negate a constant", "logic.constants": "Simplify constants", "logic.distribute": "Distribute", "logic.complement": "Complementary literals", "logic.truthtable": "Truth table",
+  "logic.evaluate": "Evaluate", "logic.bounded": "Check every element",
+  "alg.from-order": "Table from the order", "alg.associative": "Associative", "alg.commutative": "Commutative", "alg.idempotent": "Idempotent",
+  "alg.identity": "Identity element", "alg.fold": "Combine", "alg.order": "Order of a semilattice", "order.distributive": "Distributive",
+  "order.complement": "Complement", "order.boolean": "Boolean lattice", "order.product": "Product order", "order.galois": "Galois connection",
+  "order.closure-operator": "Closure operator", "order.concepts": "Concept lattice", "order.flow": "Information flow",
+  "order.happens-before": "Happens-before", "order.clocks": "Vector clocks", "order.concurrent": "Concurrent",
+  "sys.init": "Start", "sys.step": "Step", "sys.found": "Found", "sys.violated": "Violated", "sys.deadlock": "Deadlock", "sys.reach": "Reachable states",
+  "sys.invariant": "Invariant", "sys.unreachable": "Unreachable", "sys.inductive": "Inductive", "sys.cti": "Counterexample to induction",
+  "sys.ctl": "CTL", "sys.iterate": "Iterate", "sys.fixed": "Fixed point", "sys.cycle": "Cycle", "sys.lasso": "Fair loop",
+  "sys.eventually": "Eventually", "sys.refines": "Refinement",
+  "lambda.eta": "η-reduction", "lambda.alpha": "Rename bound variables", "lambda.alpha-eq": "Compare", "lambda.subst": "Substitute",
+  "lambda.fv": "Free variables", "lambda.db": "De Bruijn indices",
+  "stlc.var": "Var", "stlc.abs": "→I (abstraction)", "stlc.app": "→E (application)", "stlc.constraints": "Type equations",
+  "stlc.split": "Split an arrow", "stlc.unify": "Unify", "stlc.principal": "Principal type",
   "cmd.rref": "Row reduce", "cmd.integrate": "Integrate", "cmd.expand": "Expand", "cmd.subst": "Substitute", "cmd.simplify": "Simplify", "cmd.sum": "Sum", "cmd.exptotrig": "Euler's formula",
 };
 
@@ -3612,6 +3965,55 @@ function showDiffTip(anchor: HTMLElement, oldTex: string, newTex: string) {
 }
 function hideDiffTip() { document.querySelector(".difftip")?.remove(); }
 
+// --- The notebook's Lean file: its Lean cells, and each Lean exercise as its statement and its proof ---
+
+/** A cell of the notebook's Lean file: a Lean cell, or a Lean exercise (with a statement to prove). */
+const isLeanCell = (c: Cell) => c.type === "lean" || (c.type === "exercise" && !!c.lean && !!c.src.trim());
+/** The proof a Lean exercise starts with when the author gives none. */
+const LEAN_START = "  sorry";
+/** The ids of the parts of the Lean file no view edits: a course's prelude, an exercise's statement. */
+const PRELUDE_ID = "~prelude", STMT_SUFFIX = "~stmt";
+/** The notebook's Lean file, cell by cell: the course's earlier lessons first (a project with a Lean
+ *  prelude), then the Lean cells and the Lean exercises in order, each exercise its statement then the
+ *  reader's proof. An exercise's statement ends `:= by`, so the proof below it is the declaration's own. */
+function leanDocCells(): { id: string; src: string; fixed?: boolean }[] {
+  const out: { id: string; src: string; fixed?: boolean }[] = [];
+  for (const c of S.cells) {
+    if (c.type === "lean") out.push({ id: c.id, src: c.src });
+    else if (isLeanCell(c)) out.push({ id: `${c.id}${STMT_SUFFIX}`, src: c.src, fixed: true }, { id: c.id, src: c.attempt ?? c.leanStart ?? LEAN_START });
+  }
+  const pre = currentDoc()?.leanPrelude;
+  if (pre && out.length) out.unshift({ id: PRELUDE_ID, src: pre, fixed: true });
+  return out;
+}
+/** Whether Lean had finished checking the file when it last reported. */
+let leanWasChecked = false;
+/** Errors in a course's prelude are the course's, not the reader's: logged once per set of messages. */
+let lastPreludeErrors = "";
+function preludeMessages(ms: LeanMessage[]) {
+  const errs = ms.filter((m) => m.severity === "error").map((m) => `prelude ${m.line}:${m.column} ${m.message}`).join("\n");
+  if (errs && errs !== lastPreludeErrors) log("err", errs);
+  lastPreludeErrors = errs;
+}
+/** Settle a Lean exercise's verdict from what Lean says, once Lean has checked the file as it is: proved
+ *  when neither the statement nor the proof has an error and nothing was left as `sorry`. Returns whether
+ *  the verdict changed. */
+function leanVerdict(c: Cell): boolean {
+  if (!leanChecked()) return false;
+  const proof = c.attempt ?? c.leanStart ?? LEAN_START;
+  const ms = [...(c.leanStmtMessages ?? []), ...(c.leanMessages ?? [])];
+  const err = ms.find((m) => m.severity === "error");
+  const sorry = ms.some((m) => m.severity === "warning" && /sorry/.test(m.message)) || /\b(sorry|admit)\b/.test(proof);
+  const v: Verdict = !proof.trim() || sorry
+    ? { equivalent: false, error: { message: !proof.trim() ? "write a proof" : "the proof still has a sorry" } }
+    : err ? { equivalent: false, error: { message: "Lean reports an error, above" } } : { equivalent: true };
+  if (JSON.stringify(v) === JSON.stringify(c.verdict)) return false;
+  c.verdict = v;
+  if (docOf(c) === currentDoc()) queueMicrotask(recordProgress);
+  renderSidebar(); autosave();
+  return true;
+}
+
 /** Re-render everything below a cell's input, leaving the input element untouched. */
 /** What Lean cells tell the notebook (lean-cells.ts): typing in a view, Lean's messages, Lean's state. */
 function leanHooks() {
@@ -3619,16 +4021,29 @@ function leanHooks() {
     dark: S.theme !== "light",
     onSource: (id: string, src: string) => {
       const c = S.cells.find((x) => x.id === id); if (!c) return;
-      c.src = src; renderSidebar(); renderTabs(); autosave();
+      // a Lean exercise's view is its proof; its statement is not the reader's to change
+      if (c.type === "exercise") c.attempt = src; else c.src = src;
+      renderSidebar(); renderTabs(); autosave();
     },
     onMessages: (id: string, ms: LeanMessage[]) => {
-      const c = S.cells.find((x) => x.id === id); if (!c) return;
-      c.leanMessages = ms; renderCellBody(c);
+      if (id === PRELUDE_ID) { preludeMessages(ms); return; }
+      const stmt = id.endsWith(STMT_SUFFIX);
+      const c = S.cells.find((x) => x.id === (stmt ? id.slice(0, -STMT_SUFFIX.length) : id)); if (!c) return;
+      if (stmt) c.leanStmtMessages = ms; else c.leanMessages = ms;
+      if (c.type === "exercise") leanVerdict(c);
+      renderCellBody(c);
     },
-    onState: () => { renderPanelHead(); for (const c of S.cells) if (c.type === "lean") renderCellBody(c); },
+    onChecked: () => {
+      // every Lean exercise says "checking" while Lean is: each is redrawn when Lean starts on the file, and
+      // whenever it reports the file as it is now checked (a small edit can go from checked to checked)
+      const now = leanChecked(), started = !now && leanWasChecked;
+      leanWasChecked = now;
+      for (const c of S.cells) if (c.type === "exercise" && c.lean && (leanVerdict(c) || now || started)) renderCellBody(c);
+    },
+    onState: () => { renderPanelHead(); for (const c of S.cells) if (isLeanCell(c)) renderCellBody(c); },
     onProgress: () => {
       // the status is in the first Lean cell: updated in place while it shows, re-rendered when it comes or goes
-      const first = S.cells.find((c) => c.type === "lean");
+      const first = S.cells.find(isLeanCell);
       const old = first?.el?.querySelector(".leanstatus");
       const next = leanStatus();
       if (old && next) old.replaceWith(next);
@@ -3671,7 +4086,7 @@ function renderLeanBody(cell: Cell) {
   if (st === "failed" || st === "isolating") {
     body.append(h("div", `leanstate ${st}`,
       st === "failed" ? `Lean did not start: ${leanFailure()}` : "Preparing the page for Lean: it reloads once."));
-  } else if (S.cells.find((c) => c.type === "lean") === cell) {
+  } else if (S.cells.find(isLeanCell) === cell) {
     const status = leanStatus();
     if (status) body.append(status);
   }
@@ -3692,7 +4107,7 @@ function renderCellBody(cell: Cell) {
   const exercise = cell.type === "exercise";
   if (exercise) renderExercise(cell);
   // an exercise shows its question's work and value only as the solution, when the reader asks
-  const solving = !exercise || !!cell.solution;
+  const solving = !exercise || (!!cell.solution && !cell.lean);
   el.classList.toggle("done", !!cell.label);
   const busy = cell.queued || S.running === cell;   // Mathematica's In[*]: waiting or being evaluated
   el.classList.toggle("running", busy);
@@ -3919,6 +4334,7 @@ function renderCellBody(cell: Cell) {
     }
     if (cell.reading) { const rd = h("span", "reading", `≡ ${cell.reading}`); rd.title = "What the normal form encodes"; val.append(rd); }
     if (cell.summary && !cell.hasse) { const rd = h("span", "reading", cell.summary); val.append(rd); }
+    if (cell.visuals?.length && !answerHeld(cell)) for (const v of cell.visuals) val.append(visualBox(v));
     out.append(val, h("div", "brk"));
     el.append(out);
     if (cell.ask && ASK_CELL.test(cell.src)) out.append(h("div"), askInfo(cell, !!ASK_CELL.exec(cell.src)?.[1]), h("div"));
@@ -4221,6 +4637,7 @@ function renderExercise(cell: Cell) {
   box.innerHTML = "";
   delete cell.input;
   if (cell.editing) { box.append(exerciseEditor(cell)); return; }
+  if (cell.lean) return renderLeanExercise(cell, box);
   if (cell.prompt?.trim()) box.append(mdRender(cell.prompt));
   if (!cell.hideQuestion || !cell.prompt?.trim()) {
     const q = h("div", "xc-q");
@@ -4252,33 +4669,86 @@ function renderExercise(cell: Cell) {
     if (v.error) {
       out.append(h("span", "xc-mark", "✗"), document.createTextNode(` ${v.error.message[0]!.toUpperCase()}${v.error.message.slice(1)}.`));
       if (v.error.span && cell.attempt) out.append(h("span", "caret", `${cell.attempt}\n${" ".repeat(v.error.span.start)}${"^".repeat(Math.max(1, v.error.span.end - v.error.span.start))}`));
-    } else if (v.equivalent) {
-      out.append(h("span", "xc-mark", "✓"), document.createTextNode(" Correct: "));
-      const m = h("span", "xc-math"); m.innerHTML = tex(v.answerLatex ?? ""); out.append(m);
-      out.append(document.createTextNode(" reduces to the answer's normal form."));
     } else {
-      out.append(h("span", "xc-mark", "✗"), document.createTextNode(" Not yet: your answer reduces to "));
-      const m = h("span", "xc-math"); m.innerHTML = tex(v.normalLatex ?? ""); out.append(m);
-      out.append(document.createTextNode(", which is not the answer's normal form."));
+      // how the answer was compared: by truth table, as a set, or by normal form
+      const world = ORDER_CELL.test(cell.src.trim()) || SYSTEM_CELL.test(cell.src.trim()) || LAMBDA_CMD.test(cell.src.trim()) ? "order" : isLogicCell(cell.src.trim()) ? "logic" : "math";
+      const m = h("span", "xc-math"); m.innerHTML = tex((v.equivalent || world !== "math" ? v.answerLatex : v.normalLatex) ?? "");
+      const [before, after] = v.equivalent
+        ? world === "logic" ? [" Correct: ", " agrees with the answer on every row of the truth table."]
+        : world === "order" ? [" Correct: ", " is the answer."]
+        : [" Correct: ", " reduces to the answer's normal form."]
+        : world === "logic" ? [" Not yet: ", " does not agree with the answer on every row of the truth table."]
+        : world === "order" ? [" Not yet: ", " is not the answer."]
+        : [" Not yet: your answer reduces to ", ", which is not the answer's normal form."];
+      out.append(h("span", "xc-mark", v.equivalent ? "✓" : "✗"), document.createTextNode(before), m, document.createTextNode(after));
     }
     box.append(out);
   }
-  const hints = cell.hints ?? [];
-  const shown = Math.min(cell.hintsShown ?? 0, hints.length);
-  hints.slice(0, shown).forEach((t, k) => {
-    const hb = h("div", "xc-hint");
-    hb.append(h("span", "xc-hintno", hints.length > 1 ? `Hint ${k + 1}` : "Hint"), mdRender(t));
-    box.append(hb);
-  });
+  appendHints(cell, box);
   const tools = h("div", "xc-tools");
-  if (shown < hints.length) tools.append(exBtn(shown ? `Another hint (${shown + 1} of ${hints.length})` : hints.length > 1 ? `Hint (1 of ${hints.length})` : "Hint",
-    "Open the next hint", () => { cell.hintsShown = shown + 1; renderCellBody(cell); autosave(); }));
+  appendHintButton(cell, tools);
   tools.append(exBtn(cell.solution ? "Hide the solution" : "Show the solution", cell.solution ? "Hide the worked solution" : "Step through the worked solution: the engine's own work on the question", () => {
     cell.solution = !cell.solution;
     if (cell.solution) { cell.showWork = true; if (cell.stepwise === undefined) cell.stepwise = 0; if (!cell.outLatex && !cell.error) void runCell(cell); }
     renderCellBody(cell); renderSidebar(); autosave();
   }));
   box.append(tools);
+}
+/** A Lean exercise: the prompt and the statement above the reader's proof (an editor of the notebook's
+ *  Lean file), and below it what Lean says, the verdict, the hints and the author's proof. */
+function renderLeanExercise(cell: Cell, box: HTMLElement) {
+  if (cell.prompt?.trim()) box.append(mdRender(cell.prompt));
+  if (!cell.src.trim()) { box.append(h("div", "xc-src", "No statement yet: ✎ Edit")); return; }
+  const stmt = h("pre", "xc-leanstmt");
+  stmt.append(h("code", undefined, cell.src));
+  box.append(stmt);
+  const below = cell.el?.querySelector<HTMLElement>(".xc-below"); if (!below) return;
+  below.innerHTML = "";
+  if (S.cells.find(isLeanCell) === cell) { const st = leanStatus(); if (st) below.append(st); }
+  const state = leanState();
+  if (state === "failed" || state === "isolating") below.append(h("div", `leanstate ${state}`, state === "failed" ? `Lean did not start: ${leanFailure()}` : "Preparing the page for Lean: it reloads once."));
+  // what Lean says about the proof (its lines), and the statement's own errors (an unproved goal is reported at `by`)
+  const ms = [...(cell.leanStmtMessages ?? []).filter((m) => m.severity === "error").map((m) => ({ ...m, where: "statement" })),
+    ...(cell.leanMessages ?? []).map((m) => ({ ...m, where: `${m.line}:${m.column}` }))];
+  for (const m of ms) {
+    const row = h("div", `leanmsg ${m.severity}`);
+    row.append(h("span", "where", m.where), h("span", "text", m.message));
+    below.append(row);
+  }
+  const v = cell.verdict;
+  const verdict = h("div", "xc-verdict");
+  if (state !== "ready") verdict.append(h("span", "xc-pending", state === "failed" ? "" : "Waiting for Lean…"));
+  else if (!leanChecked()) { verdict.classList.add("old"); verdict.append(h("span", "xc-pending", "Lean is checking…")); }
+  else if (v?.equivalent) { verdict.classList.add("right"); verdict.append(h("span", "xc-mark", "✓"), document.createTextNode(" Proved: Lean accepts the proof, and nothing is left as sorry.")); }
+  else if (v) { verdict.classList.add("wrong"); verdict.append(h("span", "xc-mark", "✗"), document.createTextNode(` Not yet: ${v.error?.message ?? "Lean does not accept the proof"}.`)); }
+  below.append(verdict);
+  appendHints(cell, below);
+  const tools = h("div", "xc-tools");
+  appendHintButton(cell, tools);
+  if (cell.leanSolution?.trim()) tools.append(exBtn(cell.solution ? "Hide the proof" : "Show a proof", cell.solution ? "Hide the author's proof" : "The author's proof, to compare with yours", () => {
+    cell.solution = !cell.solution; renderCellBody(cell); autosave();
+  }));
+  below.append(tools);
+  if (cell.solution && cell.leanSolution?.trim()) {
+    const sol = h("pre", "xc-leanstmt xc-leansol");
+    sol.append(h("code", undefined, `${cell.src}\n${cell.leanSolution}`));
+    below.append(sol);
+  }
+}
+/** The hints opened so far. */
+function appendHints(cell: Cell, into: HTMLElement) {
+  const hints = cell.hints ?? [];
+  hints.slice(0, Math.min(cell.hintsShown ?? 0, hints.length)).forEach((t, k) => {
+    const hb = h("div", "xc-hint");
+    hb.append(h("span", "xc-hintno", hints.length > 1 ? `Hint ${k + 1}` : "Hint"), mdRender(t));
+    into.append(hb);
+  });
+}
+/** The button that opens the next hint, while one is left. */
+function appendHintButton(cell: Cell, tools: HTMLElement) {
+  const hints = cell.hints ?? [], shown = Math.min(cell.hintsShown ?? 0, hints.length);
+  if (shown < hints.length) tools.append(exBtn(shown ? `Another hint (${shown + 1} of ${hints.length})` : hints.length > 1 ? `Hint (1 of ${hints.length})` : "Hint",
+    "Open the next hint", () => { cell.hintsShown = shown + 1; renderCellBody(cell); autosave(); }));
 }
 /** The author's side of an exercise: the prompt, the question, the hints. */
 function exerciseEditor(cell: Cell): HTMLElement {
@@ -4290,9 +4760,10 @@ function exerciseEditor(cell: Cell): HTMLElement {
   };
   const grow = (ta: HTMLTextAreaElement) => { ta.style.height = "auto"; ta.style.height = `${ta.scrollHeight + 2}px`; };
   const prompt = document.createElement("textarea");
-  prompt.rows = 2; prompt.value = cell.prompt ?? ""; prompt.placeholder = "Differentiate, then simplify.";
+  prompt.rows = 2; prompt.value = cell.prompt ?? ""; prompt.placeholder = cell.lean ? "Prove that conjunction commutes." : "Differentiate, then simplify.";
   prompt.addEventListener("input", () => { cell.prompt = prompt.value; grow(prompt); });
   field("Prompt", prompt, "Markdown, with $math$: what the reader is asked to do.");
+  if (cell.lean) return leanExerciseEditor(cell, f, field, grow, prompt);
   const q = document.createElement("input");
   q.type = "text"; q.className = "xc-qin"; q.spellcheck = false; q.value = cell.src; q.placeholder = "diff(x^2 * sin(x), x)";
   cell.input = q;   // what the cell's source is while it is edited (cellSrc)
@@ -4312,8 +4783,39 @@ function exerciseEditor(cell: Cell): HTMLElement {
   queueMicrotask(() => { grow(prompt); grow(hints); });
   return f;
 }
+/** A Lean exercise's editor, after its prompt: the statement, the proof the reader starts from, the
+ *  author's proof, the hints. */
+function leanExerciseEditor(cell: Cell, f: HTMLElement, field: (label: string, input: HTMLElement, hint: string) => void,
+  grow: (ta: HTMLTextAreaElement) => void, prompt: HTMLTextAreaElement): HTMLElement {
+  const area = (value: string, placeholder: string, set: (v: string) => void, code = true) => {
+    const ta = document.createElement("textarea");
+    ta.rows = 2; ta.value = value; ta.placeholder = placeholder; ta.spellcheck = !code;
+    if (code) ta.className = "xc-code";
+    ta.addEventListener("input", () => { set(ta.value); grow(ta); });
+    ta.addEventListener("keydown", (ev) => { if (ev.key === "Enter" && (ev.shiftKey || ev.metaKey || ev.ctrlKey)) { ev.preventDefault(); finishExerciseEdit(cell); } });
+    return ta;
+  };
+  const stmt = area(cell.src, "theorem and_swap (p q : Prop) (h : p ∧ q) : q ∧ p := by", (v) => { cell.src = v; renderSidebar(); });
+  field("Statement", stmt, "Lean, ending with := by. The reader cannot change it; their proof goes below it, and Lean checks the two together, with the notebook's Lean cells above in scope.");
+  const start = area(cell.leanStart ?? "", LEAN_START, (v) => { if (v.trim()) cell.leanStart = v; else delete cell.leanStart; });
+  field("Starting proof", start, "What the reader's proof starts as (indented): by default sorry, which Lean shows the goal of.");
+  const sol = area(cell.leanSolution ?? "", "  obtain ⟨hp, hq⟩ := h\n  exact ⟨hq, hp⟩", (v) => { if (v.trim()) cell.leanSolution = v; else delete cell.leanSolution; });
+  field("A proof", sol, "Yours, shown when the reader asks, and checked when the notebook is (scripts/notebooks/check-lean.mjs).");
+  const hints = area((cell.hints ?? []).join("\n\n"), "Take the conjunction apart first.\n\nobtain ⟨hp, hq⟩ := h", (v) => { cell.hints = v.split(/\n\s*\n/).map((x) => x.trim()).filter(Boolean); }, false);
+  field("Hints", hints, "Opened one at a time, in order; a blank line between two hints.");
+  queueMicrotask(() => { for (const ta of [prompt, stmt, start, sol, hints]) grow(ta); });
+  prompt.addEventListener("keydown", (ev) => { if (ev.key === "Enter" && (ev.shiftKey || ev.metaKey || ev.ctrlKey)) { ev.preventDefault(); finishExerciseEdit(cell); } });
+  return f;
+}
 /** Leave an exercise's editor: a changed question makes the old verdict and solution the old question's. */
 function finishExerciseEdit(cell: Cell) {
+  if (cell.lean) {
+    // the statement is part of the Lean file: the cells are rebuilt, and Lean checks it with the proof below
+    cell.editing = false;
+    delete cell.verdict;
+    renderCells(); renderSidebar(); autosave();
+    return;
+  }
   const was = cell.src;
   cell.src = cellSrc(cell);
   cell.editing = false;
@@ -4325,7 +4827,7 @@ function finishExerciseEdit(cell: Cell) {
 function exerciseActs(cell: Cell, acts: Element) {
   acts.innerHTML = "";
   acts.append(exBtn(cell.editing ? "✓ Done" : "✎ Edit", cell.editing ? "Finish editing the exercise (Shift+Enter)" : "Edit the prompt, the question and the hints",
-    () => { if (cell.editing) finishExerciseEdit(cell); else { cell.editing = true; renderCellBody(cell); focusCell(S.cells.indexOf(cell)); } }, ""));
+    () => { if (cell.editing) finishExerciseEdit(cell); else { cell.editing = true; if (cell.lean) renderCells(); else renderCellBody(cell); focusCell(S.cells.indexOf(cell)); } }, ""));
   appendMore(cell, acts);
 }
 
@@ -4860,7 +5362,7 @@ function exampleSection(f: FnDoc, sec: ExampleSection, k: number): HTMLElement {
 }
 
 /** The outputs of a section's inputs, evaluated once per page view in a session of their own. */
-interface ExOut { label?: number; latex?: string; plot?: PlotData; hasse?: HasseData; summary?: string; error?: string }
+interface ExOut { label?: number; latex?: string; plot?: PlotData; hasse?: HasseData; summary?: string; visuals?: KnownVisual[]; error?: string }
 const EXAMPLE_OUTS = new Map<string, Promise<ExOut[]>>();
 async function fillOutputs(key: string, sec: ExampleSection, rows: HTMLElement[]) {
   const val = (r: HTMLElement) => r.querySelector(".exval") as HTMLElement;
@@ -4893,6 +5395,7 @@ async function fillOutputs(key: string, sec: ExampleSection, rows: HTMLElement[]
       const pb = h("div", "plotbox"); pb.append(hasseSvg(o.hasse)); v.append(pb);
     } else v.innerHTML = tex(o.latex ?? "");
     if (o.summary) v.append(h("span", "exsummary", o.summary));
+    for (const vis of o.visuals ?? []) v.append(visualBox(vis));
   });
 }
 async function evaluateExamples(c: EngineClient, inputs: string[]): Promise<ExOut[]> {
@@ -4916,6 +5419,9 @@ async function evaluateExamples(c: EngineClient, inputs: string[]): Promise<ExOu
       }
       if ("kind" in r && r.kind === "poset" && r.hasse) { o.hasse = r.hasse; if (r.summary) o.summary = r.summary; }
       if ("kind" in r && r.kind === "lambda" && r.reading) o.summary = r.reading;
+      if ("kind" in r && (r.kind === "logic" || r.kind === "system") && r.summary) o.summary = r.summary;
+      const vs = knownVisuals("visuals" in r ? r.visuals : undefined);
+      if (vs.length) o.visuals = vs;
       outs.push(o);
     }
   } finally { void c.call("engine.resetSession", { sessionId: sid }).catch(() => undefined); }
@@ -5809,7 +6315,7 @@ function renderStage() {
 // Completions and hover documentation
 // ---------------------------------------------------------------------------
 
-function currentWord(input: HTMLInputElement): { word: string; start: number } {
+function currentWord(input: HTMLInputElement | HTMLTextAreaElement): { word: string; start: number } {
   const caret = input.selectionStart ?? input.value.length;
   const before = input.value.slice(0, caret);
   // a word, or a backslash abbreviation (possibly still empty: a bare `\` lists every symbol)
@@ -6006,7 +6512,7 @@ function highlightHtml(src: string): string {
   if (q) return `${q[1] ? highlightHtml(q[1]) : ""}<span class="hq">?</span><span class="hask">${esc(src.slice(q[0].length))}</span>`;
   const toks = tokenize(src);
   const bound = boundTokens(src, toks);
-  const lambdaCell = /[λ\\]|:=/.test(src);
+  const lambdaCell = /[λ\\]|:=/.test(src) || LAMBDA_CMD.test(src.trim());
   let out = "";
   toks.forEach((t, k) => {
     let cls = "";
@@ -6047,7 +6553,7 @@ const USER_FNS = new Map<string, string[]>();
 /** The innermost call the caret is inside: its name, where its `(` is, and which argument the caret
  *  is in. Balanced groups before the caret are skipped; an unclosed `[`/`{` or a bare grouping `(` is
  *  part of an argument, so the walk continues outward. */
-function callContext(input: HTMLInputElement): { name: string; open: number; arg: number; firstArg: string } | null {
+function callContext(input: HTMLInputElement | HTMLTextAreaElement): { name: string; open: number; arg: number; firstArg: string } | null {
   const s = input.value, caret = input.selectionStart ?? s.length;
   let depth = 0;
   for (let k = caret - 1; k >= 0; k--) {
@@ -6112,7 +6618,7 @@ function sigPieces(sig: string): SigPiece[] {
 
 /** Inside `x[[…]]` at the caret: what `x` is (a file, a part of one, or a bound matrix) and what the
  *  index being typed can be. */
-function partAt(cell: Cell, input: HTMLInputElement) {
+function partAt(cell: Cell, input: HTMLInputElement | HTMLTextAreaElement) {
   return partIn(cell, input.value.slice(0, input.selectionStart ?? input.value.length));
 }
 /** The same, given the cell's text up to the caret (a visual input writes it). */
@@ -6282,6 +6788,17 @@ document.addEventListener("scroll", hideUsage, { capture: true, passive: true })
 
 function onKey(ev: KeyboardEvent, cell: Cell, i: number) {
   if (modeKey(ev, cell)) return;
+  if (ev.key === "Enter" && ev.shiftKey && cell.input && !S.comp?.picked) {
+    // a new line: the cell becomes (or stays) a textarea, and Enter still runs it
+    ev.preventDefault(); hideCompletions();
+    const input = cell.input, a = input.selectionStart ?? input.value.length, b = input.selectionEnd ?? a;
+    const v = `${input.value.slice(0, a)}\n${input.value.slice(b)}`;
+    cell.src = v;
+    if (input instanceof HTMLTextAreaElement) { input.value = v; input.setSelectionRange(a + 1, a + 1); fitRows(input); syncHighlight(cell); }
+    else { refreshInput(cell); cell.input?.focus(); cell.input?.setSelectionRange(a + 1, a + 1); }
+    renderSidebar(); autosave();
+    return;
+  }
   if (ev.key === " " && cell.input) {
     // `\frac` then space in the text: the cell goes typeset with the template in place
     const input = cell.input, at = input.selectionStart ?? input.value.length;
@@ -6316,8 +6833,12 @@ function onKey(ev: KeyboardEvent, cell: Cell, i: number) {
     }
   }
   if (ev.key === "Enter") { ev.preventDefault(); void runCell(cell); return; }
-  if (ev.key === "ArrowDown" && i < S.cells.length - 1) { ev.preventDefault(); focusCell(i + 1); }
-  if (ev.key === "ArrowUp" && i > 0) { ev.preventDefault(); focusCell(i - 1); }
+  // in a cell of several lines the arrows move between lines, and leave the cell from its first or last
+  const ta = cell.input instanceof HTMLTextAreaElement ? cell.input : null;
+  const onFirst = !ta || !ta.value.slice(0, ta.selectionStart ?? 0).includes("\n");
+  const onLast = !ta || !ta.value.slice(ta.selectionEnd ?? ta.value.length).includes("\n");
+  if (ev.key === "ArrowDown" && onLast && i < S.cells.length - 1) { ev.preventDefault(); focusCell(i + 1); }
+  if (ev.key === "ArrowUp" && onFirst && i > 0) { ev.preventDefault(); focusCell(i - 1); }
 }
 
 // ---------------------------------------------------------------------------
@@ -6358,9 +6879,10 @@ if (saved) {
       d.hydrated = false;
       const pr = projectRefOf(file);
       if (pr) d.project = pr;
+      if (typeof file.leanPrelude === "string" && file.leanPrelude) d.leanPrelude = file.leanPrelude;
       S.docs.push(d);
       // the saved text is what the tab compares against; a dirty document compares against nothing
-      d.text = JSON.stringify({ chalk: 1, name: d.name, cells: file.cells, scenes: d.scenes, ...(Object.keys(d.assets).length ? { assets: d.assets } : {}), ...(pr ? { project: pr } : {}) }, null, 2);
+      d.text = JSON.stringify({ chalk: 1, name: d.name, cells: file.cells, scenes: d.scenes, ...(Object.keys(d.assets).length ? { assets: d.assets } : {}), ...(pr ? { project: pr } : {}), ...(d.leanPrelude ? { leanPrelude: d.leanPrelude } : {}) }, null, 2);
       d.savedText = dirty ? "" : d.text;
     }
     restoredActive = "chalkmath" in parsed && typeof parsed.active === "number" ? parsed.active : 0;

@@ -22,12 +22,22 @@ const M = await load(new URL("../../../packages/math-editor/src/index.ts", impor
 
 // the engine's own lists (Parser.lean's builtins, mirrored by the math editor; Poset.lean's heads)
 const ORDER = ["poset", "divisors", "subsets", "chain", "map", "hasse", "join", "meet", "upper", "lower",
-  "lattice", "top", "bottom", "le", "maximal", "minimal", "monotone", "lfp", "gfp", "fixpoints"];
+  "lattice", "top", "bottom", "le", "maximal", "minimal", "monotone", "lfp", "gfp", "fixpoints",
+  "rel", "kernel", "reflexive", "symmetric", "antisymmetric", "transitive", "equivalence", "preorder", "closure", "classes", "finer", "wellfounded", "measure",
+  "op", "joinop", "meetop", "table", "associative", "commutative", "idempotent", "semilattice", "identity", "fold", "order",
+  "distributive", "complement", "complemented", "boolean", "product", "galois", "closureop", "context", "concepts", "secure",
+  "events", "clocks", "concurrent"];
+// Systems.lean's commands
+const SYSTEMS = ["system", "states", "invariant", "inductive", "reach", "deadlock", "trace", "ctl", "eventually", "refines"];
+// Logic.lean's commands
+const LOGIC = ["truthtable", "taut", "sat", "falsify", "equiv", "nnf", "cnf", "dnf"];
+// Lambda.lean's commands (`subst:` has its own page, lambda-subst, since `subst` is the math one's)
+const LAMBDA = ["normal", "cbn", "cbv", "applicative", "eta", "fv", "db", "alpha", "type", "infer", "lambda-subst"];
 // not documented: `log` is only numeric (N), and `solve` is a reserved name with nothing behind it yet
 const UNDOCUMENTED = ["log", "solve"];
 
 test("every engine function has a page", () => {
-  for (const name of [...M.BUILTIN_FUNCTIONS, ...ORDER]) {
+  for (const name of [...M.BUILTIN_FUNCTIONS, ...ORDER, ...LOGIC, ...SYSTEMS, ...LAMBDA]) {
     if (UNDOCUMENTED.includes(name)) continue;
     assert.ok(R.FN_BY_NAME.has(name), `${name} has no page`);
   }
@@ -51,7 +61,7 @@ test("pages are unique, complete, and link to pages that exist", () => {
 test("every example input reads in the engine's grammar", () => {
   const bad = [];
   for (const f of R.FUNCTIONS) {
-    if (f.area === "Order theory" || f.area === "λ-calculus") continue;   // their own grammars
+    if (f.area === "Order theory" || f.area === "λ-calculus" || f.area === "Logic" || f.area === "Transition systems") continue;   // their own grammars
     for (const sec of f.examples) {
       const known = [];
       for (const src of sec.items.filter((it) => typeof it === "string")) {

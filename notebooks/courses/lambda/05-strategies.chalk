@@ -1,0 +1,191 @@
+{
+  "chalk": 1,
+  "name": "05-strategies.chalk",
+  "cells": [
+    {
+      "src": "Evaluation strategies",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Reduce a term under each of the four classic strategies, and say what each finds, what it misses, and what it costs.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Strategies\n> - **Normal order** (`normal:`): the leftmost-outermost redex, also under λ, to the normal form.\n> - **Call by name** (`cbn:`): the leftmost-outermost redex, never under a λ, the argument passed unevaluated. It stops at a **weak head normal form**: a λ, or a variable applied to arguments.\n> - **Call by value** (`cbv:`): the function, then the argument, are reduced to **values** (a λ or a variable) before the call; never under a λ.\n> - **Applicative order** (`applicative:`): the leftmost-innermost redex, under λ too: call by value that goes all the way.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Which terminate",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "$K\\ I\\ \\Omega$ ignores $\\Omega$. The strategies that pass arguments unevaluated never touch it:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "normal: K I (omega omega)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "cbn: K I (omega omega)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The ones that evaluate arguments first never finish. A step count shows how they go round:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "cbv 4: K I (omega omega)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "applicative: K I (omega omega)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!theorem] Standardization\n> If a term has a normal form, normal order reaches it.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "What they stop at",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Call by name and call by value do not look inside a λ: a function is already a result.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "cbn: λx. (λy. y) x",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "cbv: (λx. x) (λy. (λz. z) y)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "What they cost",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Call by name copies an unevaluated argument, and may evaluate the copy twice; call by value evaluates it once, first:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "cbn: (λx. x x) ((λy. y) z)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "cbv: (λx. x x) ((λy. y) z)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "Call by name never even reached the redex in the argument: $z\\ ((\\lambda y.\\, y)\\ z)$ is a weak head normal form. Normal order goes on to $z\\ z$. Most languages call by value; Haskell calls by **need**, call by name that remembers an argument once evaluated.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- Call by value treats variables and λs as values. -/\ndef isValue : Term → Bool\n  | app _ _ => false\n  | _ => true\n\n/-- One call-by-value step: the function, then the argument, become values before the call; never under a λ. -/\ndef cbvStep : Term → Option Term\n  | app (lam x b) a =>\n    if isValue a then some (subst x a b)\n    else (cbvStep a).map (app (lam x b) ·)\n  | app f a =>\n    match cbvStep f with\n    | some f' => some (app f' a)\n    | none => (cbvStep a).map (app f ·)\n  | _ => none\n\n/-- Take up to fuel steps with any strategy. -/\ndef run (step : Term → Option Term) : Nat → Term → Term\n  | 0, t => t\n  | n + 1, t => match step t with\n    | none => t\n    | some t' => run step n t'\n\ndef KIΩ : Term := app (app K I) (app ω ω)\n#eval (run betaStep 10 KIΩ).pretty   -- normal order: I\n#eval (run cbvStep 10 KIΩ).pretty    -- call by value: still evaluating Ω",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem cbvStep_lam (x : String) (b : Term) : cbvStep (lam x b) = none := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Call by value does not reduce under a λ: a function takes no step.",
+      "leanSolution": "  simp [cbvStep]",
+      "hints": [
+        "Unfold `cbvStep`: which clause does `lam x b` match?"
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Write the term the strategy stops at; it is compared up to bound names, not reduced further.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "cbv: (λx. λy. y) ((λz. z) w)",
+      "type": "exercise",
+      "prompt": "Reduce $(\\lambda x.\\, \\lambda y.\\, y)\\ ((\\lambda z.\\, z)\\ w)$ by value.",
+      "hints": [
+        "The argument is reduced first, to $w$; then the call."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "cbn: (λx. x x) ((λy. y) z)",
+      "type": "exercise",
+      "prompt": "Reduce $(\\lambda x.\\, x\\ x)\\ ((\\lambda y.\\, y)\\ z)$ by name. Where does it stop?",
+      "hints": [
+        "The argument goes in unevaluated, twice. Then the head is reduced, and only the head."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "cbn: λx. (λy. y) x",
+      "type": "exercise",
+      "prompt": "Reduce $\\lambda x.\\, (\\lambda y.\\, y)\\ x$ by name.",
+      "hints": [
+        "Call by name does not reduce under a λ."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Normal order finds every normal form there is. Call by name and call by value stop at functions; call by value evaluates arguments first, once, and can loop on an argument nobody needs.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}
