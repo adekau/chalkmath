@@ -96,9 +96,9 @@ private def reduceLam (s : Session) (src : String) : Except Err (Lam.Term × Lam
   | .ok (some _, _) => throw ("params", "an exercise compares λ-terms; a definition has no value to compare", none)
   | .ok (none, t) =>
     let expanded := Lam.expandDefs (lambdaDefs s) t
-    let (out, trace, halt) := Lam.reduce expanded
-    if halt != .done then throw ("eval", s!"λ: no normal form after {trace.length} β-steps", none)
-    pure (t, out, trace)
+    let r := Lam.reduce expanded
+    if r.halt != .done then throw ("eval", s!"λ: no normal form after {r.count} β-steps", none)
+    pure (t, r.out, r.first)
 
 /-! ## Logic and relations -/
 

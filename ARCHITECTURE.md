@@ -79,8 +79,10 @@ differential test with zero mismatches.
 - **The λ-calculus is a second world in the same engine.** `Lambda.lean` has its own terms, parser
   and normal-order β-reducer; terms are encoded into `Expr` for the wire, so selection, explanation
   and origin tracking work unchanged. The de Bruijn view is computed with every step. Reduction is
-  on fuel, the one budget in the engine, because normalization is undecidable; `Ω` is refused, and so
-  is a term that grows past `maxSize` symbols (a fixed-point combinator unfolding under call by value).
+  on fuel, the one budget in the engine, because normalization is undecidable: `Ω` is refused after
+  `maxSteps` (10,000), and so is a term that grows past `maxSize` symbols (a fixed-point combinator
+  unfolding under call by value). A long reduction keeps its first and last steps, by count and by
+  the total size of their terms, and one `lambda.elided` step says how many it leaves out.
   A definition without a normal form (`fact := Y F`) is bound unreduced instead.
   A cell may begin with a command and a colon: a strategy (`normal`, `cbn`, `cbv`, `applicative`,
   each with an optional step count), `eta`, `fv`, `db`, `alpha` and `subst` are the untyped

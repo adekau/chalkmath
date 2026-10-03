@@ -178,6 +178,7 @@ def ruleStatus : Json :=
     entry "lambda.delta" "verified" "Unfolding a definition replaces a free name by its term; nothing to prove beyond that.",
     entry "lambda.beta" "unverified" "β-reduction with capture-avoiding substitution; the substitution lemma is not yet proved.",
     entry "lambda.alpha-beta" "unverified" "A binder renamed to avoid capture, then β; the renaming is not yet proved to preserve α-equivalence.",
+    entry "lambda.elided" "unverified" "The β-steps of a long reduction that the work does not show; unverified as β is.",
     entry "lambda.eta" "verified" "η: λx. f x contracts to f only when x is not free in f (etaRedex_spec); η is an axiom of λβη, so nothing more to prove.",
     entry "lambda.fv" "verified" "The free variables, computed by their definition (freeVars).",
     entry "lambda.db" "verified" "De Bruijn indices, computed by their definition (toDB).",

@@ -162,18 +162,25 @@ private abbrev LamErr := String × String × Option (Nat × Nat)
 
 /-- Unfold the definitions (one δ-step), then take the strategy's steps (β, or β and η) until none
 applies, `limit` steps are taken (`Lam.maxSteps` without one), or the term grows past `Lam.maxSize`.
-Returns the term reached, the steps, and why it stopped. -/
+Returns the term reached, the steps shown (a long run's middle is one step saying how many it
+leaves out), why it stopped, and how many steps it took. -/
 private def lamRun (s : Session) (t : Lam.Term) (st : Lam.Strategy) (eta : Bool) (limit : Option Nat) :
-    Lam.Term × Lam.Term × Array Step × Lam.Halt :=
+    Lam.Term × Lam.Term × Array Step × Lam.Halt × Nat :=
   let expanded := Lam.expandDefs (lambdaDefs s) t
   let δ : Array Step := if expanded != t then
       #[⟨"lambda.delta", "δ: unfold the definitions used (the session's, then the Church library's).", [], Lam.toExpr t, Lam.toExpr expanded, none⟩]
     else #[]
-  let (out, trace, halt) :=
+  let r : Lam.Run Lam.StepKind :=
     if eta then Lam.runSteps Lam.betaEtaStep expanded (limit.getD Lam.maxSteps)
     else Lam.runSteps (fun u => (st.step u).map fun (u', r) => (u', if r then Lam.StepKind.alphaBeta else .beta)) expanded (limit.getD Lam.maxSteps)
-  let (steps, _) := trace.foldl (fun (acc, prev) (t', k) => (acc.push (lamStep st prev t' k), t')) (δ, expanded)
-  (expanded, out, steps, halt)
+  let chain (acc : Array Step) (base : Lam.Term) (ts : List (Lam.Term × Lam.StepKind)) :=
+    (ts.foldl (fun (acc, prev) (t', k) => (acc.push (lamStep st prev t' k), t')) (acc, base)).1
+  let steps := chain δ expanded r.first
+  let steps := if r.dropped == 0 then steps else
+    let upTo := (r.first.getLast?.map (·.1)).getD expanded
+    steps.push ⟨"lambda.elided", s!"{r.dropped} more steps, the same rule each time, not shown: the work shows the first {r.first.length} and the last {r.last.length} of {r.count}.", [], Lam.toExpr upTo, Lam.toExpr r.lastFrom, none⟩
+  let steps := chain steps r.lastFrom r.last
+  (expanded, r.out, steps, r.halt, r.count)
 
 /-- Why a run that did not reach its goal is refused: the step budget, or the term's growth. -/
 private def haltError (halt : Lam.Halt) (goal how : String) (steps : Nat) (out : Lam.Term) : LamErr :=
@@ -214,9 +221,9 @@ def lambdaCommand (s : Session) (cmd : Lam.Cmd) : Except LamErr LamResult := do
     let t := t.erase
     let goal := match st with
       | .normal | .applicative => "normal form" | .cbn => "weak head normal form" | .cbv => "value"
-    let (_, out, steps, halt) := lamRun s t st false limit
+    let (_, out, steps, halt, count) := lamRun s t st false limit
     if halt == .size || (halt == .fuel && limit.isNone) then
-      throw (haltError halt goal s!" ({st.name})" (steps.filter (·.rule != "lambda.delta")).size out)
+      throw (haltError halt goal s!" ({st.name})" count out)
     let reading :=
       if halt != .done then some s!"stopped after {limit.getD 0} steps: not yet a {goal}"
       else match churchReading out with
@@ -229,9 +236,9 @@ def lambdaCommand (s : Session) (cmd : Lam.Cmd) : Except LamErr LamResult := do
     pure (mk (Lam.toExpr out) (some out) (Lam.toExpr t) steps reading)
   | .eta limit t =>
     let t := t.erase
-    let (_, out, steps, halt) := lamRun s t .normal true limit
+    let (_, out, steps, halt, count) := lamRun s t .normal true limit
     if halt == .size || (halt == .fuel && limit.isNone) then
-      throw (haltError halt "βη-normal form" " (β and η)" (steps.filter (·.rule != "lambda.delta")).size out)
+      throw (haltError halt "βη-normal form" " (β and η)" count out)
     let reading := if halt != .done then some s!"stopped after {limit.getD 0} steps: not yet in βη-normal form" else churchReading out
     pure (mk (Lam.toExpr out) (some out) (Lam.toExpr t) steps reading)
   | .fv t =>
@@ -321,8 +328,7 @@ def lambdaCell (s : Session) (cellId source : String) : Session × Except LamErr
   match Lam.parseStmt source with
   | .error msg => (s, .error ("syntax", msg, none))
   | .ok (name, t) =>
-    let (expanded, out, steps, halt) := lamRun s t .normal false none
-    let βs := (steps.filter (·.rule != "lambda.delta")).size
+    let (expanded, out, steps, halt, βs) := lamRun s t .normal false none
     if halt != .done && name.isNone then (s, .error (haltError halt "normal form" "" βs out)) else
       -- a definition with no normal form (`fact := Y F`) is bound as written, its names unfolded
       let (out, steps, reading) := if halt == .done then (out, steps, churchReading out)

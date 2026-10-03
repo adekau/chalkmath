@@ -137,6 +137,7 @@ the engine omits is unverified.
 \rt{lambda.delta}{verified}{Unfolding a definition replaces a free name by its term; nothing to prove beyond that.}
 \rt{lambda.beta}{unverified}{$\beta$-reduction with capture-avoiding substitution; the substitution lemma is not yet proved.}
 \rt{lambda.alpha-beta}{unverified}{A binder renamed to avoid capture, then $\beta$; the renaming is not yet proved to preserve $\alpha$-equivalence.}
+\rt{lambda.elided}{unverified}{The $\beta$-steps of a long reduction that the work does not show; unverified as $\beta$ is.}
 \rt{lambda.eta}{verified}{$\eta$: $\lambda x.\, f\ x$ contracts to $f$ only when $x$ is not free in $f$ (\texttt{etaRedex\_spec}); $\eta$ is an axiom of $\lambda\beta\eta$, so nothing more to prove.}
 \rt{lambda.fv}{verified}{The free variables, computed by their definition (\texttt{freeVars}).}
 \rt{lambda.db}{verified}{De Bruijn indices, computed by their definition (\texttt{toDB}).}

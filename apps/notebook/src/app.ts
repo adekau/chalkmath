@@ -3803,7 +3803,7 @@ const RULE_NAMES: Record<string, string> = {
   "sys.ctl": "CTL", "sys.iterate": "Iterate", "sys.fixed": "Fixed point", "sys.cycle": "Cycle", "sys.lasso": "Fair loop",
   "sys.eventually": "Eventually", "sys.refines": "Refinement",
   "order.inner": "Inner call", "sys.inner": "Inner call",
-  "lambda.eta": "η-reduction", "lambda.alpha": "Rename bound variables", "lambda.alpha-eq": "Compare", "lambda.subst": "Substitute",
+  "lambda.eta": "η-reduction", "lambda.elided": "Steps not shown", "lambda.alpha": "Rename bound variables", "lambda.alpha-eq": "Compare", "lambda.subst": "Substitute",
   "lambda.fv": "Free variables", "lambda.db": "De Bruijn indices",
   "stlc.var": "Var", "stlc.abs": "→I (abstraction)", "stlc.app": "→E (application)", "stlc.constraints": "Type equations",
   "stlc.split": "Split an arrow", "stlc.unify": "Unify", "stlc.principal": "Principal type",

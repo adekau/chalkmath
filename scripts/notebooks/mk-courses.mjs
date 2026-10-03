@@ -3453,7 +3453,8 @@ def church {α : Type} : Nat → (α → α) → α → α
     m("pred := λn. fst (n (λp. pair (snd p) (succ (snd p))) (pair 0 0))");
     m("fact := Y (λself. λn. if (iszero n) 1 (mul n (self (pred n))))");
     m("fact 2");
-    md(r`$\mathsf{fact}\ 3$ needs more than the engine's thousand steps: Church arithmetic in normal order is slow, which is why real languages build numbers in.`);
+    m("fact 3", { work: true });
+    md(r`That took 1525 β-steps, and $\mathsf{fact}\ 4$ takes over ten thousand: numerals in unary, a predecessor that counts up from $0$ every time, and arguments copied unevaluated and computed again. The work shows the first steps and the last, and says how many it leaves out. This is why real languages build numbers in.`);
     sec("Under call by value");
     md(r`Call by value evaluates $Y\ g$'s argument $(\lambda x.\, g\ (x\ x))\ (\lambda x.\, g\ (x\ x))$ before calling $g$, and that unfolds again first, for ever:`);
     m("cbv 3: Y g", { work: true });

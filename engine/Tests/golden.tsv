@@ -308,7 +308,7 @@ let Ev = events({a1, a2, a3}, {b1, b2}; a1->b2, b1->a3)	poset {a1, a2, a3, b1, b
 clocks({a1, a2, a3}, {b1, b2}; a1->b2, b1->a3)	{a1↦(1, 0), a2↦(2, 0), a3↦(3, 1), b1↦(0, 1), b2↦(1, 2)}
 concurrent(Ev, a2, b2)	true
 events({a1, a2}, {b1, b2}; a2->b1, b2->a1)	<error: the messages make a cycle, so some event would happen before itself (not a partial order: not antisymmetric: a1 ≤ a2 and a2 ≤ a1 with a1 ≠ a2)>
-cbv: K I (omega omega)	<error: λ: no value after 1000 steps (call by value); the term had become (λy. λx. x) ((λx. x x) (λx. x x))>
+cbv: K I (omega omega)	<error: λ: no value after 10000 steps (call by value); the term had become (λy. λx. x) ((λx. x x) (λx. x x))>
 normal: K I (omega omega)	λx. x
 cbn: K I (omega omega)	λx. x
 applicative: (λx. a) ((λy. y) b)	a

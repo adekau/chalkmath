@@ -379,6 +379,11 @@ def sessionTests : TestM Unit := do
   (st, r) := ev st "pred := λn. fst (n (λp. pair (snd p) (succ (snd p))) (pair 0 0))"; checkTrue "λ: pred" (r.startsWith "λn.") r
   (st, r) := ev st "fact := Y (λself. λn. if (iszero n) 1 (mul n (self (pred n))))"; checkTrue "λ: a Y definition is bound unreduced" (r.startsWith "(λf. (λx. f (x x))") r
   (st, r) := ev st "fact 2"; check "λ: recursion through Y" r "λf. λx. f (f x)"
+  (st, r) := ev st "fact 3"; check "λ: fact 3 within the budget (1525 β-steps)" r "λf. λx. f (f (f (f (f (f x)))))"
+  let long := rpc "engine.evaluate" "{\"sessionId\":\"f\",\"cellId\":\"a\",\"source\":\"omega omega\",\"showWork\":true}"
+  checkTrue "λ: Ω is refused after the budget" (contains long "no normal form after 10000 β-steps") long
+  let elided := rpc "engine.evaluate" "{\"sessionId\":\"f\",\"cellId\":\"b\",\"source\":\"normal 500: omega omega\",\"showWork\":true}"
+  checkTrue "λ: a long run shows its ends and one step for the middle" (contains elided "\"rule\":\"lambda.elided\"" && contains elided "380 more steps") elided
   (st, r) := ev st "cbv: fact 1"; checkTrue "λ: call by value unfolds Y until the term is too big" (r.startsWith "<error: λ: no value yet after" && contains r "grown past") r
   -- printing is linear in a term's depth: forty nested λs and a forty-deep arrow type
   let deep := (List.range 40).foldr (fun i e => Expr.fn "λ" [.var s!"x{i}", e]) (.var "x0")

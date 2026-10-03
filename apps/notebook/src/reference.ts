@@ -1204,7 +1204,8 @@ export const FUNCTIONS: FnDoc[] = [
       "The engine reduces in normal order, one β-step at a time, renaming bound variables to avoid capture.",
       "Digits are Church numerals, and the Church library is always there.",
       "A normal form that is a Church numeral or boolean is read out beside the result; View › de Bruijn indices shows the result with indices.",
-      "A term with no normal form, such as `omega omega`, is refused rather than reduced forever: after 1000 steps, or once it grows past 3000 symbols.",
+      "A term with no normal form, such as `omega omega`, is refused rather than reduced forever: after 10,000 steps, or once it grows past 6000 symbols.",
+      "A long reduction shows its first steps and its last, and one step between saying how many it leaves out.",
       "A definition with no normal form, such as `fact := Y F`, is bound as written, so recursion through `Y` works.",
       "A binder may carry a type, `λx:A. e`; reduction ignores it, and `type:` checks it.",
       "A cell can start with a command: a strategy (`cbv:`, `cbn:`, `applicative:`, `normal 5:`), `eta:`, `fv:`, `db:`, `alpha:`, `subst:`, `type:` or `infer:`.",
@@ -1252,7 +1253,7 @@ export const FUNCTIONS: FnDoc[] = [
     usage: [["cbv: t", "reduces `t` by value: the function and then the argument become values before the call, never under a λ."], ["cbv n: t", "takes at most `n` steps."]],
     details: [
       "A value is a λ or a variable (Plotkin's call by value). The result is a value, which may still have redexes under its λs.",
-      "Every argument is evaluated, used or not, so `K I (omega omega)` runs forever: the cell is refused after 1000 steps. `cbv 5:` shows the first five.",
+      "Every argument is evaluated, used or not, so `K I (omega omega)` runs forever: the cell is refused after 10,000 steps. `cbv 5:` shows the first five.",
       "Most programming languages call by value.",
     ],
     examples: [basic("cbv: (λx. x) ((λy. y) z)", "cbv 4: K I (omega omega)", "cbv: (λx. x) (λy. (λz. z) y)")],

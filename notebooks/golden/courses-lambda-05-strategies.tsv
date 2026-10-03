@@ -1,7 +1,7 @@
 5	normal: K I (omega omega)	= λx. x
 6	cbn: K I (omega omega)	= λx. x
 8	cbv 4: K I (omega omega)	= (λy. λx. x) ((λx. x x) (λx. x x))   (stopped after 4 steps: not yet a value)
-9	applicative: K I (omega omega)	✗ λ: no normal form after 1000 steps (applicative order); the term had become (λy. λx. x) ((λx. x x) (λx. x x))
+9	applicative: K I (omega omega)	✗ λ: no normal form after 10000 steps (applicative order); the term had become (λy. λx. x) ((λx. x x) (λx. x x))
 13	cbn: λx. (λy. y) x	= λx. (λy. y) x   (a weak head normal form: the redexes left are where call by name does not look)
 14	cbv: (λx. x) (λy. (λz. z) y)	= λy. (λz. z) y   (a value: the redexes left are under a λ, where call by value does not look)
 17	cbn: (λx. x x) ((λy. y) z)	= z ((λy. y) z)   (a weak head normal form: the redexes left are where call by name does not look)

@@ -193,5 +193,6 @@ substitution and de Bruijn indices as commands. **Done.**
   is real). A proof that "no cycle found" means well-founded on a finite set would make it verified.
 - In the λ world the β-steps stay unverified (the substitution lemma, and that renaming preserves
   α-equivalence, are not proved), and an inferred type is checked rather than proved principal.
-  Church arithmetic in normal order is slow: `fact 3` through `Y` needs more than the 1000-step
-  budget, so the course stops at `fact 2`.
+  Church arithmetic in normal order is slow (`fact 3` through `Y` is 1525 β-steps, `fact 4` 10384),
+  so the budget is 10,000 steps and 6000 symbols, and a long reduction's work shows its first and
+  last steps only.
