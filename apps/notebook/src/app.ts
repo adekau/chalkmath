@@ -100,12 +100,16 @@ const LAMBDA_CMD = /^(normal|cbn|cbv|applicative|eta|fv|db|alpha|subst|type|infe
 const CHURCH = ["true", "false", "and", "or", "not", "if", "zero", "succ", "add", "mul", "pow", "iszero", "pair", "fst", "snd", "id", "const", "K", "S", "I", "omega", "Y"];
 /** Names bound by λ-cells (`pred := …`), keyed `session:name`. */
 const LAMBDA_NAMES = new Set<string>();
+/** The engine's `Lam.lex` succeeds: identifiers (Greek letters too), numerals, λ or backslash, `.`,
+ *  parentheses, `:` and arrows. Each token is taken whole, as the lexer does. */
+const LAMBDA_LEXES = /^(?:[ \t\r\n.():λ\\→]|->|[0-9]+(?![0-9])|[A-Za-z_\u0391-\u03A9\u03B1-\u03C9][A-Za-z0-9_'\u0391-\u03A9\u03B1-\u03C9]*(?![A-Za-z0-9_'\u0391-\u03A9\u03B1-\u03C9]))*$/;
 /** A λ-cell without a λ (the engine's `Lam.isLambdaSource`): its first word is a λ-definition, the
- *  session's or the Church library's, and it has no parenthesis or goes on after a space — `fst (pair a b)`. */
+ *  session's or the Church library's, it has no parenthesis or goes on after a space — `fst (pair a b)` —
+ *  and it lexes as a λ-term (`S + 1` is arithmetic). */
 function lambdaHeaded(s: string): boolean {
   const w = s.trim().split(" ")[0] ?? "";
   if (w === "let" || !(CHURCH.includes(w) || LAMBDA_NAMES.has(`${sessionId}:${w}`))) return false;
-  return !s.includes("(") || s.includes(" ");
+  return (!s.includes("(") || s.includes(" ")) && LAMBDA_LEXES.test(s);
 }
 const isLogicCell = (s: string) => !/[λ\\]/.test(s) && !LAMBDA_CMD.test(s) && (LOGIC_CELL.test(s) || /[∧∨¬→↔⊤⊥∀∃]|<->|->|&&|\|\|/.test(s) || /^(let\s+\w+\s*=\s*)?(forall|exists)\b/.test(s));
 

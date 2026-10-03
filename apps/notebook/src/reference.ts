@@ -1301,6 +1301,9 @@ export const FUNCTIONS: FnDoc[] = [
       ["pair fst snd", "are pairs."],
       ["id const K S I omega Y", "are the classic combinators."],
     ],
+    details: [
+      "A cell that starts with one of these names (or a λ-definition of your own) is a λ-term when it reads as one: names, numerals and parentheses only. `S + 1` is arithmetic on a variable `S`.",
+    ],
     examples: [basic("if (iszero 0) a b", "fst (pair 1 2)", "mul 2 3")],
     see: ["lambda"],
   },
