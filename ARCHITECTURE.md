@@ -146,8 +146,14 @@ differential test with zero mismatches.
   of predicate transformers, each Kleene round a step; liveness under weak and strong fairness,
   refuted by a lasso found among strongly connected sets; refinement under an abstraction map. A trace
   is the derivation, a step per action, so the notebook's stepping applies; each step is re-run against
-  the system before it is reported (`checked`), while "holds everywhere" answers rest on a search not
-  yet proved complete (`unverified`). Guards reuse the logic world's formulas, evaluated over the
+  the system before it is reported (`checked`). "Holds everywhere" answers rest on the search, which is
+  proved: `exploreWith` is breadth-first search along any successor function, and `SystemsProofs.lean`
+  shows a returned graph has exactly the reachable states, each once, and exactly the transitions
+  between them, so an invariant, an unreachable state, the absence of a deadlock and a refinement are
+  decided on all of them; `allStates_mem` does the same for the assignments `inductive` checks. The
+  search refuses rather than returns when it cannot expand every state it found (more initial states
+  than its limit used to leave some unexpanded). Shortest traces, the CTL fixed points and the lasso
+  search are not proved yet. Guards reuse the logic world's formulas, evaluated over the
   state with names (`idle`, `true`) as values.
 - **Logic is a fourth world.** `Logic.lean` reads formulas of propositional logic and bounded
   first-order formulas over finite sets of numbers, with its own grammar (ASCII spellings read as

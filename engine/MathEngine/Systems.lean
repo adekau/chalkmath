@@ -34,7 +34,7 @@ namespace Sys
 inductive Val where
   | int (n : Int)
   | sym (s : String)
-  deriving BEq, Hashable, Inhabited, Repr
+  deriving DecidableEq, Hashable, Inhabited, Repr
 
 def Val.toString : Val → String
   | .int n => s!"{n}"
@@ -297,34 +297,60 @@ structure Graph where
   parent : Array (Option (Nat × String))
   inits : List Nat
 
+/-- A breadth-first search in progress, over states of any type: the states found so far, each at the
+index `index` gives it, each one's parent, and the edges found. -/
+structure Search (α : Type) [BEq α] [Hashable α] where
+  states : Array α
+  index : Std.HashMap α Nat
+  parent : Array (Option (Nat × String))
+  edges : Array (Nat × String × Nat)
+
+namespace Search
+variable {α : Type} [BEq α] [Hashable α]
+
+def empty : Search α := ⟨#[], {}, #[], #[]⟩
+
+/-- A new state, at the next index. -/
+def add (sr : Search α) (s : α) (p : Option (Nat × String)) : Search α :=
+  { sr with index := sr.index.insert s sr.states.size, states := sr.states.push s, parent := sr.parent.push p }
+
+/-- An initial state, unless it is already there. -/
+def addInit (sr : Search α) (s : α) : Search α :=
+  if sr.index.contains s then sr else sr.add s none
+
+/-- The successor `t` of state `i` by action `a`: an edge, and a new state when `t` is new. -/
+def visit (limit i : Nat) (sr : Search α) (at_ : String × α) : Except String (Search α) :=
+  match sr.index[at_.2]? with
+  | some j => .ok { sr with edges := sr.edges.push (i, at_.1, j) }
+  | none =>
+    if sr.states.size ≥ limit then .error s!"more than {limit} reachable states"
+    else .ok { sr.add at_.2 (some (i, at_.1)) with edges := sr.edges.push (i, at_.1, sr.states.size) }
+
+/-- Expand the states from index `i` on, each once, in the order they were found; `fuel` bounds the
+rounds, and a search that runs out of it before every state is expanded is refused, never returned. -/
+def run (succ : α → Except String (List (String × α))) (limit : Nat) : Nat → Nat → Search α → Except String (Search α)
+  | 0, i, sr => if i < sr.states.size then .error s!"more than {limit} reachable states" else .ok sr
+  | fuel + 1, i, sr =>
+    if h : i < sr.states.size then do
+      let out ← succ sr.states[i]
+      let sr ← out.foldlM (visit limit i) sr
+      run succ limit fuel (i + 1) sr
+    else .ok sr
+
+end Search
+
+/-- Breadth-first search from `inits` along `succ`, refused past `limit` states. `SystemsProofs.lean`
+proves it finds exactly the states reachable from `inits` (`explore_complete`, `explore_sound`), each
+once, and every transition between them (`explore_edges_complete`, `explore_edges_sound`). -/
+def exploreWith {α : Type} [BEq α] [Hashable α] (succ : α → Except String (List (String × α))) (inits : List α)
+    (limit : Nat) : Except String (Search α) :=
+  Search.run succ limit (limit + 1) 0 (inits.foldl Search.addInit Search.empty)
+
 def System.explore (S : System) (limit : Nat := 5000) : Except String Graph := do
   let inits ← S.initStates
   if inits.isEmpty then throw "no initial state satisfies init"
-  let mut states : Array State := #[]
-  let mut index : Std.HashMap State Nat := {}
-  let mut parent : Array (Option (Nat × String)) := #[]
-  for s in inits do
-    if !index.contains s then
-      index := index.insert s states.size
-      states := states.push s
-      parent := parent.push none
-  let mut edges : Array (Nat × String × Nat) := #[]
-  let mut i := 0
-  -- states grow as the search goes; each is expanded once
-  for _ in [0:limit + 1] do
-    if i ≥ states.size then break
-    let s := states[i]!
-    for (a, t) in ← S.successors s do
-      match index.get? t with
-      | some j => edges := edges.push (i, a, j)
-      | none =>
-        if states.size ≥ limit then throw s!"more than {limit} reachable states"
-        index := index.insert t states.size
-        edges := edges.push (i, a, states.size)
-        states := states.push t
-        parent := parent.push (some (i, a))
-    i := i + 1
-  return ⟨states, edges.toList, parent, (inits.filterMap index.get?)⟩
+  let sr ← exploreWith S.successors inits limit
+  return ⟨sr.states, sr.edges.toList, sr.parent, inits.filterMap (sr.index[·]?)⟩
 
 /-- The path from an initial state to state `j`, as `(action, state)` steps after the first state. -/
 def Graph.pathTo (G : Graph) (j : Nat) : Nat × List (String × Nat) := Id.run do
