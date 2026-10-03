@@ -65,12 +65,16 @@ def size : Term → Nat
   | .lam _ e => 1 + size e
   | .app a b => 1 + size a + size b
 
-/-- A name not in `avoid`, derived from `base`: `x`, `x'`, `x''`, … -/
+/-- The length of the longest name in a list. -/
+def longest (l : List String) : Nat := l.foldl (fun m s => max m s.length) 0
+
+/-- A name not in `avoid`, derived from `base`: `x`, `x'`, `x''`, … and, should those run out, one
+longer than every name in `avoid` (`freshVar_not_mem`). -/
 def freshVar (avoid : List String) (base : String) : String :=
   go base avoid.length
 where
   go (cand : String) : Nat → String
-    | 0 => cand
+    | 0 => if cand ∈ avoid then base ++ String.ofList (List.replicate (longest avoid + 1) '\'') else cand
     | n + 1 => if cand ∈ avoid then go (cand ++ "'") n else cand
 
 /-- Does `x` occur free in the term? -/

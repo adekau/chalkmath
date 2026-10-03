@@ -192,8 +192,8 @@ substitution and de Bruijn indices as commands. **Done.**
   course is written.
 - `wellfounded` is reported unverified: the cycle search is not yet proved complete (a cycle it finds
   is real). A proof that "no cycle found" means well-founded on a finite set would make it verified.
-- In the λ world the β-steps stay unverified (the substitution lemma, and that renaming preserves
-  α-equivalence, are not proved), and an inferred type is checked rather than proved principal.
+- In the λ world every β-step is proved a β-reduction up to α (`LambdaBeta.lean`); an inferred type
+  is checked rather than proved principal.
   Church arithmetic in normal order is slow (`fact 3` through `Y` is 1525 β-steps, `fact 4` 10384),
   so the budget is 10,000 steps and 6000 symbols, and a long reduction's work shows its first and
   last steps only.

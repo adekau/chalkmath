@@ -84,6 +84,9 @@ differential test with zero mismatches.
   unfolding under call by value). A long reduction keeps its first and last steps, by count and by
   the total size of their terms, and one `lambda.elided` step says how many it leaves out.
   A definition without a normal form (`fact := Y F`) is bound unreduced instead.
+  Every step is proved a β-step (`LambdaBeta.lean`): renaming keeps a term's de Bruijn form and
+  leaves nothing to capture, capture-free substitution is de Bruijn substitution, and so each step of
+  every strategy is one step of `DB.Beta`, β-reduction on terms taken up to α.
   A cell may begin with a command and a colon: a strategy (`normal`, `cbn`, `cbv`, `applicative`,
   each with an optional step count), `eta`, `fv`, `db`, `alpha` and `subst` are the untyped
   calculus's questions, and `type`/`infer` the simply typed calculus's (`Stlc.lean`). Terms parse with

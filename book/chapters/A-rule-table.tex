@@ -135,15 +135,15 @@ the engine omits is unverified.
 \rt{logic.bounded}{verified}{A quantifier over a finite set is checked element by element, by definition; the atoms are evaluated by the pipeline, whose steps' statuses apply.}
 \midrule \multicolumn{3}{l}{\textbf{$\lambda$-calculus}} \\
 \rt{lambda.delta}{verified}{Unfolding a definition replaces a free name by its term; nothing to prove beyond that.}
-\rt{lambda.beta}{unverified}{$\beta$-reduction with capture-avoiding substitution; the substitution lemma is not yet proved.}
-\rt{lambda.alpha-beta}{unverified}{A binder renamed to avoid capture, then $\beta$; the renaming is not yet proved to preserve $\alpha$-equivalence.}
-\rt{lambda.elided}{unverified}{The $\beta$-steps of a long reduction that the work does not show; unverified as $\beta$ is.}
+\rt{lambda.beta}{verified}{Each step is one $\beta$-reduction of the de Bruijn terms: capture-avoiding substitution is de Bruijn substitution (\texttt{toDB\_subst}), for every strategy (\texttt{betaStep\_beta}, \texttt{cbnStep\_beta}, \texttt{cbvStep\_beta}, \texttt{appStep\_beta}, \texttt{betaEtaStep\_beta}).}
+\rt{lambda.alpha-beta}{verified}{A binder renamed to avoid capture, then $\beta$: the renaming keeps the de Bruijn form (\texttt{toDB\_renameFor}) and leaves nothing to capture (\texttt{captureFree\_renameFor}), so the step is one $\beta$-reduction (\texttt{toDB\_subst}).}
+\rt{lambda.elided}{verified}{The $\beta$-steps of a long reduction that the work does not show, each a step of the same strategy, so a $\beta$-reduction as \texttt{lambda.beta}'s are.}
 \rt{lambda.eta}{verified}{$\eta$: $\lambda x.\, f\ x$ contracts to $f$ only when $x$ is not free in $f$ (\texttt{etaRedex\_spec}); $\eta$ is an axiom of $\lambda\beta\eta$, so nothing more to prove.}
 \rt{lambda.fv}{verified}{The free variables, computed by their definition (\texttt{freeVars}).}
 \rt{lambda.db}{verified}{De Bruijn indices, computed by their definition (\texttt{toDB}).}
 \rt{lambda.alpha-eq}{verified}{$\alpha$-equivalence is taken to be equality of de Bruijn forms, which is how the engine defines it; that this agrees with renaming bound variables one at a time is the classical theorem, not proved here.}
-\rt{lambda.alpha}{unverified}{Binders renamed to avoid capture; the renaming is not yet proved to preserve $\alpha$-equivalence.}
-\rt{lambda.subst}{unverified}{Capture-free substitution; it adds no free variable beyond the argument's (\texttt{substRaw\_freeVars}), but the substitution lemma is not yet proved.}
+\rt{lambda.alpha}{verified}{Binders renamed to avoid capture: the de Bruijn form is kept (\texttt{toDB\_renameFor}), so the term is the same up to $\alpha$.}
+\rt{lambda.subst}{verified}{Substitution after the renaming captures nothing (\texttt{captureFree\_renameFor}) and is de Bruijn substitution (\texttt{toDB\_substRaw}).}
 \midrule \multicolumn{3}{l}{\textbf{Simply typed $\lambda$-calculus}} \\
 \rt{stlc.var}{verified}{Var: the checker's derivations are typing derivations (\texttt{check\_sound}, \texttt{StlcProofs.lean}).}
 \rt{stlc.abs}{verified}{$\to$I: the checker's derivations are typing derivations (\texttt{check\_sound}).}
