@@ -559,6 +559,10 @@ def sessionTests : TestM Unit := do
   check "rpc syntax error" (evalText "x +") "<error: unexpected end of input>"
   checkTrue "rpc inputRendered" (contains (rpc "engine.evaluate" "{\"source\":\"x + 0\",\"showWork\":true}") "\"inputRendered\":{\"text\":\"x + 0\"")
   checkTrue "rpc ruleStatus" (contains (rpc "engine.capabilities" "{}") "\"rule\":\"simp.collect-powers\",\"status\":\"conditional\"")
+  -- every rule of the notebook pipeline has a status in the ledger (a rule absent from it would read as unverified silently)
+  let ledger := ruleStatus.render
+  for rule in pipelineRules do
+    checkTrue s!"ledger lists {rule.name}" (contains ledger s!"\"rule\":\"{rule.name}\"") rule.name
   checkTrue "rpc error span" (contains (rpc "engine.evaluate" "{\"source\":\"3 4\"}") "\"span\":{\"start\":2,\"end\":3}},\"label\":")
   checkTrue "rpc epicycles of points is dft" (contains (rpc "engine.plot" "{\"source\":\"epicycles([1, i, -1, -i])\"}") "\"terms\":[") 
   checkTrue "rpc plot list, first series" (contains (rpc "engine.plot" "{\"source\":\"plot([sin(x), x^2], x, -1, 1, 3)\"}") "\"series\":[{\"rendered\":{\"text\":\"sin(x)\"")

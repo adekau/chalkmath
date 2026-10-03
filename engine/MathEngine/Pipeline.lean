@@ -95,7 +95,7 @@ def cmdN : PlainRule :=
 def cmdSubst : PlainRule :=
   { name := "cmd.subst", apply := fun e => Option.map checked <|
       match e with
-      | .fn "subst" [body, .var x, v] => some ⟨substitute [(x, v)] body, s!"Substitute ${x} := {v.toText}$.", none, none⟩
+      | .fn "subst" [body, .var x, v] => some ⟨substVar x v body, s!"Substitute ${x} := {v.toText}$.", none, none⟩
       | .fn "subst" _ => some (refuse "subst takes (expression, variable, value)")
       | _ => none }
 

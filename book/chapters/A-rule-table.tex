@@ -13,19 +13,20 @@ the engine omits is unverified.
 \rt{simp.fold-constants}{verified}{Exact rational arithmetic; $\mathbb{Q}$ embeds in $\mathbb{R}$.}
 \rt{simp.collect-like-terms}{verified}{Distributivity: $a t + b t = (a+b) t$.}
 \rt{simp.power}{verified}{Includes exact roots; the root search returns only checked roots.}
-\rt{simp.collect-powers}{conditional}{$b^m b^n = b^{m+n}$ needs a positive base: at $b = 0$ it turns $0$ into $1$.}
+\rt{simp.collect-powers}{conditional}{$b^m b^n = b^{m+n}$ needs a positive base: at $b = 0$ it turns $0$ into $1$ (\lc{collectPowers_soundR_on}, \lc{not_collectPowers_soundR}).}
 \rt{simp.function}{conditional}{$\exp(\ln x) = x$ needs $0 < x$: at $x = -1$ it turns $-1$ into $1$. The other cases, $\sin/\cos = \tan$ among them, are unconditional.}
 \rt{simp.radical}{verified}{A perfect-power base is reduced ($8^{1/2} = 2^{3/2}$), same-index radicals multiply under one root, and $\sqrt{18}$ is written $18^{1/2}$, shown as $3\sqrt 2$; unconditional, the bases being positive integers.}
 \rt{simp.sqrt}{verified}{$\sqrt a = a^{1/2}$ for every real $a$. Silent: the two print alike.}
 \rt{simp.collect-radicals}{verified}{Radicals with the same square-free part collect, $\sqrt{50} - \sqrt{18} = 2\sqrt 2$; unconditional.}
+\rt{simp.sort}{verified}{Commutativity: the arguments of $+$ and $\cdot$ are put in a canonical order (\lc{SemEqR.canon}). Silent: it reorders only.}
 \midrule \multicolumn{3}{l}{\textbf{Derivatives}} \\
-\rt{diff.constant}{verified}{A term the variable does not occur in has derivative $0$.}
-\rt{diff.variable}{verified}{The identity function has slope $1$ everywhere.}
-\rt{diff.constant-multiple}{verified}{Constant factors pull out; no differentiability needed.}
-\rt{diff.sum}{conditional}{Needs every summand differentiable: for $|x| + x$ at $0$ the rule gives $1$ where the derivative does not exist.}
-\rt{diff.product}{conditional}{Needs both factors differentiable at the point.}
-\rt{diff.power}{conditional}{Proved for a natural exponent with a differentiable base; real exponents still open.}
-\rt{diff.chain}{conditional}{Needs the inner function differentiable; proved for $\sin$, $\cos$ and $\exp$, while $\ln$ and $\tan$ also need a domain condition.}
+\rt{diff.constant}{verified}{A term the variable does not occur in has derivative $0$ (\lc{diff_constant_sound}).}
+\rt{diff.variable}{verified}{The identity function has slope $1$ everywhere (\lc{diff_variable_sound}).}
+\rt{diff.constant-multiple}{verified}{Constant factors pull out; no differentiability needed (\lc{diff_const_mul_sound}).}
+\rt{diff.sum}{conditional}{Needs every summand differentiable: for $|x| + x$ at $0$ the rule gives $1$ where the derivative does not exist (\lc{diff_sum_sound}, \lc{not_diff_sum_sound}).}
+\rt{diff.product}{conditional}{Needs both factors differentiable at the point (\lc{diff_product_sound}).}
+\rt{diff.power}{conditional}{Proved for a natural exponent with a differentiable base; real exponents still open (\lc{diff_power_nat_sound}).}
+\rt{diff.chain}{conditional}{Needs the inner function differentiable; proved for $\sin$, $\cos$ and $\exp$, while $\ln$ and $\tan$ also need a domain condition (\lc{diff_chain_sin_sound}, \lc{diff_chain_cos_sound}, \lc{diff_chain_exp_sound}).}
 \rt{diff.matrix}{unverified}{Proved, but matrices carry no value in the $\mathbb{R}$ semantics, so the theorem has no content yet.}
 \rt{diff.higher-order}{unverified}{An abbreviation: it eliminates the three-argument form, so there is nothing to prove.}
 \midrule \multicolumn{3}{l}{\textbf{Linear algebra}} \\
@@ -38,8 +39,18 @@ the engine omits is unverified.
 \rt{la.row-add.symbolic}{unverified}{Symbolic entries: the arithmetic is the simplifier's, outside the $\mathbb{Q}$ theorem.}
 \rt{la.ediv}{verified}{\texttt{A ./ B}, entrywise by definition: entry $(i,j)$ is $a_{ij}/b_{ij}$, and a scalar side meets every entry; each entry's arithmetic is its nested steps, with their statuses.}
 \rt{la.emul}{verified}{\texttt{A .* B}, the Hadamard product, entrywise by definition: entry $(i,j)$ is $a_{ij} b_{ij}$.}
+\rt{la.add}{unverified}{Matrices of the same shape add entrywise.}
+\rt{la.scalar-mul}{unverified}{A scalar multiplies every entry.}
+\rt{la.mul}{unverified}{Entry $(i,j)$ of the product is row $i$ of the left factor dotted with column $j$ of the right.}
+\rt{la.transpose}{unverified}{Rows become columns.}
+\rt{la.det}{unverified}{Laplace expansion along the first row.}
+\rt{la.pow}{unverified}{A square matrix multiplied by itself.}
+\rt{la.context}{verified}{A refusal: a matrix literal where no rule gives it a meaning, or nested in another, is an error, never a value, so there is nothing to be wrong.}
 \midrule \multicolumn{3}{l}{\textbf{Expansion}} \\
 \rt{cmd.expand}{verified}{Distribution is a total function proved sound over $\mathbb{R}$ (\lc{dist_sound}); the collection afterwards is the pipeline's own steps with their statuses.}
+\rt{cmd.simplify}{verified}{A cell's argument is already in normal form when the command sees it, so \texttt{simplify} returns it unchanged: the identity.}
+\rt{cmd.subst}{verified}{Structural substitution $e[x := v]$ evaluates as $e$ with $x$ rebound to the value of $v$ (\lc{cmdSubst_soundR}).}
+\rt{cmd.N}{unverified}{A floating-point approximation in IEEE-754 double precision; no error bound is proved.}
 \rt{expand.distribute}{verified}{Multiplying out a product of sums and collecting like monomials: \lc{dist_sound}.}
 \rt{expand.power}{verified}{A power of a sum is the sum multiplied by itself: \lc{dist_sound}.}
 \midrule \multicolumn{3}{l}{\textbf{Integration}} \\
@@ -58,6 +69,9 @@ the engine omits is unverified.
 \rt{int.by-parts}{checked}{A guess from the finder (integration by parts), verified by \rn{int.check}.}
 \midrule \multicolumn{3}{l}{\textbf{Order world}} \\
 \rt{order.closure}{verified}{The order is the reflexive-transitive closure, and reflexivity, antisymmetry and transitivity are decided (\lc{checkPartialOrder_none}).}
+\rt{order.divisors}{verified}{The divisors of $n$ ordered by divisibility, by definition.}
+\rt{order.subsets}{verified}{The subsets of a finite set ordered by inclusion, by definition.}
+\rt{order.incomparable}{verified}{$x \le y$ is not in the order: decided on the closure, which is checked to be a partial order (\lc{checkPartialOrder_none}).}
 \rt{order.covers}{verified}{Hasse edges are exactly the covers: $x < y$ with nothing strictly between (\lc{covers_spec}).}
 \rt{order.upper-bounds}{verified}{Every element above both, by the decision on the finite order.}
 \rt{order.least}{verified}{The element found is an upper bound below every upper bound (\lc{sup_spec}); none exists when the search fails (\lc{sup_none}).}
