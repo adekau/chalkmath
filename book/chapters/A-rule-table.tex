@@ -159,7 +159,7 @@ the engine omits is unverified.
 \rt{stlc.constraints}{checked}{Inference's equations; the type found is re-checked by the verified checker on the annotated term.}
 \rt{stlc.split}{checked}{Unification splits an equation of arrows; the type found is re-checked by the verified checker.}
 \rt{stlc.unify}{checked}{Unification binds a type variable (with the occurs check); the type found is re-checked by the verified checker.}
-\rt{stlc.principal}{checked}{The solved type, its variables renamed; checked by the verified checker. That it is the most general type is Hindley's theorem, not proved here.}
+\rt{stlc.principal}{verified}{Most general (\lc{infer\_principal}, Hindley's theorem): every typing of the term, whatever types its unannotated binders and free variables get, has an instance of the solved type; and it is a type of the term (\lc{check\_sound}, by the checker). The type shown names its variables with names not otherwise in use.}
 \bottomrule
 \end{longtable}
 \normalsize

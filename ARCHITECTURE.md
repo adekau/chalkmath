@@ -94,8 +94,10 @@ differential test with zero mismatches.
   returns the derivation tree, and `check_sound` (`StlcProofs.lean`) proves the checker's derivations
   are typing derivations. `infer:` makes one type variable per missing annotation and per application,
   solves the equations by unification with the occurs check, and then runs the term, annotated with its
-  answer, back through the checker. So an inferred type is checked rather than proved, and its
-  principality (Hindley's theorem) is not proved. A λ-command is routed before the other worlds,
+  answer, back through the checker, so an inferred type is a type of the term. That it is the most
+  general one (Hindley's theorem) is `infer_principal` (`StlcPrincipal.lean`): unification is most
+  general (any solution factors through the one found), and generation is complete (any typing of
+  the term solves the equations). A λ-command is routed before the other worlds,
   since `type: f : A → B ⊢ f` holds a connective.
 - **Finite order theory is a third world.** `Poset.lean` decides everything over lists — closure,
   the partial-order check, covers, bounds, join and meet, lattices, monotone maps, fixed points by

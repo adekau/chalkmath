@@ -199,7 +199,7 @@ def ruleStatus : Json :=
     entry "stlc.constraints" "checked" "Inference's equations; the type found is re-checked by the verified checker on the annotated term.",
     entry "stlc.split" "checked" "Unification splits an equation of arrows; the type found is re-checked by the verified checker.",
     entry "stlc.unify" "checked" "Unification binds a type variable (with the occurs check); the type found is re-checked by the verified checker.",
-    entry "stlc.principal" "checked" "The solved type, its variables renamed; checked by the verified checker. That it is the most general type is Hindley's theorem, not proved here."]
+    entry "stlc.principal" "verified" "Most general (infer_principal, Hindley's theorem): every typing of the term, whatever types its unannotated binders and free variables get, has an instance of the solved type; and it is a type of the term (check_sound, by the checker). The type shown names its variables with names not otherwise in use."]
 
 def capabilities : Json :=
   .obj #[("engine", .str "engine-lean"), ("version", .str "0.1.0-m8"), ("verified", .bool true),
