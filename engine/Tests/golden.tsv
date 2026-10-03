@@ -334,3 +334,9 @@ infer: λx. x x	<error: occurs check: τ1 = τ1 → τ2 has no solution (τ1 wou
 infer: λx:A. λy:B. x y	<error: cannot unify A with B → τ1, so the term has no simple type>
 infer: λf:A→B. λx. f x	(A → B) → A → B
 (λx:A. x) y	y
+lattice(product(chain(2), chain(3)))	true
+let NR = rel({a, b, c}; a->b, b->c)	{(a, b), (b, c)}
+transitive(closure(NR, transitive))	true
+classes(closure(rel({a, b, c}; a->b), equivalence))	{{a, b}, {c}}
+lattice(chain(nope))	<error: in chain(nope): chain takes a number>
+states(system(var x in 0..2; init x = 0; action inc when x < 2 do x := x + 1))	3

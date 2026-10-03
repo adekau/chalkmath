@@ -808,6 +808,7 @@ export const FUNCTIONS: FnDoc[] = [
     examples: [
       basic("let R = rel({a, b, c, d}; a->b, b->c, c->d)", "closure(R, transitive)"),
       section("Scope", "let R = rel({a, b, c}; a->b, b->c)", "closure(R, reflexive)", "closure(R, symmetric)", "let E = closure(R, equivalence)", "classes(E)"),
+      section("Calls inside calls", "transitive(closure(R, transitive))", "classes(closure(R, equivalence))"),
     ],
     see: ["transitive", "equivalence", "classes"],
     ref: "https://mathworld.wolfram.com/TransitiveClosure.html",
@@ -984,8 +985,14 @@ export const FUNCTIONS: FnDoc[] = [
   {
     name: "product", area: "Order theory",
     usage: [["product(P, Q)", "gives the pairs (x, y) ordered componentwise: (a, c) ≤ (b, d) when a ≤ b and c ≤ d."]],
-    details: ["Write a pair element as `(x, y)`, and a set element as `{a, b}`: `join(PQ, (low, {a}), (high, {}))`."],
-    examples: [basic("let Lv = poset({low, high}; low < high)", "let Cat = subsets({a, b})", "let SC = product(Lv, Cat)", "join(SC, (low, {a}), (high, {}))")],
+    details: [
+      "Write a pair element as `(x, y)`, and a set element as `{a, b}`: `join(PQ, (low, {a}), (high, {}))`.",
+      "Like every order and systems command, it takes a call where it takes a name: `product(chain(2), chain(3))` builds the chains first.",
+    ],
+    examples: [
+      basic("let Lv = poset({low, high}; low < high)", "let Cat = subsets({a, b})", "let SC = product(Lv, Cat)", "join(SC, (low, {a}), (high, {}))"),
+      section("Calls inside calls", "lattice(product(chain(2), chain(3)))"),
+    ],
     see: ["secure", "subsets"],
     ref: "https://mathworld.wolfram.com/ProductOrder.html",
   },

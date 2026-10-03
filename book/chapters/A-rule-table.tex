@@ -82,6 +82,8 @@ the engine omits is unverified.
 \rt{rel.finer}{verified}{Every pair of the first checked in the second.}
 \rt{rel.wellfounded}{unverified}{On a finite set a relation is well-founded exactly when it has no cycle. A cycle found is shown and can be read off the relation; that the search finds one whenever there is one is not yet proved.}
 \rt{rel.measure}{verified}{Every step checked to decrease the measure, by definition; on a finite set a measure that goes down along every step leaves no room for a cycle.}
+\rt{order.inner}{verified}{A nested call evaluated first and named: a rewriting of the source, so the commands' own statuses apply.}
+\rt{sys.inner}{verified}{A nested call evaluated first and named: a rewriting of the source, so the commands' own statuses apply.}
 \rt{order.happens-before}{verified}{The reflexive-transitive closure of program order and messages, checked to be a partial order (\lc{checkPartialOrder_none}).}
 \rt{order.clocks}{verified}{Each entry counts the events of a process below the event in the happens-before order, by definition.}
 \rt{order.concurrent}{verified}{Neither event is below the other in the happens-before order, by definition.}

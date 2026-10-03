@@ -159,6 +159,8 @@ def ruleStatus : Json :=
     entry "sys.lasso" "unverified" "A fair cycle avoiding the goal: each fair action is taken on it or disabled as its fairness requires; the search over strongly connected sets is not yet proved complete.",
     entry "sys.eventually" "unverified" "No deadlock and no fair cycle avoids the goal among the reachable states; the search is not yet proved complete.",
     entry "sys.refines" "unverified" "Every transition the search found maps to an abstract step or a stutter; the search's completeness is not yet proved.",
+    entry "order.inner" "verified" "A nested call evaluated first and named: a rewriting of the source, so the commands' own statuses apply.",
+    entry "sys.inner" "verified" "A nested call evaluated first and named: a rewriting of the source, so the commands' own statuses apply.",
     entry "order.happens-before" "verified" "The reflexive-transitive closure of program order and messages, checked to be a partial order (checkPartialOrder_none).",
     entry "order.clocks" "verified" "Each entry counts the events of a process below the event in the happens-before order, by definition.",
     entry "order.concurrent" "verified" "Neither event is below the other in the happens-before order, by definition.",
@@ -290,7 +292,7 @@ def evaluateLambda (st : Store) (params : Json) (sessionId cellId src : String) 
 
 /-- An order-world cell's reply: the value, the derivation, and the poset to draw. -/
 def evaluateOrder (st : Store) (params : Json) (sessionId cellId src : String) : Store × Json :=
-  let (s, r) := orderCell (st.get sessionId) cellId src
+  let (s, r) := orderCellN (st.get sessionId) cellId src
   let st := st.set sessionId s
   match r with
   | .error (code, msg, span) => (st, errorJson code msg span)
@@ -351,7 +353,7 @@ def evaluateLogic (st : Store) (params : Json) (sessionId cellId src : String) :
 /-- A systems cell's reply: the value, the derivation (a trace is a step per action), a summary, and
 the state graph (`visuals`, kind `relation.digraph`) with a counterexample's transitions marked. -/
 def evaluateSystem (st : Store) (params : Json) (sessionId cellId src : String) : Store × Json :=
-  let (s, r) := systemCell (st.get sessionId) cellId src
+  let (s, r) := systemCellN (st.get sessionId) cellId src
   let st := st.set sessionId s
   match r with
   | .error (code, msg, span) => (st, errorJson code msg span)

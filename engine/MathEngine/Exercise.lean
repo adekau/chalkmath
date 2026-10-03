@@ -1,4 +1,5 @@
 import MathEngine.Session
+import MathEngine.Nested
 /-!
 # Exercises: is the reader's answer the expected one?
 
@@ -215,7 +216,7 @@ def checkOrder (s : Session) (cellId question : String) (answer : Option String)
   match Ord.parseStmt question with
   | .ok (some _, _, _) => (s, .error ("params", "an exercise compares values; a let has no value to compare", none))
   | _ =>
-  match orderCell s cellId question with
+  match orderCellN s cellId question with
   | (s, .error e) => (s, .error e)
   | (s, .ok res) =>
     let (kind, want) := orderCanon res.value
@@ -241,7 +242,7 @@ private partial def stateKey : Expr → List String
 answer is written the same way (a state as `x = 1 ∧ y = 2`, in any order). -/
 def checkSystem (s : Session) (cellId question : String) (answer : Option String) :
     Session × Except Err CheckResult :=
-  match systemCell s cellId question with
+  match systemCellN s cellId question with
   | (s, .error e) => (s, .error e)
   | (s, .ok res) =>
     let want := (stateKey res.value).mergeSort

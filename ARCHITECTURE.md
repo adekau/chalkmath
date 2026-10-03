@@ -96,6 +96,10 @@ differential test with zero mismatches.
   the partial-order check, covers, bounds, join and meet, lattices, monotone maps, fixed points by
   the Kleene chain — and `PosetProofs.lean` proves the decisions mean the textbook Props. Values
   are encoded into `Expr`; the notebook draws Hasse diagrams from the covers.
+- **Commands nest by naming.** Order and systems commands take names; a call written inside another,
+  `product(chain(2), chain(3))`, is evaluated first, bound to a hidden name and put in its place
+  (`Nested.lean`), its derivation a sub-derivation of the outer cell's first steps. It is a rewriting
+  of the source, so no proof changes.
 - **Relations live in the order world.** A poset is a relation with three properties built in; a
   relation (`Relation.lean`) is elements and pairs with nothing assumed, so the properties become
   questions. Each check names the elements that break it, and the reply marks those pairs on the

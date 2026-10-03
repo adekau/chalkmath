@@ -45,6 +45,7 @@ const CASES = [
   { src: "fold(FA; na, deny, permit)", text: "deny", step: "Combine" },
   { src: "let RPS = op({r, p, s}; [r, p, r; p, p, s; r, s, s])", text: "[r, p, r; p, p, s; r, s, s]" },
   { src: "associative(RPS)", text: "false", step: "Not associative" },
+  { src: "lattice(product(chain(2), chain(3)))", text: "true", step: "Inner call" },
   // transition systems
   { src: "let Ct = system(var x in 0..2; init x = 0; action inc when x < 2 do x := x + 1)", text: "system({x}, {inc})" },
   { src: "invariant(Ct, x ≤ 1)", text: "false", step: "inc (x < 2 holds)" },

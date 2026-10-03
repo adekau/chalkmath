@@ -364,6 +364,17 @@ def sessionTests : TestM Unit := do
   (st, r) := ev st "fv: 3"; checkTrue "λ: fv does not unfold names" (r == "{3}") r
   (st, r) := ev st "fv 2: x"; checkTrue "λ: a step count only on a reduction" (r.startsWith "<error: fv: takes no step count") r
   (st, r) := ev st "p ∧ q"; checkTrue "λ: a formula is still logic" (r == "p ∧ q") r
+  -- nested calls in the order world: the inner call's work comes first, and its name is forgotten
+  check "nested: a source unnested" (unnest Ord.commands "let P = product(chain(2), chain(3))").2.1 "let P = product(chain_1, chain_2)"
+  check "nested: innermost first" (toString ((unnest Ord.commands "lattice(product(chain(2), chain(3)))").1.map (·.1))) "[chain_1, chain_2, product_3]"
+  check "nested: a pair is not a call" (unnest Ord.commands "join(PQ, (a, b), (c, d))").2.1 "join(PQ, (a, b), (c, d))"
+  (st, r) := ev st "product(chain(2), chain(2))"; checkTrue "nested: product of chains" (r.startsWith "poset") r
+  (st, r) := ev st "chain_1"; check "nested: the inner names are forgotten" r "chain_1"
+  let nested := rpc "engine.evaluate" "{\"sessionId\":\"n\",\"cellId\":\"a\",\"source\":\"lattice(chain(3))\",\"showWork\":true}"
+  checkTrue "nested: the inner call is a step with its own derivation" (contains nested "\"rule\":\"order.inner\"" && contains nested "\"sub\":") nested
+  let reqN (id method params : String) := s!"\{\"jsonrpc\":\"2.0\",\"id\":{id},\"method\":\"{method}\",\"params\":{params}}"
+  let (stN, _) := handleS [] (reqN "20" "engine.evaluate" "{\"sessionId\":\"n\",\"cellId\":\"a\",\"source\":\"lattice(chain(3))\"}")
+  checkTrue "nested: engine.steps has the inner call too" (contains (handleS stN (reqN "21" "engine.steps" "{\"sessionId\":\"n\",\"cellId\":\"a\"}")).2 "\"rule\":\"order.inner\"")
   -- a definition with no normal form is bound unreduced, and the reduction is cut off by size, not hung
   (st, r) := ev st "pred := λn. fst (n (λp. pair (snd p) (succ (snd p))) (pair 0 0))"; checkTrue "λ: pred" (r.startsWith "λn.") r
   (st, r) := ev st "fact := Y (λself. λn. if (iszero n) 1 (mul n (self (pred n))))"; checkTrue "λ: a Y definition is bound unreduced" (r.startsWith "(λf. (λx. f (x x))") r
