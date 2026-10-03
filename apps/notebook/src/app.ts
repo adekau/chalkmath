@@ -1,6 +1,7 @@
 import { createClient, type EngineClient, type Step, type StepOutline, type Path, type RuleStatus, type Derivation, type WireExpr, type PlotResult, type ManipulateResult, type HasseData, type KnownVisual, type TruthTableData, type DigraphData, type OpTableData, type ContextTableData, type TypingNode, type TypingTreeData, type SpacetimeData } from "@chalkmath/protocol";
 declare const __BUILD_ID__: string;
 import { workerTransport, httpTransport } from "@chalkmath/engine-host";
+import { leanForPrelude } from "@chalkmath/lean-editor/prelude";
 import { read as readNotation, write as writeNotation, writeText, hasNotation, templateAt, templateInText, TEMPLATES, type Stmt, type Caret, type MathEdit } from "@chalkmath/math-editor";
 import { MathInput, type MathInputOptions } from "@chalkmath/math-editor/view";
 
@@ -1545,8 +1546,9 @@ async function fetchExample(file: string): Promise<string> {
   return res.text();
 }
 /** The Lean of a course's lessons before lesson `k`, in order: their Lean cells, and their Lean exercises
- *  as statement and the author's proof (a theorem proved there may be used later). Lessons that are not
- *  there are left out; what a lesson needs from them then shows as an error in its Lean. */
+ *  as statement and the author's proof (a theorem proved there may be used later), without the commands
+ *  that only show something (`leanForPrelude`: Lean elaborates the prelude each time a lesson opens).
+ *  Lessons that are not there are left out; what a lesson needs from them then shows as an error in its Lean. */
 async function leanPreludeOf(p: Project, k: number): Promise<string> {
   const parts: string[] = [];
   for (let j = 0; j < k; j++) {
@@ -1554,7 +1556,7 @@ async function leanPreludeOf(p: Project, k: number): Promise<string> {
       const doc = JSON.parse(await fetchExample(lessonPath(p, j))) as ChalkFile;
       const lean = doc.cells.flatMap((c) => c.type === "lean" ? [c.src]
         : c.type === "exercise" && c.lean && c.src.trim() ? [`${c.src}\n${c.leanSolution ?? LEAN_START}`] : []);
-      if (lean.length) parts.push(`-- ${p.lessons[j]!.title}\n${lean.join("\n\n")}`);
+      if (lean.length) parts.push(`-- ${p.lessons[j]!.title}\n${leanForPrelude(lean.join("\n\n"))}`);
     } catch (e) { log("err", `Lean prelude: ${lessonPath(p, j)}: ${e instanceof Error ? e.message : String(e)}`); }
   }
   return parts.join("\n\n");

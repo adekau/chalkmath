@@ -204,3 +204,8 @@ substitution and de Bruijn indices as commands. **Done.**
   Church arithmetic in normal order is slow (`fact 3` through `Y` is 1525 β-steps, `fact 4` 10384),
   so the budget is 10,000 steps and 6000 symbols, and a long reduction's work shows its first and
   last steps only.
+- A course's Lean prelude is elaborated each time one of its lessons opens. It leaves out the
+  earlier lessons' `#eval`s, `#print`s, `#check`s and `example`s, but the CRDT course's last lesson
+  still has the book's ~2,800 lines in front of it (some 5 s on one native thread, more in the
+  browser's wasm Lean). Precompiled 32-bit oleans per course prelude would remove that; they need
+  the wasm Lean build to make and to test.

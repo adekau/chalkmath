@@ -321,7 +321,13 @@ language server answers LSP for Lean cells.
 - **A course's Lean prelude.** A project with `leanPrelude` gives each lesson the Lean of the lessons
   before it (their Lean cells, and their Lean exercises with the author's proofs) as a first cell no view
   shows, so a course builds one development across its lessons. It is saved with the lesson, and CI
-  checks each lesson with it in front.
+  checks each lesson with it in front. Lean elaborates it each time a lesson opens, so it leaves out
+  the earlier lessons' commands that only show something (`#eval`, `#print`, `#check`, `example`;
+  `leanForPrelude` in `packages/lean-editor/src/prelude.js`, which the CI check shares). That is
+  most of what can be cut: the CRDT course's last lesson still has about 2,800 lines in front of it,
+  some 5 s of one native thread, mostly the kernel checking the book's structures and proofs.
+  Compiling each course's prelude to 32-bit oleans with the wasm Lean, imported instead of inlined,
+  would make it a download; that is not built.
 - **Cost.** Nothing loads until a notebook has a Lean cell. Then, compressed: the editor (~3 MB), the
   server (~24 MB) and Init's 32-bit oleans (~114 MB: their private parts, proofs included, are most of it,
   and an ordinary file's implicit `import Init` needs them), once per browser: the worker keeps the large
