@@ -10,6 +10,7 @@ import Proofs.CxRules
 import Proofs.Fourier
 import Proofs.Stats
 import Proofs.Matrix
+import Proofs.SimpAll
 import Lean
 /-!
 # The ledger cites what exists

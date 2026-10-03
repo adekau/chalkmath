@@ -215,11 +215,15 @@ differential test with zero mismatches.
   replaces because the earlier theorems are stated against the earlier semantics; widening in place would silently
   restate them. It is also forced here: `evalR` cannot interpret `diff`, whose second child is a binder that `Expr`
   does not distinguish from a value, and a semantics reading it breaks the congruence M3's fold needs.
-- **A rule that needs a side condition says so.** Over ℝ, `simp.collect-powers` and part of
-  `simp.function` are only sound away from `0` (see `book/TRACKING.md`, M3). The engine keeps the
-  usual computer-algebra behaviour; `proofs/` states the hypothesis and *proves* that no
-  unconditional theorem exists. Silence is not an option: either a rule has an unconditional
-  theorem or its condition is written down.
+- **A rule that needs a side condition says so, in its step.** Over ℝ, `x·x⁻¹ = x⁰` holds only for
+  `x ≠ 0`, `x^a·x^b = x^(a+b)` and `ln(b^p) = p ln b` only for a positive base, and `exp(ln x) = x` only for
+  `x > 0`. The engine keeps the usual computer-algebra behaviour, but each law is split at its
+  assumption: `simp.collect-powers` and `simp.function` are the cases that hold for every real number
+  (proved unconditionally), and `simp.collect-powers.assuming` and `simp.function.assuming` the cases
+  that need the assumption, whose explanation states it ("Assuming $x > 0$.") and whose theorem takes
+  it as a hypothesis; `proofs/` also *proves* that no unconditional theorem exists for them. Silence is
+  not an option: either a rule has an unconditional theorem or its condition is written down where
+  the step is shown.
 - **Two packages.** `engine/` is executable code and goes into the wasm build: it imports Init
   (Std/Batteries allowed) and never Mathlib. `proofs/` is theorems only, may be `noncomputable`,
   requires `engine/` and (from M3) Mathlib. `scripts/check-engine-deps.sh` enforces the split.

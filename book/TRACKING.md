@@ -877,3 +877,15 @@ Phases:
    Finding: with more initial states than the search's limit, the old loop stopped with states unexpanded and could
    report a deadlock that is not there; the search now refuses. Open: shortest traces, the CTL fixed points, the
    lasso search, `rel.wellfounded`, `trs.critical`, `order.concepts`, the symbolic row operations, `cmd.factor`.
+- the conditional laws, split at their assumptions — DONE 2026-10-03 (Alex agreed to "prove the unconditional
+   fragment, keep the rest conditional with the condition shown in the step"). `simp.collect-powers` now merges only
+   pairs that obey `b^m·b^n = b^(m+n)` at every real base, integer exponents of one sign or a positive numeral base,
+   and is verified (`collectPowers_soundR`, through `rpow_int_add_of_sameSign`); `simp.collect-powers.assuming`
+   merges the rest and its step ends "Assuming $x \neq 0$." (integer exponents) or "Assuming $x > 0$."
+   (`collectPowersAssuming_soundR_on`). `simp.function` keeps every case that holds for every real number and is
+   verified (`functionRules_soundR`, `SimpAll.lean`); `simp.function.assuming` takes `exp(ln x) = x` and
+   `ln(b^p) = p ln b` for a non-integer `p`, assuming the argument positive (`functionAssuming_soundR_on`). Finding:
+   the old ledger note called every case but `exp(ln x)` unconditional, but `ln(b^p) = p ln b` fails at `b = -2`,
+   `p = 1/2`; with an integer `p` it holds everywhere, since `Real.log` is `ln |x|`. Answers are unchanged: the
+   two halves fire on exactly the cases the whole rule did. `normalizeSafe_sound` folds every simp rule but the two
+   that assume.

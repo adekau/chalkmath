@@ -407,7 +407,7 @@ theorem fx_abs (ρ : EnvR) (x : String) : fx ρ x (.fn "abs" [.var x]) = fun t =
 /-- **The sum rule is not unconditionally sound.** At `x = 0`, `|x| + x` is not differentiable, so
 the left side is `deriv`'s junk value `0`, while the right side adds the junk derivative of `|x|`
 to the genuine derivative of `x` and gets `1`. This is the `diff.*` analogue of M3's
-`not_collectPowers_soundR`: the engine keeps the usual rule, and the hypothesis is now written
+`not_collectPowersAssuming_soundR`: the engine keeps the usual rule, and the hypothesis is now written
 down in `diff_sum_sound`. -/
 theorem not_diff_sum_sound :
     ¬ ∀ (ρ : EnvR) (x : String) (es : List Expr),

@@ -13,8 +13,10 @@ the engine omits is unverified.
 \rt{simp.fold-constants}{verified}{Exact rational arithmetic; $\mathbb{Q}$ embeds in $\mathbb{R}$.}
 \rt{simp.collect-like-terms}{verified}{Distributivity: $a t + b t = (a+b) t$.}
 \rt{simp.power}{verified}{Includes exact roots; the root search returns only checked roots.}
-\rt{simp.collect-powers}{conditional}{$b^m b^n = b^{m+n}$ needs a positive base: at $b = 0$ it turns $0$ into $1$ (\lc{collectPowers_soundR_on}, \lc{not_collectPowers_soundR}).}
-\rt{simp.function}{conditional}{$\exp(\ln x) = x$ needs $0 < x$: at $x = -1$ it turns $-1$ into $1$. The other cases, $\sin/\cos = \tan$ among them, are unconditional.}
+\rt{simp.collect-powers}{verified}{$b^m b^n = b^{m+n}$ for every real $b$: integer exponents of one sign ($x \cdot x = x^2$) or a positive numeral base (\lc{collectPowers_soundR}).}
+\rt{simp.collect-powers.assuming}{conditional}{The other merges, $x \cdot x^{-1} = x^0$ and $x^a x^b = x^{a+b}$: the step states its assumption, $b \neq 0$ for integer exponents and $b > 0$ otherwise (\lc{collectPowersAssuming_soundR_on}); at $x = 0$, $x \cdot x^{-1}$ turns $0$ into $1$ (\lc{not_collectPowersAssuming_soundR}).}
+\rt{simp.function}{verified}{$\sin/\cos = \tan$, $\sqrt a = a^{1/2}$, $\ln 1 = 0$, $\ln e^x = x$, $\ln b^p = p \ln b$ for an integer $p$, and the values at $0$, for every real number (\lc{functionRules_soundR}).}
+\rt{simp.function.assuming}{conditional}{$e^{\ln x} = x$ and $\ln b^p = p \ln b$ for a non-integer $p$: the step states its assumption, $x > 0$ or $b > 0$ (\lc{functionAssuming_soundR_on}); at $x = -1$, $e^{\ln x}$ turns $-1$ into $1$ (\lc{not_functionAssuming_soundR}).}
 \rt{simp.radical}{verified}{A perfect-power base is reduced ($8^{1/2} = 2^{3/2}$), same-index radicals multiply under one root, and $\sqrt{18}$ is written $18^{1/2}$, shown as $3\sqrt 2$; unconditional, the bases being positive integers.}
 \rt{simp.sqrt}{verified}{$\sqrt a = a^{1/2}$ for every real $a$. Silent: the two print alike.}
 \rt{simp.collect-radicals}{verified}{Radicals with the same square-free part collect, $\sqrt{50} - \sqrt{18} = 2\sqrt 2$; unconditional.}
@@ -61,7 +63,7 @@ the engine omits is unverified.
 \rt{int.variable}{checked}{A guess from the finder, verified by \rn{int.check}.}
 \rt{int.sum}{checked}{A guess from the finder, verified by \rn{int.check}.}
 \rt{int.constant-multiple}{checked}{A guess from the finder, verified by \rn{int.check}.}
-\rt{int.power}{checked}{A guess from the finder, verified by \rn{int.check} (the symbolic-exponent case relies on \rn{simp.collect-powers} there).}
+\rt{int.power}{checked}{A guess from the finder, verified by \rn{int.check} (the symbolic-exponent case relies on \rn{simp.collect-powers.assuming} there, so its check assumes a positive base).}
 \rt{int.exponential}{checked}{A guess from the finder, verified by \rn{int.check}.}
 \rt{int.table}{checked}{A guess from the finder, verified by \rn{int.check}.}
 \rt{int.linear-substitution}{checked}{A guess from the finder, verified by \rn{int.check}.}
