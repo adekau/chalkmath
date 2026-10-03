@@ -55,9 +55,10 @@ differential test with zero mismatches.
   `Order.lean` and the innermost rewriter `normalizeT` (`Terminate.lean`), whose obligation is
   conditional: a rule must decrease the ordering *on a node whose children are already normal*.
   That hypothesis is what lets the product rule duplicate its body. The theorem is
-  `pipelineOrdered` (`PipelineOrder.lean`), one lemma per rule. Rules that delegate to unverified
-  code (commands, matrix arithmetic) have their outputs *checked* for the tier they must decrease
-  rather than proved. There is no step budget anywhere: `expand` distributes by a total function
+  `pipelineOrdered` (`PipelineOrder.lean`), one lemma per rule. Rules that delegate to code the
+  ordering cannot see into (commands, matrix arithmetic) have their outputs *checked* for the tier they
+  must decrease rather than proved; what the matrix rules compute is proved separately, against `evalV`.
+  There is no step budget anywhere: `expand` distributes by a total function
   (`Expand.dist`, proved sound over ℝ in `proofs/Proofs/Expand.lean`) and the pipeline collects
   the result.
 - **Elimination is verified over ℚ by construction.** `LinAlgQ.lean` writes Gauss–Jordan as a
@@ -209,7 +210,8 @@ differential test with zero mismatches.
   invariant under `canon`). Supply those four facts for a new semantics and normalization's
   soundness follows without touching the rewriter. The integer fragment and ℝ are two instances.
 - **Semantics are added in layers, never edited.** `eval?` (integer fragment, M1) ⊂ `evalR` (ℝ, M3) ⊂ `evalD` (ℝ with
-  derivatives, M4), each with a theorem that the previous one is a restriction of it. A new layer extends rather than
+  derivatives, M4) ⊂ `evalV` (values: a real number or a matrix with its shape, `proofs/Proofs/Matrix.lean`), each
+  with a theorem that the previous one is a restriction of it. A new layer extends rather than
   replaces because the earlier theorems are stated against the earlier semantics; widening in place would silently
   restate them. It is also forced here: `evalR` cannot interpret `diff`, whose second child is a binder that `Expr`
   does not distinguish from a value, and a semantics reading it breaks the congruence M3's fold needs.

@@ -270,8 +270,8 @@ theorem diff_variable_sound (ρ : EnvR) (x : String) :
   have : fx ρ x (.var x) = id := by funext t; simp
   rw [D_eq, this, evalD_one]; exact deriv_id (ρ x)
 
-/-- **`diff.matrix`.** Matrices carry no real value in this semantics, so the rule is vacuously
-sound: both sides denote the junk value. Real content waits for M7's linear algebra. -/
+/-- **`diff.matrix`**, read in this semantics: matrices carry no real value here, so both sides denote
+the junk value. The theorem with content is `diffMatrix_sound` (`Matrix.lean`), where a matrix has one. -/
 theorem diff_matrix_sound (ρ : EnvR) (x : String) (rows : List (List Expr)) :
     D ρ x (.matrix rows) = evalD ρ (.matrix (rows.map (·.map (fun e => .fn "diff" [e, .var x])))) := by
   have : fx ρ x (.matrix rows) = fun _ => (0 : ℝ) := by funext t; simp

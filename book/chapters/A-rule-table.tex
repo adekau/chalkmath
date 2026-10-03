@@ -27,7 +27,7 @@ the engine omits is unverified.
 \rt{diff.product}{conditional}{Needs both factors differentiable at the point (\lc{diff_product_sound}).}
 \rt{diff.power}{conditional}{Proved for a natural exponent with a differentiable base; real exponents still open (\lc{diff_power_nat_sound}).}
 \rt{diff.chain}{conditional}{Needs the inner function differentiable; proved for $\sin$, $\cos$ and $\exp$, while $\ln$ and $\tan$ also need a domain condition (\lc{diff_chain_sin_sound}, \lc{diff_chain_cos_sound}, \lc{diff_chain_exp_sound}).}
-\rt{diff.matrix}{unverified}{Proved, but matrices carry no value in the $\mathbb{R}$ semantics, so the theorem has no content yet.}
+\rt{diff.matrix}{verified}{A matrix is differentiated entry by entry (\lc{diffMatrix_sound}): with matrices given a value (\lc{evalV}), the theorem has content.}
 \rt{diff.higher-order}{unverified}{An abbreviation: it eliminates the three-argument form, so there is nothing to prove.}
 \midrule \multicolumn{3}{l}{\textbf{Linear algebra}} \\
 \rt{cmd.rref}{verified}{Over $\mathbb{Q}$ the reduced matrix has the input's solution set (\lc{sol_rref}) and is in reduced row echelon form (\lc{rref_isRref}). With symbolic entries the nested row operations are the unverified \texttt{.symbolic} ones, and the step inherits their status.}
@@ -39,12 +39,12 @@ the engine omits is unverified.
 \rt{la.row-add.symbolic}{unverified}{Symbolic entries: the arithmetic is the simplifier's, outside the $\mathbb{Q}$ theorem.}
 \rt{la.ediv}{verified}{\texttt{A ./ B}, entrywise by definition: entry $(i,j)$ is $a_{ij}/b_{ij}$, and a scalar side meets every entry; each entry's arithmetic is its nested steps, with their statuses.}
 \rt{la.emul}{verified}{\texttt{A .* B}, the Hadamard product, entrywise by definition: entry $(i,j)$ is $a_{ij} b_{ij}$.}
-\rt{la.add}{unverified}{Matrices of the same shape add entrywise.}
-\rt{la.scalar-mul}{unverified}{A scalar multiplies every entry.}
-\rt{la.mul}{unverified}{Entry $(i,j)$ of the product is row $i$ of the left factor dotted with column $j$ of the right.}
-\rt{la.transpose}{unverified}{Rows become columns.}
-\rt{la.det}{unverified}{Laplace expansion along the first row.}
-\rt{la.pow}{unverified}{A square matrix multiplied by itself.}
+\rt{la.add}{verified}{Matrices of one shape add entrywise: the output has the input's value, read in \lc{evalV}, which gives a matrix its value (\lc{laAdd_sound}).}
+\rt{la.scalar-mul}{verified}{A real factor multiplies every entry; real factors commute past a matrix (\lc{laScalarMul_sound}).}
+\rt{la.mul}{verified}{Entry $(i,j)$ of the product is row $i$ of the left factor dotted with column $j$ of the right; the product is associative and real factors commute past the matrices (\lc{laMul_sound}).}
+\rt{la.transpose}{verified}{Rows become columns (\lc{laTranspose_sound}).}
+\rt{la.det}{verified}{Laplace expansion along the first row has Mathlib's determinant as its value (\lc{laDet_sound}, \lc{detExpr_value}).}
+\rt{la.pow}{verified}{$M^k$ for a positive integer $k$ is the power in the monoid of square matrices (\lc{laPow_sound}, \lc{matPow_value}).}
 \rt{la.context}{verified}{A refusal: a matrix literal where no rule gives it a meaning, or nested in another, is an error, never a value, so there is nothing to be wrong.}
 \midrule \multicolumn{3}{l}{\textbf{Expansion}} \\
 \rt{cmd.expand}{verified}{Distribution is a total function proved sound over $\mathbb{R}$ (\lc{dist_sound}); the collection afterwards is the pipeline's own steps with their statuses.}

@@ -10,6 +10,8 @@ import Proofs.Cx
 import Proofs.CxRules
 import Proofs.Fourier
 import Proofs.Stats
+import Proofs.Matrix
+import Proofs.Ledger
 /-!
 # Proofs about the engine (skeleton)
 
