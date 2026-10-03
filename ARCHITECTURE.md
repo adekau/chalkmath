@@ -79,9 +79,14 @@ differential test with zero mismatches.
 - **The λ-calculus is a second world in the same engine.** `Lambda.lean` has its own terms, parser
   and normal-order β-reducer; terms are encoded into `Expr` for the wire, so selection, explanation
   and origin tracking work unchanged. The de Bruijn view is computed with every step. Reduction is
-  on fuel, the one budget in the engine, because normalization is undecidable; `Ω` is refused, and so
-  is a term that grows past `maxSize` symbols (a fixed-point combinator unfolding under call by value).
+  on fuel, the one budget in the engine, because normalization is undecidable: `Ω` is refused after
+  `maxSteps` (10,000), and so is a term that grows past `maxSize` symbols (a fixed-point combinator
+  unfolding under call by value). A long reduction keeps its first and last steps, by count and by
+  the total size of their terms, and one `lambda.elided` step says how many it leaves out.
   A definition without a normal form (`fact := Y F`) is bound unreduced instead.
+  Every step is proved a β-step (`LambdaBeta.lean`): renaming keeps a term's de Bruijn form and
+  leaves nothing to capture, capture-free substitution is de Bruijn substitution, and so each step of
+  every strategy is one step of `DB.Beta`, β-reduction on terms taken up to α.
   A cell may begin with a command and a colon: a strategy (`normal`, `cbn`, `cbv`, `applicative`,
   each with an optional step count), `eta`, `fv`, `db`, `alpha` and `subst` are the untyped
   calculus's questions, and `type`/`infer` the simply typed calculus's (`Stlc.lean`). Terms parse with
@@ -89,13 +94,30 @@ differential test with zero mismatches.
   returns the derivation tree, and `check_sound` (`StlcProofs.lean`) proves the checker's derivations
   are typing derivations. `infer:` makes one type variable per missing annotation and per application,
   solves the equations by unification with the occurs check, and then runs the term, annotated with its
-  answer, back through the checker. So an inferred type is checked rather than proved, and its
-  principality (Hindley's theorem) is not proved. A λ-command is routed before the other worlds,
+  answer, back through the checker, so an inferred type is a type of the term. That it is the most
+  general one (Hindley's theorem) is `infer_principal` (`StlcPrincipal.lean`): unification is most
+  general (any solution factors through the one found), and generation is complete (any typing of
+  the term solves the equations). A λ-command is routed before the other worlds,
   since `type: f : A → B ⊢ f` holds a connective.
 - **Finite order theory is a third world.** `Poset.lean` decides everything over lists — closure,
   the partial-order check, covers, bounds, join and meet, lattices, monotone maps, fixed points by
   the Kleene chain — and `PosetProofs.lean` proves the decisions mean the textbook Props. Values
   are encoded into `Expr`; the notebook draws Hasse diagrams from the covers.
+- **Replicas are simulated in the systems world.** `replicas(type; a, b; events…)` (`Replicas.lean`)
+  runs a state-based CRDT through a schedule of local updates, syncs and delayed or duplicated
+  messages. Every type there is a vector of naturals merged by the entrywise maximum, so one merge
+  serves them all, proved a join with every update an inflation (`ReplicasProofs.lean`).
+- **Term rewriting is in the systems world too.** `let R = rules(l -> r; …)` binds a first-order
+  rewriting system (`Rewriting.lean`, its terms a nested inductive with the recursion written as
+  mutual definitions so that it can be proved about). `rewrite` takes leftmost-outermost steps,
+  `terminates` checks a linear interpretation (the size by default) and `critical` finds critical
+  pairs by unification and joins them. `RewritingProofs.lean` proves the steps sound and the
+  termination check sound and exact; unification, and so the completeness of the critical pairs, is
+  not proved.
+- **Commands nest by naming.** Order and systems commands take names; a call written inside another,
+  `product(chain(2), chain(3))`, is evaluated first, bound to a hidden name and put in its place
+  (`Nested.lean`), its derivation a sub-derivation of the outer cell's first steps. It is a rewriting
+  of the source, so no proof changes.
 - **Relations live in the order world.** A poset is a relation with three properties built in; a
   relation (`Relation.lean`) is elements and pairs with nothing assumed, so the properties become
   questions. Each check names the elements that break it, and the reply marks those pairs on the
@@ -301,7 +323,13 @@ language server answers LSP for Lean cells.
 - **A course's Lean prelude.** A project with `leanPrelude` gives each lesson the Lean of the lessons
   before it (their Lean cells, and their Lean exercises with the author's proofs) as a first cell no view
   shows, so a course builds one development across its lessons. It is saved with the lesson, and CI
-  checks each lesson with it in front.
+  checks each lesson with it in front. Lean elaborates it each time a lesson opens, so it leaves out
+  the earlier lessons' commands that only show something (`#eval`, `#print`, `#check`, `example`;
+  `leanForPrelude` in `packages/lean-editor/src/prelude.js`, which the CI check shares). That is
+  most of what can be cut: the CRDT course's last lesson still has about 2,800 lines in front of it,
+  some 5 s of one native thread, mostly the kernel checking the book's structures and proofs.
+  Compiling each course's prelude to 32-bit oleans with the wasm Lean, imported instead of inlined,
+  would make it a download; that is not built.
 - **Cost.** Nothing loads until a notebook has a Lean cell. Then, compressed: the editor (~3 MB), the
   server (~24 MB) and Init's 32-bit oleans (~114 MB: their private parts, proofs included, are most of it,
   and an ordinary file's implicit `import Init` needs them), once per browser: the worker keeps the large
@@ -371,11 +399,14 @@ settings, the cell) is `apps/notebook/src/ask-cells.ts`.
 
 The engine never draws. It emits **visual specs**: declarative JSON next to `rendered`
 (`EvaluateResult.visuals`): a Cayley table, a graph, a commutative diagram, sampled plot data, a
-matrix heat map. Five kinds exist (`KnownVisual` in the protocol): `logic.truthtable`, the rows of a
+matrix heat map. Six kinds exist (`KnownVisual` in the protocol): `logic.truthtable`, the rows of a
 formula's table; `relation.digraph`, a relation's pairs with the ones that break a property (`bad`)
-and the ones a closure added (`added`); `algebra.optable`, an operation's table with the cells a
+and the ones a closure added (`added`), and, for a state graph, where each step of the work is on it
+(`steps`: the transition it takes or the state it is at), so stepping through a trace marks the
+current transition (with the answer's marks held back until the answer shows); `algebra.optable`, an operation's table with the cells a
 failing law read (`marks`); `context.table`, a formal context's cross table; and `typing.tree`, a
-typing derivation as nested judgments, each with its rule and premises. The notebook draws the tables
+typing derivation as nested judgments, each with its rule and premises; and `replicas.spacetime`, a
+replica simulation's lanes, events and messages, with the events each step made. The notebook draws the tables
 and the proof tree as HTML and the graph as SVG, keeps them with the cell in a saved file, and ignores a kind it does not know. The frontend owns
 rendering (SVG/canvas/WebGL) and can offer several renderers for one spec. This keeps the engine
 pure and portable (wasm has no canvas), keeps proofs about what is *shown* possible (the spec is

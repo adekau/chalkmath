@@ -364,10 +364,48 @@ def sessionTests : TestM Unit := do
   (st, r) := ev st "fv: 3"; checkTrue "λ: fv does not unfold names" (r == "{3}") r
   (st, r) := ev st "fv 2: x"; checkTrue "λ: a step count only on a reduction" (r.startsWith "<error: fv: takes no step count") r
   (st, r) := ev st "p ∧ q"; checkTrue "λ: a formula is still logic" (r == "p ∧ q") r
+  -- nested calls in the order world: the inner call's work comes first, and its name is forgotten
+  check "nested: a source unnested" (unnest Ord.commands "let P = product(chain(2), chain(3))").2.1 "let P = product(chain_1, chain_2)"
+  check "nested: innermost first" (toString ((unnest Ord.commands "lattice(product(chain(2), chain(3)))").1.map (·.1))) "[chain_1, chain_2, product_3]"
+  check "nested: a pair is not a call" (unnest Ord.commands "join(PQ, (a, b), (c, d))").2.1 "join(PQ, (a, b), (c, d))"
+  (st, r) := ev st "product(chain(2), chain(2))"; checkTrue "nested: product of chains" (r.startsWith "poset") r
+  (st, r) := ev st "chain_1"; check "nested: the inner names are forgotten" r "chain_1"
+  let nested := rpc "engine.evaluate" "{\"sessionId\":\"n\",\"cellId\":\"a\",\"source\":\"lattice(chain(3))\",\"showWork\":true}"
+  checkTrue "nested: the inner call is a step with its own derivation" (contains nested "\"rule\":\"order.inner\"" && contains nested "\"sub\":") nested
+  let reqN (id method params : String) := s!"\{\"jsonrpc\":\"2.0\",\"id\":{id},\"method\":\"{method}\",\"params\":{params}}"
+  let (stN, _) := handleS [] (reqN "20" "engine.evaluate" "{\"sessionId\":\"n\",\"cellId\":\"a\",\"source\":\"lattice(chain(3))\"}")
+  checkTrue "nested: engine.steps has the inner call too" (contains (handleS stN (reqN "21" "engine.steps" "{\"sessionId\":\"n\",\"cellId\":\"a\"}")).2 "\"rule\":\"order.inner\"")
+  let tr := rpc "engine.evaluate" "{\"sessionId\":\"tr\",\"cellId\":\"a\",\"source\":\"let L = system(var c in {red, green}; init c = red; action go when c = red do c := green)\"}"
+  checkTrue "trace: a system" (contains tr "\"ok\":true") tr
+  let (stT, _) := handleS [] (reqN "22" "engine.evaluate" "{\"sessionId\":\"tr\",\"cellId\":\"a\",\"source\":\"let L = system(var c in {red, green}; init c = red; action go when c = red do c := green)\"}")
+  let (_, trc) := handleS stT (reqN "23" "engine.evaluate" "{\"sessionId\":\"tr\",\"cellId\":\"b\",\"source\":\"trace(L; go)\"}")
+  checkTrue "trace: the graph places each step, the first at its state and the next on its transition" (contains trc "\"steps\":[{\"node\":\"red\"},{\"edge\":[\"red\",\"green\"]}]") trc
+  let rep := rpc "engine.evaluate" "{\"sessionId\":\"rp\",\"cellId\":\"a\",\"source\":\"replicas(gcounter; a, b; a: inc; m := a; a: inc; b <- m)\",\"showWork\":true}"
+  checkTrue "replicas: a space-time diagram, a message from the send to the delivery" (contains rep "\"kind\":\"replicas.spacetime\"" && contains rep "\"messages\":[[1,3]]") rep
+  checkTrue "replicas: the run says it has not converged" (contains rep "not converged: a reads 2; b reads 1") rep
+  checkTrue "replicas: a merge step" (contains rep "\"rule\":\"crdt.merge\"") rep
+  let trs (st : Store) (src : String) := handleS st s!"\{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"engine.evaluate\",\"params\":\{\"sessionId\":\"trs\",\"cellId\":\"{src.length}\",\"source\":\"{src}\",\"showWork\":true}}"
+  let (stT, _) := trs [] "let A = rules(add(0, y) -> y; add(s(x), y) -> s(add(x, y)))"
+  let (stT, _) := trs stT "let C = rules(f(f(x)) -> g(x))"
+  let rw := (trs stT "rewrite(A, add(s(0), add(0, 0)))").2
+  checkTrue "rewrite: the first step is r2 at the root" (contains rw "\"rule\":\"trs.step\",\"explanation\":\"r2: " && contains rw "\"path\":[]") rw
+  checkTrue "rewrite: an inner step names its position" (contains rw "\"path\":[0]") rw
+  let te := (trs stT "terminates(A; add(x, y) = 2x + y, s(x) = x + 1)").2
+  checkTrue "terminates: a step per rule, with its forms" (contains te "\"rule\":\"trs.decrease\"" && contains te "the left side's interpretation is 2x + y + 2, the right side's 2x + y + 1: larger") te
+  let cr := (trs stT "critical(C)").2
+  checkTrue "critical: an overlap of a rule with itself, not joinable" (contains cr "\"rule\":\"trs.critical\"" && contains cr "not joinable" && contains cr "position [0]") cr
+  check "rewriting: a variable keeps its name, a constant is a symbol" (toString ((TRS.parseTerm "f(x1, e, y')").toOption.getD default)) "f(x1, e, y')"
+  check "rewriting: renamed-apart variables get their names back" (toString (TRS.tidy [.f "f" [.v "x''", .v "z'", .v "x'"]])) "[f(x, z, x')]"
+  check "replicas: the map prints in LaTeX" ((Expr.fn "set" [.fn "↦" [.var "a", .num (Q.ofInt 2)]]).toLatex false) "\\{a \\mapsto 2\\}"
   -- a definition with no normal form is bound unreduced, and the reduction is cut off by size, not hung
   (st, r) := ev st "pred := λn. fst (n (λp. pair (snd p) (succ (snd p))) (pair 0 0))"; checkTrue "λ: pred" (r.startsWith "λn.") r
   (st, r) := ev st "fact := Y (λself. λn. if (iszero n) 1 (mul n (self (pred n))))"; checkTrue "λ: a Y definition is bound unreduced" (r.startsWith "(λf. (λx. f (x x))") r
   (st, r) := ev st "fact 2"; check "λ: recursion through Y" r "λf. λx. f (f x)"
+  (st, r) := ev st "fact 3"; check "λ: fact 3 within the budget (1525 β-steps)" r "λf. λx. f (f (f (f (f (f x)))))"
+  let long := rpc "engine.evaluate" "{\"sessionId\":\"f\",\"cellId\":\"a\",\"source\":\"omega omega\",\"showWork\":true}"
+  checkTrue "λ: Ω is refused after the budget" (contains long "no normal form after 10000 β-steps") long
+  let elided := rpc "engine.evaluate" "{\"sessionId\":\"f\",\"cellId\":\"b\",\"source\":\"normal 500: omega omega\",\"showWork\":true}"
+  checkTrue "λ: a long run shows its ends and one step for the middle" (contains elided "\"rule\":\"lambda.elided\"" && contains elided "380 more steps") elided
   (st, r) := ev st "cbv: fact 1"; checkTrue "λ: call by value unfolds Y until the term is too big" (r.startsWith "<error: λ: no value yet after" && contains r "grown past") r
   -- printing is linear in a term's depth: forty nested λs and a forty-deep arrow type
   let deep := (List.range 40).foldr (fun i e => Expr.fn "λ" [.var s!"x{i}", e]) (.var "x0")

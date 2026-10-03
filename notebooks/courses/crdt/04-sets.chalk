@@ -64,6 +64,28 @@
       "label": null
     },
     {
+      "src": "Sets, run",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A G-Set merges by union. A 2P-Set keeps a second set of removed elements, also merged by union, and reads the added minus the removed: so a removal is for ever, and adding again does nothing.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "replicas(gset; a, b; a: add x; b: add y; a -> b; b -> a)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "replicas(twopset; a, b\n  a: add x\n  a -> b\n  b: remove x\n  a: add x\n  b -> a\n)",
+      "showWork": true,
+      "label": null
+    },
+    {
       "src": "In Lean",
       "type": "section",
       "showWork": false,

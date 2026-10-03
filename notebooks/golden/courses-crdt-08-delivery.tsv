@@ -1,1 +1,1 @@
-
+5	replicas(gcounter; a, b, c\n  a: inc\n  m := a\n  a: inc\n  a -> b\n  b <- m\n  b <- m\n  c <- m\n  b -> c\n)	= {a↦2, b↦2, c↦2}   [converged: every replica reads 2]

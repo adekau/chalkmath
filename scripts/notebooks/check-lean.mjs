@@ -7,6 +7,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { leanForPrelude } from "../../packages/lean-editor/src/prelude.js";
 
 const SEPARATOR = "--⁅cell⁆";   // packages/lean-editor/src/index.ts
 const engine = new URL("../../engine/", import.meta.url).pathname;   // elan picks the toolchain from here
@@ -15,7 +16,8 @@ let bad = 0;
 /** A notebook's Lean, as the page assembles it: Lean cells, and Lean exercises with the author's proofs. */
 const leanOf = (cells) => cells.flatMap((c) => c.type === "lean" ? [c.src] : c.type === "exercise" && c.lean && c.src.trim() ? [`${c.src}\n${c.leanSolution ?? "  sorry"}`] : []);
 // A lesson of a course with a Lean prelude sees the Lean of the lessons before it (notebooks/courses.json),
-// as the page gives it: it is checked with them in front.
+// as the page gives it (without the commands that only show something, leanForPrelude): it is checked
+// with them in front.
 const notebooks = new URL("../../notebooks/", import.meta.url).pathname;
 const preludes = new Map();
 try {
@@ -26,7 +28,7 @@ try {
       const file = path.join(notebooks, p.path, l.file);
       preludes.set(path.resolve(file), parts.join("\n\n"));
       const lean = leanOf(JSON.parse(readFileSync(file, "utf8")).cells);
-      if (lean.length) parts.push(`-- ${l.title}\n${lean.join("\n\n")}`);
+      if (lean.length) parts.push(`-- ${l.title}\n${leanForPrelude(lean.join("\n\n"))}`);
     });
   }
 } catch { /* no courses */ }

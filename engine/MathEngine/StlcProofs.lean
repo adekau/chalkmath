@@ -10,8 +10,8 @@ import MathEngine.Stlc
 
 `check_sound`: whatever type the checker returns, the term has it. So the `stlc.*` steps a `type:`
 cell shows are verified, and so is the type `infer:` reports, since inference ends by running the
-checker on the term annotated with its answer. (That the answer is the *most general* type is
-Hindley's theorem, not proved here.)
+checker on the term annotated with its answer. That the answer is the *most general* type is
+Hindley's theorem, `infer_principal` in `StlcPrincipal.lean`.
 -/
 namespace MathEngine
 namespace Lam

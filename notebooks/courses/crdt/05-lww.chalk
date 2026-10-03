@@ -37,6 +37,23 @@
       "label": null
     },
     {
+      "src": "A register, run",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "An LWW-Register keeps the write with the latest timestamp, ties broken by replica. `write v @ t` gives the timestamp; without one, it is the event's number. The write that wins need not be the one made last in real time:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "replicas(lww; a, b\n  a: write red @ 5\n  b: write blue @ 3\n  a -> b\n  b -> a\n)",
+      "showWork": true,
+      "label": null
+    },
+    {
       "src": "In Lean",
       "type": "section",
       "showWork": false,

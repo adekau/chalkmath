@@ -53,6 +53,23 @@
       "label": null
     },
     {
+      "src": "A G-Counter, run",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Each replica counts its own increments in its own slot; a merge takes the larger count, slot by slot. The work shows each state as a map from replicas to their slots.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "replicas(gcounter; a, b\n  a: inc\n  a: inc\n  b: inc\n  a -> b\n  b -> a\n)",
+      "showWork": true,
+      "label": null
+    },
+    {
       "src": "In Lean",
       "type": "section",
       "showWork": false,

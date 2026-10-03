@@ -14,6 +14,10 @@ iteration from ⊥ stops at the least fixed point.
 
 Values are encoded into `Expr` for the wire (`fn "set" [...]`, elements as `var`/`num`), so the
 notebook's machinery applies; the notebook draws the Hasse diagram from the covers.
+
+A command's arguments are names, elements, sets, tables and relation lists. A command call may stand
+for a name, `product(chain(2), chain(3))`: `Nested.lean` evaluates it first and puts a name in its
+place, before this parser sees the cell.
 -/
 namespace MathEngine
 namespace Ord

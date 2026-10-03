@@ -146,6 +146,9 @@ export interface DigraphData {
   nodes: string[]; edges: [string, string][]; bad: [string, string][]; added: [string, string][];
   /** Each node's layer (a state's distance from an initial one), for a layered drawing. Optional. */
   layers?: number[];
+  /** Where each step of the cell's derivation is on the graph, in step order: the transition it takes,
+   *  or the state it is at; `null` for a step that is not on it. Optional (a state graph's). */
+  steps?: ({ edge?: [string, string]; node?: string } | null)[];
 }
 /** `algebra.optable` (an operation cell, or a law checked on one): the set, the table row by row
  *  (`rows[i][j]` is `elems[i] · elems[j]`), and the cells to mark, as `[row element, column element]`. */
@@ -157,12 +160,20 @@ export interface ContextTableData { objects: string[]; attributes: string[]; has
  *  (Γ₁, Γ₂, …), and `legend` says what each name stands for; a node's `text` writes its context out. */
 export interface TypingNode { rule: string; latex: string; text: string; premises: TypingNode[] }
 export interface TypingTreeData { root: TypingNode; legend?: { latex: string; text: string }[] }
+/** `replicas.spacetime` (a replica simulation): a lane per replica, the events in order (each with its
+ *  lane, a label, and the replica's state after it), the messages as arrows from one event to another,
+ *  and, per step of the derivation, the events it made. */
+export interface SpacetimeData {
+  lanes: string[]; events: { lane: string; label: string; state: string }[]; messages: [number, number][];
+  steps: number[][];
+}
 export type KnownVisual =
   | { kind: "logic.truthtable"; title?: string; data: TruthTableData }
   | { kind: "relation.digraph"; title?: string; data: DigraphData }
   | { kind: "algebra.optable"; title?: string; data: OpTableData }
   | { kind: "context.table"; title?: string; data: ContextTableData }
-  | { kind: "typing.tree"; title?: string; data: TypingTreeData };
+  | { kind: "typing.tree"; title?: string; data: TypingTreeData }
+  | { kind: "replicas.spacetime"; title?: string; data: SpacetimeData };
 
 export interface EvaluateResult {
   ok: true;

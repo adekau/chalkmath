@@ -45,6 +45,13 @@ const CASES = [
   { src: "fold(FA; na, deny, permit)", text: "deny", step: "Combine" },
   { src: "let RPS = op({r, p, s}; [r, p, r; p, p, s; r, s, s])", text: "[r, p, r; p, p, s; r, s, s]" },
   { src: "associative(RPS)", text: "false", step: "Not associative" },
+  { src: "lattice(product(chain(2), chain(3)))", text: "true", step: "Inner call" },
+  { src: "replicas(gcounter; a, b; a: inc; m := a; a: inc; b <- m; a -> b)", text: "{a↦2, b↦2}", step: "b merges the message m" },
+  // term rewriting, in the systems world
+  { src: "let Add = rules(add(0, y) -> y; add(s(x), y) -> s(add(x, y)))", text: "{add(0, y) → y, add(s(x), y) → s(add(x, y))}" },
+  { src: "rewrite(Add, add(s(0), s(0)))", text: "s(s(0))", step: "Rewrite" },
+  { src: "terminates(Add; add(x, y) = 2x + y, s(x) = x + 1)", text: "true", step: "Decreases" },
+  { src: "rules(x -> a)", error: "the left side is a variable" },
   // transition systems
   { src: "let Ct = system(var x in 0..2; init x = 0; action inc when x < 2 do x := x + 1)", text: "system({x}, {inc})" },
   { src: "invariant(Ct, x ≤ 1)", text: "false", step: "inc (x < 2 holds)" },
@@ -388,6 +395,24 @@ async function features() {
   const invWant = (await ref("invariant(M, p = crit → lock = true)", 15)).visuals.find((v) => v.kind === "relation.digraph").data;
   assert.equal(await inv.locator("svg path.redge.bad").count(), invWant.bad.length, "the counterexample's transitions are marked");
   console.log(`✓ several lines: a system typed with Shift+Enter, ${invWant.nodes.length} states, a ${invWant.bad.length}-step counterexample marked`);
+  // a step of the trace selected in the work: its transition is the current one on the graph
+  if (await inv.locator(".work .step").count() === 0) await inv.locator(".cellacts [aria-expanded]").click();
+  await inv.locator(".work:not(.pending) .step").first().waitFor({ timeout: 30000 });
+  const stepK = invWant.steps.findIndex((m) => m?.edge);
+  assert.ok(stepK >= 0, "the engine placed no step of the trace on the graph");
+  await inv.locator(".work .step:not(.sub)").nth(stepK).click();
+  await inv.locator("svg path.redge.cur").first().waitFor({ timeout: 10000 })
+    .catch(() => assert.fail(`selecting step ${stepK + 1} marked no transition on the graph`));
+  assert.equal(await inv.locator("svg path.redge.cur").first().getAttribute("data-edge"), JSON.stringify(invWant.steps[stepK].edge), "the marked transition is the step's");
+  console.log(`✓ trace on the graph: step ${stepK + 1} selected, its transition ${invWant.steps[stepK].edge.join(" → ")} marked`);
+  // a replica run drawn as a space-time diagram: a lane per replica, an arrow per message
+  const repSrc = "replicas(gcounter; a, b, c; a: inc; m := a; b: inc; c <- m; a -> b; b -> c; c <- m)";
+  const rep = await runLast(repSrc);
+  const repWant = (await ref(repSrc, 16)).visuals.find((v) => v.kind === "replicas.spacetime").data;
+  assert.equal(await rep.locator("svg.spacetime .stline").count(), repWant.lanes.length, "a lane per replica");
+  assert.equal(await rep.locator("svg.spacetime [data-event]").count(), repWant.events.length, "a dot per event");
+  assert.equal(await rep.locator("svg.spacetime .stmsg").count(), repWant.messages.length, "an arrow per message, a duplicate delivery too");
+  console.log(`✓ replicas: ${repWant.lanes.length} lanes, ${repWant.events.length} events, ${repWant.messages.length} messages drawn`);
   await manipulate();
   // a course: the Courses tab, a lesson opened, answered, and followed to the next
   const manifest = JSON.parse(readFileSync(path.join(root, "notebooks/courses.json"), "utf8"));

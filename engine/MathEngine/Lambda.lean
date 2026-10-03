@@ -65,12 +65,16 @@ def size : Term → Nat
   | .lam _ e => 1 + size e
   | .app a b => 1 + size a + size b
 
-/-- A name not in `avoid`, derived from `base`: `x`, `x'`, `x''`, … -/
+/-- The length of the longest name in a list. -/
+def longest (l : List String) : Nat := l.foldl (fun m s => max m s.length) 0
+
+/-- A name not in `avoid`, derived from `base`: `x`, `x'`, `x''`, … and, should those run out, one
+longer than every name in `avoid` (`freshVar_not_mem`). -/
 def freshVar (avoid : List String) (base : String) : String :=
   go base avoid.length
 where
   go (cand : String) : Nat → String
-    | 0 => cand
+    | 0 => if cand ∈ avoid then base ++ String.ofList (List.replicate (longest avoid + 1) '\'') else cand
     | n + 1 => if cand ∈ avoid then go (cand ++ "'") n else cand
 
 /-- Does `x` occur free in the term? -/
@@ -573,11 +577,19 @@ def betaEtaStep : Term → Option (Term × StepKind)
     | some (a', k) => some (.app a' b, k)
     | none => (betaEtaStep b).map fun (b', k) => (.app a b', k)
 
-def maxSteps : Nat := 1000
+def maxSteps : Nat := 10000
 
 /-- The largest term reduction goes on with: a term that grows past it (a fixed-point combinator
-unfolding, say) is stopped, so a cell answers in time whatever it is given. -/
-def maxSize : Nat := 3000
+unfolding under call by value, say) is stopped, so a cell answers in time whatever it is given. -/
+def maxSize : Nat := 6000
+
+/-- How much of a long run is kept, from its start and from its end, as the work shown: at most so
+many steps, and at most so many symbols over their terms together (a big term costs its size on the
+page, every step it appears in). -/
+def keepFirst : Nat := 100
+def keepLast : Nat := 20
+def keepFirstSize : Nat := 20000
+def keepLastSize : Nat := 10000
 
 /-- Why a run of steps ended. -/
 inductive Halt where
@@ -589,21 +601,51 @@ inductive Halt where
   | size
   deriving BEq, Repr, Inhabited
 
-/-- Take steps until none applies, the fuel runs out, or the term grows past `maxSize`, recording each. -/
-def runSteps (step : Term → Option (Term × α)) (t : Term) (fuel : Nat) : Term × List (Term × α) × Halt :=
-  go t fuel []
-where
-  go (t : Term) : Nat → List (Term × α) → Term × List (Term × α) × Halt
-    | 0, acc => (t, acc.reverse, if (step t).isNone then .done else .fuel)
-    | n + 1, acc =>
-      match step t with
-      | none => (t, acc.reverse, .done)
-      | some (t', k) =>
-        if size t' > maxSize then (t', ((t', k) :: acc).reverse, .size) else go t' n ((t', k) :: acc)
+/-- A run of steps: where it ended and why, and the steps kept — the first `keepFirst`, and the last
+`keepLast` after the term `lastFrom`, with `dropped` steps between them not kept. -/
+structure Run (α : Type) where
+  out : Term
+  first : List (Term × α)
+  lastFrom : Term
+  last : List (Term × α)
+  dropped : Nat
+  halt : Halt
 
-/-- Reduce to normal form in normal order, recording every step: the normal form, or where the
-reduction stopped and why. -/
-def reduce (t : Term) : Term × List (Term × Bool) × Halt := runSteps betaStep t maxSteps
+def Run.count (r : Run α) : Nat := r.first.length + r.dropped + r.last.length
+
+/-- Drop the oldest of the latest steps while there are too many, or they are too big together; the
+next kept step then starts from where the dropped one ended. -/
+def trimLast (last : List (Term × α)) (sz : Nat) (base : Term) (dropped : Nat) : List (Term × α) × Nat × Term × Nat :=
+  match last with
+  | oldest :: rest@(_ :: _) =>
+    if last.length > keepLast || sz > keepLastSize then trimLast rest (sz - size oldest.1) oldest.1 (dropped + 1)
+    else (last, sz, base, dropped)
+  | _ => (last, sz, base, dropped)
+
+/-- Take steps until none applies, the fuel runs out, or the term grows past `maxSize`, keeping the
+first and the last steps. -/
+def runSteps (step : Term → Option (Term × α)) (t : Term) (fuel : Nat) : Run α :=
+  go t fuel [] 0 true t [] 0 0
+where
+  /-- `first` is reversed, `last` oldest first, each with its terms' total size; `filling` until the
+  first part is full; `base` is the term before `last`'s oldest. -/
+  go (t : Term) : Nat → List (Term × α) → Nat → Bool → Term → List (Term × α) → Nat → Nat → Run α
+    | 0, first, _, _, base, last, _, dropped => ⟨t, first.reverse, base, last, dropped, if (step t).isNone then .done else .fuel⟩
+    | n + 1, first, fsz, filling, base, last, lsz, dropped =>
+      match step t with
+      | none => ⟨t, first.reverse, base, last, dropped, .done⟩
+      | some (t', k) =>
+        let z := size t'
+        if filling && first.length < keepFirst && fsz + z ≤ keepFirstSize then
+          if z > maxSize then ⟨t', ((t', k) :: first).reverse, t', [], dropped, .size⟩
+          else go t' n ((t', k) :: first) (fsz + z) true t' last lsz dropped
+        else
+          let (last, lsz, base, dropped) := trimLast (last ++ [(t', k)]) (lsz + z) base dropped
+          if z > maxSize then ⟨t', first.reverse, base, last, dropped, .size⟩
+          else go t' n first fsz false base last lsz dropped
+
+/-- Reduce to normal form in normal order: where the reduction stopped and why, and its steps. -/
+def reduce (t : Term) : Run Bool := runSteps betaStep t maxSteps
 
 /-- The binders' names, in order, each once. -/
 def boundVars : Term → List String
