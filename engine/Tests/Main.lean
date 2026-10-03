@@ -364,6 +364,12 @@ def sessionTests : TestM Unit := do
   (st, r) := ev st "fv: 3"; checkTrue "λ: fv does not unfold names" (r == "{3}") r
   (st, r) := ev st "fv 2: x"; checkTrue "λ: a step count only on a reduction" (r.startsWith "<error: fv: takes no step count") r
   (st, r) := ev st "p ∧ q"; checkTrue "λ: a formula is still logic" (r == "p ∧ q") r
+  -- a Church name at the head makes a λ-cell only when the source lexes as a λ-term
+  (st, r) := ev st "S + 1"; check "λ: `S + 1` is arithmetic, not a λ-term" r "S + 1"
+  (st, r) := ev st "I + x"; checkTrue "λ: `I + x` is arithmetic" (!r.startsWith "<error") r
+  (st, r) := ev st "fst (pair a b)"; check "λ: a Church name at the head, with no λ, is still a λ-term" r "a"
+  checkTrue "λ: `K * 2` is not a λ-cell" (!Lam.isLambdaSource "K * 2" (Lam.churchDefs.map (·.1)))
+  checkTrue "λ: `id x` is a λ-cell" (Lam.isLambdaSource "id x" (Lam.churchDefs.map (·.1)))
   -- a definition with no normal form is bound unreduced, and the reduction is cut off by size, not hung
   (st, r) := ev st "pred := λn. fst (n (λp. pair (snd p) (succ (snd p))) (pair 0 0))"; checkTrue "λ: pred" (r.startsWith "λn.") r
   (st, r) := ev st "fact := Y (λself. λn. if (iszero n) 1 (mul n (self (pred n))))"; checkTrue "λ: a Y definition is bound unreduced" (r.startsWith "(λf. (λx. f (x x))") r

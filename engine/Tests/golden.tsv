@@ -334,3 +334,7 @@ infer: λx. x x	<error: occurs check: τ1 = τ1 → τ2 has no solution (τ1 wou
 infer: λx:A. λy:B. x y	<error: cannot unify A with B → τ1, so the term has no simple type>
 infer: λf:A→B. λx. f x	(A → B) → A → B
 (λx:A. x) y	y
+S + 1	S + 1
+id + 1	id + 1
+K * 2	2*K
+fst (pair a b)	a

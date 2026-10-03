@@ -54,6 +54,9 @@ const CASES = [
   { src: "type: λf:A→B. λx:A. f x", text: "(A → B) → A → B", step: "→E (application)" },
   { src: "infer: S", text: "(α → β → γ) → (α → β) → α → γ", step: "Unify" },
   { src: "type: λx:A. x x", error: "not a function type" },
+  // a Church name at the head is a λ-term only when the cell reads as one
+  { src: "fst (pair a b)", text: "a" },
+  { src: "S + 1", text: "S + 1" },
 ];
 
 const root = path.resolve(import.meta.dirname, "..");

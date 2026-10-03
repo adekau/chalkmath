@@ -486,13 +486,14 @@ def parseCmd (src : String) : Option (Except String Cmd) :=
     | _ => throw s!"unknown λ-command {w}"
 
 /-- Is this cell a λ-cell? A command, a λ or backslash anywhere, a `:=` definition, or a first word
-that is a λ-definition of the session or the Church library. -/
+that is a λ-definition of the session or the Church library, in a source that lexes as a λ-term:
+`fst (pair a b)` is one, `S + 1` is arithmetic on a variable named `S`. -/
 def isLambdaSource (src : String) (defs : List String) : Bool :=
   (commandHead src).isSome ||
   src.any (fun c => c == 'λ' || c == '\\') || (src.splitOn ":=").length == 2 ||
   (let w := (src.trimAscii.copy.splitOn " ").headD ""
    let w := if w == "let" then "" else w
-   defs.contains w && !src.contains '(' || (defs.contains w && src.contains ' '))
+   defs.contains w && (!src.contains '(' || src.contains ' ') && (lex src).toBool)
 
 /-! ## Reduction strategies and η -/
 
