@@ -978,3 +978,21 @@ Phases:
    `arg_eq_of_im_neg`), so `N(ln(i))`, `N(i^i)`, `N((1+i)^(1/2))` and `N(arctan(1))` are certified (`clnI_mem`,
    `cpowI_mem` through `Complex.cpow_def_of_ne_zero`). `cmd.N.float` is left with poles, jumps, the cut, and
    `arcsin`/`arccos`. The `int.*` finder and the parser/printer totality went to their own sessions.
+- verification: a total parser and printer, and the round trip — DONE 2026-10-04.
+   The algebra lexer, parser and printer were `partial def`; all three are total now, with the same output (the
+   golden corpus passes unchanged). The lexer recurses on the characters left (`lexNum_lt`: a numeral consumes
+   one). The parser takes the token position as an argument, returns where it stopped with the proof that it
+   consumed a token, and is well-founded on `8 · (tokens left) + rank`, the rank going down the grammar for a call
+   at the same position. The printer is well-founded on the node count, with each function of its block at its own
+   offset. Two rewrites were needed only so that the proofs could be stated: `Q.parse` reads characters
+   (`List.splitOn`, `Nat.ofDigitChars`) instead of `String.splitOn`/`String.toNat?`, which have no lemmas in core,
+   and agrees with the old one on all 177,161 strings of up to five characters over an adversarial alphabet; and
+   `fnRaw` matches on a call's name first, since Lean could not derive the equations of the three-column match in
+   its heartbeat budget.
+   `RoundTrip.lean` proves `parse_toText`: on a fragment (natural numerals, variables, `sin`…`abs` of one
+   argument, powers, sums and products of two or more terms), parsing what the printer writes gives back the
+   term, up to how sums in sums and products in products are bracketed (`flat`). The proof follows the text through
+   each stage: the printer writes the characters of a token list, the lexer reads those tokens back, and each
+   level of the grammar reads a term that flattens to the original. Not in the fragment, and so still only checked
+   by the corpus's read-back: negatives, division and negative exponents (`1/x^2` reads back as another term with
+   the same value), decimals, `exp(1)` (printed `ℯ`), calls of several arguments, matrices.

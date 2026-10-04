@@ -312,20 +312,32 @@ differential test with zero mismatches.
   - the parser, the printer and the JSON-RPC layer.
 
   How each is held:
-  - **Printer.** It is checked, not proved. `goldenTests` reads every algebra answer's text back
-    (parse, then the pipeline) and asks for the same term. Where the pipeline has two normal forms for
-    one value, it asks instead for a term that prints the same: `(x^(1/2))^(-1)` and `x^(-1/2)` stay
-    apart over ℝ, rightly. That check found JavaScript's `2.5e+43` reading back as `2.5·e + 43`, so a
-    decimal too large or too small for positional notation prints as `2.5*10^43` (`Q.toText`) and binds
-    as a product.
+  - **Lexer, parser and printer.** All three are total. The lexer recurses on the characters left.
+    The algebra parser takes the token position as an argument and is well-founded on
+    `8 · (tokens left) + rank`: a call at a later position consumes a token, and a call at the same
+    position goes to a lower level of the grammar. The printer is well-founded on the term's node
+    count. On a fragment, reading back what the printer writes is proved (`parse_toText`,
+    `engine/MathEngine/RoundTrip.lean`): it gives the same term, up to how sums in sums and products in
+    products are bracketed. The fragment is natural numerals, variables, one-argument calls of the
+    common functions, powers, and sums and products. It leaves out:
+    - negatives and subtraction;
+    - division and negative exponents;
+    - decimals;
+    - `exp`;
+    - calls of several arguments;
+    - matrices.
+  - **Beyond the fragment, the printer is checked, not proved.** `goldenTests` reads every algebra
+    answer's text back (parse, then the pipeline) and asks for the same term. Where the pipeline has
+    two normal forms for one value, it asks instead for a term that prints the same: `(x^(1/2))^(-1)`
+    and `x^(-1/2)` stay apart over ℝ, rightly. That check found JavaScript's `2.5e+43` reading back as
+    `2.5·e + 43`, so a decimal too large or too small for positional notation prints as `2.5*10^43`
+    (`Q.toText`) and binds as a product.
   - **Session's `let` names and function definitions.** These are substituted into a cell before it
     is normalized. `substitute` and `substituteFns` are structural. `substitute_soundR` and
     `substitute_soundC` (`proofs/Proofs/Let.lean`) show the derivation's input means the source with
     each name at its binding's value.
-  - **What is still `partial def`.** The remaining ones are:
-    - the parsers;
-    - the printer's recursion;
-    - the JSON code;
+  - **What is still `partial def`.** Others remain, among them:
+    - the JSON and wire code;
     - the other worlds' parsers and evaluators (logic, systems, λ);
     - `Antiderivative.anti`, whose output `int.check` re-checks.
 

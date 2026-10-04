@@ -48,13 +48,15 @@ instance : Sub Q := ⟨sub⟩
 instance : Div Q := ⟨div⟩
 
 /-- Parse a numeric literal: `"3"`, `"2.5"`, `".5"`, `"1/3"`. Decimal literals are stored exactly
-(`2.5 = 5/2`) but flagged approximate. Returns `none` on malformed input. -/
+(`2.5 = 5/2`) but flagged approximate. Returns `none` on malformed input. It works on the
+characters, so that what it reads is provable (`parse_digits` in `RoundTrip.lean`). -/
 def parse (s : String) : Option Q := do
-  let digits (t : String) : Option Nat := if t.isEmpty || !t.all Char.isDigit then none else t.toNat?
-  match s.splitOn "/" with
+  let digits (t : List Char) : Option Nat :=
+    if t.isEmpty || !t.all Char.isDigit then none else some (Nat.ofDigitChars 10 t 0)
+  match s.toList.splitOn '/' with
   | [n, d] => do let n ← digits n; let d ← digits d; if d = 0 then none else some (ofRat (mkRat n d))
   | [_] =>
-    match s.splitOn "." with
+    match s.toList.splitOn '.' with
     | [i] => do let n ← digits i; some (ofInt n)
     | [i, f] => do
       let ip ← if i.isEmpty then some 0 else digits i
