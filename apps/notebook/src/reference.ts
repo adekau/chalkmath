@@ -110,13 +110,14 @@ export const FUNCTIONS: FnDoc[] = [
     usage: [["N(e)", "gives a numerical value of `e`, to fifteen significant digits, each one certified."]],
     details: [
       "The digits are certified: the term is evaluated again over the rationals, to an interval proved to hold its exact value, and only the digits the interval pins down are shown, each within a unit of its last place. Usually that is all fifteen; when it is fewer, fewer are shown, and a value pinned down only near zero shows as 0.",
-      "What the intervals do not reach is a floating-point approximation in IEEE-754 double precision, and its step says it is not certified: a complex value, a function across a pole or a jump (`N(tan(pi/2))`), a negative base under a fractional power.",
-      "Over ℂ when the term mentions `i`, or when its real value is not finite: `N(sqrt(-1))` is `i`.",
+      "Over ℂ when the term mentions `i`, or when its real value is not finite: `N(sqrt(-1))` is `i`. A complex value is certified too, its real and imaginary parts each to their own digits: sums, products, quotients and integer powers, `exp`, `sin`, `cos` and `tan`, `abs`, `conj`, `re` and `im`, `ln` and `sqrt` of a real number, and a real number to a real power, on the principal branch (`N((-8)^(1/3))` is `1 + 1.73205080756888i`).",
+      "What the intervals do not reach is a floating-point approximation in IEEE-754 double precision, and its step says it is not certified: the logarithm of a non-real number (`N(ln(i))`), a non-real base under a non-integer power (`N(i^i)`), a function across a pole or a jump (`N(tan(pi/2))`).",
       "A term with a free variable has no numerical value.",
     ],
     examples: [
       basic("N(pi)", "N(sqrt(2))"),
       section("Scope", "N(1/3)", "N(exp(1))", "N(sin(pi/6))", "N(sin(10^30))", note("Not certified:"), "N(tan(pi/2))"),
+      section("Over ℂ", "N(exp(i*pi/4))", "N(1/(1+i))", "N(sqrt(-4))", "N((-8)^(1/3))", note("Not certified:"), "N(ln(i))"),
     ],
     see: ["simplify"],
   },
@@ -214,9 +215,11 @@ export const FUNCTIONS: FnDoc[] = [
       "Implemented as rewrite rules that push $d/dx$ inward (sum, product, quotient, chain and power rules), so the derivation reads like a textbook's.",
       "Other variables are constants: `diff(x*y, x)` is `y`.",
       "A vector or matrix is differentiated entry by entry.",
+      "A step that needs something says so: the derivative of `ln u` assumes `u > 0`, of `tan u` that `cos u ≠ 0`, a real exponent a positive base, and a rule applied to a part that is not differentiable everywhere (`abs(x)`) assumes it differentiable. The other steps hold at every point.",
     ],
     examples: [
       basic("diff(x^2 * sin(x), x)", "diff(x^3, x, 2)"),
+      section("Steps that assume", "diff(ln(x), x)", "diff(x^(1/2), x)", "diff(tan(x), x)"),
       section("Scope", "diff(sin(x^2), x)", "diff(1/(x+1), x)", "diff(x^x, x)", "diff(2^x, x)", "diff(x*y, x)", "diff([x, x^2], x)"),
       section("Properties and relations", note("Differentiation undoes integration:"), "diff(integrate(x^3, x), x)"),
     ],

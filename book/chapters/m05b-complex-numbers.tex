@@ -142,7 +142,8 @@ theorem euler_soundC (ρ : EnvC) {e : Expr} {res : RuleResult}
     (h : euler.apply e = some res) : evalC ρ res.result = evalC ρ e
 theorem exactTrig_soundR (ρ : EnvR) {e : Expr} {res : RuleResult}
     (h : exactTrig.apply e = some res) : evalR ρ res.result = evalR ρ e
-theorem not_functionRules_soundC : ¬ RuleSoundC functionRules
+theorem functionRules_soundC : RuleSoundC functionRules
+theorem not_functionReal_soundC : ¬ RuleSoundC functionReal
 \end{minted}
 
 \begin{trybox}

@@ -686,7 +686,7 @@ def LitAtRoot (a : Expr) : Prop := hasLitList (Expr.children a) = false
 
 /-- The pipeline fires a rule on a node whose children are normal, and a normal term is literal-free
 below its root (`normal_facts`): exactly the hypothesis the matrix rules' theorems take. -/
-theorem litAtRoot_of_normal {norm : Norm} {c : Expr} (h : Normal (pipelineRulesWith norm) c) : LitAtRoot c := by
+theorem litAtRoot_of_normal {norm : Norm} {real : Bool} {c : Expr} (h : Normal (pipelineRulesWith norm real) c) : LitAtRoot c := by
   unfold LitAtRoot
   cases hl : hasLitList (Expr.children c)
   · rfl

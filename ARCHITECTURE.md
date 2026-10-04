@@ -67,8 +67,12 @@ differential test with zero mismatches.
   by Taylor sums with their remainder bounds after halving the argument, then squaring or doubling
   back, `ln` pinned by `exp`, `sqrt` by squaring, `π` to Mathlib's twenty digits. It prints the most
   digits, up to fifteen, that the interval pins down, each within a unit of its last place
-  (`certify_sound`). What the intervals do not reach (a complex value, a pole, a jump) falls to the
-  old double-precision evaluation, `cmd.N.float`, which says it is not certified.
+  (`certify_sound`). A complex value is a rectangle, an interval for each part (`Ival.cieval`),
+  through the formulas for the parts of a product, a quotient, `exp`, `sin` and `cos`; `ln` and
+  `sqrt` of a real number and a real number to a real power have their principal values in closed
+  form (`cieval_sound`, `cmdN_soundC` in `proofs/Proofs/IntervalC.lean`). What the intervals do not
+  reach (the logarithm of a non-real number, a non-real base under a non-integer power, a pole, a
+  jump) falls to the old double-precision evaluation, `cmd.N.float`, which says it is not certified.
 - **Elimination is verified over ℚ by construction.** `LinAlgQ.lean` writes Gauss–Jordan as a
   list of the three elementary row operations, each invertible (the degenerate parameters are the
   identity), and proves `sol_rref`: the reduced matrix has the input's solution set. The `rref`
@@ -265,6 +269,28 @@ differential test with zero mismatches.
   it as a hypothesis; `proofs/` also *proves* that no unconditional theorem exists for them. Silence is
   not an option: either a rule has an unconditional theorem or its condition is written down where
   the step is shown.
+- **Verified means on the domain, not just in Lean's arithmetic.** `evalR` is total and inherits
+  Mathlib's conventions where mathematics leaves a term undefined (`ln x = ln |x|`, `x/0 = 0`), so a
+  rule proved against it alone can change a term's domain unseen: `ln(x²) = 2 ln x` holds for every
+  real `x` in `evalR`, yet `ln(x²)` is defined at `x = −2` and `2 ln x` is not. `Def ρ e`
+  (`proofs/Proofs/Domain.lean`) says where a term is defined in the ordinary sense, and `DomEq` asks of
+  a step that the answer be defined, with the same value, wherever the input is; it is a
+  `Congruence`, so the same fold applies. Every rule the pipeline runs without an assumption keeps the
+  domain (`simpRulesSafe_soundD`, the parity, radical and square-root rules); `ln(b^p) = p ln b` for an
+  even `p` did not, and is now `simp.function.assuming` ("Assuming $x > 0$").
+- **A cell is read over ℝ or over ℂ, and the rules know which.** A cell whose input mentions `i`, or
+  whose real answer does (`sqrt(-1)`), is normalized over ℂ (`normCell`): the pipeline takes the
+  reading as a parameter (`pipelineRulesWith norm real`) and turns off `simp.function.real`, the cases
+  that are false on ℂ's principal branch (`ln(e^x) = x` fails at `x = 4i`; `not_functionReal_soundC`).
+  What is left of `simp.function` is proved over ℂ too (`functionRules_soundC`).
+- **The calculus rules are split the same way.** `diff.sum`, `diff.product`, `diff.power` and
+  `diff.chain` fire verified where every part they need differentiable is `smooth` (built from
+  numerals, variables, `+`, `·`, natural powers, positive-numeral bases, `sin`, `cos`, `exp`;
+  `smooth_differentiable`) and no domain condition arises; elsewhere their `.assuming` halves fire and
+  the step names the condition: `u > 0` for `ln u` and for real exponents, `u ≠ 0` for negative integer
+  ones, `cos u ≠ 0` for `tan u`, `b > 0` for `b^u`, differentiability otherwise. Both halves are
+  proved for the exact term the engine writes (`proofs/Proofs/DerivRules.lean`), the product rule for
+  any number of factors.
 - **Two packages.** `engine/` is executable code and goes into the wasm build: it imports Init
   (Std/Batteries allowed) and never Mathlib. `proofs/` is theorems only, may be `noncomputable`,
   requires `engine/` and (from M3) Mathlib. `scripts/check-engine-deps.sh` enforces the split.

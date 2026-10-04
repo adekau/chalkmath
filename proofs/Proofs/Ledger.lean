@@ -13,6 +13,9 @@ import Proofs.Matrix
 import Proofs.SimpAll
 import Proofs.RowOps
 import Proofs.Interval
+import Proofs.IntervalC
+import Proofs.Domain
+import Proofs.DerivRules
 import Lean
 /-!
 # The ledger cites what exists

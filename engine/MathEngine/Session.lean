@@ -93,7 +93,7 @@ def evaluateCell (s : Session) (cellId source : String) :
     | .error msg => (s, .error ("eval", msg, none))
     | .ok value =>
     let input := substitute env (substituteFns s.fns value)
-    match (normalizeT pipelineRules pipelineOrdered input).run #[] with
+    match normCell input with
     | (.error msg, _) => (s, .error ("eval", msg, none))
     | (.ok output, steps) =>
       let d : Derivation := ⟨input, steps, output⟩
@@ -919,7 +919,7 @@ structure LogicResult where
 put in, then the pipeline. -/
 def logicNum (s : Session) (env : List (String × Q)) (e : Expr) : Option Q :=
   let e := substitute s.env (substituteFns s.fns (substitute (env.map fun (x, q) => (x, .num q)) e))
-  match (normalizeT pipelineRules pipelineOrdered e).run #[] with
+  match normCell e with
   | (.ok (.num q), _) => some q
   | _ => none
 
@@ -1540,7 +1540,7 @@ def plotValue (s : Session) (cellId : String) (value : Expr) :
     -- normalize a term under the session, record the cell, and hand back the derivation
     let record (x : String) (f : Expr) : Session × Except String (Expr × Derivation) :=
       let input := substitute (s.env.filter (·.1 != x)) (substituteFns s.fns f)
-      match (normalizeT pipelineRules pipelineOrdered input).run #[] with
+      match normCell input with
       | (.error msg, _) => (s, .error msg)
       | (.ok output, steps) =>
         let d : Derivation := ⟨input, steps, output⟩
@@ -1609,7 +1609,7 @@ def plotCell (s : Session) (cellId source : String) :
 
 /-- The number the session reads `e` as, exactly: its normal form, when that is a numeral. -/
 def Session.exactNum (s : Session) (e : Expr) : Option Q :=
-  match (normalizeT pipelineRules pipelineOrdered (substitute s.env (substituteFns s.fns e))).run #[] with
+  match normCell (substitute s.env (substituteFns s.fns e)) with
   | (.ok (.num q), _) => some q
   | _ => none
 
@@ -1678,7 +1678,7 @@ def manipulateCell (s : Session) (cellId source : String) :
             | (_, .error (_, msg, _)) => .error msg
             | (_, .ok (_, out, d, pl)) => .ok ({ label := label, output := out, plot := some pl }, d)
           | _ =>
-            match (normalizeT pipelineRules pipelineOrdered e).run #[] with
+            match normCell e with
             | (.error msg, _) => .error msg
             | (.ok out, steps) => .ok ({ label := label, output := out, work := workChain e steps }, ⟨e, steps, out⟩)
         let record (out : Expr) (d : Derivation) : Session :=

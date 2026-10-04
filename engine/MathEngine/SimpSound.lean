@@ -538,6 +538,9 @@ theorem collectTerms_sound : RuleSound collectTerms := by
 theorem functionRules_sound : RuleSound functionRules :=
   fun e r h => functionApply_sound e r (gate_some h)
 
+theorem functionReal_sound : RuleSound functionReal :=
+  fun e r h => functionApply_sound e r (gate_some h)
+
 theorem functionAssuming_sound : RuleSound functionAssuming := fun e r h => by
   obtain ⟨_, r₀, _, h₀, hres, _⟩ := functionAssumingApply_some h
   show Refines e r.result
@@ -558,11 +561,12 @@ theorem collectPowersAssuming_sound : RuleSound collectPowersAssuming := fun e r
 theorem simpRules_sound : ∀ r ∈ simpRules, RuleSound r := by
   intro r hr
   simp only [simpRules, List.mem_cons, List.not_mem_nil, or_false] at hr
-  rcases hr with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+  rcases hr with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
   · exact flatten_sound
   · exact identity_sound
   · exact foldConstants_sound
   · exact functionRules_sound
+  · exact functionReal_sound
   · exact functionAssuming_sound
   · exact powerRules_sound
   · exact collectPowers_sound

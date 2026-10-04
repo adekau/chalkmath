@@ -15,8 +15,9 @@ the engine omits is unverified.
 \rt{simp.power}{verified}{Includes exact roots; the root search returns only checked roots.}
 \rt{simp.collect-powers}{verified}{$b^m b^n = b^{m+n}$ for every real $b$: integer exponents of one sign ($x \cdot x = x^2$) or a positive numeral base (\lc{collectPowers_soundR}).}
 \rt{simp.collect-powers.assuming}{conditional}{The other merges, $x \cdot x^{-1} = x^0$ and $x^a x^b = x^{a+b}$: the step states its assumption, $b \neq 0$ for integer exponents and $b > 0$ otherwise (\lc{collectPowersAssuming_soundR_on}); at $x = 0$, $x \cdot x^{-1}$ turns $0$ into $1$ (\lc{not_collectPowersAssuming_soundR}).}
-\rt{simp.function}{verified}{$\sin/\cos = \tan$, $\sqrt a = a^{1/2}$, $\ln 1 = 0$, $\ln e^x = x$, $\ln b^p = p \ln b$ for an integer $p$, and the values at $0$, for every real number (\lc{functionRules_soundR}).}
-\rt{simp.function.assuming}{conditional}{$e^{\ln x} = x$ and $\ln b^p = p \ln b$ for a non-integer $p$: the step states its assumption, $x > 0$ or $b > 0$ (\lc{functionAssuming_soundR_on}); at $x = -1$, $e^{\ln x}$ turns $-1$ into $1$ (\lc{not_functionAssuming_soundR}).}
+\rt{simp.function}{verified}{$\sin/\cos = \tan$, $\sqrt a = a^{1/2}$, $\ln 1 = 0$, $e^0 = 1$, $\sin 0$, $\cos 0$, and $\lvert\cdot\rvert$ and sign of a numeral, for every real and every complex number (\lc{functionRules_soundR}, \lc{functionRules_soundC}).}
+\rt{simp.function.real}{verified}{$\ln e^x = x$, and $\ln b^p = p \ln b$ for an odd integer $p$, for every real number, keeping the domain (\lc{functionReal_soundR}); off over $\mathbb{C}$, where $\ln e^{4i} = (4 - 2\pi)i$ (\lc{not_functionReal_soundC}).}
+\rt{simp.function.assuming}{conditional}{$e^{\ln x} = x$, and $\ln b^p = p \ln b$ for $p$ not an odd integer: the step states $x > 0$ or $b > 0$ (\lc{functionAssuming_soundR_on}); $\ln x^2$ is defined at $x = -2$ and $2 \ln x$ is not.}
 \rt{simp.radical}{verified}{A perfect-power base is reduced ($8^{1/2} = 2^{3/2}$), same-index radicals multiply under one root, and $\sqrt{18}$ is written $18^{1/2}$, shown as $3\sqrt 2$; unconditional, the bases being positive integers.}
 \rt{simp.sqrt}{verified}{$\sqrt a = a^{1/2}$ for every real $a$. Silent: the two print alike.}
 \rt{simp.collect-radicals}{verified}{Radicals with the same square-free part collect, $\sqrt{50} - \sqrt{18} = 2\sqrt 2$; unconditional.}
@@ -25,10 +26,14 @@ the engine omits is unverified.
 \rt{diff.constant}{verified}{A term the variable does not occur in has derivative $0$ (\lc{diff_constant_sound}).}
 \rt{diff.variable}{verified}{The identity function has slope $1$ everywhere (\lc{diff_variable_sound}).}
 \rt{diff.constant-multiple}{verified}{Constant factors pull out; no differentiability needed (\lc{diff_const_mul_sound}).}
-\rt{diff.sum}{conditional}{Needs every summand differentiable: for $|x| + x$ at $0$ the rule gives $1$ where the derivative does not exist (\lc{diff_sum_sound}, \lc{not_diff_sum_sound}).}
-\rt{diff.product}{conditional}{Needs both factors differentiable at the point (\lc{diff_product_sound}).}
-\rt{diff.power}{conditional}{Proved for a natural exponent with a differentiable base; real exponents still open (\lc{diff_power_nat_sound}).}
-\rt{diff.chain}{conditional}{Needs the inner function differentiable; proved for $\sin$, $\cos$ and $\exp$, while $\ln$ and $\tan$ also need a domain condition (\lc{diff_chain_sin_sound}, \lc{diff_chain_cos_sound}, \lc{diff_chain_exp_sound}).}
+\rt{diff.sum}{verified}{Fires where every summand is smooth, so differentiable everywhere (\lc{smooth_differentiable}); then sound at every point (\lc{diffSum_sound}).}
+\rt{diff.sum.assuming}{conditional}{Where a summand is not smooth: the step assumes it differentiable (\lc{diffSumAssuming_sound_on}); for $|x| + x$ at $0$ the rule would give $1$ where there is no derivative.}
+\rt{diff.product}{verified}{Every factor smooth; the product rule for any number of factors, as written, holds everywhere (\lc{diffProduct_sound}).}
+\rt{diff.product.assuming}{conditional}{Where a factor is not smooth: the step assumes it differentiable (\lc{diffProductAssuming_sound_on}).}
+\rt{diff.power}{verified}{A natural numeral exponent over a smooth base, or a positive numeral base under a smooth exponent (\lc{diffPower_sound}).}
+\rt{diff.power.assuming}{conditional}{$x \neq 0$ for a negative integer exponent, $x > 0$ for another, $b > 0$ for $b^u$ and $f > 0$ for $f^g$, as the step states (\lc{diffPowerAssuming_sound_on}).}
+\rt{diff.chain}{verified}{$\sin$, $\cos$, $\exp$ of a smooth term (\lc{diffChain_sound}).}
+\rt{diff.chain.assuming}{conditional}{$u > 0$ for $\ln u$, $\cos u \neq 0$ for $\tan u$, $u$ differentiable, as the step states (\lc{diffChainAssuming_sound_on}).}
 \rt{diff.matrix}{verified}{A matrix is differentiated entry by entry (\lc{diffMatrix_sound}): with matrices given a value (\lc{evalV}), the theorem has content.}
 \rt{diff.higher-order}{verified}{$\operatorname{diff}(f, x, n)$ for a positive integer $n$ is $n$ successive $\operatorname{diff}(\cdot, x)$ (\lc{diffHigherOrder_spec}), and those mean Mathlib's \lc{iteratedDeriv} $n$ of $f$ as a function of $x$ (\lc{diffHigherOrder_soundR}).}
 \midrule \multicolumn{3}{l}{\textbf{Linear algebra}} \\
@@ -53,8 +58,8 @@ the engine omits is unverified.
 \rt{cmd.expand}{verified}{Distribution is a total function proved sound over $\mathbb{R}$ (\lc{dist_sound}); the collection afterwards is the pipeline's own steps with their statuses.}
 \rt{cmd.simplify}{verified}{A cell's argument is already in normal form when the command sees it, so \texttt{simplify} returns it unchanged: the identity.}
 \rt{cmd.subst}{verified}{Structural substitution $e[x := v]$ evaluates as $e$ with $x$ rebound to the value of $v$ (\lc{cmdSubst_soundR}).}
-\rt{cmd.N}{verified}{The decimal is certified: interval arithmetic over the rationals holds the exact value (\lc{ieval_sound}), with Taylor remainders for $\exp$, $\sin$, $\cos$, $\ln$ checked by $\exp$ and $\sqrt{\ }$ by squaring, and the digits shown are within a unit of their last place (\lc{certify_sound}, \lc{cmdN_sound}).}
-\rt{cmd.N.float}{unverified}{IEEE-754 double precision, for what \rn{cmd.N} cannot certify (a complex value, a pole, a jump); no error bound is proved.}
+\rt{cmd.N}{verified}{The decimal is certified: interval arithmetic over the rationals holds the exact value (\lc{ieval_sound}), with Taylor remainders for $\exp$, $\sin$, $\cos$, $\ln$ checked by $\exp$ and $\sqrt{\ }$ by squaring, and the digits shown are within a unit of their last place (\lc{certify_sound}, \lc{cmdN_sound}). A complex value is certified part by part, a rectangle holding the principal value (\lc{cieval_sound}, \lc{cmdN_soundC}).}
+\rt{cmd.N.float}{unverified}{IEEE-754 double precision, for what \rn{cmd.N} cannot certify (the logarithm of a non-real number, a non-real base under a non-integer power, a pole, a jump); no error bound is proved.}
 \rt{cmd.factor}{checked}{The common-denominator form is a guess the pipeline checks: the input times the denominator $D$, normalized and expanded, must be the numerator $N$, so $N/D$ agrees with the input wherever $D \neq 0$. When the check fails, the collected normal form is the answer.}
 \rt{expand.distribute}{verified}{Multiplying out a product of sums and collecting like monomials: \lc{dist_sound}.}
 \rt{expand.power}{verified}{A power of a sum is the sum multiplied by itself: \lc{dist_sound}.}
