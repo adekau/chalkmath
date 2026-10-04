@@ -223,6 +223,46 @@ def powI (b x : I) : Option I :=
   | some n => if 0 ≤ n then some (npow b n.toNat) else inv (npow b n.natAbs)
   | none => if 0 < b.lo then do expI (mul x (← lnI b)) else none
 
+/-! ## `arctan` -/
+
+/-- Newton's method for `arctan q`: `θ ↦ θ − (sin θ cos θ − q cos² θ)`, on midpoints. -/
+def atanNewton (q : Rat) : Nat → Rat → Rat
+  | 0, θ => θ
+  | n + 1, θ =>
+    match sinCosPoint θ with
+    | some (s, c) => let s := mid s; let c := mid c; atanNewton q n (lower (θ - (s * c - q * c * c)))
+    | none => θ
+
+/-- Candidates for `arctan q` either side of Newton's answer, from a floating-point start. Any would be
+sound: `atanCheck` decides. -/
+def atanCandidates (q : Rat) : Rat × Rat :=
+  let start : Rat := match Q.ofFloat (Float.atan (Float.ofInt q.num / Float.ofNat q.den)) with
+    | some r => r.val | none => 0
+  let θ := atanNewton q 8 start
+  let ε := (1 + rabs θ) / ((2 ^ 170 : Nat) : Rat)
+  (lower (θ - ε), upper (θ + ε))
+
+/-- `[a, b]` holds `arctan q` if both are inside `(−π/2, π/2)` and `tan a ≤ q ≤ tan b`, checked with
+`sin` and `cos` (`cos` positive there). -/
+def atanCheck (q a b : Rat) : Option I :=
+  if -(piI.lo / 2) < a ∧ a ≤ b ∧ b < piI.lo / 2 then
+    match sinCosPoint a, sinCosPoint b with
+    | some (sa, ca), some (sb, cb) =>
+      match inv ca, inv cb with
+      | some ia, some ib =>
+        if (mul sa ia).hi ≤ q ∧ q ≤ (mul sb ib).lo then some ⟨a, b⟩ else none
+      | _, _ => none
+    | _, _ => none
+  else none
+
+/-- `arctan q`, certified. -/
+def atanPoint (q : Rat) : Option I := atanCheck q (atanCandidates q).1 (atanCandidates q).2
+
+def atanI (a : I) : Option I := do
+  let l ← atanPoint a.lo
+  let h ← atanPoint a.hi
+  return ⟨l.lo, h.hi⟩
+
 def fnI (f : String) (a : I) : Option I :=
   match f with
   | "sin" => sinI a
@@ -232,6 +272,7 @@ def fnI (f : String) (a : I) : Option I :=
   | "ln" => if 0 < a.lo then lnI a else none
   | "log" => if 0 < a.lo then do let l ← lnI a; let t ← lnI (point 10); return mul l (← inv t) else none
   | "sqrt" => sqrtI a
+  | "arctan" => atanI a
   | "abs" => some (abs a)
   | "sign" => sign a
   | _ => none
@@ -302,8 +343,9 @@ def tenText (u : Rat) : String :=
 (`cieval_sound`, `proofs/Proofs/IntervalC.lean`): `+`, `·`, `1/z` and integer powers by their
 formulas on the parts; `exp`, `sin`, `cos` through `exp`, `sin`, `cos`, `cosh`, `sinh` of the parts;
 `abs`, `conj`, `re`, `im`; and `ln`, `sqrt` and real powers where the argument is real, of either sign
-(`ln(-1) = πi`, `sqrt(-4) = 2i`, `(-8)^(1/3) = 2 e^(πi/3)`). A complex argument to `ln` would need its
-angle, which is not certified, so such a term gets no rectangle. -/
+(`ln(-1) = πi`, `sqrt(-4) = 2i`, `(-8)^(1/3) = 2 e^(πi/3)`). A complex argument to `ln`, and any other
+base under a non-integer power (`exp(e · ln b)`), take their angle from a certified `arctan` (`cargI`),
+away from the branch cut along the negative real axis, where the argument jumps. -/
 
 /-- A rectangle: the real part's interval and the imaginary part's. -/
 abbrev C := I × I
@@ -339,6 +381,19 @@ def ccos (z : C) : Option C := do
   let s ← sinI z.1; let c ← cosI z.1; let ch ← coshI z.2; let sh ← sinhI z.2
   return (mul c ch, neg (mul s sh))
 
+/-- The argument (principal, in `(−π, π]`) of every number in the rectangle, away from the branch cut:
+`arctan(y/x)` right of the imaginary axis, `±π/2 − arctan(x/y)` above or below the real one. -/
+def cargI (z : C) : Option I :=
+  if 0 < z.1.lo then do atanI (mul z.2 (← inv z.1))
+  else if 0 < z.2.lo then do return add (mul (point (1 / 2)) piI) (neg (← atanI (mul z.1 (← inv z.2))))
+  else if z.2.hi < 0 then do return add (neg (mul (point (1 / 2)) piI)) (neg (← atanI (mul z.1 (← inv z.2))))
+  else none
+
+/-- The principal logarithm: `ln|z| = ln(x² + y²)/2`, and the argument. -/
+def clnI (z : C) : Option C := do
+  let n := add (mul z.1 z.1) (mul z.2 z.2)
+  if 0 < n.lo then return (mul (point (1 / 2)) (← lnI n), ← cargI z) else none
+
 /-- `|x|^y · e^(πiy)`, the principal value of `x^y` for a negative real `x` and a real `y`. -/
 def negRealPow (x y : I) : Option C := do
   let m ← powI (neg x) y
@@ -349,11 +404,10 @@ def cpowI (b e : C) : Option C :=
   match asInt e.1, isReal e with
   | some n, true => if 0 ≤ n then some (cnpow b n.toNat) else cinv (cnpow b n.natAbs)
   | _, _ =>
-    if isReal b && isReal e then
-      if 0 < b.1.lo then do return creal (← powI b.1 e.1)
-      else if b.1.hi < 0 then negRealPow b.1 e.1
-      else none
-    else none
+    if isReal b && isReal e && 0 < b.1.lo then do return creal (← powI b.1 e.1)
+    else if isReal b && isReal e && b.1.hi < 0 then negRealPow b.1 e.1
+    -- otherwise `exp(e · ln b)`, for `b ≠ 0` off the branch cut
+    else do cexp (cmul (← clnI b) e)
 
 def cfnI (f : String) (z : C) : Option C :=
   match f with
@@ -366,7 +420,7 @@ def cfnI (f : String) (z : C) : Option C :=
   | "re" => some (creal z.1)
   | "im" => some (creal z.2)
   | "ln" =>
-    if !isReal z then none
+    if !isReal z then clnI z
     else if 0 < z.1.lo then do return creal (← lnI z.1)
     else if z.1.hi < 0 then do return (← lnI (neg z.1), piI)
     else none

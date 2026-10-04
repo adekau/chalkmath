@@ -72,7 +72,7 @@ structure Tok where
 
 def builtinFunctions : List String :=
   ["sin", "cos", "tan", "sec", "csc", "cot", "arcsin", "arccos", "arctan",
-   "exp", "ln", "log", "sqrt", "abs", "conj", "re", "im",
+   "exp", "ln", "log", "sqrt", "abs", "conj", "re", "im", "arg",
    "diff", "simplify", "expand", "factor", "N", "det", "rref", "transpose", "solve", "subst", "integrate", "plot",
    "sign", "dot", "norm", "sum", "exptotrig", "epicycles", "dft", "manipulate", "column",
    "total", "mean", "variance", "stdev", "min", "max", "median"]

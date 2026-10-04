@@ -195,6 +195,11 @@ integrate(arctan(x), x)	x*arctan(x) - ln(x^2 + 1)/2
 integrate(arcsin(x), x)	x*arcsin(x) + sqrt(-x^2 + 1)
 integrate(arccos(2x), x)	(2*x*arccos(2*x) - sqrt(-4*x^2 + 1))/2
 integrate(sec(x)^2, x)	tan(x)
+arg(1+i)	arg(1 + i)
+N(arg(1+i))	0.785398163397448
+N(arg(-1-i))	-2.35619449019234
+N(arg(exp(2*i)))	2
+N(arctan(1) + i)	0.785398163397448 + i
 integrate(1/(1+x^2), x, 0, 1)	-arctan(0) + arctan(1)
 sqrt(72)	sqrt(72)
 2*sqrt(8)+3*sqrt(2)	7*sqrt(2)
@@ -426,3 +431,8 @@ N(ln(i))	1.5707963267949*i
 N(i^i)	0.207879576350762
 N((1+2*i)^3)	-11 - 2*i
 N(exp(-20))	2.06115362243856*10^(-9)
+factor(1/x + 1)	(x + 1)/x
+N((1+i)^(1/2))	1.09868411346781 + 0.455089860562227*i
+N(ln(3+4*i))	1.6094379124341 + 0.927295218001612*i
+N(arctan(1))	0.785398163397448
+N(4*arctan(1) - pi)	0

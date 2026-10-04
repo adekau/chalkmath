@@ -1,0 +1,31 @@
+5	clock t from 0 to 2pi\nC = curve(exp(i*s), s, 0, 2pi) faint color 6\nP = point(exp(i*t)) thick color 1\nW = trace(P) color 1\nR = arrow(0, P) color 1\nL = label(P, "\\cos t + i \\sin t") color 1\nX = point(cos(t)) color 2\nDX = segment(P, X) dashed color 2\nY = point(i*sin(t)) color 3\nDY = segment(P, Y) dashed color 3\n> show C | The unit circle: every point at distance $1$ from $0$.\n> show P, R, L, W; play t to 0.7 in 2s | Walk a distance $t$ round it, counterclockwise from $1$. Where you stand is $\\cos t + i \\sin t$.\n> show X, DX, Y, DY | The **cosine** is your shadow on the horizontal axis (blue), the **sine** your shadow on the vertical one (green).\n> play t to pi/2 in 2s | A quarter of the way round, at $t = \\pi/2$, the sine is at its peak and the cosine is $0$.\n> play t to 2pi in 5s | Once round: each shadow swings between $-1$ and $1$, a quarter turn behind the other.	scene: 9 objects, 5 beats, 34.7 s
+7	clock t from 0.01 to 2pi\nview 0, 6.3, -1.25, 1.25\nCw = graph(cos(x), x, 0, t) color 2\nSw = graph(sin(x), x, 0, t) color 3\nQ = point(t + i*cos(t)) color 2\nP = point(t + i*sin(t)) color 3\n> show Cw, Q, Sw, P; play t to 2pi in 6s | The cosine starts at $1$, the sine at $0$; each is the other shifted by a quarter turn, $\\pi/2$.	scene: 4 objects, 1 beats, 7.7 s
+9	manipulate(plot([cos(2*pi*t/T) + i*sin(2*pi*t/T), cos(t) + i*sin(t), (t/T)*(cos(T) + i*sin(T)), cos(T) + i*(t/T)*sin(T)], t, 0, T), T, 0.05, 6.28)	= [cos(40*π*t) + i*sin(40*π*t), cos(t) + i*sin(t), 20*t*(cos(0.05) + i*sin(0.05)), 20*i*t*sin(0.05) + cos(0.05)]   [40 frames of T; at T = 6.28: [cos(0.318471337579618*π*t) + i*sin(0.318471337579618*π*t), cos(t) + i*sin(t), 0.159235668789809*t*(cos(6.28) + i*sin(6.28)), 0.159235668789809*i*t*sin(6.28) + cos(6.28)]]
+12	i*(3 + 4i)	= -4 + 3*i
+13	plot([t*(3 + 4i), t*i*(3 + 4i)], t, 0, 1)	= [t*(3 + 4*i), t*(-4 + 3*i)]
+14	abs(3 + 4i) - abs(i*(3 + 4i))	= 0
+17	clock t from 0 to 2pi\nC = curve(exp(i*s), s, 0, 2pi) faint color 6\nP = point(exp(i*t)) thick color 1\nR = arrow(0, P) color 1\nLP = label(P, "e^{it}") color 1\nV = arrow(P, (1 + i)*exp(i*t)) color 4\nLV = label((1 + i)*exp(i*t), "i\\,e^{it}") color 4\nE = eq(diff(exp(i*t), t))\n> show C, P, R, LP | The point $e^{it}$, and its radius.\n> show E; work E | Its velocity, by the chain rule: $i\\,e^{it}$.\n> show V, LV | Multiplying by $i$ turns a quarter, so the velocity is the radius turned a quarter: always at right angles to it.\n> play t to 2pi in 6s | Never along the radius, always across it: the point neither nears $0$ nor leaves it. It goes round.	scene: 7 objects, 4 beats, 24.6 s
+18	diff(exp(i*t), t)	= i*exp(i*t)
+20	exptotrig(exp(i*pi/3))	= 1/2 + i*sqrt(3)/2
+21	exp(i*pi) + 1	= 0
+23	expand(exptotrig(diff(exp(i*t), t)))	= -sin(t) + i*cos(t)
+26	let n = 4	= 4
+27	N((1 + 1/n)^n)	= 2.44140625
+29	clock n from 1 to 40\nC = curve(exp(i*s), s, 0, pi) faint color 6\nM = point(-1) color 4\nLM = label(M, "-1") color 4\nS = curve((1 + i*pi/n)^(n*s/pi), s, 0, pi) color 1\nE = point((1 + i*pi/n)^n) thick color 1\n> show C, M, LM | Half way round the circle: the walk $e^{i\\pi}$ takes, from $1$ to $-1$.\n> show S, E | One step of $1 + i\\pi$ overshoots: a turn, but a stretch too.\n> play n to 40 in 7s | Split it into $n$ steps of $1 + i\\pi/n$. As $n$ grows the stretch fades, the path settles onto the circle, and it ends at $e^{i\\pi} = -1$.	scene: 5 objects, 3 beats, 22.0 s
+31	plot([cos(t) + i*sin(t), (1 + i*pi/n)^(n*t/pi)], t, 0, pi)	= [cos(t) + i*sin(t), (1 + i*π/4)^(4*t/π)]
+32	N((1 + i*pi/n)^n)	= -2.32059738855694 + 1.20370036107105*i
+34	clock b from 0.01 to 2\nC = curve(exp(i*s), s, 0, 2pi) faint color 6\nAA = curve(0.3*exp(i*s), s, 0, 0.6) color 2\nA = arrow(0, exp(0.6*i)) color 2\nLA = label(exp(0.6*i), "e^{ia}") color 2\nBB = curve(0.45*exp(i*s), s, 0, b) color 3\nB = arrow(0, exp(i*b)) color 3\nLB = label(exp(i*b), "e^{ib}") color 3\nPP = curve(0.6*exp(i*s), s, 0, 0.6 + b) color 1\nP = arrow(0, exp(i*(0.6 + b))) thick color 1\nLP = label(exp(i*(0.6 + b)), "e^{ia} e^{ib}") color 1\n> show C, AA, A, LA | A turn by $a$: the point $e^{ia}$.\n> show BB, B, LB | A turn by $b$.\n> show PP, P, LP | Their product is the turn by $a$ followed by the turn by $b$: angle $a + b$.\n> play b to 2 in 5s | As $b$ grows the product turns with it, always $a$ ahead. Multiplying points on the circle adds their angles.	scene: 10 objects, 4 beats, 21.1 s
+36	expand(exptotrig(exp(i*a))*exptotrig(exp(i*b)))	= cos(a)*cos(b) - sin(a)*sin(b) + i*cos(a)*sin(b) + i*cos(b)*sin(a)
+37	expand(exptotrig(exp(i*(a + b))))	= cos(a + b) + i*sin(a + b)
+41	let z = 1 + i	= 1 + i
+42	abs(z)	= sqrt(2)
+43	N(arg(z))	= 0.785398163397448
+44	N(arctan(1))	= 0.785398163397448
+46	clock y from 0.01 to 1\nview -0.3, 1.5, -0.25, 1.15\nC = curve(exp(i*s), s, 0, pi/2) faint color 6\nK = segment(1, 1 + i) faint color 6\nAR = curve(0.35*exp(i*s), s, 0, arctan(y)) thick color 2\nLA = label(0.36*exp(i*arctan(y)/2), "\\arctan y") color 2\nR = arrow(0, P) color 1\nP = point(1 + i*y) thick color 1\nLP = label(P, "1 + iy") color 1\n> show C, K, R, P, LP | A point climbing the line through $1$: the point $1 + iy$.\n> show AR, LA | Its angle from the real axis is $\\arctan y$.\n> play y to 1 in 6s | The angle grows fast at first and slower as the point climbs, at the rate $\\frac{1}{1 + y^2}$. At $y = 1$ it is an eighth of a turn, $\\pi/4$.	scene: 7 objects, 3 beats, 21.0 s
+47	integrate(1/(1 + y^2), y)	= arctan(y)
+48	N(4*integrate(1/(1 + y^2), y, 0, 1))	= 3.14159265358979
+51	epicycles(exp(i*t) + exp(3*i*t)/3, t)	= exp(3*i*t)/3 + exp(i*t)
+52	i*(1 + 2i)	= -2 + i
+53	exptotrig(exp(i*pi/2))	= i
+54	diff(exp(3*i*t), t)	= 3*i*exp(3*i*t)
+55	expand((cos(t) + i*sin(t))^2)	= cos(t)^2 - sin(t)^2 + 2*i*cos(t)*sin(t)

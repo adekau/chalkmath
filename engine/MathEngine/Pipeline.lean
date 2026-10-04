@@ -217,14 +217,17 @@ def cmdIntegrate (norm : Norm) : PlainRule :=
 
 /-- `factor(e)`: expand and collect, put the sum over a common denominator, pull the numerator's common
 factor out — the shape a hand derivation ends in. One presentation of the normal form, checked: times
-its denominator, the expression normalizes to its numerator (`Factor.run`). -/
+its denominator `D`, it normalizes to the expression times `D` (`Factor.run`), so the two agree wherever
+`D ≠ 0`, which the step says (`factor_run_sound`). -/
 def cmdFactor (norm : Norm) : PlainRule :=
   { name := "cmd.factor", apply := fun e => Option.map checked <|
       match e with
       | .fn "factor" [a] =>
         match Factor.run (fun e => (norm e).map (·.1)) a with
-        | .ok (out, true) => some ⟨out, "Expand and collect, put the sum over a common denominator (Mathematica's Together), and pull the numerator's common factor out. Checked: times its denominator, the expression is its numerator, so the two agree wherever the denominator is not zero.", none, none⟩
-        | .ok (out, false) => some ⟨out, "Expand and collect; the common-denominator form did not check (times its denominator, the expression did not normalize to its numerator), so the expression is left collected.", none, none⟩
+        | .ok (out, true, den) =>
+          let assume := if den.isOne then "" else s!" Assuming ${den.toLatex} \\neq 0$."
+          some ⟨out, s!"Expand and collect, put the sum over a common denominator (Mathematica's Together), and pull the numerator's common factor out. Checked: times its denominator, it normalizes to the expression times its denominator, so the two agree wherever the denominator is not zero.{assume}", none, none⟩
+        | .ok (out, false, _) => some ⟨out, "Expand and collect; the common-denominator form did not check (times its denominator, it did not normalize to the expression times its denominator), so the expression is left collected.", none, none⟩
         | .error msg => some (refuse s!"factor: {msg}")
       | .fn "factor" _ => some (refuse "factor takes one argument")
       | _ => none }

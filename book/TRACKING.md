@@ -968,6 +968,16 @@ Phases:
    which put the session's `let`s into every cell, are structural, and `substitute_soundR`/`substitute_soundC`
    (`Let.lean`) prove the input means the source with each name at its binding's value. ARCHITECTURE lists what
    is still trusted.
+- verification: `cmd.factor` conditional, and `N` of any complex logarithm or power — DONE 2026-10-04 (Alex: "Do
+   the small/medium ones here"). `factor` checks its answer itself now: the answer and the input, each times the
+   denominator `D`, must normalize to the same term, and `factor_run_sound` reads that as equality wherever `D ≠ 0`
+   and the check's normalizations hold; the step names `D` ("Assuming … ≠ 0"), `not_factor_at_zero` shows the
+   condition is needed (`factor(1/x + 1)` is `(x + 1)/x`, 1 and 0 at `x = 0`), and `cmd.factor` is `conditional`.
+   `arctan` is certified, pinned by `tan` as `ln` is by `exp` (`atanCheck_mem`), and with it the argument of a
+   complex number off the negative real axis (`cargI`, through `arg_eq_arctan_of_re_pos`, `arg_eq_of_im_pos`,
+   `arg_eq_of_im_neg`), so `N(ln(i))`, `N(i^i)`, `N((1+i)^(1/2))` and `N(arctan(1))` are certified (`clnI_mem`,
+   `cpowI_mem` through `Complex.cpow_def_of_ne_zero`). `cmd.N.float` is left with poles, jumps, the cut, and
+   `arcsin`/`arccos`. The `int.*` finder and the parser/printer totality went to their own sessions.
 - verification: a total parser and printer, and the round trip — DONE 2026-10-04.
    The algebra lexer, parser and printer were `partial def`; all three are total now, with the same output (the
    golden corpus passes unchanged). The lexer recurses on the characters left (`lexNum_lt`: a numeral consumes

@@ -60,6 +60,7 @@ A notebook is a list of cells, run top to bottom against one engine session. Eac
 - **Sections** are headings that group the cells below them, up to the next section. A section folds away (click its marker, or ⋮ › Fold section) and runs as a group (Run › Run section). The sidebar's outline lists them, numbered, with the cells of the section you are reading and how many of each section's exercises you have answered; **Every cell** lists them all.
 - **Lean cells** are Lean 4 itself, checked as you type ([Lean cells](#doc:lean)).
 - **Exercises** ask the reader a question and check the answer ([Exercises](#doc:exercises)).
+- **Scenes** are pictures told in beats, played as they scroll into view: points, curves and equations the engine samples, with a caption for each beat ([Scenes](#doc:scenes)).
 
 Add one with **+ Cell** in the toolbar, from the Edit menu, or by hovering between two cells: ‹+ cell› inserts a math cell there and ‹▾› offers the other kinds. The ⋮ menu at the end of a cell's actions changes its kind, moves, duplicates or deletes it, copies its input, its output or its output as LaTeX, and sends its derivation to [Manim Studio](#doc:studio).
 
@@ -343,6 +344,45 @@ A Lean cell is [Lean 4](https://lean-lang.org) itself, running in your browser: 
 Nothing for Lean loads until a notebook has a Lean cell. Then the editor and Lean's server download, about 140 MB compressed, once per browser: they are kept, and downloaded again only when ChalkMath updates Lean. Lean needs the page to be *cross-origin isolated*, so the first time, the page reloads once to turn that on; your tabs come back as they were.
 
 The example notebook *Order and lattices* has its proofs in Lean cells.
+`],
+  },
+  {
+    id: "scenes", title: "Scenes", group: "Guide", parts: [md`
+# Scenes
+
+A scene is a picture told in beats, the way an animated explainer is: a point walks round a circle while a caption says what to look at, a derivation morphs one step into the next, a path tightens onto a curve. It sits in the notebook like any cell, plays once when most of it scrolls into view, and can be paused, scrubbed and stepped beat by beat (‹⏮› ‹⏭›, or the arrow keys; Space plays and pauses). With reduced motion asked for, it waits for ‹▶›.
+
+Every coordinate is the engine's: each object is sampled with ‹plot› or ‹manipulate›, and each equation's steps come from the engine, so what a scene shows is what the mathematics says. The samples are quiet: a scene takes no ‹In[n]› and leaves ‹%› alone. It can use the names the cells above it bind.
+
+## Writing one
+
+Add a scene from **+ Cell** ‹▾› or **Edit › Add scene**, write its script, and press **Shift+Enter**. Double-click a scene (or **✎ Edit**) to change it; a mistake is reported at its line.
+`, "```\nclock t from 0 to 2pi\nC = curve(exp(i*s), s, 0, 2pi) faint\nP = point(exp(i*t))\nR = arrow(0, P)\nL = label(P, \"e^{it}\")\nW = trace(P)\nE = eq(diff(exp(i*t), t))\n> show C, P, R, L | A point on the unit circle.\n> show W; play t to 2pi in 4s | Once round.\n> show E; work E | Its velocity, step by step.\n```", md`
+
+The first line names the scene's **clock**, the variable it animates, and its range. Then the objects, one per line, each with a name:
+
+| Object | What it draws |
+| --- | --- |
+| ‹point(z)› | a dot at ‹z›, a complex number (a real one sits on the real axis) |
+| ‹curve(z, s, a, b)› | the curve ‹z› traces as ‹s› runs from ‹a› to ‹b› |
+| ‹graph(f, x, a, b)› | the graph of ‹y = f(x)› |
+| ‹arrow(A, B)›, ‹segment(A, B)› | from ‹A› to ‹B›: point names or expressions |
+| ‹trace(P)› | the path the point ‹P› has drawn since the trace appeared |
+| ‹label(A, "TeX")› | TeX beside a point |
+| ‹eq(e)› | an expression above the picture, as the engine prints it |
+
+Any of them may use the clock, and then it moves. After the closing parenthesis come styles: ‹faint›, ‹dashed›, ‹thick›, ‹color 1› to ‹color 6›. ‹view x0, x1, y0, y1› fixes the window (otherwise it takes in everything the scene ever draws, with equal scales on both axes, so a circle is a circle), and ‹noaxes› leaves out the axes.
+
+## Beats
+
+Each line starting with ‹>› is a beat: actions separated by ‹;›, then ‹|› and a caption in Markdown. A beat lasts as long as its longest action, and at least long enough to read its caption.
+
+- ‹show A, B› fades objects in; ‹hide A› fades them out. An object no beat mentions is there from the start.
+- ‹play t to 2pi in 4s› moves the clock (from where it is, or ‹from …›), eased at both ends.
+- ‹work E› steps an ‹eq› through the engine's derivation, each term morphing into the next.
+- ‹wait 2s› holds.
+
+The calculus course's lesson *Circles, exponentials and rotation* is told mostly in scenes.
 `],
   },
   {

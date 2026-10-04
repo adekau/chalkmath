@@ -47,6 +47,10 @@ usage on hover, manipulate, a course's lessons). CI runs it; set `CHROMIUM` to a
 `npm run smoke:ask` — `?` lookups end to end in Chromium, against the native engine (`lake build`) and the
 bundle, with a stand-in model and synthetic pages. See ARCHITECTURE.md §4c.
 
+`node scripts/shot-lesson.mjs <course> <lesson-index> <dir>` — screenshots of a course lesson, a
+screenful at a time, in Chromium against the native engine (after `npm run bundle`): for looking at a lesson,
+not a test.
+
 `cd proofs && lake exe cache get && lake build` — the theorems (Mathlib; the cache download is
 ~5 GB, and Mathlib never enters the engine — `npm run check:engine` enforces that).
 

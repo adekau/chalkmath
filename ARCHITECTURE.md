@@ -70,9 +70,12 @@ differential test with zero mismatches.
   (`certify_sound`). A complex value is a rectangle, an interval for each part (`Ival.cieval`),
   through the formulas for the parts of a product, a quotient, `exp`, `sin` and `cos`; `ln` and
   `sqrt` of a real number and a real number to a real power have their principal values in closed
-  form (`cieval_sound`, `cmdN_soundC` in `proofs/Proofs/IntervalC.lean`). What the intervals do not
-  reach (the logarithm of a non-real number, a non-real base under a non-integer power, a pole, a
-  jump) falls to the old double-precision evaluation, `cmd.N.float`, which says it is not certified.
+  form (`cieval_sound`, `cmdN_soundC` in `proofs/Proofs/IntervalC.lean`). `arctan` is pinned by `tan`
+  as `ln` is by `exp` (`atanCheck`), and it gives every other complex number off the negative real
+  axis its argument (`cargI`: `arctan(y/x)` for `x > 0`, `±π/2 − arctan(x/y)` for `y ≷ 0`), so
+  `ln z` and `b^e = exp(e ln b)` are certified too. What the intervals do not reach (a pole, a jump,
+  the cut, where the argument jumps) falls to the old double-precision evaluation, `cmd.N.float`, which
+  says it is not certified.
 - **Elimination is verified over ℚ by construction.** `LinAlgQ.lean` writes Gauss–Jordan as a
   list of the three elementary row operations, each invertible (the degenerate parameters are the
   identity), and proves `sol_rref`: the reduced matrix has the input's solution set. The `rref`
@@ -408,6 +411,18 @@ a duration — previews a shot by matching KaTeX glyphs between consecutive term
 subsequence, then interpolated position and opacity, a browser-side stand-in for
 `TransformMatchingTex`), and prints the Python a Manim user would run. Rendering the video is
 Manim's job, outside the browser.
+
+**Scenes** are the notebook's own animations, in its flow rather than in a tab: a cell whose source is
+a short script (`scene.ts`) naming a clock, objects (points, curves, graphs, arrows, segments, traces,
+labels, equations) and beats (show, hide, play the clock, step an equation's work, each with a
+caption). It is a storyboard, like the studio's, and the same division holds: the page decides what
+shows when, the engine every number. Each object is a `plot` over the clock, a curve that moves with
+it a `manipulate` (whose frames are exact values, so the script's numbers are asked for first), an
+equation's steps an `engine.check`, all sent `quiet`, which leaves the session as it was: a scene takes
+no `In[n]` and leaves `%` alone. Between samples the page interpolates, as `manipulate` blends frames
+while it plays; it never computes a coordinate itself. A scene plays once when it scrolls into view and
+is stepped beat by beat like a page of a book. Its samples are not saved; the cell runs again when the
+notebook opens, and `drive.mjs` checks every scene in the examples and courses the same way.
 
 **Courses** (File › Courses and examples) opens a tab that lists *projects*:
 notebooks that belong together, either a course (lessons read in order) or a collection. They are

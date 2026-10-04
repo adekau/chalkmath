@@ -91,19 +91,20 @@ def combineParts (terms : List Term) : Expr × Expr × Expr :=
 
 def combine (terms : List Term) : Expr := (combineParts terms).1
 
-/-- Expand and collect with the pipeline's normalizer, then combine. The combined form `N/D` is kept
-only if it checks (`true`): the input times `D`, expanded and normalized, is the numerator `N`
-expanded and normalized, so the two agree wherever `D` is not zero (the cancellations `x·x⁻¹ = 1`
-in that check are `simp.collect-powers.assuming` steps, which say so). Otherwise the normal form itself
-is the answer (`false`). The check is what the answer rests on, as `int.check` is for an
-antiderivative: the combination is a guess, the pipeline's steps confirm it. -/
-def run (norm : Expr → Except String Expr) (a : Expr) : Except String (Expr × Bool) := do
+/-- Expand and collect with the pipeline's normalizer, then combine. The combined form is kept only
+if it checks (`true`): the form times its denominator `D` and the input times `D`, each normalized,
+expanded and normalized, are the same term, so the two agree wherever `D` is not zero
+(`factor_run_sound`; the cancellations `x·x⁻¹ = 1` in that check are `simp.collect-powers.assuming`
+steps). Otherwise the normal form itself is the answer (`false`). The check is what the answer rests
+on, as `int.check` is for an antiderivative: the combination is a guess, the pipeline confirms it.
+Returns the denominator `D` with the answer. -/
+def run (norm : Expr → Except String Expr) (a : Expr) : Except String (Expr × Bool × Expr) := do
   let e ← norm (Expand.dist a)
-  let (out, numer, den) := combineParts ((unAdd e).map termOf)
-  -- each term times `D`, normalized first so that a denominator's factor cancels before it can be distributed
+  let (out, _, den) := combineParts ((unAdd e).map termOf)
+  -- each side times `D`, normalized first so that a denominator's factor cancels before it can be distributed
   let lhs ← norm (Expand.dist (← norm (addN ((unAdd e).map fun t => mulN (unMul t ++ unMul den)))))
-  let rhs ← norm (Expand.dist numer)
-  pure (if Expr.equal lhs rhs then (out, true) else (e, false))
+  let rhs ← norm (Expand.dist (← norm (mulN (unMul out ++ unMul den))))
+  pure (if Expr.equal lhs rhs then (out, true, den) else (e, false, den))
 
 end Factor
 end MathEngine
