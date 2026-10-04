@@ -9,6 +9,7 @@ add [a, mul [-1, b]]   →  a - b
 mul [a, pow b (-1)]    →  a / b     (LaTeX: \frac{a}{b})
 mul [-1, a]            →  -a
 pow a (1/2)            →  sqrt(a)
+fn exp [a]             →  exp(a)    (LaTeX: e^{a})
 ```
 
 Every printed subterm knows its `Path`; with `paths := true` the LaTeX output wraps each
@@ -183,9 +184,13 @@ def fnRaw (T : Target) (name : String) (args : List Expr) (as : List String) : S
     | [_], [a] => (if T.times != "*" then s!"\\operatorname\{Im}\\left({a}\\right)" else s!"im({a})", P_ATOM) | _, _ => plain
   | "abs" => match args, as with
     | [_], [a] => (if T.times != "*" then s!"\\left|{a}\\right|" else s!"abs({a})", P_ATOM) | _, _ => plain
-  | "exp" => match args with
-    | [.num q] => if q.isOne then (if T.times != "*" then "e" else "ℯ", P_ATOM) else plain
-    | _ => plain
+  -- in LaTeX exp(x) is e^{x}, which binds as a power; the text stays exp(x), which reads back as itself
+  | "exp" => match args, as with
+    | [.num q], [a] =>
+      if q.isOne then (if T.times != "*" then "e" else "ℯ", P_ATOM)
+      else if T.times != "*" then (s!"e^\{{a}}", P_POW) else plain
+    | [_], [a] => if T.times != "*" then (s!"e^\{{a}}", P_POW) else plain
+    | _, _ => plain
   | "diff" => match args, as with
     | [_, .var _], [a, x] => if T.times != "*" then (s!"\\frac\{d}\{d{x}}\\left({a}\\right)", P_MUL) else plain
     | _, _ => plain

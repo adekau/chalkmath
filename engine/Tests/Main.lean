@@ -218,6 +218,13 @@ def tests : TestM Unit := do
   check "print x^(1/2)" (Expr.toText (.pow (.var "x") (.num (Q.ofRat (mkRat 1 2))))) "sqrt(x)"
   check "latex x/2 + sqrt(y)" (latexOf "x/2 + sqrt(y)") "\\frac{x}{2} + \\sqrt{y}"
   check "latex diff" (latexOf "diff(x^2, x)") "\\frac{d}{dx}\\left({x}^{2}\\right)"
+  check "latex exp is a power of e" (latexOf "exp(x + 1)") "e^{x + 1}"
+  check "latex exp(1) is e" (latexOf "exp(1)") "e"
+  check "latex exp(2) is e squared" (latexOf "exp(2)") "e^{2}"
+  check "latex a power of exp is grouped" (latexOf "exp(x)^2") "{\\left(e^{x}\\right)}^{2}"
+  check "latex exp in a product" (latexOf "2*exp(-x)") "2 \\cdot e^{-x}"
+  check "latex exp's paths" (latexOf "exp(x)" true) "\\htmlData{path=root}{e^{\\htmlData{path=0}{x}}}"
+  check "text exp is unchanged" (match parseStmt "exp(x)" with | .ok st => st.value.toText | .error _ => "parse") "exp(x)"
   check "latex greek and mathit" (latexOf "pi * abc") "\\pi \\cdot \\mathit{abc}"
   -- a subsets-poset element is named by its set literal; braces are LaTeX grouping, so they are escaped
   check "latex set-literal elements" ((Expr.fn "set" [.var "{}", .var "{x,y}"]).toLatex false) "\\{\\varnothing, \\{x,y\\}\\}"

@@ -156,7 +156,7 @@ export const FUNCTIONS: FnDoc[] = [
   {
     name: "exp", area: "Elementary functions",
     usage: [["exp(x)", "gives the exponential of `x`: e to the power `x`."]],
-    details: ["`exp(x)`, `ℯ^x` and `e^x` written with `\\e` are the same function.", "Its own derivative and its own antiderivative."],
+    details: ["`exp(x)`, `ℯ^x` and `e^x` written with `\\e` are the same function.", "Its own derivative and its own antiderivative.", "An answer shows it as a power of e, $e^{x}$; as text it stays `exp(x)`, which reads back as the same thing."],
     examples: [
       basic("diff(exp(2x), x)", "ln(exp(x))"),
       section("Scope", "integrate(exp(2*x), x)", "ℯ^(pi*i)"),
