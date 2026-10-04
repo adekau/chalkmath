@@ -1,4 +1,4 @@
-import { type Atom, type Block, type Stmt, ch, chars, isAsciiAlpha, isDigit, isIdChar } from "./model.js";
+import { type Atom, type Block, type Stmt, ch, chars, isAsciiAlpha, isConst, isDigit, isIdChar, isSep, KEYWORDS, MULTI_OPS } from "./model.js";
 import { notated, slots } from "./notation.js";
 import { BUILTIN_FUNCTIONS, lex, read, ungroup } from "./read.js";
 import { binaryMinus, write, writeText } from "./write.js";
@@ -130,6 +130,35 @@ export class MathEdit {
     this.caret = this.caretAtPath(snap.caret);
     this.anchor = null;
     this.run = null;
+  }
+
+  /** Raw text that an edit has made readable (its missing `)` typed) becomes structure, the caret at
+   *  the same place in the text. True if it did. */
+  restructure(): boolean {
+    const raw = this.root.length === 1 && this.root[0]!.k === "raw" ? this.root[0] : null;
+    if (!raw) return false;
+    const at = this.caret.block === raw.body ? this.caret.i : raw.body.length;
+    const r = read(this.text, this.known);
+    if (!r.ok) return false;
+    this.root.splice(0, this.root.length, ...r.stmt.body);
+    this.caret = this.caretAtOffset(at);
+    this.anchor = null;
+    return true;
+  }
+
+  /** The caret just after the atom that ends at `offset` in the text (the innermost), else just
+   *  before the one that starts there, else at the end. */
+  private caretAtOffset(offset: number): Caret {
+    const { spans } = write(this.stmt);
+    let after: Caret | null = null, before: Caret | null = null;
+    const walk = (b: Block) => b.forEach((a, i) => {
+      const sp = spans.get(a);
+      if (sp?.end === offset) after = { block: b, i: i + 1 };
+      if (sp?.start === offset && !before) before = { block: b, i };
+      for (const x of slots(a)) walk(x);
+    });
+    walk(this.root);
+    return after ?? before ?? { block: this.root, i: this.root.length };
   }
 
   /** Run an edit as one undo step; `changed` false (or a tree that came out the same) records nothing. */
@@ -346,6 +375,13 @@ export class MathEdit {
     const hw = this.where(this.caret.block);
     if (hw?.atom.k === "let") return this.typeInHead(c, hw.atom, hw);
     if (hw?.atom.k === "part") return this.typeInPart(c, hw.atom, hw);
+    // in raw text every character is the text's, as typed
+    if (hw?.atom.k === "raw") {
+      if (c.length !== 1) return false;
+      this.caret.block.splice(this.caret.i, 0, ch(c));
+      this.caret = { block: this.caret.block, i: this.caret.i + 1 };
+      return true;
+    }
     // in quotes every character is the text's; the closing quote leaves it
     if (hw?.atom.k === "str") {
       if (c === '"') { this.caret = { block: hw.parent, i: hw.index + 1 }; return true; }
@@ -355,15 +391,30 @@ export class MathEdit {
       return true;
     }
     if (c === " " && this.startHead()) return true;
+    // the head already has its `=`: one typed after it, as the text has it, is the head's
+    if (c === "=" && this.caret.block[this.caret.i - 1]?.k === "let") return true;
     const g = this.glue;
     this.glue = null;
     if (g && g.block === this.caret.block && g.i === this.caret.i && isIdChar(c)) this.insert(ch(" "));
     // anything but a letter or digit finishes a `\` command (a space is used up doing it)
     if (!/^[A-Za-z0-9]$/.test(c) && this.command() && c === " ") return true;
+    // a product's space stands only between two names or a name and a numeral: before an operator
+    // or a structure it goes (`x ␣` then `+` is `x +`)
+    const sp = this.caret.block[this.caret.i - 1];
+    if (!isIdChar(c) && !". \\[({\"".includes(c) && sp?.k === "ch" && sp.c === " ") {
+      this.caret.block.splice(this.caret.i - 1, 1);
+      this.caret = { block: this.caret.block, i: this.caret.i - 1 };
+    }
     // `.` then `/` or `*` is an entrywise operator, one atom: the engine lexes `./` so even after a digit
     const dot = this.caret.block[this.caret.i - 1];
     if ((c === "/" || c === "*") && dot?.k === "ch" && dot.c === ".") {
       this.caret.block.splice(this.caret.i - 1, 1, ch("." + c));
+      return true;
+    }
+    // an operator of the other worlds spelled in two or three characters is one atom, as the text
+    // lexes it: `-` then `>` is `->`, `:` then `=` is `:=`, `<-` then `>` is `<->`
+    if (dot?.k === "ch" && MULTI_OPS.includes(dot.c + c)) {
+      this.caret.block.splice(this.caret.i - 1, 1, ch(dot.c + c));
       return true;
     }
     switch (c) {
@@ -386,6 +437,8 @@ export class MathEdit {
       case ",": return this.comma();
       case '"': return this.insert({ k: "str", body: [] });
       case ";": return this.semicolon();
+      case "{": return this.insert({ k: "brace", body: [] });
+      case "}": return this.close((a) => a.k === "brace");
       case " ": return this.space();
       case "@": {
         // with nothing selected, an empty group to name a function in front of
@@ -394,6 +447,8 @@ export class MathEdit {
       }
     }
     if (isIdChar(c) || "+-*%.\\".includes(c)) return this.insert(ch(c));
+    // anything else the other worlds write (`∧ → ≤ = : |`, a line break) is an operator of its own
+    if (Array.from(c).length === 1 && (c === "\n" || !/\s/.test(c)) && !"()[]{}/^".includes(c)) return this.insert(ch(c));
     return false;
   }
 
@@ -468,14 +523,26 @@ export class MathEdit {
     let j = i;
     while (j > 0) {
       const a = b[j - 1]!;
-      if (a.k === "let" || (a.k === "ch" && (a.c === "+" || (a.c === "-" && binaryMinus(b, j - 1))))) break;
+      if (a.k === "let" || (a.k === "ch" && (a.c === "+" || (a.c === "-" && binaryMinus(b, j - 1)) || isSep(a.c) || a.c === "\n"))) break;
+      // a keyword ends the numerator too: `when a/2`
+      if (a.k === "ch" && isIdChar(a.c) && KEYWORDS.has(this.wordEndingAt(b, j))) break;
       j--;
     }
+    // a product's space after a keyword is not the numerator's
+    while (j < i && b[j]!.k === "ch" && (b[j] as { c: string }).c === " ") j++;
     const num = ungroup(b.splice(j, i - j));
     const frac: Atom = { k: "frac", num, den: [] };
     b.splice(j, 0, frac);
     this.caret = { block: num.length ? frac.den : frac.num, i: 0 };
     return true;
+  }
+
+  /** The name whose last character is at `j - 1` in `b`, if the run there is one. */
+  private wordEndingAt(b: Block, j: number): string {
+    if (b[j]?.k === "ch" && isIdChar((b[j] as { c: string }).c)) return "";
+    let k = j;
+    while (k > 0 && b[k - 1]!.k === "ch" && isIdChar((b[k - 1] as { c: string }).c)) k--;
+    return b.slice(k, j).map((a) => (a as { c: string }).c).join("");
   }
 
   /** `^`: a power of the atom on the left (back into its exponent if it has one). */
@@ -601,6 +668,10 @@ export class MathEdit {
   private comma(): boolean {
     for (const { block: b, w } of this.ancestors()) {
       const a = w.atom;
+      // a group after a name with a comma in it is a call, as the text reads it: `closure(R, t)`
+      if (a.k === "paren" && b === this.caret.block && this.groupToCall(w)) return this.comma();
+      // in a group or a set a comma separates nothing structural: `{a, b}`
+      if (a.k === "paren" || a.k === "brace") break;
       if (a.k === "call") {
         // in the middle of an argument, what follows the caret starts the next one, as in the text
         const k = a.args.indexOf(b);
@@ -617,13 +688,39 @@ export class MathEdit {
         return true;
       }
     }
-    return false;
+    return this.insert(ch(","));
   }
 
-  /** `;`: a new matrix row below this one. */
+  /** The group at `w`, written against a name, as that name's call (`poset(` then `{a}; a<b`): its
+   *  arguments the group's parts between commas, the caret where it was. False when no name is
+   *  against it. */
+  private groupToCall(w: Where): boolean {
+    const g = w.atom as Atom & { k: "paren" };
+    const p = w.parent;
+    let k = w.index;
+    while (k > 0 && p[k - 1]!.k === "ch" && isIdChar((p[k - 1] as { c: string }).c)) k--;
+    const run = p.slice(k, w.index).map((a) => (a as { c: string }).c).join("");
+    const last = run ? lex(run).filter((t) => t.kind !== "eof").pop() : undefined;
+    if (last?.kind !== "id" || last.stop !== Array.from(run).length) return false;
+    const n = Array.from(last.s).length;
+    const args: Block[] = [[]];
+    let caret: Caret | null = null;
+    g.body.forEach((a, j) => {
+      if (this.caret.block === g.body && this.caret.i === j) caret = { block: args[args.length - 1]!, i: args[args.length - 1]!.length };
+      if (a.k === "ch" && a.c === ",") args.push([]); else args[args.length - 1]!.push(a);
+    });
+    caret ??= { block: args[args.length - 1]!, i: args[args.length - 1]!.length };
+    p.splice(w.index - n, n + 1, { k: "call", name: last.s, args });
+    this.caret = caret;
+    return true;
+  }
+
+  /** `;`: a new matrix row below this one; anywhere else a separator (`poset({a, b}; a<b)`). */
   private semicolon(): boolean {
     for (const { block: b, w } of this.ancestors()) {
       const a = w.atom;
+      if (a.k === "paren" && b === this.caret.block) { this.groupToCall(w); break; }
+      if (a.k === "paren" || a.k === "brace" || a.k === "call") break;
       if (a.k !== "matrix") continue;
       const r = a.rows.findIndex((row) => row.includes(b));
       const row: Block[] = Array.from({ length: a.rows[r]!.length }, () => []);
@@ -631,14 +728,16 @@ export class MathEdit {
       this.caret = { block: row[0]!, i: 0 };
       return true;
     }
-    return false;
+    return this.insert(ch(";"));
   }
 
-  /** After a name or numeral a space is the product (`x y`); elsewhere it means nothing. */
+  /** After a factor a space is the product's (`x y`, `f (x)`, a λ-term's `(λx. x) y`), kept as typed;
+   *  elsewhere it means nothing. */
   private space(): boolean {
     if (this.pendingCommand()) return false;   // an unknown `\name` stays as typed, to be fixed
     const prev = this.caret.block[this.caret.i - 1];
-    return prev?.k === "ch" && isIdChar(prev.c) ? this.insert(ch(" ")) : false;
+    const factor = prev?.k === "ch" ? isIdChar(prev.c) || isConst(prev.c) || (prev.c === "%") : !!prev && prev.k !== "let";
+    return factor ? this.insert(ch(" ")) : false;
   }
 
   /** The name the caret is at the end of (not a `\name`, not inside a part's index), and where it
@@ -714,18 +813,6 @@ export class MathEdit {
     return { name: b.slice(j, i).map((a) => (a as { c: string }).c).join(""), start: j - 1 };
   }
 
-  /** The text with the pending `\name` replaced by `sym`, and the caret's place in it, just after:
-   *  for a symbol of another grammar (∧, →, λ), which the host edits as text. Null with no `\name`. */
-  commandAsText(sym: string): { text: string; caret: number } | null {
-    const p = this.pendingCommand();
-    if (!p) return null;
-    const { block: b, i } = this.caret;
-    const w = write(this.stmt);
-    const from = w.spans.get(b[p.start]!), to = w.spans.get(b[i - 1]!);
-    if (!from || !to) return null;
-    return { text: w.text.slice(0, from.start) + sym + w.text.slice(to.end), caret: from.start + sym.length };
-  }
-
   /** Replace a finished `\name` with its symbol or template. False when there is none (or no such name). */
   command(): boolean { return this.pendingCommand() ? this.mutate("struct", () => this.commandOne()) : false; }
   private commandOne(): boolean {
@@ -739,9 +826,12 @@ export class MathEdit {
     b.splice(p.start, i - p.start);
     this.caret = { block: b, i: p.start };
     if (sym) {
+      // an operator (`\\and`) takes the place of a product's space typed before its name
+      if (!isIdChar(sym) && b[p.start - 1]?.k === "ch" && (b[p.start - 1] as { c: string }).c === " ") { b.splice(p.start - 1, 1); p.start--; this.caret.i--; }
       b.splice(p.start, 0, ...chars(sym));
       this.caret.i += Array.from(sym).length;
-      this.glue = { ...this.caret };
+      // a name's glyph is kept apart from a name typed after it (`\\pi r` is π r); an operator's needs nothing
+      if (isIdChar(sym)) this.glue = { ...this.caret };
       return true;
     }
     return this.insert(t!.make(m![2] ? +m![2] : undefined, m![3] ? +m![3] : undefined), true);

@@ -125,9 +125,13 @@ function rawStmt(cs: string[]): Stmt {
  *  keeps `a+b` and drops the parentheses (all of them: `((a+b))/c` is the same fraction). */
 export const ungroup = (b: Block): Block => { const a = b[0]; return b.length === 1 && a?.k === "paren" ? ungroup(a.body) : b; };
 
-/** Append `more` to `out` as an implicit product, keeping a space where the two would lex as one. */
-function juxtapose(out: Block, more: Block) {
+/** Append `more` to `out` as an implicit product, with a space between them where the text has one
+ *  (`x y`, `f (x)`, a λ-term's `(λx. x) y`) or where the two would lex as one. */
+function juxtapose(out: Block, more: Block, spaced = false) {
   const b = more[0];
+  const last = out[out.length - 1];
+  // after a separator (`∧`, `,`, `:`) a space is the text's look, not a product's
+  if (spaced && last && !(last.k === "ch" && (last.c === " " || last.c === "." || isSep(last.c) || "+-*".includes(last.c) || last.c === "./" || last.c === ".*")) && last.k !== "let") { out.push(ch(" "), ...more); return; }
   let run = "";
   // the run of a name's or numeral's characters it would join (an operator ends it: `1..10`)
   for (let j = out.length - 1; j >= 0; j--) { const a = out[j]!; if (a.k !== "ch" || a.c.length > 1 || isSep(a.c)) break; run = a.c + run; }
@@ -254,8 +258,8 @@ class Reader {
     for (;;) {
       const t = this.peek();
       if (t.kind === "eof" || (t.kind === "op" && stops.has(t.s))) break;
-      if (this.startsTerm(t)) { juxtapose(out, this.expr()); continue; }
-      if (this.keyword(t)) { juxtapose(out, this.charsOf(this.next())); continue; }
+      if (this.startsTerm(t)) { juxtapose(out, this.expr(), !!t.ws); continue; }
+      if (this.keyword(t)) { juxtapose(out, this.charsOf(this.next()), !!t.ws); continue; }
       if (t.kind === "op" && (t.s === ")" || t.s === "]" || t.s === "}")) fail(`unexpected '${t.s}'`, t);
       if (t.kind === "op" && (t.s === "(" || t.s === "[" || t.s === "{")) fail(`unexpected '${t.s}'`, t);
       // a separator: `+` or `*` with nothing on its left too (`¬p`, `+x`)
@@ -293,7 +297,7 @@ class Reader {
         const den = this.startsTerm(this.peek()) ? this.unary() : [];
         // the numerator is the whole term so far, as the engine reads it: `2x/3` is (2x)/3
         out = [this.at({ k: "frac", num: ungroup(out), den: ungroup(den) }, t0, this.prev()!)];
-      } else if (this.startsAtom(t)) juxtapose(out, this.unary());
+      } else if (this.startsAtom(t)) juxtapose(out, this.unary(), !!t.ws);
       else break;
     }
     return out;

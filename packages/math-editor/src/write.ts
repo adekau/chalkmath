@@ -1,5 +1,4 @@
 import { type Atom, type Block, type Stmt, INFIX, isIdChar, isIdStart, isSep, KEYWORDS, merges, showAtom } from "./model.js";
-import { BUILTIN_FUNCTIONS } from "./read.js";
 
 /**
  * The editor's tree → source text, the text the engine is sent.
@@ -120,15 +119,6 @@ function runAt(b: Block, j: number): [number, number] {
 /** Is the run at `j` one of the other worlds' keywords (`when`, `do`)? */
 const keywordAt = (b: Block, j: number) => { const [s, e] = runAt(b, j); return e > s && KEYWORDS.has(b.slice(s, e).map((a) => (a as { c: string }).c).join("")); };
 
-/** The name the characters before `j` end in, if they end in one that is not a function's. */
-function nameBefore(b: Block, j: number): boolean {
-  let k = j;
-  while (k > 0 && isCh(b[k - 1]) && isIdChar((b[k - 1] as { c: string }).c)) k--;
-  const run = b.slice(k, j).map((a) => (a as { c: string }).c).join("");
-  const name = /[A-Za-z_\u0391-\u03C9ℯ][A-Za-z0-9_'\u0391-\u03C9ℯ]*$/.exec(run)?.[0];
-  return !!name && !BUILTIN_FUNCTIONS.includes(name);
-}
-
 const shape = (a: Atom | undefined) => (a ? showAtom(a) : "");
 
 /** Every block an atom holds. */
@@ -184,15 +174,17 @@ class Writer {
     const p = b[j - 1]!;
     if (p.k === "let") return " ";
     if ((p.k === "ch" && p.c === " ") || (b[j]!.k === "ch" && (b[j] as { c: string }).c === " ")) return "";
+    // after an operator read from text, the space it had on its left (`p=b`, `p = b`)
+    if (spaced(b, j - 1) && p.src && !/\n/.test(p.src.gap)) return p.src.gap;
     if (spaced(b, j) || spaced(b, j - 1)) return " ";
     // a keyword is a word on its own: `when a < 2 do x := 1`
     if ((keywordAt(b, j) && runAt(b, j)[0] === j) || (keywordAt(b, j - 1) && runAt(b, j - 1)[1] === j)) return " ";
     if (isCh(p) && [",", ";", "∀", "∃"].includes(p.c)) return " ";
-    // a command's colon (`cbv: t`, `type: Γ ⊢ t`), not a binder's (`λx:A. x`)
-    if (isCh(p, ":") && b === this.root && j >= 2 && runAt(b, j - 2)[0] === 0) return " ";
-    // a name against `(` is a call in the other worlds: an application keeps its space (`K I (x y)`)
-    const a = b[j]!;
-    if ((a.k === "paren" || a.k === "brace") && nameBefore(b, j)) return " ";
+    // a colon has a space after it (`cbv: t`, `a: inc`), but not a binder's (`λx:A. x`)
+    if (isCh(p, ":")) {
+      const s = runAt(b, j - 2)[0], q = b[s - 1], first = b[s];
+      return (isCh(q) && ["λ", "\\"].includes(q.c)) || (isCh(first) && first.c === "λ") ? "" : " ";
+    }
     // a binder's dot (`λx. x`), not a numeral's (`2.5`)
     if (isCh(p, ".") && isCh(b[j - 2]) && isIdChar((b[j - 2] as { c: string }).c) && !/[0-9]/.test((b[j - 2] as { c: string }).c)) return " ";
     return "";
@@ -230,7 +222,7 @@ class Writer {
       case "frac": {
         // bare only where nothing on the left would join the numerator and no power follows
         const p = b[j - 1], pc = p?.k === "ch" ? p.c : null;
-        const bare = b[j + 1]?.k !== "sup" && (!p || p.k === "let" || pc === "+" || (pc === "-" ? binaryMinus(b, j - 1) : pc !== null && (isSep(pc) || keywordAt(b, j - 1))));
+        const bare = b[j + 1]?.k !== "sup" && (!p || p.k === "let" || pc === "+" || (pc === "-" ? binaryMinus(b, j - 1) : pc !== null && (isSep(pc) || keywordAt(b, j - 1) || (pc === " " && keywordAt(b, j - 2)))));
         if (!bare) this.out += "(";
         if (a.num.length > 0 && !additive(a.num)) this.block(a.num);
         else { this.out += "("; this.block(a.num); this.out += ")"; }

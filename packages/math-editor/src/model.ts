@@ -90,7 +90,7 @@ export const isIdChar = (c: string) => isAsciiAlpha(c) || isDigit(c) || c === "_
 export const MULTI_OPS = ["<->", ":=", "->", "<-", "=>", "&&", "||", "/\\", "\\/", "<=", ">=", "!=", "==", "|-", ".."];
 /** Operators that stand between two things with a space either side when written afresh: comparisons,
  *  connectives, arrows, definitions. (`+`, a subtraction and the entrywise operators are spaced too.) */
-export const INFIX = new Set(["=", "<", ">", "≤", "≥", "≠", "∣", "|", "∈", "∉", "⊆", "⊂", "∪", "∩", "∧", "∨", "→", "↔", "⇒", "⊢", "←", "↦", "×",
+export const INFIX = new Set(["=", "<", ">", "@", "≤", "≥", "≠", "∣", "|", "∈", "∉", "⊆", "⊂", "∪", "∩", "∧", "∨", "→", "↔", "⇒", "⊢", "←", "↦", "×",
   "<->", ":=", "->", "<-", "=>", "&&", "||", "/\\", "\\/", "<=", ">=", "!=", "==", "|-"]);
 /** Constants the logic world writes as glyphs: values, not operators. */
 export const isConst = (c: string) => c === "⊤" || c === "⊥";

@@ -53,6 +53,8 @@ const OPS: Record<string, string> = {
   "!": "\\lnot ", "~": "\\lnot ", "<=": "\\le ", ">=": "\\ge ", "!=": "\\ne ", "==": "=", ":=": "\\coloneqq ", "<-": "\\leftarrow ",
   "|-": "\\vdash ", "|": "\\mid ", "..": "{..}", ":": "\\mathpunct{:}", ";": "\\mathpunct{;}", "&": "\\&", "#": "\\#", "$": "\\$",
 };
+/** The ASCII spellings drawn as another glyph (`->` as →): notation the text does not show. */
+const ASCII_GLYPHS = new Set(["->", "<->", "=>", "&&", "||", "/\\", "\\/", "<=", ">=", "!=", ":=", "<-", "|-"]);
 /** A character atom as LaTeX: its glyph, or the character itself (TeX's specials as text). */
 const opLatex = (c: string) => OPS[c] ?? (/^[\\{}_^~&#$]$/.test(c) ? textChar(c) : c);
 
@@ -376,7 +378,7 @@ function nameOf(b: Block): string | null {
  *  its own notation? Where it does not (`epicycles(llama, 60)`), the notebook's Auto mode keeps the
  *  cell as highlighted text. */
 export function hasNotation(b: Block): boolean {
-  return b.some((a) => a.k === "frac" || a.k === "sup" || a.k === "matrix" || a.k === "part" || (a.k === "call" && notated(a)) || slots(a).some(hasNotation));
+  return b.some((a) => (a.k === "ch" && ASCII_GLYPHS.has(a.c)) || a.k === "frac" || a.k === "sup" || a.k === "matrix" || a.k === "part" || (a.k === "call" && notated(a)) || slots(a).some(hasNotation));
 }
 
 /** Calls drawn in their own notation (d/dx, ∫, Σ, √, bars, …) rather than as `name(args)`; must

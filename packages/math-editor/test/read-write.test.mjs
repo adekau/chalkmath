@@ -46,7 +46,7 @@ test("the tree is the engine's parse: precedence, implicit products, what the nu
     "a - b - c": "[a - b - c]",
     "x y": "[x ␣ y]",
     "xy": "[x y]",
-    "2 x": "[2 x]",
+    "2 x": "[2 ␣ x]",
     "x 2": "[x ␣ 2]",
     "sin^2(y)": "[(sin [y]) (^ [2])]",
     "sin^2(y)^3": "[(paren [(sin [y]) (^ [2])]) (^ [3])]",
@@ -82,13 +82,13 @@ test("the other worlds' notation reads as math between separators", () => {
     "p && q -> p": "[p && q -> p]",
     "poset({a,b}; a<b)": "[(poset [(brace [a , b]) ; a < b])]",
     "closure(R, transitive)": "[(closure [R] [t r a n s i t i v e])]",
-    "cbv: K I (omega omega)": "[c b v : K ␣ I (paren [o m e g a ␣ o m e g a])]",
+    "cbv: K I (omega omega)": "[c b v : K ␣ I ␣ (paren [o m e g a ␣ o m e g a])]",
     "type: λx:A. x": "[t y p e : λ x : A . x]",
-    "TWO := succ (succ zero)": "[T W O := s u c c (paren [s u c c ␣ z e r o])]",
+    "TWO := succ (succ zero)": "[T W O := s u c c ␣ (paren [s u c c ␣ z e r o])]",
     "add 2 3": "[a d d ␣ 2 ␣ 3]",
     "system(var x in 0..2\ninit x = 0)": "[(system [v a r ␣ x ␣ i n ␣ 0 .. 2 \n i n i t ␣ x = 0])]",
     // a keyword ends a product, as a separator does: `a` alone is the numerator
-    "action t when a/2 < 1 do x := 1": "[a c t i o n ␣ t ␣ w h e n (frac [a] [2]) < 1 d o ␣ x := 1]",
+    "action t when a/2 < 1 do x := 1": "[a c t i o n ␣ t ␣ w h e n ␣ (frac [a] [2]) < 1 ␣ d o ␣ x := 1]",
   };
   for (const [src, want] of Object.entries(cases)) assert.equal(shape(src), want, src);
   // `x + ` and `x/` read as while typing: the operator alone, an empty denominator
@@ -169,7 +169,7 @@ test("every notation is LaTeX KaTeX renders, with every atom tagged", () => {
   assert.equal(tex("det([a,b;c,d])"), "\\begin{vmatrix}{a} & {b} \\\\ {c} & {d}\\end{vmatrix}");
   assert.equal(tex("transpose(M) + conj(z)"), "{{M}}^{\\mathsf{T}}+\\overline{{z}}");
   assert.equal(tex("dot(u, v + w)"), "{u} \\cdot \\htmlData{pg=1}{\\htmlData{pd=o}{(}{v}+{w}\\htmlData{pd=c}{)}}");
-  assert.equal(tex("2 llama + x_1"), "2{\\mathit{llama}}+{x_{1}}");
+  assert.equal(tex("2 llama + x_1"), "2\\,{\\mathit{llama}}+{x_{1}}");
   // a fixed output reference is a %ₙ chip; a relative one stays % or %% (it follows the outputs),
   // in a chip of its own, with the output it means now (when the host says) faint beside it
   assert.equal(tex("%3 + %"), "\\htmlData{out=n3}{\\%_{3}}+\\htmlData{out=p1, rel=1}{\\%}");
