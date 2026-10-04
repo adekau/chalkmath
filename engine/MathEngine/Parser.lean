@@ -31,6 +31,13 @@ Implicit multiplication (`2x`, `2(x+1)`, `x y`) is allowed when the previous tok
 and the next begins one, except number-after-number (`3 4` is an error). `IDENT (` is a call
 only if IDENT is a builtin or a session-known function.
 
+The lexer and the parser are total. `lex.go` recurses on the characters left. Each parsing
+function takes the token position and returns where it stopped, with the proof that it consumed a
+token (`Adv`) or, for a loop that found nothing to repeat, none (`Adv0`). The measure is
+`8 · (tokens left) + rank`: a call at a later position decreases it, and a call at the same position
+goes to a lower rank (`atom` < `power` < `unary` < `term` < `expr` < `spec`, `callArgs`). That the
+parser reads back what the printer writes is proved on a fragment in `RoundTrip.lean`.
+
 Cells in the other worlds never reach this parser: a transition system or a question about one
 (`Sys.isSystemSource`, grammar in `Systems.lean`), an order-theory or relation command
 (`Ord.isOrderSource`, grammar in `Poset.lean`), a logic command or a formula with a connective or a
@@ -189,8 +196,8 @@ theorem PCtx.lt_of_isOp {c : PCtx} {i : Nat} {s : String} (h : isOp (c.tok i) s 
 /-- `;;` at `j`: a span. -/
 def startsSpan (c : PCtx) (j : Nat) : Bool := isOp (c.tok j) ";" && isOp (c.tok (j + 1)) ";"
 
-private def failT (msg : String) (t : Tok) : Except ParseError α := .error ⟨msg, t.start, t.stop⟩
-private def startsAtom (t : Tok) : Bool := t.kind == .num || t.kind == .id || isOp t "(" || isOp t "[" || isOp t "%"
+def failT (msg : String) (t : Tok) : Except ParseError α := .error ⟨msg, t.start, t.stop⟩
+def startsAtom (t : Tok) : Bool := t.kind == .num || t.kind == .id || isOp t "(" || isOp t "[" || isOp t "%"
 
 /-- What a parse from position `i` that consumed at least one token read, and where it stopped. -/
 abbrev Adv (c : PCtx) (i : Nat) (α : Type) := α × {j : Nat // i < j ∧ j ≤ c.toks.size}
@@ -198,7 +205,7 @@ abbrev Adv (c : PCtx) (i : Nat) (α : Type) := α × {j : Nat // i < j ∧ j ≤
 abbrev Adv0 (c : PCtx) (i : Nat) (α : Type) := α × {j : Nat // i ≤ j ∧ j ≤ c.toks.size}
 
 /-- The token `s` at `k`, or the error a missing one is. -/
-private def expectAt (c : PCtx) (s : String) (k : Nat) : Except ParseError (PLift (k < c.toks.size)) :=
+def expectAt (c : PCtx) (s : String) (k : Nat) : Except ParseError (PLift (k < c.toks.size)) :=
   if h : isOp (c.tok k) s then .ok ⟨PCtx.lt_of_isOp h⟩ else failT s!"expected '{s}'" (c.tok k)
 
 /-- `%%…%` from `j`, `k` of them so far: how many, and where they stop. -/

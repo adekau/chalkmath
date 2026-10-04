@@ -3,7 +3,42 @@ import MathEngine.Print
 /-!
 # Reading back what the printer writes
 
-WIP
+The lexer, the algebra parser and the printer are total (`Parser.lean`, `Print.lean`). This file
+proves that, on a fragment, reading back what the printer writes gives the term it printed:
+
+```
+parse_toText : Plain e → ∃ e', parse e.toText = .ok e' ∧ flat e' = flat e
+```
+
+`flat` splices a sum into a sum and a product into a product, as the normalizer's first rules do.
+The parser reads `a + b + c` as `(a + b) + c`, and the printer writes `(a + b) + c` and
+`a + b + c` alike, so "the same up to `flat`" is as close as the text allows. The statement is
+about terms, not values: no real arithmetic is involved.
+
+The fragment (`Plain`) is:
+- natural numerals;
+- variables: names the lexer reads as one identifier, other than a builtin function, `pi`, `π`,
+  `i`, `ℯ` and `let`;
+- calls `f(a)` of `sin cos tan arcsin arccos arctan ln log sqrt abs`;
+- powers, with any exponent in the fragment;
+- sums and products of two or more terms.
+
+Outside it, the golden corpus's read-back check (`goldenTests`) still holds the printer to the
+parser, but nothing is proved:
+- negative numbers and subtraction;
+- division and negative exponents (`x^(-2)` prints as `1/x^2`, which reads back as another term
+  with the same value);
+- decimals and scientific notation;
+- `exp` (`exp(1)` prints as `ℯ`) and calls of several arguments;
+- matrices, parts, the entrywise operators, and the other worlds' notation.
+
+The proof follows the text through each stage:
+1. **Printer** (`printRaw_plain`): the text of `e` is the characters of a token list, `ptoks e ctx`.
+2. **Lexer** (`lex_render`, `lexable_plain`): lexing those characters gives back those tokens, then
+   the end of input. `parse_digits` reads a printed numeral back.
+3. **Parser** (`good`): at each level of the grammar, from where the tokens of `e` start, the parser
+   reads a term that flattens to `e` and stops right after them. Products and sums go through their
+   `units` and `summands`, which the parser folds to the left.
 -/
 namespace MathEngine
 namespace RoundTrip
@@ -63,6 +98,13 @@ inductive Plain : Expr → Prop
 def precOf : Expr → Nat
   | .add _ => 1 | .mul _ => 2 | .pow _ _ => 3 | _ => 4
 
+@[scoped simp] theorem precOf_add (l : List Expr) : precOf (.add l) = 1 := rfl
+@[scoped simp] theorem precOf_mul (l : List Expr) : precOf (.mul l) = 2 := rfl
+@[scoped simp] theorem precOf_pow (b x : Expr) : precOf (.pow b x) = 3 := rfl
+@[scoped simp] theorem precOf_num (q : Q) : precOf (.num q) = 4 := rfl
+@[scoped simp] theorem precOf_var (x : String) : precOf (.var x) = 4 := rfl
+@[scoped simp] theorem precOf_fn (f : String) (l : List Expr) : precOf (.fn f l) = 4 := rfl
+
 theorem precOf_lt_one (e : Expr) : ¬ precOf e < 1 := by cases e <;> simp [precOf]
 
 def paren (b : Bool) (ts : List T) : List T := if b then (.op, "(") :: ts ++ [(.op, ")")] else ts
@@ -81,6 +123,8 @@ mutual
     | [] => []
     | a :: as => (.op, sep) :: paren (precOf a < 2) (raw a) ++ rawTail sep as
 end
+
+@[scoped simp] theorem paren_false (ts : List T) : paren false ts = ts := rfl
 
 /-- The tokens of `e` printed where the context demands precedence `ctx`. -/
 def ptoks (e : Expr) (ctx : Nat) : List T := paren (precOf e < ctx) (raw e)
@@ -110,19 +154,19 @@ theorem ofInt_not_half (n : Nat) : (Expr.num (Q.ofInt n)).isNumEq (Q.ofRat (mkRa
   simp at this
   exact absurd this (by decide)
 
-@[simp] theorem render_nil : render [] = [] := rfl
-@[simp] theorem render_cons (t : T) (ts : List T) : render (t :: ts) = renderTok t ++ render ts := by
+@[scoped simp] theorem render_nil : render [] = [] := rfl
+@[scoped simp] theorem render_cons (t : T) (ts : List T) : render (t :: ts) = renderTok t ++ render ts := by
   simp [render]
-@[simp] theorem render_append (a b : List T) : render (a ++ b) = render a ++ render b := by simp [render]
-@[simp] theorem renderTok_num (s : String) : renderTok (.num, s) = s.toList := rfl
-@[simp] theorem renderTok_id (s : String) : renderTok (.id, s) = s.toList := rfl
-@[simp] theorem renderTok_plus : renderTok (.op, "+") = [' ', '+', ' '] := rfl
+@[scoped simp] theorem render_append (a b : List T) : render (a ++ b) = render a ++ render b := by simp [render]
+@[scoped simp] theorem renderTok_num (s : String) : renderTok (.num, s) = s.toList := rfl
+@[scoped simp] theorem renderTok_id (s : String) : renderTok (.id, s) = s.toList := rfl
+@[scoped simp] theorem renderTok_plus : renderTok (.op, "+") = [' ', '+', ' '] := rfl
 theorem renderTok_op {s : String} (h : s ≠ "+") : renderTok (.op, s) = s.toList := by
   simp [renderTok, h]
-@[simp] theorem renderTok_lp : renderTok (.op, "(") = ['('] := rfl
-@[simp] theorem renderTok_rp : renderTok (.op, ")") = [')'] := rfl
-@[simp] theorem renderTok_star : renderTok (.op, "*") = ['*'] := rfl
-@[simp] theorem renderTok_hat : renderTok (.op, "^") = ['^'] := rfl
+@[scoped simp] theorem renderTok_lp : renderTok (.op, "(") = ['('] := rfl
+@[scoped simp] theorem renderTok_rp : renderTok (.op, ")") = [')'] := rfl
+@[scoped simp] theorem renderTok_star : renderTok (.op, "*") = ['*'] := rfl
+@[scoped simp] theorem renderTok_hat : renderTok (.op, "^") = ['^'] := rfl
 
 theorem render_paren (b : Bool) (ts : List T) :
     render (paren b ts) = if b then '(' :: render ts ++ [')'] else render ts := by
@@ -582,6 +626,820 @@ theorem lexable_plain {e : Expr} (h : Plain e) : ∀ ctx, Lexable (ptoks e ctx) 
       · exact ihas c hc)
     simp only [rawTail] at this ⊢
     exact lexable_append_op rfl this (iha 2)
+
+/-! ## What the parser does on the fragment's tokens
+
+Each lemma below is one path through one parsing function, stated by its outcome: what it returns
+and where it stops. -/
+
+@[scoped simp] theorem except_pure {ε α} (x : α) : (pure x : Except ε α) = .ok x := rfl
+@[scoped simp] theorem except_bind_ok {ε α β} (a : α) (f : α → Except ε β) :
+    ((Except.ok a : Except ε α) >>= f) = f a := rfl
+@[scoped simp] theorem except_map_ok {ε α β} (a : α) (f : α → β) : (f <$> (Except.ok a : Except ε α)) = .ok (f a) := rfl
+
+theorem isOp_strip {t : Tok} {k : TokKind} {x : String} (h : strip t = (k, x)) (s : String) :
+    isOp t s = (k == .op && x == s) := by
+  simp only [strip, Prod.mk.injEq] at h
+  simp [isOp, h.1, h.2]
+
+/-- What may follow an expression: the end, or the `)` that closes it. -/
+def FollowE (c : PCtx) (j : Nat) : Prop := (c.tok j).kind = .eof ∨ strip (c.tok j) = (.op, ")")
+/-- What may follow a term: that, or a `+`. -/
+def FollowT (c : PCtx) (j : Nat) : Prop := FollowE c j ∨ strip (c.tok j) = (.op, "+")
+/-- What may follow a factor: that, or a `*`. -/
+def FollowU (c : PCtx) (j : Nat) : Prop := FollowT c j ∨ strip (c.tok j) = (.op, "*")
+
+theorem FollowE.T {c : PCtx} {j : Nat} (h : FollowE c j) : FollowT c j := .inl h
+theorem FollowT.U {c : PCtx} {j : Nat} (h : FollowT c j) : FollowU c j := .inl h
+
+/-- None of what may follow a factor is an operator that would continue it. -/
+theorem followU_isOp {c : PCtx} {j : Nat} (h : FollowU c j) {s : String}
+    (hs : s ≠ "+" ∧ s ≠ "*" ∧ s ≠ ")") : isOp (c.tok j) s = false := by
+  rcases h with ((h | h) | h) | h
+  · simp [isOp, h]
+  all_goals rw [isOp_strip h]; simp; intro e; subst e; simp at hs
+
+theorem followT_isOp {c : PCtx} {j : Nat} (h : FollowT c j) {s : String}
+    (hs : s ≠ "+" ∧ s ≠ ")") : isOp (c.tok j) s = false := by
+  rcases h with (h | h) | h
+  · simp [isOp, h]
+  all_goals rw [isOp_strip h]; simp; intro e; subst e; simp at hs
+
+theorem followE_isOp {c : PCtx} {j : Nat} (h : FollowE c j) {s : String}
+    (hs : s ≠ ")") : isOp (c.tok j) s = false := by
+  rcases h with h | h
+  · simp [isOp, h]
+  · rw [isOp_strip h]; simp; intro e; subst e; simp at hs
+
+theorem followU_not_atom {c : PCtx} {j : Nat} (h : FollowU c j) : startsAtom (c.tok j) = false := by
+  rcases h with ((h | h) | h) | h
+  · simp [startsAtom, isOp, h]
+  all_goals
+    simp only [strip, Prod.mk.injEq] at h
+    simp [startsAtom, isOp, h.1, h.2]
+
+theorem part_stop (c : PCtx) (e : Expr) (i : Nat) (hi : i ≤ c.toks.size) (h : isOp (c.tok i) "[" = false) :
+    part c e i hi = .ok (e, ⟨i, Nat.le_refl _, hi⟩) := by
+  rw [part]; simp [h]
+
+theorem exprLoop_stop (c : PCtx) (lhs : Expr) (j : Nat) (hj : j ≤ c.toks.size) (h : FollowE c j) :
+    exprLoop c lhs j hj = .ok (lhs, ⟨j, Nat.le_refl _, hj⟩) := by
+  rw [exprLoop]
+  simp [followE_isOp h (s := "+") (by decide), followE_isOp h (s := "-") (by decide)]
+
+theorem exprLoop_plus (c : PCtx) (lhs : Expr) (j : Nat) (hj : j ≤ c.toks.size)
+    (h1 : strip (c.tok j) = (.op, "+")) {rhs : Expr} {k : Nat} {hk}
+    (ht : term c (j + 1) = .ok (rhs, ⟨k, hk⟩)) {e : Expr} {m : Nat} {hm}
+    (hl : exprLoop c (.add [lhs, rhs]) k hk.2 = .ok (e, ⟨m, hm⟩)) :
+    ∃ h, exprLoop c lhs j hj = .ok (e, ⟨m, h⟩) := by
+  rw [exprLoop]; simp [isOp_strip h1, ht, hl]; omega
+
+theorem termLoop_stop (c : PCtx) (lhs : Expr) (j : Nat) (hj : j ≤ c.toks.size) (h : FollowT c j) :
+    termLoop c lhs j hj = .ok (lhs, ⟨j, Nat.le_refl _, hj⟩) := by
+  rw [termLoop]
+  simp [followT_isOp h (s := "*") (by decide), followT_isOp h (s := "./") (by decide),
+    followT_isOp h (s := ".*") (by decide), followT_isOp h (s := "/") (by decide), followU_not_atom h.U]
+
+theorem termLoop_star (c : PCtx) (lhs : Expr) (j : Nat) (hj : j ≤ c.toks.size)
+    (h1 : strip (c.tok j) = (.op, "*")) {rhs : Expr} {k : Nat} {hk}
+    (ht : unary c (j + 1) = .ok (rhs, ⟨k, hk⟩)) {e : Expr} {m : Nat} {hm}
+    (hl : termLoop c (.mul [lhs, rhs]) k hk.2 = .ok (e, ⟨m, hm⟩)) :
+    ∃ h, termLoop c lhs j hj = .ok (e, ⟨m, h⟩) := by
+  rw [termLoop]; simp [isOp_strip h1, ht, hl]; omega
+
+theorem expr_spec (c : PCtx) (i : Nat) {a : Expr} {j : Nat} {hj} (ht : term c i = .ok (a, ⟨j, hj⟩))
+    {e : Expr} {k : Nat} {hk} (hl : exprLoop c a j hj.2 = .ok (e, ⟨k, hk⟩)) :
+    ∃ h, expr c i = .ok (e, ⟨k, h⟩) := by
+  rw [expr]; simp [ht, hl]; omega
+
+theorem term_spec (c : PCtx) (i : Nat) {a : Expr} {j : Nat} {hj} (hu : unary c i = .ok (a, ⟨j, hj⟩))
+    {e : Expr} {k : Nat} {hk} (hl : termLoop c a j hj.2 = .ok (e, ⟨k, hk⟩)) :
+    ∃ h, term c i = .ok (e, ⟨k, h⟩) := by
+  rw [term]; simp [hu, hl]; omega
+
+theorem unary_power (c : PCtx) (i : Nat) (h : isOp (c.tok i) "-" = false) : unary c i = power c i := by
+  rw [unary]; simp [h]
+
+theorem power_atom (c : PCtx) (i : Nat) {a : Expr} {j : Nat} {hj} (ha : atom c i = .ok (a, ⟨j, hj⟩))
+    (h1 : isOp (c.tok j) "[" = false) (h2 : isOp (c.tok j) "^" = false) :
+    power c i = .ok (a, ⟨j, hj⟩) := by
+  rw [power]; simp [ha, part_stop c a j hj.2 h1, h2]
+
+theorem power_pow (c : PCtx) (i : Nat) {a : Expr} {j : Nat} {hj} (ha : atom c i = .ok (a, ⟨j, hj⟩))
+    (h1 : strip (c.tok j) = (.op, "^")) {x : Expr} {k : Nat} {hk} (hx : unary c (j + 1) = .ok (x, ⟨k, hk⟩)) :
+    ∃ h, power c i = .ok (.pow a x, ⟨k, h⟩) := by
+  rw [power]
+  simp [ha, part_stop c a j hj.2 (by rw [isOp_strip h1]; decide), isOp_strip h1, hx]
+  omega
+
+theorem atom_num (c : PCtx) (i : Nat) (hk : (c.tok i).kind = .num) {q : Q} (hq : Q.parse (c.tok i).s = some q) :
+    ∃ h, atom c i = .ok (.num q, ⟨i + 1, h⟩) := by
+  have := PCtx.lt_of_kind (c := c) (i := i) (by simp [hk])
+  rw [atom]
+  split <;> simp_all
+  omega
+
+theorem atom_var (c : PCtx) (i : Nat) (hk : (c.tok i).kind = .id) (hc : c.known = [])
+    (hx : (c.tok i).s ∉ reserved) : ∃ h, atom c i = .ok (.var (c.tok i).s, ⟨i + 1, h⟩) := by
+  have hp : powerFunctions.contains (c.tok i).s = false := by
+    simp only [reserved, builtinFunctions, List.mem_cons, not_or] at hx
+    simp [powerFunctions, hx]
+  have hb : builtinFunctions.contains (c.tok i).s = false := by
+    simp only [reserved, List.mem_cons, not_or] at hx
+    simpa using hx.2.2.2.2.2
+  simp only [reserved, List.mem_cons, not_or] at hx
+  have := PCtx.lt_of_kind (c := c) (i := i) (by simp [hk])
+  rw [atom]
+  split <;> simp_all
+  omega
+
+theorem exprList_stop (c : PCtx) (acc : List Expr) (k : Nat) (hk : k ≤ c.toks.size)
+    (h : strip (c.tok k) = (.op, ")")) : exprList c acc k hk = .ok (acc, ⟨k, Nat.le_refl _, hk⟩) := by
+  rw [exprList]; simp [isOp_strip h]
+
+theorem expectAt_ok (c : PCtx) (s : String) (k : Nat) (h : strip (c.tok k) = (.op, s)) :
+    ∃ p, expectAt c s k = .ok p :=
+  ⟨⟨PCtx.lt_of_isOp (s := s) (by rw [isOp_strip h]; simp)⟩, by unfold expectAt; simp [isOp_strip h]⟩
+
+theorem callArgs_one (c : PCtx) (i : Nat) (h0 : isOp (c.tok i) ")" = false) {e : Expr} {j : Nat} {hj}
+    (he : expr c i = .ok (e, ⟨j, hj⟩)) (hr : strip (c.tok j) = (.op, ")")) :
+    ∃ h, callArgs c i = .ok ([e], ⟨j + 1, h⟩) := by
+  obtain ⟨p, hp⟩ := expectAt_ok c ")" j hr
+  rw [callArgs]; simp [h0, he, exprList_stop c [e] j hj.2 hr, hp]
+  have := p.down; omega
+
+theorem atom_call (c : PCtx) (i : Nat) (hk : (c.tok i).kind = .id) {f : String} (hf : f ∈ unaryNames)
+    (hs : (c.tok i).s = f) (hlp : strip (c.tok (i + 1)) = (.op, "(")) {args : List Expr} {j : Nat} {hj}
+    (ha : callArgs c (i + 2) = .ok (args, ⟨j, hj⟩)) : ∃ h, atom c i = .ok (mkCall f args, ⟨j, h⟩) := by
+  have hb : builtinFunctions.contains f = true := by
+    simp only [unaryNames, List.mem_cons, List.mem_nil_iff, or_false] at hf
+    rcases hf with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> decide
+  have hpow : isOp (c.tok (i + 1 + 0)) "^" = false := by simp [isOp_strip hlp]
+  have hlp' := isOp_strip hlp "("
+  simp at hlp'
+  rw [atom]
+  split <;> simp_all
+  omega
+
+theorem atom_paren (c : PCtx) (i : Nat) (h0 : strip (c.tok i) = (.op, "(")) {e : Expr} {j : Nat} {hj}
+    (he : expr c (i + 1) = .ok (e, ⟨j, hj⟩)) (hr : strip (c.tok j) = (.op, ")")) :
+    ∃ h, atom c i = .ok (e, ⟨j + 1, h⟩) := by
+  obtain ⟨p, hp⟩ := expectAt_ok c ")" j hr
+  simp only [strip, Prod.mk.injEq] at h0
+  have := p.down
+  rw [atom]
+  split <;> simp_all
+  omega
+
+/-! ## Numerals read back -/
+
+theorem splitOn_digits {l : List Char} (hd : ∀ c ∈ l, c.isDigit = true) {sep : Char}
+    (hs : sep.isDigit = false) : l.splitOn sep = [l] := by
+  unfold List.splitOn
+  apply List.splitOnP_eq_singleton
+  intro x hx
+  have := hd x hx
+  simp only [beq_eq_false_iff_ne, ne_eq]
+  intro e; subst e; simp_all
+
+theorem parse_digits (n : Nat) : Q.parse (toString (n : Int)) = some (Q.ofInt n) := by
+  have hd : ∀ c ∈ Nat.toDigits 10 n, c.isDigit = true :=
+    fun c hc => Nat.isDigit_of_mem_toDigits (by decide) (by decide) hc
+  have hne : Nat.toDigits 10 n ≠ [] := Nat.toDigits_ne_nil
+  unfold Q.parse
+  rw [digits_int, splitOn_digits hd (by decide), splitOn_digits hd (by decide)]
+  have : (Nat.toDigits 10 n).isEmpty = false := by cases h : Nat.toDigits 10 n <;> simp_all
+  simp [this, List.all_eq_true.2 hd, Nat.ofDigitChars_ten_toDigits]
+
+/-! ## The token array spells the tokens -/
+
+/-- From position `i`, the parser's tokens are `ts`, kind and text. -/
+def Matches (c : PCtx) (i : Nat) (ts : List T) : Prop :=
+  ∀ k (hk : k < ts.length), strip (c.tok (i + k)) = ts[k]
+
+theorem matches_nil (c : PCtx) (i : Nat) : Matches c i [] := fun _ hk => absurd hk (by simp)
+
+theorem matches_cons {c : PCtx} {i : Nat} {t : T} {ts : List T} :
+    Matches c i (t :: ts) ↔ strip (c.tok i) = t ∧ Matches c (i + 1) ts := by
+  constructor
+  · intro h
+    refine ⟨h 0 (by simp), fun k hk => ?_⟩
+    have := h (k + 1) (by simp; omega)
+    simpa [Nat.add_assoc, Nat.add_comm 1 k] using this
+  · rintro ⟨h0, h⟩ k hk
+    cases k with
+    | zero => simpa using h0
+    | succ k =>
+      have := h k (by simp at hk; omega)
+      simpa [Nat.add_assoc, Nat.add_comm 1 k] using this
+
+theorem matches_append {c : PCtx} {i : Nat} {xs ys : List T} :
+    Matches c i (xs ++ ys) ↔ Matches c i xs ∧ Matches c (i + xs.length) ys := by
+  induction xs generalizing i with
+  | nil => simp [matches_nil]
+  | cons t xs ih =>
+    simp only [List.cons_append, matches_cons, ih, List.length_cons]
+    rw [show i + 1 + xs.length = i + (xs.length + 1) by omega]
+    exact ⟨fun ⟨a, b, d⟩ => ⟨⟨a, b⟩, d⟩, fun ⟨⟨a, b⟩, d⟩ => ⟨a, b, d⟩⟩
+
+/-! ## Products and sums, as the parser builds them
+
+The parser reads `a*b*c` as `(a*b)*c` and `a + b + c` as `(a + b) + c`; the printer writes a product
+in a product, wherever it is, and a sum first in a sum, without parentheses. So a product's tokens are
+its `units` joined by `*`, and a sum's its `summands` joined by `+`, and the parser builds the left
+fold of each. `flat` takes both to the same term. -/
+
+mutual
+  /-- The factors of a product, with products in it spliced in. -/
+  def units : Expr → List Expr
+    | .mul es => unitsList es
+    | e => [e]
+  def unitsList : List Expr → List Expr
+    | [] => []
+    | e :: es => units e ++ unitsList es
+end
+
+/-- The terms of a sum, with a sum first in it spliced in. -/
+def summands : Expr → List Expr
+  | .add (a :: as) => summands a ++ as
+  | e => [e]
+
+/-- What a term contributes to a flattened product, or to a flattened sum. -/
+def mp (x : Expr) : List Expr := match flat x with | .mul as => as | y => [y]
+def ap (x : Expr) : List Expr := match flat x with | .add as => as | y => [y]
+
+def foldMul (l : Expr) (us : List Expr) : Expr := us.foldl (fun acc u => .mul [acc, u]) l
+def foldAdd (l : Expr) (ss : List Expr) : Expr := ss.foldl (fun acc s => .add [acc, s]) l
+
+theorem flatMul_eq (l : List Expr) : flatMul l = l.flatMap mp := by
+  induction l with
+  | nil => simp [flatMul]
+  | cons e es ih => simp [flatMul, ih, mp]
+
+theorem flatAdd_eq (l : List Expr) : flatAdd l = l.flatMap ap := by
+  induction l with
+  | nil => simp [flatAdd]
+  | cons e es ih => simp [flatAdd, ih, ap]
+
+theorem flat_mul2 (a b : Expr) : flat (.mul [a, b]) = .mul (mp a ++ mp b) := by
+  simp [flat, flatMul_eq]
+
+theorem flat_add2 (a b : Expr) : flat (.add [a, b]) = .add (ap a ++ ap b) := by
+  simp [flat, flatAdd_eq]
+
+theorem mp_congr {a b : Expr} (h : flat a = flat b) : mp a = mp b := by simp [mp, h]
+theorem ap_congr {a b : Expr} (h : flat a = flat b) : ap a = ap b := by simp [ap, h]
+
+theorem flat_foldMul_congr {x y : Expr} (h : flat x = flat y) :
+    ∀ us : List Expr, flat (foldMul x us) = flat (foldMul y us)
+  | [] => h
+  | u :: us => by
+    simp only [foldMul, List.foldl_cons]
+    exact flat_foldMul_congr (by rw [flat_mul2, flat_mul2, mp_congr h]) us
+
+theorem flat_foldAdd_congr {x y : Expr} (h : flat x = flat y) :
+    ∀ ss : List Expr, flat (foldAdd x ss) = flat (foldAdd y ss)
+  | [] => h
+  | s :: ss => by
+    simp only [foldAdd, List.foldl_cons]
+    exact flat_foldAdd_congr (by rw [flat_add2, flat_add2, ap_congr h]) ss
+
+theorem flat_foldMul (l : Expr) : ∀ (us : List Expr), us ≠ [] → flat (foldMul l us) = .mul (mp l ++ us.flatMap mp)
+  | [u], _ => by simp [foldMul, flat_mul2]
+  | u :: v :: us, _ => by
+    have := flat_foldMul (.mul [l, u]) (v :: us) (by simp)
+    simp only [foldMul, List.foldl_cons] at this ⊢
+    rw [this]
+    have hm : mp (.mul [l, u]) = mp l ++ mp u := by simp [mp, flat_mul2]
+    simp [hm]
+
+theorem flat_foldAdd (l : Expr) : ∀ (ss : List Expr), ss ≠ [] → flat (foldAdd l ss) = .add (ap l ++ ss.flatMap ap)
+  | [s], _ => by simp [foldAdd, flat_add2]
+  | s :: t :: ss, _ => by
+    have := flat_foldAdd (.add [l, s]) (t :: ss) (by simp)
+    simp only [foldAdd, List.foldl_cons] at this ⊢
+    rw [this]
+    have ha : ap (.add [l, s]) = ap l ++ ap s := by simp [ap, flat_add2]
+    simp [ha]
+
+theorem units_ne_nil {e : Expr} (h : Plain e) : units e ≠ [] := by
+  cases h with
+  | mul a b as ha =>
+    have := units_ne_nil ha
+    simp [units, unitsList]; intro h'; exact absurd h' this
+  | _ => simp [units]
+
+theorem summands_ne_nil {e : Expr} (h : Plain e) : summands e ≠ [] := by
+  cases h with
+  | add a b as ha => simp [summands]
+  | _ => simp [summands]
+
+theorem mp_units {e : Expr} (h : Plain e) : mp e = (units e).flatMap mp := by
+  induction h with
+  | mul a b as ha hb has iha ihb ihas =>
+    have hl : ∀ l : List Expr, (∀ c ∈ l, mp c = (units c).flatMap mp) → l.flatMap mp = (unitsList l).flatMap mp := by
+      intro l hl
+      induction l with
+      | nil => simp [unitsList]
+      | cons x xs ih =>
+        simp only [List.flatMap_cons, unitsList, List.flatMap_append]
+        rw [hl x (by simp), ih (fun c hc => hl c (by simp [hc]))]
+    have := hl (a :: b :: as) (by
+      intro c hc; simp at hc; rcases hc with rfl | rfl | hc
+      · exact iha
+      · exact ihb
+      · exact ihas c hc)
+    simp only [units]
+    rw [← this]
+    simp [mp, flat, flatMul_eq]
+  | _ => simp [units]
+
+theorem ap_summands {e : Expr} (h : Plain e) : ap e = (summands e).flatMap ap := by
+  induction h with
+  | add a b as ha hb has iha ihb ihas =>
+    simp only [summands, List.flatMap_append, ← iha]
+    simp [ap, flat, flatAdd_eq]
+  | _ => simp [summands]
+
+/-- A product's left fold over its units flattens to it. -/
+theorem flat_foldMul_units {e : Expr} (h : Plain e) {u : Expr} {us : List Expr} (hu : units e = u :: us) :
+    flat (foldMul u us) = flat e := by
+  cases h with
+  | mul a b as ha hb has =>
+    have hus : us ≠ [] := by
+      intro e'; subst e'
+      have h1 := units_ne_nil ha
+      have h2 := units_ne_nil hb
+      simp only [units, unitsList] at hu
+      cases h3 : units a with
+      | nil => exact h1 h3
+      | cons x xs =>
+        rw [h3] at hu; simp at hu
+        cases h4 : units b with
+        | nil => exact h2 h4
+        | cons y ys => rw [h4] at hu; simp at hu
+    rw [flat_foldMul u us hus]
+    have := mp_units (Plain.mul a b as ha hb has)
+    rw [hu] at this
+    simp only [List.flatMap_cons] at this
+    rw [← this]
+    simp [mp, flat]
+  | _ => simp [units] at hu; obtain ⟨rfl, rfl⟩ := hu; rfl
+
+/-- A sum's left fold over its summands flattens to it. -/
+theorem flat_foldAdd_summands {e : Expr} (h : Plain e) {s : Expr} {ss : List Expr} (hs : summands e = s :: ss) :
+    flat (foldAdd s ss) = flat e := by
+  cases h with
+  | add a b as ha hb has =>
+    have hss : ss ≠ [] := by
+      intro e'; subst e'
+      simp only [summands] at hs
+      cases h3 : summands a with
+      | nil => exact summands_ne_nil ha h3
+      | cons x xs => rw [h3] at hs; simp at hs
+    rw [flat_foldAdd s ss hss]
+    have := ap_summands (Plain.add a b as ha hb has)
+    rw [hs] at this
+    simp only [List.flatMap_cons] at this
+    rw [← this]
+    simp [ap, flat]
+  | _ => simp [summands] at hs; obtain ⟨rfl, rfl⟩ := hs; rfl
+
+def starTail (us : List Expr) : List T := us.flatMap (fun u => (.op, "*") :: ptoks u 3)
+def plusTail (ss : List Expr) : List T := ss.flatMap (fun s => (.op, "+") :: ptoks s 2)
+
+theorem ptoks_units {e : Expr} (h : Plain e) : ∀ {u : Expr} {us : List Expr}, units e = u :: us →
+    ptoks e 2 = ptoks u 3 ++ starTail us := by
+  induction h with
+  | mul a b as ha hb has iha ihb ihas =>
+    intro u us hu
+    have hl : ∀ l : List Expr, (∀ c ∈ l, Plain c ∧ ∀ {u us}, units c = u :: us → ptoks c 2 = ptoks u 3 ++ starTail us) →
+        rawTail "*" l = starTail (unitsList l) := by
+      intro l hl
+      induction l with
+      | nil => simp [rawTail, unitsList, starTail]
+      | cons x xs ih =>
+        obtain ⟨hx, hxt⟩ := hl x (by simp)
+        obtain ⟨v, vs, hv⟩ : ∃ v vs, units x = v :: vs := List.exists_cons_of_ne_nil (units_ne_nil hx)
+        simp only [rawTail, unitsList, hv, List.cons_append]
+        rw [ih (fun c hc => hl c (by simp [hc]))]
+        have := hxt hv
+        simp only [ptoks] at this
+        simp [this, starTail, ptoks]
+    obtain ⟨v, vs, hv⟩ : ∃ v vs, units a = v :: vs := List.exists_cons_of_ne_nil (units_ne_nil ha)
+    have ht := hl (b :: as) (by
+      intro c hc; simp at hc; rcases hc with rfl | hc
+      · exact ⟨hb, ihb⟩
+      · exact ⟨has c hc, ihas c hc⟩)
+    simp only [units, unitsList, hv, List.cons_append, List.cons.injEq] at hu
+    obtain ⟨rfl, rfl⟩ := hu
+    have ha2 := iha hv
+    simp only [ptoks] at ha2
+    simp only [ptoks, precOf_mul, raw]
+    rw [ht]
+    simp [ha2, starTail, unitsList]
+  | _ => intro u us hu; simp [units] at hu; obtain ⟨rfl, rfl⟩ := hu; simp [ptoks, precOf, starTail]
+
+theorem ptoks_summands {e : Expr} (h : Plain e) : ∀ {s : Expr} {ss : List Expr}, summands e = s :: ss →
+    ptoks e 1 = ptoks s 2 ++ plusTail ss := by
+  induction h with
+  | add a b as ha hb has iha _ _ =>
+    intro s ss hs
+    obtain ⟨v, vs, hv⟩ : ∃ v vs, summands a = v :: vs := List.exists_cons_of_ne_nil (summands_ne_nil ha)
+    simp only [summands, hv, List.cons_append, List.cons.injEq] at hs
+    obtain ⟨rfl, rfl⟩ := hs
+    have ha1 := iha hv
+    have hr : ∀ l : List Expr, rawTail "+" l = plusTail l := by
+      intro l; induction l with
+      | nil => simp [rawTail, plusTail]
+      | cons x xs ih => simp [rawTail, plusTail, ih, ptoks]
+    simp only [ptoks] at ha1
+    simp only [ptoks, precOf_add, raw]
+    rw [ha1]
+    simp [hr, plusTail]
+  | _ => intro s ss hs; simp [summands] at hs; obtain ⟨rfl, rfl⟩ := hs; simp [ptoks, precOf, plusTail]
+
+/-- A term's first token is neither an operator that a parser would take for something else, nor
+the `let` of a definition. -/
+def GoodHead (t : T) : Prop := t ≠ (.op, "-") ∧ t ≠ (.op, ")") ∧ t ≠ (.id, "let")
+
+theorem head_paren (b : Bool) {t : T} {ts : List T} (ht : GoodHead t) :
+    ∃ t' ts', paren b (t :: ts) = t' :: ts' ∧ GoodHead t' := by
+  cases b
+  · exact ⟨t, ts, rfl, ht⟩
+  · exact ⟨_, _, rfl, by simp [GoodHead]⟩
+
+theorem ptoks_head {e : Expr} (h : Plain e) : ∀ ctx, ∃ t ts, ptoks e ctx = t :: ts ∧ GoodHead t := by
+  induction h with
+  | num n => intro ctx; exact head_paren _ (by simp [GoodHead])
+  | var x _ hx =>
+    intro ctx
+    exact head_paren _ (by simp [GoodHead]; intro e; subst e; simp [reserved] at hx)
+  | fn f a hf _ _ =>
+    intro ctx
+    exact head_paren _ (by
+      simp [GoodHead]; intro e; subst e; simp [unaryNames] at hf)
+  | pow b x _ _ ihb _ =>
+    intro ctx
+    obtain ⟨t, ts, h1, h2⟩ := ihb 4
+    simp only [ptoks, raw] at h1 ⊢
+    rw [h1]
+    exact head_paren _ h2
+  | add a b as _ _ _ iha _ _ =>
+    intro ctx
+    obtain ⟨t, ts, h1, h2⟩ := iha 1
+    simp only [ptoks, raw] at h1 ⊢
+    rw [h1]
+    exact head_paren _ h2
+  | mul a b as _ _ _ iha _ _ =>
+    intro ctx
+    obtain ⟨t, ts, h1, h2⟩ := iha 2
+    simp only [ptoks, raw] at h1 ⊢
+    rw [h1]
+    exact head_paren _ h2
+
+/-! ## The parser reads the fragment's tokens back
+
+Four statements, one per level of the grammar: from a position where the tokens of `e` start, in
+the context of that level, and followed by a token the level stops at, the level's function reads a
+term that flattens to `e` and stops right after those tokens. -/
+
+def ALem (e : Expr) : Prop := ∀ (c : PCtx) (i : Nat), c.known = [] → Matches c i (ptoks e 4) →
+  ∃ e' m h, atom c i = .ok (e', ⟨m, h⟩) ∧ m = i + (ptoks e 4).length ∧ flat e' = flat e
+def ULem (e : Expr) : Prop := ∀ (c : PCtx) (i : Nat), c.known = [] → Matches c i (ptoks e 3) →
+  FollowU c (i + (ptoks e 3).length) →
+  ∃ e' m h, unary c i = .ok (e', ⟨m, h⟩) ∧ m = i + (ptoks e 3).length ∧ flat e' = flat e
+def TLem (e : Expr) : Prop := ∀ (c : PCtx) (i : Nat), c.known = [] → Matches c i (ptoks e 2) →
+  FollowT c (i + (ptoks e 2).length) →
+  ∃ e' m h, term c i = .ok (e', ⟨m, h⟩) ∧ m = i + (ptoks e 2).length ∧ flat e' = flat e
+def ELem (e : Expr) : Prop := ∀ (c : PCtx) (i : Nat), c.known = [] → Matches c i (ptoks e 1) →
+  FollowE c (i + (ptoks e 1).length) →
+  ∃ e' m h, expr c i = .ok (e', ⟨m, h⟩) ∧ m = i + (ptoks e 1).length ∧ flat e' = flat e
+
+theorem isOp_false_of_ne {t : Tok} {s : String} (h : strip t ≠ (.op, s)) : isOp t s = false := by
+  simp only [strip, ne_eq, Prod.mk.injEq] at h
+  simp only [isOp, Bool.and_eq_false_iff, beq_eq_false_iff_ne, ne_eq]
+  by_cases hk : t.kind = .op
+  · exact .inr (fun hs => h ⟨hk, hs⟩)
+  · exact .inl hk
+
+theorem head_isOp {e : Expr} (h : Plain e) {c : PCtx} {i : Nat} {ctx : Nat} (hm : Matches c i (ptoks e ctx)) :
+    isOp (c.tok i) "-" = false ∧ isOp (c.tok i) ")" = false ∧ ¬((c.tok i).kind = .id ∧ (c.tok i).s = "let") := by
+  obtain ⟨t, ts, ht, hg⟩ := ptoks_head h ctx
+  rw [ht, matches_cons] at hm
+  have h0 := hm.1
+  obtain ⟨g1, g2, g3⟩ := hg
+  subst h0
+  refine ⟨isOp_false_of_ne g1, isOp_false_of_ne g2, ?_⟩
+  intro hc; apply g3; simp [strip, hc]
+
+theorem ptoks_three_four {e : Expr} (h3 : precOf e ≠ 3) : ptoks e 3 = ptoks e 4 := by
+  simp only [ptoks]
+  have : precOf e ≤ 4 := by unfold precOf; split <;> omega
+  congr 1
+  simp; omega
+
+theorem ptoks_two_three {e : Expr} (h2 : precOf e ≠ 2) : ptoks e 2 = ptoks e 3 := by
+  simp only [ptoks]
+  have : precOf e ≤ 4 := by unfold precOf; split <;> omega
+  have : 1 ≤ precOf e := by unfold precOf; split <;> omega
+  congr 1
+  simp; omega
+
+theorem ptoks_one_two {e : Expr} (h1 : precOf e ≠ 1) : ptoks e 1 = ptoks e 2 := by
+  simp only [ptoks]
+  have : 1 ≤ precOf e := by unfold precOf; split <;> omega
+  congr 1
+  simp; omega
+
+/-- G1: a factor that is not a power is read by `atom`, and nothing after it continues it. -/
+theorem ulem_of_alem {e : Expr} (h : Plain e) (hA : ALem e) (h3 : precOf e ≠ 3) : ULem e := by
+  intro c i hc hm hf
+  rw [ptoks_three_four h3] at hm hf ⊢
+  obtain ⟨e', m, hm', ha, rfl, hfl⟩ := hA c i hc hm
+  refine ⟨e', _, hm', ?_, rfl, hfl⟩
+  rw [unary_power c i (head_isOp h hm).1]
+  exact power_atom c i ha (followU_isOp hf (by decide)) (followU_isOp hf (by decide))
+
+/-- `* u * v …`: `termLoop` reads the factors, building the left fold. -/
+theorem termLoop_units : ∀ (us : List Expr), (∀ u ∈ us, ULem u) →
+    ∀ (c : PCtx) (j : Nat) (hj : j ≤ c.toks.size) (lhs : Expr), c.known = [] → Matches c j (starTail us) →
+    FollowT c (j + (starTail us).length) →
+    ∃ r m h, termLoop c lhs j hj = .ok (r, ⟨m, h⟩) ∧ m = j + (starTail us).length ∧ flat r = flat (foldMul lhs us)
+  | [], _, c, j, hj, lhs, _, _, hf => by
+    simp only [starTail, List.flatMap_nil, List.length_nil, Nat.add_zero] at hf ⊢
+    exact ⟨lhs, j, ⟨Nat.le_refl _, hj⟩, termLoop_stop c lhs j hj hf, rfl, rfl⟩
+  | u :: us, hU, c, j, hj, lhs, hc, hm, hf => by
+    have hst : starTail (u :: us) = (.op, "*") :: (ptoks u 3 ++ starTail us) := by simp [starTail]
+    rw [hst, matches_cons, matches_append] at hm
+    obtain ⟨h0, hmu, hmus⟩ := hm
+    rw [hst] at hf
+    simp only [List.length_cons, List.length_append] at hf
+    have hfu : FollowU c (j + 1 + (ptoks u 3).length) := by
+      cases us with
+      | nil => simp [starTail] at hf ⊢; exact .inl (by rw [show j + 1 + (ptoks u 3).length = j + ((ptoks u 3).length + 1) by omega]; exact hf)
+      | cons v vs =>
+        have : starTail (v :: vs) = (.op, "*") :: (ptoks v 3 ++ starTail vs) := by simp [starTail]
+        rw [this, matches_cons] at hmus
+        exact .inr hmus.1
+    obtain ⟨u', k, hk, hu, rfl, hfl⟩ := hU u (by simp) c (j + 1) hc hmu hfu
+    obtain ⟨r, m, hm', hl, rfl, hfr⟩ := termLoop_units us (fun v hv => hU v (by simp [hv])) c _ hk.2
+      (.mul [lhs, u']) hc hmus (by rw [show j + 1 + (ptoks u 3).length + (starTail us).length =
+        j + ((ptoks u 3).length + (starTail us).length + 1) by omega]; exact hf)
+    obtain ⟨h', hres⟩ := termLoop_star c lhs j hj h0 hu hl
+    refine ⟨r, _, h', hres, by rw [hst]; simp; omega, ?_⟩
+    rw [hfr]
+    simp only [foldMul, List.foldl_cons]
+    exact flat_foldMul_congr (by rw [flat_mul2, flat_mul2, mp_congr hfl]) us
+
+/-- `+ s + t …`: `exprLoop` reads the terms, building the left fold. -/
+theorem exprLoop_summands : ∀ (ss : List Expr), (∀ s ∈ ss, TLem s) →
+    ∀ (c : PCtx) (j : Nat) (hj : j ≤ c.toks.size) (lhs : Expr), c.known = [] → Matches c j (plusTail ss) →
+    FollowE c (j + (plusTail ss).length) →
+    ∃ r m h, exprLoop c lhs j hj = .ok (r, ⟨m, h⟩) ∧ m = j + (plusTail ss).length ∧ flat r = flat (foldAdd lhs ss)
+  | [], _, c, j, hj, lhs, _, _, hf => by
+    simp only [plusTail, List.flatMap_nil, List.length_nil, Nat.add_zero] at hf ⊢
+    exact ⟨lhs, j, ⟨Nat.le_refl _, hj⟩, exprLoop_stop c lhs j hj hf, rfl, rfl⟩
+  | s :: ss, hT, c, j, hj, lhs, hc, hm, hf => by
+    have hst : plusTail (s :: ss) = (.op, "+") :: (ptoks s 2 ++ plusTail ss) := by simp [plusTail]
+    rw [hst, matches_cons, matches_append] at hm
+    obtain ⟨h0, hms, hmss⟩ := hm
+    rw [hst] at hf
+    simp only [List.length_cons, List.length_append] at hf
+    have hft : FollowT c (j + 1 + (ptoks s 2).length) := by
+      cases ss with
+      | nil => simp [plusTail] at hf ⊢; exact .inl (by rw [show j + 1 + (ptoks s 2).length = j + ((ptoks s 2).length + 1) by omega]; exact hf)
+      | cons v vs =>
+        have : plusTail (v :: vs) = (.op, "+") :: (ptoks v 2 ++ plusTail vs) := by simp [plusTail]
+        rw [this, matches_cons] at hmss
+        exact .inr hmss.1
+    obtain ⟨s', k, hk, hs, rfl, hfl⟩ := hT s (by simp) c (j + 1) hc hms hft
+    obtain ⟨r, m, hm', hl, rfl, hfr⟩ := exprLoop_summands ss (fun v hv => hT v (by simp [hv])) c _ hk.2
+      (.add [lhs, s']) hc hmss (by rw [show j + 1 + (ptoks s 2).length + (plusTail ss).length =
+        j + ((ptoks s 2).length + (plusTail ss).length + 1) by omega]; exact hf)
+    obtain ⟨h', hres⟩ := exprLoop_plus c lhs j hj h0 hs hl
+    refine ⟨r, _, h', hres, by rw [hst]; simp; omega, ?_⟩
+    rw [hfr]
+    simp only [foldAdd, List.foldl_cons]
+    exact flat_foldAdd_congr (by rw [flat_add2, flat_add2, ap_congr hfl]) ss
+
+/-- G2: a term is read as its units joined by `*`. -/
+theorem tlem_of_units {e : Expr} (h : Plain e) (hU : ∀ u ∈ units e, ULem u) : TLem e := by
+  intro c i hc hm hf
+  obtain ⟨u, us, hu⟩ := List.exists_cons_of_ne_nil (units_ne_nil h)
+  rw [ptoks_units h hu] at hm hf ⊢
+  rw [matches_append] at hm
+  obtain ⟨hmu, hmus⟩ := hm
+  simp only [List.length_append] at hf ⊢
+  have hfu : FollowU c (i + (ptoks u 3).length) := by
+    cases us with
+    | nil => simp [starTail] at hf ⊢; exact .inl hf
+    | cons v vs =>
+      have : starTail (v :: vs) = (.op, "*") :: (ptoks v 3 ++ starTail vs) := by simp [starTail]
+      rw [this, matches_cons] at hmus
+      exact .inr hmus.1
+  obtain ⟨u', k, hk, hu', rfl, hfl⟩ := hU u (by simp [hu]) c i hc hmu hfu
+  obtain ⟨r, m, hm', hl, rfl, hfr⟩ := termLoop_units us (fun v hv => hU v (by simp [hu, hv])) c _ hk.2 u' hc hmus
+    (by rw [← Nat.add_assoc] at hf; exact hf)
+  obtain ⟨h', hres⟩ := term_spec c i hu' hl
+  refine ⟨r, _, h', hres, by omega, ?_⟩
+  rw [hfr, flat_foldMul_congr hfl us, flat_foldMul_units h hu]
+
+/-- G3: an expression is read as its summands joined by `+`. -/
+theorem elem_of_summands {e : Expr} (h : Plain e) (hT : ∀ s ∈ summands e, TLem s) : ELem e := by
+  intro c i hc hm hf
+  obtain ⟨s, ss, hs⟩ := List.exists_cons_of_ne_nil (summands_ne_nil h)
+  rw [ptoks_summands h hs] at hm hf ⊢
+  rw [matches_append] at hm
+  obtain ⟨hms, hmss⟩ := hm
+  simp only [List.length_append] at hf ⊢
+  have hft : FollowT c (i + (ptoks s 2).length) := by
+    cases ss with
+    | nil => simp [plusTail] at hf ⊢; exact .inl hf
+    | cons v vs =>
+      have : plusTail (v :: vs) = (.op, "+") :: (ptoks v 2 ++ plusTail vs) := by simp [plusTail]
+      rw [this, matches_cons] at hmss
+      exact .inr hmss.1
+  obtain ⟨s', k, hk, hs', rfl, hfl⟩ := hT s (by simp [hs]) c i hc hms hft
+  obtain ⟨r, m, hm', hl, rfl, hfr⟩ := exprLoop_summands ss (fun v hv => hT v (by simp [hs, hv])) c _ hk.2 s' hc hmss
+    (by rw [← Nat.add_assoc] at hf; exact hf)
+  obtain ⟨h', hres⟩ := expr_spec c i hs' hl
+  refine ⟨r, _, h', hres, by omega, ?_⟩
+  rw [hfr, flat_foldAdd_congr hfl ss, flat_foldAdd_summands h hs]
+
+/-- G4: a term that binds looser than an atom is read in its parentheses. -/
+theorem alem_of_elem {e : Expr} (hE : ELem e) (h4 : precOf e < 4) : ALem e := by
+  intro c i hc hm
+  have h1 : 1 ≤ precOf e := by unfold precOf; split <;> omega
+  have hp4 : ptoks e 4 = (.op, "(") :: (ptoks e 1 ++ [(.op, ")")]) := by
+    simp only [ptoks, paren]; simp [h4]; omega
+  rw [hp4, matches_cons, matches_append, matches_cons] at hm
+  obtain ⟨h0, hme, hr, _⟩ := hm
+  obtain ⟨e', j, hj, he, rfl, hfl⟩ := hE c (i + 1) hc hme (.inr hr)
+  obtain ⟨h', ha⟩ := atom_paren c i h0 he hr
+  refine ⟨e', _, h', ha, ?_, hfl⟩
+  rw [hp4]; simp; omega
+
+theorem alem_num (n : Nat) : ALem (.num (Q.ofInt n)) := by
+  intro c i hc hm
+  have hp : ptoks (.num (Q.ofInt n)) 4 = [(.num, toString (n : Int))] := by simp [ptoks, raw, ofInt_num]
+  rw [hp, matches_cons] at hm
+  simp only [strip, Prod.mk.injEq] at hm
+  obtain ⟨⟨hk, hs⟩, _⟩ := hm
+  have hq : Q.parse (c.tok i).s = some (Q.ofInt n) := by rw [hs]; exact parse_digits n
+  obtain ⟨h', ha⟩ := atom_num c i hk hq
+  exact ⟨_, _, h', ha, by rw [hp]; rfl, rfl⟩
+
+theorem alem_var (x : String) (hx : x ∉ reserved) : ALem (.var x) := by
+  intro c i hc hm
+  have hp : ptoks (.var x) 4 = [(.id, x)] := by simp [ptoks, raw]
+  rw [hp, matches_cons] at hm
+  simp only [strip, Prod.mk.injEq] at hm
+  obtain ⟨⟨hk, hs⟩, _⟩ := hm
+  obtain ⟨h', ha⟩ := atom_var c i hk hc (by rw [hs]; exact hx)
+  rw [hs] at ha
+  exact ⟨_, _, h', ha, by rw [hp]; rfl, rfl⟩
+
+theorem mkCall_unary {f : String} (hf : f ∈ unaryNames) (args : List Expr) : mkCall f args = .fn f args := by
+  have : reciprocalOf f = none := by
+    simp only [unaryNames, List.mem_cons, List.mem_nil_iff, or_false] at hf
+    rcases hf with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> rfl
+  unfold mkCall; rw [this]
+
+theorem alem_fn {f : String} (hf : f ∈ unaryNames) {a : Expr} (ha : Plain a) (hE : ELem a) :
+    ALem (.fn f [a]) := by
+  intro c i hc hm
+  have hp : ptoks (.fn f [a]) 4 = (.id, f) :: (.op, "(") :: (ptoks a 1 ++ [(.op, ")")]) := by
+    simp [ptoks, raw]
+  rw [hp, matches_cons, matches_cons, matches_append, matches_cons] at hm
+  obtain ⟨h0, hlp, hma, hr, _⟩ := hm
+  simp only [strip, Prod.mk.injEq] at h0
+  obtain ⟨a', j, hj, he, rfl, hfl⟩ := hE c (i + 1 + 1) hc hma (.inr hr)
+  obtain ⟨h1, hca⟩ := callArgs_one c (i + 1 + 1) (head_isOp ha hma).2.1 he hr
+  obtain ⟨h2, hat⟩ := atom_call c i h0.1 hf h0.2 hlp hca
+  rw [mkCall_unary hf] at hat
+  refine ⟨_, _, h2, hat, by rw [hp]; simp; omega, ?_⟩
+  simp [flat, flatList, hfl]
+
+theorem ulem_pow {b x : Expr} (hb : Plain b) (hA : ALem b) (hU : ULem x) : ULem (.pow b x) := by
+  intro c i hc hm hf
+  have hp : ptoks (.pow b x) 3 = ptoks b 4 ++ (.op, "^") :: ptoks x 3 := by simp [ptoks, raw]
+  rw [hp, matches_append, matches_cons] at hm
+  obtain ⟨hmb, h0, hmx⟩ := hm
+  rw [hp] at hf
+  simp only [List.length_append, List.length_cons] at hf
+  obtain ⟨b', j, hj, hab, rfl, hfb⟩ := hA c i hc hmb
+  obtain ⟨x', k, hk, hux, rfl, hfx⟩ := hU c (i + (ptoks b 4).length + 1) hc hmx
+    (by rw [show i + (ptoks b 4).length + 1 + (ptoks x 3).length = i + ((ptoks b 4).length + ((ptoks x 3).length + 1)) by omega]; exact hf)
+  obtain ⟨h', hpw⟩ := power_pow c i hab h0 hux
+  refine ⟨.pow b' x', _, h', ?_, by rw [hp]; simp; omega, ?_⟩
+  · rw [unary_power c i (head_isOp hb hmb).1]; exact hpw
+  · simp [flat, hfb, hfx]
+
+/-- All four levels read `e`, and the levels below a product and a sum read its units and terms. -/
+def Good (e : Expr) : Prop :=
+  ALem e ∧ ULem e ∧ TLem e ∧ ELem e ∧ (∀ u ∈ units e, ULem u) ∧ (∀ s ∈ summands e, TLem s)
+
+/-- An atom of the fragment, read at every level. -/
+theorem good_of_alem {e : Expr} (h : Plain e) (hA : ALem e) (h4 : precOf e = 4) (hu : units e = [e])
+    (hs : summands e = [e]) : Good e := by
+  have hU := ulem_of_alem h hA (by omega)
+  have hT := tlem_of_units h (by rw [hu]; simpa using hU)
+  have hE := elem_of_summands h (by rw [hs]; simpa using hT)
+  exact ⟨hA, hU, hT, hE, by rw [hu]; simpa using hU, by rw [hs]; simpa using hT⟩
+
+theorem good {e : Expr} (h : Plain e) : Good e := by
+  induction h with
+  | num n => exact good_of_alem (.num n) (alem_num n) rfl rfl rfl
+  | var x hx hr => exact good_of_alem (.var x hx hr) (alem_var x hr) rfl rfl rfl
+  | fn f a hf ha iha => exact good_of_alem (.fn f a hf ha) (alem_fn hf ha iha.2.2.2.1) rfl rfl rfl
+  | pow b x hb hx ihb ihx =>
+    have hp := Plain.pow b x hb hx
+    have hU := ulem_pow hb ihb.1 ihx.2.1
+    have hT := tlem_of_units hp (by simpa [units] using hU)
+    have hE := elem_of_summands hp (by simpa [summands] using hT)
+    exact ⟨alem_of_elem hE (by simp), hU, hT, hE, by simpa [units] using hU, by simpa [summands] using hT⟩
+  | mul a b as ha hb has iha ihb ihas =>
+    have hp := Plain.mul a b as ha hb has
+    have hUs : ∀ u ∈ units (.mul (a :: b :: as)), ULem u := by
+      intro u hu
+      simp only [units, unitsList] at hu
+      have hl : ∀ l : List Expr, (∀ c ∈ l, Good c) → ∀ u ∈ unitsList l, ULem u := by
+        intro l hl; induction l with
+        | nil => simp [unitsList]
+        | cons x xs ih =>
+          intro u hu; simp only [unitsList, List.mem_append] at hu
+          rcases hu with hu | hu
+          · exact (hl x (by simp)).2.2.2.2.1 u hu
+          · exact ih (fun c hc => hl c (by simp [hc])) u hu
+      simp only [List.mem_append] at hu
+      rcases hu with hu | hu | hu
+      · exact iha.2.2.2.2.1 u hu
+      · exact ihb.2.2.2.2.1 u hu
+      · exact hl as ihas u hu
+    have hT := tlem_of_units hp hUs
+    have hE := elem_of_summands hp (by simpa [summands] using hT)
+    have hA := alem_of_elem hE (by simp)
+    exact ⟨hA, ulem_of_alem hp hA (by simp), hT, hE, hUs, by simpa [summands] using hT⟩
+  | add a b as ha hb has iha ihb ihas =>
+    have hp := Plain.add a b as ha hb has
+    have hTs : ∀ s ∈ summands (.add (a :: b :: as)), TLem s := by
+      intro s hs
+      simp only [summands, List.mem_append, List.mem_cons] at hs
+      rcases hs with hs | rfl | hs
+      · exact iha.2.2.2.2.2 s hs
+      · exact ihb.2.2.1
+      · exact (ihas s hs).2.2.1
+    have hE := elem_of_summands hp hTs
+    have hA := alem_of_elem hE (by simp)
+    have hU := ulem_of_alem hp hA (by simp)
+    have hT := tlem_of_units hp (by simpa [units] using hU)
+    exact ⟨hA, hU, hT, hE, by simpa [units] using hU, hTs⟩
+
+/-! ## The round trip -/
+
+theorem matches_of_lex {arr : Array Tok} {L : List T} (h : arr.toList.map strip = L) (known : List String) :
+    Matches ⟨arr, known⟩ 0 L := by
+  subst h
+  intro k hk
+  simp only [List.length_map, Array.length_toList] at hk
+  simp [PCtx.tok, Array.getD_eq_getD_getElem?, hk]
+
+/-- **Round trip.** On the fragment, the printed text of a term parses back to a term that is the
+same up to how sums in sums and products in products are bracketed. -/
+theorem parse_toText {e : Expr} (h : Plain e) : ∃ e', parse e.toText = .ok e' ∧ flat e' = flat e := by
+  have hp : e.toText.toList = render (ptoks e 1) := (printRaw_plain h).print [] 1
+  obtain ⟨arr, hlex, hstrip⟩ := lex_render (ptoks e 1) (lexable_plain h 1) 0 #[]
+  have hl : lex e.toText = .ok arr := by unfold lex; rw [hp]; exact hlex
+  simp only [List.map_nil, List.nil_append] at hstrip
+  have hm := matches_of_lex hstrip []
+  rw [matches_append] at hm
+  obtain ⟨hme, heof⟩ := hm
+  have hf : FollowE ⟨arr, []⟩ (0 + (ptoks e 1).length) := by
+    rw [matches_cons] at heof
+    left; simp only [strip, Prod.mk.injEq] at heof; exact heof.1.1
+  obtain ⟨e', m, hmh, he, rfl, hfl⟩ := (good h).2.2.2.1 ⟨arr, []⟩ 0 rfl hme hf
+  have hlet := (head_isOp h hme).2.2
+  refine ⟨e', ?_, hfl⟩
+  unfold parse parseStmt
+  simp only [hl, except_bind_ok]
+  have hk : ((PCtx.tok ⟨arr, []⟩ 0).kind == .id && (PCtx.tok ⟨arr, []⟩ 0).s == "let") = false := by
+    simp only [Bool.and_eq_false_iff, beq_eq_false_iff_ne, ne_eq]
+    by_cases h1 : (PCtx.tok ⟨arr, []⟩ 0).kind = .id
+    · exact .inr (fun h2 => hlet ⟨h1, h2⟩)
+    · exact .inl h1
+  have heof' : (PCtx.tok ⟨arr, []⟩ (0 + (ptoks e 1).length)).kind = .eof := hf.elim id (fun h => by
+    rw [matches_cons] at heof; simp only [strip, Prod.mk.injEq] at heof h; rw [heof.1.1] at h; exact absurd h.1 (by decide))
+  simp only [Nat.zero_add] at heof'
+  simp [hk, he, heof']
+  rfl
+
+/-- `x^2 + 3*sin(x)` is in the fragment, so `parse_toText` applies to it. -/
+example : Plain (.add [.pow (.var "x") (.num (Q.ofInt (2 : Nat))),
+    .mul [.num (Q.ofInt (3 : Nat)), .fn "sin" [.var "x"]]]) :=
+  have hx : Plain (.var "x") := .var "x" (by simp [isIdent, lex.isIdStart, lex.isGreek])
+    (by simp [reserved, builtinFunctions])
+  .add _ _ [] (.pow _ _ hx (.num 2)) (.mul _ _ [] (.num 3) (.fn "sin" _ (by simp [unaryNames]) hx) nofun) nofun
 
 end RoundTrip
 end MathEngine
