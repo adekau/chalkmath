@@ -1144,7 +1144,7 @@ export const FUNCTIONS: FnDoc[] = [
     usage: [["critical(R)", "finds where two rules overlap, and whether the two results of each overlap rewrite to the same normal form."]],
     details: [
       "A critical pair comes from a term where one rule applies at the root and another (or the same one, deeper) inside it; the two rewrites give the pair. Each side is rewritten to normal form: when every pair joins, the system is locally confluent, and if it also terminates, confluent (Newman's lemma), so every term has one normal form.",
-      "A pair that does not join is a choice the rules leave open; adding a rule between its two normal forms is the start of Knuth–Bendix completion.",
+      "A pair whose sides reach two different normal forms is a choice the rules leave open, and the system is not confluent; adding a rule between the two is the start of Knuth–Bendix completion. Sides that keep rewriting past the step limit without meeting leave the question undecided.",
     ],
     examples: [
       basic("let A = rules(add(0, y) -> y; add(s(x), y) -> s(add(x, y)))", "critical(A)"),

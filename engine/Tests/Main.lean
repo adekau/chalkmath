@@ -403,7 +403,13 @@ def sessionTests : TestM Unit := do
   let te := (trs stT "terminates(A; add(x, y) = 2x + y, s(x) = x + 1)").2
   checkTrue "terminates: a step per rule, with its forms" (contains te "\"rule\":\"trs.decrease\"" && contains te "the left side's interpretation is 2x + y + 2, the right side's 2x + y + 1: larger") te
   let cr := (trs stT "critical(C)").2
-  checkTrue "critical: an overlap of a rule with itself, not joinable" (contains cr "\"rule\":\"trs.critical\"" && contains cr "not joinable" && contains cr "position [0]") cr
+  checkTrue "critical: an overlap of a rule with itself, two normal forms" (contains cr "\"rule\":\"trs.critical\"" && contains cr "the system is not confluent" && contains cr "position [0]") cr
+  let (stT, _) := trs stT "let L = rules(r1: f(x) -> f(x); r2: f(x) -> f(x))"
+  let cl := (trs stT "critical(L)").2
+  checkTrue "critical: a pair that rewrites for ever but meets joins" (contains cl "all joinable" && !contains cl "not confluent") cl
+  let (stT, _) := trs stT "let U = rules(r1: f(x) -> g(x); r2: f(x) -> h(x); g(x) -> g(x); h(x) -> h(x))"
+  let cu := (trs stT "critical(U)").2
+  checkTrue "critical: sides that rewrite for ever apart are undecided, not refuted" (contains cu "undecided" && !contains cu "not confluent") cu
   check "rewriting: a variable keeps its name, a constant is a symbol" (toString ((TRS.parseTerm "f(x1, e, y')").toOption.getD default)) "f(x1, e, y')"
   check "rewriting: renamed-apart variables get their names back" (toString (TRS.tidy [.f "f" [.v "x''", .v "z'", .v "x'"]])) "[f(x, z, x')]"
   check "replicas: the map prints in LaTeX" ((Expr.fn "set" [.fn "↦" [.var "a", .num (Q.ofInt 2)]]).toLatex false) "\\{a \\mapsto 2\\}"

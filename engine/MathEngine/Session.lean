@@ -1251,19 +1251,29 @@ def systemCell (s : Session) (cellId source : String) :
     | "critical" =>
       let R ← getT body.trimAscii.copy
       let cps := TRS.critical R
+      -- each pair is checked to be a real overlap; a pair joins when both sides reach the same term,
+      -- and two different normal forms of the peak show the system is not confluent
+      for c in cps do
+        if !c.isPeak then throw s!"internal: the overlap of {c.outer.name} and {c.inner.name} does not check"
       let results := cps.map fun c =>
         let (_, nl, okl) := TRS.normalize R c.left
         let (_, nr, okr) := TRS.normalize R c.right
-        (c, nl, nr, okl && okr && nl == nr)
-      let steps := (results.map fun (c, nl, nr, joined) =>
+        (c, nl, nr, if nl == nr then some true else if okl && okr then some false else none)
+      let steps := (results.map fun (c, nl, nr, verdict) =>
         step "trs.critical" (s!"{c.outer.name} at the root and {c.inner.name} at position {c.pos} overlap on this term. It rewrites to {c.left} and to {c.right}, which reduce to {nl} and {nr}: " ++
-          (if joined then "joinable." else "not joinable."))
-          c.peak.toExpr (.fn (if joined then "=" else "≠") [nl.toExpr, nr.toExpr])).toArray
+          (match verdict with
+           | some true => "joinable."
+           | some false => "two different normal forms of one term, so not joinable this way, and the system is not confluent."
+           | none => "no common term within the step limit, and no normal form to compare: undecided."))
+          c.peak.toExpr (.fn (match verdict with | some true => "=" | _ => "≠") [nl.toExpr, nr.toExpr])).toArray
       let value := Expr.fn "set" (cps.map fun c => .fn "pair" [c.left.toExpr, c.right.toExpr])
-      let bad := (results.filter fun (_, _, _, j) => !j).length
+      let bad := (results.filter fun (_, _, _, v) => v == some false).length
+      let open_ := (results.filter fun (_, _, _, v) => v.isNone).length
+      let pairs := s!"{cps.length} critical pair{if cps.length == 1 then "" else "s"}"
       let say := if cps.isEmpty then "no critical pairs: locally confluent"
-        else if bad == 0 then s!"{cps.length} critical pair{if cps.length == 1 then "" else "s"}, all joinable: locally confluent, and confluent if it terminates (Newman's lemma)"
-        else s!"{cps.length} critical pair{if cps.length == 1 then "" else "s"}, {bad} not joinable: not confluent"
+        else if bad > 0 then s!"{pairs}, {bad} with two different normal forms: not confluent"
+        else if open_ > 0 then s!"{pairs}, {open_} not joined within the step limit: undecided"
+        else s!"{pairs}, all joinable: locally confluent, and confluent if it terminates (Newman's lemma)"
       return done value steps say
     | "replicas" =>
       let (kind, replicas, evs) ← Rep.parse body

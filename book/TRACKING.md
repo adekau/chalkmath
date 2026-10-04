@@ -899,5 +899,11 @@ Phases:
    asked only whether a whole strongly connected set of ¬φ states held a fair loop, which is enough for weak fairness
    but not strong: a set where a strongly fair action is enabled somewhere and never taken can still hold a fair loop
    in the part where it is disabled. `eventually(F, p = c)` (`stay` at `a` forever never enables `fin`) answered
-   `true`; it is `false`, with the loop `a → a`. The search now looks again inside such a set. Open: shortest
-   traces, `trs.critical`, the symbolic row operations.
+   `true`; it is `false`, with the loop `a → a`. The search now looks again inside such a set. Traces to a state
+   that breaks an invariant, or that `reach` looks for, are checked shortest by their breadth-first depths
+   (`checkShortest_spec`), and start at an initial state (checked). `critical` checks each overlap is one
+   (`isPeak_sound`). Finding: a side that rewrote past the step limit counted as a normal form, so
+   `rules(r1: f(x) -> f(x); r2: f(x) -> f(x))`, trivially confluent, was "not joinable: not confluent". A pair now
+   joins when both sides reach one term, refutes confluence only with two different normal forms, and is
+   otherwise undecided. Open: `trs.critical`'s "locally confluent" (unification complete, and the critical pair
+   lemma), the symbolic row operations.
