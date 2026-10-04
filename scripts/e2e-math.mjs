@@ -5,14 +5,16 @@
 // carries `let` bindings from one cell to the next, an error shows as the cell's error, and opening a
 // cell's work shows the step that produced the answer, under the notebook's name for its rule.
 //   node scripts/e2e-math.mjs [screenshot.png]
+// First, from a fresh browser, the welcome tab shown while no notebook is open, and Manim Studio
+// opened from it and from the View menu, sent a derivation and closed.
 // Then the notebook's teaching features, in a notebook of their own: a cell out of date when a name it
 // read changes, a slider driving the cells below it, work stepped through with the answer held back,
 // an exercise written in its editor and answered (wrong, right, and with the work), a Markdown
 // callout, a function's usage on hover, a truth table and a relation's graph, an operation table, a
 // typing tree, a logic exercise, a system typed over several lines, manipulate (a plot played, a
-// derivative and a column of a plot and a calculation dragged, against the engine's own frames), and a
-// course's lesson opened from the Courses tab, answered, and followed to the next. Each is held to the
-// engine's own answers through a client of the test's.
+// derivative and a column of a plot and a calculation dragged, against the engine's own frames), the tab
+// bar with more notebooks open than fit, and a course's lesson opened from the Courses tab, answered,
+// and followed to the next. Each is held to the engine's own answers through a client of the test's.
 // Chromium: playwright-core's own, or the executable named by CHROMIUM. The engine: MATHENGINE, or
 // engine/.lake/build/bin/mathengine.
 import { chromium } from "playwright-core";
@@ -32,6 +34,9 @@ const CASES = [
   { src: "[1,2;3,4] * [5,6;7,8]", text: "[19, 22; 43, 50]", step: "Matrix product" },
   { src: "[1, 2] ./ [3, 10]", text: "[1/3, 1/5]", step: "Entrywise division" },
   { src: "N(sin(10^30))", text: "-0.0901169019121381", step: "Numerical value" },
+  { src: "N((-8)^(1/3))", text: "1 + 1.73205080756888*i", step: "Numerical value" },
+  { src: "diff(ln(x), x)", text: "1/x", step: "Chain rule, assuming" },
+  { src: "ln(x^2)", text: "2*ln(x)", step: "Function value, assuming a positive argument" },
   // inverse trigonometric functions, and sec, csc, cot as reciprocals
   { src: "diff(arctan(x), x)", text: "1/(x^2 + 1)", step: "Chain rule" },
   { src: "integrate(1/(4+x^2), x)", text: "arctan(x/2)/2", step: "Arctangent integral" },
@@ -219,6 +224,98 @@ async function manipulate() {
   console.log(`✓ manipulate: h played over ${want.frames.length} frames with the axes held; diff(x^n, x) at n = 3 is ${want2.frames[2].rendered.text}; a column's plot and calculation, h^2 + 1 = ${calc.rendered.text} at h = 3`);
 }
 
+/** The tab bar with more notebooks open than fit: each tab one line with its name short of `.chalk`, a
+ *  long name cut short, the studio (opened) still in view; the ⌄ lists every notebook and shows the one
+ *  chosen, scrolled into view; the middle button closes a tab. */
+async function tabs() {
+  const long = "a-notebook-with-a-name-far-too-long-for-any-tab.chalk";
+  await menu("File", "New notebook");
+  page.once("dialog", (d) => d.accept(long));
+  await menu("File", "Save as");
+  const strip = page.locator(".tabbar .tabstrip .tab");
+  let added = 0;
+  while (!(await page.locator(".tabbar.overflow").count())) {
+    assert.ok(++added <= 40, "the tab strip never overflows");
+    await page.locator(".tabbar .tabadd").click();
+  }
+  const shape = await strip.evaluateAll((ts) => ts.map((t) => ({ title: t.title, name: t.querySelector(".nm").textContent, h: t.offsetHeight, cut: t.querySelector(".nm").scrollWidth > t.querySelector(".nm").clientWidth })));
+  assert.ok(shape.every((t) => !t.name.endsWith(".chalk")), "a tab shows .chalk");
+  assert.equal(new Set(shape.map((t) => t.h)).size, 1, `the tabs are not all one line: heights ${[...new Set(shape.map((t) => t.h))]}`);
+  const lt = shape.find((t) => t.title === long);
+  assert.ok(lt, "no tab has the long name whole on hover"); assert.equal(lt.name, long.replace(/\.chalk$/, ""));
+  assert.ok(lt.cut, "the long name is not cut short");
+  await menu("View", "Manim Studio");
+  const studio = await page.locator(".tabbar .tabplaces .tab", { hasText: "manim studio" }).boundingBox();
+  assert.ok(studio && studio.x + studio.width <= page.viewportSize().width, "the studio's tab is pushed out of view");
+  // the list: every open notebook; the long one chosen is shown and scrolled to
+  await page.locator(".tabbar .tabstrip .tab").first().click();
+  await page.locator(".tabbar .tabmore").click();
+  assert.equal(await page.locator(".tablist .item").count(), shape.length, "the list is not every open notebook");
+  await page.locator(".tablist .item", { hasText: long.replace(/\.chalk$/, "") }).click();
+  assert.equal(await page.locator(".tablist").count(), 0, "the list stays open after a choice");
+  assert.equal(await page.locator(".tabstrip .tab.on").getAttribute("title"), long, "the notebook chosen is not shown");
+  assert.ok(await page.locator(".tabstrip").evaluate((s) => { const on = s.querySelector(".tab.on"); return on.offsetLeft >= s.scrollLeft - 1 && on.offsetLeft + on.offsetWidth <= s.scrollLeft + s.clientWidth + 1; }), "the notebook chosen is not scrolled into view");
+  // the middle button closes the untitled notebooks opened here, each in the background: the long one stays shown
+  for (let k = 0; k < added; k++) {
+    const n = await strip.count();
+    await page.locator(".tabstrip .tab:not(.on)", { hasText: "untitled" }).last().click({ button: "middle" });
+    assert.equal(await strip.count(), n - 1, "the middle button does not close a tab");
+    assert.equal(await page.locator(".tabstrip .tab.on").getAttribute("title"), long, "closing a tab in the background changed the notebook shown");
+  }
+  await page.locator(".tabbar .tab", { hasText: "manim studio" }).locator(".x").click();
+  console.log(`✓ tabs: ${shape.length} open, one line each, the long name cut short, the list showing it, ${added} closed with the middle button`);
+}
+
+/** The tabs around the notebooks, from a fresh browser: the welcome tab while no notebook is open (not
+ *  a blank notebook made for the reader), Manim Studio opened from it and from the View menu and
+ *  closed by its ×, the last notebook closed bringing the welcome tab back, and a derivation sent to
+ *  the studio as the engine's own steps. */
+async function welcome() {
+  const tabs = () => page.locator(".tabbar .tab .label").allTextContents();
+  const current = () => page.locator(".tabbar .tab.on .label").textContent();
+  await page.locator(".welcome .wlcard").first().waitFor({ timeout: 10000 });
+  assert.deepEqual(await tabs(), ["welcome"], "a fresh browser shows the welcome tab and nothing else");
+  assert.equal(await page.locator(".cell").count(), 0, "no notebook was made");
+  // Manim Studio from the welcome page: its tab, with nothing to show yet, and its × takes it away
+  await page.locator(".welcome .wlcard", { hasText: "Manim Studio" }).click();
+  assert.equal(await current(), "manim studio", "the welcome page's Manim Studio opens its tab");
+  await page.locator(".studio .studio-empty").waitFor({ timeout: 5000 });
+  await page.locator(".tabbar .tab", { hasText: "manim studio" }).locator(".x").click();
+  assert.deepEqual(await tabs(), ["welcome"], "the studio's × closes its tab");
+  assert.equal(await current(), "welcome");
+  // and from the View menu
+  await menu("View", "Manim Studio");
+  assert.equal(await current(), "manim studio", "View › Manim Studio opens its tab");
+  await page.locator(".tabbar .tab", { hasText: "manim studio" }).locator(".x").click();
+  // a notebook takes the welcome tab's place; closing the last one brings it back
+  await page.locator(".welcome .wlcard", { hasText: "New notebook" }).click();
+  assert.deepEqual(await tabs(), ["untitled"], "a new notebook replaces the welcome tab");
+  const src = "diff(x^3, x)";
+  await run(0, src);
+  const want = await reference.call("engine.evaluate", { sessionId: "e2e-welcome", cellId: "w", source: src, showWork: true, paths: true });
+  assert.equal(want.ok, true, `${src}: ${want.error?.message}`);
+  await outIs(0, want.rendered.latex, src);
+  // its derivation sent to a new scene: the statement, then one shot per step with a term after it
+  await all().nth(0).hover();
+  await all().nth(0).locator(".cellacts .more").click();
+  await page.locator(".cellmenu .item.hassub", { hasText: "Send to scene" }).hover();
+  await page.locator(".cellmenu .submenu .item", { hasText: "New scene" }).click();
+  await page.locator(".tabbar .tab.on", { hasText: "manim studio" }).waitFor({ timeout: 10000 })
+    .catch(async () => assert.fail(`sending a derivation did not open the studio: the tab shown is ${await current()}`));
+  const shots = 1 + (want.derivation?.steps ?? []).filter((st) => st.afterRendered).length;
+  assert.ok(shots > 1, `${src}: the engine sent no steps with a term after them`);
+  await page.waitForFunction((n) => document.querySelectorAll(".studio .shotlist .shot").length === n, shots, { timeout: 10000 })
+    .catch(async () => assert.fail(`the studio shows ${await page.locator(".studio .shotlist .shot").count()} shots, not ${shots}`));
+  await page.locator(".tabbar .tab", { hasText: "manim studio" }).locator(".x").click();
+  assert.equal(await current(), "untitled*", "closing the studio goes back to the notebook (unsaved)");
+  page.once("dialog", (d) => void d.accept());   // the notebook has unsaved changes: close it anyway
+  await page.locator(".tabbar .tab", { hasText: "untitled" }).locator(".x").click();
+  await page.locator(".welcome .wlcard").first().waitFor({ timeout: 5000 });
+  assert.deepEqual(await tabs(), ["welcome"], "closing the last notebook brings back the welcome tab");
+  assert.equal(await page.locator(".cell").count(), 0, "and makes no blank notebook");
+  console.log(`✓ welcome: shown with no notebook open; Manim Studio opened and closed; ${src} sent to it as ${shots} shots; the last notebook closed`);
+}
+
 /** The teaching features, in a fresh notebook, then a course. */
 async function features() {
   await menu("File", "New notebook");
@@ -396,6 +493,16 @@ async function features() {
   assert.match(lv.shown, /right/, `the page did not mark the right answer: ${lv.text}`);
   assert.match(lv.text, /truth table/, "the verdict does not say how it was decided");
   console.log("✓ logic exercise: not CNF refused, a CNF in another order accepted by truth table");
+  // the connectives typed as backslash names: each becomes its glyph at the space after it
+  await menu("Edit", "Add math cell");
+  const bk = await all().count() - 1;
+  await all().nth(bk).locator(".cellin").click();
+  await page.keyboard.type("taut(\\not p \\or q \\iff (p \\to q) \\and \\top )");
+  const typed = "taut(¬p ∨q ↔(p →q) ∧⊤)";
+  assert.equal(await all().nth(bk).locator("input.cellin").inputValue(), typed, "the backslash names did not become their glyphs");
+  await page.keyboard.press("Enter");
+  await outIs(bk, (await ref(typed, "bk")).rendered.latex, "taut typed with backslash names");
+  console.log(`✓ backslash symbols: \\not \\or \\iff \\to \\and \\top typed as ${typed}`);
   // a cell of several lines: Shift+Enter starts a new line, Enter runs it; the counterexample's steps are marked on the graph
   const lines = ["let M = system(", "var p in {idle, crit}", "var lock in bool", "init p = idle ∧ lock = false", "action enter when p = idle do p := crit", "action leave when p = crit do p := idle, lock := false", ")"];
   await menu("Edit", "Add math cell");
@@ -435,6 +542,7 @@ async function features() {
   assert.equal(await rep.locator("svg.spacetime .stmsg").count(), repWant.messages.length, "an arrow per message, a duplicate delivery too");
   console.log(`✓ replicas: ${repWant.lanes.length} lanes, ${repWant.events.length} events, ${repWant.messages.length} messages drawn`);
   await manipulate();
+  await tabs();
   // a course: the Courses tab, a lesson opened, answered, and followed to the next
   const manifest = JSON.parse(readFileSync(path.join(root, "notebooks/courses.json"), "utf8"));
   const course = manifest.projects.find((p) => p.kind === "course");
@@ -471,6 +579,7 @@ try {
   await page.locator("#kurl").dispatchEvent("change");
   await page.waitForFunction(() => /ready/.test(document.querySelector(".kernel")?.textContent ?? ""), null, { timeout: 30000 });
   connected = true;
+  await welcome();
   await page.locator(".menus span", { hasText: "File" }).click();
   await page.locator(".dropdown .item", { hasText: "New notebook" }).click();
 

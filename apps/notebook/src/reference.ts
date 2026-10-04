@@ -110,13 +110,14 @@ export const FUNCTIONS: FnDoc[] = [
     usage: [["N(e)", "gives a numerical value of `e`, to fifteen significant digits, each one certified."]],
     details: [
       "The digits are certified: the term is evaluated again over the rationals, to an interval proved to hold its exact value, and only the digits the interval pins down are shown, each within a unit of its last place. Usually that is all fifteen; when it is fewer, fewer are shown, and a value pinned down only near zero shows as 0.",
-      "What the intervals do not reach is a floating-point approximation in IEEE-754 double precision, and its step says it is not certified: a complex value, a function across a pole or a jump (`N(tan(pi/2))`), a negative base under a fractional power.",
-      "Over ℂ when the term mentions `i`, or when its real value is not finite: `N(sqrt(-1))` is `i`.",
+      "Over ℂ when the term mentions `i`, or when its real value is not finite: `N(sqrt(-1))` is `i`. A complex value is certified too, its real and imaginary parts each to their own digits: sums, products, quotients and integer powers, `exp`, `sin`, `cos` and `tan`, `abs`, `conj`, `re` and `im`, `ln` and `sqrt` of a real number, and a real number to a real power, on the principal branch (`N((-8)^(1/3))` is `1 + 1.73205080756888i`).",
+      "What the intervals do not reach is a floating-point approximation in IEEE-754 double precision, and its step says it is not certified: the logarithm of a non-real number (`N(ln(i))`), a non-real base under a non-integer power (`N(i^i)`), a function across a pole or a jump (`N(tan(pi/2))`).",
       "A term with a free variable has no numerical value.",
     ],
     examples: [
       basic("N(pi)", "N(sqrt(2))"),
       section("Scope", "N(1/3)", "N(exp(1))", "N(sin(pi/6))", "N(sin(10^30))", note("Not certified:"), "N(tan(pi/2))"),
+      section("Over ℂ", "N(exp(i*pi/4))", "N(1/(1+i))", "N(sqrt(-4))", "N((-8)^(1/3))", note("Not certified:"), "N(ln(i))"),
     ],
     see: ["simplify"],
   },
@@ -244,11 +245,11 @@ export const FUNCTIONS: FnDoc[] = [
     usage: [["arcsin(x)", "gives the inverse sine of `x`, the angle from -π/2 to π/2 whose sine is `x`."]],
     details: [
       "`sin^-1(x)` is the reciprocal $1/\\sin x$, as `sin^2(x)` is the square; write `arcsin(x)` for the inverse.",
-      "The derivative is $1/\\sqrt{1 - x^2}$, proved wherever $x \\neq \\pm 1$.",
+      "The derivative is $1/\\sqrt{1 - x^2}$; the step assumes $-1 < x < 1$, where it is proved.",
       "`N` gives its value as a double, not certified.",
     ],
     examples: [
-      basic("arcsin(0)", "N(arcsin(1/2))", "diff(arcsin(x), x)"),
+      basic("arcsin(x)", "N(arcsin(1/2))", "diff(arcsin(x), x)"),
       section("Scope", "diff(arcsin(2x), x)", "integrate(1/sqrt(1 - x^2), x)", "integrate(1/sqrt(4 - x^2), x)", "integrate(arcsin(x), x)"),
     ],
     see: ["arccos", "arctan", "sin"],
@@ -258,7 +259,7 @@ export const FUNCTIONS: FnDoc[] = [
     name: "arccos", area: "Elementary functions",
     usage: [["arccos(x)", "gives the inverse cosine of `x`, the angle from 0 to π whose cosine is `x`."]],
     details: [
-      "The derivative is $-1/\\sqrt{1 - x^2}$, proved wherever $x \\neq \\pm 1$.",
+      "The derivative is $-1/\\sqrt{1 - x^2}$; the step assumes $-1 < x < 1$, where it is proved.",
       "`N` gives its value as a double, not certified.",
     ],
     examples: [
@@ -277,8 +278,8 @@ export const FUNCTIONS: FnDoc[] = [
       "`N` gives its value as a double, not certified.",
     ],
     examples: [
-      basic("arctan(0)", "N(4*arctan(1))", "diff(arctan(x), x)"),
-      section("Scope", "integrate(1/(1 + x^2), x)", "integrate(1/(4 + x^2), x)", "integrate(1/(1 + x^2), x, 0, 1)", "integrate(arctan(x), x)"),
+      basic("arctan(x)", "N(4*arctan(1))", "diff(arctan(x), x)"),
+      section("Scope", "integrate(1/(1 + x^2), x)", "integrate(1/(4 + x^2), x)", "integrate(arctan(x), x)"),
     ],
     see: ["arcsin", "arccos", "tan"],
     ref: "https://mathworld.wolfram.com/InverseTangent.html",
@@ -292,9 +293,11 @@ export const FUNCTIONS: FnDoc[] = [
       "Implemented as rewrite rules that push $d/dx$ inward (sum, product, quotient, chain and power rules), so the derivation reads like a textbook's.",
       "Other variables are constants: `diff(x*y, x)` is `y`.",
       "A vector or matrix is differentiated entry by entry.",
+      "A step that needs something says so: the derivative of `ln u` assumes `u > 0`, of `tan u` that `cos u ≠ 0`, a real exponent a positive base, and a rule applied to a part that is not differentiable everywhere (`abs(x)`) assumes it differentiable. The other steps hold at every point.",
     ],
     examples: [
       basic("diff(x^2 * sin(x), x)", "diff(x^3, x, 2)"),
+      section("Steps that assume", "diff(ln(x), x)", "diff(x^(1/2), x)", "diff(tan(x), x)"),
       section("Scope", "diff(sin(x^2), x)", "diff(1/(x+1), x)", "diff(x^x, x)", "diff(2^x, x)", "diff(x*y, x)", "diff([x, x^2], x)"),
       section("Properties and relations", note("Differentiation undoes integration:"), "diff(integrate(x^3, x), x)"),
     ],
@@ -1275,8 +1278,8 @@ export const FUNCTIONS: FnDoc[] = [
   {
     name: "connectives", title: "∧ ∨ ¬ → ↔", area: "Logic", notation: true,
     usage: [
-      ["p ∧ q", "is p and q; type `&&` or `and`."], ["p ∨ q", "is p or q; type `||` or `or`."], ["¬p", "is not p; type `!` or `not`."],
-      ["p → q", "is if p then q; type `->`."], ["p ↔ q", "is p if and only if q; type `<->`."], ["⊤, ⊥", "are true and false; type `true` and `false`."],
+      ["p ∧ q", "is p and q; type `&&`, `and` or `\\and`."], ["p ∨ q", "is p or q; type `||`, `or` or `\\or`."], ["¬p", "is not p; type `!`, `not` or `\\not`."],
+      ["p → q", "is if p then q; type `->` or `\\to`."], ["p ↔ q", "is p if and only if q; type `<->` or `\\iff`."], ["⊤, ⊥", "are true and false; type `true` and `false`, or `\\top` and `\\bot`."],
     ],
     details: [
       "A formula with a connective is a logic cell: its value is the formula, and the commands on this page's see-also act on it.",
@@ -1288,9 +1291,9 @@ export const FUNCTIONS: FnDoc[] = [
   },
   {
     name: "forall", title: "∀ ∃", area: "Logic", notation: true,
-    usage: [["∀ x ∈ S, φ", "is true when φ holds for every x in the finite set S; type `forall x in S, …`."], ["∃ x ∈ S, φ", "is true when φ holds for some x in S; type `exists x in S, …`."]],
+    usage: [["∀ x ∈ S, φ", "is true when φ holds for every x in the finite set S; type `forall x in S, …` or `\\forall x \\in S, …`."], ["∃ x ∈ S, φ", "is true when φ holds for some x in S; type `exists x in S, …` or `\\exists`."]],
     details: [
-      "`S` is a range `1..10` or a set `{4, 6, 9}`; the body can compare numbers (`<`, `≤`, `=`, `≠`, `∣` for divides) and use `prime`, `even` and `odd`.",
+      "`S` is a range `1..10` or a set `{4, 6, 9}`; the body can compare numbers (`<`, `≤`, `=`, `≠`, `∣` for divides) and use `prime`, `even` and `odd`. `\\le`, `\\ge`, `\\ne` and `\\mid` type ≤, ≥, ≠ and ∣.",
       "The engine checks every element in order; the step names the counterexample of a false ∀ or the witness of a true ∃.",
     ],
     examples: [basic("∀ n ∈ 1..10, n^2 ≥ n", "∀ n ∈ 1..10, n^2 ≥ 2n", "∃ n ∈ {4, 6, 9, 11}, prime(n)"),

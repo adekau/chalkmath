@@ -51,7 +51,7 @@ Each of those buttons runs its input in the notebook. What comes back:
     id: "notebooks", title: "Notebooks and cells", group: "Guide", parts: [md`
 # Notebooks and cells
 
-A notebook is a list of cells, run top to bottom against one engine session. Each open notebook has its own tab at the top and its own session, so names defined in one do not leak into another. The **+** after the tabs opens a new one.
+A notebook is a list of cells, run top to bottom against one engine session. Each open notebook has its own tab at the top and its own session, so names defined in one do not leak into another. The **+** after the tabs opens a new one. A tab shows the notebook's name without its ‹.chalk›, cut short with ‹…› when it is long (point at the tab for the whole name). With many open, the tabs narrow and then scroll sideways (the mouse wheel scrolls them), and the **⌄** after them lists every open notebook. The middle mouse button closes a tab. Manim Studio, the courses and this documentation stay at the right while they are open. With no notebook open, the **welcome** tab takes their place: it starts a new notebook, opens one saved in this browser or a file, and links to the tour, the courses, this documentation and [Manim Studio](#do:studio).
 
 ## Kinds of cell
 
@@ -114,7 +114,7 @@ View › Math input chooses for every cell: **automatic** (the default) typesets
 
 ## Symbols
 
-Type ‹\› and a name, then space or Tab, for a symbol: ‹\pi› is π, ‹\lam› is λ, ‹\e› is ℯ, ‹\theta› is θ. Typing ‹\› alone lists them all and narrows as you type. [Symbols and templates](#doc:symbols) has the table.
+Type ‹\› and a name, then space or Tab, for a symbol: ‹\pi› is π, ‹\lam› is λ, ‹\e› is ℯ, ‹\theta› is θ, and for logic ‹\and› is ∧, ‹\or› is ∨, ‹\not› is ¬, ‹\to› is →, ‹\forall› is ∀, ‹\in› is ∈, ‹\le› is ≤. The names are Lean's, so ‹\land›, ‹\wedge› and the like work too. Typing ‹\› alone lists them all and narrows as you type. In a typeset cell only the Greek letters apply: formulas, λ-terms and systems are edited as text. [Symbols and templates](#doc:symbols) has the table.
 
 ## Help while typing
 
@@ -207,7 +207,7 @@ Add one from Edit › Add Lean exercise or the ‹▾› between cells. Its edit
 ## Saving
 
 - **File › Save** (Ctrl/⌘+S) keeps the notebook in this browser's storage under its name; **Save as…** (Ctrl/⌘+Shift+S) gives it another. **Open…** lists the notebooks saved here.
-- Open tabs are kept as you work and come back when you reload the page, unsaved changes included; a tab with unsaved changes shows its name in italics with a ‹*›.
+- Open tabs are kept as you work and come back when you reload the page, unsaved changes included; a tab with unsaved changes shows its name in italics, with a dot where its **×** is (a ‹*› after the name on a touch screen).
 - Browser storage belongs to this browser on this machine. Clearing the site's data clears it, and a private window forgets it. To keep a notebook, or move it to another machine, export it.
 
 ## Files and links
@@ -352,11 +352,11 @@ The example notebook *Order and lattices* has its proofs in Lean cells.
 [Manim](https://www.manim.community) is the Python library behind many animated mathematics videos. Manim Studio turns a derivation into a storyboard for it: each step becomes a shot, the term morphing into the next.
 
 1. Run a cell, then choose **Send to scene** from its ⋮ menu (a new scene, or an existing one). The statement and each step's term become shots.
-2. Open **Manim Studio** from the tab bar or Help. Each shot can be turned off, given an animation (‹TransformMatchingTex›, ‹TransformMatchingShapes›, ‹FadeTransform›, ‹Write› or ‹Create›) and a duration.
+2. Sending a derivation opens the studio's tab; **View › Manim Studio** (or Help, or the welcome tab) opens it too, and its **×** closes it. Each shot can be turned off, given an animation (‹TransformMatchingTex›, ‹TransformMatchingShapes›, ‹FadeTransform›, ‹Write› or ‹Create›) and a duration.
 3. **▶ Play** previews the scene in the page, matching glyphs between terms the way ‹TransformMatchingTex› does.
 4. The Python for the scene is beside it. Copy it into a file and render it with Manim on your computer, with the command shown (‹manim -pqh scene.py›).
 
-The page writes only the storyboard; rendering the video is Manim's job, outside the browser. Scenes are saved with the notebook.
+The page writes only the storyboard; rendering the video is Manim's job, outside the browser. Scenes are saved with the notebook: the studio shows the current notebook's, and none while no notebook is open.
 `],
   },
   {

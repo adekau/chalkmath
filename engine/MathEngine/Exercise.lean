@@ -56,7 +56,7 @@ private abbrev Err := String × String × Option (Nat × Nat)
 
 /-- Normalize with the notebook pipeline. -/
 private def norm (e : Expr) : Except String (Expr × Array Step) :=
-  match (normalizeT pipelineRules pipelineOrdered e).run #[] with
+  match normCell e with
   | (.error msg, _) => .error msg
   | (.ok out, steps) => .ok (out, steps)
 

@@ -67,8 +67,12 @@ differential test with zero mismatches.
   by Taylor sums with their remainder bounds after halving the argument, then squaring or doubling
   back, `ln` pinned by `exp`, `sqrt` by squaring, `π` to Mathlib's twenty digits. It prints the most
   digits, up to fifteen, that the interval pins down, each within a unit of its last place
-  (`certify_sound`). What the intervals do not reach (a complex value, a pole, a jump) falls to the
-  old double-precision evaluation, `cmd.N.float`, which says it is not certified.
+  (`certify_sound`). A complex value is a rectangle, an interval for each part (`Ival.cieval`),
+  through the formulas for the parts of a product, a quotient, `exp`, `sin` and `cos`; `ln` and
+  `sqrt` of a real number and a real number to a real power have their principal values in closed
+  form (`cieval_sound`, `cmdN_soundC` in `proofs/Proofs/IntervalC.lean`). What the intervals do not
+  reach (the logarithm of a non-real number, a non-real base under a non-integer power, a pole, a
+  jump) falls to the old double-precision evaluation, `cmd.N.float`, which says it is not certified.
 - **Elimination is verified over ℚ by construction.** `LinAlgQ.lean` writes Gauss–Jordan as a
   list of the three elementary row operations, each invertible (the degenerate parameters are the
   identity), and proves `sol_rref`: the reduced matrix has the input's solution set. The `rref`
@@ -277,6 +281,28 @@ differential test with zero mismatches.
   it as a hypothesis; `proofs/` also *proves* that no unconditional theorem exists for them. Silence is
   not an option: either a rule has an unconditional theorem or its condition is written down where
   the step is shown.
+- **Verified means on the domain, not just in Lean's arithmetic.** `evalR` is total and inherits
+  Mathlib's conventions where mathematics leaves a term undefined (`ln x = ln |x|`, `x/0 = 0`), so a
+  rule proved against it alone can change a term's domain unseen: `ln(x²) = 2 ln x` holds for every
+  real `x` in `evalR`, yet `ln(x²)` is defined at `x = −2` and `2 ln x` is not. `Def ρ e`
+  (`proofs/Proofs/Domain.lean`) says where a term is defined in the ordinary sense, and `DomEq` asks of
+  a step that the answer be defined, with the same value, wherever the input is; it is a
+  `Congruence`, so the same fold applies. Every rule the pipeline runs without an assumption keeps the
+  domain (`simpRulesSafe_soundD`, the parity, radical and square-root rules); `ln(b^p) = p ln b` for an
+  even `p` did not, and is now `simp.function.assuming` ("Assuming $x > 0$").
+- **A cell is read over ℝ or over ℂ, and the rules know which.** A cell whose input mentions `i`, or
+  whose real answer does (`sqrt(-1)`), is normalized over ℂ (`normCell`): the pipeline takes the
+  reading as a parameter (`pipelineRulesWith norm real`) and turns off `simp.function.real`, the cases
+  that are false on ℂ's principal branch (`ln(e^x) = x` fails at `x = 4i`; `not_functionReal_soundC`).
+  What is left of `simp.function` is proved over ℂ too (`functionRules_soundC`).
+- **The calculus rules are split the same way.** `diff.sum`, `diff.product`, `diff.power` and
+  `diff.chain` fire verified where every part they need differentiable is `smooth` (built from
+  numerals, variables, `+`, `·`, natural powers, positive-numeral bases, `sin`, `cos`, `exp`, `arctan`;
+  `smooth_differentiable`) and no domain condition arises; elsewhere their `.assuming` halves fire and
+  the step names the condition: `u > 0` for `ln u` and for real exponents, `u ≠ 0` for negative integer
+  ones, `cos u ≠ 0` for `tan u`, `-1 < u < 1` for `arcsin u` and `arccos u`, `b > 0` for `b^u`,
+  differentiability otherwise. Both halves are proved for the exact term the engine writes
+  (`proofs/Proofs/DerivRules.lean`), the product rule for any number of factors.
 - **Two packages.** `engine/` is executable code and goes into the wasm build: it imports Init
   (Std/Batteries allowed) and never Mathlib. `proofs/` is theorems only, may be `noncomputable`,
   requires `engine/` and (from M3) Mathlib. `scripts/check-engine-deps.sh` enforces the split.
@@ -321,7 +347,22 @@ input would show a fraction where the engine reads a product, and its tests hold
 golden source and notebook cell is round-tripped and, against the native engine, has to mean the
 same thing before and after.
 
-**Manim Studio** is the third tab. "→ Scene" on an evaluated cell turns its derivation into shots:
+**Tabs.** One tab per open notebook, then the studio, the courses and the documentation, each
+present only while open and closed by its ×. With no notebook open — a first visit, or the last tab
+closed — the *welcome* tab stands in for one (`S.tab === "welcome"`, the live cells empty, `S.doc ===
+-1`) rather than a blank notebook being made: it starts, opens or imports a notebook and links to the
+other tabs. Asking for the notebook tab while none is open shows it instead, and opening a notebook
+replaces it.
+
+The tab bar has two parts. Open notebooks (or the welcome tab) are documents: a strip of tabs that
+share its width, shrink to a floor and then scroll, with a list of them all once they overflow; a long
+name ends in an ellipsis rather than wrapping, and the strip scrolls to the notebook shown when that
+changes, not on every re-render. Closing a tab in the background leaves the notebook shown where it
+is. The studio, the courses and the documentation are places, not documents, and sit at the right,
+where many notebooks cannot push them out of view.
+
+**Manim Studio** is opened from View › Manim Studio (or Help, the welcome tab, or by sending a
+derivation to it). "→ Scene" on an evaluated cell turns its derivation into shots:
 the statement, then each step's `afterRendered` term (an optional field on `Step`, per protocol
 rule 5). The page adds what a storyboard needs and nothing more — order, on/off, an animation name,
 a duration — previews a shot by matching KaTeX glyphs between consecutive terms (longest common
@@ -329,7 +370,7 @@ subsequence, then interpolated position and opacity, a browser-side stand-in for
 `TransformMatchingTex`), and prints the Python a Manim user would run. Rendering the video is
 Manim's job, outside the browser.
 
-**Courses** (File › Courses and examples) opens a tab beside the studio that lists *projects*:
+**Courses** (File › Courses and examples) opens a tab that lists *projects*:
 notebooks that belong together, either a course (lessons read in order) or a collection. They are
 `notebooks/courses.json` and `notebooks/courses/<course>/*.chalk`, generated by
 `scripts/notebooks/mk-courses.mjs` and served under `examples/`. A lesson opens in its own tab with its
@@ -339,7 +380,7 @@ what the shell offers for teaching: exercise cells (checked by `engine.check`, �
 to be revealed one at a time, sliders on `let n = number` that re-run the cells out of date because of
 them, and Markdown callouts. Every lesson's answers are pinned in `notebooks/golden/` and checked in CI.
 
-**Help › Documentation** opens a tab beside the studio: a guide to the notebook (cells, input,
+**Help › Documentation** opens a tab: a guide to the notebook (cells, input,
 reading the work, files, lookups and their set-up, Lean cells, the studio) and the reference pages.
 The pages are Markdown in `src/docs.ts`, drawn by the Markdown cells' renderer; their tables (the
 symbols and templates, the shortcuts, the example notebooks) are built from the lists the notebook

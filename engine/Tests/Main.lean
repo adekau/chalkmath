@@ -472,14 +472,6 @@ def sessionTests : TestM Unit := do
   checkTrue "the reply carries the evaluation number" ((raw.splitOn "\"label\":2").length == 2) raw
   -- a power of a function, and expansion through a nested sum (the integral check needs both)
   (st, r) := ev st "sin^2(y)"; check "sin^2(y) is sin(y)^2" r "sin(y)^2"
-  (st, r) := ev st "sin^-1(y)"; check "sin^-1(y) is the reciprocal, not arcsin" r "1/sin(y)"
-  (st, r) := ev st "tan^-2(y)"; check "a negative power before the argument" r "1/tan(y)^2"
-  (st, r) := ev st "sec(y) + csc(y) + cot(y)"; check "sec, csc and cot are read as reciprocals" r "1/cos(y) + 1/sin(y) + 1/tan(y)"
-  (st, r) := ev st "sec^2(y)"; check "sec^2(y) is cos(y)^-2" r "1/cos(y)^2"
-  (st, r) := ev st "sec(y, 2)"; check "sec with two arguments is left alone" r "sec(y, 2)"
-  check "arctan prints" (roundtrip "arctan(x)") "arctan(x)"
-  check "arcsin latex" (latexOf "arcsin(x)") "\\arcsin\\left(x\\right)"
-  check "arccos^2 latex" (latexOf "arccos^2(x)") "{\\arccos\\left(x\\right)}^{2}"
   (st, r) := ev st "expand(a*(-(-y^2*sin(y) + 2*y*cos(y)) + 2*y*cos(y)))"; check "expand flattens nested sums" r "a*y^2*sin(y)"
   (st, r) := ev st "integrate(5 y^2 sin(y), y)"; check "integrate with a constant factor and two by-parts rounds" r "5*(-y^2*cos(y) + 2*(y*sin(y) + cos(y)))"
   -- powers of sine and cosine (reduction formulas) and of exp, all verified by the check
@@ -558,11 +550,22 @@ def sessionTests : TestM Unit := do
   check "exp(ln w): assumes" (derivationRules st "exp(ln(w))").toString "[simp.function.assuming]"
   checkTrue "exp(ln w): the step says w > 0" ((derivationExplanations st "exp(ln(w))").any (contains · "Assuming $w > 0$."))
   (st, r) := sessionEval st "ln(exp(w))" ",\"showWork\":true"
-  check "ln(exp w): verified" (derivationRules st "ln(exp(w))").toString "[simp.function]"
+  check "ln(exp w): verified over ℝ" (derivationRules st "ln(exp(w))").toString "[simp.function.real]"
   (st, r) := sessionEval st "ln(w^(1/2))" ",\"showWork\":true"
   check "ln(w^(1/2)): assumes" ((derivationRules st "ln(w^(1/2))").head?.getD "") "simp.function.assuming"
   (st, r) := sessionEval st "ln(w^3)" ",\"showWork\":true"
-  check "ln(w^3): verified" ((derivationRules st "ln(w^3)").head?.getD "") "simp.function"
+  check "ln(w^3): verified over ℝ, an odd power" ((derivationRules st "ln(w^3)").head?.getD "") "simp.function.real"
+  (st, r) := sessionEval st "diff(ln(w), w)" ",\"showWork\":true"
+  check "diff(ln w): the chain rule assumes w > 0" ((derivationRules st "diff(ln(w), w)").head?.getD "") "diff.chain.assuming"
+  checkTrue "diff(ln w): the step says so" (((derivationExplanations st "diff(ln(w), w)").head?.getD "").endsWith "Assuming $w > 0$.") r
+  (st, r) := sessionEval st "diff(w^3 + sin(w), w)" ",\"showWork\":true"
+  check "diff of a smooth sum: verified" ((derivationRules st "diff(w^3 + sin(w), w)").head?.getD "") "diff.sum"
+  (st, r) := sessionEval st "diff(w^(1/2), w)" ",\"showWork\":true"
+  check "diff(w^(1/2)): a real exponent assumes w > 0" ((derivationRules st "diff(w^(1/2), w)").head?.getD "") "diff.power.assuming"
+  (st, r) := sessionEval st "ln(w^2)" ",\"showWork\":true"
+  check "ln(w^2): an even power assumes w > 0" ((derivationRules st "ln(w^2)").head?.getD "") "simp.function.assuming"
+  (st, r) := sessionEval st "ln(exp(4*i))" ",\"showWork\":true"
+  check "ln(exp(4i)) is not 4i over ℂ" r "ln(exp(4*i))"
   -- an exact root: the perfect-power base comes out whole (M drops though 2 + 3 outweighs 4), then evaluates
   (st, r) := sessionEval st "4^(3/2)" ",\"showWork\":true"
   check "radical steps: exact root of a perfect-power base" (derivationRules st "4^(3/2)").toString "[simp.radical, simp.power]"
@@ -669,6 +672,17 @@ def sessionTests : TestM Unit := do
   let (_, lab) := handleS stl "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"engine.manipulate\",\"params\":{\"sessionId\":\"l\",\"cellId\":\"b\",\"source\":\"manipulate(column(m, h), h, 0, 1, 2)\"}}"
   checkTrue "rpc manipulate column: a part that is a bound name is labelled with it" ((lab.splitOn "\"label\":\"m\"").length == 3 && !(contains lab "\"label\":\"h\"")) lab
   checkTrue "rpc value json" ((rpc "engine.evaluate" "{\"source\":\"2x\"}").startsWith "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"ok\":true,\"value\":{\"k\":\"mul\",\"args\":[{\"k\":\"num\",\"v\":{\"num\":\"2\",\"den\":\"1\"}},{\"k\":\"var\",\"name\":\"x\"}]}")
+
+/-- `N` over ℂ: certified where the rectangle reaches, double precision where it does not. -/
+def complexNTests : TestM Unit := do
+  let mut st : Store := []
+  for src in ["N(exp(i*pi/4))", "N((-8)^(1/3))", "N(ln(i))"] do
+    (st, _) := sessionEval st src ",\"showWork\":true"
+  let lastRule (src : String) : String :=
+    ((st.get "t").cells.lookup src >>= fun c => c.derivation.steps.toList.getLast? |>.map (·.rule)).getD ""
+  check "N: a complex value is certified" (lastRule "N(exp(i*pi/4))") "cmd.N"
+  check "N: a negative base under a real power is certified" (lastRule "N((-8)^(1/3))") "cmd.N"
+  check "N: the log of a non-real number is not" (lastRule "N(ln(i))") "cmd.N.float"
 
 /-- M2 golden test: `Tests/golden.tsv` holds the reference engine's rendered text for a corpus of
 sources, evaluated in one session in file order (so `let` bindings carry over). It was produced by the
@@ -870,8 +884,19 @@ def systemsTests : TestM Unit := do
   let (_, ctlRaw) := handleS st (req "3" "ctl(C, EF x = 2)")
   checkTrue "systems: a CTL formula's fixed point, a round a step" (contains ctlRaw "\"rule\":\"sys.iterate\"" && contains ctlRaw "\"rule\":\"sys.fixed\"") ctlRaw
 
+/-- Inverse trigonometric functions, and `sec`, `csc`, `cot` and `f^-1(x)` as reciprocals. -/
+def trigTests : TestM Unit := do
+  let (_, r) := sessionEval {} "sin^-1(y)"; check "sin^-1(y) is the reciprocal, not arcsin" r "1/sin(y)"
+  let (_, r) := sessionEval {} "tan^-2(y)"; check "a negative power before the argument" r "1/tan(y)^2"
+  let (_, r) := sessionEval {} "sec(y) + csc(y) + cot(y)"; check "sec, csc and cot are read as reciprocals" r "1/cos(y) + 1/sin(y) + 1/tan(y)"
+  let (_, r) := sessionEval {} "sec^2(y)"; check "sec^2(y) is cos(y)^-2" r "1/cos(y)^2"
+  let (_, r) := sessionEval {} "sec(y, 2)"; check "sec with two arguments is left alone" r "sec(y, 2)"
+  check "arctan prints" (roundtrip "arctan(x)") "arctan(x)"
+  check "arcsin latex" (latexOf "arcsin(x)") "\\arcsin\\left(x\\right)"
+  check "arccos^2 latex" (latexOf "arccos^2(x)") "{\\arccos\\left(x\\right)}^{2}"
+
 def main : IO UInt32 := do
-  let ((), failures) ← (do tests; sessionTests; partStatTests; workTests; checkTests; logicRelTests; algebraTests; systemsTests; goldenTests).run #[]
+  let ((), failures) ← (do tests; sessionTests; trigTests; partStatTests; workTests; checkTests; logicRelTests; algebraTests; systemsTests; complexNTests; goldenTests).run #[]
   for f in failures do
     IO.println s!"FAIL {f.name}\n  expected: {f.expected}\n  actual:   {f.actual}"
   IO.println s!"{failures.size} failures"

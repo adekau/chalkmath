@@ -127,26 +127,36 @@ proof is \lc{Real.tan_eq_sin_div_cos} and the permutation lemma for products, si
 factors may sit anywhere in the list.
 
 The remaining cases are true unconditionally in Mathlib's semantics: $\ln 1 = 0$, $e^0 = 1$,
-$\sin 0 = 0$, $\cos 0 = 1$, $\ln(e^x) = x$, $\sqrt a = a^{1/2}$ and $|c|$ for a numeral
-(\lc{Real.log_one}, \lc{Real.exp_zero}, \lc{Real.sin_zero}, \lc{Real.cos_zero}, \lc{Real.log_exp},
-\lc{Real.sqrt_eq_rpow}, \lc{Rat.cast_abs}), and \lc{functionRules_soundR} proves the rule sound with
-all of them. $\ln(b^p) \to p \ln b$ splits. For an integer $p$ it holds at every $b$, because
-\lc{Real.log} is $\ln|x|$ (\lc{Real.log_zpow}). For any other $p$ it does not: for $b = -2$ and
-$p = 1/2$, Mathlib's $(-2)^{1/2} = \sqrt 2 \cos(\pi/2) = 0$, so the left side is $\ln 0 = 0$ while
-the right side is $\frac{1}{2}\ln 2$. That case needs $0 < b$ (\lc{Real.log_rpow}), and it is in
-\rn{simp.function.assuming} with $\exp(\ln x)$. An earlier ledger note called all the other cases
-unconditional; writing the theorems is what showed it was an overstatement for this one.
+$\sin 0 = 0$, $\cos 0 = 1$, $\sqrt a = a^{1/2}$ and $|c|$ for a numeral (\lc{Real.log_one},
+\lc{Real.exp_zero}, \lc{Real.sin_zero}, \lc{Real.cos_zero}, \lc{Real.sqrt_eq_rpow},
+\lc{Rat.cast_abs}), and \lc{functionRules_soundR} proves the rule sound with all of them. Two more
+hold over $\mathbb{R}$ but not over $\mathbb{C}$, so they are a rule of their own,
+\rn{simp.function.real}, off in a cell read over $\mathbb{C}$: $\ln(e^x) = x$ (\lc{Real.log_exp}),
+which at $x = 4i$ would turn $(4 - 2\pi)i$ into $4i$, and $\ln(b^p) = p \ln b$ for an odd integer $p$
+(\lc{functionReal_soundR}).
+
+$\ln(b^p) \to p \ln b$ splits further. For any integer $p$ it holds at every $b$ \emph{in Mathlib's
+semantics}, because \lc{Real.log} is $\ln|x|$ (\lc{Real.log_zpow}) --- but that is the semantics
+talking, not mathematics: $\ln(x^2)$ is defined at $x = -2$ and $2 \ln x$ is not. A step should keep
+the answer defined wherever the question is (\lc{Domain.lean}: \lc{Def}, \lc{DomEq}); an odd $p$
+does, since $b^p > 0$ exactly when $b > 0$, and an even one does not (\lc{not_lnEvenPow_def}). For
+a non-integer $p$ it fails even in Mathlib: for $b = -2$ and $p = 1/2$, $(-2)^{1/2} = \sqrt 2 \cos(\pi/2)
+= 0$, so the left side is $\ln 0 = 0$ while the right side is $\frac{1}{2}\ln 2$. Both need $0 < b$
+(\lc{Real.log_rpow}), and they are in \rn{simp.function.assuming} with $\exp(\ln x)$. An earlier
+ledger note called all the other cases unconditional; writing the theorems is what showed it was an
+overstatement, twice.
 
 \begin{trybox}
 \begin{minted}{text}
 exp(ln(x))
 ln(exp(x))
 sin(x) / cos(x)
+ln(x^3)
 ln(x^2)
 \end{minted}
-  The first says ``Assuming $x > 0$''. The second has no condition, and its theorem needs none.
-  The third is the tangent case. The fourth is $\ln(b^p)$ with an integer $p$, which holds at
-  every $x$; \texttt{ln(x\^{}(1/2))} would assume $x > 0$.
+  The first says ``Assuming $x > 0$''. The second has no condition over $\mathbb{R}$, and its
+  theorem needs none. The third is the tangent case. The fourth is $\ln(b^p)$ with an odd $p$,
+  which keeps the domain; the fifth, an even one, assumes $x > 0$.
 \end{trybox}
 
 \section{Exercises}

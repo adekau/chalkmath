@@ -614,10 +614,106 @@ theorem eulerPower_soundC : PlainSoundC eulerPower := by
   · simp at h
 
 -- ---------------------------------------------------------------------------
--- What the principal branch breaks: ln (exp x) = x fails at x = 2πi
+-- simp.function over ℂ, and what the principal branch breaks
 -- ---------------------------------------------------------------------------
 
-theorem not_functionRules_soundC : ¬ RuleSoundC functionRules := by
+/-- **`simp.function` is sound over ℂ**: once the cases that hold over ℝ only are a rule of their own
+(`simp.function.real`), every case left holds for every complex number. -/
+theorem functionRules_soundC : RuleSoundC functionRules := by
+  intro e res h ρ
+  simp only [functionRules] at h
+  split at h
+  swap; · cases h
+  rename_i hc
+  simp only [Bool.and_eq_true, Bool.not_eq_true'] at hc
+  obtain ⟨hna, hreal⟩ := hc
+  unfold functionApply at h
+  split at h
+  · -- sin u / cos u = tan u
+    rename_i es
+    split at h
+    · rename_i u others hft
+      cases h
+      obtain ⟨c, hc, hperm⟩ := findTan_perm es hft
+      rw [isCosInv_eq hc] at hperm
+      rw [evalC_mul, prodC_perm ρ hperm, evalC_mulN]
+      simp only [prodC_cons, evalC_fn₁, evalC_pow, evalC_num, Expr.minusOne, Q.minusOne, Q_val_ofInt]
+      push_cast
+      rw [Complex.cpow_neg_one, applyFnC_sin, applyFnC_cos, applyFnC_tan, Complex.tan_eq_sin_div_cos,
+        div_eq_mul_inv, mul_assoc]
+    · cases h
+  · -- √a = a^(1/2)
+    cases h
+    simp only [evalC_fn₁, evalC_pow, evalC_num, applyFnC]
+    congr 1
+    show (1 : ℂ) / 2 = ((mkRat 1 2 : ℚ) : ℂ)
+    rw [Rat.mkRat_eq_div]; push_cast; ring
+  · -- ln
+    rename_i a
+    split at h
+    · rename_i h1
+      cases h
+      simp [evalC_of_isOne h1 ρ]
+    · split at h
+      · simp [functionRealCase] at hreal
+      · rename_i b p
+        cases h
+        simp only [functionRealCase] at hreal
+        simp only [functionAssumed, hreal, Bool.false_eq_true, ite_false, Option.isNone_some] at hna
+      · cases h
+  · -- exp
+    rename_i a
+    split at h
+    · rename_i h0
+      cases h
+      simp [evalC_of_isZero h0 ρ]
+    · split at h
+      · simp [functionAssumed] at hna
+      · cases h
+  · -- sin 0
+    rename_i a
+    split at h
+    · rename_i h0; cases h; simp [evalC_of_isZero h0 ρ]
+    · cases h
+  · -- cos 0
+    rename_i a
+    split at h
+    · rename_i h0; cases h; simp [evalC_of_isZero h0 ρ]
+    · cases h
+  · -- |q|
+    rename_i q
+    cases h
+    simp only [evalC_fn₁, evalC_num, applyFnC_abs, Q.abs, Rat.abs, Complex.norm_ratCast]
+    split_ifs with hq
+    · rw [abs_of_nonneg (by exact_mod_cast hq)]; push_cast; rfl
+    · rw [abs_of_neg (by exact_mod_cast lt_of_not_ge hq)]; push_cast; rfl
+  · -- sign q
+    rename_i q
+    cases h
+    simp only [evalC_fn₁, evalC_num, applyFnC_sign, Complex.norm_ratCast]
+    by_cases hz : q.val = 0
+    · have h0 : q.isZero = true := by simpa [Q.isZero] using hz
+      have hn : q.isNeg = false := by simp [Q.isNeg, hz]
+      simp [hz, h0, hn, Q.zero, Q_val_ofInt]
+    · have hz' : ((q.val : ℚ) : ℂ) ≠ 0 := by exact_mod_cast hz
+      rw [if_neg hz']
+      rcases lt_or_gt_of_ne hz with hlt | hgt
+      · have hn : q.isNeg = true := by simpa [Q.isNeg] using hlt
+        simp only [hn, ite_true, Q.minusOne, Q_val_ofInt]
+        rw [abs_of_neg (by exact_mod_cast hlt)]
+        push_cast
+        field_simp
+      · have hn : q.isNeg = false := by simp [Q.isNeg, not_lt.mpr hgt.le]
+        have hz0 : q.isZero = false := by simp [Q.isZero, hz]
+        simp only [hn, hz0, Bool.false_eq_true, ite_false, Q.one, Q_val_ofInt]
+        rw [abs_of_pos (by exact_mod_cast hgt)]
+        push_cast
+        field_simp
+  · cases h
+
+/-- **`simp.function.real` is not sound over ℂ**: `ln (exp x) = x` fails at `x = 2πi`, which is why
+the rule is off in a cell read over ℂ. -/
+theorem not_functionReal_soundC : ¬ RuleSoundC functionReal := by
   intro hs
   have h := hs (.fn "ln" [.fn "exp" [.var "x"]]) _ rfl (fun _ => 2 * Real.pi * I)
   simp only [evalC_fn₁, applyFnC_exp, applyFnC_ln, evalC_var] at h

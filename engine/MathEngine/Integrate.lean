@@ -23,17 +23,35 @@ namespace MathEngine
 it is what makes the rule set well-founded. -/
 def noIntegrate : Norm := fun _ => .error "integrate: nested integrals are not supported"
 
-/-- The checker: the pipeline with nested `integrate` refused, run with its derivation. -/
-def checkNorm : Norm := fun e =>
-  match (normalizeT (pipelineRulesWith noIntegrate) (pipelineOrderedWith noIntegrate) e).run #[] with
+/-- The checker: the pipeline with nested `integrate` refused, run with its derivation, in the reading
+(`real`) of the cell it checks for. -/
+def checkNormWith (real : Bool) : Norm := fun e =>
+  match (normalizeT (pipelineRulesWith noIntegrate real) (pipelineOrderedWith noIntegrate real) e).run #[] with
   | (.error msg, _) => .error msg
   | (.ok out, steps) => .ok (out, if steps.isEmpty then none else some ⟨e, steps, out⟩)
 
-/-- The notebook pipeline. -/
-def pipelineRules : List PlainRule := pipelineRulesWith checkNorm
+def checkNorm : Norm := checkNormWith true
+
+/-- The notebook pipeline, over ℝ (`real`) or over ℂ. -/
+def pipelineRulesFor (real : Bool) : List PlainRule := pipelineRulesWith (checkNormWith real) real
+
+theorem pipelineOrderedFor (real : Bool) : Ordered (pipelineRulesFor real) := pipelineOrderedWith _ real
+
+/-- The notebook pipeline over ℝ. -/
+def pipelineRules : List PlainRule := pipelineRulesFor true
 
 /-- Every rule of the notebook pipeline decreases `μ` on a node whose children are normal. -/
-theorem pipelineOrdered : Ordered pipelineRules := pipelineOrderedWith checkNorm
+theorem pipelineOrdered : Ordered pipelineRules := pipelineOrderedFor true
+
+/-- Normalize a term in the reading it gets: over ℂ when it mentions `i`, otherwise over ℝ, unless
+the real answer comes out mentioning `i` (`sqrt(-1)`), and then over ℂ from the start, so every
+step holds in the reading the answer is reported in. -/
+def normCell (e : Expr) : Except String Expr × Array Step :=
+  let overC := fun (_ : Unit) => (normalizeT (pipelineRulesFor false) (pipelineOrderedFor false) e).run #[]
+  if mentionsI e then overC () else
+  match (normalizeT pipelineRules pipelineOrdered e).run #[] with
+  | (.ok out, steps) => if mentionsI out then overC () else (.ok out, steps)
+  | r => r
 
 /-- `findAnti` fails only with a refusal. -/
 theorem findAnti_error (norm : Norm) {f : Expr} {x : String} {r : RuleResult}
