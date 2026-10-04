@@ -414,7 +414,7 @@ theorem diff_chain_arctan_sound (ρ : EnvR) (x : String) {u : Expr} (hu : DiffAt
 `rpow` of a negative base carries a factor `cos(-π/2) = 0`). -/
 theorem rpow_neg_half_eq (y : ℝ) : y ^ (-1 / 2 : ℝ) = 1 / Real.sqrt y := by
   rcases le_or_gt 0 y with hy | hy
-  · rw [Real.sqrt_eq_rpow, show (-1 / 2 : ℝ) = -(1 / 2) by ring, Real.rpow_neg hy, one_div]
+  · rw [Real.sqrt_eq_rpow, show (-1 / 2 : ℝ) = -(1 / 2) by ring, Real.rpow_neg hy, inv_eq_one_div]
   · rw [Real.rpow_def_of_neg hy, Real.sqrt_eq_zero'.2 hy.le, div_zero,
       show (-1 / 2 : ℝ) * Real.pi = -(Real.pi / 2) by ring, Real.cos_neg, Real.cos_pi_div_two, mul_zero]
 
@@ -439,7 +439,9 @@ theorem diff_chain_arcsin_sound (ρ : EnvR) (x : String) {u : Expr} (hu : DiffAt
   have hd : HasDerivAt (fx ρ x u) (D ρ x u) (ρ x) := hu.hasDerivAt
   rw [D_eq, fx_fn]
   simp only [applyFn_arcsin]
-  rw [(hd.arcsin (by simpa [fx] using h₁) (by simpa [fx] using h₂)).deriv]
+  have h : HasDerivAt (fun t => Real.arcsin (fx ρ x u t)) (1 / Real.sqrt (1 - fx ρ x u (ρ x) ^ 2) * D ρ x u) (ρ x) :=
+    (Real.hasDerivAt_arcsin (by simpa [fx] using h₁) (by simpa [fx] using h₂)).comp (ρ x) hd
+  rw [h.deriv]
   simp only [evalD_mul, prodD_cons, prodD_nil, evalD_invSqrtOneMinusSq, evalD_fn, fnD_one, fnD_diff, fx, upd_self]
   ring
 
@@ -450,7 +452,9 @@ theorem diff_chain_arccos_sound (ρ : EnvR) (x : String) {u : Expr} (hu : DiffAt
   have hd : HasDerivAt (fx ρ x u) (D ρ x u) (ρ x) := hu.hasDerivAt
   rw [D_eq, fx_fn]
   simp only [applyFn_arccos]
-  rw [(hd.arccos (by simpa [fx] using h₁) (by simpa [fx] using h₂)).deriv]
+  have h : HasDerivAt (fun t => Real.arccos (fx ρ x u t)) (-(1 / Real.sqrt (1 - fx ρ x u (ρ x) ^ 2)) * D ρ x u) (ρ x) :=
+    (Real.hasDerivAt_arccos (by simpa [fx] using h₁) (by simpa [fx] using h₂)).comp (ρ x) hd
+  rw [h.deriv]
   simp only [Expr.neg, evalD_mul, prodD_cons, prodD_nil, evalD_invSqrtOneMinusSq, evalD_minusOne, evalD_fn, fnD_one,
     fnD_diff, fx, upd_self]
   ring

@@ -239,10 +239,12 @@ theorem ev_scaleOut (es : List Expr) (k : Q) :
         rw [List.map_map]
         apply List.map_congr_left
         intro t _
-        simp [S.ev_mul, S.ev_num, Q.inv, Rat.inv_def']
-      rw [S.ev_mul, S.ev_pow, S.ev_pow, S.ev_add, S.ev_add, S.ev_num, S.ev_num, hmap,
-        List.sum_map_mul_left]
+        simp only [Function.comp_apply, S.ev_mul, List.map_cons, List.map_nil, List.prod_cons, List.prod_nil, mul_one, S.ev_num]
+        congr 1
+        exact Rat.cast_inv c.val
+      rw [S.ev_mul]
       simp only [List.map_cons, List.map_nil, List.prod_cons, List.prod_nil, mul_one, S.ev_pow, S.ev_num]
+      rw [S.ev_add, S.ev_add, hmap, List.sum_map_mul_left]
       exact rpow_scale_out hpos _ _
     · rfl
   · rfl
@@ -293,8 +295,8 @@ theorem ev_identPow (e : Expr) : S.ev ρ (identPow e) = S.ev ρ e := by
       have h1 : ((mkRat 1 2 : ℚ) : ℝ) = 1 / 2 := by rw [Rat.mkRat_eq_div]; push_cast; ring
       have h2 : (((Q.ofRat (mkRat (-1) 2)).val : ℚ) : ℝ) = -1 / 2 := by
         simp only [Q.ofRat]; rw [Rat.mkRat_eq_div]; push_cast; ring
-      rw [h1, h2, rpow_half_rpow_neg_one]
-      norm_num
+      have h3 : (((-1 : ℚ)) : ℝ) = -1 := by norm_num
+      rw [h1, h2, h3, rpow_half_rpow_neg_one]
     · rfl
   · rfl
 
