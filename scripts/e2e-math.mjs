@@ -5,6 +5,8 @@
 // carries `let` bindings from one cell to the next, an error shows as the cell's error, and opening a
 // cell's work shows the step that produced the answer, under the notebook's name for its rule.
 //   node scripts/e2e-math.mjs [screenshot.png]
+// First, from a fresh browser, the welcome tab shown while no notebook is open, and Manim Studio
+// opened from it and from the View menu, sent a derivation and closed.
 // Then the notebook's teaching features, in a notebook of their own: a cell out of date when a name it
 // read changes, a slider driving the cells below it, work stepped through with the answer held back,
 // an exercise written in its editor and answered (wrong, right, and with the work), a Markdown
@@ -213,7 +215,7 @@ async function manipulate() {
 }
 
 /** The tab bar with more notebooks open than fit: each tab one line with its name short of `.chalk`, a
- *  long name cut short, the studio still in view; the ⌄ lists every notebook and shows the one
+ *  long name cut short, the studio (opened) still in view; the ⌄ lists every notebook and shows the one
  *  chosen, scrolled into view; the middle button closes a tab. */
 async function tabs() {
   const long = "a-notebook-with-a-name-far-too-long-for-any-tab.chalk";
@@ -232,6 +234,7 @@ async function tabs() {
   const lt = shape.find((t) => t.title === long);
   assert.ok(lt, "no tab has the long name whole on hover"); assert.equal(lt.name, long.replace(/\.chalk$/, ""));
   assert.ok(lt.cut, "the long name is not cut short");
+  await menu("View", "Manim Studio");
   const studio = await page.locator(".tabbar .tabplaces .tab", { hasText: "manim studio" }).boundingBox();
   assert.ok(studio && studio.x + studio.width <= page.viewportSize().width, "the studio's tab is pushed out of view");
   // the list: every open notebook; the long one chosen is shown and scrolled to
@@ -249,7 +252,58 @@ async function tabs() {
     assert.equal(await strip.count(), n - 1, "the middle button does not close a tab");
     assert.equal(await page.locator(".tabstrip .tab.on").getAttribute("title"), long, "closing a tab in the background changed the notebook shown");
   }
+  await page.locator(".tabbar .tab", { hasText: "manim studio" }).locator(".x").click();
   console.log(`✓ tabs: ${shape.length} open, one line each, the long name cut short, the list showing it, ${added} closed with the middle button`);
+}
+
+/** The tabs around the notebooks, from a fresh browser: the welcome tab while no notebook is open (not
+ *  a blank notebook made for the reader), Manim Studio opened from it and from the View menu and
+ *  closed by its ×, the last notebook closed bringing the welcome tab back, and a derivation sent to
+ *  the studio as the engine's own steps. */
+async function welcome() {
+  const tabs = () => page.locator(".tabbar .tab .label").allTextContents();
+  const current = () => page.locator(".tabbar .tab.on .label").textContent();
+  await page.locator(".welcome .wlcard").first().waitFor({ timeout: 10000 });
+  assert.deepEqual(await tabs(), ["welcome"], "a fresh browser shows the welcome tab and nothing else");
+  assert.equal(await page.locator(".cell").count(), 0, "no notebook was made");
+  // Manim Studio from the welcome page: its tab, with nothing to show yet, and its × takes it away
+  await page.locator(".welcome .wlcard", { hasText: "Manim Studio" }).click();
+  assert.equal(await current(), "manim studio", "the welcome page's Manim Studio opens its tab");
+  await page.locator(".studio .studio-empty").waitFor({ timeout: 5000 });
+  await page.locator(".tabbar .tab", { hasText: "manim studio" }).locator(".x").click();
+  assert.deepEqual(await tabs(), ["welcome"], "the studio's × closes its tab");
+  assert.equal(await current(), "welcome");
+  // and from the View menu
+  await menu("View", "Manim Studio");
+  assert.equal(await current(), "manim studio", "View › Manim Studio opens its tab");
+  await page.locator(".tabbar .tab", { hasText: "manim studio" }).locator(".x").click();
+  // a notebook takes the welcome tab's place; closing the last one brings it back
+  await page.locator(".welcome .wlcard", { hasText: "New notebook" }).click();
+  assert.deepEqual(await tabs(), ["untitled"], "a new notebook replaces the welcome tab");
+  const src = "diff(x^3, x)";
+  await run(0, src);
+  const want = await reference.call("engine.evaluate", { sessionId: "e2e-welcome", cellId: "w", source: src, showWork: true, paths: true });
+  assert.equal(want.ok, true, `${src}: ${want.error?.message}`);
+  await outIs(0, want.rendered.latex, src);
+  // its derivation sent to a new scene: the statement, then one shot per step with a term after it
+  await all().nth(0).hover();
+  await all().nth(0).locator(".cellacts .more").click();
+  await page.locator(".cellmenu .item.hassub", { hasText: "Send to scene" }).hover();
+  await page.locator(".cellmenu .submenu .item", { hasText: "New scene" }).click();
+  await page.locator(".tabbar .tab.on", { hasText: "manim studio" }).waitFor({ timeout: 10000 })
+    .catch(async () => assert.fail(`sending a derivation did not open the studio: the tab shown is ${await current()}`));
+  const shots = 1 + (want.derivation?.steps ?? []).filter((st) => st.afterRendered).length;
+  assert.ok(shots > 1, `${src}: the engine sent no steps with a term after them`);
+  await page.waitForFunction((n) => document.querySelectorAll(".studio .shotlist .shot").length === n, shots, { timeout: 10000 })
+    .catch(async () => assert.fail(`the studio shows ${await page.locator(".studio .shotlist .shot").count()} shots, not ${shots}`));
+  await page.locator(".tabbar .tab", { hasText: "manim studio" }).locator(".x").click();
+  assert.equal(await current(), "untitled*", "closing the studio goes back to the notebook (unsaved)");
+  page.once("dialog", (d) => void d.accept());   // the notebook has unsaved changes: close it anyway
+  await page.locator(".tabbar .tab", { hasText: "untitled" }).locator(".x").click();
+  await page.locator(".welcome .wlcard").first().waitFor({ timeout: 5000 });
+  assert.deepEqual(await tabs(), ["welcome"], "closing the last notebook brings back the welcome tab");
+  assert.equal(await page.locator(".cell").count(), 0, "and makes no blank notebook");
+  console.log(`✓ welcome: shown with no notebook open; Manim Studio opened and closed; ${src} sent to it as ${shots} shots; the last notebook closed`);
 }
 
 /** The teaching features, in a fresh notebook, then a course. */
@@ -505,6 +559,7 @@ try {
   await page.locator("#kurl").dispatchEvent("change");
   await page.waitForFunction(() => /ready/.test(document.querySelector(".kernel")?.textContent ?? ""), null, { timeout: 30000 });
   connected = true;
+  await welcome();
   await page.locator(".menus span", { hasText: "File" }).click();
   await page.locator(".dropdown .item", { hasText: "New notebook" }).click();
 
