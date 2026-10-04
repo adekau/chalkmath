@@ -424,5 +424,71 @@ def iterateSets (n : Nat) (f : List Nat → List Nat) (start : List Nat) : List 
     cur := nxt
   return chain
 
+/-! ## Certificates for CTL
+
+Each CTL answer is a set `Z` of state indices, the last of a chain of Kleene rounds. A state's round
+is its rank: the round that first holds it (`rankIn`, for a least fixed point) or first drops it
+(`rankOut`, for a greatest). The checks below read the certificate off `Z` and the ranks, and
+`CtlProofs.lean` proves that where a check passes, `Z` is exactly the set of states where the formula
+holds by the meaning of its paths: `EF` some path reaches φ, `EG` an infinite path stays in φ, `AG`
+every reachable state is in φ, `AF` every maximal path (infinite, or stopping where no action is
+enabled) reaches φ. -/
+namespace Ctl
+
+def rankIn (chain : List (List Nat)) (s : Nat) : Nat := chain.findIdx (·.contains s)
+def rankOut (chain : List (List Nat)) (s : Nat) : Nat := chain.findIdx fun z => !z.contains s
+
+/-- Every edge joins states below `n`. -/
+def inRange (n : Nat) (es : List (Nat × Nat)) : Bool := es.all fun e => decide (e.1 < n) && decide (e.2 < n)
+
+/-- `Z` is `EF φ`: a member is in φ or steps to a member of lower rank; a non-member is not in φ and
+steps to no member. -/
+def checkEF (n : Nat) (es : List (Nat × Nat)) (sat Z : List Nat) (r : Nat → Nat) : Bool :=
+  inRange n es && (List.range n).all fun s =>
+    if Z.contains s then sat.contains s || es.any (fun e => e.1 == s && Z.contains e.2 && decide (r e.2 < r s))
+    else !sat.contains s && es.all (fun e => e.1 != s || !Z.contains e.2)
+
+/-- `Z` is `EG φ`: a member is in φ and steps to a member; a non-member is not in φ, or steps only to
+non-members of lower rank. -/
+def checkEG (n : Nat) (es : List (Nat × Nat)) (sat Z : List Nat) (r : Nat → Nat) : Bool :=
+  inRange n es && (List.range n).all fun s =>
+    if Z.contains s then sat.contains s && es.any (fun e => e.1 == s && Z.contains e.2)
+    else !sat.contains s || es.all (fun e => e.1 != s || (!Z.contains e.2 && decide (r e.2 < r s)))
+
+/-- `Z` is `AG φ`: a member is in φ and steps only to members; a non-member is not in φ, or steps to a
+non-member of lower rank. -/
+def checkAG (n : Nat) (es : List (Nat × Nat)) (sat Z : List Nat) (r : Nat → Nat) : Bool :=
+  inRange n es && (List.range n).all fun s =>
+    if Z.contains s then sat.contains s && es.all (fun e => e.1 != s || Z.contains e.2)
+    else !sat.contains s || es.any (fun e => e.1 == s && !Z.contains e.2 && decide (r e.2 < r s))
+
+/-- `Z` is `AF φ`: a member is in φ, or has a step and steps only to members of lower rank; a
+non-member is not in φ, and has no step or steps to a non-member. -/
+def checkAF (n : Nat) (es : List (Nat × Nat)) (sat Z : List Nat) (r : Nat → Nat) : Bool :=
+  inRange n es && (List.range n).all fun s =>
+    if Z.contains s then
+      sat.contains s || (es.any (fun e => e.1 == s) && es.all (fun e => e.1 != s || (Z.contains e.2 && decide (r e.2 < r s))))
+    else !sat.contains s && (!es.any (fun e => e.1 == s) || es.any (fun e => e.1 == s && !Z.contains e.2))
+
+/-- `Z` is `EX φ`: the states with a step into φ. -/
+def checkEX (n : Nat) (es : List (Nat × Nat)) (sat Z : List Nat) : Bool :=
+  (List.range n).all fun s => Z.contains s == es.any (fun e => e.1 == s && sat.contains e.2)
+
+/-- `Z` is `AX φ`: the states that have a step, and step only into φ. -/
+def checkAX (n : Nat) (es : List (Nat × Nat)) (sat Z : List Nat) : Bool :=
+  (List.range n).all fun s => Z.contains s == (es.any (fun e => e.1 == s) && es.all (fun e => e.1 != s || sat.contains e.2))
+
+/-- The check for an operator, with the chain it was computed from. -/
+def check (op : String) (n : Nat) (es : List (Nat × Nat)) (sat : List Nat) (chain : List (List Nat)) (Z : List Nat) : Bool :=
+  match op with
+  | "EF" => checkEF n es sat Z (rankIn chain)
+  | "AF" => checkAF n es sat Z (rankIn chain)
+  | "EG" => checkEG n es sat Z (rankOut chain)
+  | "AG" => checkAG n es sat Z (rankOut chain)
+  | "EX" => checkEX n es sat Z
+  | _ => checkAX n es sat Z
+
+end Ctl
+
 end Sys
 end MathEngine

@@ -131,9 +131,9 @@ the engine omits is unverified.
 \rt{sys.unreachable}{verified}{No state the search found satisfies the formula, and the search finds every reachable state (\lc{System.explore_states}).}
 \rt{sys.inductive}{verified}{Every assignment of the domains is enumerated (\lc{allStates_mem}) and every enabled action from a state where the formula holds is checked.}
 \rt{sys.cti}{checked}{A state where the formula holds and an action after which it fails (or leaves a domain): both evaluated, a concrete counterexample to induction.}
-\rt{sys.ctl}{unverified}{The CTL operator as a fixed point of a predicate transformer on the reachable states; the correspondence with paths is the standard theorem, not formalized here.}
+\rt{sys.ctl}{verified}{The set is a fixed point checked with a certificate read off its rounds, and where the check passes it is exactly the states where the formula holds by the meaning of its paths: $\mathrm{EF}$ some path reaches $\varphi$, $\mathrm{EG}$ an infinite path stays in it, $\mathrm{AG}$ every reachable state is in it, $\mathrm{AF}$ every maximal path reaches it (\lc{checkEF_spec} and the others).}
 \rt{sys.iterate}{checked}{One round of the Kleene iteration: the transformer applied to the previous set.}
-\rt{sys.fixed}{checked}{The loop stops when a round changes nothing, so the set is a fixed point; that iterating from the bottom (or top) gives the least (or greatest) is Kleene's theorem, not formalized here.}
+\rt{sys.fixed}{verified}{The loop stops when a round changes nothing, and the set it stops at is checked against the operator's path meaning with \rn{sys.ctl}'s certificate, so it is the right set without appeal to Kleene's theorem.}
 \rt{sys.cycle}{unverified}{A step of the lasso's cycle, found within a strongly connected set of states avoiding the goal.}
 \rt{sys.lasso}{unverified}{A fair cycle avoiding the goal: each fair action is taken on it or disabled as its fairness requires; the search over strongly connected sets is not yet proved complete.}
 \rt{sys.eventually}{unverified}{No deadlock and no fair cycle avoids the goal among the reachable states; the search is not yet proved complete.}

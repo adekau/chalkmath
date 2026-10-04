@@ -153,8 +153,11 @@ differential test with zero mismatches.
   between them, so an invariant, an unreachable state, the absence of a deadlock and a refinement are
   decided on all of them; `allStates_mem` does the same for the assignments `inductive` checks. The
   search refuses rather than returns when it cannot expand every state it found (more initial states
-  than its limit used to leave some unexpanded). Shortest traces, the CTL fixed points and the lasso
-  search are not proved yet. Guards reuse the logic world's formulas, evaluated over the
+  than its limit used to leave some unexpanded). A CTL answer carries a certificate read off its Kleene
+  rounds (each state's round is its rank), checked before it is reported; `CtlProofs.lean` proves that
+  where the check passes the set is exactly the states where the formula holds by the meaning of its
+  paths, infinite paths and paths that stop included. Shortest traces and the lasso search are not
+  proved yet. Guards reuse the logic world's formulas, evaluated over the
   state with names (`idle`, `true`) as values.
 - **Logic is a fourth world.** `Logic.lean` reads formulas of propositional logic and bounded
   first-order formulas over finite sets of numbers, with its own grammar (ASCII spellings read as
