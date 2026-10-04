@@ -3943,9 +3943,9 @@ function stepTitle(st: Step): { title: string; rest: string } {
 }
 /** Names for the rules whose explanations do not name them. */
 const RULE_NAMES: Record<string, string> = {
-  "diff.chain": "Chain rule", "diff.sum": "Sum rule", "diff.product": "Product rule", "diff.power": "Power rule", "diff.variable": "Derivative of the variable",
+  "diff.chain": "Chain rule", "diff.sum": "Sum rule", "diff.product": "Product rule", "diff.power": "Power rule", "diff.chain.assuming": "Chain rule, assuming", "diff.sum.assuming": "Sum rule, assuming", "diff.product.assuming": "Product rule, assuming", "diff.power.assuming": "Power rule, assuming", "diff.variable": "Derivative of the variable",
   "diff.constant": "Derivative of a constant", "diff.constant-multiple": "Constant multiple rule", "diff.higher-order": "Higher derivative", "diff.matrix": "Entrywise derivative",
-  "simp.power": "Power identity", "simp.identity": "Identity", "simp.flatten": "Flatten", "simp.sort": "Reorder", "simp.function": "Function value", "simp.function.assuming": "Function value, assuming a positive argument",
+  "simp.power": "Power identity", "simp.identity": "Identity", "simp.flatten": "Flatten", "simp.sort": "Reorder", "simp.function": "Function value", "simp.function.real": "Function value over ℝ", "simp.function.assuming": "Function value, assuming a positive argument",
   "simp.fold-constants": "Arithmetic on constants", "simp.collect-like-terms": "Collect like terms", "simp.collect-powers": "Collect powers", "simp.collect-powers.assuming": "Collect powers, assuming the base", "simp.collect-radicals": "Collect radicals",
   "simp.radical": "Radical", "simp.exp-product": "Exponentials multiply", "expand.distribute": "Distribute", "expand.power": "Expand the power",
   "cx.euler": "Euler's formula", "cx.euler-power": "Euler's formula", "cx.arithmetic": "Complex arithmetic", "cx.i-power": "Power of i", "cx.re-im": "Real and imaginary parts",

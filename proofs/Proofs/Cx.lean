@@ -30,7 +30,8 @@ def constC (f : String) : ℂ := if f = "π" then (Real.pi : ℂ) else if f = "i
 @[simp] theorem constC_pi : constC "π" = (Real.pi : ℂ) := by simp [constC]
 @[simp] theorem constC_i : constC "i" = I := by simp [constC]
 
-/-- The unary functions over ℂ. `abs` is the modulus, `conj`, `re`, `im` as expected. -/
+/-- The unary functions over ℂ. `abs` is the modulus, `sign` is `z/|z|` (and 0 at 0), `conj`, `re`,
+`im` as expected. -/
 def applyFnC (f : String) (z : ℂ) : ℂ :=
   match f with
   | "sin" => Complex.sin z
@@ -43,6 +44,7 @@ def applyFnC (f : String) (z : ℂ) : ℂ :=
   | "conj" => (starRingEnd ℂ) z
   | "re" => (z.re : ℂ)
   | "im" => (z.im : ℂ)
+  | "sign" => if z = 0 then 0 else z / (‖z‖ : ℂ)
   | _ => 0
 
 @[simp] theorem applyFnC_sin (z : ℂ) : applyFnC "sin" z = Complex.sin z := by simp [applyFnC]
@@ -54,6 +56,8 @@ def applyFnC (f : String) (z : ℂ) : ℂ :=
 @[simp] theorem applyFnC_conj (z : ℂ) : applyFnC "conj" z = (starRingEnd ℂ) z := by simp [applyFnC]
 @[simp] theorem applyFnC_re (z : ℂ) : applyFnC "re" z = (z.re : ℂ) := by simp [applyFnC]
 @[simp] theorem applyFnC_im (z : ℂ) : applyFnC "im" z = (z.im : ℂ) := by simp [applyFnC]
+@[simp] theorem applyFnC_sign (z : ℂ) : applyFnC "sign" z = if z = 0 then 0 else z / (‖z‖ : ℂ) := by
+  simp [applyFnC]
 
 mutual
   /-- Meaning of an expression in ℂ. -/

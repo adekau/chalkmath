@@ -44,7 +44,10 @@ consider literal-free nodes. -/
 def scalarOnly (r : PlainRule) : PlainRule :=
   { r with apply := fun e => if (children e).any isMatrix then none else r.apply e }
 
-def simpPlain : List PlainRule := simpRules.map fun r => scalarOnly r.toPlain
+/-- The simp rules as pipeline rules; over ℂ (`real = false`) `simp.function.real` is off. -/
+def simpPlainWith (real : Bool) : List PlainRule :=
+  [flatten, identity, foldConstants, functionRules, functionRealWith real, functionAssuming, powerRules, collectPowers,
+    collectPowersAssuming, collectTerms].map fun r => scalarOnly r.toPlain
 def parityPlain : List PlainRule := parityRules.map scalarOnly
 def radicalPlain : List PlainRule := radicalRules.map scalarOnly
 def sqrtPlain : List PlainRule := sqrtRules.map scalarOnly
@@ -222,7 +225,7 @@ def commandRulesWith (norm : Norm) : List PlainRule := [cmdSimplify, cmdExpand, 
 
 /-- The matrix rules precede `simp` as in the reference (so `A·A` is a product, not `A^2`); the
 catch-all `la.context` must come after every rule that handles a literal, so it is last. -/
-def pipelineRulesWith (norm : Norm) : List PlainRule := commandRulesWith norm ++ diffRules ++ matrixRules ++ complexPlain ++ sqrtPlain ++ simpPlain ++ parityPlain ++ radicalPlain ++ contextRules
+def pipelineRulesWith (norm : Norm) (real : Bool) : List PlainRule := commandRulesWith norm ++ diffRules ++ matrixRules ++ complexPlain ++ sqrtPlain ++ simpPlainWith real ++ parityPlain ++ radicalPlain ++ contextRules
 
 
 end MathEngine

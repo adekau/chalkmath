@@ -214,9 +214,11 @@ export const FUNCTIONS: FnDoc[] = [
       "Implemented as rewrite rules that push $d/dx$ inward (sum, product, quotient, chain and power rules), so the derivation reads like a textbook's.",
       "Other variables are constants: `diff(x*y, x)` is `y`.",
       "A vector or matrix is differentiated entry by entry.",
+      "A step that needs something says so: the derivative of `ln u` assumes `u > 0`, of `tan u` that `cos u ≠ 0`, a real exponent a positive base, and a rule applied to a part that is not differentiable everywhere (`abs(x)`) assumes it differentiable. The other steps hold at every point.",
     ],
     examples: [
       basic("diff(x^2 * sin(x), x)", "diff(x^3, x, 2)"),
+      section("Steps that assume", "diff(ln(x), x)", "diff(x^(1/2), x)", "diff(tan(x), x)"),
       section("Scope", "diff(sin(x^2), x)", "diff(1/(x+1), x)", "diff(x^x, x)", "diff(2^x, x)", "diff(x*y, x)", "diff([x, x^2], x)"),
       section("Properties and relations", note("Differentiation undoes integration:"), "diff(integrate(x^3, x), x)"),
     ],

@@ -935,3 +935,16 @@ Phases:
    forms `a` and `f(b)`. The second rule's suffix is now checked to collide with nothing, and lengthened when it
    would (`apart`, `apart_spec`). A rule is skipped against itself at the root by its place in the list rather than
    its name. Every other answer is unchanged.
+- verification: the domain, ℂ, and the calculus rules — DONE 2026-10-04 (Alex: "Start with 1 and 2 and 3").
+   Finding: `ln(exp(4*i))` answered `4*i`; on ℂ's principal branch it is `(4 − 2π)i`. A cell is now read over ℂ
+   when its input or its real answer mentions `i` (`normCell`), the pipeline takes the reading as a parameter, and
+   `simp.function.real` (`ln(e^x) = x`, `ln(b^p) = p ln b` for odd `p`) is off over ℂ; the rest of `simp.function`
+   is proved over ℂ (`functionRules_soundC`). Finding: `ln(x²) = 2 ln x` was "verified" only because Mathlib's
+   `log` is `log |x|`; `ln(x²)` is defined at `x = −2` and `2 ln x` is not. `Def`/`DomEq` (`Domain.lean`) say where
+   a term is defined and ask a step to keep the answer defined, with the same value, wherever the input is; every
+   rule the pipeline runs without an assumption does (`normalizeSafe_soundD`, the parity and radical rules), and
+   the even-power case is `simp.function.assuming` now. The calculus rules split at `smooth` (differentiable
+   everywhere, `smooth_differentiable`): verified halves where nothing is needed, `.assuming` halves that say
+   `u > 0` for `ln u` and real exponents, `u ≠ 0` for negative integer ones, `cos u ≠ 0` for `tan u`, `b > 0` for
+   `b^u` and `f^g`; both proved for the exact term the engine writes (`DerivRules.lean`; the product rule for any
+   number of factors, `ln`, `tan`, real exponents, `b^u` and `f^g` had no theorem before).

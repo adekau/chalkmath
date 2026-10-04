@@ -46,7 +46,7 @@ def diffVariable : PlainRule :=
     | .var y => if y == x then some ⟨Expr.one, s!"$\\frac\{d}\{d{x}} {x} = 1$: the identity function has slope 1 everywhere.", none, none⟩ else none
     | _ => none
 
-def diffSum : PlainRule :=
+def diffSumAll : PlainRule :=
   rule "diff.sum" fun (body, x) =>
     match body with
     | .add (a :: b :: es) => some ⟨.add ((a :: b :: es).map (D · x)), "Sum rule: the derivative of a sum is the sum of the derivatives (differentiation is linear).", none, none⟩
@@ -68,7 +68,7 @@ def prodTerms (x : String) : List Expr → List Expr → List Expr
   | _, [] => []
   | acc, f :: rest => .mul (D f x :: (acc ++ rest)) :: prodTerms x (acc ++ [f]) rest
 
-def diffProduct : PlainRule :=
+def diffProductAll : PlainRule :=
   rule "diff.product" fun (body, x) =>
     match body with
     | .mul (f :: g :: fs) =>
@@ -78,7 +78,7 @@ def diffProduct : PlainRule :=
       some ⟨.add (prodTerms x [] (f :: g :: fs)), expl, none, none⟩
     | _ => none
 
-def diffPower : PlainRule :=
+def diffPowerAll : PlainRule :=
   rule "diff.power" fun (body, x) =>
     match body with
     | .pow base exp =>
@@ -113,7 +113,7 @@ def outerOf (f : String) (u : Expr) : Option (Expr × String) :=
 def innerOf (u : Expr) (x : String) : List Expr :=
   match u with | .var y => if y == x then [] else [D u x] | _ => [D u x]
 
-def diffChain : PlainRule :=
+def diffChainAll : PlainRule :=
   rule "diff.chain" fun (body, x) =>
     match body with
     | .fn f [u] =>
@@ -125,12 +125,108 @@ def diffChain : PlainRule :=
       | none => none
     | _ => none
 
+/-! ## Where the calculus rules hold everywhere, and what they assume elsewhere
+
+`diff.sum`, `diff.product`, `diff.power` and `diff.chain` need the functions they split apart to be
+differentiable, and `ln`, `tan`, real exponents and `b^u` need a domain condition besides. Each rule
+has two halves that rewrite exactly as the whole: the verified one fires where nothing is needed,
+because every part is `smooth` (differentiable everywhere) and no domain condition arises; the
+`.assuming` one fires elsewhere and its step ends with what it assumes. -/
+
+def posNumeral : Expr → Bool | .num q => !q.isNeg && !q.isZero | _ => false
+
+mutual
+  /-- Differentiable everywhere, in every variable: numerals, variables, constants, `+`, `·`, a power
+  by a natural numeral, a power of a positive numeral, and `sin`, `cos`, `exp` of such a term. -/
+  def smooth : Expr → Bool
+    | .num _ => true
+    | .var _ => true
+    | .add es => smoothList es
+    | .mul es => smoothList es
+    | .pow b e =>
+      (match e with
+       | .num n => n.isInt && decide (0 ≤ n.val.num) && smooth b
+       | _ => false) || (posNumeral b && smooth e)
+    | .fn f [u] => (f == "sin" || f == "cos" || f == "exp") && smooth u
+    | .fn _ [] => true
+    | _ => false
+  def smoothList : List Expr → Bool
+    | [] => true
+    | e :: es => smooth e && smoothList es
+end
+
+/-- `$u$ differentiable`, unless `u` is smooth. -/
+def diffCond (u : Expr) : List String := if smooth u then [] else [s!"${u.toText}$ differentiable"]
+
+/-- What a calculus step on `diff(body, x)` assumes. -/
+def diffConds (e : Expr) : List String :=
+  match target e with
+  | none => []
+  | some (body, x) =>
+    match body with
+    | .add es => es.flatMap diffCond
+    | .mul es => es.flatMap diffCond
+    | .pow b n =>
+      let bd := b.dependsOn x
+      let nd := n.dependsOn x
+      if bd && !nd then
+        (match n with
+         | .num q =>
+           if q.isInt && decide (0 ≤ q.val.num) then []
+           else if q.isInt then [s!"${b.toText} \\neq 0$"] else [s!"${b.toText} > 0$"]
+         | _ => [s!"${b.toText} > 0$"]) ++ diffCond b
+      else if !bd && nd then
+        (if posNumeral b then [] else [s!"${b.toText} > 0$"]) ++ diffCond n
+      else [s!"${b.toText} > 0$"] ++ diffCond b ++ diffCond n
+    | .fn "tan" [u] => [s!"$\\cos({u.toText}) \\neq 0$"] ++ diffCond u
+    | .fn "ln" [u] => [s!"${u.toText} > 0$"] ++ diffCond u
+    | .fn _ [u] => diffCond u
+    | _ => []
+
+/-- The half of a rule that fires where it assumes nothing. -/
+def verifiedHalf (r : PlainRule) : PlainRule :=
+  { r with apply := fun e => if (diffConds e).isEmpty then r.apply e else none }
+
+/-- The half that fires where it assumes something, and says what. -/
+def assumingHalf (r : PlainRule) (name : String) : PlainRule :=
+  { r with name := name, apply := fun e =>
+      let cs := diffConds e
+      if cs.isEmpty then none
+      else (r.apply e).map fun res => { res with explanation := res.explanation ++ s!" Assuming {", ".intercalate cs}." } }
+
+def diffSum : PlainRule := verifiedHalf diffSumAll
+def diffSumAssuming : PlainRule := assumingHalf diffSumAll "diff.sum.assuming"
+def diffProduct : PlainRule := verifiedHalf diffProductAll
+def diffProductAssuming : PlainRule := assumingHalf diffProductAll "diff.product.assuming"
+def diffPower : PlainRule := verifiedHalf diffPowerAll
+def diffPowerAssuming : PlainRule := assumingHalf diffPowerAll "diff.power.assuming"
+def diffChain : PlainRule := verifiedHalf diffChainAll
+def diffChainAssuming : PlainRule := assumingHalf diffChainAll "diff.chain.assuming"
+
+theorem verifiedHalf_some {r : PlainRule} {e : Expr} {res : RuleResult} (h : (verifiedHalf r).apply e = some res) :
+    r.apply e = some res ∧ diffConds e = [] := by
+  simp only [verifiedHalf] at h
+  split at h
+  · rename_i hc; exact ⟨h, List.isEmpty_iff.mp hc⟩
+  · cases h
+
+theorem assumingHalf_some {r : PlainRule} {n : String} {e : Expr} {res : RuleResult}
+    (h : (assumingHalf r n).apply e = some res) :
+    ∃ r₀, r.apply e = some r₀ ∧ res.result = r₀.result ∧ res.error = r₀.error := by
+  simp only [assumingHalf] at h
+  split at h
+  · cases h
+  · simp only [Option.map_eq_some_iff] at h
+    obtain ⟨r₀, h₀, rfl⟩ := h
+    exact ⟨r₀, h₀, rfl, rfl⟩
+
 def diffMatrix : PlainRule :=
   { name := "diff.matrix", apply := fun e => Option.map (checkedLit e) <| target e >>= fun (body, x) =>
     match body with
     | .matrix rows => some ⟨.matrix (rows.map (·.map (D · x))), "Differentiate a matrix entrywise.", none, none⟩
     | _ => none }
 
-def diffRules : List PlainRule := [diffHigherOrder, diffConstant, diffVariable, diffSum, diffConstMul, diffProduct, diffPower, diffChain, diffMatrix]
+def diffRules : List PlainRule := [diffHigherOrder, diffConstant, diffVariable, diffSum, diffSumAssuming, diffConstMul,
+  diffProduct, diffProductAssuming, diffPower, diffPowerAssuming, diffChain, diffChainAssuming, diffMatrix]
 
 end MathEngine

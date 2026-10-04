@@ -32,6 +32,8 @@ const CASES = [
   { src: "[1,2;3,4] * [5,6;7,8]", text: "[19, 22; 43, 50]", step: "Matrix product" },
   { src: "[1, 2] ./ [3, 10]", text: "[1/3, 1/5]", step: "Entrywise division" },
   { src: "N(sin(10^30))", text: "-0.0901169019121381", step: "Numerical value" },
+  { src: "diff(ln(x), x)", text: "1/x", step: "Chain rule, assuming" },
+  { src: "ln(x^2)", text: "2*ln(x)", step: "Function value, assuming a positive argument" },
   { src: "rref([1,2;2,4])", text: "[1, 2; 0, 0]", step: "Add a multiple of a row" },
   { src: "rref([x, y; x^2, 1])", text: "[1, 0; 0, 1]", step: "Add a multiple of a row, assuming" },
   { src: "[1,2] * [1,2]", error: "inner dimensions must match" },

@@ -472,24 +472,45 @@ def intExp : Expr → Option Int
   | .num q => if q.isInt then some q.val.num else none
   | _ => none
 
+/-- An odd integer numeral. -/
+def intOdd (p : Expr) : Bool :=
+  match intExp p with
+  | some n => n % 2 != 0
+  | none => false
+
 /-- The term a `simp.function` step needs positive, where it needs one: `x` in `exp(ln x) = x`, and
-`b` in `ln(b^p) = p ln b` for an exponent `p` that is not an integer. Every other case holds for every
-real number (`functionRules_soundR`). -/
+`b` in `ln(b^p) = p ln b` for an exponent `p` that is not an odd integer (for an even one, `ln(x²)`
+is defined at `x = −2` and `2 ln x` is not). -/
 def functionAssumed : Expr → Option Expr
   | .fn "exp" [.fn "ln" [x]] => some x
-  | .fn "ln" [.pow b p] => if (intExp p).isSome then none else some b
+  | .fn "ln" [.pow b p] => if intOdd p then none else some b
   | _ => none
+
+/-- The cases that hold over ℝ, where they keep the domain too, but not over ℂ's principal branch:
+`ln(exp x) = x` (at `x = 4i` it is `(4 − 2π)i`) and `ln(b^p) = p ln b` for an odd integer `p`. -/
+def functionRealCase : Expr → Bool
+  | .fn "ln" [.fn "exp" [_]] => true
+  | .fn "ln" [.pow _ p] => intOdd p
+  | _ => false
 
 /-- A rule that fires only where `p` holds, with `f`'s result. -/
 theorem gate_some {p : Bool} {f : Option RuleResult} {r : RuleResult} (h : (if p then f else none) = some r) :
     f = some r := by
   split at h <;> simp_all
 
-/-- `simp.function` where it holds for every real number. -/
+/-- `simp.function` where it holds for every real and every complex number, on the whole domain. -/
 def functionRules : Rule simpW where
   name := "simp.function"
-  apply e := if (functionAssumed e).isNone then functionApply e else none
+  apply e := if (functionAssumed e).isNone && !functionRealCase e then functionApply e else none
   decreasing e r h := functionApply_decreasing e r (gate_some h)
+
+/-- `simp.function` where it holds over ℝ only: off (`real = false`) in a cell read over ℂ. -/
+def functionRealWith (real : Bool) : Rule simpW where
+  name := "simp.function.real"
+  apply e := if real && functionRealCase e then functionApply e else none
+  decreasing e r h := functionApply_decreasing e r (gate_some h)
+
+def functionReal : Rule simpW := functionRealWith true
 
 /-- `simp.function` where it needs a positive argument: the step says so. -/
 def functionAssumingApply (e : Expr) : Option RuleResult :=
@@ -807,7 +828,7 @@ def collectTerms : Rule simpW where
 -- ---------------------------------------------------------------------------
 
 def simpRules : List (Rule simpW) :=
-  [flatten, identity, foldConstants, functionRules, functionAssuming, powerRules, collectPowers, collectPowersAssuming, collectTerms]
+  [flatten, identity, foldConstants, functionRules, functionReal, functionAssuming, powerRules, collectPowers, collectPowersAssuming, collectTerms]
 
 def simplify (e : Expr) : TraceM Expr := normalize simpRules e
 def simplify0 (e : Expr) : Expr := (simplify e).run' #[]
@@ -815,7 +836,7 @@ def simplify0 (e : Expr) : Expr := (simplify e).run' #[]
 /-- `simpRules` without the two rules that assume: sound at every real value (`normalizeSafe_sound`,
 `proofs/Proofs/SimpAll.lean`). -/
 def simpRulesSafe : List (Rule simpW) :=
-  [flatten, identity, foldConstants, functionRules, powerRules, collectPowers, collectTerms]
+  [flatten, identity, foldConstants, functionRules, functionReal, powerRules, collectPowers, collectTerms]
 
 /-- What an `.assuming` step assumed, as TeX: the `$…$` after "Assuming". -/
 def assumptionOf (explanation : String) : Option String :=

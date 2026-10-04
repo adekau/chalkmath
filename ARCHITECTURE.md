@@ -265,6 +265,28 @@ differential test with zero mismatches.
   it as a hypothesis; `proofs/` also *proves* that no unconditional theorem exists for them. Silence is
   not an option: either a rule has an unconditional theorem or its condition is written down where
   the step is shown.
+- **Verified means on the domain, not just in Lean's arithmetic.** `evalR` is total and inherits
+  Mathlib's conventions where mathematics leaves a term undefined (`ln x = ln |x|`, `x/0 = 0`), so a
+  rule proved against it alone can change a term's domain unseen: `ln(x²) = 2 ln x` holds for every
+  real `x` in `evalR`, yet `ln(x²)` is defined at `x = −2` and `2 ln x` is not. `Def ρ e`
+  (`proofs/Proofs/Domain.lean`) says where a term is defined in the ordinary sense, and `DomEq` asks of
+  a step that the answer be defined, with the same value, wherever the input is; it is a
+  `Congruence`, so the same fold applies. Every rule the pipeline runs without an assumption keeps the
+  domain (`simpRulesSafe_soundD`, the parity, radical and square-root rules); `ln(b^p) = p ln b` for an
+  even `p` did not, and is now `simp.function.assuming` ("Assuming $x > 0$").
+- **A cell is read over ℝ or over ℂ, and the rules know which.** A cell whose input mentions `i`, or
+  whose real answer does (`sqrt(-1)`), is normalized over ℂ (`normCell`): the pipeline takes the
+  reading as a parameter (`pipelineRulesWith norm real`) and turns off `simp.function.real`, the cases
+  that are false on ℂ's principal branch (`ln(e^x) = x` fails at `x = 4i`; `not_functionReal_soundC`).
+  What is left of `simp.function` is proved over ℂ too (`functionRules_soundC`).
+- **The calculus rules are split the same way.** `diff.sum`, `diff.product`, `diff.power` and
+  `diff.chain` fire verified where every part they need differentiable is `smooth` (built from
+  numerals, variables, `+`, `·`, natural powers, positive-numeral bases, `sin`, `cos`, `exp`;
+  `smooth_differentiable`) and no domain condition arises; elsewhere their `.assuming` halves fire and
+  the step names the condition: `u > 0` for `ln u` and for real exponents, `u ≠ 0` for negative integer
+  ones, `cos u ≠ 0` for `tan u`, `b > 0` for `b^u`, differentiability otherwise. Both halves are
+  proved for the exact term the engine writes (`proofs/Proofs/DerivRules.lean`), the product rule for
+  any number of factors.
 - **Two packages.** `engine/` is executable code and goes into the wasm build: it imports Init
   (Std/Batteries allowed) and never Mathlib. `proofs/` is theorems only, may be `noncomputable`,
   requires `engine/` and (from M3) Mathlib. `scripts/check-engine-deps.sh` enforces the split.
