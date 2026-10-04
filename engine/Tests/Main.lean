@@ -472,6 +472,14 @@ def sessionTests : TestM Unit := do
   checkTrue "the reply carries the evaluation number" ((raw.splitOn "\"label\":2").length == 2) raw
   -- a power of a function, and expansion through a nested sum (the integral check needs both)
   (st, r) := ev st "sin^2(y)"; check "sin^2(y) is sin(y)^2" r "sin(y)^2"
+  (st, r) := ev st "sin^-1(y)"; check "sin^-1(y) is the reciprocal, not arcsin" r "1/sin(y)"
+  (st, r) := ev st "tan^-2(y)"; check "a negative power before the argument" r "1/tan(y)^2"
+  (st, r) := ev st "sec(y) + csc(y) + cot(y)"; check "sec, csc and cot are read as reciprocals" r "1/cos(y) + 1/sin(y) + 1/tan(y)"
+  (st, r) := ev st "sec^2(y)"; check "sec^2(y) is cos(y)^-2" r "1/cos(y)^2"
+  (st, r) := ev st "sec(y, 2)"; check "sec with two arguments is left alone" r "sec(y, 2)"
+  check "arctan prints" (roundtrip "arctan(x)") "arctan(x)"
+  check "arcsin latex" (latexOf "arcsin(x)") "\\arcsin\\left(x\\right)"
+  check "arccos^2 latex" (latexOf "arccos^2(x)") "{\\arccos\\left(x\\right)}^{2}"
   (st, r) := ev st "expand(a*(-(-y^2*sin(y) + 2*y*cos(y)) + 2*y*cos(y)))"; check "expand flattens nested sums" r "a*y^2*sin(y)"
   (st, r) := ev st "integrate(5 y^2 sin(y), y)"; check "integrate with a constant factor and two by-parts rounds" r "5*(-y^2*cos(y) + 2*(y*sin(y) + cos(y)))"
   -- powers of sine and cosine (reduction formulas) and of exp, all verified by the check

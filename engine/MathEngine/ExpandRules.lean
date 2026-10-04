@@ -128,12 +128,33 @@ The check (`cmdIntegrate`) compares normal forms exactly. Two identities the sim
 apply — they would not decrease the ordering — are needed for correct antiderivatives to
 differentiate back to their integrands: `cos²u = 1 − sin²u` (the derivative of an antiderivative of
 a power of sine or cosine is a trigonometric polynomial that equals the integrand only modulo it)
-and `exp(u)^k = exp(k·u)`. `identNorm` applies both everywhere, bottom-up. Like `dist` it is a
-total function proved sound (`identNorm_sound`, `identNorm_soundD`), so using it weakens nothing. -/
+and `exp(u)^k = exp(k·u)`. Two more put a sum under a negative power in one form: `1/√s`
+is `s^(-1/2)` (for every real `s`: where `s < 0` both are Mathlib's `0`), and a positive numeral
+summand `c ≠ 1` is factored out, `s^k = c^k · (s/c)^k`, so that `1/(x² + 4)` and the derivative of
+`arctan(x/2)/2`, `(1/4)·(x²/4 + 1)^(-1)`, meet, and `1/sqrt(1 - x^2)` and the derivative of
+`arcsin x`. `identNorm` applies them everywhere,
+bottom-up. Like `dist` it is a total function proved sound (`identNorm_sound`, `identNorm_soundD`),
+so using it weakens nothing. -/
+
+/-- The first positive numeral summand other than `1`. -/
+def constScale : List Expr → Option Q
+  | [] => none
+  | .num c :: es => if decide (0 < c.val) && !c.isOne then some c else constScale es
+  | _ :: es => constScale es
+
+/-- `(s)^k` for a sum `s` and a negative numeral `k`, with a positive numeral summand `c ≠ 1` factored
+out: `c^k · (s/c)^k`. -/
+def scaleOut (es : List Expr) (k : Q) : Expr :=
+  match constScale es with
+  | some c =>
+    if decide (k.val < 0) then .mul [.pow (.num c) (.num k), .pow (.add (es.map fun t => .mul [.num c.inv, t])) (.num k)]
+    else .pow (.add es) (.num k)
+  | none => .pow (.add es) (.num k)
 
 /-- `cos(u)^k` for a natural `k ≥ 2` as `(1 − sin(u)^2)^(k/2)`, times `cos u` when `k` is odd —
 so that cosine never appears above the first power and the comparison is a normal form in the ring
-`ℝ[s, c]/(s² + c² − 1)`; and `exp(u)^k` as `exp(k·u)`. Other terms are left alone. -/
+`ℝ[s, c]/(s² + c² − 1)`; `exp(u)^k` as `exp(k·u)`; `1/√s` for a sum as `s^(-1/2)`; and a sum
+under a negative numeral power through `scaleOut`. Other terms are left alone. -/
 def identPow : Expr → Expr
   | .pow (.fn "cos" [u]) (.num k) =>
     if k.isInt && k.val.num ≥ 2 then
@@ -143,6 +164,10 @@ def identPow : Expr → Expr
       if n % 2 = 0 then even else .mul [even, .fn "cos" [u]]
     else .pow (.fn "cos" [u]) (.num k)
   | .pow (.fn "exp" [u]) k => .fn "exp" [.mul [k, u]]
+  | .pow (.add es) (.num k) => scaleOut es k
+  | .pow (.pow (.add es) (.num p)) (.num q) =>
+    if p.val == mkRat 1 2 && q.val == -1 then scaleOut es (Q.ofRat (mkRat (-1) 2))
+    else .pow (.pow (.add es) (.num p)) (.num q)
   | e => e
 
 mutual

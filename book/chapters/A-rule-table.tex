@@ -28,7 +28,7 @@ the engine omits is unverified.
 \rt{diff.sum}{conditional}{Needs every summand differentiable: for $|x| + x$ at $0$ the rule gives $1$ where the derivative does not exist (\lc{diff_sum_sound}, \lc{not_diff_sum_sound}).}
 \rt{diff.product}{conditional}{Needs both factors differentiable at the point (\lc{diff_product_sound}).}
 \rt{diff.power}{conditional}{Proved for a natural exponent with a differentiable base; real exponents still open (\lc{diff_power_nat_sound}).}
-\rt{diff.chain}{conditional}{Needs the inner function differentiable; proved for $\sin$, $\cos$ and $\exp$, while $\ln$ and $\tan$ also need a domain condition (\lc{diff_chain_sin_sound}, \lc{diff_chain_cos_sound}, \lc{diff_chain_exp_sound}).}
+\rt{diff.chain}{conditional}{Needs the inner function differentiable; proved for $\sin$, $\cos$, $\exp$ and $\arctan$, and for $\arcsin$ and $\arccos$ where the inner value is not $\pm 1$, while $\ln$ and $\tan$ also need a domain condition (\lc{diff_chain_sin_sound}, \lc{diff_chain_cos_sound}, \lc{diff_chain_exp_sound}, \lc{diff_chain_arctan_sound}, \lc{diff_chain_arcsin_sound}, \lc{diff_chain_arccos_sound}).}
 \rt{diff.matrix}{verified}{A matrix is differentiated entry by entry (\lc{diffMatrix_sound}): with matrices given a value (\lc{evalV}), the theorem has content.}
 \rt{diff.higher-order}{verified}{$\operatorname{diff}(f, x, n)$ for a positive integer $n$ is $n$ successive $\operatorname{diff}(\cdot, x)$ (\lc{diffHigherOrder_spec}), and those mean Mathlib's \lc{iteratedDeriv} $n$ of $f$ as a function of $x$ (\lc{diffHigherOrder_soundR}).}
 \midrule \multicolumn{3}{l}{\textbf{Linear algebra}} \\
@@ -61,7 +61,7 @@ the engine omits is unverified.
 \midrule \multicolumn{3}{l}{\textbf{Integration}} \\
 \rt{cmd.integrate}{verified}{Accepted only when the candidate's derivative normalizes to the integrand, exactly (\lc{cmdIntegrate_spec}); \lc{integrate_deriv} reads that as $F' = f$ wherever the differentiation steps shown are sound. The finder's own steps are guesses.}
 \rt{int.check}{verified}{The differentiation of the candidate: this step carries the claim, with the statuses of its own steps.}
-\rt{int.compare}{verified}{Derivative and integrand are expanded (\lc{dist}, proved sound) and simplified before comparison; the statuses of the simplification steps apply.}
+\rt{int.compare}{verified}{Derivative and integrand are rewritten with $\cos^2 u = 1 - \sin^2 u$, $(e^u)^k = e^{ku}$, $1/\sqrt{s} = s^{-1/2}$ and, under a negative power, $s^k = c^k (s/c)^k$ for a positive constant summand $c$ (\lc{identNorm}, \lc{ev_identPow}), expanded (\lc{dist}) and simplified before comparison; every rewrite is proved sound, and the statuses of the simplification steps apply.}
 \rt{int.constant}{checked}{A guess from the finder; nothing is proved about it. Accepted only because \rn{int.check} verifies the result by differentiation.}
 \rt{int.variable}{checked}{A guess from the finder, verified by \rn{int.check}.}
 \rt{int.sum}{checked}{A guess from the finder, verified by \rn{int.check}.}
@@ -72,6 +72,8 @@ the engine omits is unverified.
 \rt{int.linear-substitution}{checked}{A guess from the finder, verified by \rn{int.check}.}
 \rt{int.substitution}{checked}{A guess from the finder ($u$-substitution), verified by \rn{int.check}.}
 \rt{int.by-parts}{checked}{A guess from the finder (integration by parts), verified by \rn{int.check}.}
+\rt{int.arctan}{checked}{A guess from the finder ($1/(k + c u^2)$ as an arctangent), verified by \rn{int.check}.}
+\rt{int.arcsin}{checked}{A guess from the finder ($1/\sqrt{k - c u^2}$ as an arcsine), verified by \rn{int.check}.}
 \midrule \multicolumn{3}{l}{\textbf{Order world}} \\
 \rt{order.closure}{verified}{The order is the reflexive-transitive closure, and reflexivity, antisymmetry and transitivity are decided (\lc{checkPartialOrder_none}).}
 \rt{order.divisors}{verified}{The divisors of $n$ ordered by divisibility, by definition.}

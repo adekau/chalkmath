@@ -32,6 +32,13 @@ const CASES = [
   { src: "[1,2;3,4] * [5,6;7,8]", text: "[19, 22; 43, 50]", step: "Matrix product" },
   { src: "[1, 2] ./ [3, 10]", text: "[1/3, 1/5]", step: "Entrywise division" },
   { src: "N(sin(10^30))", text: "-0.0901169019121381", step: "Numerical value" },
+  // inverse trigonometric functions, and sec, csc, cot as reciprocals
+  { src: "diff(arctan(x), x)", text: "1/(x^2 + 1)", step: "Chain rule" },
+  { src: "integrate(1/(4+x^2), x)", text: "arctan(x/2)/2", step: "Arctangent integral" },
+  { src: "integrate(1/sqrt(1-x^2), x)", text: "arcsin(x)", step: "Arcsine integral" },
+  { src: "diff(tan(x), x) - sec(x)^2", text: "0", step: "Collect like terms" },
+  { src: "sin^-1(x)", text: "1/sin(x)" },
+  { src: "N(arcsin(2))", error: "cannot evaluate 'arcsin' numerically" },
   { src: "rref([1,2;2,4])", text: "[1, 2; 0, 0]", step: "Add a multiple of a row" },
   { src: "rref([x, y; x^2, 1])", text: "[1, 0; 0, 1]", step: "Add a multiple of a row, assuming" },
   { src: "[1,2] * [1,2]", error: "inner dimensions must match" },

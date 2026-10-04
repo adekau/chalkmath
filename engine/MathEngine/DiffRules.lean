@@ -99,6 +99,10 @@ def diffPower : PlainRule :=
       else none
     | _ => none
 
+/-- `(1 − u²)^(−1/2)`, the derivative of `arcsin` at `u`. -/
+def invSqrtOneMinusSq (u : Expr) : Expr :=
+  .pow (Expr.sub Expr.one (.pow u (Expr.ofInt 2))) (.num (Q.ofRat (mkRat (-1) 2)))
+
 /-- The derivative of the outer function and the law it follows. -/
 def outerOf (f : String) (u : Expr) : Option (Expr × String) :=
   match f with
@@ -107,6 +111,9 @@ def outerOf (f : String) (u : Expr) : Option (Expr × String) :=
   | "tan" => some (.pow (.fn "cos" [u]) (Expr.ofInt (-2)), "\\tan' = \\sec^2 = 1/\\cos^2")
   | "exp" => some (.fn "exp" [u], "\\exp' = \\exp")
   | "ln" => some (.pow u Expr.minusOne, "\\ln' u = 1/u")
+  | "arctan" => some (.pow (.add [Expr.one, .pow u (Expr.ofInt 2)]) Expr.minusOne, "\\arctan' u = 1/(1 + u^2)")
+  | "arcsin" => some (invSqrtOneMinusSq u, "\\arcsin' u = 1/\\sqrt{1 - u^2}")
+  | "arccos" => some (Expr.neg (invSqrtOneMinusSq u), "\\arccos' u = -1/\\sqrt{1 - u^2}")
   | _ => none
 
 /-- The chain factor `u'`, omitted when `u` is the variable itself. -/

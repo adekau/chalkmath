@@ -3,6 +3,8 @@ import Mathlib.Analysis.Calculus.Deriv.Mul
 import Mathlib.Analysis.Calculus.Deriv.Pow
 import Mathlib.Analysis.SpecialFunctions.Log.Deriv
 import Mathlib.Analysis.SpecialFunctions.Trigonometric.Deriv
+import Mathlib.Analysis.SpecialFunctions.Trigonometric.ArctanDeriv
+import Mathlib.Analysis.SpecialFunctions.Trigonometric.InverseDeriv
 import Mathlib.Analysis.Calculus.Deriv.Abs
 /-!
 # `diff.*` against Mathlib's `deriv`
@@ -393,6 +395,64 @@ theorem diff_chain_exp_sound (ρ : EnvR) (x : String) {u : Expr} (hu : DiffAt ρ
   simp only [applyFn_exp]
   rw [hd.exp.deriv]
   simp only [evalD_mul, prodD_cons, prodD_nil, evalD_fn, fnD_one, fnD_diff, applyFn_exp, fx, upd_self]
+  ring
+
+/-- **`diff.chain` for `arctan`**, sound wherever the inner function is differentiable: `arctan` is
+differentiable everywhere. The rule produces `(1 + u²)^(-1) · u'`. -/
+theorem diff_chain_arctan_sound (ρ : EnvR) (x : String) {u : Expr} (hu : DiffAt ρ x u) :
+    D ρ x (.fn "arctan" [u]) =
+      evalD ρ (.mul [.pow (.add [Expr.one, .pow u (Expr.ofInt 2)]) Expr.minusOne, .fn "diff" [u, .var x]]) := by
+  have hd : HasDerivAt (fx ρ x u) (D ρ x u) (ρ x) := hu.hasDerivAt
+  rw [D_eq, fx_fn]
+  simp only [applyFn_arctan]
+  rw [hd.arctan.deriv]
+  simp only [evalD_mul, prodD_cons, prodD_nil, evalD_fn, fnD_one, fnD_diff, evalD_pow, evalD_add, sumD_cons,
+    sumD_nil, evalD_one, evalD_minusOne, Expr.ofInt, evalD_num, fx, upd_self]
+  norm_num [Q.ofInt, Real.rpow_neg_one, Real.rpow_two]
+
+/-- `y^(-1/2) = 1/√y` for every real `y`: for `y < 0` both are `0` (Mathlib's `√` is `0` there, and
+`rpow` of a negative base carries a factor `cos(-π/2) = 0`). -/
+theorem rpow_neg_half_eq (y : ℝ) : y ^ (-1 / 2 : ℝ) = 1 / Real.sqrt y := by
+  rcases le_or_gt 0 y with hy | hy
+  · rw [Real.sqrt_eq_rpow, show (-1 / 2 : ℝ) = -(1 / 2) by ring, Real.rpow_neg hy, one_div]
+  · rw [Real.rpow_def_of_neg hy, Real.sqrt_eq_zero'.2 hy.le, div_zero,
+      show (-1 / 2 : ℝ) * Real.pi = -(Real.pi / 2) by ring, Real.cos_neg, Real.cos_pi_div_two, mul_zero]
+
+theorem evalD_invSqrtOneMinusSq (ρ : EnvR) (u : Expr) :
+    evalD ρ (invSqrtOneMinusSq u) = 1 / Real.sqrt (1 - evalD ρ u ^ 2) := by
+  unfold invSqrtOneMinusSq
+  simp only [Expr.sub, Expr.neg, evalD_pow, evalD_add, sumD_cons, sumD_nil, evalD_mul, prodD_cons, prodD_nil,
+    evalD_one, evalD_minusOne, Expr.ofInt, evalD_num]
+  have h2 : (((Q.ofInt 2).val : ℚ) : ℝ) = 2 := by norm_num [Q.ofInt]
+  have hh : (((Q.ofRat (mkRat (-1) 2)).val : ℚ) : ℝ) = -1 / 2 := by
+    simp only [Q.ofRat]; rw [Rat.mkRat_eq_div]; push_cast; ring
+  rw [h2, hh, Real.rpow_two, rpow_neg_half_eq]
+  congr 2
+  ring
+
+/-- **`diff.chain` for `arcsin`**, sound wherever the inner function is differentiable and its value
+is not `±1`, where `arcsin` has no derivative. Elsewhere off `[-1, 1]` both sides are `0`: Mathlib's
+`arcsin` is constant there and `√` of a negative number is `0`. -/
+theorem diff_chain_arcsin_sound (ρ : EnvR) (x : String) {u : Expr} (hu : DiffAt ρ x u)
+    (h₁ : evalD ρ u ≠ -1) (h₂ : evalD ρ u ≠ 1) :
+    D ρ x (.fn "arcsin" [u]) = evalD ρ (.mul [invSqrtOneMinusSq u, .fn "diff" [u, .var x]]) := by
+  have hd : HasDerivAt (fx ρ x u) (D ρ x u) (ρ x) := hu.hasDerivAt
+  rw [D_eq, fx_fn]
+  simp only [applyFn_arcsin]
+  rw [(hd.arcsin (by simpa [fx] using h₁) (by simpa [fx] using h₂)).deriv]
+  simp only [evalD_mul, prodD_cons, prodD_nil, evalD_invSqrtOneMinusSq, evalD_fn, fnD_one, fnD_diff, fx, upd_self]
+  ring
+
+/-- **`diff.chain` for `arccos`**, under the same hypotheses as `arcsin`. -/
+theorem diff_chain_arccos_sound (ρ : EnvR) (x : String) {u : Expr} (hu : DiffAt ρ x u)
+    (h₁ : evalD ρ u ≠ -1) (h₂ : evalD ρ u ≠ 1) :
+    D ρ x (.fn "arccos" [u]) = evalD ρ (.mul [Expr.neg (invSqrtOneMinusSq u), .fn "diff" [u, .var x]]) := by
+  have hd : HasDerivAt (fx ρ x u) (D ρ x u) (ρ x) := hu.hasDerivAt
+  rw [D_eq, fx_fn]
+  simp only [applyFn_arccos]
+  rw [(hd.arccos (by simpa [fx] using h₁) (by simpa [fx] using h₂)).deriv]
+  simp only [Expr.neg, evalD_mul, prodD_cons, prodD_nil, evalD_invSqrtOneMinusSq, evalD_minusOne, evalD_fn, fnD_one,
+    fnD_diff, fx, upd_self]
   ring
 
 -- ---------------------------------------------------------------------------

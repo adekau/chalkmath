@@ -232,6 +232,18 @@ differential test with zero mismatches.
   normalizes with that set, the pipeline is `pipelineRulesWith norm`, generic in the checker's
   normalizer, and `Integrate.lean` closes the knot: the checker is the pipeline with nested
   `integrate` refused, and the notebook's pipeline is the pipeline with that checker.
+  Normal forms are compared exactly, so the identities the pipeline cannot afford are applied to both
+  sides first, by a total function proved sound for every real value (`Expand.identNorm`):
+  `cos² = 1 − sin²`, `(eᵘ)ᵏ = eᵏᵘ`, `1/√s = s^(-1/2)`, and a positive constant factored out of a sum
+  under a negative power, which is what lets `arctan(x/2)/2` check against `1/(x² + 4)`. A new
+  integral the finder can guess but the check refuses is a missing identity there, not a reason to
+  weaken the comparison.
+- **Notation that is not a function stays notation.** `sec`, `csc` and `cot` are read by the parser
+  as `cos(u)^-1`, `sin(u)^-1` and `tan(u)^-1`, and `sin^-1(x)` is the reciprocal, as `sin^2(x)` is the
+  square (`arcsin` is written out). They need no semantics, rules or proofs of their own, and an
+  exercise answer written with them is compared by what it means. The cost is that answers are
+  printed in the three functions the engine has; a printer that writes `sec` back is presentation and
+  can be added without touching the engine's terms.
 - **An exercise is checked by normal forms.** `engine.check` (`Exercise.lean`) evaluates a question
   like any cell (its value is the expected answer, its derivation the worked solution) and reduces the
   reader's answer too; the two are equivalent when their canonical forms are equal — the integration

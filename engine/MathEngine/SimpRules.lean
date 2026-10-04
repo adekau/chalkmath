@@ -429,6 +429,8 @@ def functionApply : Expr → Option RuleResult
     | _ => none
   | .fn "sin" [a] => if isZero a then some ⟨Expr.zero, "$\\sin 0 = 0$.", none, none⟩ else none
   | .fn "cos" [a] => if isZero a then some ⟨Expr.one, "$\\cos 0 = 1$.", none, none⟩ else none
+  | .fn "arctan" [a] => if isZero a then some ⟨Expr.zero, "$\\arctan 0 = 0$.", none, none⟩ else none
+  | .fn "arcsin" [a] => if isZero a then some ⟨Expr.zero, "$\\arcsin 0 = 0$.", none, none⟩ else none
   | .fn "abs" [.num q] => some ⟨.num q.abs, "Absolute value of a constant.", none, none⟩
   | .fn "sign" [.num q] =>
     some ⟨.num (if q.isNeg then Q.minusOne else if q.isZero then Q.zero else Q.one), "The sign of a constant: $-1$, $0$ or $1$.", none, none⟩

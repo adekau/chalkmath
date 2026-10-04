@@ -6,7 +6,7 @@ import Proofs.Fourier
 `simp.function` holds for every real number once its two assuming cases are a rule of their own
 (`simp.function.assuming`): `sin u/cos u = tan u`, `√a = a^(1/2)`, `ln 1 = 0`, `ln(exp x) = x`,
 `ln(b^p) = p ln b` for an integer `p` (Mathlib's `Real.log` is `log |x|`, so a negative `b` is
-fine), `exp 0 = 1`, `sin 0 = 0`, `cos 0 = 1`, and `abs` and `sign` of a numeral (`functionRules_soundR`).
+fine), `exp 0 = 1`, `sin 0 = 0`, `cos 0 = 1`, `arctan 0 = 0`, `arcsin 0 = 0`, and `abs` and `sign` of a numeral (`functionRules_soundR`).
 
 With it, simplification by every rule but the two that assume preserves the real value
 (`normalizeSafe_sound`): the fold of `RewriteSound`, at ℝ.
@@ -69,6 +69,16 @@ theorem functionRules_soundR : RuleSoundR functionRules := by
     · rename_i h0; cases hs; simp [evalR_of_isZero h0 ρ]
     · cases hs
   · -- cos 0
+    rename_i a
+    split at hs
+    · rename_i h0; cases hs; simp [evalR_of_isZero h0 ρ]
+    · cases hs
+  · -- arctan 0
+    rename_i a
+    split at hs
+    · rename_i h0; cases hs; simp [evalR_of_isZero h0 ρ]
+    · cases hs
+  · -- arcsin 0
     rename_i a
     split at hs
     · rename_i h0; cases hs; simp [evalR_of_isZero h0 ρ]

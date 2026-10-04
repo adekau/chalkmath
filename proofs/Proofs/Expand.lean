@@ -193,6 +193,60 @@ theorem ev_oneSubSinSq (u : Expr) :
   push_cast
   rw [Real.rpow_two]; ring
 
+/-- `c^k · (c⁻¹ s)^k = s^k` for `c > 0`, every real `s` and every real `k`: for `s < 0` both sides
+are Mathlib's `exp (log s · k) · cos (k π)`. -/
+theorem rpow_scale_out {c : ℝ} (hc : 0 < c) (s k : ℝ) : c ^ k * (c⁻¹ * s) ^ k = s ^ k := by
+  rcases le_or_gt 0 s with hs | hs
+  · rw [Real.mul_rpow (inv_nonneg.2 hc.le) hs, Real.inv_rpow hc.le, ← mul_assoc,
+      mul_inv_cancel₀ (Real.rpow_pos_of_pos hc k).ne', one_mul]
+  · have hcs : c⁻¹ * s < 0 := mul_neg_of_pos_of_neg (inv_pos.2 hc) hs
+    rw [Real.rpow_def_of_neg hcs, Real.rpow_def_of_neg hs, Real.rpow_def_of_pos hc,
+      Real.log_mul (inv_ne_zero hc.ne') hs.ne, Real.log_inv, ← mul_assoc, ← Real.exp_add]
+    congr 2
+    ring
+
+/-- `(s^(1/2))^(-1) = s^(-1/2)` for every real `s`: for `s < 0` both are `0`, since
+`cos (π/2) = 0`. -/
+theorem rpow_half_rpow_neg_one (s : ℝ) : (s ^ ((1 : ℝ) / 2)) ^ (-1 : ℝ) = s ^ (-1 / 2 : ℝ) := by
+  rcases le_or_gt 0 s with hs | hs
+  · rw [← Real.rpow_mul hs]; norm_num
+  · rw [Real.rpow_def_of_neg hs, Real.rpow_def_of_neg hs,
+      show (1 : ℝ) / 2 * Real.pi = Real.pi / 2 by ring, show (-1 / 2 : ℝ) * Real.pi = -(Real.pi / 2) by ring,
+      Real.cos_neg, Real.cos_pi_div_two, mul_zero, mul_zero, Real.zero_rpow (by norm_num)]
+
+theorem constScale_pos {c : Q} : ∀ {es : List Expr}, constScale es = some c → (0 : ℚ) < c.val := by
+  intro es h
+  induction es with
+  | nil => simp [constScale] at h
+  | cons e es ih =>
+    cases e <;> simp only [constScale] at h <;> try exact ih h
+    split at h
+    · rename_i hd
+      simp only [Option.some.injEq] at h; subst h
+      simp only [Bool.and_eq_true, decide_eq_true_eq] at hd
+      exact hd.1
+    · exact ih h
+
+theorem ev_scaleOut (es : List Expr) (k : Q) :
+    S.ev ρ (scaleOut es k) = S.ev ρ (.pow (.add es) (.num k)) := by
+  unfold scaleOut
+  split
+  · rename_i c hc
+    split
+    · have hpos : (0 : ℝ) < (c.val : ℝ) := by exact_mod_cast constScale_pos hc
+      have hmap : (es.map fun t => Expr.mul [.num c.inv, t]).map (S.ev ρ)
+          = es.map fun t => (c.val : ℝ)⁻¹ * S.ev ρ t := by
+        rw [List.map_map]
+        apply List.map_congr_left
+        intro t _
+        simp [S.ev_mul, S.ev_num, Q.inv, Rat.inv_def']
+      rw [S.ev_mul, S.ev_pow, S.ev_pow, S.ev_add, S.ev_add, S.ev_num, S.ev_num, hmap,
+        List.sum_map_mul_left]
+      simp only [List.map_cons, List.map_nil, List.prod_cons, List.prod_nil, mul_one, S.ev_pow, S.ev_num]
+      exact rpow_scale_out hpos _ _
+    · rfl
+  · rfl
+
 theorem ev_identPow (e : Expr) : S.ev ρ (identPow e) = S.ev ρ e := by
   unfold identPow
   split
@@ -228,6 +282,20 @@ theorem ev_identPow (e : Expr) : S.ev ρ (identPow e) = S.ev ρ e := by
     rw [S.ev_pow, S.ev_fn₁, applyFn_exp, S.ev_fn₁, applyFn_exp, S.ev_mul]
     simp only [List.map_cons, List.map_nil, List.prod_cons, List.prod_nil, mul_one]
     rw [Real.rpow_def_of_pos (Real.exp_pos _), Real.log_exp, mul_comm]
+  · rename_i es k
+    exact ev_scaleOut S ρ es k
+  · rename_i es p q
+    split
+    · rename_i hpq
+      simp only [Bool.and_eq_true, beq_iff_eq] at hpq
+      obtain ⟨hp, hq⟩ := hpq
+      rw [ev_scaleOut, S.ev_pow, S.ev_pow, S.ev_pow, S.ev_num, S.ev_num, S.ev_num, hp, hq]
+      have h1 : ((mkRat 1 2 : ℚ) : ℝ) = 1 / 2 := by rw [Rat.mkRat_eq_div]; push_cast; ring
+      have h2 : (((Q.ofRat (mkRat (-1) 2)).val : ℚ) : ℝ) = -1 / 2 := by
+        simp only [Q.ofRat]; rw [Rat.mkRat_eq_div]; push_cast; ring
+      rw [h1, h2, rpow_half_rpow_neg_one]
+      norm_num
+    · rfl
   · rfl
 
 end generic
