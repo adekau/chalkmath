@@ -116,6 +116,14 @@ theorem size_eq (e : Expr) : size e = 1 + sizeList (children e) := by
 theorem size_pos (e : Expr) : 0 < size e := by rw [size_eq]; omega
 theorem sizeList_children_lt (e : Expr) : sizeList (children e) < size e := by rw [size_eq]; omega
 
+theorem size_le_sizeList {a : Expr} : ∀ {l : List Expr}, a ∈ l → size a ≤ sizeList l
+  | _ :: _, .head _ => by simp [sizeList]
+  | _ :: _, .tail _ h => by have := size_le_sizeList h; simp [sizeList]; omega
+
+theorem sizeList_le_sizeRows {r : List Expr} : ∀ {rows : List (List Expr)}, r ∈ rows → sizeList r ≤ sizeRows rows
+  | _ :: _, .head _ => by simp [sizeRows]
+  | _ :: _, .tail _ h => by have := sizeList_le_sizeRows h; simp [sizeRows]; omega
+
 def freeVars : Expr → List String
   | .num _ => []
   | .var x => [x]

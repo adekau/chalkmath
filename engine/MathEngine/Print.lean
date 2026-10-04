@@ -161,20 +161,80 @@ def logicLevel : String → Nat
   | "∀" | "∃" => 0 | "↔" => 1 | "→" => 2 | "∨" => 3 | "∧" => 4 | "¬" => 5 | _ => 6
 def isLogicHead (h : String) : Bool := ["∀", "∃", "↔", "→", "∨", "∧", "¬"].contains h
 
+/-- A logic connective's operand: bracketed when it is a connective binding looser than `lvl`. -/
+private def logicOperand (T : Target) (c : Expr) (str : String) (lvl : Nat) : String :=
+  match c with
+  | .fn h _ => if isLogicHead h && logicLevel h < lvl then T.parens str else str
+  | _ => str
+
+/-- A call whose children print at the context of an argument, `as` being their text. -/
+private def fnRaw (T : Target) (name : String) (args : List Expr) (as : List String) : String × Nat :=
+  match name, args, as with
+  | "sqrt", [_], [a] => (T.sqrt a, P_ATOM)
+  | "π", [], _ => (if T.times != "*" then "\\pi" else "π", P_ATOM)
+  | "i", [], _ => ("i", P_ATOM)
+  | "conj", [_], [a] => (if T.times != "*" then s!"\\overline\{{a}}" else s!"conj({a})", P_ATOM)
+  | "re", [_], [a] => (if T.times != "*" then s!"\\operatorname\{Re}\\left({a}\\right)" else s!"re({a})", P_ATOM)
+  | "im", [_], [a] => (if T.times != "*" then s!"\\operatorname\{Im}\\left({a}\\right)" else s!"im({a})", P_ATOM)
+  | "abs", [_], [a] => (if T.times != "*" then s!"\\left|{a}\\right|" else s!"abs({a})", P_ATOM)
+  | "exp", [.num q], _ => if q.isOne then (if T.times != "*" then "e" else "ℯ", P_ATOM) else (T.fn name as, P_ATOM)
+  | "diff", [_, .var _], [a, x] =>
+    if T.times != "*" then (s!"\\frac\{d}\{d{x}}\\left({a}\\right)", P_MUL) else (T.fn name as, P_ATOM)
+  | "integrate", [_, .var _], [a, x] =>
+    if T.times != "*" then (s!"\\int {a} \\, d{x}", P_MUL) else (T.fn name as, P_ATOM)
+  | "integrate", [_, .var _, _, _], [a, x, lo, hi] =>
+    if T.times != "*" then (s!"\\int_\{{lo}}^\{{hi}} {a} \\, d{x}", P_MUL) else (T.fn name as, P_ATOM)
+  | "sum", [_, .var _, _, _], [a, k, lo, hi] =>
+    if T.times != "*" then (s!"\\sum_\{{k}={lo}}^\{{hi}} {a}", P_MUL) else (T.fn name as, P_ATOM)
+  -- the order-theory world
+  | "set", _, _ =>
+    let inner := ", ".intercalate as
+    (if T.times != "*" then "\\{" ++ inner ++ "\\}" else "{" ++ inner ++ "}", P_ATOM)
+  | "poset", [_, _], [ss, _] =>
+    (if T.times != "*" then "\\text{poset }" ++ ss else "poset " ++ ss, P_ATOM)
+  | "pair", [_, _], [a, b] => (if T.times != "*" then s!"({a}, {b})" else s!"({a}, {b})", P_ATOM)
+  | "rel", [_, _], [_, ps] => (ps, P_ATOM)
+  | "↦", [_, _], [a, b] => (if T.times != "*" then s!"{a} \\mapsto {b}" else s!"{a}↦{b}", P_ADD)
+  | "covers", [_, _], [a, b] => (if T.times != "*" then s!"{a} \\lessdot {b}" else s!"{a} ⋖ {b}", P_MUL)
+  | "span", [_, _, c], [a, b, cs] =>
+    let sep := if T.times != "*" then "\\mathbin{;;}" else ";;"
+    (if c.isOne then s!"{a}{sep}{b}" else s!"{a}{sep}{b}{sep}{cs}", P_ADD)
+  -- the logic world: connectives by their own precedence (↔ < → < ∨ < ∧ < ¬), quantifiers reach right
+  | "⊤", [], _ => (if T.times != "*" then "\\top" else "⊤", P_ATOM)
+  | "⊥", [], _ => (if T.times != "*" then "\\bot" else "⊥", P_ATOM)
+  | "range", [_, _], [a, b] => (if T.times != "*" then "\\{" ++ a ++ ", \\dots, " ++ b ++ "\\}" else s!"{a}..{b}", P_ATOM)
+  | "<", [_, _], [a, b] | "≤", [_, _], [a, b] | ">", [_, _], [a, b] | "≥", [_, _], [a, b]
+  | "=", [_, _], [a, b] | "≠", [_, _], [a, b] | "∣", [_, _], [a, b] =>
+    let op := if T.times == "*" then name else match name with
+      | "≤" => "\\le" | "≥" => "\\ge" | "≠" => "\\ne" | "∣" => "\\mid" | o => o
+    (s!"{a} {op} {b}", P_ATOM)
+  | "All", [], _ => (if T.times != "*" then "\\mathrm{All}" else "All", P_ATOM)
+  | "List", _, _ =>
+    let inner := ", ".intercalate as
+    (if T.times != "*" then "\\{" ++ inner ++ "\\}" else "{" ++ inner ++ "}", P_ATOM)
+  | _, _, _ => (T.fn name as, P_ATOM)
+
+/-- The printer's termination goals: a subterm, or a member of a subterm's list, weighs less. -/
+local macro "print_decreasing" : tactic => `(tactic| (
+  simp_wf
+  (try have := Expr.size_le_sizeList (by assumption))
+  (try have := Expr.sizeList_le_sizeRows (by assumption))
+  (try simp only [Expr.size, Expr.sizeList, Expr.sizeRows] at *)
+  (try omega)))
+
+/-! The printer is structural in all but name: every call prints a subterm, or a product rebuilt
+from a subterm's factors with a new coefficient, which weighs no more than the subterm. The measure
+counts nodes (`Expr.size`, a numeral weighing 1 whatever its value), times four, so each function in
+the block sits at its own offset below the one that calls it on the same term. -/
 mutual
   /-- Print `e` at `path` in a context demanding precedence `ctx`. -/
-  partial def print (e : Expr) (path : Path) (T : Target) (ctx : Nat) : String :=
+  def print (e : Expr) (path : Path) (T : Target) (ctx : Nat) : String :=
     let (s, prec) := printRaw e path T
     T.wrap path (if prec < ctx then T.parens s else s)
+  termination_by 4 * e.size + 2
+  decreasing_by all_goals print_decreasing
 
-  partial def printRaw (e : Expr) (path : Path) (T : Target) : String × Nat :=
-    let child (c : Expr) (i : Nat) (ctx : Nat) := print c (path ++ [i]) T ctx
-    -- a logic connective's operand: bracketed when it is a connective binding looser than `lvl`
-    let lchild (c : Expr) (i : Nat) (lvl : Nat) :=
-      let str := print c (path ++ [i]) T P_ADD
-      match c with
-      | .fn h _ => if isLogicHead h && logicLevel h < lvl then T.parens str else str
-      | _ => str
+  def printRaw (e : Expr) (path : Path) (T : Target) : String × Nat :=
     match e with
     -- in text an exact non-integer numeral prints as a division, `4/9`, so it binds like one: the base
     -- of a power is `(4/9)^(3/2)`, not `4/9^(3/2)`, which reads back as 4/27 (`\frac` groups itself)
@@ -182,7 +242,8 @@ mutual
     | .var x => (T.var x, P_ATOM)
     | .matrix rows =>
       let w := (rows.head?.map List.length).getD 0
-      let rs := (enum rows).map fun (r, row) => (enum row).map fun (j, c) => child c (r * w + j) P_ADD
+      let rs := (enum rows.attach).map fun (r, ⟨row, _⟩) =>
+        (enum row.attach).map fun (j, ⟨c, _⟩) => print c (path ++ [r * w + j]) T P_ADD
       (T.matrix rs, P_ATOM)
     | .fn name args =>
       -- the heads that print their children at a precedence of their own come first, so no child is
@@ -190,12 +251,12 @@ mutual
       let own : Option (String × Nat) := match name, args with
         -- the λ-calculus world: λx. body binds as far right as possible; application is juxtaposition
         | "λ", [xv, body] =>
-          let x := child xv 0 P_ADD
+          let x := print xv (path ++ [0]) T P_ADD
           let b := print body (path ++ [1]) T P_LAM
           some (if T.times != "*" then s!"\\lambda {x}.\\, {b}" else s!"λ{x}. {b}", P_LAM)
         | "λ:", [xv, ty, body] =>
-          let x := child xv 0 P_ADD
-          let ts := child ty 1 P_ADD
+          let x := print xv (path ++ [0]) T P_ADD
+          let ts := print ty (path ++ [1]) T P_ADD
           let b := print body (path ++ [2]) T P_LAM
           let ts := match ty with | .fn "→" _ => T.parens ts | _ => ts
           some (if T.times != "*" then s!"\\lambda {x}\{:}{ts}.\\, {b}" else s!"λ{x}:{ts}. {b}", P_LAM)
@@ -209,7 +270,7 @@ mutual
         -- Mathematica's Part: m[[2, 1;;3]], and the specs it takes
         | "part", m :: specs =>
           let ms := print m (path ++ [0]) T P_ATOM
-          let inner := ", ".intercalate ((enum specs).map fun (i, a) => child a (i + 1) P_ADD)
+          let inner := ", ".intercalate ((enum specs.attach).map fun (i, ⟨a, _⟩) => print a (path ++ [i + 1]) T P_ADD)
           some (if T.times != "*" then s!"{ms}\\llbracket {inner}\\rrbracket" else s!"{ms}[[{inner}]]", P_ATOM)
         -- MATLAB's entrywise operators. Lower than a product as a whole, so it is grouped wherever a
         -- factor or a left operand would otherwise take it in: `x*(a ./ b)`, `(a ./ b) ./ c`
@@ -219,141 +280,108 @@ mutual
           let op := if T.times != "*" then (if name == "ediv" then "\\oslash" else "\\odot") else (if name == "ediv" then "./" else ".*")
           some (s!"{l} {op} {r}", P_ADD)
         -- the logic world: connectives by their own precedence (↔ < → < ∨ < ∧ < ¬), quantifiers reach right
-        | "¬", [a] => some ((if T.times != "*" then "\\lnot " else "¬") ++ lchild a 0 5, P_ATOM)
+        | "¬", [a] => some ((if T.times != "*" then "\\lnot " else "¬") ++ logicOperand T a (print a (path ++ [0]) T P_ADD) 5, P_ATOM)
         | "∧", [a, b] | "∨", [a, b] =>
           let lvl := logicLevel name
           let op := if T.times != "*" then (if name == "∧" then " \\land " else " \\lor ") else s!" {name} "
-          some (lchild a 0 lvl ++ op ++ lchild b 1 (lvl + 1), P_ATOM)
+          some (logicOperand T a (print a (path ++ [0]) T P_ADD) lvl ++ op ++ logicOperand T b (print b (path ++ [1]) T P_ADD) (lvl + 1), P_ATOM)
         | "→", [a, b] | "↔", [a, b] =>
           let lvl := logicLevel name
           let op := if T.times != "*" then (if name == "→" then " \\to " else " \\leftrightarrow ") else s!" {name} "
-          some (lchild a 0 (lvl + 1) ++ op ++ lchild b 1 lvl, P_ATOM)
+          some (logicOperand T a (print a (path ++ [0]) T P_ADD) (lvl + 1) ++ op ++ logicOperand T b (print b (path ++ [1]) T P_ADD) lvl, P_ATOM)
         | "∀", [xv, dv, body] | "∃", [xv, dv, body] =>
-          let x := child xv 0 P_ADD
-          let d := child dv 1 P_ADD
-          let body := lchild body 2 0
+          let x := print xv (path ++ [0]) T P_ADD
+          let d := print dv (path ++ [1]) T P_ADD
+          let body := logicOperand T body (print body (path ++ [2]) T P_ADD) 0
           some (if T.times != "*" then s!"{if name == "∀" then "\\forall" else "\\exists"} {x} \\in {d},\\ {body}" else s!"{name} {x} ∈ {d}, {body}", P_ATOM)
         | _, _ => none
       match own with
       | some r => r
       | none =>
-      let as := (enum args).map fun (i, a) => child a i P_ADD
-      match name, args, as with
-      | "sqrt", [_], [a] => (T.sqrt a, P_ATOM)
-      | "π", [], _ => (if T.times != "*" then "\\pi" else "π", P_ATOM)
-      | "i", [], _ => ("i", P_ATOM)
-      | "conj", [_], [a] => (if T.times != "*" then s!"\\overline\{{a}}" else s!"conj({a})", P_ATOM)
-      | "re", [_], [a] => (if T.times != "*" then s!"\\operatorname\{Re}\\left({a}\\right)" else s!"re({a})", P_ATOM)
-      | "im", [_], [a] => (if T.times != "*" then s!"\\operatorname\{Im}\\left({a}\\right)" else s!"im({a})", P_ATOM)
-      | "abs", [_], [a] => (if T.times != "*" then s!"\\left|{a}\\right|" else s!"abs({a})", P_ATOM)
-      | "exp", [.num q], _ => if q.isOne then (if T.times != "*" then "e" else "ℯ", P_ATOM) else (T.fn name as, P_ATOM)
-      | "diff", [_, .var _], [a, x] =>
-        if T.times != "*" then (s!"\\frac\{d}\{d{x}}\\left({a}\\right)", P_MUL) else (T.fn name as, P_ATOM)
-      | "integrate", [_, .var _], [a, x] =>
-        if T.times != "*" then (s!"\\int {a} \\, d{x}", P_MUL) else (T.fn name as, P_ATOM)
-      | "integrate", [_, .var _, _, _], [a, x, lo, hi] =>
-        if T.times != "*" then (s!"\\int_\{{lo}}^\{{hi}} {a} \\, d{x}", P_MUL) else (T.fn name as, P_ATOM)
-      | "sum", [_, .var _, _, _], [a, k, lo, hi] =>
-        if T.times != "*" then (s!"\\sum_\{{k}={lo}}^\{{hi}} {a}", P_MUL) else (T.fn name as, P_ATOM)
-      -- the order-theory world
-      | "set", _, _ =>
-        let inner := ", ".intercalate as
-        (if T.times != "*" then "\\{" ++ inner ++ "\\}" else "{" ++ inner ++ "}", P_ATOM)
-      | "poset", [_, _], [ss, _] =>
-        (if T.times != "*" then "\\text{poset }" ++ ss else "poset " ++ ss, P_ATOM)
-      | "pair", [_, _], [a, b] => (if T.times != "*" then s!"({a}, {b})" else s!"({a}, {b})", P_ATOM)
-      | "rel", [_, _], [_, ps] => (ps, P_ATOM)
-      | "↦", [_, _], [a, b] => (if T.times != "*" then s!"{a} \\mapsto {b}" else s!"{a}↦{b}", P_ADD)
-      | "covers", [_, _], [a, b] => (if T.times != "*" then s!"{a} \\lessdot {b}" else s!"{a} ⋖ {b}", P_MUL)
-      | "span", [_, _, c], [a, b, cs] =>
-        let sep := if T.times != "*" then "\\mathbin{;;}" else ";;"
-        (if c.isOne then s!"{a}{sep}{b}" else s!"{a}{sep}{b}{sep}{cs}", P_ADD)
-      -- the logic world: connectives by their own precedence (↔ < → < ∨ < ∧ < ¬), quantifiers reach right
-      | "⊤", [], _ => (if T.times != "*" then "\\top" else "⊤", P_ATOM)
-      | "⊥", [], _ => (if T.times != "*" then "\\bot" else "⊥", P_ATOM)
-      | "range", [_, _], [a, b] => (if T.times != "*" then "\\{" ++ a ++ ", \\dots, " ++ b ++ "\\}" else s!"{a}..{b}", P_ATOM)
-      | "<", [_, _], [a, b] | "≤", [_, _], [a, b] | ">", [_, _], [a, b] | "≥", [_, _], [a, b]
-      | "=", [_, _], [a, b] | "≠", [_, _], [a, b] | "∣", [_, _], [a, b] =>
-        let op := if T.times == "*" then name else match name with
-          | "≤" => "\\le" | "≥" => "\\ge" | "≠" => "\\ne" | "∣" => "\\mid" | o => o
-        (s!"{a} {op} {b}", P_ATOM)
-      | "All", [], _ => (if T.times != "*" then "\\mathrm{All}" else "All", P_ATOM)
-      | "List", _, _ =>
-        let inner := ", ".intercalate as
-        (if T.times != "*" then "\\{" ++ inner ++ "\\}" else "{" ++ inner ++ "}", P_ATOM)
-      | _, _, _ => (T.fn name as, P_ATOM)
+      let as := (enum args.attach).map fun (i, ⟨a, _⟩) => print a (path ++ [i]) T P_ADD
+      fnRaw T name args as
     | .pow b x =>
       match (if T.times != "*" then radicalLatex b x else none) with
       | some r => r
       | none =>
-      if x.isNumEq (Q.ofRat (mkRat 1 2)) then (T.sqrt (child b 0 P_ADD), P_ATOM)
+      if x.isNumEq (Q.ofRat (mkRat 1 2)) then (T.sqrt (print b (path ++ [0]) T P_ADD), P_ATOM)
       else match x with
       | .num q =>
         if q.isNeg then
           -- standalone x^(-n) → 1/x^n
           let n := q.neg
-          let base := child b 0 (if n.isOne then T.denomPrec else P_POW + 1)
+          let base := print b (path ++ [0]) T (if n.isOne then T.denomPrec else P_POW + 1)
           let den := match (if T.times != "*" then radicalLatex b (.num n) else none) with
             | some (r, _) => r
             | none =>
               if n.isOne then base
-              else if (Expr.num n).isNumEq (Q.ofRat (mkRat 1 2)) then T.sqrt (child b 0 P_ADD)   -- x^(-1/2) → 1/sqrt(x)
+              else if (Expr.num n).isNumEq (Q.ofRat (mkRat 1 2)) then T.sqrt (print b (path ++ [0]) T P_ADD)   -- x^(-1/2) → 1/sqrt(x)
               else
                 -- in text a fractional exponent needs its parentheses: 1/2^(3/2), not 1/2^3/2
                 let e := T.wrap (path ++ [1]) (T.num n)
                 T.pow base (if T.times == "*" && !n.isInt then T.parens e else e)
           (T.frac (T.num Q.one) den, P_MUL)
-        else powRaw b x
-      | _ => powRaw b x
+        else powRaw b (.num q) path T
+      | x => powRaw b x path T
     | .add args =>
-      let s := (enum args).foldl (init := ("" : String)) fun acc (i, a) =>
-        let (coeff, rest, restOff) := splitCoeff a
-        let negative := coeff.isNeg
-        if i == 0 && !negative then acc ++ child a i P_ADD
+      let s := (enum args.attach).foldl (init := ("" : String)) fun acc (i, ⟨a, _⟩) =>
+        let negative := (splitCoeff a).1.isNeg
+        if i == 0 && !negative then acc ++ print a (path ++ [i]) T P_ADD
         else
           let sign := if negative then " - " else " + "
-          let termStr :=
-            if negative then
-              let absC := coeff.neg
-              let p := path ++ [i]
-              match rest with
-              | none => T.wrap p (T.num absC)
-              | some r =>
-                if absC.isOne then
-                  match restOff, r with
-                  -- `-(a·b)`: there is no node for the product without its `-1`, so it is the signed
-                  -- term's (`p`) and its factors keep their true paths, `p.1`, `p.2`, … (not `p.1.0`)
-                  | some off, .mul rs =>
-                    let (s, prec) := mulRaw rs p off T
-                    T.wrap p (if prec < P_MUL then T.parens s else s)
-                  | some off, _ => print r (p ++ [off]) T P_MUL
-                  | none, _ => print r p T P_MUL
-                else
-                  -- the product printer, on the term with its sign dropped, so `− x²/4` and `x²/4` agree
-                  -- (and the factors keep their true paths: the numeral is child 0, the rest follow)
-                  print (.mul (.num absC :: (match r with | .mul rs => rs | r => [r]))) p T P_MUL
-            else child a i P_MUL
+          let termStr := if negative then negTerm a (path ++ [i]) T else print a (path ++ [i]) T P_MUL
           acc ++ (if i == 0 then sign.trimAscii.copy else sign) ++ termStr
       (s, P_ADD)
     | .mul args => mulRaw args path 0 T
-  where
-    powRaw (b x : Expr) : String × Nat :=
-      let bs := print b (path ++ [0]) T (P_POW + 1)  -- left of ^ needs parens for anything non-atomic incl. -3 and 2^3
-      let xs := print x (path ++ [1]) T P_POW        -- right-assoc: 2^3^4 is 2^(3^4)
-      -- in text a fractional exponent needs its parentheses: 2^(3/2), not 2^3/2 (an exact one binds as a
-      -- division and has them already; a decimal, 2^(0.5), does not)
-      let xs := if T.times == "*" && (match x with | .num q => !q.isInt && q.approx | _ => false) then T.parens xs else xs
-      (T.pow bs xs, P_POW)
+  termination_by 4 * e.size + 1
+  decreasing_by all_goals print_decreasing
+
+  /-- `b^x` with a non-negative or symbolic exponent. -/
+  def powRaw (b x : Expr) (path : Path) (T : Target) : String × Nat :=
+    let bs := print b (path ++ [0]) T (P_POW + 1)  -- left of ^ needs parens for anything non-atomic incl. -3 and 2^3
+    let xs := print x (path ++ [1]) T P_POW        -- right-assoc: 2^3^4 is 2^(3^4)
+    -- in text a fractional exponent needs its parentheses: 2^(3/2), not 2^3/2 (an exact one binds as a
+    -- division and has them already; a decimal, 2^(0.5), does not)
+    let xs := if T.times == "*" && (match x with | .num q => !q.isInt && q.approx | _ => false) then T.parens xs else xs
+    (T.pow bs xs, P_POW)
+  termination_by 4 * (b.size + x.size) + 3
+  decreasing_by all_goals print_decreasing
+
+  /-- A term of a sum whose coefficient is negative (`splitCoeff`), printed without its sign:
+  `-3`, `-x` and `-2x` print `3`, `x` and `2*x` after the ` - `. -/
+  def negTerm (a : Expr) (p : Path) (T : Target) : String :=
+    match a with
+    | .num q => T.wrap p (T.num q.neg)
+    -- `-(a·b)`: there is no node for the product without its `-1`, so it is the signed term's (`p`)
+    -- and its factors keep their true paths, `p.1`, `p.2`, … (not `p.1.0`)
+    | .mul [.num q, .mul rs] =>
+      if q.neg.isOne then
+        let (s, prec) := mulRaw rs p 1 T
+        T.wrap p (if prec < P_MUL then T.parens s else s)
+      -- the product printer, on the term with its sign dropped, so `− x²/4` and `x²/4` agree (and the
+      -- factors keep their true paths: the numeral is child 0, the rest follow)
+      else print (.mul (.num q.neg :: rs)) p T P_MUL
+    | .mul [.num q, r] =>
+      if q.neg.isOne then print r (p ++ [1]) T P_MUL else print (.mul [.num q.neg, r]) p T P_MUL
+    | .mul (.num q :: r :: rs) =>
+      if q.neg.isOne then
+        let (s, prec) := mulRaw (r :: rs) p 1 T
+        T.wrap p (if prec < P_MUL then T.parens s else s)
+      else print (.mul (.num q.neg :: r :: rs)) p T P_MUL
+    -- not reached: any other term's coefficient is 1
+    | a => print a p T P_MUL
+  termination_by 4 * a.size + 3
+  decreasing_by all_goals print_decreasing
 
   /-- The product of `args`, its `i`-th factor at `path ++ [i + off]`: `off` is 1 for the factors
   of `mul [-1, a, b]` printed without their sign. -/
-  partial def mulRaw (args : List Expr) (path : Path) (off : Nat) (T : Target) : String × Nat :=
+  def mulRaw (args : List Expr) (path : Path) (off : Nat) (T : Target) : String × Nat :=
     match (if T.times != "*" then mulRadicalLatex T.num args else none) with
     | some r => r
     | none =>
     -- Partition into numerator / denominator factors; a leading -1 becomes a unary minus.
-    let (sign, numer, denom) := (enum args).foldl (init := (("" : String), ([] : List String), ([] : List String)))
-        fun ((sign, numer, denom) : String × List String × List String) ((i, a) : Nat × Expr) =>
+    let (sign, numer, denom) := (enum args.attach).foldl (init := (("" : String), ([] : List String), ([] : List String)))
+        fun ((sign, numer, denom) : String × List String × List String) ((i, ⟨a, _⟩) : Nat × Subtype (· ∈ args)) =>
       let p := path ++ [i + off]
       match i, a with
       | 0, .num q =>
@@ -380,13 +408,15 @@ mutual
                 let e := T.wrap (p ++ [1]) (T.num n)
                 T.pow base (if T.times == "*" && !n.isInt then T.parens e else e)
           (sign, numer, denom ++ [T.wrap p den])
-        else (sign, numer ++ [print a p T P_MUL], denom)
-      | _, _ => (sign, numer ++ [print a p T (P_MUL + (if i > 0 && a.isNum then 1 else 0))], denom)
+        else (sign, numer ++ [print (.pow b (.num q)) p T P_MUL], denom)
+      | _, a => (sign, numer ++ [print a p T (P_MUL + (if i > 0 && a.isNum then 1 else 0))], denom)
     let n := if numer.isEmpty then T.num Q.one else T.times.intercalate numer
     if denom.isEmpty then (sign ++ n, if sign.isEmpty then P_MUL else P_NEG)
     else
       let d := if denom.length > 1 && T.denomPrec > P_MUL then T.parens (T.times.intercalate denom) else T.times.intercalate denom
       (sign ++ T.frac n d, if sign.isEmpty then P_MUL else P_NEG)
+  termination_by 4 * Expr.sizeList args + 3
+  decreasing_by all_goals print_decreasing
 end
 
 def Expr.toText (e : Expr) : String := print e [] textTarget P_ADD
