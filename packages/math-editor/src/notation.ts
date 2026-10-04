@@ -33,9 +33,11 @@ export const outTag = (ref: string) => (/^%\d+$/.test(ref) ? `n${ref.slice(1)}` 
 export const outRefOf = (tag: string) => (tag[0] === "n" ? `%${tag.slice(1)}` : "%".repeat(+tag.slice(1)));
 
 const GREEK: Record<string, string> = {
-  "π": "\\pi", "α": "\\alpha", "β": "\\beta", "γ": "\\gamma", "δ": "\\delta", "ε": "\\varepsilon", "θ": "\\theta",
-  "λ": "\\lambda", "μ": "\\mu", "σ": "\\sigma", "τ": "\\tau", "φ": "\\varphi", "ψ": "\\psi", "ω": "\\omega",
-  "Γ": "\\Gamma", "Δ": "\\Delta", "Θ": "\\Theta", "Λ": "\\Lambda", "Σ": "\\Sigma", "Φ": "\\Phi", "Ω": "\\Omega",
+  "π": "\\pi", "α": "\\alpha", "β": "\\beta", "γ": "\\gamma", "δ": "\\delta", "ε": "\\varepsilon", "ζ": "\\zeta",
+  "η": "\\eta", "θ": "\\theta", "ι": "\\iota", "κ": "\\kappa", "λ": "\\lambda", "μ": "\\mu", "ν": "\\nu", "ξ": "\\xi",
+  "ρ": "\\rho", "σ": "\\sigma", "τ": "\\tau", "φ": "\\varphi", "χ": "\\chi", "ψ": "\\psi", "ω": "\\omega",
+  "Γ": "\\Gamma", "Δ": "\\Delta", "Θ": "\\Theta", "Λ": "\\Lambda", "Ξ": "\\Xi", "Π": "\\Pi", "Σ": "\\Sigma",
+  "Φ": "\\Phi", "Ψ": "\\Psi", "Ω": "\\Omega",
   "ℯ": "e",
 };
 /** Spelled-out names the engine prints as one glyph. */

@@ -25,8 +25,10 @@ export interface Where { atom: Atom; parent: Block; index: number; slot: number 
 
 /** Symbols the `\` commands insert by default; the notebook passes its own table. */
 export const DEFAULT_SYMBOLS: Record<string, string> = {
-  pi: "π", e: "ℯ", alpha: "α", beta: "β", gamma: "γ", delta: "δ", eps: "ε", epsilon: "ε", theta: "θ", mu: "μ",
-  sigma: "σ", tau: "τ", phi: "φ", psi: "ψ", omega: "ω", Gamma: "Γ", Delta: "Δ", Sigma: "Σ", Omega: "Ω",
+  pi: "π", e: "ℯ", alpha: "α", beta: "β", gamma: "γ", delta: "δ", eps: "ε", epsilon: "ε", zeta: "ζ", eta: "η",
+  theta: "θ", iota: "ι", kappa: "κ", mu: "μ", nu: "ν", xi: "ξ", rho: "ρ", sigma: "σ", tau: "τ", phi: "φ", chi: "χ",
+  psi: "ψ", omega: "ω", Gamma: "Γ", Delta: "Δ", Theta: "Θ", Lambda: "Λ", Xi: "Ξ", Pi: "Π", Sigma: "Σ", Phi: "Φ",
+  Psi: "Ψ", Omega: "Ω",
 };
 
 const call = (name: string, n: number): Atom => ({ k: "call", name, args: Array.from({ length: n }, () => []) });

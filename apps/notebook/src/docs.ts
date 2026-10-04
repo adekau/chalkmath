@@ -114,7 +114,7 @@ View › Math input chooses for every cell: **automatic** (the default) typesets
 
 ## Symbols
 
-Type ‹\› and a name, then space or Tab, for a symbol: ‹\pi› is π, ‹\lam› is λ, ‹\e› is ℯ, ‹\theta› is θ. Typing ‹\› alone lists them all and narrows as you type. [Symbols and templates](#doc:symbols) has the table.
+Type ‹\› and a name, then space or Tab, for a symbol: ‹\pi› is π, ‹\lam› is λ, ‹\e› is ℯ, ‹\theta› is θ, and for logic ‹\and› is ∧, ‹\or› is ∨, ‹\not› is ¬, ‹\to› is →, ‹\forall› is ∀, ‹\in› is ∈, ‹\le› is ≤. The names are Lean's, so ‹\land›, ‹\wedge› and the like work too. Typing ‹\› alone lists them all and narrows as you type. In a typeset cell only the Greek letters apply: formulas, λ-terms and systems are edited as text. [Symbols and templates](#doc:symbols) has the table.
 
 ## Help while typing
 

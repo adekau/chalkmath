@@ -79,6 +79,7 @@ test("holes, Tab, and the backslash templates", () => {
   assert.equal(text("2\\pi r"), "2π r");
   assert.equal(text("\\pi +1"), "π + 1");
   assert.equal(text("\\alpha+\\beta "), "α + β");
+  assert.equal(text("\\rho+\\xi+\\Pi+\\eta "), "ρ + ξ + Π + η");
   // an unknown command stays as typed
   assert.equal(text("\\nope "), "\\nope");
 });

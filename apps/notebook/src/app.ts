@@ -50,10 +50,12 @@ const DOCS: Doc[] = FUNCTIONS.map((f) => ({
 }));
 const DOC_BY_NAME = new Map(DOCS.map((d) => [d.name, d]));
 
-/** Lean-style backslash abbreviations: type `\`, see them all, filter as you type, Tab inserts the symbol. */
-interface Sym { abbr: string; aliases: string[]; sym: string; what: string }
+/** Lean-style backslash abbreviations: type `\`, see them all, filter as you type, Tab inserts the symbol.
+ *  `text`: the symbol belongs to another world's grammar (λ-terms, logic, systems, types), which the
+ *  typeset input does not read, so it is offered in a cell's text only. */
+interface Sym { abbr: string; aliases: string[]; sym: string; what: string; text?: true }
 const SYMBOLS: Sym[] = [
-  { abbr: "lam", aliases: ["lambda", "l"], sym: "λ", what: "lambda" },
+  { abbr: "lam", aliases: ["lambda", "l"], sym: "λ", what: "lambda", text: true },
   { abbr: "pi", aliases: [], sym: "π", what: "pi" },
   { abbr: "e", aliases: ["euler"], sym: "ℯ", what: "Euler's number, exp(1)" },
   { abbr: "phi", aliases: [], sym: "φ", what: "phi" },
@@ -62,24 +64,53 @@ const SYMBOLS: Sym[] = [
   { abbr: "gamma", aliases: ["g"], sym: "γ", what: "gamma" },
   { abbr: "delta", aliases: ["d"], sym: "δ", what: "delta" },
   { abbr: "eps", aliases: ["epsilon"], sym: "ε", what: "epsilon" },
+  { abbr: "zeta", aliases: [], sym: "ζ", what: "zeta" },
+  { abbr: "eta", aliases: [], sym: "η", what: "eta" },
   { abbr: "theta", aliases: ["th"], sym: "θ", what: "theta" },
+  { abbr: "iota", aliases: [], sym: "ι", what: "iota" },
+  { abbr: "kappa", aliases: [], sym: "κ", what: "kappa" },
   { abbr: "mu", aliases: [], sym: "μ", what: "mu" },
+  { abbr: "nu", aliases: [], sym: "ν", what: "nu" },
+  { abbr: "xi", aliases: [], sym: "ξ", what: "xi" },
+  { abbr: "rho", aliases: [], sym: "ρ", what: "rho" },
   { abbr: "sigma", aliases: ["s"], sym: "σ", what: "sigma" },
   { abbr: "tau", aliases: ["t"], sym: "τ", what: "tau" },
+  { abbr: "chi", aliases: [], sym: "χ", what: "chi" },
   { abbr: "psi", aliases: [], sym: "ψ", what: "psi" },
   { abbr: "omega", aliases: ["w"], sym: "ω", what: "omega" },
   { abbr: "Gamma", aliases: ["G"], sym: "Γ", what: "Gamma" },
   { abbr: "Delta", aliases: ["D"], sym: "Δ", what: "Delta" },
+  { abbr: "Theta", aliases: [], sym: "Θ", what: "Theta" },
+  { abbr: "Lambda", aliases: [], sym: "Λ", what: "Lambda" },
+  { abbr: "Xi", aliases: [], sym: "Ξ", what: "Xi" },
+  { abbr: "Pi", aliases: [], sym: "Π", what: "Pi" },
   { abbr: "Sigma", aliases: ["S"], sym: "Σ", what: "Sigma" },
+  { abbr: "Phi", aliases: [], sym: "Φ", what: "Phi" },
+  { abbr: "Psi", aliases: [], sym: "Ψ", what: "Psi" },
   { abbr: "Omega", aliases: ["W"], sym: "Ω", what: "Omega" },
+  { abbr: "and", aliases: ["land", "wedge"], sym: "∧", what: "and", text: true },
+  { abbr: "or", aliases: ["lor", "vee"], sym: "∨", what: "or", text: true },
+  { abbr: "not", aliases: ["neg", "lnot"], sym: "¬", what: "not", text: true },
+  { abbr: "to", aliases: ["r", "imp", "implies"], sym: "→", what: "implies; a function type", text: true },
+  { abbr: "iff", aliases: ["lr"], sym: "↔", what: "if and only if", text: true },
+  { abbr: "top", aliases: [], sym: "⊤", what: "true (top)", text: true },
+  { abbr: "bot", aliases: [], sym: "⊥", what: "false (bottom)", text: true },
+  { abbr: "forall", aliases: ["all"], sym: "∀", what: "for all", text: true },
+  { abbr: "exists", aliases: ["ex"], sym: "∃", what: "there exists", text: true },
+  { abbr: "in", aliases: ["mem"], sym: "∈", what: "in (a quantifier's set)", text: true },
+  { abbr: "le", aliases: ["leq"], sym: "≤", what: "at most", text: true },
+  { abbr: "ge", aliases: ["geq"], sym: "≥", what: "at least", text: true },
+  { abbr: "ne", aliases: ["neq"], sym: "≠", what: "not equal", text: true },
+  { abbr: "mid", aliases: ["dvd"], sym: "∣", what: "divides", text: true },
+  { abbr: "vdash", aliases: ["entails"], sym: "⊢", what: "in the context (type: Γ ⊢ t)", text: true },
 ];
 /** `\abbr` at the end of the text before the caret → the symbol; longest abbreviations first so `\eps` beats `\e`. */
 const SYMBOL_RE = new RegExp("\\\\(" + SYMBOLS.flatMap((s) => [s.abbr, ...s.aliases]).sort((a, b) => b.length - a.length).join("|") + ")$");
 const symbolFor = (name: string) => SYMBOLS.find((s) => s.abbr === name || s.aliases.includes(name))?.sym ?? "";
 /** The same table for the visual input, whose `\\` also inserts templates (`\\frac`, `\\int`, …).
- *  Not λ: a λ-cell is not the grammar the visual input reads, and stays raw. */
+ *  Not the `text` symbols: a λ-cell or a formula is not the grammar the visual input reads, and stays raw. */
 const VISUAL_SYMBOLS: Record<string, string> = Object.fromEntries(
-  SYMBOLS.filter((s) => s.sym !== "λ").flatMap((s) => [s.abbr, ...s.aliases].map((a) => [a, s.sym])));
+  SYMBOLS.filter((s) => !s.text).flatMap((s) => [s.abbr, ...s.aliases].map((a) => [a, s.sym])));
 type CompItem = { kind: "doc"; doc: Doc }
   /** A name bound in the session: a value, a file, or a function (which opens its call). */
   | { kind: "name"; name: string; what: string; call: boolean } | { kind: "sym"; sym: Sym } | { kind: "tpl"; name: string; what: string; glyph: string }

@@ -1197,8 +1197,8 @@ export const FUNCTIONS: FnDoc[] = [
   {
     name: "connectives", title: "∧ ∨ ¬ → ↔", area: "Logic", notation: true,
     usage: [
-      ["p ∧ q", "is p and q; type `&&` or `and`."], ["p ∨ q", "is p or q; type `||` or `or`."], ["¬p", "is not p; type `!` or `not`."],
-      ["p → q", "is if p then q; type `->`."], ["p ↔ q", "is p if and only if q; type `<->`."], ["⊤, ⊥", "are true and false; type `true` and `false`."],
+      ["p ∧ q", "is p and q; type `&&`, `and` or `\\and`."], ["p ∨ q", "is p or q; type `||`, `or` or `\\or`."], ["¬p", "is not p; type `!`, `not` or `\\not`."],
+      ["p → q", "is if p then q; type `->` or `\\to`."], ["p ↔ q", "is p if and only if q; type `<->` or `\\iff`."], ["⊤, ⊥", "are true and false; type `true` and `false`, or `\\top` and `\\bot`."],
     ],
     details: [
       "A formula with a connective is a logic cell: its value is the formula, and the commands on this page's see-also act on it.",
@@ -1210,9 +1210,9 @@ export const FUNCTIONS: FnDoc[] = [
   },
   {
     name: "forall", title: "∀ ∃", area: "Logic", notation: true,
-    usage: [["∀ x ∈ S, φ", "is true when φ holds for every x in the finite set S; type `forall x in S, …`."], ["∃ x ∈ S, φ", "is true when φ holds for some x in S; type `exists x in S, …`."]],
+    usage: [["∀ x ∈ S, φ", "is true when φ holds for every x in the finite set S; type `forall x in S, …` or `\\forall x \\in S, …`."], ["∃ x ∈ S, φ", "is true when φ holds for some x in S; type `exists x in S, …` or `\\exists`."]],
     details: [
-      "`S` is a range `1..10` or a set `{4, 6, 9}`; the body can compare numbers (`<`, `≤`, `=`, `≠`, `∣` for divides) and use `prime`, `even` and `odd`.",
+      "`S` is a range `1..10` or a set `{4, 6, 9}`; the body can compare numbers (`<`, `≤`, `=`, `≠`, `∣` for divides) and use `prime`, `even` and `odd`. `\\le`, `\\ge`, `\\ne` and `\\mid` type ≤, ≥, ≠ and ∣.",
       "The engine checks every element in order; the step names the counterexample of a false ∀ or the witness of a true ∃.",
     ],
     examples: [basic("∀ n ∈ 1..10, n^2 ≥ n", "∀ n ∈ 1..10, n^2 ≥ 2n", "∃ n ∈ {4, 6, 9, 11}, prime(n)"),
