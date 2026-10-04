@@ -118,7 +118,7 @@ the engine omits is unverified.
 \rt{order.product}{verified}{Pairs ordered componentwise, by definition: the order is the product of the two orders.}
 \rt{order.galois}{verified}{Every pair $(x, y)$ checked for $f(x) \le y \iff x \le g(y)$ (\lc{galoisFailure_none}).}
 \rt{order.closure-operator}{verified}{Extensive, monotone and idempotent, each checked on every element or pair (\lc{closureOpFailure_none}).}
-\rt{order.concepts}{unverified}{Each concept's objects are an intersection of attribute extents, and its attributes are those the objects share; that every concept is found, and that each pair is closed, is not yet proved.}
+\rt{order.concepts}{verified}{Every pair listed is a formal concept (\lc{concepts_sound}), and every concept is listed: intersecting attribute extents one attribute at a time reaches the extent of every set of attributes (\lc{concepts_complete}).}
 \rt{order.flow}{verified}{Every flow checked against the order of the classes (\lc{flowFailure_none}).}
 \midrule \multicolumn{3}{l}{\textbf{Systems world}} \\
 \rt{sys.init}{verified}{An initial state: the init condition evaluated on it, by definition.}

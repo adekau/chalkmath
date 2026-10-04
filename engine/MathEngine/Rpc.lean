@@ -156,7 +156,7 @@ def ruleStatus : Json :=
     entry "order.product" "verified" "Pairs ordered componentwise, by definition: the order is the product of the two orders.",
     entry "order.galois" "verified" "Every pair $(x, y)$ checked for $f(x) \\le y \\iff x \\le g(y)$ (galoisFailure_none).",
     entry "order.closure-operator" "verified" "Extensive, monotone and idempotent, each checked on every element or pair (closureOpFailure_none).",
-    entry "order.concepts" "unverified" "Each concept's objects are an intersection of attribute extents, and its attributes are those the objects share; that every concept is found, and that each pair is closed, is not yet proved.",
+    entry "order.concepts" "verified" "Every pair listed is a formal concept, its objects exactly those with all its attributes and its attributes exactly those its objects share (concepts_sound), and every concept is listed: intersecting attribute extents one attribute at a time reaches the extent of every set of attributes (concepts_complete, extents_complete).",
     entry "order.flow" "verified" "Every flow checked against the order of the classes (flowFailure_none).",
     entry "sys.init" "verified" "An initial state: the init condition evaluated on it, by definition.",
     entry "sys.step" "checked" "Each step of a trace is re-run against the system: the action is enabled there and its updates give the next state.",
