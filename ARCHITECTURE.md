@@ -70,9 +70,12 @@ differential test with zero mismatches.
   (`certify_sound`). A complex value is a rectangle, an interval for each part (`Ival.cieval`),
   through the formulas for the parts of a product, a quotient, `exp`, `sin` and `cos`; `ln` and
   `sqrt` of a real number and a real number to a real power have their principal values in closed
-  form (`cieval_sound`, `cmdN_soundC` in `proofs/Proofs/IntervalC.lean`). What the intervals do not
-  reach (the logarithm of a non-real number, a non-real base under a non-integer power, a pole, a
-  jump) falls to the old double-precision evaluation, `cmd.N.float`, which says it is not certified.
+  form (`cieval_sound`, `cmdN_soundC` in `proofs/Proofs/IntervalC.lean`). `arctan` is pinned by `tan`
+  as `ln` is by `exp` (`atanCheck`), and it gives every other complex number off the negative real
+  axis its argument (`cargI`: `arctan(y/x)` for `x > 0`, `±π/2 − arctan(x/y)` for `y ≷ 0`), so
+  `ln z` and `b^e = exp(e ln b)` are certified too. What the intervals do not reach (a pole, a jump,
+  the cut, where the argument jumps) falls to the old double-precision evaluation, `cmd.N.float`, which
+  says it is not certified.
 - **Elimination is verified over ℚ by construction.** `LinAlgQ.lean` writes Gauss–Jordan as a
   list of the three elementary row operations, each invertible (the degenerate parameters are the
   identity), and proves `sol_rref`: the reduced matrix has the input's solution set. The `rref`
@@ -303,6 +306,33 @@ differential test with zero mismatches.
   ones, `cos u ≠ 0` for `tan u`, `-1 < u < 1` for `arcsin u` and `arccos u`, `b > 0` for `b^u`,
   differentiability otherwise. Both halves are proved for the exact term the engine writes
   (`proofs/Proofs/DerivRules.lean`), the product rule for any number of factors.
+- **What is trusted, outside the ledger.** The ledger's theorems are about `Expr` terms and their
+  meanings. Between them and what a person reads sit:
+  - the Lean kernel and compiler;
+  - the parser, the printer and the JSON-RPC layer.
+
+  How each is held:
+  - **Printer.** It is checked, not proved. `goldenTests` reads every algebra answer's text back
+    (parse, then the pipeline) and asks for the same term. Where the pipeline has two normal forms for
+    one value, it asks instead for a term that prints the same: `(x^(1/2))^(-1)` and `x^(-1/2)` stay
+    apart over ℝ, rightly. That check found JavaScript's `2.5e+43` reading back as `2.5·e + 43`, so a
+    decimal too large or too small for positional notation prints as `2.5*10^43` (`Q.toText`) and binds
+    as a product.
+  - **Session's `let` names and function definitions.** These are substituted into a cell before it
+    is normalized. `substitute` and `substituteFns` are structural. `substitute_soundR` and
+    `substitute_soundC` (`proofs/Proofs/Let.lean`) show the derivation's input means the source with
+    each name at its binding's value.
+  - **What is still `partial def`.** The remaining ones are:
+    - the parsers;
+    - the printer's recursion;
+    - the JSON code;
+    - the other worlds' parsers and evaluators (logic, systems, λ);
+    - `Antiderivative.anti`, whose output `int.check` re-checks.
+
+    Each of these is a definition or a guess that something proved checks, so nothing proved is
+    stated about them.
+  - **Floating point.** Plots, `manipulate` frames and `cmd.N.float` use floats, and are labelled
+    as approximate.
 - **Two packages.** `engine/` is executable code and goes into the wasm build: it imports Init
   (Std/Batteries allowed) and never Mathlib. `proofs/` is theorems only, may be `noncomputable`,
   requires `engine/` and (from M3) Mathlib. `scripts/check-engine-deps.sh` enforces the split.

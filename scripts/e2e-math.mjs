@@ -35,6 +35,9 @@ const CASES = [
   { src: "[1, 2] ./ [3, 10]", text: "[1/3, 1/5]", step: "Entrywise division" },
   { src: "N(sin(10^30))", text: "-0.0901169019121381", step: "Numerical value" },
   { src: "N((-8)^(1/3))", text: "1 + 1.73205080756888*i", step: "Numerical value" },
+  { src: "N(exp(100))", text: "2.68811714181614*10^43", step: "Numerical value" },
+  { src: "factor(1/x + 1)", text: "(x + 1)/x", step: "Common denominator" },
+  { src: "N(i^i)", text: "0.207879576350762", step: "Numerical value" },
   { src: "diff(ln(x), x)", text: "1/x", step: "Chain rule, assuming" },
   { src: "ln(x^2)", text: "2*ln(x)", step: "Function value, assuming a positive argument" },
   // inverse trigonometric functions, and sec, csc, cot as reciprocals

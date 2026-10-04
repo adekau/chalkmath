@@ -178,7 +178,7 @@ mutual
     match e with
     -- in text an exact non-integer numeral prints as a division, `4/9`, so it binds like one: the base
     -- of a power is `(4/9)^(3/2)`, not `4/9^(3/2)`, which reads back as 4/27 (`\frac` groups itself)
-    | .num q => (T.num q, if q.isNeg then P_NEG else if T.times == "*" && !q.isInt && !q.approx then P_MUL else P_ATOM)
+    | .num q => (T.num q, if q.isNeg then P_NEG else if q.isSci || (T.times == "*" && !q.isInt && !q.approx) then P_MUL else P_ATOM)
     | .var x => (T.var x, P_ATOM)
     | .matrix rows =>
       let w := (rows.head?.map List.length).getD 0

@@ -135,13 +135,36 @@ def ofFloat (x : Float) : Option Q :=
 
 def toFloat (q : Q) : Float := Float.ofInt q.val.num / Float.ofNat q.val.den
 
+/-- The decimal exponent `toDecimal` would write in scientific notation (`2.5e+43`), if any. -/
+def sciExp (q : Q) (p : Nat := 15) : Option Int :=
+  let a := q.val.abs
+  if !q.approx || a == 0 then none else
+  let (_, k) := sigDigits a p
+  let e : Int := (p : Int) - 1 - k
+  if e < -6 || e ≥ (p : Int) then some e else none
+
+/-- Written in scientific notation (as `m*10^E`): in text it binds as a product. -/
+def isSci (q : Q) : Bool := q.sciExp.isSome
+
+/-- The mantissa and exponent of a number in scientific notation, `2.5e+43` as `2.5` and `43`. -/
+def sciParts (q : Q) : String × String :=
+  match (q.toDecimal.splitOn "e") with
+  | [m, ex] =>
+    -- the mantissa's trailing zeros, and then a bare point, go: 2.50000000000000 is 2.5
+    let m := String.ofList ((m.toList.reverse.dropWhile (· == '0')).dropWhile (· == '.')).reverse
+    (m, if ex.startsWith "+" then (ex.drop 1).copy else ex)
+  | _ => (q.toDecimal, "0")
+
 def toText (q : Q) : String :=
-  if q.approx then q.toDecimal
+  -- not JavaScript's `2.5e+43`, which reads back as 2.5·e + 43
+  if q.isSci then let (m, ex) := q.sciParts; if ex.startsWith "-" then s!"{m}*10^({ex})" else s!"{m}*10^{ex}"
+  else if q.approx then q.toDecimal
   else if q.isInt then toString q.val.num
   else s!"{q.val.num}/{q.val.den}"
 
 def toLatex (q : Q) : String :=
-  if q.isInt then toString q.val.num
+  if q.isSci then let (m, ex) := q.sciParts; s!"{m} \\times 10^\{{ex}}"
+  else if q.isInt then toString q.val.num
   else if q.approx then q.toDecimal
   else
     let sign := if q.isNeg then "-" else ""

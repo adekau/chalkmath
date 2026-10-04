@@ -129,6 +129,247 @@ theorem unify_most_general {eqs : List (Ty × Ty)} {σ : TSubst} {moves : Array 
     Agree σ θ :=
   unify_go_most_general _ eqs [] #[] σ moves θ h (agree_nil θ) hθ
 
+/-! ## Unification is sound -/
+
+theorem Ty.subst_congr {θ θ' : Nat → Ty} : ∀ {T : Ty}, (∀ k, T.occurs k = true → θ k = θ' k) → T.subst θ = T.subst θ'
+  | .tvar n, h => by simp only [Ty.subst]; exact h n (by simp [Ty.occurs])
+  | .arrow a b, h => by
+    simp only [Ty.subst]
+    rw [Ty.subst_congr (T := a) fun k hk => h k (by simp [Ty.occurs, hk]),
+      Ty.subst_congr (T := b) fun k hk => h k (by simp [Ty.occurs, hk])]
+  | .base _, _ => rfl
+
+/-- A variable of `T.subst θ` comes from a variable of `T`. -/
+theorem Ty.occurs_subst {θ : Nat → Ty} {k : Nat} : ∀ {T : Ty}, (T.subst θ).occurs k = true →
+    ∃ j, T.occurs j = true ∧ (θ j).occurs k = true
+  | .tvar n, h => ⟨n, by simp [Ty.occurs], h⟩
+  | .arrow a b, h => by
+    simp only [Ty.subst, Ty.occurs, Bool.or_eq_true] at h
+    rcases h with h | h
+    · obtain ⟨j, hj, hk⟩ := Ty.occurs_subst h; exact ⟨j, by simp [Ty.occurs, hj], hk⟩
+    · obtain ⟨j, hj, hk⟩ := Ty.occurs_subst h; exact ⟨j, by simp [Ty.occurs, hj], hk⟩
+  | .base _, h => by simp [Ty.subst, Ty.occurs] at h
+
+/-- No variable `σ` binds survives applying `σ`: a substitution in solved form. -/
+def Solved (σ : TSubst) : Prop := ∀ m k, (σ.lookup k).isSome = true → (σ.fn m).occurs k = false
+
+theorem solved_nil : Solved [] := fun _ _ h => by simp [List.lookup] at h
+
+theorem solved_apply {σ : TSubst} (hσ : Solved σ) {k : Nat} (hk : (σ.lookup k).isSome = true) (T : Ty) :
+    (T.apply σ).occurs k = false := by
+  rw [Ty.apply_eq_subst]
+  cases h : (T.subst σ.fn).occurs k with
+  | false => rfl
+  | true => obtain ⟨j, -, hj⟩ := Ty.occurs_subst h; rw [hσ j k hk] at hj; cases hj
+
+/-- A solved substitution is idempotent. -/
+theorem agree_self {σ : TSubst} (hσ : Solved σ) : Agree σ σ.fn := by
+  refine agree_of_vars fun m => ?_
+  conv => rhs; rw [← Ty.subst_id (σ.fn m)]
+  refine Ty.subst_congr fun k hk => ?_
+  cases hl : σ.lookup k with
+  | none => simp [TSubst.fn, hl]
+  | some v => have := hσ m k (by simp [hl]); rw [hk] at this; cases this
+
+theorem lookup_bind (σ : TSubst) (n : Nat) (u : Ty) (m : Nat) :
+    List.lookup m (σ.map fun (m, v) => (m, v.apply [(n, u)])) = (σ.lookup m).map (·.apply [(n, u)]) := by
+  induction σ with
+  | nil => rfl
+  | cons p σ ih =>
+    obtain ⟨k, v⟩ := p
+    by_cases hk : m = k
+    · subst hk; simp [List.lookup]
+    · have : (m == k) = false := by simp [hk]
+      simp [List.lookup, this, ih]
+
+theorem fn_bind {σ : TSubst} {n : Nat} {u : Ty} (hn : (σ.lookup n).isSome = false) (m : Nat) :
+    TSubst.fn ((n, u) :: σ.map fun (m, v) => (m, v.apply [(n, u)])) m =
+      if m = n then u else (σ.fn m).apply [(n, u)] := by
+  by_cases hm : m = n
+  · subst hm; simp [TSubst.fn, List.lookup]
+  · have e : (m == n) = false := by simp [hm]
+    simp only [TSubst.fn, List.lookup, e, lookup_bind, hm, if_false]
+    cases hl : σ.lookup m with
+    | none => simp [Ty.apply, List.lookup, e]
+    | some v => simp
+
+theorem bind_isSome {σ : TSubst} {n : Nat} {u : Ty} {k : Nat}
+    (h : (List.lookup k ((n, u) :: σ.map fun (m, v) => (m, v.apply [(n, u)]))).isSome = true) :
+    k = n ∨ (σ.lookup k).isSome = true := by
+  by_cases hk : k = n
+  · exact .inl hk
+  · have e : (k == n) = false := by simp [hk]
+    simp only [List.lookup, e, lookup_bind, Option.isSome_map] at h
+    exact .inr h
+
+/-- Binding `n` to `u` keeps the substitution solved, when `u` is already `σ`-applied and does not
+contain `n` (the occurs check). -/
+theorem solved_bind {σ : TSubst} (hσ : Solved σ) {n : Nat} {u t : Ty} (hu : u = t.apply σ)
+    (hocc : u.occurs n = false) (hn : (σ.lookup n).isSome = false) :
+    Solved ((n, u) :: σ.map fun (m, v) => (m, v.apply [(n, u)])) := by
+  have hu' : ∀ k, (k = n ∨ (σ.lookup k).isSome = true) → u.occurs k = false := by
+    intro k hk
+    rcases hk with rfl | hk
+    · exact hocc
+    · rw [hu]; exact solved_apply hσ hk t
+  intro m k hk
+  have hk := bind_isSome hk
+  rw [fn_bind hn]
+  split
+  · exact hu' k hk
+  · rename_i hm
+    cases h : ((σ.fn m).apply [(n, u)]).occurs k with
+    | false => rfl
+    | true =>
+      rw [Ty.apply_eq_subst] at h
+      obtain ⟨j, hj, hjk⟩ := Ty.occurs_subst h
+      by_cases hjn : j = n
+      · subst hjn
+        simp [TSubst.fn, List.lookup] at hjk
+        rw [hu' k hk] at hjk; cases hjk
+      · have e : (j == n) = false := by simp [hjn]
+        simp [TSubst.fn, List.lookup, e, Ty.occurs] at hjk
+        subst hjk
+        rcases hk with rfl | hk
+        · exact absurd rfl hjn
+        · rw [hσ m j hk] at hj; cases hj
+
+/-- After binding, applying `σ` first changes nothing the new substitution does. -/
+theorem agree_bound {σ : TSubst} (hσ : Solved σ) {n : Nat} {u : Ty} (hn : (σ.lookup n).isSome = false) :
+    Agree σ (TSubst.fn ((n, u) :: σ.map fun (m, v) => (m, v.apply [(n, u)]))) := by
+  refine agree_of_vars fun m => ?_
+  cases hl : σ.lookup m with
+  | none =>
+    have : σ.fn m = .tvar m := by simp [TSubst.fn, hl]
+    rw [this]; rfl
+  | some v =>
+    have hmn : m ≠ n := by intro h; subst h; simp [hl] at hn
+    rw [fn_bind hn m, if_neg hmn, Ty.apply_eq_subst]
+    refine Ty.subst_congr fun k hk => ?_
+    have hkσ : (σ.lookup k).isSome = false := by
+      cases h : (σ.lookup k).isSome with
+      | false => rfl
+      | true => rw [hσ m k h] at hk; cases hk
+    rw [fn_bind hn k]
+    by_cases hkn : k = n
+    · subst hkn; simp [TSubst.fn, List.lookup]
+    · have e : (k == n) = false := by simp [hkn]
+      have hk0 : σ.lookup k = none := by cases h : σ.lookup k <;> simp_all
+      simp [hkn, hk0, Ty.apply, TSubst.fn, List.lookup, e]
+
+theorem unify_go_sound :
+    ∀ (fuel : Nat) (eqs : List (Ty × Ty)) (σ : TSubst) (acc : Array (UStep × TSubst)) (σ' : TSubst)
+      (acc' : Array (UStep × TSubst)),
+      unify.go eqs σ acc fuel = .ok (σ', acc') → Solved σ →
+      Agree σ σ'.fn ∧ ∀ e ∈ eqs, e.1.subst σ'.fn = e.2.subst σ'.fn
+  | fuel, [], σ, acc, σ', acc', h, hσ => by
+    cases fuel <;> simp [unify.go] at h <;> (obtain ⟨rfl, -⟩ := h; exact ⟨agree_self hσ, by simp⟩)
+  | 0, _ :: _, σ, acc, σ', acc', h, _ => by simp [unify.go] at h
+  | fuel + 1, (s, t) :: rest, σ, acc, σ', acc', h, hσ => by
+    simp only [unify.go] at h
+    -- the equation holds once both sides agree after `σ`
+    have close : Agree σ σ'.fn → (s.apply σ).subst σ'.fn = (t.apply σ).subst σ'.fn →
+        s.subst σ'.fn = t.subst σ'.fn := fun ha he => by rw [← ha s, he, ha t]
+    split at h
+    · rename_i heq
+      obtain ⟨ha, hr⟩ := unify_go_sound fuel rest σ acc σ' acc' h hσ
+      refine ⟨ha, ?_⟩
+      intro e he
+      simp only [List.mem_cons] at he
+      rcases he with rfl | he
+      · exact close ha (by rw [heq])
+      · exact hr e he
+    · -- a variable on either side takes the other side's type
+      have bindCase : ∀ (n : Nat) (u : Ty) (σ₁ : TSubst), s.apply σ = .tvar n ∨ t.apply σ = .tvar n →
+          (u = t.apply σ ∨ u = s.apply σ) → (s.apply σ = .tvar n → u = t.apply σ) →
+          (t.apply σ = .tvar n → u = s.apply σ) → u.occurs n = false →
+          σ₁ = ((n, u) :: σ.map fun (m, v) => (m, v.apply [(n, u)])) →
+          unify.go rest σ₁ (acc.push (.bind n u, σ₁)) fuel = .ok (σ', acc') →
+          Agree σ σ'.fn ∧ ∀ e ∈ (s, t) :: rest, e.1.subst σ'.fn = e.2.subst σ'.fn := by
+        intro n u σ₁ hvar hu hs ht hocc hσ₁ hgo
+        have hn : (σ.lookup n).isSome = false := by
+          cases h : (σ.lookup n).isSome with
+          | false => rfl
+          | true =>
+            rcases hvar with hv | hv
+            · have := solved_apply hσ h s; rw [hv] at this; simp [Ty.occurs] at this
+            · have := solved_apply hσ h t; rw [hv] at this; simp [Ty.occurs] at this
+        have hsol : Solved σ₁ := by
+          rw [hσ₁]
+          rcases hu with hu | hu
+          · exact solved_bind hσ hu hocc hn
+          · exact solved_bind hσ hu hocc hn
+        obtain ⟨ha₁, hr⟩ := unify_go_sound fuel rest σ₁ _ σ' acc' hgo hsol
+        have hb := agree_bound (u := u) hσ hn
+        rw [← hσ₁] at hb
+        have ha : Agree σ σ'.fn := fun T => by
+          have h1 := ha₁ (T.apply σ)
+          have h2 := ha₁ T
+          rw [Ty.apply_eq_subst σ₁ (T.apply σ), hb T] at h1
+          rw [Ty.apply_eq_subst σ₁ T] at h2
+          rw [← h1, h2]
+        -- `n` and `u` agree under the final substitution
+        have hnu : (Ty.tvar n).subst σ'.fn = u.subst σ'.fn := by
+          rw [← ha₁ (.tvar n), ← ha₁ u, hσ₁]
+          have hu₁ : u.apply ((n, u) :: σ.map fun (m, v) => (m, v.apply [(n, u)])) = u := by
+            rw [Ty.apply_eq_subst, ← hσ₁]
+            conv => rhs; rw [← Ty.subst_id u]
+            refine Ty.subst_congr fun k hk => ?_
+            have hkσ : (σ.lookup k).isSome = false := by
+              cases h : (σ.lookup k).isSome with
+              | false => rfl
+              | true =>
+                rcases hu with hu | hu <;> (rw [hu] at hk; rw [solved_apply hσ h] at hk; cases hk)
+            have hkn : k ≠ n := by intro e; subst e; rw [hocc] at hk; cases hk
+            rw [hσ₁, fn_bind hn, if_neg hkn]
+            have : σ.fn k = .tvar k := by
+              simp only [TSubst.fn]; cases h : σ.lookup k <;> simp_all
+            have e : (k == n) = false := by simp [hkn]
+            simp [this, Ty.apply, List.lookup, e]
+          simp only [Ty.apply, List.lookup, BEq.rfl, Option.getD_some, hu₁]
+        refine ⟨ha, ?_⟩
+        intro e he
+        simp only [List.mem_cons] at he
+        rcases he with rfl | he
+        · apply close ha
+          rcases hvar with hv | hv
+          · rw [hv, hnu, hs hv]
+          · rw [hv, hnu, ht hv]
+        · exact hr e he
+      split at h
+      · rename_i _ _ n hs
+        split at h
+        · simp at h
+        · rename_i hocc
+          exact bindCase n _ _ (.inl hs) (.inl rfl) (fun _ => rfl)
+            (fun ht => by rw [hs] at *; simp_all) (by simpa using hocc) rfl h
+      · rename_i _ _ n ht hns
+        split at h
+        · simp at h
+        · rename_i hocc
+          exact bindCase n _ _ (.inr ht) (.inr rfl)
+            (fun hs => absurd hs (hns n)) (fun _ => rfl) (by simpa using hocc) rfl h
+      · rename_i _ _ a b c d hs ht
+        obtain ⟨ha, hr⟩ := unify_go_sound fuel _ σ _ σ' acc' h hσ
+        refine ⟨ha, ?_⟩
+        intro e he
+        simp only [List.mem_cons] at he
+        rcases he with rfl | he
+        · apply close ha
+          rw [hs, ht]
+          simp only [Ty.subst]
+          rw [hr (a, c) (by simp), hr (b, d) (by simp)]
+        · exact hr e (by simp [he])
+      · simp at h
+
+/-- **Unification is sound**: the substitution found solves every equation. With
+`unify_most_general`, it is a most general unifier. -/
+theorem unify_sound {eqs : List (Ty × Ty)} {σ : TSubst} {moves : Array (UStep × TSubst)}
+    (h : unify eqs = .ok (σ, moves)) : ∀ e ∈ eqs, e.1.apply σ = e.2.apply σ := by
+  intro e he
+  rw [Ty.apply_eq_subst, Ty.apply_eq_subst]
+  exact (unify_go_sound _ eqs [] #[] σ moves h solved_nil).2 e he
+
 /-! ## Generation is complete -/
 
 /-- Every type variable in `T` is below `k`. -/

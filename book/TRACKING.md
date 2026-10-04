@@ -954,3 +954,27 @@ Phases:
    part's digits are within a unit of their last place (`cmdN_soundC`, `IntervalC.lean`). `N((-8)^(1/3))` is
    `1 + 1.73205080756888i`, certified. Left to `cmd.N.float`: the logarithm of a non-real number (`N(ln(i))`, which
    would need a certified `arg`), a non-real base under a non-integer power (`N(i^i)`), poles and jumps.
+- verification: labels, unification, and the trusted base — DONE 2026-10-04 (Alex: "continue 4-6").
+   The `checked` rows whose step is itself a check of a definition are `verified` now: `sys.step` and `sys.cti`
+   re-run the system's own semantics, and `sys.iterate`'s rounds are the certificate `sys.ctl` checks. The
+   unification steps are proved: `unify_sound` (the substitution found solves every equation, by keeping it in
+   solved form) with `unify_most_general` makes it a most general unifier, so `stlc.split`, `stlc.unify` and
+   `stlc.constraints` (with `gen_complete`) are `verified`. `int.*` and `cmd.factor` stay `checked`, now defined
+   as a step whose own claim is a guess, the answer shown only after a check whose meaning is proved. Nothing to
+   do for the deliberate conditionals. Outside the ledger: every algebra answer in the golden corpus is read back
+   (parse, then the pipeline) and must give the same term or one printed the same, and the check found
+   `N(exp(100))` printing `2.68811714181614e+43`, which reads back as `2.688…·e + 43`; such a decimal prints as
+   `2.68811714181614*10^43` now (and `2.68811714181614 \times 10^{43}` in TeX). `substitute` and `substituteFns`,
+   which put the session's `let`s into every cell, are structural, and `substitute_soundR`/`substitute_soundC`
+   (`Let.lean`) prove the input means the source with each name at its binding's value. ARCHITECTURE lists what
+   is still trusted.
+- verification: `cmd.factor` conditional, and `N` of any complex logarithm or power — DONE 2026-10-04 (Alex: "Do
+   the small/medium ones here"). `factor` checks its answer itself now: the answer and the input, each times the
+   denominator `D`, must normalize to the same term, and `factor_run_sound` reads that as equality wherever `D ≠ 0`
+   and the check's normalizations hold; the step names `D` ("Assuming … ≠ 0"), `not_factor_at_zero` shows the
+   condition is needed (`factor(1/x + 1)` is `(x + 1)/x`, 1 and 0 at `x = 0`), and `cmd.factor` is `conditional`.
+   `arctan` is certified, pinned by `tan` as `ln` is by `exp` (`atanCheck_mem`), and with it the argument of a
+   complex number off the negative real axis (`cargI`, through `arg_eq_arctan_of_re_pos`, `arg_eq_of_im_pos`,
+   `arg_eq_of_im_neg`), so `N(ln(i))`, `N(i^i)`, `N((1+i)^(1/2))` and `N(arctan(1))` are certified (`clnI_mem`,
+   `cpowI_mem` through `Complex.cpow_def_of_ne_zero`). `cmd.N.float` is left with poles, jumps, the cut, and
+   `arcsin`/`arccos`. The `int.*` finder and the parser/printer totality went to their own sessions.
