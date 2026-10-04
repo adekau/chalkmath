@@ -2,7 +2,7 @@ import { createClient, type EngineClient, type Step, type StepOutline, type Path
 declare const __BUILD_ID__: string;
 import { workerTransport, httpTransport } from "@chalkmath/engine-host";
 import { leanForPrelude } from "@chalkmath/lean-editor/prelude";
-import { read as readNotation, write as writeNotation, writeText, hasNotation, templateAt, templateInText, TEMPLATES, type Stmt, type Caret, type MathEdit } from "@chalkmath/math-editor";
+import { read as readNotation, write as writeNotation, writeText, hasNotation, templateAt, templateInText, TEMPLATES, lex as lexNotation, type Stmt, type Caret, type MathEdit } from "@chalkmath/math-editor";
 import { MathInput, type MathInputOptions } from "@chalkmath/math-editor/view";
 
 /**
@@ -23,6 +23,7 @@ import { ASK_CELL, AskError, askSettings, setAskSettings, runLookup, askSource, 
 import { fileCellOf, resolveFiles, importsIn, partContext, partHelp, fileExprValue, svgPoints, kindOf, tableOf, jsonOf, jsonTable, numericColumns, fileText, fileSize, fmtSize, mimeLabel, mimeFor, dataUrl, fileFromBytes, helpersFor, type FileValue, type FileRef, type FileScope, type Table } from "./files.js";
 import { dataGrid, matrixEntries } from "./datagrid.js";
 import { plotYRange, framesWindow, blendable, blend, playPosition, workLine } from "./animate.js";
+import { parseScene, numberRequests as sceneNumberRequests, sampleRequests as sceneSampleRequests, numbersOf as sceneNumbersOf, build as buildScene, frameAt as sceneFrameAt, SceneError, type SceneData, type Item as SceneItem, type XY } from "./scene.js";
 import { DOC_PAGES, type DocPage, type DocPart } from "./docs.js";
 import { FUNCTIONS, FN_BY_NAME, AREAS, fnPage, evaluable, type FnDoc, type ExampleSection } from "./reference.js";
 import { ensureLean, syncLean, mountLean, unmountLean, focusLean, setLeanDark, infoview as leanInfoview, leanState, leanFailure, leanProgress, leanChecked, initLeanIsolation, type LeanMessage } from "./lean-cells.js";
@@ -206,7 +207,7 @@ function migratePlot(p: PlotData | { var: string; from: number; to: number; poin
 
 /** What a cell is: mathematics for the engine (the default), Markdown prose with `$…$` and code, or a
  *  section heading that groups the cells below it (run together, collapsible). */
-type CellType = "math" | "markdown" | "section" | "lean" | "exercise";
+type CellType = "math" | "markdown" | "section" | "lean" | "exercise" | "scene";
 /** What the engine said of an exercise's answer: equivalent or not, with the answer as it reads it
  *  and the normal form it compared; or why it could not compare it. */
 interface Verdict { equivalent: boolean; answerLatex?: string; normalLatex?: string; error?: { message: string; span?: { start: number; end: number } } }
@@ -229,6 +230,14 @@ interface Cell {
    *  where its slider is (a frame index; fractional while it plays). */
   manip?: ManipData;
   manipAt?: number;
+  /** A scene cell (scene.ts): its script read and sampled by the engine (not saved: the cell runs again
+   *  when its notebook opens), or the mistake that stopped it, at a line of the script; where its
+   *  playback is, in seconds; whether it is playing, and whether it has played once by scrolling in. */
+  scene?: SceneData;
+  sceneErr?: { message: string; line: number };
+  sceneT?: number;
+  scenePlaying?: boolean;
+  scenePlayed?: boolean;
   /** A file-valued cell (`import("url")`, `⟦name⟧`, or `let x =` one of them): the file it shows,
    *  by what it is. The engine never sees it; the contents are the attachment's or the import's. */
   file?: FileMeta;
@@ -632,6 +641,7 @@ async function runCell(cell: Cell) {
   }
   if (cell.type === "section") { cell.src = cellSrc(cell); return; }
   if (cell.type === "lean" || (cell.type === "exercise" && cell.lean)) return;   // Lean checks as you type (lean-cells.ts)
+  if (cell.type === "scene") return runScene(cell);
   cell.src = cellSrc(cell);
   if (!cell.src.trim()) return;
   if (S.kernel === "failed") {
@@ -1323,9 +1333,10 @@ function exerciseFromFile(cell: Cell, c: ChalkFile["cells"][number]) {
 /** Cells from a file's records (no DOM yet); `foldWork` folds every cell's work whatever was saved. */
 function cellsFromFile(doc: ChalkFile, foldWork = false): Cell[] {
   return doc.cells.map((c) => {
-    const cell = freshCell(c.src, c.type === "markdown" || c.type === "section" || c.type === "lean" || c.type === "exercise" ? c.type : "math");
+    const cell = freshCell(c.src, c.type === "markdown" || c.type === "section" || c.type === "lean" || c.type === "exercise" || c.type === "scene" ? c.type : "math");
     if (cell.type === "exercise") exerciseFromFile(cell, c);
-    if (cell.type === "markdown") cell.editing = !c.src.trim();   // prose comes back rendered; an empty cell opens for typing
+    // prose and scenes come back shown; an empty one opens for typing
+    if (cell.type === "markdown" || cell.type === "scene") cell.editing = !c.src.trim();
     if (c.collapsed) cell.collapsed = true;
     cell.showWork = !foldWork && (c.showWork ?? false); cell.label = c.label ?? null;
     // a cell to step through shows its work whatever the reader folds: the steps are the exercise
@@ -1977,7 +1988,7 @@ function importNotebook() {
 
 /** What a link carries: the name and every cell's text and kind. Outputs are not included: the
  *  engine recomputes them when the link opens, which is the point of a verified notebook. */
-interface LinkDoc { v: 1; n: string; c: { s: string; t?: "markdown" | "section" | "lean" | "exercise"; w?: 1; f?: 1; r?: number; p?: string; hs?: string[]; hq?: 1; sl?: [number, number, number]; ln?: 1; lst?: string; lso?: string }[]; a?: Record<string, { m: string; d: string; b?: 1 }> }
+interface LinkDoc { v: 1; n: string; c: { s: string; t?: "markdown" | "section" | "lean" | "exercise" | "scene"; w?: 1; f?: 1; r?: number; p?: string; hs?: string[]; hq?: 1; sl?: [number, number, number]; ln?: 1; lst?: string; lso?: string }[]; a?: Record<string, { m: string; d: string; b?: 1 }> }
 
 async function deflate(text: string): Promise<Uint8Array> {
   const cs = new CompressionStream("deflate-raw");
@@ -2034,7 +2045,7 @@ async function openNotebookLink(hash: string): Promise<boolean> {
     if (doc.v !== 1 || !Array.isArray(doc.c)) throw new Error("not a notebook link");
     const file: ChalkFile = {
       chalk: 1, name: doc.n || "shared.chalk",
-      cells: doc.c.map((c) => ({ src: String(c.s ?? ""), type: c.t === "markdown" || c.t === "section" || c.t === "lean" || c.t === "exercise" ? c.t : undefined, collapsed: c.f ? true : undefined, showWork: !!c.w, stepwise: typeof c.r === "number" ? c.r : undefined,
+      cells: doc.c.map((c) => ({ src: String(c.s ?? ""), type: c.t === "markdown" || c.t === "section" || c.t === "lean" || c.t === "exercise" || c.t === "scene" ? c.t : undefined, collapsed: c.f ? true : undefined, showWork: !!c.w, stepwise: typeof c.r === "number" ? c.r : undefined,
         prompt: typeof c.p === "string" ? c.p : undefined, hints: Array.isArray(c.hs) ? c.hs.map(String) : undefined, hideQuestion: c.hq ? true : undefined,
         slider: Array.isArray(c.sl) && c.sl.length === 3 ? { min: Number(c.sl[0]), max: Number(c.sl[1]), step: Number(c.sl[2]) } : undefined,
         lean: c.ln ? true : undefined, leanStart: typeof c.lst === "string" ? c.lst : undefined, leanSolution: typeof c.lso === "string" ? c.lso : undefined, label: null })),
@@ -2343,6 +2354,7 @@ function freshCell(src = "", type: CellType = "math"): Cell {
   if (type === "section") cell.type = "section";
   if (type === "lean") cell.type = "lean";
   if (type === "exercise") { cell.type = "exercise"; cell.editing = true; }
+  if (type === "scene") { cell.type = "scene"; cell.editing = true; }
   return cell;
 }
 function addCell(src = "", type: CellType = "math"): Cell {
@@ -2365,7 +2377,8 @@ function convertCell(cell: Cell, type: CellType) {
   cell.src = cellSrc(cell);
   if (type === "math") delete cell.type; else cell.type = type;
   delete cell.editing; delete cell.collapsed;
-  if (type === "markdown") cell.editing = !cell.src.trim();
+  if (type === "markdown" || type === "scene") cell.editing = !cell.src.trim();
+  if (type !== "scene") { delete cell.scene; delete cell.sceneErr; }
   if (type !== "math") { delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.error; delete cell.plot; delete cell.manip; delete cell.hasse; delete cell.summary; delete cell.visuals; delete cell.ask; delete cell.askTrail; cell.steps = []; delete cell.outline; cell.label = null; }
   if (type === "section") cell.src = cell.src.split("\n")[0]!.replace(/^#+\s*/, "");
   if (type !== "lean") delete cell.leanMessages;
@@ -2544,7 +2557,7 @@ function renderChrome() {
       ...(open ? [["Save", () => saveNotebook()], ["Save as…", saveNotebookAs], ["Export to file…", exportNotebook]] as [string, () => void][] : []),
       ["Import from file…", importNotebook],
       ...(open ? [["Attach file…", attachFile], ["Copy link to notebook", () => void copyNotebookLink()]] as [string, () => void][] : [])],
-    Edit: [["Add math cell", addKind("math")], ["Add Markdown cell", addKind("markdown")], ["Add section", addKind("section")], ["Add Lean cell", addKind("lean")], ["Add exercise", addKind("exercise")], ["Add Lean exercise", addKind("exercise", true)],
+    Edit: [["Add math cell", addKind("math")], ["Add Markdown cell", addKind("markdown")], ["Add section", addKind("section")], ["Add Lean cell", addKind("lean")], ["Add exercise", addKind("exercise")], ["Add Lean exercise", addKind("exercise", true)], ["Add scene", addKind("scene")],
       ...(S.cells[S.active] ? CELL_TYPES.filter(([t]) => t !== (S.cells[S.active]!.type ?? "math")).map(([t, label]): [string, () => void] => [`Change to ${label.toLowerCase()}`, () => convertCell(S.cells[S.active]!, t)]) : []),
       ...(open ? [["Clear outputs", clearOutputs] as [string, () => void]] : [])],
     View: [["Manim Studio", openStudio], ["Toggle light / dark", () => { applyTheme(S.theme === "light" ? "dark" : "light"); renderChrome(); }], [`${S.sidebarOpen ? "✓ " : ""}Sidebar  (Ctrl+B)`, toggleSidebar], ["Explanation panel", () => setPanelOpen(!S.panelOpen)],
@@ -2807,6 +2820,12 @@ function renderSidebar() {
         row.append(h("span", "num", c.verdict?.equivalent ? "✓" : "?"));
         const wrap = h("span");
         wrap.append(h("span", "kind", "exercise"), h("span", "src", c.prompt?.split("\n").find((l) => l.trim())?.replace(/^#+\s*/, "") || c.src || "…"));
+        row.append(wrap);
+      } else if (c.type === "scene") {
+        row.append(h("span", "num", "▷"));
+        const wrap = h("span");
+        const beat = c.src.split("\n").find((l) => /^\s*>.*\|/.test(l));
+        wrap.append(h("span", "kind", "scene"), h("span", "src", beat ? beat.slice(beat.indexOf("|") + 1).trim() : c.src.split("\n").find((l) => l.trim()) || "…"));
         row.append(wrap);
       } else if (c.type === "markdown") {
         row.append(h("span", "num", "¶"));
@@ -3936,8 +3955,8 @@ function renderCells() {
     const el = h("div", `cell${i === S.active ? " active" : ""}${cell.label ? " done" : ""}${cell.type ? ` ${cell.type}` : ""}`);
     cell.el = el;
     delete cell.input; delete cell.ta; delete cell.hl; delete cell.mi;
-    if (cell.type === "markdown") {
-      el.append(h("div", "prompt", ""));
+    if (cell.type === "markdown" || cell.type === "scene") {
+      el.append(h("div", "prompt", cell.type === "scene" ? "Scene" : ""));
       const mid = h("div", "mid");
       el.append(mid);
       const acts = h("div", "cellacts");
@@ -4072,6 +4091,7 @@ const CELL_TYPES: [CellType, string, string][] = [
   ["section", "Section heading", "Groups the cells below it: run them together, fold them away"],
   ["lean", "Lean cell", "Lean 4, checked as you type; goals in the panel, definitions shared with the Lean cells below"],
   ["exercise", "Exercise", "A question the reader answers; the engine checks the answer and holds the worked solution"],
+  ["scene", "Scene", "A picture told in beats, played as it scrolls into view: points, curves and equations the engine samples"],
 ];
 /** The one kind of cell that is not a `CellType` of its own: an exercise whose answer is a Lean proof. */
 const LEAN_EXERCISE_KIND = (act: () => void): [string, string, () => void] =>
@@ -4171,7 +4191,7 @@ const RULE_NAMES: Record<string, string> = {
   "stlc.var": "Var", "stlc.abs": "→I (abstraction)", "stlc.app": "→E (application)", "stlc.constraints": "Type equations",
   "stlc.split": "Split an arrow", "stlc.unify": "Unify", "stlc.principal": "Principal type",
   "cmd.rref": "Row reduce", "cmd.integrate": "Integrate", "cmd.expand": "Expand", "cmd.subst": "Substitute", "cmd.simplify": "Simplify", "cmd.sum": "Sum", "cmd.exptotrig": "Euler's formula",
-  "cmd.N": "Numerical value", "cmd.N.float": "Floating-point value", "order.divisors": "Divisors", "order.subsets": "Subsets",
+  "cmd.N": "Numerical value", "cmd.N.float": "Floating-point value", "cmd.factor": "Common denominator", "order.divisors": "Divisors", "order.subsets": "Subsets",
 };
 
 /** The paths at which two terms differ: the smallest subterms that changed. Children are compared
@@ -4467,6 +4487,7 @@ function renderCellBody(cell: Cell) {
   const el = cell.el; if (!el) return;
   hideDiffTip();
   if (cell.type === "markdown") return renderMdCell(cell);
+  if (cell.type === "scene") return renderSceneCell(cell);
   if (cell.type === "section") return appendMore(cell, el.querySelector(".cellacts")!);
   if (cell.type === "lean") return renderLeanBody(cell);
   const exercise = cell.type === "exercise";
@@ -5256,6 +5277,330 @@ function renderMdCell(cell: Cell) {
   btn.addEventListener("click", () => { if (cell.editing) void runCell(cell); else edit(); });
   acts.append(btn);
   appendMore(cell, acts);
+}
+
+// ---------------------------------------------------------------------------
+// Scenes: a picture told in beats (scene.ts), played in the notebook's flow. The engine samples every
+// coordinate (quietly: a scene is not an evaluation); the page lays out the beats, draws each moment
+// as SVG, morphs an equation's steps with the studio's glyph matching, and plays the scene once when
+// it scrolls into view. Reduced motion leaves it to the reader's ▶.
+// ---------------------------------------------------------------------------
+
+const SCENE_W = 640, SCENE_H = 360;
+const SCENE_EXAMPLE = `clock t from 0 to 2pi
+C = curve(exp(i*s), s, 0, 2pi) faint
+P = point(exp(i*t))
+R = arrow(0, P)
+> show P, R | A point on the unit circle.
+> play t to 2pi in 4s | Once round. (Shift+Enter plays the scene)`;
+
+interface SceneView {
+  box: HTMLElement; svg: SVGSVGElement; labels: HTMLElement; eqs: HTMLElement; cap: HTMLElement;
+  scrub: HTMLInputElement; play: HTMLElement; where: HTMLElement; dots: HTMLElement[];
+  beat: number; morphs: Map<string, Morph>; texEls: Map<string, HTMLElement>;
+}
+const SCENE_VIEWS = new WeakMap<Cell, SceneView>();
+const SCENE_OF = new WeakMap<Element, Cell>();
+const scenePlaying = new Set<Cell>();
+let sceneRaf = 0, sceneLast = 0;
+/** A scene plays once when most of it scrolls into view, and pauses when it leaves. */
+const sceneObserver = typeof IntersectionObserver === "undefined" ? null : new IntersectionObserver((entries) => {
+  for (const e of entries) {
+    const cell = SCENE_OF.get(e.target); if (!cell) continue;
+    if (e.isIntersecting && e.intersectionRatio >= 0.6) { if (!cell.scenePlayed && !reducedMotion()) scenePlay(cell); }
+    else if (cell.scenePlaying) sceneStop(cell);
+  }
+}, { threshold: [0, 0.6] });
+
+/** Read the scene's script, ask the engine for its samples, and lay out its beats. */
+async function runScene(cell: Cell) {
+  cell.src = cellSrc(cell);
+  sceneStop(cell);
+  delete cell.scene; delete cell.sceneErr;
+  if (!cell.src.trim()) { cell.editing = true; renderCellBody(cell); return; }
+  let spec: ReturnType<typeof parseScene>;
+  try { spec = parseScene(cell.src); }
+  catch (e) {
+    if (!(e instanceof SceneError)) throw e;
+    cell.sceneErr = { message: e.message, line: e.line }; cell.editing = true;
+    renderCellBody(cell); return;
+  }
+  const d = docOf(cell);
+  cell.editing = false;
+  if (!client || !d || S.kernel === "failed") { renderCellBody(cell); return; }
+  cell.queued = true; renderCellBody(cell);
+  // after the evaluations asked for before it: a scene may read the names the cells above bind
+  const prev = runChain;
+  let release!: () => void;
+  runChain = new Promise<void>((r) => { release = r; });
+  try {
+    await prev;
+    const clock = spec.clock.name;
+    const moves = (expr: string) => {
+      try { return lexNotation(expr).some((t) => t.kind === "id" && t.s === clock); }
+      catch { return new RegExp(`(^|[^A-Za-z0-9_])${clock}([^A-Za-z0-9_]|$)`).test(expr); }
+    };
+    const replies: Record<string, unknown> = {};
+    let k = 0;
+    const ask = async (reqs: ReturnType<typeof sceneNumberRequests>) => {
+      for (const r of reqs) {
+        if (!client) throw new Error("the engine is gone");
+        log("rpc", `${r.method} ${JSON.stringify(r.source)} (scene, quiet)`);
+        const params = { sessionId: d.sessionId, cellId: `${cell.id}~${k++}`, source: r.source, quiet: true, ...(r.showWork ? { showWork: true } : {}) };
+        replies[r.key] = r.method === "engine.check" ? await client.call("engine.check", params)
+          : r.method === "engine.manipulate" ? await client.call("engine.manipulate", params) : await client.call("engine.plot", params);
+      }
+    };
+    // the script's numbers first: a moving curve's frames are taken at them
+    await ask(sceneNumberRequests(spec));
+    await ask(sceneSampleRequests(spec, moves, sceneNumbersOf(spec, replies)));
+    cell.scene = buildScene(spec, replies);
+    cell.sceneT = 0; cell.scenePlayed = false;
+    log("ok", `scene: ${spec.objects.length} objects, ${cell.scene.timeline.beats.length} beats, ${cell.scene.timeline.total.toFixed(1)} s`);
+  } catch (e) {
+    cell.sceneErr = e instanceof SceneError ? { message: e.message, line: e.line } : { message: e instanceof Error ? e.message : String(e), line: 0 };
+    cell.editing = true;
+  } finally { cell.queued = false; release(); }
+  renderCellBody(cell); renderSidebar(); queueMicrotask(autosave);
+}
+
+/** A scene cell: its script while editing (Shift+Enter plays), its player otherwise. */
+function renderSceneCell(cell: Cell) {
+  const el = cell.el; if (!el) return;
+  const i = S.cells.indexOf(cell);
+  const mid = el.querySelector(".mid") as HTMLElement; mid.innerHTML = "";
+  delete cell.ta;
+  el.classList.toggle("running", !!cell.queued);
+  const onFocus = () => { S.active = i; renderChrome(); renderSidebar(); markActive(); };
+  const edit = () => { sceneStop(cell); cell.editing = true; renderSceneCell(cell); cell.ta?.focus(); };
+  if (cell.editing) {
+    const ta = document.createElement("textarea");
+    ta.className = "mdin scenein"; ta.value = cell.src; ta.rows = 3; ta.spellcheck = false;
+    ta.placeholder = SCENE_EXAMPLE;
+    cell.ta = ta;
+    const grow = () => { ta.style.height = "auto"; ta.style.height = `${Math.max(ta.scrollHeight, 120) + 2}px`; };
+    ta.addEventListener("focus", onFocus);
+    ta.addEventListener("input", () => { cell.src = ta.value; grow(); renderSidebar(); renderTabs(); });
+    ta.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter" && (ev.shiftKey || ev.metaKey || ev.ctrlKey)) { ev.preventDefault(); void runCell(cell); return; }
+      if (ev.key === "Escape" && cell.scene) { ev.preventDefault(); cell.editing = false; renderSceneCell(cell); }
+    });
+    mid.append(ta);
+    if (cell.sceneErr) mid.append(h("div", "cellerr", cell.sceneErr.line ? `Line ${cell.sceneErr.line}: ${cell.sceneErr.message}` : cell.sceneErr.message));
+    grow();
+  } else if (cell.queued || !cell.scene) {
+    const wait = h("div", "scene-wait", cell.queued ? "Sampling the scene…" : cell.src.trim() ? "Run the cell to play the scene." : "Empty scene: double-click to write one.");
+    wait.tabIndex = 0;
+    wait.addEventListener("focus", onFocus);
+    wait.addEventListener("dblclick", edit);
+    mid.append(wait);
+  } else {
+    const box = scenePlayer(cell);
+    box.addEventListener("focus", onFocus);
+    box.addEventListener("dblclick", edit);
+    mid.append(box);
+  }
+  const acts = el.querySelector(".cellacts")!; acts.innerHTML = "";
+  const btn = asButton(h("span", undefined, cell.editing ? "▶ Play" : "✎ Edit"));
+  btn.title = cell.editing ? "Read the script and play the scene (Shift+Enter)" : "Edit the scene's script (double-click)";
+  btn.addEventListener("mousedown", (e) => e.preventDefault());
+  btn.addEventListener("click", () => { if (cell.editing) void runCell(cell); else edit(); });
+  acts.append(btn);
+  appendMore(cell, acts);
+}
+
+/** The player: equations above the picture, the caption below it, and the transport. */
+function scenePlayer(cell: Cell): HTMLElement {
+  const data = cell.scene!, tl = data.timeline;
+  const NS = "http://www.w3.org/2000/svg";
+  const box = h("div", "scene-player");
+  box.tabIndex = 0;
+  box.setAttribute("aria-label", `Scene: ${tl.beats.length} beat${tl.beats.length === 1 ? "" : "s"}. Space plays or pauses, the arrows step between beats.`);
+  const eqs = h("div", "scene-eqs");
+  const stage = h("div", "scene-stage");
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("viewBox", `0 0 ${SCENE_W} ${SCENE_H}`); svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", data.spec.objects.map((o) => `${o.name}: ${o.kind}`).join(", "));
+  const labels = h("div", "scene-labels");
+  stage.append(svg, labels);
+  const cap = h("div", "scene-cap");
+  cap.setAttribute("aria-live", "polite");
+  const tr = h("div", "scene-transport");
+  const prev = asButton(h("span", "scene-btn", "⏮"), "Previous beat");
+  const play = asButton(h("span", "scene-btn scene-play", "▶"), "Play or pause");
+  const next = asButton(h("span", "scene-btn", "⏭"), "Next beat");
+  const track = h("div", "scene-track");
+  const scrub = document.createElement("input");
+  scrub.type = "range"; scrub.min = "0"; scrub.max = String(tl.total); scrub.step = "0.01"; scrub.className = "scene-scrub";
+  scrub.setAttribute("aria-label", "Time in the scene");
+  const marks = h("div", "scene-marks");
+  const dots = tl.beats.map((b, k) => {
+    const dot = asButton(h("span", "scene-dot-mark"), `Beat ${k + 1}`);
+    dot.style.left = `${(b.start / tl.total) * 100}%`;
+    dot.addEventListener("click", () => sceneSeek(cell, b.start));
+    marks.append(dot);
+    return dot;
+  });
+  track.append(marks, scrub);
+  const where = h("span", "scene-where");
+  tr.append(prev, play, next, track, where);
+  box.append(eqs, stage, cap, tr);
+  prev.addEventListener("click", () => sceneStep(cell, -1));
+  next.addEventListener("click", () => sceneStep(cell, 1));
+  play.addEventListener("click", () => (cell.scenePlaying ? sceneStop(cell) : scenePlay(cell)));
+  // read the value before stopping: stopping redraws, which puts the scrubber back where the scene was
+  scrub.addEventListener("input", () => { const t = Number(scrub.value); sceneStop(cell); sceneSeek(cell, t); });
+  box.addEventListener("keydown", (ev) => {
+    if (ev.target !== box) return;
+    if (ev.key === " ") { ev.preventDefault(); if (cell.scenePlaying) sceneStop(cell); else scenePlay(cell); }
+    if (ev.key === "ArrowRight") { ev.preventDefault(); sceneStep(cell, 1); }
+    if (ev.key === "ArrowLeft") { ev.preventDefault(); sceneStep(cell, -1); }
+  });
+  SCENE_VIEWS.set(cell, { box, svg, labels, eqs, cap, scrub, play, where, dots, beat: -1, morphs: new Map(), texEls: new Map() });
+  SCENE_OF.set(box, cell);
+  sceneObserver?.observe(box);
+  drawScene(cell);
+  return box;
+}
+
+function sceneTick(now: number) {
+  const dt = Math.min(0.1, (now - (sceneLast || now)) / 1000);
+  sceneLast = now;
+  for (const c of [...scenePlaying]) {
+    const v = SCENE_VIEWS.get(c);
+    if (!c.scene || !v?.box.isConnected) { scenePlaying.delete(c); c.scenePlaying = false; continue; }
+    c.sceneT = Math.min(c.scene.timeline.total, (c.sceneT ?? 0) + dt);
+    if (c.sceneT >= c.scene.timeline.total) { scenePlaying.delete(c); c.scenePlaying = false; }
+    drawScene(c);
+  }
+  sceneRaf = scenePlaying.size ? requestAnimationFrame(sceneTick) : 0;
+  if (!sceneRaf) sceneLast = 0;
+}
+function scenePlay(cell: Cell) {
+  if (!cell.scene) return;
+  if ((cell.sceneT ?? 0) >= cell.scene.timeline.total - 0.01) cell.sceneT = 0;
+  cell.scenePlaying = true; cell.scenePlayed = true;
+  scenePlaying.add(cell);
+  if (!sceneRaf) { sceneLast = 0; sceneRaf = requestAnimationFrame(sceneTick); }
+  drawScene(cell);
+}
+function sceneStop(cell: Cell) {
+  scenePlaying.delete(cell); cell.scenePlaying = false;
+  if (SCENE_VIEWS.has(cell)) drawScene(cell);
+}
+function sceneSeek(cell: Cell, t: number) {
+  if (!cell.scene) return;
+  cell.sceneT = Math.max(0, Math.min(cell.scene.timeline.total, t));
+  cell.scenePlayed = true;
+  drawScene(cell);
+}
+/** To the start of the next beat, or back to the start of this one (or the one before, near its start). */
+function sceneStep(cell: Cell, dir: 1 | -1) {
+  if (!cell.scene) return;
+  const bs = cell.scene.timeline.beats, t = cell.sceneT ?? 0;
+  const b = Math.max(0, bs.findIndex((x) => t < x.end));
+  if (dir > 0) sceneSeek(cell, b + 1 < bs.length ? bs[b + 1]!.start : cell.scene.timeline.total);
+  else sceneSeek(cell, t > bs[b]!.start + 0.4 || b === 0 ? bs[b]!.start : bs[b - 1]!.start);
+}
+
+/** Draw the scene at its current time. */
+function drawScene(cell: Cell) {
+  const v = SCENE_VIEWS.get(cell), data = cell.scene;
+  if (!v || !data) return;
+  const NS = "http://www.w3.org/2000/svg";
+  const f = sceneFrameAt(data, cell.sceneT ?? 0);
+  const [x0, x1, y0, y1] = data.window;
+  const pad = 16;
+  const scale = Math.min((SCENE_W - 2 * pad) / (x1 - x0 || 1), (SCENE_H - 2 * pad) / (y1 - y0 || 1));
+  const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+  const sx = (x: number) => SCENE_W / 2 + (x - cx) * scale, sy = (y: number) => SCENE_H / 2 - (y - cy) * scale;
+  const svg = v.svg;
+  svg.textContent = "";
+  const el = (tag: string, attrs: Record<string, string | number>, cls?: string) => {
+    const e = document.createElementNS(NS, tag);
+    for (const [k, val] of Object.entries(attrs)) e.setAttribute(k, String(val));
+    if (cls) e.setAttribute("class", cls);
+    svg.append(e);
+    return e;
+  };
+  if (data.spec.axes) {
+    const X0 = cx - SCENE_W / 2 / scale, X1 = cx + SCENE_W / 2 / scale, Y0 = cy - SCENE_H / 2 / scale, Y1 = cy + SCENE_H / 2 / scale;
+    if (Y0 < 0 && Y1 > 0) el("line", { x1: 0, y1: sy(0), x2: SCENE_W, y2: sy(0) }, "scene-axis");
+    if (X0 < 0 && X1 > 0) el("line", { x1: sx(0), y1: 0, x2: sx(0), y2: SCENE_H }, "scene-axis");
+    // a tick at each whole number while they are far enough apart to read
+    if (scale >= 24) {
+      for (let k = Math.ceil(X0); k <= Math.floor(X1); k++) if (k) el("line", { x1: sx(k), y1: sy(0) - 3, x2: sx(k), y2: sy(0) + 3 }, "scene-axis");
+      for (let k = Math.ceil(Y0); k <= Math.floor(Y1); k++) if (k) el("line", { x1: sx(0) - 3, y1: sy(k), x2: sx(0) + 3, y2: sy(k) }, "scene-axis");
+    }
+  }
+  const colour = (it: SceneItem) => it.style.color ?? (data.spec.objects.findIndex((o) => o.name === it.name) % CURVE_COLOURS);
+  const cls = (it: SceneItem, base: string) => `${base} c${colour(it)}${it.style.faint ? " faint" : ""}${it.style.dashed ? " dashed" : ""}${it.style.thick ? " thick" : ""}`;
+  const seenLabels = new Set<string>();
+  // curves and lines first, points on top of them
+  for (const it of [...f.items.filter((x) => x.kind !== "dot"), ...f.items.filter((x) => x.kind === "dot")]) {
+    if (it.kind === "path") {
+      let d = "", pen = false;
+      for (const p of it.pts as XY[]) {
+        if (!p || !Number.isFinite(p[0]) || !Number.isFinite(p[1])) { pen = false; continue; }
+        d += `${pen ? "L" : "M"}${sx(p[0]).toFixed(1)} ${sy(p[1]).toFixed(1)} `; pen = true;
+      }
+      el("path", { d, opacity: it.opacity.toFixed(3), "data-name": it.name }, cls(it, "scene-path"));
+    } else if (it.kind === "dot") {
+      el("circle", { cx: sx(it.at[0]).toFixed(1), cy: sy(it.at[1]).toFixed(1), r: it.style.thick ? 6.5 : 5, opacity: it.opacity.toFixed(3),
+        "data-name": it.name, "data-x": it.at[0].toFixed(4), "data-y": it.at[1].toFixed(4) }, cls(it, "scene-pt"));
+    } else if (it.kind === "arrow" || it.kind === "segment") {
+      const ax = sx(it.from[0]), ay = sy(it.from[1]), bx = sx(it.to[0]), by = sy(it.to[1]);
+      const len = Math.hypot(bx - ax, by - ay);
+      // the shaft stops at the head's base, so a thick line does not poke through its point
+      const head = it.kind === "arrow" && len > 4 ? Math.min(12, len * 0.4) : 0;
+      const ux = len ? (bx - ax) / len : 0, uy = len ? (by - ay) / len : 0;
+      el("line", { x1: ax.toFixed(1), y1: ay.toFixed(1), x2: (bx - ux * head * 0.8).toFixed(1), y2: (by - uy * head * 0.8).toFixed(1), opacity: it.opacity.toFixed(3), "data-name": it.name }, cls(it, "scene-path"));
+      if (head) {
+        const w = head * 0.45;
+        const pts = [[bx, by], [bx - ux * head - uy * w, by - uy * head + ux * w], [bx - ux * head + uy * w, by - uy * head - ux * w]];
+        el("polygon", { points: pts.map((q) => `${q[0]!.toFixed(1)},${q[1]!.toFixed(1)}`).join(" "), opacity: it.opacity.toFixed(3) }, cls(it, "scene-head"));
+      }
+    } else if (it.kind === "label") {
+      seenLabels.add(it.name);
+      let lab = v.texEls.get(`label:${it.name}`);
+      if (!lab) { lab = h("span", `scene-label c${colour(it)}`); lab.innerHTML = tex(it.tex); v.texEls.set(`label:${it.name}`, lab); v.labels.append(lab); }
+      lab.style.left = `${(sx(it.at[0]) / SCENE_W) * 100}%`;
+      lab.style.top = `${(sy(it.at[1]) / SCENE_H) * 100}%`;
+      lab.style.opacity = it.opacity.toFixed(3);
+    }
+  }
+  for (const [key, lab] of v.texEls) if (key.startsWith("label:") && !seenLabels.has(key.slice(6))) lab.style.opacity = "0";
+  // the equations: as typed, or a step of their work morphing into the next
+  const shown = new Set(f.eqs.map((e) => e.name));
+  for (const child of [...v.eqs.children] as HTMLElement[]) if (!shown.has(child.dataset["name"] ?? "")) child.remove();
+  for (const e of f.eqs) {
+    let row = [...v.eqs.children].find((c) => (c as HTMLElement).dataset["name"] === e.name) as HTMLElement | undefined;
+    if (!row) { row = h("div", "scene-eq"); row.dataset["name"] = e.name; v.eqs.append(row); }
+    row.style.opacity = e.opacity.toFixed(3);
+    const key = e.from === null || e.p >= 1 ? `tex:${e.to}` : `morph:${e.from}→${e.to}`;
+    if (row.dataset["key"] !== key) {
+      row.dataset["key"] = key; row.textContent = "";
+      if (e.from === null || e.p >= 1) {
+        const t = h("span", "scene-eqtex"); t.innerHTML = tex(e.to); row.append(t);
+      } else {
+        let m = v.morphs.get(key);
+        if (!m) { m = new Morph(e.from, e.to, 24); v.morphs.set(key, m); }
+        row.append(m.el);
+      }
+    }
+    if (e.from !== null && e.p < 1) v.morphs.get(key)?.at(e.p);
+  }
+  // the caption changes with the beat
+  if (f.beat !== v.beat) {
+    v.beat = f.beat;
+    v.cap.textContent = "";
+    const caption = data.timeline.beats[f.beat]?.caption ?? "";
+    if (caption) { const md = mdRender(caption); md.classList.add("scene-captext"); v.cap.append(md); }
+    v.dots.forEach((d, k) => d.classList.toggle("on", k <= f.beat));
+  }
+  v.scrub.value = String(f.time);
+  v.play.textContent = cell.scenePlaying ? "❚❚" : f.time >= data.timeline.total - 0.01 ? "↻" : "▶";
+  v.where.textContent = `${f.beat + 1} / ${data.timeline.beats.length}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -6834,7 +7179,7 @@ const USER_NAMES = new Set<string>();
 
 /** Commands whose argument at `arg` is a variable bound over the call: `diff(f, x)`, `plot(f, x, …)`. */
 const BINDERS: Record<string, number> = { diff: 1, integrate: 1, plot: 1, epicycles: 1, sum: 1, subst: 1, manipulate: 1 };
-const BUILTIN_FN = new Set(["sin", "cos", "tan", "sec", "csc", "cot", "arcsin", "arccos", "arctan", "exp", "ln", "log", "sqrt", "abs", "conj", "re", "im", "sign", "det", "rref", "transpose", "dot", "norm", "solve",
+const BUILTIN_FN = new Set(["sin", "cos", "tan", "sec", "csc", "cot", "arcsin", "arccos", "arctan", "exp", "ln", "log", "sqrt", "abs", "conj", "re", "im", "arg", "sign", "det", "rref", "transpose", "dot", "norm", "solve",
   "total", "mean", "variance", "stdev", "min", "max", "median"]);
 const COMMANDS = new Set(["diff", "integrate", "plot", "manipulate", "epicycles", "dft", "import", "samplePoints", "matrix", "dimensions", "sum", "exptotrig", "expand", "factor", "simplify", "N", "subst", "poset", "map", "monotone", "lfp", "gfp", "fixpoints", "hasse", "join", "meet", "sup", "inf", "upper", "lower", "top", "bottom", "maximal", "minimal", "lattice", "le", "divisors", "subsets", "chain"]);
 const CONSTANTS = new Set(["pi", "π", "e", "ℯ", "i", "phi", "φ", "All"]);

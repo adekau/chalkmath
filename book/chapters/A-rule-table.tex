@@ -58,9 +58,9 @@ the engine omits is unverified.
 \rt{cmd.expand}{verified}{Distribution is a total function proved sound over $\mathbb{R}$ (\lc{dist_sound}); the collection afterwards is the pipeline's own steps with their statuses.}
 \rt{cmd.simplify}{verified}{A cell's argument is already in normal form when the command sees it, so \texttt{simplify} returns it unchanged: the identity.}
 \rt{cmd.subst}{verified}{Structural substitution $e[x := v]$ evaluates as $e$ with $x$ rebound to the value of $v$ (\lc{cmdSubst_soundR}).}
-\rt{cmd.N}{verified}{The decimal is certified: interval arithmetic over the rationals holds the exact value (\lc{ieval_sound}), with Taylor remainders for $\exp$, $\sin$, $\cos$, $\ln$ checked by $\exp$ and $\sqrt{\ }$ by squaring, and the digits shown are within a unit of their last place (\lc{certify_sound}, \lc{cmdN_sound}). A complex value is certified part by part, a rectangle holding the principal value (\lc{cieval_sound}, \lc{cmdN_soundC}).}
-\rt{cmd.N.float}{unverified}{IEEE-754 double precision, for what \rn{cmd.N} cannot certify (the logarithm of a non-real number, a non-real base under a non-integer power, a pole, a jump); no error bound is proved.}
-\rt{cmd.factor}{checked}{The common-denominator form is a guess the pipeline checks: the input times the denominator $D$, normalized and expanded, must be the numerator $N$, so $N/D$ agrees with the input wherever $D \neq 0$. When the check fails, the collected normal form is the answer.}
+\rt{cmd.N}{verified}{The decimal is certified: interval arithmetic over the rationals holds the exact value (\lc{ieval_sound}), with Taylor remainders for $\exp$, $\sin$, $\cos$, $\ln$ checked by $\exp$ and $\sqrt{\ }$ by squaring, and the digits shown are within a unit of their last place (\lc{certify_sound}, \lc{cmdN_sound}). $\arctan$ is pinned by $\tan$ (\lc{atanCheck_mem}). A complex value is certified part by part, a rectangle holding the principal value (\lc{cieval_sound}, \lc{cmdN_soundC}), $\ln z$ and $b^e = e^{e \ln b}$ through an argument certified by $\arctan$ (\lc{clnI_mem}).}
+\rt{cmd.N.float}{unverified}{IEEE-754 double precision, for what \rn{cmd.N} cannot certify (a pole, a jump, the logarithm or a power of a number on the negative real axis, where the argument jumps); no error bound is proved.}
+\rt{cmd.factor}{conditional}{The common-denominator form is a guess the pipeline checks: it and the input, each times the denominator $D$, normalized and expanded, must be the same term, so it agrees with the input wherever $D \neq 0$ (\lc{factor_run_sound}); the step names $D$. Without the condition it fails: \texttt{factor(1/x + 1)} is $(x+1)/x$, which is $0$ at $x = 0$ where the input is $1$ (\lc{not_factor_at_zero}). When the check fails, the collected normal form is the answer.}
 \rt{expand.distribute}{verified}{Multiplying out a product of sums and collecting like monomials: \lc{dist_sound}.}
 \rt{expand.power}{verified}{A power of a sum is the sum multiplied by itself: \lc{dist_sound}.}
 \midrule \multicolumn{3}{l}{\textbf{Integration}} \\
@@ -138,7 +138,7 @@ the engine omits is unverified.
 \rt{order.flow}{verified}{Every flow checked against the order of the classes (\lc{flowFailure_none}).}
 \midrule \multicolumn{3}{l}{\textbf{Systems world}} \\
 \rt{sys.init}{verified}{An initial state: the init condition evaluated on it, by definition.}
-\rt{sys.step}{checked}{Each step of a trace is re-run against the system: the action is enabled there and its updates give the next state.}
+\rt{sys.step}{verified}{By definition: each step of a trace is re-run against the system, the action enabled there and its updates giving the next state; a step that does not re-run is refused, not shown.}
 \rt{sys.found}{verified}{The last state of a re-run trace, from an initial state, where the formula holds. The trace is a shortest one: each state's breadth-first depth is zero initially and rises by at most one along a transition, checked, and no state where the formula holds is shallower than the trace is long, so every path to one is at least as long (\lc{checkShortest_spec}).}
 \rt{sys.violated}{verified}{The last state of a re-run trace, from an initial state, where the formula fails: a concrete counterexample, and a shortest one, by the same check of breadth-first depths (\lc{checkShortest_spec}).}
 \rt{sys.deadlock}{verified}{The last state of a re-run trace, with every action's guard evaluated false. When none is reported none is missed: the search finds every reachable state and every transition (\lc{System.no_deadlock}).}
@@ -146,9 +146,9 @@ the engine omits is unverified.
 \rt{sys.invariant}{verified}{The formula holds in every state the search found, and the search finds every reachable state (\lc{System.explore_states}).}
 \rt{sys.unreachable}{verified}{No state the search found satisfies the formula, and the search finds every reachable state (\lc{System.explore_states}).}
 \rt{sys.inductive}{verified}{Every assignment of the domains is enumerated (\lc{allStates_mem}) and every enabled action from a state where the formula holds is checked.}
-\rt{sys.cti}{checked}{A state where the formula holds and an action after which it fails (or leaves a domain): both evaluated, a concrete counterexample to induction.}
+\rt{sys.cti}{verified}{By definition: a state where the formula holds and an action after which it fails (or leaves a domain), both evaluated by the system's own semantics, a concrete counterexample to induction.}
 \rt{sys.ctl}{verified}{The set is a fixed point checked with a certificate read off its rounds, and where the check passes it is exactly the states where the formula holds by the meaning of its paths: $\mathrm{EF}$ some path reaches $\varphi$, $\mathrm{EG}$ an infinite path stays in it, $\mathrm{AG}$ every reachable state is in it, $\mathrm{AF}$ every maximal path reaches it (\lc{checkEF_spec} and the others).}
-\rt{sys.iterate}{checked}{One round of the Kleene iteration: the transformer applied to the previous set.}
+\rt{sys.iterate}{verified}{By definition: one round of the Kleene iteration, the transformer applied to the previous set; the rounds are the certificate \rn{sys.ctl} checks (\lc{checkEF_spec} and the others).}
 \rt{sys.fixed}{verified}{The loop stops when a round changes nothing, and the set it stops at is checked against the operator's path meaning with \rn{sys.ctl}'s certificate, so it is the right set without appeal to Kleene's theorem.}
 \rt{sys.cycle}{verified}{A step of the lasso's cycle, inside a strongly connected set of states avoiding the goal. The whole lasso is checked to be a run, each step an edge joined to the next and the cycle closing up (\lc{checkLasso_spec}).}
 \rt{sys.lasso}{verified}{A fair run that never reaches the goal: a path from an initial state, then a cycle repeated forever, every weakly fair action taken on it or disabled somewhere on it and every strongly fair one taken on it or disabled all along it. A lasso that checks is a fair infinite run avoiding the goal (\lc{checkLasso_spec}); a deadlock reached first is checked as a run that stops without it (\lc{checkDead_spec}).}
@@ -189,9 +189,9 @@ the engine omits is unverified.
 \rt{stlc.var}{verified}{Var: the checker's derivations are typing derivations (\texttt{check\_sound}, \texttt{StlcProofs.lean}).}
 \rt{stlc.abs}{verified}{$\to$I: the checker's derivations are typing derivations (\texttt{check\_sound}).}
 \rt{stlc.app}{verified}{$\to$E: the checker's derivations are typing derivations (\texttt{check\_sound}).}
-\rt{stlc.constraints}{checked}{Inference's equations; the type found is re-checked by the verified checker on the annotated term.}
-\rt{stlc.split}{checked}{Unification splits an equation of arrows; the type found is re-checked by the verified checker.}
-\rt{stlc.unify}{checked}{Unification binds a type variable (with the occurs check); the type found is re-checked by the verified checker.}
+\rt{stlc.constraints}{verified}{Inference's equations: every typing of the term solves them (\lc{gen_complete}), and the type their solution gives is a type of the term, re-checked by the verified checker (\lc{check_sound}).}
+\rt{stlc.split}{verified}{Unification splits an equation of arrows into its parts, which have the same solutions: the substitution found solves every equation (\lc{unify_sound}) and every solution is an instance of it (\lc{unify_most_general}).}
+\rt{stlc.unify}{verified}{Unification binds a type variable (with the occurs check), keeping the substitution in solved form: the one found solves every equation (\lc{unify_sound}) and every solution is an instance of it (\lc{unify_most_general}).}
 \rt{stlc.principal}{verified}{Most general (\lc{infer\_principal}, Hindley's theorem): every typing of the term, whatever types its unannotated binders and free variables get, has an instance of the solved type; and it is a type of the term (\lc{check\_sound}, by the checker). The type shown names its variables with names not otherwise in use.}
 \bottomrule
 \end{longtable}

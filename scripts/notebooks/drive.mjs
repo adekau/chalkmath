@@ -9,12 +9,22 @@
 //   node scripts/notebooks/drive.mjs --update notebooks/*.chalk notebooks/courses/*/*.chalk
 //
 // Exercise cells are checked through `engine.check`: the question must evaluate, to its golden answer.
+// A scene cell is read and sampled as the page does it (apps/notebook/src/scene.ts, quiet requests):
+// its outcome is how many objects and beats it has and how long it plays, or the mistake at its line.
 // A cell that reads a file (import("…"), ⟦name⟧) is the page's to evaluate (files.ts), not the
 // engine's; it is skipped, and so is every cell that uses a name such a cell binds.
 import { spawn } from "node:child_process";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { createInterface } from "node:readline";
 import path from "node:path";
+import { tmpdir } from "node:os";
+import { pathToFileURL } from "node:url";
+import { build as esbuild } from "esbuild";
+
+// the page's scene module, bundled for Node
+const sceneJs = path.join(tmpdir(), `chalk-drive-scene-${process.pid}.mjs`);
+writeFileSync(sceneJs, (await esbuild({ entryPoints: [new URL("../../apps/notebook/src/scene.ts", import.meta.url).pathname], bundle: true, format: "esm", write: false, platform: "neutral" })).outputFiles[0].text);
+const Scene = await import(pathToFileURL(sceneJs).href);
 
 const args = process.argv.slice(2);
 const flags = new Set(args.filter((a) => a.startsWith("--")));
@@ -43,6 +53,7 @@ async function drive(file, session) {
   for (let i = 0; i < nb.cells.length; i++) {
     const c = nb.cells[i];
     const exercise = c.type === "exercise" && !c.lean;   // a Lean exercise is Lean's to check (check-lean.mjs)
+    if (c.type === "scene" && c.src.trim()) { results.push(await driveScene(c.src, session, i)); continue; }
     if (c.type && c.type !== "math" && !exercise) continue;
     const src = c.src;
     if (!src.trim()) continue;
@@ -67,6 +78,31 @@ async function drive(file, session) {
     results.push({ i, src, ok: !failed, outcome, text, summary: res?.summary, error: failed ? message : undefined, steps: steps.length, hasse: res?.hasse, stepList: steps });
   }
   return results;
+}
+
+/** A scene cell, as the page plays it: every request quiet, so the session is as the cells left it. */
+async function driveScene(src, session, i) {
+  try {
+    const spec = Scene.parseScene(src);
+    const clock = spec.clock.name;
+    const moves = (e) => names(e).includes(clock);
+    const replies = {};
+    let k = 0;
+    const ask = async (reqs) => {
+      for (const q of reqs) {
+        const r = await call(q.method, { sessionId: session, cellId: `c${i}~${k++}`, source: q.source, quiet: true, ...(q.showWork ? { showWork: true } : {}) });
+        replies[q.key] = r.result ?? { ok: false, error: r.error };
+      }
+    };
+    await ask(Scene.numberRequests(spec));
+    await ask(Scene.sampleRequests(spec, moves, Scene.numbersOf(spec, replies)));
+    const data = Scene.build(spec, replies);
+    const outcome = `scene: ${spec.objects.length} objects, ${data.timeline.beats.length} beats, ${data.timeline.total.toFixed(1)} s`;
+    return { i, src, ok: true, outcome, text: outcome, steps: 0 };
+  } catch (e) {
+    const message = e.line ? `line ${e.line}: ${e.message}` : String(e.message ?? e);
+    return { i, src, ok: false, outcome: `✗ ${message}`, text: "", error: message, steps: 0 };
+  }
 }
 
 let bad = 0;

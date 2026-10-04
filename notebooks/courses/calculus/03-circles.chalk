@@ -1,0 +1,353 @@
+{
+  "chalk": 1,
+  "name": "03-circles.chalk",
+  "cells": [
+    {
+      "src": "Circles, exponentials and rotation",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> See why $e^{it}$ walks round the unit circle, and read the derivatives of $\\cos$ and $\\sin$, Euler's formula and the angle-sum formulas off that one picture.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "This lesson works in the complex plane: the number $a + bi$ is the point $(a, b)$, and `i` is typed as it is. A cell that mentions `i` is read over $\\mathbb{C}$, and its steps are judged by the rules' proofs there.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A point going round the circle",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Cosine and sine\n> Walk a distance $t$ round the unit circle, counterclockwise from $1$. Where you stand is $\\cos t + i \\sin t$: the **cosine** is your shadow on the horizontal axis, the **sine** your shadow on the vertical one.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "clock t from 0 to 2pi\nC = curve(exp(i*s), s, 0, 2pi) faint color 6\nP = point(exp(i*t)) thick color 1\nW = trace(P) color 1\nR = arrow(0, P) color 1\nL = label(P, \"\\cos t + i \\sin t\") color 1\nX = point(cos(t)) color 2\nDX = segment(P, X) dashed color 2\nY = point(i*sin(t)) color 3\nDY = segment(P, Y) dashed color 3\n> show C | The unit circle: every point at distance $1$ from $0$.\n> show P, R, L, W; play t to 0.7 in 2s | Walk a distance $t$ round it, counterclockwise from $1$. Where you stand is $\\cos t + i \\sin t$.\n> show X, DX, Y, DY | The **cosine** is your shadow on the horizontal axis (blue), the **sine** your shadow on the vertical one (green).\n> play t to pi/2 in 2s | A quarter of the way round, at $t = \\pi/2$, the sine is at its peak and the cosine is $0$.\n> play t to 2pi in 5s | Once round: each shadow swings between $-1$ and $1$, a quarter turn behind the other.",
+      "type": "scene",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Unrolled against the distance walked, the two shadows are the familiar waves:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "clock t from 0.01 to 2pi\nview 0, 6.3, -1.25, 1.25\nCw = graph(cos(x), x, 0, t) color 2\nSw = graph(sin(x), x, 0, t) color 3\nQ = point(t + i*cos(t)) color 2\nP = point(t + i*sin(t)) color 3\n> show Cw, Q, Sw, P; play t to 2pi in 6s | The cosine starts at $1$, the sine at $0$; each is the other shifted by a quarter turn, $\\pi/2$.",
+      "type": "scene",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> The same walk as a calculation you can stop anywhere: drag `T`, and the arc, the radius and the drop to the axis are worked out at that $T$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "manipulate(plot([cos(2*pi*t/T) + i*sin(2*pi*t/T), cos(t) + i*sin(t), (t/T)*(cos(T) + i*sin(T)), cos(T) + i*(t/T)*sin(T)], t, 0, T), T, 0.05, 6.28)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Multiplying by i is a quarter turn",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "$i \\cdot (a + bi) = -b + ai$: the point $(a, b)$ goes to $(-b, a)$, the same distance from $0$ and a quarter turn further round.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "i*(3 + 4i)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "plot([t*(3 + 4i), t*i*(3 + 4i)], t, 0, 1)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "abs(3 + 4i) - abs(i*(3 + 4i))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A rate that turns",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "$e^x$ is the function whose rate of change is itself. Ask the same of a point moving in the plane, but with a quarter turn: a point $z(t)$ whose velocity is always $i\\,z(t)$. The velocity is the position turned a quarter, so it is always at right angles to the radius: the point never moves toward $0$ or away from it, only round it. Starting from $1$, at speed $1$, it walks the unit circle. That point is $e^{it}$:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "clock t from 0 to 2pi\nC = curve(exp(i*s), s, 0, 2pi) faint color 6\nP = point(exp(i*t)) thick color 1\nR = arrow(0, P) color 1\nLP = label(P, \"e^{it}\") color 1\nV = arrow(P, (1 + i)*exp(i*t)) color 4\nLV = label((1 + i)*exp(i*t), \"i\\,e^{it}\") color 4\nE = eq(diff(exp(i*t), t))\n> show C, P, R, LP | The point $e^{it}$, and its radius.\n> show E; work E | Its velocity, by the chain rule: $i\\,e^{it}$.\n> show V, LV | Multiplying by $i$ turns a quarter, so the velocity is the radius turned a quarter: always at right angles to it.\n> play t to 2pi in 6s | Never along the radius, always across it: the point neither nears $0$ nor leaves it. It goes round.",
+      "type": "scene",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "diff(exp(i*t), t)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "> [!theorem] Euler's formula\n> $e^{it} = \\cos t + i \\sin t$: the exponential with a turning rate is the walk round the circle. `exptotrig` applies it.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "exptotrig(exp(i*pi/3))",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "exp(i*pi) + 1",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "Write both sides of $\\frac{d}{dt} e^{it} = i\\,e^{it}$ with Euler's formula. The left is $\\cos' t + i \\sin' t$; the right is the position turned a quarter. Their real and imaginary parts are the derivatives of cosine and sine, read off the picture:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "expand(exptotrig(diff(exp(i*t), t)))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Compound growth, turned",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "$e = \\lim_{n \\to \\infty} (1 + 1/n)^n$: grow by a fraction $1/n$, $n$ times over.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let n = 4",
+      "showWork": false,
+      "label": null,
+      "slider": {
+        "min": 1,
+        "max": 64,
+        "step": 1
+      },
+      "mode": "raw"
+    },
+    {
+      "src": "N((1 + 1/n)^n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> Now grow by $i\\pi/n$ instead, $n$ times: each step multiplies by $1 + i\\pi/n$, a small turn and a slight stretch. The path below runs from $1$ through the powers $(1 + i\\pi/n)^k$. Drag `n` up: the stretch fades, the path settles onto the circle, and it ends at $e^{i\\pi} = -1$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "clock n from 1 to 40\nC = curve(exp(i*s), s, 0, pi) faint color 6\nM = point(-1) color 4\nLM = label(M, \"-1\") color 4\nS = curve((1 + i*pi/n)^(n*s/pi), s, 0, pi) color 1\nE = point((1 + i*pi/n)^n) thick color 1\n> show C, M, LM | Half way round the circle: the walk $e^{i\\pi}$ takes, from $1$ to $-1$.\n> show S, E | One step of $1 + i\\pi$ overshoots: a turn, but a stretch too.\n> play n to 40 in 7s | Split it into $n$ steps of $1 + i\\pi/n$. As $n$ grows the stretch fades, the path settles onto the circle, and it ends at $e^{i\\pi} = -1$.",
+      "type": "scene",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The same path with a slider of your own, through the powers $(1 + i\\pi/n)^k$:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "plot([cos(t) + i*sin(t), (1 + i*pi/n)^(n*t/pi)], t, 0, pi)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "N((1 + i*pi/n)^n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Angles add when you multiply",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "clock b from 0.01 to 2\nC = curve(exp(i*s), s, 0, 2pi) faint color 6\nAA = curve(0.3*exp(i*s), s, 0, 0.6) color 2\nA = arrow(0, exp(0.6*i)) color 2\nLA = label(exp(0.6*i), \"e^{ia}\") color 2\nBB = curve(0.45*exp(i*s), s, 0, b) color 3\nB = arrow(0, exp(i*b)) color 3\nLB = label(exp(i*b), \"e^{ib}\") color 3\nPP = curve(0.6*exp(i*s), s, 0, 0.6 + b) color 1\nP = arrow(0, exp(i*(0.6 + b))) thick color 1\nLP = label(exp(i*(0.6 + b)), \"e^{ia} e^{ib}\") color 1\n> show C, AA, A, LA | A turn by $a$: the point $e^{ia}$.\n> show BB, B, LB | A turn by $b$.\n> show PP, P, LP | Their product is the turn by $a$ followed by the turn by $b$: angle $a + b$.\n> play b to 2 in 5s | As $b$ grows the product turns with it, always $a$ ahead. Multiplying points on the circle adds their angles.",
+      "type": "scene",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "$e^{ia}\\,e^{ib} = e^{i(a + b)}$: turning by $a$ and then by $b$ is turning by $a + b$. Expand both sides with Euler's formula and compare real parts and imaginary parts.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "expand(exptotrig(exp(i*a))*exptotrig(exp(i*b)))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "expand(exptotrig(exp(i*(a + b))))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!theorem] Angle sums\n> $\\cos(a + b) = \\cos a \\cos b - \\sin a \\sin b$ and $\\sin(a + b) = \\sin a \\cos b + \\cos a \\sin b$: the real and imaginary parts of one product of turns.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The angle of a point",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`abs(z)` is the distance from $0$ and `arg(z)` the angle from the positive real axis, so $z = |z|\\,e^{i \\arg z}$. For a point $1 + iy$, to the right of $0$, the angle is $\\arctan y$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let z = 1 + i",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "abs(z)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "N(arg(z))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "N(arctan(1))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "So `arctan` measures an angle, and its derivative $\\dfrac{1}{1 + y^2}$ is how fast the angle grows as the point climbs the line through $1$. Adding those small turns from $y = 0$ to $y = 1$ gives the angle to $1 + i$, an eighth of a turn, $\\pi/4$; four of them make $\\pi$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "clock y from 0.01 to 1\nview -0.3, 1.5, -0.25, 1.15\nC = curve(exp(i*s), s, 0, pi/2) faint color 6\nK = segment(1, 1 + i) faint color 6\nAR = curve(0.35*exp(i*s), s, 0, arctan(y)) thick color 2\nLA = label(0.36*exp(i*arctan(y)/2), \"\\arctan y\") color 2\nR = arrow(0, P) color 1\nP = point(1 + i*y) thick color 1\nLP = label(P, \"1 + iy\") color 1\n> show C, K, R, P, LP | A point climbing the line through $1$: the point $1 + iy$.\n> show AR, LA | Its angle from the real axis is $\\arctan y$.\n> play y to 1 in 6s | The angle grows fast at first and slower as the point climbs, at the rate $\\frac{1}{1 + y^2}$. At $y = 1$ it is an eighth of a turn, $\\pi/4$.",
+      "type": "scene",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "integrate(1/(1 + y^2), y)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "N(4*integrate(1/(1 + y^2), y, 0, 1))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Circles riding on circles",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A sum of terms $c_k e^{ikt}$ is circles riding on circles, each turning $k$ times per lap, with radius $|c_k|$. `epicycles` draws them; enough of them draw any closed curve, which is what the *Llamas* notebook does.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "epicycles(exp(i*t) + exp(3*i*t)/3, t)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "i*(1 + 2i)",
+      "type": "exercise",
+      "prompt": "Turn $1 + 2i$ a quarter turn counterclockwise about $0$.",
+      "hints": [
+        "Multiply by $i$, and use $i^2 = -1$."
+      ],
+      "hideQuestion": true,
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "exptotrig(exp(i*pi/2))",
+      "type": "exercise",
+      "prompt": "Where is $e^{i\\pi/2}$? Give it as a complex number.",
+      "hints": [
+        "A walk of $\\pi/2$ round the unit circle is a quarter turn from $1$."
+      ],
+      "hideQuestion": true,
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "diff(exp(3*i*t), t)",
+      "type": "exercise",
+      "prompt": "Differentiate $e^{3it}$ with respect to $t$.",
+      "hints": [
+        "The chain rule: the inner derivative is $3i$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "expand((cos(t) + i*sin(t))^2)",
+      "type": "exercise",
+      "prompt": "Square $\\cos t + i \\sin t$ and multiply it out, in terms of $\\cos t$ and $\\sin t$. (Its real part is $\\cos 2t$: why?)",
+      "hints": [
+        "$(a + bi)^2 = a^2 - b^2 + 2abi$.",
+        "Squaring $e^{it}$ doubles the angle, so the square is $e^{2it} = \\cos 2t + i \\sin 2t$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Multiplying by $i$ turns a quarter, so a rate of $i$ times the position goes round a circle: $e^{it} = \\cos t + i\\sin t$. The derivatives of $\\cos$ and $\\sin$, the angle-sum formulas and $\\arctan$ as an angle all come from that walk.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

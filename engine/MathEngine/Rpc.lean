@@ -19,9 +19,10 @@ open Json
 machine-checked instead of guessing. Kept next to the rules it describes: `verified` means an
 unconditional soundness theorem over ℝ (`proofs/Proofs/SimpReal.lean`), `conditional` means the
 theorem needs a side condition *and* the necessity of that condition is itself proved, `unverified`
-means no theorem yet, `checked` means the step is a guess whose result a later step verifies
-(u-substitution, integration by parts and the arctangent and arcsine forms of the `int.*` finder,
-checked by `int.check`). The `la.row-*` rules are proved over ℚ (`LinAlgQ.lean`), not ℝ: their claim is
+means no theorem yet, `checked` means the step's own claim is a guess, and the answer it leads to is shown only
+after a check whose meaning is proved (u-substitution, integration by parts and the arctangent and arcsine
+forms of the `int.*` finder, checked by `int.check`). A step
+that is itself the check, evaluating a definition (`sys.step`), is `verified`. The `la.row-*` rules are proved over ℚ (`LinAlgQ.lean`), not ℝ: their claim is
 that the row operation preserves the solution set. Rules absent from this list are unverified. -/
 def ruleStatus : Json :=
   let entry (name status note : String) : Json :=
@@ -57,8 +58,8 @@ def ruleStatus : Json :=
     entry "diff.higher-order" "verified" "diff(f, x, n) for a positive integer n is written as n successive diff(·, x) (diffHigherOrder_spec), and those mean Mathlib's n-th iterated derivative of f read as a function of x (diffHigherOrder_soundR).",
     entry "cmd.simplify" "verified" "A cell's argument is already in normal form when the command sees it (the pipeline rewrites innermost first), so simplify returns it unchanged: the identity.",
     entry "cmd.subst" "verified" "Structural substitution e[x := v] (substVar) evaluates as e with x rebound to the value of v (cmdSubst_soundR, from substVar_soundR).",
-    entry "cmd.N" "verified" "The decimal is certified: interval arithmetic over the rationals holds the exact real value (ieval_sound), with Taylor remainders for exp, sin and cos (Real.exp_bound, Complex.exp_bound), ln checked by exp, sqrt by squaring and π to twenty digits (Real.pi_gt_d20), and the digits shown are the most, up to fifteen, within a unit of their last place of everything in the interval (certify_sound, cmdN_sound). A complex value is certified part by part: a rectangle of two intervals holds the principal value (cieval_sound), through the formulas for the parts of a product, a quotient, exp, sin and cos, a real argument to ln and sqrt, and an integer power or a real base under a real exponent, and each part's digits are within a unit of their last place (cmdN_soundC). Where the constants e and π have their values.",
-    entry "cmd.N.float" "unverified" "A floating-point approximation in IEEE-754 double precision, for what cmd.N cannot certify: the logarithm of a non-real number, a non-real base under a non-integer power, a function across a pole or a jump. No error bound is proved.",
+    entry "cmd.N" "verified" "The decimal is certified: interval arithmetic over the rationals holds the exact real value (ieval_sound), with Taylor remainders for exp, sin and cos (Real.exp_bound, Complex.exp_bound), ln checked by exp, sqrt by squaring and π to twenty digits (Real.pi_gt_d20), and the digits shown are the most, up to fifteen, within a unit of their last place of everything in the interval (certify_sound, cmdN_sound). arctan is pinned by tan (atanCheck_mem). A complex value is certified part by part: a rectangle of two intervals holds the principal value (cieval_sound), through the formulas for the parts of a product, a quotient, exp, sin and cos, a real argument to ln and sqrt, an integer power or a real base under a real exponent, and otherwise ln z = ln|z| + i arg z with the argument from arctan (arg_eq_arctan_of_re_pos, arg_eq_of_im_pos, clnI_mem) and b^e = exp(e ln b); each part's digits are within a unit of their last place (cmdN_soundC). Where the constants e and π have their values.",
+    entry "cmd.N.float" "unverified" "A floating-point approximation in IEEE-754 double precision, for what cmd.N cannot certify: a function across a pole or a jump, the logarithm or a power of a number on (or too near) the negative real axis, where the argument jumps, and arcsin and arccos. No error bound is proved.",
     entry "la.add" "verified" "Matrices of one shape add entrywise: the output has the input's value, read in evalV, which gives a matrix its value (laAdd_sound).",
     entry "la.scalar-mul" "verified" "A real factor multiplies every entry; real factors commute past a matrix (laScalarMul_sound, for a node whose children are normal, as the pipeline fires it).",
     entry "la.mul" "verified" "Entry (i, j) of the product is row i of the left factor dotted with column j of the right; the product is associative and real factors commute past the matrices (laMul_sound, mulV_assoc).",
@@ -77,7 +78,7 @@ def ruleStatus : Json :=
     entry "simp.radical" "verified" "A perfect-power base is reduced (8^(1/2) = 2^(3/2)), same-index radicals multiply under one root, and sqrt(18) is written 18^(1/2), which shows as 3√2; unconditional, the bases are positive integers and sqrt(a) = a^(1/2) for every real a (radicalBase_soundR, mulRadicals_soundR, sqrtRadical_soundR). It keeps the domain: wherever its input is defined, so is its output (radicalBase_def, mulRadicals_def, sqrtRadical_def).",
     entry "simp.sqrt" "verified" "sqrt(a) = a^(1/2) for every real a (sqrtPower_soundR). Silent: the two print alike. It keeps the domain: wherever its input is defined, so is its output (sqrtPower_def).",
     entry "simp.collect-radicals" "verified" "Radicals with the same square-free part collect, √50 − √18 = 2√2; unconditional (collectRadicals_soundR). It keeps the domain: wherever its input is defined, so is its output (collectRadicals_def).",
-    entry "cmd.factor" "checked" "The common-denominator form is a guess the pipeline checks: the input times the denominator D, normalized and expanded, must be the numerator N, so N/D agrees with the input wherever D is not zero (the cancellations in that check are simp.collect-powers.assuming steps). When the check fails, the collected normal form is the answer.",
+    entry "cmd.factor" "conditional" "The common-denominator form is a guess the pipeline checks: it and the input, each times the denominator D, normalized and expanded, must be the same term, so it agrees with the input wherever D is not zero and the check's normalizations hold (factor_run_sound); the step says so, naming D. Without the condition it fails: factor(1/x + 1) is (x + 1)/x, 1 and 0 at x = 0 (not_factor_at_zero). When the check fails, the collected normal form is the answer.",
     entry "cmd.expand" "verified" "Distribution is a total function proved sound over ℝ (dist_sound, proofs/Proofs/Expand.lean); the collection afterwards is the pipeline's own steps with their statuses.",
     entry "expand.distribute" "verified" "Multiplying out a product of sums and collecting like monomials: dist_sound.",
     entry "expand.power" "verified" "A power of a sum is the sum multiplied by itself: dist_sound.",
@@ -174,7 +175,7 @@ def ruleStatus : Json :=
     entry "order.concepts" "verified" "Every pair listed is a formal concept, its objects exactly those with all its attributes and its attributes exactly those its objects share (concepts_sound), and every concept is listed: intersecting attribute extents one attribute at a time reaches the extent of every set of attributes (concepts_complete, extents_complete).",
     entry "order.flow" "verified" "Every flow checked against the order of the classes (flowFailure_none).",
     entry "sys.init" "verified" "An initial state: the init condition evaluated on it, by definition.",
-    entry "sys.step" "checked" "Each step of a trace is re-run against the system: the action is enabled there and its updates give the next state.",
+    entry "sys.step" "verified" "By definition: each step of a trace is re-run against the system, the action enabled there and its updates giving the next state; a step that does not re-run is refused, not shown.",
     entry "sys.found" "verified" "The last state of a re-run trace, from an initial state, where the formula is evaluated and holds. The trace is a shortest one: each state's breadth-first depth is zero initially and rises by at most one along a transition, which is checked, and no state where the formula holds is shallower than the trace is long, so every path to one is at least as long (checkShortest_spec), over the system's transitions (System.explore_edges).",
     entry "sys.violated" "verified" "The last state of a re-run trace, from an initial state, where the formula is evaluated and fails: a concrete counterexample. The trace is a shortest one: each state's breadth-first depth is zero initially and rises by at most one along a transition, which is checked, and no state that breaks the formula is shallower than the trace is long, so every path to one is at least as long (checkShortest_spec), over the system's transitions (System.explore_edges).",
     entry "sys.deadlock" "verified" "The last state of a re-run trace, with every action's guard evaluated false. When none is reported none is missed: the search finds every reachable state and every transition (System.no_deadlock).",
@@ -182,9 +183,9 @@ def ruleStatus : Json :=
     entry "sys.invariant" "verified" "The formula holds in every state the search found, and the search finds every reachable state (System.explore_states).",
     entry "sys.unreachable" "verified" "No state the search found satisfies the formula, and the search finds every reachable state (System.explore_states).",
     entry "sys.inductive" "verified" "Every assignment of the domains is enumerated (allStates_mem) and every enabled action from a state where the formula holds is checked.",
-    entry "sys.cti" "checked" "A state where the formula holds and an action after which it fails (or leaves a domain): both evaluated, a concrete counterexample to induction.",
+    entry "sys.cti" "verified" "By definition: a state where the formula holds and an action after which it fails (or leaves a domain), both evaluated by the system's own semantics, a concrete counterexample to induction.",
     entry "sys.ctl" "verified" "The set is a fixed point checked with a certificate read off its rounds, and where the check passes it is exactly the states where the formula holds by the meaning of its paths: EF some path reaches φ, EG an infinite path stays in φ, AG every reachable state is in φ, AF every maximal path reaches φ (checkEF_spec, checkEG_spec, checkAG_spec, checkAF_spec, checkEX_spec, checkAX_spec), over the graph's transitions, which are the system's (System.explore_edges).",
-    entry "sys.iterate" "checked" "One round of the Kleene iteration: the transformer applied to the previous set.",
+    entry "sys.iterate" "verified" "By definition: one round of the Kleene iteration, the transformer applied to the previous set; the rounds are the certificate sys.ctl checks (checkEF_spec and the others).",
     entry "sys.fixed" "verified" "The loop stops when a round changes nothing, and the set it stops at is checked against the operator's path meaning with sys.ctl's certificate (checkEF_spec and the others), so it is the right set without appeal to Kleene's theorem.",
     entry "sys.cycle" "verified" "A step of the lasso's cycle, inside a strongly connected set of states avoiding the goal. The whole lasso is checked to be a run: every step an edge of the graph, each joined to the next, and the cycle closing up (checkLasso_spec).",
     entry "sys.lasso" "verified" "A fair run that never reaches the goal: a path from an initial state, then a cycle repeated forever, every weakly fair action taken on it or disabled somewhere on it and every strongly fair one taken on it or disabled all along it. The lasso is checked, and a lasso that checks is a fair infinite run avoiding the goal (checkLasso_spec); a deadlock reached first is checked as a run that stops without the goal (checkDead_spec).",
@@ -227,9 +228,9 @@ def ruleStatus : Json :=
     entry "stlc.var" "verified" "Var: the checker's derivations are typing derivations (check_sound, StlcProofs.lean).",
     entry "stlc.abs" "verified" "→I: the checker's derivations are typing derivations (check_sound).",
     entry "stlc.app" "verified" "→E: the checker's derivations are typing derivations (check_sound).",
-    entry "stlc.constraints" "checked" "Inference's equations; the type found is re-checked by the verified checker on the annotated term.",
-    entry "stlc.split" "checked" "Unification splits an equation of arrows; the type found is re-checked by the verified checker.",
-    entry "stlc.unify" "checked" "Unification binds a type variable (with the occurs check); the type found is re-checked by the verified checker.",
+    entry "stlc.constraints" "verified" "Inference's equations: every typing of the term solves them (gen_complete), and the type their solution gives is a type of the term, re-checked by the verified checker on the annotated term (check_sound).",
+    entry "stlc.split" "verified" "Unification splits an equation of arrows into its parts, which have the same solutions: the substitution found solves every equation (unify_sound) and every solution is an instance of it (unify_most_general).",
+    entry "stlc.unify" "verified" "Unification binds a type variable (with the occurs check), keeping the substitution in solved form: the one found solves every equation (unify_sound) and every solution is an instance of it (unify_most_general).",
     entry "stlc.principal" "verified" "Most general (infer_principal, Hindley's theorem): every typing of the term, whatever types its unannotated binders and free variables get, has an instance of the solved type; and it is a type of the term (check_sound, by the checker). The type shown names its variables with names not otherwise in use."]
 
 def capabilities : Json :=
@@ -441,6 +442,12 @@ def withLabel (st : Store) (sessionId cellId : String) (j : Json) : Store × Jso
     | j => j
   (st.set sessionId s, j)
 
+/-- `withLabel`, unless the request is `quiet`: a scene's samples (`quiet: true` on `engine.plot` and
+`engine.manipulate`) are not evaluations. The session is left as it was before the request (`st0`),
+with no `In[n]` taken and `%` untouched. -/
+def numbered (st0 st : Store) (params : Json) (sessionId cellId : String) (j : Json) : Store × Json :=
+  if params.getBool "quiet" then (st0, j) else withLabel st sessionId cellId j
+
 def evaluate (st : Store) (params : Json) : Store × Json :=
   match params.getStr? "source" with
   | none => (st, errorJson "params" "missing source")
@@ -485,6 +492,7 @@ def plotFields (pl : Plot) : Array (String × Json) :=
   #[("var", .str pl.var), ("from", floatJson pl.from_), ("to", floatJson pl.to), ("series", .arr series), ("terms", .arr terms)]
 
 def plot (st : Store) (params : Json) : Store × Json :=
+  let st0 := st
   match params.getStr? "source" with
   | none => (st, errorJson "params" "missing source")
   | some src =>
@@ -499,12 +507,13 @@ def plot (st : Store) (params : Json) : Store × Json :=
       let res := #[("ok", .bool true), ("kind", .str "plot"), ("value", out.toJson), ("rendered", Rendered.toJson out paths)] ++ plotFields pl
       let res := res ++ workFields params d
       (st, .obj res)
-    withLabel st sessionId cellId j
+    numbered st0 st params sessionId cellId j
 
 /-- `manipulate(e, p, from, to[, frames])`: every frame's value of `p` (as a number and as the
 engine prints it), the body's normal form there, and a plot body's samples; the cell's own value,
 rendering and work are the first frame's. -/
 def manipulate (st : Store) (params : Json) : Store × Json :=
+  let st0 := st
   match params.getStr? "source" with
   | none => (st, errorJson "params" "missing source")
   | some src =>
@@ -530,7 +539,7 @@ def manipulate (st : Store) (params : Json) : Store × Json :=
       let res := #[("ok", .bool true), ("kind", .str "manipulate"), ("value", out.toJson), ("rendered", Rendered.toJson out paths),
         ("param", .str p), ("frames", .arr (frames.map frameJson))]
       (st, .obj (res ++ workFields params d))
-    withLabel st sessionId cellId j
+    numbered st0 st params sessionId cellId j
 
 def explain (st : Store) (params : Json) : Except String Json := do
   let sessionId := (params.getStr? "sessionId").getD ""

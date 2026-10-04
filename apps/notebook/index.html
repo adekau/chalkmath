@@ -580,6 +580,43 @@ svg .curve.c1 { stroke:var(--curve1); } svg .curve.c2 { stroke:var(--curve2); } 
 .plotcap .legend { display:inline-flex; align-items:center; gap:7px; margin:2px 18px 2px 0; cursor:pointer; }
 .plotcap .legend:hover { color:var(--p-ink-strong); }
 svg .epicircle { fill:none; stroke:var(--ink-mut); stroke-width:1; opacity:0.55; }
+/* scenes: a picture told in beats (scene.ts) */
+.scenein { min-height:120px; padding-right:110px; }
+.scene-player { outline:none; max-width:680px; }
+.scene-player:focus-visible { box-shadow:0 0 0 2px var(--acc); border-radius:8px; }
+.scene-wait { color:var(--p-mut); font-style:italic; padding:10px 2px; }
+.scene-eqs { display:flex; flex-direction:column; align-items:center; gap:4px; min-height:4px; padding:4px 0 6px; font-size:24px; color:var(--p-ink); }
+.scene-eq { transition:none; }
+.scene-eqtex { display:inline-block; }
+.scene-stage { position:relative; width:100%; aspect-ratio:16 / 9; background:color-mix(in srgb, var(--p-input-bg) 70%, transparent); border-radius:8px; overflow:hidden; }
+.scene-stage svg { position:absolute; inset:0; width:100%; height:100%; }
+.scene-labels { position:absolute; inset:0; pointer-events:none; }
+.scene-label { position:absolute; transform:translate(8px, -110%); font-size:17px; white-space:nowrap; color:var(--acc); }
+.scene-label.c1 { color:var(--curve1); } .scene-label.c2 { color:var(--curve2); } .scene-label.c3 { color:var(--curve3); } .scene-label.c4 { color:var(--curve4); } .scene-label.c5 { color:var(--curve5); }
+svg .scene-axis { stroke:var(--ink-faint); stroke-width:1; opacity:0.7; }
+svg .scene-path { fill:none; stroke:var(--acc); stroke-width:2.25; stroke-linejoin:round; stroke-linecap:round; }
+svg .scene-pt, svg .scene-head { fill:var(--acc); stroke:none; }
+svg .scene-path.c1 { stroke:var(--curve1); } svg .scene-path.c2 { stroke:var(--curve2); } svg .scene-path.c3 { stroke:var(--curve3); } svg .scene-path.c4 { stroke:var(--curve4); } svg .scene-path.c5 { stroke:var(--curve5); }
+svg .scene-pt.c1, svg .scene-head.c1 { fill:var(--curve1); } svg .scene-pt.c2, svg .scene-head.c2 { fill:var(--curve2); } svg .scene-pt.c3, svg .scene-head.c3 { fill:var(--curve3); } svg .scene-pt.c4, svg .scene-head.c4 { fill:var(--curve4); } svg .scene-pt.c5, svg .scene-head.c5 { fill:var(--curve5); }
+svg .scene-path.faint { stroke-width:1.5; stroke-opacity:0.38; }
+svg .scene-pt.faint, svg .scene-head.faint { fill-opacity:0.38; }
+svg .scene-path.dashed { stroke-dasharray:5 4; }
+svg .scene-path.thick { stroke-width:3.75; }
+.scene-cap { min-height:2.9em; padding:8px 2px 2px; color:var(--p-ink); }
+.scene-cap .scene-captext { animation:scenecap 0.45s ease-out; }
+@keyframes scenecap { from { opacity:0; transform:translateY(3px); } to { opacity:1; transform:none; } }
+@media (prefers-reduced-motion: reduce) { .scene-cap .scene-captext { animation:none; } }
+.scene-transport { display:flex; align-items:center; gap:6px; padding:4px 0 2px; }
+.scene-btn { display:inline-flex; align-items:center; justify-content:center; min-width:30px; height:26px; border-radius:6px; background:var(--p-input-bg); box-shadow:inset 0 0 0 1px var(--p-input-br); color:var(--p-ink); font-size:12px; cursor:pointer; user-select:none; }
+.scene-btn:hover { box-shadow:inset 0 0 0 1px var(--acc); }
+.scene-play { min-width:38px; }
+.scene-track { position:relative; flex:1; display:flex; align-items:center; height:26px; }
+.scene-scrub { width:100%; accent-color:var(--acc); margin:0; }
+.scene-marks { position:absolute; left:0; right:0; top:1px; height:6px; pointer-events:none; }
+.scene-dot-mark { position:absolute; width:7px; height:7px; margin-left:-3px; border-radius:50%; background:var(--p-input-br); pointer-events:auto; cursor:pointer; }
+.scene-dot-mark.on { background:var(--acc); }
+.scene-where { min-width:44px; text-align:right; color:var(--p-mut); font-size:12px; font-variant-numeric:tabular-nums; }
+
 svg .epiarm { stroke:var(--ink-2); stroke-width:1.2; }
 svg .epitip { fill:var(--acc); }
 .plotcap .epinote { font-size:11px; color:var(--p-mut); font-family:var(--font); display:inline-block; margin-right:6px; }
