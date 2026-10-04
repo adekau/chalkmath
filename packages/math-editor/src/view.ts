@@ -195,10 +195,10 @@ export class MathInput {
   private compDismissed: string | null = null;
 
   /** An input for `src`, or null when the text is not this grammar (the cell stays raw). */
-  static fromSource(src: string, opts: MathInputOptions = {}): MathInput | null {
-    if (!src.trim()) return new MathInput({ body: [] }, opts);
-    const r = read(src, opts.known);
-    return r.ok ? new MathInput(r.stmt, opts) : null;
+  /** The input for a cell's text: any text, since every text reads (what has no structure as raw
+   *  text), and it writes back as it was. */
+  static fromSource(src: string, opts: MathInputOptions = {}): MathInput {
+    return new MathInput(read(src, opts.known).stmt, opts);
   }
 
   constructor(stmt: Stmt, private opts: MathInputOptions = {}) {
@@ -498,6 +498,7 @@ export class MathInput {
   markError(span: { start: number; end: number } | null) { this.errSpan = span; this.render(); }
 
   private changed() {
+    this.edit.restructure();
     this.errSpan = null;
     this.render();
     this.suggest();
@@ -664,6 +665,8 @@ export class MathInput {
       case "Enter":
         ev.preventDefault();
         if (e.command()) { this.changed(); return; }
+        // Shift+Enter starts a new line (a system's next declaration), as in the text
+        if (ev.shiftKey) { if (e.type("\n")) this.changed(); return; }
         this.opts.onEnter?.();
         return;
       default: moved = false;

@@ -369,13 +369,27 @@ that could drift from `proofs/`. The one thing the page derives from source text
 label, which is presentation only.
 
 The visual math input (`packages/math-editor`) is the one exception to "does not parse", and it
-reads notation, not meaning. A cell's source text stays what is saved and what the engine is sent.
-The editor reads that text into a tree of notation (fractions, powers, calls, matrices) by the
-engine's own grammar, shows it, and writes it back to text when the reader edits. What the text
-means is still the engine's parse of it. The reader has to agree with `Parser.lean` exactly, or the
-input would show a fraction where the engine reads a product, and its tests hold it to that: every
-golden source and notebook cell is round-tripped and, against the native engine, has to mean the
-same thing before and after.
+reads notation, not meaning. A cell has one source, its text: it is what is saved and what the
+engine is sent, and the text and typeset inputs are two views of it. The editor reads the text into
+a tree of notation (fractions, powers, calls, matrices, sets) by the engine's own grammar, shows it,
+and writes it back when the reader edits. What the text means is still the engine's parse of it.
+
+- **Every text reads.** The other worlds' notation is math between separators (`∀ n ∈ 1..10, n^2 ≥ 2n`
+  is `n^2` and `2n` between `∀ n ∈ 1..10,` and `≥`), so the reader keeps their operators, ASCII
+  spellings and keywords as atoms between math expressions; what still does not structure (an
+  unclosed group, a ragged matrix) is a raw atom of its characters, edited as text inside the
+  typeset input until it reads. Any math cell can be shown either way; only a `?` question, which
+  is words, stays text.
+- **The views are a bijection.** Every atom read from text keeps its spelling and the whitespace
+  around it, and the writer reuses them while the atom and its neighbours are as they were read. So
+  `write(read(s))` is `s` for every text, switching views never changes a character, and an edit
+  rewrites only what it touched. What is typed is written afresh, spaced as the courses write it.
+- **Display differs, text does not.** `->`, `&&` and `<=` show as →, ∧ and ≤ in the typeset view and
+  stay as typed in the text.
+
+The reader has to agree with `Parser.lean` exactly on math, or the input would show a fraction where
+the engine reads a product, and its tests hold it to that: every golden source and notebook cell
+writes back exactly, and, written afresh and sent to the native engine, has to mean the same thing.
 
 **Tabs.** One tab per open notebook, then the studio, the courses and the documentation, each
 present only while open and closed by its ×. With no notebook open — a first visit, or the last tab

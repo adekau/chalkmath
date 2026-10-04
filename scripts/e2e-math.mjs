@@ -559,6 +559,34 @@ async function features() {
   await page.keyboard.press("Enter");
   await outIs(bk, (await ref(typed, "bk")).rendered.latex, "taut typed with backslash names");
   console.log(`✓ backslash symbols: \\not \\or \\iff \\to \\and \\top typed as ${typed}`);
+  // one source, two views: typed typeset, the symbols go in place and the cell stays typeset; its text
+  // is what the engine reads
+  await menu("Edit", "Add math cell");
+  const vk = await all().count() - 1;
+  await all().nth(vk).locator(".cellin").click();
+  await page.keyboard.press("Control+Shift+M");
+  await all().nth(vk).locator(".mi").waitFor({ timeout: 5000 });
+  await page.keyboard.type("taut(p \\o");
+  assert.ok((await page.locator(".mi-completions").innerText()).includes("∨"), "the typeset input does not list \\or");
+  await page.keyboard.type("r \\not p");
+  assert.equal(await all().nth(vk).locator(".mi").count(), 1, "the cell left the typeset input");
+  await page.keyboard.press("Control+Shift+M");
+  const vtyped = "taut(p ∨ ¬p)";
+  assert.equal(await all().nth(vk).locator("input.cellin").inputValue(), vtyped, "the typeset cell's text");
+  await page.keyboard.press("Enter");
+  await outIs(vk, (await ref(vtyped, "vk")).rendered.latex, "taut typed in a typeset cell");
+  // a cell's text survives the typeset view character for character, its ASCII drawn as glyphs there
+  const odd = "taut(p&&q  ->p)";
+  await all().nth(vk).locator("input.cellin").fill(odd);
+  await all().nth(vk).locator("input.cellin").focus();
+  await page.keyboard.press("Control+Shift+M");
+  await all().nth(vk).locator(".mi").waitFor({ timeout: 5000 });
+  const shownTex = await all().nth(vk).locator(".mi .katex-mathml annotation").first().textContent();
+  assert.match(shownTex, /\\land/, `the typeset view does not draw && as ∧: ${shownTex}`);
+  assert.match(shownTex, /\\to/, `the typeset view does not draw -> as →: ${shownTex}`);
+  await page.keyboard.press("Control+Shift+M");
+  assert.equal(await all().nth(vk).locator("input.cellin").inputValue(), odd, "the text changed on its way through the typeset view");
+  console.log(`✓ one source: ${vtyped} typed typeset; ${odd} through the typeset view and back unchanged`);
   // a cell of several lines: Shift+Enter starts a new line, Enter runs it; the counterexample's steps are marked on the graph
   const lines = ["let M = system(", "var p in {idle, crit}", "var lock in bool", "init p = idle ∧ lock = false", "action enter when p = idle do p := crit", "action leave when p = crit do p := idle, lock := false", ")"];
   await menu("Edit", "Add math cell");
