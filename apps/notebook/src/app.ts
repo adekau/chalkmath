@@ -1041,7 +1041,8 @@ function docPristine(d: Nb): boolean {
   return d.name === "untitled.chalk" && d.scenes.length === 0 && !Object.keys(d.assets).length && d.cells.every((c) => !cellSrc(c).trim() && !c.outLatex && !c.file);
 }
 
-/** Close a tab; an unsaved notebook asks first. The last tab closing leaves a fresh one. */
+/** Close a tab; an unsaved notebook asks first. Closing one in the background leaves the notebook
+ *  shown where it is; closing the one shown shows its neighbour. The last tab closing leaves a fresh one. */
 function closeDoc(i: number) {
   const d = S.docs[i]; if (!d) return;
   if (i === S.doc) stashDoc();
@@ -1049,7 +1050,10 @@ function closeDoc(i: number) {
   if (client) void client.call("engine.resetSession", { sessionId: d.sessionId }).catch(() => undefined);
   S.docs.splice(i, 1);
   if (!S.docs.length) { S.doc = -1; newDoc(); }
-  else {
+  else if (i !== S.doc) {
+    if (i < S.doc) S.doc--;
+    renderTabs();
+  } else {
     // make the neighbour current without stashing the closed document back
     const j = Math.min(i, S.docs.length - 1);
     S.doc = -1;

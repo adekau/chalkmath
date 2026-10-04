@@ -242,11 +242,12 @@ async function tabs() {
   assert.equal(await page.locator(".tablist").count(), 0, "the list stays open after a choice");
   assert.equal(await page.locator(".tabstrip .tab.on").getAttribute("title"), long, "the notebook chosen is not shown");
   assert.ok(await page.locator(".tabstrip").evaluate((s) => { const on = s.querySelector(".tab.on"); return on.offsetLeft >= s.scrollLeft - 1 && on.offsetLeft + on.offsetWidth <= s.scrollLeft + s.clientWidth + 1; }), "the notebook chosen is not scrolled into view");
-  // the middle button closes the untitled notebooks opened here
+  // the middle button closes the untitled notebooks opened here, each in the background: the long one stays shown
   for (let k = 0; k < added; k++) {
     const n = await strip.count();
     await page.locator(".tabstrip .tab:not(.on)", { hasText: "untitled" }).last().click({ button: "middle" });
     assert.equal(await strip.count(), n - 1, "the middle button does not close a tab");
+    assert.equal(await page.locator(".tabstrip .tab.on").getAttribute("title"), long, "closing a tab in the background changed the notebook shown");
   }
   console.log(`✓ tabs: ${shape.length} open, one line each, the long name cut short, the list showing it, ${added} closed with the middle button`);
 }
