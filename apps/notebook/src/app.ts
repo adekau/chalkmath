@@ -150,14 +150,6 @@ function cellKind(src: string): string | null {
   return "simplify";
 }
 
-const SAMPLES = [
-  "diff(x^2 * sin(x), x)",
-  "expand((x+1)^3)",
-  "rref([1,2,3;4,5,6;7,8,10])",
-  "let f = x^3 - 3x",
-  "diff(f, x, 2)",
-];
-
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
@@ -337,7 +329,7 @@ interface LogLine { time: string; level: "rpc" | "ok" | "err"; text: string }
 interface Shot { id: number; label: string; tex: string; anim: string; dur: number; note: string; on: boolean; cell: number | null; plot?: PlotData }
 interface Scene { id: number; name: string; shots: Shot[] }
 
-type Tab = "notebook" | "studio" | "docs" | "courses";
+type Tab = "welcome" | "notebook" | "studio" | "docs" | "courses";
 
 /** One open notebook: its cells, its studio scenes and its own engine session. The globals below
  *  (`S.cells`, `S.docName`, `ST.scenes`, `sessionId`) are views of the current one; `stashDoc` and
@@ -448,7 +440,8 @@ const S = {
   /** Help › Documentation: whether its tab is open, the page shown, and the contents' search. */
   guide: { open: false, page: "start", query: "" },
   courses: { open: false, project: null as string | null },
-  studio: { scenes: [] as Scene[], active: 0, playing: false, t: 0, speed: 1, codeOpen: true, copied: false },
+  /** Manim Studio: `open` while its tab is in the tab bar (View › Manim Studio; its × closes it). */
+  studio: { open: false, scenes: [] as Scene[], active: 0, playing: false, t: 0, speed: 1, codeOpen: true, copied: false },
 };
 
 let client: EngineClient | null = null;
@@ -1003,7 +996,18 @@ function loadDoc(i: number) {
   S.sel = null; hideCompletions(); hideSigHelp(); hideHover();
   renderChrome(); renderCells(); renderSidebar(); renderPanelHead(); renderPanel(); renderLessonBar();
   if (S.tab === "studio") renderStudio();
+  if (S.tab === "welcome") switchTab("notebook");
   if (!d.hydrated && S.kernel === "ready" && S.runOnOpen) hydrate(d);
+}
+
+/** No notebook open: the live globals are emptied and the welcome tab takes the notebook's place. */
+function unloadDocs() {
+  S.doc = -1;
+  S.docName = "untitled.chalk"; S.cells = []; S.assets = {}; ST.scenes = []; ST.active = 0; ST.t = 0; stopPlayback();
+  S.active = 0; nextLabel = 1; sessionId = crypto.randomUUID();
+  S.sel = null; hideCompletions(); hideSigHelp(); hideHover();
+  if (S.tab === "notebook") S.tab = "welcome";
+  renderChrome(); renderCells(); renderSidebar(); renderPanelHead(); renderPanel(); renderView();
 }
 
 /** Rebuild a restored document's engine session by re-running its cells. Re-running renumbers the
@@ -1019,12 +1023,12 @@ function makeDoc(name: string, cells: Cell[] = [], scenes: Scene[] = [], assets:
     savedText: "", text: "", hydrated: true };
 }
 
-/** Open a new, empty notebook in its own tab. */
-function newDoc(name = "untitled.chalk"): Nb {
+/** Open a new notebook in its own tab, with one empty cell (a math cell unless `first` is given). */
+function newDoc(name = "untitled.chalk", first = freshCell()): Nb {
   const d = makeDoc(name);
   S.docs.push(d);
   loadDoc(S.docs.length - 1);
-  addCell();
+  S.cells.push(first);
   d.savedText = serializeNotebook();   // an untouched new notebook is not "unsaved"
   renderChrome(); renderCells(); renderSidebar();
   return d;
@@ -1041,14 +1045,14 @@ function docPristine(d: Nb): boolean {
   return d.name === "untitled.chalk" && d.scenes.length === 0 && !Object.keys(d.assets).length && d.cells.every((c) => !cellSrc(c).trim() && !c.outLatex && !c.file);
 }
 
-/** Close a tab; an unsaved notebook asks first. The last tab closing leaves a fresh one. */
+/** Close a tab; an unsaved notebook asks first. The last one closing leaves the welcome tab. */
 function closeDoc(i: number) {
   const d = S.docs[i]; if (!d) return;
   if (i === S.doc) stashDoc();
   if (docDirty(d) && !window.confirm(`Close ${d.name} without saving?`)) return;
   if (client) void client.call("engine.resetSession", { sessionId: d.sessionId }).catch(() => undefined);
   S.docs.splice(i, 1);
-  if (!S.docs.length) { S.doc = -1; newDoc(); }
+  if (!S.docs.length) unloadDocs();
   else {
     // make the neighbour current without stashing the closed document back
     const j = Math.min(i, S.docs.length - 1);
@@ -1059,8 +1063,9 @@ function closeDoc(i: number) {
   autosave();
 }
 
-/** The tab bar: one tab per open notebook (italic with a star while unsaved), then the studio, then
- *  the documentation while it is open (Help › Documentation; its × closes it). */
+/** The tab bar: one tab per open notebook (italic with a star while unsaved), or the welcome tab when
+ *  none is open, then the studio, the courses and the documentation while each is open (its ×
+ *  closes it). */
 function renderTabs() {
   const tabs = $(".tabbar"); tabs.innerHTML = "";
   S.docs.forEach((d, i) => {
@@ -1077,15 +1082,25 @@ function renderTabs() {
     t.addEventListener("click", () => { if (i !== S.doc) loadDoc(i); switchTab("notebook"); });
     tabs.append(t);
   });
-  for (const [key, label] of [["studio", "manim studio"], ...(S.courses.open ? [["courses", "courses"] as const] : []), ...(S.guide.open ? [["docs", "documentation"] as const] : [])] as const) {
+  if (!S.docs.length) {
+    const t = asButton(h("div", `tab${S.tab === "welcome" ? " on" : ""}`), "welcome");
+    t.setAttribute("aria-current", String(S.tab === "welcome"));
+    t.append(h("span", "label", "welcome"));
+    t.addEventListener("click", () => switchTab("welcome"));
+    tabs.append(t);
+  }
+  const extra: [Tab, string, string, () => void][] = [
+    ...(ST.open ? [["studio", "manim studio", "Close Manim Studio", closeStudio] as [Tab, string, string, () => void]] : []),
+    ...(S.courses.open ? [["courses", "courses", "Close the courses", closeCourses] as [Tab, string, string, () => void]] : []),
+    ...(S.guide.open ? [["docs", "documentation", "Close the documentation", closeDocs] as [Tab, string, string, () => void]] : []),
+  ];
+  for (const [key, label, closeLabel, close] of extra) {
     const t = asButton(h("div", `tab${S.tab === key ? " on" : ""}`), label);
     t.setAttribute("aria-current", String(S.tab === key));
     t.append(h("span", "label", label));
-    if (key === "docs" || key === "courses") {
-      const x = asButton(h("span", "x", "×"), key === "docs" ? "Close the documentation" : "Close the courses"); x.title = "Close";
-      x.addEventListener("click", (ev) => { ev.stopPropagation(); if (key === "docs") closeDocs(); else closeCourses(); });
-      t.append(x);
-    }
+    const x = asButton(h("span", "x", "×"), closeLabel); x.title = "Close";
+    x.addEventListener("click", (ev) => { ev.stopPropagation(); close(); });
+    t.append(x);
     t.addEventListener("click", () => switchTab(key));
     tabs.append(t);
   }
@@ -1444,6 +1459,7 @@ function writeLibrary(lib: Library): boolean {
 
 /** Save the current notebook in the browser under its name. */
 function saveNotebook() {
+  if (!currentDoc()) return;
   const text = serializeNotebook();
   const lib = readLibrary();
   lib[S.docName] = { file: JSON.parse(text) as ChalkFile, savedAt: new Date().toISOString() };
@@ -1453,6 +1469,7 @@ function saveNotebook() {
   notify("ok", `Saved ${S.docName} in this browser`);
 }
 function saveNotebookAs() {
+  if (!currentDoc()) return;
   const name = window.prompt("Save notebook as", S.docName);
   if (!name) return;
   S.docName = name.endsWith(".chalk") ? name : `${name.replace(/\.lemma$/, "")}.chalk`;
@@ -1665,6 +1682,50 @@ function closeCourses() {
   S.courses.open = false;
   if (S.tab === "courses") switchTab("notebook"); else renderTabs();
 }
+/** The welcome tab, shown while no notebook is open: ways to start one, the notebooks saved in this
+ *  browser, and the other tabs. */
+function renderWelcome() {
+  const host = $(".welcome"); host.innerHTML = "";
+  const page = h("div", "crspage wlpage");
+  const head = h("div", "wlhead");
+  const mark = document.createElement("img"); mark.className = "wlmark"; mark.src = "logo.svg"; mark.alt = ""; mark.draggable = false;
+  head.append(mark, h("h1", undefined, "Welcome to ChalkMath"));
+  page.append(head, h("p", "crslead", "Mathematics that shows its work: every answer comes with the steps the engine took to reach it. No notebook is open — start a new one, open one you saved, or take the tour."));
+  const card = (title: string, blurb: string, act: () => void) => {
+    const c = asButton(h("div", "crscard wlcard"), title);
+    c.append(h("div", "crstitle", title), h("div", "crsblurb", blurb));
+    c.addEventListener("click", act);
+    return c;
+  };
+  const section = (title: string, ...cards: HTMLElement[]) => {
+    const grid = h("div", "crsgrid"); grid.append(...cards);
+    page.append(h("h2", "wlh", title), grid);
+  };
+  section("Start",
+    card("New notebook", "An empty notebook with one math cell.", newNotebook),
+    card("Open…", "A notebook saved in this browser.", openNotebook),
+    card("Import from file…", "A .chalk file from your computer.", importNotebook));
+  const lib = readLibrary();
+  const recent = Object.keys(lib).sort((a, b) => (lib[b]!.savedAt > lib[a]!.savedAt ? 1 : -1)).slice(0, 5);
+  if (recent.length) {
+    const list = h("div", "wlrecent");
+    for (const name of recent) {
+      const row = asButton(h("div", "wlrow"), `Open ${name}`);
+      row.append(h("span", "name", name), h("span", "when", `${lib[name]!.file.cells.length} cell${lib[name]!.file.cells.length === 1 ? "" : "s"} · saved ${new Date(lib[name]!.savedAt).toLocaleDateString()}`));
+      row.addEventListener("click", () => openFromLibrary(name));
+      list.append(row);
+    }
+    page.append(h("h2", "wlh", "Saved in this browser"), list);
+  }
+  section("Learn",
+    card("Take the tour", "The welcome notebook: running cells, reading the steps, one example from each area.", () => void openExample("welcome.chalk")),
+    card("Courses and examples", "Lessons with exercises the engine checks, and notebooks to explore.", () => openCourses()),
+    card("Documentation", "A guide to the notebook, and a page for every function.", () => openDocs()));
+  section("Animate",
+    card("Manim Studio", "Turn a derivation into a storyboard of shots, preview it, and copy the Manim scene.", openStudio));
+  host.append(page);
+}
+
 /** The Courses tab: every project as a card, or one project's lessons. */
 function renderCourses() {
   const host = $(".courses"); host.innerHTML = "";
@@ -1798,7 +1859,7 @@ function download(name: string, text: string) {
 }
 
 /** Export the current notebook as a .chalk file (a download). */
-function exportNotebook() { download(S.docName, serializeNotebook()); notify("ok", `Exported ${S.docName}`); }
+function exportNotebook() { if (!currentDoc()) return; download(S.docName, serializeNotebook()); notify("ok", `Exported ${S.docName}`); }
 function importNotebook() {
   const inp = document.createElement("input");
   inp.type = "file"; inp.accept = ".chalk,.lemma,.json,application/json";
@@ -1849,6 +1910,7 @@ async function notebookLink(): Promise<string> {
   return `${location.origin}${location.pathname}#${payload}`;
 }
 async function copyNotebookLink() {
+  if (!currentDoc()) return;
   try {
     const url = await notebookLink();
     await navigator.clipboard.writeText(url);
@@ -2071,6 +2133,7 @@ function tabular(f: FileValue): Table | null {
  *  cell — a math cell's input, or a Markdown cell's editor (where the file shows); with neither, a
  *  fresh cell `⟦name⟧`, which shows the file when run. */
 function attachFile() {
+  if (!currentDoc()) return;
   const inp = document.createElement("input");
   inp.type = "file";
   inp.addEventListener("change", () => {
@@ -2260,6 +2323,9 @@ function clearOutputs() {
 }
 
 function switchTab(t: Tab) {
+  // the welcome page stands in for a notebook while none is open, and goes once one is
+  if (t === "notebook" && !S.docs.length) t = "welcome";
+  if (t === "welcome" && S.docs.length) t = "notebook";
   S.tab = t;
   hideHover(); hideCompletions();
   if (t !== "studio") stopPlayback();
@@ -2341,7 +2407,7 @@ function shell() {
       const side = h("aside", "sidebar"); side.setAttribute("aria-label", "Sidebar");
       body.append(rail, side, (() => {
         const main = h("div", "main"); main.setAttribute("role", "main");
-        main.append(h("div", "toolbar"), h("div", "lessonbar"), h("div", "notice"), h("div", "cells"), h("div", "docs"), h("div", "courses"), h("div", "studio"), h("div", "panel"));
+        main.append(h("div", "toolbar"), h("div", "lessonbar"), h("div", "notice"), h("div", "cells"), h("div", "welcome"), h("div", "docs"), h("div", "courses"), h("div", "studio"), h("div", "panel"));
         return main;
       })());
       return body;
@@ -2359,12 +2425,25 @@ function renderChrome() {
   const mark = document.createElement("img"); mark.className = "mark"; mark.src = "logo.svg"; mark.alt = ""; mark.draggable = false;
   brand.append(mark, h("h1", "name", "ChalkMath"));
   const menus = h("div", "menus");
+  // with no notebook open, the items that act on one are left out, and adding a cell opens a new
+  // notebook that starts with it
+  const open = !!currentDoc();
+  const addKind = (type: CellType, lean = false) => () => {
+    if (!currentDoc()) {
+      const c = freshCell("", type); if (lean) c.lean = true;
+      newDoc(undefined, c); switchTab("notebook"); focusCell(0); autosave();
+    } else if (lean) insertCell(S.cells.length, "exercise", true);
+    else { addCell("", type); focusCell(S.cells.length - 1); }
+  };
   const MENUS: Record<string, [string, () => void][]> = {
-    File: [["New notebook", newNotebook], ["Open…", openNotebook], ["Courses and examples…", () => openCourses()], ["Save", () => saveNotebook()], ["Save as…", saveNotebookAs], ["Export to file…", exportNotebook], ["Import from file…", importNotebook], ["Attach file…", attachFile], ["Copy link to notebook", () => void copyNotebookLink()]],
-    Edit: [["Add math cell", () => { addCell(); focusCell(S.cells.length - 1); }], ["Add Markdown cell", () => { addCell("", "markdown"); focusCell(S.cells.length - 1); }], ["Add section", () => { addCell("", "section"); focusCell(S.cells.length - 1); }], ["Add Lean cell", () => { addCell("", "lean"); focusCell(S.cells.length - 1); }], ["Add exercise", () => { addCell("", "exercise"); focusCell(S.cells.length - 1); }], ["Add Lean exercise", () => { insertCell(S.cells.length, "exercise", true); }],
+    File: [["New notebook", newNotebook], ["Open…", openNotebook], ["Courses and examples…", () => openCourses()],
+      ...(open ? [["Save", () => saveNotebook()], ["Save as…", saveNotebookAs], ["Export to file…", exportNotebook]] as [string, () => void][] : []),
+      ["Import from file…", importNotebook],
+      ...(open ? [["Attach file…", attachFile], ["Copy link to notebook", () => void copyNotebookLink()]] as [string, () => void][] : [])],
+    Edit: [["Add math cell", addKind("math")], ["Add Markdown cell", addKind("markdown")], ["Add section", addKind("section")], ["Add Lean cell", addKind("lean")], ["Add exercise", addKind("exercise")], ["Add Lean exercise", addKind("exercise", true)],
       ...(S.cells[S.active] ? CELL_TYPES.filter(([t]) => t !== (S.cells[S.active]!.type ?? "math")).map(([t, label]): [string, () => void] => [`Change to ${label.toLowerCase()}`, () => convertCell(S.cells[S.active]!, t)]) : []),
-      ["Clear outputs", clearOutputs]],
-    View: [["Toggle light / dark", () => { applyTheme(S.theme === "light" ? "dark" : "light"); renderChrome(); }], [`${S.sidebarOpen ? "✓ " : ""}Sidebar  (Ctrl+B)`, toggleSidebar], ["Explanation panel", () => setPanelOpen(!S.panelOpen)],
+      ...(open ? [["Clear outputs", clearOutputs] as [string, () => void]] : [])],
+    View: [["Manim Studio", openStudio], ["Toggle light / dark", () => { applyTheme(S.theme === "light" ? "dark" : "light"); renderChrome(); }], [`${S.sidebarOpen ? "✓ " : ""}Sidebar  (Ctrl+B)`, toggleSidebar], ["Explanation panel", () => setPanelOpen(!S.panelOpen)],
       ["Show all work", () => setAllWork(true)], ["Hide all work", () => setAllWork(false)],
       [`${S.foldWorkOnOpen ? "✓ " : ""}Hide work in opened notebooks`, () => { S.foldWorkOnOpen = !S.foldWorkOnOpen; setPref("chalkmath.foldwork", S.foldWorkOnOpen); renderChrome(); }], [`${S.deBruijn ? "✓ " : ""}de Bruijn indices (λ-cells)`, () => { S.deBruijn = !S.deBruijn; renderChrome(); renderCells(); }],
       ...(["auto", "visual", "raw"] as const).map((m): [string, () => void] => [`${S.inputMode === m ? "✓ " : "   "}Math input: ${{ auto: "automatic", visual: "typeset", raw: "text" }[m]}`, () => {
@@ -2383,15 +2462,15 @@ function renderChrome() {
         try { localStorage.setItem("chalkmath.outsize", sz); } catch { /* private mode */ }
         renderChrome();
       }])],
-    Run: [["Run all", () => void runAll()], ["Run cell", () => { const c = S.cells[S.active]; if (c) void runCell(c); }],
-      ["Run this cell and below", () => void runFrom(S.active)],
+    Run: [...(open ? [["Run all", () => void runAll()], ["Run cell", () => { const c = S.cells[S.active]; if (c) void runCell(c); }],
+      ["Run this cell and below", () => void runFrom(S.active)]] as [string, () => void][] : []),
       ...(sectionOf(S.active) >= 0 ? [[`Run section “${(cellSrc(S.cells[sectionOf(S.active)]!) || "untitled").slice(0, 24)}”`, () => void runSection(sectionOf(S.active))] as [string, () => void]] : []),
       [`${S.runOnOpen ? "✓ " : ""}Run notebooks when opened`, () => { S.runOnOpen = !S.runOnOpen; setPref("chalkmath.runonopen", S.runOnOpen); renderChrome(); }],
       ["Lookup settings…", () => void showAskSettings()]],
     Kernel: [...(S.running ? [["Interrupt", () => void interrupt()] as [string, () => void]] : []),
       ["Restart kernel", () => void restartKernel()], ["Restart and run all", async () => { await restartKernel(); await runAll(); }]],
     Help: [["Documentation", () => openDocs()], ["Welcome notebook", () => void openExample("welcome.chalk")], ["Courses…", () => openCourses()], ["Keyboard shortcuts", showShortcuts],
-      ["Manim Studio", () => switchTab("studio")], ["About ChalkMath", showAbout],
+      ["Manim Studio", openStudio], ["About ChalkMath", showAbout],
       [`${S.dev ? "✓ " : ""}Developer mode`, () => { S.dev = !S.dev; setPref("chalkmath.dev", S.dev); if (!S.dev && S.panelTab === "log") S.panelTab = "explain"; renderChrome(); renderPanelHead(); renderPanel(); }]],
   };
   const names = Object.keys(MENUS);
@@ -2456,9 +2535,10 @@ function renderChrome() {
     b.addEventListener("click", () => { if (on) toggleSidebar(); else { S.rail = key; if (!S.sidebarOpen) toggleSidebar(); else { renderChrome(); renderSidebar(); } } });
     rail.append(b);
   }
-  // the documentation has its own contents: the notebook's outline and commands step aside
-  rail.hidden = S.tab === "docs";
-  $(".sidebar").hidden = !S.sidebarOpen || S.tab === "docs";
+  // the documentation has its own contents, and with no notebook open there is nothing to outline:
+  // the outline and commands step aside
+  rail.hidden = S.tab === "docs" || !open;
+  $(".sidebar").hidden = !S.sidebarOpen || S.tab === "docs" || !open;
 
   // toolbar
   const tl = $(".toolbar"); tl.innerHTML = "";
@@ -2499,8 +2579,8 @@ function renderChrome() {
   const done = S.cells.filter((c) => c.outLatex || c.file || c.error).length;
   sb.append(
     ...(S.dev ? [h("span", undefined, `Mode: ${S.tab}`), h("span", "pipe", "|")] : []),
-    h("span", undefined, `Cell ${S.active + 1}`), h("span", "pipe", "|"),
-    h("span", undefined, `${S.cells.length} cells · ${done} evaluated`),
+    ...(open ? [h("span", undefined, `Cell ${S.active + 1}`), h("span", "pipe", "|"),
+      h("span", undefined, `${S.cells.length} cells · ${done} evaluated`)] : [h("span", undefined, "No notebook open")]),
     h("div", "spacer"),
     ...(S.dev ? [h("span", "rules", `${rules.size} rules applied`), h("span", "pipe", "|")] : []),
     h("span", undefined, "type \\ for symbols · Tab completes"),
@@ -2537,6 +2617,8 @@ function toggleSidebar() {
 
 function renderView() {
   $(".cells").hidden = S.tab !== "notebook";
+  $(".welcome").hidden = S.tab !== "welcome";
+  if (S.tab !== "welcome") $(".welcome").innerHTML = "";   // drawn afresh when shown: the saved notebooks change
   renderNotice();
   $(".toolbar").hidden = S.tab !== "notebook";
   $(".docs").hidden = S.tab !== "docs";
@@ -2544,6 +2626,7 @@ function renderView() {
   $(".studio").hidden = S.tab !== "studio";
   $(".panel").hidden = S.tab !== "notebook";
   renderLessonBar();
+  if (S.tab === "welcome") renderWelcome();
   if (S.tab === "docs") renderDocs();
   if (S.tab === "courses") renderCourses();
   if (S.tab === "studio") renderStudio();
@@ -5332,6 +5415,7 @@ function closeDocs() {
 
 /** Run an example: in the last cell when it is an empty math cell, else in a new one at the end. */
 function tryInNotebook(src: string) {
+  if (!currentDoc()) newDoc();
   switchTab("notebook");
   const last = S.cells[S.cells.length - 1];
   let c: Cell;
@@ -5358,6 +5442,7 @@ function openExamples(f: FnDoc, sections: ExampleSection[]) {
 const DOC_ACTIONS: Record<string, () => void> = {
   "ask-settings": () => void showAskSettings(),
   welcome: () => void openExample("welcome.chalk"),
+  studio: () => openStudio(),
 };
 
 /** A page's text, for the contents' search: its Markdown and the tables it shows. */
@@ -6162,7 +6247,7 @@ async function sendToScene(cell: Cell, target?: number | "new") {
   ST.scenes[ST.active]!.shots.push(...shots);
   ST.t = 0; stopPlayback();
   notify("ok", `${shots.length} shots sent to ${ST.scenes[ST.active]!.name}`);
-  switchTab("studio");
+  openStudio();
 }
 
 interface Live extends Shot { start: number; end: number }
@@ -6282,9 +6367,32 @@ function manimSceneCode(scene: Scene | null): string {
   return L.join("\n");
 }
 
+/** Put Manim Studio's tab in the tab bar and show it. */
+function openStudio() {
+  ST.open = true;
+  switchTab("studio");
+}
+/** Take the studio's tab away; its scenes stay with their notebooks. */
+function closeStudio() {
+  ST.open = false; stopPlayback();
+  if (S.tab === "studio") switchTab("notebook"); else renderTabs();
+}
+
 /** Build the studio's structure. Playback only touches the stage, the transport and shot highlights. */
 function renderStudio() {
   const host = $(".studio"); host.innerHTML = "";
+  if (!currentDoc()) {
+    // scenes are saved with a notebook: without one there is nothing to hold them
+    const empty = h("div", "studio-empty");
+    const btn = (label: string, fn: () => void, primary = false) => { const b = h("button", primary ? "primary" : undefined, label); b.addEventListener("click", fn); return b; };
+    const row = h("div", "bgroup");
+    row.append(btn("New notebook", newNotebook, true), btn("Open…", openNotebook));
+    empty.append(h("h2", undefined, "No notebook open"),
+      h("p", undefined, "A storyboard belongs to a notebook and is saved with it. Open one, run a cell, and choose Send to scene from the cell's ⋮ menu: its steps become the shots."),
+      row);
+    host.append(empty);
+    return;
+  }
   const scene = activeScene();
   const shots = scene ? scene.shots : [];
   const { on, total } = timeline(shots);
@@ -7068,19 +7176,9 @@ if (saved) {
     restoredActive = "chalkmath" in parsed && typeof parsed.active === "number" ? parsed.active : 0;
   } catch { /* ignore a corrupt autosave */ }
 }
-// a first visit gets an empty notebook at once, replaced by the welcome notebook when it arrives
-const firstVisit = !S.docs.length && !location.hash.startsWith("#nb");
-if (!S.docs.length) S.docs.push(makeDoc("untitled.chalk", [freshCell()]));
-S.doc = -1;
-loadDoc(Math.min(restoredActive, S.docs.length - 1));
-if (!saved) { const d = currentDoc(); if (d) d.savedText = serializeNotebook(); }
-if (firstVisit) void openExample("welcome.chalk").then((ok) => {
-  // served without examples/ (a bare dev server): a few cells to start from instead
-  const d = currentDoc();
-  if (ok || !d || !docPristine(d)) return;
-  S.cells.splice(0, S.cells.length, ...SAMPLES.map((src) => freshCell(src)), freshCell());
-  d.savedText = serializeNotebook(); renderCells(); renderSidebar(); renderChrome();
-});
+// nothing to restore (a first visit, or every tab closed last time): the welcome tab
+if (S.docs.length) { S.doc = -1; loadDoc(Math.max(0, Math.min(restoredActive, S.docs.length - 1))); }
+else unloadDocs();
 void loadProjects();
 void connect().then(async () => {
   // a link with a notebook in its fragment opens that notebook (in its own tab unless the current one is untouched)
