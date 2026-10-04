@@ -277,7 +277,7 @@
     {
       "id": "calculus",
       "title": "Calculus: derivatives and integrals",
-      "blurb": "The rules of differentiation, the chain rule and tangent lines; then antiderivatives the engine checks by differentiating, definite integrals and Riemann sums.",
+      "blurb": "The rules of differentiation and the chain rule; the circle behind cos, sin and e^(it); tangent lines; then antiderivatives the engine checks by differentiating, definite integrals and Riemann sums.",
       "kind": "course",
       "level": "Calculus I–II",
       "path": "courses/calculus",
@@ -293,17 +293,22 @@
           "blurb": "Functions of functions: the outer derivative times the inner one, with a slider to watch the inner factor."
         },
         {
-          "file": "03-tangent-lines.chalk",
+          "file": "03-circles.chalk",
+          "title": "Circles, exponentials and rotation",
+          "blurb": "Why e^(it) walks round the unit circle: cosine and sine as shadows, multiplying by i as a quarter turn, Euler's formula, angles that add, and arctan as an angle."
+        },
+        {
+          "file": "04-tangent-lines.chalk",
           "title": "Higher derivatives and tangent lines",
           "blurb": "Derivatives of derivatives, slopes at a point, and the tangent line that follows a slider."
         },
         {
-          "file": "04-antiderivatives.chalk",
+          "file": "05-antiderivatives.chalk",
           "title": "Antiderivatives, checked",
           "blurb": "Integration as the search for a function whose derivative you know, accepted only after the engine differentiates it back."
         },
         {
-          "file": "05-definite-integrals.chalk",
+          "file": "06-definite-integrals.chalk",
           "title": "Definite integrals and sums",
           "blurb": "The fundamental theorem of calculus, finite sums, and Riemann sums that close in on the area as a slider adds rectangles."
         }

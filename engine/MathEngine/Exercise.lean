@@ -32,6 +32,7 @@ def answerFns : List String :=
 
 /-- The function names a term calls (λ-terms' `λ` and `@` heads included; they are filtered by the caller). -/
 partial def fnNames : Expr → List String
+  | .fn _ [] => []   -- a constant (`i`, `π`) is a value, not work
   | .fn f es => f :: (es.flatMap fnNames)
   | e => (children e).flatMap fnNames
 

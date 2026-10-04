@@ -783,6 +783,8 @@ def checkTests : TestM Unit := do
   checkTrue "check: the question is not its own answer" (contains (ask "[1, 2; 3, 4]*[0, 1; 1, 0]" "[1,2;3,4] * [0,1;1,0]") "that is the question itself")
   checkTrue "check: a matrix answer" (eqv "[1, 2; 3, 4]*[0, 1; 1, 0]" "[2, 1; 4, 3]")
   checkTrue "check: elementary functions are allowed" (eqv "diff(sin(x^2), x)" "2x cos(x^2)")
+  checkTrue "check: i is a value, not work" (eqv "i*(1 + 2i)" "-2 + i")
+  checkTrue "check: so is π" (eqv "exptotrig(exp(i*pi/2))" "i")
   checkTrue "check: a syntax error in the answer" (contains (ask "diff(x^2, x)" "2x +") "\"answer\":{\"ok\":false,\"error\":{\"code\":\"syntax\"")
   checkTrue "check: λ normal forms up to α" (eqv "add 2 1" "λg. λy. g (g (g y))")
   checkTrue "check: a different λ normal form" (!eqv "add 2 1" "λf. λx. f (f x)")

@@ -2738,7 +2738,7 @@ theorem normalize_sound : ∀ (ops : List Op) (s : Option Nat), run s (normalize
 
 // ---------------------------------------------------------------------------------------------------
 course("calculus", "Calculus: derivatives and integrals",
-  "The rules of differentiation, the chain rule and tangent lines; then antiderivatives the engine checks by differentiating, definite integrals and Riemann sums.",
+  "The rules of differentiation and the chain rule; the circle behind cos, sin and e^(it); tangent lines; then antiderivatives the engine checks by differentiating, definite integrals and Riemann sums.",
   "Calculus I–II", (add) => {
 
   add("01-rules.chalk", "The rules of differentiation", "Powers, sums, constant multiples and products: four rules, every step named.", ({ sec, md, m, ex }) => {
@@ -2844,7 +2844,91 @@ course("calculus", "Calculus: derivatives and integrals",
 `);
   });
 
-  add("03-tangent-lines.chalk", "Higher derivatives and tangent lines", "Derivatives of derivatives, slopes at a point, and the tangent line that follows a slider.", ({ sec, md, m, ex }) => {
+  add("03-circles.chalk", "Circles, exponentials and rotation", "Why e^(it) walks round the unit circle: cosine and sine as shadows, multiplying by i as a quarter turn, Euler's formula, angles that add, and arctan as an angle.", ({ sec, md, m, ex }) => {
+    sec("Circles, exponentials and rotation");
+    md(r`
+> [!goal]
+> See why $e^{it}$ walks round the unit circle, and read the derivatives of $\cos$ and $\sin$, Euler's formula and the angle-sum formulas off that one picture.
+`);
+    md(r`This lesson works in the complex plane: the number $a + bi$ is the point $(a, b)$, and ‹i› is typed as it is. A cell that mentions ‹i› is read over $\mathbb{C}$, and its steps are judged by the rules' proofs there.`);
+    sec("A point going round the circle");
+    md(r`
+> [!definition] Cosine and sine
+> Walk a distance $t$ round the unit circle, counterclockwise from $1$. Where you stand is $\cos t + i \sin t$: the **cosine** is your shadow on the horizontal axis, the **sine** your shadow on the vertical one.
+`);
+    md(r`
+> [!try]
+> Press ‹▶ Play›. The faint circle is the whole path; the arc is the walk so far, with the radius to where you stand and the drop from there to the horizontal axis. The drop's foot is at $\cos T$, its height is $\sin T$.
+`);
+    m("manipulate(plot([cos(2*pi*t/T) + i*sin(2*pi*t/T), cos(t) + i*sin(t), (t/T)*(cos(T) + i*sin(T)), cos(T) + i*(t/T)*sin(T)], t, 0, T), T, 0.05, 6.28)");
+    md(r`Unrolled against the distance walked, the two shadows are the familiar waves. At the top of the circle, $t = \pi/2$, the sine is at its peak and the cosine crosses zero.`);
+    m("plot([cos(t), sin(t)], t, 0, 6.28)");
+    sec("Multiplying by i is a quarter turn");
+    md(r`$i \cdot (a + bi) = -b + ai$: the point $(a, b)$ goes to $(-b, a)$, the same distance from $0$ and a quarter turn further round.`);
+    m("i*(3 + 4i)", { work: true });
+    m("plot([t*(3 + 4i), t*i*(3 + 4i)], t, 0, 1)");
+    m("abs(3 + 4i) - abs(i*(3 + 4i))");
+    sec("A rate that turns");
+    md(r`$e^x$ is the function whose rate of change is itself. Ask the same of a point moving in the plane, but with a quarter turn: a point $z(t)$ whose velocity is always $i\,z(t)$. The velocity is the position turned a quarter, so it is always at right angles to the radius: the point never moves toward $0$ or away from it, only round it. Starting from $1$, at speed $1$, it walks the unit circle. That point is $e^{it}$:`);
+    m("diff(exp(i*t), t)", { work: true });
+    md(r`
+> [!theorem] Euler's formula
+> $e^{it} = \cos t + i \sin t$: the exponential with a turning rate is the walk round the circle. ‹exptotrig› applies it.
+`);
+    m("exptotrig(exp(i*pi/3))", { work: true });
+    m("exp(i*pi) + 1", { work: true });
+    md(r`Write both sides of $\frac{d}{dt} e^{it} = i\,e^{it}$ with Euler's formula. The left is $\cos' t + i \sin' t$; the right is the position turned a quarter. Their real and imaginary parts are the derivatives of cosine and sine, read off the picture:`);
+    m("expand(exptotrig(diff(exp(i*t), t)))");
+    sec("Compound growth, turned");
+    md(r`$e = \lim_{n \to \infty} (1 + 1/n)^n$: grow by a fraction $1/n$, $n$ times over.`);
+    m("let n = 4", { slider: [1, 64, 1] });
+    m("N((1 + 1/n)^n)");
+    md(r`
+> [!try]
+> Now grow by $i\pi/n$ instead, $n$ times: each step multiplies by $1 + i\pi/n$, a small turn and a slight stretch. The path below runs from $1$ through the powers $(1 + i\pi/n)^k$. Drag ‹n› up: the stretch fades, the path settles onto the circle, and it ends at $e^{i\pi} = -1$.
+`);
+    m("plot([cos(t) + i*sin(t), (1 + i*pi/n)^(n*t/pi)], t, 0, pi)");
+    m("N((1 + i*pi/n)^n)");
+    sec("Angles add when you multiply");
+    md(r`$e^{ia}\,e^{ib} = e^{i(a + b)}$: turning by $a$ and then by $b$ is turning by $a + b$. Expand both sides with Euler's formula and compare real parts and imaginary parts.`);
+    m("expand(exptotrig(exp(i*a))*exptotrig(exp(i*b)))");
+    m("expand(exptotrig(exp(i*(a + b))))");
+    md(r`
+> [!theorem] Angle sums
+> $\cos(a + b) = \cos a \cos b - \sin a \sin b$ and $\sin(a + b) = \sin a \cos b + \cos a \sin b$: the real and imaginary parts of one product of turns.
+`);
+    sec("The angle of a point");
+    md(r`‹abs(z)› is the distance from $0$ and ‹arg(z)› the angle from the positive real axis, so $z = |z|\,e^{i \arg z}$. For a point $1 + iy$, to the right of $0$, the angle is $\arctan y$.`);
+    m("let z = 1 + i");
+    m("abs(z)");
+    m("N(arg(z))");
+    m("N(arctan(1))");
+    md(r`So ‹arctan› measures an angle, and its derivative $\dfrac{1}{1 + y^2}$ is how fast the angle grows as the point climbs the line through $1$. Adding those small turns from $y = 0$ to $y = 1$ gives the angle to $1 + i$, an eighth of a turn, $\pi/4$; four of them make $\pi$.`);
+    m("integrate(1/(1 + y^2), y)", { work: true });
+    m("N(4*integrate(1/(1 + y^2), y, 0, 1))");
+    sec("Circles riding on circles");
+    md(r`A sum of terms $c_k e^{ikt}$ is circles riding on circles, each turning $k$ times per lap, with radius $|c_k|$. ‹epicycles› draws them; enough of them draw any closed curve, which is what the *Llamas* notebook does.`);
+    m("epicycles(exp(i*t) + exp(3*i*t)/3, t)");
+    ex("i*(1 + 2i)", r`Turn $1 + 2i$ a quarter turn counterclockwise about $0$.`, [
+      r`Multiply by $i$, and use $i^2 = -1$.`,
+    ], { hide: true });
+    ex("exptotrig(exp(i*pi/2))", r`Where is $e^{i\pi/2}$? Give it as a complex number.`, [
+      r`A walk of $\pi/2$ round the unit circle is a quarter turn from $1$.`,
+    ], { hide: true });
+    ex("diff(exp(3*i*t), t)", r`Differentiate $e^{3it}$ with respect to $t$.`, [
+      r`The chain rule: the inner derivative is $3i$.`,
+    ]);
+    ex("expand((cos(t) + i*sin(t))^2)", r`Square $\cos t + i \sin t$ and multiply it out, in terms of $\cos t$ and $\sin t$. (Its real part is $\cos 2t$: why?)`, [
+      r`$(a + bi)^2 = a^2 - b^2 + 2abi$.`,
+      r`Squaring $e^{it}$ doubles the angle, so the square is $e^{2it} = \cos 2t + i \sin 2t$.`,
+    ]);
+    md(r`
+> [!summary]
+> Multiplying by $i$ turns a quarter, so a rate of $i$ times the position goes round a circle: $e^{it} = \cos t + i\sin t$. The derivatives of $\cos$ and $\sin$, the angle-sum formulas and $\arctan$ as an angle all come from that walk.
+`);
+  });
+
+  add("04-tangent-lines.chalk", "Higher derivatives and tangent lines", "Derivatives of derivatives, slopes at a point, and the tangent line that follows a slider.", ({ sec, md, m, ex }) => {
     sec("Higher derivatives and tangent lines");
     md(r`
 > [!goal]
@@ -2885,7 +2969,7 @@ course("calculus", "Calculus: derivatives and integrals",
 `);
   });
 
-  add("04-antiderivatives.chalk", "Antiderivatives, checked", "Integration as the search for a function whose derivative you know, accepted only after the engine differentiates it back.", ({ sec, md, m, ex }) => {
+  add("05-antiderivatives.chalk", "Antiderivatives, checked", "Integration as the search for a function whose derivative you know, accepted only after the engine differentiates it back.", ({ sec, md, m, ex }) => {
     sec("Antiderivatives, checked");
     md(r`
 > [!goal]
@@ -2932,7 +3016,7 @@ course("calculus", "Calculus: derivatives and integrals",
 `);
   });
 
-  add("05-definite-integrals.chalk", "Definite integrals and sums", "The fundamental theorem of calculus, finite sums, and Riemann sums that close in on the area as a slider adds rectangles.", ({ sec, md, m, ex }) => {
+  add("06-definite-integrals.chalk", "Definite integrals and sums", "The fundamental theorem of calculus, finite sums, and Riemann sums that close in on the area as a slider adds rectangles.", ({ sec, md, m, ex }) => {
     sec("Definite integrals and sums");
     md(r`
 > [!goal]

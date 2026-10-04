@@ -1,6 +1,6 @@
 {
   "chalk": 1,
-  "name": "05-definite-integrals.chalk",
+  "name": "06-definite-integrals.chalk",
   "cells": [
     {
       "src": "Definite integrals and sums",
