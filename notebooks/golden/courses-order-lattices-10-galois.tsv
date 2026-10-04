@@ -1,17 +1,17 @@
-3	let D = divisors(12)	= poset {1, 2, 3, 4, 6, 12}   [the divisors of 12 under divisibility]
-4	let cl = map(D; 3->6)	= {3↦6}   [a map on D (1 explicit value; other elements are fixed)]
-5	closureop(D, cl)	= true   [a closure operator]
-6	fixpoints(D, cl)	= {1, 2, 4, 6, 12}   [fixed points]
-7	let bad = map(D; 2->1)	= {2↦1}   [a map on D (1 explicit value; other elements are fixed)]
-8	closureop(D, bad)	= false   [not a closure operator: not extensive]
-12	let C7 = chain(7)	= poset {0, 1, 2, 3, 4, 5, 6}   [the chain of 7 elements]
-13	let C4 = chain(4)	= poset {0, 1, 2, 3}   [the chain of 4 elements]
-14	let half = map(C7, C4; 0->0, 1->1, 2->1, 3->2, 4->2, 5->3, 6->3)	= {0↦0, 1↦1, 2↦1, 3↦2, 4↦2, 5↦3, 6↦3}   [a map from C7 to C4]
-15	let dbl = map(C4, C7; 0->0, 1->2, 2->4, 3->6)	= {0↦0, 1↦2, 2↦4, 3↦6}   [a map from C4 to C7]
-16	galois(C7, C4, half, dbl)	= true   [a Galois connection]
-17	let same = map(C4, C7; 0->0, 1->1, 2->2, 3->3)	= {0↦0, 1↦1, 2↦2, 3↦3}   [a map from C4 to C7]
-18	galois(C7, C4, half, same)	= false   [not a Galois connection at 2, 1]
-21	let A = context({duck, eagle, dog, bat}, {flies, mammal, bird}; duck->flies, duck->bird, eagle->flies, eagle->bird, dog->mammal, bat->flies, bat->mammal)	= {(duck, flies), (duck, bird), (eagle, flies), (eagle, bird), (dog, mammal), (bat, flies), (bat, mammal)}   [a context: 4 objects, 3 attributes]
-22	concepts(A)	= poset {({duck,eagle,dog,bat}, {}), ({duck,eagle,bat}, {flies}), ({dog,bat}, {mammal}), ({bat}, {flies,mammal}), ({duck,eagle}, {flies,bird}), ({}, {flies,mammal,bird})}   [6 concepts]
+3	let D = divisors(12)	= poset {1, 2, 3, 4, 6, 12}
+4	let cl = map(D; 3->6)	= {3↦6}   [every other element is fixed]
+5	closureop(D, cl)	= true
+6	fixpoints(D, cl)	= {1, 2, 4, 6, 12}
+7	let bad = map(D; 2->1)	= {2↦1}   [every other element is fixed]
+8	closureop(D, bad)	= false
+12	let C7 = chain(7)	= poset {0, 1, 2, 3, 4, 5, 6}
+13	let C4 = chain(4)	= poset {0, 1, 2, 3}
+14	let half = map(C7, C4; 0->0, 1->1, 2->1, 3->2, 4->2, 5->3, 6->3)	= {0↦0, 1↦1, 2↦1, 3↦2, 4↦2, 5↦3, 6↦3}
+15	let dbl = map(C4, C7; 0->0, 1->2, 2->4, 3->6)	= {0↦0, 1↦2, 2↦4, 3↦6}
+16	galois(C7, C4, half, dbl)	= true
+17	let same = map(C4, C7; 0->0, 1->1, 2->2, 3->3)	= {0↦0, 1↦1, 2↦2, 3↦3}
+18	galois(C7, C4, half, same)	= false
+21	let A = context({duck, eagle, dog, bat}, {flies, mammal, bird}; duck->flies, duck->bird, eagle->flies, eagle->bird, dog->mammal, bat->flies, bat->mammal)	= {(duck, flies), (duck, bird), (eagle, flies), (eagle, bird), (dog, mammal), (bat, flies), (bat, mammal)}
+22	concepts(A)	= poset {({duck,eagle,dog,bat}, {}), ({duck,eagle,bat}, {flies}), ({dog,bat}, {mammal}), ({bat}, {flies,mammal}), ({duck,eagle}, {flies,bird}), ({}, {flies,mammal,bird})}
 29	closureop(D, bad)	= false
 30	galois(C7, C4, half, dbl)	= true

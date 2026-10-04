@@ -907,6 +907,18 @@ Phases:
    joins when both sides reach one term, refutes confluence only with two different normal forms, and is
    otherwise undecided. Open: `trs.critical`'s "locally confluent" (unification complete, and the critical pair
    lemma), the symbolic row operations.
+- verification: symbolic row operations, higher derivatives, certified `N` — DONE 2026-10-04 (Alex: "We can do the
+   other 2 bullet points in the meantime"; `trs.critical` went to a session of its own). Symbolic elimination is now
+   an exact row operation then the simplifier: `swapRows_soundR`, `scaleRowExact_soundR` (where the pivot is not
+   zero, which the step states) and `addRowExact_soundR` keep the solution set over ℝ (`proofs/Proofs/RowOps.lean`).
+   A row addition whose entries the rules that assume nothing give (`simpRulesSafe`, now in the engine, compared
+   at run time) is verified; one whose simplification cancelled a factor is `la.row-add.symbolic.assuming` and
+   says what it assumed, as the scale step does. `diff(f, x, n)` is `iteratedDeriv n` (`diffHigherOrder_soundR`).
+   `N` is certified: `Interval.lean` evaluates again over ℚ to an interval proved to hold the exact value
+   (`ieval_sound`: Taylor remainders for `exp`, `sin`, `cos`, `ln` checked by `exp`, `sqrt` by squaring, `π` to
+   twenty digits), and prints the digits it pins down, each within a unit of its last place (`certify_sound`).
+   Every golden `N` answer came out the same. What the intervals do not reach (a complex value, a pole, a jump)
+   is `cmd.N.float`, unverified, and says so. Open: `trs.critical` (its own session).
 - `trs.critical` verified — DONE 2026-10-04. `CriticalProofs.lean` defines a rewrite step on its own (a rule's
    instance at any position, `Step`) and proves `critical(R)`'s answers against it. `unify`, `T.vars`, `T.size`,
    `T.positions`, `T.occurs` and `T.rename` are total now: the term functions by structural recursion, `unify` by

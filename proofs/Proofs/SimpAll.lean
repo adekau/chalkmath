@@ -86,10 +86,6 @@ theorem functionRules_soundR : RuleSoundR functionRules := by
     exact (sign_fold_soundR ρ q).symm
   · cases hs
 
-/-- `simpRules` without the two rules that assume. -/
-def simpRulesSafe : List (Rule simpW) :=
-  [flatten, identity, foldConstants, functionRules, powerRules, collectPowers, collectTerms]
-
 theorem simpRulesSafe_soundR : ∀ r ∈ simpRulesSafe, RuleSoundR r := by
   intro r hr
   simp only [simpRulesSafe, List.mem_cons, List.not_mem_nil, or_false] at hr

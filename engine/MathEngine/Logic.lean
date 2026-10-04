@@ -10,16 +10,16 @@ sets of numbers. Like the λ and order worlds it has its own syntax and its own 
 encoded into `Expr` for the wire (`fn "∧" [a, b]`, `fn "∀" [x, D, body]`, …), and the printer knows
 the heads.
 
-- **Propositional formulas** are decided by truth tables: `taut`, `sat` (with a satisfying
-  assignment, written as a conjunction of literals), `falsify`, `equiv` (with an assignment that
-  tells the two apart), `truthtable`. With at most `maxVars` variables, nothing is out of reach.
+- **Propositional formulas** are decided by truth tables: `taut`, `sat` (a satisfying assignment,
+  as a map `{p ↦ true, q ↦ false}`), `falsify` (a falsifying one), `equiv` (with an assignment that
+  tells the two apart in the work), `truthtable`. With at most `maxVars` variables, nothing is out of reach.
 - **Normal forms** are rewrites, one law at a time, each a step: implications and biconditionals
   eliminated, negations pushed in (De Morgan, double negation), constants simplified, then `∨`
   distributed over `∧` (CNF) or `∧` over `∨` (DNF). Each pass is a total function, structural or on a
   size measure, so there is no budget; `LogicProofs.lean` proves each pass keeps the meaning.
 - **Bounded quantifiers** `∀ n ∈ D, φ` and `∃ n ∈ D, φ` range over a finite set of numbers (`{1, 2, 3}`
   or `1..10`); their atoms are comparisons of expressions (`n^2 ≥ n`, `d ∣ n`) and a few predicates
-  (`prime`, `even`, `odd`), evaluated by the pipeline. The answer names the element that decided it.
+  (`prime`, `even`, `odd`), evaluated by the pipeline. The work names the element that decided it.
 
 The grammar (ASCII and words are read as the glyphs: `->`, `<->`, `&&`/`and`, `||`/`or`, `!`/`not`,
 `true`, `false`, `forall … in`, `exists … in`, `<=`, `>=`, `!=`):
@@ -303,6 +303,27 @@ partial def parseFm (s0 : List Char) : Except String Fm := do
 
 def parseFormula (src : String) : Except String Fm := parseFm (glyphs src).toList
 
+/-- An assignment written as a map, `{p ↦ true, q ↦ false}` (or `->`, `=`; `⊤`, `⊥`, `1`, `0`), as
+the conjunction of its literals; `none` when `src` is not one. `{}` is the empty assignment, `⊤`. -/
+def parseAssignment (src : String) : Option Fm := do
+  let s := trim (glyphs src).toList
+  if s.head? != some '{' || s.getLast? != some '}' then none
+  let body := trim ((s.drop 1).dropLast)
+  if body.isEmpty then return .tt
+  let lits ← (splitCommas body).mapM fun item => do
+    let item := trim item
+    let i ← item.findIdx? fun c => c == '↦' || c == '→' || c == '='
+    let x := trim (item.take i)
+    if x.isEmpty || !x.all identChar then none
+    let v ← match String.ofList (trim (item.drop (i + 1))) with
+      | "⊤" | "true" | "1" => some true
+      | "⊥" | "false" | "0" => some false
+      | _ => none
+    pure (if v then Fm.var (String.ofList x) else .not (.var (String.ofList x)))
+  match lits with
+  | [] => none
+  | l :: ls => pure (ls.foldl .and l)
+
 /-! ## Commands and statements -/
 
 def commands : List String := ["truthtable", "taut", "sat", "falsify", "equiv", "nnf", "cnf", "dnf"]
@@ -364,6 +385,10 @@ def literals (vs : List String) (row : List Bool) : Fm :=
   match (vs.zip row).map (fun (x, b) => if b then Fm.var x else .not (.var x)) with
   | [] => .tt
   | l :: ls => ls.foldl .and l
+
+/-- A row as the map from each variable to its value: `{p ↦ true, q ↦ false}`. -/
+def assignmentExpr (vs : List String) (row : List Bool) : Expr :=
+  .fn "set" ((vs.zip row).map fun (x, b) => .fn "↦" [.var x, .var (if b then "true" else "false")])
 
 def rowText (vs : List String) (row : List Bool) : String :=
   ", ".intercalate ((vs.zip row).map fun (x, b) => s!"{x} = {if b then "true" else "false"}")

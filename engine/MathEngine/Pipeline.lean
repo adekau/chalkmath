@@ -3,6 +3,7 @@ import MathEngine.DiffRules
 import MathEngine.LinAlg
 import MathEngine.ExpandRules
 import MathEngine.Numeric
+import MathEngine.Interval
 import MathEngine.Fourier
 import MathEngine.Antiderivative
 import MathEngine.RadicalRules
@@ -80,14 +81,31 @@ def cmdRref : PlainRule :=
       | .fn "rref" _ => some (refuse "rref takes one matrix")
       | _ => none }
 
+/-- `N(a)`, certified: interval arithmetic over ℚ holds the real value of `a` (`ieval_sound`), and the
+decimal shown is within a unit of its last digit of it (`certify_sound`). A term with `i`, or one the
+intervals do not cover, is `cmd.N.float`'s. -/
 def cmdN : PlainRule :=
   { name := "cmd.N", apply := fun e => Option.map checked <|
+      match e with
+      | .fn "N" [a] =>
+        if mentionsI a then none else
+        match Ival.ieval a >>= Ival.certify with
+        | some (v, u) =>
+          let within := if u = 0 then "exactly" else s!"to within ${Ival.tenText u}$"
+          some ⟨.num (Q.ofRat v true), s!"Numerical value, certified {within}: interval arithmetic over the rationals, with a proved bound for each function, holds the exact value there.", none, none⟩
+        | none => none
+      | _ => none }
+
+/-- `N(a)` in IEEE-754 double precision, where `cmd.N` cannot certify it: over ℂ for a term with `i`
+or no finite real value. -/
+def cmdNFloat : PlainRule :=
+  { name := "cmd.N.float", apply := fun e => Option.map checked <|
       match e with
       | .fn "N" [a] =>
         -- over ℝ unless the term mentions `i` or has no finite real value (sqrt(−1), ln(−1)): then over ℂ
         let real := evalNumeric [] a >>= floatToExpr
         match (if mentionsI a || real.toOption.isNone then evalNumericC [] a >>= cfToExpr else real) with
-        | .ok v => some ⟨v, "Numerical approximation in IEEE-754 double precision.", none, none⟩
+        | .ok v => some ⟨v, "Numerical approximation in IEEE-754 double precision, not certified: the interval arithmetic behind `N`'s certified values does not reach this term (a complex value, a variable, or a function across a pole or a jump).", none, none⟩
         | .error msg => some ⟨a, "", none, some msg⟩
       | .fn "N" _ => some (refuse "N takes one argument")
       | _ => none }
@@ -200,7 +218,7 @@ def cmdFactor (norm : Norm) : PlainRule :=
       | .fn "factor" _ => some (refuse "factor takes one argument")
       | _ => none }
 
-def commandRulesWith (norm : Norm) : List PlainRule := [cmdSimplify, cmdExpand, cmdRref, cmdN, cmdSubst, cmdIntegrate norm, cmdSum, cmdExpToTrig, cmdFactor norm]
+def commandRulesWith (norm : Norm) : List PlainRule := [cmdSimplify, cmdExpand, cmdRref, cmdN, cmdNFloat, cmdSubst, cmdIntegrate norm, cmdSum, cmdExpToTrig, cmdFactor norm]
 
 /-- The matrix rules precede `simp` as in the reference (so `A·A` is a product, not `A^2`); the
 catch-all `la.context` must come after every rule that handles a literal, so it is last. -/

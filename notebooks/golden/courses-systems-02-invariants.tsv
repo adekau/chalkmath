@@ -1,10 +1,10 @@
-3	let C = system(\n  var x in 0..3\n  var y in 0..3\n  init x = 0 ∧ y = 0\n  action inc when x < 3 do x := x + 1\n  action move when x > 0 ∧ y < 3 do x := x - 1, y := y + 1\n)	= system({x, y}, {inc, move})   [2 variables, 2 actions, 16 reachable states]
-4	invariant(C, x + y ≤ 3)	= false   [not invariant: fails after 5 steps]
-5	invariant(C, y ≤ 3)	= true   [invariant]
-9	let Pair = system(\n  var x in 0..6\n  var y in 0..6\n  init x = 0 ∧ y = 0\n  action step when x < 5 do x := x + 1, y := y + 1\n)	= system({x, y}, {step})   [2 variables, 1 action, 6 reachable states]
-10	invariant(Pair, y ≤ 5)	= true   [invariant]
-11	inductive(Pair, y ≤ 5)	= false   [not inductive: step breaks it from an unreachable state]
-13	inductive(Pair, x = y ∧ y ≤ 5)	= true   [inductive]
+3	let C = system(\n  var x in 0..3\n  var y in 0..3\n  init x = 0 ∧ y = 0\n  action inc when x < 3 do x := x + 1\n  action move when x > 0 ∧ y < 3 do x := x - 1, y := y + 1\n)	= system({x, y}, {inc, move})   [16 reachable states]
+4	invariant(C, x + y ≤ 3)	= false
+5	invariant(C, y ≤ 3)	= true
+9	let Pair = system(\n  var x in 0..6\n  var y in 0..6\n  init x = 0 ∧ y = 0\n  action step when x < 5 do x := x + 1, y := y + 1\n)	= system({x, y}, {step})   [6 reachable states]
+10	invariant(Pair, y ≤ 5)	= true
+11	inductive(Pair, y ≤ 5)	= false
+13	inductive(Pair, x = y ∧ y ≤ 5)	= true
 18	inductive(Pair, y ≤ 5)	= false
 19	inductive(Pair, x = y ∧ x ≤ 5)	= true
 20	invariant(C, x ≤ 3)	= true

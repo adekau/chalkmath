@@ -812,4 +812,23 @@ def simpRules : List (Rule simpW) :=
 def simplify (e : Expr) : TraceM Expr := normalize simpRules e
 def simplify0 (e : Expr) : Expr := (simplify e).run' #[]
 
+/-- `simpRules` without the two rules that assume: sound at every real value (`normalizeSafe_sound`,
+`proofs/Proofs/SimpAll.lean`). -/
+def simpRulesSafe : List (Rule simpW) :=
+  [flatten, identity, foldConstants, functionRules, powerRules, collectPowers, collectTerms]
+
+/-- What an `.assuming` step assumed, as TeX: the `$…$` after "Assuming". -/
+def assumptionOf (explanation : String) : Option String :=
+  match explanation.splitOn "Assuming $" with
+  | _ :: rest :: _ => (rest.splitOn "$.").head?
+  | _ => none
+
+/-- Simplify, and say whether the result is the one the rules that assume nothing give (so it has the
+input's value everywhere); otherwise list what the simplifier assumed. -/
+def simplifyNoting (e : Expr) : Expr × Bool × List String :=
+  let ((out : Expr), (steps : Array Step)) := (simplify e).run #[]
+  let safe : Expr := (normalize simpRulesSafe e).run' #[]
+  if safe == out then (safe, true, [])
+  else (out, false, (steps.toList.filterMap fun (s : Step) => if s.rule.endsWith ".assuming" then assumptionOf s.explanation else none).eraseDups)
+
 end MathEngine

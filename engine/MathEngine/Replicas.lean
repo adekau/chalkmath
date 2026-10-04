@@ -300,16 +300,12 @@ def parse (body : String) : Except String (Kind × List String × List Ev) := do
   | _ => throw "write replicas(type; a, b, …; events…)"
 
 /-- The run as the cell answers it: each replica's reading, and whether they converged. -/
-def summary (r : Run) : Expr × String × Bool :=
-  let reads := r.states.map fun (q, v) => (q, (read r.layout v).toText)
+def summary (r : Run) : Expr × Bool :=
   let value := Expr.fn "set" (r.states.map fun (q, v) => .fn "↦" [.var q, read r.layout v])
   let same := match r.states with
     | [] => true
     | (_, v) :: rest => rest.all (·.2 == v)
-  let groups := (reads.map (·.2)).eraseDups.map fun x => (x, (reads.filter (·.2 == x)).map (·.1))
-  let say := if same then s!"converged: every replica reads {(reads.head?.map (·.2)).getD ""}"
-    else "not converged: " ++ "; ".intercalate (groups.map fun (x, qs) => s!"{", ".intercalate qs} read{if qs.length == 1 then "s" else ""} {x}")
-  (value, say, same)
+  (value, same)
 
 end Rep
 end MathEngine

@@ -107,15 +107,16 @@ export const FUNCTIONS: FnDoc[] = [
   },
   {
     name: "N", area: "Algebra",
-    usage: [["N(e)", "gives a numerical approximation of `e`, to fifteen significant digits."]],
+    usage: [["N(e)", "gives a numerical value of `e`, to fifteen significant digits, each one certified."]],
     details: [
-      "IEEE-754 double precision.",
+      "The digits are certified: the term is evaluated again over the rationals, to an interval proved to hold its exact value, and only the digits the interval pins down are shown, each within a unit of its last place. Usually that is all fifteen; when it is fewer, fewer are shown, and a value pinned down only near zero shows as 0.",
+      "What the intervals do not reach is a floating-point approximation in IEEE-754 double precision, and its step says it is not certified: a complex value, a function across a pole or a jump (`N(tan(pi/2))`), a negative base under a fractional power.",
       "Over ℂ when the term mentions `i`, or when its real value is not finite: `N(sqrt(-1))` is `i`.",
       "A term with a free variable has no numerical value.",
     ],
     examples: [
       basic("N(pi)", "N(sqrt(2))"),
-      section("Scope", "N(1/3)", "N(exp(1))", "N(sin(pi/6))"),
+      section("Scope", "N(1/3)", "N(exp(1))", "N(sin(pi/6))", "N(sin(10^30))", note("Not certified:"), "N(tan(pi/2))"),
     ],
     see: ["simplify"],
   },
@@ -365,9 +366,11 @@ export const FUNCTIONS: FnDoc[] = [
   {
     name: "rref", area: "Linear algebra",
     usage: [["rref(M)", "gives the reduced row echelon form of `M`."]],
-    details: ["Gauss–Jordan elimination. Each row operation is a step of its own, nested under the command."],
+    details: ["Gauss–Jordan elimination. Each row operation is a step of its own, nested under the command.",
+      "With symbols among the entries, a pivot is an entry the simplifier cannot show is zero, and the step that divides by it says it assumes it is not zero; where simplifying a row cancels a factor, the step says that too. The answer holds wherever those assumptions do."],
     examples: [
       basic("rref([1,2,3;4,5,6;7,8,10])"),
+      section("Symbolic entries", "rref([x, y; x^2, 1])"),
       section("Scope", note("A singular matrix:"), "rref([1,2;2,4])", note("Fractions stay exact:"), "rref([1/2,1,3;1,3,5])", "rref([1,2,3,4;2,4,6,8;1,1,1,1])"),
     ],
     see: ["det", "transpose"],
@@ -1082,7 +1085,7 @@ export const FUNCTIONS: FnDoc[] = [
   {
     name: "replicas", area: "Transition systems",
     usage: [
-      ["replicas(type; a, b, …; events…)", "runs a state-based CRDT on the replicas `a`, `b`, … through the events, and gives each replica's reading and whether they converged."],
+      ["replicas(type; a, b, …; events…)", "runs a state-based CRDT on the replicas `a`, `b`, … through the events, and gives each replica's reading; its work says whether they converged."],
     ],
     details: [
       "The types: `gcounter` (`inc`), `pncounter` (`inc`, `dec`), `gset` (`add x`), `twopset` and `orset` (`add x`, `remove x`), and `lww` (`write v`, or `write v @ t` with a timestamp; by default the event's number).",
@@ -1226,7 +1229,7 @@ export const FUNCTIONS: FnDoc[] = [
   },
   {
     name: "taut", area: "Logic",
-    usage: [["taut(φ)", "gives ⊤ when φ is true under every assignment, and otherwise ⊥ with a row that falsifies it."]],
+    usage: [["taut(φ)", "gives ⊤ when φ is true under every assignment, and otherwise ⊥; its work names a row that falsifies it."]],
     details: ["Decided by truth table, which is proved to decide (`taut_sound`)."],
     examples: [basic("taut(p ∧ q → p)", "taut(p → q)", "taut((p → q) ∨ (q → p))")],
     see: ["sat", "falsify", "truthtable"],
@@ -1234,20 +1237,24 @@ export const FUNCTIONS: FnDoc[] = [
   },
   {
     name: "sat", area: "Logic",
-    usage: [["sat(φ)", "gives an assignment that makes φ true, as a conjunction of literals, or ⊥ when there is none."]],
-    details: ["As an exercise, any satisfiable formula that implies φ is an answer."],
+    usage: [["sat(φ)", "gives an assignment that makes φ true, as a map from each variable to its value (`{p ↦ true, q ↦ false}`), or ⊥ when there is none."]],
+    details: [
+      "`let w = sat(φ)` names the assignment as a formula, the conjunction of its literals (`p ∧ ¬q`), so `w` can be used in other formulas.",
+      "As an exercise, any satisfiable formula that implies φ is an answer: an assignment written as a map, as the engine answers, or as a conjunction of literals.",
+    ],
     examples: [basic("sat(p ∧ ¬q)", "sat((p ∨ q) ∧ ¬p)", "sat(p ∧ ¬p)")],
     see: ["falsify", "taut"],
   },
   {
     name: "falsify", area: "Logic",
-    usage: [["falsify(φ)", "gives an assignment that makes φ false, or ⊥ when φ is a tautology."]],
+    usage: [["falsify(φ)", "gives an assignment that makes φ false, as a map from each variable to its value, or ⊥ when φ is a tautology."]],
+    details: ["`let w = falsify(φ)` names the assignment as the conjunction of its literals, as `sat` does."],
     examples: [basic("falsify(p → q)", "falsify(p ∨ ¬p)")],
     see: ["sat", "taut"],
   },
   {
     name: "equiv", area: "Logic",
-    usage: [["equiv(φ, ψ)", "gives ⊤ when φ and ψ have the same value under every assignment, and otherwise ⊥ with a row where they differ."]],
+    usage: [["equiv(φ, ψ)", "gives ⊤ when φ and ψ have the same value under every assignment, and otherwise ⊥; its work names a row where they differ."]],
     examples: [basic("equiv(p → q, ¬q → ¬p)", "equiv(p → q, q → p)", "equiv(¬(p ∧ q), ¬p ∨ ¬q)")],
     see: ["taut", "nnf"],
   },
@@ -1304,6 +1311,9 @@ export const FUNCTIONS: FnDoc[] = [
       ["zero succ add mul pow iszero", "are the Church numerals' arithmetic; a digit is a numeral."],
       ["pair fst snd", "are pairs."],
       ["id const K S I omega Y", "are the classic combinators."],
+    ],
+    details: [
+      "A cell that starts with one of these names (or a λ-definition of your own) is a λ-term when it reads as one: names, numerals and parentheses only. `S + 1` is arithmetic on a variable `S`.",
     ],
     examples: [basic("if (iszero 0) a b", "fst (pair 1 2)", "mul 2 3")],
     see: ["lambda"],

@@ -274,8 +274,7 @@ def lambdaCommand (s : Session) (cmd : Lam.Cmd) : Except LamErr LamResult := do
       ⟨"lambda.alpha-eq", if same then "The de Bruijn forms are the same, so the terms differ at most in the names of bound variables: they are α-equivalent."
           else "The de Bruijn forms differ, so no renaming of bound variables turns one term into the other: they are not α-equivalent.",
         [], .fn (if same then "=" else "≠") [da, db], value, none⟩]
-    pure (mk value none (.fn "pair" [Lam.toExpr a, Lam.toExpr b]) steps
-      (some (if same then "α-equivalent: the same term up to the names of bound variables" else "not α-equivalent")))
+    pure (mk value none (.fn "pair" [Lam.toExpr a, Lam.toExpr b]) steps none)
   | .subst e x arg =>
     let e := e.erase
     let arg := arg.erase
@@ -352,7 +351,8 @@ structure OrdResult where
   value : Expr
   derivation : Derivation
   poset : Option Ord.Poset
-  summary : String
+  /-- A note beside the answer, only when it says something neither the answer nor the work does. -/
+  summary : Option String := none
   /-- A relation to draw as a directed graph: its elements and pairs, the pairs that show a property
   failing, and the pairs a closure added. -/
   graph : Option (Ord.Rel × List (String × String) × List (String × String)) := none
@@ -429,7 +429,7 @@ def orderCell (s : Session) (cellId source : String) :
       | .elem x => (getE P (.elem x)).map ([·])
       | _ => .error "expected a set of elements"
     let step (rule text : String) (before after : Expr) : Step := ⟨rule, text, [], before, after, none⟩
-    let done (value : Expr) (steps : Array Step) (P : Option Ord.Poset) (summary : String) (bindP : Option Ord.Poset := none) (bindF : Option Ord.PMap := none)
+    let done (value : Expr) (steps : Array Step) (P : Option Ord.Poset) (summary : Option String := none) (bindP : Option Ord.Poset := none) (bindF : Option Ord.PMap := none)
         (bindR : Option Ord.Rel := none) (graph : Option (Ord.Rel × List (String × String) × List (String × String)) := none)
         (bindO : Option Ord.Op := none) (bindC : Option Ord.Ctx := none) (table : Option (Ord.Op × List (String × String)) := none)
         (context : Option Ord.Ctx := none) :
@@ -454,31 +454,31 @@ def orderCell (s : Session) (cellId source : String) :
         | some n, some c => { s with ctxs := (n, c) :: s.ctxs.filter (·.1 != n) }
         | _, _ => s
       (s, .ok ⟨name, value, d, P, summary, graph, table, context⟩)
-    let withPoset (P : Ord.Poset) (steps : Array Step) (what : String) :=
-      done (Ord.posetExpr P) steps (some P) what (bindP := some P)
+    let withPoset (P : Ord.Poset) (steps : Array Step) :=
+      done (Ord.posetExpr P) steps (some P) (bindP := some P)
     let bool (b : Bool) : Expr := .var (if b then "true" else "false")
     match head, args with
     | "poset", [.set xs, .rels ps] | "poset", [.set xs, .rels ps, _] =>
       match Ord.mk xs ps with
       | .error msg => err msg
-      | .ok P => withPoset P #[step "order.closure" "The order is the reflexive-transitive closure of the relation given; reflexivity, antisymmetry and transitivity were checked." (Ord.setExpr xs) (Ord.posetExpr P)] s!"a poset with {P.elems.length} elements"
+      | .ok P => withPoset P #[step "order.closure" "The order is the reflexive-transitive closure of the relation given; reflexivity, antisymmetry and transitivity were checked." (Ord.setExpr xs) (Ord.posetExpr P)]
     | "poset", [.set xs] =>
       match Ord.mk xs [] with
       | .error msg => err msg
-      | .ok P => withPoset P #[] "an antichain"
+      | .ok P => withPoset P #[]
     | "divisors", [.elem n] =>
       match n.toNat? with
       | none => err "divisors takes a number"
       | some n => match Ord.divisors n with
         | .error msg => err msg
-        | .ok P => withPoset P #[step "order.divisors" s!"The divisors of {n} ordered by divisibility: $a \\le b$ iff $a \\mid b$." (.num (Q.ofInt n)) (Ord.posetExpr P)] s!"the divisors of {n} under divisibility"
+        | .ok P => withPoset P #[step "order.divisors" s!"The divisors of {n} ordered by divisibility: $a \\le b$ iff $a \\mid b$." (.num (Q.ofInt n)) (Ord.posetExpr P)]
     | "subsets", [.set xs] =>
       let P := Ord.subsets xs
-      withPoset P #[step "order.subsets" "All subsets ordered by inclusion." (Ord.setExpr xs) (Ord.posetExpr P)] s!"the {P.elems.length} subsets of a {xs.eraseDups.length}-element set under inclusion"
+      withPoset P #[step "order.subsets" "All subsets ordered by inclusion." (Ord.setExpr xs) (Ord.posetExpr P)]
     | "chain", [.elem n] =>
       match n.toNat? with
       | none => err "chain takes a number"
-      | some n => withPoset (Ord.chain n) #[] s!"the chain of {n} elements"
+      | some n => withPoset (Ord.chain n) #[]
     | "map", [.elem pn, .maps ps] =>
       match getP (.elem pn) with
       | .error msg => err msg
@@ -489,13 +489,13 @@ def orderCell (s : Session) (cellId source : String) :
           let ps := ps.map fun (a, b) => ((Ord.findElem P.elems a).getD a, (Ord.findElem P.elems b).getD b)
           let f : Ord.PMap := ⟨ps⟩
           let value := Ord.setExpr (ps.map fun (a, b) => s!"{a}↦{b}")
-          done value #[] none s!"a map on {pn} ({ps.length} explicit value{if ps.length == 1 then "" else "s"}; other elements are fixed)" (bindF := some f)
+          done value #[] none (summary := some "every other element is fixed") (bindF := some f)
     | "hasse", [p] =>
       match getP p with
       | .error msg => err msg
       | .ok P =>
         let cov := Ord.hasse P
-        withPoset P #[step "order.covers" "The Hasse diagram draws exactly the covers: $x \\lessdot y$ iff $x < y$ with nothing strictly between (order.covers_spec)." (Ord.setExpr P.elems) (.fn "hasse" (cov.map fun (a, b) => .fn "covers" [Ord.elemExpr a, Ord.elemExpr b]))] s!"{cov.length} covers"
+        withPoset P #[step "order.covers" "The Hasse diagram draws exactly the covers: $x \\lessdot y$ iff $x < y$ with nothing strictly between (order.covers_spec)." (Ord.setExpr P.elems) (.fn "hasse" (cov.map fun (a, b) => .fn "covers" [Ord.elemExpr a, Ord.elemExpr b]))]
     | "join", [p, a, b] =>
       match getP p with
       | .error msg => err msg
@@ -504,7 +504,7 @@ def orderCell (s : Session) (cellId source : String) :
           let ubs := Ord.upperBounds P [x, y]
           let s1 := step "order.upper-bounds" s!"The upper bounds of ${x}$ and ${y}$: every element above both." (Ord.setExpr [x, y]) (Ord.setExpr ubs)
           match Ord.sup P [x, y] with
-          | some j => done (Ord.elemExpr j) #[s1, step "order.least" "The least of them is below every other upper bound (order.sup_spec): the join." (Ord.setExpr ubs) (Ord.elemExpr j)] none s!"{x} ∨ {y} = {j}"
+          | some j => done (Ord.elemExpr j) #[s1, step "order.least" "The least of them is below every other upper bound (order.sup_spec): the join." (Ord.setExpr ubs) (Ord.elemExpr j)] none
           | none => err (s!"{x} and {y} have no join: the upper bounds " ++ braces ubs ++ " have no least element")
         | .error m, _ | _, .error m => err m
     | "meet", [p, a, b] =>
@@ -515,41 +515,41 @@ def orderCell (s : Session) (cellId source : String) :
           let lbs := Ord.lowerBounds P [x, y]
           let s1 := step "order.lower-bounds" s!"The lower bounds of ${x}$ and ${y}$: every element below both." (Ord.setExpr [x, y]) (Ord.setExpr lbs)
           match Ord.inf P [x, y] with
-          | some m => done (Ord.elemExpr m) #[s1, step "order.greatest" "The greatest of them is above every other lower bound: the meet." (Ord.setExpr lbs) (Ord.elemExpr m)] none s!"{x} ∧ {y} = {m}"
+          | some m => done (Ord.elemExpr m) #[s1, step "order.greatest" "The greatest of them is above every other lower bound: the meet." (Ord.setExpr lbs) (Ord.elemExpr m)] none
           | none => err (s!"{x} and {y} have no meet: the lower bounds " ++ braces lbs ++ " have no greatest element")
         | .error m, _ | _, .error m => err m
     | "upper", [p, xs] =>
       match getP p with
       | .error msg => err msg
       | .ok P => match getS P xs with
-        | .ok ys => done (Ord.setExpr (Ord.upperBounds P ys)) #[] none "upper bounds"
+        | .ok ys => done (Ord.setExpr (Ord.upperBounds P ys)) #[] none
         | .error m => err m
     | "lower", [p, xs] =>
       match getP p with
       | .error msg => err msg
       | .ok P => match getS P xs with
-        | .ok ys => done (Ord.setExpr (Ord.lowerBounds P ys)) #[] none "lower bounds"
+        | .ok ys => done (Ord.setExpr (Ord.lowerBounds P ys)) #[] none
         | .error m => err m
     | "lattice", [p] =>
       match getP p with
       | .error msg => err msg
       | .ok P => match Ord.latticeFailure P with
-        | none => done (bool true) #[step "order.lattice" "Every pair has a join and a meet: a lattice." (Ord.setExpr P.elems) (bool true)] none "a lattice"
-        | some (x, y, what) => done (bool false) #[step "order.lattice" s!"${x}$ and ${y}$ have no {what}: not a lattice." (Ord.setExpr [x, y]) (bool false)] none s!"not a lattice: {x}, {y} have no {what}"
+        | none => done (bool true) #[step "order.lattice" "Every pair has a join and a meet: a lattice." (Ord.setExpr P.elems) (bool true)] none
+        | some (x, y, what) => done (bool false) #[step "order.lattice" s!"${x}$ and ${y}$ have no {what}: not a lattice." (Ord.setExpr [x, y]) (bool false)] none
     | "top", [p] =>
       match getP p with
       | .error msg => err msg
       | .ok P => match Ord.top P with
-        | some t => done (Ord.elemExpr t) #[] none s!"⊤ = {t}"
+        | some t => done (Ord.elemExpr t) #[] none
         | none => err ("no top: the maximal elements are " ++ braces (Ord.maximal P))
     | "bottom", [p] =>
       match getP p with
       | .error msg => err msg
       | .ok P => match Ord.bottom P with
-        | some b => done (Ord.elemExpr b) #[] none s!"⊥ = {b}"
+        | some b => done (Ord.elemExpr b) #[] none
         | none => err ("no bottom: the minimal elements are " ++ braces (Ord.minimal P))
-    | "maximal", [p] => match getP p with | .error m => err m | .ok P => done (Ord.setExpr (Ord.maximal P)) #[] none "maximal elements"
-    | "minimal", [p] => match getP p with | .error m => err m | .ok P => done (Ord.setExpr (Ord.minimal P)) #[] none "minimal elements"
+    | "maximal", [p] => match getP p with | .error m => err m | .ok P => done (Ord.setExpr (Ord.maximal P)) #[] none
+    | "minimal", [p] => match getP p with | .error m => err m | .ok P => done (Ord.setExpr (Ord.minimal P)) #[] none
     | "le", [p, a, b] =>
       match getP p with
       | .error msg => err msg
@@ -567,14 +567,14 @@ def orderCell (s : Session) (cellId source : String) :
             let chain := path P.elems.length x [x]
             let steps := (chain.zip chain.tail).toArray.map fun (u, v) =>
               step "order.cover" s!"${u} \\lessdot {v}$: a cover in the Hasse diagram; by transitivity ${x} \\le {v}$." (Ord.elemExpr u) (Ord.elemExpr v)
-            done (bool true) steps none s!"{x} ≤ {y}"
-          else done (bool false) #[step "order.incomparable" s!"${x} \\le {y}$ is not in the order (and there is no chain of covers from ${x}$ to ${y}$)." (Ord.elemExpr x) (bool false)] none s!"{x} ≰ {y}"
+            done (bool true) steps none
+          else done (bool false) #[step "order.incomparable" s!"${x} \\le {y}$ is not in the order (and there is no chain of covers from ${x}$ to ${y}$)." (Ord.elemExpr x) (bool false)] none
         | .error m, _ | _, .error m => err m
     | "monotone", [p, f] =>
       match getP p, getF f with
       | .ok P, .ok F => match Ord.monotoneFailure P F with
-        | none => done (bool true) #[step "order.monotone" "For every $x \\le y$, $f(x) \\le f(y)$: monotone." (Ord.setExpr P.elems) (bool true)] none "monotone"
-        | some (x, y) => done (bool false) #[step "order.monotone" s!"${x} \\le {y}$ but $f({x}) = {F.apply x} \\not\\le f({y}) = {F.apply y}$: not monotone." (Ord.setExpr [x, y]) (bool false)] none s!"not monotone at {x} ≤ {y}"
+        | none => done (bool true) #[step "order.monotone" "For every $x \\le y$, $f(x) \\le f(y)$: monotone." (Ord.setExpr P.elems) (bool true)] none
+        | some (x, y) => done (bool false) #[step "order.monotone" s!"${x} \\le {y}$ but $f({x}) = {F.apply x} \\not\\le f({y}) = {F.apply y}$: not monotone." (Ord.setExpr [x, y]) (bool false)] none
       | .error m, _ | _, .error m => err m
     | "lfp", [p, f] =>
       match getP p, getF f with
@@ -589,11 +589,11 @@ def orderCell (s : Session) (cellId source : String) :
           let steps := (chain.zip chain.tail).toArray.map fun (u, v) =>
             step "order.iterate" s!"$f({u}) = {v}$; the chain from ${start}$ climbs, since $f$ is monotone." (Ord.elemExpr u) (Ord.elemExpr v)
           let steps := steps.push (step "order.fixed" (if least then s!"$f({last}) = {last}$: a fixed point, and below every fixed point (order.iter_le_fixed): the least." else s!"$f({last}) = {last}$: a fixed point, and above every fixed point: the greatest.") (Ord.elemExpr last) (Ord.elemExpr last))
-          done (Ord.elemExpr last) steps none s!"{if least then "lfp" else "gfp"} = {last}"
+          done (Ord.elemExpr last) steps none
       | .error m, _ | _, .error m => err m
     | "fixpoints", [p, f] =>
       match getP p, getF f with
-      | .ok P, .ok F => done (Ord.setExpr (Ord.fixedPoints P F)) #[] none "fixed points"
+      | .ok P, .ok F => done (Ord.setExpr (Ord.fixedPoints P F)) #[] none
       | .error m, _ | _, .error m => err m
     -- relations: a relation's own name, or a poset's (its order, as a relation)
     | "rel", (.set xs) :: rest =>
@@ -602,11 +602,10 @@ def orderCell (s : Session) (cellId source : String) :
       | some (a, b) => err s!"{a} -> {b} mentions an element outside the set"
       | none =>
         let R := Ord.Rel.of xs ps
-        done (Ord.relExpr R) #[] none s!"a relation on {R.elems.length} element{if R.elems.length == 1 then "" else "s"} with {R.pairs.length} pair{if R.pairs.length == 1 then "" else "s"}" (bindR := some R) (graph := some (R, [], []))
+        done (Ord.relExpr R) #[] none (bindR := some R) (graph := some (R, [], []))
     | "kernel", [.set xs, .maps ps] =>
       let R := Ord.kernel xs ps
-      done (Ord.relExpr R) #[step "rel.kernel" "Related when they have the same label: an equivalence relation (reflexive, symmetric and transitive, since equality of labels is)." (Ord.setExpr xs) (Ord.relExpr R)] none
-        s!"same label: {R.classes.length} class{if R.classes.length == 1 then "" else "es"}" (bindR := some R) (graph := some (R, [], []))
+      done (Ord.relExpr R) #[step "rel.kernel" "Related when they have the same label: an equivalence relation (reflexive, symmetric and transitive, since equality of labels is)." (Ord.setExpr xs) (Ord.relExpr R)] none (bindR := some R) (graph := some (R, [], []))
     | "reflexive", [r] | "symmetric", [r] | "antisymmetric", [r] | "transitive", [r] | "equivalence", [r] | "preorder", [r] =>
       match getR r with
       | .error m => err m
@@ -623,9 +622,9 @@ def orderCell (s : Session) (cellId source : String) :
           | _ => (Ord.transitiveFailure R).map fun (x, y, z) => (s!"${x} \\mathrel\{R} {y}$ and ${y} \\mathrel\{R} {z}$ but not ${x} \\mathrel\{R} {z}$", [(x, y), (y, z)])
         match props.findSome? fun p => (fail p).map (p, ·) with
         | some (p, why, bad) =>
-          done (bool false) #[step s!"rel.{p}" s!"Not {p}: {why}." (relExpr' R) (bool false)] none s!"not {p}" (graph := some (R, bad, []))
+          done (bool false) #[step s!"rel.{p}" s!"Not {p}: {why}." (relExpr' R) (bool false)] none (graph := some (R, bad, []))
         | none =>
-          done (bool true) #[step s!"rel.{props.getLast!}" s!"{", ".intercalate props |>.capitalize}: every {if props.length > 1 then "condition" else "case"} checked." (relExpr' R) (bool true)] none head (graph := some (R, [], []))
+          done (bool true) #[step s!"rel.{props.getLast!}" s!"{", ".intercalate props |>.capitalize}: every {if props.length > 1 then "condition" else "case"} checked." (relExpr' R) (bool true)] none (graph := some (R, [], []))
     | "closure", [r, .elem kind] =>
       match getR r with
       | .error m => err m
@@ -641,7 +640,7 @@ def orderCell (s : Session) (cellId source : String) :
             let nxt := addPairs cur add
             (nxt, acc.push (step "rel.transitive-closure" s!"Each pair forced by two that chain ($a \\mathrel\{R} b$ and $b \\mathrel\{R} c$ give $a \\mathrel\{R} c$): {pairsText add}." (relExpr' cur) (relExpr' nxt)))) (R, #[])
           .ok (T, steps)
-        let finish (T : Ord.Rel) (steps : Array Step) := done (relExpr' T) steps none s!"{kind} closure: {T.pairs.length - R.pairs.length} pair{if T.pairs.length - R.pairs.length == 1 then "" else "s"} added" (bindR := some T)
+        let finish (T : Ord.Rel) (steps : Array Step) := done (relExpr' T) steps none (bindR := some T)
           (graph := some (T, [], T.pairs.filter fun (a, b) => !R.has a b))
         match kind with
         | "reflexive" =>
@@ -671,13 +670,13 @@ def orderCell (s : Session) (cellId source : String) :
         | some p => err s!"classes are for equivalence relations, and this one is not {p} (closure(R, equivalence) makes it one)"
         | none =>
           let cs := R.classes
-          done (Ord.partitionExpr cs) #[step "rel.classes" "Each element's class is everything related to it; for an equivalence relation the classes partition the set." (relExpr' R) (Ord.partitionExpr cs)] none s!"{cs.length} class{if cs.length == 1 then "" else "es"}" (graph := some (R, [], []))
+          done (Ord.partitionExpr cs) #[step "rel.classes" "Each element's class is everything related to it; for an equivalence relation the classes partition the set." (relExpr' R) (Ord.partitionExpr cs)] none (graph := some (R, [], []))
     | "finer", [r, t] =>
       match getR r, getR t with
       | .ok R, .ok T =>
         match Ord.finerFailure R T with
-        | none => done (bool true) #[step "rel.finer" "Every pair of the first is a pair of the second: finer (for equivalences, each class of the first lies inside a class of the second)." (relExpr' R) (bool true)] none "finer"
-        | some (x, y) => done (bool false) #[step "rel.finer" s!"${x}$ and ${y}$ are related by the first but not by the second: not finer." (relExpr' R) (bool false)] none s!"not finer: ({x}, {y})" (graph := some (R, [(x, y)], []))
+        | none => done (bool true) #[step "rel.finer" "Every pair of the first is a pair of the second: finer (for equivalences, each class of the first lies inside a class of the second)." (relExpr' R) (bool true)] none
+        | some (x, y) => done (bool false) #[step "rel.finer" s!"${x}$ and ${y}$ are related by the first but not by the second: not finer." (relExpr' R) (bool false)] none (graph := some (R, [(x, y)], []))
       | .error m, _ | _, .error m => err m
     | "wellfounded", [r] =>
       match getR r with
@@ -685,10 +684,10 @@ def orderCell (s : Session) (cellId source : String) :
       | .ok R =>
         match Ord.wellfounded R with
         | .error m => err m
-        | .ok none => done (bool true) #[step "rel.wellfounded" "No cycle: on a finite set every chain of steps stops, so the relation is well-founded." (relExpr' R) (bool true)] none "well-founded" (graph := some (R, [], []))
+        | .ok none => done (bool true) #[step "rel.wellfounded" "No cycle: on a finite set every chain of steps stops, so the relation is well-founded." (relExpr' R) (bool true)] none (graph := some (R, [], []))
         | .ok (some c) =>
           let edges := c.zip c.tail
-          done (bool false) #[step "rel.wellfounded" s!"A cycle: {" → ".intercalate c}; following it never stops." (relExpr' R) (bool false)] none s!"not well-founded: {" → ".intercalate c}" (graph := some (R, edges, []))
+          done (bool false) #[step "rel.wellfounded" s!"A cycle: {" → ".intercalate c}; following it never stops." (relExpr' R) (bool false)] none (graph := some (R, edges, []))
     | "measure", [r, .maps ps] =>
       match getR r with
       | .error m => err m
@@ -698,8 +697,8 @@ def orderCell (s : Session) (cellId source : String) :
         | some x => err s!"measure: no number for {x}"
         | none =>
           match Ord.measureFailure R m with
-          | none => done (bool true) #[step "rel.measure" "The measure goes down along every step, and a natural number cannot go down forever: well-founded." (relExpr' R) (bool true)] none "the measure decreases along every step"
-          | some (x, y) => done (bool false) #[step "rel.measure" s!"The step ${x} \\to {y}$ does not decrease the measure ({(m x).getD 0} to {(m y).getD 0})." (relExpr' R) (bool false)] none s!"not decreasing at {x} → {y}" (graph := some (R, [(x, y)], []))
+          | none => done (bool true) #[step "rel.measure" "The measure goes down along every step, and a natural number cannot go down forever: well-founded." (relExpr' R) (bool true)] none
+          | some (x, y) => done (bool false) #[step "rel.measure" s!"The step ${x} \\to {y}$ does not decrease the measure ({(m x).getD 0} to {(m y).getD 0})." (relExpr' R) (bool false)] none (graph := some (R, [(x, y)], []))
     -- happens-before: each process's events in order, and messages from send to receipt
     | "events", args | "clocks", args =>
       let procs := args.filterMap fun a => match a with | .set xs => some xs | _ => none
@@ -715,39 +714,37 @@ def orderCell (s : Session) (cellId source : String) :
         | .ok P =>
           if head == "events" then
             withPoset P #[step "order.happens-before" "Happens-before: each process's events in order, each message's sending before its receipt, and everything that follows by transitivity." (Ord.setExpr all) (Ord.posetExpr P)]
-              s!"{all.length} events on {procs.length} processes, {msgs.length} message{if msgs.length == 1 then "" else "s"}"
           else
             let tuple (ns : List Nat) := "(" ++ ", ".intercalate (ns.map toString) ++ ")"
             let entries := all.map fun e => s!"{e}↦{tuple (procs.map fun p => (p.filter fun x => P.rel x e).length)}"
             done (Ord.setExpr entries) #[step "order.clocks" "An event's vector clock counts, for each process, that process's events that happen before it or are it. One event happens before another exactly when its clock is below the other's in every entry." (Ord.setExpr all) (Ord.setExpr entries)] none
-              s!"vector clocks of {all.length} events"
     | "concurrent", [p, a, b] =>
       match getP p with
       | .error m => err m
       | .ok P => match getE P a, getE P b with
         | .ok x, .ok y =>
           let c := !P.rel x y && !P.rel y x
-          done (bool c) #[step "order.concurrent" (if c then s!"Neither ${nm x} \\le {nm y}$ nor ${nm y} \\le {nm x}$: concurrent." else s!"${nm (if P.rel x y then x else y)} \\le {nm (if P.rel x y then y else x)}$: one happens before the other.") (Ord.setExpr [x, y]) (bool c)] none (if c then "concurrent" else "ordered")
+          done (bool c) #[step "order.concurrent" (if c then s!"Neither ${nm x} \\le {nm y}$ nor ${nm y} \\le {nm x}$: concurrent." else s!"${nm (if P.rel x y then x else y)} \\le {nm (if P.rel x y then y else x)}$: one happens before the other.") (Ord.setExpr [x, y]) (bool c)] none
         | .error m, _ | _, .error m => err m
     -- finite algebra (Algebra.lean): operation tables and their laws
     | "op", [.set xs, .table rows] =>
       match Ord.Op.ofRows xs rows with
       | .error m => err m
-      | .ok o => done (Ord.opExpr o) #[] none s!"an operation on {xs.length} elements" (bindO := some o) (table := some (o, []))
+      | .ok o => done (Ord.opExpr o) #[] none (bindO := some o) (table := some (o, []))
     | "joinop", [p] | "meetop", [p] =>
       match getP p with
       | .error m => err m
       | .ok P =>
         let which := if head == "joinop" then "join" else "meet"
         match (if head == "joinop" then Ord.joinOp P else Ord.meetOp P) with
-        | some o => done (Ord.opExpr o) #[step "alg.from-order" s!"The {which} of each pair, read off the order, as a table." (Ord.setExpr P.elems) (Ord.opExpr o)] none s!"the {which} as an operation" (bindO := some o) (table := some (o, []))
+        | some o => done (Ord.opExpr o) #[step "alg.from-order" s!"The {which} of each pair, read off the order, as a table." (Ord.setExpr P.elems) (Ord.opExpr o)] none (bindO := some o) (table := some (o, []))
         | none =>
           let pr := (Ord.allPairs P.elems).find? fun (x, y) => (if head == "joinop" then Ord.sup P [x, y] else Ord.inf P [x, y]).isNone
           err (match pr with | some (x, y) => s!"{x} and {y} have no {which}, so there is no table" | none => s!"some pair has no {which}")
     | "table", [j] =>
       match getO j with
       | .error m => err m
-      | .ok o => done (Ord.opExpr o) #[] none s!"an operation on {o.elems.length} elements" (table := some (o, []))
+      | .ok o => done (Ord.opExpr o) #[] none (table := some (o, []))
     | "associative", [j] | "commutative", [j] | "idempotent", [j] | "semilattice", [j] =>
       match getO j with
       | .error m => err m
@@ -755,15 +752,15 @@ def orderCell (s : Session) (cellId source : String) :
         let laws := if head == "semilattice" then ["associative", "commutative", "idempotent"] else [head]
         match laws.findSome? fun l => (opLawFailure o l).map (l, ·) with
         | some (l, why, cells) =>
-          done (bool false) #[step s!"alg.{l}" s!"Not {l}: {why}." (Ord.opExpr o) (bool false)] none s!"not {l}" (table := some (o, cells))
+          done (bool false) #[step s!"alg.{l}" s!"Not {l}: {why}." (Ord.opExpr o) (bool false)] none (table := some (o, cells))
         | none =>
           let what := if head == "semilattice" then "Associative, commutative and idempotent: a semilattice" else s!"{head.capitalize}: every {if head == "associative" then "triple" else if head == "commutative" then "pair" else "element"} checked"
-          done (bool true) #[step s!"alg.{laws.getLast!}" s!"{what}." (Ord.opExpr o) (bool true)] none (if head == "semilattice" then "a semilattice" else head) (table := some (o, []))
+          done (bool true) #[step s!"alg.{laws.getLast!}" s!"{what}." (Ord.opExpr o) (bool true)] none (table := some (o, []))
     | "identity", [j] =>
       match getO j with
       | .error m => err m
       | .ok o => match o.identity with
-        | some e => done (Ord.elemExpr e) #[step "alg.identity" s!"${nm e} \\cdot x = x = x \\cdot {nm e}$ for every $x$: the identity." (Ord.opExpr o) (Ord.elemExpr e)] none s!"the identity is {e}" (table := some (o, o.elems.map (e, ·)))
+        | some e => done (Ord.elemExpr e) #[step "alg.identity" s!"${nm e} \\cdot x = x = x \\cdot {nm e}$ for every $x$: the identity." (Ord.opExpr o) (Ord.elemExpr e)] none (table := some (o, o.elems.map (e, ·)))
         | none => err "no element is an identity: for each e, some x has e · x ≠ x or x · e ≠ x"
     | "fold", j :: rest =>
       match getO j with
@@ -775,13 +772,13 @@ def orderCell (s : Session) (cellId source : String) :
         match elems with
         | .error m => err m
         | .ok [] => match o.identity with
-          | some e => done (Ord.elemExpr e) #[step "alg.fold" s!"Nothing to combine: the identity, ${nm e}$." (Ord.setExpr []) (Ord.elemExpr e)] none s!"= {e}"
+          | some e => done (Ord.elemExpr e) #[step "alg.fold" s!"Nothing to combine: the identity, ${nm e}$." (Ord.setExpr []) (Ord.elemExpr e)] none
           | none => err "fold of nothing needs an identity element, and this operation has none"
         | .ok (x :: xs) =>
           let (r, steps) := xs.foldl (fun (acc, st) y =>
             let v := o.ap acc y
             (v, st.push (step "alg.fold" s!"${nm acc} \\cdot {nm y} = {nm v}$." (Ord.elemExpr acc) (Ord.elemExpr v)))) (x, #[])
-          done (Ord.elemExpr r) steps none s!"= {r}" (table := some (o, (xs.foldl (fun (acc, cs) y => (o.ap acc y, cs ++ [(acc, y)])) (x, [])).2))
+          done (Ord.elemExpr r) steps none (table := some (o, (xs.foldl (fun (acc, cs) y => (o.ap acc y, cs ++ [(acc, y)])) (x, [])).2))
     | "order", [j] =>
       match getO j with
       | .error m => err m
@@ -790,7 +787,7 @@ def orderCell (s : Session) (cellId source : String) :
         | some (l, why, _) => err s!"the order needs a semilattice, and this operation is not {l}: {deTeX why}"
         | none =>
           let P := o.order
-          withPoset P #[step "alg.order" "$x \\le y$ when $x \\cdot y = y$: a partial order in which $x \\cdot y$ is the join (semilattice_order)." (Ord.opExpr o) (Ord.posetExpr P)] "the order of the semilattice"
+          withPoset P #[step "alg.order" "$x \\le y$ when $x \\cdot y = y$: a partial order in which $x \\cdot y$ is the join (semilattice_order)." (Ord.opExpr o) (Ord.posetExpr P)]
     -- lattice properties
     | "distributive", [p] | "complemented", [p] | "boolean", [p] =>
       match getP p with
@@ -798,23 +795,23 @@ def orderCell (s : Session) (cellId source : String) :
       | .ok P =>
         match Ord.joinOp P, Ord.meetOp P with
         | some J, some M =>
-          let distrib : Option (String × Array Step) := (Ord.distribFailure J M).map fun (x, y, z) =>
+          let distrib : Option (Array Step) := (Ord.distribFailure J M).map fun (x, y, z) =>
             let l := M.ap x (J.ap y z)
             let r := J.ap (M.ap x y) (M.ap x z)
-            (s!"not distributive at {x}, {y}, {z}", #[step "order.distributive" s!"Not distributive: ${nm x} \\land ({nm y} \\lor {nm z}) = {nm x} \\land {nm (J.ap y z)} = {nm l}$, but $({nm x} \\land {nm y}) \\lor ({nm x} \\land {nm z}) = {nm (M.ap x y)} \\lor {nm (M.ap x z)} = {nm r}$." (Ord.setExpr [x, y, z]) (bool false)])
-          let compl : Option (String × Array Step) := match Ord.top P, Ord.bottom P with
+            #[step "order.distributive" s!"Not distributive: ${nm x} \\land ({nm y} \\lor {nm z}) = {nm x} \\land {nm (J.ap y z)} = {nm l}$, but $({nm x} \\land {nm y}) \\lor ({nm x} \\land {nm z}) = {nm (M.ap x y)} \\lor {nm (M.ap x z)} = {nm r}$." (Ord.setExpr [x, y, z]) (bool false)]
+          let compl : Option (Array Step) := match Ord.top P, Ord.bottom P with
             | some t, some b => (P.elems.find? fun x => (Ord.complementsOf J M t b x).isEmpty).map fun x =>
-                (s!"{x} has no complement", #[step "order.complement" s!"No complement: no $y$ has ${nm x} \\lor y = {nm t}$ and ${nm x} \\land y = {nm b}$." (Ord.elemExpr x) (bool false)])
-            | _, _ => some ("no top or no bottom", #[step "order.complement" "Complements need a top and a bottom, and this lattice lacks one." (Ord.setExpr P.elems) (bool false)])
+                #[step "order.complement" s!"No complement: no $y$ has ${nm x} \\lor y = {nm t}$ and ${nm x} \\land y = {nm b}$." (Ord.elemExpr x) (bool false)]
+            | _, _ => some #[step "order.complement" "Complements need a top and a bottom, and this lattice lacks one." (Ord.setExpr P.elems) (bool false)]
           let checks := match head with | "distributive" => [distrib] | "complemented" => [compl] | _ => [distrib, compl]
           match checks.findSome? id with
-          | some (why, steps) => done (bool false) steps none why
+          | some steps => done (bool false) steps none
           | none =>
             let what := match head with
               | "distributive" => "$x \\land (y \\lor z) = (x \\land y) \\lor (x \\land z)$ for every triple: distributive."
               | "complemented" => "Every element has a complement."
               | _ => "Distributive and complemented: a Boolean lattice (each complement is unique)."
-            done (bool true) #[step s!"order.{if head == "boolean" then "boolean" else if head == "distributive" then "distributive" else "complement"}" what (Ord.setExpr P.elems) (bool true)] none (if head == "boolean" then "a Boolean lattice" else head)
+            done (bool true) #[step s!"order.{if head == "boolean" then "boolean" else if head == "distributive" then "distributive" else "complement"}" what (Ord.setExpr P.elems) (bool true)] none
         | _, _ => match Ord.latticeFailure P with
           | some (x, y, w) => err s!"not a lattice: {x} and {y} have no {w}"
           | none => err "not a lattice"
@@ -826,7 +823,6 @@ def orderCell (s : Session) (cellId source : String) :
         | .ok x, some J, some M, some t, some b =>
           let cs := Ord.complementsOf J M t b x
           done (Ord.setExpr cs) #[step "order.complement" s!"The $y$ with ${nm x} \\lor y = {nm t}$ and ${nm x} \\land y = {nm b}$." (Ord.elemExpr x) (Ord.setExpr cs)] none
-            (if cs.isEmpty then s!"{x} has no complement" else if cs.length == 1 then s!"one complement" else s!"{cs.length} complements")
         | _, _, _, _, _ => err "complements need a lattice with a top and a bottom"
     -- building and comparing orders
     | "product", [p, q] =>
@@ -834,7 +830,6 @@ def orderCell (s : Session) (cellId source : String) :
       | .ok P, .ok Q =>
         let R := Ord.product P Q
         withPoset R #[step "order.product" "Pairs, ordered componentwise: $(a, c) \\le (b, d)$ when $a \\le b$ and $c \\le d$." (.fn "pair" [Ord.setExpr P.elems, Ord.setExpr Q.elems]) (Ord.posetExpr R)]
-          s!"a product of {P.elems.length} × {Q.elems.length} = {R.elems.length} elements"
       | .error m, _ | _, .error m => err m
     | "map", [.elem pn, .elem qn, .maps ps] =>
       match getP (.elem pn), getP (.elem qn) with
@@ -848,35 +843,35 @@ def orderCell (s : Session) (cellId source : String) :
         | .ok tbl =>
           match P.elems.find? fun x => (tbl.lookup x).isNone with
           | some x => err s!"{x} has no value: a map from {pn} to {qn} lists every element of {pn}"
-          | none => done (Ord.setExpr (tbl.map fun (a, b) => s!"{a}↦{b}")) #[] none s!"a map from {pn} to {qn}" (bindF := some ⟨tbl⟩)
+          | none => done (Ord.setExpr (tbl.map fun (a, b) => s!"{a}↦{b}")) #[] none (bindF := some ⟨tbl⟩)
       | .error m, _ | _, .error m => err m
     | "monotone", [p, q, f] =>
       match getP p, getP q, getF f with
       | .ok P, .ok Q, .ok F => match Ord.monotoneFailure2 P Q F with
-        | none => done (bool true) #[step "order.monotone" "For every $x \\le y$, $f(x) \\le f(y)$: monotone." (Ord.setExpr P.elems) (bool true)] none "monotone"
-        | some (x, y) => done (bool false) #[step "order.monotone" s!"${nm x} \\le {nm y}$ but $f({nm x}) = {nm (F.apply x)} \\not\\le f({nm y}) = {nm (F.apply y)}$: not monotone." (Ord.setExpr [x, y]) (bool false)] none s!"not monotone at {x} ≤ {y}"
+        | none => done (bool true) #[step "order.monotone" "For every $x \\le y$, $f(x) \\le f(y)$: monotone." (Ord.setExpr P.elems) (bool true)] none
+        | some (x, y) => done (bool false) #[step "order.monotone" s!"${nm x} \\le {nm y}$ but $f({nm x}) = {nm (F.apply x)} \\not\\le f({nm y}) = {nm (F.apply y)}$: not monotone." (Ord.setExpr [x, y]) (bool false)] none
       | .error m, _, _ | _, .error m, _ | _, _, .error m => err m
     | "galois", [p, q, f, g] =>
       match getP p, getP q, getF f, getF g with
       | .ok P, .ok Q, .ok F, .ok G => match Ord.galoisFailure P Q F G with
-        | none => done (bool true) #[step "order.galois" "$f(x) \\le y \\iff x \\le g(y)$ for every $x$ and $y$: a Galois connection." (Ord.setExpr P.elems) (bool true)] none "a Galois connection"
+        | none => done (bool true) #[step "order.galois" "$f(x) \\le y \\iff x \\le g(y)$ for every $x$ and $y$: a Galois connection." (Ord.setExpr P.elems) (bool true)] none
         | some (x, y) =>
           let fx := F.apply x
           let gy := G.apply y
           let l := if Q.rel fx y then "\\le" else "\\not\\le"
           let r := if P.rel x gy then "\\le" else "\\not\\le"
-          done (bool false) #[step "order.galois" s!"Not a Galois connection: $f({nm x}) = {nm fx} {l} {nm y}$ but ${nm x} {r} g({nm y}) = {nm gy}$." (Ord.setExpr [x, y]) (bool false)] none s!"not a Galois connection at {x}, {y}"
+          done (bool false) #[step "order.galois" s!"Not a Galois connection: $f({nm x}) = {nm fx} {l} {nm y}$ but ${nm x} {r} g({nm y}) = {nm gy}$." (Ord.setExpr [x, y]) (bool false)] none
       | .error m, _, _, _ | _, .error m, _, _ | _, _, .error m, _ | _, _, _, .error m => err m
     | "closureop", [p, f] =>
       match getP p, getF f with
       | .ok P, .ok F => match Ord.closureOpFailure P F with
-        | none => done (bool true) #[step "order.closure-operator" "Extensive ($x \\le f(x)$), monotone and idempotent ($f(f(x)) = f(x)$): a closure operator." (Ord.setExpr P.elems) (bool true)] none "a closure operator"
+        | none => done (bool true) #[step "order.closure-operator" "Extensive ($x \\le f(x)$), monotone and idempotent ($f(f(x)) = f(x)$): a closure operator." (Ord.setExpr P.elems) (bool true)] none
         | some (kind, x, y) =>
           let why := match kind with
             | "extensive" => s!"${nm x} \\not\\le f({nm x}) = {nm (F.apply x)}$"
             | "monotone" => s!"${nm x} \\le {nm y}$ but $f({nm x}) = {nm (F.apply x)} \\not\\le f({nm y}) = {nm (F.apply y)}$"
             | _ => s!"$f({nm x}) = {nm (F.apply x)}$ but $f(f({nm x})) = {nm (F.apply (F.apply x))}$"
-          done (bool false) #[step "order.closure-operator" s!"Not {kind}: {why}." (Ord.setExpr [x]) (bool false)] none s!"not a closure operator: not {kind}"
+          done (bool false) #[step "order.closure-operator" s!"Not {kind}: {why}." (Ord.setExpr [x]) (bool false)] none
       | .error m, _ | _, .error m => err m
     -- formal concept analysis
     | "context", [.set objs, .set attrs, .maps inc] =>
@@ -884,13 +879,13 @@ def orderCell (s : Session) (cellId source : String) :
       | some (o, a) => err s!"{o} -> {a}: {if objs.contains o then s!"{a} is not an attribute" else s!"{o} is not an object"}"
       | none =>
         let C : Ord.Ctx := ⟨objs.eraseDups, attrs.eraseDups, inc.eraseDups⟩
-        done (.fn "set" (C.inc.map Ord.pairExpr)) #[] none s!"a context: {C.objs.length} objects, {C.attrs.length} attributes" (bindC := some C) (context := some C)
+        done (.fn "set" (C.inc.map Ord.pairExpr)) #[] none (bindC := some C) (context := some C)
     | "concepts", [c] =>
       match getC c with
       | .error m => err m
       | .ok C =>
         let P := C.lattice
-        withPoset P #[step "order.concepts" s!"Each concept pairs a set of objects with a set of attributes: all the objects that have every one of the attributes, and all the attributes they share. Ordered by their objects: {P.elems.length} concepts, a complete lattice." (.fn "set" (C.inc.map Ord.pairExpr)) (Ord.posetExpr P)] s!"{P.elems.length} concepts"
+        withPoset P #[step "order.concepts" s!"Each concept pairs a set of objects with a set of attributes: all the objects that have every one of the attributes, and all the attributes they share. Ordered by their objects: {P.elems.length} concepts, a complete lattice." (.fn "set" (C.inc.map Ord.pairExpr)) (Ord.posetExpr P)]
     -- information flow
     | "secure", [p, r, .maps labels] =>
       match getP p, getR r with
@@ -906,18 +901,17 @@ def orderCell (s : Session) (cellId source : String) :
           | none =>
             let L (x : String) : String := (lab.lookup x).getD x
             match Ord.flowFailure P L R with
-            | none => done (bool true) #[step "order.flow" "Every flow goes from a class to one at least as high: no information flows down." (Ord.relExpr R) (bool true)] none "secure: every flow goes up" (graph := some (R, [], []))
-            | some (x, y) => done (bool false) #[step "order.flow" s!"Not secure: {x} flows to {y}, but the class of {x}, ${nm (L x)}$, is not below the class of {y}, ${nm (L y)}$." (Ord.relExpr R) (bool false)] none s!"insecure: {x} → {y} flows down" (graph := some (R, [(x, y)], []))
+            | none => done (bool true) #[step "order.flow" "Every flow goes from a class to one at least as high: no information flows down." (Ord.relExpr R) (bool true)] none (graph := some (R, [], []))
+            | some (x, y) => done (bool false) #[step "order.flow" s!"Not secure: {x} flows to {y}, but the class of {x}, ${nm (L x)}$, is not below the class of {y}, ${nm (L y)}$." (Ord.relExpr R) (bool false)] none (graph := some (R, [(x, y)], []))
       | .error m, _ | _, .error m => err m
     | h, _ => err s!"{h}: wrong arguments (see the reference)"
 
-/-- What a logic cell produced: its value (a formula, a truth value, or an assignment written as a
-conjunction of literals), its derivation, a one-line summary, and for `truthtable` the table. -/
+/-- What a logic cell produced: its value (a formula, a truth value, or an assignment as a map from
+variables to truth values), its derivation, and for `truthtable` the table. -/
 structure LogicResult where
   name : Option String
   value : Expr
   derivation : Derivation
-  summary : String
   /-- The variables, then one row per assignment: the variables' values and the formula's. -/
   table : Option (List String × List (List Bool)) := none
 
@@ -939,16 +933,17 @@ def logicCell (s : Session) (cellId source : String) :
     let prep (f : Logic.Fm) : Logic.Fm := Logic.expand s.formulas f
     let tv (b : Bool) : Logic.Fm := if b then .tt else .ff
     let step (rule text : String) (before after : Expr) : Step := ⟨rule, text, [], before, after, none⟩
-    let done (name : Option String) (input : Expr) (value : Logic.Fm) (steps : Array Step) (summary : String)
-        (table : Option (List String × List (List Bool)) := none) :
+    -- `value` is what a `let` binds; the cell shows `shown` when it is given (an assignment's map)
+    let done (name : Option String) (input : Expr) (value : Logic.Fm) (steps : Array Step)
+        (table : Option (List String × List (List Bool)) := none) (shown : Option Expr := none) :
         Session × Except (String × String × Option (Nat × Nat)) LogicResult :=
-      let out := value.toExpr
+      let out := shown.getD value.toExpr
       let d : Derivation := ⟨input, steps, out⟩
       let s := { s with cells := (cellId, { output := out, derivation := d }) :: s.cells.filter (·.1 != cellId) }
       let s := match name with
         | some n => { s with formulas := (n, value) :: s.formulas.filter (·.1 != n) }
         | none => s
-      (s, .ok ⟨name, out, d, summary, table⟩)
+      (s, .ok ⟨name, out, d, table⟩)
     -- a propositional formula with at most `limit` variables, for the truth-table commands
     let propOnly (f : Logic.Fm) (what : String) (limit := Logic.maxVars) : Except String (List String) :=
       if !f.isProp then .error s!"{what} is for propositional formulas; {f.toText} has arithmetic or quantifiers in it (write it on its own to evaluate it)"
@@ -959,10 +954,10 @@ def logicCell (s : Session) (cellId source : String) :
     | .fm name f =>
       let f := prep f
       if f.isProp && !f.vars.isEmpty then
-        done name f.toExpr f #[] s!"a formula in {", ".intercalate f.vars}"
+        done name f.toExpr f #[]
       else if f.isProp then
         let b := f.eval (fun _ => false)
-        done name f.toExpr (tv b) #[step "logic.evaluate" "A formula with no variables has one value, read off its connectives' truth tables." f.toExpr (tv b).toExpr] (if b then "true" else "false")
+        done name f.toExpr (tv b) #[step "logic.evaluate" "A formula with no variables has one value, read off its connectives' truth tables." f.toExpr (tv b).toExpr]
       else
         match Logic.decide num [] f, Logic.decidingElement num f with
         | .error m, _ | _, .error m => err m
@@ -973,10 +968,7 @@ def logicCell (s : Session) (cellId source : String) :
             | none, .all x _ _ => s!"Every ${x}$ of the domain was checked: the body holds for each."
             | none, .ex x _ _ => s!"Every ${x}$ of the domain was checked: the body holds for none."
             | _, _ => "Each atom evaluated, then the connectives."
-          let summary := match el with
-            | some (x, v) => s!"{if b then "true" else "false"} ({x} = {v.toText})"
-            | none => if b then "true" else "false"
-          done name f.toExpr (tv b) #[step "logic.bounded" why f.toExpr (tv b).toExpr] summary
+          done name f.toExpr (tv b) #[step "logic.bounded" why f.toExpr (tv b).toExpr]
     | .cmd name head args =>
       let args := args.map prep
       match head, args with
@@ -985,15 +977,14 @@ def logicCell (s : Session) (cellId source : String) :
         | .error m => err m
         | .ok vs =>
           let rows := (Logic.rows vs).map fun r => r ++ [f.eval (Logic.assignment vs r)]
-          let k := (rows.filter fun r => r.getLastD false).length
-          done name (.fn "truthtable" [f.toExpr]) f #[] s!"true in {k} of {rows.length} rows" (some (vs, rows))
+          done name (.fn "truthtable" [f.toExpr]) f #[] (some (vs, rows))
       | "taut", [f] =>
         match propOnly f "taut" with
         | .error m => err m
         | .ok vs =>
           match Logic.findRow vs (fun σ => !f.eval σ) with
-          | none => done name (.fn "taut" [f.toExpr]) .tt #[step "logic.truthtable" s!"True in every one of the {(Logic.rows vs).length} rows of its truth table: a tautology." f.toExpr Logic.Fm.tt.toExpr] "a tautology"
-          | some r => done name (.fn "taut" [f.toExpr]) .ff #[step "logic.truthtable" s!"False when {Logic.rowText vs r}: not a tautology." f.toExpr Logic.Fm.ff.toExpr] s!"false when {Logic.rowText vs r}"
+          | none => done name (.fn "taut" [f.toExpr]) .tt #[step "logic.truthtable" s!"True in every one of the {(Logic.rows vs).length} rows of its truth table: a tautology." f.toExpr Logic.Fm.tt.toExpr]
+          | some r => done name (.fn "taut" [f.toExpr]) .ff #[step "logic.truthtable" s!"False when {Logic.rowText vs r}: not a tautology." f.toExpr Logic.Fm.ff.toExpr]
       | "sat", [f] | "falsify", [f] =>
         match propOnly f head with
         | .error m => err m
@@ -1001,30 +992,32 @@ def logicCell (s : Session) (cellId source : String) :
           let want := head == "sat"
           match Logic.findRow vs (fun σ => f.eval σ == want) with
           | some r =>
-            let lit := Logic.literals vs r
-            done name (.fn head [f.toExpr]) lit #[step "logic.truthtable" s!"The first row of its truth table where it is {if want then "true" else "false"}: {Logic.rowText vs r}." f.toExpr lit.toExpr] s!"{if want then "satisfied" else "falsified"} by {Logic.rowText vs r}"
-          | none => done name (.fn head [f.toExpr]) .ff #[step "logic.truthtable" s!"{if want then "False" else "True"} in every row: {if want then "unsatisfiable" else "a tautology"}, so no assignment does it (⊥: none)." f.toExpr Logic.Fm.ff.toExpr] (if want then "unsatisfiable" else "a tautology: nothing falsifies it")
+            let m := Logic.assignmentExpr vs r
+            -- a `let` binds the assignment as a formula, the conjunction of its literals
+            done name (.fn head [f.toExpr]) (Logic.literals vs r) #[step "logic.truthtable" s!"The first row of its truth table where it is {if want then "true" else "false"}: {Logic.rowText vs r}." f.toExpr m] (shown := some m)
+          | none => done name (.fn head [f.toExpr]) .ff #[step "logic.truthtable" s!"{if want then "False" else "True"} in every row: {if want then "unsatisfiable" else "a tautology"}, so no assignment does it (⊥: none)." f.toExpr Logic.Fm.ff.toExpr]
       | "equiv", [f, g] =>
         match propOnly (.and f g) "equiv" with
         | .error m => err m
         | .ok vs =>
           match Logic.findRow vs (fun σ => f.eval σ != g.eval σ) with
-          | none => done name (.fn "equiv" [f.toExpr, g.toExpr]) .tt #[step "logic.truthtable" s!"The same value in each of the {(Logic.rows vs).length} rows: equivalent." (.fn "equiv" [f.toExpr, g.toExpr]) Logic.Fm.tt.toExpr] "equivalent"
-          | some r => done name (.fn "equiv" [f.toExpr, g.toExpr]) .ff #[step "logic.truthtable" s!"They differ when {Logic.rowText vs r}: the first is {f.eval (Logic.assignment vs r)}, the second {g.eval (Logic.assignment vs r)}." (.fn "equiv" [f.toExpr, g.toExpr]) Logic.Fm.ff.toExpr] s!"not equivalent: they differ when {Logic.rowText vs r}"
+          | none => done name (.fn "equiv" [f.toExpr, g.toExpr]) .tt #[step "logic.truthtable" s!"The same value in each of the {(Logic.rows vs).length} rows: equivalent." (.fn "equiv" [f.toExpr, g.toExpr]) Logic.Fm.tt.toExpr]
+          | some r => done name (.fn "equiv" [f.toExpr, g.toExpr]) .ff #[step "logic.truthtable" s!"They differ when {Logic.rowText vs r}: the first is {f.eval (Logic.assignment vs r)}, the second {g.eval (Logic.assignment vs r)}." (.fn "equiv" [f.toExpr, g.toExpr]) Logic.Fm.ff.toExpr]
       | "nnf", [f] | "cnf", [f] | "dnf", [f] =>
         if !f.isProp then err s!"{head} is for propositional formulas; {f.toText} has arithmetic or quantifiers in it" else
         let (r, steps) := Logic.toNormal head f
         if !Logic.hasShape head r then err s!"{head}: the result {r.toText} is not in {head.toUpper} (please report this)" else
-        done name f.toExpr r steps s!"{head.toUpper}: {steps.size} step{if steps.size == 1 then "" else "s"}"
+        done name f.toExpr r steps
       | h, _ => err s!"{h}: wrong arguments (see the reference)"
 
-/-- What a systems cell produced: its value, derivation (a trace is a step per action), summary, and the
+/-- What a systems cell produced: its value, derivation (a trace is a step per action), a note, and the
 state graph to draw, with a counterexample's transitions marked or a witness's added. -/
 structure SysResult where
   name : Option String
   value : Expr
   derivation : Derivation
-  summary : String
+  /-- A note beside the answer, only when it says something neither the answer nor the work does. -/
+  summary : Option String := none
   graph : Option (Ord.Rel × List (String × String) × List (String × String)) := none
   /-- Each drawn state's distance from an initial state, for a layered drawing. -/
   layers : List Nat := []
@@ -1094,7 +1087,7 @@ def systemCell (s : Session) (cellId source : String) :
     | .ok body =>
       let (a, rest) := Sys.splitFirst body
       .fn head ([.var a] ++ (if rest.isEmpty then [] else [match Logic.parseFormula rest with | .ok f => f.toExpr | .error _ => .var rest]))
-  let done (value : Expr) (steps : Array Step) (summary : String) (bindS : Option Sys.System := none)
+  let done (value : Expr) (steps : Array Step) (summary : Option String := none) (bindS : Option Sys.System := none)
       (graph : Option (Ord.Rel × List (String × String) × List (String × String) × List Nat) := none)
       (spacetime : Option (Rep.Diagram × Array (List Nat)) := none) (bindT : Option TRS.System := none) :
       Session × Except (String × String × Option (Nat × Nat)) SysResult :=
@@ -1144,12 +1137,12 @@ def systemCell (s : Session) (cellId source : String) :
       let S ← Sys.parseSystem body
       let G ← S.explore
       let value := Expr.fn "system" [.fn "set" (S.vars.map (Expr.var ·.name)), .fn "set" (S.actions.map (Expr.var ·.name))]
-      return done value #[] s!"{S.vars.length} variable{if S.vars.length == 1 then "" else "s"}, {S.actions.length} action{if S.actions.length == 1 then "" else "s"}, {G.states.size} reachable state{if G.states.size == 1 then "" else "s"}" (bindS := some S) (graph := draw G [] [])
+      return done value #[] (summary := some s!"{G.states.size} reachable state{if G.states.size == 1 then "" else "s"}") (bindS := some S) (graph := draw G [] [])
     | "states" =>
       let S ← getS body
       let G ← S.explore
       return done (.num (Q.ofInt G.states.size)) #[step "sys.reach" s!"Breadth-first from the initial states: {G.states.size} reachable states, {G.edges.length} transitions." (.var "init") (.num (Q.ofInt G.states.size))]
-        s!"{G.states.size} reachable states, {G.edges.length} transitions" (graph := draw G [] [])
+        (graph := draw G [] [])
     | "invariant" | "reach" =>
       let (sn, ftext) := Sys.splitFirst body
       let S ← getS sn
@@ -1170,22 +1163,22 @@ def systemCell (s : Session) (cellId source : String) :
           throw "internal: the trace is not checked shortest"
         if head == "invariant" then
           let steps := steps.push (step "sys.violated" s!"Here {(φ.toExpr).toText} fails: a shortest trace to a state that breaks it." (S.stateExpr G.states[j]!) (bool false))
-          return done (bool false) steps s!"not invariant: fails after {edges.length} step{if edges.length == 1 then "" else "s"}" (graph := draw G edges [])
+          return done (bool false) steps (graph := draw G edges [])
         else
           let steps := steps.push (step "sys.found" s!"Here {(φ.toExpr).toText} holds: a shortest trace to it." (S.stateExpr G.states[j]!) (bool true))
-          return done (bool true) steps s!"reachable in {edges.length} step{if edges.length == 1 then "" else "s"}" (graph := draw G [] edges)
+          return done (bool true) steps (graph := draw G [] edges)
       | none =>
         if head == "invariant" then
-          return done (bool true) #[step "sys.invariant" s!"{(φ.toExpr).toText} holds in every one of the {G.states.size} reachable states." (φ.toExpr) (bool true)] "invariant" (graph := draw G [] [])
+          return done (bool true) #[step "sys.invariant" s!"{(φ.toExpr).toText} holds in every one of the {G.states.size} reachable states." (φ.toExpr) (bool true)] (graph := draw G [] [])
         else
-          return done (bool false) #[step "sys.unreachable" s!"None of the {G.states.size} reachable states satisfies {(φ.toExpr).toText}." (φ.toExpr) (bool false)] "unreachable" (graph := draw G [] [])
+          return done (bool false) #[step "sys.unreachable" s!"None of the {G.states.size} reachable states satisfies {(φ.toExpr).toText}." (φ.toExpr) (bool false)] (graph := draw G [] [])
     | "inductive" =>
       let (sn, ftext) := Sys.splitFirst body
       let S ← getS sn
       let φ ← Logic.parseFormula ftext
       let inits ← S.initStates
       match ← inits.findM? fun x => do return !(← S.holds φ x) with
-      | some x => return done (bool false) #[step "sys.cti" s!"Not even initially: an initial state where {(φ.toExpr).toText} fails." (.var "init") (S.stateExpr x)] "fails in an initial state"
+      | some x => return done (bool false) #[step "sys.cti" s!"Not even initially: an initial state where {(φ.toExpr).toText} fails." (.var "init") (S.stateExpr x)]
       | none =>
         let all ← S.allStates
         let G ← S.explore
@@ -1201,26 +1194,25 @@ def systemCell (s : Session) (cellId source : String) :
               | .error m => if outside.isNone then outside := some (x, m)
         if let some (x, m) := outside then
           return done (bool false) #[step "sys.cti" s!"A counterexample to induction: {(φ.toExpr).toText} holds here, and {m}. Add the variable's bounds to the formula." (φ.toExpr) (S.stateExpr x)]
-            s!"not inductive: a step from a state where it holds leaves a domain"
         match cti with
         | none =>
-          return done (bool true) #[step "sys.inductive" s!"{(φ.toExpr).toText} holds initially, and every action from a state where it holds (reachable or not: all {all.length} states checked) leads to one where it holds. So it is an invariant." (φ.toExpr) (bool true)] "inductive"
+          return done (bool true) #[step "sys.inductive" s!"{(φ.toExpr).toText} holds initially, and every action from a state where it holds (reachable or not: all {all.length} states checked) leads to one where it holds. So it is an invariant." (φ.toExpr) (bool true)]
         | some (x, a, y) =>
           let note := if reachable.contains x then "This state is reachable, so the formula is not even an invariant." else "This state is not reachable: the formula may still be an invariant, but it is too weak to prove itself. Strengthen it."
           return done (bool false) #[step "sys.cti" s!"A counterexample to induction: {(φ.toExpr).toText} holds here…" (φ.toExpr) (S.stateExpr x),
-            step "sys.cti" s!"{a}: …and fails after it. {note}" (S.stateExpr x) (S.stateExpr y)] s!"not inductive: {a} breaks it{if reachable.contains x then "" else " from an unreachable state"}"
+            step "sys.cti" s!"{a}: …and fails after it. {note}" (S.stateExpr x) (S.stateExpr y)]
     | "deadlock" =>
       let S ← getS body
       let G ← S.explore
       match (List.range G.states.size).find? fun i => !(G.edges.any fun (a, _, _) => a == i) with
       | some j =>
         let (steps, edges) ← traceSteps S G j
-        return done (bool true) (steps.push (step "sys.deadlock" "No action is enabled here: a deadlock." (S.stateExpr G.states[j]!) (bool true))) s!"a deadlock after {edges.length} step{if edges.length == 1 then "" else "s"}" (graph := draw G edges [])
-      | none => return done (bool false) #[step "sys.deadlock" s!"Every one of the {G.states.size} reachable states has an enabled action." (.var "init") (bool false)] "no deadlock" (graph := draw G [] [])
+        return done (bool true) (steps.push (step "sys.deadlock" "No action is enabled here: a deadlock." (S.stateExpr G.states[j]!) (bool true))) (graph := draw G edges [])
+      | none => return done (bool false) #[step "sys.deadlock" s!"Every one of the {G.states.size} reachable states has an enabled action." (.var "init") (bool false)] (graph := draw G [] [])
     | "rules" =>
       let R ← TRS.parseSystem body
       let value := Expr.fn "set" (R.rules.map TRS.Rule.toExpr)
-      return done value #[] s!"{R.rules.length} rule{if R.rules.length == 1 then "" else "s"}: {", ".intercalate (R.rules.map (·.name))}" (bindT := some R)
+      return done value #[] (summary := some s!"named {", ".intercalate (R.rules.map (·.name))}") (bindT := some R)
     | "rewrite" =>
       let (rn, tt) := Sys.splitFirst body
       let R ← getT rn
@@ -1232,7 +1224,7 @@ def systemCell (s : Session) (cellId source : String) :
       let (steps, _) := trace.foldl (fun (acc, prev) (ρ, p, t') =>
           (acc.push ⟨"trs.step", s!"{ρ.name}: ${ρ.lhs.toExpr.toLatex false} \\to {ρ.rhs.toExpr.toLatex false}$, {if p.isEmpty then "at the root" else "at the marked subterm"}.", p, prev.toExpr, t'.toExpr, none⟩, t'))
         (#[], t)
-      return done out.toExpr steps s!"a normal form after {trace.length} step{if trace.length == 1 then "" else "s"}"
+      return done out.toExpr steps
     | "terminates" =>
       let (rn, rest) := Sys.splitFirst body
       let R ← getT rn
@@ -1245,9 +1237,7 @@ def systemCell (s : Session) (cellId source : String) :
         step "trs.decrease" (s!"{ρ.name}: the left side's {what} is {l.text}, the right side's {r.text}: " ++
           (if ok then "larger, whatever the variables are." else "not larger for every value of the variables."))
           ρ.toExpr (bool ok)).toArray
-      match checks.find? (fun (_, l, r) => !TRS.decreases l r) with
-      | some (ρ, _, _) => return done (bool false) steps s!"not shown to terminate: {ρ.name} does not decrease the {what}"
-      | none => return done (bool true) steps s!"terminates: every rule decreases the {what}, a natural number, so no term rewrites for ever"
+      return done (bool (checks.all fun (_, l, r) => TRS.decreases l r)) steps
     | "critical" =>
       let R ← getT body.trimAscii.copy
       let cps := TRS.critical R
@@ -1275,17 +1265,17 @@ def systemCell (s : Session) (cellId source : String) :
         else if bad > 0 then s!"{pairs}, {bad} with two different normal forms: not confluent"
         else if open_ > 0 then s!"{pairs}, {open_} not joined within the step limit: undecided"
         else s!"{pairs}, all joinable: locally confluent, and confluent if it terminates (Newman's lemma)"
-      return done value steps say
+      return done value steps (summary := some say)
     | "replicas" =>
       let (kind, replicas, evs) ← Rep.parse body
       let r ← Rep.run kind replicas evs
-      let (value, say, same) := Rep.summary r
+      let (value, same) := Rep.summary r
       let steps := r.steps.map fun (rule, text, before, after, _) => step rule text before after
       let steps := steps.push (step (if same then "crdt.converged" else "crdt.diverged")
         (if same then "Every replica is in the same state, so every replica reads the same."
          else "The replicas are not all in the same state: some have not received every update yet.") value (bool same))
       let evOf := (r.steps.map (·.2.2.2.2)).push []
-      return done value steps say (spacetime := some (r.diagram, evOf))
+      return done value steps (spacetime := some (r.diagram, evOf))
     | "trace" =>
       let (sn, rest) := Sys.splitFirst body
       let S ← getS sn
@@ -1310,7 +1300,7 @@ def systemCell (s : Session) (cellId source : String) :
           let edges := (visited.zip visited.tail).filterMap fun (a, b) => do pure (← idx a, ← idx b)
           draw G edges []
         | .error _ => none
-      return done (S.stateExpr cur) steps s!"{names.length} step{if names.length == 1 then "" else "s"}" (graph := graph)
+      return done (S.stateExpr cur) steps (graph := graph)
     | "ctl" =>
       let (sn, ftext) := Sys.splitFirst body
       let S ← getS sn
@@ -1350,7 +1340,7 @@ def systemCell (s : Session) (cellId source : String) :
         steps := steps.push (step "sys.fixed" s!"No change: the {if least then "least" else "greatest"} fixed point, reached from {if least then "∅" else "all states"} (Kleene)." (Sys.stateSet G final) (Sys.stateSet G final))
       let holds := G.inits.all final.contains
       steps := steps.push (step "sys.ctl" s!"{if holds then "Every initial state is in it" else "An initial state is not in it"}: {op} {(φ.toExpr).toText} {if holds then "holds" else "fails"}." (Sys.stateSet G final) (bool holds))
-      return done (bool holds) steps s!"{op} holds in {final.length} of {n} states; {if holds then "true" else "false"} initially"
+      return done (bool holds) steps
     | "eventually" =>
       let (sn, ftext) := Sys.splitFirst body
       let S ← getS sn
@@ -1404,7 +1394,7 @@ def systemCell (s : Session) (cellId source : String) :
         if !Sys.Fair.checkDead FG G.inits good (conv path) j then throw "internal: the deadlock path does not check"
         let start := (path.head?.map (·.1)).getD j
         let steps := #[step "sys.init" "Start: an initial state." (.var "init") (fmt start)] ++ (path.map fun (a, l, b) => step "sys.step" s!"{desc l}." (fmt a) (fmt b)).toArray
-        return done (bool false) (steps.push (step "sys.deadlock" s!"No action is enabled, and {(φ.toExpr).toText} never held: the run stops without it." (fmt j) (bool false))) "never: a deadlock first" (graph := draw G (path.map fun (a, _, b) => (a, b)) [])
+        return done (bool false) (steps.push (step "sys.deadlock" s!"No action is enabled, and {(φ.toExpr).toText} never held: the run stops without it." (fmt j) (bool false))) (graph := draw G (path.map fun (a, _, b) => (a, b)) [])
       | none =>
       -- otherwise search the ¬φ states reachable without φ for a fair cycle (`Sys.Fair.search`)
       let reachableBad := bad.filter fromInit.contains
@@ -1415,7 +1405,7 @@ def systemCell (s : Session) (cellId source : String) :
       | .ok nodes =>
         -- the answer carries its certificate: ranks and helpful actions, checked (`FairProofs.lean`)
         if !Sys.Fair.checkTrue FG G.inits good nodes.toList then throw "internal: the fairness certificate does not check"
-        return done (bool true) #[step "sys.eventually" s!"Every fair run reaches {(φ.toExpr).toText}: no deadlock and no fair cycle avoids it. Checked: each ¬φ state reachable without it has a rank that no step raises, and where a run could stay level an action, enabled there and never taken, that fairness forces." (φ.toExpr) (bool true)] "eventually, on every fair run" (graph := draw G [] [])
+        return done (bool true) #[step "sys.eventually" s!"Every fair run reaches {(φ.toExpr).toText}: no deadlock and no fair cycle avoids it. Checked: each ¬φ state reachable without it has a rank that no step raises, and where a run could stay level an action, enabled there and never taken, that fairness forces." (φ.toExpr) (bool true)] (graph := draw G [] [])
       | .error (some C) =>
         -- a strongly connected set of ¬φ states holding a fair run: the lasso is a path to it, then a
         -- cycle through it taking every fair action's obligation
@@ -1448,7 +1438,7 @@ def systemCell (s : Session) (cellId source : String) :
           (path.map fun (a, l, b) => step "sys.step" s!"{desc l}." (fmt a) (fmt b)).toArray ++
           (cycle.map fun (a, l, b) => step "sys.cycle" s!"{desc l} (on the cycle)." (fmt a) (fmt b)).toArray
         let steps := steps.push (step "sys.lasso" s!"The cycle repeats forever and {(φ.toExpr).toText} never holds; every weakly fair action is taken on it or disabled somewhere on it, and every strongly fair one taken or never enabled, so the run is fair." (fmt x) (bool false))
-        return done (bool false) steps "never, on a fair run that loops" (graph := draw G ((path ++ cycle).map fun (a, _, b) => (a, b)) [])
+        return done (bool false) steps (graph := draw G ((path ++ cycle).map fun (a, _, b) => (a, b)) [])
     | "refines" =>
       let (cn, rest) := Sys.splitFirst body
       let (an, maptext) := Sys.splitFirst rest
@@ -1465,7 +1455,7 @@ def systemCell (s : Session) (cellId source : String) :
       for i in G.inits do
         let a ← abs G.states[i]!
         if !(← A.holds A.init a) then
-          return done (bool false) #[step "sys.refines" s!"The initial state {Sys.stateLabel G.states[i]!} maps to {Sys.stateLabel a}, which is not initial in {an}." (C.stateExpr G.states[i]!) (A.stateExpr a)] "an initial state maps outside the abstract initial states"
+          return done (bool false) #[step "sys.refines" s!"The initial state {Sys.stateLabel G.states[i]!} maps to {Sys.stateLabel a}, which is not initial in {an}." (C.stateExpr G.states[i]!) (A.stateExpr a)]
       let mut bad : Option (Nat × String × Nat) := none
       for (i, l, j) in G.edges do
         if bad.isNone then
@@ -1473,13 +1463,13 @@ def systemCell (s : Session) (cellId source : String) :
           let b ← abs G.states[j]!
           if a != b && !((← A.successors a).any fun (_, u) => u == b) then bad := some (i, l, j)
       match bad with
-      | none => return done (bool true) #[step "sys.refines" s!"Every step of {cn} ({G.edges.length} transitions) maps to a step of {an} or leaves the abstract state unchanged (a stutter)." (.var cn) (bool true)] "refines"
+      | none => return done (bool true) #[step "sys.refines" s!"Every step of {cn} ({G.edges.length} transitions) maps to a step of {an} or leaves the abstract state unchanged (a stutter)." (.var cn) (bool true)]
       | some (i, l, j) =>
         let (steps, edges) ← traceSteps C G i
         let a ← abs G.states[i]!
         let b ← abs G.states[j]!
         let steps := steps.push (step "sys.refines" s!"{l}: this step maps {Sys.stateLabel a} to {Sys.stateLabel b}, which is neither a step of {an} nor a stutter." (A.stateExpr a) (A.stateExpr b))
-        return done (bool false) steps s!"does not refine: {l} has no abstract counterpart" (graph := draw G (edges ++ [(i, j)]) [])
+        return done (bool false) steps (graph := draw G (edges ++ [(i, j)]) [])
     | h => throw s!"{h}: not a systems command"
   match result with
   | .ok r => r

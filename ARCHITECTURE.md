@@ -61,12 +61,25 @@ differential test with zero mismatches.
   There is no step budget anywhere: `expand` distributes by a total function
   (`Expand.dist`, proved sound over ℝ in `proofs/Proofs/Expand.lean`) and the pipeline collects
   the result.
+- **`N` is certified by interval arithmetic.** `N(a)` evaluates `a` once more over the rationals
+  (`Interval.lean`) to an interval proved to hold its exact value (`ieval_sound`,
+  `proofs/Proofs/Interval.lean`): exact rational arithmetic rounded outward, `exp`, `sin` and `cos`
+  by Taylor sums with their remainder bounds after halving the argument, then squaring or doubling
+  back, `ln` pinned by `exp`, `sqrt` by squaring, `π` to Mathlib's twenty digits. It prints the most
+  digits, up to fifteen, that the interval pins down, each within a unit of its last place
+  (`certify_sound`). What the intervals do not reach (a complex value, a pole, a jump) falls to the
+  old double-precision evaluation, `cmd.N.float`, which says it is not certified.
 - **Elimination is verified over ℚ by construction.** `LinAlgQ.lean` writes Gauss–Jordan as a
   list of the three elementary row operations, each invertible (the degenerate parameters are the
   identity), and proves `sol_rref`: the reduced matrix has the input's solution set. The `rref`
   command replays those operations into its steps when every entry is a numeral; symbolic entries
-  fall back to the simplifier-driven algorithm, whose steps are named `la.row-*.symbolic` and
-  reported unverified. That the result is in reduced row echelon form is `rref_isRref`
+  fall back to the simplifier-driven algorithm, whose steps are named `la.row-*.symbolic`. Each is
+  an exact row operation (`swapRows`, `scaleRowExact`, `addRowExact`), proved over ℝ to keep the
+  solution set at every value of the symbols (`proofs/Proofs/RowOps.lean`; scaling where the pivot
+  is not zero, which the step states), followed by the simplifier on the row it changed. A row
+  addition whose entries come out of the rules that assume nothing (checked by running them) is
+  verified; one where a cancellation assumed a base nonzero or positive is
+  `la.row-add.symbolic.assuming`, and says what it assumed. That the result is in reduced row echelon form is `rref_isRref`
   (`LinAlgRref.lean`), a column-by-column invariant.
 - **Radicals take the form the ordering can afford.** `2√2` as a term is `2 · 2^(1/2)`, heavier
   than `8^(1/2)` under any bounded numeral weight, so the engine's normal form is the single power
@@ -184,7 +197,17 @@ differential test with zero mismatches.
   quantifiers evaluate their atoms with the math pipeline and name the element that decided them.
   These rules are outside the notebook pipeline's termination ordering because they never run in
   it: each is a pass over the formula, structurally recursive, and Lean's own termination check is
-  the obligation. A `truthtable` reply carries the table as a visual spec.
+  the obligation. A `truthtable` reply carries the table as a visual spec. `sat` and `falsify`
+  answer with the assignment itself, a map `{p ↦ true, q ↦ false}` like a replica run's; a `let`
+  binds it as the conjunction of its literals, so it stays a formula.
+- **The answer says it; the work explains it; a note is the exception.** A world's reply may carry
+  a one-line note (`summary`, a λ-cell's `reading`), which the notebook shows in small grey type
+  beside the answer. It is sent only when it says something neither the answer nor the work does: a
+  Church numeral's reading, why a reduction stopped, a system's reachable states, a rewriting
+  system's rule names, `critical`'s verdict. A note that restates the answer (`fold(…) = b`, "= b")
+  or the work's last step (the counterexample of a false `taut`) is noise, and is left out. When the
+  information is the answer, it is the answer, in a standard form: `sat`'s assignment is a map, not
+  a formula with a note beside it.
 - **Plots are sampled by the engine and drawn by the notebook.** `engine.plot` simplifies the
   function under the session, records the cell, and returns a uniform sample with `null` where the
   value is not finite; the notebook's SVG and the studio's graph shot are presentation only.

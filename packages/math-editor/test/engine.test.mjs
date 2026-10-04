@@ -33,12 +33,14 @@ test("what the editor writes means what the source meant, to the engine", { skip
   });
   let compared = 0;
   // the engine's `Lam.isLambdaSource`: a λ, a definition or a λ-command, or a first word that is a
-  // λ-definition (the cells' own or the Church library's) — `fst (pair a b)` has no λ but is a λ-term
+  // λ-definition (the cells' own or the Church library's) in a source that lexes as a λ-term (`Lam.lex`)
+  // — `fst (pair a b)` has no λ but is a λ-term, `S + 1` is arithmetic
   const church = ["true", "false", "and", "or", "not", "if", "zero", "succ", "add", "mul", "pow", "iszero", "pair", "fst", "snd", "id", "const", "K", "S", "I", "omega", "Y"];
+  const lambdaLexes = /^(?:[ \t\r\n.():λ\\→]|->|[0-9]+(?![0-9])|[A-Za-z_\u0391-\u03A9\u03B1-\u03C9][A-Za-z0-9_'\u0391-\u03A9\u03B1-\u03C9]*(?![A-Za-z0-9_'\u0391-\u03A9\u03B1-\u03C9]))*$/;
   const lambdaCell = (src, defs) => {
     if (/[λ\\]|:=/.test(src) || /^\s*(normal|cbn|cbv|applicative|eta|fv|db|alpha|subst|type|infer)\s*(\d+\s*)?:(?!=)/.test(src)) return true;
     const w = src.trim().split(" ")[0] ?? "";
-    return w !== "let" && (church.includes(w) || defs.includes(w)) && (!src.includes("(") || src.includes(" "));
+    return w !== "let" && (church.includes(w) || defs.includes(w)) && (!src.includes("(") || src.includes(" ")) && lambdaLexes.test(src);
   };
   for (const { name, cells } of suites) {
     const known = [];

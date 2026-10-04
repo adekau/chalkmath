@@ -11,6 +11,8 @@ import Proofs.CxRules
 import Proofs.Fourier
 import Proofs.Stats
 import Proofs.SimpAll
+import Proofs.RowOps
+import Proofs.Interval
 import Proofs.Matrix
 import Proofs.Ledger
 /-!

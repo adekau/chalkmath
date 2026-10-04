@@ -26,7 +26,7 @@ variable {norm : Norm}
 -- ---------------------------------------------------------------------------
 
 theorem mem_pipeline_iff (r : PlainRule) : r ∈ (pipelineRulesWith norm) ↔
-    r = cmdSimplify ∨ r = cmdExpand ∨ r = cmdRref ∨ r = cmdN ∨ r = cmdSubst ∨ r = cmdIntegrate norm ∨ r = cmdSum ∨ r = cmdExpToTrig ∨ r = cmdFactor norm ∨
+    r = cmdSimplify ∨ r = cmdExpand ∨ r = cmdRref ∨ r = cmdN ∨ r = cmdNFloat ∨ r = cmdSubst ∨ r = cmdIntegrate norm ∨ r = cmdSum ∨ r = cmdExpToTrig ∨ r = cmdFactor norm ∨
     r = diffHigherOrder ∨ r = diffConstant ∨ r = diffVariable ∨ r = diffSum ∨ r = diffConstMul ∨
     r = diffProduct ∨ r = diffPower ∨ r = diffChain ∨ r = diffMatrix ∨
     r = laAdd ∨ r = laScalarMul ∨ r = laMul ∨ r = laTranspose ∨ r = laDet ∨ r = laPow ∨ r = laDot ∨ r = laNorm ∨ r = laConj ∨
@@ -219,11 +219,11 @@ theorem not_noFire_of_cmd {f : String} {es : List Expr} (h : cmdNames.contains f
     | [.num _], h | [.var _], h | [.add _], h | [.mul _], h | [.pow _ _], h | [.fn _ _], h => simp [cmdRref] at h
     | [], h => simp [cmdRref] at h
     | _ :: _ :: _, h => simp [cmdRref] at h
-  · have := hnf cmdN ((mem_pipeline_iff _).2 (by simp))
+  · have := hnf cmdNFloat ((mem_pipeline_iff _).2 (by simp))
     match es, this with
-    | [a], h => simp only [cmdN, Option.map_eq_none_iff] at h; split at h <;> simp at h
-    | [], h => simp [cmdN] at h
-    | _ :: _ :: _, h => simp [cmdN] at h
+    | [a], h => simp only [cmdNFloat, Option.map_eq_none_iff] at h; split at h <;> simp at h
+    | [], h => simp [cmdNFloat] at h
+    | _ :: _ :: _, h => simp [cmdNFloat] at h
   · have := hnf cmdSubst ((mem_pipeline_iff _).2 (by simp))
     match es, this with
     | [_, .var _, _], h => simp [cmdSubst] at h
@@ -372,10 +372,19 @@ theorem dec_cmdN : Dec norm cmdN := dec_cmd
     unfold cmdN at h; simp only [Option.map_eq_some_iff] at h; obtain ⟨_, h, _⟩ := h
     split at h
     · exact ⟨_, _, rfl, by decide⟩
-    · exact ⟨_, _, rfl, by decide⟩
     · simp at h)
   (fun e res h => by
     unfold cmdN at h; simp only [Option.map_eq_some_iff] at h; obtain ⟨r₀, _, rfl⟩ := h; exact ⟨r₀, rfl⟩)
+
+theorem dec_cmdNFloat : Dec norm cmdNFloat := dec_cmd
+  (fun e res h => by
+    unfold cmdNFloat at h; simp only [Option.map_eq_some_iff] at h; obtain ⟨_, h, _⟩ := h
+    split at h
+    · exact ⟨_, _, rfl, by decide⟩
+    · exact ⟨_, _, rfl, by decide⟩
+    · simp at h)
+  (fun e res h => by
+    unfold cmdNFloat at h; simp only [Option.map_eq_some_iff] at h; obtain ⟨r₀, _, rfl⟩ := h; exact ⟨r₀, rfl⟩)
 
 theorem dec_cmdSubst : Dec norm cmdSubst := dec_cmd
   (fun e res h => by
@@ -2857,16 +2866,17 @@ theorem dec_eulerPower : Dec norm (scalarOnly eulerPower) := dec_scalar fun e re
 With `normalizeT`'s innermost strategy this is exactly what makes cell evaluation terminate. -/
 theorem pipelineOrderedWith (norm : Norm) : Ordered (pipelineRulesWith norm) := ⟨fun r hr => by
   rw [mem_pipeline_iff] at hr
-  -- 29 commands, diff and la rules; la.part; the statistics; 27 scalar rules and la.context
+  -- 30 commands, diff and la rules; la.part; the statistics; 27 scalar rules and la.context
   rcases hr with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
     rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
-    rfl | ⟨st, hst, rfl⟩ |
+    rfl | rfl | ⟨st, hst, rfl⟩ |
     rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
     rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
   · exact dec_cmdSimplify
   · exact dec_cmdExpand
   · exact dec_cmdRref
   · exact dec_cmdN
+  · exact dec_cmdNFloat
   · exact dec_cmdSubst
   · exact dec_cmdIntegrate
   · exact dec_cmdSum
