@@ -416,6 +416,68 @@ theorem piI_mem : Mem piI Real.pi := by
   have h2 := Real.pi_lt_d20
   constructor <;> simp only [piI] <;> push_cast <;> norm_num at h1 h2 ⊢ <;> linarith
 
+/-! ## `arctan` -/
+
+/-- Below `π/2` by the check `b < piI.lo / 2`. -/
+theorem lt_pi_div_two_of {b : ℚ} (h : b < piI.lo / 2) : (b : ℝ) < Real.pi / 2 := by
+  have hb : (b : ℝ) < (piI.lo : ℝ) / 2 := by exact_mod_cast h
+  linarith [piI_mem.1]
+
+theorem neg_pi_div_two_lt_of {a : ℚ} (h : -(piI.lo / 2) < a) : -(Real.pi / 2) < (a : ℝ) := by
+  have ha : -((piI.lo : ℝ) / 2) < a := by exact_mod_cast h
+  linarith [piI_mem.1]
+
+/-- `tan t` from the intervals of `sin t` and `cos t`, for `cos t` of one sign. -/
+theorem tan_mem {t : ℝ} {s c ic : I} (hs : Mem s (Real.sin t)) (hc : Mem c (Real.cos t))
+    (hi : inv c = some ic) : Mem (mul s ic) (Real.tan t) := by
+  rw [Real.tan_eq_sin_div_cos, div_eq_mul_inv]; exact mul_mem hs (inv_mem hc hi)
+
+theorem atanCheck_mem {q a b : ℚ} {r : I} (h : atanCheck q a b = some r) : Mem r (Real.arctan q) := by
+  unfold atanCheck at h
+  split at h
+  · rename_i hr
+    obtain ⟨hlo, hab, hhi⟩ := hr
+    have hab' : (a : ℝ) ≤ b := by exact_mod_cast hab
+    split at h
+    · rename_i sa ca sb cb ha hb
+      split at h
+      · rename_i ia ib hia hib
+        split at h
+        · rename_i hc
+          cases h
+          obtain ⟨h1, h2⟩ := hc
+          have ta := (tan_mem (sinCosPoint_mem ha).1 (sinCosPoint_mem ha).2 hia).2
+          have tb := (tan_mem (sinCosPoint_mem hb).1 (sinCosPoint_mem hb).2 hib).1
+          have h1' : ((mul sa ia).hi : ℝ) ≤ q := by exact_mod_cast h1
+          have h2' : (q : ℝ) ≤ (mul sb ib).lo := by exact_mod_cast h2
+          have a1 := neg_pi_div_two_lt_of hlo
+          have b2 := lt_pi_div_two_of hhi
+          constructor
+          · calc (a : ℝ) = Real.arctan (Real.tan a) := (Real.arctan_tan a1 (by linarith)).symm
+              _ ≤ Real.arctan q := Real.arctan_mono (le_trans ta h1')
+          · calc Real.arctan q ≤ Real.arctan (Real.tan b) := Real.arctan_mono (le_trans h2' tb)
+              _ = b := Real.arctan_tan (by linarith) b2
+        · cases h
+      · cases h
+    · cases h
+  · cases h
+
+theorem atanPoint_mem {q : ℚ} {b : I} (h : atanPoint q = some b) : Mem b (Real.arctan q) :=
+  atanCheck_mem h
+
+theorem atanI_mem {a b : I} {x : ℝ} (ha : Mem a x) (h : atanI a = some b) : Mem b (Real.arctan x) := by
+  unfold atanI at h
+  cases hl : atanPoint a.lo with
+  | none => simp [hl] at h
+  | some l =>
+  cases hu : atanPoint a.hi with
+  | none => simp [hl, hu] at h
+  | some u =>
+  simp [hl, hu] at h
+  subst h
+  exact ⟨le_trans (atanPoint_mem hl).1 (Real.arctan_mono ha.1),
+    le_trans (Real.arctan_mono ha.2) (atanPoint_mem hu).2⟩
+
 /-! ## Powers and functions -/
 
 theorem asInt_eq {a : I} {n : ℤ} {v : ℝ} (h : asInt a = some n) (hv : Mem a v) : v = n := by
@@ -502,6 +564,7 @@ theorem fnI_mem {f : String} {a b : I} {x : ℝ} (ha : Mem a x) (h : fnI f a = s
         (inv_mem (lnI_mem (point_mem' (by norm_num)) (by decide) ht) hi)
     · cases h
   · simpa using sqrtI_mem ha h
+  · simpa using atanI_mem ha h
   · cases h; simpa using abs_mem ha
   · simpa using sign_mem ha h
   · cases h

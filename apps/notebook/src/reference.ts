@@ -89,10 +89,11 @@ export const FUNCTIONS: FnDoc[] = [
     details: [
       "The shape a hand derivation ends in: expand and collect, put the sum over a common denominator (Mathematica's `Together`), then take out the common factor.",
       "It is one presentation of the normal form, not a factorization into irreducibles: $x^2 - 1$ stays as it is.",
+      "The combined form is checked before it is shown: it and the input, each times the common denominator, must normalize to the same term. So the two agree wherever the denominator is not zero, and the step says which denominator it assumes nonzero: `factor(1/x + 1)` is `(x + 1)/x`, assuming $x \\neq 0$ (at $x = 0$ the input is undefined).",
     ],
     examples: [
       basic("factor(x^2 + 2*x)", "factor(a/x + b/y)"),
-      section("Scope", "factor(-2*x - 4)", "factor(x/2 + x/3)"),
+      section("Scope", "factor(-2*x - 4)", "factor(x/2 + x/3)", "factor(1/x + 1)"),
     ],
     see: ["expand", "simplify"],
   },
@@ -110,15 +111,15 @@ export const FUNCTIONS: FnDoc[] = [
     usage: [["N(e)", "gives a numerical value of `e`, to fifteen significant digits, each one certified."]],
     details: [
       "The digits are certified: the term is evaluated again over the rationals, to an interval proved to hold its exact value, and only the digits the interval pins down are shown, each within a unit of its last place. Usually that is all fifteen; when it is fewer, fewer are shown, and a value pinned down only near zero shows as 0.",
-      "Over ℂ when the term mentions `i`, or when its real value is not finite: `N(sqrt(-1))` is `i`. A complex value is certified too, its real and imaginary parts each to their own digits: sums, products, quotients and integer powers, `exp`, `sin`, `cos` and `tan`, `abs`, `conj`, `re` and `im`, `ln` and `sqrt` of a real number, and a real number to a real power, on the principal branch (`N((-8)^(1/3))` is `1 + 1.73205080756888i`).",
-      "What the intervals do not reach is a floating-point approximation in IEEE-754 double precision, and its step says it is not certified: the logarithm of a non-real number (`N(ln(i))`), a non-real base under a non-integer power (`N(i^i)`), a function across a pole or a jump (`N(tan(pi/2))`).",
+      "Over ℂ when the term mentions `i`, or when its real value is not finite: `N(sqrt(-1))` is `i`. A complex value is certified too, its real and imaginary parts each to their own digits: sums, products, quotients and integer powers, `exp`, `sin`, `cos` and `tan`, `abs`, `conj`, `re` and `im`, `ln` and `sqrt` of a real number, and a real number to a real power, on the principal branch (`N((-8)^(1/3))` is `1 + 1.73205080756888i`), and `ln` and powers of any complex number off the negative real axis, through a certified `arctan` for the angle (`N(ln(i))` is `1.5707963267949i`, `N(i^i)` is `0.207879576350762`).",
+      "What the intervals do not reach is a floating-point approximation in IEEE-754 double precision, and its step says it is not certified: a function across a pole or a jump (`N(tan(pi/2))`), the logarithm or a power of a number on the negative real axis whose imaginary part is not exactly zero, where the angle jumps, and `arcsin`, `arccos`.",
       "A value too large or too small for fifteen places is written as a product with a power of ten, `N(exp(100))` as `2.68811714181614*10^43`, which reads back as the same number (not `2.68811714181614e+43`, which would be read as that times `e`, plus 43).",
       "A term with a free variable has no numerical value.",
     ],
     examples: [
       basic("N(pi)", "N(sqrt(2))"),
       section("Scope", "N(1/3)", "N(exp(1))", "N(exp(100))", "N(sin(pi/6))", "N(sin(10^30))", note("Not certified:"), "N(tan(pi/2))"),
-      section("Over ℂ", "N(exp(i*pi/4))", "N(1/(1+i))", "N(sqrt(-4))", "N((-8)^(1/3))", note("Not certified:"), "N(ln(i))"),
+      section("Over ℂ", "N(exp(i*pi/4))", "N(1/(1+i))", "N(sqrt(-4))", "N((-8)^(1/3))", "N(ln(i))", "N(i^i)"),
     ],
     see: ["simplify"],
   },

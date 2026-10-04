@@ -12,7 +12,9 @@ The operations reduce to the real intervals of `Interval.lean` through their for
 `Complex.mul_re`, `Complex.inv_re` (with `normSq`), `Complex.exp_re`, `Complex.sin_eq`,
 `Complex.cos_eq` (with `Real.cosh_eq`, `Real.sinh_eq`); a real argument to `ln` and `sqrt`, and a real
 base under a real exponent, through `Complex.log_re`, `Complex.arg_ofReal_of_neg`,
-`Complex.ofReal_cpow` and `Complex.ofReal_cpow_of_nonpos`.
+`Complex.ofReal_cpow` and `Complex.ofReal_cpow_of_nonpos`. Any other logarithm takes its argument from
+`arctan` (`arg_eq_arctan_of_re_pos`, `arg_eq_of_im_pos`, `arg_eq_of_im_neg`, `clnI_mem`), and any other
+power is `exp(e ln b)` (`Complex.cpow_def_of_ne_zero`).
 -/
 noncomputable section
 namespace MathProofs
@@ -191,6 +193,123 @@ theorem negRealPow_mem {x y : I} {w : Ival.C} {a b : ℝ} (hx : Mem x a) (hy : M
   · rw [Complex.re_ofReal_mul, Complex.exp_ofReal_mul_I_re]; exact mul_mem hM (cosI_mem hθ hc)
   · rw [Complex.im_ofReal_mul, Complex.exp_ofReal_mul_I_im]; exact mul_mem hM (sinI_mem hθ hs)
 
+/-! ## The argument and the logarithm -/
+
+/-- Right of the imaginary axis, `arcsin (y/|z|) = arctan (y/x)`. -/
+theorem arcsin_eq_arctan_of_re_pos {z : ℂ} (h : 0 < z.re) :
+    Real.arcsin (z.im / ‖z‖) = Real.arctan (z.im / z.re) := by
+  rw [Real.arctan_eq_arcsin]
+  congr 1
+  have hn : ‖z‖ = √(z.re * z.re + z.im * z.im) := by rw [Complex.norm_def, Complex.normSq_apply]
+  have hs : √(1 + (z.im / z.re) ^ 2) = ‖z‖ / z.re := by
+    rw [hn, show 1 + (z.im / z.re) ^ 2 = (z.re * z.re + z.im * z.im) / z.re ^ 2 by field_simp,
+      Real.sqrt_div' _ (sq_nonneg _), Real.sqrt_sq h.le]
+  have hz : 0 < ‖z‖ := by
+    rw [hn]; apply Real.sqrt_pos.mpr; nlinarith [mul_self_nonneg z.im]
+  rw [hs]; field_simp
+
+/-- Right of the imaginary axis, the argument is `arctan (y/x)`. -/
+theorem arg_eq_arctan_of_re_pos {z : ℂ} (h : 0 < z.re) : Complex.arg z = Real.arctan (z.im / z.re) := by
+  rw [Complex.arg_of_re_nonneg h.le, arcsin_eq_arctan_of_re_pos h]
+
+/-- Above the real axis, the argument is `π/2 − arctan (x/y)`. -/
+theorem arg_eq_of_im_pos {z : ℂ} (h : 0 < z.im) :
+    Complex.arg z = Real.pi / 2 - Real.arctan (z.re / z.im) := by
+  rcases lt_trichotomy z.re 0 with hr | hr | hr
+  · have hneg : 0 < (-z).re := by simp; exact hr
+    rw [Complex.arg_of_re_neg_of_im_nonneg hr h.le, ← norm_neg z, arcsin_eq_arctan_of_re_pos hneg]
+    have := Real.arctan_inv_of_neg (div_neg_of_neg_of_pos hr h)
+    rw [inv_div] at this
+    simp only [Complex.neg_im, Complex.neg_re, neg_div_neg_eq]
+    rw [this]; ring
+  · rw [Complex.arg_eq_pi_div_two_iff.mpr ⟨hr, h⟩, hr, zero_div, Real.arctan_zero, sub_zero]
+  · rw [arg_eq_arctan_of_re_pos hr]
+    have := Real.arctan_inv_of_pos (div_pos hr h)
+    rw [inv_div] at this
+    exact this
+
+/-- Below the real axis, the argument is `−π/2 − arctan (x/y)`. -/
+theorem arg_eq_of_im_neg {z : ℂ} (h : z.im < 0) :
+    Complex.arg z = -(Real.pi / 2) - Real.arctan (z.re / z.im) := by
+  have hc : 0 < ((starRingEnd ℂ) z).im := by simp; exact h
+  have h1 := arg_eq_of_im_pos hc
+  have hnpi : Complex.arg z ≠ Real.pi := fun e => by
+    have := (Complex.arg_eq_pi_iff.mp e).2; linarith
+  rw [Complex.arg_conj, if_neg hnpi] at h1
+  simp only [Complex.conj_re, Complex.conj_im, div_neg, Real.arctan_neg] at h1
+  linarith
+
+theorem half_pi_mem : Mem (mul (point (1 / 2)) piI) (Real.pi / 2) := by
+  rw [show Real.pi / 2 = (((1 / 2 : ℚ)) : ℝ) * Real.pi by push_cast; ring]
+  exact mul_mem (point_mem _) piI_mem
+
+theorem cargI_mem {z : Ival.C} {u : ℂ} {θ : I} (hz : MemC z u) (h : cargI z = some θ) :
+    Mem θ (Complex.arg u) := by
+  unfold cargI at h
+  split at h
+  · rename_i hpos
+    cases hi : inv z.1 with
+    | none => simp [hi] at h
+    | some ir =>
+    simp only [hi, Option.bind_eq_bind, Option.bind_some] at h
+    have hx : 0 < u.re := lt_of_lt_of_le (by exact_mod_cast hpos) hz.1.1
+    rw [arg_eq_arctan_of_re_pos hx, div_eq_mul_inv]
+    exact atanI_mem (mul_mem hz.2 (inv_mem hz.1 hi)) h
+  · split at h
+    · rename_i _ hpos
+      cases hi : inv z.2 with
+      | none => simp [hi] at h
+      | some ii =>
+      cases ha : atanI (mul z.1 ii) with
+      | none => simp [hi, ha] at h
+      | some at' =>
+      simp [hi, ha] at h
+      subst h
+      have hy : 0 < u.im := lt_of_lt_of_le (by exact_mod_cast hpos) hz.2.1
+      rw [arg_eq_of_im_pos hy, sub_eq_add_neg, div_eq_mul_inv u.re]
+      exact add_mem (by simpa using half_pi_mem) (neg_mem (atanI_mem (mul_mem hz.1 (inv_mem hz.2 hi)) ha))
+    · split at h
+      · rename_i _ _ hneg
+        cases hi : inv z.2 with
+        | none => simp [hi] at h
+        | some ii =>
+        cases ha : atanI (mul z.1 ii) with
+        | none => simp [hi, ha] at h
+        | some at' =>
+        simp [hi, ha] at h
+        subst h
+        have hy : u.im < 0 := lt_of_le_of_lt hz.2.2 (by exact_mod_cast hneg)
+        rw [arg_eq_of_im_neg hy, sub_eq_add_neg, div_eq_mul_inv u.re]
+        exact add_mem (neg_mem (by simpa using half_pi_mem)) (neg_mem (atanI_mem (mul_mem hz.1 (inv_mem hz.2 hi)) ha))
+      · cases h
+
+theorem normSq_mem {z : Ival.C} {u : ℂ} (hz : MemC z u) :
+    Mem (add (mul z.1 z.1) (mul z.2 z.2)) (Complex.normSq u) := by
+  rw [Complex.normSq_apply]; exact add_mem (mul_mem hz.1 hz.1) (mul_mem hz.2 hz.2)
+
+/-- **The principal logarithm** of every number in the rectangle, which is away from 0 and the cut. -/
+theorem clnI_mem {z w : Ival.C} {u : ℂ} (hz : MemC z u) (h : clnI z = some w) :
+    MemC w (Complex.log u) ∧ u ≠ 0 := by
+  unfold clnI at h
+  simp only at h
+  split at h
+  · rename_i hpos
+    cases hl : lnI (add (mul z.1 z.1) (mul z.2 z.2)) with
+    | none => simp [hl] at h
+    | some l =>
+    cases ha : cargI z with
+    | none => simp [hl, ha] at h
+    | some θ =>
+    simp [hl, ha] at h
+    subst h
+    have hn := normSq_mem hz
+    have hp : 0 < Complex.normSq u := lt_of_lt_of_le (by exact_mod_cast hpos) hn.1
+    refine ⟨⟨?_, ?_⟩, Complex.normSq_pos.mp hp⟩
+    · rw [Complex.log_re, Complex.norm_def, Real.log_sqrt hp.le, div_eq_inv_mul]
+      exact mul_mem (point_mem' (by norm_num)) (lnI_mem hn hpos hl)
+    · rw [Complex.log_im]; exact cargI_mem hz ha
+  · cases h
+
 theorem cpowI_mem {b e w : Ival.C} {u v : ℂ} (hb : MemC b u) (he : MemC e v) (h : cpowI b e = some w) :
     MemC w (u ^ v) := by
   unfold cpowI at h
@@ -212,24 +331,32 @@ theorem cpowI_mem {b e w : Ival.C} {u v : ℂ} (hb : MemC b u) (he : MemC e v) (
   · split at h
     · rename_i hr
       simp only [Bool.and_eq_true] at hr
-      rw [real_of_isReal hb hr.1, real_of_isReal he hr.2]
-      split at h
-      · rename_i hpos
-        have hp : (0 : ℝ) < b.1.lo := by exact_mod_cast hpos
-        have hx : 0 < u.re := lt_of_lt_of_le hp hb.1.1
-        cases hq : powI b.1 e.1 with
-        | none => simp [hq] at h
-        | some q =>
-        simp [hq] at h
-        subst h
-        rw [← Complex.ofReal_cpow hx.le]
-        exact creal_mem (powI_mem hb.1 he.1 hq)
-      · split at h
-        · rename_i _ hneg
-          have hn : (b.1.hi : ℝ) < 0 := by exact_mod_cast hneg
-          exact negRealPow_mem hb.1 he.1 (lt_of_le_of_lt hb.1.2 hn) h
-        · cases h
-    · cases h
+      obtain ⟨⟨hbr, her⟩, hpos⟩ := hr
+      rw [real_of_isReal hb hbr, real_of_isReal he her]
+      have hp : (0 : ℝ) < b.1.lo := by exact_mod_cast (decide_eq_true_iff.mp hpos)
+      have hx : 0 < u.re := lt_of_lt_of_le hp hb.1.1
+      cases hq : powI b.1 e.1 with
+      | none => simp [hq] at h
+      | some q =>
+      simp [hq] at h
+      subst h
+      rw [← Complex.ofReal_cpow hx.le]
+      exact creal_mem (powI_mem hb.1 he.1 hq)
+    · split at h
+      · rename_i _ hr
+        simp only [Bool.and_eq_true] at hr
+        obtain ⟨⟨hbr, her⟩, hneg⟩ := hr
+        rw [real_of_isReal hb hbr, real_of_isReal he her]
+        have hn : (b.1.hi : ℝ) < 0 := by exact_mod_cast (decide_eq_true_iff.mp hneg)
+        exact negRealPow_mem hb.1 he.1 (lt_of_le_of_lt hb.1.2 hn) h
+      · -- `exp(ln b · e)`, for `b ≠ 0`
+        cases hl : clnI b with
+        | none => simp [hl] at h
+        | some l =>
+        simp only [hl, Option.bind_eq_bind, Option.bind_some] at h
+        obtain ⟨hlm, hne⟩ := clnI_mem hb hl
+        rw [Complex.cpow_def_of_ne_zero hne]
+        exact cexp_mem (cmul_mem hlm he) h
 
 /-! ## Functions -/
 
@@ -266,10 +393,10 @@ theorem cfnI_mem {f : String} {z w : Ival.C} {u : ℂ} (hz : MemC z u) (h : cfnI
     exact ⟨by rw [Complex.conj_re]; exact hz.1, by rw [Complex.conj_im]; exact neg_mem hz.2⟩
   · cases h; rw [applyFnC_re]; exact creal_mem hz.1
   · cases h; rw [applyFnC_im]; exact creal_mem hz.2
-  · -- ln of a real argument
+  · -- ln: of a real argument in closed form, otherwise through the argument
     rw [applyFnC_ln]
     split at h
-    · cases h
+    · exact (clnI_mem hz h).1
     · rename_i hr
       have hr : isReal z = true := by simpa using hr
       rw [real_of_isReal hz hr]

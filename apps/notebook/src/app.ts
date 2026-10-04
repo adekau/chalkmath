@@ -4169,7 +4169,7 @@ const RULE_NAMES: Record<string, string> = {
   "stlc.var": "Var", "stlc.abs": "→I (abstraction)", "stlc.app": "→E (application)", "stlc.constraints": "Type equations",
   "stlc.split": "Split an arrow", "stlc.unify": "Unify", "stlc.principal": "Principal type",
   "cmd.rref": "Row reduce", "cmd.integrate": "Integrate", "cmd.expand": "Expand", "cmd.subst": "Substitute", "cmd.simplify": "Simplify", "cmd.sum": "Sum", "cmd.exptotrig": "Euler's formula",
-  "cmd.N": "Numerical value", "cmd.N.float": "Floating-point value", "order.divisors": "Divisors", "order.subsets": "Subsets",
+  "cmd.N": "Numerical value", "cmd.N.float": "Floating-point value", "cmd.factor": "Common denominator", "order.divisors": "Divisors", "order.subsets": "Subsets",
 };
 
 /** The paths at which two terms differ: the smallest subterms that changed. Children are compared

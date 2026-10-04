@@ -15,6 +15,7 @@ import Proofs.RowOps
 import Proofs.Interval
 import Proofs.IntervalC
 import Proofs.Let
+import Proofs.Factor
 import Proofs.Domain
 import Proofs.DerivRules
 import Proofs.Matrix

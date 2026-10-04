@@ -306,6 +306,8 @@ def sessionTests : TestM Unit := do
   (st, r) := sessionEval st "factor(1/(x+1) + 1/(x-1))" ",\"showWork\":true"
   check "factor: checked by cross-multiplying" r "2*x/((x - 1)*(x + 1))"
   checkTrue "factor: the step says what was checked" ((derivationExplanations st "factor(1/(x+1) + 1/(x-1))").any (contains · "Checked: times its denominator"))
+  checkTrue "factor: the step names the denominator it assumes nonzero" ((derivationExplanations st "factor(1/(x+1) + 1/(x-1))").any (contains · "Assuming $\\left(x - 1\\right) \\cdot \\left(x + 1\\right) \\neq 0$"))
+    s!"{derivationExplanations st "factor(1/(x+1) + 1/(x-1))"}"
   (st, r) := ev st "diff(x*sin(x), x)"; check "diff x sin x" r "x*cos(x) + sin(x)"
   (st, r) := ev st "diff(2^x, x)"; check "diff 2^x" r "2^x*ln(2)"
   (st, r) := ev st "diff(x^x, x)"; check "diff x^x" r "x^x*(ln(x) + 1)"
@@ -681,13 +683,16 @@ def sessionTests : TestM Unit := do
 /-- `N` over ℂ: certified where the rectangle reaches, double precision where it does not. -/
 def complexNTests : TestM Unit := do
   let mut st : Store := []
-  for src in ["N(exp(i*pi/4))", "N((-8)^(1/3))", "N(ln(i))"] do
+  for src in ["N(exp(i*pi/4))", "N((-8)^(1/3))", "N(ln(i))", "N(i^i)", "N((1+i)^(1/2))", "N(ln(-1 + (sin(1)^2 + cos(1)^2 - 1)*i))"] do
     (st, _) := sessionEval st src ",\"showWork\":true"
   let lastRule (src : String) : String :=
     ((st.get "t").cells.lookup src >>= fun c => c.derivation.steps.toList.getLast? |>.map (·.rule)).getD ""
   check "N: a complex value is certified" (lastRule "N(exp(i*pi/4))") "cmd.N"
   check "N: a negative base under a real power is certified" (lastRule "N((-8)^(1/3))") "cmd.N"
-  check "N: the log of a non-real number is not" (lastRule "N(ln(i))") "cmd.N.float"
+  check "N: the log of a non-real number is certified, through a certified arctan" (lastRule "N(ln(i))") "cmd.N"
+  check "N: a non-real base under a non-real power is certified" (lastRule "N(i^i)") "cmd.N"
+  check "N: a non-real base under a fractional power is certified" (lastRule "N((1+i)^(1/2))") "cmd.N"
+  check "N: on the branch cut, where the argument jumps, it is not" (lastRule "N(ln(-1 + (sin(1)^2 + cos(1)^2 - 1)*i))") "cmd.N.float"
 
 /-- A term with every numeral exact: a decimal answer prints as the numeral it is. -/
 partial def exact : Expr → Expr
