@@ -1,17 +1,17 @@
-6	let M = op({0, 1, 2}; [0, 1, 2; 1, 1, 2; 2, 2, 2])	= [0, 1, 2; 1, 1, 2; 2, 2, 2]   [an operation on 3 elements]
-7	semilattice(M)	= true   [a semilattice]
-8	identity(M)	= 0   [the identity is 0]
-10	let U = op({{}, {a}, {b}, {a,b}}; [{}, {a}, {b}, {a,b}; {a}, {a}, {a,b}, {a,b}; {b}, {a,b}, {b}, {a,b}; {a,b}, {a,b}, {a,b}, {a,b}])	= [{}, {a}, {b}, {a,b}; {a}, {a}, {a,b}, {a,b}; {b}, {a,b}, {b}, {a,b}; {a,b}, {a,b}, {a,b}, {a,b}]   [an operation on 4 elements]
-11	semilattice(U)	= true   [a semilattice]
-14	order(M)	= poset {0, 1, 2}   [the order of the semilattice]
-15	order(U)	= poset {{}, {a}, {b}, {a,b}}   [the order of the semilattice]
-19	let RPS = op({r, p, s}; [r, p, r; p, p, s; r, s, s])	= [r, p, r; p, p, s; r, s, s]   [an operation on 3 elements]
-20	commutative(RPS)	= true   [commutative]
-21	associative(RPS)	= false   [not associative]
+6	let M = op({0, 1, 2}; [0, 1, 2; 1, 1, 2; 2, 2, 2])	= [0, 1, 2; 1, 1, 2; 2, 2, 2]
+7	semilattice(M)	= true
+8	identity(M)	= 0
+10	let U = op({{}, {a}, {b}, {a,b}}; [{}, {a}, {b}, {a,b}; {a}, {a}, {a,b}, {a,b}; {b}, {a,b}, {b}, {a,b}; {a,b}, {a,b}, {a,b}, {a,b}])	= [{}, {a}, {b}, {a,b}; {a}, {a}, {a,b}, {a,b}; {b}, {a,b}, {b}, {a,b}; {a,b}, {a,b}, {a,b}, {a,b}]
+11	semilattice(U)	= true
+14	order(M)	= poset {0, 1, 2}
+15	order(U)	= poset {{}, {a}, {b}, {a,b}}
+19	let RPS = op({r, p, s}; [r, p, r; p, p, s; r, s, s])	= [r, p, r; p, p, s; r, s, s]
+20	commutative(RPS)	= true
+21	associative(RPS)	= false
 22	order(RPS)	✗ the order needs a semilattice, and this operation is not associative: (r · p) · s = p · s = s, but r · (p · s) = r · s = r
-24	let K = op({a, b, c}; [a, b, c; a, b, c; a, b, c])	= [a, b, c; a, b, c; a, b, c]   [an operation on 3 elements]
-25	commutative(K)	= false   [not commutative]
-34	let W = op({0, 1, 2, 3}; [0, 1, 2, 3; 1, 1, 3, 3; 2, 3, 2, 3; 3, 3, 3, 3])	= [0, 1, 2, 3; 1, 1, 3, 3; 2, 3, 2, 3; 3, 3, 3, 3]   [an operation on 4 elements]
+24	let K = op({a, b, c}; [a, b, c; a, b, c; a, b, c])	= [a, b, c; a, b, c; a, b, c]
+25	commutative(K)	= false
+34	let W = op({0, 1, 2, 3}; [0, 1, 2, 3; 1, 1, 3, 3; 2, 3, 2, 3; 3, 3, 3, 3])	= [0, 1, 2, 3; 1, 1, 3, 3; 2, 3, 2, 3; 3, 3, 3, 3]
 35	semilattice(W)	= true
 36	identity(W)	= 0
 37	associative(K)	= true

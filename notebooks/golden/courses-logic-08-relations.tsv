@@ -1,22 +1,22 @@
-3	let R = rel({a, b, c}; a->b, b->c, b->b)	= {(a, b), (b, c), (b, b)}   [a relation on 3 elements with 3 pairs]
-7	reflexive(R)	= false   [not reflexive]
-8	symmetric(R)	= false   [not symmetric]
-9	antisymmetric(R)	= true   [antisymmetric]
-10	transitive(R)	= false   [not transitive]
-14	let P = rel({a, b, c, d}; a->b, b->c, c->d)	= {(a, b), (b, c), (c, d)}   [a relation on 4 elements with 3 pairs]
-15	closure(P, transitive)	= {(a, b), (b, c), (c, d), (a, c), (b, d), (a, d)}   [transitive closure: 3 pairs added]
-20	let K = kernel({r1, r2, r3, r4}; r1->k1, r2->k1, r3->k2, r4->k2)	= {(r1, r1), (r1, r2), (r2, r1), (r2, r2), (r3, r3), (r3, r4), (r4, r3), (r4, r4)}   [same label: 2 classes]
-21	equivalence(K)	= true   [equivalence]
-22	classes(K)	= {{r1, r2}, {r3, r4}}   [2 classes]
-24	let E = closure(R, equivalence)	= {(a, b), (b, c), (b, b), (a, a), (c, c), (b, a), (c, b), (a, c), (c, a)}   [equivalence closure: 6 pairs added]
-25	classes(E)	= {{a, b, c}}   [1 class]
-29	let A = kernel({r1, r2, r3, r4}; r1->a, r2->a, r3->b, r4->c)	= {(r1, r1), (r1, r2), (r2, r1), (r2, r2), (r3, r3), (r4, r4)}   [same label: 3 classes]
-30	finer(A, K)	= true   [finer]
-31	finer(K, A)	= false   [not finer: (r3, r4)]
-35	let S = rel({1, 2, 3}; 1->2, 2->1, 2->3)	= {(1, 2), (2, 1), (2, 3)}   [a relation on 3 elements with 3 pairs]
+3	let R = rel({a, b, c}; a->b, b->c, b->b)	= {(a, b), (b, c), (b, b)}
+7	reflexive(R)	= false
+8	symmetric(R)	= false
+9	antisymmetric(R)	= true
+10	transitive(R)	= false
+14	let P = rel({a, b, c, d}; a->b, b->c, c->d)	= {(a, b), (b, c), (c, d)}
+15	closure(P, transitive)	= {(a, b), (b, c), (c, d), (a, c), (b, d), (a, d)}
+20	let K = kernel({r1, r2, r3, r4}; r1->k1, r2->k1, r3->k2, r4->k2)	= {(r1, r1), (r1, r2), (r2, r1), (r2, r2), (r3, r3), (r3, r4), (r4, r3), (r4, r4)}
+21	equivalence(K)	= true
+22	classes(K)	= {{r1, r2}, {r3, r4}}
+24	let E = closure(R, equivalence)	= {(a, b), (b, c), (b, b), (a, a), (c, c), (b, a), (c, b), (a, c), (c, a)}
+25	classes(E)	= {{a, b, c}}
+29	let A = kernel({r1, r2, r3, r4}; r1->a, r2->a, r3->b, r4->c)	= {(r1, r1), (r1, r2), (r2, r1), (r2, r2), (r3, r3), (r4, r4)}
+30	finer(A, K)	= true
+31	finer(K, A)	= false
+35	let S = rel({1, 2, 3}; 1->2, 2->1, 2->3)	= {(1, 2), (2, 1), (2, 3)}
 36	symmetric(S)	= false
 37	closure(S, transitive)	= {(1, 2), (2, 1), (2, 3), (1, 1), (1, 3), (2, 2)}
-38	let T = kernel({a, b, c, d, e}; a->x, b->y, c->x, d->y, e->z)	= {(a, a), (a, c), (b, b), (b, d), (c, a), (c, c), (d, b), (d, d), (e, e)}   [same label: 3 classes]
+38	let T = kernel({a, b, c, d, e}; a->x, b->y, c->x, d->y, e->z)	= {(a, a), (a, c), (b, b), (b, d), (c, a), (c, c), (d, b), (d, d), (e, e)}
 39	classes(T)	= {{a, c}, {b, d}, {e}}
-40	let U = kernel({a, b, c, d, e}; a->p, b->p, c->p, d->q, e->q)	= {(a, a), (a, b), (a, c), (b, a), (b, b), (b, c), (c, a), (c, b), (c, c), (d, d), (d, e), (e, d), (e, e)}   [same label: 2 classes]
+40	let U = kernel({a, b, c, d, e}; a->p, b->p, c->p, d->q, e->q)	= {(a, a), (a, b), (a, c), (b, a), (b, b), (b, c), (c, a), (c, b), (c, c), (d, d), (d, e), (e, d), (e, e)}
 41	finer(T, U)	= false

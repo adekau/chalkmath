@@ -24,8 +24,8 @@
 38	(1+i)*(2-i)	= 3 + i
 39	abs(3+4i)	= 5
 42	epicycles(ℯ^(i*t) + 1/2*ℯ^(-3i*t), t)	= exp(-3*i*t)/2 + exp(i*t)
-43	let D = divisors(12)	= poset {1, 2, 3, 4, 6, 12}   [the divisors of 12 under divisibility]
-44	join(D, 4, 6)	= 12   [4 ∨ 6 = 12]
+43	let D = divisors(12)	= poset {1, 2, 3, 4, 6, 12}
+44	join(D, 4, 6)	= 12
 45	add 2 3	= λf. λx. f (f (f (f (f x))))   (the Church numeral 5)
 49	diff(x^3 * sin(x), x)	= x^3*cos(x) + 3*x^2*sin(x)
 51	diff(x^2 * cos(x), x)	= -x^2*sin(x) + 2*x*cos(x)
