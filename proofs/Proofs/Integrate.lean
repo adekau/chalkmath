@@ -102,7 +102,7 @@ end
 
 /-- `identNorm` never turns a non-variable into a variable either. -/
 theorem identNorm_var_iff (v : Expr) (y : String) : Expand.identNorm v = .var y ↔ v = .var y := by
-  cases v <;> simp only [Expand.identNorm, identPow] <;> (repeat' split) <;> simp [Expr.sub, Expr.neg]
+  cases v <;> simp only [Expand.identNorm, identPow, scaleOut] <;> (repeat' split) <;> simp [Expr.sub, Expr.neg]
 
 mutual
   /-- **The checker's identities are sound for the derivative semantics.** -/

@@ -99,6 +99,10 @@ def diffPowerAll : PlainRule :=
       else none
     | _ => none
 
+/-- `(1 − u²)^(−1/2)`, the derivative of `arcsin` at `u`. -/
+def invSqrtOneMinusSq (u : Expr) : Expr :=
+  .pow (Expr.sub Expr.one (.pow u (Expr.ofInt 2))) (.num (Q.ofRat (mkRat (-1) 2)))
+
 /-- The derivative of the outer function and the law it follows. -/
 def outerOf (f : String) (u : Expr) : Option (Expr × String) :=
   match f with
@@ -107,6 +111,9 @@ def outerOf (f : String) (u : Expr) : Option (Expr × String) :=
   | "tan" => some (.pow (.fn "cos" [u]) (Expr.ofInt (-2)), "\\tan' = \\sec^2 = 1/\\cos^2")
   | "exp" => some (.fn "exp" [u], "\\exp' = \\exp")
   | "ln" => some (.pow u Expr.minusOne, "\\ln' u = 1/u")
+  | "arctan" => some (.pow (.add [Expr.one, .pow u (Expr.ofInt 2)]) Expr.minusOne, "\\arctan' u = 1/(1 + u^2)")
+  | "arcsin" => some (invSqrtOneMinusSq u, "\\arcsin' u = 1/\\sqrt{1 - u^2}")
+  | "arccos" => some (Expr.neg (invSqrtOneMinusSq u), "\\arccos' u = -1/\\sqrt{1 - u^2}")
   | _ => none
 
 /-- The chain factor `u'`, omitted when `u` is the variable itself. -/
@@ -131,13 +138,14 @@ def diffChainAll : PlainRule :=
 differentiable, and `ln`, `tan`, real exponents and `b^u` need a domain condition besides. Each rule
 has two halves that rewrite exactly as the whole: the verified one fires where nothing is needed,
 because every part is `smooth` (differentiable everywhere) and no domain condition arises; the
-`.assuming` one fires elsewhere and its step ends with what it assumes. -/
+`.assuming` one fires elsewhere and its step ends with what it assumes. `arcsin` and `arccos` assume
+`-1 < u < 1`: they have no derivative at `±1` (and Mathlib's are constant beyond). -/
 
 def posNumeral : Expr → Bool | .num q => !q.isNeg && !q.isZero | _ => false
 
 mutual
   /-- Differentiable everywhere, in every variable: numerals, variables, constants, `+`, `·`, a power
-  by a natural numeral, a power of a positive numeral, and `sin`, `cos`, `exp` of such a term. -/
+  by a natural numeral, a power of a positive numeral, and `sin`, `cos`, `exp`, `arctan` of such a term. -/
   def smooth : Expr → Bool
     | .num _ => true
     | .var _ => true
@@ -147,7 +155,7 @@ mutual
       (match e with
        | .num n => n.isInt && decide (0 ≤ n.val.num) && smooth b
        | _ => false) || (posNumeral b && smooth e)
-    | .fn f [u] => (f == "sin" || f == "cos" || f == "exp") && smooth u
+    | .fn f [u] => (f == "sin" || f == "cos" || f == "exp" || f == "arctan") && smooth u
     | .fn _ [] => true
     | _ => false
   def smoothList : List Expr → Bool
@@ -180,6 +188,7 @@ def diffConds (e : Expr) : List String :=
       else [s!"${b.toText} > 0$"] ++ diffCond b ++ diffCond n
     | .fn "tan" [u] => [s!"$\\cos({u.toText}) \\neq 0$"] ++ diffCond u
     | .fn "ln" [u] => [s!"${u.toText} > 0$"] ++ diffCond u
+    | .fn "arcsin" [u] | .fn "arccos" [u] => [s!"$-1 < {u.toText} < 1$"] ++ diffCond u
     | .fn _ [u] => diffCond u
     | _ => []
 

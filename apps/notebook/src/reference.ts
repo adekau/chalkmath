@@ -181,7 +181,7 @@ export const FUNCTIONS: FnDoc[] = [
       basic("sin(pi)", "sin(3pi/4)"),
       section("Scope", "diff(sin(x^2), x)", "integrate(x*sin(x), x)", "plot(sin(x)/x, x, -10, 10)"),
     ],
-    see: ["cos", "tan", "exptotrig"],
+    see: ["cos", "tan", "csc", "arcsin", "exptotrig"],
     ref: "https://mathworld.wolfram.com/Sine.html",
   },
   {
@@ -192,7 +192,7 @@ export const FUNCTIONS: FnDoc[] = [
       basic("cos(pi/3)", "cos(7pi/6)"),
       section("Scope", "diff(cos(x), x)", "integrate(cos(3*x + 1), x)"),
     ],
-    see: ["sin", "tan"],
+    see: ["sin", "tan", "sec", "arccos"],
     ref: "https://mathworld.wolfram.com/Cosine.html",
   },
   {
@@ -201,10 +201,88 @@ export const FUNCTIONS: FnDoc[] = [
     details: ["The derivative is $\\sec^2 x$."],
     examples: [
       basic("tan(pi/4) + tan(pi/3)", "diff(tan(x), x)"),
-      section("Scope", "integrate(tan(x), x)"),
+      section("Scope", "integrate(tan(x), x)", "integrate(sec(x)^2, x)"),
     ],
-    see: ["sin", "cos"],
+    see: ["sin", "cos", "cot", "arctan"],
     ref: "https://mathworld.wolfram.com/Tangent.html",
+  },
+  {
+    name: "sec", area: "Elementary functions",
+    usage: [["sec(x)", "gives the secant of `x`, 1 / cos x."]],
+    details: [
+      "Notation, not a function of its own: `sec(x)` is read as `cos(x)^-1`, and the answer is written that way.",
+      "So its derivative, its integrals and its values are those of the cosine, and an exercise answer written with `sec` is checked by what it means.",
+    ],
+    examples: [
+      basic("sec(x)", "sec^2(x)", "diff(sec(x), x)"),
+      section("Scope", "integrate(sec(x)^2, x)", "diff(tan(x), x) - sec(x)^2"),
+    ],
+    see: ["cos", "csc", "cot"],
+    ref: "https://mathworld.wolfram.com/Secant.html",
+  },
+  {
+    name: "csc", area: "Elementary functions",
+    usage: [["csc(x)", "gives the cosecant of `x`, 1 / sin x."]],
+    details: ["Notation, not a function of its own: `csc(x)` is read as `sin(x)^-1`, and the answer is written that way."],
+    examples: [
+      basic("csc(x)", "csc(x) * sin(x)", "diff(csc(x), x)"),
+    ],
+    see: ["sin", "sec", "cot"],
+    ref: "https://mathworld.wolfram.com/Cosecant.html",
+  },
+  {
+    name: "cot", area: "Elementary functions",
+    usage: [["cot(x)", "gives the cotangent of `x`, 1 / tan x."]],
+    details: ["Notation, not a function of its own: `cot(x)` is read as `tan(x)^-1`, and the answer is written that way."],
+    examples: [
+      basic("cot(x)", "cot(x) * tan(x)", "diff(cot(x), x)"),
+    ],
+    see: ["tan", "sec", "csc"],
+    ref: "https://mathworld.wolfram.com/Cotangent.html",
+  },
+  {
+    name: "arcsin", area: "Elementary functions",
+    usage: [["arcsin(x)", "gives the inverse sine of `x`, the angle from -π/2 to π/2 whose sine is `x`."]],
+    details: [
+      "`sin^-1(x)` is the reciprocal $1/\\sin x$, as `sin^2(x)` is the square; write `arcsin(x)` for the inverse.",
+      "The derivative is $1/\\sqrt{1 - x^2}$; the step assumes $-1 < x < 1$, where it is proved.",
+      "`N` gives its value as a double, not certified.",
+    ],
+    examples: [
+      basic("arcsin(x)", "N(arcsin(1/2))", "diff(arcsin(x), x)"),
+      section("Scope", "diff(arcsin(2x), x)", "integrate(1/sqrt(1 - x^2), x)", "integrate(1/sqrt(4 - x^2), x)", "integrate(arcsin(x), x)"),
+    ],
+    see: ["arccos", "arctan", "sin"],
+    ref: "https://mathworld.wolfram.com/InverseSine.html",
+  },
+  {
+    name: "arccos", area: "Elementary functions",
+    usage: [["arccos(x)", "gives the inverse cosine of `x`, the angle from 0 to π whose cosine is `x`."]],
+    details: [
+      "The derivative is $-1/\\sqrt{1 - x^2}$; the step assumes $-1 < x < 1$, where it is proved.",
+      "`N` gives its value as a double, not certified.",
+    ],
+    examples: [
+      basic("N(arccos(0))", "diff(arccos(x), x)"),
+      section("Scope", "diff(arccos(x^2), x)", "integrate(arccos(2x), x)"),
+    ],
+    see: ["arcsin", "arctan", "cos"],
+    ref: "https://mathworld.wolfram.com/InverseCosine.html",
+  },
+  {
+    name: "arctan", area: "Elementary functions",
+    usage: [["arctan(x)", "gives the inverse tangent of `x`, the angle strictly between -π/2 and π/2 whose tangent is `x`."]],
+    details: [
+      "The derivative is $1/(1 + x^2)$, proved for every real `x`.",
+      "`integrate` finds $\\int dx/(k + c x^2)$ as an arctangent, and checks it by differentiating.",
+      "`N` gives its value as a double, not certified.",
+    ],
+    examples: [
+      basic("arctan(x)", "N(4*arctan(1))", "diff(arctan(x), x)"),
+      section("Scope", "integrate(1/(1 + x^2), x)", "integrate(1/(4 + x^2), x)", "integrate(arctan(x), x)"),
+    ],
+    see: ["arcsin", "arccos", "tan"],
+    ref: "https://mathworld.wolfram.com/InverseTangent.html",
   },
 
   // --- Calculus --------------------------------------------------------------------------------

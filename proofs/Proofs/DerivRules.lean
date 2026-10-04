@@ -81,10 +81,11 @@ mutual
       obtain ⟨hf, hu⟩ := h
       have hd := smooth_differentiable x u hu ρ
       simp only [evalD_fn, fnD_one]
-      rcases hf with (rfl | rfl) | rfl
+      rcases hf with ((rfl | rfl) | rfl) | rfl
       · simpa [applyFn] using hd.sin
       · simpa [applyFn] using hd.cos
       · simpa [applyFn] using hd.exp
+      · simpa [applyFn] using hd.arctan
     | .fn f [], _, ρ => by simp
     | .fn f (_ :: _ :: _), h, _ => by simp [smooth] at h
     | .matrix _, h, _ => by simp [smooth] at h
@@ -135,6 +136,8 @@ def AssumeD (ρ : EnvR) (e : Expr) : Prop :=
       else 0 < evalD ρ b ∧ DiffAt ρ x b ∧ DiffAt ρ x n
     | .fn "tan" [u] => Real.cos (evalD ρ u) ≠ 0 ∧ DiffAt ρ x u
     | .fn "ln" [u] => 0 < evalD ρ u ∧ DiffAt ρ x u
+    | .fn "arcsin" [u] => (-1 < evalD ρ u ∧ evalD ρ u < 1) ∧ DiffAt ρ x u
+    | .fn "arccos" [u] => (-1 < evalD ρ u ∧ evalD ρ u < 1) ∧ DiffAt ρ x u
     | .fn _ [u] => DiffAt ρ x u
     | _ => True
 
@@ -204,8 +207,12 @@ theorem assumeD_of_conds_nil {e : Expr} (h : diffConds e = []) (ρ : EnvR) : Ass
           · subst ht; simp at h
           · by_cases hl : f = "ln"
             · subst hl; simp at h
-            · simp only [ht, hl] at h ⊢
-              exact smooth_diffAt (diffCond_nil h) ρ
+            · by_cases has : f = "arcsin"
+              · subst has; simp at h
+              · by_cases hac : f = "arccos"
+                · subst hac; simp at h
+                · simp only [ht, hl, has, hac] at h ⊢
+                  exact smooth_diffAt (diffCond_nil h) ρ
     | num q => trivial
     | var y => trivial
     | matrix rows => trivial
@@ -274,8 +281,8 @@ theorem diffProductAll_sound {e : Expr} {res : RuleResult} (h : diffProductAll.a
     exact (hasDerivAt_prodD ρ x hA).deriv
   · cases hf
 
-/-- **`diff.chain`**: `sin`, `cos`, `exp` where the inner function is differentiable; `tan` where
-also `cos u ≠ 0`; `ln` where also `u > 0`. -/
+/-- **`diff.chain`**: `sin`, `cos`, `exp`, `arctan` where the inner function is differentiable; `tan`
+where also `cos u ≠ 0`; `ln` where also `u > 0`; `arcsin` and `arccos` where also `-1 < u < 1`. -/
 theorem diffChainAll_sound {e : Expr} {res : RuleResult} (h : diffChainAll.apply e = some res) (ρ : EnvR)
     (hA : AssumeD ρ e) : evalD ρ e = evalD ρ res.result := by
   obtain ⟨body, x, ht, rfl, hf⟩ := rule_target h
@@ -331,6 +338,21 @@ theorem diffChainAll_sound {e : Expr} {res : RuleResult} (h : diffChainAll.apply
         rw [(hd.log hu').deriv]
         simp only [fx_at, evalD_pow, evalD_minusOne, Real.rpow_neg_one]
         ring
+      · cases hout
+        have hA' : DiffAt ρ x u := by simpa [AssumeD, ht] using hA
+        have h := diff_chain_arctan_sound ρ x hA'
+        rw [D_eq, fx_fn] at h
+        rw [h]; simp [evalD_mul]
+      · cases hout
+        simp only [AssumeD, ht] at hA
+        have h := diff_chain_arcsin_sound ρ x hA.2 hA.1.1.ne' hA.1.2.ne
+        rw [D_eq, fx_fn] at h
+        rw [h]; simp [evalD_mul]
+      · cases hout
+        simp only [AssumeD, ht] at hA
+        have h := diff_chain_arccos_sound ρ x hA.2 hA.1.1.ne' hA.1.2.ne
+        rw [D_eq, fx_fn] at h
+        rw [h]; simp [evalD_mul]
       · cases hout
     · cases hf
   · cases hf
