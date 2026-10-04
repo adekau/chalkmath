@@ -483,6 +483,16 @@ async function features() {
   assert.match(lv.shown, /right/, `the page did not mark the right answer: ${lv.text}`);
   assert.match(lv.text, /truth table/, "the verdict does not say how it was decided");
   console.log("✓ logic exercise: not CNF refused, a CNF in another order accepted by truth table");
+  // the connectives typed as backslash names: each becomes its glyph at the space after it
+  await menu("Edit", "Add math cell");
+  const bk = await all().count() - 1;
+  await all().nth(bk).locator(".cellin").click();
+  await page.keyboard.type("taut(\\not p \\or q \\iff (p \\to q) \\and \\top )");
+  const typed = "taut(¬p ∨q ↔(p →q) ∧⊤)";
+  assert.equal(await all().nth(bk).locator("input.cellin").inputValue(), typed, "the backslash names did not become their glyphs");
+  await page.keyboard.press("Enter");
+  await outIs(bk, (await ref(typed, "bk")).rendered.latex, "taut typed with backslash names");
+  console.log(`✓ backslash symbols: \\not \\or \\iff \\to \\and \\top typed as ${typed}`);
   // a cell of several lines: Shift+Enter starts a new line, Enter runs it; the counterexample's steps are marked on the graph
   const lines = ["let M = system(", "var p in {idle, crit}", "var lock in bool", "init p = idle ∧ lock = false", "action enter when p = idle do p := crit", "action leave when p = crit do p := idle, lock := false", ")"];
   await menu("Edit", "Add math cell");
