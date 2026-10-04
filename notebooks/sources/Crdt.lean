@@ -2590,9 +2590,26 @@ def localEdits (alice bob carol : Node 3) : IO Unit := do
   bob.edit (fun s => addQty 1 2 1 (addItem 1 2 s))
   carol.edit (fun s => addQty 2 1 1 (addItem 2 1 s))
 
+/-- The final anti-entropy sweep: two full rounds of
+    everyone-pulls-everyone, so that every update reaches everyone. -/
+def sweep (node : Nat → Node 3) : IO Unit := do
+  for _ in [0, 1] do
+    for src in [0, 1, 2] do
+      for dst in [0, 1, 2] do
+        (node dst).pull (node src)
+
+/-- What each replica's list shows for bread, milk and eggs. -/
+def report (name : String) (alice bob carol : Node 3) : IO Unit := do
+  IO.println s!"{name}:"
+  IO.println s!"  alice: {render [1, 2, 3] (← alice.ref.get)}"
+  IO.println s!"  bob:   {render [1, 2, 3] (← bob.ref.get)}"
+  IO.println s!"  carol: {render [1, 2, 3] (← carol.ref.get)}"
+
 /-- Run one delivery schedule: local edits, then the schedule's merges
-    (duplicated, reordered, self-merges — whatever it says), then one
-    final full anti-entropy sweep so that every update reaches everyone. -/
+    (duplicated, reordered, self-merges — whatever it says), then the
+    final sweep. (Kept in small pieces: the notebook's Lean runs in a
+    browser, whose stack is far smaller than Lean's own, and one long
+    `do` block can run out of it.) -/
 def runSchedule (name : String) (sched : List (Nat × Nat)) : IO Unit := do
   let alice ← Node.new 0
   let bob   ← Node.new 1
@@ -2602,18 +2619,8 @@ def runSchedule (name : String) (sched : List (Nat × Nat)) : IO Unit := do
   localEdits alice bob carol
   for (src, dst) in sched do
     (node dst).pull (node src)
-  -- the sweep: two full rounds of everyone-pulls-everyone
-  for _ in [0, 1] do
-    for src in [0, 1, 2] do
-      for dst in [0, 1, 2] do
-        (node dst).pull (node src)
-  let sA ← alice.ref.get
-  let sB ← bob.ref.get
-  let sC ← carol.ref.get
-  IO.println s!"{name}:"
-  IO.println s!"  alice: {render [1, 2, 3] sA}"
-  IO.println s!"  bob:   {render [1, 2, 3] sB}"
-  IO.println s!"  carol: {render [1, 2, 3] sC}"
+  sweep node
+  report name alice bob carol
 
 /-- Three adversarial schedules, identical final states. -/
 def demoConvergence : IO Unit := do
