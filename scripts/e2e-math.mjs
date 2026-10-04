@@ -503,6 +503,21 @@ async function features() {
   await page.keyboard.press("Enter");
   await outIs(bk, (await ref(typed, "bk")).rendered.latex, "taut typed with backslash names");
   console.log(`✓ backslash symbols: \\not \\or \\iff \\to \\and \\top typed as ${typed}`);
+  // in a typeset cell they are listed too, and one takes the cell to its text with the symbol in place
+  await menu("Edit", "Add math cell");
+  const vk = await all().count() - 1;
+  await all().nth(vk).locator(".cellin").click();
+  await page.keyboard.press("Control+Shift+M");
+  await all().nth(vk).locator(".mi").waitFor({ timeout: 5000 });
+  await page.keyboard.type("taut(p \\o");
+  assert.ok((await page.locator(".mi-completions").innerText()).includes("∨"), "the typeset input does not list \\or");
+  await page.keyboard.type("r \\not p");
+  const vtyped = "taut(p ∨¬p)";
+  assert.equal(await all().nth(vk).locator(".mi").count(), 0, "the cell stayed typeset after \\or");
+  assert.equal(await all().nth(vk).locator("input.cellin").inputValue(), vtyped, "the typeset cell's text with the symbols in place");
+  await page.keyboard.press("Enter");
+  await outIs(vk, (await ref(vtyped, "vk")).rendered.latex, "taut typed in a typeset cell with backslash names");
+  console.log(`✓ backslash symbols in a typeset cell: \\or took it to text, ${vtyped}`);
   // a cell of several lines: Shift+Enter starts a new line, Enter runs it; the counterexample's steps are marked on the graph
   const lines = ["let M = system(", "var p in {idle, crit}", "var lock in bool", "init p = idle ∧ lock = false", "action enter when p = idle do p := crit", "action leave when p = crit do p := idle, lock := false", ")"];
   await menu("Edit", "Add math cell");

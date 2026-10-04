@@ -714,6 +714,18 @@ export class MathEdit {
     return { name: b.slice(j, i).map((a) => (a as { c: string }).c).join(""), start: j - 1 };
   }
 
+  /** The text with the pending `\name` replaced by `sym`, and the caret's place in it, just after:
+   *  for a symbol of another grammar (∧, →, λ), which the host edits as text. Null with no `\name`. */
+  commandAsText(sym: string): { text: string; caret: number } | null {
+    const p = this.pendingCommand();
+    if (!p) return null;
+    const { block: b, i } = this.caret;
+    const w = write(this.stmt);
+    const from = w.spans.get(b[p.start]!), to = w.spans.get(b[i - 1]!);
+    if (!from || !to) return null;
+    return { text: w.text.slice(0, from.start) + sym + w.text.slice(to.end), caret: from.start + sym.length };
+  }
+
   /** Replace a finished `\name` with its symbol or template. False when there is none (or no such name). */
   command(): boolean { return this.pendingCommand() ? this.mutate("struct", () => this.commandOne()) : false; }
   private commandOne(): boolean {

@@ -84,6 +84,16 @@ test("holes, Tab, and the backslash templates", () => {
   assert.equal(text("\\nope "), "\\nope");
 });
 
+test("a `\\name` of another grammar becomes the text with its symbol, the caret just after it", () => {
+  // `\and` is no symbol of this input: it stays a pending name, and the host is given the text
+  const e = typed("p+\\and", "").e;
+  assert.deepEqual(e.commandAsText("∧"), { text: "p + ∧", caret: 5 });
+  // in the middle of the input, with what follows the caret kept
+  const m = typed("{home}\\lam", "x + 1").e;
+  assert.deepEqual(m.commandAsText("λ"), { text: "λx + 1", caret: 1 });
+  assert.equal(typed("x").e.commandAsText("∧"), null);
+});
+
 test("arrows walk the slots in the order they are on screen", () => {
   // d/dx (f): from the left, → enters the variable first, then the body
   const e = typed("", "diff(f, x)").e;

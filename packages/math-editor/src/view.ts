@@ -22,6 +22,10 @@ export interface MathInputOptions {
   known?: readonly string[];
   /** The `\` symbols (the notebook passes its own table). */
   symbols?: Record<string, string>;
+  /** `\` symbols of grammars this input does not read (∧, →, λ): listed with the others, and when
+   *  one is chosen, `onTextSymbol` gets the text with it in place, to edit the cell as text. */
+  textSymbols?: Record<string, string>;
+  onTextSymbol?(text: string, caret: number): void;
   /** The accessible name, e.g. "Cell 3, math input". */
   label?: string;
   /** After every edit: the source text, and how many slots are still empty. */
@@ -190,7 +194,7 @@ export class MathInput {
   private fitted = false;
   /** The `\\` suggestions under the caret: the names that start with what has been typed. */
   /** The completion list: `\` commands, or (`fn`) functions for the name being typed. */
-  private comp: { items: { name: string; what: string; glyph: string; fn?: boolean; index?: boolean; call?: boolean }[]; index: number; box: HTMLElement; picked?: boolean } | null = null;
+  private comp: { items: { name: string; what: string; glyph: string; fn?: boolean; index?: boolean; call?: boolean; text?: boolean }[]; index: number; box: HTMLElement; picked?: boolean } | null = null;
   /** Esc closed the suggestions for this command; they come back when it changes. */
   private compDismissed: string | null = null;
 
@@ -485,8 +489,30 @@ export class MathInput {
     const s = this.ta.value;
     this.ta.value = "";
     if (!s) return;
-    for (const c of s) this.edit.type(c);
+    for (const [k, c] of Array.from(s).entries()) {
+      // what finishes a `\name` finishes one of another grammar's symbols too: the cell goes to text
+      // (a space is used up doing it, as in the editor)
+      const sym = /^[A-Za-z0-9]$/.test(c) ? null : this.textSymbol();
+      if (sym && this.toText(sym, (c === " " ? "" : c) + Array.from(s).slice(k + 1).join(""))) return;
+      this.edit.type(c);
+    }
     this.changed();
+  }
+
+  /** The symbol of another grammar the pending `\name` stands for, if it is one. */
+  private textSymbol(): string | null {
+    const p = this.edit.pendingCommand();
+    if (!p || !this.opts.onTextSymbol || p.name in this.edit.symbols) return null;
+    return this.opts.textSymbols?.[p.name] ?? null;
+  }
+
+  /** Hand the host the text with the pending `\name` replaced by `sym` and then `then`. */
+  private toText(sym: string, then = ""): boolean {
+    const r = this.edit.commandAsText(sym);
+    if (!r || !this.opts.onTextSymbol) return false;
+    this.hideSuggestions();
+    this.opts.onTextSymbol(r.text.slice(0, r.caret) + then + r.text.slice(r.caret), r.caret + then.length);
+    return true;
   }
 
   /** An edit from outside the keyboard (a keypad button): run it on the editor and redraw. */
@@ -515,11 +541,16 @@ export class MathInput {
     this.compDismissed = null;
     const q = p.name, ql = q.toLowerCase();
     const seen = new Set<string>();
-    const items: { name: string; what: string; glyph: string; fn?: boolean }[] = [];
+    const items: { name: string; what: string; glyph: string; fn?: boolean; text?: boolean }[] = [];
     for (const [name, sym] of Object.entries(this.edit.symbols)) {
       if (!name.toLowerCase().startsWith(ql) || seen.has(sym)) continue;
       seen.add(sym);
       items.push({ name, what: "symbol", glyph: sym });
+    }
+    for (const [name, sym] of Object.entries(this.opts.onTextSymbol ? this.opts.textSymbols ?? {} : {})) {
+      if (!name.toLowerCase().startsWith(ql) || seen.has(sym) || name in this.edit.symbols) continue;
+      seen.add(sym);
+      items.push({ name, what: "symbol, as text", glyph: sym, text: true });
     }
     for (const [name, t] of Object.entries(TEMPLATES)) if (name.toLowerCase().startsWith(ql)) items.push({ name, what: t.what, glyph: t.glyph });
     // an exact name first, then case-exact prefixes, then the rest
@@ -548,7 +579,7 @@ export class MathInput {
     this.showSuggestions(items);
   }
 
-  private showSuggestions(items: { name: string; what: string; glyph: string; fn?: boolean; index?: boolean; call?: boolean }[]) {
+  private showSuggestions(items: { name: string; what: string; glyph: string; fn?: boolean; index?: boolean; call?: boolean; text?: boolean }[]) {
     if (!items.length) { this.hideSuggestions(); return; }
     this.hideSuggestions();
     const box = document.createElement("div");
@@ -595,6 +626,7 @@ export class MathInput {
     const item = cp.items[cp.index]!;
     if (item.index) { this.hideSuggestions(); if (this.edit.completeIndex(item.name === "All" ? "All" : `"${item.name}"`)) this.changed(); return; }
     if (item.fn) { this.hideSuggestions(); if (this.edit.completeName(item.name, item.call)) this.changed(); return; }
+    if (item.text) { this.toText(item.glyph); return; }
     const p = this.edit.pendingCommand();
     if (!p) return;
     const name = item.name;
@@ -658,11 +690,13 @@ export class MathInput {
       case "Delete": edited = e.deleteForward(); break;
       case "Tab":
         // a pending `\name` finishes; otherwise the next empty slot — and with none, Tab leaves the input
+        if (this.textSymbol()) { ev.preventDefault(); this.toText(this.textSymbol()!); return; }
         if (e.command()) edited = true;
         else if (!e.hole(ev.shiftKey ? -1 : 1)) return;
         break;
       case "Enter":
         ev.preventDefault();
+        if (this.textSymbol()) { this.toText(this.textSymbol()!); return; }
         if (e.command()) { this.changed(); return; }
         this.opts.onEnter?.();
         return;

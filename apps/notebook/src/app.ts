@@ -52,7 +52,7 @@ const DOC_BY_NAME = new Map(DOCS.map((d) => [d.name, d]));
 
 /** Lean-style backslash abbreviations: type `\`, see them all, filter as you type, Tab inserts the symbol.
  *  `text`: the symbol belongs to another world's grammar (λ-terms, logic, systems, types), which the
- *  typeset input does not read, so it is offered in a cell's text only. */
+ *  typeset input does not read: chosen there, it takes the cell to its text (`openText`). */
 interface Sym { abbr: string; aliases: string[]; sym: string; what: string; text?: true }
 const SYMBOLS: Sym[] = [
   { abbr: "lam", aliases: ["lambda", "l"], sym: "λ", what: "lambda", text: true },
@@ -107,10 +107,12 @@ const SYMBOLS: Sym[] = [
 /** `\abbr` at the end of the text before the caret → the symbol; longest abbreviations first so `\eps` beats `\e`. */
 const SYMBOL_RE = new RegExp("\\\\(" + SYMBOLS.flatMap((s) => [s.abbr, ...s.aliases]).sort((a, b) => b.length - a.length).join("|") + ")$");
 const symbolFor = (name: string) => SYMBOLS.find((s) => s.abbr === name || s.aliases.includes(name))?.sym ?? "";
-/** The same table for the visual input, whose `\\` also inserts templates (`\\frac`, `\\int`, …).
- *  Not the `text` symbols: a λ-cell or a formula is not the grammar the visual input reads, and stays raw. */
-const VISUAL_SYMBOLS: Record<string, string> = Object.fromEntries(
-  SYMBOLS.filter((s) => !s.text).flatMap((s) => [s.abbr, ...s.aliases].map((a) => [a, s.sym])));
+/** The same table for the visual input, whose `\\` also inserts templates (`\\frac`, `\\int`, …),
+ *  split: the symbols it reads, and the `text` ones, which a λ-cell or a formula has and which the
+ *  visual input does not read, so the cell goes to its text with the symbol. */
+const symbolTable = (text: boolean): Record<string, string> => Object.fromEntries(
+  SYMBOLS.filter((s) => !!s.text === text).flatMap((s) => [s.abbr, ...s.aliases].map((a) => [a, s.sym])));
+const VISUAL_SYMBOLS = symbolTable(false), TEXT_SYMBOLS = symbolTable(true);
 type CompItem = { kind: "doc"; doc: Doc }
   /** A name bound in the session: a value, a file, or a function (which opens its call). */
   | { kind: "name"; name: string; what: string; call: boolean } | { kind: "sym"; sym: Sym } | { kind: "tpl"; name: string; what: string; glyph: string }
@@ -3631,6 +3633,18 @@ function openTemplate(cell: Cell, before: string, after: string): boolean {
   return true;
 }
 
+/** A symbol of another grammar (∧, →, λ) chosen in a typeset input: the cell goes to its text, with
+ *  the symbol in place and the caret after it, since a formula or a λ-term is edited as text. */
+function openText(cell: Cell, text: string, caret: number) {
+  cell.src = text;
+  delete cell.tree;
+  cell.autoVisual = false; cell.autoFor = text;
+  refreshInput(cell);
+  const input = cell.input;
+  if (input) { input.focus(); input.setSelectionRange(caret, caret); syncHighlight(cell); }
+  renderSidebar(); renderTabs();
+}
+
 /** `?` typed in a typeset input that holds nothing yet, or only `let name =`: the cell becomes a
  *  question (`?…`, `let name = ?…`), which is edited as text, with the caret after the `?`. */
 function openQuestion(cell: Cell): boolean {
@@ -3648,6 +3662,7 @@ function openQuestion(cell: Cell): boolean {
 function visualInput(cell: Cell, i: number): MathInput | null {
   const opts: MathInputOptions = {
     known: sessionFns(), symbols: VISUAL_SYMBOLS, label: `Cell ${i + 1}, math input`,
+    textSymbols: TEXT_SYMBOLS, onTextSymbol: (text, caret) => openText(cell, text, caret),
     onFocus: () => { S.active = i; renderChrome(); renderSidebar(); markActive(); updateKeypad(); },
     onBlur: () => { hideSigHelp(); autoSettle(cell); updateKeypad(); },
     onCaret: () => updateVisualSigHelp(cell),
