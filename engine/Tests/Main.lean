@@ -914,8 +914,19 @@ def systemsTests : TestM Unit := do
   let (_, ctlRaw) := handleS st (req "3" "ctl(C, EF x = 2)")
   checkTrue "systems: a CTL formula's fixed point, a round a step" (contains ctlRaw "\"rule\":\"sys.iterate\"" && contains ctlRaw "\"rule\":\"sys.fixed\"") ctlRaw
 
+/-- Inverse trigonometric functions, and `sec`, `csc`, `cot` and `f^-1(x)` as reciprocals. -/
+def trigTests : TestM Unit := do
+  let (_, r) := sessionEval {} "sin^-1(y)"; check "sin^-1(y) is the reciprocal, not arcsin" r "1/sin(y)"
+  let (_, r) := sessionEval {} "tan^-2(y)"; check "a negative power before the argument" r "1/tan(y)^2"
+  let (_, r) := sessionEval {} "sec(y) + csc(y) + cot(y)"; check "sec, csc and cot are read as reciprocals" r "1/cos(y) + 1/sin(y) + 1/tan(y)"
+  let (_, r) := sessionEval {} "sec^2(y)"; check "sec^2(y) is cos(y)^-2" r "1/cos(y)^2"
+  let (_, r) := sessionEval {} "sec(y, 2)"; check "sec with two arguments is left alone" r "sec(y, 2)"
+  check "arctan prints" (roundtrip "arctan(x)") "arctan(x)"
+  check "arcsin latex" (latexOf "arcsin(x)") "\\arcsin\\left(x\\right)"
+  check "arccos^2 latex" (latexOf "arccos^2(x)") "{\\arccos\\left(x\\right)}^{2}"
+
 def main : IO UInt32 := do
-  let ((), failures) ← (do tests; sessionTests; partStatTests; workTests; checkTests; logicRelTests; algebraTests; systemsTests; complexNTests; goldenTests).run #[]
+  let ((), failures) ← (do tests; sessionTests; trigTests; partStatTests; workTests; checkTests; logicRelTests; algebraTests; systemsTests; complexNTests; goldenTests).run #[]
   for f in failures do
     IO.println s!"FAIL {f.name}\n  expected: {f.expected}\n  actual:   {f.actual}"
   IO.println s!"{failures.size} failures"

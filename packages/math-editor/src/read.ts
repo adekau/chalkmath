@@ -18,13 +18,13 @@ export type ReadResult = { ok: true; stmt: Stmt } | { ok: false; error: ReadErro
 
 /** `builtinFunctions` in `Parser.lean`: a name followed by `(` is a call only if it is one of these
  *  or a function the session defined (`known`); otherwise it is a product, `f·(x)`. */
-export const BUILTIN_FUNCTIONS = ["sin", "cos", "tan", "exp", "ln", "log", "sqrt", "abs", "conj", "re", "im",
+export const BUILTIN_FUNCTIONS = ["sin", "cos", "tan", "sec", "csc", "cot", "arcsin", "arccos", "arctan", "exp", "ln", "log", "sqrt", "abs", "conj", "re", "im",
   "diff", "simplify", "expand", "factor", "N", "det", "rref", "transpose", "solve", "subst", "integrate", "plot",
   "sign", "dot", "norm", "sum", "exptotrig", "epicycles", "dft", "manipulate", "column",
   "total", "mean", "variance", "stdev", "min", "max", "median"];
 
-/** `sin^2(y)` is `sin(y)^2` for these. */
-const POWER_FNS = ["sin", "cos", "tan", "exp", "ln", "log", "sqrt", "abs"];
+/** `powerFunctions`: `sin^2(y)` is `sin(y)^2` for these, and `sin^-1(y)` is `sin(y)^-1`. */
+const POWER_FNS = ["sin", "cos", "tan", "sec", "csc", "cot", "arcsin", "arccos", "arctan", "exp", "ln", "log", "sqrt", "abs"];
 
 /** `str`: a name in quotes, which only an index of a part can hold (`t[["mass"]]`, a file's column,
  *  which the notebook reads before the engine sees the cell); anywhere else it is the engine's
@@ -198,12 +198,15 @@ class Reader {
     switch (t.kind) {
       case "num": return chars(t.s);
       case "id": {
-        const powFn = POWER_FNS.includes(t.s) && this.isOp(this.peek(0), "^") && this.peek(1).kind === "num" && this.isOp(this.peek(2), "(");
+        const neg = this.isOp(this.peek(1), "-");
+        const k = neg ? 1 : 0;
+        const powFn = POWER_FNS.includes(t.s) && this.isOp(this.peek(0), "^") && this.peek(1 + k).kind === "num" && this.isOp(this.peek(2 + k), "(");
         if (powFn) {
           this.next();
+          if (neg) this.next();
           const n = this.next();
           this.next();
-          return [{ k: "call", name: t.s, args: this.callArgs() }, { k: "sup", exp: chars(n.s) }];
+          return [{ k: "call", name: t.s, args: this.callArgs() }, { k: "sup", exp: chars((neg ? "-" : "") + n.s) }];
         }
         if (this.isOp(this.peek(), "(") && this.isFn(t.s)) {
           this.next();

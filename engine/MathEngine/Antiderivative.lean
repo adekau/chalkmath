@@ -10,7 +10,8 @@ not the finder, carries the claim (`cmdIntegrate_spec`, Integrate.lean). That is
 milestone: a verified *checker* of integrals, not a verified integrator.
 
 Covered: constants, the variable, sums, constant factors, powers `u^n` (`ln u` at `n = −1`),
-exponentials `a^u`, the elementary table (sin, cos, exp, ln, tan), each with `u = a·x + b`; then
+exponentials `a^u`, the elementary table (sin, cos, exp, ln, tan, arctan, arcsin, arccos, and
+sec² as `cos^(-2)`), each with `u = a·x + b`; `1/(k + c·u²)` as an arctangent and `1/√(k − c·u²)` as an arcsine; then
 for products, u-substitution (`∫ c·g'·H'(g) = c·H(g)`) and integration by parts (LIATE: a
 logarithm first, else a power of the variable, a few levels deep). The derivatives those two
 need come from the caller's normalizer, so the finder never differentiates on its own.
@@ -48,7 +49,63 @@ def table (g : String) (u : Expr) : Option (Expr × String) :=
   | "exp" => some (.fn "exp" [u], "$\\int e^u \\, du = e^u$")
   | "ln" => some (sub (.mul [u, .fn "ln" [u]]) u, "$\\int \\ln u \\, du = u \\ln u - u$")
   | "tan" => some (neg (.fn "ln" [.fn "cos" [u]]), "$\\int \\tan u \\, du = -\\ln \\cos u$")
+  | "arctan" => some (sub (.mul [u, .fn "arctan" [u]]) (.mul [.num (Q.ofRat (mkRat 1 2)), .fn "ln" [.add [Expr.one, .pow u (ofInt 2)]]]),
+      "$\\int \\arctan u \\, du = u \\arctan u - \\tfrac12 \\ln(1 + u^2)$ (by parts)")
+  | "arcsin" => some (.add [.mul [u, .fn "arcsin" [u]], .pow (sub Expr.one (.pow u (ofInt 2))) (.num (Q.ofRat (mkRat 1 2)))],
+      "$\\int \\arcsin u \\, du = u \\arcsin u + \\sqrt{1 - u^2}$ (by parts)")
+  | "arccos" => some (sub (.mul [u, .fn "arccos" [u]]) (.pow (sub Expr.one (.pow u (ofInt 2))) (.num (Q.ofRat (mkRat 1 2)))),
+      "$\\int \\arccos u \\, du = u \\arccos u - \\sqrt{1 - u^2}$ (by parts)")
   | _ => none
+
+/-- `c·v²` (`c` a numeral, `1` when absent): `(c, v)`. -/
+def sqTerm : Expr → Option (Q × Expr)
+  | .pow v (.num n) => if n.val == 2 then some (Q.one, v) else none
+  | .mul [.num c, .pow v (.num n)] => if n.val == 2 then some (c, v) else none
+  | _ => none
+
+/-- A sum `k + c·v²` of a numeral and a square, in either order: `(k, c, v)`. -/
+def quadForm : List Expr → Option (Q × Q × Expr)
+  | [.num k, t] => (sqTerm t).map fun (c, v) => (k, c, v)
+  | [t, .num k] => (sqTerm t).map fun (c, v) => (k, c, v)
+  | _ => none
+
+/-- `q^(-1/2)`, as a numeral when `q` is the square of a rational. -/
+def invSqrtQ (q : Q) : Expr :=
+  match exactRoot q.val 2 with
+  | some r => if r == 0 then .pow (.num q) (.num (Q.ofRat (mkRat (-1) 2))) else .num (Q.ofRat r).inv
+  | none => .pow (.num q) (.num (Q.ofRat (mkRat (-1) 2)))
+
+/-- `∫ (k + c·v²)^(-1) dx` is an arctangent and `∫ (k − c·v²)^(-1/2) dx` an arcsine, for numerals
+`k, c > 0` and `v = a·x + b`: `u = √(c/k)·v` turns them into `∫ du/(1 + u²)` and `∫ du/√(1 − u²)`. -/
+def invTrig (x : String) (f b e : Expr) : Option (Expr × Array Step) := do
+  -- `1/√(…)` is `((…)^(1/2))^(-1)`
+  let (es, n) ← match b, e with
+    | .add es, .num n => some (es, n)
+    | .pow (.add es) (.num p), .num q => some (es, p.mul q)
+    | _, _ => none
+  let (k, c, v) ← quadForm es
+  if !decide (0 < k.val) then none
+  let a ← linearCoeff x v
+  let negHalf := Q.ofRat (mkRat (-1) 2)
+  -- `√(c/k)` as `c·(kc)^(-1/2)`, so that differentiating meets the radicals the integrand has
+  let arg (c : Q) : Expr := if (c.div k).isOne then v else .mul [.num c, invSqrtQ (k.mul c), v]
+  let byU := if v == .var x then "" else s!" with $u = {v.toText}$"
+  let kc (c : Q) := if k.isOne && c.isOne then "" else s!" ($k = {(Expr.num k).toText}$, $c = {(Expr.num c).toText}$)"
+  let (rule, G, why) ←
+    if n.val == -1 && decide (0 < c.val) then
+      some ("int.arctan", .mul [invSqrtQ (k.mul c), .fn "arctan" [arg c]],
+        (if k.isOne && c.isOne then "$\\int \\frac{du}{1 + u^2} = \\arctan u$"
+         else "$\\int \\frac{du}{k + c u^2} = \\frac{1}{\\sqrt{kc}}\\arctan\\left(\\sqrt{c/k}\\,u\\right)$")
+        ++ kc c ++ byU ++ ". The derivative of $\\arctan u$ is $1/(1 + u^2)$.")
+    else if n.val == negHalf.val && decide (c.val < 0) then
+      some ("int.arcsin", .mul [invSqrtQ c.neg, .fn "arcsin" [arg c.neg]],
+        (if k.isOne && c.neg.isOne then "$\\int \\frac{du}{\\sqrt{1 - u^2}} = \\arcsin u$"
+         else "$\\int \\frac{du}{\\sqrt{k - c u^2}} = \\frac{1}{\\sqrt{c}}\\arcsin\\left(\\sqrt{c/k}\\,u\\right)$")
+        ++ kc c.neg ++ byU ++ ". The derivative of $\\arcsin u$ is $1/\\sqrt{1 - u^2}$.")
+    else none
+  let F := if a.isOne then G else Expr.div G a
+  let why := if a.isOne then why else why ++ s!" Since $du = {a.toText}\\,d{x}$, the result is divided by ${a.toText}$."
+  return (F, #[⟨rule, why, [], integral f x, F, none⟩])
 
 /-- `∫ u^n du` for an exponent free of the variable: the power rule, or `ln u` at `n = −1`. -/
 def powerRule (u n : Expr) : Expr × String :=
@@ -182,11 +239,24 @@ partial def anti (simp : Expr → Option Expr) (x : String) (fuel : Nat) (f : Ex
         let g : Expr := .fn "exp" [w]
         let (G, sub) ← anti simp x fuel g
         return (G, #[⟨"int.exp-power", s!"$(e^u)^k = e^\{k u}$: the integrand is $\\exp({w.toText})$.", [], integral f x, integral g x, none⟩] ++ sub)
-      | .fn "sin" [_] | .fn "cos" [_] =>
+      | .fn "cos" [u] =>
+        if e.isNumEq (Q.ofInt (-2)) then
+          -- `sec² u`, written `cos(u)^(-2)`
+          let a ← linearCoeff x u
+          let (F, ss) := substitute x f (.fn "tan" [u]) a
+          return (F, #[step "int.table" "$\\int \\sec^2 u \\, du = \\tan u$" (if a.isOne then .fn "tan" [u] else Expr.div (.fn "tan" [u]) a)] ++ ss)
+        else
+        match trigPowers [f] with
+        | some (u, m, n) => trigReduce simp x fuel f u m n
+        | none => none
+      | .fn "sin" [_] =>
         match trigPowers [f] with
         | some (u, m, n) => trigReduce simp x fuel f u m n
         | none => none
       | _ =>
+      match invTrig x f b e with
+      | some r => return r
+      | none =>
       let a ← linearCoeff x b
       let (G, why) := powerRule b e
       let (F, ss) := substitute x f G a

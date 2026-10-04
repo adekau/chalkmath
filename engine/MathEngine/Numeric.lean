@@ -81,6 +81,7 @@ def constants : List (String × Float) := [("π", 3.141592653589793), ("e", 2.71
 
 private def fns : List (String × (Float → Float)) :=
   [("sin", Float.sin), ("cos", Float.cos), ("tan", Float.tan), ("exp", Float.exp), ("ln", Float.log),
+   ("arcsin", Float.asin), ("arccos", Float.acos), ("arctan", Float.atan),
    ("sign", fun x => if x > 0 then 1 else if x < 0 then -1 else 0),
    ("log", Float.log10), ("sqrt", Float.sqrt), ("abs", Float.abs)]
 

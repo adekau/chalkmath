@@ -1149,8 +1149,38 @@ theorem dec_diffProductAll : Dec norm real diffProductAll := by
     omega
   · simp at happ
 
+theorem M_num_le_four (q : Q) : M (.num q) ≤ 4 := by rw [M.num]; split <;> (try split) <;> omega
+
+theorem M.ofInt_two : M (Expr.ofInt 2) = 2 := by simp [Expr.ofInt, M.num]; decide
+
+theorem Clean.invSqrtOneMinusSq {u : Expr} (hu : Clean u) : Clean (invSqrtOneMinusSq u) := by
+  unfold MathEngine.invSqrtOneMinusSq Expr.sub Expr.neg
+  refine Clean.pow (Clean.add ?_) (Clean.num _)
+  intro c hc
+  simp only [List.mem_cons, List.mem_nil_iff, or_false] at hc
+  rcases hc with rfl | rfl
+  · exact Clean.num _
+  · refine Clean.mul ?_
+    intro c hc
+    simp only [List.mem_cons, List.mem_nil_iff, or_false] at hc
+    rcases hc with rfl | rfl
+    · exact Clean.num _
+    · exact Clean.pow hu (Clean.num _)
+
+theorem M.invSqrtOneMinusSq_le (u : Expr) : M (invSqrtOneMinusSq u) ≤ 8 * M u + 43 := by
+  have hB : M (Expr.sub Expr.one (.pow u (Expr.ofInt 2))) = 2 * M u + 10 := by
+    simp only [Expr.sub, Expr.neg, M.add_cons, M.mul, ML.cons, ML.nil, M.one, M.minusOne, M.pow,
+      M.ofInt_two, List.length_cons, List.length_nil]
+    omega
+  unfold invSqrtOneMinusSq
+  rw [M.pow, hB]
+  have hk := M_num_le_four (Q.ofRat (mkRat (-1) 2))
+  generalize M (.num _) = k at *
+  have : (2 * M u + 10 + 1) * k ≤ (2 * M u + 10 + 1) * 4 := Nat.mul_le_mul_left _ hk
+  omega
+
 theorem outerOf_spec {f : String} {u fp : Expr} {law : String} (hu : Clean u) (h : outerOf f u = some (fp, law)) :
-    Clean fp ∧ M fp ≤ 10 * M u + 21 ∧ f ≠ "diff" ∧ cmdNames.contains f = false := by
+    Clean fp ∧ M fp ≤ 10 * M u + 60 ∧ f ≠ "diff" ∧ cmdNames.contains f = false := by
   unfold outerOf at h
   split at h <;> simp only [Option.some.injEq, Prod.mk.injEq, reduceCtorEq] at h
   all_goals obtain ⟨rfl, _⟩ := h
@@ -1168,6 +1198,22 @@ theorem outerOf_spec {f : String} {u fp : Expr} {law : String} (hu : Clean u) (h
   · exact ⟨Clean.fn₁ (by decide) (by decide) hu, by rw [M.fn₁ (by decide)]; omega, by decide, by decide⟩
   · refine ⟨Clean.pow hu (Clean.num _), ?_, by decide, by decide⟩
     rw [M.pow, M.minusOne]; omega
+  · refine ⟨Clean.pow (Clean.add ?_) (Clean.num _), ?_, by decide, by decide⟩
+    · intro c hc
+      simp only [List.mem_cons, List.mem_nil_iff, or_false] at hc
+      rcases hc with rfl | rfl
+      · exact Clean.num _
+      · exact Clean.pow hu (Clean.num _)
+    · simp only [M.pow, M.add_cons, ML.cons, ML.nil, M.one, M.minusOne, M.ofInt_two]; omega
+  · exact ⟨Clean.invSqrtOneMinusSq hu, by have := M.invSqrtOneMinusSq_le u; omega, by decide, by decide⟩
+  · refine ⟨Clean.mul ?_, ?_, by decide, by decide⟩
+    · intro c hc
+      simp only [Expr.neg, List.mem_cons, List.mem_nil_iff, or_false] at hc
+      rcases hc with rfl | rfl
+      · exact Clean.num _
+      · exact Clean.invSqrtOneMinusSq hu
+    · have := M.invSqrtOneMinusSq_le u
+      simp only [Expr.neg, M.mul, ML.cons, ML.nil, M.minusOne, List.length_cons, List.length_nil]; omega
 
 theorem innerOf_cases (u : Expr) (x : String) : innerOf u x = [] ∨ innerOf u x = [D u x] := by
   unfold innerOf
@@ -1396,7 +1442,6 @@ theorem dec_diffPowerAll : Dec norm real diffPowerAll := by
 -- Numerals: integrality and weight
 -- ---------------------------------------------------------------------------
 
-theorem M_num_le_four (q : Q) : M (.num q) ≤ 4 := by rw [M.num]; split <;> (try split) <;> omega
 theorem M_num_le_two_of_isInt {q : Q} (h : q.isInt = true) : M (.num q) ≤ 2 := by
   rw [M.num]; split <;> simp [h]
 theorem M_num_of_not_isInt {q : Q} (h : q.isInt = false) : M (.num q) = 4 := by

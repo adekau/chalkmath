@@ -1,5 +1,7 @@
 import Mathlib.Analysis.SpecialFunctions.Pow.Real
 import Mathlib.Analysis.SpecialFunctions.Trigonometric.Basic
+import Mathlib.Analysis.SpecialFunctions.Trigonometric.Arctan
+import Mathlib.Analysis.SpecialFunctions.Trigonometric.Inverse
 import Mathlib.Analysis.SpecialFunctions.Log.Base
 import Mathlib.Basic.Real.Sign
 import MathEngine
@@ -33,6 +35,9 @@ def applyFn (f : String) (x : ℝ) : ℝ :=
   | "sin" => Real.sin x
   | "cos" => Real.cos x
   | "tan" => Real.tan x
+  | "arcsin" => Real.arcsin x
+  | "arccos" => Real.arccos x
+  | "arctan" => Real.arctan x
   | "exp" => Real.exp x
   | "ln" => Real.log x
   | "log" => Real.logb 10 x
@@ -43,6 +48,9 @@ def applyFn (f : String) (x : ℝ) : ℝ :=
 
 @[simp] theorem applyFn_sin (x : ℝ) : applyFn "sin" x = Real.sin x := by simp [applyFn]
 @[simp] theorem applyFn_cos (x : ℝ) : applyFn "cos" x = Real.cos x := by simp [applyFn]
+@[simp] theorem applyFn_arcsin (x : ℝ) : applyFn "arcsin" x = Real.arcsin x := by simp [applyFn]
+@[simp] theorem applyFn_arccos (x : ℝ) : applyFn "arccos" x = Real.arccos x := by simp [applyFn]
+@[simp] theorem applyFn_arctan (x : ℝ) : applyFn "arctan" x = Real.arctan x := by simp [applyFn]
 @[simp] theorem applyFn_exp (x : ℝ) : applyFn "exp" x = Real.exp x := by simp [applyFn]
 @[simp] theorem applyFn_ln (x : ℝ) : applyFn "ln" x = Real.log x := by simp [applyFn]
 @[simp] theorem applyFn_sqrt (x : ℝ) : applyFn "sqrt" x = Real.sqrt x := by simp [applyFn]

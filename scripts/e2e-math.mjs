@@ -38,6 +38,13 @@ const CASES = [
   { src: "N(exp(100))", text: "2.68811714181614*10^43", step: "Numerical value" },
   { src: "diff(ln(x), x)", text: "1/x", step: "Chain rule, assuming" },
   { src: "ln(x^2)", text: "2*ln(x)", step: "Function value, assuming a positive argument" },
+  // inverse trigonometric functions, and sec, csc, cot as reciprocals
+  { src: "diff(arctan(x), x)", text: "1/(x^2 + 1)", step: "Chain rule" },
+  { src: "integrate(1/(4+x^2), x)", text: "arctan(x/2)/2", step: "Arctangent integral" },
+  { src: "integrate(1/sqrt(1-x^2), x)", text: "arcsin(x)", step: "Arcsine integral" },
+  { src: "diff(tan(x), x) - sec(x)^2", text: "0", step: "Collect like terms" },
+  { src: "sin^-1(x)", text: "1/sin(x)" },
+  { src: "N(arcsin(2))", error: "cannot evaluate 'arcsin' numerically" },
   { src: "rref([1,2;2,4])", text: "[1, 2; 0, 0]", step: "Add a multiple of a row" },
   { src: "rref([x, y; x^2, 1])", text: "[1, 0; 0, 1]", step: "Add a multiple of a row, assuming" },
   { src: "[1,2] * [1,2]", error: "inner dimensions must match" },

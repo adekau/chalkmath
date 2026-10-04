@@ -83,7 +83,7 @@ def latexTarget (paths : Bool) : Target where
   pow b e := s!"\{{b}}^\{{e}}"
   sqrt s := s!"\\sqrt\{{s}}"
   fn n a :=
-    let head := if ["sin", "cos", "tan", "exp", "ln", "log"].contains n then s!"\\{n}" else s!"\\operatorname\{{n}}"
+    let head := if ["sin", "cos", "tan", "arcsin", "arccos", "arctan", "exp", "ln", "log"].contains n then s!"\\{n}" else s!"\\operatorname\{{n}}"
     let args := ", ".intercalate a
     s!"{head}\\left({args}\\right)"
   matrix rows := "\\begin{bmatrix}" ++ " \\\\ ".intercalate (rows.map (" & ".intercalate ·)) ++ "\\end{bmatrix}"

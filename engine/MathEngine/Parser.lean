@@ -23,6 +23,10 @@ Mathematica does (`;;b` from 1, `a;;` to the last, `-1`); `All` is `All()`, a li
 `a ./ b` and `a .* b` are MATLAB's entrywise division and product, `ediv(a, b)` and `emul(a, b)`
 (`la.ediv`, `la.emul`); `/` and `*` stay the matrix inverse and product.
 
+A unary builtin may carry its power before its argument, `sin^2(x)` for `sin(x)^2` and
+`sin^-1(x)` for `sin(x)^-1` (the reciprocal, not `arcsin`). `sec(u)`, `csc(u)` and `cot(u)` are read
+as `cos(u)^-1`, `sin(u)^-1` and `tan(u)^-1`.
+
 Implicit multiplication (`2x`, `2(x+1)`, `x y`) is allowed when the previous token ends an atom
 and the next begins one, except number-after-number (`3 4` is an error). `IDENT (` is a call
 only if IDENT is a builtin or a session-known function.
@@ -60,10 +64,27 @@ structure Tok where
   deriving Repr, Inhabited
 
 def builtinFunctions : List String :=
-  ["sin", "cos", "tan", "exp", "ln", "log", "sqrt", "abs", "conj", "re", "im",
+  ["sin", "cos", "tan", "sec", "csc", "cot", "arcsin", "arccos", "arctan",
+   "exp", "ln", "log", "sqrt", "abs", "conj", "re", "im",
    "diff", "simplify", "expand", "factor", "N", "det", "rref", "transpose", "solve", "subst", "integrate", "plot",
    "sign", "dot", "norm", "sum", "exptotrig", "epicycles", "dft", "manipulate", "column",
    "total", "mean", "variance", "stdev", "min", "max", "median"]
+
+/-- The unary builtins whose power is written before the argument: `sin^2(y)` is `sin(y)^2`. -/
+def powerFunctions : List String :=
+  ["sin", "cos", "tan", "sec", "csc", "cot", "arcsin", "arccos", "arctan", "exp", "ln", "log", "sqrt", "abs"]
+
+/-- `sec`, `csc` and `cot` are notation, not functions: `sec u` is `(cos u)⁻¹`, and so on. The
+engine knows the three it is written with, so their derivatives, integrals and values need nothing
+new, and an answer written with `sec` is compared as what it means. -/
+def reciprocalOf : String → Option String
+  | "sec" => some "cos" | "csc" => some "sin" | "cot" => some "tan" | _ => none
+
+/-- A call `f(args)`, with the reciprocal functions read as what they mean. -/
+def mkCall (f : String) (args : List Expr) : Expr :=
+  match reciprocalOf f, args with
+  | some g, [u] => .pow (.fn g [u]) Expr.minusOne
+  | _, _ => .fn f args
 
 /-- Lexer over the character list; `i` is the byte-free character index used for spans. -/
 partial def lex (src : String) : Except ParseError (Array Tok) := go src.toList 0 #[]
@@ -167,20 +188,24 @@ mutual
     | .id =>
       let st ← get
       let at_ (k : Nat) : Tok := st.toks.getD (st.i + k) ⟨.eof, "", 0, 0⟩
-      -- `sin^2(y)` is `sin(y)^2`: the textbook's power of a function, for the unary builtins
-      let powFn := ["sin", "cos", "tan", "exp", "ln", "log", "sqrt", "abs"].contains t.s &&
-        isOp (at_ 0) "^" && (at_ 1).kind == .num && isOp (at_ 2) "("
+      -- `sin^2(y)` is `sin(y)^2`: the textbook's power of a function, for the unary builtins.
+      -- A negative power is one too: `sin^-1(y)` is `1/sin(y)`, never `arcsin(y)` (write that).
+      let neg := isOp (at_ 1) "-"
+      let k := if neg then 1 else 0
+      let powFn := powerFunctions.contains t.s &&
+        isOp (at_ 0) "^" && (at_ (1 + k)).kind == .num && isOp (at_ (2 + k)) "("
       if powFn then
         discard next
+        if neg then discard next
         let n ← next
         let q ← match Q.parse n.s with | some q => pure q | none => fail s!"bad number '{n.s}'" n
         discard next
         let args ← callArgs
-        pure (.pow (.fn t.s args) (.num q))
+        pure (.pow (mkCall t.s args) (.num (if neg then q.neg else q)))
       else if isOp (← peek) "(" && (← isFn t.s) then
         discard next
         let args ← callArgs
-        pure (.fn t.s args)
+        pure (mkCall t.s args)
       else if t.s == "pi" || t.s == "π" then pure (.fn "π" [])   -- a constant, not a variable: no binding, both semantics read it
       else if t.s == "i" then pure (.fn "i" [])                   -- the imaginary unit (Mathematica's I)
       else if t.s == "ℯ" then pure (.fn "exp" [Expr.one])   -- Euler's number is exp(1): every rule about exp applies

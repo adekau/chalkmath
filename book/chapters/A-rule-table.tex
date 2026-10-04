@@ -32,8 +32,8 @@ the engine omits is unverified.
 \rt{diff.product.assuming}{conditional}{Where a factor is not smooth: the step assumes it differentiable (\lc{diffProductAssuming_sound_on}).}
 \rt{diff.power}{verified}{A natural numeral exponent over a smooth base, or a positive numeral base under a smooth exponent (\lc{diffPower_sound}).}
 \rt{diff.power.assuming}{conditional}{$x \neq 0$ for a negative integer exponent, $x > 0$ for another, $b > 0$ for $b^u$ and $f > 0$ for $f^g$, as the step states (\lc{diffPowerAssuming_sound_on}).}
-\rt{diff.chain}{verified}{$\sin$, $\cos$, $\exp$ of a smooth term (\lc{diffChain_sound}).}
-\rt{diff.chain.assuming}{conditional}{$u > 0$ for $\ln u$, $\cos u \neq 0$ for $\tan u$, $u$ differentiable, as the step states (\lc{diffChainAssuming_sound_on}).}
+\rt{diff.chain}{verified}{$\sin$, $\cos$, $\exp$, $\arctan$ of a smooth term (\lc{diffChain_sound}).}
+\rt{diff.chain.assuming}{conditional}{$u > 0$ for $\ln u$, $\cos u \neq 0$ for $\tan u$, $-1 < u < 1$ for $\arcsin u$ and $\arccos u$, $u$ differentiable, as the step states (\lc{diffChainAssuming_sound_on}).}
 \rt{diff.matrix}{verified}{A matrix is differentiated entry by entry (\lc{diffMatrix_sound}): with matrices given a value (\lc{evalV}), the theorem has content.}
 \rt{diff.higher-order}{verified}{$\operatorname{diff}(f, x, n)$ for a positive integer $n$ is $n$ successive $\operatorname{diff}(\cdot, x)$ (\lc{diffHigherOrder_spec}), and those mean Mathlib's \lc{iteratedDeriv} $n$ of $f$ as a function of $x$ (\lc{diffHigherOrder_soundR}).}
 \midrule \multicolumn{3}{l}{\textbf{Linear algebra}} \\
@@ -66,7 +66,7 @@ the engine omits is unverified.
 \midrule \multicolumn{3}{l}{\textbf{Integration}} \\
 \rt{cmd.integrate}{verified}{Accepted only when the candidate's derivative normalizes to the integrand, exactly (\lc{cmdIntegrate_spec}); \lc{integrate_deriv} reads that as $F' = f$ wherever the differentiation steps shown are sound. The finder's own steps are guesses.}
 \rt{int.check}{verified}{The differentiation of the candidate: this step carries the claim, with the statuses of its own steps.}
-\rt{int.compare}{verified}{Derivative and integrand are expanded (\lc{dist}, proved sound) and simplified before comparison; the statuses of the simplification steps apply.}
+\rt{int.compare}{verified}{Derivative and integrand are rewritten with $\cos^2 u = 1 - \sin^2 u$, $(e^u)^k = e^{ku}$, $1/\sqrt{s} = s^{-1/2}$ and, under a negative power, $s^k = c^k (s/c)^k$ for a positive constant summand $c$ (\lc{identNorm}, \lc{ev_identPow}), expanded (\lc{dist}) and simplified before comparison; every rewrite is proved sound, and the statuses of the simplification steps apply.}
 \rt{int.constant}{checked}{A guess from the finder; nothing is proved about it. Accepted only because \rn{int.check} verifies the result by differentiation (\lc{cmdIntegrate_spec}, \lc{integrate_deriv}), with the statuses of its own steps.}
 \rt{int.variable}{checked}{A guess from the finder, verified by \rn{int.check}.}
 \rt{int.sum}{checked}{A guess from the finder, verified by \rn{int.check}.}
@@ -77,6 +77,8 @@ the engine omits is unverified.
 \rt{int.linear-substitution}{checked}{A guess from the finder, verified by \rn{int.check}.}
 \rt{int.substitution}{checked}{A guess from the finder ($u$-substitution), verified by \rn{int.check}.}
 \rt{int.by-parts}{checked}{A guess from the finder (integration by parts), verified by \rn{int.check}.}
+\rt{int.arctan}{checked}{A guess from the finder ($1/(k + c u^2)$ as an arctangent), verified by \rn{int.check}.}
+\rt{int.arcsin}{checked}{A guess from the finder ($1/\sqrt{k - c u^2}$ as an arcsine), verified by \rn{int.check}.}
 \midrule \multicolumn{3}{l}{\textbf{Order world}} \\
 \rt{order.closure}{verified}{The order is the reflexive-transitive closure, and reflexivity, antisymmetry and transitivity are decided (\lc{checkPartialOrder_none}).}
 \rt{order.divisors}{verified}{The divisors of $n$ ordered by divisibility, by definition.}
