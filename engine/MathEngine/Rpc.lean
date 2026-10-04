@@ -19,8 +19,9 @@ open Json
 machine-checked instead of guessing. Kept next to the rules it describes: `verified` means an
 unconditional soundness theorem over ℝ (`proofs/Proofs/SimpReal.lean`), `conditional` means the
 theorem needs a side condition *and* the necessity of that condition is itself proved, `unverified`
-means no theorem yet, `checked` means the step is a guess whose result a later step verifies
-(the `int.*` finder, checked by `int.check`). The `la.row-*` rules are proved over ℚ (`LinAlgQ.lean`), not ℝ: their claim is
+means no theorem yet, `checked` means the step's own claim is a guess, and the answer it leads to is shown only
+after a check whose meaning is proved (the `int.*` finder, checked by `int.check`; `cmd.factor`). A step
+that is itself the check, evaluating a definition (`sys.step`), is `verified`. The `la.row-*` rules are proved over ℚ (`LinAlgQ.lean`), not ℝ: their claim is
 that the row operation preserves the solution set. Rules absent from this list are unverified. -/
 def ruleStatus : Json :=
   let entry (name status note : String) : Json :=
@@ -101,7 +102,7 @@ def ruleStatus : Json :=
     entry "stat.median" "verified" "The entries sorted (a sorted permutation: List.mergeSort_perm, List.pairwise_mergeSort), then the middle one or the mean of the two middle ones (medianQ_spec).",
     entry "int.check" "verified" "The differentiation of the candidate: this step carries the claim, with the statuses of its own steps.",
     entry "int.compare" "verified" "Derivative and integrand are rewritten with cos²u = 1 − sin²u and (eᵘ)ᵏ = eᵏᵘ (identNorm), expanded (dist) and simplified before comparison — both rewrites proved sound, and needed because the pipeline applies neither identity nor distributes a numeral over a sum; the statuses of the simplification steps apply.",
-    entry "int.constant" "checked" "A guess from the finder; nothing is proved about it. Accepted only because int.check verifies the result by differentiation.",
+    entry "int.constant" "checked" "A guess from the finder; nothing is proved about it. Accepted only because int.check verifies the result by differentiation (cmdIntegrate_spec, integrate_deriv), with the statuses of its own steps.",
     entry "int.variable" "checked" "A guess from the finder, verified by int.check.",
     entry "int.sum" "checked" "A guess from the finder, verified by int.check.",
     entry "int.constant-multiple" "checked" "A guess from the finder, verified by int.check.",
@@ -166,7 +167,7 @@ def ruleStatus : Json :=
     entry "order.concepts" "verified" "Every pair listed is a formal concept, its objects exactly those with all its attributes and its attributes exactly those its objects share (concepts_sound), and every concept is listed: intersecting attribute extents one attribute at a time reaches the extent of every set of attributes (concepts_complete, extents_complete).",
     entry "order.flow" "verified" "Every flow checked against the order of the classes (flowFailure_none).",
     entry "sys.init" "verified" "An initial state: the init condition evaluated on it, by definition.",
-    entry "sys.step" "checked" "Each step of a trace is re-run against the system: the action is enabled there and its updates give the next state.",
+    entry "sys.step" "verified" "By definition: each step of a trace is re-run against the system, the action enabled there and its updates giving the next state; a step that does not re-run is refused, not shown.",
     entry "sys.found" "verified" "The last state of a re-run trace, from an initial state, where the formula is evaluated and holds. The trace is a shortest one: each state's breadth-first depth is zero initially and rises by at most one along a transition, which is checked, and no state where the formula holds is shallower than the trace is long, so every path to one is at least as long (checkShortest_spec), over the system's transitions (System.explore_edges).",
     entry "sys.violated" "verified" "The last state of a re-run trace, from an initial state, where the formula is evaluated and fails: a concrete counterexample. The trace is a shortest one: each state's breadth-first depth is zero initially and rises by at most one along a transition, which is checked, and no state that breaks the formula is shallower than the trace is long, so every path to one is at least as long (checkShortest_spec), over the system's transitions (System.explore_edges).",
     entry "sys.deadlock" "verified" "The last state of a re-run trace, with every action's guard evaluated false. When none is reported none is missed: the search finds every reachable state and every transition (System.no_deadlock).",
@@ -174,9 +175,9 @@ def ruleStatus : Json :=
     entry "sys.invariant" "verified" "The formula holds in every state the search found, and the search finds every reachable state (System.explore_states).",
     entry "sys.unreachable" "verified" "No state the search found satisfies the formula, and the search finds every reachable state (System.explore_states).",
     entry "sys.inductive" "verified" "Every assignment of the domains is enumerated (allStates_mem) and every enabled action from a state where the formula holds is checked.",
-    entry "sys.cti" "checked" "A state where the formula holds and an action after which it fails (or leaves a domain): both evaluated, a concrete counterexample to induction.",
+    entry "sys.cti" "verified" "By definition: a state where the formula holds and an action after which it fails (or leaves a domain), both evaluated by the system's own semantics, a concrete counterexample to induction.",
     entry "sys.ctl" "verified" "The set is a fixed point checked with a certificate read off its rounds, and where the check passes it is exactly the states where the formula holds by the meaning of its paths: EF some path reaches φ, EG an infinite path stays in φ, AG every reachable state is in φ, AF every maximal path reaches φ (checkEF_spec, checkEG_spec, checkAG_spec, checkAF_spec, checkEX_spec, checkAX_spec), over the graph's transitions, which are the system's (System.explore_edges).",
-    entry "sys.iterate" "checked" "One round of the Kleene iteration: the transformer applied to the previous set.",
+    entry "sys.iterate" "verified" "By definition: one round of the Kleene iteration, the transformer applied to the previous set; the rounds are the certificate sys.ctl checks (checkEF_spec and the others).",
     entry "sys.fixed" "verified" "The loop stops when a round changes nothing, and the set it stops at is checked against the operator's path meaning with sys.ctl's certificate (checkEF_spec and the others), so it is the right set without appeal to Kleene's theorem.",
     entry "sys.cycle" "verified" "A step of the lasso's cycle, inside a strongly connected set of states avoiding the goal. The whole lasso is checked to be a run: every step an edge of the graph, each joined to the next, and the cycle closing up (checkLasso_spec).",
     entry "sys.lasso" "verified" "A fair run that never reaches the goal: a path from an initial state, then a cycle repeated forever, every weakly fair action taken on it or disabled somewhere on it and every strongly fair one taken on it or disabled all along it. The lasso is checked, and a lasso that checks is a fair infinite run avoiding the goal (checkLasso_spec); a deadlock reached first is checked as a run that stops without the goal (checkDead_spec).",
@@ -219,9 +220,9 @@ def ruleStatus : Json :=
     entry "stlc.var" "verified" "Var: the checker's derivations are typing derivations (check_sound, StlcProofs.lean).",
     entry "stlc.abs" "verified" "→I: the checker's derivations are typing derivations (check_sound).",
     entry "stlc.app" "verified" "→E: the checker's derivations are typing derivations (check_sound).",
-    entry "stlc.constraints" "checked" "Inference's equations; the type found is re-checked by the verified checker on the annotated term.",
-    entry "stlc.split" "checked" "Unification splits an equation of arrows; the type found is re-checked by the verified checker.",
-    entry "stlc.unify" "checked" "Unification binds a type variable (with the occurs check); the type found is re-checked by the verified checker.",
+    entry "stlc.constraints" "verified" "Inference's equations: every typing of the term solves them (gen_complete), and the type their solution gives is a type of the term, re-checked by the verified checker on the annotated term (check_sound).",
+    entry "stlc.split" "verified" "Unification splits an equation of arrows into its parts, which have the same solutions: the substitution found solves every equation (unify_sound) and every solution is an instance of it (unify_most_general).",
+    entry "stlc.unify" "verified" "Unification binds a type variable (with the occurs check), keeping the substitution in solved form: the one found solves every equation (unify_sound) and every solution is an instance of it (unify_most_general).",
     entry "stlc.principal" "verified" "Most general (infer_principal, Hindley's theorem): every typing of the term, whatever types its unannotated binders and free variables get, has an instance of the solved type; and it is a type of the term (check_sound, by the checker). The type shown names its variables with names not otherwise in use."]
 
 def capabilities : Json :=

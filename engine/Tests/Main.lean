@@ -125,6 +125,11 @@ def tests : TestM Unit := do
   check "Q decimal small" (Q.ofRat (mkRat 1 1000) true).toText "0.001"
   check "Q decimal big" (Q.ofRat (mkRat 123456789 1) true).toText "123456789"
   check "Q latex frac" (Q.ofRat (mkRat (-1) 2)).toLatex "-\\frac{1}{2}"
+  -- scientific notation as a product, not JavaScript's 2.5e+43 (which reads back as 2.5·e + 43)
+  check "Q text sci" (Q.ofRat 25000000000000000000 true).toText "2.5*10^19"
+  check "Q text sci small" (Q.ofRat (mkRat 3 100000000) true).toText "3*10^(-8)"
+  check "Q latex sci" (Q.ofRat 25000000000000000000 true).toLatex "2.5 \\times 10^{19}"
+  check "sci binds as a product" (Expr.pow (.num (Q.ofRat 25000000000000000000 true)) (.num (Q.ofInt 2))).toText "(2.5*10^19)^2"
   -- parser: precedence and associativity (raw round trips; simplification is step 3)
   check "parse 2 + 3*4" (roundtrip "2 + 3*4") "2 + 3*4"
   check "parse -2^2" (roundtrip "-2^2") "-2^2"
@@ -684,6 +689,16 @@ def complexNTests : TestM Unit := do
   check "N: a negative base under a real power is certified" (lastRule "N((-8)^(1/3))") "cmd.N"
   check "N: the log of a non-real number is not" (lastRule "N(ln(i))") "cmd.N.float"
 
+/-- A term with every numeral exact: a decimal answer prints as the numeral it is. -/
+partial def exact : Expr → Expr
+  | .num q => .num { q with approx := false }
+  | .add es => .add (es.map exact)
+  | .mul es => .mul (es.map exact)
+  | .pow b e => .pow (exact b) (exact e)
+  | .fn f as => .fn f (as.map exact)
+  | .matrix rows => .matrix (rows.map (·.map exact))
+  | e => e
+
 /-- M2 golden test: `Tests/golden.tsv` holds the reference engine's rendered text for a corpus of
 sources, evaluated in one session in file order (so `let` bindings carry over). It was produced by the
 wire-level differential test that ran both engines (`scripts/difftest.mjs`, last present in commit
@@ -701,7 +716,22 @@ def goldenTests : TestM Unit := do
       check s!"golden: {source}" actual expected
       -- every subterm the notebook can click names a real path (`engine.explain` takes it)
       match (st.get "t").cells.lookup source with
-      | some cell => check s!"golden paths: {source}" (toString (badPaths cell.output)) "[]"
+      | some cell =>
+        check s!"golden paths: {source}" (toString (badPaths cell.output)) "[]"
+        -- the text shown means the term the proofs are about: it parses back to the same term
+        let txt := cell.output.toText
+        -- (a text that is not algebra at all, a set or a formula, is another world's and is skipped)
+        let otherWorld := cell.derivation.steps.any (·.rule.startsWith "trs.")
+        if let (.ok b, false) := (parse txt ((st.get "t").fns.map (·.1)), otherWorld) then
+          -- the same term, or (where the pipeline has two normal forms for one value, as for
+          -- (x^(1/2))^(-1) and x^(-1/2), which it rightly does not merge over ℝ) one printed the same
+          let ok := match (normCell b).1 with
+            | .ok out => Expr.equal (exact out) (exact cell.output) || out.toText == txt
+            | .error _ => false
+          let why := match (normCell b).1 with
+            | .ok out => s!"reads back as {out.toText}: {repr out}, not {repr cell.output}"
+            | .error msg => msg
+          checkTrue s!"golden round trip: {source} ↦ {txt}" ok why
       | none => pure ()
     | _ => pure ()
 

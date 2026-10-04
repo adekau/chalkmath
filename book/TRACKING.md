@@ -954,3 +954,17 @@ Phases:
    part's digits are within a unit of their last place (`cmdN_soundC`, `IntervalC.lean`). `N((-8)^(1/3))` is
    `1 + 1.73205080756888i`, certified. Left to `cmd.N.float`: the logarithm of a non-real number (`N(ln(i))`, which
    would need a certified `arg`), a non-real base under a non-integer power (`N(i^i)`), poles and jumps.
+- verification: labels, unification, and the trusted base — DONE 2026-10-04 (Alex: "continue 4-6").
+   The `checked` rows whose step is itself a check of a definition are `verified` now: `sys.step` and `sys.cti`
+   re-run the system's own semantics, and `sys.iterate`'s rounds are the certificate `sys.ctl` checks. The
+   unification steps are proved: `unify_sound` (the substitution found solves every equation, by keeping it in
+   solved form) with `unify_most_general` makes it a most general unifier, so `stlc.split`, `stlc.unify` and
+   `stlc.constraints` (with `gen_complete`) are `verified`. `int.*` and `cmd.factor` stay `checked`, now defined
+   as a step whose own claim is a guess, the answer shown only after a check whose meaning is proved. Nothing to
+   do for the deliberate conditionals. Outside the ledger: every algebra answer in the golden corpus is read back
+   (parse, then the pipeline) and must give the same term or one printed the same, and the check found
+   `N(exp(100))` printing `2.68811714181614e+43`, which reads back as `2.688…·e + 43`; such a decimal prints as
+   `2.68811714181614*10^43` now (and `2.68811714181614 \times 10^{43}` in TeX). `substitute` and `substituteFns`,
+   which put the session's `let`s into every cell, are structural, and `substitute_soundR`/`substitute_soundC`
+   (`Let.lean`) prove the input means the source with each name at its binding's value. ARCHITECTURE lists what
+   is still trusted.
