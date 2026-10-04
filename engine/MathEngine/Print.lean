@@ -226,12 +226,13 @@ local macro "print_decreasing" : tactic => `(tactic| (
 from a subterm's factors with a new coefficient, which weighs no more than the subterm. The measure
 counts nodes (`Expr.size`, a numeral weighing 1 whatever its value), times four, so each function in
 the block sits at its own offset below the one that calls it on the same term. -/
+set_option maxHeartbeats 4000000 in
 mutual
   /-- Print `e` at `path` in a context demanding precedence `ctx`. -/
   def print (e : Expr) (path : Path) (T : Target) (ctx : Nat) : String :=
     let (s, prec) := printRaw e path T
     T.wrap path (if prec < ctx then T.parens s else s)
-  termination_by 4 * e.size + 2
+  termination_by 8 * e.size + 4
   decreasing_by all_goals print_decreasing
 
   def printRaw (e : Expr) (path : Path) (T : Target) : String × Nat :=
@@ -270,7 +271,7 @@ mutual
         -- Mathematica's Part: m[[2, 1;;3]], and the specs it takes
         | "part", m :: specs =>
           let ms := print m (path ++ [0]) T P_ATOM
-          let inner := ", ".intercalate ((enum specs.attach).map fun (i, ⟨a, _⟩) => print a (path ++ [i + 1]) T P_ADD)
+          let inner := ", ".intercalate (printArgs specs 1 path T)
           some (if T.times != "*" then s!"{ms}\\llbracket {inner}\\rrbracket" else s!"{ms}[[{inner}]]", P_ATOM)
         -- MATLAB's entrywise operators. Lower than a product as a whole, so it is grouped wherever a
         -- factor or a left operand would otherwise take it in: `x*(a ./ b)`, `(a ./ b) ./ c`
@@ -298,7 +299,7 @@ mutual
       match own with
       | some r => r
       | none =>
-      let as := (enum args.attach).map fun (i, ⟨a, _⟩) => print a (path ++ [i]) T P_ADD
+      let as := printArgs args 0 path T
       fnRaw T name args as
     | .pow b x =>
       match (if T.times != "*" then radicalLatex b x else none) with
@@ -323,17 +324,9 @@ mutual
           (T.frac (T.num Q.one) den, P_MUL)
         else powRaw b (.num q) path T
       | x => powRaw b x path T
-    | .add args =>
-      let s := (enum args.attach).foldl (init := ("" : String)) fun acc (i, ⟨a, _⟩) =>
-        let negative := (splitCoeff a).1.isNeg
-        if i == 0 && !negative then acc ++ print a (path ++ [i]) T P_ADD
-        else
-          let sign := if negative then " - " else " + "
-          let termStr := if negative then negTerm a (path ++ [i]) T else print a (path ++ [i]) T P_MUL
-          acc ++ (if i == 0 then sign.trimAscii.copy else sign) ++ termStr
-      (s, P_ADD)
+    | .add args => (addTerms args 0 path T "", P_ADD)
     | .mul args => mulRaw args path 0 T
-  termination_by 4 * e.size + 1
+  termination_by 8 * e.size + 3
   decreasing_by all_goals print_decreasing
 
   /-- `b^x` with a non-negative or symbolic exponent. -/
@@ -344,8 +337,31 @@ mutual
     -- division and has them already; a decimal, 2^(0.5), does not)
     let xs := if T.times == "*" && (match x with | .num q => !q.isInt && q.approx | _ => false) then T.parens xs else xs
     (T.pow bs xs, P_POW)
-  termination_by 4 * (b.size + x.size) + 3
+  termination_by 8 * (b.size + x.size) + 5
   decreasing_by all_goals print_decreasing
+
+  /-- The arguments of a call from the `i`-th, each at the precedence of an argument. -/
+  def printArgs (args : List Expr) (i : Nat) (path : Path) (T : Target) : List String :=
+    match args with
+    | [] => []
+    | a :: rest => print a (path ++ [i]) T P_ADD :: printArgs rest (i + 1) path T
+  termination_by 8 * Expr.sizeList args + 5
+  decreasing_by all_goals (have := Expr.size_pos a; print_decreasing)
+
+  /-- The terms of a sum from the `i`-th, after `acc`. -/
+  def addTerms (args : List Expr) (i : Nat) (path : Path) (T : Target) (acc : String) : String :=
+    match args with
+    | [] => acc
+    | a :: rest =>
+      let negative := (splitCoeff a).1.isNeg
+      let acc := if i == 0 && !negative then acc ++ print a (path ++ [i]) T P_ADD
+        else
+          let sign := if negative then " - " else " + "
+          let termStr := if negative then negTerm a (path ++ [i]) T else print a (path ++ [i]) T P_MUL
+          acc ++ (if i == 0 then sign.trimAscii.copy else sign) ++ termStr
+      addTerms rest (i + 1) path T acc
+  termination_by 8 * Expr.sizeList args + 7
+  decreasing_by all_goals (have := Expr.size_pos a; print_decreasing)
 
   /-- A term of a sum whose coefficient is negative (`splitCoeff`), printed without its sign:
   `-3`, `-x` and `-2x` print `3`, `x` and `2*x` after the ` - `. -/
@@ -370,7 +386,7 @@ mutual
       else print (.mul (.num q.neg :: r :: rs)) p T P_MUL
     -- not reached: any other term's coefficient is 1
     | a => print a p T P_MUL
-  termination_by 4 * a.size + 3
+  termination_by 8 * a.size + 5
   decreasing_by all_goals print_decreasing
 
   /-- The product of `args`, its `i`-th factor at `path ++ [i + off]`: `off` is 1 for the factors
@@ -380,22 +396,44 @@ mutual
     | some r => r
     | none =>
     -- Partition into numerator / denominator factors; a leading -1 becomes a unary minus.
-    let (sign, numer, denom) := (enum args.attach).foldl (init := (("" : String), ([] : List String), ([] : List String)))
-        fun ((sign, numer, denom) : String × List String × List String) ((i, ⟨a, _⟩) : Nat × Subtype (· ∈ args)) =>
-      let p := path ++ [i + off]
-      match i, a with
-      | 0, .num q =>
-        -- a rational coefficient p/d puts p in the numerator and d in the denominator — `x/(2π)`,
-        -- as a hand derivation writes it, not `½·x/π`
-        let sign := if q.isNeg then ("-" : String) else sign
-        let a := q.abs
-        -- an integer (a `1` stays visible: the identity step removes it) or an approximate decimal prints as is
-        if a.isInt || q.approx then (sign, if q.isNeg && a.isOne then numer else numer ++ [T.wrap p (T.num a)], denom)
-        else
-          let pn := Q.ofInt a.val.num
-          let dn := Q.ofInt (Int.ofNat a.val.den)
-          (sign, if pn.isOne then numer else numer ++ [T.wrap p (T.num pn)], denom ++ [if pn.isOne then T.wrap p (T.num dn) else T.num dn])
-      | _, .pow b (.num q) =>
+    let (sign, numer, denom) := mulFactors args 0 path off T "" [] []
+    let n := if numer.isEmpty then T.num Q.one else T.times.intercalate numer
+    if denom.isEmpty then (sign ++ n, if sign.isEmpty then P_MUL else P_NEG)
+    else
+      let d := if denom.length > 1 && T.denomPrec > P_MUL then T.parens (T.times.intercalate denom) else T.times.intercalate denom
+      (sign ++ T.frac n d, if sign.isEmpty then P_MUL else P_NEG)
+  termination_by 8 * Expr.sizeList args + 7
+  decreasing_by all_goals print_decreasing
+
+  /-- The factors of a product from the `i`-th, sorted into a sign, a numerator and a denominator. -/
+  def mulFactors (args : List Expr) (i : Nat) (path : Path) (off : Nat) (T : Target)
+      (sign : String) (numer denom : List String) : String × List String × List String :=
+    match args with
+    | [] => (sign, numer, denom)
+    | f :: rest =>
+      let (sign, numer, denom) := mulFactor f i (path ++ [i + off]) T sign numer denom
+      mulFactors rest (i + 1) path off T sign numer denom
+  termination_by 8 * Expr.sizeList args + 6
+  decreasing_by all_goals (have := Expr.size_pos f; print_decreasing)
+
+  /-- The `i`-th factor `f` of a product, at `p`, into the sign, numerator and denominator so far. -/
+  def mulFactor (f : Expr) (i : Nat) (p : Path) (T : Target)
+      (sign : String) (numer denom : List String) : String × List String × List String :=
+    match f with
+      | .num q =>
+        if i == 0 then
+          -- a rational coefficient p/d puts p in the numerator and d in the denominator — `x/(2π)`,
+          -- as a hand derivation writes it, not `½·x/π`
+          let sign := if q.isNeg then ("-" : String) else sign
+          let a := q.abs
+          -- an integer (a `1` stays visible: the identity step removes it) or an approximate decimal prints as is
+          if a.isInt || q.approx then (sign, if q.isNeg && a.isOne then numer else numer ++ [T.wrap p (T.num a)], denom)
+          else
+            let pn := Q.ofInt a.val.num
+            let dn := Q.ofInt (Int.ofNat a.val.den)
+            (sign, if pn.isOne then numer else numer ++ [T.wrap p (T.num pn)], denom ++ [if pn.isOne then T.wrap p (T.num dn) else T.num dn])
+        else (sign, numer ++ [print (.num q) p T (P_MUL + 1)], denom)
+      | .pow b (.num q) =>
         if q.isNeg then
           let n := q.neg
           let base := print b (p ++ [0]) T (if n.isOne then T.denomPrec else P_POW + 1)
@@ -409,13 +447,8 @@ mutual
                 T.pow base (if T.times == "*" && !n.isInt then T.parens e else e)
           (sign, numer, denom ++ [T.wrap p den])
         else (sign, numer ++ [print (.pow b (.num q)) p T P_MUL], denom)
-      | _, a => (sign, numer ++ [print a p T (P_MUL + (if i > 0 && a.isNum then 1 else 0))], denom)
-    let n := if numer.isEmpty then T.num Q.one else T.times.intercalate numer
-    if denom.isEmpty then (sign ++ n, if sign.isEmpty then P_MUL else P_NEG)
-    else
-      let d := if denom.length > 1 && T.denomPrec > P_MUL then T.parens (T.times.intercalate denom) else T.times.intercalate denom
-      (sign ++ T.frac n d, if sign.isEmpty then P_MUL else P_NEG)
-  termination_by 4 * Expr.sizeList args + 3
+      | a => (sign, numer ++ [print a p T P_MUL], denom)
+  termination_by 8 * f.size + 5
   decreasing_by all_goals print_decreasing
 end
 
