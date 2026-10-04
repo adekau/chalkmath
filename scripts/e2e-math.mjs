@@ -12,7 +12,8 @@
 // an exercise written in its editor and answered (wrong, right, and with the work), a Markdown
 // callout, a function's usage on hover, a truth table and a relation's graph, an operation table, a
 // typing tree, a logic exercise, a system typed over several lines, manipulate (a plot played, a
-// derivative and a column of a plot and a calculation dragged, against the engine's own frames), the tab
+// derivative and a column of a plot and a calculation dragged, against the engine's own frames), a
+// scene (sampled by the engine, scrubbed to its end, its equation stepped, % untouched), the tab
 // bar with more notebooks open than fit, and a course's lesson opened from the Courses tab, answered,
 // and followed to the next. Each is held to the engine's own answers through a client of the test's.
 // Chromium: playwright-core's own, or the executable named by CHROMIUM. The engine: MATHENGINE, or
@@ -44,7 +45,7 @@ const CASES = [
   { src: "diff(tan(x), x) - sec(x)^2", text: "0", step: "Collect like terms" },
   { src: "sin^-1(x)", text: "1/sin(x)" },
   { src: "N(arcsin(2))", error: "cannot evaluate 'arcsin' numerically" },
-  { src: "N(arg(-1-i))", text: "-2.35619449019234", step: "Numerical value" },
+  { src: "N(arg(-1-i))", text: "-2.35619449019234", step: "Floating-point value" },
   { src: "rref([1,2;2,4])", text: "[1, 2; 0, 0]", step: "Add a multiple of a row" },
   { src: "rref([x, y; x^2, 1])", text: "[1, 0; 0, 1]", step: "Add a multiple of a row, assuming" },
   { src: "[1,2] * [1,2]", error: "inner dimensions must match" },
@@ -228,6 +229,57 @@ async function manipulate() {
 /** The tab bar with more notebooks open than fit: each tab one line with its name short of `.chalk`, a
  *  long name cut short, the studio (opened) still in view; the ⌄ lists every notebook and shows the one
  *  chosen, scrolled into view; the middle button closes a tab. */
+/** A scene, in a notebook of its own: its script read, its objects sampled by the engine (a name the
+ *  cell above binds included), played to its end: the point where the engine's samples put it, the
+ *  equation stepped to the engine's answer, the caption the last beat's. Its samples are quiet: the
+ *  next cell's `%` is still the cell above it. */
+async function scenes() {
+  await menu("File", "New notebook");
+  await run(0, "let a = 2");
+  await out(0);
+  await menu("Edit", "Add scene");
+  const script = [
+    "clock t from 0 to pi",
+    "C = curve(a*exp(i*s), s, 0, 2pi) faint",
+    "P = point(a*exp(i*t))",
+    "R = arrow(0, P)",
+    "E = eq(diff(exp(i*t), t))",
+    "> show P, R | A point on a circle of radius $a$.",
+    "> play t to pi in 1s; show E; work E in 1s | Half way round.",
+  ].join("\n");
+  const sceneCell = page.locator(".cell.scene").last();
+  const ta = sceneCell.locator("textarea.scenein");
+  await ta.fill(script);
+  await ta.press("Shift+Enter");
+  const player = sceneCell.locator(".scene-player");
+  await player.locator("svg").waitFor({ timeout: 30000 });
+  assert.equal(await player.locator(".scene-dot-mark").count(), 2, "a mark per beat");
+  // to the end, as a reader drags the scrubber
+  const total = Number(await player.locator(".scene-scrub").getAttribute("max"));
+  await player.locator(".scene-play").evaluate((b) => { if (b.textContent === "❚❚") b.click(); });
+  await player.locator(".scene-scrub").evaluate((r, t) => { r.value = String(t); r.dispatchEvent(new Event("input")); }, total);
+  await player.locator(".scene-where", { hasText: "2 / 2" }).waitFor({ timeout: 5000 });
+  // the engine's samples of the point, in a session of the test's with the same a
+  await reference.call("engine.evaluate", { sessionId: "e2e-scene", cellId: "a", source: "let a = 2" });
+  const want = await reference.call("engine.plot", { sessionId: "e2e-scene", cellId: "p", source: "plot(a*exp(i*t), t, 0, pi)", quiet: true });
+  const [wx, wy] = want.series[0].points.at(-1);
+  const dot = player.locator("svg circle[data-name=P]");
+  const [x, y] = [Number(await dot.getAttribute("data-x")), Number(await dot.getAttribute("data-y"))];
+  assert.ok(Math.abs(x - wx) < 1e-3 && Math.abs(y - wy) < 1e-3, `the point is at (${x}, ${y}), the engine says (${wx}, ${wy})`);
+  assert.ok(Math.abs(x + 2) < 1e-3, "half way round a circle of radius a = 2 is -2");
+  const eq = await reference.call("engine.check", { sessionId: "e2e-scene", cellId: "e", source: "diff(exp(i*t), t)" });
+  const flatTex = (t) => t.replace(/\\htmlData\{[^}]*\}/g, "").replace(/[{}\s]/g, "");
+  assert.equal(flatTex(await player.locator(".scene-eq .katex-mathml annotation").last().textContent()), flatTex(eq.rendered.latex), "the equation ends as the engine's answer");
+  assert.match(await player.locator(".scene-cap").textContent(), /Half way round/, "the last beat's caption");
+  // the scene was not an evaluation: % is still the cell above it
+  await menu("Edit", "Add math cell");
+  const last = (await cells().count()) - 1;
+  await run(last, "% + 1");
+  const o = await out(last);
+  assert.equal(flatTex(o.tex ?? ""), "3", `% after a scene: ${JSON.stringify(o)}`);
+  console.log(`✓ scene: 2 beats, the point at (${x.toFixed(3)}, ${y.toFixed(3)}) as the engine samples it, the equation stepped to its answer, % untouched`);
+}
+
 async function tabs() {
   const long = "a-notebook-with-a-name-far-too-long-for-any-tab.chalk";
   await menu("File", "New notebook");
@@ -543,6 +595,7 @@ async function features() {
   assert.equal(await rep.locator("svg.spacetime .stmsg").count(), repWant.messages.length, "an arrow per message, a duplicate delivery too");
   console.log(`✓ replicas: ${repWant.lanes.length} lanes, ${repWant.events.length} events, ${repWant.messages.length} messages drawn`);
   await manipulate();
+  await scenes();
   await tabs();
   // a course: the Courses tab, a lesson opened, answered, and followed to the next
   const manifest = JSON.parse(readFileSync(path.join(root, "notebooks/courses.json"), "utf8"));

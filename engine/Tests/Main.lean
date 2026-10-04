@@ -898,8 +898,20 @@ def trigTests : TestM Unit := do
   check "arccos^2 latex" (latexOf "arccos^2(x)") "{\\arccos\\left(x\\right)}^{2}"
   check "arg latex" (latexOf "arg(z)") "\\arg\\left(z\\right)"
 
+/-- A scene's samples (`quiet`) are not evaluations: no `In[n]`, the session as it was. -/
+def quietTests : TestM Unit := do
+  let req (id method src : String) (quiet : Bool) :=
+    s!"\{\"jsonrpc\":\"2.0\",\"id\":{id},\"method\":\"{method}\",\"params\":\{\"sessionId\":\"q\",\"cellId\":\"c{id}\",\"source\":\"{src}\"{if quiet then ",\"quiet\":true" else ""}}}"
+  let (st, _) := handleS [] (req "1" "engine.evaluate" "x + 0" false)
+  let (st, p) := handleS st (req "2" "engine.plot" "plot(exp(i*t), t, 0, 1)" true)
+  checkTrue "quiet plot: samples, and no evaluation number" (contains p "\"points\"" && !contains p "\"label\"") p
+  let (st, m) := handleS st (req "3" "engine.manipulate" "manipulate(plot(s*exp(i*t), s, 0, 1), t, 0, 1, 3)" true)
+  checkTrue "quiet manipulate: frames, and no evaluation number" (contains m "\"frames\"" && !contains m "\"label\"") m
+  let (_, e) := handleS st (req "4" "engine.evaluate" "%" false)
+  checkTrue "after quiet samples the next evaluation is In[2], and % is still In[1]" (contains e "\"label\":2" && contains e "\"text\":\"x\"") e
+
 def main : IO UInt32 := do
-  let ((), failures) ← (do tests; sessionTests; trigTests; partStatTests; workTests; checkTests; logicRelTests; algebraTests; systemsTests; complexNTests; goldenTests).run #[]
+  let ((), failures) ← (do tests; sessionTests; trigTests; quietTests; partStatTests; workTests; checkTests; logicRelTests; algebraTests; systemsTests; complexNTests; goldenTests).run #[]
   for f in failures do
     IO.println s!"FAIL {f.name}\n  expected: {f.expected}\n  actual:   {f.actual}"
   IO.println s!"{failures.size} failures"

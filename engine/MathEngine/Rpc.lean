@@ -435,6 +435,12 @@ def withLabel (st : Store) (sessionId cellId : String) (j : Json) : Store × Jso
     | j => j
   (st.set sessionId s, j)
 
+/-- `withLabel`, unless the request is `quiet`: a scene's samples (`quiet: true` on `engine.plot` and
+`engine.manipulate`) are not evaluations. The session is left as it was before the request (`st0`),
+with no `In[n]` taken and `%` untouched. -/
+def numbered (st0 st : Store) (params : Json) (sessionId cellId : String) (j : Json) : Store × Json :=
+  if params.getBool "quiet" then (st0, j) else withLabel st sessionId cellId j
+
 def evaluate (st : Store) (params : Json) : Store × Json :=
   match params.getStr? "source" with
   | none => (st, errorJson "params" "missing source")
@@ -479,6 +485,7 @@ def plotFields (pl : Plot) : Array (String × Json) :=
   #[("var", .str pl.var), ("from", floatJson pl.from_), ("to", floatJson pl.to), ("series", .arr series), ("terms", .arr terms)]
 
 def plot (st : Store) (params : Json) : Store × Json :=
+  let st0 := st
   match params.getStr? "source" with
   | none => (st, errorJson "params" "missing source")
   | some src =>
@@ -493,12 +500,13 @@ def plot (st : Store) (params : Json) : Store × Json :=
       let res := #[("ok", .bool true), ("kind", .str "plot"), ("value", out.toJson), ("rendered", Rendered.toJson out paths)] ++ plotFields pl
       let res := res ++ workFields params d
       (st, .obj res)
-    withLabel st sessionId cellId j
+    numbered st0 st params sessionId cellId j
 
 /-- `manipulate(e, p, from, to[, frames])`: every frame's value of `p` (as a number and as the
 engine prints it), the body's normal form there, and a plot body's samples; the cell's own value,
 rendering and work are the first frame's. -/
 def manipulate (st : Store) (params : Json) : Store × Json :=
+  let st0 := st
   match params.getStr? "source" with
   | none => (st, errorJson "params" "missing source")
   | some src =>
@@ -524,7 +532,7 @@ def manipulate (st : Store) (params : Json) : Store × Json :=
       let res := #[("ok", .bool true), ("kind", .str "manipulate"), ("value", out.toJson), ("rendered", Rendered.toJson out paths),
         ("param", .str p), ("frames", .arr (frames.map frameJson))]
       (st, .obj (res ++ workFields params d))
-    withLabel st sessionId cellId j
+    numbered st0 st params sessionId cellId j
 
 def explain (st : Store) (params : Json) : Except String Json := do
   let sessionId := (params.getStr? "sessionId").getD ""

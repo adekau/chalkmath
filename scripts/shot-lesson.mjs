@@ -49,4 +49,20 @@ try {
     await page.screenshot({ path: path.join(out, `part${k}.png`) });
   }
   console.log("wrote", k, "screens to", out);
+  // each scene at the end of each beat (the scrubber set as a reader would drag it)
+  const scenes = page.locator(".scene-player");
+  for (let n = 0; n < await scenes.count(); n++) {
+    const sc = scenes.nth(n);
+    await sc.scrollIntoViewIfNeeded();
+    const ends = await sc.evaluate((el) => [...el.querySelectorAll(".scene-dot-mark")].map((d) => parseFloat(d.style.left)));
+    const max = Number(await sc.locator(".scene-scrub").getAttribute("max"));
+    const times = ends.slice(1).map((p) => (p / 100) * max - 0.05).concat([max]);
+    for (const [b, t] of times.entries()) {
+      await sc.locator(".scene-play").evaluate((btn) => { if (btn.textContent === "❚❚") btn.click(); });
+      await sc.locator(".scene-scrub").evaluate((r, t) => { r.value = String(t); r.dispatchEvent(new Event("input")); }, t);
+      await page.waitForTimeout(250);
+      await sc.screenshot({ path: path.join(out, `scene${n}-beat${b + 1}.png`) });
+    }
+    console.log("scene", n, ":", times.length, "beats photographed");
+  }
 } finally { await browser.close(); engine.close(); site.close(); }

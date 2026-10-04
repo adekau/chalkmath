@@ -33,24 +33,31 @@
       "label": null
     },
     {
-      "src": "> [!try]\n> Press `▶ Play`. The faint circle is the whole path; the arc is the walk so far, with the radius to where you stand and the drop from there to the horizontal axis. The drop's foot is at $\\cos T$, its height is $\\sin T$.",
+      "src": "clock t from 0 to 2pi\nC = curve(exp(i*s), s, 0, 2pi) faint color 6\nP = point(exp(i*t)) thick color 1\nW = trace(P) color 1\nR = arrow(0, P) color 1\nL = label(P, \"\\cos t + i \\sin t\") color 1\nX = point(cos(t)) color 2\nDX = segment(P, X) dashed color 2\nY = point(i*sin(t)) color 3\nDY = segment(P, Y) dashed color 3\n> show C | The unit circle: every point at distance $1$ from $0$.\n> show P, R, L, W; play t to 0.7 in 2s | Walk a distance $t$ round it, counterclockwise from $1$. Where you stand is $\\cos t + i \\sin t$.\n> show X, DX, Y, DY | The **cosine** is your shadow on the horizontal axis (blue), the **sine** your shadow on the vertical one (green).\n> play t to pi/2 in 2s | A quarter of the way round, at $t = \\pi/2$, the sine is at its peak and the cosine is $0$.\n> play t to 2pi in 5s | Once round: each shadow swings between $-1$ and $1$, a quarter turn behind the other.",
+      "type": "scene",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Unrolled against the distance walked, the two shadows are the familiar waves:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "clock t from 0.01 to 2pi\nview 0, 6.3, -1.25, 1.25\nCw = graph(cos(x), x, 0, t) color 2\nSw = graph(sin(x), x, 0, t) color 3\nQ = point(t + i*cos(t)) color 2\nP = point(t + i*sin(t)) color 3\n> show Cw, Q, Sw, P; play t to 2pi in 6s | The cosine starts at $1$, the sine at $0$; each is the other shifted by a quarter turn, $\\pi/2$.",
+      "type": "scene",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> The same walk as a calculation you can stop anywhere: drag `T`, and the arc, the radius and the drop to the axis are worked out at that $T$.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
       "src": "manipulate(plot([cos(2*pi*t/T) + i*sin(2*pi*t/T), cos(t) + i*sin(t), (t/T)*(cos(T) + i*sin(T)), cos(T) + i*(t/T)*sin(T)], t, 0, T), T, 0.05, 6.28)",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "Unrolled against the distance walked, the two shadows are the familiar waves. At the top of the circle, $t = \\pi/2$, the sine is at its peak and the cosine crosses zero.",
-      "type": "markdown",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "plot([cos(t), sin(t)], t, 0, 6.28)",
       "showWork": false,
       "label": null
     },
@@ -90,6 +97,12 @@
     {
       "src": "$e^x$ is the function whose rate of change is itself. Ask the same of a point moving in the plane, but with a quarter turn: a point $z(t)$ whose velocity is always $i\\,z(t)$. The velocity is the position turned a quarter, so it is always at right angles to the radius: the point never moves toward $0$ or away from it, only round it. Starting from $1$, at speed $1$, it walks the unit circle. That point is $e^{it}$:",
       "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "clock t from 0 to 2pi\nC = curve(exp(i*s), s, 0, 2pi) faint color 6\nP = point(exp(i*t)) thick color 1\nR = arrow(0, P) color 1\nLP = label(P, \"e^{it}\") color 1\nV = arrow(P, (1 + i)*exp(i*t)) color 4\nLV = label((1 + i)*exp(i*t), \"i\\,e^{it}\") color 4\nE = eq(diff(exp(i*t), t))\n> show C, P, R, LP | The point $e^{it}$, and its radius.\n> show E; work E | Its velocity, by the chain rule: $i\\,e^{it}$.\n> show V, LV | Multiplying by $i$ turns a quarter, so the velocity is the radius turned a quarter: always at right angles to it.\n> play t to 2pi in 6s | Never along the radius, always across it: the point neither nears $0$ nor leaves it. It goes round.",
+      "type": "scene",
       "showWork": false,
       "label": null
     },
@@ -160,6 +173,18 @@
       "label": null
     },
     {
+      "src": "clock n from 1 to 40\nC = curve(exp(i*s), s, 0, pi) faint color 6\nM = point(-1) color 4\nLM = label(M, \"-1\") color 4\nS = curve((1 + i*pi/n)^(n*s/pi), s, 0, pi) color 1\nE = point((1 + i*pi/n)^n) thick color 1\n> show C, M, LM | Half way round the circle: the walk $e^{i\\pi}$ takes, from $1$ to $-1$.\n> show S, E | One step of $1 + i\\pi$ overshoots: a turn, but a stretch too.\n> play n to 40 in 7s | Split it into $n$ steps of $1 + i\\pi/n$. As $n$ grows the stretch fades, the path settles onto the circle, and it ends at $e^{i\\pi} = -1$.",
+      "type": "scene",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The same path with a slider of your own, through the powers $(1 + i\\pi/n)^k$:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "plot([cos(t) + i*sin(t), (1 + i*pi/n)^(n*t/pi)], t, 0, pi)",
       "showWork": false,
       "label": null
@@ -172,6 +197,12 @@
     {
       "src": "Angles add when you multiply",
       "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "clock b from 0.01 to 2\nC = curve(exp(i*s), s, 0, 2pi) faint color 6\nAA = curve(0.3*exp(i*s), s, 0, 0.6) color 2\nA = arrow(0, exp(0.6*i)) color 2\nLA = label(exp(0.6*i), \"e^{ia}\") color 2\nBB = curve(0.45*exp(i*s), s, 0, b) color 3\nB = arrow(0, exp(i*b)) color 3\nLB = label(exp(i*b), \"e^{ib}\") color 3\nPP = curve(0.6*exp(i*s), s, 0, 0.6 + b) color 1\nP = arrow(0, exp(i*(0.6 + b))) thick color 1\nLP = label(exp(i*(0.6 + b)), \"e^{ia} e^{ib}\") color 1\n> show C, AA, A, LA | A turn by $a$: the point $e^{ia}$.\n> show BB, B, LB | A turn by $b$.\n> show PP, P, LP | Their product is the turn by $a$ followed by the turn by $b$: angle $a + b$.\n> play b to 2 in 5s | As $b$ grows the product turns with it, always $a$ ahead. Multiplying points on the circle adds their angles.",
+      "type": "scene",
       "showWork": false,
       "label": null
     },
@@ -232,6 +263,12 @@
     {
       "src": "So `arctan` measures an angle, and its derivative $\\dfrac{1}{1 + y^2}$ is how fast the angle grows as the point climbs the line through $1$. Adding those small turns from $y = 0$ to $y = 1$ gives the angle to $1 + i$, an eighth of a turn, $\\pi/4$; four of them make $\\pi$.",
       "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "clock y from 0.01 to 1\nview -0.3, 1.5, -0.25, 1.15\nC = curve(exp(i*s), s, 0, pi/2) faint color 6\nK = segment(1, 1 + i) faint color 6\nAR = curve(0.35*exp(i*s), s, 0, arctan(y)) thick color 2\nLA = label(0.36*exp(i*arctan(y)/2), \"\\arctan y\") color 2\nR = arrow(0, P) color 1\nP = point(1 + i*y) thick color 1\nLP = label(P, \"1 + iy\") color 1\n> show C, K, R, P, LP | A point climbing the line through $1$: the point $1 + iy$.\n> show AR, LA | Its angle from the real axis is $\\arctan y$.\n> play y to 1 in 6s | The angle grows fast at first and slower as the point climbs, at the rate $\\frac{1}{1 + y^2}$. At $y = 1$ it is an eighth of a turn, $\\pi/4$.",
+      "type": "scene",
       "showWork": false,
       "label": null
     },

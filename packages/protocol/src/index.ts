@@ -235,7 +235,9 @@ export interface ExplainResult {
  *  function (or the list, entrywise) under the session, records the cell like any other (so
  *  `engine.explain` works on it), and samples each curve on a uniform grid. Drawing is the
  *  frontend's; a sample is `null` where the curve has no finite value. Optional method (rule 5). */
-export interface PlotParams { sessionId: string; cellId: string; source: string; showWork?: boolean; paths?: boolean; outline?: boolean }
+/** `quiet`: a scene's sample, not an evaluation — the session is left as it was, no `In[n]` is
+ *  taken and `%` is untouched. Optional (rule 5). */
+export interface PlotParams { sessionId: string; cellId: string; source: string; showWork?: boolean; paths?: boolean; outline?: boolean; quiet?: boolean }
 /** One curve: its normalized term (rendered) and its samples. A `parametric` curve is complex-valued
  *  and its samples are `[re, im]` — a point in the plane rather than `[t, y]`. */
 export interface PlotSeries { rendered: Rendered; points: [number, number | null][]; parametric?: boolean }
