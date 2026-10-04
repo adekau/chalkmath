@@ -96,8 +96,8 @@ the engine omits is unverified.
 \rt{rel.transitive-closure}{verified}{Each round adds only pairs forced by two that chain, so every pair lies in any transitive relation containing the original (\lc{round_sub_transitive}); the rounds stop when none is missing, and then the relation is transitive (\lc{stable_transitive}): the least transitive relation containing it.}
 \rt{rel.classes}{verified}{Each element's class is everything related to it; for an equivalence the classes partition the set.}
 \rt{rel.finer}{verified}{Every pair of the first checked in the second.}
-\rt{rel.wellfounded}{unverified}{On a finite set a relation is well-founded exactly when it has no cycle. A cycle found is shown and can be read off the relation; that the search finds one whenever there is one is not yet proved.}
-\rt{rel.measure}{verified}{Every step checked to decrease the measure, by definition; on a finite set a measure that goes down along every step leaves no room for a cycle.}
+\rt{rel.wellfounded}{verified}{Decided with a certificate either way: peeling gives ranks checked to go down along every step, so the relation is well-founded (\lc{wellfounded_none}); or a cycle, checked to step back into itself, shows it is not (\lc{wellfounded_some}).}
+\rt{rel.measure}{verified}{Every step checked to decrease the measure; then the relation is well-founded: no infinite chain of steps (\lc{wf_of_measure}).}
 \rt{order.inner}{verified}{A nested call evaluated first and named: a rewriting of the source, so the commands' own statuses apply.}
 \rt{sys.inner}{verified}{A nested call evaluated first and named: a rewriting of the source, so the commands' own statuses apply.}
 \rt{order.happens-before}{verified}{The reflexive-transitive closure of program order and messages, checked to be a partial order (\lc{checkPartialOrder_none}).}

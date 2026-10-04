@@ -683,9 +683,10 @@ def orderCell (s : Session) (cellId source : String) :
       match getR r with
       | .error m => err m
       | .ok R =>
-        match Ord.findCycle R with
-        | none => done (bool true) #[step "rel.wellfounded" "No cycle: on a finite set every chain of steps stops, so the relation is well-founded." (relExpr' R) (bool true)] none "well-founded" (graph := some (R, [], []))
-        | some c =>
+        match Ord.wellfounded R with
+        | .error m => err m
+        | .ok none => done (bool true) #[step "rel.wellfounded" "No cycle: on a finite set every chain of steps stops, so the relation is well-founded." (relExpr' R) (bool true)] none "well-founded" (graph := some (R, [], []))
+        | .ok (some c) =>
           let edges := c.zip c.tail
           done (bool false) #[step "rel.wellfounded" s!"A cycle: {" → ".intercalate c}; following it never stops." (relExpr' R) (bool false)] none s!"not well-founded: {" → ".intercalate c}" (graph := some (R, edges, []))
     | "measure", [r, .maps ps] =>

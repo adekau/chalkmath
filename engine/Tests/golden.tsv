@@ -226,6 +226,9 @@ finer(K, A)	false
 wellfounded(R)	true
 let C = rel({x, y, z}; x->y, y->z, z->x)	{(x, y), (y, z), (z, x)}
 wellfounded(C)	false
+wellfounded(rel({a}; a->a))	false
+wellfounded(rel({a, b, c, d}; a->b, b->c, a->c, d->a))	true
+wellfounded(rel({a, b, c, d}; a->b, b->c, c->d, d->b))	false
 measure(R; a->2, b->1, c->0)	true
 measure(C; x->2, y->1, z->0)	false
 let D = divisors(12)	poset {1, 2, 3, 4, 6, 12}
