@@ -1059,24 +1059,72 @@ function closeDoc(i: number) {
   autosave();
 }
 
-/** The tab bar: one tab per open notebook (italic with a star while unsaved), then the studio, then
- *  the documentation while it is open (Help › Documentation; its × closes it). */
+/** A notebook's name as its tab shows it: every notebook is a `.chalk` file, so not that. */
+const tabName = (name: string) => name.replace(/\.chalk$/i, "") || name;
+
+/** The open notebook the tab strip last scrolled to; it scrolls again only when that changes, not
+ *  on every re-render (typing re-renders the tabs, to keep their unsaved marks current). */
+let tabsShown = "";
+/** Whether the list of every open notebook (the ⌄ after the tabs) is unfolded. */
+let tabListOpen = false;
+
+/** The tab bar: one tab per open notebook (italic, with a dot for its ×, while unsaved), in a strip that
+ *  scrolls once the tabs have shrunk as far as they go; the + and, while the strip overflows, a ⌄
+ *  listing every open notebook; then, at the right, the studio, the courses and the documentation
+ *  while they are open (Help › Documentation; their × closes them). Long names end in an ellipsis
+ *  and show whole on hover. */
 function renderTabs() {
-  const tabs = $(".tabbar"); tabs.innerHTML = "";
+  const tabs = $(".tabbar");
+  const scroll = tabs.querySelector<HTMLElement>(".tabstrip")?.scrollLeft ?? 0;
+  tabs.innerHTML = "";
+  const strip = h("div", "tabstrip");
   S.docs.forEach((d, i) => {
     const dirty = docDirty(d);
     const on = S.tab === "notebook" && i === S.doc;
     const t = h("div", `tab${on ? " on" : ""}${dirty ? " dirty" : ""}`);
     t.title = dirty ? `${d.name} — unsaved changes` : d.name;
-    const x = asButton(h("span", "x", "×"), `Close ${d.name}`); x.title = "Close";
+    // the × of an unsaved notebook is a dot until pointed at (on a touch screen, a star after the name instead)
+    const x = asButton(h("span", "x"), `Close ${d.name}`); x.title = "Close";
+    x.append(h("span", "cx", "×"), ...(dirty ? [h("span", "dot", "●")] : []));
     x.addEventListener("click", (ev) => { ev.stopPropagation(); closeDoc(i); });
     // the label is the button (the × beside it is another; one may not hold the other)
-    const label = asButton(h("span", "label", `${d.name}${dirty ? "*" : ""}`), `${d.name}${dirty ? ", unsaved changes" : ""}`);
+    const label = asButton(h("span", "label"), `${d.name}${dirty ? ", unsaved changes" : ""}`);
     label.setAttribute("aria-current", String(on));
+    // the name gives way to the ellipsis; the star after it stays
+    label.append(h("span", "nm", tabName(d.name)), ...(dirty ? [h("span", "star", "*")] : []));
     t.append(label, x);
     t.addEventListener("click", () => { if (i !== S.doc) loadDoc(i); switchTab("notebook"); });
-    tabs.append(t);
+    // the middle button closes a tab, as in a browser
+    t.addEventListener("mousedown", (ev) => { if (ev.button === 1) ev.preventDefault(); });
+    t.addEventListener("auxclick", (ev) => { if (ev.button === 1) { ev.preventDefault(); closeDoc(i); } });
+    strip.append(t);
   });
+  // a vertical wheel scrolls the strip sideways
+  strip.addEventListener("wheel", (ev) => {
+    if (strip.scrollWidth <= strip.clientWidth || Math.abs(ev.deltaX) > Math.abs(ev.deltaY)) return;
+    ev.preventDefault(); strip.scrollLeft += ev.deltaY;
+  }, { passive: false });
+  strip.addEventListener("scroll", () => tabEdges(strip));
+  const add = asButton(h("div", "tabadd", "+"), "New notebook"); add.title = "New notebook";
+  add.addEventListener("click", () => { newDoc(); switchTab("notebook"); });
+  const more = asButton(h("div", `tabmore${tabListOpen ? " open" : ""}`), "All open notebooks"); more.title = "All open notebooks";
+  more.innerHTML = `<svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  more.setAttribute("aria-haspopup", "menu"); more.setAttribute("aria-expanded", String(tabListOpen));
+  more.addEventListener("click", (ev) => { ev.stopPropagation(); tabListOpen = !tabListOpen; renderTabs(); if (tabListOpen) (tabs.querySelector<HTMLElement>(".tablist .item.on") ?? tabs.querySelector<HTMLElement>(".tablist .item"))?.focus(); });
+  const moreWrap = h("div", "tabmorewrap"); moreWrap.append(more);
+  if (tabListOpen) {
+    const list = h("div", "tablist dropdown");
+    S.docs.forEach((d, i) => {
+      const on = S.tab === "notebook" && i === S.doc;
+      const it = h("div", `item${on ? " on" : ""}${docDirty(d) ? " dirty" : ""}`, `${tabName(d.name)}${docDirty(d) ? "*" : ""}`);
+      it.title = d.name;
+      it.addEventListener("click", (ev) => { ev.stopPropagation(); tabListOpen = false; if (i !== S.doc) loadDoc(i); switchTab("notebook"); });
+      list.append(it);
+    });
+    menuKeys(list, () => { tabListOpen = false; renderTabs(); tabs.querySelector<HTMLElement>(".tabmore")?.focus(); });
+    moreWrap.append(list);
+  }
+  const places = h("div", "tabplaces");
   for (const [key, label] of [["studio", "manim studio"], ...(S.courses.open ? [["courses", "courses"] as const] : []), ...(S.guide.open ? [["docs", "documentation"] as const] : [])] as const) {
     const t = asButton(h("div", `tab${S.tab === key ? " on" : ""}`), label);
     t.setAttribute("aria-current", String(S.tab === key));
@@ -1087,10 +1135,31 @@ function renderTabs() {
       t.append(x);
     }
     t.addEventListener("click", () => switchTab(key));
-    tabs.append(t);
+    places.append(t);
   }
-  tabs.append((() => { const a = asButton(h("div", "tabadd", "+"), "New notebook"); a.title = "New notebook"; a.addEventListener("click", () => { newDoc(); switchTab("notebook"); }); return a; })());
+  tabs.append(strip, add, moreWrap, places);
+  strip.scrollLeft = scroll;
+  // the notebook shown is scrolled into view when it changes (opened, chosen from the list, closed to)
+  const shown = S.tab === "notebook" ? currentDoc()?.id ?? "" : "";
+  if (shown !== tabsShown) {
+    tabsShown = shown;
+    const on = strip.querySelector<HTMLElement>(".tab.on");
+    if (on) {
+      if (on.offsetLeft < strip.scrollLeft) strip.scrollLeft = on.offsetLeft;
+      else if (on.offsetLeft + on.offsetWidth > strip.scrollLeft + strip.clientWidth) strip.scrollLeft = on.offsetLeft + on.offsetWidth - strip.clientWidth;
+    }
+  }
+  tabEdges(strip);
 }
+
+/** Mark the strip as overflowing (the ⌄ shows), and which of its ends hide tabs (those edges fade). */
+function tabEdges(strip: HTMLElement) {
+  const over = strip.scrollWidth > strip.clientWidth + 1;
+  strip.parentElement?.classList.toggle("overflow", over || tabListOpen);
+  strip.classList.toggle("fade-l", over && strip.scrollLeft > 1);
+  strip.classList.toggle("fade-r", over && strip.scrollLeft + strip.clientWidth < strip.scrollWidth - 1);
+}
+window.addEventListener("resize", () => { const s = document.querySelector<HTMLElement>(".tabstrip"); if (s) tabEdges(s); });
 
 // ---------------------------------------------------------------------------
 // Notebook files (.chalk): sources, outputs and studio scenes as JSON
@@ -7035,7 +7104,7 @@ renderSidebar();
 renderPanelHead();
 renderPanel();
 renderView();
-document.addEventListener("click", () => { if (S.menu) { S.menu = null; renderChrome(); } closeCellMenu(); });
+document.addEventListener("click", () => { if (S.menu) { S.menu = null; renderChrome(); } if (tabListOpen) { tabListOpen = false; renderTabs(); } closeCellMenu(); });
 document.querySelector(".cells")?.addEventListener("scroll", () => closeCellMenu(), { passive: true });   // a fixed menu must not float away from its cell
 trackViewSection();
 document.addEventListener("keydown", (ev) => {

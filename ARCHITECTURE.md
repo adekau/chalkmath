@@ -309,7 +309,13 @@ input would show a fraction where the engine reads a product, and its tests hold
 golden source and notebook cell is round-tripped and, against the native engine, has to mean the
 same thing before and after.
 
-**Manim Studio** is the third tab. "→ Scene" on an evaluated cell turns its derivation into shots:
+The tab bar has two parts. Open notebooks are documents: a strip of tabs that share its width,
+shrink to a floor and then scroll, with a list of them all once they overflow; a long name ends in an
+ellipsis rather than wrapping, and the strip scrolls to the notebook shown when that changes, not on
+every re-render. Manim Studio, the courses and the documentation are places, not documents, and sit
+at the right where many notebooks cannot push them out of view.
+
+**Manim Studio** is the tab at the right of the tab bar. "→ Scene" on an evaluated cell turns its derivation into shots:
 the statement, then each step's `afterRendered` term (an optional field on `Step`, per protocol
 rule 5). The page adds what a storyboard needs and nothing more — order, on/off, an animation name,
 a duration — previews a shot by matching KaTeX glyphs between consecutive terms (longest common

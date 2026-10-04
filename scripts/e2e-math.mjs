@@ -10,9 +10,9 @@
 // an exercise written in its editor and answered (wrong, right, and with the work), a Markdown
 // callout, a function's usage on hover, a truth table and a relation's graph, an operation table, a
 // typing tree, a logic exercise, a system typed over several lines, manipulate (a plot played, a
-// derivative and a column of a plot and a calculation dragged, against the engine's own frames), and a
-// course's lesson opened from the Courses tab, answered, and followed to the next. Each is held to the
-// engine's own answers through a client of the test's.
+// derivative and a column of a plot and a calculation dragged, against the engine's own frames), the tab
+// bar with more notebooks open than fit, and a course's lesson opened from the Courses tab, answered,
+// and followed to the next. Each is held to the engine's own answers through a client of the test's.
 // Chromium: playwright-core's own, or the executable named by CHROMIUM. The engine: MATHENGINE, or
 // engine/.lake/build/bin/mathengine.
 import { chromium } from "playwright-core";
@@ -210,6 +210,45 @@ async function manipulate() {
   assert.ok(!calc.work || shown.startsWith(flatTex(calc.work[0].latex)), `the calculation does not start from h put in: ${shown}`);
   assert.ok(await all().nth(2).locator(".manip .manippart").nth(0).locator(".plotbox svg").count(), "the column's plot is not drawn");
   console.log(`✓ manipulate: h played over ${want.frames.length} frames with the axes held; diff(x^n, x) at n = 3 is ${want2.frames[2].rendered.text}; a column's plot and calculation, h^2 + 1 = ${calc.rendered.text} at h = 3`);
+}
+
+/** The tab bar with more notebooks open than fit: each tab one line with its name short of `.chalk`, a
+ *  long name cut short, the studio still in view; the ⌄ lists every notebook and shows the one
+ *  chosen, scrolled into view; the middle button closes a tab. */
+async function tabs() {
+  const long = "a-notebook-with-a-name-far-too-long-for-any-tab.chalk";
+  await menu("File", "New notebook");
+  page.once("dialog", (d) => d.accept(long));
+  await menu("File", "Save as");
+  const strip = page.locator(".tabbar .tabstrip .tab");
+  let added = 0;
+  while (!(await page.locator(".tabbar.overflow").count())) {
+    assert.ok(++added <= 40, "the tab strip never overflows");
+    await page.locator(".tabbar .tabadd").click();
+  }
+  const shape = await strip.evaluateAll((ts) => ts.map((t) => ({ title: t.title, name: t.querySelector(".nm").textContent, h: t.offsetHeight, cut: t.querySelector(".nm").scrollWidth > t.querySelector(".nm").clientWidth })));
+  assert.ok(shape.every((t) => !t.name.endsWith(".chalk")), "a tab shows .chalk");
+  assert.equal(new Set(shape.map((t) => t.h)).size, 1, `the tabs are not all one line: heights ${[...new Set(shape.map((t) => t.h))]}`);
+  const lt = shape.find((t) => t.title === long);
+  assert.ok(lt, "no tab has the long name whole on hover"); assert.equal(lt.name, long.replace(/\.chalk$/, ""));
+  assert.ok(lt.cut, "the long name is not cut short");
+  const studio = await page.locator(".tabbar .tabplaces .tab", { hasText: "manim studio" }).boundingBox();
+  assert.ok(studio && studio.x + studio.width <= page.viewportSize().width, "the studio's tab is pushed out of view");
+  // the list: every open notebook; the long one chosen is shown and scrolled to
+  await page.locator(".tabbar .tabstrip .tab").first().click();
+  await page.locator(".tabbar .tabmore").click();
+  assert.equal(await page.locator(".tablist .item").count(), shape.length, "the list is not every open notebook");
+  await page.locator(".tablist .item", { hasText: long.replace(/\.chalk$/, "") }).click();
+  assert.equal(await page.locator(".tablist").count(), 0, "the list stays open after a choice");
+  assert.equal(await page.locator(".tabstrip .tab.on").getAttribute("title"), long, "the notebook chosen is not shown");
+  assert.ok(await page.locator(".tabstrip").evaluate((s) => { const on = s.querySelector(".tab.on"); return on.offsetLeft >= s.scrollLeft - 1 && on.offsetLeft + on.offsetWidth <= s.scrollLeft + s.clientWidth + 1; }), "the notebook chosen is not scrolled into view");
+  // the middle button closes the untitled notebooks opened here
+  for (let k = 0; k < added; k++) {
+    const n = await strip.count();
+    await page.locator(".tabstrip .tab:not(.on)", { hasText: "untitled" }).last().click({ button: "middle" });
+    assert.equal(await strip.count(), n - 1, "the middle button does not close a tab");
+  }
+  console.log(`✓ tabs: ${shape.length} open, one line each, the long name cut short, the list showing it, ${added} closed with the middle button`);
 }
 
 /** The teaching features, in a fresh notebook, then a course. */
@@ -428,6 +467,7 @@ async function features() {
   assert.equal(await rep.locator("svg.spacetime .stmsg").count(), repWant.messages.length, "an arrow per message, a duplicate delivery too");
   console.log(`✓ replicas: ${repWant.lanes.length} lanes, ${repWant.events.length} events, ${repWant.messages.length} messages drawn`);
   await manipulate();
+  await tabs();
   // a course: the Courses tab, a lesson opened, answered, and followed to the next
   const manifest = JSON.parse(readFileSync(path.join(root, "notebooks/courses.json"), "utf8"));
   const course = manifest.projects.find((p) => p.kind === "course");
