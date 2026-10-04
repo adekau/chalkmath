@@ -37,6 +37,8 @@ const CASES = [
   { src: "N(sin(10^30))", text: "-0.0901169019121381", step: "Numerical value" },
   { src: "N((-8)^(1/3))", text: "1 + 1.73205080756888*i", step: "Numerical value" },
   { src: "N(exp(100))", text: "2.68811714181614*10^43", step: "Numerical value" },
+  { src: "N(e^3.5)", text: "33.1154519586923", step: "Numerical value" },
+  { src: "N(ln(2))", text: "0.693147180559945", step: "Numerical value" },
   { src: "factor(1/x + 1)", text: "(x + 1)/x", step: "Common denominator" },
   { src: "N(i^i)", text: "0.207879576350762", step: "Numerical value" },
   { src: "diff(ln(x), x)", text: "1/x", step: "Chain rule, assuming" },
@@ -464,6 +466,25 @@ async function features() {
   await page.locator(".usagetip .umore", { hasText: "subst" }).waitFor({ timeout: 5000 });
   await page.mouse.move(5, 5);
   console.log("✓ usage on hover: subst");
+  // a plain e is a variable, not Euler's number: the answer says so, in the engine's words; ℯ is quiet
+  // (each in a cell of its own: a cell that ran a power reopens in the visual editor)
+  const warned = async (src, k) => {
+    await menu("Edit", "Add math cell");
+    const wI = await all().count() - 1;
+    await all().nth(wI).locator("input.cellin").fill(src);
+    await all().nth(wI).locator("input.cellin").press("Enter");
+    const r = await ref(src, k);
+    await outIs(wI, r.rendered.latex, src);
+    return { engine: r.warnings, shown: await all().nth(wI).locator(".outval .outwarn").allTextContents() };
+  };
+  const ew = await warned("e^x", 40);
+  assert.ok(ew.engine?.length, "the engine did not warn about a variable named e");
+  assert.deepEqual(ew.shown, ew.engine.map((w) => `⚠ ${w}`), "the page does not show the engine's warning");
+  const cw = await warned("ℯ^x", 41);
+  assert.equal(cw.engine, undefined, "the engine warned about ℯ");
+  assert.deepEqual(cw.shown, [], "the page warned about ℯ");
+  await menu("Edit", "Add math cell");   // the next check writes into the last cell
+  console.log("✓ warnings: e^x says e is a variable, ℯ^x says nothing");
   // explain: each clickable part of an answer explains that part, the engine's own explain of its path
   // (a negated product prints without its -1, and its factors keep their true paths)
   const negSrc = "cos(t) - sin(t)^2/sqrt(2)";

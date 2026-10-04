@@ -114,7 +114,7 @@ export const FUNCTIONS: FnDoc[] = [
       "Over ℂ when the term mentions `i`, or when its real value is not finite: `N(sqrt(-1))` is `i`. A complex value is certified too, its real and imaginary parts each to their own digits: sums, products, quotients and integer powers, `exp`, `sin`, `cos` and `tan`, `abs`, `conj`, `re` and `im`, `ln` and `sqrt` of a real number, and a real number to a real power, on the principal branch (`N((-8)^(1/3))` is `1 + 1.73205080756888i`), and `ln` and powers of any complex number off the negative real axis, through a certified `arctan` for the angle (`N(ln(i))` is `1.5707963267949i`, `N(i^i)` is `0.207879576350762`).",
       "What the intervals do not reach is a floating-point approximation in IEEE-754 double precision, and its step says it is not certified: a function across a pole or a jump (`N(tan(pi/2))`), the logarithm or a power of a number on the negative real axis whose imaginary part is not exactly zero, where the angle jumps, and `arcsin`, `arccos`.",
       "A value too large or too small for fifteen places is written as a product with a power of ten, `N(exp(100))` as `2.68811714181614*10^43`, which reads back as the same number (not `2.68811714181614e+43`, which would be read as that times `e`, plus 43).",
-      "A term with a free variable has no numerical value.",
+      "A term with a free variable has no numerical value. The one exception is a variable named `e`, which `N` reads as Euler's number, though nothing else does; the answer warns that it is a variable (type `\\e` for the constant `ℯ`).",
     ],
     examples: [
       basic("N(pi)", "N(sqrt(2))"),
@@ -156,7 +156,7 @@ export const FUNCTIONS: FnDoc[] = [
   {
     name: "exp", area: "Elementary functions",
     usage: [["exp(x)", "gives the exponential of `x`: e to the power `x`."]],
-    details: ["`exp(x)`, `ℯ^x` and `e^x` written with `\\e` are the same function.", "Its own derivative and its own antiderivative.", "An answer shows it as a power of e, $e^{x}$; as text it stays `exp(x)`, which reads back as the same thing."],
+    details: ["`exp(x)`, `ℯ^x` and `e^x` written with `\\e` are the same function. A plain letter `e` is a variable, so `e^x` typed without `\\e` is not `exp(x)`; the answer says so under it.", "Its own derivative and its own antiderivative.", "An answer shows it as a power of e, $e^{x}$; as text it stays `exp(x)`, which reads back as the same thing."],
     examples: [
       basic("diff(exp(2x), x)", "ln(exp(x))"),
       section("Scope", "integrate(exp(2*x), x)", "ℯ^(pi*i)"),

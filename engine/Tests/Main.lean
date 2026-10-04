@@ -687,6 +687,36 @@ def sessionTests : TestM Unit := do
   checkTrue "rpc manipulate column: a part that is a bound name is labelled with it" ((lab.splitOn "\"label\":\"m\"").length == 3 && !(contains lab "\"label\":\"h\"")) lab
   checkTrue "rpc value json" ((rpc "engine.evaluate" "{\"source\":\"2x\"}").startsWith "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"ok\":true,\"value\":{\"k\":\"mul\",\"args\":[{\"k\":\"num\",\"v\":{\"num\":\"2\",\"den\":\"1\"}},{\"k\":\"var\",\"name\":\"x\"}]}")
 
+/-- The certified `N`'s Taylor sums are taken in interval arithmetic (`expSumI`, `trigSumI`): each
+interval holds the exact sum it stands for, and stays narrow; `remainder` rounds `|y|` up, never down. -/
+def intervalTests : TestM Unit := do
+  let narrow (a : Ival.I) : Bool := a.hi - a.lo < 1 / ((2 ^ 180 : Nat) : Rat)
+  for y in [(7 : Rat) / 8, -1, 1, 0, 1 / 3, -5 / 7, 123456789 / 987654321] do
+    let e := (Ival.expSumI y Ival.terms).1
+    let x := Ival.expSum y Ival.terms
+    checkTrue s!"interval: expSumI holds expSum at {y}" (e.lo ≤ x && x ≤ e.hi && narrow e)
+    let (c, sn, _) := Ival.trigSumI y Ival.terms
+    let cx := Ival.cosSum y Ival.terms
+    let sx := Ival.sinSum y Ival.terms
+    checkTrue s!"interval: trigSumI holds cosSum and sinSum at {y}" (c.lo ≤ cx && cx ≤ c.hi && sn.lo ≤ sx && sx ≤ sn.hi && narrow c && narrow sn)
+    checkTrue s!"interval: the remainder is at least Taylor's at {y}"
+      (Ival.rabs y ^ Ival.terms * ((Ival.terms + 1 : Nat) : Rat) / ((Ival.fact Ival.terms * Ival.terms : Nat) : Rat) ≤ Ival.remainder y Ival.terms)
+  -- the paths that went through the slow exact sums: still certified
+  let mut st : Store := []
+  for src in ["N(sqrt(2))", "N(e^3.5)", "N(ln(2))", "N(arctan(1/3))", "N(2^(1/3))", "N(sqrt(0))"] do
+    (st, _) := sessionEval st src ",\"showWork\":true"
+  let lastRule (src : String) : String :=
+    ((st.get "t").cells.lookup src >>= fun c => c.derivation.steps.toList.getLast? |>.map (·.rule)).getD ""
+  for src in ["N(sqrt(2))", "N(e^3.5)", "N(ln(2))", "N(arctan(1/3))", "N(2^(1/3))"] do
+    check s!"interval: {src} is certified" (lastRule src) "cmd.N"
+  -- a variable named e is not Euler's number: the answer says so
+  let warns (src : String) : Bool := contains (rpc "engine.evaluate" s!"\{\"sessionId\":\"w\",\"cellId\":\"c\",\"source\":\"{src}\"}") "\"warnings\""
+  checkTrue "warnings: e^x warns that e is a variable" (warns "e^x")
+  checkTrue "warnings: N(e^3.5) warns too" (warns "N(e^3.5)")
+  checkTrue "warnings: ℯ^x does not warn" (!warns "ℯ^x")
+  checkTrue "warnings: exp(x) does not warn" (!warns "exp(x)")
+  checkTrue "warnings: a parameter named e does not warn" (!warns "let g(e) = e^2")
+
 /-- `N` over ℂ: certified where the rectangle reaches, double precision where it does not. -/
 def complexNTests : TestM Unit := do
   let mut st : Store := []
@@ -998,7 +1028,7 @@ def integrateTests : TestM Unit := do
   checkTrue "anti: depth 0 finds nothing" (Anti.anti normOpt "x" 0 3 (.var "x")).isNone
 
 def main : IO UInt32 := do
-  let ((), failures) ← (do tests; sessionTests; integrateTests; trigTests; quietTests; partStatTests; workTests; checkTests; logicRelTests; algebraTests; systemsTests; complexNTests; goldenTests).run #[]
+  let ((), failures) ← (do tests; sessionTests; integrateTests; trigTests; quietTests; partStatTests; workTests; checkTests; logicRelTests; algebraTests; systemsTests; complexNTests; intervalTests; goldenTests).run #[]
   for f in failures do
     IO.println s!"FAIL {f.name}\n  expected: {f.expected}\n  actual:   {f.actual}"
   IO.println s!"{failures.size} failures"
