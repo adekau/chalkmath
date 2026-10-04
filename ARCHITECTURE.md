@@ -525,7 +525,10 @@ language server answers LSP for Lean cells.
   `sync` continuations of finished tasks, which run inline, one call inside the next per command, so an
   edit after a few hundred commands (a late lesson of a course, with its prelude) overflowed every time:
   the runtime runs at most 16 such continuations inside one another and queues the rest as ordinary
-  tasks, on fresh stacks (`lean-compiler-emscripten.patch`, `object.cpp`). Elaboration itself is as
+  tasks, on fresh stacks (`lean-compiler-emscripten.patch`, `object.cpp`). Lean computes semantic tokens
+  with recursion as deep as the commands a request spans, so the in-browser watchdog offers them for
+  ranges only, and the editor asks for the lines its views show (`lean-server.ts`). A document of some
+  1,500 commands still overflows as it opens; no notebook or lesson is near that. Elaboration itself is as
   deep as the Lean it checks, so the shipped Lean is kept shallow (small definitions), and
   `lean-cells.yml` (`scripts/notebooks/check-lean-browser.mjs`) runs every notebook and lesson through
   the browser's Lean, opened and then edited at its end.
