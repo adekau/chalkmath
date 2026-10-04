@@ -418,7 +418,21 @@ export const FUNCTIONS: FnDoc[] = [
     name: "im", area: "Complex numbers",
     usage: [["im(z)", "gives the imaginary part of `z`."]],
     examples: [basic("re(2+3i) + im(2+3i)")],
-    see: ["re", "conj"],
+    see: ["re", "conj", "arg"],
+  },
+  {
+    name: "arg", area: "Complex numbers",
+    usage: [["arg(z)", "gives the argument of `z`: the angle from the positive real axis to `z`, in radians, between -π and π."]],
+    details: [
+      "With `abs`, it is `z` in polar form: $z = |z|\\,e^{i \\arg z}$.",
+      "Left as it is in the answer; `N` gives its value as a double, not certified.",
+    ],
+    examples: [
+      basic("N(arg(1 + i))", "N(arg(-1))", "N(arg(exp(2i)))"),
+      section("Polar form", "let z = 1 + i", "abs(z)", "N(arg(z))"),
+    ],
+    see: ["abs", "re", "im", "exptotrig"],
+    ref: "https://mathworld.wolfram.com/ComplexArgument.html",
   },
   {
     name: "exptotrig", area: "Complex numbers",
