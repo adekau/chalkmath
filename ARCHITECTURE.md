@@ -316,6 +316,13 @@ closed — the *welcome* tab stands in for one (`S.tab === "welcome"`, the live 
 other tabs. Asking for the notebook tab while none is open shows it instead, and opening a notebook
 replaces it.
 
+The tab bar has two parts. Open notebooks (or the welcome tab) are documents: a strip of tabs that
+share its width, shrink to a floor and then scroll, with a list of them all once they overflow; a long
+name ends in an ellipsis rather than wrapping, and the strip scrolls to the notebook shown when that
+changes, not on every re-render. Closing a tab in the background leaves the notebook shown where it
+is. The studio, the courses and the documentation are places, not documents, and sit at the right,
+where many notebooks cannot push them out of view.
+
 **Manim Studio** is opened from View › Manim Studio (or Help, the welcome tab, or by sending a
 derivation to it). "→ Scene" on an evaluated cell turns its derivation into shots:
 the statement, then each step's `afterRendered` term (an optional field on `Step`, per protocol

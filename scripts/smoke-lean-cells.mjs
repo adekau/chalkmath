@@ -112,7 +112,7 @@ await page.locator(".crslesson").nth(1).locator(".crsgo").click();
 await page.locator(".lessonbar .lbwhere", { hasText: "Lesson 2 of 2" }).waitFor({ timeout: 30000 });
 await prove(["  rw [triple_eq, triple_eq]", "  omega"]);
 check("a lesson proves a theorem with the lesson before it's (its Lean prelude)", await verdict(/Proved/));
-await page.locator(".tabbar .tab", { hasText: "lean-cells.chalk" }).click();
+await page.locator(".tabbar .tab", { hasText: "lean-cells" }).click();
 
 // a reload loads Lean from the browser's store, not the network
 fetched.length = 0;

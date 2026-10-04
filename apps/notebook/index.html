@@ -139,15 +139,43 @@ button { font-family: var(--font); }
 
 /* --- tab bar -------------------------------------------------------------- */
 .tabbar { display:flex; align-items:flex-end; gap:5px; height:38px; flex:0 0 38px; padding:0 10px; background:var(--bg); border-bottom:1px solid var(--border); }
-.tab { display:flex; align-items:center; gap:9px; padding:6px 14px 7px; cursor:pointer; font-size:12px; border:1px solid var(--border); border-bottom:0; border-radius:7px 7px 0 0; color:var(--ink-mut); background:var(--panel); }
-.tab .label { font-family:var(--mono); font-size:11.5px; }
+/* the notebooks' tabs share the strip, shrinking to a floor; past it the strip scrolls, its hidden ends faded */
+.tabstrip { position:relative; display:flex; align-items:flex-end; gap:5px; flex:0 1 auto; min-width:0; height:100%; overflow-x:auto; overflow-y:hidden; scrollbar-width:none; }
+.tabstrip::-webkit-scrollbar { display:none; }
+.tabstrip.fade-l { -webkit-mask-image:linear-gradient(to right, transparent, #000 28px); mask-image:linear-gradient(to right, transparent, #000 28px); }
+.tabstrip.fade-r { -webkit-mask-image:linear-gradient(to left, transparent, #000 28px); mask-image:linear-gradient(to left, transparent, #000 28px); }
+.tabstrip.fade-l.fade-r { -webkit-mask-image:linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent); mask-image:linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent); }
+.tab { display:flex; align-items:center; gap:6px; padding:6px 8px 7px 12px; cursor:pointer; font-size:12px; white-space:nowrap; border:1px solid var(--border); border-bottom:0; border-radius:7px 7px 0 0; color:var(--ink-mut); background:var(--panel); }
+.tabstrip .tab { flex:0 1 auto; min-width:96px; max-width:190px; }
+.tab .label { font-family:var(--mono); font-size:11.5px; min-width:0; flex:1 1 auto; display:flex; }
+.tab .label .nm { overflow:hidden; text-overflow:ellipsis; min-width:0; }
 .tab:hover { filter:brightness(1.14); }
 .tab.on { color:var(--ink); font-weight:600; background:var(--panel-2); box-shadow:0 1px 0 var(--chip-bg) inset, 0 -3px 8px var(--sh-d); }
-.tab .x { color:var(--ink-mut); font-size:13px; border-radius:3px; padding:0 3px; }
+.tab .x { flex:0 0 auto; color:var(--ink-mut); font-size:13px; border-radius:3px; padding:0 3px; }
 .tab .x:hover { color:var(--ink); background:var(--chip-bg); }
+/* with a mouse, a notebook's × shows on the tab shown or pointed at (its place is kept, so nothing moves) */
+/* an unsaved notebook's × is a dot until pointed at; a touch screen keeps the × and puts a star after the name */
+.tab .x .dot { display:none; }
+@media (hover:hover) {
+  .tabstrip .tab:not(.on):not(:hover):not(:focus-within) .x { visibility:hidden; }
+  .tabstrip .tab.dirty:not(:hover):not(:focus-within) .x { visibility:visible; }
+  .tabstrip .tab.dirty:not(:hover):not(:focus-within) .x .cx { display:none; }
+  .tabstrip .tab.dirty:not(:hover):not(:focus-within) .x .dot { display:inline; font-size:9px; color:var(--ink-2); }
+  .tab .label .star { display:none; }
+}
 .tab.dirty .label { font-style:italic; }
-.tabadd { padding:6px 10px; color:var(--ink-mut); font-size:15px; cursor:pointer; }
-.tabadd:hover { color:var(--ink); }
+.tabadd, .tabmore { flex:0 0 auto; align-self:center; padding:4px 8px; color:var(--ink-mut); font-size:15px; line-height:1; border-radius:5px; cursor:pointer; }
+.tabadd:hover, .tabmore:hover, .tabmore.open { color:var(--ink); background:var(--hov); }
+.tabmorewrap { position:relative; align-self:center; display:none; }
+.tabbar.overflow .tabmorewrap { display:block; }
+.tabmore { display:flex; padding:5px 6px; }
+.tablist { position:absolute; top:100%; right:0; z-index:40; min-width:200px; max-width:min(360px, calc(100vw - 20px)); max-height:min(60vh, 420px); overflow-y:auto; padding:5px; margin-top:4px; background:var(--panel-2); border:1px solid var(--border); border-radius:8px; box-shadow:var(--pop); }
+.tablist .item { padding:6px 10px; border-radius:5px; font:12px var(--mono); color:var(--ink-2); cursor:default; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.tablist .item:hover, .tablist .item:focus { background:var(--hov); outline:none; }
+.tablist .item.on { color:var(--ink); font-weight:600; }
+.tablist .item.dirty { font-style:italic; }
+/* the studio, the courses and the documentation: places rather than notebooks, kept at the right */
+.tabplaces { display:flex; align-items:flex-end; gap:5px; flex:0 0 auto; margin-left:auto; padding-left:10px; height:100%; }
 
 /* --- body: rail | sidebar | main ------------------------------------------ */
 .body { flex:1; display:flex; align-items:stretch; min-height:0; background:var(--bg); }
@@ -941,8 +969,11 @@ table.doctable td.mono { font-family:var(--code); font-size:12.5px; color:var(--
   .menus span { padding:5px 7px; }
   .menus .dropdown { position:fixed; top:40px; left:8px; right:auto; max-width:calc(100vw - 16px); }
   .spacer { flex:0 0 0; }
-  .tabbar { overflow-x:auto; scrollbar-width:none; }
-  .tab { flex:0 0 auto; padding:6px 10px 7px; }
+  .tabbar { gap:3px; padding:0 6px; }
+  .tabstrip .tab { min-width:84px; max-width:150px; }
+  .tab { padding:6px 6px 7px 9px; }
+  .tabplaces { padding-left:4px; gap:3px; }
+  .tablist { position:fixed; top:79px; left:8px; right:8px; max-width:none; }
   .body { position:relative; }
   .rail { width:38px; flex-basis:38px; }
   /* the sidebar is a drawer over the paper */

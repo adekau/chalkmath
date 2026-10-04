@@ -51,7 +51,7 @@ Each of those buttons runs its input in the notebook. What comes back:
     id: "notebooks", title: "Notebooks and cells", group: "Guide", parts: [md`
 # Notebooks and cells
 
-A notebook is a list of cells, run top to bottom against one engine session. Each open notebook has its own tab at the top and its own session, so names defined in one do not leak into another. The **+** after the tabs opens a new one. With no notebook open, the **welcome** tab takes their place: it starts a new notebook, opens one saved in this browser or a file, and links to the tour, the courses, this documentation and [Manim Studio](#do:studio).
+A notebook is a list of cells, run top to bottom against one engine session. Each open notebook has its own tab at the top and its own session, so names defined in one do not leak into another. The **+** after the tabs opens a new one. A tab shows the notebook's name without its ‹.chalk›, cut short with ‹…› when it is long (point at the tab for the whole name). With many open, the tabs narrow and then scroll sideways (the mouse wheel scrolls them), and the **⌄** after them lists every open notebook. The middle mouse button closes a tab. Manim Studio, the courses and this documentation stay at the right while they are open. With no notebook open, the **welcome** tab takes their place: it starts a new notebook, opens one saved in this browser or a file, and links to the tour, the courses, this documentation and [Manim Studio](#do:studio).
 
 ## Kinds of cell
 
@@ -207,7 +207,7 @@ Add one from Edit › Add Lean exercise or the ‹▾› between cells. Its edit
 ## Saving
 
 - **File › Save** (Ctrl/⌘+S) keeps the notebook in this browser's storage under its name; **Save as…** (Ctrl/⌘+Shift+S) gives it another. **Open…** lists the notebooks saved here.
-- Open tabs are kept as you work and come back when you reload the page, unsaved changes included; a tab with unsaved changes shows its name in italics with a ‹*›.
+- Open tabs are kept as you work and come back when you reload the page, unsaved changes included; a tab with unsaved changes shows its name in italics, with a dot where its **×** is (a ‹*› after the name on a touch screen).
 - Browser storage belongs to this browser on this machine. Clearing the site's data clears it, and a private window forgets it. To keep a notebook, or move it to another machine, export it.
 
 ## Files and links
