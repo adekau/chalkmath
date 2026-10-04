@@ -231,9 +231,20 @@ differential test with zero mismatches.
   The frames are not saved: the cell runs again when its notebook opens. A slider on a `let` is the
   other control: it re-runs every cell that read the name, which suits several cells following one
   number but not animation.
-- **Integration is checked, not found.** `Antiderivative.lean` guesses an antiderivative with a
-  few textbook rules and proves nothing; `cmdIntegrate` differentiates the guess with the pipeline
-  and accepts it only if the normal form is the integrand itself. `cmdIntegrate_spec` states that;
+- **Integration is checked, and most of the finder is proved too.** `Antiderivative.lean` finds an
+  antiderivative with a few textbook rules; `cmdIntegrate` differentiates the candidate with the
+  pipeline and accepts it only if the normal form is the integrand itself. The finder is a total
+  function (`anti` recurses on a depth bound as well as the by-parts fuel), and one level of it
+  (`antiStep`) takes the recursion as an argument, so each rule is a function of its sub-results and
+  has its own theorem: if the sub-results are antiderivatives of the sub-integrands (`HasDerivAt`
+  over `evalD`), so is the result (`proofs/Proofs/Antiderivative.lean`; `anti_sound` by induction).
+  Rules that need a domain condition record it as data (`ICond`: `u > 0` for `ln u`, `cos u > 0` for
+  `tan u`, `b > 0, b ≠ 1` for `bᵘ`, `a ≠ 0` for dividing by a symbolic linear coefficient, …); their
+  step is the rule's `.assuming` half and its text ends with the condition, as in the calculus rules,
+  and the proof reads the same data (`HoldsAt`), so the text and the theorem cannot drift apart.
+  u-substitution, integration by parts and the arctangent and arcsine forms build on the
+  normalizer's outputs, about which nothing is proved here; the finder marks their results
+  `checked`, `anti_sound` claims nothing for them, and the check alone vouches for them. `cmdIntegrate_spec` states that;
   `proofs/Proofs/Integrate.lean` reads it as `deriv F = f` wherever the differentiation shown is
   sound, which the statuses of its steps report. Because a rule set cannot contain a rule that
   normalizes with that set, the pipeline is `pipelineRulesWith norm`, generic in the checker's

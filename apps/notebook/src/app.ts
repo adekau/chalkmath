@@ -4156,6 +4156,8 @@ const RULE_NAMES: Record<string, string> = {
   "int.variable": "Integral of the variable", "int.constant": "Integral of a constant", "int.constant-multiple": "Constant multiple", "int.sum": "Sum rule for integrals",
   "int.exponential": "Exponential integral", "int.exp-power": "Exponential of a power", "int.substitution": "Substitution", "int.linear-substitution": "Linear substitution",
   "int.by-parts": "Integration by parts", "int.trig-power": "Trigonometric power", "int.arctan": "Arctangent integral", "int.arcsin": "Arcsine integral",
+  "int.power.assuming": "Power rule for integrals, assuming", "int.table.assuming": "Table integral, assuming", "int.exponential.assuming": "Exponential integral, assuming the base",
+  "int.linear-substitution.assuming": "Linear substitution, assuming the coefficient nonzero", "int.trig-power.assuming": "Trigonometric power, assuming the coefficient nonzero",
   "order.closure": "Closure", "order.covers": "Covers", "order.upper-bounds": "Upper bounds", "order.least": "Least upper bound",
   "order.lower-bounds": "Lower bounds", "order.greatest": "Greatest lower bound", "order.lattice": "Lattice", "order.cover": "Cover",
   "order.incomparable": "Incomparable", "order.monotone": "Monotone", "order.iterate": "Iterate", "order.fixed": "Fixed point",

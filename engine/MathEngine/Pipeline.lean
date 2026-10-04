@@ -174,7 +174,7 @@ reading over ℝ is `integrate_definite` in the proofs). -/
 /-- The antiderivative search and check shared by the two forms of `integrate`: the accepted
 candidate `F` with the finder's steps, `int.check` and `int.compare`, or the refusal. -/
 def findAnti (norm : Norm) (f : Expr) (x : String) : Except RuleResult (Expr × Array Step) :=
-  match Anti.anti (fun e => (norm e).toOption.map (·.1)) x 3 f with
+  match (Anti.anti (fun e => (norm e).toOption.map (·.1)) x Anti.maxDepth 3 f).map (fun r => (r.F, r.steps)) with
   | none => .error (refuse s!"integrate: no antiderivative of {f.toText} found by the available rules (sums, constant factors, powers, the elementary table, linear substitution, u-substitution, integration by parts)")
   | some (F₀, steps) =>
     match norm F₀ with
@@ -186,7 +186,7 @@ def findAnti (norm : Norm) (f : Expr) (x : String) : Except RuleResult (Expr × 
         match norm (Expand.dist (Expand.identNorm g)), norm (Expand.dist (Expand.identNorm f)) with
         | .ok (g', subg), .ok (f', _) =>
           if equal g' f' then
-            let check : Step := ⟨"int.check", s!"Check: $\\frac\{d}\{d{x}}$ of the candidate, simplified. This step carries the claim; the finder's steps above are unverified guesses.", [], D F x, g, sub⟩
+            let check : Step := ⟨"int.check", s!"Check: $\\frac\{d}\{d{x}}$ of the candidate, simplified. This step carries the claim for the answer; the finder's steps above carry their own only where they are verified or conditional.", [], D F x, g, sub⟩
             let compare : Step := ⟨"int.compare", s!"Both the derivative and the integrand are rewritten with $\\cos^2 u = 1 - \\sin^2 u$ and $(e^u)^k = e^\{ku}$ (`Expand.identNorm`), expanded (`Expand.dist`) and simplified — the two rewrites are proved sound — and they agree: ${f'.toText}$. The candidate is accepted.", [], g, g', subg⟩
             .ok (F, (steps.push check).push compare)
           else .error (refuse s!"integrate: the candidate {F.toText} was rejected: its derivative simplifies to {g.toText}, not to {f.toText}")

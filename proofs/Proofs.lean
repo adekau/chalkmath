@@ -18,6 +18,7 @@ import Proofs.Let
 import Proofs.Factor
 import Proofs.Domain
 import Proofs.DerivRules
+import Proofs.Antiderivative
 import Proofs.Matrix
 import Proofs.Ledger
 /-!

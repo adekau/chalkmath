@@ -2,8 +2,10 @@ import MathEngine.PipelineOrder
 /-!
 # `integrate` as a verified checker (M8)
 
-The finder (`Antiderivative.lean`) guesses; the command (`cmdIntegrate`, Pipeline.lean) accepts a
-guess only if differentiating it and normalizing gives the integrand back. This file closes the
+The finder (`Antiderivative.lean`) proposes; the command (`cmdIntegrate`, Pipeline.lean) accepts a
+candidate only if differentiating it and normalizing gives the integrand back. (Most of the finder's
+rules are proved on their own as well, `anti_sound` in `proofs/Proofs/Antiderivative.lean`; the check
+is what covers the rest.) This file closes the
 knot the pipeline's definition could not: the normalizer the check runs is the pipeline itself with
 nested `integrate` refused (`checkNorm`), and the notebook's pipeline is the pipeline with that
 checker. Both are `Ordered` by the one theorem `pipelineOrderedWith`, so the check has no step
