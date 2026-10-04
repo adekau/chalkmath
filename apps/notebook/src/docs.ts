@@ -51,7 +51,7 @@ Each of those buttons runs its input in the notebook. What comes back:
     id: "notebooks", title: "Notebooks and cells", group: "Guide", parts: [md`
 # Notebooks and cells
 
-A notebook is a list of cells, run top to bottom against one engine session. Each open notebook has its own tab at the top and its own session, so names defined in one do not leak into another. The **+** after the tabs opens a new one.
+A notebook is a list of cells, run top to bottom against one engine session. Each open notebook has its own tab at the top and its own session, so names defined in one do not leak into another. The **+** after the tabs opens a new one. With no notebook open, the **welcome** tab takes their place: it starts a new notebook, opens one saved in this browser or a file, and links to the tour, the courses, this documentation and [Manim Studio](#do:studio).
 
 ## Kinds of cell
 
@@ -352,11 +352,11 @@ The example notebook *Order and lattices* has its proofs in Lean cells.
 [Manim](https://www.manim.community) is the Python library behind many animated mathematics videos. Manim Studio turns a derivation into a storyboard for it: each step becomes a shot, the term morphing into the next.
 
 1. Run a cell, then choose **Send to scene** from its ⋮ menu (a new scene, or an existing one). The statement and each step's term become shots.
-2. Open **Manim Studio** from the tab bar or Help. Each shot can be turned off, given an animation (‹TransformMatchingTex›, ‹TransformMatchingShapes›, ‹FadeTransform›, ‹Write› or ‹Create›) and a duration.
+2. Sending a derivation opens the studio's tab; **View › Manim Studio** (or Help, or the welcome tab) opens it too, and its **×** closes it. Each shot can be turned off, given an animation (‹TransformMatchingTex›, ‹TransformMatchingShapes›, ‹FadeTransform›, ‹Write› or ‹Create›) and a duration.
 3. **▶ Play** previews the scene in the page, matching glyphs between terms the way ‹TransformMatchingTex› does.
 4. The Python for the scene is beside it. Copy it into a file and render it with Manim on your computer, with the command shown (‹manim -pqh scene.py›).
 
-The page writes only the storyboard; rendering the video is Manim's job, outside the browser. Scenes are saved with the notebook.
+The page writes only the storyboard; rendering the video is Manim's job, outside the browser. Scenes are saved with the notebook: the studio shows the current notebook's, and none while no notebook is open.
 `],
   },
   {

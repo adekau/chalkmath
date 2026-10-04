@@ -684,6 +684,23 @@ table.keys kbd { font:11.5px var(--mono); color:var(--ink); background:var(--pan
 .lessonbar .lbbtn:hover { color:var(--ink); background:var(--hov); }
 .lessonbar .lbbtn.off { opacity:0.4; cursor:default; }
 
+/* --- welcome (shown while no notebook is open): ways to start, saved notebooks, the other tabs -- */
+.welcome { flex:1; min-height:0; overflow-y:auto; color:var(--p-ink);
+  background-color:var(--paper-bg); background-image:var(--paper-mottle), var(--paper-grain); background-attachment:local, local; background-size:300px 300px, 160px 160px; }
+.wlhead { display:flex; align-items:center; gap:14px; }
+.wlmark { width:44px; height:44px; flex:0 0 auto; }
+.wlh { font:700 10.5px var(--font); letter-spacing:0.08em; text-transform:uppercase; color:var(--p-mut); margin:26px 0 10px; }
+.wlpage .crsgrid { grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); }
+.wlcard .crstitle { font-size:17px; }
+.wlrecent { display:flex; flex-direction:column; gap:6px; }
+.wlrow { display:flex; align-items:baseline; gap:12px; padding:9px 14px; border-radius:8px; border:1px solid var(--p-br-idle); background:var(--p-row-bg); cursor:pointer; min-width:0; }
+.wlrow:hover { border-color:var(--p-br-hov); background:var(--p-hov); }
+.wlrow .name { font-family:var(--mono); font-size:13px; color:var(--p-ink-strong); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.wlrow .when { margin-left:auto; flex:0 0 auto; font:11.5px var(--font); color:var(--p-mut); }
+.studio-empty { margin:auto; max-width:440px; padding:24px; display:flex; flex-direction:column; align-items:center; gap:12px; text-align:center; color:var(--ink-2); }
+.studio-empty h2 { margin:0; font-size:15px; font-weight:600; color:var(--ink); }
+.studio-empty p { margin:0; font-size:12.5px; line-height:1.6; color:var(--ink-mut); }
+
 /* --- documentation (Help › Documentation): contents beside a page on the paper -------- */
 .docs { flex:1; min-height:0; display:flex; }
 .docnav { flex:0 0 230px; width:230px; display:flex; flex-direction:column; min-height:0; background:var(--panel); border-right:1px solid var(--border); }
@@ -913,6 +930,8 @@ table.doctable td.mono { font-family:var(--code); font-size:12.5px; color:var(--
 @keyframes toast-in { from { opacity:0; transform:translateY(6px); } }
 /* --- phones and narrow windows --------------------------------------------- */
 @media (max-width: 760px) {
+  .wlrow { flex-wrap:wrap; }
+  .wlrow .when { margin-left:0; }
   #app { height:100dvh; }
   .titlebar { gap:8px; padding:0 8px; }
   .brand .name, .themebtn, .kernel .sep, .kernel > :not(.dot), .formsel { display:none; }
