@@ -98,7 +98,7 @@
       "label": null
     },
     {
-      "src": "`sat` gives a satisfying assignment, written as a conjunction of literals, or ⊥ when there is none; `falsify` gives a counterexample.",
+      "src": "`sat` gives a satisfying assignment, as a map from each variable to its value, or ⊥ when there is none; `falsify` gives a counterexample the same way.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -153,7 +153,7 @@
       "label": null
     },
     {
-      "src": "Answer `true` or `false` (or ⊤, ⊥) for `taut` and `equiv`. For `sat` and `falsify`, give an assignment as a conjunction of literals, such as `p ∧ ¬q`; any assignment that works is right.",
+      "src": "Answer `true` or `false` (or ⊤, ⊥) for `taut` and `equiv`. For `sat` and `falsify`, give an assignment, as a map such as `{p ↦ true, q ↦ false}` or as a conjunction of literals such as `p ∧ ¬q`; any assignment that works is right.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -213,7 +213,7 @@
     {
       "src": "sat((a ↔ ¬b) ∧ (b ↔ (a ↔ b)))",
       "type": "exercise",
-      "prompt": "Who is a knight and who is a knave? Answer with an assignment to $a$ and $b$, such as `a ∧ ¬b`.",
+      "prompt": "Who is a knight and who is a knave? Answer with an assignment to $a$ and $b$, such as `{a ↦ true, b ↦ false}`.",
       "hints": [
         "Try $b$ true: then $a \\leftrightarrow b$ must be true, so $a$ is true. Does $a \\leftrightarrow \\lnot b$ hold?",
         "So $b$ is false. Then $a \\leftrightarrow b$ must be false."

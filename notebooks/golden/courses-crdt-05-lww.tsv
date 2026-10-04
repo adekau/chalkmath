@@ -1,4 +1,4 @@
-4	let Naive = op({w1, w2}; [w1, w2; w1, w2])	= [w1, w2; w1, w2]   [an operation on 2 elements]
-5	commutative(Naive)	= false   [not commutative]
-8	replicas(lww; a, b\n  a: write red @ 5\n  b: write blue @ 3\n  a -> b\n  b -> a\n)	= {a↦red, b↦red}   [converged: every replica reads red]
+4	let Naive = op({w1, w2}; [w1, w2; w1, w2])	= [w1, w2; w1, w2]
+5	commutative(Naive)	= false
+8	replicas(lww; a, b\n  a: write red @ 5\n  b: write blue @ 3\n  a -> b\n  b -> a\n)	= {a↦red, b↦red}
 21	associative(Naive)	= true

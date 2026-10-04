@@ -382,10 +382,11 @@ def sessionTests : TestM Unit := do
   checkTrue "trace: the graph places each step, the first at its state and the next on its transition" (contains trc "\"steps\":[{\"node\":\"red\"},{\"edge\":[\"red\",\"green\"]}]") trc
   let rep := rpc "engine.evaluate" "{\"sessionId\":\"rp\",\"cellId\":\"a\",\"source\":\"replicas(gcounter; a, b; a: inc; m := a; a: inc; b <- m)\",\"showWork\":true}"
   checkTrue "replicas: a space-time diagram, a message from the send to the delivery" (contains rep "\"kind\":\"replicas.spacetime\"" && contains rep "\"messages\":[[1,3]]") rep
-  checkTrue "replicas: the run says it has not converged" (contains rep "not converged: a reads 2; b reads 1") rep
+  checkTrue "replicas: the work says it has not converged, and there is no note beside the answer" (contains rep "\"rule\":\"crdt.diverged\"" && !contains rep "\"summary\"") rep
   checkTrue "replicas: a merge step" (contains rep "\"rule\":\"crdt.merge\"") rep
   let trs (st : Store) (src : String) := handleS st s!"\{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"engine.evaluate\",\"params\":\{\"sessionId\":\"trs\",\"cellId\":\"{src.length}\",\"source\":\"{src}\",\"showWork\":true}}"
-  let (stT, _) := trs [] "let A = rules(add(0, y) -> y; add(s(x), y) -> s(add(x, y)))"
+  let (stT, rulesA) := trs [] "let A = rules(add(0, y) -> y; add(s(x), y) -> s(add(x, y)))"
+  checkTrue "rules: the note names the rules, which the answer does not show" (contains rulesA "\"summary\":\"named r1, r2\"") rulesA
   let (stT, _) := trs stT "let C = rules(f(f(x)) -> g(x))"
   let rw := (trs stT "rewrite(A, add(s(0), add(0, 0)))").2
   checkTrue "rewrite: the first step is r2 at the root" (contains rw "\"rule\":\"trs.step\",\"explanation\":\"r2: " && contains rw "\"path\":[]") rw
@@ -730,8 +731,13 @@ def logicRelTests : TestM Unit := do
   let ev (src : String) := rpc "engine.evaluate" s!"\{\"sessionId\":\"lg\",\"cellId\":\"c\",\"source\":\"{src}\",\"showWork\":true}"
   checkTrue "logic: cnf distributes, one law a step" (contains (ev "cnf(p ∨ (q ∧ r))") "\"rule\":\"logic.distribute\"")
   checkTrue "logic: nnf names De Morgan" (contains (ev "nnf(¬(p ∧ q))") "\"rule\":\"logic.de-morgan\"")
-  checkTrue "logic: taut's counterexample row" (contains (ev "taut(p → q)") "false when p = true, q = false")
-  checkTrue "logic: equiv's distinguishing row" (contains (ev "equiv(p → q, q → p)") "they differ when p = true, q = false")
+  checkTrue "logic: taut's counterexample row, in the work" (contains (ev "taut(p → q)") "False when p = true, q = false: not a tautology.")
+  checkTrue "logic: equiv's distinguishing row, in the work" (contains (ev "equiv(p → q, q → p)") "They differ when p = true, q = false")
+  checkTrue "logic: no note beside the answer" (!contains (ev "taut(p → q)") "\"summary\"" && !contains (ev "truthtable(p ∧ q)") "\"summary\"")
+  checkTrue "logic: sat's answer is the assignment, as a map" (contains (ev "sat((p ∨ q) ∧ ¬p)") "\"text\":\"{p↦false, q↦true}\"")
+  let lg (st : Store) (id src : String) := handleS st s!"\{\"jsonrpc\":\"2.0\",\"id\":{id},\"method\":\"engine.evaluate\",\"params\":\{\"sessionId\":\"lgw\",\"cellId\":\"{id}\",\"source\":\"{src}\"}}"
+  let (stW, _) := lg [] "1" "let w = falsify(p → q)"
+  checkTrue "logic: a let binds the assignment as its literals' conjunction" (contains (lg stW "2" "equiv(w, p ∧ ¬q)").2 "\"text\":\"⊤\"") (lg stW "2" "equiv(w, p ∧ ¬q)").2
   checkTrue "logic: a truth table is a visual" (contains (ev "truthtable(p ∧ q)") "\"kind\":\"logic.truthtable\"")
   checkTrue "logic: a truth table's rows" (contains (ev "truthtable(p ∧ q)") "\"rows\":[[true,true,true],[true,false,false],[false,true,false],[false,false,false]]")
   checkTrue "logic: a ∀ names its counterexample" (contains (ev "∀ n ∈ 1..10, n^2 ≥ 2n") "at $n = 1$")
@@ -752,6 +758,7 @@ def logicRelTests : TestM Unit := do
   checkTrue "check logic: a tautology is true" (eqv "taut(p ∨ ¬p)" "true" && !eqv "taut(p ∨ ¬p)" "⊥")
   checkTrue "check logic: any satisfying assignment" (eqv "sat(p ∧ ¬q)" "p ∧ ¬q" && !eqv "sat(p ∧ ¬q)" "p")
   checkTrue "check logic: unsatisfiable is ⊥" (eqv "sat(p ∧ ¬p)" "false")
+  checkTrue "check logic: an assignment as the map the engine answers with" (eqv "sat(p ∧ ¬q)" "{p ↦ true, q ↦ false}" && eqv "falsify(p → q)" "{p -> true, q = false}" && !eqv "sat(p ∧ ¬q)" "{p ↦ true, q ↦ true}")
   checkTrue "check logic: an equivalent formula" (eqv "p → q" "¬p ∨ q" && !eqv "p → q" "q → p")
   checkTrue "check logic: a bounded ∀" (eqv "∀ x ∈ 1..5, x < 6" "true")
   let req (id src : String) := s!"\{\"jsonrpc\":\"2.0\",\"id\":{id},\"method\":\"engine.evaluate\",\"params\":\{\"sessionId\":\"r\",\"cellId\":\"d{id}\",\"source\":\"{src}\"}}"

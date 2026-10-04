@@ -1,6 +1,6 @@
 3	db: λx. λy. x	= λ. λ. 1
 4	db: λf. λx. f (f x)	= λ. λ. 1 (1 0)
 5	db: λx. λy. x (λz. z y)	= λ. λ. 1 (λ. 0 1)
-9	alpha: λx. λy. x (λz. z y), λa. λb. a (λc. c b)	= ⊤   (α-equivalent: the same term up to the names of bound variables)
+9	alpha: λx. λy. x (λz. z y), λa. λb. a (λc. c b)	= ⊤
 16	alpha: λx. λy. y (λz. x), λa. λb. b (λb. a)	= ⊤
 17	alpha: λx. λy. x, λy. λx. x	= ⊥

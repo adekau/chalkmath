@@ -4421,9 +4421,9 @@ function renderCellBody(cell: Cell) {
     } else if (cell.hasse) {
       const box = h("div", "plotbox");
       box.append(hasseSvg(cell.hasse));
-      const cap = h("div", "plotcap", cell.summary ?? "");
       val.classList.add("isplot");
-      val.append(box, cap);
+      val.append(box);
+      if (cell.summary) val.append(h("div", "plotcap", cell.summary));
     } else if (cell.file) {
       const f = fileOf(cell);
       // what the cell calls the file, for its suggestions: its name, or its output's number

@@ -90,7 +90,7 @@ course("logic", "Logic and proof technique",
     m("taut((p → q) ∨ (q → p))", { work: true });
     m("taut(p → q)", { work: true });
     m("truthtable((p → q) ∧ (q → r) → (p → r))");
-    md(r`‹sat› gives a satisfying assignment, written as a conjunction of literals, or ⊥ when there is none; ‹falsify› gives a counterexample.`);
+    md(r`‹sat› gives a satisfying assignment, as a map from each variable to its value, or ⊥ when there is none; ‹falsify› gives a counterexample the same way.`);
     m("sat((p ∨ q) ∧ ¬p)", { work: true });
     m("sat(p ∧ ¬p)");
     m("falsify(p ∧ q → r)");
@@ -103,7 +103,7 @@ course("logic", "Logic and proof technique",
     md(r`The **contrapositive** $\lnot q \to \lnot p$ is equivalent, which is why a proof "suppose not $q$ … then not $p$" proves $p \to q$.`);
     m("equiv(p → q, ¬q → ¬p)");
     sec("Exercises");
-    md(r`Answer ‹true› or ‹false› (or ⊤, ⊥) for ‹taut› and ‹equiv›. For ‹sat› and ‹falsify›, give an assignment as a conjunction of literals, such as ‹p ∧ ¬q›; any assignment that works is right.`);
+    md(r`Answer ‹true› or ‹false› (or ⊤, ⊥) for ‹taut› and ‹equiv›. For ‹sat› and ‹falsify›, give an assignment, as a map such as ‹{p ↦ true, q ↦ false}› or as a conjunction of literals such as ‹p ∧ ¬q›; any assignment that works is right.`);
     ex("taut(p → (q → p))", r`Is $p \to (q \to p)$ a tautology?`, [
       r`The only way an implication fails is a true premise and a false conclusion. Can $q \to p$ be false while $p$ is true?`,
     ]);
@@ -121,7 +121,7 @@ course("logic", "Logic and proof technique",
 > [!example] A puzzle as a satisfiability question
 > On an island, knights always tell the truth and knaves always lie. $A$ says "$B$ is a knave". $B$ says "$A$ and I are of the same kind". Let $a$ mean "$A$ is a knight" and $b$ mean "$B$ is a knight". What a knight says is true and what a knave says is false, so each statement is equivalent to its speaker being a knight: $a \leftrightarrow \lnot b$ and $b \leftrightarrow (a \leftrightarrow b)$.
 `);
-    ex("sat((a ↔ ¬b) ∧ (b ↔ (a ↔ b)))", r`Who is a knight and who is a knave? Answer with an assignment to $a$ and $b$, such as ‹a ∧ ¬b›.`, [
+    ex("sat((a ↔ ¬b) ∧ (b ↔ (a ↔ b)))", r`Who is a knight and who is a knave? Answer with an assignment to $a$ and $b$, such as ‹{a ↦ true, b ↦ false}›.`, [
       r`Try $b$ true: then $a \leftrightarrow b$ must be true, so $a$ is true. Does $a \leftrightarrow \lnot b$ hold?`,
       r`So $b$ is false. Then $a \leftrightarrow b$ must be false.`,
     ], { hide: true });

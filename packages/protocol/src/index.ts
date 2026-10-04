@@ -285,12 +285,15 @@ export interface ManipulateResult {
 export interface HasseData { nodes: { name: string; height: number }[]; covers: [string, string][] }
 /** The other worlds' extras on an evaluate reply. λ-cells (`kind: "lambda"`): the de Bruijn view of
  *  the result and of every step (`Step.afterDeBruijn`), and a reading when the normal form is a
- *  Church numeral or boolean. Order cells (`kind: "poset"`, relations included): what to draw
- *  (elements with their height, the covers = Hasse edges) and a one-line summary; a relation's graph
- *  comes as a `relation.digraph` visual. Logic cells (`kind: "logic"`): a one-line summary (the
- *  counterexample, witness or distinguishing row), and for `truthtable` a `logic.truthtable` visual.
- *  Systems cells (`kind: "system"`): a summary, the state graph as a `relation.digraph` visual (a
- *  counterexample's transitions marked), and a trace as the derivation, a step per action. */
+ *  Church numeral or boolean, or when it says why reduction stopped. Order cells (`kind: "poset"`,
+ *  relations included): what to draw (elements with their height, the covers = Hasse edges); a
+ *  relation's graph comes as a `relation.digraph` visual. Logic cells (`kind: "logic"`): for
+ *  `truthtable` a `logic.truthtable` visual; a counterexample, witness or distinguishing row is in
+ *  the work, and `sat`/`falsify` answer with the assignment itself. Systems cells (`kind: "system"`):
+ *  the state graph as a `relation.digraph` visual (a counterexample's transitions marked), and a
+ *  trace as the derivation, a step per action. `summary` is a note beside the answer, sent only when
+ *  it says something neither the answer nor the work does (a system's reachable states, a rewriting
+ *  system's rule names, `critical`'s verdict). */
 export interface WorldExtras {
   kind?: "lambda" | "poset" | "logic" | "system";
   renderedDeBruijn?: Rendered; reading?: string;
