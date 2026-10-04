@@ -66,9 +66,9 @@ theorem evalD_esub (ρ : EnvR) (a b : Expr) : evalD ρ (Expr.sub a b) = evalD ρ
 theorem evalD_ediv (ρ : EnvR) (a b : Expr) : evalD ρ (Expr.div a b) = evalD ρ a / evalD ρ b := by
   simp [Expr.div, Real.rpow_neg_one, div_eq_mul_inv]
 
-theorem evalD_mulN' (ρ : EnvR) (es : List Expr) : evalD ρ (mulN es) = prodD ρ es := by
+theorem evalD_mulN' (ρ : EnvR) (es : List Expr) : evalD ρ (Expr.mulN es) = prodD ρ es := by
   match es with
-  | [e] => simp [mulN]
+  | [e] => simp [Expr.mulN]
   | [] => rfl
   | _ :: _ :: _ => rfl
 
@@ -77,6 +77,20 @@ theorem evalD_ofNat (ρ : EnvR) (n : ℕ) : evalD ρ (Expr.ofInt n) = (n : ℝ) 
 
 theorem evalD_powTwo (ρ : EnvR) (e : Expr) : evalD ρ (.pow e (Expr.ofInt 2)) = evalD ρ e ^ 2 := by
   rw [evalD_pow, Expr.ofInt, evalD_intLit]; norm_num
+
+@[simp] theorem evalD_ofInt' (ρ : EnvR) (z : ℤ) : evalD ρ (Expr.ofInt z) = (z : ℝ) := by
+  rw [Expr.ofInt, evalD_intLit]
+
+@[simp] theorem Q_ofRat_val (r : ℚ) (b : Bool) : (Q.ofRat r b).val = r := rfl
+
+@[simp] theorem mkRat_half : ((mkRat 1 2 : ℚ) : ℝ) = 2⁻¹ := by
+  rw [Rat.mkRat_eq_div]; push_cast; ring
+
+@[simp] theorem evalD_two (ρ : EnvR) : evalD ρ (Expr.ofInt 2) = 2 := by
+  rw [Expr.ofInt, evalD_intLit]; norm_num
+
+@[simp] theorem half_val : (((Q.ofRat (mkRat 1 2)).val : ℚ) : ℝ) = 2⁻¹ := by
+  simp only [Q.ofRat]; rw [Rat.mkRat_eq_div]; push_cast; ring
 
 theorem evalD_ratLit (ρ : EnvR) (r : ℚ) : evalD ρ (.num (Q.ofRat r)) = (r : ℝ) := rfl
 
@@ -98,9 +112,9 @@ theorem not_dep_mul {x : String} {cs : List Expr} (h : ∀ c ∈ cs, ¬ c.depend
   rw [not_dep_iff]; simp only [Expr.freeVars]; exact not_mem_freeVarsList h
 
 theorem not_dep_mulN {x : String} {cs : List Expr} (h : ∀ c ∈ cs, ¬ c.dependsOn x = true) :
-    ¬ (mulN cs).dependsOn x = true := by
+    ¬ (Expr.mulN cs).dependsOn x = true := by
   match cs, h with
-  | [c], h => simpa [mulN] using h c (by simp)
+  | [c], h => simpa [Expr.mulN] using h c (by simp)
   | [], h => exact not_dep_mul h
   | _ :: _ :: _, h => exact not_dep_mul h
 
@@ -213,22 +227,22 @@ theorem linearCoeff_spec {x : String} {u a : Expr} (h : linearCoeff x u = some a
 `a` is a nonzero numeral. -/
 theorem substitute_sound {ρ : EnvR} {x : String} {f G a : Expr} {g : ℝ}
     (ha : ¬ a.dependsOn x = true) (hG : HasDerivAt (fx ρ x G) (g * evalD ρ a) (ρ x))
-    (hc : ∀ c ∈ (substitute x f G a).2.2, HoldsAt ρ c) :
-    HasDerivAt (fx ρ x (substitute x f G a).1) g (ρ x) := by
+    (hc : ∀ c ∈ (Anti.substitute x f G a).2.2, HoldsAt ρ c) :
+    HasDerivAt (fx ρ x (Anti.substitute x f G a).1) g (ρ x) := by
   by_cases h1 : a.isOne = true
-  · simp only [substitute, h1, if_true]
+  · simp only [Anti.substitute, h1, ite_true]
     simpa [evalD_isOne h1] using hG
-  · simp only [substitute, h1, if_false, Bool.false_eq_true] at hc ⊢
+  · simp only [Anti.substitute, h1, ite_false, Bool.false_eq_true] at hc ⊢
     have hA : evalD ρ a ≠ 0 := by
       unfold neCond at hc
       split at hc
       · rename_i q
         split at hc
-        · exact hc _ (by simp)
+        · exact hc (.ne _) (by simp)
         · rename_i hq
           simp only [Q.isZero, beq_iff_eq] at hq
           simpa using hq
-      · exact hc _ (by simp)
+      · exact hc (.ne _) (by simp)
     have hf : fx ρ x (Expr.div G a) = fun t => fx ρ x G t * (evalD ρ a)⁻¹ := by
       funext t; simp [evalD_ediv, evalD_upd_const ha t, div_eq_mul_inv]
     rw [hf]
@@ -293,11 +307,11 @@ theorem table_sound {ρ : EnvR} {x g : String} {u G : Expr} {why : String} {cs :
     have hf : fx ρ x (Expr.sub (.mul [u, .fn "arctan" [u]])
           (.mul [.num (Q.ofRat (mkRat 1 2)), .fn "ln" [.add [Expr.one, .pow u (Expr.ofInt 2)]]]))
         = fun t => fx ρ x u t * Real.arctan (fx ρ x u t) - 1 / 2 * Real.log (1 + fx ρ x u t ^ 2) := by
-      funext t; simp [evalD_esub, evalD_half, evalD_powTwo]
+      funext t; simp [evalD_esub, Real.rpow_two]
     rw [hf]
     have hne : 1 + fx ρ x u (ρ x) ^ 2 ≠ 0 := by positivity
     convert (hu.mul hu.arctan).sub ((((hu.pow 2).const_add 1).log hne).const_mul (1 / 2)) using 1
-    simp only [applyFn_arctan, fx, upd_self]
+    simp only [applyFn_arctan, Pi.pow_apply, fx, upd_self]
     field_simp
     ring
   · -- arcsin
@@ -306,7 +320,7 @@ theorem table_sound {ρ : EnvR} {x g : String} {u G : Expr} {why : String} {cs :
     have hf : fx ρ x (.add [.mul [u, .fn "arcsin" [u]],
           .pow (Expr.sub Expr.one (.pow u (Expr.ofInt 2))) (.num (Q.ofRat (mkRat 1 2)))])
         = fun t => fx ρ x u t * Real.arcsin (fx ρ x u t) + (1 - fx ρ x u t ^ 2) ^ (1 / 2 : ℝ) := by
-      funext t; simp [evalD_esub, evalD_half, evalD_powTwo]
+      funext t; simp [evalD_esub, Real.rpow_two]
     rw [hf]
     have hU : fx ρ x u (ρ x) = evalD ρ u := fx_at ρ x u
     have harc : HasDerivAt (fun t => Real.arcsin (fx ρ x u t))
@@ -317,7 +331,7 @@ theorem table_sound {ρ : EnvR} {x g : String} {u G : Expr} {why : String} {cs :
     have hsq := ((hu.pow 2).const_sub 1).rpow_const (p := 1 / 2) (Or.inl hne)
     convert (hu.mul harc).add hsq using 1
     rw [show (1 / 2 : ℝ) - 1 = -1 / 2 by norm_num, rpow_neg_half_eq]
-    simp only [applyFn_arcsin, fx, upd_self]
+    simp only [applyFn_arcsin, Pi.pow_apply, fx, upd_self]
     ring
   · -- arccos
     simp only [Option.some.injEq, Prod.mk.injEq] at h; obtain ⟨rfl, -, rfl⟩ := h
@@ -325,7 +339,7 @@ theorem table_sound {ρ : EnvR} {x g : String} {u G : Expr} {why : String} {cs :
     have hf : fx ρ x (Expr.sub (.mul [u, .fn "arccos" [u]])
           (.pow (Expr.sub Expr.one (.pow u (Expr.ofInt 2))) (.num (Q.ofRat (mkRat 1 2)))))
         = fun t => fx ρ x u t * Real.arccos (fx ρ x u t) - (1 - fx ρ x u t ^ 2) ^ (1 / 2 : ℝ) := by
-      funext t; simp [evalD_esub, evalD_half, evalD_powTwo]
+      funext t; simp [evalD_esub, Real.rpow_two]
     rw [hf]
     have hU : fx ρ x u (ρ x) = evalD ρ u := fx_at ρ x u
     have harc : HasDerivAt (fun t => Real.arccos (fx ρ x u t))
@@ -336,7 +350,7 @@ theorem table_sound {ρ : EnvR} {x g : String} {u G : Expr} {why : String} {cs :
     have hsq := ((hu.pow 2).const_sub 1).rpow_const (p := 1 / 2) (Or.inl hne)
     convert (hu.mul harc).sub hsq using 1
     rw [show (1 / 2 : ℝ) - 1 = -1 / 2 by norm_num, rpow_neg_half_eq]
-    simp only [applyFn_arccos, fx, upd_self]
+    simp only [applyFn_arccos, Pi.pow_apply, fx, upd_self]
     ring
   · cases h
 
@@ -441,7 +455,7 @@ theorem exponential_sound {ρ : EnvR} {x : String} {b e : Expr} {a' : ℝ}
         exact_mod_cast h1
     · refine ⟨by simpa using Real.pi_pos, ?_⟩
       simp only [evalD_fn, fnD_nil, constR_pi]
-      linarith [Real.pi_gt_three]
+      exact ne_of_gt (by linarith [Real.two_le_pi])
     · exact hc (.base _) (by simp)
   have hlog : Real.log (evalD ρ b) ≠ 0 := Real.log_ne_zero_of_pos_of_ne_one hB.1 hB.2
   have hf : fx ρ x (Expr.div (.pow b e) (.fn "ln" [b]))
@@ -509,33 +523,56 @@ theorem trigPowers_go (ρ : EnvR) : ∀ (fs : List Expr) (u? : Option Expr) (m n
   | f :: fs, u?, m, n, u, M, N, h => by
     simp only [trigPowers.go] at h
     have hpf := evalD_powerOf ρ f
-    obtain ⟨base, k⟩ := powerOf f
-    simp only at h hpf
+    rcases hpk : powerOf f with ⟨base, k⟩
+    rw [hpk] at hpf
+    simp only [hpk] at h hpf
     split at h
     · cases h
     · rename_i hk
       have hf : evalD ρ f = evalD ρ base ^ k := hpf.resolve_left hk
       split at h
       · rename_i v
-        split at h
-        · rename_i hsame
-          obtain ⟨hu, ih⟩ := trigPowers_go ρ fs (some v) (m + k) n h
+        have hstep : ∀ {M' N' : ℕ}, trigPowers.go (some v) (m + k) n fs = some (u, M', N') →
+            M' = M → N' = N → Real.sin (evalD ρ u) ^ m * Real.cos (evalD ρ u) ^ n * prodD ρ (f :: fs)
+              = Real.sin (evalD ρ u) ^ M * Real.cos (evalD ρ u) ^ N ∧ v = u := by
+          intro M' N' h' hM hN
+          subst hM hN
+          obtain ⟨hu, ih⟩ := trigPowers_go ρ fs (some v) (m + k) n h'
           have hvu : v = u := hu v rfl
           subst hvu
-          refine ⟨fun w hw => ?_, ?_⟩
-          · subst hw; simpa using Expr.beq_eq _ _ hsame
-          · rw [prodD_cons, hf, ← ih]; simp only [evalD_fn, fnD_one, applyFn_sin]; ring
-        · cases h
+          refine ⟨?_, rfl⟩
+          rw [prodD_cons, hf, ← ih]; simp only [evalD_fn, fnD_one, applyFn_sin]; ring
+        split at h
+        · rename_i w
+          split at h
+          · rename_i hsame
+            obtain ⟨heq, hvu⟩ := hstep h rfl rfl
+            subst hvu
+            exact ⟨fun w' hw => by cases hw; exact Expr.beq_eq _ _ hsame, heq⟩
+          · cases h
+        · obtain ⟨heq, hvu⟩ := hstep (by simpa using h) rfl rfl
+          exact ⟨(fun w' hw => by cases hw), heq⟩
       · rename_i v
-        split at h
-        · rename_i hsame
-          obtain ⟨hu, ih⟩ := trigPowers_go ρ fs (some v) m (n + k) h
+        have hstep : ∀ {M' N' : ℕ}, trigPowers.go (some v) m (n + k) fs = some (u, M', N') →
+            M' = M → N' = N → Real.sin (evalD ρ u) ^ m * Real.cos (evalD ρ u) ^ n * prodD ρ (f :: fs)
+              = Real.sin (evalD ρ u) ^ M * Real.cos (evalD ρ u) ^ N ∧ v = u := by
+          intro M' N' h' hM hN
+          subst hM hN
+          obtain ⟨hu, ih⟩ := trigPowers_go ρ fs (some v) m (n + k) h'
           have hvu : v = u := hu v rfl
           subst hvu
-          refine ⟨fun w hw => ?_, ?_⟩
-          · subst hw; simpa using Expr.beq_eq _ _ hsame
-          · rw [prodD_cons, hf, ← ih]; simp only [evalD_fn, fnD_one, applyFn_cos]; ring
-        · cases h
+          refine ⟨?_, rfl⟩
+          rw [prodD_cons, hf, ← ih]; simp only [evalD_fn, fnD_one, applyFn_cos]; ring
+        split at h
+        · rename_i w
+          split at h
+          · rename_i hsame
+            obtain ⟨heq, hvu⟩ := hstep h rfl rfl
+            subst hvu
+            exact ⟨fun w' hw => by cases hw; exact Expr.beq_eq _ _ hsame, heq⟩
+          · cases h
+        · obtain ⟨heq, hvu⟩ := hstep (by simpa using h) rfl rfl
+          exact ⟨(fun w' hw => by cases hw), heq⟩
       · cases h
 
 theorem trigPowers_spec {es : List Expr} {u : Expr} {m n : ℕ} (h : trigPowers es = some (u, m, n)) (ρ : EnvR) :
@@ -554,10 +591,10 @@ theorem hasDerivAt_sineReduce {U R : ℝ → ℝ} {a t : ℝ} (j n : ℕ) (hU : 
   have h1 := ((hU.sin.pow (j + 1)).mul (hU.cos.pow (n + 1))).neg.div_const (a * ((j : ℝ) + 2 + n))
   convert h1.add (hR.const_mul (((j : ℝ) + 1) / ((j : ℝ) + 2 + n))) using 1
   have hs := Real.sin_sq_add_cos_sq (U t)
-  simp only [Nat.add_sub_cancel]
+  simp only [Pi.pow_apply, Nat.add_sub_cancel]
   field_simp
   push_cast
-  linear_combination (-(j : ℝ) - 1) * a * Real.sin (U t) ^ j * Real.cos (U t) ^ n * hs
+  linear_combination ((j : ℝ) + 1) * Real.sin (U t) ^ j * Real.cos (U t) ^ n * hs
 
 /-- The cosine reduction formula, differentiated. -/
 theorem hasDerivAt_cosineReduce {U R : ℝ → ℝ} {a t : ℝ} (m k : ℕ) (hU : HasDerivAt U a t) (ha : a ≠ 0)
@@ -569,10 +606,10 @@ theorem hasDerivAt_cosineReduce {U R : ℝ → ℝ} {a t : ℝ} (m k : ℕ) (hU 
   have h1 := ((hU.sin.pow (m + 1)).mul (hU.cos.pow (k + 1))).div_const (a * ((m : ℝ) + (k + 2)))
   convert h1.add (hR.const_mul (((k : ℝ) + 1) / ((m : ℝ) + (k + 2)))) using 1
   have hs := Real.sin_sq_add_cos_sq (U t)
-  simp only [Nat.add_sub_cancel]
+  simp only [Pi.pow_apply, Nat.add_sub_cancel]
   field_simp
   push_cast
-  linear_combination (-(k : ℝ) - 1) * a * Real.sin (U t) ^ m * Real.cos (U t) ^ k * hs
+  linear_combination ((k : ℝ) + 1) * Real.sin (U t) ^ m * Real.cos (U t) ^ k * hs
 
 /-- **`int.trig-power`**: the reduction formulas, given an antiderivative of the integrand left,
 wherever the coefficient of `u` is nonzero — which the step states unless it is a numeral. -/
@@ -616,8 +653,9 @@ theorem trigPower_sound {ρ : EnvR} {x : String} {rec : Nat → Expr → Option 
           obtain ⟨j, rfl⟩ : ∃ j, m = j + 2 := ⟨m - 2, by omega⟩
           have hRg' : HasDerivAt (fx ρ x R.F)
               (Real.sin (fx ρ x u (ρ x)) ^ j * Real.cos (fx ρ x u (ρ x)) ^ n) (ρ x) := by
+            unfold AntiAt at hRg
             convert hRg using 1
-            rw [evalD_prodOf]; simp [evalD_pw, show j + 2 - 2 = j by omega]
+            rw [evalD_prodOf]; simp [evalD_pw, fx_at]
           have key := hasDerivAt_sineReduce j n (hd ρ) hA hRg'
           show HasDerivAt (fx ρ x (.add [_, .mul [_, R.F]])) (evalD ρ f) (ρ x)
           convert key using 1
@@ -634,16 +672,16 @@ theorem trigPower_sound {ρ : EnvR} {x : String} {rec : Nat → Expr → Option 
             obtain ⟨k, rfl⟩ : ∃ k, n = k + 2 := ⟨n - 2, by omega⟩
             have hRg' : HasDerivAt (fx ρ x R.F)
                 (Real.sin (fx ρ x u (ρ x)) ^ m * Real.cos (fx ρ x u (ρ x)) ^ k) (ρ x) := by
+              unfold AntiAt at hRg
               convert hRg using 1
-              rw [evalD_prodOf]; simp [evalD_pw, show k + 2 - 2 = k by omega]
+              rw [evalD_prodOf]; simp [evalD_pw, fx_at]
             have key := hasDerivAt_cosineReduce m k (hd ρ) hA hRg'
             show HasDerivAt (fx ρ x (.add [_, .mul [_, R.F]])) (evalD ρ f) (ρ x)
             convert key using 1
             · funext s
-              simp [evalD_ediv, evalD_pw, evalD_ofNat, hU, Rat.mkRat_eq_div,
+              simp [evalD_ediv, evalD_pw, hU, Rat.mkRat_eq_div,
                 show k + 2 - 1 = k + 1 by omega]
-              push_cast
-              ring
+              try (push_cast; ring)
             · rw [hf]; simp [fx]
           · cases ht
 
@@ -663,13 +701,13 @@ theorem antiConst_sound {ρ : EnvR} {x : String} {f : Expr} (hf : ¬ f.dependsOn
 theorem antiVar_sound {ρ : EnvR} {x y : String} (hf : (Expr.var y).dependsOn x = true) :
     Good ρ x (.var y) (antiVar x (.var y)) := by
   intro _ _
-  have hy : y = x := by simpa [Expr.dependsOn, Expr.freeVars] using hf
+  have hy : x = y := by simpa [Expr.dependsOn, Expr.freeVars] using hf
   subst hy
-  show HasDerivAt (fx ρ y (.mul [.num (Q.ofRat (mkRat 1 2)), .pow (.var y) (Expr.ofInt 2)])) (evalD ρ (.var y)) (ρ y)
-  have : fx ρ y (.mul [.num (Q.ofRat (mkRat 1 2)), .pow (.var y) (Expr.ofInt 2)]) = fun t => 1 / 2 * t ^ 2 := by
+  show HasDerivAt (fx ρ x (.mul [.num (Q.ofRat (mkRat 1 2)), .pow (.var x) (Expr.ofInt 2)])) (evalD ρ (.var x)) (ρ x)
+  have : fx ρ x (.mul [.num (Q.ofRat (mkRat 1 2)), .pow (.var x) (Expr.ofInt 2)]) = fun t => 1 / 2 * t ^ 2 := by
     funext t; simp [evalD_half, evalD_powTwo]
   rw [this]
-  convert (hasDerivAt_pow 2 (ρ y)).const_mul (1 / 2 : ℝ) using 1
+  convert (hasDerivAt_pow 2 (ρ x)).const_mul (1 / 2 : ℝ) using 1
   simp
 
 theorem mapM_some {α β : Type} {g : α → Option β} :
@@ -717,13 +755,13 @@ theorem antiConstMul_sound {ρ : EnvR} {x : String} {rec : Nat → Expr → Opti
     (hp : es.partition (·.dependsOn x) = (rest, cs))
     (h : antiConstMul x rec fuel (.mul es) rest cs = some r) : Good ρ x (.mul es) r := by
   unfold antiConstMul at h
-  cases hm : rec fuel (mulN rest) with
+  cases hm : rec fuel (Expr.mulN rest) with
   | none => simp [hm] at h
   | some r₀ =>
     simp only [hm, Option.bind_eq_bind, Option.bind_some, Option.pure_def, Option.some.injEq] at h
     subst h
     intro hch hc
-    have h0 : AntiAt ρ x r₀.F (mulN rest) := hrec _ _ _ hm hch hc
+    have h0 : AntiAt ρ x r₀.F (Expr.mulN rest) := hrec _ _ _ hm hch hc
     obtain ⟨h1, h2⟩ := partition_spec hp
     have hcs := filter_not_dep h2
     show HasDerivAt (fx ρ x (.mul (cs ++ [r₀.F]))) (evalD ρ (.mul es)) (ρ x)
@@ -793,7 +831,7 @@ theorem antiSecSq_sound {ρ : EnvR} {x : String} {u e : Expr} {r : Found}
       convert htan using 1
       rw [evalD_pow, evalD_of_isNumEq he, hU]
       simp only [evalD_fn, fnD_one, applyFn_cos, Q.ofInt]
-      rw [show (((Rat.ofInt (-2) : ℚ)) : ℝ) = ((-2 : ℤ) : ℝ) by push_cast; rfl, Real.rpow_intCast]
+      rw [show (((Rat.ofInt (-2) : ℚ)) : ℝ) = ((-2 : ℤ) : ℝ) by norm_num [Rat.ofInt_eq_cast], Real.rpow_intCast]
       simp [zpow_neg, div_eq_mul_inv]
     exact substitute_sound hnd hG (fun c hm => hc c (mem_append_right' hm))
 
