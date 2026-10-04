@@ -146,6 +146,12 @@ expand(2*(x+y))	2*x + 2*y
 simplify(x + x)	2*x
 N(exp(1))	2.71828182845905
 N(2^0.5)	1.4142135623731
+N(sin(10^30))	-0.0901169019121381
+N(ln(2))	0.693147180559945
+N(log(1000))	3
+N(exp(100))	2.68811714181614e+43
+N(2^(1/3))	1.25992104989487
+N(tan(1))	1.5574077246549
 subst(g, x, y)	2*y
 expand((a+b)^4)	4*a*b^3 + 4*b*a^3 + 6*a^2*b^2 + a^4 + b^4
 let m = [1,2,3;4,5,6;7,8,10]	[1, 2, 3; 4, 5, 6; 7, 8, 10]
@@ -156,6 +162,7 @@ m * [1;2;4]	[17; 38; 63]
 m * m	[30, 36, 45; 66, 81, 102; 109, 134, 169]
 rref([1/2,1,3;1,3,5])	[1, 0, 8; 0, 1, -1]
 rref([1,2,3,4;2,4,6,8;1,1,1,1])	[1, 0, -1, -2; 0, 1, 2, 3; 0, 0, 0, 0]
+rref([x, y; x^2, 1])	[1, 0; 0, 1]
 integrate(x^2, x)	x^3/3
 integrate(1/x, x)	ln(x)
 integrate(cos(3*x + 1), x)	sin(3*x + 1)/3
@@ -226,6 +233,9 @@ finer(K, A)	false
 wellfounded(R)	true
 let C = rel({x, y, z}; x->y, y->z, z->x)	{(x, y), (y, z), (z, x)}
 wellfounded(C)	false
+wellfounded(rel({a}; a->a))	false
+wellfounded(rel({a, b, c, d}; a->b, b->c, a->c, d->a))	true
+wellfounded(rel({a, b, c, d}; a->b, b->c, c->d, d->b))	false
 measure(R; a->2, b->1, c->0)	true
 measure(C; x->2, y->1, z->0)	false
 let D = divisors(12)	poset {1, 2, 3, 4, 6, 12}
@@ -297,6 +307,12 @@ let Wk = system(var p in {idle, crit}; var q in {wait, crit}; var lock in bool; 
 eventually(Wk, q = crit)	false
 let Sg = system(var p in {idle, crit}; var q in {wait, crit}; var lock in bool; init p = idle ∧ q = wait ∧ lock = false; action penter when p = idle ∧ lock = false do lock := true, p := crit; action pexit when p = crit do p := idle, lock := false; strong fair action qenter when q = wait ∧ lock = false do lock := true, q := crit)	system({p, q, lock}, {penter, pexit, qenter})
 eventually(Sg, q = crit)	true
+let SF = system(var p in {a, b, c}; init p = a; action stay when p = a do p := a; action go when p = a do p := b; action back when p = b do p := a; strong fair action fin when p = b do p := c)	system({p}, {stay, go, back, fin})
+eventually(SF, p = c)	false
+let SF2 = system(var p in {a, b, c}; init p = a; action go when p = a do p := b; action back when p = b do p := a; strong fair action fin when p = b do p := c)	system({p}, {go, back, fin})
+eventually(SF2, p = c)	true
+let WF = system(var p in {a, b, c}; init p = a; action go when p = a do p := b; action back when p = b do p := a; fair action fin when p = b do p := c)	system({p}, {go, back, fin})
+eventually(WF, p = c)	false
 let Tw = system(var a in 0..2; var b in 0..2; init a = 0 ∧ b = 0; action ta when a < 2 do a := a + 1; action tb when b < 2 do b := b + 1)	system({a, b}, {ta, tb})
 let Sm = system(var s in 0..4; init s = 0; action t when s < 4 do s := s + 1)	system({s}, {t})
 refines(Tw, Sm; s := a + b)	true
@@ -304,6 +320,7 @@ let Jp = system(var a in 0..2; var b in 0..2; init a = 0 ∧ b = 0; action both 
 refines(Jp, Sm; s := a + b)	false
 system(var x in 0..2; init x = 0; action up do x := x + 1)	<error: action up sets x to 3, outside its domain>
 system(var x in 0..2; action go do y := 1)	<error: action go updates y, which is not a variable>
+system(var x in 0..5999; init x ≥ 0; action stay do x := x)	<error: more than 5000 reachable states>
 let Ev = events({a1, a2, a3}, {b1, b2}; a1->b2, b1->a3)	poset {a1, a2, a3, b1, b2}
 clocks({a1, a2, a3}, {b1, b2}; a1->b2, b1->a3)	{a1↦(1, 0), a2↦(2, 0), a3↦(3, 1), b1↦(0, 1), b2↦(1, 2)}
 concurrent(Ev, a2, b2)	true

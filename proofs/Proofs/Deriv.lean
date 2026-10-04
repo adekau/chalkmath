@@ -270,8 +270,8 @@ theorem diff_variable_sound (ρ : EnvR) (x : String) :
   have : fx ρ x (.var x) = id := by funext t; simp
   rw [D_eq, this, evalD_one]; exact deriv_id (ρ x)
 
-/-- **`diff.matrix`.** Matrices carry no real value in this semantics, so the rule is vacuously
-sound: both sides denote the junk value. Real content waits for M7's linear algebra. -/
+/-- **`diff.matrix`**, read in this semantics: matrices carry no real value here, so both sides denote
+the junk value. The theorem with content is `diffMatrix_sound` (`Matrix.lean`), where a matrix has one. -/
 theorem diff_matrix_sound (ρ : EnvR) (x : String) (rows : List (List Expr)) :
     D ρ x (.matrix rows) = evalD ρ (.matrix (rows.map (·.map (fun e => .fn "diff" [e, .var x])))) := by
   have : fx ρ x (.matrix rows) = fun _ => (0 : ℝ) := by funext t; simp
@@ -407,7 +407,7 @@ theorem fx_abs (ρ : EnvR) (x : String) : fx ρ x (.fn "abs" [.var x]) = fun t =
 /-- **The sum rule is not unconditionally sound.** At `x = 0`, `|x| + x` is not differentiable, so
 the left side is `deriv`'s junk value `0`, while the right side adds the junk derivative of `|x|`
 to the genuine derivative of `x` and gets `1`. This is the `diff.*` analogue of M3's
-`not_collectPowers_soundR`: the engine keeps the usual rule, and the hypothesis is now written
+`not_collectPowersAssuming_soundR`: the engine keeps the usual rule, and the hypothesis is now written
 down in `diff_sum_sound`. -/
 theorem not_diff_sum_sound :
     ¬ ∀ (ρ : EnvR) (x : String) (es : List Expr),
@@ -438,6 +438,40 @@ theorem not_diff_sum_sound :
   simp only [List.map_cons, List.map_nil, evalD_add, sumD_cons, sumD_nil, evalD_diff,
     habs, hvar] at key
   norm_num at key
+
+/-! ## `diff.higher-order` -/
+
+theorem upd_upd_same (ρ : EnvR) (x : String) (s t : ℝ) : upd (upd ρ x s) x t = upd ρ x t := by
+  funext y; by_cases h : y = x <;> simp [upd, h]
+
+/-- `n` successive `diff`s along `x`, as `diff.higher-order` writes `diff(f, x, n)`. -/
+def diffIter (x : String) (f : Expr) (k : ℕ) : Expr :=
+  (List.range k).foldl (fun r _ => .fn "diff" [r, .var x]) f
+
+theorem diffIter_succ (x : String) (f : Expr) (k : ℕ) :
+    diffIter x f (k + 1) = .fn "diff" [diffIter x f k, .var x] := by
+  simp [diffIter, List.range_succ, List.foldl_append]
+
+/-- **`diff.higher-order`: `diff(f, x, n)` is the `n`th derivative.** The rule writes it as `n`
+successive `diff`s (`diffHigherOrder_spec`), and those mean Mathlib's `iteratedDeriv n` of `f` read
+as a function of `x`. -/
+theorem diffHigherOrder_soundR (x : String) (f : Expr) :
+    ∀ (k : ℕ) (ρ : EnvR), evalD ρ (diffIter x f k) = iteratedDeriv k (fx ρ x f) (ρ x)
+  | 0, ρ => by simp [diffIter, fx]
+  | k + 1, ρ => by
+    rw [diffIter_succ, evalD_diff, D, iteratedDeriv_succ]
+    congr 1
+    funext t
+    rw [diffHigherOrder_soundR x f k (upd ρ x t), upd_same]
+    have : fx (upd ρ x t) x f = fx ρ x f := by funext s; simp only [fx, upd_upd_same]
+    rw [this]
+
+/-- What `diff.higher-order` does with `diff(f, x, n)` for a positive integer `n`: `n` successive
+`diff`s. -/
+theorem diffHigherOrder_spec (body : Expr) (x : String) (n : Q) (hn : n.isInt = true) (h1 : n.val.num ≥ 1) :
+    ∃ r, diffHigherOrder.apply (.fn "diff" [body, .var x, .num n]) = some r ∧
+      r.result = diffIter x body n.val.num.toNat ∧ r.error = none := by
+  simp [diffHigherOrder, hn, diffIter, MathEngine.D, if_pos h1]
 
 end MathProofs
 end

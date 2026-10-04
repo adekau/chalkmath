@@ -408,5 +408,18 @@ def critical (S : System) : List Critical := Id.run do
         | none => pure ()
   return out
 
+/-- The pair is a real overlap: the peak rewrites to `left` by the outer rule at the root, and to
+`right` by the inner rule at the position (`isPeak_sound`, `RewritingProofs.lean`). -/
+def Critical.isPeak (c : Critical) : Bool :=
+  (match matchT [] c.outer.lhs c.peak with
+   | some σ => c.outer.rhs.subst σ == c.left
+   | none => false) &&
+  (match c.peak.at? c.pos with
+   | some s =>
+     match matchT [] c.inner.lhs s with
+     | some σ => c.peak.replace c.pos (c.inner.rhs.subst σ) == c.right
+     | none => false
+   | none => false)
+
 end TRS
 end MathEngine

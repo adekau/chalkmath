@@ -31,8 +31,13 @@ const CASES = [
   { src: "diff(f, x)", text: "2*x + 3", step: "Sum rule" },
   { src: "[1,2;3,4] * [5,6;7,8]", text: "[19, 22; 43, 50]", step: "Matrix product" },
   { src: "[1, 2] ./ [3, 10]", text: "[1/3, 1/5]", step: "Entrywise division" },
+  { src: "N(sin(10^30))", text: "-0.0901169019121381", step: "Numerical value" },
   { src: "rref([1,2;2,4])", text: "[1, 2; 0, 0]", step: "Add a multiple of a row" },
+  { src: "rref([x, y; x^2, 1])", text: "[1, 0; 0, 1]", step: "Add a multiple of a row, assuming" },
   { src: "[1,2] * [1,2]", error: "inner dimensions must match" },
+  // a law split at its assumption: the step that assumes says so
+  { src: "exp(ln(w))", text: "w", step: "Function value, assuming a positive argument" },
+  { src: "t*t^(-1)", text: "1", step: "Collect powers, assuming the base" },
   // the logic world, and relations in the order world
   { src: "cnf(p ∨ (q ∧ r))", text: "(p ∨ q) ∧ (p ∨ r)", step: "Distribute" },
   { src: "taut(p → q)", text: "⊥", step: "False when p = true, q = false" },
@@ -57,6 +62,8 @@ const CASES = [
   { src: "let Ct = system(var x in 0..2; init x = 0; action inc when x < 2 do x := x + 1)", text: "system({x}, {inc})" },
   { src: "invariant(Ct, x ≤ 1)", text: "false", step: "inc (x < 2 holds)" },
   { src: "ctl(Ct, EF x = 2)", text: "true", step: "Round 1" },
+  { src: "let SF = system(var p in {a, b, c}; init p = a; action stay when p = a do p := a; action go when p = a do p := b; action back when p = b do p := a; strong fair action fin when p = b do p := c)", text: "system({p}, {stay, go, back, fin})" },
+  { src: "eventually(SF, p = c)", text: "false", step: "Fair loop" },
   // the λ-calculus: a strategy, and the simply typed calculus
   { src: "cbv: (λx. x) ((λy. y) z)", text: "z", step: "Beta" },
   { src: "type: λf:A→B. λx:A. f x", text: "(A → B) → A → B", step: "→E (application)" },

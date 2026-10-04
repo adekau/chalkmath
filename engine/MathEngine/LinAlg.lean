@@ -477,8 +477,33 @@ def laContext : PlainRule :=
 
 def contextRules : List PlainRule := [laContext]
 
+/-- Exchange rows `i` and `j`. -/
+def swapRows (rows : List (List Expr)) (i j : Nat) : List (List Expr) :=
+  (rows.set i (rows.getD j [])).set j (rows.getD i [])
+
+/-- Divide row `i` by `p`, entry by entry, before simplifying. -/
+def scaleRowExact (rows : List (List Expr)) (i : Nat) (p : Expr) : List (List Expr) :=
+  rows.set i ((rows.getD i []).map fun x => Expr.div x p)
+
+/-- `Rᵢ - f · Rⱼ`, entry by entry, before simplifying. -/
+def addRowExact (rows : List (List Expr)) (i j : Nat) (f : Expr) : List (List Expr) :=
+  rows.set i (((rows.getD i []).zip (rows.getD j [])).map fun (x, y) => Expr.sub x (.mul [f, y]))
+
+/-- Simplify row `i`'s entries: whether every one came out of the rules that assume nothing, and
+what the others assumed. -/
+def simplifyRow (rows : List (List Expr)) (i : Nat) : List (List Expr) × Bool × List String :=
+  let rs := (rows.getD i []).map simplifyNoting
+  (rows.set i (rs.map (·.1)), rs.all (·.2.1), (rs.flatMap (·.2.2)).eraseDups)
+
+/-- " Simplifying the entries assumes $a$, $b$." when the simplifier assumed anything. -/
+def assumingText (as : List String) : String :=
+  if as.isEmpty then "" else s!" Simplifying the entries assumes {", ".intercalate (as.map (s!"${·}$"))}."
+
 /-- Gauss–Jordan elimination on symbolic entries, recorded as row-operation steps whose before/after
-are the whole matrix. Works as long as `simplify` can decide zero-ness of pivots — unverified. -/
+are the whole matrix. Each step is an exact row operation (`swapRows`, `scaleRowExact`,
+`addRowExact`), proved to keep the solution set over ℝ (`proofs/Proofs/RowOps.lean`; scaling where
+the pivot is nonzero), and then the simplifier on the row it changed; the step says what the
+simplifier assumed, if anything. Pivots are chosen where `simplify` cannot show the entry is zero. -/
 def rrefSymbolic (m : List (List Expr)) : Expr × Array Step := Id.run do
   let (nr, nc) := dims m
   let mut rows := m
@@ -493,23 +518,28 @@ def rrefSymbolic (m : List (List Expr)) : Expr × Array Step := Id.run do
     | some p =>
       if p != pivotRow then
         let before := snap rows
-        let rp := rows.getD p []
-        let rq := rows.getD pivotRow []
-        rows := (rows.set p rq).set pivotRow rp
-        steps := steps.push ⟨"la.row-swap.symbolic", s!"Swap $R_\{{p + 1}}$ and $R_\{{pivotRow + 1}}$ so the pivot for column {col + 1} is nonzero (assuming the symbolic entry is not zero).", [], before, snap rows, none⟩
+        rows := swapRows rows p pivotRow
+        steps := steps.push ⟨"la.row-swap.symbolic", s!"Swap $R_\{{p + 1}}$ and $R_\{{pivotRow + 1}}$ so the pivot for column {col + 1} is not zero (the simplifier cannot show it is).", [], before, snap rows, none⟩
       let pivot := entry rows pivotRow col
       if !pivot.isOne then
         let before := snap rows
-        rows := rows.set pivotRow ((rows.getD pivotRow []).map fun x => simplify0 (Expr.div x pivot))
-        steps := steps.push ⟨"la.row-scale.symbolic", s!"Scale $R_\{{pivotRow + 1}}$ by $1/({pivot.toText})$ so the pivot becomes 1 (assuming {pivot.toText} ≠ 0).", [], before, snap rows, none⟩
+        let (rs, _, as) := simplifyRow (scaleRowExact rows pivotRow pivot) pivotRow
+        rows := rs
+        -- a numeral pivot is not zero (it was chosen as one simplify cannot show is zero)
+        let nz := s!"{pivot.toText} \\neq 0"
+        let (own, as) := match pivot with
+          | .num _ => ("", as)
+          | _ => (s!", assuming ${nz}$", as.filter (· != nz))
+        steps := steps.push ⟨"la.row-scale.symbolic", s!"Scale $R_\{{pivotRow + 1}}$ by $1/({pivot.toText})$ so the pivot becomes 1{own}.{assumingText as}", [], before, snap rows, none⟩
       for i in [0:nr] do
         if i != pivotRow then
           let factor := simplify0 (entry rows i col)
           if !factor.isZero then
             let before := snap rows
-            let prow := rows.getD pivotRow []
-            rows := rows.set i (((rows.getD i []).zip prow).map fun (x, y) => simplify0 (Expr.sub x (.mul [factor, y])))
-            steps := steps.push ⟨"la.row-add.symbolic", s!"$R_\{{i + 1}} \\leftarrow R_\{{i + 1}} - ({factor.toText}) R_\{{pivotRow + 1}}$ to clear column {col + 1}.", [], before, snap rows, none⟩
+            let (rs, safe, as) := simplifyRow (addRowExact rows i pivotRow factor) i
+            rows := rs
+            steps := steps.push ⟨if safe then "la.row-add.symbolic" else "la.row-add.symbolic.assuming",
+              s!"$R_\{{i + 1}} \\leftarrow R_\{{i + 1}} - ({factor.toText}) R_\{{pivotRow + 1}}$ to clear column {col + 1}.{assumingText as}", [], before, snap rows, none⟩
       pivotRow := pivotRow + 1
   return (snap rows, steps)
 

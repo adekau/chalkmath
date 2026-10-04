@@ -499,5 +499,34 @@ theorem no_infinite_rewriting (hI : Good I)
 
 end
 
+/-! ## Critical pairs -/
+
+/-- A pair `critical` reports, checked with `isPeak`, is a real overlap: the peak is an instance of the
+outer rule's left side, rewritten at the root to `left`, and has an instance of the inner rule's left
+side at the position, rewritten there to `right`. -/
+theorem isPeak_sound {c : Critical} (h : c.isPeak = true) :
+    (∃ σ, c.peak = c.outer.lhs.subst σ ∧ c.left = c.outer.rhs.subst σ) ∧
+    (∃ σ, c.peak.at? c.pos = some (c.inner.lhs.subst σ) ∧ c.right = c.peak.replace c.pos (c.inner.rhs.subst σ)) := by
+  simp only [Critical.isPeak, Bool.and_eq_true] at h
+  obtain ⟨h1, h2⟩ := h
+  constructor
+  · revert h1
+    cases hm : matchT [] c.outer.lhs c.peak with
+    | none => simp
+    | some σ =>
+      intro h1
+      simp only [beq_iff_eq] at h1
+      exact ⟨σ, ((matchT_sound _ _ _ _ hm).2 σ (Ext.refl _)).symm, h1.symm⟩
+  · revert h2
+    cases ha : c.peak.at? c.pos with
+    | none => simp
+    | some s =>
+      intro h2
+      cases hm : matchT [] c.inner.lhs s with
+      | none => simp only [hm] at h2; cases h2
+      | some σ =>
+        simp only [hm, beq_iff_eq] at h2
+        exact ⟨σ, congrArg some ((matchT_sound _ _ _ _ hm).2 σ (Ext.refl _)).symm, h2.symm⟩
+
 end TRS
 end MathEngine

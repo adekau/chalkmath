@@ -682,9 +682,10 @@ def orderCell (s : Session) (cellId source : String) :
       match getR r with
       | .error m => err m
       | .ok R =>
-        match Ord.findCycle R with
-        | none => done (bool true) #[step "rel.wellfounded" "No cycle: on a finite set every chain of steps stops, so the relation is well-founded." (relExpr' R) (bool true)] none (graph := some (R, [], []))
-        | some c =>
+        match Ord.wellfounded R with
+        | .error m => err m
+        | .ok none => done (bool true) #[step "rel.wellfounded" "No cycle: on a finite set every chain of steps stops, so the relation is well-founded." (relExpr' R) (bool true)] none (graph := some (R, [], []))
+        | .ok (some c) =>
           let edges := c.zip c.tail
           done (bool false) #[step "rel.wellfounded" s!"A cycle: {" → ".intercalate c}; following it never stops." (relExpr' R) (bool false)] none (graph := some (R, edges, []))
     | "measure", [r, .maps ps] =>
@@ -1118,6 +1119,7 @@ def systemCell (s : Session) (cellId source : String) :
     -- a trace from an initial state to state `j` as steps, each re-checked against the system
     let traceSteps (S : Sys.System) (G : Sys.Graph) (j : Nat) : Except String (Array Step × List (Nat × Nat)) := do
       let (start, path) := G.pathTo j
+      if !G.inits.contains start then throw "internal: the trace does not start at an initial state"
       let mut steps := #[step "sys.init" s!"Start: an initial state ({(S.init.toExpr).toText} holds)." (.var "init") (S.stateExpr G.states[start]!)]
       let mut cur := start
       let mut edges := []
@@ -1152,6 +1154,13 @@ def systemCell (s : Session) (cellId source : String) :
       match target with
       | some j =>
         let (steps, edges) ← traceSteps S G j
+        -- shortest: every state's breadth-first depth bounds the paths to it (`checkShortest_spec`)
+        let targets ← (List.range G.states.size).filterM fun i => do
+          let h ← S.holds φ G.states[i]!
+          return if head == "invariant" then !h else h
+        let depth := (List.range G.states.size).toArray.map fun i => (G.pathTo i).2.length
+        if !Sys.checkShortest (G.edges.map fun (a, _, b) => (a, b)) G.inits (depth.getD · 0) targets edges.length then
+          throw "internal: the trace is not checked shortest"
         if head == "invariant" then
           let steps := steps.push (step "sys.violated" s!"Here {(φ.toExpr).toText} fails: a shortest trace to a state that breaks it." (S.stateExpr G.states[j]!) (bool false))
           return done (bool false) steps (graph := draw G edges [])
@@ -1232,19 +1241,29 @@ def systemCell (s : Session) (cellId source : String) :
     | "critical" =>
       let R ← getT body.trimAscii.copy
       let cps := TRS.critical R
+      -- each pair is checked to be a real overlap; a pair joins when both sides reach the same term,
+      -- and two different normal forms of the peak show the system is not confluent
+      for c in cps do
+        if !c.isPeak then throw s!"internal: the overlap of {c.outer.name} and {c.inner.name} does not check"
       let results := cps.map fun c =>
         let (_, nl, okl) := TRS.normalize R c.left
         let (_, nr, okr) := TRS.normalize R c.right
-        (c, nl, nr, okl && okr && nl == nr)
-      let steps := (results.map fun (c, nl, nr, joined) =>
+        (c, nl, nr, if nl == nr then some true else if okl && okr then some false else none)
+      let steps := (results.map fun (c, nl, nr, verdict) =>
         step "trs.critical" (s!"{c.outer.name} at the root and {c.inner.name} at position {c.pos} overlap on this term. It rewrites to {c.left} and to {c.right}, which reduce to {nl} and {nr}: " ++
-          (if joined then "joinable." else "not joinable."))
-          c.peak.toExpr (.fn (if joined then "=" else "≠") [nl.toExpr, nr.toExpr])).toArray
+          (match verdict with
+           | some true => "joinable."
+           | some false => "two different normal forms of one term, so not joinable this way, and the system is not confluent."
+           | none => "no common term within the step limit, and no normal form to compare: undecided."))
+          c.peak.toExpr (.fn (match verdict with | some true => "=" | _ => "≠") [nl.toExpr, nr.toExpr])).toArray
       let value := Expr.fn "set" (cps.map fun c => .fn "pair" [c.left.toExpr, c.right.toExpr])
-      let bad := (results.filter fun (_, _, _, j) => !j).length
+      let bad := (results.filter fun (_, _, _, v) => v == some false).length
+      let open_ := (results.filter fun (_, _, _, v) => v.isNone).length
+      let pairs := s!"{cps.length} critical pair{if cps.length == 1 then "" else "s"}"
       let say := if cps.isEmpty then "no critical pairs: locally confluent"
-        else if bad == 0 then s!"{cps.length} critical pair{if cps.length == 1 then "" else "s"}, all joinable: locally confluent, and confluent if it terminates (Newman's lemma)"
-        else s!"{cps.length} critical pair{if cps.length == 1 then "" else "s"}, {bad} not joinable: not confluent"
+        else if bad > 0 then s!"{pairs}, {bad} with two different normal forms: not confluent"
+        else if open_ > 0 then s!"{pairs}, {open_} not joined within the step limit: undecided"
+        else s!"{pairs}, all joinable: locally confluent, and confluent if it terminates (Newman's lemma)"
       return done value steps (summary := some say)
     | "replicas" =>
       let (kind, replicas, evs) ← Rep.parse body
@@ -1301,6 +1320,9 @@ def systemCell (s : Session) (cellId source : String) :
         | "EG" => (Sys.iterateSets n (fun Z => sat.filter (G.preE Z).contains) (List.range n), false)
         | _ => (Sys.iterateSets n (fun Z => sat.filter (G.preA Z).contains) (List.range n), false)
       let final := chain.getLastD []
+      -- the answer carries its certificate: the set and its ranks, checked (`CtlProofs.lean`)
+      let es := G.edges.map fun (a, _, b) => (a, b)
+      if !Sys.Ctl.check op n es sat chain final then throw s!"internal: the {op} set does not check"
       let what := match op with
         | "EF" => "states with a path to one where φ holds: the least Z with Z = φ ∪ EX Z"
         | "AF" => "states all of whose paths reach φ: the least Z with Z = φ ∪ AX Z (a state with no successor has no path onward)"
@@ -1350,64 +1372,72 @@ def systemCell (s : Session) (cellId source : String) :
           | none => break
           | some (p, l) => acc := (p, l, cur) :: acc; cur := p
         return acc
-      -- a deadlock reached without φ: the run stops short of φ
-      let deadEnd := (List.range n).find? fun i => fromInit.contains i && !(G.edges.any fun (a, _, _) => a == i)
-      -- otherwise a fair cycle: a strongly connected set of ¬φ states, each fair action taken in it or disabled somewhere in it
-      let reachableBad := bad.filter fromInit.contains
-      let scc (x : Nat) : List Nat := reachableBad.filter fun y => (reach [x] bad).contains y && (reach [y] bad).contains x
-      let fairActs := S.actions.filter (·.fair)
-      let mut found : Option (Nat × List Nat) := none
-      for x in reachableBad do
-        if found.isNone then
-          let C := scc x
-          let internal := inside.filter fun (a, _, b) => C.contains a && C.contains b
-          if !internal.isEmpty then
-            let ok ← fairActs.allM fun act => do
-              if internal.any (fun (_, l, _) => l == act.name) then return true
-              -- weakly fair: disabled somewhere on the cycle; strongly fair: disabled everywhere on it
-              if act.strong then C.allM fun i => do return !(← S.holds act.guard G.states[i]!)
-              else C.anyM fun i => do return !(← S.holds act.guard G.states[i]!)
-            if ok then found := some (x, C)
+      -- the fairness problem over the graph: each edge's action by index, where each action is enabled
+      let acts := S.actions.toArray
+      let actIdx := fun (l : String) => S.actions.findIdx (·.name == l)
+      let enArr ← acts.mapM fun act => (List.range n).toArray.mapM fun i => S.holds act.guard G.states[i]!
+      let FG : Sys.Fair.Graph :=
+        { n := n, edges := G.edges.map (fun (a, l, b) => (a, actIdx l, b)),
+          weak := (List.range acts.size).filter (fun k => acts[k]!.fair && !acts[k]!.strong),
+          strong := (List.range acts.size).filter (fun k => acts[k]!.strong),
+          en := fun k i => (enArr.getD k #[]).getD i false }
+      let good := fun i => !bad.contains i
+      let conv := fun (es : List (Nat × String × Nat)) => es.map fun (a, l, b) => (a, actIdx l, b)
       let fmt := fun (i : Nat) => S.stateExpr G.states[i]!
       let desc := fun (l : String) => ((S.actions.find? (·.name == l)).map (·.describe)).getD l
-      match deadEnd, found with
-      | some j, _ =>
+      -- a deadlock reached without φ: the run stops short of φ
+      let deadEnd := (List.range n).find? fun i => fromInit.contains i && !(G.edges.any fun (a, _, _) => a == i)
+      match deadEnd with
+      | some j =>
         let path := pathIn fromInit j
+        if !Sys.Fair.checkDead FG G.inits good (conv path) j then throw "internal: the deadlock path does not check"
         let start := (path.head?.map (·.1)).getD j
         let steps := #[step "sys.init" "Start: an initial state." (.var "init") (fmt start)] ++ (path.map fun (a, l, b) => step "sys.step" s!"{desc l}." (fmt a) (fmt b)).toArray
         return done (bool false) (steps.push (step "sys.deadlock" s!"No action is enabled, and {(φ.toExpr).toText} never held: the run stops without it." (fmt j) (bool false))) (graph := draw G (path.map fun (a, _, b) => (a, b)) [])
-      | none, some (x, C) =>
-        -- the lasso: a path to x, then a cycle through C covering every fair action's obligation
+      | none =>
+      -- otherwise search the ¬φ states reachable without φ for a fair cycle (`Sys.Fair.search`)
+      let reachableBad := bad.filter fromInit.contains
+      let adj : Array (List (Nat × Nat)) := G.edges.foldl (fun arr (a, l, b) =>
+        if a < arr.size then arr.modify a ((actIdx l, b) :: ·) else arr) (Array.replicate n [])
+      match Sys.Fair.search FG adj (FG.strong.length + 2) reachableBad #[] with
+      | .error none => throw "internal: the fair-cycle search ran out of levels"
+      | .ok nodes =>
+        -- the answer carries its certificate: ranks and helpful actions, checked (`FairProofs.lean`)
+        if !Sys.Fair.checkTrue FG G.inits good nodes.toList then throw "internal: the fairness certificate does not check"
+        return done (bool true) #[step "sys.eventually" s!"Every fair run reaches {(φ.toExpr).toText}: no deadlock and no fair cycle avoids it. Checked: each ¬φ state reachable without it has a rank that no step raises, and where a run could stay level an action, enabled there and never taken, that fairness forces." (φ.toExpr) (bool true)] (graph := draw G [] [])
+      | .error (some C) =>
+        -- a strongly connected set of ¬φ states holding a fair run: the lasso is a path to it, then a
+        -- cycle through it taking every fair action's obligation
+        let x := C.headD 0
         let path := pathIn fromInit x
         let start := (path.head?.map (·.1)).getD x
-        let mut targets : List Nat := []
-        for act in fairActs do
+        let mut targets : List (Sum (Nat × String × Nat) Nat) := []
+        for act in S.actions.filter (·.fair) do
           match (inside.filter fun (a, l, b) => C.contains a && C.contains b && l == act.name).head? with
-          | some (a, _, _) => targets := targets ++ [a]
+          | some e => targets := targets ++ [.inl e]
           | none =>
             if !act.strong then
               match ← C.findM? fun i => do return !(← S.holds act.guard G.states[i]!) with
-              | some i => targets := targets ++ [i]
+              | some i => targets := targets ++ [.inr i]
               | none => pure ()
         let mut cycle : List (Nat × String × Nat) := []
         let mut cur := x
-        for tgt in targets ++ [x] do
-          let seen := reach [cur] C
-          cycle := cycle ++ pathIn seen tgt
-          cur := tgt
+        for t in targets do
+          match t with
+          | .inl (a, l, b) => cycle := cycle ++ pathIn (reach [cur] C) a ++ [(a, l, b)]; cur := b
+          | .inr i => cycle := cycle ++ pathIn (reach [cur] C) i; cur := i
+        cycle := cycle ++ pathIn (reach [cur] C) x
         if cycle.isEmpty then
-          -- a self-loop or a cycle through x
+          -- no obligations: any cycle through x
           match inside.find? fun (a, _, b) => a == x && C.contains b with
           | some (a, l, b) => cycle := [(a, l, b)] ++ pathIn (reach [b] C) x
           | none => pure ()
-        -- after a fair action's edge, the path to x continues
+        if !Sys.Fair.checkLasso FG G.inits good (conv path) (conv cycle) then throw "internal: the fair lasso does not check"
         let steps := #[step "sys.init" "Start: an initial state." (.var "init") (fmt start)] ++
           (path.map fun (a, l, b) => step "sys.step" s!"{desc l}." (fmt a) (fmt b)).toArray ++
           (cycle.map fun (a, l, b) => step "sys.cycle" s!"{desc l} (on the cycle)." (fmt a) (fmt b)).toArray
         let steps := steps.push (step "sys.lasso" s!"The cycle repeats forever and {(φ.toExpr).toText} never holds; every weakly fair action is taken on it or disabled somewhere on it, and every strongly fair one taken or never enabled, so the run is fair." (fmt x) (bool false))
         return done (bool false) steps (graph := draw G ((path ++ cycle).map fun (a, _, b) => (a, b)) [])
-      | none, none =>
-        return done (bool true) #[step "sys.eventually" s!"Every fair run reaches {(φ.toExpr).toText}: no deadlock and no fair cycle avoids it." (φ.toExpr) (bool true)] (graph := draw G [] [])
     | "refines" =>
       let (cn, rest) := Sys.splitFirst body
       let (an, maptext) := Sys.splitFirst rest

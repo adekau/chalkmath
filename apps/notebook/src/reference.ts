@@ -107,15 +107,16 @@ export const FUNCTIONS: FnDoc[] = [
   },
   {
     name: "N", area: "Algebra",
-    usage: [["N(e)", "gives a numerical approximation of `e`, to fifteen significant digits."]],
+    usage: [["N(e)", "gives a numerical value of `e`, to fifteen significant digits, each one certified."]],
     details: [
-      "IEEE-754 double precision.",
+      "The digits are certified: the term is evaluated again over the rationals, to an interval proved to hold its exact value, and only the digits the interval pins down are shown, each within a unit of its last place. Usually that is all fifteen; when it is fewer, fewer are shown, and a value pinned down only near zero shows as 0.",
+      "What the intervals do not reach is a floating-point approximation in IEEE-754 double precision, and its step says it is not certified: a complex value, a function across a pole or a jump (`N(tan(pi/2))`), a negative base under a fractional power.",
       "Over ℂ when the term mentions `i`, or when its real value is not finite: `N(sqrt(-1))` is `i`.",
       "A term with a free variable has no numerical value.",
     ],
     examples: [
       basic("N(pi)", "N(sqrt(2))"),
-      section("Scope", "N(1/3)", "N(exp(1))", "N(sin(pi/6))"),
+      section("Scope", "N(1/3)", "N(exp(1))", "N(sin(pi/6))", "N(sin(10^30))", note("Not certified:"), "N(tan(pi/2))"),
     ],
     see: ["simplify"],
   },
@@ -365,9 +366,11 @@ export const FUNCTIONS: FnDoc[] = [
   {
     name: "rref", area: "Linear algebra",
     usage: [["rref(M)", "gives the reduced row echelon form of `M`."]],
-    details: ["Gauss–Jordan elimination. Each row operation is a step of its own, nested under the command."],
+    details: ["Gauss–Jordan elimination. Each row operation is a step of its own, nested under the command.",
+      "With symbols among the entries, a pivot is an entry the simplifier cannot show is zero, and the step that divides by it says it assumes it is not zero; where simplifying a row cancels a factor, the step says that too. The answer holds wherever those assumptions do."],
     examples: [
       basic("rref([1,2,3;4,5,6;7,8,10])"),
+      section("Symbolic entries", "rref([x, y; x^2, 1])"),
       section("Scope", note("A singular matrix:"), "rref([1,2;2,4])", note("Fractions stay exact:"), "rref([1/2,1,3;1,3,5])", "rref([1,2,3,4;2,4,6,8;1,1,1,1])"),
     ],
     see: ["det", "transpose"],
@@ -1144,7 +1147,7 @@ export const FUNCTIONS: FnDoc[] = [
     usage: [["critical(R)", "finds where two rules overlap, and whether the two results of each overlap rewrite to the same normal form."]],
     details: [
       "A critical pair comes from a term where one rule applies at the root and another (or the same one, deeper) inside it; the two rewrites give the pair. Each side is rewritten to normal form: when every pair joins, the system is locally confluent, and if it also terminates, confluent (Newman's lemma), so every term has one normal form.",
-      "A pair that does not join is a choice the rules leave open; adding a rule between its two normal forms is the start of Knuth–Bendix completion.",
+      "A pair whose sides reach two different normal forms is a choice the rules leave open, and the system is not confluent; adding a rule between the two is the start of Knuth–Bendix completion. Sides that keep rewriting past the step limit without meeting leave the question undecided.",
     ],
     examples: [
       basic("let A = rules(add(0, y) -> y; add(s(x), y) -> s(add(x, y)))", "critical(A)"),
@@ -1175,8 +1178,10 @@ export const FUNCTIONS: FnDoc[] = [
   {
     name: "eventually", area: "Transition systems",
     usage: [["eventually(S, φ)", "gives `true` when every fair run reaches φ, and otherwise a deadlock or a fair loop that avoids it forever."]],
-    details: ["`fair action` is weak fairness: if it stays enabled it is taken. `strong fair action` is strong fairness: if it is enabled again and again it is taken."],
-    examples: [section("Weak and strong fairness", "let W = system(var p in {idle, crit}; var q in {wait, crit}; var lock in bool; init p = idle ∧ q = wait ∧ lock = false; action penter when p = idle ∧ lock = false do lock := true, p := crit; action pexit when p = crit do p := idle, lock := false; fair action qenter when q = wait ∧ lock = false do lock := true, q := crit)", "eventually(W, q = crit)", "let S = system(var p in {idle, crit}; var q in {wait, crit}; var lock in bool; init p = idle ∧ q = wait ∧ lock = false; action penter when p = idle ∧ lock = false do lock := true, p := crit; action pexit when p = crit do p := idle, lock := false; strong fair action qenter when q = wait ∧ lock = false do lock := true, q := crit)", "eventually(S, q = crit)")],
+    details: ["`fair action` is weak fairness: if it stays enabled it is taken. `strong fair action` is strong fairness: if it is enabled again and again it is taken.",
+      "A run that keeps away from where a strongly fair action is enabled owes it nothing: below, `stay` forever never enables `fin`, so it is fair and never reaches `c`.",
+      "Both answers are checked before they are given: a deadlock or a fair loop is re-run as a run of the system, and `true` comes with a ranking of the states that every fair run has to leave."],
+    examples: [section("Weak and strong fairness", "let W = system(var p in {idle, crit}; var q in {wait, crit}; var lock in bool; init p = idle ∧ q = wait ∧ lock = false; action penter when p = idle ∧ lock = false do lock := true, p := crit; action pexit when p = crit do p := idle, lock := false; fair action qenter when q = wait ∧ lock = false do lock := true, q := crit)", "eventually(W, q = crit)", "let S = system(var p in {idle, crit}; var q in {wait, crit}; var lock in bool; init p = idle ∧ q = wait ∧ lock = false; action penter when p = idle ∧ lock = false do lock := true, p := crit; action pexit when p = crit do p := idle, lock := false; strong fair action qenter when q = wait ∧ lock = false do lock := true, q := crit)", "eventually(S, q = crit)"), section("Strong fairness asks nothing of a run that avoids the action", "let F = system(var p in {a, b, c}; init p = a; action stay when p = a do p := a; action go when p = a do p := b; action back when p = b do p := a; strong fair action fin when p = b do p := c)", "eventually(F, p = c)")],
     see: ["ctl", "deadlock"],
   },
   {

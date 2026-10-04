@@ -83,6 +83,12 @@ def derivationRules (st : Store) (src : String) : List String :=
   | some cell => cell.derivation.steps.toList.map (·.rule)
   | none => []
 
+/-- Explanations of a cell's derivation (needs `showWork`). -/
+def derivationExplanations (st : Store) (src : String) : List String :=
+  match (st.get "t").cells.lookup src with
+  | some cell => cell.derivation.steps.toList.map (·.explanation)
+  | none => []
+
 -- --- step 2: the traced rewriter ---------------------------------------------------------
 /-- A toy verified rule: a one-element sum or product is that element. Under unit weights the
 node it removes weighs 1, so the obligation is immediate. -/
@@ -291,6 +297,10 @@ def sessionTests : TestM Unit := do
   (st, r) := ev st "factor(a/x + b/y)"; check "factor: together" r "(a*y + b*x)/(x*y)"
   (st, r) := ev st "factor(-2*x - 4)"; check "factor: negative common factor" r "-2*(x + 2)"
   (st, r) := ev st "factor(x/2 + x/3)"; check "factor: collects first" r "5*x/6"
+  (st, r) := ev st "factor(a/(x+1) + b/x)"; check "factor: denominators that are sums" r "(a*x + b*(x + 1))/(x*(x + 1))"
+  (st, r) := sessionEval st "factor(1/(x+1) + 1/(x-1))" ",\"showWork\":true"
+  check "factor: checked by cross-multiplying" r "2*x/((x - 1)*(x + 1))"
+  checkTrue "factor: the step says what was checked" ((derivationExplanations st "factor(1/(x+1) + 1/(x-1))").any (contains · "Checked: times its denominator"))
   (st, r) := ev st "diff(x*sin(x), x)"; check "diff x sin x" r "x*cos(x) + sin(x)"
   (st, r) := ev st "diff(2^x, x)"; check "diff 2^x" r "2^x*ln(2)"
   (st, r) := ev st "diff(x^x, x)"; check "diff x^x" r "x^x*(ln(x) + 1)"
@@ -328,6 +338,22 @@ def sessionTests : TestM Unit := do
   (st, r) := sessionEval st "rref([a,1;1,a])" ",\"showWork\":true"
   check "rref symbolic path" r "[1, 0; 0, 1]"
   checkTrue "rref symbolic path: .symbolic rule names" ((subRules "rref([a,1;1,a])").all (·.endsWith ".symbolic")) (subRules "rref([a,1;1,a])").toString
+  (st, r) := sessionEval st "rref([x,y;x^2,1])" ",\"showWork\":true"
+  check "rref symbolic: a cancellation that assumes" r "[1, 0; 0, 1]"
+  (st, _) := sessionEval st "N(pi)" ",\"showWork\":true"
+  (st, _) := sessionEval st "N(tan(pi/2))" ",\"showWork\":true"
+  let lastRule (src : String) : String :=
+    ((st.get "t").cells.lookup src >>= fun c => c.derivation.steps.toList.getLast? |>.map (·.rule)).getD ""
+  check "N: certified by intervals" (lastRule "N(pi)") "cmd.N"
+  check "N: a pole is not certified" (lastRule "N(tan(pi/2))") "cmd.N.float"
+  checkTrue "N: the certified step states its bound"
+    ((((st.get "t").cells.lookup "N(pi)").bind fun c => c.derivation.steps.toList.getLast?).map (fun s => contains s.explanation "to within $10^{-14}$") |>.getD false) "N(pi)"
+  let symSteps := ((st.get "t").cells.lookup "rref([x,y;x^2,1])" >>= fun c => c.derivation.steps[0]? >>= (·.sub)).map (·.steps.toList) |>.getD []
+  check "rref symbolic: the row addition that cancelled says so" (symSteps.map (·.rule)).toString
+    "[la.row-scale.symbolic, la.row-add.symbolic.assuming, la.row-scale.symbolic, la.row-add.symbolic]"
+  let symTexts := symSteps.map (·.explanation)
+  checkTrue "rref symbolic: the scale states its pivot, the addition its cancellation"
+    ((symTexts[0]?.getD "").endsWith "assuming $x \\neq 0$." && (symTexts[1]?.getD "").endsWith "Simplifying the entries assumes $x \\neq 0$.") symTexts.toString
   -- the order-theory world
   (st, r) := ev st "let D = divisors(12)"; checkTrue "order: divisors is a poset" (r.startsWith "poset {1, 2, 3, 4, 6, 12}") r
   (st, r) := ev st "join(D, 4, 6)"; check "order: join in divisors(12)" r "12"
@@ -394,7 +420,13 @@ def sessionTests : TestM Unit := do
   let te := (trs stT "terminates(A; add(x, y) = 2x + y, s(x) = x + 1)").2
   checkTrue "terminates: a step per rule, with its forms" (contains te "\"rule\":\"trs.decrease\"" && contains te "the left side's interpretation is 2x + y + 2, the right side's 2x + y + 1: larger") te
   let cr := (trs stT "critical(C)").2
-  checkTrue "critical: an overlap of a rule with itself, not joinable" (contains cr "\"rule\":\"trs.critical\"" && contains cr "not joinable" && contains cr "position [0]") cr
+  checkTrue "critical: an overlap of a rule with itself, two normal forms" (contains cr "\"rule\":\"trs.critical\"" && contains cr "the system is not confluent" && contains cr "position [0]") cr
+  let (stT, _) := trs stT "let L = rules(r1: f(x) -> f(x); r2: f(x) -> f(x))"
+  let cl := (trs stT "critical(L)").2
+  checkTrue "critical: a pair that rewrites for ever but meets joins" (contains cl "all joinable" && !contains cl "not confluent") cl
+  let (stT, _) := trs stT "let U = rules(r1: f(x) -> g(x); r2: f(x) -> h(x); g(x) -> g(x); h(x) -> h(x))"
+  let cu := (trs stT "critical(U)").2
+  checkTrue "critical: sides that rewrite for ever apart are undecided, not refuted" (contains cu "undecided" && !contains cu "not confluent") cu
   check "rewriting: a variable keeps its name, a constant is a symbol" (toString ((TRS.parseTerm "f(x1, e, y')").toOption.getD default)) "f(x1, e, y')"
   check "rewriting: renamed-apart variables get their names back" (toString (TRS.tidy [.f "f" [.v "x''", .v "z'", .v "x'"]])) "[f(x, z, x')]"
   check "replicas: the map prints in LaTeX" ((Expr.fn "set" [.fn "↦" [.var "a", .num (Q.ofInt 2)]]).toLatex false) "\\{a \\mapsto 2\\}"
@@ -498,7 +530,26 @@ def sessionTests : TestM Unit := do
   (st, r) := sessionEval st "sqrt(8)+sqrt(18)" ",\"showWork\":true"
   check "radical steps: a square factor" (derivationRules st "sqrt(8)+sqrt(18)").toString "[simp.radical, simp.radical, simp.collect-radicals]"
   (st, r) := sessionEval st "sqrt(x)*sqrt(x)" ",\"showWork\":true"
-  check "radical steps: sqrt as a power is silent" ((derivationRules st "sqrt(x)*sqrt(x)").head?.getD "") "simp.collect-powers"
+  check "radical steps: sqrt as a power is silent" ((derivationRules st "sqrt(x)*sqrt(x)").head?.getD "") "simp.collect-powers.assuming"
+  -- the laws split at their assumptions: the verified half, and the half whose step states what it assumes
+  (st, r) := sessionEval st "x*x" ",\"showWork\":true"
+  check "collect powers, integers of one sign: verified" ((derivationRules st "x*x").head?.getD "") "simp.collect-powers"
+  (st, r) := sessionEval st "y^(-1)*y^(-2)" ",\"showWork\":true"
+  check "collect powers, negative integers: verified" ((derivationRules st "y^(-1)*y^(-2)").head?.getD "") "simp.collect-powers"
+  (st, r) := sessionEval st "z*z^(-1)" ",\"showWork\":true"
+  check "collect powers, mixed signs: assumes" ((derivationRules st "z*z^(-1)").head?.getD "") "simp.collect-powers.assuming"
+  checkTrue "collect powers, mixed signs: the step says b ≠ 0" ((derivationExplanations st "z*z^(-1)").any (contains · "Assuming $z \\neq 0$."))
+  check "collect powers, mixed signs: value" r "1"
+  checkTrue "collect powers, real exponents: the step says b > 0" ((derivationExplanations st "sqrt(x)*sqrt(x)").any (contains · "Assuming $x > 0$."))
+  (st, r) := sessionEval st "exp(ln(w))" ",\"showWork\":true"
+  check "exp(ln w): assumes" (derivationRules st "exp(ln(w))").toString "[simp.function.assuming]"
+  checkTrue "exp(ln w): the step says w > 0" ((derivationExplanations st "exp(ln(w))").any (contains · "Assuming $w > 0$."))
+  (st, r) := sessionEval st "ln(exp(w))" ",\"showWork\":true"
+  check "ln(exp w): verified" (derivationRules st "ln(exp(w))").toString "[simp.function]"
+  (st, r) := sessionEval st "ln(w^(1/2))" ",\"showWork\":true"
+  check "ln(w^(1/2)): assumes" ((derivationRules st "ln(w^(1/2))").head?.getD "") "simp.function.assuming"
+  (st, r) := sessionEval st "ln(w^3)" ",\"showWork\":true"
+  check "ln(w^3): verified" ((derivationRules st "ln(w^3)").head?.getD "") "simp.function"
   -- an exact root: the perfect-power base comes out whole (M drops though 2 + 3 outweighs 4), then evaluates
   (st, r) := sessionEval st "4^(3/2)" ",\"showWork\":true"
   check "radical steps: exact root of a perfect-power base" (derivationRules st "4^(3/2)").toString "[simp.radical, simp.power]"
@@ -565,7 +616,12 @@ def sessionTests : TestM Unit := do
   checkTrue "rpc derivation" (contains (rpc "engine.evaluate" "{\"source\":\"x + 0\",\"showWork\":true}") "\"derivation\":{\"input\":{\"k\":\"add\",\"args\":[{\"k\":\"var\",\"name\":\"x\"},{\"k\":\"num\",\"v\":{\"num\":\"0\",\"den\":\"1\"}}]},\"steps\":[{\"rule\":\"simp.identity\",\"explanation\":\"$a + 0 = a$: zero is the additive identity.\",\"path\":[],\"before\":{\"k\":\"add\",\"args\":[{\"k\":\"var\",\"name\":\"x\"},{\"k\":\"num\",\"v\":{\"num\":\"0\",\"den\":\"1\"}}]},\"after\":{\"k\":\"var\",\"name\":\"x\"},\"beforeRendered\":{\"text\":\"x + 0\",\"latex\":\"x + 0\"},\"afterRendered\":{\"text\":\"x\",\"latex\":\"x\"}}],\"output\":{\"k\":\"var\",\"name\":\"x\"},\"inputRendered\":{\"text\":\"x + 0\",\"latex\":\"x + 0\"}}")
   check "rpc syntax error" (evalText "x +") "<error: unexpected end of input>"
   checkTrue "rpc inputRendered" (contains (rpc "engine.evaluate" "{\"source\":\"x + 0\",\"showWork\":true}") "\"inputRendered\":{\"text\":\"x + 0\"")
-  checkTrue "rpc ruleStatus" (contains (rpc "engine.capabilities" "{}") "\"rule\":\"simp.collect-powers\",\"status\":\"conditional\"")
+  checkTrue "rpc ruleStatus" (contains (rpc "engine.capabilities" "{}") "\"rule\":\"simp.collect-powers.assuming\",\"status\":\"conditional\"")
+  checkTrue "rpc ruleStatus, the verified half" (contains (rpc "engine.capabilities" "{}") "\"rule\":\"simp.collect-powers\",\"status\":\"verified\"")
+  -- every rule of the notebook pipeline has a status in the ledger (a rule absent from it would read as unverified silently)
+  let ledger := ruleStatus.render
+  for rule in pipelineRules do
+    checkTrue s!"ledger lists {rule.name}" (contains ledger s!"\"rule\":\"{rule.name}\"") rule.name
   checkTrue "rpc error span" (contains (rpc "engine.evaluate" "{\"source\":\"3 4\"}") "\"span\":{\"start\":2,\"end\":3}},\"label\":")
   checkTrue "rpc epicycles of points is dft" (contains (rpc "engine.plot" "{\"source\":\"epicycles([1, i, -1, -i])\"}") "\"terms\":[") 
   checkTrue "rpc plot list, first series" (contains (rpc "engine.plot" "{\"source\":\"plot([sin(x), x^2], x, -1, 1, 3)\"}") "\"series\":[{\"rendered\":{\"text\":\"sin(x)\"")
