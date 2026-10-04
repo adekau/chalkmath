@@ -104,8 +104,9 @@ private def reduceLam (s : Session) (src : String) : Except Err (Lam.Term × Lam
 
 /-- A logic exercise. The answer is a formula; what it must be depends on the question:
 - `nnf(φ)`, `cnf(φ)`, `dnf(φ)`: equivalent to `φ` and in that form;
-- `sat(φ)` (`falsify(φ)`): any satisfiable formula that implies `φ` (`¬φ`) — an assignment written as
-  a conjunction of literals is one — or `⊥` when there is none;
+- `sat(φ)` (`falsify(φ)`): any satisfiable formula that implies `φ` (`¬φ`) — an assignment, as the
+  map the engine answers with (`{p ↦ true, q ↦ false}`) or a conjunction of literals, is one — or `⊥`
+  when there is none;
 - `taut`, `equiv`, and a formula without variables: `⊤` or `⊥`;
 - a formula in variables: an equivalent one.
 Equivalence is decided by truth table, so a "not equivalent" here is definite. -/
@@ -149,7 +150,7 @@ def checkLogic (s : Session) (cellId question : String) (answer : Option String)
         return (shown, ← equivTo target)
       | _ => return (shown, false)
     let given : Option (Except Err (Compared × Bool)) := answer.map fun a =>
-      match Logic.parseFormula a with
+      match (Logic.parseAssignment a).map Except.ok |>.getD (Logic.parseFormula a) with
       | .error msg => .error ("syntax", msg, none)
       | .ok f => compare (prep f)
     let eq := match given with | some (.ok (_, b)) => b | _ => false

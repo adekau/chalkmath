@@ -1,5 +1,5 @@
 4	type: λf:A→B. λg:B→C. λx:A. g (f x)	= (A → B) → (B → C) → A → C
-6	taut((p → q) → (q → r) → p → r)	= ⊤   [a tautology]
-9	taut(((p → q) → p) → p)	= ⊤   [a tautology]
+6	taut((p → q) → (q → r) → p → r)	= ⊤
+9	taut(((p → q) → p) → p)	= ⊤
 17	type: λf:A→B→C. λb:B. λa:A. f a b	= (A → B → C) → B → A → C
 18	taut((p → q) → (¬q → ¬p))	= ⊤

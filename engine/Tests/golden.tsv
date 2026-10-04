@@ -185,9 +185,9 @@ p && q -> p	p ∧ q → p
 taut(p ∧ q → p)	⊤
 taut(p → q)	⊥
 taut((p → q) ∨ (q → p))	⊤
-sat(p ∧ ¬q)	p ∧ ¬q
+sat(p ∧ ¬q)	{p↦true, q↦false}
 sat(p ∧ ¬p)	⊥
-falsify(p → q)	p ∧ ¬q
+falsify(p → q)	{p↦true, q↦false}
 falsify(p ∨ ¬p)	⊥
 equiv(p → q, ¬q → ¬p)	⊤
 equiv(p → q, q → p)	⊥
@@ -383,3 +383,7 @@ terminates(A; add(x, y) = 0x + y)	<error: every argument of add needs a coeffici
 rules(x -> a)	<error: rule r1: the left side is a variable, so it would rewrite every term>
 rules(f(x) -> g(y))	<error: rule r1: y on the right does not occur on the left>
 rewrite(Q, a)	<error: 'Q' is not a rewriting system (make one with let R = rules(…))>
+S + 1	S + 1
+id + 1	id + 1
+K * 2	2*K
+fst (pair a b)	a

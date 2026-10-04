@@ -1,1 +1,1 @@
-6	replicas(orset; a, b\n  a: add x\n  a -> b\n  b: remove x\n  a: add x\n  b -> a\n  a -> b\n)	= {a↦{x}, b↦{x}}   [converged: every replica reads {x}]
+6	replicas(orset; a, b\n  a: add x\n  a -> b\n  b: remove x\n  a: add x\n  b -> a\n  a -> b\n)	= {a↦{x}, b↦{x}}

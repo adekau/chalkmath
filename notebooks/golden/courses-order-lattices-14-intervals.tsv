@@ -1,6 +1,6 @@
-4	let I = poset({i02, i01, i12, i00, i11, i22, empty}; i02 < i01, i02 < i12, i01 < i00, i01 < i11, i12 < i11, i12 < i22, i00 < empty, i11 < empty, i22 < empty)	= poset {i02, i01, i12, i00, i11, i22, empty}   [a poset with 7 elements]
-5	lattice(I)	= true   [a lattice]
-6	join(I, i01, i12)	= i11   [i01 ∨ i12 = i11]
-7	join(I, i00, i22)	= empty   [i00 ∨ i22 = empty]
+4	let I = poset({i02, i01, i12, i00, i11, i22, empty}; i02 < i01, i02 < i12, i01 < i00, i01 < i11, i12 < i11, i12 < i22, i00 < empty, i11 < empty, i22 < empty)	= poset {i02, i01, i12, i00, i11, i22, empty}
+5	lattice(I)	= true
+6	join(I, i01, i12)	= i11
+7	join(I, i00, i22)	= empty
 15	join(I, i02, i12)	= i12
 16	join(I, i01, i22)	= empty

@@ -192,7 +192,17 @@ differential test with zero mismatches.
   quantifiers evaluate their atoms with the math pipeline and name the element that decided them.
   These rules are outside the notebook pipeline's termination ordering because they never run in
   it: each is a pass over the formula, structurally recursive, and Lean's own termination check is
-  the obligation. A `truthtable` reply carries the table as a visual spec.
+  the obligation. A `truthtable` reply carries the table as a visual spec. `sat` and `falsify`
+  answer with the assignment itself, a map `{p ↦ true, q ↦ false}` like a replica run's; a `let`
+  binds it as the conjunction of its literals, so it stays a formula.
+- **The answer says it; the work explains it; a note is the exception.** A world's reply may carry
+  a one-line note (`summary`, a λ-cell's `reading`), which the notebook shows in small grey type
+  beside the answer. It is sent only when it says something neither the answer nor the work does: a
+  Church numeral's reading, why a reduction stopped, a system's reachable states, a rewriting
+  system's rule names, `critical`'s verdict. A note that restates the answer (`fold(…) = b`, "= b")
+  or the work's last step (the counterexample of a false `taut`) is noise, and is left out. When the
+  information is the answer, it is the answer, in a standard form: `sat`'s assignment is a map, not
+  a formula with a note beside it.
 - **Plots are sampled by the engine and drawn by the notebook.** `engine.plot` simplifies the
   function under the session, records the cell, and returns a uniform sample with `null` where the
   value is not finite; the notebook's SVG and the studio's graph shot are presentation only.

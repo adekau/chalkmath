@@ -325,8 +325,8 @@ def evaluateOrder (st : Store) (params : Json) (sessionId cellId src : String) :
   | .error (code, msg, span) => (st, errorJson code msg span)
   | .ok res =>
     let paths := params.getBool "paths"
-    let r := #[("ok", .bool true), ("kind", .str "poset"), ("value", res.value.toJson), ("rendered", Rendered.toJson res.value paths),
-      ("summary", .str res.summary)]
+    let r := #[("ok", .bool true), ("kind", .str "poset"), ("value", res.value.toJson), ("rendered", Rendered.toJson res.value paths)]
+    let r := match res.summary with | some t => r.push ("summary", .str t) | none => r
     let r := match res.poset with
       | some P =>
         let hs := Ord.heights P
@@ -364,8 +364,7 @@ def evaluateLogic (st : Store) (params : Json) (sessionId cellId src : String) :
   | .error (code, msg, span) => (st, errorJson code msg span)
   | .ok res =>
     let paths := params.getBool "paths"
-    let r := #[("ok", .bool true), ("kind", .str "logic"), ("value", res.value.toJson), ("rendered", Rendered.toJson res.value paths),
-      ("summary", .str res.summary)]
+    let r := #[("ok", .bool true), ("kind", .str "logic"), ("value", res.value.toJson), ("rendered", Rendered.toJson res.value paths)]
     let r := match res.table with
       | some (vs, rows) =>
         let formula := match res.derivation.input with | .fn "truthtable" [f] => f | e => e
@@ -377,7 +376,7 @@ def evaluateLogic (st : Store) (params : Json) (sessionId cellId src : String) :
     let r := match res.name with | some n => r.push ("bound", .arr #[.str n]) | none => r
     (st, .obj r)
 
-/-- A systems cell's reply: the value, the derivation (a trace is a step per action), a summary, and
+/-- A systems cell's reply: the value, the derivation (a trace is a step per action), a note, and
 the state graph (`visuals`, kind `relation.digraph`) with a counterexample's transitions marked. -/
 def evaluateSystem (st : Store) (params : Json) (sessionId cellId src : String) : Store × Json :=
   let (s, r) := systemCellN (st.get sessionId) cellId src
@@ -386,8 +385,8 @@ def evaluateSystem (st : Store) (params : Json) (sessionId cellId src : String) 
   | .error (code, msg, span) => (st, errorJson code msg span)
   | .ok res =>
     let paths := params.getBool "paths"
-    let r := #[("ok", .bool true), ("kind", .str "system"), ("value", res.value.toJson), ("rendered", Rendered.toJson res.value paths),
-      ("summary", .str res.summary)]
+    let r := #[("ok", .bool true), ("kind", .str "system"), ("value", res.value.toJson), ("rendered", Rendered.toJson res.value paths)]
+    let r := match res.summary with | some t => r.push ("summary", .str t) | none => r
     let r := match res.graph with
       | some (R, bad, added) =>
         let pairs (ps : List (String × String)) : Json := .arr (ps.map fun (a, b) => Json.arr #[.str a, .str b]).toArray

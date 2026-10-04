@@ -41,6 +41,7 @@ const CASES = [
   // the logic world, and relations in the order world
   { src: "cnf(p ∨ (q ∧ r))", text: "(p ∨ q) ∧ (p ∨ r)", step: "Distribute" },
   { src: "taut(p → q)", text: "⊥", step: "False when p = true, q = false" },
+  { src: "falsify(p → q)", text: "{p↦true, q↦false}", step: "Truth table" },
   { src: "∀ n ∈ 1..10, n^2 ≥ 2n", text: "⊥", step: "Check every element" },
   { src: "let R = rel({a, b, c}; a->b, b->c)", text: "{(a, b), (b, c)}" },
   { src: "closure(R, transitive)", text: "{(a, b), (b, c), (a, c)}", step: "Transitive closure" },
@@ -68,6 +69,9 @@ const CASES = [
   { src: "type: λf:A→B. λx:A. f x", text: "(A → B) → A → B", step: "→E (application)" },
   { src: "infer: S", text: "(α → β → γ) → (α → β) → α → γ", step: "Unify" },
   { src: "type: λx:A. x x", error: "not a function type" },
+  // a Church name at the head is a λ-term only when the cell reads as one
+  { src: "fst (pair a b)", text: "a" },
+  { src: "S + 1", text: "S + 1" },
 ];
 
 const root = path.resolve(import.meta.dirname, "..");
@@ -111,7 +115,8 @@ async function out(i) {
   }, i, { timeout: 30000 });
   return page.evaluate((k) => {
     const c = document.querySelectorAll(".cell:not(.markdown):not(.section)")[k];
-    return { tex: c.querySelector(".outval .katex-mathml annotation")?.textContent ?? null, err: c.querySelector(".cellerr")?.textContent ?? null };
+    return { tex: c.querySelector(".outval .katex-mathml annotation")?.textContent ?? null, err: c.querySelector(".cellerr")?.textContent ?? null,
+      note: [...c.querySelectorAll(".outval .reading")].map((r) => r.textContent).join(" ") || null };
   }, i);
 }
 /** Open a cell's work and read the names of its steps, nested ones included. */
@@ -475,6 +480,9 @@ try {
     assert.equal(want.rendered.text, c.text, `${c.src}: the engine's answer`);
     assert.equal(got.err, null, `${c.src}: the page shows an error`);
     assert.equal(flat(got.tex ?? ""), flat(want.rendered.latex), `${c.src}: the page shows something other than the engine's answer`);
+    // a note beside the answer only when the engine sends one
+    const note = [want.reading ? `≡ ${want.reading}` : null, want.hasse ? null : want.summary].filter(Boolean).join(" ") || null;
+    assert.equal(got.note, note, `${c.src}: the note beside the answer`);
     if (c.step) {
       const steps = await work(i);
       assert.ok(steps.some((s) => s.includes(c.step)), `${c.src}: no "${c.step}" step in ${JSON.stringify(steps)}`);

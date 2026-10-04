@@ -1,17 +1,17 @@
-4	p && q -> p	= p ∧ q → p   [a formula in p, q]
-7	truthtable(p ∧ q)	= p ∧ q   [true in 1 of 4 rows]
-8	truthtable(p ∨ q)	= p ∨ q   [true in 3 of 4 rows]
-10	truthtable(p → q)	= p → q   [true in 3 of 4 rows]
-14	taut((p → q) ∨ (q → p))	= ⊤   [a tautology]
-15	taut(p → q)	= ⊥   [false when p = true, q = false]
-16	truthtable((p → q) ∧ (q → r) → (p → r))	= (p → q) ∧ (q → r) → p → r   [true in 8 of 8 rows]
-18	sat((p ∨ q) ∧ ¬p)	= ¬p ∧ q   [satisfied by p = false, q = true]
-19	sat(p ∧ ¬p)	= ⊥   [unsatisfiable]
-20	falsify(p ∧ q → r)	= p ∧ q ∧ ¬r   [falsified by p = true, q = true, r = false]
-23	equiv(p → q, q → p)	= ⊥   [not equivalent: they differ when p = true, q = false]
-25	equiv(p → q, ¬q → ¬p)	= ⊤   [equivalent]
+4	p && q -> p	= p ∧ q → p
+7	truthtable(p ∧ q)	= p ∧ q
+8	truthtable(p ∨ q)	= p ∨ q
+10	truthtable(p → q)	= p → q
+14	taut((p → q) ∨ (q → p))	= ⊤
+15	taut(p → q)	= ⊥
+16	truthtable((p → q) ∧ (q → r) → (p → r))	= (p → q) ∧ (q → r) → p → r
+18	sat((p ∨ q) ∧ ¬p)	= {p↦false, q↦true}
+19	sat(p ∧ ¬p)	= ⊥
+20	falsify(p ∧ q → r)	= {p↦true, q↦true, r↦false}
+23	equiv(p → q, q → p)	= ⊥
+25	equiv(p → q, ¬q → ¬p)	= ⊤
 28	taut(p → (q → p))	= ⊤
 29	taut((p → q) → (¬p → ¬q))	= ⊥
-30	falsify((p → q) → p)	= ¬p ∧ q
+30	falsify((p → q) → p)	= {p↦false, q↦true}
 31	equiv(¬(p → q), p ∧ ¬q)	= ⊤
-34	sat((a ↔ ¬b) ∧ (b ↔ (a ↔ b)))	= a ∧ ¬b
+34	sat((a ↔ ¬b) ∧ (b ↔ (a ↔ b)))	= {a↦true, b↦false}

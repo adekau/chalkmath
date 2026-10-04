@@ -1085,7 +1085,7 @@ export const FUNCTIONS: FnDoc[] = [
   {
     name: "replicas", area: "Transition systems",
     usage: [
-      ["replicas(type; a, b, …; events…)", "runs a state-based CRDT on the replicas `a`, `b`, … through the events, and gives each replica's reading and whether they converged."],
+      ["replicas(type; a, b, …; events…)", "runs a state-based CRDT on the replicas `a`, `b`, … through the events, and gives each replica's reading; its work says whether they converged."],
     ],
     details: [
       "The types: `gcounter` (`inc`), `pncounter` (`inc`, `dec`), `gset` (`add x`), `twopset` and `orset` (`add x`, `remove x`), and `lww` (`write v`, or `write v @ t` with a timestamp; by default the event's number).",
@@ -1227,7 +1227,7 @@ export const FUNCTIONS: FnDoc[] = [
   },
   {
     name: "taut", area: "Logic",
-    usage: [["taut(φ)", "gives ⊤ when φ is true under every assignment, and otherwise ⊥ with a row that falsifies it."]],
+    usage: [["taut(φ)", "gives ⊤ when φ is true under every assignment, and otherwise ⊥; its work names a row that falsifies it."]],
     details: ["Decided by truth table, which is proved to decide (`taut_sound`)."],
     examples: [basic("taut(p ∧ q → p)", "taut(p → q)", "taut((p → q) ∨ (q → p))")],
     see: ["sat", "falsify", "truthtable"],
@@ -1235,20 +1235,24 @@ export const FUNCTIONS: FnDoc[] = [
   },
   {
     name: "sat", area: "Logic",
-    usage: [["sat(φ)", "gives an assignment that makes φ true, as a conjunction of literals, or ⊥ when there is none."]],
-    details: ["As an exercise, any satisfiable formula that implies φ is an answer."],
+    usage: [["sat(φ)", "gives an assignment that makes φ true, as a map from each variable to its value (`{p ↦ true, q ↦ false}`), or ⊥ when there is none."]],
+    details: [
+      "`let w = sat(φ)` names the assignment as a formula, the conjunction of its literals (`p ∧ ¬q`), so `w` can be used in other formulas.",
+      "As an exercise, any satisfiable formula that implies φ is an answer: an assignment written as a map, as the engine answers, or as a conjunction of literals.",
+    ],
     examples: [basic("sat(p ∧ ¬q)", "sat((p ∨ q) ∧ ¬p)", "sat(p ∧ ¬p)")],
     see: ["falsify", "taut"],
   },
   {
     name: "falsify", area: "Logic",
-    usage: [["falsify(φ)", "gives an assignment that makes φ false, or ⊥ when φ is a tautology."]],
+    usage: [["falsify(φ)", "gives an assignment that makes φ false, as a map from each variable to its value, or ⊥ when φ is a tautology."]],
+    details: ["`let w = falsify(φ)` names the assignment as the conjunction of its literals, as `sat` does."],
     examples: [basic("falsify(p → q)", "falsify(p ∨ ¬p)")],
     see: ["sat", "taut"],
   },
   {
     name: "equiv", area: "Logic",
-    usage: [["equiv(φ, ψ)", "gives ⊤ when φ and ψ have the same value under every assignment, and otherwise ⊥ with a row where they differ."]],
+    usage: [["equiv(φ, ψ)", "gives ⊤ when φ and ψ have the same value under every assignment, and otherwise ⊥; its work names a row where they differ."]],
     examples: [basic("equiv(p → q, ¬q → ¬p)", "equiv(p → q, q → p)", "equiv(¬(p ∧ q), ¬p ∨ ¬q)")],
     see: ["taut", "nnf"],
   },
@@ -1305,6 +1309,9 @@ export const FUNCTIONS: FnDoc[] = [
       ["zero succ add mul pow iszero", "are the Church numerals' arithmetic; a digit is a numeral."],
       ["pair fst snd", "are pairs."],
       ["id const K S I omega Y", "are the classic combinators."],
+    ],
+    details: [
+      "A cell that starts with one of these names (or a λ-definition of your own) is a λ-term when it reads as one: names, numerals and parentheses only. `S + 1` is arithmetic on a variable `S`.",
     ],
     examples: [basic("if (iszero 0) a b", "fst (pair 1 2)", "mul 2 3")],
     see: ["lambda"],
