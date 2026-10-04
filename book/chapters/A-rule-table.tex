@@ -37,8 +37,8 @@ the engine omits is unverified.
 \rt{la.row-scale}{verified}{Scaling a row by a nonzero rational preserves the solution set (\lc{sol_scale}).}
 \rt{la.row-add}{verified}{Adding a multiple of another row preserves the solution set (\lc{sol_addMul}).}
 \rt{la.row-swap.symbolic}{unverified}{Symbolic entries: the pivot is assumed nonzero because simplify could not show it is zero.}
-\rt{la.row-scale.symbolic}{unverified}{Symbolic entries: division by a pivot that is only assumed nonzero.}
-\rt{la.row-add.symbolic}{unverified}{Symbolic entries: the arithmetic is the simplifier's, outside the $\mathbb{Q}$ theorem.}
+\rt{la.row-scale.symbolic}{unverified}{Symbolic entries: division by a pivot only assumed nonzero, and each entry rewritten by the simplifier, whose cancellations assume their bases nonzero and are not shown; no theorem yet.}
+\rt{la.row-add.symbolic}{unverified}{Symbolic entries: each entry rewritten by the simplifier, whose cancellations assume their bases nonzero and are not shown; no theorem yet.}
 \rt{la.ediv}{verified}{\texttt{A ./ B}, entrywise by definition: entry $(i,j)$ is $a_{ij}/b_{ij}$, and a scalar side meets every entry; each entry's arithmetic is its nested steps, with their statuses.}
 \rt{la.emul}{verified}{\texttt{A .* B}, the Hadamard product, entrywise by definition: entry $(i,j)$ is $a_{ij} b_{ij}$.}
 \rt{la.add}{verified}{Matrices of one shape add entrywise: the output has the input's value, read in \lc{evalV}, which gives a matrix its value (\lc{laAdd_sound}).}
@@ -53,6 +53,7 @@ the engine omits is unverified.
 \rt{cmd.simplify}{verified}{A cell's argument is already in normal form when the command sees it, so \texttt{simplify} returns it unchanged: the identity.}
 \rt{cmd.subst}{verified}{Structural substitution $e[x := v]$ evaluates as $e$ with $x$ rebound to the value of $v$ (\lc{cmdSubst_soundR}).}
 \rt{cmd.N}{unverified}{A floating-point approximation in IEEE-754 double precision; no error bound is proved.}
+\rt{cmd.factor}{checked}{The common-denominator form is a guess the pipeline checks: the input times the denominator $D$, normalized and expanded, must be the numerator $N$, so $N/D$ agrees with the input wherever $D \neq 0$. When the check fails, the collected normal form is the answer.}
 \rt{expand.distribute}{verified}{Multiplying out a product of sums and collecting like monomials: \lc{dist_sound}.}
 \rt{expand.power}{verified}{A power of a sum is the sum multiplied by itself: \lc{dist_sound}.}
 \midrule \multicolumn{3}{l}{\textbf{Integration}} \\
