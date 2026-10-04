@@ -919,3 +919,19 @@ Phases:
    twenty digits), and prints the digits it pins down, each within a unit of its last place (`certify_sound`).
    Every golden `N` answer came out the same. What the intervals do not reach (a complex value, a pole, a jump)
    is `cmd.N.float`, unverified, and says so. Open: `trs.critical` (its own session).
+- `trs.critical` verified — DONE 2026-10-04. `CriticalProofs.lean` defines a rewrite step on its own (a rule's
+   instance at any position, `Step`) and proves `critical(R)`'s answers against it. `unify`, `T.vars`, `T.size`,
+   `T.positions`, `T.occurs` and `T.rename` are total now: the term functions by structural recursion, `unify` by
+   well-founded recursion on the variables left and then the size, with each bound variable replaced in the
+   equations as it is bound (the same substitutions as before). `unify` returns a most general unifier when the
+   terms have one (`unify_mgu`) and nothing only when they have none (`unify_none`); `critical` pairs every rule
+   with every rule at every non-variable position (`mem_critical`); and the critical pair lemma
+   (`critical_pair_lemma`) gives "locally confluent" when every pair joins (`critical_sound`), the overlap below a
+   variable joined by rewriting every copy of the variable (`star_app_vars`). "Not confluent" is proved too
+   (`critical_refutes`, with `step` finding a redex whenever there is one, `step_complete`), and Newman's lemma
+   (`newman_lemma`) for the "confluent if it terminates". Finding: the rules' variables were renamed apart with one prime
+   and two, so `x'` in the first rule and `x` in the second both became `x''`; `rules(f(g(x')) -> a; g(h(x)) -> b)`
+   lost its one critical pair to the occurs check and was "locally confluent", though `f(g(h(x)))` has the normal
+   forms `a` and `f(b)`. The second rule's suffix is now checked to collide with nothing, and lengthened when it
+   would (`apart`, `apart_spec`). A rule is skipped against itself at the root by its place in the list rather than
+   its name. Every other answer is unchanged.

@@ -1242,7 +1242,8 @@ def systemCell (s : Session) (cellId source : String) :
       let R ← getT body.trimAscii.copy
       let cps := TRS.critical R
       -- each pair is checked to be a real overlap; a pair joins when both sides reach the same term,
-      -- and two different normal forms of the peak show the system is not confluent
+      -- and two different normal forms of the peak show the system is not confluent (`critical_sound`,
+      -- `critical_refutes`, `CriticalProofs.lean`)
       for c in cps do
         if !c.isPeak then throw s!"internal: the overlap of {c.outer.name} and {c.inner.name} does not check"
       let results := cps.map fun c =>

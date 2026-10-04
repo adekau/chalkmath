@@ -15,6 +15,7 @@ import MathEngine.LambdaProofs
 import MathEngine.LambdaBeta
 import MathEngine.ReplicasProofs
 import MathEngine.RewritingProofs
+import MathEngine.CriticalProofs
 import MathEngine.PosetProofs
 import MathEngine.LogicProofs
 import MathEngine.RelationProofs

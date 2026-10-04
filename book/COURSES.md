@@ -156,7 +156,7 @@ E5 events (version vectors), N8 replica simulation (done)*
 | E4 | **Done.** Finite algebra: operation tables and their laws, homomorphisms, products, maps between posets, distributive and Boolean checks, closure operators, Galois connections, concept lattices | a spec per check |
 | E5 | **Done.** Systems: finite-domain variables, guarded actions, reachability, invariants with traces, inductiveness, deadlock, CTL by lfp/gfp, simulation; events → poset with vector clocks | invariant check sound and complete on finite graphs; CTL fixpoints correct |
 | E6 | **Done.** Simply typed λ-calculus: annotations, type checking with a derivation tree, inference by unification (checked by the checker) | checker sound against the rules |
-| E7 | user-defined rewriting systems: steps, termination by measure, critical pairs — done: `rules`, `rewrite`, `terminates`, `critical` (`Rewriting.lean`); steps and the termination check proved (`RewritingProofs.lean`), unification not | per rule |
+| E7 | user-defined rewriting systems: steps, termination by measure, critical pairs — done: `rules`, `rewrite`, `terminates`, `critical` (`Rewriting.lean`); steps and the termination check proved (`RewritingProofs.lean`), unification and the critical pair lemma too (`CriticalProofs.lean`) | per rule |
 
 The λ world also grew for course 4: a choice of strategy, η, free variables, α-equivalence,
 substitution and de Bruijn indices as commands. **Done.**
@@ -190,8 +190,8 @@ substitution and de Bruijn indices as commands. **Done.**
 4. **P3** — Course 6 (CRDTs): mostly Lean, little engine; needs only course 2. *Done* (without N8).
 5. **P4** — Course 3: E5, N4, N6. *Done.*
 6. **P5** — Courses 4 and 5: the λ world's additions, E6. *Done.*
-7. **P6** — E7, and probability for retries and backoff. *Done: systems lessons 9 and 10. Open: that
-   unification finds every overlap (so `critical` misses no pair) is not proved.*
+7. **P6** — E7, and probability for retries and backoff. *Done: systems lessons 9 and 10, with
+   `critical`'s verdicts proved (unification complete, the critical pair lemma).*
 
 ## Open
 

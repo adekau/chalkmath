@@ -1148,10 +1148,12 @@ export const FUNCTIONS: FnDoc[] = [
     details: [
       "A critical pair comes from a term where one rule applies at the root and another (or the same one, deeper) inside it; the two rewrites give the pair. Each side is rewritten to normal form: when every pair joins, the system is locally confluent, and if it also terminates, confluent (Newman's lemma), so every term has one normal form.",
       "A pair whose sides reach two different normal forms is a choice the rules leave open, and the system is not confluent; adding a rule between the two is the start of Knuth–Bendix completion. Sides that keep rewriting past the step limit without meeting leave the question undecided.",
+      "The two rules' variables are renamed apart before they are unified, so `x'` in one rule and `x` in the other are different variables. The verdicts are proved in Lean (`CriticalProofs.lean`): unification finds an overlap whenever there is one, no overlap is missed, and every pair joining makes the system locally confluent (the critical pair lemma).",
     ],
     examples: [
       basic("let A = rules(add(0, y) -> y; add(s(x), y) -> s(add(x, y)))", "critical(A)"),
       section("A group's axioms", "let G = rules(f(e, x) -> x; f(i(x), x) -> e; f(f(x, y), z) -> f(x, f(y, z)))", "critical(G)"),
+      section("Variables renamed apart", "let P = rules(f(g(x')) -> a; g(h(x)) -> b)", "critical(P)"),
     ],
     see: ["rules", "terminates"],
   },

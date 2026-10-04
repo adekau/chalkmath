@@ -14,7 +14,8 @@ and variables. `rules(…)` declares one (a rule per line, or separated by `;`, 
   `terminates(R; add(x, y) = 2x + y, s(x) = x + 1)`. `RewritingProofs` proves the check sound;
 - `critical(R)` finds the critical pairs, where two rules overlap, and rewrites both sides of each to
   normal form: all joinable means the system is locally confluent, and with termination confluent
-  (Newman's lemma).
+  (Newman's lemma). `CriticalProofs` proves it: unification is complete and most general, no overlap
+  is missed, and the critical pair lemma.
 -/
 namespace MathEngine
 namespace TRS
@@ -108,13 +109,24 @@ def parseTerm (s : String) : Except String T := do
 
 /-! ## Terms -/
 
-partial def T.vars : T → List String
+mutual
+/-- The variables of a term, in order of appearance (with repeats). -/
+def T.vars : T → List String
   | .v x => [x]
-  | .f _ as => (as.map T.vars).flatten
+  | .f _ as => T.varsArgs as
+def T.varsArgs : List T → List String
+  | [] => []
+  | a :: as => a.vars ++ T.varsArgs as
+end
 
-partial def T.size : T → Nat
+mutual
+def T.size : T → Nat
   | .v _ => 1
-  | .f _ as => 1 + (as.map T.size).foldl (· + ·) 0
+  | .f _ as => 1 + T.sizeArgs as
+def T.sizeArgs : List T → Nat
+  | [] => 0
+  | a :: as => a.size + T.sizeArgs as
+end
 
 abbrev Subst := List (String × T)
 
@@ -169,10 +181,16 @@ def T.atArgs : List T → Nat → Pos → Option T
   | _ :: as, i + 1, p => T.atArgs as i p
 end
 
+mutual
 /-- The non-variable positions of a term, outermost first, left to right. -/
-partial def T.positions : T → List Pos
+def T.positions : T → List Pos
   | .v _ => []
-  | .f _ as => [] :: ((as.zipIdx.map fun (a, i) => (a.positions.map (i :: ·))).flatten)
+  | .f _ as => [] :: T.positionsArgs as 0
+/-- The positions in the arguments, from argument `i` on. -/
+def T.positionsArgs : List T → Nat → List Pos
+  | [], _ => []
+  | a :: as, i => a.positions.map (i :: ·) ++ T.positionsArgs as (i + 1)
+end
 
 /-! ## Systems -/
 
@@ -341,40 +359,238 @@ def topCommas (s : String) : List String :=
 
 /-! ## Unification and critical pairs -/
 
-partial def T.occurs (x : String) : T → Bool
+mutual
+def T.occurs (x : String) : T → Bool
   | .v y => x == y
-  | .f _ as => as.any (·.occurs x)
+  | .f _ as => T.occursArgs x as
+def T.occursArgs (x : String) : List T → Bool
+  | [] => false
+  | a :: as => a.occurs x || T.occursArgs x as
+end
 
-/-- Most general unifier, by Robinson's algorithm. -/
-partial def unify (eqs : List (T × T)) (σ : Subst) : Option Subst :=
+/-- The distinct names of a list, each once. -/
+def dedup : List String → List String
+  | [] => []
+  | x :: xs => if x ∈ dedup xs then dedup xs else x :: dedup xs
+
+theorem mem_dedup {y : String} : ∀ {l : List String}, y ∈ dedup l ↔ y ∈ l
+  | [] => by simp [dedup]
+  | x :: xs => by
+    have ih := @mem_dedup y xs
+    unfold dedup
+    split
+    · rename_i h
+      by_cases e : y = x
+      · subst e; simp [h]
+      · simp [ih, e]
+    · simp [ih]
+
+theorem nodup_dedup : ∀ l : List String, (dedup l).Nodup
+  | [] => by simp [dedup]
+  | x :: xs => by
+    unfold dedup
+    split
+    · exact nodup_dedup xs
+    · rename_i h; exact List.nodup_cons.2 ⟨h, nodup_dedup xs⟩
+
+theorem dedup_length_le {l₁ l₂ : List String} (h : ∀ y ∈ l₁, y ∈ l₂) :
+    (dedup l₁).length ≤ (dedup l₂).length :=
+  (nodup_dedup l₁).length_le_of_subset fun _ hy => mem_dedup.2 (h _ (mem_dedup.1 hy))
+
+theorem dedup_length_lt {l₁ l₂ : List String} {x : String} (h : ∀ y ∈ l₁, y ∈ l₂) (hx : x ∈ l₂)
+    (hx' : x ∉ l₁) : (dedup l₁).length < (dedup l₂).length := by
+  have hn : (x :: dedup l₁).Nodup := List.nodup_cons.2 ⟨fun e => hx' (mem_dedup.1 e), nodup_dedup l₁⟩
+  have := hn.length_le_of_subset (l₂ := dedup l₂) fun y hy => by
+    rcases List.mem_cons.1 hy with rfl | hy
+    · exact mem_dedup.2 hx
+    · exact mem_dedup.2 (h _ (mem_dedup.1 hy))
+  simp at this; omega
+
+mutual
+theorem occurs_iff {x : String} : ∀ t : T, t.occurs x = true ↔ x ∈ t.vars
+  | .v y => by simp [T.occurs, T.vars]
+  | .f _ as => by simp [T.occurs, T.vars, occursArgs_iff as]
+theorem occursArgs_iff {x : String} : ∀ as : List T, T.occursArgs x as = true ↔ x ∈ T.varsArgs as
+  | [] => by simp [T.occursArgs, T.varsArgs]
+  | a :: as => by simp [T.occursArgs, T.varsArgs, occurs_iff a, occursArgs_iff as]
+end
+
+mutual
+/-- Binding `x` to `u` leaves no `x` and adds only `u`'s variables. -/
+theorem mem_vars_subst1 {x y : String} {u : T} : ∀ t : T, y ∈ (t.subst [(x, u)]).vars →
+    (y ∈ t.vars ∧ y ≠ x) ∨ y ∈ u.vars
+  | .v z, h => by
+    by_cases e : z = x
+    · subst e; simp [T.subst] at h; exact .inr h
+    · have : (z == x) = false := by simp [e]
+      simp [T.subst, List.lookup, this, T.vars] at h
+      subst h; exact .inl ⟨by simp [T.vars], e⟩
+  | .f _ as, h => by
+    simp only [T.subst, T.vars] at h ⊢
+    exact mem_varsArgs_subst1 as h
+theorem mem_varsArgs_subst1 {x y : String} {u : T} : ∀ as : List T,
+    y ∈ T.varsArgs (T.substArgs [(x, u)] as) → (y ∈ T.varsArgs as ∧ y ≠ x) ∨ y ∈ u.vars
+  | [], h => by simp [T.substArgs, T.varsArgs] at h
+  | a :: as, h => by
+    simp only [T.substArgs, T.varsArgs, List.mem_append] at h ⊢
+    rcases h with h | h
+    · rcases mem_vars_subst1 a h with ⟨h1, h2⟩ | h
+      · exact .inl ⟨.inl h1, h2⟩
+      · exact .inr h
+    · rcases mem_varsArgs_subst1 as h with ⟨h1, h2⟩ | h
+      · exact .inl ⟨.inr h1, h2⟩
+      · exact .inr h
+end
+
+/-- The variables of a list of equations, and its size: each step of `unify` removes a variable from
+the equations or makes them smaller, so it stops. -/
+def eqsVars : List (T × T) → List String
+  | [] => []
+  | (s, t) :: rest => s.vars ++ t.vars ++ eqsVars rest
+
+def eqsSize : List (T × T) → Nat
+  | [] => 0
+  | (s, t) :: rest => s.size + t.size + eqsSize rest
+
+/-- Bind `x` to `u` in some equations. -/
+def elim (x : String) (u : T) (eqs : List (T × T)) : List (T × T) :=
+  eqs.map fun (a, b) => (a.subst [(x, u)], b.subst [(x, u)])
+
+/-- Bind `x` to `u` in a substitution: in what it binds already, and then `x` itself. -/
+def extend (x : String) (u : T) (σ : Subst) : Subst :=
+  (x, u) :: σ.map fun (y, w) => (y, w.subst [(x, u)])
+
+theorem mem_eqsVars_elim {x y : String} {u : T} : ∀ eqs : List (T × T), y ∈ eqsVars (elim x u eqs) →
+    (y ∈ eqsVars eqs ∧ y ≠ x) ∨ y ∈ u.vars
+  | [], h => by simp [elim, eqsVars] at h
+  | (a, b) :: rest, h => by
+    simp only [elim, List.map_cons, eqsVars, List.mem_append] at h ⊢
+    rcases h with (h | h) | h
+    · rcases mem_vars_subst1 a h with ⟨h1, h2⟩ | h
+      · exact .inl ⟨.inl (.inl h1), h2⟩
+      · exact .inr h
+    · rcases mem_vars_subst1 b h with ⟨h1, h2⟩ | h
+      · exact .inl ⟨.inl (.inr h1), h2⟩
+      · exact .inr h
+    · rcases mem_eqsVars_elim rest h with ⟨h1, h2⟩ | h
+      · exact .inl ⟨.inr h1, h2⟩
+      · exact .inr h
+
+theorem mem_eqsVars_zip {y : String} : ∀ (as bs : List T), y ∈ eqsVars (as.zip bs) →
+    y ∈ T.varsArgs as ∨ y ∈ T.varsArgs bs
+  | [], _, h => by simp [eqsVars] at h
+  | _ :: _, [], h => by simp [eqsVars] at h
+  | a :: as, b :: bs, h => by
+    simp only [List.zip_cons_cons, eqsVars, T.varsArgs, List.mem_append] at h ⊢
+    rcases h with (h | h) | h
+    · exact .inl (.inl h)
+    · exact .inr (.inl h)
+    · rcases mem_eqsVars_zip as bs h with h | h
+      · exact .inl (.inr h)
+      · exact .inr (.inr h)
+
+theorem eqsSize_zip : ∀ (as bs : List T), eqsSize (as.zip bs) ≤ T.sizeArgs as + T.sizeArgs bs
+  | [], _ => by simp [eqsSize]
+  | _ :: _, [] => by simp [eqsSize, T.sizeArgs]
+  | a :: as, b :: bs => by
+    simp only [List.zip_cons_cons, eqsSize, T.sizeArgs]
+    have := eqsSize_zip as bs
+    omega
+
+theorem eqsVars_append (a b : List (T × T)) : eqsVars (a ++ b) = eqsVars a ++ eqsVars b := by
+  induction a with
+  | nil => rfl
+  | cons p a ih => obtain ⟨s, t⟩ := p; simp [eqsVars, ih]
+
+theorem eqsSize_append (a b : List (T × T)) : eqsSize (a ++ b) = eqsSize a + eqsSize b := by
+  induction a with
+  | nil => simp [eqsSize]
+  | cons p a ih => obtain ⟨s, t⟩ := p; simp [eqsSize, ih]; omega
+
+theorem lex_le_lt {a₁ a₂ b₁ b₂ : Nat} (ha : a₁ ≤ a₂) (hb : b₁ < b₂) :
+    Prod.Lex (· < ·) (· < ·) (a₁, b₁) (a₂, b₂) := by
+  rcases Nat.lt_or_eq_of_le ha with h | rfl
+  · exact .left _ _ h
+  · exact .right _ hb
+
+theorem T.size_pos : ∀ t : T, 0 < t.size
+  | .v _ => by simp [T.size]
+  | .f _ _ => by simp only [T.size]; omega
+
+/-- Binding a variable of the equations, which does not occur in what it is bound to, removes it. -/
+theorem elim_lt {x : String} {u : T} {rest : List (T × T)} {all : List String} (hx : x ∈ all)
+    (hu : x ∉ u.vars) (h : ∀ y, (y ∈ eqsVars rest ∧ y ≠ x) ∨ y ∈ u.vars → y ∈ all) :
+    (dedup (eqsVars (elim x u rest))).length < (dedup all).length :=
+  dedup_length_lt (fun y hy => h y (mem_eqsVars_elim rest hy)) hx fun hm => by
+    rcases mem_eqsVars_elim rest hm with ⟨_, h⟩ | h
+    · exact h rfl
+    · exact hu h
+
+/-- Most general unifier, by Robinson's algorithm. Each variable bound is replaced in the equations
+left and in the substitution so far, so the substitution never mentions a variable it binds. -/
+def unify (eqs : List (T × T)) (σ : Subst) : Option Subst :=
   match eqs with
   | [] => some σ
-  | (s, t) :: rest =>
-    let s := s.subst σ
-    let t := t.subst σ
-    if s == t then unify rest σ else
-    match s, t with
-    | .v x, u | u, .v x =>
-      if u.occurs x then none
-      else unify rest ((x, u) :: σ.map fun (y, w) => (y, w.subst [(x, u)]))
-    | .f n as, .f m bs =>
-      if n != m || as.length != bs.length then none else unify (as.zip bs ++ rest) σ
+  | (.v x, u) :: rest =>
+    if .v x = u then unify rest σ
+    else if u.occurs x then none
+    else unify (elim x u rest) (extend x u σ)
+  | (.f n as, .v x) :: rest =>
+    if (T.f n as).occurs x then none
+    else unify (elim x (.f n as) rest) (extend x (.f n as) σ)
+  | (.f n as, .f m bs) :: rest =>
+    if T.f n as = .f m bs then unify rest σ
+    else if n != m || as.length != bs.length then none
+    else unify (as.zip bs ++ rest) σ
+termination_by ((dedup (eqsVars eqs)).length, eqsSize eqs)
+decreasing_by
+  · exact lex_le_lt (dedup_length_le fun y h => by simp [eqsVars, h])
+      (by have := T.size_pos u; simp [eqsSize, T.size]; omega)
+  · exact Prod.Lex.left _ _ (elim_lt (by simp [eqsVars, T.vars]) (by rwa [occurs_iff] at *)
+      fun y h => by rcases h with ⟨h, _⟩ | h <;> simp [eqsVars, h])
+  · exact Prod.Lex.left _ _ (elim_lt (by simp [eqsVars, T.vars]) (by rwa [occurs_iff] at *)
+      fun y h => by rcases h with ⟨h, _⟩ | h <;> simp [eqsVars, h])
+  · exact lex_le_lt (dedup_length_le fun y h => by simp [eqsVars, h])
+      (by simp only [eqsSize, T.size]; omega)
+  · refine lex_le_lt (dedup_length_le fun y h => ?_) ?_
+    · rw [eqsVars_append, List.mem_append] at h
+      simp only [eqsVars, T.vars, List.mem_append]
+      rcases h with h | h
+      · rcases mem_eqsVars_zip as bs h with h | h <;> simp [h]
+      · simp [h]
+    · have := eqsSize_zip as bs
+      simp only [eqsSize_append, eqsSize, T.size]
+      omega
 
+mutual
 /-- Rename a rule's variables apart, with a suffix. -/
-partial def T.rename (k : String) : T → T
+def T.rename (k : String) : T → T
   | .v x => .v (x ++ k)
-  | .f n as => .f n (as.map (T.rename k))
+  | .f n as => .f n (T.renameArgs k as)
+def T.renameArgs (k : String) : List T → List T
+  | [] => []
+  | a :: as => a.rename k :: T.renameArgs k as
+end
+
+/-- The suffix for the second rule's variables `V₂`, when the first rule's `V₁` take one prime: two
+primes, unless that gives two variables one name (`x'` and `x`, primed once and twice), and then more
+primes than any name of the first rule is long, so that every name of the second is longer. -/
+def apart (V₁ V₂ : List String) : String :=
+  if V₁.all fun x => V₂.all fun y => x ++ "'" != y ++ "''" then "''"
+  else String.ofList (List.replicate ((V₁.map String.length).foldr max 0 + 2) '\'')
 
 /-- Rename the variables of some terms, in order of appearance, back to their names without the
-primes that kept two rules apart, where no other variable has that name already. -/
+primes that kept two rules apart, where no other variable has that name already. The renaming is
+checked to be undone by its inverse (it always is), so the terms are only renamed. -/
 def tidy (ts : List T) : List T :=
   let vs := (ts.map T.vars).flatten.eraseDups
   let base (v : String) := String.ofList (v.toList.reverse.dropWhile (· == '\'')).reverse
-  let (σ, _) := vs.foldl (fun ((σ : Subst), (used : List String)) v =>
+  let (σ, κ, _) := vs.foldl (fun ((σ : Subst), (κ : Subst), (used : List String)) v =>
       let cands := (List.range (vs.length + 1)).map fun k => base v ++ String.ofList (List.replicate k '\'')
       let n := (cands.find? (!used.contains ·)).getD v
-      ((v, T.v n) :: σ, n :: used)) ([], [])
-  ts.map (·.subst σ)
+      ((v, T.v n) :: σ, (n, T.v v) :: κ, n :: used)) ([], [], [])
+  let ts' := ts.map (·.subst σ)
+  if ts'.map (·.subst κ) = ts then ts' else ts
 
 /-- A critical pair: rules `ρ₁` (at the root of the overlap) and `ρ₂` (at position `p` in it), the
 overlapping term, and its two results. -/
@@ -386,27 +602,30 @@ structure Critical where
   left : T
   right : T
 
-def critical (S : System) : List Critical := Id.run do
-  let mut out : List Critical := []
-  for ρ₁ in S.rules do
-    for ρ₂ in S.rules do
-      -- the two rules' variables renamed apart: one prime and two
-      let l₁ := ρ₁.lhs.rename "'"
-      let r₁ := ρ₁.rhs.rename "'"
-      let l₂ := ρ₂.lhs.rename "''"
-      let r₂ := ρ₂.rhs.rename "''"
-      for p in l₁.positions do
-        if p.isEmpty && ρ₁.name == ρ₂.name then continue
-        match l₁.at? p with
-        | some sub =>
-          match unify [(sub, l₂)] [] with
-          | some σ =>
-            match tidy [l₁.subst σ, r₁.subst σ, (l₁.replace p r₂).subst σ] with
-            | [peak, left, right] => out := out ++ [⟨ρ₁, ρ₂, p, peak, left, right⟩]
-            | _ => pure ()
-          | none => pure ()
-        | none => pure ()
-  return out
+/-- The overlaps of `ρ₂` on `ρ₁`: at each non-variable position of `ρ₁`'s left side (but the root, when
+the two are one rule), the subterm there unified with `ρ₂`'s left side, the two rules' variables
+renamed apart (`apart`). -/
+def criticalOf (ρ₁ ρ₂ : Rule) (same : Bool) : List Critical :=
+  let k := apart (ρ₁.lhs.vars ++ ρ₁.rhs.vars) (ρ₂.lhs.vars ++ ρ₂.rhs.vars)
+  let l₁ := ρ₁.lhs.rename "'"
+  let r₁ := ρ₁.rhs.rename "'"
+  let l₂ := ρ₂.lhs.rename k
+  let r₂ := ρ₂.rhs.rename k
+  l₁.positions.filterMap fun p =>
+    if p.isEmpty && same then none else
+    match l₁.at? p with
+    | none => none
+    | some sub =>
+      match unify [(sub, l₂)] [] with
+      | none => none
+      | some σ =>
+        match tidy [l₁.subst σ, r₁.subst σ, (l₁.replace p r₂).subst σ] with
+        | [peak, left, right] => some ⟨ρ₁, ρ₂, p, peak, left, right⟩
+        | _ => none
+
+/-- Every critical pair of a system: each rule on each, in order. -/
+def critical (S : System) : List Critical :=
+  S.rules.zipIdx.flatMap fun (ρ₁, i) => S.rules.zipIdx.flatMap fun (ρ₂, j) => criticalOf ρ₁ ρ₂ (i == j)
 
 /-- The pair is a real overlap: the peak rewrites to `left` by the outer rule at the root, and to
 `right` by the inner rule at the position (`isPeak_sound`, `RewritingProofs.lean`). -/
