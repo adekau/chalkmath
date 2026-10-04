@@ -1,4 +1,4 @@
-import { type Atom, type Block, type Stmt, isDigit, isIdChar, isIdStart } from "./model.js";
+import { type Atom, type Block, type Stmt, isConst, isDigit, isIdChar, isIdStart, KEYWORDS } from "./model.js";
 
 /**
  * The editor's tree → LaTeX for KaTeX. Anything with a well-known notation shows in it — d/dx, ∫,
@@ -40,6 +40,22 @@ const GREEK: Record<string, string> = {
   "Φ": "\\Phi", "Ψ": "\\Psi", "Ω": "\\Omega",
   "ℯ": "e",
 };
+/** Operators as they are drawn: the other worlds' glyphs, and their ASCII spellings drawn as the
+ *  glyphs they stand for (`->` is →, `&&` is ∧, `<=` is ≤), so the text keeps what was typed and the
+ *  typeset input shows what it means. */
+const OPS: Record<string, string> = {
+  "*": "\\cdot ", "./": "\\oslash ", ".*": "\\odot ", " ": "\\,", "%": "\\%", "\\": "\\backslash ",
+  "∧": "\\land ", "∨": "\\lor ", "¬": "\\lnot ", "→": "\\to ", "↔": "\\leftrightarrow ", "⇒": "\\Rightarrow ",
+  "∀": "\\forall ", "∃": "\\exists ", "∈": "\\in ", "∉": "\\notin ", "≤": "\\le ", "≥": "\\ge ", "≠": "\\ne ",
+  "∣": "\\mid ", "⊢": "\\vdash ", "⊤": "\\top ", "⊥": "\\bot ", "←": "\\leftarrow ", "↦": "\\mapsto ", "×": "\\times ",
+  "⊆": "\\subseteq ", "⊂": "\\subset ", "∪": "\\cup ", "∩": "\\cap ",
+  "->": "\\to ", "<->": "\\leftrightarrow ", "=>": "\\to ", "&&": "\\land ", "||": "\\lor ", "/\\": "\\land ", "\\/": "\\lor ",
+  "!": "\\lnot ", "~": "\\lnot ", "<=": "\\le ", ">=": "\\ge ", "!=": "\\ne ", "==": "=", ":=": "\\coloneqq ", "<-": "\\leftarrow ",
+  "|-": "\\vdash ", "|": "\\mid ", "..": "{..}", ":": "\\mathpunct{:}", ";": "\\mathpunct{;}", "&": "\\&", "#": "\\#", "$": "\\$",
+};
+/** A character atom as LaTeX: its glyph, or the character itself (TeX's specials as text). */
+const opLatex = (c: string) => OPS[c] ?? (/^[\\{}_^~&#$]$/.test(c) ? textChar(c) : c);
+
 /** Spelled-out names the engine prints as one glyph. */
 const GLYPH_NAMES: Record<string, string> = { pi: "\\pi", alpha: "\\alpha", beta: "\\beta", theta: "\\theta", lambda: "\\lambda" };
 
@@ -50,7 +66,8 @@ export function toLatex(stmt: Stmt, opts: NotationOptions = {}): string {
 /** A character of a quoted name, as text (TeX's specials escaped). */
 const textChar = (c: string) => c === " " ? "\\ " : /[\\{}$%#&_^~]/.test(c) ? `\\text{\\char${c.codePointAt(0)}}` : `\\text{${c}}`;
 
-const charLatex = (c: string) => GREEK[c] ?? (c === "_" ? "\\_" : c === "'" ? "'" : c);
+// a glyph's command in braces, so a letter after it is not taken into it (`{\\lambda}x`)
+const charLatex = (c: string) => (GREEK[c] ? `{${GREEK[c]}}` : c === "_" ? "\\_" : c === "'" ? "'" : c);
 
 type Token = { kind: "name" | "num" | "op"; atoms: Atom[] };
 
@@ -148,6 +165,25 @@ class Notation {
   }
 
   private blockInner(b: Block): string {
+    // a block of several lines (a system's declarations) is drawn as its lines, left-aligned; each
+    // line break is an atom at the end of its line, for the caret
+    const breaks = b.flatMap((a, j) => (a.k === "ch" && a.c === "\n" ? [j] : []));
+    if (breaks.length) {
+      const lines: string[] = [];
+      let from = 0;
+      for (const j of [...breaks, b.length]) {
+        const line = b.slice(from, j);
+        // an indented line keeps its indent
+        const indent = line[0]?.src?.gap ? "\\quad " : "";
+        lines.push(indent + (line.length ? this.row(line) : "") + (j < b.length ? this.wrap([b[j]!], "") : ""));
+        from = j + 1;
+      }
+      return `\\begin{array}{l}${lines.join(" \\\\ ")}\\end{array}`;
+    }
+    return this.row(b);
+  }
+
+  private row(b: Block): string {
     let s = "";
     let j = 0;
     while (j < b.length) {
@@ -172,6 +208,8 @@ class Notation {
 
   private token(t: Token): string {
     const text = t.atoms.map((a) => (a as { c: string }).c).join("");
+    // the other worlds' keywords (`when`, `do`, `in`) are words, as `let` is
+    if (t.kind === "name" && KEYWORDS.has(text)) return this.tag(this.classify(text, "keyword"), this.wrap(t.atoms, `\\;${this.word(`\\mathrm{${text}}`)}\\;`));
     if (t.kind === "name") {
       const cls = this.classify(text, this.bound.includes(text) ? "bound" : "name");
       return this.tag(cls, this.name(t, text));
@@ -204,7 +242,7 @@ class Notation {
       return this.wrap(t.atoms, `\\htmlData{out=${outTag(text)}, rel=1}{${text.replace(/%/g, "\\%")}${n}}`);
     }
     // a `\` is a command still being typed (`\frac` before its space)
-    return this.chars(t.atoms, (c) => (c === "*" ? "\\cdot " : c === "./" ? "\\oslash " : c === ".*" ? "\\odot " : c === " " ? "\\," : c === "%" ? "\\%" : c === "\\" ? "\\backslash " : c));
+    return this.chars(t.atoms, opLatex);
   }
 
   /** A slot shown in parentheses unless it is one factor already. */
@@ -231,6 +269,10 @@ class Notation {
       case "part": return this.wrap([a], `\\llbracket ${a.specs.map((x) => this.spec(x)).join(",\\,")}\\rrbracket `);
       // text in quotes, each character its own (for the caret), and an attached file as a chip
       case "str": return this.wrap([a], `\\text{“}${a.body.length ? a.body.map((x) => this.wrap([x], textChar((x as { c: string }).c))).join("") : this.hole(a.body)}\\text{”}`);
+      // a set's braces, fitted to what they hold as parentheses are
+      case "brace": return this.wrap([a], this.delims(this.block(a.body), "\\{", "\\}", "1"));
+      // text no grammar here reads: its characters as typed, in the text face
+      case "raw": return this.wrap([a], a.body.length ? a.body.map((x) => this.wrap([x], x.k === "ch" && x.c === "\n" ? "\\\\" : textChar((x as { c: string }).c))).join("") : this.hole(a.body));
       case "asset": return this.wrap([a], `\\htmlData{asset=1}{\\boxed{${Array.from(a.name).map(textChar).join("")}}}`);
       case "call": return this.wrap([a], this.call(a));
       case "let": {
@@ -354,7 +396,7 @@ export function slots(a: Atom): Block[] {
     case "paren": return [a.body];
     case "matrix": return a.rows.flat();
     case "part": return a.specs;
-    case "str": return [a.body];
+    case "str": case "brace": case "raw": return [a.body];
     case "asset": return [];
     case "let": return [a.name, ...(a.params ?? [])];
     case "call": {

@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import katex from "katex";
-import { read, write, toLatex, show, sameStmt, atomsInSpan, letHead, hasNotation } from "../dist/index.js";
+import { read, write, forget, toLatex, show, sameStmt, atomsInSpan, letHead, hasNotation } from "../dist/index.js";
 
 const root = new URL("../../../", import.meta.url);
 const golden = readFileSync(new URL("engine/Tests/golden.tsv", root), "utf8").split("\n").filter(Boolean).map((l) => l.split("\t"));
@@ -75,33 +75,41 @@ test("the tree is the engine's parse: precedence, implicit products, what the nu
   assert.equal(show(s.body), "[(let [g] [a] [b]) a * b + (g [a] [1])]");
 });
 
-/** A golden source the engine reads in another world (λ-terms and λ-commands, logic, relations and
- *  posets, systems), not as notation. */
-const otherWorld = (src) => /[∧∨¬→↔⊤⊥∀∃λ\\]|->|&&|\|\||:=/.test(src) || /^\s*(forall|exists)\b/.test(src)
-  || /^\s*(normal|cbn|cbv|applicative|eta|fv|db|alpha|subst|type|infer)\s*(\d+\s*)?:(?!=)/.test(src)
-  || /^\s*(let\s+\w+\s*=\s*)?(truthtable|taut|sat|falsify|equiv|nnf|cnf|dnf|poset|divisors|subsets|chain|map|hasse|join|meet|sup|inf|upper|lower|lattice|top|bottom|le|maximal|minimal|monotone|lfp|gfp|fixpoints|rel|kernel|reflexive|symmetric|antisymmetric|transitive|equivalence|preorder|closure|classes|finer|wellfounded|measure|op|joinop|meetop|table|associative|commutative|idempotent|semilattice|identity|fold|order|distributive|complement|complemented|boolean|product|galois|closureop|context|concepts|secure|events|clocks|concurrent|system|states|invariant|inductive|reach|deadlock|trace|ctl|eventually|refines|replicas|rules|rewrite|terminates|critical)\s*\(/.test(src);
+test("the other worlds' notation reads as math between separators", () => {
+  const cases = {
+    "p ∧ q → p": "[p ∧ q → p]",
+    "∀ n ∈ 1..10, n^2 ≥ 2n": "[∀ n ∈ 1 .. 1 0 , n (^ [2]) ≥ 2 n]",
+    "p && q -> p": "[p && q -> p]",
+    "poset({a,b}; a<b)": "[(poset [(brace [a , b]) ; a < b])]",
+    "closure(R, transitive)": "[(closure [R] [t r a n s i t i v e])]",
+    "cbv: K I (omega omega)": "[c b v : K ␣ I (paren [o m e g a ␣ o m e g a])]",
+    "type: λx:A. x": "[t y p e : λ x : A . x]",
+    "TWO := succ (succ zero)": "[T W O := s u c c (paren [s u c c ␣ z e r o])]",
+    "add 2 3": "[a d d ␣ 2 ␣ 3]",
+    "system(var x in 0..2\ninit x = 0)": "[(system [v a r ␣ x ␣ i n ␣ 0 .. 2 \n i n i t ␣ x = 0])]",
+    // a keyword ends a product, as a separator does: `a` alone is the numerator
+    "action t when a/2 < 1 do x := 1": "[a c t i o n ␣ t ␣ w h e n (frac [a] [2]) < 1 d o ␣ x := 1]",
+  };
+  for (const [src, want] of Object.entries(cases)) assert.equal(shape(src), want, src);
+  // `x + ` and `x/` read as while typing: the operator alone, an empty denominator
+  assert.equal(shape("x +"), "[x +]");
+  assert.equal(show(read("x/").stmt.body), "[(frac [x] [])]");
+});
 
-test("parse errors are the engine's, with its spans", () => {
-  for (const [src, answer] of golden) {
-    const m = /^<error: (.*)>$/.exec(answer);
+test("every text reads: what has no structure is raw text, written back as it was", () => {
+  for (const src of ["[1,2;3]", "f(x", "x + )", "(a]"]) {
     const r = read(src);
-    const parseError = m && /^(unexpected|expected|ragged|bad number)/.test(m[1]);
-    if (otherWorld(src)) continue;
-    if (parseError) assert.equal(r.ok ? "(read)" : r.error.message, m[1], src);
-    else assert.ok(r.ok, `${src}: ${r.ok ? "" : r.error.message}`);
+    assert.equal(r.ok, false, src);
+    assert.deepEqual(r.stmt.body.map((a) => a.k), ["raw"], src);
+    assert.equal(write(r.stmt).text, src, src);
   }
   const bad = read("x + )");
   assert.deepEqual(bad.ok ? null : bad.error, { message: "unexpected ')'", span: { start: 4, end: 5 } });
-  // λ-terms and the other worlds are not this grammar: those cells stay raw
-  for (const src of ["(λx. x) y", "TWO := succ (succ zero)", "cbv: K I (omega omega)", "type: λx:A. x", "poset({a,b}; a<b)", "p ∧ q → p", "∀ n ∈ 1..10, n^2 ≥ n", "rel({a, b}; a->b)"]) assert.equal(read(src).ok, false, src);
-  // a quoted name outside a part is the engine's lexer error
-  const q = read('x "a"');
-  assert.deepEqual(q.ok ? null : q.error, { message: "unexpected character '\"'", span: { start: 2, end: 3 } });
-  const brace = read("{1, 2}");
-  assert.equal(brace.ok ? "(read)" : brace.error.message, "braces list the indices of a part, as in m[[{1, 3}]]");
   // the statistics are calls, as in the engine, not products
   const mean = read("mean(x)");
   assert.ok(mean.ok && JSON.stringify(mean.stmt).includes('"k":"call"'), JSON.stringify(mean));
+  // whitespace alone is kept too
+  assert.equal(write(read("   ").stmt).text, "   ");
 });
 
 test("writing puts back exactly the parentheses the engine needs", () => {
@@ -112,7 +120,8 @@ test("writing puts back exactly the parentheses the engine needs", () => {
     "a*b/c": "a*b/c", "a*(b/c)": "a*(b/c)", "x/(2y)": "x/(2y)", "x/(y)": "x/y", "1/x^2": "1/x^2",
     "let f(x, y) = x/y": "let f(x, y) = x/y", "[1, 2; 3, 4]": "[1, 2; 3, 4]", "diff(x^2,x)": "diff(x^2, x)",
   };
-  for (const [src, want] of Object.entries(cases)) assert.equal(write(tree(src)).text, want, src);
+  // written afresh (as the editor writes what is typed), without the source's spelling
+  for (const [src, want] of Object.entries(cases)) assert.equal(write(forget(tree(src))).text, want, src);
   // spans: each atom's text, for showing an engine error where it happened
   const t = tree("1 + x/y");
   const w = write(t);
@@ -123,20 +132,23 @@ test("writing puts back exactly the parentheses the engine needs", () => {
   assert.equal(write({ body: [{ k: "frac", num: [], den: [{ k: "ch", c: "2" }] }] }).holes, 1);
 });
 
-test("read ∘ write is the identity on every golden source and notebook cell", () => {
+test("text and tree are one source: write ∘ read is the identity on every golden source and notebook cell", () => {
   let n = 0;
   for (const { file, src, known } of corpus) {
     const r = read(src, known);
+    // the text comes back exactly, whatever it is
+    assert.equal(write(r.stmt).text, src, `${file}: ${JSON.stringify(src)}`);
     if (!r.ok) continue;
     n++;
-    const text = write(r.stmt).text;
+    // and written afresh, it reads as the same tree
+    const text = write(forget(r.stmt)).text;
     const again = read(text, known);
     assert.ok(again.ok, `${file}: ${src} → ${text}: ${again.ok ? "" : again.error.message}`);
     assert.ok(sameStmt(r.stmt, again.stmt), `${file}: ${src} → ${text}\n  ${show(r.stmt.body)}\n  ${show(again.stmt.body)}`);
     assert.equal(write(again.stmt).text, text, `${file}: ${src}`);
   }
-  // all but the order-theory and λ cells, and `import("…")`, which stay raw
-  assert.ok(n >= 250, `only ${n} cells read`);
+  // all but a ragged matrix, which is raw text
+  assert.ok(n >= corpus.length - 2, `only ${n} of ${corpus.length} cells read`);
 });
 
 test("every notation is LaTeX KaTeX renders, with every atom tagged", () => {
@@ -235,13 +247,13 @@ test("text in quotes and attached files read as atoms of their own and write bac
   const call = read('import("a/b.csv")', known).stmt.body[0];
   assert.equal(call.k, "call");
   assert.deepEqual(call.args[0].map((a) => a.k), ["str"]);   // the URL's slashes are text, not fractions
-  assert.deepEqual(read("⟦a.svg⟧").stmt.body, [{ k: "asset", name: "a.svg" }]);
+  assert.deepEqual(forget(read("⟦a.svg⟧").stmt).body, [{ k: "asset", name: "a.svg" }]);
 });
 
 test("the entrywise operators write back spaced, and draw as ⊘ and ⊙", () => {
   for (const [src, want] of [["2./3", "2 ./ 3"], ["a.*b", "a .* b"], ["a ./ -b", "a ./ -b"], ["a ./ (b/c)", "a ./ (b/c)"], ["[1,2] ./ [3,10]", "[1, 2] ./ [3, 10]"]]) {
-    assert.equal(write(tree(src)).text, want, src);
-    assert.ok(sameStmt(tree(write(tree(src)).text), tree(src)), src);
+    assert.equal(write(forget(tree(src))).text, want, src);
+    assert.ok(sameStmt(tree(write(forget(tree(src))).text), tree(src)), src);
   }
   assert.match(toLatex(tree("a ./ b")), /\\oslash/);
   assert.match(toLatex(tree("a .* b")), /\\odot/);

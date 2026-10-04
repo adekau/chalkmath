@@ -4,14 +4,27 @@
  * the reader edits in visual mode. The tree carries notation, never meaning: `diff(f, x)` is a call
  * named `diff` whatever it shows as, and what the text means is the engine's parse of it.
  *
+ * Text and tree are one source shown two ways. Every text reads as a tree (what the grammar cannot
+ * structure is a `raw` atom of its characters), and the tree writes back to exactly the text it was
+ * read from: an atom read from text keeps its spelling and the space before it (`src`), and the
+ * writer reuses them while the atom and its neighbours are as they were read. Only what an edit
+ * touched is written afresh.
+ *
  * A block is a row of atoms; an empty block is a hole. Characters are atoms of their own so a caret
- * can sit between any two of them. `/`, `^`, `(`, `)`, `[`, `]`, `,` and `;` never appear as
+ * can sit between any two of them. `/`, `^`, `(`, `)`, `[`, `]`, `{` and `}` never appear as
  * characters: a fraction, a power, a group, a call's arguments and a matrix's entries are structure.
+ * `,` and `;` are characters only where they separate nothing structural (`{a, b}`, `poset(…; a<b)`).
  */
 
 export type Block = Atom[];
 
-export type Atom =
+/** Where an atom came from in the text it was read from: its spelling (`start`, `end` index the
+ *  source's characters), the whitespace before it and, for the last atom of a block, after it, and
+ *  the shapes it and its neighbours had then (`show`), which say whether the spelling still holds. */
+export interface Src { start: number; end: number; text: string; gap: string; trail?: string; shape: string; prev: string; next: string }
+
+export type Atom = AtomKind & { src?: Src };
+type AtomKind =
   /** One character of a numeral, a name, an operator (`+ - *`), an output reference (`%`), or a
    *  space: the product of two names (`x y`), which written together would be one name (`xy`).
    *  The entrywise operators `./` and `.*` are the two atoms of two characters: one operator each. */
@@ -37,14 +50,19 @@ export type Atom =
   /** `"…"`: text, its characters kept as typed (`/` is a slash here, not a fraction). The engine has
    *  no strings; the notebook reads them where it gives them a meaning (`import("url")`). */
   | { k: "str"; body: Block }
+  /** `{…}`: a set, as the order and logic worlds write one (`{a, b, c}`, `∃ n ∈ {4, 6}`). */
+  | { k: "brace"; body: Block }
+  /** Text no grammar here structures (an unclosed group, a question), its characters kept as typed. */
+  | { k: "raw"; body: Block }
   /** `⟦name⟧`: a file attached to the notebook, one chip. */
   | { k: "asset"; name: string }
   /** `let name =` or `let f(x, y) =`: the cell's head, only ever first in the body. The name and the
    *  parameters are slots like any other, so the caret goes through them. */
   | { k: "let"; name: Block; params: Block[] | null };
 
-/** A cell: its body, which may start with a `let` head. */
-export interface Stmt { body: Block }
+/** A cell: its body, which may start with a `let` head. `pad`: the whitespace of a cell that has
+ *  nothing else. */
+export interface Stmt { body: Block; pad?: string }
 
 /** A cell's `let` head as text: the name and the parameters (null for `let name =`). */
 export function letHead(stmt: Stmt): { name: string; params: string[] | null } | null {
@@ -66,6 +84,22 @@ export const isAsciiAlpha = (c: string) => /^[A-Za-z]$/.test(c);
 export const isDigit = (c: string) => /^[0-9]$/.test(c);
 export const isIdStart = (c: string) => isAsciiAlpha(c) || c === "_" || isGreek(c);
 export const isIdChar = (c: string) => isAsciiAlpha(c) || isDigit(c) || c === "_" || c === "'" || isGreek(c);
+
+/** The other worlds' operators of more than one character, longest first: each is one atom, as the
+ *  entrywise `./` and `.*` are. */
+export const MULTI_OPS = ["<->", ":=", "->", "<-", "=>", "&&", "||", "/\\", "\\/", "<=", ">=", "!=", "==", "|-", ".."];
+/** Operators that stand between two things with a space either side when written afresh: comparisons,
+ *  connectives, arrows, definitions. (`+`, a subtraction and the entrywise operators are spaced too.) */
+export const INFIX = new Set(["=", "<", ">", "≤", "≥", "≠", "∣", "|", "∈", "∉", "⊆", "⊂", "∪", "∩", "∧", "∨", "→", "↔", "⇒", "⊢", "←", "↦", "×",
+  "<->", ":=", "->", "<-", "=>", "&&", "||", "/\\", "\\/", "<=", ">=", "!=", "==", "|-"]);
+/** Constants the logic world writes as glyphs: values, not operators. */
+export const isConst = (c: string) => c === "⊤" || c === "⊥";
+/** Words the other worlds use as keywords. In a cell of those worlds they end a product: in
+ *  `when a/2 < 1 do`, `a` alone is the numerator. */
+export const KEYWORDS = new Set(["var", "in", "init", "action", "when", "do", "fair", "strong", "weak", "forall", "exists"]);
+/** A character atom that separates rather than computes: anything but a name's or numeral's
+ *  character, `%`, a constant, `+ - *` and the entrywise operators. */
+export const isSep = (c: string) => !(isIdChar(c) || c === "." || c === "%" || c === " " || isConst(c) || "+-*".includes(c) || c === "./" || c === ".*");
 
 /** Would `next` written right after `before` lex differently from `before next`? A name swallows a
  *  name or a numeral after it (`x y` → `xy`, `x 2` → `x2`), a numeral a numeral, and `%` reads an
@@ -100,6 +134,8 @@ export function sameAtom(a: Atom, b: Atom): boolean {
       a.rows.every((r, i) => r.length === b.rows[i]!.length && r.every((x, j) => sameBlock(x, b.rows[i]![j]!)));
     case "part": return b.k === "part" && a.specs.length === b.specs.length && a.specs.every((x, i) => sameBlock(x, b.specs[i]!));
     case "str": return b.k === "str" && sameBlock(a.body, b.body);
+    case "brace": return b.k === "brace" && sameBlock(a.body, b.body);
+    case "raw": return b.k === "raw" && sameBlock(a.body, b.body);
     case "asset": return b.k === "asset" && a.name === b.name;
     case "let": return b.k === "let" && sameBlock(a.name, b.name) && (a.params === null ? b.params === null
       : b.params !== null && a.params.length === b.params.length && a.params.every((x, i) => sameBlock(x, b.params![i]!)));
@@ -111,7 +147,7 @@ export const sameStmt = (a: Stmt, b: Stmt): boolean => sameBlock(a.body, b.body)
 export function show(b: Block): string {
   return "[" + b.map(showAtom).join(" ") + "]";
 }
-function showAtom(a: Atom): string {
+export function showAtom(a: Atom): string {
   switch (a.k) {
     case "ch": return a.c === " " ? "␣" : a.c;
     case "frac": return `(frac ${show(a.num)} ${show(a.den)})`;
@@ -121,6 +157,8 @@ function showAtom(a: Atom): string {
     case "matrix": return `(matrix ${a.rows.map((r) => r.map(show).join(" ")).join(" ; ")})`;
     case "part": return `(part ${a.specs.map(show).join(" ")})`;
     case "str": return `(str ${show(a.body)})`;
+    case "brace": return `(brace ${show(a.body)})`;
+    case "raw": return `(raw ${show(a.body)})`;
     case "asset": return `⟦${a.name}⟧`;
     case "let": return `(let ${show(a.name)}${a.params ? " " + a.params.map(show).join(" ") : ""})`;
   }

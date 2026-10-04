@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { MathEdit, read, write, templateInText, toLatex } from "../dist/index.js";
+import { MathEdit, read, write, forget, templateInText, toLatex } from "../dist/index.js";
 
 /** Type into a fresh editor (or one holding `src`). `{→}` `{←}` `{↑}` `{↓}` `{⌫}` `{del}` `{tab}`
  *  `{s-tab}` are keys; anything else is typed a character at a time. */
@@ -37,7 +37,8 @@ test("typing the raw syntax builds the structure and writes the same text", () =
     "integrate(cos(t)*sin(t), t, 0, 2pi)", "x y", "a*b/c", "-a/b", "sin(x)^2", "%2 + %"]) {
     const t = text(s);
     const want = s.replace(/\{→\}/g, "");
-    assert.equal(read(t).ok && write(read(t).stmt).text, write(read(want).stmt).text, `${s} → ${t}`);
+    // what is typed is written afresh: as the source would be, read and written without its spelling
+    assert.equal(read(t).ok && write(forget(read(t).stmt)).text, write(forget(read(want).stmt)).text, `${s} → ${t}`);
   }
   // an exponent keeps what is typed until → leaves it
   assert.equal(text("x^2+1"), "x^(2 + 1)");
@@ -118,7 +119,7 @@ test("backspace enters a structure from its end and removes it once empty", () =
 });
 
 test("undo takes back a run of typing, a structure, or a deletion as one step; redo puts it back", () => {
-  assert.equal(text("x+1{undo}"), "x + ");
+  assert.equal(text("x+1{undo}"), "x +");
   assert.equal(text("abc{undo}"), "");
   assert.equal(text("ab{←}c{undo}"), "ab");   // a move ends the run
   assert.equal(text("1/2{undo}"), "1/()");
@@ -139,7 +140,7 @@ test("a selection is whole atoms of one block, and edits act on it", () => {
   // reaching into a fraction selects all of it
   assert.equal(sel("{end}{s-←}{s-←}", "1 + a/b"), "a/b");
   assert.equal(sel("{all}", "diff(x^2, x)"), "diff(x^2, x)");
-  assert.equal(text("{end}{s-←}{s-←}{⌫}", "x + 12"), "x + ");
+  assert.equal(text("{end}{s-←}{s-←}{⌫}", "x + 12"), "x +");
   assert.equal(text("{end}{s-←}{s-←}9", "x + 12"), "x + 9");
   assert.equal(text("{end}{s-←}{s-←}9{undo}", "x + 12"), "x + 12");
   // / makes the selection a numerator, ( puts it in parentheses
@@ -162,12 +163,15 @@ test("paste reads the text as structure where it can", () => {
   // a whole `let` into an empty input is the cell's head too
   e = pasted("", "let f(x) = x^2");
   assert.equal(e.text, "let f(x) = x^2");
-  // text that is not an expression is typed as far as it goes: `{` means nothing here
+  // what is pasted keeps its spelling: a set's braces, an attached file's chip
   e = pasted("", "a+{b}");
-  assert.equal(e.text, "a + b");
-  // an attached file is a chip
+  assert.equal(e.text, "a+{b}");
+  assert.deepEqual(e.stmt.body.map((a) => a.k), ["ch", "ch", "brace"]);
   e = pasted("", "a+⟦b⟧");
-  assert.equal(e.text, "a + ⟦b⟧");
+  assert.equal(e.text, "a+⟦b⟧");
+  // text that does not read (an unclosed group) is typed as far as it goes
+  e = pasted("", "a+(b");
+  assert.equal(e.text, "a + (b)");
   // one step to undo
   e = pasted("", "1/2 + 3");
   e.undo();
@@ -217,7 +221,7 @@ test("a template typed in a cell's text lands where it was typed, in a tree", ()
   // the template is one step to undo
   const e = templateInText("1 + \\frac", "");
   e.undo();
-  assert.equal(e.text, "1 + ");
+  assert.equal(e.text, "1 +");
 });
 
 test("a ( typed before existing atoms takes them in, with its ) open until one is typed", () => {
