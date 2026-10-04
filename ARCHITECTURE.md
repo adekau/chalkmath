@@ -145,7 +145,8 @@ differential test with zero mismatches.
   so counterexamples are shortest traces; invariants; inductiveness, refuted by a counterexample to
   induction that says whether its state is reachable; deadlocks; CTL by least and greatest fixed points
   of predicate transformers, each Kleene round a step; liveness under weak and strong fairness,
-  refuted by a lasso found among strongly connected sets; refinement under an abstraction map. A trace
+  refuted by a lasso found among strongly connected sets, searched again inside one where a strongly
+  fair action is enabled but never taken; refinement under an abstraction map. A trace
   is the derivation, a step per action, so the notebook's stepping applies; each step is re-run against
   the system before it is reported (`checked`). "Holds everywhere" answers rest on the search, which is
   proved: `exploreWith` is breadth-first search along any successor function, and `SystemsProofs.lean`
@@ -156,8 +157,14 @@ differential test with zero mismatches.
   than its limit used to leave some unexpanded). A CTL answer carries a certificate read off its Kleene
   rounds (each state's round is its rank), checked before it is reported; `CtlProofs.lean` proves that
   where the check passes the set is exactly the states where the formula holds by the meaning of its
-  paths, infinite paths and paths that stop included. Shortest traces and the lasso search are not
-  proved yet. Guards reuse the logic world's formulas, evaluated over the
+  paths, infinite paths and paths that stop included. `eventually` answers the same way: `false`
+  with a deadlock path or a lasso (a stem, then a cycle repeated forever) checked to be a run that
+  avoids the goal, and for the lasso a fair one; `true` with a certificate from Emerson and Lei's
+  search for Streett conditions, a rank per state that no step raises and, where a run could stay
+  level, a helpful action that is never taken there and that fairness forces (a strongly fair one
+  hands the states where it is disabled to a further certificate). `FairProofs.lean` proves a
+  certificate that checks rules out every fair run that avoids the goal (`checkTrue_spec`), and a
+  lasso that checks is one (`checkLasso_spec`). Shortest traces are not proved yet. Guards reuse the logic world's formulas, evaluated over the
   state with names (`idle`, `true`) as values.
 - **Logic is a fourth world.** `Logic.lean` reads formulas of propositional logic and bounded
   first-order formulas over finite sets of numbers, with its own grammar (ASCII spellings read as

@@ -889,3 +889,15 @@ Phases:
    `p = 1/2`; with an integer `p` it holds everywhere, since `Real.log` is `ln |x|`. Answers are unchanged: the
    two halves fire on exactly the cases the whole rule did. `normalizeSafe_sound` folds every simp rule but the two
    that assume.
+- verification, continued: certificates for the rest — DONE 2026-10-04 (Alex: "Shall we continue with beyond 3?").
+   `rel.wellfounded` answers with a certificate either way (`wellfounded_none`, `wellfounded_some`); `order.concepts`
+   is proved to be all the concepts (`concepts_complete`); `cmd.factor` checks its common-denominator form by
+   cross-multiplying (`checked`); `sys.ctl` carries a certificate read off its Kleene rounds (`CtlProofs.lean`).
+   `eventually` is verified both ways (`FairProofs.lean`): a deadlock path or a lasso is checked to be a run that
+   avoids the goal, the lasso a fair one (`checkDead_spec`, `checkLasso_spec`), and `true` carries a ranking
+   certificate from Emerson and Lei's search for Streett conditions (`checkTrue_spec`). Finding: the old search
+   asked only whether a whole strongly connected set of ¬φ states held a fair loop, which is enough for weak fairness
+   but not strong: a set where a strongly fair action is enabled somewhere and never taken can still hold a fair loop
+   in the part where it is disabled. `eventually(F, p = c)` (`stay` at `a` forever never enables `fin`) answered
+   `true`; it is `false`, with the loop `a → a`. The search now looks again inside such a set. Open: shortest
+   traces, `trs.critical`, the symbolic row operations.

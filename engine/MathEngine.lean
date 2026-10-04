@@ -20,6 +20,7 @@ import MathEngine.LogicProofs
 import MathEngine.RelationProofs
 import MathEngine.SystemsProofs
 import MathEngine.CtlProofs
+import MathEngine.FairProofs
 import MathEngine.AlgebraProofs
 import MathEngine.StlcProofs
 import MathEngine.StlcPrincipal

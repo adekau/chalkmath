@@ -490,5 +490,146 @@ def check (op : String) (n : Nat) (es : List (Nat × Nat)) (sat : List Nat) (cha
 
 end Ctl
 
+/-! Fair runs. The graph's edges carry the index of their action; `en a x` says action `a`'s guard
+holds at state `x`. A weakly fair action that stays enabled is eventually taken; a strongly fair one
+enabled again and again is taken again and again. `FairProofs.lean` proves each check below against
+that meaning. -/
+namespace Fair
+
+structure Graph where
+  n : Nat
+  edges : List (Nat × Nat × Nat)
+  weak : List Nat
+  strong : List Nat
+  en : Nat → Nat → Bool
+
+/-- One node of the certificate that no fair run stays in the set `mem` from some point on. Along an
+edge inside the set the rank does not rise; where it stays level, the state's helpful action `a` (the
+same on both ends) is not the one taken. A weakly fair helpful action is enabled wherever it is named;
+a strongly fair one names a later node holding the states where it is disabled. -/
+structure Node where
+  mem : Nat → Bool
+  rank : Nat → Nat
+  help : Nat → Option (Nat × Option Nat)
+
+def edgeOk (nd : Node) (e : Nat × Nat × Nat) : Bool :=
+  !(nd.mem e.1 && nd.mem e.2.2) ||
+    (decide (nd.rank e.2.2 ≤ nd.rank e.1) &&
+      (decide (nd.rank e.2.2 ≠ nd.rank e.1) ||
+        match nd.help e.1 with
+        | some (a, _) => decide (e.2.1 ≠ a) && decide (nd.help e.2.2 = nd.help e.1)
+        | none => false))
+
+def stateOk (G : Graph) (nodes : List Node) (i : Nat) (nd : Node) (x : Nat) : Bool :=
+  !nd.mem x ||
+    match nd.help x with
+    | none => true
+    | some (a, none) => G.weak.contains a && G.en a x
+    | some (a, some j) => G.strong.contains a && decide (i < j) &&
+        (G.en a x || match nodes[j]? with | some c => c.mem x | none => false)
+
+def inRange (G : Graph) : Bool := G.edges.all fun e => decide (e.1 < G.n) && decide (e.2.2 < G.n)
+
+def checkNodes (G : Graph) (nodes : List Node) : Bool :=
+  inRange G && (List.range nodes.length).all fun i =>
+    match nodes[i]? with
+    | some nd => G.edges.all (edgeOk nd) && (List.range G.n).all (stateOk G nodes i nd)
+    | none => false
+
+/-- Every fair run from `inits` reaches `good`: the first node's set holds the initial states that are
+not good and is closed under steps to states that are not good, none of its states is a deadlock, and
+the nodes check, so no fair run stays in it. -/
+def checkTrue (G : Graph) (inits : List Nat) (good : Nat → Bool) (nodes : List Node) : Bool :=
+  checkNodes G nodes && inits.all (fun x => decide (x < G.n)) &&
+    match nodes[0]? with
+    | some top =>
+      inits.all (fun x => good x || top.mem x) &&
+      G.edges.all (fun e => !top.mem e.1 || good e.2.2 || top.mem e.2.2) &&
+      (List.range G.n).all (fun x => !top.mem x || G.edges.any (·.1 == x))
+    | none => false
+
+/-- The `i`th edge of the run that follows `pre` and then goes round `cyc` forever. -/
+def lassoAt (pre cyc : List (Nat × Nat × Nat)) (i : Nat) : Nat × Nat × Nat :=
+  if i < pre.length then pre.getD i (0, 0, 0) else cyc.getD ((i - pre.length) % cyc.length) (0, 0, 0)
+
+/-- A fair run that never reaches `good`: `pre` then `cyc` forever, joined up, from an initial state,
+never good; every weakly fair action is taken on the cycle or disabled somewhere on it, and every
+strongly fair one taken on it or disabled all along it. -/
+def checkLasso (G : Graph) (inits : List Nat) (good : Nat → Bool) (pre cyc : List (Nat × Nat × Nat)) : Bool :=
+  let E := lassoAt pre cyc
+  !cyc.isEmpty && inits.contains (E 0).1 &&
+  (List.range (pre.length + cyc.length)).all (fun i =>
+    G.edges.contains (E i) && (E i).2.2 == (E (i + 1)).1 && !good (E i).1) &&
+  G.weak.all (fun a => cyc.any fun e => e.2.1 == a || !G.en a e.1) &&
+  G.strong.all (fun a => cyc.any (fun e => e.2.1 == a) || cyc.all (fun e => !G.en a e.1))
+
+/-- The `i`th state of the run along `path` that stops at `x`. -/
+def deadAt (path : List (Nat × Nat × Nat)) (x i : Nat) : Nat :=
+  if i < path.length then (path.getD i (0, 0, 0)).1 else x
+
+/-- A run that stops at the deadlock `x` without reaching `good`. -/
+def checkDead (G : Graph) (inits : List Nat) (good : Nat → Bool) (path : List (Nat × Nat × Nat)) (x : Nat) : Bool :=
+  inits.contains (deadAt path x 0) && !good x && G.edges.all (·.1 != x) &&
+  (List.range path.length).all fun i =>
+    G.edges.contains (path.getD i (0, 0, 0)) && (path.getD i (0, 0, 0)).2.2 == deadAt path x (i + 1) &&
+    !good (path.getD i (0, 0, 0)).1
+
+/-- The states reachable from `x` along edges that stay inside `inS`, `x` included. `adj` lists each
+state's steps as (action, target). -/
+def reachIn (n : Nat) (adj : Array (List (Nat × Nat))) (inS : Nat → Bool) (x : Nat) : Std.HashSet Nat := Id.run do
+  let mut seen : Std.HashSet Nat := ({} : Std.HashSet Nat).insert x
+  let mut stack := [x]
+  for _ in [0:n + 1] do
+    match stack with
+    | [] => break
+    | y :: rest =>
+      stack := rest
+      for (_, z) in adj.getD y [] do
+        if inS z && !seen.contains z then
+          seen := seen.insert z
+          stack := z :: stack
+  return seen
+
+/-- Look for a fair run that stays in `S`; the answer is a strongly connected set of states that holds
+one (every weakly fair action taken in it or disabled somewhere in it, every strongly fair one taken in
+it or disabled all through it), or the certificate that there is none, its node for `S` pushed onto
+`nodes` first and the nodes it needs after it. Each strongly connected set of `S` is ranked by how
+many states it reaches; one with no fair run gets a helpful action: a weakly fair one enabled all
+through it and never taken in it, or a strongly fair one enabled somewhere in it and never taken in it,
+whose disabled states are searched again (Emerson and Lei's algorithm for Streett conditions).
+Runs out of `fuel` only past one level per strongly fair action. -/
+def search (G : Graph) (adj : Array (List (Nat × Nat))) : Nat → List Nat → Array Node →
+    Except (Option (List Nat)) (Array Node)
+  | 0, _, _ => throw none
+  | fuel + 1, S, nodes => do
+    let me := nodes.size
+    let mut nodes := nodes.push ⟨fun _ => false, fun _ => 0, fun _ => none⟩
+    let inArr : Array Bool := S.foldl (fun a x => if x < a.size then a.set! x true else a) (Array.replicate G.n false)
+    let inS : Nat → Bool := fun x => inArr.getD x false
+    let reach : Std.HashMap Nat (Std.HashSet Nat) := S.foldl (fun m x => m.insert x (reachIn G.n adj inS x)) {}
+    let mut help : Std.HashMap Nat (Nat × Option Nat) := {}
+    let mut placed : Std.HashSet Nat := {}
+    for x in S do
+      if !placed.contains x then
+        let rx := reach.getD x {}
+        let C := S.filter fun y => rx.contains y && (reach.getD y {}).contains x
+        let inC : Std.HashSet Nat := C.foldl (·.insert ·) {}
+        placed := C.foldl (·.insert ·) placed
+        let internal := C.flatMap fun y => ((adj.getD y []).filter fun (_, z) => inC.contains z).map (·.1)
+        if !internal.isEmpty then
+          match G.weak.find? (fun a => !internal.contains a && C.all (G.en a)) with
+          | some a => help := C.foldl (fun h y => h.insert y (a, none)) help
+          | none =>
+            match G.strong.find? (fun a => !internal.contains a && C.any (G.en a)) with
+            | some a =>
+              let j := nodes.size
+              nodes ← search G adj fuel (C.filter (!G.en a ·)) nodes
+              help := C.foldl (fun h y => h.insert y (a, some j)) help
+            | none => throw (some C)
+    let h := help
+    return nodes.set! me ⟨inS, fun x => (reach.getD x {}).size, fun x => h.get? x⟩
+
+end Fair
+
 end Sys
 end MathEngine

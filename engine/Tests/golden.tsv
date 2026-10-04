@@ -300,6 +300,12 @@ let Wk = system(var p in {idle, crit}; var q in {wait, crit}; var lock in bool; 
 eventually(Wk, q = crit)	false
 let Sg = system(var p in {idle, crit}; var q in {wait, crit}; var lock in bool; init p = idle ∧ q = wait ∧ lock = false; action penter when p = idle ∧ lock = false do lock := true, p := crit; action pexit when p = crit do p := idle, lock := false; strong fair action qenter when q = wait ∧ lock = false do lock := true, q := crit)	system({p, q, lock}, {penter, pexit, qenter})
 eventually(Sg, q = crit)	true
+let SF = system(var p in {a, b, c}; init p = a; action stay when p = a do p := a; action go when p = a do p := b; action back when p = b do p := a; strong fair action fin when p = b do p := c)	system({p}, {stay, go, back, fin})
+eventually(SF, p = c)	false
+let SF2 = system(var p in {a, b, c}; init p = a; action go when p = a do p := b; action back when p = b do p := a; strong fair action fin when p = b do p := c)	system({p}, {go, back, fin})
+eventually(SF2, p = c)	true
+let WF = system(var p in {a, b, c}; init p = a; action go when p = a do p := b; action back when p = b do p := a; fair action fin when p = b do p := c)	system({p}, {go, back, fin})
+eventually(WF, p = c)	false
 let Tw = system(var a in 0..2; var b in 0..2; init a = 0 ∧ b = 0; action ta when a < 2 do a := a + 1; action tb when b < 2 do b := b + 1)	system({a, b}, {ta, tb})
 let Sm = system(var s in 0..4; init s = 0; action t when s < 4 do s := s + 1)	system({s}, {t})
 refines(Tw, Sm; s := a + b)	true

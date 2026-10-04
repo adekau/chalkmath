@@ -59,6 +59,8 @@ const CASES = [
   { src: "let Ct = system(var x in 0..2; init x = 0; action inc when x < 2 do x := x + 1)", text: "system({x}, {inc})" },
   { src: "invariant(Ct, x ≤ 1)", text: "false", step: "inc (x < 2 holds)" },
   { src: "ctl(Ct, EF x = 2)", text: "true", step: "Round 1" },
+  { src: "let SF = system(var p in {a, b, c}; init p = a; action stay when p = a do p := a; action go when p = a do p := b; action back when p = b do p := a; strong fair action fin when p = b do p := c)", text: "system({p}, {stay, go, back, fin})" },
+  { src: "eventually(SF, p = c)", text: "false", step: "Fair loop" },
   // the λ-calculus: a strategy, and the simply typed calculus
   { src: "cbv: (λx. x) ((λy. y) z)", text: "z", step: "Beta" },
   { src: "type: λf:A→B. λx:A. f x", text: "(A → B) → A → B", step: "→E (application)" },
