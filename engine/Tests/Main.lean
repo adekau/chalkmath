@@ -410,6 +410,11 @@ def sessionTests : TestM Unit := do
   let (stT, _) := trs stT "let U = rules(r1: f(x) -> g(x); r2: f(x) -> h(x); g(x) -> g(x); h(x) -> h(x))"
   let cu := (trs stT "critical(U)").2
   checkTrue "critical: sides that rewrite for ever apart are undecided, not refuted" (contains cu "undecided" && !contains cu "not confluent") cu
+  let (stT, _) := trs stT "let P = rules(f(g(x')) -> a; g(h(x)) -> b)"
+  let cp := (trs stT "critical(P)").2
+  checkTrue "critical: x' in one rule and x in the other are renamed apart, so the overlap is found" (contains cp "1 critical pair, 1 with two different normal forms: not confluent") cp
+  check "rewriting: the second rule's suffix is lengthened when two primes would collide" (TRS.apart ["x'"] ["x"]) "''''"
+  check "rewriting: two primes otherwise" (TRS.apart ["x", "y"] ["x", "z"]) "''"
   check "rewriting: a variable keeps its name, a constant is a symbol" (toString ((TRS.parseTerm "f(x1, e, y')").toOption.getD default)) "f(x1, e, y')"
   check "rewriting: renamed-apart variables get their names back" (toString (TRS.tidy [.f "f" [.v "x''", .v "z'", .v "x'"]])) "[f(x, z, x')]"
   check "replicas: the map prints in LaTeX" ((Expr.fn "set" [.fn "↦" [.var "a", .num (Q.ofInt 2)]]).toLatex false) "\\{a \\mapsto 2\\}"

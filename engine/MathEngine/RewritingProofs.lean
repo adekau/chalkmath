@@ -314,31 +314,6 @@ theorem sum_group_le (ρ : String → Nat) (K : List String) (hK : K.Nodup) :
     simp only [List.map_cons, List.sum_cons]
     omega
 
-/-- The distinct names of a list, each once (only for the proofs). -/
-def dedup : List String → List String
-  | [] => []
-  | x :: xs => if x ∈ dedup xs then dedup xs else x :: dedup xs
-
-theorem mem_dedup {y : String} : ∀ {l : List String}, y ∈ dedup l ↔ y ∈ l
-  | [] => by simp [dedup]
-  | x :: xs => by
-    have ih := @mem_dedup y xs
-    unfold dedup
-    split
-    · rename_i h
-      by_cases e : y = x
-      · subst e; simp [h]
-      · simp [ih, e]
-    · simp [ih]
-
-theorem nodup_dedup : ∀ l : List String, (dedup l).Nodup
-  | [] => by simp [dedup]
-  | x :: xs => by
-    unfold dedup
-    split
-    · exact nodup_dedup xs
-    · rename_i h; exact List.nodup_cons.2 ⟨h, nodup_dedup xs⟩
-
 /-- `decreases` is sound: when it holds, the first form is worth more than the second, whatever
 the variables are worth. -/
 theorem decreases_sound {l r : Lin} (h : decreases l r = true) (ρ : String → Nat) : r.eval ρ < l.eval ρ := by

@@ -55,6 +55,8 @@ const CASES = [
   { src: "rewrite(Add, add(s(0), s(0)))", text: "s(s(0))", step: "Rewrite" },
   { src: "terminates(Add; add(x, y) = 2x + y, s(x) = x + 1)", text: "true", step: "Decreases" },
   { src: "rules(x -> a)", error: "the left side is a variable" },
+  { src: "let Pr = rules(f(g(x')) -> a; g(h(x)) -> b)", text: "{f(g(x')) → a, g(h(x)) → b}" },
+  { src: "critical(Pr)", text: "{(a, f(b))}", step: "Critical pair" },
   // transition systems
   { src: "let Ct = system(var x in 0..2; init x = 0; action inc when x < 2 do x := x + 1)", text: "system({x}, {inc})" },
   { src: "invariant(Ct, x ≤ 1)", text: "false", step: "inc (x < 2 holds)" },

@@ -368,6 +368,8 @@ terminates(A; add(x, y) = 2x + y, s(x) = x + 1)	true
 critical(A)	{}
 let G = rules(f(e, x) -> x; f(i(x), x) -> e; f(f(x, y), z) -> f(x, f(y, z)))	{f(e, x) → x, f(i(x), x) → e, f(f(x, y), z) → f(x, f(y, z))}
 critical(G)	{(f(e, f(x, z)), f(x, z)), (f(i(x), f(x, z)), f(e, z)), (f(f(x, y), f(z, z')), f(f(x, f(y, z)), z'))}
+let P = rules(f(g(x')) -> a; g(h(x)) -> b)	{f(g(x')) → a, g(h(x)) → b}
+critical(P)	{(a, f(b))}
 let L = rules(f(x) -> f(f(x)))	{f(x) → f(f(x))}
 rewrite(L, f(a))	<error: the term grew past 6000 symbols after 5999 rewrites (the system may not terminate on this term)>
 let K = rules(f(x) -> f(x))	{f(x) → f(x)}

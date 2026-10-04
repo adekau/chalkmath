@@ -113,8 +113,13 @@ differential test with zero mismatches.
   mutual definitions so that it can be proved about). `rewrite` takes leftmost-outermost steps,
   `terminates` checks a linear interpretation (the size by default) and `critical` finds critical
   pairs by unification and joins them. `RewritingProofs.lean` proves the steps sound and the
-  termination check sound and exact; unification, and so the completeness of the critical pairs, is
-  not proved.
+  termination check sound and exact. `CriticalProofs.lean` proves `critical`'s verdicts against a
+  rewrite step defined on its own (a rule's instance at any position): unification is total by
+  well-founded recursion (the variables left, then the size) and returns a most general unifier
+  exactly when there is one; the two rules' variables are renamed apart by a suffix checked not to
+  collide; and the critical pair lemma gives local confluence when every pair joins, an overlap below
+  a variable of the outer rule joined by rewriting every copy of that variable. The proofs take
+  substitutions as functions (`T.app`); a list substitution is one through `Subst.fn`.
 - **Commands nest by naming.** Order and systems commands take names; a call written inside another,
   `product(chain(2), chain(3))`, is evaluated first, bound to a hidden name and put in its place
   (`Nested.lean`), its derivation a sub-derivation of the outer cell's first steps. It is a rewriting
