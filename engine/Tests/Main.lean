@@ -895,8 +895,53 @@ def trigTests : TestM Unit := do
   check "arcsin latex" (latexOf "arcsin(x)") "\\arcsin\\left(x\\right)"
   check "arccos^2 latex" (latexOf "arccos^2(x)") "{\\arccos\\left(x\\right)}^{2}"
 
+/-- The antiderivative finder's rules, split at their conditions (`Antiderivative.lean`): the
+verified half assumes nothing, the `.assuming` half says what, and what rests on the check is marked. -/
+def integrateTests : TestM Unit := do
+  let mut st : Store := []
+  -- the finder's rules split at their conditions: the verified half assumes nothing, the `.assuming` half says what
+  let intSteps (st : Store) (src : String) : List Step :=
+    ((st.get "t").cells.lookup src >>= fun c => c.derivation.steps.toList.find? (·.rule == "cmd.integrate") >>= (·.sub)).map (·.steps.toList) |>.getD []
+  for (src, rule, assumes) in [("integrate(1/x, x)", "int.power.assuming", "Assuming $x > 0$."),
+      ("integrate(x^(-2), x)", "int.power.assuming", "Assuming $x \\neq 0$."),
+      ("integrate(x^a, x)", "int.power.assuming", "Assuming $x > 0$, $a \\neq -1$."),
+      ("integrate(ln(x), x)", "int.table.assuming", "Assuming $x > 0$."),
+      ("integrate(tan(x), x)", "int.table.assuming", "Assuming $\\cos(x) > 0$."),
+      ("integrate(sec(x)^2, x)", "int.table.assuming", "Assuming $\\cos(x) \\neq 0$."),
+      ("integrate(arcsin(x), x)", "int.table.assuming", "Assuming $-1 < x < 1$."),
+      ("integrate(b^x, x)", "int.exponential.assuming", "Assuming $b > 0$ and $b \\neq 1$."),
+      ("integrate(sin(k*x), x)", "int.linear-substitution.assuming", "Assuming $k \\neq 0$."),
+      ("integrate(sin(k*x)^2, x)", "int.trig-power.assuming", "Assuming $k \\neq 0$.")] do
+    let (st', _) := sessionEval st src ",\"showWork\":true"
+    st := st'
+    let step := (intSteps st src).find? (·.rule == rule)
+    checkTrue s!"integrate: {src} has a {rule} step" step.isSome ((intSteps st src).map (·.rule)).toString
+    checkTrue s!"integrate: {src} says what it assumes" ((step.map (·.explanation.endsWith assumes)).getD false) ((step.map (·.explanation)).getD "")
+  for (src, rules) in [("integrate(cos(3x+1), x)", "[int.table, int.linear-substitution, int.check, int.compare]"),
+      ("integrate(2^x, x)", "[int.exponential, int.check, int.compare]"),
+      ("integrate(pi^x, x)", "[int.exponential, int.check, int.compare]"),
+      ("integrate(arctan(x), x)", "[int.table, int.check, int.compare]"),
+      ("integrate(exp(x)^2, x)", "[int.exp-power, int.table, int.linear-substitution, int.check, int.compare]"),
+      ("integrate(sin(x)^3, x)", "[int.trig-power, int.table, int.check, int.compare]"),
+      ("integrate(x*exp(x^2), x)", "[int.substitution, int.check, int.compare]")] do
+    let (st', _) := sessionEval st src ",\"showWork\":true"
+    st := st'
+    check s!"integrate: {src} steps" ((intSteps st src).map (·.rule)).toString rules
+  -- the finder is total and marks what rests on the check (`anti_sound` claims nothing for it)
+  let normOpt : Expr → Option Expr := fun e => (checkNorm e).toOption.map (·.1)
+  let findOf (src : String) : Option Anti.Found := match parse src with
+    | .ok (.fn "integrate" [f, .var x]) => Anti.anti normOpt x Anti.maxDepth 3 f
+    | _ => none
+  checkTrue "anti: a table entry is not checked, and says what it assumes"
+    ((findOf "integrate(ln(x), x)").map (fun r => !r.checked && r.conds.length == 1) |>.getD false)
+  checkTrue "anti: by-parts is marked checked" ((findOf "integrate(x*sin(x), x)").map (·.checked) |>.getD false)
+  checkTrue "anti: u-substitution is marked checked" ((findOf "integrate(x*exp(x^2), x)").map (·.checked) |>.getD false)
+  checkTrue "anti: verified steps assume nothing"
+    ((findOf "integrate(x^2 + sin(x), x)").map (fun r => !r.checked && r.conds.isEmpty) |>.getD false)
+  checkTrue "anti: depth 0 finds nothing" (Anti.anti normOpt "x" 0 3 (.var "x")).isNone
+
 def main : IO UInt32 := do
-  let ((), failures) ← (do tests; sessionTests; trigTests; partStatTests; workTests; checkTests; logicRelTests; algebraTests; systemsTests; complexNTests; goldenTests).run #[]
+  let ((), failures) ← (do tests; sessionTests; integrateTests; trigTests; partStatTests; workTests; checkTests; logicRelTests; algebraTests; systemsTests; complexNTests; goldenTests).run #[]
   for f in failures do
     IO.println s!"FAIL {f.name}\n  expected: {f.expected}\n  actual:   {f.actual}"
   IO.println s!"{failures.size} failures"

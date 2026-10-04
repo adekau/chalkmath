@@ -64,19 +64,26 @@ the engine omits is unverified.
 \rt{expand.distribute}{verified}{Multiplying out a product of sums and collecting like monomials: \lc{dist_sound}.}
 \rt{expand.power}{verified}{A power of a sum is the sum multiplied by itself: \lc{dist_sound}.}
 \midrule \multicolumn{3}{l}{\textbf{Integration}} \\
-\rt{cmd.integrate}{verified}{Accepted only when the candidate's derivative normalizes to the integrand, exactly (\lc{cmdIntegrate_spec}); \lc{integrate_deriv} reads that as $F' = f$ wherever the differentiation steps shown are sound. The finder's own steps are guesses.}
+\rt{cmd.integrate}{verified}{Accepted only when the candidate's derivative normalizes to the integrand, exactly (\lc{cmdIntegrate_spec}); \lc{integrate_deriv} reads that as $F' = f$ wherever the differentiation steps shown are sound. The finder's steps carry claims of their own where they are verified or conditional (\lc{anti_sound}).}
 \rt{int.check}{verified}{The differentiation of the candidate: this step carries the claim, with the statuses of its own steps.}
 \rt{int.compare}{verified}{Derivative and integrand are rewritten with $\cos^2 u = 1 - \sin^2 u$, $(e^u)^k = e^{ku}$, $1/\sqrt{s} = s^{-1/2}$ and, under a negative power, $s^k = c^k (s/c)^k$ for a positive constant summand $c$ (\lc{identNorm}, \lc{ev_identPow}), expanded (\lc{dist}) and simplified before comparison; every rewrite is proved sound, and the statuses of the simplification steps apply.}
-\rt{int.constant}{checked}{A guess from the finder; nothing is proved about it. Accepted only because \rn{int.check} verifies the result by differentiation.}
-\rt{int.variable}{checked}{A guess from the finder, verified by \rn{int.check}.}
-\rt{int.sum}{checked}{A guess from the finder, verified by \rn{int.check}.}
-\rt{int.constant-multiple}{checked}{A guess from the finder, verified by \rn{int.check}.}
-\rt{int.power}{checked}{A guess from the finder, verified by \rn{int.check} (the symbolic-exponent case relies on \rn{simp.collect-powers.assuming} there, so its check assumes a positive base).}
-\rt{int.exponential}{checked}{A guess from the finder, verified by \rn{int.check}.}
-\rt{int.table}{checked}{A guess from the finder, verified by \rn{int.check}.}
-\rt{int.linear-substitution}{checked}{A guess from the finder, verified by \rn{int.check}.}
-\rt{int.substitution}{checked}{A guess from the finder ($u$-substitution), verified by \rn{int.check}.}
-\rt{int.by-parts}{checked}{A guess from the finder (integration by parts), verified by \rn{int.check}.}
+\rt{int.constant}{verified}{$\int c\,dx = c x$ for a term free of $x$, at every point (\lc{antiConst_sound}). Each finder rule is proved compositionally: if the sub-results are antiderivatives of the sub-integrands, so is the result, and \lc{anti_sound} puts the rules together, so an answer whose steps are all verified or conditional is an antiderivative wherever what they assume holds, before any check.}
+\rt{int.variable}{verified}{$\int x\,dx = x^2/2$, at every point (\lc{antiVar_sound}).}
+\rt{int.sum}{verified}{Given antiderivatives of the summands, their sum is one of the sum (\lc{antiSum_sound}); what the summands' own steps assume, they state.}
+\rt{int.constant-multiple}{verified}{The factors free of $x$ times an antiderivative of the rest (\lc{antiConstMul_sound}).}
+\rt{int.power}{verified}{$\int u^n\,du = u^{n+1}/(n+1)$ for a natural numeral $n$, at every point, through the chain rule in $u = a x + b$ (\lc{powerRule_sound}, \lc{linearCoeff_spec}).}
+\rt{int.power.assuming}{conditional}{$u > 0$ for $\int u^{-1}\,du = \ln u$ and for a non-integer exponent, $u \neq 0$ for a negative integer one, $u > 0$ and $n \neq -1$ for a symbolic $n$, as the step states (\lc{powerRule_sound}); $\int x^{-1}\,dx = \ln x$ fails at $x = 0$, where $\ln$ has no derivative (\lc{not_power_sound}).}
+\rt{int.exponential}{verified}{$\int b^u\,du = b^u/\ln b$ for a numeral base $b > 0$, $b \neq 1$, or $\pi$ (\lc{exponential_sound}).}
+\rt{int.exponential.assuming}{conditional}{Any other base: the step states $b > 0$ and $b \neq 1$ (\lc{exponential_sound}); at $b = 1$ the candidate is $0$ and the integrand $1$ (\lc{not_exponential_sound}).}
+\rt{int.table}{verified}{$\sin$, $\cos$, $\exp$ and $\arctan$ of $u = a x + b$, at every point (\lc{table_sound}, \lc{antiFn_sound}).}
+\rt{int.table.assuming}{conditional}{$u > 0$ for $\ln u$, $\cos u > 0$ for $\tan u$, $-1 < u < 1$ for $\arcsin u$ and $\arccos u$, $\cos u \neq 0$ for $\sec^2 u$, as the step states (\lc{table_sound}, \lc{antiSecSq_sound}); $\int \sec^2 x\,dx = \tan x$ fails at $\pi/2$ (\lc{not_secSq_sound}).}
+\rt{int.linear-substitution}{verified}{Dividing by a numeral coefficient $a \neq 0$ of $u = a x + b$: if $G(u)$ has derivative $g a$, then $G(u)/a$ has derivative $g$ (\lc{substitute_sound}).}
+\rt{int.linear-substitution.assuming}{conditional}{A coefficient that is not a numeral: the step states $a \neq 0$ (\lc{substitute_sound}); at $k = 0$, $\sin(kx)/k$ is $0$ while $\cos(kx)$ is $1$ (\lc{not_substitute_sound}).}
+\rt{int.substitution}{checked}{A guess from the finder ($u$-substitution), verified by \rn{int.check}. It is built from the normalizer's outputs ($g'$ and the ratio of the other factors to it), about which nothing is proved here, so the finder marks it and \lc{anti_sound} claims nothing for it.}
+\rt{int.by-parts}{checked}{A guess from the finder (integration by parts), verified by \rn{int.check}. The $du$ and the $v\,du$ it integrates next are the normalizer's outputs, so the finder marks it and \lc{anti_sound} claims nothing for it.}
+\rt{int.trig-power}{verified}{The reduction formulas for $\sin^m u \cos^n u$ with a numeral coefficient of $u$, given an antiderivative of the integrand left, by $\sin^2 u + \cos^2 u = 1$ (\lc{trigPower_sound}).}
+\rt{int.trig-power.assuming}{conditional}{A coefficient $k$ that is not a numeral: the step states $k \neq 0$ (\lc{trigPower_sound}); at $k = 0$ the formula gives $x/2$ for $\int \sin^2(kx)\,dx$, the integral of $0$ (\lc{not_trigPower_sound}).}
+\rt{int.exp-power}{verified}{$(e^u)^k = e^{ku}$ for every real $u$ and $k$, distributed by \lc{dist}: the integrand keeps its value (\lc{antiExpPower_sound}).}
 \rt{int.arctan}{checked}{A guess from the finder ($1/(k + c u^2)$ as an arctangent), verified by \rn{int.check}.}
 \rt{int.arcsin}{checked}{A guess from the finder ($1/\sqrt{k - c u^2}$ as an arcsine), verified by \rn{int.check}.}
 \midrule \multicolumn{3}{l}{\textbf{Order world}} \\

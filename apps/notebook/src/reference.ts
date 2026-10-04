@@ -308,13 +308,15 @@ export const FUNCTIONS: FnDoc[] = [
     name: "integrate", area: "Calculus",
     usage: [["integrate(f, x)", "gives an antiderivative of `f` in `x`, without the constant."], ["integrate(f, x, a, b)", "gives the definite integral of `f` from `a` to `b`."]],
     details: [
-      "A small rule set (substitution, parts, a table of forms) guesses an antiderivative, and the guess is accepted only if differentiating it gives `f` back: the check is the proof. Its steps are marked *checked*.",
+      "A small rule set (substitution, parts, a table of forms) finds an antiderivative, and it is accepted only if differentiating it gives `f` back.",
+      "Most of the rules are proved as well (`anti_sound`): given antiderivatives of the parts, each rule's result is one of the whole. A rule that needs a condition says so in its step: `ln u` for `u > 0`, `tan u` for `cos u > 0`, `bᵘ` for `b > 0, b ≠ 1`, dividing by a symbolic coefficient `k` for `k ≠ 0`. Substitution and integration by parts build on the simplifier's outputs; their steps are marked *checked*, and the check above is their proof.",
       "With bounds, the checked antiderivative at `b` minus at `a`: the fundamental theorem of calculus (`integrate_definite`).",
       "When no guess checks out, the integral is left as it is.",
     ],
     examples: [
       basic("integrate(x^2 + sin(x), x)", "integrate(cos(t)*sin(t), t, 0, 2pi)"),
       section("Scope", "integrate(exp(2*x), x)", "integrate(x/(x^2+1), x)", "integrate(x*exp(x^2), x)", "integrate(ln(x), x)", "integrate(x^2*exp(x), x)", "integrate(exp(-3i*t), t, 0, pi)"),
+      section("Steps that assume", "integrate(1/x, x)", "integrate(tan(x), x)", "integrate(sin(k*x), x)", "integrate(b^x, x)"),
       section("Properties and relations", "diff(integrate(x^3, x), x)"),
     ],
     see: ["diff", "sum"],

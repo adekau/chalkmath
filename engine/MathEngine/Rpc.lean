@@ -20,7 +20,8 @@ machine-checked instead of guessing. Kept next to the rules it describes: `verif
 unconditional soundness theorem over ℝ (`proofs/Proofs/SimpReal.lean`), `conditional` means the
 theorem needs a side condition *and* the necessity of that condition is itself proved, `unverified`
 means no theorem yet, `checked` means the step is a guess whose result a later step verifies
-(the `int.*` finder, checked by `int.check`). The `la.row-*` rules are proved over ℚ (`LinAlgQ.lean`), not ℝ: their claim is
+(u-substitution, integration by parts and the arctangent and arcsine forms of the `int.*` finder,
+checked by `int.check`). The `la.row-*` rules are proved over ℚ (`LinAlgQ.lean`), not ℝ: their claim is
 that the row operation preserves the solution set. Rules absent from this list are unverified. -/
 def ruleStatus : Json :=
   let entry (name status note : String) : Json :=
@@ -80,7 +81,7 @@ def ruleStatus : Json :=
     entry "cmd.expand" "verified" "Distribution is a total function proved sound over ℝ (dist_sound, proofs/Proofs/Expand.lean); the collection afterwards is the pipeline's own steps with their statuses.",
     entry "expand.distribute" "verified" "Multiplying out a product of sums and collecting like monomials: dist_sound.",
     entry "expand.power" "verified" "A power of a sum is the sum multiplied by itself: dist_sound.",
-    entry "cmd.integrate" "verified" "Accepted only when the candidate's derivative normalizes to the integrand, exactly (cmdIntegrate_spec); integrate_deriv reads that as deriv F = f wherever the differentiation steps shown are sound. The finder's own steps are guesses.",
+    entry "cmd.integrate" "verified" "Accepted only when the candidate's derivative normalizes to the integrand, exactly (cmdIntegrate_spec); integrate_deriv reads that as deriv F = f wherever the differentiation steps shown are sound. The finder's steps carry claims of their own where they are verified or conditional (anti_sound); the rest are guesses only the check vouches for.",
     entryC "simp.exp-product" "verified" "exp(a)·exp(b) = exp(a+b), unconditionally (expProduct_soundR)." "verified" "Complex.exp_add (expProduct_soundC).",
     entry "int.bounds" "verified" "The fundamental theorem of calculus: the checked antiderivative evaluated at the bounds, F(b) − F(a) (cmdIntegrate_definite_spec; integrate_definite reads it as the interval integral over ℝ, for an integrand continuous on [a, b]).",
     entry "cmd.sum" "verified" "A definition: one substituted term per integer value of the index (cmdSum_spec); sum_soundR reads the result as the finite sum over ℝ.",
@@ -101,20 +102,25 @@ def ruleStatus : Json :=
     entry "stat.median" "verified" "The entries sorted (a sorted permutation: List.mergeSort_perm, List.pairwise_mergeSort), then the middle one or the mean of the two middle ones (medianQ_spec).",
     entry "int.check" "verified" "The differentiation of the candidate: this step carries the claim, with the statuses of its own steps.",
     entry "int.compare" "verified" "Derivative and integrand are rewritten with cos²u = 1 − sin²u, (eᵘ)ᵏ = eᵏᵘ, 1/√s = s^(-1/2) and, under a negative power, s^k = c^k·(s/c)^k for a positive constant summand c (identNorm), expanded (dist) and simplified before comparison — every rewrite proved sound for every real value (ev_identPow), and needed because the pipeline applies none of these identities nor distributes a numeral over a sum; the statuses of the simplification steps apply.",
-    entry "int.constant" "checked" "A guess from the finder; nothing is proved about it. Accepted only because int.check verifies the result by differentiation.",
-    entry "int.variable" "checked" "A guess from the finder, verified by int.check.",
-    entry "int.sum" "checked" "A guess from the finder, verified by int.check.",
-    entry "int.constant-multiple" "checked" "A guess from the finder, verified by int.check.",
-    entry "int.power" "checked" "A guess from the finder, verified by int.check (the symbolic-exponent case relies on simp.collect-powers.assuming there, so its check assumes a positive base).",
-    entry "int.exponential" "checked" "A guess from the finder, verified by int.check.",
-    entry "int.table" "checked" "A guess from the finder, verified by int.check.",
-    entry "int.linear-substitution" "checked" "A guess from the finder, verified by int.check.",
-    entry "int.substitution" "checked" "A guess from the finder (u-substitution), verified by int.check.",
-    entry "int.by-parts" "checked" "A guess from the finder (integration by parts), verified by int.check.",
-    entry "int.trig-power" "checked" "A guess from the finder (the reduction formula for sinᵐu cosⁿu), verified by int.check.",
-    entry "int.exp-power" "checked" "A guess from the finder ((eᵘ)ᵏ = eᵏᵘ, then the table), verified by int.check.",
-    entry "int.arctan" "checked" "A guess from the finder (1/(k + c·u²) as an arctangent), verified by int.check.",
-    entry "int.arcsin" "checked" "A guess from the finder (1/√(k − c·u²) as an arcsine), verified by int.check.",
+    entry "int.constant" "verified" "∫ c dx = c·x for a term free of x, at every point (antiConst_sound). Each finder rule is proved compositionally: if the sub-results are antiderivatives of the sub-integrands, so is the result, and anti_sound puts the rules together, so an answer whose steps are all verified or conditional is an antiderivative wherever what they assume holds, before any check.",
+    entry "int.variable" "verified" "∫ x dx = x²/2, at every point (antiVar_sound).",
+    entry "int.sum" "verified" "Given antiderivatives of the summands, their sum is one of the sum, at every point (antiSum_sound); what the summands' own steps assume, they state.",
+    entry "int.constant-multiple" "verified" "The factors free of x times an antiderivative of the rest is an antiderivative of the product, at every point (antiConstMul_sound).",
+    entry "int.power" "verified" "∫ uⁿ du = uⁿ⁺¹/(n+1) for a natural numeral n, at every point, through the chain rule in u = a·x + b (powerRule_sound, linearCoeff_spec, HasDerivAt.rpow_const).",
+    entry "int.power.assuming" "conditional" "The power rule where it needs more: u > 0 for ∫ u⁻¹ du = ln u and for a non-integer exponent, u ≠ 0 for a negative integer one, u > 0 and n ≠ −1 for a symbolic n; the step states which, and is proved under it (powerRule_sound, antiPower_sound). Without it ∫ x⁻¹ dx = ln x fails at x = 0, where ln has no derivative (not_power_sound, Real.differentiableAt_log_iff).",
+    entry "int.exponential" "verified" "∫ bᵘ du = bᵘ/ln b for a numeral base b > 0, b ≠ 1, or π, at every point (exponential_sound, through HasDerivAt.const_rpow).",
+    entry "int.exponential.assuming" "conditional" "Any other base: the step states b > 0 and b ≠ 1, and is proved under it (exponential_sound, antiExponential_sound). Without it the rule fails: at b = 1 the candidate 1ˣ/ln 1 is 0 while the integrand is 1 (not_exponential_sound).",
+    entry "int.table" "verified" "sin, cos, exp and arctan of u = a·x + b: each entry's derivative is the integrand times u', at every point (table_sound, antiFn_sound).",
+    entry "int.table.assuming" "conditional" "The entries that need a condition: u > 0 for ln u, cos u > 0 for tan u, −1 < u < 1 for arcsin u and arccos u, cos u ≠ 0 for sec² u; the step states which, and is proved under it (table_sound, antiSecSq_sound, through HasDerivAt.log, Real.hasDerivAt_arcsin, Real.hasDerivAt_arccos and Real.hasDerivAt_tan). Without it ∫ sec² x dx = tan x fails at x = π/2, where tan has no derivative (not_secSq_sound, Real.differentiableAt_tan).",
+    entry "int.linear-substitution" "verified" "Dividing by a numeral coefficient a ≠ 0 of u = a·x + b: if G(u) has derivative g·a, then G(u)/a has derivative g, at every point (substitute_sound, linearCoeff_spec).",
+    entry "int.linear-substitution.assuming" "conditional" "A coefficient that is not a numeral: the step states a ≠ 0, and is proved under it (substitute_sound). Without it the rule fails: at k = 0, sin(kx)/k is 0 while cos(kx) is 1 (not_substitute_sound).",
+    entry "int.substitution" "checked" "A guess from the finder (u-substitution), verified by int.check. It is built from the normalizer's outputs, the derivative g' of the inner function and the ratio of the other factors to it, and nothing is proved about those here, so the finder marks the result checked and anti_sound claims nothing for it.",
+    entry "int.by-parts" "checked" "A guess from the finder (integration by parts), verified by int.check. The derivative du and the product v·du it integrates next are the normalizer's outputs, and nothing is proved about those here, so the finder marks the result checked and anti_sound claims nothing for it.",
+    entry "int.trig-power" "verified" "The reduction formulas for sinᵐu cosⁿu with a numeral coefficient of u, given an antiderivative of the integrand left: the result's derivative is sinᵐu cosⁿu, by sin²u + cos²u = 1, at every point (trigPower_sound, hasDerivAt_sineReduce, hasDerivAt_cosineReduce).",
+    entry "int.trig-power.assuming" "conditional" "A coefficient k of u that is not a numeral: the step states k ≠ 0, and is proved under it (trigPower_sound). Without it the rule fails: at k = 0 the formula gives x/2 for ∫ sin²(kx) dx, the integral of 0 (not_trigPower_sound).",
+    entry "int.exp-power" "verified" "(eᵘ)ᵏ = eᵏᵘ for every real u and k (Real.exp_mul), distributed by Expand.dist (dist_soundD): the integrand keeps its value, so an antiderivative of eᵏᵘ is one of (eᵘ)ᵏ (antiExpPower_sound).",
+    entry "int.arctan" "checked" "A guess from the finder (1/(k + c·u²) as an arctangent), verified by int.check. Its scaling factors are radicals of the numerals, √(c/k) as c·(kc)^(-1/2), which nothing proves here, so the finder marks the result checked.",
+    entry "int.arcsin" "checked" "A guess from the finder (1/√(k − c·u²) as an arcsine), verified by int.check. Its scaling factors are radicals of the numerals, which nothing proves here, so the finder marks the result checked.",
     entry "order.divisors" "verified" "The divisors of n ordered by divisibility, by definition.",
     entry "order.subsets" "verified" "The subsets of a finite set ordered by inclusion, by definition.",
     entry "order.incomparable" "verified" "x ≤ y is not in the order: decided on the reflexive-transitive closure, which is checked to be a partial order (checkPartialOrder_none).",

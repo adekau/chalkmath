@@ -195,6 +195,15 @@ integrate(arctan(x), x)	x*arctan(x) - ln(x^2 + 1)/2
 integrate(arcsin(x), x)	x*arcsin(x) + sqrt(-x^2 + 1)
 integrate(arccos(2x), x)	(2*x*arccos(2*x) - sqrt(-4*x^2 + 1))/2
 integrate(sec(x)^2, x)	tan(x)
+integrate(tan(x), x)	-ln(cos(x))
+integrate(sin(k*x), x)	-cos(k*x)/k
+integrate(b^x, x)	b^x/ln(b)
+integrate(pi^x, x)	π^x/ln(π)
+integrate(x^a, x)	x^(a + 1)/(a + 1)
+integrate(x^(-3), x)	-1/(2*x^2)
+integrate(sin(k*x)^2, x)	x/2 - cos(k*x)*sin(k*x)/(2*k)
+integrate(exp(x)^a, x)	exp(a*x)/a
+integrate(arccos(x), x)	x*arccos(x) - sqrt(-x^2 + 1)
 integrate(1/(1+x^2), x, 0, 1)	-arctan(0) + arctan(1)
 sqrt(72)	sqrt(72)
 2*sqrt(8)+3*sqrt(2)	7*sqrt(2)

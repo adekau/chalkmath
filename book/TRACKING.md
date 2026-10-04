@@ -954,3 +954,21 @@ Phases:
    part's digits are within a unit of their last place (`cmdN_soundC`, `IntervalC.lean`). `N((-8)^(1/3))` is
    `1 + 1.73205080756888i`, certified. Left to `cmd.N.float`: the logarithm of a non-real number (`N(ln(i))`, which
    would need a certified `arg`), a non-real base under a non-integer power (`N(i^i)`), poles and jumps.
+- verification: the antiderivative finder's rules — DONE 2026-10-04. `Anti.anti` was a `partial def`; it is total now
+   (a depth bound beside the by-parts fuel), and `antiStep` takes the recursion as an argument, so each rule is a
+   function of its sub-results with a compositional theorem over `HasDerivAt` (`proofs/Proofs/Antiderivative.lean`):
+   if the sub-results are antiderivatives of the sub-integrands, so is the result. `anti_sound` (induction on the
+   depth) says a result that does not rest on the check is an antiderivative wherever what its steps assume holds.
+   Verified: `int.constant`, `int.variable`, `int.sum`, `int.constant-multiple`, `int.exp-power`, and the halves of
+   `int.power` (natural exponents), `int.table` (sin, cos, exp, arctan), `int.exponential` (numeral bases and π),
+   `int.linear-substitution` and `int.trig-power` (numeral coefficients) that assume nothing. Conditional, with the
+   condition in the step and as data (`ICond`) the proof reads: `int.power.assuming` (`u > 0` for `ln u` and real
+   exponents, `u ≠ 0` for negative integers, `n ≠ −1` for a symbolic `n`), `int.table.assuming` (`ln`, `tan`,
+   `arcsin`, `arccos`, `sec²`), `int.exponential.assuming`, `int.linear-substitution.assuming` and
+   `int.trig-power.assuming` (`k ≠ 0`); each condition is shown necessary (`not_power_sound`, `not_secSq_sound`,
+   `not_exponential_sound`, `not_substitute_sound`, `not_trigPower_sound`). Findings: the table's `arcsin` and
+   `arccos` entries need `−1 < u < 1` too (`√(1 − u²)` has no derivative at `±1`), and dividing by a symbolic linear
+   coefficient was an unstated assumption: `∫ cos(kx) dx = sin(kx)/k` is `0` at `k = 0`, where the integral is `x`.
+   `int.exp-power` now distributes with `Expand.dist` (proved sound) instead of the normalizer, which is what made it
+   provable; `π^x` assumes nothing. Still `checked`, and marked so by the finder: `int.substitution`, `int.by-parts`
+   (both build on the normalizer's outputs), `int.arctan`, `int.arcsin`.
