@@ -32,6 +32,7 @@ const CASES = [
   { src: "[1,2;3,4] * [5,6;7,8]", text: "[19, 22; 43, 50]", step: "Matrix product" },
   { src: "[1, 2] ./ [3, 10]", text: "[1/3, 1/5]", step: "Entrywise division" },
   { src: "N(sin(10^30))", text: "-0.0901169019121381", step: "Numerical value" },
+  { src: "N((-8)^(1/3))", text: "1 + 1.73205080756888*i", step: "Numerical value" },
   { src: "diff(ln(x), x)", text: "1/x", step: "Chain rule, assuming" },
   { src: "ln(x^2)", text: "2*ln(x)", step: "Function value, assuming a positive argument" },
   { src: "rref([1,2;2,4])", text: "[1, 2; 0, 0]", step: "Add a multiple of a row" },

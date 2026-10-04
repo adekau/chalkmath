@@ -948,3 +948,9 @@ Phases:
    `u > 0` for `ln u` and real exponents, `u ≠ 0` for negative integer ones, `cos u ≠ 0` for `tan u`, `b > 0` for
    `b^u` and `f^g`; both proved for the exact term the engine writes (`DerivRules.lean`; the product rule for any
    number of factors, `ln`, `tan`, real exponents, `b^u` and `f^g` had no theorem before).
+   Then `N` over ℂ is certified as well: a rectangle of two intervals (`Ival.cieval`) holds the principal value,
+   through the formulas for the parts of a product, a quotient, `exp`, `sin` and `cos` (`Complex.sin_eq`), `ln`
+   and `sqrt` of a real number, an integer power, and a real number to a real power (`cieval_sound`), and each
+   part's digits are within a unit of their last place (`cmdN_soundC`, `IntervalC.lean`). `N((-8)^(1/3))` is
+   `1 + 1.73205080756888i`, certified. Left to `cmd.N.float`: the logarithm of a non-real number (`N(ln(i))`, which
+   would need a certified `arg`), a non-real base under a non-integer power (`N(i^i)`), poles and jumps.

@@ -91,16 +91,24 @@ def cmdN : PlainRule :=
   { name := "cmd.N", apply := fun e => Option.map checked <|
       match e with
       | .fn "N" [a] =>
-        if mentionsI a then none else
-        match Ival.ieval a >>= Ival.certify with
+        let say (u : Rat) : String := if u = 0 then "exactly" else s!"to within ${Ival.tenText u}$"
+        let real := if mentionsI a then none else Ival.ieval a >>= Ival.certify
+        match real with
         | some (v, u) =>
-          let within := if u = 0 then "exactly" else s!"to within ${Ival.tenText u}$"
-          some ⟨.num (Q.ofRat v true), s!"Numerical value, certified {within}: interval arithmetic over the rationals, with a proved bound for each function, holds the exact value there.", none, none⟩
-        | none => none
+          some ⟨.num (Q.ofRat v true), s!"Numerical value, certified {say u}: interval arithmetic over the rationals, with a proved bound for each function, holds the exact value there.", none, none⟩
+        | none =>
+          -- over ℂ: each part certified on its own; a part pinned to 0 is left out
+          match Ival.cieval a >>= Ival.ccertify with
+          | some ((vr, ur), (vi, ui)) =>
+            let re : Expr := .num (Q.ofRat vr true)
+            let im : Expr := .mul [.num (Q.ofRat vi true), iE]
+            let out := if vi = 0 then re else if vr = 0 then im else .add [re, im]
+            some ⟨out, s!"Numerical value over ℂ, certified: the real part {say ur}, the imaginary part {say ui}. Interval arithmetic on each part, with a proved bound for each function, holds the exact value there.", none, none⟩
+          | none => none
       | _ => none }
 
-/-- `N(a)` in IEEE-754 double precision, where `cmd.N` cannot certify it: over ℂ for a term with `i`
-or no finite real value. -/
+/-- `N(a)` in IEEE-754 double precision, where `cmd.N` cannot certify it: a pole, a jump, or a complex
+logarithm or power whose angle is not certified. -/
 def cmdNFloat : PlainRule :=
   { name := "cmd.N.float", apply := fun e => Option.map checked <|
       match e with

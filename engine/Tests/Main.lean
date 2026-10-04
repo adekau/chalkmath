@@ -673,6 +673,17 @@ def sessionTests : TestM Unit := do
   checkTrue "rpc manipulate column: a part that is a bound name is labelled with it" ((lab.splitOn "\"label\":\"m\"").length == 3 && !(contains lab "\"label\":\"h\"")) lab
   checkTrue "rpc value json" ((rpc "engine.evaluate" "{\"source\":\"2x\"}").startsWith "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"ok\":true,\"value\":{\"k\":\"mul\",\"args\":[{\"k\":\"num\",\"v\":{\"num\":\"2\",\"den\":\"1\"}},{\"k\":\"var\",\"name\":\"x\"}]}")
 
+/-- `N` over ℂ: certified where the rectangle reaches, double precision where it does not. -/
+def complexNTests : TestM Unit := do
+  let mut st : Store := []
+  for src in ["N(exp(i*pi/4))", "N((-8)^(1/3))", "N(ln(i))"] do
+    (st, _) := sessionEval st src ",\"showWork\":true"
+  let lastRule (src : String) : String :=
+    ((st.get "t").cells.lookup src >>= fun c => c.derivation.steps.toList.getLast? |>.map (·.rule)).getD ""
+  check "N: a complex value is certified" (lastRule "N(exp(i*pi/4))") "cmd.N"
+  check "N: a negative base under a real power is certified" (lastRule "N((-8)^(1/3))") "cmd.N"
+  check "N: the log of a non-real number is not" (lastRule "N(ln(i))") "cmd.N.float"
+
 /-- M2 golden test: `Tests/golden.tsv` holds the reference engine's rendered text for a corpus of
 sources, evaluated in one session in file order (so `let` bindings carry over). It was produced by the
 wire-level differential test that ran both engines (`scripts/difftest.mjs`, last present in commit
@@ -874,7 +885,7 @@ def systemsTests : TestM Unit := do
   checkTrue "systems: a CTL formula's fixed point, a round a step" (contains ctlRaw "\"rule\":\"sys.iterate\"" && contains ctlRaw "\"rule\":\"sys.fixed\"") ctlRaw
 
 def main : IO UInt32 := do
-  let ((), failures) ← (do tests; sessionTests; partStatTests; workTests; checkTests; logicRelTests; algebraTests; systemsTests; goldenTests).run #[]
+  let ((), failures) ← (do tests; sessionTests; partStatTests; workTests; checkTests; logicRelTests; algebraTests; systemsTests; complexNTests; goldenTests).run #[]
   for f in failures do
     IO.println s!"FAIL {f.name}\n  expected: {f.expected}\n  actual:   {f.actual}"
   IO.println s!"{failures.size} failures"

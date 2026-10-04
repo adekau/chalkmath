@@ -296,5 +296,111 @@ def tenText (u : Rat) : String :=
   | some j => s!"10^\{{j}}"
   | none => (Q.ofRat u true).toDecimal
 
+/-! ## Complex values: a rectangle, an interval for each part
+
+`cieval` holds a term's complex value (`evalC`, the principal branch) in a rectangle
+(`cieval_sound`, `proofs/Proofs/IntervalC.lean`): `+`, `·`, `1/z` and integer powers by their
+formulas on the parts; `exp`, `sin`, `cos` through `exp`, `sin`, `cos`, `cosh`, `sinh` of the parts;
+`abs`, `conj`, `re`, `im`; and `ln`, `sqrt` and real powers where the argument is real, of either sign
+(`ln(-1) = πi`, `sqrt(-4) = 2i`, `(-8)^(1/3) = 2 e^(πi/3)`). A complex argument to `ln` would need its
+angle, which is not certified, so such a term gets no rectangle. -/
+
+/-- A rectangle: the real part's interval and the imaginary part's. -/
+abbrev C := I × I
+
+def creal (a : I) : C := (a, point 0)
+/-- The imaginary part is exactly 0. -/
+def isReal (z : C) : Bool := z.2.lo = 0 && z.2.hi = 0
+
+def cadd (z w : C) : C := (add z.1 w.1, add z.2 w.2)
+def cmul (z w : C) : C := (add (mul z.1 w.1) (neg (mul z.2 w.2)), add (mul z.1 w.2) (mul z.2 w.1))
+def cinv (z : C) : Option C := do
+  let r ← inv (add (mul z.1 z.1) (mul z.2 z.2))
+  return (mul z.1 r, neg (mul z.2 r))
+def cnpow (z : C) : Nat → C
+  | 0 => creal (point 1)
+  | n + 1 => cmul (cnpow z n) z
+
+/-- `cosh` and `sinh` of an interval, through `exp`. -/
+def coshI (a : I) : Option I := do
+  let p ← expI a; let m ← expI (neg a)
+  return mul (point (1 / 2)) (add p m)
+def sinhI (a : I) : Option I := do
+  let p ← expI a; let m ← expI (neg a)
+  return mul (point (1 / 2)) (add p (neg m))
+
+def cexp (z : C) : Option C := do
+  let e ← expI z.1; let c ← cosI z.2; let s ← sinI z.2
+  return (mul e c, mul e s)
+def csin (z : C) : Option C := do
+  let s ← sinI z.1; let c ← cosI z.1; let ch ← coshI z.2; let sh ← sinhI z.2
+  return (mul s ch, mul c sh)
+def ccos (z : C) : Option C := do
+  let s ← sinI z.1; let c ← cosI z.1; let ch ← coshI z.2; let sh ← sinhI z.2
+  return (mul c ch, neg (mul s sh))
+
+/-- `|x|^y · e^(πiy)`, the principal value of `x^y` for a negative real `x` and a real `y`. -/
+def negRealPow (x y : I) : Option C := do
+  let m ← powI (neg x) y
+  let θ := mul piI y
+  return (mul m (← cosI θ), mul m (← sinI θ))
+
+def cpowI (b e : C) : Option C :=
+  match asInt e.1, isReal e with
+  | some n, true => if 0 ≤ n then some (cnpow b n.toNat) else cinv (cnpow b n.natAbs)
+  | _, _ =>
+    if isReal b && isReal e then
+      if 0 < b.1.lo then do return creal (← powI b.1 e.1)
+      else if b.1.hi < 0 then negRealPow b.1 e.1
+      else none
+    else none
+
+def cfnI (f : String) (z : C) : Option C :=
+  match f with
+  | "exp" => cexp z
+  | "sin" => csin z
+  | "cos" => ccos z
+  | "tan" => do let s ← csin z; let c ← ccos z; return cmul s (← cinv c)
+  | "abs" => do return creal (← sqrtI (add (mul z.1 z.1) (mul z.2 z.2)))
+  | "conj" => some (z.1, neg z.2)
+  | "re" => some (creal z.1)
+  | "im" => some (creal z.2)
+  | "ln" =>
+    if !isReal z then none
+    else if 0 < z.1.lo then do return creal (← lnI z.1)
+    else if z.1.hi < 0 then do return (← lnI (neg z.1), piI)
+    else none
+  | "sqrt" =>
+    if !isReal z then none
+    else if 0 ≤ z.1.lo then do return creal (← sqrtI z.1)
+    else if z.1.hi < 0 then do return (point 0, ← sqrtI (neg z.1))
+    else none
+  | _ => none
+
+mutual
+  /-- A rectangle holding the term's complex value, where `π` and `e` have theirs. -/
+  def cieval : Expr → Option C
+    | .num q => some (creal (point q.val))
+    | .var x =>
+      if x = "π" then some (creal piI) else if x = "e" then (expPoint 1).map creal else none
+    | .add es => cievalSum es
+    | .mul es => cievalProd es
+    | .pow b e => do cpowI (← cieval b) (← cieval e)
+    | .fn f [] => if f = "π" then some (creal piI) else if f = "i" then some (point 0, point 1) else none
+    | .fn f [a] => do cfnI f (← cieval a)
+    | .fn _ _ => none
+    | .matrix _ => none
+  def cievalSum : List Expr → Option C
+    | [] => some (creal (point 0))
+    | e :: es => do return cadd (← cieval e) (← cievalSum es)
+  def cievalProd : List Expr → Option C
+    | [] => some (creal (point 1))
+    | e :: es => do return cmul (← cieval e) (← cievalProd es)
+end
+
+/-- Both parts' digits, each within a unit of its last place. -/
+def ccertify (z : C) : Option ((Rat × Rat) × (Rat × Rat)) := do
+  return (← certify z.1, ← certify z.2)
+
 end Ival
 end MathEngine

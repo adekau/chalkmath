@@ -67,8 +67,12 @@ differential test with zero mismatches.
   by Taylor sums with their remainder bounds after halving the argument, then squaring or doubling
   back, `ln` pinned by `exp`, `sqrt` by squaring, `π` to Mathlib's twenty digits. It prints the most
   digits, up to fifteen, that the interval pins down, each within a unit of its last place
-  (`certify_sound`). What the intervals do not reach (a complex value, a pole, a jump) falls to the
-  old double-precision evaluation, `cmd.N.float`, which says it is not certified.
+  (`certify_sound`). A complex value is a rectangle, an interval for each part (`Ival.cieval`),
+  through the formulas for the parts of a product, a quotient, `exp`, `sin` and `cos`; `ln` and
+  `sqrt` of a real number and a real number to a real power have their principal values in closed
+  form (`cieval_sound`, `cmdN_soundC` in `proofs/Proofs/IntervalC.lean`). What the intervals do not
+  reach (the logarithm of a non-real number, a non-real base under a non-integer power, a pole, a
+  jump) falls to the old double-precision evaluation, `cmd.N.float`, which says it is not certified.
 - **Elimination is verified over ℚ by construction.** `LinAlgQ.lean` writes Gauss–Jordan as a
   list of the three elementary row operations, each invertible (the degenerate parameters are the
   identity), and proves `sol_rref`: the reduced matrix has the input's solution set. The `rref`
