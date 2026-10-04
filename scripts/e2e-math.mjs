@@ -634,6 +634,8 @@ async function features() {
   assert.ok((await page.locator(".mi-completions").innerText()).includes("∨"), "the typeset input does not list \\or");
   await page.keyboard.type("r \\not p");
   assert.equal(await all().nth(vk).locator(".mi").count(), 1, "the cell left the typeset input");
+  // every world's commands are highlighted as commands, not only calculus's
+  assert.deepEqual(await all().nth(vk).locator('.mi [data-hl="hcmd"]').allTextContents(), ["taut"], "taut is not highlighted as a command");
   await page.keyboard.press("Control+Shift+M");
   const vtyped = "taut(p ∨ ¬p)";
   assert.equal(await all().nth(vk).locator("input.cellin").inputValue(), vtyped, "the typeset cell's text");
