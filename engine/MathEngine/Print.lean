@@ -34,13 +34,13 @@ structure Target where
   denomPrec : Nat
 
 -- precedence levels: what the *context* demands vs. what the term *provides*
-private def P_ADD := 1
-private def P_MUL := 2
-private def P_LAM := 1
-private def P_APP := 2
-private def P_NEG := 2
-private def P_POW := 3
-private def P_ATOM := 4
+def P_ADD := 1
+def P_MUL := 2
+def P_LAM := 1
+def P_APP := 2
+def P_NEG := 2
+def P_POW := 3
+def P_ATOM := 4
 
 def textTarget : Target where
   wrap _ s := s
@@ -95,7 +95,7 @@ def latexTarget (paths : Bool) : Target where
 is the child index of `rest` inside the term, or `none` when the whole term is the rest. -/
 private def enum (l : List α) : List (Nat × α) := (List.range l.length).zip l
 
-private def splitCoeff : Expr → Q × Option Expr × Option Nat
+def splitCoeff : Expr → Q × Option Expr × Option Nat
   | .num q => (q, none, none)
   | .mul (.num q :: rest@(_ :: _)) => (q, some (match rest with | [r] => r | rs => .mul rs), some 1)
   | e => (Q.one, some e, none)
@@ -168,51 +168,71 @@ private def logicOperand (T : Target) (c : Expr) (str : String) (lvl : Nat) : St
   | _ => str
 
 /-- A call whose children print at the context of an argument, `as` being their text. -/
-private def fnRaw (T : Target) (name : String) (args : List Expr) (as : List String) : String × Nat :=
-  match name, args, as with
-  | "sqrt", [_], [a] => (T.sqrt a, P_ATOM)
-  | "π", [], _ => (if T.times != "*" then "\\pi" else "π", P_ATOM)
-  | "i", [], _ => ("i", P_ATOM)
-  | "conj", [_], [a] => (if T.times != "*" then s!"\\overline\{{a}}" else s!"conj({a})", P_ATOM)
-  | "re", [_], [a] => (if T.times != "*" then s!"\\operatorname\{Re}\\left({a}\\right)" else s!"re({a})", P_ATOM)
-  | "im", [_], [a] => (if T.times != "*" then s!"\\operatorname\{Im}\\left({a}\\right)" else s!"im({a})", P_ATOM)
-  | "abs", [_], [a] => (if T.times != "*" then s!"\\left|{a}\\right|" else s!"abs({a})", P_ATOM)
-  | "exp", [.num q], _ => if q.isOne then (if T.times != "*" then "e" else "ℯ", P_ATOM) else (T.fn name as, P_ATOM)
-  | "diff", [_, .var _], [a, x] =>
-    if T.times != "*" then (s!"\\frac\{d}\{d{x}}\\left({a}\\right)", P_MUL) else (T.fn name as, P_ATOM)
-  | "integrate", [_, .var _], [a, x] =>
-    if T.times != "*" then (s!"\\int {a} \\, d{x}", P_MUL) else (T.fn name as, P_ATOM)
-  | "integrate", [_, .var _, _, _], [a, x, lo, hi] =>
-    if T.times != "*" then (s!"\\int_\{{lo}}^\{{hi}} {a} \\, d{x}", P_MUL) else (T.fn name as, P_ATOM)
-  | "sum", [_, .var _, _, _], [a, k, lo, hi] =>
-    if T.times != "*" then (s!"\\sum_\{{k}={lo}}^\{{hi}} {a}", P_MUL) else (T.fn name as, P_ATOM)
+def fnRaw (T : Target) (name : String) (args : List Expr) (as : List String) : String × Nat :=
+  let plain := (T.fn name as, P_ATOM)
+  -- by name first: a match on the name and the arguments together has equations too costly to derive
+  match name with
+  | "sqrt" => match args, as with | [_], [a] => (T.sqrt a, P_ATOM) | _, _ => plain
+  | "π" => match args with | [] => (if T.times != "*" then "\\pi" else "π", P_ATOM) | _ => plain
+  | "i" => match args with | [] => ("i", P_ATOM) | _ => plain
+  | "conj" => match args, as with
+    | [_], [a] => (if T.times != "*" then s!"\\overline\{{a}}" else s!"conj({a})", P_ATOM) | _, _ => plain
+  | "re" => match args, as with
+    | [_], [a] => (if T.times != "*" then s!"\\operatorname\{Re}\\left({a}\\right)" else s!"re({a})", P_ATOM) | _, _ => plain
+  | "im" => match args, as with
+    | [_], [a] => (if T.times != "*" then s!"\\operatorname\{Im}\\left({a}\\right)" else s!"im({a})", P_ATOM) | _, _ => plain
+  | "abs" => match args, as with
+    | [_], [a] => (if T.times != "*" then s!"\\left|{a}\\right|" else s!"abs({a})", P_ATOM) | _, _ => plain
+  | "exp" => match args with
+    | [.num q] => if q.isOne then (if T.times != "*" then "e" else "ℯ", P_ATOM) else plain
+    | _ => plain
+  | "diff" => match args, as with
+    | [_, .var _], [a, x] => if T.times != "*" then (s!"\\frac\{d}\{d{x}}\\left({a}\\right)", P_MUL) else plain
+    | _, _ => plain
+  | "integrate" => match args, as with
+    | [_, .var _], [a, x] => if T.times != "*" then (s!"\\int {a} \\, d{x}", P_MUL) else plain
+    | [_, .var _, _, _], [a, x, lo, hi] =>
+      if T.times != "*" then (s!"\\int_\{{lo}}^\{{hi}} {a} \\, d{x}", P_MUL) else plain
+    | _, _ => plain
+  | "sum" => match args, as with
+    | [_, .var _, _, _], [a, k, lo, hi] => if T.times != "*" then (s!"\\sum_\{{k}={lo}}^\{{hi}} {a}", P_MUL) else plain
+    | _, _ => plain
   -- the order-theory world
-  | "set", _, _ =>
+  | "set" =>
     let inner := ", ".intercalate as
     (if T.times != "*" then "\\{" ++ inner ++ "\\}" else "{" ++ inner ++ "}", P_ATOM)
-  | "poset", [_, _], [ss, _] =>
-    (if T.times != "*" then "\\text{poset }" ++ ss else "poset " ++ ss, P_ATOM)
-  | "pair", [_, _], [a, b] => (if T.times != "*" then s!"({a}, {b})" else s!"({a}, {b})", P_ATOM)
-  | "rel", [_, _], [_, ps] => (ps, P_ATOM)
-  | "↦", [_, _], [a, b] => (if T.times != "*" then s!"{a} \\mapsto {b}" else s!"{a}↦{b}", P_ADD)
-  | "covers", [_, _], [a, b] => (if T.times != "*" then s!"{a} \\lessdot {b}" else s!"{a} ⋖ {b}", P_MUL)
-  | "span", [_, _, c], [a, b, cs] =>
-    let sep := if T.times != "*" then "\\mathbin{;;}" else ";;"
-    (if c.isOne then s!"{a}{sep}{b}" else s!"{a}{sep}{b}{sep}{cs}", P_ADD)
-  -- the logic world: connectives by their own precedence (↔ < → < ∨ < ∧ < ¬), quantifiers reach right
-  | "⊤", [], _ => (if T.times != "*" then "\\top" else "⊤", P_ATOM)
-  | "⊥", [], _ => (if T.times != "*" then "\\bot" else "⊥", P_ATOM)
-  | "range", [_, _], [a, b] => (if T.times != "*" then "\\{" ++ a ++ ", \\dots, " ++ b ++ "\\}" else s!"{a}..{b}", P_ATOM)
-  | "<", [_, _], [a, b] | "≤", [_, _], [a, b] | ">", [_, _], [a, b] | "≥", [_, _], [a, b]
-  | "=", [_, _], [a, b] | "≠", [_, _], [a, b] | "∣", [_, _], [a, b] =>
-    let op := if T.times == "*" then name else match name with
-      | "≤" => "\\le" | "≥" => "\\ge" | "≠" => "\\ne" | "∣" => "\\mid" | o => o
-    (s!"{a} {op} {b}", P_ATOM)
-  | "All", [], _ => (if T.times != "*" then "\\mathrm{All}" else "All", P_ATOM)
-  | "List", _, _ =>
+  | "poset" => match args, as with
+    | [_, _], [ss, _] => (if T.times != "*" then "\\text{poset }" ++ ss else "poset " ++ ss, P_ATOM)
+    | _, _ => plain
+  | "pair" => match args, as with
+    | [_, _], [a, b] => (if T.times != "*" then s!"({a}, {b})" else s!"({a}, {b})", P_ATOM) | _, _ => plain
+  | "rel" => match args, as with | [_, _], [_, ps] => (ps, P_ATOM) | _, _ => plain
+  | "↦" => match args, as with
+    | [_, _], [a, b] => (if T.times != "*" then s!"{a} \\mapsto {b}" else s!"{a}↦{b}", P_ADD) | _, _ => plain
+  | "covers" => match args, as with
+    | [_, _], [a, b] => (if T.times != "*" then s!"{a} \\lessdot {b}" else s!"{a} ⋖ {b}", P_MUL) | _, _ => plain
+  | "span" => match args, as with
+    | [_, _, c], [a, b, cs] =>
+      let sep := if T.times != "*" then "\\mathbin{;;}" else ";;"
+      (if c.isOne then s!"{a}{sep}{b}" else s!"{a}{sep}{b}{sep}{cs}", P_ADD)
+    | _, _ => plain
+  -- the logic world
+  | "⊤" => match args with | [] => (if T.times != "*" then "\\top" else "⊤", P_ATOM) | _ => plain
+  | "⊥" => match args with | [] => (if T.times != "*" then "\\bot" else "⊥", P_ATOM) | _ => plain
+  | "range" => match args, as with
+    | [_, _], [a, b] => (if T.times != "*" then "\\{" ++ a ++ ", \\dots, " ++ b ++ "\\}" else s!"{a}..{b}", P_ATOM)
+    | _, _ => plain
+  | "<" | "≤" | ">" | "≥" | "=" | "≠" | "∣" => match args, as with
+    | [_, _], [a, b] =>
+      let op := if T.times == "*" then name else match name with
+        | "≤" => "\\le" | "≥" => "\\ge" | "≠" => "\\ne" | "∣" => "\\mid" | o => o
+      (s!"{a} {op} {b}", P_ATOM)
+    | _, _ => plain
+  | "All" => match args with | [] => (if T.times != "*" then "\\mathrm{All}" else "All", P_ATOM) | _ => plain
+  | "List" =>
     let inner := ", ".intercalate as
     (if T.times != "*" then "\\{" ++ inner ++ "\\}" else "{" ++ inner ++ "}", P_ATOM)
-  | _, _, _ => (T.fn name as, P_ATOM)
+  | _ => plain
 
 /-- The printer's termination goals: a subterm, or a member of a subterm's list, weighs less. -/
 local macro "print_decreasing" : tactic => `(tactic| (
