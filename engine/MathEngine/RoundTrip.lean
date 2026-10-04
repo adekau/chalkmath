@@ -315,5 +315,273 @@ theorem printRaw_plain {e : Expr} (h : Plain e) : PrintsAs e := by
         simp [ptoks, List.flatMap_map]
       simp [textTarget, hs, precOf, P_MUL]
 
+/-! ## The lexer reads the tokens back -/
+
+/-- The one-character operators the fragment prints. -/
+def opChars : List Char := ['+', '*', '^', '(', ')']
+
+/-- A token the lexer reads back as itself. -/
+def TokOk : T → Prop
+  | (.num, s) => s.toList ≠ [] ∧ ∀ c ∈ s.toList, c.isDigit = true
+  | (.id, s) => isIdent s = true
+  | (.op, s) => ∃ c ∈ opChars, s = String.singleton c
+  | (.eof, _) => False
+
+/-- A number or a name: two of them in a row would run together. -/
+def isWord : T → Bool
+  | (.num, _) | (.id, _) => true
+  | _ => false
+
+/-- A token list whose rendering lexes back to it. -/
+def Lexable : List T → Prop
+  | [] => True
+  | [t] => TokOk t
+  | t :: u :: ts => TokOk t ∧ ¬(isWord t = true ∧ isWord u = true) ∧ Lexable (u :: ts)
+
+/-- What may follow a word without running into it: an operator, or the space before `+`. -/
+def HeadOk (r : List Char) : Prop := ∀ c, r.head? = some c → c ∈ opChars ∨ c = ' '
+
+theorem headOk_nil : HeadOk [] := by intro c h; simp at h
+
+theorem not_digit_of_headOk {c : Char} (h : c ∈ opChars ∨ c = ' ') : c.isDigit = false ∧ c ≠ '.' ∧
+    lex.isIdChar c = false := by
+  simp only [opChars, List.mem_cons, List.mem_nil_iff, or_false] at h
+  rcases h with (rfl | rfl | rfl | rfl | rfl) | rfl <;> decide
+
+theorem takeWhile_append_of_all {p : Char → Bool} {ds r : List Char} (hd : ∀ c ∈ ds, p c = true)
+    (hr : ∀ c, r.head? = some c → p c = false) : (ds ++ r).takeWhile p = ds := by
+  induction ds with
+  | nil => cases r with
+    | nil => rfl
+    | cons c r => simp [hr c rfl]
+  | cons d ds ih =>
+    simp only [List.cons_append, List.takeWhile_cons, hd d (by simp), ite_true]
+    rw [ih (fun c hc => hd c (by simp [hc]))]
+
+/-- A numeral, then something that is not a digit or a point. -/
+theorem lex_num {ds r : List Char} (hne : ds ≠ []) (hd : ∀ c ∈ ds, c.isDigit = true) (hr : HeadOk r)
+    (i : Nat) (acc : Array Tok) :
+    lex.go (ds ++ r) i acc =
+      lex.go r (i + ds.length) (acc.push ⟨.num, String.ofList ds, i, i + ds.length⟩) := by
+  obtain ⟨c, cs, rfl⟩ : ∃ c cs, ds = c :: cs := List.exists_cons_of_ne_nil hne
+  have hc : c.isDigit = true := hd c (by simp)
+  have hw : c.isWhitespace = false := by
+    revert hc; generalize c = c
+    intro hc; simp only [Char.isDigit, Char.isWhitespace, Bool.and_eq_true, decide_eq_true_eq] at hc ⊢
+    simp only [Bool.or_eq_false_iff, decide_eq_false_iff_not]
+    refine ⟨⟨⟨?_, ?_⟩, ?_⟩, ?_⟩ <;> intro h <;> rw [h] at hc <;> simp at hc
+  have hn : lexNum (c :: cs ++ r) = (c :: cs, r) := by
+    have ht : (c :: cs ++ r).takeWhile Char.isDigit = c :: cs :=
+      takeWhile_append_of_all hd (fun x hx => (not_digit_of_headOk (hr x hx)).1)
+    unfold lexNum
+    simp only [ht]
+    have hdrop : (c :: cs ++ r).drop (c :: cs).length = r := by simp
+    rw [hdrop]
+    cases r with
+    | nil => rfl
+    | cons x r' =>
+      have hx := (not_digit_of_headOk (hr x rfl)).2.1
+      simp [hx]
+  rw [lex.go.eq_def]
+  simp only [List.cons_append, hw, hc, Bool.true_or, dite_true, Bool.false_eq_true, ite_false]
+  rw [← List.cons_append, hn]
+  simp only [String.length_ofList, List.length_cons]
+
+/-- A name starts with neither a digit, a space nor a point. -/
+theorem idStart_facts {c : Char} (h : lex.isIdStart c = true) :
+    c.isDigit = false ∧ c.isWhitespace = false ∧ c ≠ '.' := by
+  simp only [lex.isIdStart, lex.isGreek, Char.isAlpha, Char.isUpper, Char.isLower, Bool.or_eq_true,
+    Bool.and_eq_true, decide_eq_true_eq, beq_iff_eq] at h
+  simp only [Char.isDigit, Char.isWhitespace, Bool.and_eq_false_iff, decide_eq_false_iff_not,
+    Bool.or_eq_false_iff, ne_eq, Char.ext_iff, UInt32.le_iff_toNat_le, ge_iff_le, ← UInt32.toNat_inj] at h ⊢
+  simp at h ⊢
+  omega
+
+/-- A name, then something that is not a name's character. -/
+theorem lex_id {x : String} (hx : isIdent x = true) {r : List Char} (hr : HeadOk r) (i : Nat) (acc : Array Tok) :
+    lex.go (x.toList ++ r) i acc =
+      lex.go r (i + x.toList.length) (acc.push ⟨.id, x, i, i + x.toList.length⟩) := by
+  unfold isIdent at hx
+  split at hx
+  · next c cs hcs =>
+    simp only [Bool.and_eq_true, List.all_eq_true] at hx
+    obtain ⟨hs, hall⟩ := hx
+    obtain ⟨hd, hw, hdot⟩ := idStart_facts hs
+    have ht : (x.toList ++ r).takeWhile lex.isIdChar = x.toList := by
+      apply takeWhile_append_of_all
+      · rw [hcs]; intro d hd'; simp at hd'; rcases hd' with rfl | hd'
+        · exact lex.isIdChar_of_isIdStart hs
+        · exact hall d hd'
+      · exact fun y hy => (not_digit_of_headOk (hr y hy)).2.2
+    rw [hcs] at ht ⊢
+    rw [lex.go.eq_def]
+    have hdot' : (c == '.') = false := by simp [hdot]
+    simp only [List.cons_append, hw, hd, hdot', hs, Bool.false_or, Bool.false_and, dite_true,
+      Bool.false_eq_true, ite_false, dite_false]
+    rw [← List.cons_append, ht]
+    have : String.ofList (c :: cs) = x := by rw [← hcs, String.ofList_toList]
+    simp [this]
+  · simp at hx
+
+theorem lex_op {c : Char} (hc : c ∈ opChars) (hp : c ≠ '+') (r : List Char) (i : Nat) (acc : Array Tok) :
+    lex.go (c :: r) i acc = lex.go r (i + 1) (acc.push ⟨.op, String.singleton c, i, i + 1⟩) := by
+  simp only [opChars, List.mem_cons, List.mem_nil_iff, or_false] at hc
+  rcases hc with rfl | rfl | rfl | rfl | rfl
+  · exact absurd rfl hp
+  all_goals
+    rw [lex.go.eq_def]
+    simp [lex.isIdStart, lex.isGreek]
+
+theorem lex_plus (r : List Char) (i : Nat) (acc : Array Tok) :
+    lex.go (' ' :: '+' :: ' ' :: r) i acc = lex.go r (i + 3) (acc.push ⟨.op, "+", i + 1, i + 2⟩) := by
+  rw [lex.go.eq_def]; simp
+  rw [lex.go.eq_def]; simp [lex.isIdStart, lex.isGreek]
+  rw [lex.go.eq_def]; simp
+
+/-- A token without its span. -/
+def strip (t : Tok) : T := (t.kind, t.s)
+
+/-- One token, read off the front of the characters. -/
+theorem lex_tok {t : T} (ht : TokOk t) {r : List Char} (hr : isWord t = true → HeadOk r) (i : Nat)
+    (acc : Array Tok) : ∃ i' tok, strip tok = t ∧
+      lex.go (renderTok t ++ r) i acc = lex.go r i' (acc.push tok) := by
+  match t, ht with
+  | (.num, s), ⟨hne, hd⟩ =>
+    refine ⟨_, _, ?_, lex_num (ds := s.toList) (by simpa using hne) hd (hr rfl) i acc⟩
+    simp [strip]
+  | (.id, s), hs => exact ⟨_, _, rfl, lex_id hs (hr rfl) i acc⟩
+  | (.op, s), ⟨c, hc, hsc⟩ =>
+    subst hsc
+    by_cases hp : c = '+'
+    · subst hp
+      exact ⟨_, _, rfl, lex_plus r i acc⟩
+    · have : renderTok (.op, String.singleton c) = [c] := by
+        rw [renderTok_op (by intro h; exact hp (by simpa using congrArg String.toList h))]; simp
+      rw [this]
+      exact ⟨_, _, rfl, lex_op hc hp r i acc⟩
+
+theorem headOk_render {u : T} (hu : TokOk u) (hw : isWord u = false) (ts : List T) :
+    HeadOk (render (u :: ts)) := by
+  match u, hu, hw with
+  | (.op, s), ⟨c, hc, hsc⟩, _ =>
+    subst hsc
+    intro x hx
+    by_cases hp : c = '+'
+    · subst hp; simp at hx; exact .inr hx.symm
+    · have : renderTok (.op, String.singleton c) = [c] := by
+        rw [renderTok_op (by intro h; exact hp (by simpa using congrArg String.toList h))]; simp
+      simp [this] at hx; subst hx; exact .inl hc
+
+/-- The lexer reads back a rendered token list, and then the end of input. -/
+theorem lex_render : ∀ (ts : List T), Lexable ts → ∀ (i : Nat) (acc : Array Tok),
+    ∃ arr, lex.go (render ts) i acc = .ok arr ∧
+      arr.toList.map strip = acc.toList.map strip ++ ts ++ [(.eof, "")]
+  | [], _, i, acc => ⟨_, by rw [render_nil, lex.go.eq_def], by simp [strip]⟩
+  | [t], ht, i, acc => by
+    obtain ⟨i', tok, hs, he⟩ := lex_tok (r := []) ht (fun _ => headOk_nil) i acc
+    simp only [render_cons, render_nil]
+    rw [he, lex.go.eq_def]
+    exact ⟨_, rfl, by simp [strip] at hs ⊢; exact hs⟩
+  | t :: u :: ts, ⟨ht, hw, hrest⟩, i, acc => by
+    have hr : isWord t = true → HeadOk (render (u :: ts)) := by
+      intro htw
+      have hu : TokOk u := by
+        match ts, hrest with
+        | [], h => exact h
+        | _ :: _, h => exact h.1
+      exact headOk_render hu (by cases h : isWord u <;> simp_all) ts
+    obtain ⟨i', tok, hs, he⟩ := lex_tok ht hr i acc
+    obtain ⟨arr, h1, h2⟩ := lex_render (u :: ts) hrest i' (acc.push tok)
+    refine ⟨arr, ?_, ?_⟩
+    · rw [render_cons, he, h1]
+    · rw [h2]; simp [hs]
+
+/-! ## The fragment's tokens are well formed -/
+
+theorem digits_int (n : Nat) : (toString (n : Int)).toList = Nat.toDigits 10 n := by
+  rw [show toString (n : Int) = toString n from rfl, Nat.toString_eq_ofList_toDigits, String.toList_ofList]
+
+theorem lexable_cons_op {o : T} (ho : TokOk o) (hw : isWord o = false) :
+    ∀ {ys : List T}, Lexable ys → Lexable (o :: ys)
+  | [], _ => ho
+  | _ :: _, h => ⟨ho, by simp [hw], h⟩
+
+theorem lexable_append_op {o : T} {ys : List T} (hw : isWord o = false) (hy : Lexable (o :: ys)) :
+    ∀ {xs : List T}, Lexable xs → Lexable (xs ++ o :: ys)
+  | [], _ => hy
+  | [t], ht => ⟨ht, by simp [hw], hy⟩
+  | t :: u :: ts, ⟨ht, hn, hrest⟩ => ⟨ht, hn, lexable_append_op hw hy hrest⟩
+
+theorem tokOk_op {c : Char} (hc : c ∈ opChars) : TokOk (.op, String.singleton c) := ⟨c, hc, rfl⟩
+
+theorem tokOk_lp : TokOk (.op, "(") := tokOk_op (c := '(') (by decide)
+theorem tokOk_rp : TokOk (.op, ")") := tokOk_op (c := ')') (by decide)
+theorem tokOk_plus : TokOk (.op, "+") := tokOk_op (c := '+') (by decide)
+theorem tokOk_star : TokOk (.op, "*") := tokOk_op (c := '*') (by decide)
+theorem tokOk_hat : TokOk (.op, "^") := tokOk_op (c := '^') (by decide)
+
+theorem lexable_rp : Lexable [((.op, ")") : T)] := tokOk_rp
+
+theorem lexable_paren (b : Bool) {ts : List T} (h : Lexable ts) : Lexable (paren b ts) := by
+  cases b
+  · exact h
+  · exact lexable_cons_op tokOk_lp rfl (lexable_append_op rfl lexable_rp h)
+
+theorem lexable_rawTail {sep : String} (hs : TokOk (.op, sep)) {as : List Expr}
+    (h : ∀ c ∈ as, ∀ ctx, Lexable (ptoks c ctx)) : Lexable (rawTail sep as) := by
+  induction as with
+  | nil => trivial
+  | cons a as ih =>
+    have ha := h a (by simp) 2
+    have ih := ih (fun c hc => h c (by simp [hc]))
+    simp only [rawTail]
+    apply lexable_cons_op hs rfl
+    cases as with
+    | nil => simpa [rawTail, ptoks] using ha
+    | cons b bs => simp only [rawTail]; exact lexable_append_op rfl (by simpa [rawTail] using ih) (by simpa [ptoks] using ha)
+
+theorem isIdent_unary {f : String} (hf : f ∈ unaryNames) : isIdent f = true := by
+  simp only [unaryNames, List.mem_cons, List.mem_nil_iff, or_false] at hf
+  rcases hf with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;>
+    simp [isIdent, lex.isIdStart, lex.isIdChar, lex.isGreek]
+
+theorem lexable_plain {e : Expr} (h : Plain e) : ∀ ctx, Lexable (ptoks e ctx) := by
+  induction h with
+  | num n =>
+    intro ctx
+    apply lexable_paren
+    refine ⟨?_, ?_⟩ <;> simp only [ofInt_num, digits_int]
+    · exact Nat.toDigits_ne_nil
+    · exact fun c hc => Nat.isDigit_of_mem_toDigits (by decide) (by decide) hc
+  | var x hx _ => intro ctx; exact lexable_paren _ hx
+  | fn f a hf _ iha =>
+    intro ctx
+    apply lexable_paren
+    exact ⟨isIdent_unary hf, by simp [isWord],
+      lexable_cons_op tokOk_lp rfl (lexable_append_op rfl lexable_rp (iha 1))⟩
+  | pow b x _ _ ihb ihx =>
+    intro ctx
+    exact lexable_paren _ (lexable_append_op rfl (lexable_cons_op tokOk_hat rfl (ihx 3)) (ihb 4))
+  | add a b as _ _ _ iha ihb ihas =>
+    intro ctx
+    apply lexable_paren
+    simp only [raw]
+    have := lexable_rawTail tokOk_plus (as := b :: as) (by
+      intro c hc; simp at hc; rcases hc with rfl | hc
+      · exact ihb
+      · exact ihas c hc)
+    simp only [rawTail] at this ⊢
+    exact lexable_append_op rfl this (iha 1)
+  | mul a b as _ _ _ iha ihb ihas =>
+    intro ctx
+    apply lexable_paren
+    simp only [raw]
+    have := lexable_rawTail tokOk_star (as := b :: as) (by
+      intro c hc; simp at hc; rcases hc with rfl | hc
+      · exact ihb
+      · exact ihas c hc)
+    simp only [rawTail] at this ⊢
+    exact lexable_append_op rfl this (iha 2)
+
 end RoundTrip
 end MathEngine
