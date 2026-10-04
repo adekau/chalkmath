@@ -6,7 +6,9 @@ import Proofs.Expand
 `out` only if `out · D` and `e · D`, each normalized, expanded and normalized, are the same term.
 `factor_run_sound` reads that as `out = a` at every point where the checker's normalizations hold and
 `D ≠ 0`. The condition is needed: `factor(1/x + 1)` is `(x + 1)/x`, and at `x = 0` the two differ
-(`not_factor_at_zero`, with Lean's `1/0 = 0`: the input is 1 and the answer 0).
+(`not_factor_at_zero`, with Lean's `1/0 = 0`: the input is 1 and the answer 0). Expanding the answer
+again gives the input's value back under the same conditions (`expand_factor_sound`), but not, in
+general, its term.
 -/
 noncomputable section
 namespace MathProofs
@@ -59,6 +61,17 @@ theorem factor_run_sound (norm : Expr → Except String Expr) {a out den : Expr}
                   prodR_unMul]
               exact mul_right_cancel₀ hD (hR.symm.trans hL)
             · cases h
+
+/-- **`expand` undoes `factor`, up to value.** `cmd.expand` distributes (`Expand.dist`) and the
+pipeline collects; doing that to `factor`'s answer gives back the input's value, under the same
+conditions as `factor_run_sound`. Not its term: `expand` leaves a negative power of a sum as it is, so
+`expand(factor(e))` keeps everything over `D` where `e` had terms over parts of it. -/
+theorem expand_factor_sound (norm : Expr → Except String Expr) {a out den r : Expr}
+    (h : Factor.run norm a = .ok (out, true, den)) (ρ : EnvR)
+    (hn : ∀ x y, norm x = .ok y → evalR ρ x = evalR ρ y) (hD : evalR ρ den ≠ 0)
+    (hr : norm (Expand.dist out) = .ok r) :
+    evalR ρ r = evalR ρ a := by
+  rw [← hn _ _ hr, dist_sound, factor_run_sound norm h ρ hn hD]
 
 /-- The condition is needed: `factor(1/x + 1)` is `(x + 1)/x` (`engine/Tests`), and at `x = 0`, where
 the denominator is zero, the input is 1 and the answer 0. -/
