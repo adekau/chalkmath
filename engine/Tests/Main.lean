@@ -338,6 +338,22 @@ def sessionTests : TestM Unit := do
   (st, r) := sessionEval st "rref([a,1;1,a])" ",\"showWork\":true"
   check "rref symbolic path" r "[1, 0; 0, 1]"
   checkTrue "rref symbolic path: .symbolic rule names" ((subRules "rref([a,1;1,a])").all (·.endsWith ".symbolic")) (subRules "rref([a,1;1,a])").toString
+  (st, r) := sessionEval st "rref([x,y;x^2,1])" ",\"showWork\":true"
+  check "rref symbolic: a cancellation that assumes" r "[1, 0; 0, 1]"
+  (st, _) := sessionEval st "N(pi)" ",\"showWork\":true"
+  (st, _) := sessionEval st "N(tan(pi/2))" ",\"showWork\":true"
+  let lastRule (src : String) : String :=
+    ((st.get "t").cells.lookup src >>= fun c => c.derivation.steps.toList.getLast? |>.map (·.rule)).getD ""
+  check "N: certified by intervals" (lastRule "N(pi)") "cmd.N"
+  check "N: a pole is not certified" (lastRule "N(tan(pi/2))") "cmd.N.float"
+  checkTrue "N: the certified step states its bound"
+    ((((st.get "t").cells.lookup "N(pi)").bind fun c => c.derivation.steps.toList.getLast?).map (fun s => contains s.explanation "to within $10^{-14}$") |>.getD false) "N(pi)"
+  let symSteps := ((st.get "t").cells.lookup "rref([x,y;x^2,1])" >>= fun c => c.derivation.steps[0]? >>= (·.sub)).map (·.steps.toList) |>.getD []
+  check "rref symbolic: the row addition that cancelled says so" (symSteps.map (·.rule)).toString
+    "[la.row-scale.symbolic, la.row-add.symbolic.assuming, la.row-scale.symbolic, la.row-add.symbolic]"
+  let symTexts := symSteps.map (·.explanation)
+  checkTrue "rref symbolic: the scale states its pivot, the addition its cancellation"
+    ((symTexts[0]?.getD "").endsWith "assuming $x \\neq 0$." && (symTexts[1]?.getD "").endsWith "Simplifying the entries assumes $x \\neq 0$.") symTexts.toString
   -- the order-theory world
   (st, r) := ev st "let D = divisors(12)"; checkTrue "order: divisors is a poset" (r.startsWith "poset {1, 2, 3, 4, 6, 12}") r
   (st, r) := ev st "join(D, 4, 6)"; check "order: join in divisors(12)" r "12"

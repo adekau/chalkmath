@@ -3946,7 +3946,7 @@ const RULE_NAMES: Record<string, string> = {
   "simp.radical": "Radical", "simp.exp-product": "Exponentials multiply", "expand.distribute": "Distribute", "expand.power": "Expand the power",
   "cx.euler": "Euler's formula", "cx.euler-power": "Euler's formula", "cx.arithmetic": "Complex arithmetic", "cx.i-power": "Power of i", "cx.re-im": "Real and imaginary parts",
   "cx.conjugate": "Conjugate", "cx.abs": "Modulus", "cx.exact-trig": "Exact value", "cx.power": "Complex power",
-  "la.row-swap": "Swap rows", "la.row-scale": "Scale a row", "la.row-add": "Add a multiple of a row", "la.det": "Determinant", "la.mul": "Matrix product", "la.add": "Matrix sum",
+  "la.row-swap": "Swap rows", "la.row-scale": "Scale a row", "la.row-add": "Add a multiple of a row", "la.row-swap.symbolic": "Swap rows", "la.row-scale.symbolic": "Scale a row, assuming the pivot nonzero", "la.row-add.symbolic": "Add a multiple of a row", "la.row-add.symbolic.assuming": "Add a multiple of a row, assuming", "la.det": "Determinant", "la.mul": "Matrix product", "la.add": "Matrix sum",
   "la.scalar-mul": "Scalar multiple", "la.transpose": "Transpose", "la.pow": "Matrix power", "la.dot": "Dot product", "la.norm": "Norm", "la.conj": "Conjugate", "la.ediv": "Entrywise division", "la.emul": "Entrywise product", "la.part": "Part", "stat.total": "Total", "stat.mean": "Mean", "stat.variance": "Sample variance", "stat.stdev": "Standard deviation", "stat.min": "Minimum", "stat.max": "Maximum", "stat.median": "Median", "la.context": "Matrix context",
   "int.check": "Check by differentiating", "int.compare": "Compare with the integrand", "int.bounds": "Evaluate at the bounds", "int.table": "Table integral", "int.power": "Power rule for integrals",
   "int.variable": "Integral of the variable", "int.constant": "Integral of a constant", "int.constant-multiple": "Constant multiple", "int.sum": "Sum rule for integrals",
@@ -3978,7 +3978,7 @@ const RULE_NAMES: Record<string, string> = {
   "stlc.var": "Var", "stlc.abs": "→I (abstraction)", "stlc.app": "→E (application)", "stlc.constraints": "Type equations",
   "stlc.split": "Split an arrow", "stlc.unify": "Unify", "stlc.principal": "Principal type",
   "cmd.rref": "Row reduce", "cmd.integrate": "Integrate", "cmd.expand": "Expand", "cmd.subst": "Substitute", "cmd.simplify": "Simplify", "cmd.sum": "Sum", "cmd.exptotrig": "Euler's formula",
-  "cmd.N": "Numerical value", "order.divisors": "Divisors", "order.subsets": "Subsets",
+  "cmd.N": "Numerical value", "cmd.N.float": "Floating-point value", "order.divisors": "Divisors", "order.subsets": "Subsets",
 };
 
 /** The paths at which two terms differ: the smallest subterms that changed. Children are compared

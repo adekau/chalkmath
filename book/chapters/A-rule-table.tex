@@ -30,15 +30,16 @@ the engine omits is unverified.
 \rt{diff.power}{conditional}{Proved for a natural exponent with a differentiable base; real exponents still open (\lc{diff_power_nat_sound}).}
 \rt{diff.chain}{conditional}{Needs the inner function differentiable; proved for $\sin$, $\cos$ and $\exp$, while $\ln$ and $\tan$ also need a domain condition (\lc{diff_chain_sin_sound}, \lc{diff_chain_cos_sound}, \lc{diff_chain_exp_sound}).}
 \rt{diff.matrix}{verified}{A matrix is differentiated entry by entry (\lc{diffMatrix_sound}): with matrices given a value (\lc{evalV}), the theorem has content.}
-\rt{diff.higher-order}{unverified}{An abbreviation: it eliminates the three-argument form, so there is nothing to prove.}
+\rt{diff.higher-order}{verified}{$\operatorname{diff}(f, x, n)$ for a positive integer $n$ is $n$ successive $\operatorname{diff}(\cdot, x)$ (\lc{diffHigherOrder_spec}), and those mean Mathlib's \lc{iteratedDeriv} $n$ of $f$ as a function of $x$ (\lc{diffHigherOrder_soundR}).}
 \midrule \multicolumn{3}{l}{\textbf{Linear algebra}} \\
 \rt{cmd.rref}{verified}{Over $\mathbb{Q}$ the reduced matrix has the input's solution set (\lc{sol_rref}) and is in reduced row echelon form (\lc{rref_isRref}). With symbolic entries the nested row operations are the unverified \texttt{.symbolic} ones, and the step inherits their status.}
 \rt{la.row-swap}{verified}{Exchanging two rows preserves the solution set (\lc{sol_swap}).}
 \rt{la.row-scale}{verified}{Scaling a row by a nonzero rational preserves the solution set (\lc{sol_scale}).}
 \rt{la.row-add}{verified}{Adding a multiple of another row preserves the solution set (\lc{sol_addMul}).}
-\rt{la.row-swap.symbolic}{unverified}{Symbolic entries: the pivot is assumed nonzero because simplify could not show it is zero.}
-\rt{la.row-scale.symbolic}{unverified}{Symbolic entries: division by a pivot only assumed nonzero, and each entry rewritten by the simplifier, whose cancellations assume their bases nonzero and are not shown; no theorem yet.}
-\rt{la.row-add.symbolic}{unverified}{Symbolic entries: each entry rewritten by the simplifier, whose cancellations assume their bases nonzero and are not shown; no theorem yet.}
+\rt{la.row-swap.symbolic}{verified}{Exchanging two rows keeps the solution set at every value of the symbols (\lc{swapRows_soundR}); no arithmetic is done.}
+\rt{la.row-scale.symbolic}{conditional}{Dividing a row by the pivot keeps the solution set wherever the pivot is not zero (\lc{scaleRowExact_soundR}), which the step states; a cancellation the simplifier makes in the entries is stated too.}
+\rt{la.row-add.symbolic.assuming}{conditional}{As \rn{la.row-add.symbolic}, but simplifying the entries used a cancellation that assumes its base nonzero or positive; the step states the assumption.}
+\rt{la.row-add.symbolic}{verified}{Subtracting a multiple of another row keeps the solution set at every value of the symbols (\lc{addRowExact_soundR}); the entries are simplified by the rules that assume nothing (\lc{normalizeSafe_sound}), checked by comparing with them.}
 \rt{la.ediv}{verified}{\texttt{A ./ B}, entrywise by definition: entry $(i,j)$ is $a_{ij}/b_{ij}$, and a scalar side meets every entry; each entry's arithmetic is its nested steps, with their statuses.}
 \rt{la.emul}{verified}{\texttt{A .* B}, the Hadamard product, entrywise by definition: entry $(i,j)$ is $a_{ij} b_{ij}$.}
 \rt{la.add}{verified}{Matrices of one shape add entrywise: the output has the input's value, read in \lc{evalV}, which gives a matrix its value (\lc{laAdd_sound}).}
@@ -52,7 +53,8 @@ the engine omits is unverified.
 \rt{cmd.expand}{verified}{Distribution is a total function proved sound over $\mathbb{R}$ (\lc{dist_sound}); the collection afterwards is the pipeline's own steps with their statuses.}
 \rt{cmd.simplify}{verified}{A cell's argument is already in normal form when the command sees it, so \texttt{simplify} returns it unchanged: the identity.}
 \rt{cmd.subst}{verified}{Structural substitution $e[x := v]$ evaluates as $e$ with $x$ rebound to the value of $v$ (\lc{cmdSubst_soundR}).}
-\rt{cmd.N}{unverified}{A floating-point approximation in IEEE-754 double precision; no error bound is proved.}
+\rt{cmd.N}{verified}{The decimal is certified: interval arithmetic over the rationals holds the exact value (\lc{ieval_sound}), with Taylor remainders for $\exp$, $\sin$, $\cos$, $\ln$ checked by $\exp$ and $\sqrt{\ }$ by squaring, and the digits shown are within a unit of their last place (\lc{certify_sound}, \lc{cmdN_sound}).}
+\rt{cmd.N.float}{unverified}{IEEE-754 double precision, for what \rn{cmd.N} cannot certify (a complex value, a pole, a jump); no error bound is proved.}
 \rt{cmd.factor}{checked}{The common-denominator form is a guess the pipeline checks: the input times the denominator $D$, normalized and expanded, must be the numerator $N$, so $N/D$ agrees with the input wherever $D \neq 0$. When the check fails, the collected normal form is the answer.}
 \rt{expand.distribute}{verified}{Multiplying out a product of sums and collecting like monomials: \lc{dist_sound}.}
 \rt{expand.power}{verified}{A power of a sum is the sum multiplied by itself: \lc{dist_sound}.}

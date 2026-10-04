@@ -107,15 +107,16 @@ export const FUNCTIONS: FnDoc[] = [
   },
   {
     name: "N", area: "Algebra",
-    usage: [["N(e)", "gives a numerical approximation of `e`, to fifteen significant digits."]],
+    usage: [["N(e)", "gives a numerical value of `e`, to fifteen significant digits, each one certified."]],
     details: [
-      "IEEE-754 double precision.",
+      "The digits are certified: the term is evaluated again over the rationals, to an interval proved to hold its exact value, and only the digits the interval pins down are shown, each within a unit of its last place. Usually that is all fifteen; when it is fewer, fewer are shown, and a value pinned down only near zero shows as 0.",
+      "What the intervals do not reach is a floating-point approximation in IEEE-754 double precision, and its step says it is not certified: a complex value, a function across a pole or a jump (`N(tan(pi/2))`), a negative base under a fractional power.",
       "Over ℂ when the term mentions `i`, or when its real value is not finite: `N(sqrt(-1))` is `i`.",
       "A term with a free variable has no numerical value.",
     ],
     examples: [
       basic("N(pi)", "N(sqrt(2))"),
-      section("Scope", "N(1/3)", "N(exp(1))", "N(sin(pi/6))"),
+      section("Scope", "N(1/3)", "N(exp(1))", "N(sin(pi/6))", "N(sin(10^30))", note("Not certified:"), "N(tan(pi/2))"),
     ],
     see: ["simplify"],
   },
@@ -365,9 +366,11 @@ export const FUNCTIONS: FnDoc[] = [
   {
     name: "rref", area: "Linear algebra",
     usage: [["rref(M)", "gives the reduced row echelon form of `M`."]],
-    details: ["Gauss–Jordan elimination. Each row operation is a step of its own, nested under the command."],
+    details: ["Gauss–Jordan elimination. Each row operation is a step of its own, nested under the command.",
+      "With symbols among the entries, a pivot is an entry the simplifier cannot show is zero, and the step that divides by it says it assumes it is not zero; where simplifying a row cancels a factor, the step says that too. The answer holds wherever those assumptions do."],
     examples: [
       basic("rref([1,2,3;4,5,6;7,8,10])"),
+      section("Symbolic entries", "rref([x, y; x^2, 1])"),
       section("Scope", note("A singular matrix:"), "rref([1,2;2,4])", note("Fractions stay exact:"), "rref([1/2,1,3;1,3,5])", "rref([1,2,3,4;2,4,6,8;1,1,1,1])"),
     ],
     see: ["det", "transpose"],

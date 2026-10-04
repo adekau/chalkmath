@@ -129,9 +129,13 @@ choices.
 
 When a matrix has symbolic entries the pivots are only \emph{assumed} nonzero --- the simplifier
 could not show $a$ is zero, so the algorithm divides by it --- and the theorem above does not
-apply, since the entries are not rationals. The engine keeps a second, unverified elimination for
-that case and names its steps with a \texttt{.symbolic} suffix. The status is honest:
-\rn{la.row-scale.symbolic} is ``division by a pivot that is only assumed nonzero''.
+apply, since the entries are not rationals. The engine keeps a second elimination for that case
+and names its steps with a \texttt{.symbolic} suffix. Each step is an exact row operation followed
+by the simplifier, and the operations are proved over $\mathbb{R}$ to keep the solution set at every
+value of the symbols (\lc{swapRows_soundR}, \lc{addRowExact_soundR}), dividing by the pivot where
+it is not zero (\lc{scaleRowExact_soundR}). So the status is honest in both directions:
+\rn{la.row-scale.symbolic} is conditional, and its step says ``assuming $a \neq 0$''; a row addition
+whose simplification cancelled a factor is \rn{la.row-add.symbolic.assuming} and says which.
 
 \begin{trybox}
 \begin{minted}{text}
