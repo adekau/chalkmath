@@ -52,6 +52,7 @@ test("the tree is the engine's parse: precedence, implicit products, what the nu
     "sin^2(y)^3": "[(paren [(sin [y]) (^ [2])]) (^ [3])]",
     "sin^-1(y)": "[(sin [y]) (^ [- 1])]",
     "arctan(x)": "[(arctan [x])]",
+    "arg(1+i)": "[(arg [1 + i])]",
     "sec^2(x)": "[(sec [x]) (^ [2])]",
     "arcsin x": "[a r c s i n ␣ x]",
     "%": "[%]", "%%": "[% %]", "%2": "[% 2]", "% 2": "[% ␣ 2]",

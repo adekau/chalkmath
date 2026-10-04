@@ -44,6 +44,7 @@ def applyFn (f : String) (x : ℝ) : ℝ :=
   | "sqrt" => Real.sqrt x
   | "abs" => |x|
   | "sign" => Real.sign x
+  | "arg" => if x < 0 then Real.pi else 0
   | _ => 0
 
 @[simp] theorem applyFn_sin (x : ℝ) : applyFn "sin" x = Real.sin x := by simp [applyFn]

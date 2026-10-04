@@ -894,6 +894,7 @@ def trigTests : TestM Unit := do
   check "arctan prints" (roundtrip "arctan(x)") "arctan(x)"
   check "arcsin latex" (latexOf "arcsin(x)") "\\arcsin\\left(x\\right)"
   check "arccos^2 latex" (latexOf "arccos^2(x)") "{\\arccos\\left(x\\right)}^{2}"
+  check "arg latex" (latexOf "arg(z)") "\\arg\\left(z\\right)"
 
 def main : IO UInt32 := do
   let ((), failures) ← (do tests; sessionTests; trigTests; partStatTests; workTests; checkTests; logicRelTests; algebraTests; systemsTests; complexNTests; goldenTests).run #[]

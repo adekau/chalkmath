@@ -28,7 +28,7 @@ open Expr
 /-- Functions an answer may always use: they are part of how an answer is written, not work done. -/
 def answerFns : List String :=
   ["sin", "cos", "tan", "sec", "csc", "cot", "arcsin", "arccos", "arctan", "sinh", "cosh", "tanh",
-   "exp", "ln", "log", "sqrt", "abs", "conj", "re", "im"]
+   "exp", "ln", "log", "sqrt", "abs", "conj", "re", "im", "arg"]
 
 /-- The function names a term calls (λ-terms' `λ` and `@` heads included; they are filtered by the caller). -/
 partial def fnNames : Expr → List String

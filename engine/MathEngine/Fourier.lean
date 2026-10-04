@@ -79,7 +79,7 @@ end CF
 private def fnsC : List (String × (CF → CF)) :=
   [("sin", CF.sin), ("cos", CF.cos), ("tan", CF.tan), ("exp", CF.exp), ("ln", CF.log),
    ("sqrt", CF.sqrt), ("abs", fun z => CF.ofReal z.abs), ("conj", CF.conj),
-   ("re", fun z => CF.ofReal z.re), ("im", fun z => CF.ofReal z.im),
+   ("re", fun z => CF.ofReal z.re), ("im", fun z => CF.ofReal z.im), ("arg", fun z => CF.ofReal z.arg),
    ("sign", fun z => CF.ofReal (if z.im == 0 then (if z.re > 0 then 1 else if z.re < 0 then -1 else 0) else 0))]
 
 /-- The numeric evaluator over ℂ. Real variables come from `env`; `i` and `π` are constants. -/

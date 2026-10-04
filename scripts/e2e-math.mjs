@@ -44,6 +44,7 @@ const CASES = [
   { src: "diff(tan(x), x) - sec(x)^2", text: "0", step: "Collect like terms" },
   { src: "sin^-1(x)", text: "1/sin(x)" },
   { src: "N(arcsin(2))", error: "cannot evaluate 'arcsin' numerically" },
+  { src: "N(arg(-1-i))", text: "-2.35619449019234", step: "Numerical value" },
   { src: "rref([1,2;2,4])", text: "[1, 2; 0, 0]", step: "Add a multiple of a row" },
   { src: "rref([x, y; x^2, 1])", text: "[1, 0; 0, 1]", step: "Add a multiple of a row, assuming" },
   { src: "[1,2] * [1,2]", error: "inner dimensions must match" },
