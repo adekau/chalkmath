@@ -466,5 +466,20 @@ theorem System.no_deadlock (h : S.explore limit = .ok G)
 
 end
 
+/-- **`sys.violated`, `sys.found`: the trace is a shortest one.** Where `checkShortest` passes, every
+path from an initial state to a target, over the graph's edges (the system's transitions between
+reachable states, `System.explore_edges`), takes at least `len` steps. -/
+theorem checkShortest_spec {es : List (Nat × Nat)} {inits : List Nat} {d : Nat → Nat} {targets : List Nat}
+    {len : Nat} (h : checkShortest es inits d targets len = true) (f : Nat → Nat) (k : Nat)
+    (h0 : f 0 ∈ inits) (hs : ∀ i, i < k → (f i, f (i + 1)) ∈ es) (ht : f k ∈ targets) : len ≤ k := by
+  simp only [checkShortest, Bool.and_eq_true, List.all_eq_true, beq_iff_eq, decide_eq_true_eq] at h
+  obtain ⟨⟨hi, he⟩, htg⟩ := h
+  have bound : ∀ i, i ≤ k → d (f i) ≤ i := by
+    intro i hik
+    induction i with
+    | zero => exact Nat.le_of_eq (hi _ h0)
+    | succ i ih => exact Nat.le_trans (he _ (hs i (by omega))) (Nat.add_le_add_right (ih (by omega)) 1)
+  exact Nat.le_trans (htg _ ht) (bound k (Nat.le_refl _))
+
 end Sys
 end MathEngine

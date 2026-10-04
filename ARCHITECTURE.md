@@ -164,7 +164,10 @@ differential test with zero mismatches.
   level, a helpful action that is never taken there and that fairness forces (a strongly fair one
   hands the states where it is disabled to a further certificate). `FairProofs.lean` proves a
   certificate that checks rules out every fair run that avoids the goal (`checkTrue_spec`), and a
-  lasso that checks is one (`checkLasso_spec`). Shortest traces are not proved yet. Guards reuse the logic world's formulas, evaluated over the
+  lasso that checks is one (`checkLasso_spec`). A trace to a state that breaks an invariant, or to
+  one `reach` looks for, is checked shortest: breadth-first depths, zero initially and rising by at
+  most one per transition, bound every path below, and no target is shallower than the trace
+  (`checkShortest_spec`). Guards reuse the logic world's formulas, evaluated over the
   state with names (`idle`, `true`) as values.
 - **Logic is a fourth world.** `Logic.lean` reads formulas of propositional logic and bounded
   first-order formulas over finite sets of numbers, with its own grammar (ASCII spellings read as

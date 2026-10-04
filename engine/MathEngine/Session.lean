@@ -1126,6 +1126,7 @@ def systemCell (s : Session) (cellId source : String) :
     -- a trace from an initial state to state `j` as steps, each re-checked against the system
     let traceSteps (S : Sys.System) (G : Sys.Graph) (j : Nat) : Except String (Array Step × List (Nat × Nat)) := do
       let (start, path) := G.pathTo j
+      if !G.inits.contains start then throw "internal: the trace does not start at an initial state"
       let mut steps := #[step "sys.init" s!"Start: an initial state ({(S.init.toExpr).toText} holds)." (.var "init") (S.stateExpr G.states[start]!)]
       let mut cur := start
       let mut edges := []
@@ -1160,6 +1161,13 @@ def systemCell (s : Session) (cellId source : String) :
       match target with
       | some j =>
         let (steps, edges) ← traceSteps S G j
+        -- shortest: every state's breadth-first depth bounds the paths to it (`checkShortest_spec`)
+        let targets ← (List.range G.states.size).filterM fun i => do
+          let h ← S.holds φ G.states[i]!
+          return if head == "invariant" then !h else h
+        let depth := (List.range G.states.size).toArray.map fun i => (G.pathTo i).2.length
+        if !Sys.checkShortest (G.edges.map fun (a, _, b) => (a, b)) G.inits (depth.getD · 0) targets edges.length then
+          throw "internal: the trace is not checked shortest"
         if head == "invariant" then
           let steps := steps.push (step "sys.violated" s!"Here {(φ.toExpr).toText} fails: a shortest trace to a state that breaks it." (S.stateExpr G.states[j]!) (bool false))
           return done (bool false) steps s!"not invariant: fails after {edges.length} step{if edges.length == 1 then "" else "s"}" (graph := draw G edges [])

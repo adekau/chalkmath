@@ -123,8 +123,8 @@ the engine omits is unverified.
 \midrule \multicolumn{3}{l}{\textbf{Systems world}} \\
 \rt{sys.init}{verified}{An initial state: the init condition evaluated on it, by definition.}
 \rt{sys.step}{checked}{Each step of a trace is re-run against the system: the action is enabled there and its updates give the next state.}
-\rt{sys.found}{checked}{The last state of a re-run trace, where the formula is evaluated.}
-\rt{sys.violated}{checked}{The last state of a re-run trace, where the formula is evaluated and fails: a concrete counterexample. That breadth-first search finds a shortest one is not yet proved.}
+\rt{sys.found}{verified}{The last state of a re-run trace, from an initial state, where the formula holds. The trace is a shortest one: each state's breadth-first depth is zero initially and rises by at most one along a transition, checked, and no state where the formula holds is shallower than the trace is long, so every path to one is at least as long (\lc{checkShortest_spec}).}
+\rt{sys.violated}{verified}{The last state of a re-run trace, from an initial state, where the formula fails: a concrete counterexample, and a shortest one, by the same check of breadth-first depths (\lc{checkShortest_spec}).}
 \rt{sys.deadlock}{verified}{The last state of a re-run trace, with every action's guard evaluated false. When none is reported none is missed: the search finds every reachable state and every transition (\lc{System.no_deadlock}).}
 \rt{sys.reach}{verified}{Breadth-first search from the initial states finds exactly the reachable states, each once (\lc{System.explore_states}).}
 \rt{sys.invariant}{verified}{The formula holds in every state the search found, and the search finds every reachable state (\lc{System.explore_states}).}

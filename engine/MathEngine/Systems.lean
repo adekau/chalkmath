@@ -490,6 +490,12 @@ def check (op : String) (n : Nat) (es : List (Nat × Nat)) (sat : List Nat) (cha
 
 end Ctl
 
+/-- A trace of `len` steps is a shortest one to `targets`: `d` is zero at the initial states, rises by
+at most one along an edge, and is at least `len` at every target. Then every path to a target is at
+least `len` long (`checkShortest_spec`, `SystemsProofs.lean`). -/
+def checkShortest (es : List (Nat × Nat)) (inits : List Nat) (d : Nat → Nat) (targets : List Nat) (len : Nat) : Bool :=
+  inits.all (d · == 0) && es.all (fun e => decide (d e.2 ≤ d e.1 + 1)) && targets.all (fun t => decide (len ≤ d t))
+
 /-! Fair runs. The graph's edges carry the index of their action; `en a x` says action `a`'s guard
 holds at state `x`. A weakly fair action that stays enabled is eventually taken; a strongly fair one
 enabled again and again is taken again and again. `FairProofs.lean` proves each check below against
