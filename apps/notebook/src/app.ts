@@ -51,12 +51,10 @@ const DOCS: Doc[] = FUNCTIONS.map((f) => ({
 }));
 const DOC_BY_NAME = new Map(DOCS.map((d) => [d.name, d]));
 
-/** Lean-style backslash abbreviations: type `\`, see them all, filter as you type, Tab inserts the symbol.
- *  `text`: the symbol belongs to another world's grammar (λ-terms, logic, systems, types), which the
- *  typeset input does not read, so it is offered in a cell's text only. */
-interface Sym { abbr: string; aliases: string[]; sym: string; what: string; text?: true }
+/** Lean-style backslash abbreviations: type `\`, see them all, filter as you type, Tab inserts the symbol. */
+interface Sym { abbr: string; aliases: string[]; sym: string; what: string }
 const SYMBOLS: Sym[] = [
-  { abbr: "lam", aliases: ["lambda", "l"], sym: "λ", what: "lambda", text: true },
+  { abbr: "lam", aliases: ["lambda", "l"], sym: "λ", what: "lambda" },
   { abbr: "pi", aliases: [], sym: "π", what: "pi" },
   { abbr: "e", aliases: ["euler"], sym: "ℯ", what: "Euler's number, exp(1)" },
   { abbr: "phi", aliases: [], sym: "φ", what: "phi" },
@@ -89,29 +87,27 @@ const SYMBOLS: Sym[] = [
   { abbr: "Phi", aliases: [], sym: "Φ", what: "Phi" },
   { abbr: "Psi", aliases: [], sym: "Ψ", what: "Psi" },
   { abbr: "Omega", aliases: ["W"], sym: "Ω", what: "Omega" },
-  { abbr: "and", aliases: ["land", "wedge"], sym: "∧", what: "and", text: true },
-  { abbr: "or", aliases: ["lor", "vee"], sym: "∨", what: "or", text: true },
-  { abbr: "not", aliases: ["neg", "lnot"], sym: "¬", what: "not", text: true },
-  { abbr: "to", aliases: ["r", "imp", "implies"], sym: "→", what: "implies; a function type", text: true },
-  { abbr: "iff", aliases: ["lr"], sym: "↔", what: "if and only if", text: true },
-  { abbr: "top", aliases: [], sym: "⊤", what: "true (top)", text: true },
-  { abbr: "bot", aliases: [], sym: "⊥", what: "false (bottom)", text: true },
-  { abbr: "forall", aliases: ["all"], sym: "∀", what: "for all", text: true },
-  { abbr: "exists", aliases: ["ex"], sym: "∃", what: "there exists", text: true },
-  { abbr: "in", aliases: ["mem"], sym: "∈", what: "in (a quantifier's set)", text: true },
-  { abbr: "le", aliases: ["leq"], sym: "≤", what: "at most", text: true },
-  { abbr: "ge", aliases: ["geq"], sym: "≥", what: "at least", text: true },
-  { abbr: "ne", aliases: ["neq"], sym: "≠", what: "not equal", text: true },
-  { abbr: "mid", aliases: ["dvd"], sym: "∣", what: "divides", text: true },
-  { abbr: "vdash", aliases: ["entails"], sym: "⊢", what: "in the context (type: Γ ⊢ t)", text: true },
+  { abbr: "and", aliases: ["land", "wedge"], sym: "∧", what: "and" },
+  { abbr: "or", aliases: ["lor", "vee"], sym: "∨", what: "or" },
+  { abbr: "not", aliases: ["neg", "lnot"], sym: "¬", what: "not" },
+  { abbr: "to", aliases: ["r", "imp", "implies"], sym: "→", what: "implies; a function type" },
+  { abbr: "iff", aliases: ["lr"], sym: "↔", what: "if and only if" },
+  { abbr: "top", aliases: [], sym: "⊤", what: "true (top)" },
+  { abbr: "bot", aliases: [], sym: "⊥", what: "false (bottom)" },
+  { abbr: "forall", aliases: ["all"], sym: "∀", what: "for all" },
+  { abbr: "exists", aliases: ["ex"], sym: "∃", what: "there exists" },
+  { abbr: "in", aliases: ["mem"], sym: "∈", what: "in (a quantifier's set)" },
+  { abbr: "le", aliases: ["leq"], sym: "≤", what: "at most" },
+  { abbr: "ge", aliases: ["geq"], sym: "≥", what: "at least" },
+  { abbr: "ne", aliases: ["neq"], sym: "≠", what: "not equal" },
+  { abbr: "mid", aliases: ["dvd"], sym: "∣", what: "divides" },
+  { abbr: "vdash", aliases: ["entails"], sym: "⊢", what: "in the context (type: Γ ⊢ t)" },
 ];
 /** `\abbr` at the end of the text before the caret → the symbol; longest abbreviations first so `\eps` beats `\e`. */
 const SYMBOL_RE = new RegExp("\\\\(" + SYMBOLS.flatMap((s) => [s.abbr, ...s.aliases]).sort((a, b) => b.length - a.length).join("|") + ")$");
 const symbolFor = (name: string) => SYMBOLS.find((s) => s.abbr === name || s.aliases.includes(name))?.sym ?? "";
-/** The same table for the visual input, whose `\\` also inserts templates (`\\frac`, `\\int`, …).
- *  Not the `text` symbols: a λ-cell or a formula is not the grammar the visual input reads, and stays raw. */
-const VISUAL_SYMBOLS: Record<string, string> = Object.fromEntries(
-  SYMBOLS.filter((s) => !s.text).flatMap((s) => [s.abbr, ...s.aliases].map((a) => [a, s.sym])));
+/** The same table for the visual input, whose `\\` also inserts templates (`\\frac`, `\\int`, …). */
+const VISUAL_SYMBOLS: Record<string, string> = Object.fromEntries(SYMBOLS.flatMap((s) => [s.abbr, ...s.aliases].map((a) => [a, s.sym])));
 type CompItem = { kind: "doc"; doc: Doc }
   /** A name bound in the session: a value, a file, or a function (which opens its call). */
   | { kind: "name"; name: string; what: string; call: boolean } | { kind: "sym"; sym: Sym } | { kind: "tpl"; name: string; what: string; glyph: string }
@@ -3584,22 +3580,19 @@ function pyExpr(text: string): string {
 /** The notebook's own functions, which act on files before the engine sees a cell (files.ts): calls
  *  in the visual input as the engine's builtins are. */
 const NOTEBOOK_FNS = ["import", "samplePoints", "matrix", "dimensions"];
-const sessionFns = () => [...NOTEBOOK_FNS, ...[...USER_FNS.keys()].filter((k) => k.startsWith(`${sessionId}:`)).map((k) => k.slice(sessionId.length + 1))];
+/** The other worlds' commands (`taut`, `poset`, `system`, …) and the logic predicates: names the
+ *  typeset input makes calls of when `(` follows, as those worlds read them. */
+const WORLD_FNS = [...[ORDER_CELL, LOGIC_CELL, SYSTEM_CELL].flatMap((r) => /\(((?:\w+\|)+\w+)\)\\s\*\\\(/.exec(r.source)?.[1]?.split("|") ?? []), "prime", "even", "odd"];
+const sessionFns = () => [...NOTEBOOK_FNS, ...WORLD_FNS, ...[...USER_FNS.keys()].filter((k) => k.startsWith(`${sessionId}:`)).map((k) => k.slice(sessionId.length + 1))];
 
-/** Why a cell cannot be shown visually, or null when it can. λ-terms, order theory and file
- *  references are other grammars; so is text that does not parse, which stays as typed to be fixed. */
+/** Why a cell cannot be shown visually, or null when it can. Any math cell can: its text and its
+ *  typeset tree are one source (a text that does not read as structure shows as raw text), so the
+ *  two inputs are two views of it. A question is words, not notation. */
 function visualBlocked(cell: Cell): string | null {
   if (cell.type) return "it is not a math cell";
   const src = cellSrc(cell);
   if (cell.tree && writeText(cell.tree) === src) return null;   // the visual input's own, holes and all
-  const kind = cell.kind ?? cellKind(src);
-  if (kind === "lookup") return "questions are edited as text";
-  if (kind === "λ-term") return "λ-terms are edited as text";
-  if (kind === "order" || ORDER_CELL.test(src.trim())) return "order theory is edited as text";
-  if (kind === "logic" || isLogicCell(src.trim())) return "logic is edited as text";
-  if (kind === "system" || SYSTEM_CELL.test(src.trim())) return "systems are edited as text";
-  if (src.includes("\n")) return "a cell of several lines is edited as text";
-  if (src.trim() && !readNotation(src, sessionFns()).ok) return "the text does not parse yet";
+  if ((cell.kind ?? cellKind(src)) === "lookup") return "questions are edited as text";
   return null;
 }
 const cellMode = (cell: Cell) => cell.mode ?? S.inputMode;

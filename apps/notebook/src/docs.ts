@@ -100,7 +100,7 @@ The **sidebar** (Ctrl/⌘+B, or the rail at the left) shows the notebook's outli
     id: "typing", title: "Typing math", group: "Guide", parts: [md`
 # Typing math
 
-A math cell takes its input in one of two ways, and both are the same text underneath (it is the text that is saved and that the engine reads):
+A math cell takes its input in one of two ways, and both are the same text underneath (it is the text that is saved and that the engine reads). Switching between them never changes a character, and an edit in either changes only what it touches. Any math cell can be typeset, a formula, a system or a λ-term as well as a calculation:
 
 - **Typeset**: you read and edit the mathematics as it would be written on paper, with empty slots to fill in.
 - **Text**: the expression as you would type it, highlighted, ‹integrate(x/(x^2 + 1), x)›.
@@ -111,11 +111,13 @@ View › Math input chooses for every cell: **automatic** (the default) typesets
 
 - ‹/› starts a fraction and ‹^› a power; the arrow keys move through the slots and **Tab** goes to the next empty one.
 - A backslash name followed by space inserts a template: ‹\frac›, ‹\sqrt›, ‹\int› (an integral), ‹\dint› (a definite one), ‹\sum›, ‹\diff›, ‹\mat2x3› (a 2×3 matrix), ‹\vec3›, … ([the full list](#doc:symbols)). In a text cell the same names turn the cell typeset.
+- **Shift+Enter** starts a new line, for a system's declarations, as in the text.
+- Text that does not read yet (an unclosed bracket) shows as it is typed until it does.
 - **@** wraps the selection in parentheses with a slot in front for a function's name: select ‹v›, press @, type ‹norm›.
 
 ## Symbols
 
-Type ‹\› and a name, then space or Tab, for a symbol: ‹\pi› is π, ‹\lam› is λ, ‹\e› is ℯ, ‹\theta› is θ, and for logic ‹\and› is ∧, ‹\or› is ∨, ‹\not› is ¬, ‹\to› is →, ‹\forall› is ∀, ‹\in› is ∈, ‹\le› is ≤. The names are Lean's, so ‹\land›, ‹\wedge› and the like work too. Typing ‹\› alone lists them all and narrows as you type. In a typeset cell only the Greek letters apply: formulas, λ-terms and systems are edited as text. [Symbols and templates](#doc:symbols) has the table.
+Type ‹\› and a name, then space or Tab, for a symbol: ‹\pi› is π, ‹\lam› is λ, ‹\e› is ℯ, ‹\theta› is θ, and for logic ‹\and› is ∧, ‹\or› is ∨, ‹\not› is ¬, ‹\to› is →, ‹\forall› is ∀, ‹\in› is ∈, ‹\le› is ≤. The names are Lean's, so ‹\land›, ‹\wedge› and the like work too. Typing ‹\› alone lists them all and narrows as you type. They work the same in a typeset cell, where ASCII spellings also show as their glyphs: ‹->› as →, ‹&&› as ∧, ‹<=› as ≤ (the text keeps what you typed). [Symbols and templates](#doc:symbols) has the table.
 
 ## Help while typing
 
