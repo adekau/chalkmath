@@ -297,6 +297,10 @@ def sessionTests : TestM Unit := do
   (st, r) := ev st "factor(a/x + b/y)"; check "factor: together" r "(a*y + b*x)/(x*y)"
   (st, r) := ev st "factor(-2*x - 4)"; check "factor: negative common factor" r "-2*(x + 2)"
   (st, r) := ev st "factor(x/2 + x/3)"; check "factor: collects first" r "5*x/6"
+  (st, r) := ev st "factor(a/(x+1) + b/x)"; check "factor: denominators that are sums" r "(a*x + b*(x + 1))/(x*(x + 1))"
+  (st, r) := sessionEval st "factor(1/(x+1) + 1/(x-1))" ",\"showWork\":true"
+  check "factor: checked by cross-multiplying" r "2*x/((x - 1)*(x + 1))"
+  checkTrue "factor: the step says what was checked" ((derivationExplanations st "factor(1/(x+1) + 1/(x-1))").any (contains · "Checked: times its denominator"))
   (st, r) := ev st "diff(x*sin(x), x)"; check "diff x sin x" r "x*cos(x) + sin(x)"
   (st, r) := ev st "diff(2^x, x)"; check "diff 2^x" r "2^x*ln(2)"
   (st, r) := ev st "diff(x^x, x)"; check "diff x^x" r "x^x*(ln(x) + 1)"
