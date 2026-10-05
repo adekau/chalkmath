@@ -427,6 +427,21 @@ beside each step comes from `engine.capabilities.ruleStatus` rather than a list 
 that could drift from `proofs/`. The one thing the page derives from source text is a cell's *kind*
 label, which is presentation only.
 
+**What the browser keeps.** Every open notebook is autosaved to `localStorage` after a run or an
+edit, coalesced, and flushed when the page is hidden (a phone closes a page without `beforeunload`).
+Each browser tab saves under a key of its own, `chalkmath.autosave.<tab id>`
+(`autosave-store.ts`): the id lasts the tab's life, reloads included (`sessionStorage`), and the tab
+holds a Web Lock of that name while it is open. When a tab starts, it adopts every autosave whose
+lock nobody holds — tabs that have closed, and the single shared key of older versions — opening
+their notebooks and folding their keys into its own, under a lock so two starting tabs cannot both
+take one. So two tabs never overwrite each other, a reload finds its own notebooks, a second tab
+does not open copies of a live tab's, and closing the browser loses nothing. An autosave that does
+not read is moved to a `chalkmath.autosave.bad.*` key, with a notice, rather than saved over. Typing
+does not serialize the notebook: deciding whether a notebook is unsaved (`docDirty`) compares its
+serialization, steps included, with the saved text, tens of milliseconds on a big notebook, so the
+tabs' unsaved marks and the autosave follow the typing once it pauses (`typed`). An error nothing
+caught is logged with the build id and shown in a notice, at most one every ten seconds.
+
 The visual math input (`packages/math-editor`) is the one exception to "does not parse", and it
 reads notation, not meaning. A cell has one source, its text: it is what is saved and what the
 engine is sent, and the text and typeset inputs are two views of it. The editor reads the text into

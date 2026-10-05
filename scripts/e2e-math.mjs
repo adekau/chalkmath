@@ -124,7 +124,8 @@ const reference = createClient(httpTransport(engineUrl));
 const flat = (tex) => tex.replace(/\\htmlData\{[^}]*\}/g, "").replace(/[{}\s]/g, "");
 
 const browser = await chromium.launch({ ...(process.env.CHROMIUM ? { executablePath: process.env.CHROMIUM } : {}), args: ["--no-sandbox"] });
-const page = await browser.newPage({ viewport: { width: 1180, height: 1400 } });
+// a context of its own, so the autosave check can open more tabs beside this one (sharing its storage)
+const page = await (await browser.newContext({ viewport: { width: 1180, height: 1400 } })).newPage();
 // errors before the engine is switched to HTTP are the wasm worker missing from a bundle without it
 const pageErrors = [];
 let connected = false;
@@ -377,6 +378,43 @@ async function saving() {
   assert.ok(lib.includes("first.chalk") && !lib.includes("untitled.chalk"), `the library holds ${JSON.stringify(lib)}`);
   await page.locator(".tabbar .tabstrip .tab.on .x").click();   // untouched: closes without asking
   console.log("✓ saving: an untitled notebook asked for a name, kept it, and a second one was warned before replacing it");
+}
+
+/** Each browser tab keeps its own notebooks: a second tab opened beside a live one starts without
+ *  them, and what is written in it is saved apart; a reload finds its own; a closed tab's notebooks
+ *  are adopted by the next tab to open. */
+async function autosaveTabs() {
+  const ctx = page.context();
+  const open = async () => {
+    const p = await ctx.newPage();
+    await p.goto(`${base}/`);
+    await p.locator(".tabbar .tab").first().waitFor({ timeout: 10000 });
+    return p;
+  };
+  const keys = () => page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("chalkmath.autosave")).sort());
+  const outline = (p) => p.locator(".sidebar").innerText();
+  const mainKeys = await keys();
+  assert.equal(mainKeys.length, 1, `this tab's notebooks are kept under one key of its own: ${mainKeys}`);
+  const b = await open();
+  assert.equal(await b.locator(".tabbar .tabstrip .tab .nm").count(), 0, "a second tab opened with the first tab's notebooks");
+  await b.locator(".menus span", { hasText: "File" }).click();
+  await b.locator(".dropdown .item", { hasText: "New notebook" }).first().click();
+  const input = b.locator(".cell input.cellin").first();
+  await input.click(); await input.fill("7 * 6"); await input.press("Enter");
+  await b.locator(".cell .outval").first().waitFor({ timeout: 30000 });
+  await b.waitForFunction(() => Object.keys(localStorage).filter((k) => k.startsWith("chalkmath.autosave")).length === 2, null, { timeout: 5000 })
+    .catch(() => assert.fail("the second tab's notebook was not kept apart"));
+  assert.ok((await keys()).includes(mainKeys[0]), "the second tab saved over the first tab's notebooks");
+  await b.reload();
+  await b.locator(".tabbar .tabstrip .tab").first().waitFor({ timeout: 10000 });
+  assert.match(await outline(b), /7 \* 6/, "a reload lost the tab's own notebook");
+  await b.close();
+  const c = await open();
+  await c.locator(".tabbar .tabstrip .tab").first().waitFor({ timeout: 10000 }).catch(() => assert.fail("the closed tab's notebook was not adopted"));
+  assert.match(await outline(c), /7 \* 6/, "the next tab opened without the closed tab's notebook");
+  assert.equal((await keys()).length, 2, "the closed tab's key was not folded into the new tab's");
+  await c.close();
+  console.log("✓ autosave per tab: a second tab kept apart, its notebook back after a reload, and adopted by the next tab once it closed");
 }
 
 async function tabs() {
@@ -745,6 +783,7 @@ async function features() {
   await manipulate();
   await scenes();
   await saving();
+  await autosaveTabs();
   await tabs();
   // a course: the Courses tab, a lesson opened, answered, and followed to the next
   const manifest = JSON.parse(readFileSync(path.join(root, "notebooks/courses.json"), "utf8"));

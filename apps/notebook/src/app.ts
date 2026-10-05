@@ -24,6 +24,7 @@ import { fileCellOf, resolveFiles, importsIn, partContext, partHelp, fileExprVal
 import { dataGrid, matrixEntries } from "./datagrid.js";
 import { plotYRange, framesWindow, blendable, blend, playPosition, workLine } from "./animate.js";
 import { manimOfScene } from "./scene-manim.js";
+import { gather, keyOf, KEY as AUTOSAVE_KEY, LEGACY_KEYS, parseAutosave, type Autosave as AutosaveOf } from "./autosave-store.js";
 import { parseScene, numberRequests as sceneNumberRequests, sampleRequests as sceneSampleRequests, numbersOf as sceneNumbersOf, vectorsOf as sceneVectorsOf, build as buildScene, frameAt as sceneFrameAt, SceneError, type SceneData, type Item as SceneItem, type XY } from "./scene.js";
 import { DOC_PAGES, type DocPage, type DocPart } from "./docs.js";
 import { FUNCTIONS, FN_BY_NAME, AREAS, fnPage, evaluable, type FnDoc, type ExampleSection } from "./reference.js";
@@ -517,6 +518,22 @@ function notify(level: "ok" | "err", text: string) {
   while (host.childElementCount > 3) host.firstElementChild!.remove();
   setTimeout(() => t.remove(), level === "err" ? 8000 : 4000);
 }
+
+/** An error nothing caught (a bug in the page, not an engine's answer) is said where the reader looks,
+ *  with the build it happened in, instead of only in the console, where a silent failure leaves
+ *  them guessing. At most one notice in ten seconds; every one is logged. */
+let unexpectedShown = 0;
+function reportUnexpected(e: unknown) {
+  const msg = e instanceof Error ? e.message : String(e);
+  // the browser's own benign report, and an editor's cancelled request, are not failures
+  if (/^ResizeObserver loop|^Canceled$/.test(msg) || (e instanceof Error && e.name === "Canceled")) return;
+  log("err", `unexpected error (build ${typeof __BUILD_ID__ === "string" ? __BUILD_ID__ : "dev"}): ${msg}`);
+  if (Date.now() - unexpectedShown < 10_000) return;
+  unexpectedShown = Date.now();
+  notify("err", `Something went wrong on the page: ${msg}. Your notebooks are kept; reloading the page starts it afresh.`);
+}
+window.addEventListener("error", (ev) => reportUnexpected(ev.error ?? ev.message));
+window.addEventListener("unhandledrejection", (ev) => reportUnexpected(ev.reason));
 
 // ---------------------------------------------------------------------------
 // Theme
@@ -1140,8 +1157,10 @@ function renderTabs() {
   const scroll = tabs.querySelector<HTMLElement>(".tabstrip")?.scrollLeft ?? 0;
   tabs.innerHTML = "";
   const strip = h("div", "tabstrip");
+  // deciding it serializes the notebook shown: once per notebook, not once per mark
+  const dirtyOf = new Map(S.docs.map((d) => [d, docDirty(d)]));
   S.docs.forEach((d, i) => {
-    const dirty = docDirty(d);
+    const dirty = dirtyOf.get(d)!;
     const on = S.tab === "notebook" && i === S.doc;
     const t = h("div", `tab${on ? " on" : ""}${dirty ? " dirty" : ""}`);
     t.title = dirty ? `${d.name} — unsaved changes` : d.project ? `${d.name} — a lesson: your work in it is kept as you go` : d.name;
@@ -1185,7 +1204,7 @@ function renderTabs() {
     const list = h("div", "tablist dropdown");
     S.docs.forEach((d, i) => {
       const on = S.tab === "notebook" && i === S.doc;
-      const it = h("div", `item${on ? " on" : ""}${docDirty(d) ? " dirty" : ""}`, `${tabName(d.name)}${docDirty(d) ? "*" : ""}`);
+      const it = h("div", `item${on ? " on" : ""}${dirtyOf.get(d) ? " dirty" : ""}`, `${tabName(d.name)}${dirtyOf.get(d) ? "*" : ""}`);
       it.title = d.name;
       it.addEventListener("click", (ev) => { ev.stopPropagation(); tabListOpen = false; if (i !== S.doc) loadDoc(i); switchTab("notebook"); });
       list.append(it);
@@ -2339,7 +2358,7 @@ async function readAttachment(f: File): Promise<{ mime: string; data: string; bi
 function insertAtCaret(cell: Cell, text: string) {
   const input = cell.input; if (!input) return;
   input.setRangeText(text, input.selectionStart ?? input.value.length, input.selectionEnd ?? input.value.length, "end");
-  cell.src = input.value; syncHighlight(cell); renderSidebar(); renderTabs();
+  cell.src = input.value; syncHighlight(cell); renderSidebar(); typed();
 }
 
 /** How a file shows as an output, or in a Markdown cell: by what it is. `x` is what the cell calls
@@ -2421,7 +2440,7 @@ function attachFile() {
       else { const cell = addCell(`⟦${name}⟧`); renderSidebar(); focusCell(S.cells.indexOf(cell)); }
       notify("ok", `Attached ${name} (${Math.round(data.length / 1024)} KB): ⟦${name}⟧ refers to it`);
       renderHighlights(); autosave();
-    });
+    }).catch((e: unknown) => notify("err", `${f.name} could not be attached: ${e instanceof Error ? e.message : String(e)}`));
   });
   inp.click();
 }
@@ -2445,7 +2464,7 @@ function onPaste(ev: ClipboardEvent, cell: Cell) {
       while (!file.name && S.assets[`pasted-${k}${ext}`]) k++;
       const name = attachAsset(file.name || `pasted-${k}${ext}`, mime, data, binary);
       put(name); notify("ok", `Pasted ${name}: ⟦${name}⟧ refers to it`);
-    });
+    }).catch((e: unknown) => notify("err", `The pasted file could not be attached: ${e instanceof Error ? e.message : String(e)}`));
     return;
   }
   const text = dt.getData("text/plain");
@@ -2473,34 +2492,97 @@ function newNotebook() {
   log("ok", "new notebook");
 }
 
-/** What the browser keeps between reloads: every open notebook, which one is current, and whether
- *  each had unsaved changes. */
-interface Autosave { chalkmath: 1; active: number; docs: { file: ChalkFile; dirty: boolean; inLibrary?: boolean }[] }
+/** What the browser keeps between reloads (autosave-store.ts). */
+type Autosave = AutosaveOf<ChalkFile>;
 
 /** The notebooks survive a reload: autosaved to the browser after every run or edit — coalesced,
  *  since serializing every open notebook after each of a hundred cells is most of what makes a
- *  big notebook feel slow while it loads. The pending save is flushed before the page unloads. */
+ *  big notebook feel slow while it loads. The pending save is flushed when the page is hidden or
+ *  unloads (a phone closes a page without `beforeunload`). Each tab saves under its own key
+ *  (`autosaveKey`, set by `claimAutosave`), so two tabs never overwrite each other's notebooks. */
 let autosaveTimer = 0;
 let autosaveWarned = false;
+/** Where this tab saves: none until `claimAutosave` has gathered what it should open. */
+let autosaveKey: string | null = null;
 function autosave() {
   clearTimeout(autosaveTimer);
   autosaveTimer = window.setTimeout(autosaveNow, 700);
 }
 function autosaveNow() {
   clearTimeout(autosaveTimer); autosaveTimer = 0;
-  stashDoc();
+  if (typedTimer) { clearTimeout(typedTimer); typedTimer = 0; renderTabs(); }
+  if (!autosaveKey) return;
+  stashDoc();   // the notebook shown is serialized again here, so every `d.text` is current
   for (const d of S.docs) keepLesson(d);
-  const doc: Autosave = { chalkmath: 1, active: S.doc, docs: S.docs.map((d) => ({ file: JSON.parse(d.text) as ChalkFile, dirty: docDirty(d), ...(d.inLibrary ? { inLibrary: true } : {}) })) };
-  try { localStorage.setItem("chalkmath.autosave", JSON.stringify(doc)); autosaveWarned = false; }
+  // the files are JSON already: spliced in as they are, not parsed to be stringified again
+  const docs = S.docs.filter((d) => d.text).map((d) => `{"file":${d.text},"dirty":${!d.project && d.text !== d.savedText}${d.inLibrary ? ',"inLibrary":true' : ""}}`);
+  try { localStorage.setItem(autosaveKey, `{"chalkmath":1,"active":${S.doc},"docs":[${docs.join(",")}]}`); autosaveWarned = false; }
   catch {
     // storage full (big attachments) or unavailable (private mode): say so once, not after every run
     if (!autosaveWarned) notify("err", "Your notebooks could not be kept in this browser (its storage is full or unavailable). File › Export to file keeps a copy.");
     autosaveWarned = true;
   }
 }
-window.addEventListener("beforeunload", () => { if (autosaveTimer) autosaveNow(); });
-function restoreAutosave(): string | null {
-  try { return localStorage.getItem("chalkmath.autosave") ?? localStorage.getItem("lemma.autosave"); } catch { return null; }
+const flushAutosave = () => { if (autosaveTimer || typedTimer) autosaveNow(); };
+window.addEventListener("beforeunload", flushAutosave);
+window.addEventListener("pagehide", flushAutosave);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flushAutosave(); });
+
+/** Typing changes what the tabs show (a notebook's unsaved mark) and what autosave keeps, but deciding
+ *  either serializes the whole notebook, steps and all (`docDirty`): tens of milliseconds a keystroke
+ *  on a big one. Both follow the typing once it pauses. */
+let typedTimer = 0;
+function typed() {
+  clearTimeout(typedTimer);
+  typedTimer = window.setTimeout(() => { typedTimer = 0; renderTabs(); autosave(); }, 300);
+}
+
+/** Find this tab's id and gather what it should open (autosave-store.ts): its own autosave, after a
+ *  reload, and those of tabs that have closed. The id is kept for the tab's life (sessionStorage) and
+ *  held as a Web Lock while the tab is open; a duplicated tab, which inherits the id, takes a new one.
+ *  Without Web Locks every tab shares one key, as before. Returns the autosave to restore. */
+async function claimAutosave(): Promise<Autosave | null> {
+  const fallback = (): Autosave | null => {
+    autosaveKey = AUTOSAVE_KEY;
+    for (const k of LEGACY_KEYS) {
+      let text: string | null = null;
+      try { text = localStorage.getItem(k); } catch { return null; }
+      if (text === null) continue;
+      const a = parseAutosave(text);
+      if (a) return a as Autosave;
+      const aside = `${AUTOSAVE_KEY}.bad.${Date.now()}`;
+      try { localStorage.setItem(aside, text); setAsideNotice([aside]); }
+      catch { autosaveKey = null; setAsideNotice([]); }   // nowhere to keep it: do not save over it either
+      return null;
+    }
+    return null;
+  };
+  const locks = (navigator as Navigator & { locks?: LockManager }).locks;
+  let store: Storage;
+  try { store = localStorage; } catch { return null; }
+  if (!locks) return fallback();
+  try {
+    const hold = (id: string, ifAvailable: boolean) => new Promise<boolean>((resolve) => {
+      // the callback's promise never settles, so the lock is held until the tab goes
+      void locks.request(`chalkmath.tab.${id}`, { ifAvailable }, (lock) => { resolve(!!lock); return lock ? new Promise<void>(() => {}) : undefined; });
+    });
+    let id = sessionStorage.getItem("chalkmath.tab") ?? crypto.randomUUID();
+    if (!await hold(id, true)) { id = crypto.randomUUID(); await hold(id, false); }
+    sessionStorage.setItem("chalkmath.tab", id);
+    return await locks.request("chalkmath.autosave", async () => {
+      const { held = [] } = await locks.query();
+      const live = new Set(held.flatMap((l) => l.name?.startsWith("chalkmath.tab.") ? [l.name.slice("chalkmath.tab.".length)] : []));
+      const { merged, setAside } = gather(store, id, live);
+      autosaveKey = keyOf(id);
+      if (setAside.length) setAsideNotice(setAside);
+      return merged as Autosave | null;
+    });
+  } catch { return fallback(); }
+}
+/** Say that some kept notebooks could not be read, and where they were put instead of being lost. */
+function setAsideNotice(keys: string[]) {
+  const where = keys.length ? ` They were set aside, not deleted (browser storage: ${keys.join(", ")}).` : "";
+  notify("err", `Some notebooks kept in this browser could not be read.${where}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -3826,7 +3908,7 @@ function visualInput(cell: Cell, i: number): MathInput | null {
     onFocus: () => { S.active = i; renderChrome(); renderSidebar(); markActive(); updateKeypad(); },
     onBlur: () => { hideSigHelp(); autoSettle(cell); updateKeypad(); },
     onCaret: () => updateVisualSigHelp(cell),
-    onChange: (text) => { cell.src = text; renderSidebar(); renderTabs(); },
+    onChange: (text) => { cell.src = text; renderSidebar(); typed(); },
     onEnter: () => runFromInput(cell),
     onLeave: (dir) => { const j = i + dir; if (j >= 0 && j < S.cells.length) focusCell(j); },
     onKey: (ev) => {
@@ -3936,7 +4018,7 @@ function pressKey(k: PadKey) {
   const ins = k.tpl ? PAD_TEXT[k.tpl] : k.ch;
   if (!ins) return;
   input.setRangeText(ins, at, end, "end");
-  cell.src = input.value; syncHighlight(cell); updateSigHelp(cell); renderSidebar(); renderTabs();
+  cell.src = input.value; syncHighlight(cell); updateSigHelp(cell); renderSidebar(); typed();
 }
 
 let keypadEl: HTMLElement | null = null;
@@ -4022,7 +4104,7 @@ function inputEls(cell: Cell, i: number): HTMLElement[] {
   input.spellcheck = false;
   cell.input = input;
   input.addEventListener("focus", () => { S.active = i; renderChrome(); renderSidebar(); markActive(); updateKeypad(); });
-  input.addEventListener("input", () => { cell.src = input.value; if (input instanceof HTMLTextAreaElement) fitRows(input); updateCompletions(cell); updateSigHelp(cell); syncHighlight(cell); renderSidebar(); renderTabs(); });
+  input.addEventListener("input", () => { cell.src = input.value; if (input instanceof HTMLTextAreaElement) fitRows(input); updateCompletions(cell); updateSigHelp(cell); syncHighlight(cell); renderSidebar(); typed(); });
   input.addEventListener("keyup", () => { updateSigHelp(cell); syncHighlight(cell); });   // caret moves without an input event
   input.addEventListener("click", () => updateSigHelp(cell));
   input.addEventListener("scroll", () => syncHighlight(cell));
@@ -4174,7 +4256,7 @@ function renderCells() {
       input.className = "sectin"; input.type = "text"; input.value = cell.src; input.placeholder = "Section title"; input.spellcheck = false;
       cell.input = input;
       input.addEventListener("focus", () => { S.active = i; renderChrome(); renderSidebar(); markActive(); });
-      input.addEventListener("input", () => { cell.src = input.value; renderSidebar(); renderTabs(); });
+      input.addEventListener("input", () => { cell.src = input.value; renderSidebar(); typed(); });
       input.addEventListener("keydown", (ev) => {
         if (ev.key === "Enter") { ev.preventDefault(); cell.src = input.value; if (i === S.cells.length - 1) addCell(); focusCell(i + 1); autosave(); }
         if (ev.key === "ArrowDown" && i < S.cells.length - 1) { ev.preventDefault(); focusCell(i + 1); }
@@ -5415,7 +5497,7 @@ function renderMdCell(cell: Cell) {
     const grow = () => { ta.style.height = "auto"; ta.style.height = `${ta.scrollHeight + 2}px`; };
     ta.addEventListener("focus", onFocus);
     ta.addEventListener("paste", (ev) => onPaste(ev, cell));
-    ta.addEventListener("input", () => { cell.src = ta.value; grow(); renderSidebar(); renderTabs(); });
+    ta.addEventListener("input", () => { cell.src = ta.value; grow(); renderSidebar(); typed(); });
     ta.addEventListener("keydown", (ev) => {
       if ((ev.key === "Enter" && (ev.shiftKey || ev.metaKey || ev.ctrlKey)) || ev.key === "Escape") { ev.preventDefault(); void runCell(cell); return; }
       const caret = ta.selectionStart ?? 0;
@@ -5548,7 +5630,7 @@ function renderSceneCell(cell: Cell) {
     cell.ta = ta;
     const grow = () => { ta.style.height = "auto"; ta.style.height = `${Math.max(ta.scrollHeight, 120) + 2}px`; };
     ta.addEventListener("focus", onFocus);
-    ta.addEventListener("input", () => { cell.src = ta.value; grow(); renderSidebar(); renderTabs(); });
+    ta.addEventListener("input", () => { cell.src = ta.value; grow(); renderSidebar(); typed(); });
     ta.addEventListener("keydown", (ev) => {
       if (ev.key === "Enter" && (ev.shiftKey || ev.metaKey || ev.ctrlKey)) { ev.preventDefault(); void runCell(cell); return; }
       if (ev.key === "Escape" && cell.scene) { ev.preventDefault(); cell.editing = false; renderSceneCell(cell); }
@@ -7808,16 +7890,15 @@ document.addEventListener("keydown", (ev) => {
   if (ev.key === "Escape") closeModal();
   if (ev.key === "Escape" && S.menu) { const m = S.menu; S.menu = null; renderChrome(); $<HTMLElement>(`.menus [data-menu="${m}"]`)?.focus(); }
 });
-const saved = restoreAutosave();
-let restoredActive = 0;
-if (saved) {
-  // sources and outputs come back at once; each engine session is rebuilt by re-running when its tab is shown
-  try {
-    const parsed = JSON.parse(saved) as Autosave | ChalkFile;
-    const entries: Autosave["docs"] = "chalkmath" in parsed && Array.isArray(parsed.docs)
-      ? parsed.docs
-      : [{ file: parsed as ChalkFile, dirty: false }];
-    for (const { file, dirty, inLibrary } of entries) {
+/** Open the notebooks `claimAutosave` gathered, with their sources and outputs; each engine session
+ *  is rebuilt by re-running when its tab is shown. A notebook that cannot be opened is set aside
+ *  rather than dropped (the next autosave would lose it). Returns the index of the current one. */
+function restoreDocs(saved: Autosave | null): number {
+  if (!saved) return 0;
+  const failed: string[] = [];
+  for (const entry of saved.docs) {
+    try {
+      const { file, dirty, inLibrary } = entry;
       const d = makeDoc(file.name ?? "untitled.chalk", cellsFromFile(file), Array.isArray(file.scenes) ? file.scenes : [], assetsFromFile(file));
       if (!d.cells.length) d.cells.push(freshCell());
       if (inLibrary) d.inLibrary = true;
@@ -7825,20 +7906,29 @@ if (saved) {
       const pr = projectRefOf(file);
       if (pr) d.project = pr;
       if (typeof file.leanPrelude === "string" && file.leanPrelude) d.leanPrelude = file.leanPrelude;
-      S.docs.push(d);
       // the saved text is what the tab compares against; a dirty document compares against nothing
       d.text = JSON.stringify({ chalk: 1, name: d.name, cells: file.cells, scenes: d.scenes, ...(Object.keys(d.assets).length ? { assets: d.assets } : {}), ...(pr ? { project: pr } : {}), ...(d.leanPrelude ? { leanPrelude: d.leanPrelude } : {}) }, null, 2);
       d.savedText = dirty ? "" : d.text;
-    }
-    restoredActive = "chalkmath" in parsed && typeof parsed.active === "number" ? parsed.active : 0;
-  } catch { /* ignore a corrupt autosave */ }
+      S.docs.push(d);
+    } catch { failed.push(JSON.stringify(entry)); }
+  }
+  if (failed.length) {
+    const k = `${AUTOSAVE_KEY}.bad.${Date.now()}`;
+    try { localStorage.setItem(k, `{"chalkmath":1,"active":0,"docs":[${failed.join(",")}]}`); setAsideNotice([k]); }
+    catch { setAsideNotice([]); }
+  }
+  return saved.active;
 }
-// nothing to restore (a first visit, or every tab closed last time): the welcome tab
-if (S.docs.length) { S.doc = -1; loadDoc(Math.max(0, Math.min(restoredActive, S.docs.length - 1))); }
-else unloadDocs();
-void loadProjects();
-void connect().then(async () => {
-  // a link with a notebook in its fragment opens that notebook (in its own tab unless the current one is untouched)
-  if (location.hash.startsWith("#nb") && await openNotebookLink(location.hash)) return;
-  const d = currentDoc(); if (d && !d.hydrated && S.kernel === "ready" && S.runOnOpen) hydrate(d);
+
+void claimAutosave().then((saved) => {
+  const restoredActive = restoreDocs(saved);
+  // nothing to restore (a first visit, or every tab closed last time): the welcome tab
+  if (S.docs.length) { S.doc = -1; loadDoc(Math.max(0, Math.min(restoredActive, S.docs.length - 1))); }
+  else unloadDocs();
+  void loadProjects();
+  void connect().then(async () => {
+    // a link with a notebook in its fragment opens that notebook (in its own tab unless the current one is untouched)
+    if (location.hash.startsWith("#nb") && await openNotebookLink(location.hash)) return;
+    const d = currentDoc(); if (d && !d.hydrated && S.kernel === "ready" && S.runOnOpen) hydrate(d);
+  });
 });
