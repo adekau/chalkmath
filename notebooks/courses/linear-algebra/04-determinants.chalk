@@ -21,7 +21,7 @@
       "label": null
     },
     {
-      "src": "clock t from 0 to 1\nview -1.5, 5, -1.2, 4\nG1 = curve(-(1 + t*(2 + i)) + s*(i + t*(1 + i)), s, -1, 3) faint color 6\nG2 = curve(1 + t*(2 + i) + s*(i + t*(1 + i)), s, -1, 3) faint color 6\nG3 = curve(2*(1 + t*(2 + i)) + s*(i + t*(1 + i)), s, -1, 3) faint color 6\nH1 = curve(s*(1 + t*(2 + i)) - (i + t*(1 + i)), s, -1, 3) faint color 6\nH2 = curve(s*(1 + t*(2 + i)) + i + t*(1 + i), s, -1, 3) faint color 6\nH3 = curve(s*(1 + t*(2 + i)) + 2*(i + t*(1 + i)), s, -1, 3) faint color 6\nI = arrow(0, 1 + t*(2 + i)) thick color 2\nJ = arrow(0, i + t*(1 + i)) thick color 3\nQ1 = segment(1 + t*(2 + i), 1 + i + t*(3 + 2*i)) color 1\nQ2 = segment(i + t*(1 + i), 1 + i + t*(3 + 2*i)) color 1\nB1 = segment(0, 4) dashed color 4\nB2 = segment(4, 4 + 3i) dashed color 4\nB3 = segment(4 + 3i, 3i) dashed color 4\nB4 = segment(3i, 0) dashed color 4\n> wait 1s | The grid, and the unit square on $\\hat{\\imath}$ (blue) and $\\hat{\\jmath}$ (green): area $1$.\n> play t to 1 in 4s | Apply $\\begin{pmatrix} 3 & 1 \\\\ 1 & 2 \\end{pmatrix}$: $\\hat{\\imath}$ lands on $(3, 1)$, $\\hat{\\jmath}$ on $(1, 2)$, and the square on the parallelogram they span. Every other grid square becomes a copy of it.\n> show B1, B2, B3, B4 | Its area: box it in. The box is $3 + 1$ by $1 + 2$. Outside the parallelogram are two triangles of area $\\frac32$, two of area $1$, and two unit squares: $12 - 3 - 2 - 2 = 5$.",
+      "src": "clock t from 0 to 1\nview -1.5, 5.8, -1.2, 5.4\nlet M = (1 - t)*[1, 0; 0, 1] + t*[3, 1; 1, 2]\nG0 = grid([1, 0; 0, 1]) faint color 6\nG = grid(M) color 2\nQ = poly(0, M*[1; 0], M*[1; 1], M*[0; 1]) color 1\nN = poly(M*[0; 1], M*[1; 1], M*[1; 2], M*[0; 2]) color 5\nI = arrow(0, M*[1; 0]) thick color 3\nJ = arrow(0, M*[0; 1]) thick color 4\nA = value(det(M), \"\\text{area} = \")\nT1 = poly(0, [3, 0], [3, 1]) faint color 3\nT2 = poly([4, 3], [1, 3], [1, 2]) faint color 3\nT3 = poly([3, 1], [4, 1], [4, 3]) faint color 4\nT4 = poly([1, 2], [0, 2], 0) faint color 4\nS1 = poly([3, 0], [4, 0], [4, 1], [3, 1]) faint color 6\nS2 = poly([0, 2], [1, 2], [1, 3], [0, 3]) faint color 6\n> show N; wait 1s | The grid, and the unit square on $\\hat{\\imath}$ (green) and $\\hat{\\jmath}$ (pink): area $1$, like the square above it.\n> show A; play t to 1 in 4s | Apply $\\begin{pmatrix} 3 & 1 \\\\ 1 & 2 \\end{pmatrix}$: $\\hat{\\imath}$ lands on $(3, 1)$, $\\hat{\\jmath}$ on $(1, 2)$, and the square on the parallelogram they span. The square above it, and every other grid square, becomes a copy of it.\n> hide N; show T1, T2, T3, T4, S1, S2 | Why $5$: box it in. The box is $3 + 1$ by $1 + 2$. Outside the parallelogram are two triangles of area $\\frac32$ (green), two of area $1$ (pink) and two unit squares: $12 - 3 - 2 - 2 = 5$.",
       "type": "scene",
       "showWork": false,
       "label": null
@@ -93,13 +93,13 @@
       "label": null
     },
     {
-      "src": "clock t from 0 to 1\nview -0.4, 1.6, -0.4, 1.4\nI = arrow(0, 1 - t + t*i) thick color 2\nLI = label(1 - t + t*i, \"\\hat{\\imath}\") color 2\nJ = arrow(0, t + (1 - t)*i) thick color 3\nLJ = label(t + (1 - t)*i, \"\\hat{\\jmath}\") color 3\nQ1 = segment(1 - t + t*i, 1 + i) color 1\nQ2 = segment(t + (1 - t)*i, 1 + i) color 1\n> wait 1s | The unit square: $\\hat{\\jmath}$ is a quarter turn counterclockwise from $\\hat{\\imath}$.\n> play t to 0.5 in 2.5s | Slide $\\hat{\\imath}$ toward $(0, 1)$ and $\\hat{\\jmath}$ toward $(1, 0)$. Halfway they meet, and the square is flat: area $0$.\n> play t to 1 in 2.5s | They pass each other, and the square opens out again, the same size but mirrored: now $\\hat{\\jmath}$ is clockwise from $\\hat{\\imath}$.",
+      "src": "clock t from 0 to 1\nview -0.8, 1.8, -0.5, 1.5\nlet M = [1 - t, t; t, 1 - t]\nG0 = grid([1, 0; 0, 1]) faint color 6\nG = grid(M) color 2\nQ = poly(0, M*[1; 0], M*[1; 1], M*[0; 1]) color 1\nI = arrow(0, M*[1; 0]) thick color 3\nLI = label(M*[1; 0], \"\\hat{\\imath}\") color 3\nJ = arrow(0, M*[0; 1]) thick color 4\nLJ = label(M*[0; 1], \"\\hat{\\jmath}\") color 4\nD = value(det(M), \"\\det = \")\n> wait 1s | The unit square: $\\hat{\\jmath}$ is a quarter turn counterclockwise from $\\hat{\\imath}$.\n> play t to 0.5 in 2.5s | Slide $\\hat{\\imath}$ toward $(0, 1)$ and $\\hat{\\jmath}$ toward $(1, 0)$. Halfway they meet, the square is flat, and the determinant is $0$.\n> play t to 1 in 2.5s | They pass each other, and the square opens out again, the same size but mirrored: now $\\hat{\\jmath}$ is clockwise from $\\hat{\\imath}$, and the determinant is $-1$.",
       "type": "scene",
       "showWork": false,
       "label": null
     },
     {
-      "src": "The size of the area is unchanged; the negative sign records that the plane has been turned over. Halfway the matrix is $\\begin{pmatrix} \\frac12 & \\frac12 \\\\ \\frac12 & \\frac12 \\end{pmatrix}$, and along the way the determinant runs from $1$ to $-1$ through $0$:",
+      "src": "The size of the area is unchanged; the negative sign records that the plane has been turned over. Halfway the matrix is $\\begin{pmatrix} \\frac12 & \\frac12 \\\\ \\frac12 & \\frac12 \\end{pmatrix}$, both columns on the line $y = x$. Along the way the determinant the scene read off is a straight run from $1$ to $-1$:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -122,7 +122,7 @@
       "label": null
     },
     {
-      "src": "Back to the opening question. A determinant of $0$ means the unit square goes to something with no area: the columns lie on one line, and the plane is squashed onto it (or onto $0$).",
+      "src": "Back to the opening question. A determinant of $0$ means the unit square goes to something with no area: the columns lie on one line, and the plane is squashed onto it (or onto $0$), as in lesson 3's picture.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -264,7 +264,7 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> The determinant is the factor by which a matrix scales area (volume, in space): the area of the parallelogram its columns span, $ad - bc$ for a $2 \\times 2$ matrix. A negative sign means the plane is flipped over; $0$ means it is squashed flat, which is exactly when there is no inverse. One move after another multiplies the factors.",
+      "src": "> [!summary]\n> The determinant is the factor by which a matrix scales area (volume, in space): the area of the parallelogram its columns span, $ad - bc$ for a $2 \\times 2$ matrix. A negative sign means the plane is flipped over; $0$ means it is squashed flat, which is exactly when there is no inverse. One move after another multiplies the factors.\n>\n> A diagonal matrix such as $\\begin{pmatrix} 3 & 0 \\\\ 0 & 1 \\end{pmatrix}$ is the easiest kind to understand: it stretches along the axes, by $3$ and by $1$, and its determinant is $3 \\cdot 1$. Most matrices are not diagonal. But perhaps that is only because $\\hat{\\imath}$ and $\\hat{\\jmath}$ are the wrong arrows to describe them with: are there directions a matrix only stretches? Lesson 5.",
       "type": "markdown",
       "showWork": false,
       "label": null
