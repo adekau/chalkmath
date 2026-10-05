@@ -151,6 +151,42 @@ theorem flatten_soundR : RuleSoundR flatten := by
   · split at h <;> simp only [Option.some.injEq, reduceCtorEq] at h
     subst h; simp [prodR_flatMap_unMul]
 
+/-! The chains the pipeline's rewriter opens before it descends (`openChain`, `Terminate.lean`): the
+step is `simp.flatten`, all the way down, and keeps the value. -/
+
+mutual
+  theorem sumR_addArgs (ρ : EnvR) : ∀ (e : Expr) (acc : List Expr),
+      sumR ρ (addArgs e acc) = evalR ρ e + sumR ρ acc
+    | .add es, acc => by rw [addArgs, sumR_addArgsList ρ es acc, evalR_add]
+    | .num _, _ | .var _, _ | .mul _, _ | .pow _ _, _ | .fn _ _, _ | .matrix _, _ => by simp [addArgs]
+  theorem sumR_addArgsList (ρ : EnvR) : ∀ (es acc : List Expr),
+      sumR ρ (addArgsList es acc) = sumR ρ es + sumR ρ acc
+    | [], acc => by simp [addArgsList]
+    | e :: es, acc => by rw [addArgsList, sumR_addArgs ρ e, sumR_addArgsList ρ es acc, sumR_cons]; ring
+end
+
+mutual
+  theorem prodR_mulArgs (ρ : EnvR) : ∀ (e : Expr) (acc : List Expr),
+      prodR ρ (mulArgs e acc) = evalR ρ e * prodR ρ acc
+    | .mul es, acc => by rw [mulArgs, prodR_mulArgsList ρ es acc, evalR_mul]
+    | .num _, _ | .var _, _ | .add _, _ | .pow _ _, _ | .fn _ _, _ | .matrix _, _ => by simp [mulArgs]
+  theorem prodR_mulArgsList (ρ : EnvR) : ∀ (es acc : List Expr),
+      prodR ρ (mulArgsList es acc) = prodR ρ es * prodR ρ acc
+    | [], acc => by simp [mulArgsList]
+    | e :: es, acc => by rw [mulArgsList, prodR_mulArgs ρ e, prodR_mulArgsList ρ es acc, prodR_cons]; ring
+end
+
+theorem openChain_soundR {e e' : Expr} (h : openChain e = some e') (ρ : EnvR) : evalR ρ e' = evalR ρ e := by
+  cases e <;> simp only [openChain, reduceCtorEq] at h
+  · split at h
+    · split at h
+      · cases h
+      · cases h; simp [sumR_addArgsList]
+    · cases h
+  · split at h
+    · cases h; simp [prodR_mulArgsList]
+    · cases h
+
 -- ---------------------------------------------------------------------------
 -- simp.identity
 -- ---------------------------------------------------------------------------
@@ -271,37 +307,24 @@ theorem evalR_coeffRest {e : Expr} {c : Q} {t : Expr} (h : coeffRest e = (c, t))
   · subst he; subst ht; simp
   · subst he; subst hc; simp
 
-theorem mergeTerms_soundR (ρ : EnvR) : ∀ (es l : List Expr) (t : Expr),
-    mergeTerms es = some (l, t) → sumR ρ l = sumR ρ es
-  | [], _, _, h => by simp [mergeTerms] at h
-  | e :: rest, l, t, h => by
-    simp only [mergeTerms] at h
-    obtain ⟨c, u, hcu⟩ : ∃ c u, coeffRest e = (c, u) := ⟨_, _, rfl⟩
-    rw [hcu] at h
-    simp only at h
-    split at h
-    · split at h
-      · rename_i f hf
-        simp only [Option.some.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, rfl⟩ := h
-        have hp : Expr.equal (coeffRest f).2 u = true := by simpa using List.find?_some hf
-        have hfu : coeffRest f = ((coeffRest f).1, u) := by rw [← Expr.equal_eq hp]
-        have h1 : sumR ρ rest
-            = evalR ρ f + sumR ρ (removeFirst (fun x => (coeffRest x).2.equal u) rest) := by
-          rw [sumR_perm ρ (perm_find?_removeFirst _ rest f hf), sumR_cons]
-        rw [sumR_cons, sumR_cons, h1, evalR_coeffRest hcu, evalR_coeffRest hfu]
-        simp only [evalR_mul, prodR_cons, prodR_nil, evalR_num, Q_val_add, Rat.cast_add]
-        ring
-      · simp only [Option.map_eq_some_iff] at h
-        obtain ⟨⟨l', t'⟩, hm, hl⟩ := h
-        simp only [Prod.mk.injEq] at hl
-        obtain ⟨rfl, rfl⟩ := hl
-        rw [sumR_cons, sumR_cons, mergeTerms_soundR ρ rest l' t' hm]
-    · simp only [Option.map_eq_some_iff] at h
-      obtain ⟨⟨l', t'⟩, hm, hl⟩ := h
-      simp only [Prod.mk.injEq] at hl
-      obtain ⟨rfl, rfl⟩ := hl
-      rw [sumR_cons, sumR_cons, mergeTerms_soundR ρ rest l' t' hm]
+/-- Merging the terms of `fs` into `c·u` one at a time keeps the sum. -/
+theorem coeffFold_soundR (ρ : EnvR) {u : Expr} (others : List Expr) : ∀ (fs : List Expr) (c : Q),
+    (∀ f ∈ fs, (coeffRest f).2 = u) →
+    sumR ρ (.mul [.num (coeffFold c fs), u] :: others) = (c.val : ℝ) * evalR ρ u + sumR ρ (fs ++ others)
+  | [], c, _ => by simp [coeffFold]
+  | f :: fs, c, h => by
+    simp only [coeffFold]
+    rw [coeffFold_soundR ρ others fs _ (fun g hg => h g (List.mem_cons_of_mem _ hg)), List.cons_append,
+      sumR_cons, evalR_coeffRest (coeffRest_of_snd (h f List.mem_cons_self)) ρ, Q_val_add, Rat.cast_add]
+    ring
+
+theorem mergeTerms_soundR (ρ : EnvR) (es l : List Expr) (t : Expr) (h : mergeTerms es = some (l, t)) :
+    sumR ρ l = sumR ρ es := by
+  simp only [mergeTerms, Option.map_eq_some_iff] at h
+  obtain ⟨⟨u, e, fs, others⟩, hg, hl⟩ := h
+  simp only [Prod.mk.injEq] at hl; obtain ⟨rfl, rfl⟩ := hl
+  obtain ⟨hperm, he, hfs, -, -⟩ := termGroup_spec hg
+  rw [coeffFold_soundR ρ others fs _ hfs, sumR_perm ρ hperm, sumR_cons, evalR_coeffRest (coeffRest_of_snd he) ρ]
 
 theorem collectTerms_soundR : RuleSoundR collectTerms := by
   intro e r h ρ
@@ -494,37 +517,45 @@ theorem evalR_baseExp {e b x : Expr} (h : baseExp e = (b, x)) (ρ : EnvR) :
   · rw [he, evalR_pow]
   · rw [he, hx, evalR_one, Real.rpow_one]
 
-theorem mergePowers_soundR_on (ρ : EnvR) : ∀ (es l : List Expr) (t : Expr),
-    mergePowers es = some (l, t) → 0 < evalR ρ t → prodR ρ l = prodR ρ es
-  | [], _, _, h, _ => by simp [mergePowers] at h
-  | e :: rest, l, t, h, ht => by
-    simp only [mergePowers] at h
-    obtain ⟨b, x, hbx⟩ : ∃ b x, baseExp e = (b, x) := ⟨_, _, rfl⟩
-    rw [hbx] at h
-    simp only at h
-    split at h
-    · split at h
-      · rename_i f hf
-        simp only [Option.some.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, rfl⟩ := h
-        have hp : Expr.equal (baseExp f).1 b = true := by simpa using List.find?_some hf
-        have hfb : baseExp f = (b, (baseExp f).2) := by rw [← Expr.equal_eq hp]
-        have h1 : prodR ρ rest
-            = evalR ρ f * prodR ρ (removeFirst (fun y => (baseExp y).1.equal b) rest) := by
-          rw [prodR_perm ρ (perm_find?_removeFirst _ rest f hf), prodR_cons]
-        rw [prodR_cons, prodR_cons, h1, evalR_baseExp hbx, evalR_baseExp hfb, evalR_pow,
-          evalR_addExp, Real.rpow_add ht]
-        ring
-      · simp only [Option.map_eq_some_iff] at h
-        obtain ⟨⟨l', t'⟩, hm, hl⟩ := h
-        simp only [Prod.mk.injEq] at hl
-        obtain ⟨rfl, rfl⟩ := hl
-        rw [prodR_cons, prodR_cons, mergePowers_soundR_on ρ rest l' t' hm ht]
-    · simp only [Option.map_eq_some_iff] at h
-      obtain ⟨⟨l', t'⟩, hm, hl⟩ := h
-      simp only [Prod.mk.injEq] at hl
-      obtain ⟨rfl, rfl⟩ := hl
-      rw [prodR_cons, prodR_cons, mergePowers_soundR_on ρ rest l' t' hm ht]
+/-- What merging the factors `fs` into `b^X` one at a time needs at a point: each merge's
+`b^X · b^y = b^(X+y)`. -/
+def FoldOK (ρ : EnvR) (b : Expr) : Expr → List Expr → Prop
+  | _, [] => True
+  | X, f :: fs => (evalR ρ b) ^ (evalR ρ X) * (evalR ρ b) ^ (evalR ρ (baseExp f).2) =
+      (evalR ρ b) ^ (evalR ρ X + evalR ρ (baseExp f).2) ∧ FoldOK ρ b (addExp X (baseExp f).2) fs
+
+theorem expFold_soundR (ρ : EnvR) {b : Expr} (others : List Expr) : ∀ (fs : List Expr) (X : Expr),
+    (∀ f ∈ fs, (baseExp f).1 = b) → FoldOK ρ b X fs →
+    prodR ρ (.pow b (expFold X fs) :: others) = (evalR ρ b) ^ (evalR ρ X) * prodR ρ (fs ++ others)
+  | [], X, _, _ => by simp [expFold]
+  | f :: fs, X, h, ⟨hstep, hok⟩ => by
+    simp only [expFold]
+    rw [expFold_soundR ρ others fs _ (fun g hg => h g (List.mem_cons_of_mem _ hg)) hok, evalR_addExp, ← hstep,
+      List.cons_append, prodR_cons, evalR_baseExp (baseExp_of_fst (h f List.mem_cons_self)) ρ]
+    ring
+
+/-- The merge keeps the product wherever each of its pair merges holds. -/
+theorem mergePowers_soundR_fold (ρ : EnvR) (es l : List Expr) (t : Expr) (h : mergePowers es = some (l, t))
+    (H : ∀ b e fs others, powerGroup es = some (b, e, fs, others) → FoldOK ρ b (baseExp e).2 fs) :
+    prodR ρ l = prodR ρ es := by
+  simp only [mergePowers, Option.map_eq_some_iff] at h
+  obtain ⟨⟨b, e, fs, others⟩, hg, hl⟩ := h
+  simp only [Prod.mk.injEq] at hl; obtain ⟨rfl, rfl⟩ := hl
+  obtain ⟨hperm, he, hfs, -, -⟩ := powerGroup_spec hg
+  rw [expFold_soundR ρ others fs _ hfs (H _ _ _ _ hg), prodR_perm ρ hperm, prodR_cons,
+    evalR_baseExp (baseExp_of_fst he) ρ]
+
+theorem FoldOK_of_pos (ρ : EnvR) {b : Expr} (hb : 0 < evalR ρ b) : ∀ (X : Expr) (fs : List Expr), FoldOK ρ b X fs
+  | _, [] => trivial
+  | _, _ :: fs => ⟨(Real.rpow_add hb _ _).symm, FoldOK_of_pos ρ hb _ fs⟩
+
+theorem mergePowers_soundR_on (ρ : EnvR) (es l : List Expr) (t : Expr) (h : mergePowers es = some (l, t))
+    (ht : 0 < evalR ρ t) : prodR ρ l = prodR ρ es := by
+  refine mergePowers_soundR_fold ρ es l t h fun b e fs others hg => ?_
+  have hbt : b = t := by
+    simp only [mergePowers, hg, Option.map_some, Option.some.injEq, Prod.mk.injEq] at h
+    exact h.2
+  subst hbt; exact FoldOK_of_pos ρ ht _ _
 
 /-- **The merge is sound wherever the base it merged is positive** (the rule as it was before it was
 split at its assumption). -/
@@ -540,54 +571,6 @@ theorem collectPowersApply_soundR_on {e : Expr} {res : RuleResult} (ρ : EnvR)
     rw [evalR_mul, evalR_mul]
     exact (mergePowers_soundR_on ρ es l t hm (ht es l t rfl hm)).symm
   · simp at h
-
-/-- The merge is sound wherever the pair it merges obeys `b^x · b^y = b^(x+y)`. -/
-theorem mergePowers_soundR_with (ρ : EnvR) : ∀ (es l : List Expr) (t : Expr),
-    mergePowers es = some (l, t) →
-    (∀ b x y, mergedExps es = some (b, x, y) →
-      (evalR ρ b) ^ (evalR ρ x) * (evalR ρ b) ^ (evalR ρ y) = (evalR ρ b) ^ (evalR ρ x + evalR ρ y)) →
-    prodR ρ l = prodR ρ es
-  | [], _, _, h, _ => by simp [mergePowers] at h
-  | e :: rest, l, t, h, H => by
-    simp only [mergePowers] at h
-    obtain ⟨b, x, hbx⟩ : ∃ b x, baseExp e = (b, x) := ⟨_, _, rfl⟩
-    rw [hbx] at h
-    simp only at h
-    have hme : mergedExps (e :: rest) = if bigBase b then
-        (match rest.find? (fun f => Expr.equal (baseExp f).1 b) with
-          | some f => some (b, x, (baseExp f).2)
-          | none => mergedExps rest) else mergedExps rest := by
-      rw [mergedExps, hbx]; rfl
-    split at h
-    · rename_i hbig
-      rw [ite_eq_left hbig] at hme
-      split at h
-      · rename_i f hf
-        rw [hf] at hme
-        simp only [Option.some.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, rfl⟩ := h
-        have hp : Expr.equal (baseExp f).1 b = true := by simpa using List.find?_some hf
-        have hfb : baseExp f = (b, (baseExp f).2) := by rw [← Expr.equal_eq hp]
-        have h1 : prodR ρ rest
-            = evalR ρ f * prodR ρ (removeFirst (fun y => (baseExp y).1.equal b) rest) := by
-          rw [prodR_perm ρ (perm_find?_removeFirst _ rest f hf), prodR_cons]
-        rw [prodR_cons, prodR_cons, h1, evalR_baseExp hbx, evalR_baseExp hfb, evalR_pow,
-          evalR_addExp, ← H b x (baseExp f).2 hme]
-        ring
-      · rename_i hf
-        rw [hf] at hme
-        simp only [Option.map_eq_some_iff] at h
-        obtain ⟨⟨l', t'⟩, hm, hl⟩ := h
-        simp only [Prod.mk.injEq] at hl
-        obtain ⟨rfl, rfl⟩ := hl
-        rw [prodR_cons, prodR_cons, mergePowers_soundR_with ρ rest l' t' hm (fun b x y h => H b x y (hme ▸ h))]
-    · rename_i hbig
-      rw [ite_eq_right hbig] at hme
-      simp only [Option.map_eq_some_iff] at h
-      obtain ⟨⟨l', t'⟩, hm, hl⟩ := h
-      simp only [Prod.mk.injEq] at hl
-      obtain ⟨rfl, rfl⟩ := hl
-      rw [prodR_cons, prodR_cons, mergePowers_soundR_with ρ rest l' t' hm (fun b x y h => H b x y (hme ▸ h))]
 
 theorem evalR_of_intExp {x : Expr} {m : ℤ} (h : intExp x = some m) (ρ : EnvR) : evalR ρ x = (m : ℝ) := by
   cases x <;> simp only [intExp, reduceCtorEq] at h
@@ -633,8 +616,32 @@ theorem powSafe_value {b x y : Expr} (h : powSafe b x y = true) (ρ : EnvR) :
       simpa using hi
     · cases hi
 
-/-- **`simp.collect-powers` is sound over ℝ, unconditionally**: it merges only a pair of factors
-whose exponents are integers of one sign, or whose base is a positive numeral. -/
+/-- Where every pair merge is `powSafe`, the fold holds at every point. -/
+theorem FoldOK_of_safe (ρ : EnvR) {b : Expr} : ∀ (X : Expr) (fs : List Expr),
+    (foldSafety b X fs).1 = true → FoldOK ρ b X fs
+  | _, [], _ => trivial
+  | _, _ :: fs, h => by
+    simp only [foldSafety, Bool.and_eq_true] at h
+    exact ⟨powSafe_value h.1 ρ, FoldOK_of_safe ρ _ fs h.2⟩
+
+/-- Where every pair merge is `powSafe` or has integer exponents, the fold holds at a nonzero base. -/
+theorem FoldOK_of_ne (ρ : EnvR) {b : Expr} (hb : evalR ρ b ≠ 0) : ∀ (X : Expr) (fs : List Expr),
+    (foldSafety b X fs).2 = true → FoldOK ρ b X fs
+  | _, [], _ => trivial
+  | X, f :: fs, h => by
+    simp only [foldSafety, Bool.and_eq_true, Bool.or_eq_true] at h
+    refine ⟨?_, FoldOK_of_ne ρ hb _ fs h.2⟩
+    rcases h.1 with hs | hi
+    · exact powSafe_value hs ρ
+    · cases hx : intExp X with
+      | none => simp [hx] at hi
+      | some m =>
+        cases hy : intExp (baseExp f).2 with
+        | none => simp [hx, hy] at hi
+        | some n => rw [evalR_of_intExp hx, evalR_of_intExp hy]; exact rpow_int_add_of_ne _ hb m n
+
+/-- **`simp.collect-powers` is sound over ℝ, unconditionally**: each of its pair merges has integer
+exponents of one sign, or a positive numeral base. -/
 theorem collectPowers_soundR : RuleSoundR collectPowers := by
   intro e res h ρ
   have hs := gate_some h
@@ -649,15 +656,15 @@ theorem collectPowers_soundR : RuleSoundR collectPowers := by
   · rename_i l t hm
     simp only [Option.some.injEq] at hs; subst hs
     rw [evalR_mul, evalR_mul]
-    refine (mergePowers_soundR_with ρ es l t hm fun b x y hb => ?_).symm
-    simp only [collectAssumed, hb] at hna
+    refine (mergePowers_soundR_fold ρ es l t hm fun b e fs others hg => ?_).symm
+    simp only [collectAssumed, hg] at hna
     split at hna
-    · rename_i hsafe; exact powSafe_value hsafe ρ
+    · rename_i hsafe; exact FoldOK_of_safe ρ _ _ hsafe
     · simp at hna
   · simp at hs
 
-/-- **`simp.collect-powers.assuming` is sound under the assumption its step states**: `b ≠ 0` when the
-exponents are integers, `0 < b` otherwise. -/
+/-- **`simp.collect-powers.assuming` is sound under the assumption its step states**: `b ≠ 0` when each
+pair merge has integer exponents (or holds at every base), `0 < b` otherwise. -/
 theorem collectPowersAssuming_soundR_on {e : Expr} {res : RuleResult} (ρ : EnvR)
     (h : collectPowersAssuming.apply e = some res)
     (hb : ∀ b nz, collectAssumed e = some (b, nz) → if nz then evalR ρ b ≠ 0 else 0 < evalR ρ b) :
@@ -671,26 +678,18 @@ theorem collectPowersAssuming_soundR_on {e : Expr} {res : RuleResult} (ρ : EnvR
   · rename_i l t hm
     simp only [Option.some.injEq] at h₀; subst h₀
     rw [evalR_mul, evalR_mul]
-    refine (mergePowers_soundR_with ρ es l t hm fun b' x y hb' => ?_).symm
-    simp only [collectAssumed, hb'] at hca
+    refine (mergePowers_soundR_fold ρ es l t hm fun b' e' fs others hg => ?_).symm
+    simp only [collectAssumed, hg] at hca
     split at hca
     · cases hca
     · simp only [Option.some.injEq, Prod.mk.injEq] at hca
-      obtain ⟨rfl, rfl⟩ := hca
-      cases hx : intExp x with
-      | none =>
-        simp only [hx, Option.isSome_none, Bool.false_and, Bool.false_eq_true, ite_false] at hcond
-        exact (Real.rpow_add hcond _ _).symm
-      | some m =>
-        cases hy : intExp y with
-        | none =>
-          simp only [hx, hy, Option.isSome_none, Option.isSome_some, Bool.and_false, Bool.false_eq_true,
-            ite_false] at hcond
-          exact (Real.rpow_add hcond _ _).symm
-        | some n =>
-          simp only [hx, hy, Option.isSome_some, Bool.and_self, ite_true] at hcond
-          rw [evalR_of_intExp hx, evalR_of_intExp hy]
-          exact rpow_int_add_of_ne _ hcond m n
+      obtain ⟨hb', hnz'⟩ := hca
+      subst hb'; subst hnz'
+      by_cases hnz : (foldSafety b' (baseExp e').2 fs).2 = true
+      · simp only [hnz, ite_true] at hcond
+        exact FoldOK_of_ne ρ hcond _ _ hnz
+      · simp only [hnz, Bool.false_eq_true, ite_false] at hcond
+        exact FoldOK_of_pos ρ hcond _ _
   · simp at h₀
 
 /-- **…and not without it.** At `x = 0` the step rewrites `x·x⁻¹` into `x⁰`, that is `0` into `1`. This is
@@ -700,7 +699,7 @@ theorem not_collectPowersAssuming_soundR : ¬ RuleSoundR collectPowersAssuming :
   intro hs
   have h := hs (.mul [.var "x", .pow (.var "x") (.num (Q.ofInt (-1)))]) _ rfl (fun _ => 0)
   norm_num [evalR_mul, prodR_cons, prodR_nil, evalR_var, evalR_pow, evalR_num, Q_val_ofInt,
-    baseExp, addExp, Expr.one, removeFirst, Expr.equal, Expr.beq, Q_val_add, Q_val_one,
+    baseExp, addExp, Expr.one, expFold, ofBase, Expr.equal, Expr.beq, Q_val_add, Q_val_one,
     Real.rpow_zero] at h
 
 -- ---------------------------------------------------------------------------

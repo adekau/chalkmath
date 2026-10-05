@@ -2270,61 +2270,58 @@ theorem Clean.addExp {x y : Expr} (hx : Clean x) (hy : Clean y) : Clean (addExp 
     | _ => exact Clean.add (by intro c hc; simp at hc; rcases hc with rfl | rfl; exact hx; exact hy)
   | _ => cases y <;> exact Clean.add (by intro c hc; simp at hc; rcases hc with rfl | rfl; exact hx; exact hy)
 
-theorem mergePowers_spec : ∀ (es l : List Expr) (t : Expr), mergePowers es = some (l, t) →
-    ML l + 2 * l.length + 1 ≤ ML es + 2 * es.length ∧ ((∀ c ∈ es, Clean c) → ∀ c ∈ l, Clean c)
-  | [], _, _, h => by simp [mergePowers] at h
-  | e :: rest, l, t, h => by
-    simp only [mergePowers] at h
-    split at h
-    · split at h
-      · rename_i f hf
-        simp only [Option.some.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, rfl⟩ := h
-        have hfm := List.mem_of_find?_eq_some hf
-        have hfp := List.find?_some hf
-        have hfb : (baseExp f).1 = (baseExp e).1 := equal_eq hfp
-        have hperm := ML.perm (perm_find?_removeFirst _ rest f hf)
-        have hlen := (perm_find?_removeFirst _ rest f hf).length_eq
-        have hMe := M_baseExp e
-        have hMf := M_baseExp f
-        rw [hfb] at hMf
-        refine ⟨?_, ?_⟩
-        · simp only [ML.cons, List.length_cons, M.pow] at hperm hlen ⊢
-          have hax := M_addExp_le' (baseExp e).2 (baseExp f).2
-          have h1 : (M (baseExp e).1 + 1) * M (addExp (baseExp e).2 (baseExp f).2) ≤
-              (M (baseExp e).1 + 1) * (M (baseExp e).2 + M (baseExp f).2) := Nat.mul_le_mul_left _ hax
-          have h2 : (M (baseExp e).1 + 1) * (M (baseExp e).2 + M (baseExp f).2) =
-              (M (baseExp e).1 + 1) * M (baseExp e).2 + (M (baseExp e).1 + 1) * M (baseExp f).2 := Nat.mul_add _ _ _
-          have h3 : 1 * 1 ≤ (M (baseExp e).1 + 1) * M (baseExp e).2 := Nat.mul_le_mul (by omega) (M.pos _)
-          have h4 : 1 * 1 ≤ (M (baseExp e).1 + 1) * M (baseExp f).2 := Nat.mul_le_mul (by omega) (M.pos _)
-          omega
-        · intro hcs c hc
-          rcases List.mem_cons.mp hc with rfl | hc
-          · have hce := (hcs e List.mem_cons_self).baseExp
-            have hcf := (hcs f (List.mem_cons_of_mem _ hfm)).baseExp
-            exact Clean.pow hce.1 (Clean.addExp hce.2 hcf.2)
-          · have : c ∈ rest := (perm_find?_removeFirst _ rest f hf).mem_iff.mpr (List.mem_cons_of_mem _ hc)
-            exact hcs c (List.mem_cons_of_mem _ this)
-      · simp only [Option.map_eq_some_iff] at h
-        obtain ⟨⟨l', t'⟩, hl', hp⟩ := h
-        simp only [Prod.mk.injEq] at hp; obtain ⟨rfl, rfl⟩ := hp
-        have ih := mergePowers_spec rest l' t' hl'
-        refine ⟨?_, ?_⟩
-        · simp only [ML.cons, List.length_cons]; omega
-        · intro hcs c hc
-          rcases List.mem_cons.mp hc with rfl | hc
-          · exact hcs c List.mem_cons_self
-          · exact ih.2 (fun d hd => hcs d (List.mem_cons_of_mem _ hd)) c hc
-    · simp only [Option.map_eq_some_iff] at h
-      obtain ⟨⟨l', t'⟩, hl', hp⟩ := h
-      simp only [Prod.mk.injEq] at hp; obtain ⟨rfl, rfl⟩ := hp
-      have ih := mergePowers_spec rest l' t' hl'
-      refine ⟨?_, ?_⟩
-      · simp only [ML.cons, List.length_cons]; omega
-      · intro hcs c hc
-        rcases List.mem_cons.mp hc with rfl | hc
-        · exact hcs c List.mem_cons_self
-        · exact ih.2 (fun d hd => hcs d (List.mem_cons_of_mem _ hd)) c hc
+/-- One merge, `b^X · b^y → b^(X+y)`, costs at most what the two factors did, plus one. -/
+theorem M_pow_addExp_le (b X y : Expr) : M (.pow b (addExp X y)) ≤ M (.pow b X) + M (.pow b y) + 1 := by
+  rw [M.pow, M.pow, M.pow]
+  have h1 := Nat.mul_le_mul_left (M b + 1) (M_addExp_le' X y)
+  have h2 : (M b + 1) * (M X + M y) = (M b + 1) * M X + (M b + 1) * M y := Nat.mul_add _ _ _
+  have h3 : 1 * 1 ≤ (M b + 1) * M X := Nat.mul_le_mul (by omega) (M.pos _)
+  have h4 : 1 * 1 ≤ (M b + 1) * M y := Nat.mul_le_mul (by omega) (M.pos _)
+  omega
+
+theorem M_of_base {f b : Expr} (h : (baseExp f).1 = b) : M f = M (.pow b (baseExp f).2) := by
+  rw [M_baseExp f, h, M.pow]
+
+theorem M_expFold_le' (b : Expr) : ∀ (X : Expr) (fs : List Expr), (∀ f ∈ fs, (baseExp f).1 = b) →
+    M (.pow b (expFold X fs)) ≤ M (.pow b X) + ML fs + fs.length
+  | X, [], _ => by simp [expFold, ML.nil]
+  | X, f :: fs, h => by
+    have hf := M_of_base (h f List.mem_cons_self)
+    have h1 := M_pow_addExp_le b X (baseExp f).2
+    have ih := M_expFold_le' b (addExp X (baseExp f).2) fs (fun g hg => h g (List.mem_cons_of_mem _ hg))
+    simp only [expFold, ML.cons, List.length_cons]; omega
+
+theorem Clean.expFold : ∀ {X : Expr} {fs : List Expr}, Clean X → (∀ f ∈ fs, Clean f) → Clean (expFold X fs)
+  | _, [], hX, _ => hX
+  | _, f :: _, hX, hfs => by
+    simp only [MathEngine.expFold]
+    exact Clean.expFold (Clean.addExp hX (hfs f List.mem_cons_self).baseExp.2)
+      (fun g hg => hfs g (List.mem_cons_of_mem _ hg))
+
+theorem mergePowers_spec (es l : List Expr) (t : Expr) (h : mergePowers es = some (l, t)) :
+    ML l + 2 * l.length + 1 ≤ ML es + 2 * es.length ∧ ((∀ c ∈ es, Clean c) → ∀ c ∈ l, Clean c) := by
+  simp only [mergePowers, Option.map_eq_some_iff] at h
+  obtain ⟨⟨b, e, fs, others⟩, hg, hl⟩ := h
+  simp only [Prod.mk.injEq] at hl; obtain ⟨rfl, rfl⟩ := hl
+  obtain ⟨hperm, he, hfs, hne, -⟩ := powerGroup_spec hg
+  have hM := ML.perm hperm
+  have hlen := hperm.length_eq
+  match fs, hne, hfs with
+  | f :: fs', _, hfs =>
+    have hMe := M_of_base he
+    have hMf := M_of_base (hfs f List.mem_cons_self)
+    have h1 := M_pow_addExp_le b (baseExp e).2 (baseExp f).2
+    have h2 := M_expFold_le' b (addExp (baseExp e).2 (baseExp f).2) fs' (fun g hg => hfs g (List.mem_cons_of_mem _ hg))
+    refine ⟨?_, ?_⟩
+    · simp only [expFold, ML.cons, ML.append, List.length_cons, List.length_append] at hM hlen h2 ⊢
+      omega
+    · intro hcs c hc
+      have hcs' : ∀ d ∈ e :: (f :: fs' ++ others), Clean d := fun d hd => hcs d (hperm.mem_iff.mpr hd)
+      rcases List.mem_cons.mp hc with rfl | hc
+      · have hce := (hcs' e List.mem_cons_self).baseExp
+        rw [he] at hce
+        exact Clean.pow hce.1 (Clean.expFold hce.2 (fun g hg => hcs' g (List.mem_cons_of_mem _ (List.mem_append_left _ hg))))
+      · exact hcs' c (by simp [hc])
 
 theorem dec_collectPowersApply : ∀ e res, ChildrenNormal (pipelineRulesWith norm real) e → (children e).any isMatrix = false →
     collectPowersApply e = some res → res.error = none → MuLt (μ res.result) (μ e) := fun e res hcn hm happ herr => by
@@ -2400,70 +2397,52 @@ theorem coeffRest_nine {e : Expr} {c : Q} {t : Expr} (hn : Normal (pipelineRules
       omega
   · exact M_ge_nine_of_normal hn (by cases e <;> simp_all [bigBase, isNum])
 
-theorem mergeTerms_ne_nil : ∀ (es l : List Expr) (t : Expr), mergeTerms es = some (l, t) → l ≠ []
-  | [], _, _, h => by simp [mergeTerms] at h
-  | e :: rest, l, t, h => by
-    simp only [mergeTerms] at h
-    split at h
-    · split at h
-      · simp only [Option.some.injEq, Prod.mk.injEq] at h; obtain ⟨rfl, _⟩ := h; simp
-      · simp only [Option.map_eq_some_iff] at h
-        obtain ⟨⟨l', t'⟩, _, hp⟩ := h
-        simp only [Prod.mk.injEq] at hp; obtain ⟨rfl, _⟩ := hp; simp
-    · simp only [Option.map_eq_some_iff] at h
-      obtain ⟨⟨l', t'⟩, _, hp⟩ := h
-      simp only [Prod.mk.injEq] at hp; obtain ⟨rfl, _⟩ := hp; simp
+theorem mergeTerms_ne_nil (es l : List Expr) (t : Expr) (h : mergeTerms es = some (l, t)) : l ≠ [] := by
+  simp only [mergeTerms, Option.map_eq_some_iff] at h
+  obtain ⟨_, _, hl⟩ := h
+  simp only [Prod.mk.injEq] at hl; rw [← hl.1]; simp
 
-theorem mergeTerms_spec : ∀ (es l : List Expr) (t : Expr), (∀ c ∈ es, Normal (pipelineRulesWith norm real) c) →
-    mergeTerms es = some (l, t) →
-    ML l + 1 ≤ ML es ∧ ((∀ c ∈ es, Clean c) → ∀ c ∈ l, Clean c)
-  | [], _, _, _, h => by simp [mergeTerms] at h
-  | e :: rest, l, t, hn, h => by
-    simp only [mergeTerms] at h
-    split at h
-    · rename_i hbig
-      split at h
-      · rename_i f hf
-        simp only [Option.some.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, rfl⟩ := h
-        have hfm := List.mem_of_find?_eq_some hf
-        have hfp := List.find?_some hf
-        have hft : (coeffRest f).2 = (coeffRest e).2 := equal_eq hfp
-        have hperm := ML.perm (perm_find?_removeFirst _ rest f hf)
-        obtain ⟨hMe, hce'⟩ := coeffRest_M (c := (coeffRest e).1) (t := (coeffRest e).2) rfl hbig
-        obtain ⟨hMf, hcf'⟩ := coeffRest_M (c := (coeffRest f).1) (t := (coeffRest e).2) (by rw [← hft]) hbig
-        refine ⟨?_, ?_⟩
-        · simp only [ML.cons] at hperm ⊢
-          have h9 : 9 ≤ M (coeffRest e).2 := coeffRest_nine (hn e List.mem_cons_self) rfl hbig
-          have hadd := M_num_add_le (coeffRest e).1 (coeffRest f).1
-          rw [M.mul, ML.cons, ML.cons, ML.nil]
-          simp only [List.length_cons, List.length_nil]
-          omega
-        · intro hcs d hd
-          rcases List.mem_cons.mp hd with rfl | hd
-          · exact Clean.mul (by intro k hk; simp at hk; rcases hk with rfl | rfl
-                                · exact Clean.num _
-                                · exact hce' (hcs e List.mem_cons_self))
-          · have : d ∈ rest := (perm_find?_removeFirst _ rest f hf).mem_iff.mpr (List.mem_cons_of_mem _ hd)
-            exact hcs d (List.mem_cons_of_mem _ this)
-      · simp only [Option.map_eq_some_iff] at h
-        obtain ⟨⟨l', u⟩, hl', hp⟩ := h
-        simp only [Prod.mk.injEq] at hp; obtain ⟨rfl, rfl⟩ := hp
-        have ih := mergeTerms_spec rest l' u (fun d hd => hn d (List.mem_cons_of_mem _ hd)) hl'
-        refine ⟨by simp only [ML.cons]; omega, ?_⟩
-        intro hcs d hd
-        rcases List.mem_cons.mp hd with rfl | hd
-        · exact hcs d List.mem_cons_self
-        · exact ih.2 (fun k hk => hcs k (List.mem_cons_of_mem _ hk)) d hd
-    · simp only [Option.map_eq_some_iff] at h
-      obtain ⟨⟨l', u⟩, hl', hp⟩ := h
-      simp only [Prod.mk.injEq] at hp; obtain ⟨rfl, rfl⟩ := hp
-      have ih := mergeTerms_spec rest l' u (fun d hd => hn d (List.mem_cons_of_mem _ hd)) hl'
-      refine ⟨by simp only [ML.cons]; omega, ?_⟩
-      intro hcs d hd
-      rcases List.mem_cons.mp hd with rfl | hd
-      · exact hcs d List.mem_cons_self
-      · exact ih.2 (fun k hk => hcs k (List.mem_cons_of_mem _ hk)) d hd
+theorem M_coeffTerm (c : Q) (u : Expr) : M (.mul [.num c, u]) = 6 + M (.num c) + M u := by
+  simp only [M.mul, ML.cons, ML.nil, List.length_cons, List.length_nil]; omega
+
+/-- Merging further like terms into `c·u`, one at a time: each merge is lighter than its two terms. -/
+theorem M_coeffFold_le' (u : Expr) (hb : bigBase u = true) (hu : 2 ≤ M u) : ∀ (c : Q) (fs : List Expr),
+    (∀ f ∈ fs, (coeffRest f).2 = u) → M (.mul [.num (coeffFold c fs), u]) + fs.length ≤ M (.mul [.num c, u]) + ML fs
+  | c, [], _ => by simp [coeffFold, ML.nil]
+  | c, f :: fs, h => by
+    have hf := (coeffRest_M (coeffRest_of_snd (h f List.mem_cons_self)) hb).1
+    have hadd := M_num_add_le c (coeffRest f).1
+    have ih := M_coeffFold_le' u hb hu (c + (coeffRest f).1) fs (fun g hg => h g (List.mem_cons_of_mem _ hg))
+    simp only [coeffFold, ML.cons, List.length_cons, M_coeffTerm] at ih ⊢
+    omega
+
+theorem mergeTerms_spec (es l : List Expr) (t : Expr) (hn : ∀ c ∈ es, Normal (pipelineRulesWith norm real) c)
+    (h : mergeTerms es = some (l, t)) :
+    ML l + 1 ≤ ML es ∧ ((∀ c ∈ es, Clean c) → ∀ c ∈ l, Clean c) := by
+  simp only [mergeTerms, Option.map_eq_some_iff] at h
+  obtain ⟨⟨u, e, fs, others⟩, hg, hl⟩ := h
+  simp only [Prod.mk.injEq] at hl; obtain ⟨rfl, rfl⟩ := hl
+  obtain ⟨hperm, he, hfs, hne, hbig⟩ := termGroup_spec hg
+  have hM := ML.perm hperm
+  have h9 : 9 ≤ M u := coeffRest_nine (hn e (hperm.mem_iff.mpr List.mem_cons_self)) (coeffRest_of_snd he) hbig
+  match fs, hne, hfs with
+  | f :: fs', _, hfs =>
+    have hMe := (coeffRest_M (coeffRest_of_snd he) hbig).1
+    have hMf := (coeffRest_M (coeffRest_of_snd (hfs f List.mem_cons_self)) hbig).1
+    have hadd := M_num_add_le (coeffRest e).1 (coeffRest f).1
+    have h2 := M_coeffFold_le' u hbig (by omega) ((coeffRest e).1 + (coeffRest f).1) fs'
+      (fun g hg => hfs g (List.mem_cons_of_mem _ hg))
+    refine ⟨?_, ?_⟩
+    · simp only [coeffFold, ML.cons, ML.append, List.cons_append, M_coeffTerm] at hM h2 ⊢
+      omega
+    · intro hcs c hc
+      have hcs' : ∀ d ∈ e :: (f :: fs' ++ others), Clean d := fun d hd => hcs d (hperm.mem_iff.mpr hd)
+      rcases List.mem_cons.mp hc with rfl | hc
+      · exact Clean.mul (by
+          intro k hk; simp at hk; rcases hk with rfl | rfl
+          · exact Clean.num _
+          · exact (coeffRest_M (coeffRest_of_snd he) hbig).2 (hcs' e List.mem_cons_self))
+      · exact hcs' c (by simp [hc])
 
 theorem dec_collectTerms : Dec norm real (scalarOnly collectTerms.toPlain) := dec_scalar fun e res hcn hm happ herr => by
   simp only [Rule.toPlain, collectTerms, collectTermsApply] at happ
@@ -2478,7 +2457,7 @@ theorem dec_collectTerms : Dec norm real (scalarOnly collectTerms.toPlain) := de
       obtain ⟨hM, hcl⟩ := mergeTerms_spec es l t hn hmt
       apply muLt_of_clean (Clean.add (hcl hcs)) he
       left
-      have hne : es ≠ [] := by cases es <;> simp_all [mergeTerms]
+      have hne : es ≠ [] := by rintro rfl; simp [ML.nil] at hM
       have hlne : l ≠ [] := mergeTerms_ne_nil es l t hmt
       rw [M_add_ne_nil hne, M_add_ne_nil hlne]; omega
     · simp at happ

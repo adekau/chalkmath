@@ -54,6 +54,11 @@ const CASES = [
   { src: "integrate(1/x, x)", text: "ln(x)", step: "Power rule for integrals, assuming" },
   { src: "integrate(b^x, x)", text: "b^x/ln(b)", step: "Exponential integral, assuming the base" },
   { src: "diff(tan(x), x) - sec(x)^2", text: "0", step: "Collect like terms" },
+  // long sums and chains: one step per group of like terms, not one per term (ARCHITECTURE.md §3)
+  { src: Array(500).fill("x").join("+"), text: "500*x", step: "Collect like terms" },
+  { src: "2x+3y+4x+5y-x", text: "5*x + 8*y", step: "Collect like terms" },
+  { src: "x*y*x*z*x*y", text: "z*x^3*y^2", step: "Collect powers" },
+  { src: "-".repeat(1001) + "x", text: "-x", step: "Arithmetic on constants" },
   { src: "sin^-1(x)", text: "1/sin(x)" },
   { src: "N(arcsin(2))", error: "cannot evaluate 'arcsin' numerically" },
   { src: "N(arg(-1-i))", text: "-2.35619449019234", step: "Floating-point value" },

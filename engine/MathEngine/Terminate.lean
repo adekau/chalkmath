@@ -330,6 +330,216 @@ theorem children_canon_perm (e : Expr) : (children (canon e)).Perm (children e) 
   | _ => exact List.Perm.refl _
 
 -- ---------------------------------------------------------------------------
+-- Chains: a sum of sums, or a product of products, opened in one step
+-- ---------------------------------------------------------------------------
+
+/-! A chain is a sum with a sum among its terms, or a product with a product among its factors:
+`x*x*…*x` as the parser reads it, `((x·x)·x)·…`, or `-…-x`, `-1·(-1·(…))`, or a sum a rule builds
+(the parser opens the sums it reads, `openSpine`). Normalized innermost, a chain is worked at every
+level, each level a step whose path is as long as the chain is deep, and a product of `n` distinct
+factors is flattened, sorted and searched `n` times over. So before the rewriter descends into a
+chain, it opens the whole chain at once:
+`simp.flatten` (associativity), all the way down, as one silent step. It decreases `μ` on any term,
+normal children or not (`openChain_lt`): the counting tiers are unchanged, `M` does not grow, and
+`size` drops. A chain with a matrix literal in it is left to the rules, which leave a node with a
+literal among its children to the matrix rules (`scalarOnly`). -/
+
+mutual
+  /-- The summands of `e`, `add` nodes opened all the way down, in order, before `acc`. -/
+  def addArgs : Expr → List Expr → List Expr
+    | .add es, acc => addArgsList es acc
+    | e, acc => e :: acc
+  def addArgsList : List Expr → List Expr → List Expr
+    | [], acc => acc
+    | e :: es, acc => addArgs e (addArgsList es acc)
+end
+
+mutual
+  /-- The factors of `e`, `mul` nodes opened all the way down, in order, before `acc`. -/
+  def mulArgs : Expr → List Expr → List Expr
+    | .mul es, acc => mulArgsList es acc
+    | e, acc => e :: acc
+  def mulArgsList : List Expr → List Expr → List Expr
+    | [], acc => acc
+    | e :: es, acc => mulArgs e (mulArgsList es acc)
+end
+
+def isAddNode : Expr → Bool | .add _ => true | _ => false
+def isMulNode : Expr → Bool | .mul _ => true | _ => false
+
+/-- A chain opened: a sum with a sum among its terms, or a product with a product among its factors,
+without a matrix literal anywhere in it. -/
+def openChain : Expr → Option Expr
+  | .add es =>
+    if es.any isAddNode && !hasLitList es then
+      let l := addArgsList es []
+      if l.isEmpty then none else some (.add l)
+    else none
+  | .mul es => if es.any isMulNode && !hasLitList es then some (.mul (mulArgsList es [])) else none
+  | _ => none
+
+section chains
+
+theorem M_add_ne_nil' {es : List Expr} (h : es ≠ []) : M (.add es) = ML es := by
+  cases es with
+  | nil => exact absurd rfl h
+  | cons e es => rw [M.add_cons, ML.cons]
+
+mutual
+  theorem countList_addArgs (own : Expr → Nat) (h0 : ∀ xs, own (.add xs) = 0) :
+      ∀ (e : Expr) (acc : List Expr), countList own (addArgs e acc) = count own e + countList own acc
+    | .add es, acc => by rw [addArgs, countList_addArgsList own h0 es acc, count, h0]; omega
+    | .num _, _ | .var _, _ | .mul _, _ | .pow _ _, _ | .fn _ _, _ | .matrix _, _ => by simp [addArgs, countList]
+  theorem countList_addArgsList (own : Expr → Nat) (h0 : ∀ xs, own (.add xs) = 0) :
+      ∀ (es acc : List Expr), countList own (addArgsList es acc) = countList own es + countList own acc
+    | [], acc => by simp [addArgsList, countList]
+    | e :: es, acc => by
+      rw [addArgsList, countList_addArgs own h0 e, countList_addArgsList own h0 es acc, countList]; omega
+end
+
+mutual
+  theorem countList_mulArgs (own : Expr → Nat) (h0 : ∀ xs, own (.mul xs) = 0) :
+      ∀ (e : Expr) (acc : List Expr), countList own (mulArgs e acc) = count own e + countList own acc
+    | .mul es, acc => by rw [mulArgs, countList_mulArgsList own h0 es acc, count, h0]; omega
+    | .num _, _ | .var _, _ | .add _, _ | .pow _ _, _ | .fn _ _, _ | .matrix _, _ => by simp [mulArgs, countList]
+  theorem countList_mulArgsList (own : Expr → Nat) (h0 : ∀ xs, own (.mul xs) = 0) :
+      ∀ (es acc : List Expr), countList own (mulArgsList es acc) = countList own es + countList own acc
+    | [], acc => by simp [mulArgsList, countList]
+    | e :: es, acc => by
+      rw [mulArgsList, countList_mulArgs own h0 e, countList_mulArgsList own h0 es acc, countList]; omega
+end
+
+mutual
+  theorem hasLitList_addArgs : ∀ (e : Expr) (acc : List Expr),
+      hasLitList (addArgs e acc) = (hasLit e || hasLitList acc)
+    | .add es, acc => by rw [addArgs, hasLitList_addArgsList es acc, hasLit]
+    | .num _, _ | .var _, _ | .mul _, _ | .pow _ _, _ | .fn _ _, _ | .matrix _, _ => by simp [addArgs, hasLitList]
+  theorem hasLitList_addArgsList : ∀ (es acc : List Expr),
+      hasLitList (addArgsList es acc) = (hasLitList es || hasLitList acc)
+    | [], acc => by simp [addArgsList, hasLitList]
+    | e :: es, acc => by
+      rw [addArgsList, hasLitList_addArgs e, hasLitList_addArgsList es acc, hasLitList, Bool.or_assoc]
+end
+
+mutual
+  theorem hasLitList_mulArgs : ∀ (e : Expr) (acc : List Expr),
+      hasLitList (mulArgs e acc) = (hasLit e || hasLitList acc)
+    | .mul es, acc => by rw [mulArgs, hasLitList_mulArgsList es acc, hasLit]
+    | .num _, _ | .var _, _ | .add _, _ | .pow _ _, _ | .fn _ _, _ | .matrix _, _ => by simp [mulArgs, hasLitList]
+  theorem hasLitList_mulArgsList : ∀ (es acc : List Expr),
+      hasLitList (mulArgsList es acc) = (hasLitList es || hasLitList acc)
+    | [], acc => by simp [mulArgsList, hasLitList]
+    | e :: es, acc => by
+      rw [mulArgsList, hasLitList_mulArgs e, hasLitList_mulArgsList es acc, hasLitList, Bool.or_assoc]
+end
+
+-- Opening a chain never adds weight (`M (add xs) ≥ ML xs`, and a product's node costs more than
+-- its factors), and each node opened is one fewer.
+mutual
+  theorem addArgs_le : ∀ (e : Expr) (acc : List Expr),
+      ML (addArgs e acc) ≤ M e + ML acc ∧ sizeList (addArgs e acc) ≤ size e + sizeList acc ∧
+        (isAddNode e = true → sizeList (addArgs e acc) < size e + sizeList acc)
+    | .add es, acc => by
+      have ih := addArgsList_le es acc
+      have hM : ML es ≤ M (.add es) := by cases es <;> simp [M.add_nil, M.add_cons, ML]
+      rw [addArgs, size]; refine ⟨by omega, by omega, fun _ => by omega⟩
+    | .num _, _ | .var _, _ | .mul _, _ | .pow _ _, _ | .fn _ _, _ | .matrix _, _ => by
+      simp [addArgs, ML, sizeList, isAddNode]
+  theorem addArgsList_le : ∀ (es acc : List Expr),
+      ML (addArgsList es acc) ≤ ML es + ML acc ∧ sizeList (addArgsList es acc) ≤ sizeList es + sizeList acc ∧
+        (es.any isAddNode = true → sizeList (addArgsList es acc) < sizeList es + sizeList acc)
+    | [], acc => by simp [addArgsList, ML, sizeList]
+    | e :: es, acc => by
+      have ih := addArgsList_le es acc
+      have he := addArgs_le e (addArgsList es acc)
+      rw [addArgsList, ML, sizeList]
+      refine ⟨by omega, by omega, fun h => ?_⟩
+      rw [List.any_cons, Bool.or_eq_true] at h
+      rcases h with h | h
+      · have := he.2.2 h; omega
+      · have := ih.2.2 h; omega
+end
+
+mutual
+  theorem mulArgs_le : ∀ (e : Expr) (acc : List Expr),
+      ML (mulArgs e acc) + 2 * (mulArgs e acc).length ≤ M e + 2 + ML acc + 2 * acc.length ∧
+      sizeList (mulArgs e acc) ≤ size e + sizeList acc ∧
+        (isMulNode e = true → sizeList (mulArgs e acc) < size e + sizeList acc)
+    | .mul es, acc => by
+      have ih := mulArgsList_le es acc
+      rw [mulArgs, size, M.mul]; refine ⟨by omega, by omega, fun _ => by omega⟩
+    | .num _, _ | .var _, _ | .add _, _ | .pow _ _, _ | .fn _ _, _ | .matrix _, _ => by
+      simp [mulArgs, ML, sizeList, isMulNode]; omega
+  theorem mulArgsList_le : ∀ (es acc : List Expr),
+      ML (mulArgsList es acc) + 2 * (mulArgsList es acc).length ≤ ML es + 2 * es.length + ML acc + 2 * acc.length ∧
+      sizeList (mulArgsList es acc) ≤ sizeList es + sizeList acc ∧
+        (es.any isMulNode = true → sizeList (mulArgsList es acc) < sizeList es + sizeList acc)
+    | [], acc => by simp [mulArgsList, ML, sizeList]
+    | e :: es, acc => by
+      have ih := mulArgsList_le es acc
+      have he := mulArgs_le e (mulArgsList es acc)
+      rw [mulArgsList, ML, sizeList, List.length_cons]
+      refine ⟨by omega, by omega, fun h => ?_⟩
+      rw [List.any_cons, Bool.or_eq_true] at h
+      rcases h with h | h
+      · have := he.2.2 h; omega
+      · have := ih.2.2 h; omega
+end
+
+theorem count_litOwn_of_not_hasLit {e : Expr} (h : hasLit e = false) : count litOwn e = 0 := by
+  cases hc : count litOwn e with
+  | zero => rfl
+  | succ n => have := hasLit_of_count_pos (e := e) (by omega); simp [h] at this
+
+/-- Opening a chain decreases `μ`, whatever the children: the step needs no `ChildrenNormal`. -/
+theorem openChain_lt {e e' : Expr} (h : openChain e = some e') : MuLt (μ e') (μ e) := by
+  cases e with
+  | add es =>
+    simp only [openChain] at h
+    split at h
+    · rename_i hc
+      simp only [Bool.and_eq_true, Bool.not_eq_eq_eq_not, Bool.not_true] at hc
+      split at h
+      · cases h
+      · rename_i hl
+        cases h
+        have hl : addArgsList es [] ≠ [] := by simpa using hl
+        have hne : es ≠ [] := by cases es <;> simp_all
+        have hle := addArgsList_le es []
+        have hs := hle.2.2 hc.1
+        simp only [ML.nil, sizeList, Nat.add_zero] at hle hs
+        have hlit : hasLit (.add (addArgsList es [])) = false := by
+          simp [hasLit, hasLitList_addArgsList, hc.2, hasLitList]
+        simp only [μ, cmdCount, d3Count, litCount]
+        rw [count_litOwn_of_not_hasLit hlit, count_litOwn_of_not_hasLit (e := .add es) (by simp [hasLit, hc.2])]
+        simp only [count, countList_addArgsList cmdOwn (fun _ => rfl), countList_addArgsList d3Own (fun _ => rfl),
+          M_add_ne_nil' hne, M_add_ne_nil' hl, size, cmdOwn, d3Own, countList]
+        exact muLt_of (by omega) (fun _ => by omega) (fun _ _ => by omega) (fun _ _ _ => hle.1)
+          (fun _ _ _ _ => by omega) (fun _ _ _ _ h5 => by omega)
+    · cases h
+  | mul es =>
+    simp only [openChain] at h
+    split at h
+    · rename_i hc
+      simp only [Bool.and_eq_true, Bool.not_eq_eq_eq_not, Bool.not_true] at hc
+      cases h
+      have hle := mulArgsList_le es []
+      have hs := hle.2.2 hc.1
+      simp only [ML.nil, sizeList, Nat.add_zero, List.length_nil, Nat.mul_zero] at hle hs
+      have hlit : hasLit (.mul (mulArgsList es [])) = false := by
+        simp [hasLit, hasLitList_mulArgsList, hc.2, hasLitList]
+      simp only [μ, cmdCount, d3Count, litCount]
+      rw [count_litOwn_of_not_hasLit hlit, count_litOwn_of_not_hasLit (e := .mul es) (by simp [hasLit, hc.2])]
+      simp only [count, countList_mulArgsList cmdOwn (fun _ => rfl), countList_mulArgsList d3Own (fun _ => rfl),
+        M.mul, size, cmdOwn, d3Own, countList]
+      exact muLt_of (by omega) (fun _ => by omega) (fun _ _ => by omega) (fun _ _ _ => by omega)
+        (fun _ _ _ _ => by omega) (fun _ _ _ _ h5 => by omega)
+    · cases h
+  | _ => simp [openChain] at h
+
+end chains
+
+-- ---------------------------------------------------------------------------
 -- The rewriter
 -- ---------------------------------------------------------------------------
 
@@ -346,15 +556,26 @@ def PromiseList (rules : List PlainRule) (cs : List Expr) (st : TState) (r : Lis
   RelList (fun a b => MuLe (μ a) (μ b)) r.1 cs ∧ (r.2.error = none → ∀ c ∈ r.1, Normal rules c) ∧
     (r.2.error = none → st.error = none)
 
+/-! The path of the node being normalized is carried reversed (`rpath`, innermost index first):
+descending is then a cons, where `path ++ [i]` would cost every node its depth. A step records it
+the right way round. -/
 mutual
-  def normAtT (rules : List PlainRule) (ord : Ordered rules) (e : Expr) (path : Path) (st : TState) :
+  def normAtT (rules : List PlainRule) (ord : Ordered rules) (e : Expr) (rpath : Path) (st : TState) :
       {r : Expr × TState // Promise rules e st r} :=
-    match normChildrenT rules ord e (children e) (fun _ h => h) path 0 st with
+    -- a chain is opened before its children are worked (`openChain`)
+    match hoc : openChain e with
+    | some e' =>
+      have hlt : MuLt (μ e') (μ e) := openChain_lt hoc
+      let st' : TState := { st with steps := st.steps.push ⟨"simp.flatten", true, "associativity", rpath.reverse, e', none⟩ }
+      match normAtT rules ord e' rpath st' with
+      | ⟨r, hr⟩ => ⟨r, hr.1.trans (Or.inl hlt), hr.2.1, hr.2.2⟩
+    | none =>
+    match normChildrenT rules ord e (children e) (fun _ h => h) rpath 0 st with
     | ⟨(cs, st₀), hcs⟩ =>
       have hlen : cs.length = (children e).length := RelList_length hcs.1
       let e₀ := withChildren e cs
       let e₁ := canon e₀
-      let st₁ := if equal e₁ e₀ then st₀ else { st₀ with steps := st₀.steps.push ⟨"simp.sort", true, "commutativity", path, e₁, none⟩ }
+      let st₁ := if equal e₁ e₀ then st₀ else { st₀ with steps := st₀.steps.push ⟨"simp.sort", true, "commutativity", rpath.reverse, e₁, none⟩ }
       have hst₁ : st₁.error = st₀.error := by simp only [st₁]; split <;> rfl
       have h₁ : MuLe (μ e₁) (μ e) := by
         have := μ_withChildren_le e (cs' := cs) (cs := children e) rfl hcs.1
@@ -379,24 +600,25 @@ mutual
         have hdec : MuLt (μ res.result) (μ e₁) :=
           ord.decreasing rule (fireP_spec rules e₁ hf).1 e₁ res (hnorm hnone) (fireP_spec rules e₁ hf).2
             (by cases h : res.error with | none => rfl | some => simp [h] at hres)
-        let st₂ : TState := { st₁ with steps := st₁.steps.push ⟨rule.name, rule.silent, res.explanation, path, res.result, res.sub⟩ }
+        let st₂ : TState := { st₁ with steps := st₁.steps.push ⟨rule.name, rule.silent, res.explanation, rpath.reverse, res.result, res.sub⟩ }
         have hst₂ : st₂.error = st₀.error := hst₁
-        match normAtT rules ord res.result path st₂ with
+        match normAtT rules ord res.result rpath st₂ with
         | ⟨r, hr⟩ => ⟨r, hr.1.trans (Or.inl (hdec.trans_le h₁)), hr.2.1, fun h => hcs.2.2 (hst₂ ▸ hr.2.2 h)⟩
   termination_by (μ e, 1, 0)
   decreasing_by
+    · exact Prod.Lex.left _ _ hlt
     · exact Prod.Lex.right _ (Prod.Lex.left _ _ Nat.zero_lt_one)
     · exact Prod.Lex.left _ _ (hdec.trans_le h₁)
 
   def normChildrenT (rules : List PlainRule) (ord : Ordered rules) (parent : Expr) (cs : List Expr)
-      (hsub : ∀ c ∈ cs, c ∈ children parent) (path : Path) (i : Nat) (st : TState) :
+      (hsub : ∀ c ∈ cs, c ∈ children parent) (rpath : Path) (i : Nat) (st : TState) :
       {r : List Expr × TState // PromiseList rules cs st r} :=
     match cs with
     | [] => ⟨([], st), trivial, fun _ _ h => by simp at h, fun h => h⟩
     | c :: cs' =>
-      match normAtT rules ord c (path ++ [i]) st with
+      match normAtT rules ord c (i :: rpath) st with
       | ⟨(c', st₁), hc⟩ =>
-        match normChildrenT rules ord parent cs' (fun d hd => hsub d (List.mem_cons_of_mem _ hd)) path (i + 1) st₁ with
+        match normChildrenT rules ord parent cs' (fun d hd => hsub d (List.mem_cons_of_mem _ hd)) rpath (i + 1) st₁ with
         | ⟨(cs'', st₂), hcs⟩ =>
           ⟨(c' :: cs'', st₂), ⟨hc.1, hcs.1⟩, fun herr d hd => by
             rcases List.mem_cons.mp hd with rfl | hd

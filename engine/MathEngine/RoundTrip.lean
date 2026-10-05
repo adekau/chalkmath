@@ -229,12 +229,12 @@ theorem addTerms_tail (path : Path) : ∀ (rest : List Expr), (∀ c ∈ rest, P
     have := addTerms_tail path rest (fun c hc => h c (by simp [hc])) (i + 1)
     simp only [splitCoeff_plain ha.1]
     rw [this _ (by omega)]
-    have hp := ha.2.print (path ++ [i]) 2
+    have hp := ha.2.print (i :: path) 2
     simp [hi, hp, rawTail, ptoks, P_MUL]
 
 theorem mulFactor_plain {f : Expr} (h : Plain f) (hp : PrintsAs f) (i : Nat) (p : Path)
     (sign : String) (numer denom : List String) :
-    ∃ s, mulFactor f i p textTarget sign numer denom = (sign, numer ++ [s], denom) ∧
+    ∃ s, mulFactor f i p textTarget sign numer denom = (sign, s :: numer, denom) ∧
       s.toList = render (ptoks f 2) := by
   cases h with
   | num n =>
@@ -254,13 +254,13 @@ theorem mulFactor_plain {f : Expr} (h : Plain f) (hp : PrintsAs f) (i : Nat) (p 
 
 theorem mulFactors_plain (path : Path) (off : Nat) : ∀ (args : List Expr), (∀ c ∈ args, Plain c ∧ PrintsAs c) →
     ∀ (i : Nat) (sign : String) (numer denom : List String),
-    ∃ strs : List String, mulFactors args i path off textTarget sign numer denom = (sign, numer ++ strs, denom) ∧
+    ∃ strs : List String, mulFactors args i path off textTarget sign numer denom = (sign, strs.reverse ++ numer, denom) ∧
       strs.map String.toList = args.map (fun c => render (ptoks c 2))
   | [], _, i, sign, numer, denom => ⟨[], by rw [mulFactors]; simp, rfl⟩
   | a :: rest, h, i, sign, numer, denom => by
     have ha := h a (by simp)
-    obtain ⟨s, hs, hs'⟩ := mulFactor_plain ha.1 ha.2 i (path ++ [i + off]) sign numer denom
-    obtain ⟨strs, h1, h2⟩ := mulFactors_plain path off rest (fun c hc => h c (by simp [hc])) (i + 1) sign (numer ++ [s]) denom
+    obtain ⟨s, hs, hs'⟩ := mulFactor_plain ha.1 ha.2 i ((i + off) :: path) sign numer denom
+    obtain ⟨strs, h1, h2⟩ := mulFactors_plain path off rest (fun c hc => h c (by simp [hc])) (i + 1) sign (s :: numer) denom
     refine ⟨s :: strs, ?_, ?_⟩
     · rw [mulFactors]; simp [hs, h1]
     · simp [hs', h2]
@@ -296,7 +296,7 @@ theorem fnRaw_abs (a : Expr) (s : String) : fnRaw textTarget "abs" [a] [s] = ("a
 
 theorem printRaw_pow {x : Expr} (hx : Plain x) (b : Expr) (path : Path) :
     printRaw (.pow b x) path textTarget =
-      (print b (path ++ [0]) textTarget 4 ++ "^" ++ print x (path ++ [1]) textTarget 3, P_POW) := by
+      (print b (0 :: path) textTarget 4 ++ "^" ++ print x (1 :: path) textTarget 3, P_POW) := by
   cases hx with
   | num n =>
     rw [printRaw, powRaw]
@@ -311,12 +311,12 @@ theorem printRaw_plain {e : Expr} (h : Plain e) : PrintsAs e := by
   | var x _ _ => intro path; simp [printRaw_var, raw, render, renderTok, precOf, P_ATOM]
   | fn f a hf _ iha =>
     intro path
-    have hp := iha.print (path ++ [0]) 1
-    have hargs : printArgs [a] 0 path textTarget = [print a (path ++ [0]) textTarget P_ADD] := by
+    have hp := iha.print (0 :: path) 1
+    have hargs : printArgs [a] 0 path textTarget = [print a (0 :: path) textTarget P_ADD] := by
       rw [printArgs, printArgs]
     rw [printRaw_fn f a hf, hargs]
-    have hfn : fnRaw textTarget f [a] [print a (path ++ [0]) textTarget P_ADD] =
-        (f ++ "(" ++ print a (path ++ [0]) textTarget P_ADD ++ ")", P_ATOM) := by
+    have hfn : fnRaw textTarget f [a] [print a (0 :: path) textTarget P_ADD] =
+        (f ++ "(" ++ print a (0 :: path) textTarget P_ADD ++ ")", P_ATOM) := by
       by_cases h1 : f = "sqrt"
       · subst h1; exact fnRaw_sqrt _ _
       by_cases h2 : f = "abs"
@@ -336,7 +336,7 @@ theorem printRaw_plain {e : Expr} (h : Plain e) : PrintsAs e := by
       intro c hc; simp at hc; rcases hc with rfl | hc
       · exact ⟨hb, ihb⟩
       · exact ⟨has c hc, ihas c hc⟩
-    have ht := addTerms_tail path (b :: as) hall 1 (print a (path ++ [0]) textTarget P_ADD) (by omega)
+    have ht := addTerms_tail path (b :: as) hall 1 (print a (0 :: path) textTarget P_ADD) (by omega)
     rw [printRaw]
     refine ⟨?_, rfl⟩
     rw [addTerms]
@@ -1409,6 +1409,57 @@ theorem matches_of_lex {arr : Array Tok} {L : List T} (h : arr.toList.map strip 
   simp only [List.length_map, Array.length_toList] at hk
   simp [PCtx.tok, Array.getD_eq_getD_getElem?, hk]
 
+/-! The parser opens the left spine of its sums (`openSpine`), which `flat` does as well. -/
+
+/-- A term's place in a flattened sum: its terms, if it is a sum, or itself. -/
+def addParts : Expr → List Expr
+  | .add as => as
+  | e => [e]
+
+theorem flatAdd_cons (e : Expr) (es : List Expr) : flatAdd (e :: es) = addParts (flat e) ++ flatAdd es := by
+  rw [flatAdd]; cases flat e <;> rfl
+
+theorem flatAdd_append : ∀ (l₁ l₂ : List Expr), flatAdd (l₁ ++ l₂) = flatAdd l₁ ++ flatAdd l₂
+  | [], _ => by simp [flatAdd]
+  | e :: es, l₂ => by rw [List.cons_append, flatAdd_cons, flatAdd_cons, flatAdd_append es l₂, List.append_assoc]
+
+mutual
+  theorem flat_openSpine : ∀ e : Expr, flat (openSpine e) = flat e
+    | .num _ => rfl
+    | .var _ => rfl
+    | .add [] => rfl
+    | .add (f :: rest) => by
+      rw [openSpine, flat, flat, flatAdd_spineOf f, flatAdd_openSpineList rest, flatAdd_cons]
+    | .mul es => by rw [openSpine, flat, flat, flatMul_openSpineList es]
+    | .pow b x => by rw [openSpine, flat, flat, flat_openSpine b, flat_openSpine x]
+    | .fn g es => by rw [openSpine, flat, flat, flatList_openSpineList es]
+    | .matrix rows => by rw [openSpine, flat, flat, flatRows_openSpineRows rows]
+  theorem flatAdd_spineOf : ∀ (f : Expr) (acc : List Expr),
+      flatAdd (spineOf f acc) = addParts (flat f) ++ flatAdd acc
+    | .add (g :: r), acc => by
+      rw [spineOf, flatAdd_spineOf g, flatAdd_append, flatAdd_openSpineList r, flat]
+      simp only [addParts, flatAdd_cons, List.append_assoc]
+    | .add [], acc => by rw [spineOf, flatAdd_cons]
+    | .num _, acc => by rw [spineOf, flatAdd_cons]
+    | .var _, acc => by rw [spineOf, flatAdd_cons]
+    | .mul es, acc => by rw [spineOf, flatAdd_cons, flat, flat, flatMul_openSpineList es]
+    | .pow b x, acc => by rw [spineOf, flatAdd_cons, flat, flat, flat_openSpine b, flat_openSpine x]
+    | .fn g es, acc => by rw [spineOf, flatAdd_cons, flat, flat, flatList_openSpineList es]
+    | .matrix rows, acc => by rw [spineOf, flatAdd_cons, flat, flat, flatRows_openSpineRows rows]
+  theorem flatAdd_openSpineList : ∀ es : List Expr, flatAdd (openSpineList es) = flatAdd es
+    | [] => rfl
+    | e :: es => by rw [openSpineList, flatAdd_cons, flatAdd_cons, flat_openSpine e, flatAdd_openSpineList es]
+  theorem flatMul_openSpineList : ∀ es : List Expr, flatMul (openSpineList es) = flatMul es
+    | [] => rfl
+    | e :: es => by rw [openSpineList, flatMul, flatMul, flat_openSpine e, flatMul_openSpineList es]
+  theorem flatList_openSpineList : ∀ es : List Expr, flatList (openSpineList es) = flatList es
+    | [] => rfl
+    | e :: es => by rw [openSpineList, flatList, flatList, flat_openSpine e, flatList_openSpineList es]
+  theorem flatRows_openSpineRows : ∀ rows : List (List Expr), flatRows (openSpineRows rows) = flatRows rows
+    | [] => rfl
+    | r :: rs => by rw [openSpineRows, flatRows, flatRows, flatList_openSpineList r, flatRows_openSpineRows rs]
+end
+
 /-- **Round trip.** On the fragment, the printed text of a term parses back to a term that is the
 same up to how sums in sums and products in products are bracketed. -/
 theorem parse_toText {e : Expr} (h : Plain e) : ∃ e', parse e.toText = .ok e' ∧ flat e' = flat e := by
@@ -1424,7 +1475,7 @@ theorem parse_toText {e : Expr} (h : Plain e) : ∃ e', parse e.toText = .ok e' 
     left; simp only [strip, Prod.mk.injEq] at heof; exact heof.1.1
   obtain ⟨e', m, hmh, he, rfl, hfl⟩ := (good h).2.2.2.1 ⟨arr, []⟩ 0 rfl hme hf
   have hlet := (head_isOp h hme).2.2
-  refine ⟨e', ?_, hfl⟩
+  refine ⟨openSpine e', ?_, by rw [flat_openSpine]; exact hfl⟩
   unfold parse parseStmt
   simp only [hl, except_bind_ok]
   have hk : ((PCtx.tok ⟨arr, []⟩ 0).kind == .id && (PCtx.tok ⟨arr, []⟩ 0).s == "let") = false := by

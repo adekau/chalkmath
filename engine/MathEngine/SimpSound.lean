@@ -422,44 +422,37 @@ theorem eval?_addExp {ρ : Env} {x y : Expr} {a b : Int} (hx : eval? ρ x = some
   cases x <;> cases y <;> simp only [addExp, eval?_add, evalSum?_cons, evalSum?_nil, hx, hy] <;>
     (try simp) <;> (try exact Q.asInt?_add hx hy)
 
-theorem mergePowers_sound (ρ : Env) : ∀ (es l : List Expr) (t : Expr) (v : Int),
-    mergePowers es = some (l, t) → evalProd? ρ es = some v → evalProd? ρ l = some v
-  | [], _, _, _, h, _ => by simp [mergePowers] at h
-  | e :: rest, l, t, v, h, hv => by
-    simp only [mergePowers] at h
-    obtain ⟨b, x, hbx⟩ : ∃ b x, baseExp e = (b, x) := ⟨_, _, rfl⟩
-    rw [hbx] at h
-    simp only at h
-    simp only [evalProd?_cons, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.some.injEq] at hv
-    obtain ⟨ve, hve, vr, hvr, rfl⟩ := hv
-    split at h
-    · rename_i hbig
-      split at h
-      · rename_i f hf
-        simp only [Option.some.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, rfl⟩ := h
-        have hp : equal (baseExp f).1 b = true := by simpa using List.find?_some hf
-        have hfb : baseExp f = (b, (baseExp f).2) := by rw [← equal_eq hp]
-        rw [evalProd?_perm ρ (perm_find?_removeFirst _ rest f hf), evalProd?_cons] at hvr
-        simp only [Option.bind_eq_bind, Option.bind_eq_some_iff, Option.some.injEq] at hvr
-        obtain ⟨vf, hvf, vrf, hvrf, rfl⟩ := hvr
-        obtain ⟨vb, nx, hb, hx, hnx, rfl⟩ := baseExp_eval hbx hve
-        obtain ⟨vb', nf, hb', hxf, hnf, rfl⟩ := baseExp_eval hfb hvf
-        rw [hb] at hb'; simp only [Option.some.injEq] at hb'; subst hb'
-        rw [evalProd?_cons, eval?_pow, hb, eval?_addExp hx hxf, hvrf]
-        obtain ⟨a, rfl⟩ := Int.eq_ofNat_of_zero_le hnx
-        obtain ⟨c, rfl⟩ := Int.eq_ofNat_of_zero_le hnf
-        simp [← Int.natCast_add, Int.pow_add, Int.mul_assoc]
-      · simp only [Option.map_eq_some_iff] at h
-        obtain ⟨⟨l', t'⟩, hm, hl⟩ := h
-        simp only [Prod.mk.injEq] at hl
-        obtain ⟨rfl, rfl⟩ := hl
-        rw [evalProd?_cons, hve, mergePowers_sound ρ rest l' t' vr hm hvr]; rfl
-    · simp only [Option.map_eq_some_iff] at h
-      obtain ⟨⟨l', t'⟩, hm, hl⟩ := h
-      simp only [Prod.mk.injEq] at hl
-      obtain ⟨rfl, rfl⟩ := hl
-      rw [evalProd?_cons, hve, mergePowers_sound ρ rest l' t' vr hm hvr]; rfl
+/-- Merging the factors of `fs` into `b^x` one at a time keeps the product's value. -/
+theorem expFold_sound (ρ : Env) {b : Expr} {vb : Int} (hb : eval? ρ b = some vb) (others : List Expr) :
+    ∀ (fs : List Expr) (x : Expr) (n w : Int), (∀ f ∈ fs, (baseExp f).1 = b) → eval? ρ x = some n → 0 ≤ n →
+      evalProd? ρ (fs ++ others) = some w → evalProd? ρ (.pow b (expFold x fs) :: others) = some (vb ^ n.toNat * w)
+  | [], x, n, w, _, hx, hn, hw => by
+    simp only [List.nil_append] at hw
+    simp [expFold, evalProd?_cons, eval?_pow, hb, hx, hn, hw]
+  | f :: fs, x, n, w, hfs, hx, hn, hw => by
+    rw [List.cons_append, evalProd?_cons] at hw
+    simp only [Option.bind_eq_bind, Option.bind_eq_some_iff, Option.some.injEq] at hw
+    obtain ⟨vf, hvf, w', hw', rfl⟩ := hw
+    obtain ⟨vb', nf, hb', hxf, hnf, rfl⟩ := baseExp_eval (baseExp_of_fst (hfs f List.mem_cons_self)) hvf
+    rw [hb] at hb'; simp only [Option.some.injEq] at hb'; subst hb'
+    have ih := expFold_sound ρ hb others fs (addExp x (baseExp f).2) (n + nf) w'
+      (fun g hg => hfs g (List.mem_cons_of_mem _ hg)) (eval?_addExp hx hxf) (Int.add_nonneg hn hnf) hw'
+    simp only [expFold]; rw [ih]
+    obtain ⟨a, rfl⟩ := Int.eq_ofNat_of_zero_le hn
+    obtain ⟨c, rfl⟩ := Int.eq_ofNat_of_zero_le hnf
+    simp [← Int.natCast_add, Int.pow_add, Int.mul_assoc]
+
+theorem mergePowers_sound (ρ : Env) (es l : List Expr) (t : Expr) (v : Int)
+    (h : mergePowers es = some (l, t)) (hv : evalProd? ρ es = some v) : evalProd? ρ l = some v := by
+  simp only [mergePowers, Option.map_eq_some_iff] at h
+  obtain ⟨⟨b, e, fs, others⟩, hg, hl⟩ := h
+  simp only [Prod.mk.injEq] at hl; obtain ⟨rfl, rfl⟩ := hl
+  obtain ⟨hperm, he, hfs, -, -⟩ := powerGroup_spec hg
+  rw [evalProd?_perm ρ hperm, evalProd?_cons] at hv
+  simp only [Option.bind_eq_bind, Option.bind_eq_some_iff, Option.some.injEq] at hv
+  obtain ⟨ve, hve, w, hw, rfl⟩ := hv
+  obtain ⟨vb, n, hb, hx, hn, rfl⟩ := baseExp_eval (baseExp_of_fst he) hve
+  exact expFold_sound ρ hb others fs _ n w hfs hx hn hw
 
 theorem collectPowersApply_sound : ∀ e r, collectPowersApply e = some r → Refines e r.result := by
   intro e r h ρ v hv
@@ -484,42 +477,35 @@ theorem coeffRest_eval {ρ : Env} {e : Expr} {c : Q} {t : Expr} {ve : Int} (he :
     exact ⟨vc, vr, hc, by rw [eval?_mulN]; exact hr, rfl⟩
   · exact ⟨1, ve, Q.asInt?_ofInt 1, hv, by simp⟩
 
-theorem mergeTerms_sound (ρ : Env) : ∀ (es l : List Expr) (t : Expr) (v : Int),
-    mergeTerms es = some (l, t) → evalSum? ρ es = some v → evalSum? ρ l = some v
-  | [], _, _, _, h, _ => by simp [mergeTerms] at h
-  | e :: rest, l, t, v, h, hv => by
-    simp only [mergeTerms] at h
-    obtain ⟨c, u, hcu⟩ : ∃ c u, coeffRest e = (c, u) := ⟨_, _, rfl⟩
-    rw [hcu] at h
-    simp only at h
-    simp only [evalSum?_cons, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.some.injEq] at hv
-    obtain ⟨ve, hve, vr, hvr, rfl⟩ := hv
-    split at h
-    · rename_i hbig
-      split at h
-      · rename_i f hf
-        simp only [Option.some.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, rfl⟩ := h
-        have hp : equal (coeffRest f).2 u = true := by simpa using List.find?_some hf
-        have hfu : coeffRest f = ((coeffRest f).1, u) := by rw [← equal_eq hp]
-        rw [evalSum?_perm ρ (perm_find?_removeFirst _ rest f hf), evalSum?_cons] at hvr
-        simp only [Option.bind_eq_bind, Option.bind_eq_some_iff, Option.some.injEq] at hvr
-        obtain ⟨vf, hvf, vrf, hvrf, rfl⟩ := hvr
-        obtain ⟨vc, vt, hc, ht, rfl⟩ := coeffRest_eval hcu hve
-        obtain ⟨vcf, vt', hcf, ht', rfl⟩ := coeffRest_eval hfu hvf
-        rw [ht] at ht'; simp only [Option.some.injEq] at ht'; subst ht'
-        rw [evalSum?_cons, eval?_mul, evalProd?_cons, eval?_num, Q.asInt?_add hc hcf, evalProd?_cons, ht, evalProd?_nil, hvrf]
-        simp [Int.add_mul, Int.add_assoc]
-      · simp only [Option.map_eq_some_iff] at h
-        obtain ⟨⟨l', t'⟩, hm, hl⟩ := h
-        simp only [Prod.mk.injEq] at hl
-        obtain ⟨rfl, rfl⟩ := hl
-        rw [evalSum?_cons, hve, mergeTerms_sound ρ rest l' t' vr hm hvr]; rfl
-    · simp only [Option.map_eq_some_iff] at h
-      obtain ⟨⟨l', t'⟩, hm, hl⟩ := h
-      simp only [Prod.mk.injEq] at hl
-      obtain ⟨rfl, rfl⟩ := hl
-      rw [evalSum?_cons, hve, mergeTerms_sound ρ rest l' t' vr hm hvr]; rfl
+/-- Merging the terms of `fs` into `c·u` one at a time keeps the sum's value. -/
+theorem coeffFold_sound (ρ : Env) {u : Expr} {vu : Int} (hu : eval? ρ u = some vu) (others : List Expr) :
+    ∀ (fs : List Expr) (c : Q) (C w : Int), (∀ f ∈ fs, (coeffRest f).2 = u) → c.asInt? = some C →
+      evalSum? ρ (fs ++ others) = some w → evalSum? ρ (.mul [.num (coeffFold c fs), u] :: others) = some (C * vu + w)
+  | [], c, C, w, _, hc, hw => by
+    simp only [List.nil_append] at hw
+    simp [coeffFold, evalSum?_cons, eval?_mul, evalProd?_cons, eval?_num, hc, hu, evalProd?_nil, hw]
+  | f :: fs, c, C, w, hfs, hc, hw => by
+    rw [List.cons_append, evalSum?_cons] at hw
+    simp only [Option.bind_eq_bind, Option.bind_eq_some_iff, Option.some.injEq] at hw
+    obtain ⟨vf, hvf, w', hw', rfl⟩ := hw
+    obtain ⟨vcf, vt, hcf, ht, rfl⟩ := coeffRest_eval (coeffRest_of_snd (hfs f List.mem_cons_self)) hvf
+    rw [hu] at ht; simp only [Option.some.injEq] at ht; subst ht
+    have ih := coeffFold_sound ρ hu others fs (c + (coeffRest f).1) (C + vcf) w'
+      (fun g hg => hfs g (List.mem_cons_of_mem _ hg)) (Q.asInt?_add hc hcf) hw'
+    simp only [coeffFold]; rw [ih]
+    simp [Int.add_mul, Int.add_assoc]
+
+theorem mergeTerms_sound (ρ : Env) (es l : List Expr) (t : Expr) (v : Int)
+    (h : mergeTerms es = some (l, t)) (hv : evalSum? ρ es = some v) : evalSum? ρ l = some v := by
+  simp only [mergeTerms, Option.map_eq_some_iff] at h
+  obtain ⟨⟨u, e, fs, others⟩, hg, hl⟩ := h
+  simp only [Prod.mk.injEq] at hl; obtain ⟨rfl, rfl⟩ := hl
+  obtain ⟨hperm, he, hfs, -, -⟩ := termGroup_spec hg
+  rw [evalSum?_perm ρ hperm, evalSum?_cons] at hv
+  simp only [Option.bind_eq_bind, Option.bind_eq_some_iff, Option.some.injEq] at hv
+  obtain ⟨ve, hve, w, hw, rfl⟩ := hv
+  obtain ⟨vc, vu, hc, hu, rfl⟩ := coeffRest_eval (coeffRest_of_snd he) hve
+  exact coeffFold_sound ρ hu others fs _ vc w hfs hc hw
 
 theorem collectTerms_sound : RuleSound collectTerms := by
   intro e r h ρ v hv

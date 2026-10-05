@@ -843,6 +843,49 @@ def workTests : TestM Unit := do
   let (st5, _) := handleS [] (req "10" "engine.evaluate" "{\"sessionId\":\"l\",\"cellId\":\"a\",\"source\":\"(λx. x) y\",\"showWork\":true,\"outline\":true}")
   checkTrue "engine.steps: a λ-cell's steps keep their de Bruijn view" (contains (handleS st5 (req "11" "engine.steps" "{\"sessionId\":\"l\",\"cellId\":\"a\"}")).2 "\"afterDeBruijn\"")
 
+/-- Long sums and chains cost what they are long, not its square (ARCHITECTURE.md §3, "A long sum is
+one node, worked once"). -/
+def scaleTests : TestM Unit := do
+  -- the parser opens the left spine of a sum; a later term in parentheses stays a sum in a sum
+  check "parser: a sum is one node" (match parse "a + b - c + d" with | .ok (.add es) => s!"{es.length} terms" | _ => "not a sum") "4 terms"
+  check "parser: a parenthesized later term stays a sum" (match parse "a + (b + c)" with | .ok (.add [_, .add [_, _]]) => "kept" | _ => "opened") "kept"
+  check "parser: a parenthesized first term is opened" (match parse "(a + b) + c" with | .ok (.add [_, _, _]) => "opened" | _ => "kept") "opened"
+  check "parser: sums print as typed" (roundtrip "a + (b + c) - d") "a + (b + c) - d"
+  check "parser: a sum inside a call is opened" (match parse "sin(a + b + c)" with | .ok (.fn _ [.add es]) => s!"{es.length} terms" | _ => "not opened") "3 terms"
+  -- a sum of n like terms is one step, not n; a chain of products is opened, not worked level by level
+  let big := "+".intercalate (List.replicate 300 "x")
+  let (st, out) := sessionEval [] big ",\"showWork\":true"
+  check "long sum: the answer" out "300*x"
+  check "long sum: like terms collect in one step" (derivationRules st big).toString "[simp.collect-like-terms, simp.identity]"
+  let neg := String.ofList (List.replicate 301 '-') ++ "x"
+  let (st, out) := sessionEval [] neg ",\"showWork\":true"
+  check "a chain of minus signs: the answer" out "-x"
+  check "a chain of minus signs: the numerals fold at once" (derivationRules st neg).toString "[simp.fold-constants]"
+  let prod := "*".intercalate ["x", "y", "x", "z", "x", "y"]
+  let (st, out) := sessionEval [] prod ",\"showWork\":true"
+  check "like factors apart: the answer" out "z*x^3*y^2"
+  check "like factors apart: one step per base" (derivationRules st prod).toString "[simp.collect-powers, simp.collect-powers]"
+  -- a deep term is labelled down to `pathLabelDepth`, and every label still names its subterm
+  match parse neg with
+  | .ok e =>
+    let ps := latexPaths (e.toLatex true)
+    checkTrue "deep term: labelled, but not below pathLabelDepth"
+      (ps.length > pathLabelDepth && ps.all fun p => p == "root" || (p.splitOn ".").length ≤ pathLabelDepth) s!"{ps.length} labels"
+    check "deep term: every label names its subterm" (toString (badPaths e)) "[]"
+  | .error _ => check "deep term: parses" "error" "ok"
+  -- time, generously: these were a minute or more (3000 like terms 53 s, 3000 distinct over 60 s,
+  -- 10 000 minus signs over 60 s); the sizes are read at run time so none is computed ahead
+  let t0 ← IO.monoMsNow
+  let n := if t0 == 0 then 1 else 3000
+  let sumLike := evalText ("+".intercalate (List.replicate n "x"))
+  let sumDistinct := evalText ("+".intercalate ((List.range n).map fun i => s!"x{i}"))
+  let minus := evalText (String.ofList (List.replicate (n * 10 / 3) '-') ++ "x")
+  check "3000 like terms" sumLike "3000*x"
+  checkTrue "3000 distinct terms" (sumDistinct.startsWith "x0 + x1 + x10 + x100 + x1000") (sumDistinct.take 60).copy
+  check "10 000 minus signs" minus "x"
+  let ms := (← IO.monoMsNow) - t0
+  checkTrue "long sums and chains answer in seconds, not minutes" (ms < 10000) s!"{ms} ms"
+
 /-- Exercises (`engine.check`): an answer is right when it reduces to the question's normal form. -/
 def checkTests : TestM Unit := do
   let ask (q a : String) := rpc "engine.check" s!"\{\"sessionId\":\"x\",\"cellId\":\"e\",\"source\":\"{q}\",\"answer\":\"{a}\"}"
@@ -1055,7 +1098,7 @@ def jsonTests : TestM Unit := do
     (contains (rpc "engine.plot" "{\"sessionId\":\"j\",\"cellId\":\"p\",\"source\":\"plot(x, x, 0, 10^400)\"}") "the range must be finite")
 
 def main : IO UInt32 := do
-  let ((), failures) ← (do tests; sessionTests; integrateTests; trigTests; quietTests; partStatTests; workTests; checkTests; logicRelTests; algebraTests; systemsTests; complexNTests; intervalTests; intRootTests; jsonTests; goldenTests).run #[]
+  let ((), failures) ← (do tests; sessionTests; integrateTests; trigTests; quietTests; partStatTests; workTests; scaleTests; checkTests; logicRelTests; algebraTests; systemsTests; complexNTests; intervalTests; intRootTests; jsonTests; goldenTests).run #[]
   for f in failures do
     IO.println s!"FAIL {f.name}\n  expected: {f.expected}\n  actual:   {f.actual}"
   IO.println s!"{failures.size} failures"

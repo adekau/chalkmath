@@ -184,6 +184,42 @@ theorem Def_unAdd (ρ : EnvR) {e : Expr} (h : Def ρ e) : ∀ x ∈ unAdd e, Def
 theorem Def_unMul (ρ : EnvR) {e : Expr} (h : Def ρ e) : ∀ x ∈ unMul e, Def ρ x := by
   cases e <;> simp_all [unMul, DefList_iff]
 
+mutual
+  theorem DefList_addArgs (ρ : EnvR) : ∀ (e : Expr) (acc : List Expr),
+      DefList ρ (addArgs e acc) ↔ Def ρ e ∧ DefList ρ acc
+    | .add es, acc => by rw [addArgs, DefList_addArgsList ρ es acc, Def_add]
+    | .num _, _ | .var _, _ | .mul _, _ | .pow _ _, _ | .fn _ _, _ | .matrix _, _ => by simp [addArgs, DefList]
+  theorem DefList_addArgsList (ρ : EnvR) : ∀ (es acc : List Expr),
+      DefList ρ (addArgsList es acc) ↔ DefList ρ es ∧ DefList ρ acc
+    | [], acc => by simp [addArgsList, DefList]
+    | e :: es, acc => by
+      rw [addArgsList, DefList_addArgs ρ e, DefList_addArgsList ρ es acc]; simp only [DefList, and_assoc]
+end
+
+mutual
+  theorem DefList_mulArgs (ρ : EnvR) : ∀ (e : Expr) (acc : List Expr),
+      DefList ρ (mulArgs e acc) ↔ Def ρ e ∧ DefList ρ acc
+    | .mul es, acc => by rw [mulArgs, DefList_mulArgsList ρ es acc, Def_mul]
+    | .num _, _ | .var _, _ | .add _, _ | .pow _ _, _ | .fn _ _, _ | .matrix _, _ => by simp [mulArgs, DefList]
+  theorem DefList_mulArgsList (ρ : EnvR) : ∀ (es acc : List Expr),
+      DefList ρ (mulArgsList es acc) ↔ DefList ρ es ∧ DefList ρ acc
+    | [], acc => by simp [mulArgsList, DefList]
+    | e :: es, acc => by
+      rw [mulArgsList, DefList_mulArgs ρ e, DefList_mulArgsList ρ es acc]; simp only [DefList, and_assoc]
+end
+
+/-- Opening a chain (`openChain`) keeps the domain: a sum or product of the same terms. -/
+theorem openChain_def {e e' : Expr} (h : openChain e = some e') (ρ : EnvR) : Def ρ e' ↔ Def ρ e := by
+  cases e <;> simp only [openChain, reduceCtorEq] at h
+  · split at h
+    · split at h
+      · cases h
+      · cases h; simp [DefList_addArgsList, DefList]
+    · cases h
+  · split at h
+    · cases h; simp [DefList_mulArgsList, DefList]
+    · cases h
+
 theorem flatten_soundD : RuleSoundD flatten := RuleSoundD.of flatten_soundR fun e res h ρ hd => by
   cases e <;> simp only [flatten, flattenApply, reduceCtorEq] at h
   · split at h
@@ -256,25 +292,15 @@ theorem Def_coeffRest (ρ : EnvR) {e : Expr} (h : Def ρ e) : Def ρ (coeffRest 
     exact Def_mulN ρ _ h.2
   · exact h
 
-theorem mergeTerms_def (ρ : EnvR) : ∀ (es l : List Expr) (t : Expr), mergeTerms es = some (l, t) →
-    DefList ρ es → DefList ρ l
-  | [], l, t, h, _ => by simp [mergeTerms] at h
-  | e :: rest, l, t, h, hd => by
-    simp only [mergeTerms] at h
-    obtain ⟨he, hr⟩ := hd
-    split at h
-    · split at h
-      · rename_i f hf
-        cases h
-        refine ⟨⟨trivial, Def_coeffRest ρ he, trivial⟩, DefList_sub ρ (removeFirst_sub _ _) hr⟩
-      · simp only [Option.map_eq_some_iff] at h
-        obtain ⟨⟨l', u⟩, h', hl⟩ := h
-        cases hl
-        exact ⟨he, mergeTerms_def ρ rest l' u h' hr⟩
-    · simp only [Option.map_eq_some_iff] at h
-      obtain ⟨⟨l', u⟩, h', hl⟩ := h
-      cases hl
-      exact ⟨he, mergeTerms_def ρ rest l' u h' hr⟩
+theorem mergeTerms_def (ρ : EnvR) (es l : List Expr) (t : Expr) (h : mergeTerms es = some (l, t))
+    (hd : DefList ρ es) : DefList ρ l := by
+  simp only [mergeTerms, Option.map_eq_some_iff] at h
+  obtain ⟨⟨u, e, fs, others⟩, hg, hl⟩ := h
+  simp only [Prod.mk.injEq] at hl; obtain ⟨rfl, rfl⟩ := hl
+  obtain ⟨hperm, he, -, -, -⟩ := termGroup_spec hg
+  have hd' := (DefList_iff ρ _).mp ((DefList_perm ρ hperm).mp hd)
+  have hu : Def ρ u := he ▸ Def_coeffRest ρ (hd' e List.mem_cons_self)
+  exact ⟨⟨trivial, hu, trivial⟩, (DefList_iff ρ others).mpr fun x hx => hd' x (by simp [hx])⟩
 
 theorem collectTerms_soundD : RuleSoundD collectTerms := RuleSoundD.of collectTerms_soundR fun e res h ρ hd => by
   cases e <;> simp only [collectTerms, collectTermsApply, reduceCtorEq] at h
@@ -382,55 +408,41 @@ theorem Def_baseExp (ρ : EnvR) {e b x : Expr} (h : baseExp e = (b, x)) (hd : De
     have : evalR ρ Expr.one = ((1 : ℤ) : ℝ) := by simp
     rw [this, powOK_int]; right; norm_num
 
-theorem mergePowers_def (ρ : EnvR) : ∀ (es l : List Expr) (t : Expr),
-    mergePowers es = some (l, t) →
-    (∀ b x y, mergedExps es = some (b, x, y) → PowOK (evalR ρ b) (evalR ρ x) →
-      PowOK (evalR ρ b) (evalR ρ y) → PowOK (evalR ρ b) (evalR ρ x + evalR ρ y)) →
-    DefList ρ es → DefList ρ l
-  | [], _, _, h, _, _ => by simp [mergePowers] at h
-  | e :: rest, l, t, h, H, hd => by
-    obtain ⟨he, hr⟩ := hd
-    simp only [mergePowers] at h
-    obtain ⟨b, x, hbx⟩ : ∃ b x, baseExp e = (b, x) := ⟨_, _, rfl⟩
-    rw [hbx] at h
-    simp only at h
-    have hme : mergedExps (e :: rest) = if bigBase b then
-        (match rest.find? (fun f => Expr.equal (baseExp f).1 b) with
-          | some f => some (b, x, (baseExp f).2)
-          | none => mergedExps rest) else mergedExps rest := by
-      rw [mergedExps, hbx]; rfl
-    split at h
-    · rename_i hbig
-      rw [ite_eq_left hbig] at hme
-      split at h
-      · rename_i f hf
-        rw [hf] at hme
-        simp only [Option.some.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, rfl⟩ := h
-        have hp : Expr.equal (baseExp f).1 b = true := by simpa using List.find?_some hf
-        have hfb : baseExp f = (b, (baseExp f).2) := by rw [← Expr.equal_eq hp]
-        have hfmem : f ∈ rest := List.mem_of_find?_eq_some hf
-        obtain ⟨db, dx, okx⟩ := Def_baseExp ρ hbx he
-        obtain ⟨-, dy, oky⟩ := Def_baseExp ρ hfb ((DefList_iff ρ rest).mp hr f hfmem)
-        refine ⟨(Def_pow ρ _ _).mpr ⟨db, ?_, ?_⟩, DefList_sub ρ (removeFirst_sub _ _) hr⟩
-        · unfold addExp; split
-          · trivial
-          · simp only [Def_add, DefList]; exact ⟨dx, dy, trivial⟩
-        · rw [evalR_addExp]; exact H b x _ hme okx oky
-      · rename_i hf
-        rw [hf] at hme
-        simp only [Option.map_eq_some_iff] at h
-        obtain ⟨⟨l', t'⟩, hm, hl⟩ := h
-        simp only [Prod.mk.injEq] at hl
-        obtain ⟨rfl, rfl⟩ := hl
-        exact ⟨he, mergePowers_def ρ rest l' t' hm (fun b x y h => H b x y (hme ▸ h)) hr⟩
-    · rename_i hbig
-      rw [ite_eq_right hbig] at hme
-      simp only [Option.map_eq_some_iff] at h
-      obtain ⟨⟨l', t'⟩, hm, hl⟩ := h
-      simp only [Prod.mk.injEq] at hl
-      obtain ⟨rfl, rfl⟩ := hl
-      exact ⟨he, mergePowers_def ρ rest l' t' hm (fun b x y h => H b x y (hme ▸ h)) hr⟩
+/-- What merging the factors `fs` into `b^X` one at a time needs to stay defined at a point: each
+pair merge defined wherever its two factors are. -/
+def FoldDefOK (ρ : EnvR) (b : Expr) : Expr → List Expr → Prop
+  | _, [] => True
+  | X, f :: fs => (PowOK (evalR ρ b) (evalR ρ X) → PowOK (evalR ρ b) (evalR ρ (baseExp f).2) →
+      PowOK (evalR ρ b) (evalR ρ X + evalR ρ (baseExp f).2)) ∧ FoldDefOK ρ b (addExp X (baseExp f).2) fs
+
+theorem Def_addExp (ρ : EnvR) {x y : Expr} (hx : Def ρ x) (hy : Def ρ y) : Def ρ (addExp x y) := by
+  unfold addExp; split
+  · trivial
+  · simp only [Def_add, DefList]; exact ⟨hx, hy, trivial⟩
+
+theorem expFold_def (ρ : EnvR) {b : Expr} : ∀ (fs : List Expr) (X : Expr),
+    (∀ f ∈ fs, (baseExp f).1 = b ∧ Def ρ f) → FoldDefOK ρ b X fs → Def ρ X → PowOK (evalR ρ b) (evalR ρ X) →
+    Def ρ (expFold X fs) ∧ PowOK (evalR ρ b) (evalR ρ (expFold X fs))
+  | [], _, _, _, hX, hok => ⟨hX, hok⟩
+  | f :: fs, X, hfs, ⟨hstep, hrest⟩, hX, hok => by
+    obtain ⟨hb, hdf⟩ := hfs f List.mem_cons_self
+    obtain ⟨-, dy, oky⟩ := Def_baseExp ρ (baseExp_of_fst hb) hdf
+    simp only [expFold]
+    exact expFold_def ρ fs _ (fun g hg => hfs g (List.mem_cons_of_mem _ hg)) hrest (Def_addExp ρ hX dy)
+      (by rw [evalR_addExp]; exact hstep hok oky)
+
+/-- The merge keeps the domain wherever each of its pair merges does. -/
+theorem mergePowers_def (ρ : EnvR) (es l : List Expr) (t : Expr) (h : mergePowers es = some (l, t))
+    (H : ∀ b e fs others, powerGroup es = some (b, e, fs, others) → FoldDefOK ρ b (baseExp e).2 fs)
+    (hd : DefList ρ es) : DefList ρ l := by
+  simp only [mergePowers, Option.map_eq_some_iff] at h
+  obtain ⟨⟨b, e, fs, others⟩, hg, hl⟩ := h
+  simp only [Prod.mk.injEq] at hl; obtain ⟨rfl, rfl⟩ := hl
+  obtain ⟨hperm, he, hfs, -, -⟩ := powerGroup_spec hg
+  have hd' := (DefList_iff ρ _).mp ((DefList_perm ρ hperm).mp hd)
+  obtain ⟨db, dx, okx⟩ := Def_baseExp ρ (baseExp_of_fst he) (hd' e List.mem_cons_self)
+  have hX := expFold_def ρ fs _ (fun f hf => ⟨hfs f hf, hd' f (by simp [hf])⟩) (H _ _ _ _ hg) dx okx
+  exact ⟨(Def_pow ρ _ _).mpr ⟨db, hX.1, hX.2⟩, (DefList_iff ρ others).mpr fun x hx => hd' x (by simp [hx])⟩
 
 /-- Where `powSafe` holds, the merged power is defined wherever both factors are. -/
 theorem powSafe_def {b x y : Expr} (h : powSafe b x y = true) (ρ : EnvR)
@@ -453,6 +465,13 @@ theorem powSafe_def {b x y : Expr} (h : powSafe b x y = true) (ρ : EnvR)
         · exact Or.inr (by omega)
     · cases hi
 
+theorem FoldDefOK_of_safe (ρ : EnvR) {b : Expr} : ∀ (X : Expr) (fs : List Expr),
+    (foldSafety b X fs).1 = true → FoldDefOK ρ b X fs
+  | _, [], _ => trivial
+  | _, _ :: fs, h => by
+    simp only [foldSafety, Bool.and_eq_true] at h
+    exact ⟨fun okx oky => powSafe_def h.1 ρ okx oky, FoldDefOK_of_safe ρ _ fs h.2⟩
+
 theorem collectPowers_soundD : RuleSoundD collectPowers := RuleSoundD.of collectPowers_soundR fun e res h ρ hd => by
   have hs := gate_some h
   have hna : (collectAssumed e).isNone = true := by
@@ -466,10 +485,10 @@ theorem collectPowers_soundD : RuleSoundD collectPowers := RuleSoundD.of collect
   · rename_i l t hm
     cases hs
     simp only [Def_mul] at hd ⊢
-    refine mergePowers_def ρ es l t hm (fun b x y hb okx oky => ?_) hd
-    simp only [collectAssumed, hb] at hna
+    refine mergePowers_def ρ es l t hm (fun b e fs others hg => ?_) hd
+    simp only [collectAssumed, hg] at hna
     split at hna
-    · rename_i hsafe; exact powSafe_def hsafe ρ okx oky
+    · rename_i hsafe; exact FoldDefOK_of_safe ρ _ _ hsafe
     · simp at hna
   · cases hs
 
