@@ -2,7 +2,8 @@
 // notebook with Lean cells, Lean (compiled to wasm, in the browser) checks them, the #eval cell shows the
 // value computed from the cell above, and with the cursor in a proof the Lean goals tab shows its goals.
 // A Lean exercise is judged as Lean checks the reader's proof (a sorry, an error, then a proof), and a
-// lesson of a course with a Lean prelude proves a theorem with one from the lesson before it.
+// lesson of a course with a Lean prelude proves a theorem with one from the lesson before it. No error
+// escapes into the page while it does.
 //   node scripts/smoke-lean-cells.mjs [screenshot.png]
 // Chromium: playwright-core's own, or the executable named by CHROMIUM.
 import { chromium } from "playwright-core";
@@ -47,7 +48,10 @@ const browser = await chromium.launch({ ...(process.env.CHROMIUM ? { executableP
 const page = await browser.newPage({ viewport: { width: 1400, height: 950 } });
 await page.route("**/examples/courses.json*", (r) => r.fulfill({ contentType: "application/json", body: JSON.stringify(course) }));
 await page.route("**/examples/smoke/*", (r) => r.fulfill({ contentType: "application/json", body: JSON.stringify(lessons[new URL(r.request().url()).pathname.split("/").pop()]) }));
-page.on("pageerror", (e) => { if (!/^unsupported/.test(e.message)) console.log(`[page error] ${e.message}`); });   // "unsupported": a VS Code API lean4monaco does not provide, harmless
+// every error nothing caught: the notebook shows each to the reader ("Something went wrong on the page"),
+// so none is harmless (the Lean extension's missing dependency once threw "unsupported" into the page)
+const pageErrors = [];
+page.on("pageerror", (e) => { pageErrors.push(e.message); console.log(`[page error] ${e.message}`); });
 // every loading status the page shows, as it shows them
 await page.addInitScript(() => {
   const seen = (window.__leanStatus = []);
@@ -123,6 +127,7 @@ check("after a reload, #eval shows 42 again", again, `${Date.now() - t1} ms afte
 check("and Lean's large files came from the browser's store", fetched.length === 0, fetched.join(", ") || "nothing downloaded");
 const later = await page.evaluate(() => window.__leanStatus);
 check("so the status never said it was downloading", !later.some((t) => /Downloading/.test(t)), later.join(" → "));
+check("no error escaped into the page", pageErrors.length === 0, pageErrors.join("; "));
 await browser.close();
 server.close();
 process.exit(checks.every(Boolean) ? 0 : 1);
