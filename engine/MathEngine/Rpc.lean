@@ -65,7 +65,7 @@ def ruleStatus : Json :=
     entry "la.mul" "verified" "Entry (i, j) of the product is row i of the left factor dotted with column j of the right; the product is associative and real factors commute past the matrices (laMul_sound, mulV_assoc).",
     entry "la.transpose" "verified" "Rows become columns (laTranspose_sound).",
     entry "la.det" "verified" "Laplace expansion along the first row has Mathlib's determinant as its value (laDet_sound, detExpr_value, Matrix.det_succ_row_zero).",
-    entry "la.pow" "verified" "M^k for a positive integer k is the power in the monoid of square matrices (laPow_sound, matPow_value).",
+    entry "la.pow" "verified" "M^k for a positive integer k is the power in the monoid of square matrices, by repeated squaring (laPow_sound, matPow_value); a matrix of numerals is powered exactly over ℚ (ratM_pow).",
     entry "la.context" "verified" "A refusal: a matrix literal where no rule gives it a meaning, or nested in another, is an error, never a value, so there is nothing to be wrong.",
     entry "cmd.rref" "verified" "Over ℚ the reduced matrix has the input's solution set (LinQ.sol_rref) and is in reduced row echelon form (LinQ.rref_isRref). With symbolic entries the nested row operations are the unverified .symbolic ones, and the step inherits their status.",
     entry "la.row-swap" "verified" "Exchanging two rows preserves the solution set (LinQ.sol_swap); elimination as a whole: LinQ.sol_rref.",

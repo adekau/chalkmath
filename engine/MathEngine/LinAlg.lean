@@ -34,10 +34,67 @@ def matMul (a b : List (List Expr)) : List (List Expr) :=
   let bc := (dims b).2
   (List.range ar).map fun i => (List.range bc).map fun j => mulEntry a b ac i j
 
-/-- `rows ^ (k + 1)` as one literal (the product tree is left in the entries). -/
-def matPow (rows : List (List Expr)) : Nat → List (List Expr)
-  | 0 => rows
-  | k + 1 => matMul rows (matPow rows k)
+/-- `rows ^ k` for `k ≥ 1` as one literal, by repeated squaring: `M^(2m) = (M·M)^m` and
+`M^(2m+1) = M·(M·M)^m`. The product trees are left in the entries for the pipeline to simplify; an
+entry of `M^k` holds `O(k^(log₂ 2n))` nodes for an `n × n` matrix, where the plain product
+`M·M^(k-1)` held `n^k`. -/
+def matPow (rows : List (List Expr)) (k : Nat) : List (List Expr) :=
+  if k ≤ 1 then rows
+  else
+    let half := matPow (matMul rows rows) (k / 2)
+    if k % 2 = 0 then half else matMul rows half
+termination_by k
+decreasing_by omega
+
+/-- The value of a numeral (0 for any other term). -/
+def numVal : Expr → Rat
+  | .num q => q.val
+  | _ => 0
+
+/-- The rows as rationals, if every entry is a numeral; the flag says whether any was approximate. -/
+def asRatRows (rows : List (List Expr)) : Option (List (List Rat) × Bool) :=
+  if rows.all (·.all fun | .num _ => true | _ => false) then
+    some (rows.map (·.map numVal), rows.any (·.any fun | .num q => q.approx | _ => false))
+  else none
+
+/-- A numeral's number, its approximate flag included (exact 0 for any other term). -/
+def numQ : Expr → Q
+  | .num q => q
+  | _ => Q.zero
+
+/-- The rows' numbers, if every entry is a numeral. -/
+def asNumRows (rows : List (List Expr)) : Option (List (List Q)) :=
+  if rows.all (·.all fun | .num _ => true | _ => false) then some (rows.map (·.map numQ)) else none
+
+/-- Entry `(i, j)` of a matrix of numbers; a missing entry is 0. -/
+def ratEntry (m : List (List Q)) (i j : Nat) : Q := (m.getD i []).getD j Q.zero
+
+/-- The product of two `n × n` matrices of numbers, exact over ℚ. The approximate flag follows the
+simplifier's arithmetic, so that `M^k` prints as `M * … * M` does: a zero, approximate or not,
+annihilates a product and drops out of a sum, so an entry is approximate only when a nonzero
+approximate term reaches it. -/
+def ratMul (n : Nat) (a b : List (List Q)) : List (List Q) :=
+  (List.range n).map fun i => (List.range n).map fun j =>
+    let terms := (List.range n).map fun k => (ratEntry a i k, ratEntry b k j)
+    ⟨(terms.map fun p => p.1.val * p.2.val).sum,
+      terms.any fun p => p.1.val != 0 && p.2.val != 0 && (p.1.approx || p.2.approx)⟩
+
+/-- The `n × n` identity, exact. -/
+def ratId (n : Nat) : List (List Q) :=
+  (List.range n).map fun i => (List.range n).map fun j => if i = j then Q.one else Q.zero
+
+/-- `a ^ k` over ℚ by repeated squaring: `O(log k)` products, each exact. -/
+def ratPow (n : Nat) (a : List (List Q)) (k : Nat) : List (List Q) :=
+  if k = 0 then ratId n
+  else
+    let half := ratPow n (ratMul n a a) (k / 2)
+    if k % 2 = 0 then half else ratMul n a half
+termination_by k
+decreasing_by omega
+
+/-- An `n × n` matrix of numbers as a literal of numerals. -/
+def ratLit (n : Nat) (m : List (List Q)) : Expr :=
+  .matrix ((List.range n).map fun i => (List.range n).map fun j => .num (ratEntry m i j))
 
 def minor (others : List (List Expr)) (j : Nat) : List (List Expr) :=
   others.map fun row => (row.zipIdx.filter (·.2 != j)).map (·.1)
@@ -131,7 +188,11 @@ def laPow : PlainRule :=
         else if n.isInt && n.val.num ≥ 1 then
           let k := n.val.num.toNat
           if k == 1 then some ⟨.matrix rows, "$M^1 = M$.", none, none⟩
-          else some ⟨.matrix (matPow rows (k - 1)), s!"$M^\{{k}}$ is $M$ multiplied by itself {k} times; the entries are the accumulated dot products.", none, none⟩
+          else match asNumRows rows with
+            | some qs => some ⟨ratLit r (ratPow r qs k),
+                s!"$M^\{{k}}$ is $M$ multiplied by itself {k} times. Every entry is a number, so the power is computed exactly by repeated squaring: $M^\{2m} = (M^2)^m$ and $M^\{2m+1} = M\\,(M^2)^m$.", none, none⟩
+            | none => some ⟨.matrix (matPow rows k),
+                s!"$M^\{{k}}$ is $M$ multiplied by itself {k} times, by repeated squaring: $M^\{2m} = (M^2)^m$ and $M^\{2m+1} = M\\,(M^2)^m$; the entries are the accumulated dot products.", none, none⟩
         else some (refuse "a matrix can only be raised to a positive integer power")
       | _ => none }
 
@@ -542,11 +603,6 @@ def rrefSymbolic (m : List (List Expr)) : Expr × Array Step := Id.run do
               s!"$R_\{{i + 1}} \\leftarrow R_\{{i + 1}} - ({factor.toText}) R_\{{pivotRow + 1}}$ to clear column {col + 1}.{assumingText as}", [], before, snap rows, none⟩
       pivotRow := pivotRow + 1
   return (snap rows, steps)
-
-/-- The rows as rationals, if every entry is a numeral; the flag says whether any was approximate. -/
-def asRatRows (rows : List (List Expr)) : Option (List (List Rat) × Bool) := do
-  let rs ← rows.mapM fun r => r.mapM fun | .num q => some q | _ => none
-  return (rs.map (·.map (·.val)), rs.any (·.any (·.approx)))
 
 /-- Gauss–Jordan elimination over ℚ: the operations of the verified `LinQ.rref`, replayed into
 steps. `LinQ.sol_rref` is the theorem that the output has the input's solution set. -/

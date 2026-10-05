@@ -542,6 +542,23 @@ export const FUNCTIONS: FnDoc[] = [
   },
 
   {
+    name: "matrix-power", title: "M^k (matrix power)", area: "Linear algebra", notation: true,
+    usage: [["M^k", "multiplies the square matrix `M` by itself `k` times, for a positive integer `k`."]],
+    details: [
+      "Taken by repeated squaring, M^(2m) = (M·M)^m and M^(2m+1) = M·(M·M)^m, so a large power costs a handful of products, not k of them.",
+      "When every entry is a number the arithmetic is exact, over the rationals: the work is the one `la.pow` step. A decimal entry makes approximate only the entries it reaches, as in `M * M`: `[0.5, 0; 0, 1/3]^2` is `[0.25, 0; 0, 1/9]`.",
+      "Symbolic entries work; the answer's entries are the accumulated dot products, simplified but not expanded (wrap it in `expand` for that).",
+      "`k` must be a positive integer: `M^0` and `M^(-1)` are errors.",
+    ],
+    examples: [
+      basic("[1, 2; 3, 4]^2", "[1, 1; 1, 0]^10"),
+      section("Scope", note("The Fibonacci numbers F₁₀₁, F₁₀₀ and F₉₉, exactly:"), "[1, 1; 1, 0]^100",
+        note("Fractions stay exact:"), "[1/2, 1; 0, 1/3]^5", note("Symbolic entries:"), "[1, x; 0, 1]^6"),
+    ],
+    see: ["dot", "det", "expand"],
+    ref: "https://mathworld.wolfram.com/MatrixPower.html",
+  },
+  {
     name: "entrywise", title: "./ and .* (entrywise)", area: "Linear algebra", notation: true,
     usage: [
       ["A ./ B", "divides entry by entry: entry (i, j) is aᵢⱼ/bᵢⱼ."],

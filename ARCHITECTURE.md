@@ -142,6 +142,16 @@ differential test with zero mismatches.
   verified; one where a cancellation assumed a base nonzero or positive is
   `la.row-add.symbolic.assuming`, and says what it assumed. That the result is in reduced row echelon form is `rref_isRref`
   (`LinAlgRref.lean`), a column-by-column invariant.
+- **A matrix power is taken by repeated squaring, and over ℚ when it can be.** A matrix rule's
+  output is one literal whose entries the pipeline then simplifies, so the size of that literal is
+  the cost: `M·M^(k-1)` written out nests `n^k` copies of `M`'s entries in each entry of `M^k`.
+  `la.pow` squares instead (`M^(2m) = (M·M)^m`, `matPow`), which leaves `O(k^(log₂ 2n))`. When every
+  entry is a numeral it does the arithmetic itself, exactly over ℚ (`ratPow`), and emits the
+  numerals, as `rref` does. Each entry carries its own approximate flag, by the simplifier's rules
+  (a zero annihilates a product and drops out of a sum), so `M^k` prints as `M * … * M` does: a
+  decimal makes approximate only the entries it reaches. Both are proved to
+  be the power in Mathlib's monoid of square matrices (`matPow_value`, `ratM_pow`,
+  `proofs/Proofs/Matrix.lean`).
 - **Radicals take the form the ordering can afford.** `2√2` as a term is `2 · 2^(1/2)`, heavier
   than `8^(1/2)` under any bounded numeral weight, so the engine's normal form is the single power
   `2^(3/2)` (a sixth tier, the magnitudes of integer numerals, orders that step), radicals with the

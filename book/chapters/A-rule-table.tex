@@ -52,7 +52,7 @@ the engine omits is unverified.
 \rt{la.mul}{verified}{Entry $(i,j)$ of the product is row $i$ of the left factor dotted with column $j$ of the right; the product is associative and real factors commute past the matrices (\lc{laMul_sound}).}
 \rt{la.transpose}{verified}{Rows become columns (\lc{laTranspose_sound}).}
 \rt{la.det}{verified}{Laplace expansion along the first row has Mathlib's determinant as its value (\lc{laDet_sound}, \lc{detExpr_value}).}
-\rt{la.pow}{verified}{$M^k$ for a positive integer $k$ is the power in the monoid of square matrices (\lc{laPow_sound}, \lc{matPow_value}).}
+\rt{la.pow}{verified}{$M^k$ for a positive integer $k$ is the power in the monoid of square matrices, by repeated squaring (\lc{laPow_sound}, \lc{matPow_value}); a matrix of numerals is powered exactly over $\mathbb{Q}$ (\lc{ratM_pow}).}
 \rt{la.context}{verified}{A refusal: a matrix literal where no rule gives it a meaning, or nested in another, is an error, never a value, so there is nothing to be wrong.}
 \midrule \multicolumn{3}{l}{\textbf{Expansion}} \\
 \rt{cmd.expand}{verified}{Distribution is a total function proved sound over $\mathbb{R}$ (\lc{dist_sound}); the collection afterwards is the pipeline's own steps with their statuses.}
