@@ -26,7 +26,7 @@ export type LspMessage = { jsonrpc: "2.0"; id?: number | string | null; method?:
 export interface LeanServerModule {
   HEAP32: Int32Array;
   HEAPU8: Uint8Array;
-  FS: { mkdirTree(path: string): void; writeFile(path: string, data: Uint8Array): void };
+  FS: { mkdirTree(path: string): void; writeFile(path: string, data: Uint8Array, opts?: { canOwn?: boolean }): void };
   ENV: Record<string, string>;
   callMain(args: string[]): void;
   _leanweb_in_buf(): number;
@@ -41,7 +41,8 @@ export interface LeanServerModule {
 export interface LeanServerOptions {
   /** The started Emscripten module (before `callMain`). */
   module: LeanServerModule;
-  /** The files of Lean's library, written to `/lib/lean` before the worker starts. */
+  /** The files of Lean's library, written to `/lib/lean` before the worker starts. The filesystem keeps
+   *  each array as it is rather than a copy, so the caller must not reuse them. */
   library: Iterable<[path: string, data: Uint8Array]>;
   /** `InitializeResult` as the native watchdog sends it. */
   initializeResult: unknown;
@@ -147,7 +148,7 @@ export function startLeanServer(o: LeanServerOptions): { receive(msg: LspMessage
     for (const [path, data] of o.library) {
       const full = `/lib/lean/${path}`;
       M.FS.mkdirTree(full.slice(0, full.lastIndexOf("/")));
-      M.FS.writeFile(full, data);
+      M.FS.writeFile(full, data, { canOwn: true });   // a copy would hold the library (~280 MB) twice
     }
     M.callMain([]);
   };

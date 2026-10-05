@@ -94,13 +94,37 @@ function host() {
     return joined.pipeThrough(new DecompressionStream("gzip"));
   }
 
-  /** `lean-lib.pack.gz`: [u32 LE index length] [JSON [[path, size], ...]] [the files, in index order]. */
+  /** `lean-lib.pack.gz`: [u32 LE index length] [JSON [[path, size], ...]] [the files, in index order].
+   *  Unpacked as it decompresses, each file into an array of its own that the server's filesystem then
+   *  keeps as it is: the library is some 280 MB, and reading the whole pack into one buffer first held it
+   *  twice while the buffer was assembled, and once more once the files were copied out of it. A phone's
+   *  browser stops a page that uses that much (iOS Safari: "This webpage was reloaded because a problem
+   *  occurred"). */
   async function library(): Promise<[string, Uint8Array][]> {
-    const buf = new Uint8Array(await new Response(gunzip("lean-lib.pack.gz", __LEAN_LIB_PARTS__)).arrayBuffer());
-    const n = new DataView(buf.buffer).getUint32(0, true);
-    const index = JSON.parse(new TextDecoder().decode(buf.subarray(4, 4 + n))) as [string, number][];
-    let off = 4 + n;
-    return index.map(([p, size]) => { const d = buf.subarray(off, off + size); off += size; return [p, d]; });
+    const reader = gunzip("lean-lib.pack.gz", __LEAN_LIB_PARTS__).getReader();
+    let chunk: Uint8Array = new Uint8Array(0), pos = 0;
+    /** Fills `into` from the stream. */
+    const fill = async (into: Uint8Array) => {
+      for (let got = 0; got < into.length;) {
+        if (pos === chunk.length) {
+          const { done, value } = await reader.read();
+          if (done) throw new Error("Lean's library is truncated");
+          chunk = value; pos = 0;
+          continue;
+        }
+        const k = Math.min(into.length - got, chunk.length - pos);
+        into.set(chunk.subarray(pos, pos + k), got);
+        got += k; pos += k;
+      }
+      return into;
+    };
+    const head = await fill(new Uint8Array(4));
+    const n = new DataView(head.buffer).getUint32(0, true);
+    const index = JSON.parse(new TextDecoder().decode(await fill(new Uint8Array(n)))) as [string, number][];
+    const files: [string, Uint8Array][] = [];
+    for (const [p, size] of index) files.push([p, await fill(new Uint8Array(size))]);
+    reader.releaseLock();
+    return files;
   }
 
   // An error on one of Lean's threads ends the server. Emscripten rethrows the thread's error event as it is,
