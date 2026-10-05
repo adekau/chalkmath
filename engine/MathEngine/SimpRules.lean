@@ -163,21 +163,6 @@ def addExp (a b : Expr) : Expr :=
   | .num p, .num q => .num (p + q)
   | _, _ => .add [a, b]
 
-/-- Binary search for a `y` with `y ^ n = x`. Top-level (rather than a `let rec`) so that
-`proofs/` can state its specification: it only ever returns a `y` whose power it has *checked*,
-so correctness is read straight off the final guard and completeness is never needed. -/
-def natRootGo (n x : Nat) : Nat → Nat → Nat → Option Nat
-  | _, _, 0 => none
-  | lo, hi, fuel + 1 =>
-    if lo < hi then
-      let mid := (lo + hi) / 2
-      if mid ^ n < x then natRootGo n x (mid + 1) hi fuel else natRootGo n x lo mid fuel
-    else if lo ^ n = x then some lo else none
-
-/-- Exact natural `n`-th root of `x`, if there is one. -/
-def natRoot (n x : Nat) : Option Nat :=
-  if x < 2 then some x else natRootGo n x 1 x 200
-
 /-- Integer `n`-th root of a rational, if exact. -/
 def exactRoot (r : Rat) (n : Nat) : Option Rat :=
   if r < 0 || n = 0 then none else

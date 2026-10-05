@@ -997,8 +997,19 @@ def integrateTests : TestM Unit := do
     ((findOf "integrate(x^2 + sin(x), x)").map (fun r => !r.checked && r.conds.isEmpty) |>.getD false)
   checkTrue "anti: depth 0 finds nothing" (Anti.anti normOpt "x" 0 3 (.var "x")).isNone
 
+/-- Integer roots search by bit length, not by value (`IntRoot.lean`): `√(10^401)` once hung. -/
+def intRootTests : TestM Unit := do
+  check "perfect power of 1,333 bits" (toString (perfectPower (10 ^ 401))) "(some (10, 401))"
+  check "exact square root past 2^200" (toString (natRoot 2 (2 ^ 300))) s!"(some {2 ^ 150})"
+  check "not a perfect power, 1,333 bits" (toString (perfectPower (10 ^ 401 + 1))) "none"
+  check "square part of a 1,333-bit number" (toString (qthPowerPart (12 * 10 ^ 400) 2)) s!"({2 * 10 ^ 200}, 3)"
+  check "square part, a 29-bit prime squared" (toString (qthPowerPart ((2 ^ 29 - 3) ^ 2 * 7) 2)) s!"({2 ^ 29 - 3}, 7)"
+  check "cube part" (toString (qthPowerPart (2 ^ 7 * 3 ^ 4 * 5) 3)) "(12, 30)"
+  check "past maxRootBits nothing is searched" (toString (perfectPower (10 ^ 5000), qthPowerPart (10 ^ 5000) 2)) s!"(none, (1, {10 ^ 5000}))"
+  check "radical display, 1,333 bits" (match parseStmt "sqrt(10^401)" with | .ok st => (match (normalizeT pipelineRules pipelineOrdered st.value).run' #[] with | .ok e => e.toLatex | .error m => m) | .error _ => "parse") s!"{10 ^ 200}\\sqrt\{10}"
+
 def main : IO UInt32 := do
-  let ((), failures) ← (do tests; sessionTests; integrateTests; trigTests; quietTests; partStatTests; workTests; checkTests; logicRelTests; algebraTests; systemsTests; complexNTests; goldenTests).run #[]
+  let ((), failures) ← (do tests; sessionTests; integrateTests; trigTests; quietTests; partStatTests; workTests; checkTests; logicRelTests; algebraTests; systemsTests; complexNTests; intRootTests; goldenTests).run #[]
   for f in failures do
     IO.println s!"FAIL {f.name}\n  expected: {f.expected}\n  actual:   {f.actual}"
   IO.println s!"{failures.size} failures"

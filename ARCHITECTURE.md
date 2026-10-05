@@ -96,7 +96,12 @@ differential test with zero mismatches.
   silent rule where the two print alike and a visible `simp.radical` step where they do not
   (`√18` shows as `3√2`); the arithmetic the textbook writes out (`√32 = (2^5)^(1/2) = 2^2 · 2^(1/2)`)
   lives in the explanations, since those intermediate forms are heavier than the input and could
-  not be steps. `RadicalRules.lean`.
+  not be steps. `RadicalRules.lean`. The integer arithmetic under them (exact roots, perfect powers,
+  `q`-th-power parts, shared by the rules and the printer) searches by the bit length of a number,
+  never by its value, and returns only what it has checked: a root by bisection in `[2^b, 2^(b+1))`,
+  a `q`-th-power part by trial division up to `2^20` (exact below `2^(20(q+1))`, since past the cube
+  root of what is left a square factor can only be all of it). Numbers of `maxRootBits` (4096) bits
+  or more are not searched and stay as they are. `IntRoot.lean`.
 - **The λ-calculus is a second world in the same engine.** `Lambda.lean` has its own terms, parser
   and normal-order β-reducer; terms are encoded into `Expr` for the wire, so selection, explanation
   and origin tracking work unchanged. The de Bruijn view is computed with every step. Reduction is

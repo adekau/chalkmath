@@ -35,6 +35,7 @@ const CASES = [
   { src: "[1,2;3,4] * [5,6;7,8]", text: "[19, 22; 43, 50]", step: "Matrix product" },
   { src: "[1, 2] ./ [3, 10]", text: "[1/3, 1/5]", step: "Entrywise division" },
   { src: "N(sin(10^30))", text: "-0.0901169019121381", step: "Numerical value" },
+  { src: "sqrt(10^401)", text: "10^(401/2)", step: "Radical" },
   { src: "N((-8)^(1/3))", text: "1 + 1.73205080756888*i", step: "Numerical value" },
   { src: "N(exp(100))", text: "2.68811714181614*10^43", step: "Numerical value" },
   { src: "factor(1/x + 1)", text: "(x + 1)/x", step: "Common denominator" },
