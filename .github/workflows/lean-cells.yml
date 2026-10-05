@@ -1,0 +1,67 @@
+name: Lean cells in the browser
+
+# Every example notebook and course lesson with Lean, assembled as the page assembles it, must be checked to
+# the end by the Lean the page runs (Lean compiled to wasm, in Chromium), and again after an edit at its end:
+# scripts/notebooks/check-lean-browser.mjs. CI (ci.yml) checks the same Lean with native Lean; this catches
+# what only the browser hits, above all running out of a browser thread's small stack, which stops Lean's
+# whole server (ARCHITECTURE.md §4b). It uses the release of Lean for wasm this checkout names
+# (scripts/lean-wasm-key.sh). A change to Lean's build has none until lean-wasm.yml publishes it; the check
+# then says so and passes, and runs again on main when that workflow finishes.
+
+on:
+  push:
+    branches: [main]
+    paths: ["notebooks/**", "packages/lean-editor/**", "packages/engine-host/src/**", "engine/lean-toolchain", "engine/wasm/**",
+            "scripts/notebooks/**", "scripts/bundle.mjs", "scripts/lean-bundle.mjs", ".github/workflows/lean-cells.yml"]
+  pull_request:
+    paths: ["notebooks/**", "packages/lean-editor/**", "packages/engine-host/src/**", "engine/lean-toolchain", "engine/wasm/**",
+            "scripts/notebooks/**", "scripts/bundle.mjs", "scripts/lean-bundle.mjs", ".github/workflows/lean-cells.yml"]
+  workflow_run:
+    workflows: ["Lean for wasm"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lean-cells-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - name: Fetch Lean for wasm (the release lean-wasm.yml publishes for this checkout)
+        id: lean
+        run: |
+          tag=$(scripts/lean-wasm-key.sh)
+          if gh release download "$tag" --pattern lean-wasm.tar.gz --dir "$RUNNER_TEMP"; then
+            mkdir -p "$RUNNER_TEMP/lean-wasm"
+            tar xzf "$RUNNER_TEMP/lean-wasm.tar.gz" -C "$RUNNER_TEMP/lean-wasm"
+            echo "LEAN_WASM_DIR=$RUNNER_TEMP/lean-wasm" >> "$GITHUB_ENV"
+            echo "have=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::$tag is not published yet (the Lean for wasm workflow builds it); nothing to check the Lean cells with"
+          fi
+      - uses: actions/setup-node@v4
+        if: steps.lean.outputs.have == 'true'
+        with: { node-version: 22, cache: npm }
+      - name: Build the workspace packages, then bundle the notebook with Lean
+        if: steps.lean.outputs.have == 'true'
+        run: |
+          npm ci
+          npm run build
+          npm run bundle
+      - name: Every notebook's Lean, in Lean in Chromium
+        if: steps.lean.outputs.have == 'true'
+        # the runner's Chrome: playwright-core ships no browser of its own
+        run: CHROMIUM="${CHROME_BIN:-$(command -v google-chrome)}" node scripts/notebooks/check-lean-browser.mjs --jobs 2 notebooks/*.chalk notebooks/courses/*/*.chalk

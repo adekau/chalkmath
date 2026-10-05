@@ -39,6 +39,10 @@ it, Lean cells say the build has no Lean. See ARCHITECTURE.md §4b.
 answers it was written with (`notebooks/golden/`, errors a notebook shows on purpose included); after an engine
 change that alters one deliberately, `--update` rewrites them. CI runs it.
 
+`node scripts/notebooks/check-lean-browser.mjs notebooks/*.chalk notebooks/courses/*/*.chalk` — every notebook and
+lesson's Lean through the browser's Lean (after `npm run bundle` with Lean), opened and then edited at its end: what
+native Lean accepts can still run a browser thread out of stack (ARCHITECTURE.md §4b). `lean-cells.yml` runs it.
+
 `npm run e2e` — math cells end to end in Chromium: the bundled notebook (`npm run bundle`) against the
 native engine (`lake build`) over HTTP, checking each answer, what the page shows, and the steps of its
 work; then the notebook's teaching features (out-of-date cells, sliders, stepping through, exercises, callouts,

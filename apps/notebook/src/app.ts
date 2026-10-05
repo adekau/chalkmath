@@ -26,7 +26,7 @@ import { plotYRange, framesWindow, blendable, blend, playPosition, workLine } fr
 import { parseScene, numberRequests as sceneNumberRequests, sampleRequests as sceneSampleRequests, numbersOf as sceneNumbersOf, build as buildScene, frameAt as sceneFrameAt, SceneError, type SceneData, type Item as SceneItem, type XY } from "./scene.js";
 import { DOC_PAGES, type DocPage, type DocPart } from "./docs.js";
 import { FUNCTIONS, FN_BY_NAME, AREAS, fnPage, evaluable, type FnDoc, type ExampleSection } from "./reference.js";
-import { ensureLean, syncLean, mountLean, unmountLean, focusLean, setLeanDark, infoview as leanInfoview, leanState, leanFailure, leanProgress, leanChecked, initLeanIsolation, type LeanMessage } from "./lean-cells.js";
+import { ensureLean, syncLean, mountLean, unmountLean, focusLean, setLeanDark, infoview as leanInfoview, leanState, leanFailure, leanStoppedAt, leanProgress, leanChecked, initLeanIsolation, type LeanMessage } from "./lean-cells.js";
 /** The one trusted KaTeX command is `\htmlData`, which carries the engine's subterm paths. LaTeX can
  *  come from a file someone else wrote (saved outputs render before any re-run), and a blanket
  *  `trust: true` would let it add `\href{javascript:…}`, arbitrary styles, or remote images. */
@@ -242,6 +242,8 @@ interface Cell {
   /** λ-cells: the result with de Bruijn indices, and what it reads as (a Church numeral or boolean). */
   outDeBruijn?: string | undefined;
   reading?: string | undefined;
+  /** What the engine warned about the input (a variable named `e`, say), shown under the answer. */
+  warnings?: string[] | undefined;
   /** What the engine said the cell was, once it has answered; the badge guesses from the source until then. */
   kind?: string;
   /** Order-world cells: the Hasse diagram to draw, and the one-line summary. */
@@ -381,6 +383,9 @@ interface Nb {
   assets: Record<string, Asset>;
   /** The serialized notebook at the last save or open; the tab shows `*` while the live state differs. */
   savedText: string;
+  /** Kept in this browser's library under its name (saved there, or opened from there). Until then an
+   *  untitled notebook's Save asks for a name, so it does not replace another untitled one. */
+  inLibrary?: boolean;
   /** The serialized notebook at the last stash, for the dirty mark of a document that is not current. */
   text: string;
   /** Whether the engine session has been rebuilt from the cells since the document was restored. */
@@ -717,11 +722,13 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
       : await client.call("engine.evaluate", params);
     cell.ms = performance.now() - t0;
     queueMicrotask(autosave);
+    delete cell.warnings;
     if (r.ok) {
       cell.label = r.label ?? cell.label ?? nextLabel++;
       cell.outLatex = r.rendered.latex;
       cell.outText = r.rendered.text;
       cell.semantics = "semantics" in r && r.semantics === "complex" ? "complex" : "real";
+      if ("warnings" in r && r.warnings?.length) cell.warnings = r.warnings;
       cell.echoLatex = r.inputRendered?.latex;
       // a file's numbers can be hundreds of rows: then the interpretation names what made them instead
       // (a few numbers read better as themselves: mean([0.33; 4.87; …]))
@@ -898,7 +905,7 @@ async function evaluateFileCell(cell: Cell, fc: { bind?: string; file: FileValue
     renderHighlights();
   }
   delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.plot; delete cell.manip; delete cell.error;
-  delete cell.outDeBruijn; delete cell.reading; delete cell.kind; delete cell.hasse; delete cell.summary; delete cell.visuals;
+  delete cell.outDeBruijn; delete cell.reading; delete cell.warnings; delete cell.kind; delete cell.hasse; delete cell.summary; delete cell.visuals;
   cell.steps = []; delete cell.outline;
   cell.file = { name: file.name, mime: file.mime, size: fileSize(file), origin: file.origin };
   CELL_FILES.set(cell, file);
@@ -1277,12 +1284,13 @@ function serializeNotebook(): string {
 
 /** Replace the notebook with a file's contents: saved outputs show at once, then every cell is
  *  re-run in order so the engine's session (and with it `explain`) matches what is shown. */
-async function loadNotebook(text: string, name?: string, project?: ProjectRef, prelude?: string, lessonBase?: string) {
+async function loadNotebook(text: string, name?: string, project?: ProjectRef, prelude?: string, inLibrary = false, lessonBase?: string) {
   let doc: ChalkFile;
   try { doc = JSON.parse(text) as ChalkFile; } catch { notify("err", "That file is not a ChalkMath notebook (it is not valid JSON)."); return; }
   if ((doc.chalk !== 1 && doc.lemma !== 1) || !Array.isArray(doc.cells)) { notify("err", "That file is not a ChalkMath notebook."); return; }
   const d = makeDoc(name ?? doc.name ?? "untitled.chalk", cellsFromFile(doc, S.foldWorkOnOpen), Array.isArray(doc.scenes) ? doc.scenes : [], assetsFromFile(doc));
   if (!d.cells.length) d.cells.push(freshCell());
+  if (inLibrary) d.inLibrary = true;
   const pr = project ?? projectRefOf(doc);
   if (pr) d.project = pr;
   if (pr && lessonBase !== undefined) d.lessonBase = lessonBase;
@@ -1577,33 +1585,74 @@ function writeLibrary(lib: Library): boolean {
   catch { notify("err", "Could not save: this browser's storage is full or unavailable. File › Export to file keeps a copy."); return false; }
 }
 
-/** Save the current notebook in the browser under its name. */
+/** Save the current notebook in the browser under its name; an untitled one never saved asks for a name first. */
 function saveNotebook() {
-  if (!currentDoc()) return;
+  const cur = currentDoc(); if (!cur) return;
   // a lesson has nothing to save: its work is kept as it goes
-  if (currentDoc()!.project) {
-    stashDoc(); keepLesson(currentDoc()!);
+  if (cur.project) {
+    stashDoc(); keepLesson(cur);
     notify("ok", "A lesson keeps your work in this browser as you go, so there is nothing to save. File › Save as… makes a notebook of your own from it.");
     return;
   }
+  if (!cur.inLibrary && cur.name === "untitled.chalk") { saveNotebookAs(); return; }
   const text = serializeNotebook();
   const lib = readLibrary();
   lib[S.docName] = { file: JSON.parse(text) as ChalkFile, savedAt: new Date().toISOString() };
   if (!writeLibrary(lib)) return;
-  const d = currentDoc(); if (d) d.savedText = text;
+  const d = currentDoc(); if (d) { d.savedText = text; d.inLibrary = true; }
   renderTabs(); autosave();
   notify("ok", `Saved ${S.docName} in this browser`);
 }
+/** A typed name as a notebook's file name: trimmed, ending in .chalk. */
+function chalkName(name: string): string {
+  const n = name.trim();
+  return n.toLowerCase().endsWith(".chalk") ? n : `${n.replace(/\.lemma$/i, "")}.chalk`;
+}
+/** Ask for a name and save under it. A name already saved in this browser (other than this
+ *  notebook's own) is pointed out, and the button says it replaces that one. */
 function saveNotebookAs() {
-  if (!currentDoc()) return;
-  const name = window.prompt("Save notebook as", S.docName);
-  if (!name) return;
-  const d = currentDoc();
-  // a lesson saved as a notebook becomes one of the reader's own; the lesson keeps its work apart
-  if (d?.project) { stashDoc(); keepLesson(d); delete d.project; delete d.lessonBase; delete d.lessonKept; renderLessonBar(); }
-  S.docName = name.endsWith(".chalk") ? name : `${name.replace(/\.lemma$/, "")}.chalk`;
-  if (d) d.name = S.docName;
-  renderChrome(); saveNotebook();
+  const cur = currentDoc(); if (!cur) return;
+  closeModal();
+  const lib = readLibrary();
+  const box = h("div", "modal");
+  const card = h("div", "modalcard");
+  card.setAttribute("role", "dialog"); card.setAttribute("aria-modal", "true"); card.setAttribute("aria-label", "Save notebook as");
+  const form = document.createElement("form"); form.className = "savename";
+  const input = document.createElement("input");
+  input.type = "text"; input.value = tabName(cur.name); input.spellcheck = false; input.setAttribute("aria-label", "Notebook name");
+  const warn = h("p", "savewarn");
+  const cancel = h("button", undefined, "Cancel"); cancel.setAttribute("type", "button"); cancel.addEventListener("click", closeModal);
+  const ok = h("button", "primary", "Save"); ok.setAttribute("type", "submit");
+  const check = () => {
+    const name = chalkName(input.value);
+    const taken = !!input.value.trim() && !!lib[name] && !(cur.inLibrary && name === cur.name);
+    warn.textContent = !input.value.trim() ? "Give the notebook a name." : taken ? `A notebook named ${name} is already saved in this browser. Saving replaces it.` : "";
+    warn.hidden = !warn.textContent;
+    ok.textContent = taken ? "Replace" : "Save";
+    ok.toggleAttribute("disabled", !input.value.trim());
+  };
+  input.addEventListener("input", check);
+  form.addEventListener("submit", (ev) => {
+    ev.preventDefault();
+    if (!input.value.trim()) return;
+    const name = chalkName(input.value);
+    closeModal();
+    // a different name is a different entry in the library: it is not there until saved
+    if (name !== cur.name) cur.inLibrary = false;
+    // a lesson saved as a notebook becomes one of the reader's own; the lesson keeps its work apart
+    if (cur.project) { stashDoc(); keepLesson(cur); delete cur.project; delete cur.lessonBase; delete cur.lessonKept; renderLessonBar(); }
+    S.docName = name; cur.name = name;
+    renderChrome(); saveNotebook();
+  });
+  const foot = h("div", "modalfoot");
+  foot.append(h("div", "spacer"), cancel, ok);
+  form.append(h("p", "muted", "Kept in this browser's storage under this name; File › Open… lists the notebooks saved here."), input, warn, foot);
+  card.append(h("h3", undefined, "Save notebook as"), form);
+  box.append(card);
+  box.addEventListener("click", (ev) => { if (ev.target === box) closeModal(); });
+  mountModal(box);
+  check();
+  input.focus(); input.select();
 }
 
 /** Open a saved notebook: a small picker over the library, with a delete for each entry. */
@@ -1724,7 +1773,7 @@ async function openExample(file: string, project?: ProjectRef): Promise<boolean>
     const prelude = p?.leanPrelude ? await leanPreludeOf(p, project!.lesson) : undefined;
     // a lesson worked on before opens as it was left
     const kept = p ? keptLesson(p, project!.lesson, text) : undefined;
-    await loadNotebook(kept ?? text, name, project, prelude, p ? fingerprint(text) : undefined);
+    await loadNotebook(kept ?? text, name, project, prelude, false, p ? fingerprint(text) : undefined);
     if (project) recordProgress();
     return true;
   } catch (e) {
@@ -2071,7 +2120,7 @@ function openFromLibrary(name: string) {
   const already = S.docs.findIndex((d) => d.name === name);
   if (already >= 0) { loadDoc(already); switchTab("notebook"); return; }
   const entry = readLibrary()[name]; if (!entry) return;
-  void loadNotebook(JSON.stringify(entry.file), name);
+  void loadNotebook(JSON.stringify(entry.file), name, undefined, undefined, true);
 }
 
 function download(name: string, text: string) {
@@ -2425,7 +2474,7 @@ function newNotebook() {
 
 /** What the browser keeps between reloads: every open notebook, which one is current, and whether
  *  each had unsaved changes. */
-interface Autosave { chalkmath: 1; active: number; docs: { file: ChalkFile; dirty: boolean }[] }
+interface Autosave { chalkmath: 1; active: number; docs: { file: ChalkFile; dirty: boolean; inLibrary?: boolean }[] }
 
 /** The notebooks survive a reload: autosaved to the browser after every run or edit — coalesced,
  *  since serializing every open notebook after each of a hundred cells is most of what makes a
@@ -2440,7 +2489,7 @@ function autosaveNow() {
   clearTimeout(autosaveTimer); autosaveTimer = 0;
   stashDoc();
   for (const d of S.docs) keepLesson(d);
-  const doc: Autosave = { chalkmath: 1, active: S.doc, docs: S.docs.map((d) => ({ file: JSON.parse(d.text) as ChalkFile, dirty: docDirty(d) })) };
+  const doc: Autosave = { chalkmath: 1, active: S.doc, docs: S.docs.map((d) => ({ file: JSON.parse(d.text) as ChalkFile, dirty: docDirty(d), ...(d.inLibrary ? { inLibrary: true } : {}) })) };
   try { localStorage.setItem("chalkmath.autosave", JSON.stringify(doc)); autosaveWarned = false; }
   catch {
     // storage full (big attachments) or unavailable (private mode): say so once, not after every run
@@ -2511,7 +2560,7 @@ function moveCell(cell: Cell, by: -1 | 1) {
 }
 const hasOutput = (cell: Cell) => !!(cell.outLatex || cell.file || cell.error);
 function clearCellOutput(cell: Cell) {
-  delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.error; delete cell.plot; delete cell.manip; delete cell.hasse; delete cell.summary; delete cell.visuals; delete cell.file; delete cell.outDeBruijn; delete cell.reading;
+  delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.error; delete cell.plot; delete cell.manip; delete cell.hasse; delete cell.summary; delete cell.visuals; delete cell.file; delete cell.outDeBruijn; delete cell.reading; delete cell.warnings;
   delete cell.ask; delete cell.askTrail;
   cell.steps = []; delete cell.outline; cell.label = null;
   renderCellBody(cell); renderChrome(); renderSidebar(); autosave();
@@ -4567,6 +4616,17 @@ function leanStatus(): HTMLElement | null {
   return box;
 }
 
+/** Where Lean was when its server stopped, said on the cell it was checking (the course's prelude: on the
+ *  first Lean cell). */
+function leanStoppedHere(cell: Cell): string {
+  const at = leanStoppedAt();
+  if (!at) return "";
+  if (at.id === cell.id) return ` It was checking line ${at.line} of ${cell.type === "exercise" ? "this proof" : "this cell"}.`;
+  if (at.id === `${cell.id}${STMT_SUFFIX}`) return " It was checking this exercise's statement.";
+  if (at.id === PRELUDE_ID && S.cells.find(isLeanCell) === cell) return " It was checking the Lean of the course's earlier lessons, which this lesson starts from.";
+  return "";
+}
+
 /** A Lean cell's output: what Lean says about its lines (an #eval's value, errors, warnings); the goals
  *  at the cursor are in the panel's Lean goals tab. */
 function renderLeanBody(cell: Cell) {
@@ -4576,7 +4636,7 @@ function renderLeanBody(cell: Cell) {
   const st = leanState();
   if (st === "failed" || st === "isolating") {
     body.append(h("div", `leanstate ${st}`,
-      st === "failed" ? `Lean did not start: ${leanFailure()}` : "Preparing the page for Lean: it reloads once."));
+      st === "failed" ? `${leanFailure()}${leanStoppedHere(cell)}` : "Preparing the page for Lean: it reloads once."));
   } else if (S.cells.find(isLeanCell) === cell) {
     const status = leanStatus();
     if (status) body.append(status);
@@ -4831,6 +4891,7 @@ function renderCellBody(cell: Cell) {
     if (cell.reading && !answerHeld(cell)) { const rd = h("span", "reading", `≡ ${cell.reading}`); rd.title = "What the normal form encodes"; val.append(rd); }
     if (cell.summary && !cell.hasse && !answerHeld(cell)) { const rd = h("span", "reading", cell.summary); val.append(rd); }
     for (const box of cellVisuals(cell)) val.append(box);
+    if (!answerHeld(cell)) for (const w of cell.warnings ?? []) { const wn = h("div", "outwarn", `⚠ ${w}`); wn.setAttribute("role", "note"); val.append(wn); }
     out.append(val, h("div", "brk"));
     el.append(out);
     if (cell.ask && ASK_CELL.test(cell.src)) out.append(h("div"), askInfo(cell, !!ASK_CELL.exec(cell.src)?.[1]), h("div"));
@@ -5202,7 +5263,7 @@ function renderLeanExercise(cell: Cell, box: HTMLElement) {
   below.innerHTML = "";
   if (S.cells.find(isLeanCell) === cell) { const st = leanStatus(); if (st) below.append(st); }
   const state = leanState();
-  if (state === "failed" || state === "isolating") below.append(h("div", `leanstate ${state}`, state === "failed" ? `Lean did not start: ${leanFailure()}` : "Preparing the page for Lean: it reloads once."));
+  if (state === "failed" || state === "isolating") below.append(h("div", `leanstate ${state}`, state === "failed" ? `${leanFailure()}${leanStoppedHere(cell)}` : "Preparing the page for Lean: it reloads once."));
   // what Lean says about the proof (its lines), and the statement's own errors (an unproved goal is reported at `by`)
   const ms = [...(cell.leanStmtMessages ?? []).filter((m) => m.severity === "error").map((m) => ({ ...m, where: "statement" })),
     ...(cell.leanMessages ?? []).map((m) => ({ ...m, where: `${m.line}:${m.column}` }))];
@@ -7715,12 +7776,13 @@ if (saved) {
   // sources and outputs come back at once; each engine session is rebuilt by re-running when its tab is shown
   try {
     const parsed = JSON.parse(saved) as Autosave | ChalkFile;
-    const entries: { file: ChalkFile; dirty: boolean }[] = "chalkmath" in parsed && Array.isArray(parsed.docs)
+    const entries: Autosave["docs"] = "chalkmath" in parsed && Array.isArray(parsed.docs)
       ? parsed.docs
       : [{ file: parsed as ChalkFile, dirty: false }];
-    for (const { file, dirty } of entries) {
+    for (const { file, dirty, inLibrary } of entries) {
       const d = makeDoc(file.name ?? "untitled.chalk", cellsFromFile(file), Array.isArray(file.scenes) ? file.scenes : [], assetsFromFile(file));
       if (!d.cells.length) d.cells.push(freshCell());
+      if (inLibrary) d.inLibrary = true;
       d.hydrated = false;
       const pr = projectRefOf(file);
       if (pr) d.project = pr;

@@ -27,6 +27,8 @@ export interface LeanNotebook {
    *  can tell when what it shows has been checked. */
   version(): number;
   messages(id: string): LeanMessage[];
+  /** The cell holding a 1-based line of the document, and the line in it (1-based). */
+  cellAt(line: number): { id: string; line: number } | null;
   /** Shows cell `id` in `el`, which grows with its content. */
   mount(id: string, el: HTMLElement): CellView;
   /** Switches the editors and the infoview to the dark or light theme. */

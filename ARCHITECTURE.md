@@ -76,6 +76,16 @@ differential test with zero mismatches.
   `ln z` and `b^e = exp(e ln b)` are certified too. What the intervals do not reach (a pole, a jump,
   the cut, where the argument jumps) falls to the old double-precision evaluation, `cmd.N.float`, which
   says it is not certified.
+  The numbers have to stay small, because the browser's runtime is built without GMP and its big
+  integers are slow: every operation rounds outward to 192 bits, the Taylor sums included (`expSumI`,
+  `trigSumI`, proved to hold the exact sums). The exact sums ran to thousands of bits and made one
+  `N` with a `ln` in it take ten seconds. Newton's method for `ln` and `arctan` starts from a
+  double-precision guess, which can only change how fast it converges: the candidates are still
+  checked. `x^(1/2)`, which is how `sqrt` is written, is a square root, not `exp(½ ln x)`.
+- **A plain `e` is a variable.** `ℯ` (`\e`) is `exp(1)`, so `ℯ^x` is `exp(x)`, but the letter `e` is
+  a variable like any other, even though `N` gives it Euler's value (`ieval` treats the name `e` as
+  a constant, as `ieval_sound` assumes). A cell whose input has a free `e` says so under its answer:
+  `engine.evaluate` returns `warnings` (`inputWarnings`, `Rpc.lean`), an optional field.
 - **Elimination is verified over ℚ by construction.** `LinAlgQ.lean` writes Gauss–Jordan as a
   list of the three elementary row operations, each invertible (the degenerate parameters are the
   identity), and proves `sol_rref`: the reduced matrix has the input's solution set. The `rref`
@@ -521,6 +531,23 @@ language server answers LSP for Lean cells.
   some 5 s of one native thread, mostly the kernel checking the book's structures and proofs.
   Compiling each course's prelude to 32-bit oleans with the wasm Lean, imported instead of inlined,
   would make it a download; that is not built.
+- **A thread's stack.** Every one of Lean's threads is a web worker, and Chromium gives a worker 500 KB
+  of stack (Lean's threads have 8 MB natively), of which Lean compiled to wasm needs far more per level of
+  recursion than native Lean: some 20 KB per statement of a `do` block, so one of about 25 `let x ← …`
+  lines, or 20 once V8 has optimized the code (optimized frames are larger here), runs out. The thread's
+  "Maximum call stack size exceeded" stops the whole server, as a stack overflow stops a native worker;
+  the page says Lean stopped, why, and at which line of which cell (`lean-cells.ts`). Two things are
+  done about it. Lean's language server fast-forwards over the commands an edit leaves unchanged with
+  `sync` continuations of finished tasks, which run inline, one call inside the next per command, so an
+  edit after a few hundred commands (a late lesson of a course, with its prelude) overflowed every time:
+  the runtime runs at most 16 such continuations inside one another and queues the rest as ordinary
+  tasks, on fresh stacks (`lean-compiler-emscripten.patch`, `object.cpp`). Lean computes semantic tokens
+  with recursion as deep as the commands a request spans, so the in-browser watchdog offers them for
+  ranges only, and the editor asks for the lines its views show (`lean-server.ts`). A document of some
+  1,500 commands still overflows as it opens; no notebook or lesson is near that. Elaboration itself is as
+  deep as the Lean it checks, so the shipped Lean is kept shallow (small definitions), and
+  `lean-cells.yml` (`scripts/notebooks/check-lean-browser.mjs`) runs every notebook and lesson through
+  the browser's Lean, opened and then edited at its end.
 - **Cost.** Nothing loads until a notebook has a Lean cell. Then, compressed: the editor (~3 MB), the
   server (~24 MB) and Init's 32-bit oleans (~114 MB: their private parts, proofs included, are most of it,
   and an ordinary file's implicit `import Init` needs them), once per browser: the worker keeps the large
