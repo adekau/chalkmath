@@ -24,10 +24,26 @@ const ready = createMathEngine({ locateFile: (p: string) => `${p}?v=${stamp}` })
   return (req: string): string => { const p = call(req); const out = M.UTF8ToString(p); free(p); return out; };
 });
 
+/** The engine trapped (wasm ran out of stack or memory, or Lean aborted) part way through a call. */
+let crashed: Error | null = null;
+
 serve(workerSelfTransport(self as unknown as DedicatedWorkerGlobalScope), {
   async handle(method, params) {
     const call = await ready;
-    const res = JSON.parse(call(JSON.stringify({ jsonrpc: "2.0", id: 1, method, params })));
+    if (crashed) throw crashed;
+    let raw: string;
+    try { raw = call(JSON.stringify({ jsonrpc: "2.0", id: 1, method, params })); }
+    catch (e) {
+      // The call stopped in the middle of the Lean code, which had already taken the session store
+      // (engine/c/shim.c): nothing the runtime holds can be trusted now, so this is not an error reply
+      // but the worker failing. Uncaught, it reaches the page as the worker's error, which fails every
+      // pending call and offers the restart that rebuilds the sessions (apps/notebook: kernelFailed).
+      crashed = new Error(`the engine crashed: ${e instanceof Error ? e.message : String(e)}`);
+      const err = crashed;
+      setTimeout(() => { throw err; });
+      return new Promise<never>(() => {});
+    }
+    const res = JSON.parse(raw);
     if (res.error) throw new Error(res.error.message);
     return res.result;
   },

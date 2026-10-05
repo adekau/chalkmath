@@ -24,6 +24,18 @@ differential test with zero mismatches.
 4. The engine is stateful per session (a notebook), stateless across sessions.
 5. New capabilities are added as optional fields, never by changing existing ones, so an old
    frontend keeps working against a new engine and vice versa.
+6. Every call settles. A reply that is not JSON-RPC (an HTTP error page, a line a crashing process
+   printed) fails the call it answers, oldest first, instead of throwing in the transport's listener
+   (`createClient`). An engine that goes away fails everything in flight: the stdio transport
+   reports the process's exit, and the native host (`leanNativeClient`) starts a new process on the
+   next call, saying the sessions are gone; the HTTP host also stops a request after a deadline (60 s,
+   `CHALKMATH_TIMEOUT`), since the one process serves every session in turn, and answers a body that
+   is not a request, or is over 1 MB, with an error rather than falling over. It listens on
+   `localhost` unless `CHALKMATH_HOST` says otherwise. In the browser, a call that traps in the
+   wasm (out of stack or memory) has already consumed the session store (`engine/c/shim.c`), so
+   the worker does not answer it: it fails as a worker, and the notebook offers the restart that
+   rebuilds the sessions. The wasm stack sits at the bottom of memory (`--stack-first`), so an
+   overflow traps instead of overwriting the static data above it.
 
 ## 3. The engine
 
@@ -82,6 +94,14 @@ differential test with zero mismatches.
   `N` with a `ln` in it take ten seconds. Newton's method for `ln` and `arctan` starts from a
   double-precision guess, which can only change how fast it converges: the candidates are still
   checked. `x^(1/2)`, which is how `sqrt` is written, is a square root, not `exp(½ ln x)`.
+- **An exact answer has a size.** `p^n` for numerals evaluates exactly, and the decimal of a number
+  is quadratic in its length (the browser's runtime has no GMP), so a power whose exact value would
+  pass `maxPowerBits` (65,536 bits, 19,728 digits) refuses the evaluation and says how many digits it
+  would have; so does a base of 0 or ±1 to an exponent past a machine word, which Lean's `Nat.pow`
+  cannot take. The check is a pass over the input before it is normalized (`powerTooLarge`,
+  `Limits.lean`, called by `normCell`), sizing each power of closed numeral terms in floating point,
+  so the rules and their proofs are untouched; a big power the rewriting assembles from small ones
+  is not caught, and Stop is the answer to it.
 - **A plain `e` is a variable.** `ℯ` (`\e`) is `exp(1)`, so `ℯ^x` is `exp(x)`, but the letter `e` is
   a variable like any other, even though `N` gives it Euler's value (`ieval` treats the name `e` as
   a constant, as `ieval_sound` assumes). A cell whose input has a free `e` says so under its answer:

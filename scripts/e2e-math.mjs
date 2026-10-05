@@ -60,6 +60,7 @@ const CASES = [
   { src: "rref([1,2;2,4])", text: "[1, 2; 0, 0]", step: "Add a multiple of a row" },
   { src: "rref([x, y; x^2, 1])", text: "[1, 0; 0, 1]", step: "Add a multiple of a row, assuming" },
   { src: "[1,2] * [1,2]", error: "inner dimensions must match" },
+  { src: "2^(10^9)", error: "too large to compute exactly" },
   // a law split at its assumption: the step that assumes says so
   { src: "exp(ln(w))", text: "w", step: "Function value, assuming a positive argument" },
   { src: "t*t^(-1)", text: "1", step: "Collect powers, assuming the base" },

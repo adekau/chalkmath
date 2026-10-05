@@ -1,4 +1,5 @@
 import MathEngine.PipelineOrder
+import MathEngine.Limits
 /-!
 # `integrate` as a verified checker (M8)
 
@@ -49,6 +50,9 @@ theorem pipelineOrdered : Ordered pipelineRules := pipelineOrderedFor true
 the real answer comes out mentioning `i` (`sqrt(-1)`), and then over ℂ from the start, so every
 step holds in the reading the answer is reported in. -/
 def normCell (e : Expr) : Except String Expr × Array Step :=
+  match powerTooLarge e with
+  | some why => (.error why, #[])
+  | none =>
   let overC := fun (_ : Unit) => (normalizeT (pipelineRulesFor false) (pipelineOrderedFor false) e).run #[]
   if mentionsI e then overC () else
   match (normalizeT pipelineRules pipelineOrdered e).run #[] with
