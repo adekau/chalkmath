@@ -9,19 +9,19 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Read CTL formulas, and compute them as least and greatest fixed points on the lattice of sets of states, one Kleene round at a time.",
+      "src": "> [!goal]\n> Say \"always\", \"eventually\", \"on some path\" and \"on every path\" in one language, and compute each one by working backwards until nothing changes.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!definition] CTL\n> **E** means \"on some path\" and **A** \"on every path\"; **F** means \"eventually\" and **G** \"always\"; **X** means \"next\". So $\\mathsf{EF}\\,\\varphi$: some path reaches $\\varphi$; $\\mathsf{AG}\\,\\varphi$: $\\varphi$ holds forever on every path; $\\mathsf{AF}\\,\\varphi$: every path reaches $\\varphi$; $\\mathsf{EG}\\,\\varphi$: some path keeps $\\varphi$ forever.",
+      "src": "Two letters say where we look and two say when: **E**, on some path, and **A**, on every path; **F**, eventually (at some future state), and **G**, always (at every one); **X** is the next state. So $\\mathsf{EF}\\,\\varphi$: some path reaches $\\varphi$; $\\mathsf{AG}\\,\\varphi$: $\\varphi$ holds at every state of every path, an invariant; $\\mathsf{AF}\\,\\varphi$: every path reaches $\\varphi$; $\\mathsf{EG}\\,\\varphi$: some path keeps $\\varphi$ for ever. This is **CTL**.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!theorem] As fixed points\n> On the lattice of sets of states, ordered by inclusion:\n> $\\mathsf{EF}\\,\\varphi$ is the least $Z$ with $Z = \\varphi \\cup \\mathsf{EX}\\,Z$, and $\\mathsf{AG}\\,\\varphi$ the greatest $Z$ with $Z = \\varphi \\cap \\mathsf{AX}\\,Z$. Both maps are monotone, so by Knaster–Tarski the fixed points exist, and on a finite lattice Kleene iteration reaches them: from $\\varnothing$ for the least, from all states for the greatest.",
+      "src": "A system with two counters: `inc` counts `x` up to 3, and `move` moves one unit from `x` to `y`.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -32,7 +32,13 @@
       "label": null
     },
     {
-      "src": "Step through the rounds: each adds the states one step further back from $y = 3$.",
+      "src": "> [!try]\n> How would you compute the set of states from which $y = 3$ can be reached? Start with the states where it holds.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Those states are in. So is every state with a step into them, and every state with a step into *those*, and so on, until a round adds nothing. Step through the rounds:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -44,8 +50,70 @@
       "stepwise": 0
     },
     {
+      "src": "Each round applies one map to the set found so far: $Z \\mapsto \\varphi \\cup \\mathsf{EX}\\,Z$, the goal together with the states that have a step into $Z$. The round that changes nothing has found a **fixed point**: $Z = \\varphi \\cup \\mathsf{EX}\\,Z$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Why the least fixed point",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "That equation has more than one solution. Take three states: `a` steps to itself and to `b`, `b` steps back to `a`, and `c` has no steps in or out. Ask for $\\mathsf{EF}\\,c$: the map is $Z \\mapsto \\{c\\} \\cup \\mathsf{EX}\\,Z$, here on all eight sets of states.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let P3 = subsets({a, b, c})",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let f = map(P3; {}->{c}, {a}->{a,b,c}, {b}->{a,c}, {c}->{c}, {a,b}->{a,b,c}, {a,c}->{a,b,c}, {b,c}->{a,c}, {a,b,c}->{a,b,c})",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "fixpoints(P3, f)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "$\\{a, b, c\\}$ is a fixed point too, and it claims that `a` can reach `c`, which is false. `a` and `b` hold each other up: each \"can reach `c`\" because the other can. The least solution holds only what is built up from the goal, one real step at a time, and Kleene iteration from $\\varnothing$ finds it.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "lfp(P3, f)",
+      "showWork": true,
+      "label": null,
+      "stepwise": 0
+    },
+    {
+      "src": "gfp(P3, f)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "\"Always\" goes the other way. Start from the states where $\\varphi$ holds, and remove those with a step out of the set, until nothing changes: the **greatest** fixed point of $Z \\mapsto \\varphi \\cap \\mathsf{AX}\\,Z$. Staying for ever is assumed until a step refutes it. In `C`, $x + y \\le 3$ holds in 10 states, and the set shrinks round by round to nothing:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "ctl(C, AG x + y ≤ 3)",
       "showWork": true,
+      "label": null
+    },
+    {
+      "src": "> [!theorem] As fixed points\n> On the lattice of sets of states, ordered by inclusion: $\\mathsf{EF}\\,\\varphi$ is the least $Z$ with $Z = \\varphi \\cup \\mathsf{EX}\\,Z$, and $\\mathsf{AG}\\,\\varphi$ the greatest $Z$ with $Z = \\varphi \\cap \\mathsf{AX}\\,Z$; likewise $\\mathsf{AF}$ is a least fixed point and $\\mathsf{EG}$ a greatest. The maps are monotone, so by Knaster–Tarski the fixed points exist, and on a finite lattice Kleene iteration reaches them: from $\\varnothing$ for the least, from all states for the greatest.",
+      "type": "markdown",
+      "showWork": false,
       "label": null
     },
     {
@@ -54,7 +122,7 @@
       "label": null
     },
     {
-      "src": "This is *Order and lattices*' fixed-point lesson applied: the lattice is the powerset of the states, and the monotone map is a predicate transformer.",
+      "src": "This is *Order and lattices*' fixed-point lesson applied: the lattice is the powerset of the states, and the monotone map is a predicate transformer. Model checking a finite system is computing these fixed points.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -98,19 +166,38 @@
     {
       "src": "ctl(C, EF x = 3 ∧ y = 3)",
       "type": "exercise",
-      "prompt": "Does $\\mathsf{EF}(x = 3 \\land y = 3)$ hold initially?",
+      "prompt": "Does $\\mathsf{EF}(x = 3 \\land y = 3)$ hold initially in `C`?",
       "showWork": false,
       "label": null
     },
     {
-      "src": "ctl(C, AG y ≤ 3)",
+      "src": "ctl(C, EG y < 3)",
       "type": "exercise",
-      "prompt": "Does $\\mathsf{AG}\\,(y \\le 3)$ hold?",
+      "prompt": "Does $\\mathsf{EG}\\,(y < 3)$ hold: is there a path that keeps $y < 3$ for ever?",
+      "hints": [
+        "\"For ever\" needs an infinite path. Does `C` have a cycle, and where does every path end?"
+      ],
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!summary]\n> Temporal operators are fixed points of predicate transformers on sets of states: \"eventually\" a least one, \"always\" a greatest. Model checking a finite system is computing them by Kleene iteration.",
+      "src": "ctl(C, AF x = 3)",
+      "type": "exercise",
+      "prompt": "Does $\\mathsf{AF}\\,(x = 3)$ hold: does every path reach $x = 3$?",
+      "hints": [
+        "Can a path keep $x < 3$ all the way to its end?"
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Temporal operators are fixed points of maps on sets of states: \"eventually\" a least one, built up from the goal, \"always\" a greatest one, whittled down from everything. Model checking a finite system is computing them by Kleene iteration.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "All of this assumed one global state, and one step at a time. Machines that talk over a network share neither a state nor a clock. Which of their events came first? That is the next lesson.",
       "type": "markdown",
       "showWork": false,
       "label": null

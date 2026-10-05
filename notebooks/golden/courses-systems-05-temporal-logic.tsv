@@ -1,6 +1,12 @@
 4	let C = system(\n  var x in 0..3\n  var y in 0..3\n  init x = 0 ∧ y = 0\n  action inc when x < 3 do x := x + 1\n  action move when x > 0 ∧ y < 3 do x := x - 1, y := y + 1\n)	= system({x, y}, {inc, move})   [16 reachable states]
-6	ctl(C, EF y = 3)	= true
-7	ctl(C, AG x + y ≤ 3)	= false
-8	ctl(C, AF y = 3)	= true
-15	ctl(C, EF x = 3 ∧ y = 3)	= true
-16	ctl(C, AG y ≤ 3)	= true
+7	ctl(C, EF y = 3)	= true
+11	let P3 = subsets({a, b, c})	= poset {{}, {c}, {b}, {b,c}, {a}, {a,c}, {a,b}, {a,b,c}}
+12	let f = map(P3; {}->{c}, {a}->{a,b,c}, {b}->{a,c}, {c}->{c}, {a,b}->{a,b,c}, {a,c}->{a,b,c}, {b,c}->{a,c}, {a,b,c}->{a,b,c})	= {{}↦{c}, {a}↦{a,b,c}, {b}↦{a,c}, {c}↦{c}, {a,b}↦{a,b,c}, {a,c}↦{a,b,c}, {b,c}↦{a,c}, {a,b,c}↦{a,b,c}}   [every other element is fixed]
+13	fixpoints(P3, f)	= {{c}, {a,b,c}}
+15	lfp(P3, f)	= {c}
+16	gfp(P3, f)	= {a,b,c}
+18	ctl(C, AG x + y ≤ 3)	= false
+20	ctl(C, AF y = 3)	= true
+27	ctl(C, EF x = 3 ∧ y = 3)	= true
+28	ctl(C, EG y < 3)	= false
+29	ctl(C, AF x = 3)	= true

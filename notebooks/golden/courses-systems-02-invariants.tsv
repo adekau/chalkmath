@@ -1,10 +1,12 @@
-3	let C = system(\n  var x in 0..3\n  var y in 0..3\n  init x = 0 ∧ y = 0\n  action inc when x < 3 do x := x + 1\n  action move when x > 0 ∧ y < 3 do x := x - 1, y := y + 1\n)	= system({x, y}, {inc, move})   [16 reachable states]
-4	invariant(C, x + y ≤ 3)	= false
-5	invariant(C, y ≤ 3)	= true
-9	let Pair = system(\n  var x in 0..6\n  var y in 0..6\n  init x = 0 ∧ y = 0\n  action step when x < 5 do x := x + 1, y := y + 1\n)	= system({x, y}, {step})   [6 reachable states]
-10	invariant(Pair, y ≤ 5)	= true
-11	inductive(Pair, y ≤ 5)	= false
-13	inductive(Pair, x = y ∧ y ≤ 5)	= true
-18	inductive(Pair, y ≤ 5)	= false
-19	inductive(Pair, x = y ∧ x ≤ 5)	= true
-20	invariant(C, x ≤ 3)	= true
+4	let Inc = system(\n  var x in 0..2\n  var a in 0..2\n  var b in 0..2\n  var p in {read, write, done}\n  var q in {read, write, done}\n  init x = 0 ∧ a = 0 ∧ b = 0 ∧ p = read ∧ q = read\n  action pread when p = read do a := x, p := write\n  action pwrite when p = write do x := a + 1, p := done\n  action qread when q = read do b := x, q := write\n  action qwrite when q = write do x := b + 1, q := done\n)	= system({x, a, b, p, q}, {pread, pwrite, qread, qwrite})   [13 reachable states]
+5	invariant(Inc, p = done ∧ q = done → x = 2)	= false
+6	invariant(Inc, p = done ∧ q = done → x ≥ 1)	= true
+13	let Pair = system(\n  var x in 0..6\n  var y in 0..6\n  init x = 0 ∧ y = 0\n  action step when x < 5 do x := x + 1, y := y + 1\n)	= system({x, y}, {step})   [6 reachable states]
+14	invariant(Pair, y ≤ 5)	= true
+16	inductive(Pair, y ≤ 5)	= false
+19	inductive(Pair, x ≤ 5 ∧ y ≤ 5)	= false
+21	inductive(Pair, x = y ∧ y ≤ 5)	= true
+30	let Dbl = system(var x in 0..6; var y in 0..12; init x = 0 ∧ y = 0; action step when x < 5 do x := x + 1, y := y + 2)	= system({x, y}, {step})   [6 reachable states]
+31	invariant(Dbl, y ≤ 10)	= true
+32	inductive(Dbl, y ≤ 10)	= false
+33	inductive(Dbl, y = 2x ∧ x ≤ 5)	= true

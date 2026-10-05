@@ -9,75 +9,118 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Describe a system by its variables, its initial states and its actions; run it step by step; and draw every state it can reach.",
+      "src": "> [!goal]\n> Find the order of steps in which two threads lose an update, by drawing every order at once.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!definition] Transition system\n> A **state** gives each variable a value. A **transition system** says which states are **initial** and which **steps** from a state to the next are allowed. An **action** is a kind of step: a **guard** (when it may happen) and **updates** (what it changes, all at once). An **execution** is a sequence of states, each a step from the one before; a state is **reachable** when some execution from an initial state gets there.",
+      "src": "Two threads each add one to a shared counter `x`, which starts at 0. Each does it as a processor does: read `x` into a copy of its own, then write back the copy plus one. When both have finished, `x` is 2.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "A system cell lists its parts on separate lines (in a cell, Shift+Enter starts a new line and Enter runs it). A traffic light:",
+      "src": "> [!try]\n> Is it? Each thread takes two steps, so there are six orders of the four steps. Before reading on, find one that leaves $x = 1$.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "let Light = system(\n  var c in {red, green, yellow}\n  init c = red\n  action go when c = red do c := green\n  action slow when c = green do c := yellow\n  action stop when c = yellow do c := red\n)",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "trace(Light; go, slow, stop, go)",
-      "showWork": true,
-      "label": null,
-      "stepwise": 0
-    },
-    {
-      "src": "An action whose guard fails cannot be taken; asking for it is an error that says which condition failed.",
-      "type": "markdown",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "trace(Light; slow)",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "The reachable states",
+      "src": "A model",
       "type": "section",
       "showWork": false,
       "label": null
     },
     {
-      "src": "Two variables: `inc` counts up, `move` moves one unit from `x` to `y`. The graph is drawn in rows, the initial state on top and each row one step further.",
+      "src": "Write down only what the question needs: the shared `x`; each thread's copy, `a` for thread `p` and `b` for `q`; and where each thread is (`read`, `write`, `done`). Each step is an **action**: a **guard**, when it may happen, and **updates**, what it changes, all at once. (In a cell, Shift+Enter starts a new line; Enter runs it.)",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "let C = system(\n  var x in 0..3\n  var y in 0..3\n  init x = 0 ∧ y = 0\n  action inc when x < 3 do x := x + 1\n  action move when x > 0 ∧ y < 3 do x := x - 1, y := y + 1\n)",
+      "src": "let Inc = system(\n  var x in 0..2\n  var a in 0..2\n  var b in 0..2\n  var p in {read, write, done}\n  var q in {read, write, done}\n  init x = 0 ∧ a = 0 ∧ b = 0 ∧ p = read ∧ q = read\n  action pread when p = read do a := x, p := write\n  action pwrite when p = write do x := a + 1, p := done\n  action qread when q = read do b := x, q := write\n  action qwrite when q = write do x := b + 1, q := done\n)",
       "showWork": false,
       "label": null
     },
     {
-      "src": "states(C)",
+      "src": "Run `p` to the end, then `q`:",
+      "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "reach(C, y = 3)",
+      "src": "trace(Inc; pread, pwrite, qread, qwrite)",
       "showWork": true,
       "label": null,
       "stepwise": 0
     },
     {
-      "src": "A shortest way to $y = 3$ takes six steps: the search is breadth-first, so the first trace it finds is a shortest one.",
+      "src": "Now let both read before either writes:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "trace(Inc; pread, qread, pwrite, qwrite)",
+      "showWork": true,
+      "label": null,
+      "stepwise": 0
+    },
+    {
+      "src": "Both copied 0 and both wrote 1: `q`'s write erased `p`'s. This is a **lost update**. Running the program a thousand times may never show it: the scheduler has to switch threads between a read and the write after it.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A step whose guard fails cannot be taken: `q` cannot write before it has read.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "trace(Inc; qwrite)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Every interleaving at once",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Rather than try the six orders one at a time, draw every state the threads can be in and every step between them. The graph is drawn in rows: the initial state on top, each row one step further.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "states(Inc)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Each path down from the top is one order. The six orders share most of their states, so 13 states and 14 steps hold all of them. Three states end the graph: two with $x = 2$, one with $x = 1$. With a large graph we would not look; we would ask:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "reach(Inc, p = done ∧ q = done ∧ x = 1)",
+      "showWork": true,
+      "label": null,
+      "stepwise": 0
+    },
+    {
+      "src": "The search goes breadth-first, row by row, so the first path it finds is a shortest one: here four steps, the second order we ran.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Transition system\n> A **state** gives each variable a value. A **transition system** says which states are **initial** and which **steps** from one state to the next are allowed; actions describe the steps. An **execution** is a sequence of states, each a step from the one before. A state is **reachable** when some execution from an initial state gets there.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -89,7 +132,7 @@
       "label": null
     },
     {
-      "src": "The same notions as definitions: a system is its initial predicate and its step relation, and reachability is the least set closed under steps.",
+      "src": "The same notions as definitions: a system is its initial predicate and its step relation, and reachability is the least set that contains the initial states and is closed under steps.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -126,40 +169,51 @@
       "label": null
     },
     {
-      "src": "Answer with a number, `true` or `false`, or a state written as `x = 1 ∧ y = 2`.",
+      "src": "Answer `true` or `false`.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "states(Light)",
+      "src": "reach(Inc, p = done ∧ q = done ∧ x = 0)",
       "type": "exercise",
-      "prompt": "How many states can the traffic light reach?",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "trace(C; inc, move, inc)",
-      "type": "exercise",
-      "prompt": "Run `inc`, `move`, `inc` from the initial state of `C`. Which state do you reach?",
+      "prompt": "Can both threads finish and leave $x = 0$?",
       "hints": [
-        "Updates in one action happen together: `move` takes one from `x` and gives it to `y`."
+        "Every write writes a copy plus one."
       ],
       "showWork": false,
       "label": null
     },
     {
-      "src": "reach(C, x = 3 ∧ y = 3)",
-      "type": "exercise",
-      "prompt": "Can `C` reach $x = 3, y = 3$?",
-      "hints": [
-        "Count up to 3, move three times, count up again."
-      ],
+      "src": "Three threads, `p`, `q` and `r`, with copies `a`, `b` and `c`:",
+      "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!summary]\n> A transition system is states, initial states and steps; actions describe steps by guards and updates. Its reachable states form a graph, and an execution is a path in it from an initial state.",
+      "src": "let Inc3 = system(\n  var x in 0..3\n  var a in 0..3\n  var b in 0..3\n  var c in 0..3\n  var p in {read, write, done}\n  var q in {read, write, done}\n  var r in {read, write, done}\n  init x = 0 ∧ a = 0 ∧ b = 0 ∧ c = 0 ∧ p = read ∧ q = read ∧ r = read\n  action pread when p = read do a := x, p := write\n  action pwrite when p = write do x := a + 1, p := done\n  action qread when q = read do b := x, q := write\n  action qwrite when q = write do x := b + 1, q := done\n  action rread when r = read do c := x, r := write\n  action rwrite when r = write do x := c + 1, r := done\n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "reach(Inc3, p = done ∧ q = done ∧ r = done ∧ x = 1)",
+      "type": "exercise",
+      "prompt": "Predict, then check: can all three finish with $x = 1$, two of the three increments lost?",
+      "hints": [
+        "One stale copy, written last, erases everything written since it was read."
+      ],
+      "hideQuestion": true,
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> A system is variables, initial states and guarded actions. Its graph of reachable states holds every interleaving of its steps at once, and a breadth-first search through it finds a shortest path to any state we ask for: here, the lost update.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "$x = 2$ at the end is not guaranteed. What *is* guaranteed in every reachable state, and how can we know it when the graph is too large to draw? That is the next lesson.",
       "type": "markdown",
       "showWork": false,
       "label": null

@@ -9,36 +9,60 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Decide whether a property holds in every reachable state, read the shortest counterexample when it does not, and prove it by induction, strengthening it when the induction fails.",
+      "src": "> [!goal]\n> Check that a property holds in every reachable state, then prove it by looking at one step instead of every state.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!definition] Invariant\n> A state formula is an **invariant** when it holds in every reachable state. A counterexample is an execution from an initial state to a state where it fails.",
+      "src": "Lesson 1's threads can lose an update, so \"when both are done, $x = 2$\" is false. Something weaker should survive: whichever thread writes last writes a copy plus one.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "let C = system(\n  var x in 0..3\n  var y in 0..3\n  init x = 0 ∧ y = 0\n  action inc when x < 3 do x := x + 1\n  action move when x > 0 ∧ y < 3 do x := x - 1, y := y + 1\n)",
+      "src": "> [!try]\n> Is \"when both are done, $x \\ge 1$\" true in every reachable state?",
+      "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "invariant(C, x + y ≤ 3)",
+      "src": "let Inc = system(\n  var x in 0..2\n  var a in 0..2\n  var b in 0..2\n  var p in {read, write, done}\n  var q in {read, write, done}\n  init x = 0 ∧ a = 0 ∧ b = 0 ∧ p = read ∧ q = read\n  action pread when p = read do a := x, p := write\n  action pwrite when p = write do x := a + 1, p := done\n  action qread when q = read do b := x, q := write\n  action qwrite when q = write do x := b + 1, q := done\n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "invariant(Inc, p = done ∧ q = done → x = 2)",
       "showWork": true,
       "label": null,
       "stepwise": 0
     },
     {
-      "src": "invariant(C, y ≤ 3)",
+      "src": "invariant(Inc, p = done ∧ q = done → x ≥ 1)",
       "showWork": false,
       "label": null
     },
     {
-      "src": "Inductive invariants",
+      "src": "`invariant` turns `reach` around: it searches for a state that breaks the formula, and gives a shortest path there when there is one (the lost update again).",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Invariant\n> A state formula is an **invariant** when it holds in every reachable state. A **counterexample** is an execution from an initial state to a state where it fails.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "One step instead of every state",
       "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The search visited all 13 reachable states. A real program has billions, and a program whose counter can grow without bound has infinitely many. Ask instead what one step can do. If the formula holds at the start, and no step from a state where it holds can break it, then it holds after one step, so after two, so after any number: in every reachable state.",
+      "type": "markdown",
       "showWork": false,
       "label": null
     },
@@ -49,7 +73,7 @@
       "label": null
     },
     {
-      "src": "Inductiveness is checked over *every* state, reachable or not, so it needs no search, and it is a proof. But an invariant need not be inductive. Two counters stepping together:",
+      "src": "Checking that is local: take any state where $I$ holds, reachable or not, and try every action. Nothing needs to know which states are reachable. Two counters that step together:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -65,12 +89,35 @@
       "label": null
     },
     {
+      "src": "> [!try]\n> $y \\le 5$ holds in all 6 reachable states. Is it inductive?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "inductive(Pair, y ≤ 5)",
       "showWork": true,
       "label": null
     },
     {
-      "src": "The counterexample to induction is a state that no execution reaches ($y = 5$ with $x < 5$): $y \\le 5$ is true but too weak to prove itself. **Strengthen** it with what makes it true, that $x$ and $y$ move together:",
+      "src": "No. The check found $x = 0, y = 5$: $y \\le 5$ holds there, and a step makes $y = 6$. No execution reaches that state, but the check does not know that; that is the price of not searching. $y \\le 5$ is true, yet too weak to carry itself through a step.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> The natural repair is to bound $x$ as well. It changes nothing: $x = 0, y = 5$ still satisfies $x \\le 5 \\land y \\le 5$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "inductive(Pair, x ≤ 5 ∧ y ≤ 5)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "What rules that state out is the reason $y \\le 5$ is true at all: $y$ moves with $x$, and $x$ stops at 5. **Strengthen** the formula with that reason:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -81,8 +128,20 @@
       "label": null
     },
     {
+      "src": "A stronger formula is easier to prove, because the step may assume more. It is the same move as strengthening the hypothesis of an induction in a proof.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "In Lean",
       "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The induction principle, proved once for every system:",
+      "type": "markdown",
       "showWork": false,
       "label": null
     },
@@ -100,6 +159,12 @@
       "label": null
     },
     {
+      "src": "Applied to lesson 1's counter, whose states are all of `Nat`: the proof never asks which of them are reachable.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "theorem counter_le_three : ∀ s, Reachable counter s → s ≤ 3 := by\n  apply invariant_of_inductive\n  · intro s hs; simp [counter] at hs; omega\n  · intro s t _ hst; simp [counter] at hst; omega",
       "type": "lean",
       "showWork": false,
@@ -112,31 +177,51 @@
       "label": null
     },
     {
-      "src": "inductive(Pair, y ≤ 5)",
-      "type": "exercise",
-      "prompt": "Is $y \\le 5$ inductive for `Pair`?",
+      "src": "A pair where $y$ goes up twice as fast:",
+      "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "inductive(Pair, x = y ∧ x ≤ 5)",
+      "src": "let Dbl = system(var x in 0..6; var y in 0..12; init x = 0 ∧ y = 0; action step when x < 5 do x := x + 1, y := y + 2)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "invariant(Dbl, y ≤ 10)",
       "type": "exercise",
-      "prompt": "Is $x = y \\land x \\le 5$ inductive?",
+      "prompt": "Is $y \\le 10$ an invariant of `Dbl`?",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "inductive(Dbl, y ≤ 10)",
+      "type": "exercise",
+      "prompt": "Is $y \\le 10$ inductive?",
       "hints": [
-        "Initially both are 0; the only step adds one to each, and only when $x < 5$."
+        "Look for a state with $y \\le 10$, not reachable, from which a step passes 10."
       ],
       "showWork": false,
       "label": null
     },
     {
-      "src": "invariant(C, x ≤ 3)",
+      "src": "inductive(Dbl, y = 2x ∧ x ≤ 5)",
       "type": "exercise",
-      "prompt": "Is $x \\le 3$ an invariant of `C`?",
+      "prompt": "Strengthen it with what makes it true: is $y = 2x \\land x \\le 5$ inductive?",
+      "hints": [
+        "Initially $0 = 2 \\cdot 0$; a step adds 1 to $x$ and 2 to $y$, and only when $x < 5$."
+      ],
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!summary]\n> An invariant holds in every reachable state; a shortest trace refutes it. An inductive invariant proves itself in one step, over all states; when induction fails at an unreachable state, strengthen the invariant with the fact that rules that state out.",
+      "src": "> [!summary]\n> An invariant holds in every reachable state, and a shortest trace refutes it. An inductive invariant is proved by one step from any state where it holds, reachable or not, so it needs no search. When that step fails at an unreachable state, strengthen the formula with the reason it is true.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Lesson 1's bug came from two threads inside the same read-then-write at once. Next: build a lock that lets one in at a time, and let the checker say whether it works.",
       "type": "markdown",
       "showWork": false,
       "label": null
