@@ -7,19 +7,29 @@
 //
 //   clock t from 0 to 2pi                     the variable the scene animates, and its range
 //   view -1.5, 1.5, -1.2, 1.2                 optional window (x0, x1, y0, y1); otherwise it fits
+//   let M = (1 - t)*[1, 0; 0, 1] + t*A        a name for an expression, written in for it below
 //   C = curve(exp(i*s), s, 0, 2pi) faint      a curve traced by its own parameter
 //   P = point(exp(i*t))                       a point that moves with the clock
 //   R = arrow(0, P)                           arrows and segments join points or expressions
 //   W = trace(P)                              the path P has drawn since W was shown
 //   L = label(P, "e^{it}")                    TeX beside a point
 //   E = eq(exp(i*pi))                         an expression above the picture; `work` steps it
+//   V = point(A*[1; 1])                       a point given as a vector, [x, y] or [x; y]
+//   G = grid((1-t)*[1,0;0,1] + t*A)           the plane's grid as a matrix moves it
+//   S = poly(0, [1, 0], [1, 1], [0, 1])       a filled polygon through points
+//   K = line(0, V)                            the whole line through two points
+//   D = value(det(A), "\det A = ")            a number that moves with the clock, above the picture
 //   > show C, P, R | The unit circle, and a point on it.
 //   > show W; play t to 2pi in 4s | Walk once round.
 //   > work E | Euler's formula at $t = \pi$.
 //
 // Object styles follow the closing parenthesis: `faint`, `dashed`, `thick`, `color 1`…`color 6`. A
 // beat is actions separated by `;` (`show`, `hide`, `play`, `wait`, `work`) and, after `|`, a caption
-// in Markdown. Objects no beat shows or hides are there from the start.
+// in Markdown. Objects no beat shows or hides are there from the start. Wherever a point is wanted
+// (an arrow's ends, a label's place, a polygon's corners) a point object or an expression will do,
+// and the expression may be a complex number or a vector of two entries: the plane is ℂ, and a vector
+// `v` is the point `v[[1]] + i*v[[2]]`, which is how the engine is asked for it. Which expressions
+// are vectors is the engine's to say, asked with the script's numbers before anything is sampled.
 //
 // The page owns no mathematics here either: every expression is the engine's, every coordinate one of
 // its samples (`engine.plot` over the clock for a point, `engine.manipulate` for a curve that moves
@@ -28,7 +38,7 @@
 // value over time, interpolation between the engine's samples, and the window. It is plain code, apart
 // from the page, so it can be tested in Node.
 
-export type Kind = "point" | "curve" | "graph" | "arrow" | "segment" | "trace" | "label" | "eq";
+export type Kind = "point" | "curve" | "graph" | "arrow" | "segment" | "line" | "poly" | "grid" | "trace" | "label" | "eq" | "value";
 export interface Style { faint: boolean; dashed: boolean; thick: boolean; color: number | null }
 export interface SceneObj { name: string; kind: Kind; args: string[]; style: Style; line: number }
 export type Action =
@@ -39,6 +49,8 @@ export type Action =
 export interface Beat { actions: Action[]; caption: string; line: number }
 export interface SceneSpec {
   clock: { name: string; from: string; to: string };
+  /** The script's own names, each with the expression (its earlier names written in) it stands for. */
+  lets: Record<string, string>;
   view: string[] | null;
   axes: boolean;
   objects: SceneObj[];
@@ -49,7 +61,8 @@ export class SceneError extends Error {
   constructor(message: string, readonly line: number) { super(message); }
 }
 
-const ARITY: Record<Kind, number> = { point: 1, curve: 4, graph: 4, arrow: 2, segment: 2, trace: 1, label: 2, eq: 1 };
+/** How many arguments each object takes; a polygon takes three corners or more. */
+const ARITY: Record<Kind, number> = { point: 1, curve: 4, graph: 4, arrow: 2, segment: 2, line: 2, poly: 3, grid: 1, trace: 1, label: 2, eq: 1, value: 2 };
 const KINDS = Object.keys(ARITY) as Kind[];
 const NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 /** How long a show or hide fades, and a play or work takes when its beat does not say. */
@@ -118,7 +131,7 @@ function parseAction(a: string, line: number, clock: string): Action {
 
 /** Read a scene's script. */
 export function parseScene(src: string): SceneSpec {
-  const spec: SceneSpec = { clock: { name: "t", from: "0", to: "1" }, view: null, axes: true, objects: [], beats: [] };
+  const spec: SceneSpec = { clock: { name: "t", from: "0", to: "1" }, lets: {}, view: null, axes: true, objects: [], beats: [] };
   const lines = src.split("\n");
   // the clock first, wherever it is written: a beat's `play` names it
   lines.forEach((raw, i) => {
@@ -126,9 +139,20 @@ export function parseScene(src: string): SceneSpec {
     if (m) spec.clock = { name: m[1]!, from: m[2]!, to: m[3]! };
     else if (/^\s*clock\b/.test(raw)) throw new SceneError("write the clock as: clock t from 0 to 2pi", i + 1);
   });
+  // then the names, each written in for where it is used: the engine sees whole expressions
+  const letLines: Record<string, number> = {};
+  lines.forEach((raw, i) => {
+    if (!/^\s*let\b/.test(raw)) return;
+    const m = /^\s*let\s+([A-Za-z_]\w*)\s*=\s*(.+?)\s*$/.exec(raw);
+    if (!m) throw new SceneError("write a name as: let M = [1, 2; 3, 4]", i + 1);
+    if (m[1] === spec.clock.name) throw new SceneError(`${m[1]} is the scene's clock`, i + 1);
+    if (m[1]! in spec.lets) throw new SceneError(`${m[1]} is already a name`, i + 1);
+    spec.lets[m[1]!] = withLets(spec, m[2]!);
+    letLines[m[1]!] = i + 1;
+  });
   lines.forEach((raw, i) => {
     const line = i + 1, s = raw.trim();
-    if (!s || s.startsWith("#") || s.startsWith("clock")) return;
+    if (!s || s.startsWith("#") || s.startsWith("clock") || /^let\b/.test(s)) return;
     if (s.startsWith(">")) {
       const body = s.slice(1);
       const bar = body.indexOf("|");
@@ -149,17 +173,20 @@ export function parseScene(src: string): SceneSpec {
     if (!KINDS.includes(kind)) throw new SceneError(`unknown object "${kind}": ${KINDS.join(", ")}`, line);
     if (name === spec.clock.name) throw new SceneError(`${name} is the scene's clock`, line);
     if (spec.objects.some((o) => o.name === name)) throw new SceneError(`${name} is already an object`, line);
+    if (name in spec.lets) throw new SceneError(`${name} is already a name (line ${letLines[name]})`, line);
     const open = m[0].length - 1, close = closing(s, open);
     if (close < 0) throw new SceneError("a parenthesis is not closed", line);
-    const args = splitArgs(s.slice(open + 1, close));
-    if (args.length !== ARITY[kind] || args.some((a) => !a)) throw new SceneError(`${kind} takes ${ARITY[kind]} argument${ARITY[kind] > 1 ? "s" : ""}`, line);
+    const args = splitArgs(s.slice(open + 1, close)).map((a) => a.startsWith('"') ? a : withLets(spec, a));
+    if (kind === "poly" ? args.length < 3 || args.some((a) => !a) : args.length !== ARITY[kind] || args.some((a) => !a))
+      throw new SceneError(kind === "poly" ? "poly takes three corners or more" : `${kind} takes ${ARITY[kind]} argument${ARITY[kind] > 1 ? "s" : ""}`, line);
     spec.objects.push({ name, kind, args, style: parseStyle(s.slice(close + 1), line), line });
   });
   // every name a beat or an object refers to is an object of the right kind
   const byName = new Map(spec.objects.map((o) => [o.name, o]));
   for (const o of spec.objects) {
     if (o.kind === "trace" && byName.get(o.args[0]!)?.kind !== "point") throw new SceneError(`trace follows a point, and ${o.args[0]} is not one`, o.line);
-    if (o.kind === "label" && !/^".*"$/.test(o.args[1]!)) throw new SceneError('a label\'s text is TeX in quotes: label(P, "z")', o.line);
+    if ((o.kind === "label" || o.kind === "value") && !/^".*"$/.test(o.args[1]!))
+      throw new SceneError(`${o.kind === "label" ? "a label's" : "a value's"} text is TeX in quotes: ${o.kind}(${o.args[0]}, "z")`, o.line);
   }
   for (const b of spec.beats) for (const a of b.actions) {
     const names = a.kind === "show" || a.kind === "hide" ? a.names : a.kind === "work" ? [a.name] : [];
@@ -169,23 +196,97 @@ export function parseScene(src: string): SceneSpec {
   return spec;
 }
 
-/** Where an arrow, a segment or a label is anchored: a point object, or an expression of its own. */
-const anchorOf = (spec: SceneSpec, arg: string) => spec.objects.find((o) => o.name === arg && o.kind === "point")?.args[0] ?? arg;
+/** Whether `e` is one bracketed literal, `[x, y]`, and not, say, `[x, y][[1]]`. */
+function isVectorLiteral(e: string): boolean {
+  if (!e.startsWith("[")) return false;
+  let depth = 0;
+  for (let i = 0; i < e.length; i++) {
+    if (e[i] === "[") depth++;
+    if (e[i] === "]" && --depth === 0) return i === e.length - 1;
+  }
+  return false;
+}
+/** A vector as a point of the plane, the complex number its two entries make. */
+export const vectorPoint = (v: string) => `(${v})[[1]] + i*(${v})[[2]]`;
+/** The image of the `j`th basis vector under a 2×2 matrix: its `j`th column, as a point. */
+export const columnPoint = (m: string, j: 1 | 2) => `(${m})[[1, ${j}]] + i*(${m})[[2, ${j}]]`;
+/** The expression an object is anchored at, as written: a point object's, or an expression of its own. */
+const written = (spec: SceneSpec, arg: string) => spec.objects.find((o) => o.name === arg && o.kind === "point")?.args[0] ?? arg;
+/** An expression with the script's names written in, each as the parenthesized expression it stands for. */
+function withLets(spec: SceneSpec, e: string): string {
+  let out = e;
+  for (const [name, val] of Object.entries(spec.lets)) out = out.replace(new RegExp(`(?<![A-Za-z0-9_])${name}(?![A-Za-z0-9_])`, "g"), () => `(${val})`);
+  return out;
+}
+
+/** Where an object is anchored, as the expression the engine samples: a complex number as written,
+ *  a vector (a literal, or one of `vectors`, those the engine said are) as the point it makes. */
+export function anchorOf(spec: SceneSpec, arg: string, vectors: readonly string[] = []): string {
+  const e = written(spec, arg);
+  return isVectorLiteral(e) || vectors.includes(e) ? vectorPoint(e) : e;
+}
+/** The anchors an object is drawn from, as written. */
+function anchorsOf(o: SceneObj): string[] {
+  switch (o.kind) {
+    case "point": return [o.name];
+    case "arrow": case "segment": case "line": case "poly": return o.args;
+    case "label": case "trace": return [o.args[0]!];
+    default: return [];
+  }
+}
+/** The point expressions an object is drawn from, each sampled over the clock. */
+function pointsOf(spec: SceneSpec, o: SceneObj, vectors: readonly string[]): string[] {
+  if (o.kind === "grid") return [columnPoint(o.args[0]!, 1), columnPoint(o.args[0]!, 2)];
+  return anchorsOf(o).map((a) => anchorOf(spec, a, vectors));
+}
 
 /** One question for the engine. `key` names it in the replies. */
 export interface Request { key: string; method: "engine.plot" | "engine.manipulate" | "engine.check"; source: string; showWork?: boolean }
 /** Frames a moving curve is sampled at, over the clock. */
 export const FRAMES = 61;
 
-/** The numbers a script names (the clock's range, where a play goes, the window), asked first: the
- *  frames of a moving curve are taken at their values. */
+/** What is asked first: the numbers a script names (the clock's range, where a play goes, the
+ *  window), since the frames of a moving curve are taken at their values; and what each point's
+ *  expression is, since a vector is sampled as the point it makes. */
 export function numberRequests(spec: SceneSpec): Request[] {
   const out = new Map<string, Request>();
   const num = (e: string) => out.set(`num:${e}`, { key: `num:${e}`, method: "engine.check", source: `N(${e})` });
   num(spec.clock.from); num(spec.clock.to);
   for (const v of spec.view ?? []) num(v);
   for (const b of spec.beats) for (const a of b.actions) if (a.kind === "play") { num(a.to); if (a.from) num(a.from); }
+  for (const o of spec.objects) for (const a of anchorsOf(o)) {
+    const e = written(spec, a);
+    if (!isVectorLiteral(e) && !/^-?[0-9.]+$/.test(e)) out.set(`is:${e}`, { key: `is:${e}`, method: "engine.check", source: e });
+  }
   return [...out.values()];
+}
+
+/** Whether the engine's text is a vector of two entries, `[a, b]` or `[a; b]`. */
+export function isPair(text: string): boolean {
+  if (!isVectorLiteral(text)) return false;
+  const rows = splitTop(text.slice(1, -1), ";").map((r) => splitArgs(r));
+  return rows.length === 1 ? rows[0]!.length === 2 : rows.length === 2 && rows.every((r) => r.length === 1);
+}
+/** Split at a separator outside parentheses and brackets. */
+function splitTop(s: string, sep: string): string[] {
+  const out: string[] = [];
+  let depth = 0, cur = "";
+  for (const c of s) {
+    if (c === "(" || c === "[") depth++;
+    if (c === ")" || c === "]") depth--;
+    if (c === sep && depth === 0) { out.push(cur); cur = ""; } else cur += c;
+  }
+  out.push(cur);
+  return out;
+}
+
+/** The point expressions the engine said are vectors of two entries. An expression it refused is
+ *  left as written, for its sample to report the refusal at its line. */
+export function vectorsOf(replies: Record<string, unknown>): string[] {
+  return Object.entries(replies).filter(([key, r]) => {
+    const text = (r as Record<string, any> | undefined)?.["rendered"]?.text;
+    return key.startsWith("is:") && typeof text === "string" && isPair(text);
+  }).map(([key]) => key.slice(3));
 }
 
 /** What the engine made of the script's numbers. */
@@ -202,14 +303,13 @@ export function numbersOf(spec: SceneSpec, replies: Record<string, unknown>): Re
 
 /** The samples a scene needs, once its numbers are known. `movesWithClock(expr)`: whether an
  *  expression mentions the clock (the page reads the identifiers with the editor's lexer). */
-export function sampleRequests(spec: SceneSpec, movesWithClock: (expr: string) => boolean, numbers: Record<string, number>): Request[] {
+export function sampleRequests(spec: SceneSpec, movesWithClock: (expr: string) => boolean, numbers: Record<string, number>, vectors: readonly string[] = []): Request[] {
   const out = new Map<string, Request>();
   const { name: t, from, to } = spec.clock;
-  const point = (e: string) => out.set(`pt:${e}`, { key: `pt:${e}`, method: "engine.plot", source: `plot(${e}, ${t}, ${from}, ${to})` });
+  const sample = (pre: string, e: string) => out.set(`${pre}:${e}`, { key: `${pre}:${e}`, method: "engine.plot", source: `plot(${e}, ${t}, ${from}, ${to})` });
   for (const o of spec.objects) {
-    if (o.kind === "point") point(o.args[0]!);
-    if (o.kind === "arrow" || o.kind === "segment") { point(anchorOf(spec, o.args[0]!)); point(anchorOf(spec, o.args[1]!)); }
-    if (o.kind === "label") point(anchorOf(spec, o.args[0]!));
+    for (const e of pointsOf(spec, o, vectors)) sample("pt", e);
+    if (o.kind === "value") sample("val", o.args[0]!);
     if (o.kind === "curve" || o.kind === "graph") {
       const [e, s, a, b] = o.args as [string, string, string, string];
       const body = `plot(${e}, ${s}, ${a}, ${b})`;
@@ -226,7 +326,9 @@ export function sampleRequests(spec: SceneSpec, movesWithClock: (expr: string) =
 /** The line of the script a request came from, for an error on it. */
 function lineOf(spec: SceneSpec, key: string): number {
   const e = key.slice(key.indexOf(":") + 1);
-  const o = spec.objects.find((o) => `cv:${o.name}` === key || `eq:${o.name}` === key || o.args.includes(e) || anchorOf(spec, o.args[0] ?? "") === e || anchorOf(spec, o.args[1] ?? "") === e);
+  // a point is sampled as written or, a vector, as the point it makes: either way it is this object's
+  const uses = (o: SceneObj) => { const ws = anchorsOf(o).map((a) => written(spec, a)); return ws.includes(e) || pointsOf(spec, o, []).includes(e) || pointsOf(spec, o, ws).includes(e); };
+  const o = spec.objects.find((o) => `cv:${o.name}` === key || `eq:${o.name}` === key || o.args.includes(e) || uses(o));
   if (o) return o.line;
   if (spec.view?.includes(e)) return 1;
   const b = spec.beats.find((b) => b.actions.some((a) => a.kind === "play" && (a.to === e || a.from === e)));
@@ -263,8 +365,12 @@ export interface SceneData {
   spec: SceneSpec;
   clock: { from: number; to: number };
   window: [number, number, number, number];
+  /** The point expressions that are vectors, sampled as the points they make. */
+  vectors: string[];
   /** A point's samples over the clock's range, by its expression. */
   points: Record<string, XY[]>;
+  /** A value's samples over the clock's range, by its expression. */
+  values: Record<string, (number | null)[]>;
   /** A curve's samples: one set, or one per frame of the clock. */
   curves: Record<string, { pts: XY[] } | { frames: { value: number; pts: XY[] }[] }>;
   /** An equation as typed, then each step's term, as the engine prints them (TeX). */
@@ -362,8 +468,15 @@ export function build(spec: SceneSpec, replies: Record<string, unknown>): SceneD
   const points: Record<string, XY[]> = {};
   const curves: SceneData["curves"] = {};
   const eqs: Record<string, string[]> = {};
+  const values: Record<string, (number | null)[]> = {};
+  const vectors = vectorsOf(replies);
   for (const key of Object.keys(replies)) {
     if (key.startsWith("pt:")) points[key.slice(3)] = toXY(get(key)["series"][0] as Series);
+    if (key.startsWith("val:")) {
+      const s = get(key)["series"][0] as Series;
+      if (s.parametric) throw new SceneError(`a value is a real number, and ${key.slice(4)} is not`, lineOf(spec, key));
+      values[key.slice(4)] = s.points.map(([, b]) => b);
+    }
     if (key.startsWith("cv:")) {
       const r = get(key), o = spec.objects.find((o) => o.name === key.slice(3))!, graph = o.kind === "graph";
       curves[o.name] = r["frames"]
@@ -378,7 +491,7 @@ export function build(spec: SceneSpec, replies: Record<string, unknown>): SceneD
     }
   }
   const timeline = compile(spec, numbers, Object.fromEntries(Object.entries(eqs).map(([n, t]) => [n, t.length - 1])));
-  return { spec, clock, window: windowOf(spec, numbers, points, curves), points, curves, eqs, timeline };
+  return { spec, clock, window: windowOf(spec, numbers, points, curves), vectors, points, values, curves, eqs, timeline };
 }
 
 /** The scene's window: the one its script gives, or everything it ever draws, with a margin. */
@@ -398,10 +511,21 @@ export type Item =
   | { name: string; kind: "path"; pts: XY[]; style: Style; opacity: number }
   | { name: string; kind: "dot"; at: [number, number]; style: Style; opacity: number }
   | { name: string; kind: "arrow" | "segment"; from: [number, number]; to: [number, number]; style: Style; opacity: number }
-  | { name: string; kind: "label"; at: [number, number]; tex: string; style: Style; opacity: number };
+  | { name: string; kind: "label"; at: [number, number]; tex: string; style: Style; opacity: number }
+  /** The whole line through two points. */
+  | { name: string; kind: "line"; from: [number, number]; to: [number, number]; style: Style; opacity: number }
+  | { name: string; kind: "poly"; pts: [number, number][]; style: Style; opacity: number }
+  /** The grid the matrix with columns `e1`, `e2` makes of the plane's: the lines `k e1 + s e2` and `s e1 + k e2`. */
+  | { name: string; kind: "grid"; e1: [number, number]; e2: [number, number]; style: Style; opacity: number };
 /** An equation at one moment: a morph from one TeX to the next at progress `p`. */
 export interface EqState { name: string; from: string | null; to: string; p: number; opacity: number }
 export interface Frame { time: number; clock: number; beat: number; items: Item[]; eqs: EqState[] }
+
+/** A value as a reader takes it in while it moves: two decimals, no trailing zeros, no `-0`. */
+export function formatValue(x: number): string {
+  const r = Math.round(x * 100) / 100;
+  return (Object.is(r, -0) ? 0 : r).toFixed(2).replace(/\.?0+$/, "");
+}
 
 /** A curve's samples at clock value `c`: its own, or its frames either side blended. */
 function curveAt(data: SceneData, name: string, c: number): XY[] {
@@ -424,21 +548,34 @@ export function frameAt(data: SceneData, time: number): Frame {
   const clock = clockAt(tl, data.clock.from, t);
   const beat = Math.max(0, tl.beats.findIndex((b) => t < b.end || b === tl.beats[tl.beats.length - 1]));
   const pointAt = (expr: string, c = clock) => sampleAt(data.points[expr] ?? [], data.clock.from, data.clock.to, c);
+  const anchor = (arg: string) => anchorOf(spec, arg, data.vectors);
   const items: Item[] = [];
   const eqs: EqState[] = [];
   for (const o of spec.objects) {
     const opacity = opacityAt(tl, o.name, t);
     if (opacity <= 0) continue;
     const base = { name: o.name, style: o.style, opacity };
-    if (o.kind === "point") { const p = pointAt(o.args[0]!); if (p) items.push({ ...base, kind: "dot", at: p }); }
+    if (o.kind === "point") { const p = pointAt(anchor(o.name)); if (p) items.push({ ...base, kind: "dot", at: p }); }
+    if (o.kind === "line") {
+      const a = pointAt(anchor(o.args[0]!)), b = pointAt(anchor(o.args[1]!));
+      if (a && b) items.push({ ...base, kind: "line", from: a, to: b });
+    }
+    if (o.kind === "poly") {
+      const ps = o.args.map((a) => pointAt(anchor(a)));
+      if (ps.every((p) => p)) items.push({ ...base, kind: "poly", pts: ps as [number, number][] });
+    }
+    if (o.kind === "grid") {
+      const e1 = pointAt(columnPoint(o.args[0]!, 1)), e2 = pointAt(columnPoint(o.args[0]!, 2));
+      if (e1 && e2) items.push({ ...base, kind: "grid", e1, e2 });
+    }
     if (o.kind === "curve" || o.kind === "graph") items.push({ ...base, kind: "path", pts: curveAt(data, o.name, clock) });
     if (o.kind === "arrow" || o.kind === "segment") {
-      const a = pointAt(anchorOf(spec, o.args[0]!)), b = pointAt(anchorOf(spec, o.args[1]!));
+      const a = pointAt(anchor(o.args[0]!)), b = pointAt(anchor(o.args[1]!));
       if (a && b) items.push({ ...base, kind: o.kind, from: a, to: b });
     }
-    if (o.kind === "label") { const p = pointAt(anchorOf(spec, o.args[0]!)); if (p) items.push({ ...base, kind: "label", at: p, tex: o.args[1]!.slice(1, -1) }); }
+    if (o.kind === "label") { const p = pointAt(anchor(o.args[0]!)); if (p) items.push({ ...base, kind: "label", at: p, tex: o.args[1]!.slice(1, -1) }); }
     if (o.kind === "trace") {
-      const expr = spec.objects.find((p) => p.name === o.args[0])!.args[0]!;
+      const expr = anchor(o.args[0]!);
       const pts = data.points[expr] ?? [];
       // from where the clock was when the trace was shown to where it is now
       const shown = (tl.vis[o.name] ?? []).filter((e) => e.on && e.t <= t).pop();
@@ -464,6 +601,10 @@ export function frameAt(data: SceneData, time: number): Frame {
         }
       }
       eqs.push(state);
+    }
+    if (o.kind === "value") {
+      const v = sampleAt((data.values[o.args[0]!] ?? []).map((x) => x === null ? null : [x, 0]), data.clock.from, data.clock.to, clock);
+      if (v) eqs.push({ name: o.name, from: null, to: `${o.args[1]!.slice(1, -1)}${formatValue(v[0])}`, p: 1, opacity });
     }
   }
   return { time: t, clock, beat, items, eqs };

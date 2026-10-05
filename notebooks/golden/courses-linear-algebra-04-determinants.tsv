@@ -1,11 +1,14 @@
 3	let A = [1, 2; 3, 4]	= [1, 2; 3, 4]
 4	det(A)	= -2
-5	det([2, 1, 0; 1, 3, 1; 0, 1, 2])	= 8
-8	let B = [0, 1; 1, 0]	= [0, 1; 1, 0]
-9	det(A*B)	= 2
-10	det(A)*det(B)	= 2
-13	det([1, 2; 2, 4])	= 0
-14	rref([1, 2; 2, 4])	= [1, 2; 0, 0]
-16	det([2, 1; 5, 3])	= 1
-17	det([3, 6; 1, 2])	= 0
-18	det([1, 0, 0; 0, 2, 0; 0, 0, 3])	= 6
+6	clock t from 0 to 1\nview -3.6, 5.2, -1.4, 3.6\nlet M = (1 - t)*[1, 0; 0, 1] + t*[3, 1; 1, 2]\nG0 = grid([1, 0; 0, 1]) faint color 6\nG = grid(M) color 2\nSq = poly(0, M*[1; 0], M*[1; 1], M*[0; 1]) color 1\nNb = poly(0, M*[0; 1], M*[-1; 1], M*[-1; 0]) color 5\nE1 = arrow(0, M*[1; 0]) thick color 3\nL1 = label(M*[1; 0], "e_1") color 3\nE2 = arrow(0, M*[0; 1]) thick color 4\nL2 = label(M*[0; 1], "e_2") color 4\nD = value(det(M), "\\text{area} = \\det = ")\n> show G0, Sq, Nb, E1, L1, E2, L2, D | The unit square, spanned by $e_1$ (green) and $e_2$ (pink), and the square beside it: area $1$ each.\n> show G; play t to 1 in 4s | Apply $\\begin{bmatrix} 3 & 1 \\\\ 1 & 2 \\end{bmatrix}$. The square becomes the parallelogram its columns span, of area $3 \\cdot 2 - 1 \\cdot 1 = 5$.\n> | The square beside it, and every square of the grid, grows by the same factor $5$. So does any shape, made of small enough squares.	scene: 9 objects, 3 beats, 28.0 s
+8	clock t from 0 to 1\nview -1.6, 4, -0.9, 3.6\nlet M = (1 - t)*[1, 0; 0, 1] + t*[1, 2; 2, 1]\nG0 = grid([1, 0; 0, 1]) faint color 6\nG = grid(M) color 2\nSq = poly(0, M*[1; 0], M*[1; 1], M*[0; 1]) color 1\nE1 = arrow(0, M*[1; 0]) thick color 3\nL1 = label(M*[1; 0], "e_1") color 3\nE2 = arrow(0, M*[0; 1]) thick color 4\nL2 = label(M*[0; 1], "e_2") color 4\nD = value(det(M), "\\det = ")\n> show G0, G, Sq, E1, L1, E2, L2, D | Turning counterclockwise from $e_1$ you meet $e_2$.\n> play t to 0.5 in 3s | The columns lean toward each other, and the square flattens to a segment: determinant $0$.\n> play t to 1 in 3s | Then it opens again, turned over: now $e_2$ is met turning *clockwise* from $e_1$. The area is $3$ and the sign records the flip: $\\det = -3$. The lesson's $A$, with $\\det A = -2$, turns the plane over too.	scene: 8 objects, 3 beats, 24.7 s
+9	det([2, 1, 0; 1, 3, 1; 0, 1, 2])	= 8
+13	let B = [0, 1; 1, 0]	= [0, 1; 1, 0]
+14	det(A*B)	= 2
+15	det(A)*det(B)	= 2
+18	det([1, 2; 2, 4])	= 0
+19	clock t from 0 to 1\nview -3.5, 4.5, -1.2, 5.2\nlet M = (1 - t)*[1, 0; 0, 1] + t*[1, 2; 2, 4]\nG0 = grid([1, 0; 0, 1]) faint color 6\nK = line(0, [1, 2]) dashed color 6\nG = grid(M) color 2\nSq = poly(0, M*[1; 0], M*[1; 1], M*[0; 1]) color 1\nE1 = arrow(0, M*[1; 0]) thick color 3\nE2 = arrow(0, M*[0; 1]) thick color 4\nD = value(det(M), "\\det = ")\n> show G0, G, Sq, E1, E2, D | The plane, and the matrix moving from $I$ to $\\begin{bmatrix} 1 & 2 \\\\ 2 & 4 \\end{bmatrix}$.\n> show K; play t to 1 in 4s | Its second column is twice its first, so both land on one line, and so does every point of the plane: the square is flattened, its area $0$.\n> | Squashed onto a line, the plane cannot be unfolded again: many points went to each point of the line, and no matrix can tell them apart. That is why a zero determinant means no inverse.	scene: 7 objects, 3 beats, 30.9 s
+20	rref([1, 2; 2, 4])	= [1, 2; 0, 0]
+22	det([2, 1; 5, 3])	= 1
+23	det([3, 6; 1, 2])	= 0
+24	det([1, 0, 0; 0, 2, 0; 0, 0, 3])	= 6

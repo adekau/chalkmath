@@ -365,13 +365,21 @@ The first line names the scene's **clock**, the variable it animates, and its ra
 
 | Object | What it draws |
 | --- | --- |
-| ‹point(z)› | a dot at ‹z›, a complex number (a real one sits on the real axis) |
+| ‹point(z)› | a dot at ‹z›: a complex number (a real one sits on the real axis), or a vector ‹[x, y]› |
 | ‹curve(z, s, a, b)› | the curve ‹z› traces as ‹s› runs from ‹a› to ‹b› |
 | ‹graph(f, x, a, b)› | the graph of ‹y = f(x)› |
 | ‹arrow(A, B)›, ‹segment(A, B)› | from ‹A› to ‹B›: point names or expressions |
+| ‹line(A, B)› | the whole line through ‹A› and ‹B› |
+| ‹poly(A, B, C, …)› | a filled polygon with those corners |
+| ‹grid(M)› | the plane's grid as the $2 \times 2$ matrix ‹M› moves it: the lines through ‹M›'s images of the whole-number points |
 | ‹trace(P)› | the path the point ‹P› has drawn since the trace appeared |
 | ‹label(A, "TeX")› | TeX beside a point |
 | ‹eq(e)› | an expression above the picture, as the engine prints it |
+| ‹value(e, "TeX")› | a real number above the picture, read off as the clock moves: ‹value(det(M), "\det = ")› |
+
+Wherever a point goes, a vector does: the plane is $\mathbb{C}$, and a vector of two entries, ‹[x, y]›, ‹[x; y]› or anything the engine evaluates to one, such as ‹A*[1; 0]›, is the point $x + iy$.
+
+‹let M = (1 - t)*[1, 0; 0, 1] + t*A› names an expression for the lines below it; the name is written in, in parentheses, wherever it is used. That matrix is the usual way to animate one: it is the identity when ‹t› is ‹0› and ‹A› when it is ‹1›, so ‹grid(M)› and ‹point(M*[1; 0])› move from where they are to where ‹A› sends them.
 
 Any of them may use the clock, and then it moves. After the closing parenthesis come styles: ‹faint›, ‹dashed›, ‹thick›, ‹color 1› to ‹color 6›. ‹view x0, x1, y0, y1› fixes the window (otherwise it takes in everything the scene ever draws, with equal scales on both axes, so a circle is a circle), and ‹noaxes› leaves out the axes.
 
@@ -384,7 +392,7 @@ Each line starting with ‹>› is a beat: actions separated by ‹;›, then �
 - ‹work E› steps an ‹eq› through the engine's derivation, each term morphing into the next.
 - ‹wait 2s› holds.
 
-The calculus course's lesson *Circles, exponentials and rotation* is told mostly in scenes.
+The calculus course's lesson *Circles, exponentials and rotation* is told mostly in scenes, and the linear algebra course uses them for the plane: vectors tip to tail, a matrix moving the grid, the product as one map after another, row operations turning lines about their crossing, the determinant as an area, and eigenvectors.
 `],
   },
   {

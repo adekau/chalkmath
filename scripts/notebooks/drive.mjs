@@ -95,7 +95,7 @@ async function driveScene(src, session, i) {
       }
     };
     await ask(Scene.numberRequests(spec));
-    await ask(Scene.sampleRequests(spec, moves, Scene.numbersOf(spec, replies)));
+    await ask(Scene.sampleRequests(spec, moves, Scene.numbersOf(spec, replies), Scene.vectorsOf(replies)));
     const data = Scene.build(spec, replies);
     const outcome = `scene: ${spec.objects.length} objects, ${data.timeline.beats.length} beats, ${data.timeline.total.toFixed(1)} s`;
     return { i, src, ok: true, outcome, text: outcome, steps: 0 };

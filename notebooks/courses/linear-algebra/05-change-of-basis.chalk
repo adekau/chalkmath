@@ -1,0 +1,186 @@
+{
+  "chalk": 1,
+  "name": "05-change-of-basis.chalk",
+  "cells": [
+    {
+      "src": "Change of basis and eigenvectors",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Describe a vector in a basis other than $e_1, e_2$, translate between the two descriptions with a matrix, and find the directions a matrix only stretches.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Coordinates in another basis",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Basis and coordinates\n> Two vectors $b_1, b_2$ of the plane that do not lie on one line are a **basis**: every vector is $v = c_1 b_1 + c_2 b_2$ for exactly one pair $(c_1, c_2)$, its **coordinates** in that basis.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Take $b_1 = (2, 1)$ and $b_2 = (-1, 1)$. They draw a grid of their own, and the point at $(2, 1)$ on their grid is somewhere else on ours:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "clock t from 0 to 1\nview -3.6, 5.6, -1.2, 4.2\nlet P = [2, -1; 1, 1]\nlet M = (1 - t)*[1, 0; 0, 1] + t*P\nG0 = grid([1, 0; 0, 1]) faint color 6\nG = grid(M) color 2\nB1 = arrow(0, M*[1; 0]) thick color 3\nLB1 = label(M*[1; 0], \"b_1\") color 3\nB2 = arrow(0, M*[0; 1]) thick color 4\nLB2 = label(M*[0; 1], \"b_2\") color 4\nV = point(M*[2; 1]) thick color 1\nLV = label(M*[2; 1], \"v\") color 1\nW1 = arrow(0, 2*P*[1; 0]) color 3\nW2 = arrow(2*P*[1; 0], P*[2; 1]) color 4\n> show G0, B1, LB1, B2, LB2, V, LV | Our grid, with the point $(2, 1)$ on it.\n> show G; play t to 1 in 4s | Carry the grid along with $P = \\begin{bmatrix} 2 & -1 \\\\ 1 & 1 \\end{bmatrix}$, whose columns are $b_1$ and $b_2$. The point keeps its place on the grid, $(2, 1)$, and lands at $v = 2b_1 + b_2 = (3, 3)$.\n> show W1, W2 | Two steps along $b_1$ and one along $b_2$: in the new basis $v$ has coordinates $(2, 1)$, in ours $(3, 3)$.",
+      "type": "scene",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "So the matrix $P$ whose columns are the new basis turns coordinates in that basis into ours:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let P = [2, -1; 1, 1]",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "P*[2; 1]",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!theorem] Finding coordinates is solving a system\n> The coordinates $c$ of $v$ in the basis are the solution of $Pc = v$: a system whose augmented matrix is $P$ with $v$ beside it. Since $b_1, b_2$ are a basis, $\\det P \\neq 0$ and the solution is unique.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "rref([2, -1, 3; 1, 1, 3])",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "The last column is the coordinates, $(2, 1)$. Row reduction undid $P$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Eigenvectors",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Eigenvector and eigenvalue\n> A nonzero vector $v$ is an **eigenvector** of $A$ when $A$ only stretches it: $Av = \\lambda v$ for a number $\\lambda$, its **eigenvalue**. The line through $v$ is then carried onto itself.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Most vectors are turned off their line by a matrix. Watch $A = \\begin{bmatrix} 2 & 1 \\\\ 1 & 2 \\end{bmatrix}$, and three vectors: two on the dashed lines, one not.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "clock t from 0 to 1\nview -3.6, 4.6, -1.4, 3.9\nlet A = [2, 1; 1, 2]\nlet M = (1 - t)*[1, 0; 0, 1] + t*A\nG0 = grid([1, 0; 0, 1]) faint color 6\nG = grid(M) color 2\nK1 = line(0, [1, 1]) dashed color 3\nK2 = line(0, [1, -1]) dashed color 4\nU = arrow(0, M*[1; 1]) thick color 3\nLU = label(M*[1; 1], \"u\") color 3\nW = arrow(0, M*[-0.5; 0.5]) thick color 4\nLW = label(M*[-0.5; 0.5], \"w\") color 4\nX = arrow(0, M*[1; 0]) thick color 1\nKX = line(0, [1, 0]) dashed color 1\n> show G0, U, LU, W, LW, X, KX | Three vectors, each on a line through $0$: $u = (1, 1)$, $w = (-\\frac12, \\frac12)$, and $(1, 0)$ in orange.\n> show G; play t to 1 in 4s | Apply $A$. The orange vector $(1, 0)$ is turned off its line, to $(2, 1)$.\n> show K1, K2 | But $u$ stays on its line, stretched three times to $(3, 3)$, and $w$ stays exactly where it was. They are eigenvectors, with eigenvalues $3$ and $1$.",
+      "type": "scene",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let A = [2, 1; 1, 2]",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A*[1; 1]",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A*[-1; 1]",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!theorem] The characteristic polynomial\n> $Av = \\lambda v$ with $v \\neq 0$ says $(A - \\lambda I)v = 0$ has a nonzero solution: $A - \\lambda I$ flattens the plane, so $\\det(A - \\lambda I) = 0$. The eigenvalues are the roots of this polynomial in $\\lambda$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "For $A$, writing $x$ for $\\lambda$: the polynomial is $x^2 - 4x + 3 = (x - 1)(x - 3)$, with roots $1$ and $3$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "expand(det(A - x*[1, 0; 0, 1]))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "subst(det(A - x*[1, 0; 0, 1]), x, 3)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "subst(det(A - x*[1, 0; 0, 1]), x, 1)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!intuition] In its own basis a matrix is simple\n> In the basis of its eigenvectors, $b_1 = (1, 1)$ and $b_2 = (-1, 1)$, the matrix $A$ only stretches the first coordinate by $3$ and keeps the second: in those coordinates it is the diagonal matrix $\\begin{bmatrix} 3 & 0 \\\\ 0 & 1 \\end{bmatrix}$. Choosing the basis well is most of understanding a matrix.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "rref([1, 1, 3; 1, -1, 1])",
+      "type": "exercise",
+      "prompt": "Find the coordinates of $v = (3, 1)$ in the basis $b_1 = (1, 1)$, $b_2 = (1, -1)$: reduce the augmented matrix, and give the reduced matrix.",
+      "hints": [
+        "The augmented matrix has $b_1$ and $b_2$ as columns, then $v$: `[1, 1, 3; 1, -1, 1]`.",
+        "The coordinates are the last column of the reduced matrix."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "[3, 0; 0, 1]*[2; 5]",
+      "type": "exercise",
+      "prompt": "In its eigenbasis, $A$ is $\\begin{bmatrix} 3 & 0 \\\\ 0 & 1 \\end{bmatrix}$. Apply it to the coordinates $(2, 5)$.",
+      "hints": [
+        "A diagonal matrix scales each coordinate by its own entry."
+      ],
+      "hideQuestion": true,
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "[2, 1; 1, 2]*[1; -1]",
+      "type": "exercise",
+      "prompt": "Apply $A = \\begin{bmatrix} 2 & 1 \\\\ 1 & 2 \\end{bmatrix}$ to $(1, -1)$. Is $(1, -1)$ an eigenvector, and with which eigenvalue?",
+      "hints": [
+        "Compare the answer with $(1, -1)$ itself."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> A basis gives every vector coordinates; the matrix of the basis turns them into ours, and row reduction turns ours into them. An eigenvector is a direction a matrix only stretches, its eigenvalue a root of $\\det(A - \\lambda I)$, and in a basis of eigenvectors the matrix is diagonal.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

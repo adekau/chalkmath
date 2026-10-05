@@ -286,6 +286,39 @@ async function scenes() {
   const o = await out(last);
   assert.equal(flatTex(o.tex ?? ""), "3", `% after a scene: ${JSON.stringify(o)}`);
   console.log(`✓ scene: 2 beats, the point at (${x.toFixed(3)}, ${y.toFixed(3)}) as the engine samples it, the equation stepped to its answer, % untouched`);
+  // a matrix moving the plane: a vector is a point, the grid is drawn, a value is read off
+  await menu("Edit", "Add math cell");
+  const la = (await cells().count()) - 1;
+  await run(la, "let A = [3, 1; 1, 2]");
+  await out(la);
+  await menu("Edit", "Add scene");
+  const grid = page.locator(".cell.scene").last();
+  await grid.locator("textarea.scenein").fill([
+    "clock t from 0 to 1",
+    "let M = (1 - t)*[1, 0; 0, 1] + t*A",
+    "G = grid(M)",
+    "V = point(M*[1; 1])",
+    "S = poly(0, M*[1; 0], M*[1; 1], M*[0; 1])",
+    'D = value(det(M), "\\det = ")',
+    "> show G, V, S, D; play t to 1 in 1s | Apply $A$.",
+  ].join("\n"));
+  await grid.locator("textarea.scenein").press("Shift+Enter");
+  const gp = grid.locator(".scene-player");
+  await gp.locator("svg").waitFor({ timeout: 30000 });
+  const gTotal = Number(await gp.locator(".scene-scrub").getAttribute("max"));
+  await gp.locator(".scene-play").evaluate((b) => { if (b.textContent === "❚❚") b.click(); });
+  await gp.locator(".scene-scrub").evaluate((r, t) => { r.value = String(t); r.dispatchEvent(new Event("input")); }, gTotal);
+  await reference.call("engine.evaluate", { sessionId: "e2e-scene", cellId: "A", source: "let A = [3, 1; 1, 2]" });
+  const av = await reference.call("engine.evaluate", { sessionId: "e2e-scene", cellId: "Av", source: "A*[1; 1]" });
+  const [ax, ay] = av.rendered.text.slice(1, -1).split(";").map(Number);
+  const vdot = gp.locator("svg circle[data-name=V]");
+  const [vx, vy] = [Number(await vdot.getAttribute("data-x")), Number(await vdot.getAttribute("data-y"))];
+  assert.ok(Math.abs(vx - ax) < 1e-3 && Math.abs(vy - ay) < 1e-3, `the vector is at (${vx}, ${vy}), the engine says A*[1; 1] = ${av.rendered.text}`);
+  assert.ok(await gp.locator("svg line[data-name=G]").count() > 4, "the grid's lines are drawn");
+  assert.equal((await gp.locator("svg polygon[data-name=S]").getAttribute("points")).split(" ").length, 4, "the square's image has four corners");
+  const det = await reference.call("engine.evaluate", { sessionId: "e2e-scene", cellId: "d", source: "det(A)" });
+  assert.equal(flatTex(await gp.locator(".scene-eq .katex-mathml annotation").last().textContent()), flatTex(`\\det = ${det.rendered.text}`), "the value read off is the engine's determinant");
+  console.log(`✓ scene: a grid moved by A, the vector (1, 1) carried to (${vx.toFixed(3)}, ${vy.toFixed(3)}), det = ${det.rendered.text} read off`);
 }
 
 /** The name dialog of File › Save as (and of the first save of an untitled notebook): a name typed and saved. */
