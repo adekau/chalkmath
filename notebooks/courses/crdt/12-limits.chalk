@@ -9,13 +9,42 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Walk the boundary of the promise: strong eventual consistency says replicas agree, not that what they agree on is right; some invariants cannot be kept without coordination.",
+      "src": "> [!goal]\n> Find the boundary of the promise: replicas that converge agree, but what they agree on can still be wrong, and some invariants cannot be kept without coordination.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "A last-writer-wins register converges while discarding one of two concurrent writes. A bank balance that must never go negative cannot be a CRDT: two replicas can each approve a withdrawal that is fine locally, and no merge can make both right. Invariants that span replicas need coordination (a lock, consensus, an escrow of rights) somewhere; CRDTs are for the state that does not.",
+      "src": "A bank balance as a PN-Counter, with one rule: it must never go below zero. The balance is 1, and both replicas know it. Each receives a withdrawal of 1 and approves it, because locally the balance is 1.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> Predict the balance once the replicas have synced.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "replicas(pncounter; a, b\n  a: inc\n  a -> b\n  a: dec\n  b: dec\n  a -> b\n  b -> a\n)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "Both read $-1$. They have converged, and the rule is broken. No cleverer merge fixes it: in the Lean, `no_bank_merge` shows that no idempotent merge can honour both of two withdrawals of 80 from 100. Idempotence forces the merge of $20$ with $20$ to be $20$, while honouring both withdrawals needs $-60$. Each replica was right about its own state and neither could know about the other's withdrawal without asking it first.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The same boundary showed up earlier. LWW converges by discarding one of two concurrent writes. Tombstones pile up for ever, and throwing one away safely needs to know that every replica has seen its remove: agreement about the state of everyone, which is coordination again.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Invariants that span replicas (no overdraft, unique usernames, at most ten seats sold) need coordination somewhere: a lock, consensus, or an escrow that hands each replica a share it may spend alone. CRDTs are for the state that does not need it.",
       "type": "markdown",
       "showWork": false,
       "label": null

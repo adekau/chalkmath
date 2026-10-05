@@ -9,19 +9,64 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Support decrements while keeping every update inflationary, by separating the state (which only grows) from the query (which may go down).",
+      "src": "> [!goal]\n> Add decrements to the counter while every update still moves the state up.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "A decrement makes the number smaller, but the discipline requires updates to go up. The way out: a decrement is not the removal of an increment but a new event in its own right. Keep two G-Counters, $P$ for increments and $N$ for decrements, and let the **query** compute $P - N$. The state never goes down; the report does.",
+      "src": "The like button needs an unlike. The obvious decrement: a replica lowers its own slot.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "For one replica the state is a pair $(p, n)$, ordered componentwise:",
+      "src": "> [!try]\n> Replica $a$ has counted 2 taps, state $(2, 0)$, and $b$ has heard of them, so $b$ holds $(2, 0)$ too. Now $a$ decrements, to $(1, 0)$, and then $b$'s state arrives. Predict the merge.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let C4 = chain(4)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let G = product(C4, C4)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "join(G, (1, 0), (2, 0))",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "The decrement is undone. The join only goes up, the decrement went down, and $b$'s stale state, still above, wins: lesson 1's warning about updates that are not inflationary, now as a bug.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Count the decrements",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The way out is the move every design in this course makes: if a merge loses information, put that information in the state. A decrement is not the removal of an increment but an event of its own, and events can be counted, in a G-Counter of their own. Keep two G-Counters, $P$ for increments and $N$ for decrements, and read the value as $P - N$. Every update raises one of them, so the state only goes up while the value may go down.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] PN-Counter\n> A **PN-Counter** is a pair of G-Counters $(P, N)$. Replica $i$ increments by raising its entry of $P$ and decrements by raising its entry of $N$; merge is the join of each half; the value is $\\sum P - \\sum N$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "For one replica a state is a pair $(p, n)$, ordered componentwise:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -42,31 +87,60 @@
       "label": null
     },
     {
-      "src": "$(1, 0) \\sqsubseteq (1, 1)$: a decrement moved the state up, while the value went from 1 to 0. Information grows even when the number shrinks.",
+      "src": "$(1, 0) \\sqsubseteq (1, 1)$: a decrement moved the state up while the value went from 1 to 0.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "A PN-Counter, run",
+      "src": "The decrement survives",
       "type": "section",
       "showWork": false,
       "label": null
     },
     {
-      "src": "The state is a pair of G-Counters, increments and decrements; the reading subtracts.",
+      "src": "The schedule that undid the decrement, on a PN-Counter: $a$ counts two, $b$ hears of them, $a$ decrements, and $b$'s stale state reaches $a$. The state is a pair of G-Counters, increments and decrements:",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "replicas(pncounter; a, b\n  a: inc\n  a: inc\n  b: dec\n  a -> b\n  b -> a\n)",
+      "src": "replicas(pncounter; a, b\n  a: inc\n  a: inc\n  a -> b\n  a: dec\n  b -> a\n  a -> b\n)",
       "showWork": true,
+      "label": null
+    },
+    {
+      "src": "$b$'s state is no longer above $a$'s: $a$ has a decrement that $b$ lacks, and the merge keeps it. Both read 1.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> The value of a merge is not the larger value. An increment at $a$ (value 1) and a decrement at $b$ (value $-1$) merge to 0, not $\\max(1, -1) = 1$:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "replicas(pncounter; a, b\n  a: inc\n  b: dec\n  a -> b\n  b -> a\n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Only the state is merged; the value is read off it, and it is not monotone in the state.",
+      "type": "markdown",
+      "showWork": false,
       "label": null
     },
     {
       "src": "In Lean",
       "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The chapter proves both halves of that: `decr_inflationary` (the state goes up) and `value_not_monotone` (the value need not), with `value_merge_ne_max` for the mistake above.",
+      "type": "markdown",
       "showWork": false,
       "label": null
     },
@@ -77,7 +151,7 @@
       "label": null
     },
     {
-      "src": "A query that clamps at zero hides the negative truth: a seed for the last lesson.",
+      "src": "A value that clamps at zero hides the negative truth: a seed for the last lesson.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -97,7 +171,7 @@
     {
       "src": "le(PN, (2, 0), (1, 1))",
       "type": "exercise",
-      "prompt": "Is the state $(2, 0)$ below $(1, 1)$? Answer `true` or `false`.",
+      "prompt": "For one replica, is the state $(2, 0)$ below $(1, 1)$? Answer `true` or `false`.",
       "hints": [
         "Compare componentwise."
       ],
@@ -105,7 +179,17 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> Split state from query: the state is a pair of grow-only counters and only rises; the query $P - N$ may fall. The value is not monotone in the state, and that is fine, because only the state is merged.",
+      "src": "join(product(G, G), ((2, 0), (1, 0)), ((1, 1), (0, 1)))",
+      "type": "exercise",
+      "prompt": "Two replicas $a$, $b$; write a PN state as $(P, N)$, each half a pair of slots ($a$'s, $b$'s). Replica $a$ holds $((2, 0), (1, 0))$ and $b$ holds $((1, 1), (0, 1))$. Merge them. (The merged state reads $3 - 2 = 1$.)",
+      "hints": [
+        "$P$ and $N$ merge separately, each slot by the maximum."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> A decrement that lowers the state is undone by the next merge with a replica that has not heard of it. Counting decrements as events of their own keeps every update going up: the state is a pair of grow-only counters, and only the value, $P - N$, falls. Sets come next. Adding an element is easy; what is the decrement of a set?",
       "type": "markdown",
       "showWork": false,
       "label": null

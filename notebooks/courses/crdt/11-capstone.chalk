@@ -9,13 +9,65 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Assemble a collaborative shopping list from the earlier designs, run three replicas under an adversarial schedule, and see that its convergence needs no new proof.",
+      "src": "> [!goal]\n> Assemble a collaborative shopping list from the earlier designs, run it under a scrambled schedule, and see that its convergence needs no new proof.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "The list is an OR-Set of items (adds must win, re-adds must work), and each item has a quantity that goes up and down, a PN-Counter, one per item: a pointwise function lattice. Products and function spaces of semilattices are semilattices, so the store is one, and the main theorem applies to it as it is. Alice, Bob and Carol edit concurrently; their messages are reordered and duplicated; they agree.",
+      "src": "Alice, Bob and Carol share a shopping list. Items come and go, and an item can be crossed off and put back; each item has a quantity that goes up and down.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> Which design from this course would you use for the items, and which for a quantity? Why not the others?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Items: an **OR-Set**. A G-Set cannot remove, a 2P-Set cannot re-add, and an LWW-Element-Set lets a clock cancel an add the remover never saw. Quantities: a **PN-Counter** per item. An LWW register would drop one of two concurrent changes, and a G-Counter cannot go down.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The list, run",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Alice and Carol both add bread; Bob adds eggs, thinks better of it, and adds milk; then Alice crosses bread off, having seen only her own add. The messages arrive in no particular order, one of them twice:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "replicas(orset; alice, bob, carol\n  alice: add bread\n  carol: add bread\n  bob: add eggs\n  bob: remove eggs\n  bob: add milk\n  alice: remove bread\n  bob -> alice\n  carol -> alice\n  bob -> alice\n  alice -> bob\n  alice -> carol\n)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "Bread stays: Alice's remove tombstoned only her own tag, and Carol's concurrent add wins. Eggs are gone, milk is there, and all three agree. Bread's quantity, a PN-Counter, with Alice adding two and Carol one:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "replicas(pncounter; alice, bob, carol\n  alice: inc\n  alice: inc\n  carol: inc\n  alice -> bob\n  carol -> bob\n  bob -> alice\n  bob -> carol\n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Why no new proof",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The store is a pair, an OR-Set and a map from items to PN-Counters. A product of semilattices is a semilattice (join each part), and so is a map into one (join pointwise). So the store is a state-based CRDT as it stands, and lesson 7's theorem applies to it unchanged: in the Lean, `sec_store` is one line. The Lean runs the whole store (items and quantities) under three schedules, orderly, reversed with duplicates, and chaotic with self-merges, and prints the same list for every replica: bread ×3, milk ×1, no eggs.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -39,7 +91,7 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> Composition is the payoff: a store built from verified parts, with lattice products and function spaces, inherits strong eventual consistency without a single new proof.",
+      "src": "> [!summary]\n> Composition is the payoff: a store built from verified parts, with lattice products and pointwise maps, inherits strong eventual consistency without a single new proof. Every replica agrees on the list. Is what they agree on always right?",
       "type": "markdown",
       "showWork": false,
       "label": null

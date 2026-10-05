@@ -1,1 +1,1 @@
-
+5	replicas(gcounter; a, b\n  a: inc\n  m := a\n  b <- m\n  b <- m\n)	= {a↦1, b↦1}

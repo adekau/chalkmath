@@ -9,25 +9,91 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> State and prove the main theorem: replicas that have received the same updates, in any order and with any repetitions, are in the same state. Along the way, learn quotient types.",
+      "src": "> [!goal]\n> Prove, once for every design in this course, that replicas which have received the same updates are in the same state, and see that each of the three laws is needed.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "Each earlier lesson ended with replicas agreeing after scrambled deliveries; none proved they must. A replica receives a *sequence* of updates, but what should matter is the *collection* of them, order and repetition being noise. The honest type for that is a **quotient**: lists modulo permutation are multisets.",
+      "src": "Every run so far ended with the replicas agreeing, but a run is one schedule. Lesson 1 matched each law of a join to something the network does: commutativity to reordering, associativity to relaying, idempotence to duplication.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!theorem] Strong eventual consistency\n> For any state-based CRDT, folding the join over two delivery sequences with the same members gives the same state. Order does not matter (commutativity and associativity), and repeats do not matter (idempotence).",
+      "src": "> [!try]\n> Drop one law at a time. Which network behaviour can then make two replicas with the same updates disagree?",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "On a small table, any order and any repetition of the same updates:",
+      "src": "Drop a law, break a network",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Drop commutativity: overwrite. Two replicas hear the same two messages in different orders and disagree:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let Ow = op({a, b}; [a, b; a, b])",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "fold(Ow; a, b)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "fold(Ow; b, a)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Drop associativity: \"keep the winner\" of rock, paper, scissors. It is commutative and idempotent, but grouping matters:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let RPS = op({r, p, s}; [r, p, r; p, p, s; r, s, s])",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "commutative(RPS)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "associative(RPS)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "A replica that merged $r$ and $p$ and then hears $s$ holds $s$; one that holds $r$ and hears from a relay that had already merged $p$ and $s$ holds $r$. Drop idempotence: addition is commutative and associative, and one duplicated delivery counts twice (`comm_assoc_not_enough` in the Lean below).",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Keep all three",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!theorem] Strong eventual consistency\n> In any join-semilattice, folding the join from $\\bot$ over two delivery lists with the same members, in any order and with any number of repetitions, gives the same state.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "On a small table, the same updates in different orders and multiplicities:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -44,6 +110,12 @@
     },
     {
       "src": "fold(Mx; 2, 2, 1, 3, 1)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The proof does not shuffle lists. Each fold is the least upper bound of the members of its list, and the two lists have the same members, so the folds are the least upper bound of the same set, and a least upper bound is unique (antisymmetry). Along the way the book makes \"a list, up to order\" a type, a **quotient**: lists modulo permutation are multisets, and the fold is defined on them because a permutation does not change it.",
+      "type": "markdown",
       "showWork": false,
       "label": null
     },
@@ -72,7 +144,7 @@
       "label": null
     },
     {
-      "src": "Multiset union is well-defined on the quotient because appending respects permutation, on either side:",
+      "src": "Multiset union is well defined on the quotient because appending respects permutation, on either side:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -111,12 +183,22 @@
     {
       "src": "fold(Mx; 3, 0, 3, 1)",
       "type": "exercise",
-      "prompt": "A replica receives $3, 0, 3, 1$. What is its state?",
+      "prompt": "Under \"keep the larger\", a replica receives $3, 0, 3, 1$. What is its state?",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!summary]\n> The main theorem is proved once: for any CRDT whose merge is a join, the same multiset of updates gives the same state. Quotient types make \"same updates, any order\" a type, and the fold over it well-defined.",
+      "src": "fold(RPS; s, p, r)",
+      "type": "exercise",
+      "prompt": "Under the rock-paper-scissors merge, a replica receives $s$, $p$, $r$ in that order. What does it hold? (Above, $r$, $p$, $s$ gave $s$.)",
+      "hints": [
+        "$s \\cdot p = s$ first."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Each law of a join answers one thing the network does, and without any one of them some network makes replicas disagree. With all three, the main theorem holds for every state-based CRDT at once: the same set of updates, in any order and any number of times, gives the same state. Its hypothesis is \"the same updates\". The next lesson asks what a network must do to deliver that.",
       "type": "markdown",
       "showWork": false,
       "label": null

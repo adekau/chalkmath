@@ -1,1 +1,5 @@
-5	replicas(gcounter; a, b, c\n  a: inc\n  m := a\n  a: inc\n  a -> b\n  b <- m\n  b <- m\n  c <- m\n  b -> c\n)	= {a↦2, b↦2, c↦2}
+6	replicas(gcounter; a, b, c\n  a: inc\n  m := a\n  a: inc\n  a -> b\n  b <- m\n  b <- m\n  c <- m\n  b -> c\n)	= {a↦2, b↦2, c↦2}
+10	replicas(gcounter; a, b\n  a: inc\n  m := a\n  a: inc\n)	= {a↦2, b↦0}
+23	let C3 = chain(3)	= poset {0, 1, 2}
+24	let G = product(C3, C3)	= poset {(0, 0), (0, 1), (0, 2), (1, 0), (1, 1), (1, 2), (2, 0), (2, 1), (2, 2)}
+25	le(G, (1, 0), (2, 1))	= true

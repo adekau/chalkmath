@@ -9,13 +9,13 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Replicate sets: a grow-only set merged by union, and a two-phase set that supports removal with a second grow-only set of tombstones, at the price of never re-adding.",
+      "src": "> [!goal]\n> Replicate a set: adding merges by union for free; see why removing does not, and what it costs to make it work.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "A **G-Set** is the powerset lattice: states are finite sets, the order is inclusion, the merge is union. To compute with finite sets (print them, decide equalities) the book represents them as **strictly sorted lists**: same members, same list, which is what antisymmetry needs.",
+      "src": "A shared shopping list. Adding is the easy half: replicas add items, and a merge takes the union. Union is a join (commutative, associative, idempotent), so a **G-Set** (grow-only set: states are sets, ordered by inclusion, merged by union) is a CRDT with no further thought:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -31,13 +31,47 @@
       "label": null
     },
     {
-      "src": "Removal: the 2P-Set",
+      "src": "replicas(gset; a, b; a: add x; b: add y; a -> b; b -> a)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Removal is the hard part",
       "type": "section",
       "showWork": false,
       "label": null
     },
     {
-      "src": "Removing from a G-Set would make the state go down. A **2P-Set** keeps two G-Sets, the added and the removed (tombstones); an element is in the set when it is added and not removed. Both halves only grow, so the pair is a product semilattice:",
+      "src": "> [!try]\n> Both replicas hold $\\{x\\}$. Replica $a$ deletes $x$, leaving $\\{\\}$; then $b$'s state arrives. Predict the merge.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "join(S, {}, {x})",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "$x$ is back. Deleting moved the state down, and the join undid it: lesson 3's undone decrement, for sets. The fix is lesson 3's too: do not perform the removal, record it.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Tombstones: the 2P-Set",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Keep a second grow-only set, the removed elements (**tombstones**). An element is in the set when it has been added and not removed. Both halves only grow, so a state is a pair in a product of semilattices:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] 2P-Set\n> A **2P-Set** (two-phase set) is a pair of G-Sets $(A, T)$, the added and the tombstoned elements. Adding $x$ puts it in $A$, removing it puts it in $T$, merge is union on each half, and the members are $A \\setminus T$.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -58,25 +92,20 @@
       "label": null
     },
     {
-      "src": "> [!mistake]\n> A removed element can never come back: its tombstone outranks every later add, because the merge cannot tell a re-add from an old add it has already seen. The next lessons fix this two ways: with timestamps (last writer wins) and with unique tags (the OR-Set).",
+      "src": "The removal survives the merge, in either order.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "Sets, run",
+      "src": "Removed for ever",
       "type": "section",
       "showWork": false,
       "label": null
     },
     {
-      "src": "A G-Set merges by union. A 2P-Set keeps a second set of removed elements, also merged by union, and reads the added minus the removed: so a removal is for ever, and adding again does nothing.",
+      "src": "> [!try]\n> $a$ adds $x$ and tells $b$; $b$ removes it; meanwhile $a$ adds $x$ again. After they exchange states, is $x$ in the set?",
       "type": "markdown",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "replicas(gset; a, b; a: add x; b: add y; a -> b; b -> a)",
       "showWork": false,
       "label": null
     },
@@ -86,8 +115,26 @@
       "label": null
     },
     {
+      "src": "> [!mistake]\n> Both read $\\{\\}$: the re-add is lost, the lost update again. $a$'s second add puts $x$ in the added set, where it already is, so the merge cannot tell a re-add from the old add it has seen, and the tombstone outranks both. The next lessons tell adds apart, two ways: by time (last writer wins) and by a unique tag on each add (the OR-Set).",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In the simulator a 2P-Set replica may remove only an element it has seen added, so a tombstone never comes before its add.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "In Lean",
       "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "To compute with finite sets (print them, decide equalities) the book represents them as **strictly sorted lists**: same members, same list, which is what antisymmetry needs. The chapter also proves the failed attempt wrong, `naiveRemove_resurrects`, and the 2P-Set's limit, `no_readd`.",
+      "type": "markdown",
       "showWork": false,
       "label": null
     },
@@ -146,6 +193,16 @@
       "label": null
     },
     {
+      "src": "le(TP, ({x}, {}), ({x}, {x}))",
+      "type": "exercise",
+      "prompt": "Is removing $x$ an inflation: is the 2P-Set state $(\\{x\\}, \\{\\})$ below $(\\{x\\}, \\{x\\})$? Answer `true` or `false`.",
+      "hints": [
+        "Compare the halves separately, by inclusion."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "join(TP, ({x, y}, {}), ({x}, {x}))",
       "type": "exercise",
       "prompt": "Merge the 2P-Set states $(\\{x, y\\}, \\{\\})$ and $(\\{x\\}, \\{x\\})$. Write it as `({…}, {…})`.",
@@ -156,7 +213,7 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> Union is a join, so grow-only sets replicate for free. Removal needs tombstones, which only grow too; the 2P-Set pays for that with \"removed once, removed forever\".",
+      "src": "> [!summary]\n> Union is a join, so grow-only sets replicate for free. Deleting goes down and is undone by the next merge, so a removal must be recorded as a tombstone, which only grows too. The 2P-Set pays for that with \"removed once, removed for ever\": it cannot tell a re-add from an old add. Telling them apart needs more in the state, and the first idea is a clock.",
       "type": "markdown",
       "showWork": false,
       "label": null

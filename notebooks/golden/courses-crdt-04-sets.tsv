@@ -1,8 +1,10 @@
 3	let S = subsets({x, y})	= poset {{}, {y}, {x}, {x,y}}
 4	join(S, {x}, {y})	= {x,y}
-7	let TP = product(S, S)	= poset {({}, {}), ({}, {y}), ({}, {x}), ({}, {x,y}), ({y}, {}), ({y}, {y}), ({y}, {x}), ({y}, {x,y}), ({x}, {}), ({x}, {y}), ({x}, {x}), ({x}, {x,y}), ({x,y}, {}), ({x,y}, {y}), ({x,y}, {x}), ({x,y}, {x,y})}
-8	join(TP, ({x}, {}), ({x}, {x}))	= ({x}, {x})
-9	join(TP, ({x}, {x}), ({x}, {}))	= ({x}, {x})
-13	replicas(gset; a, b; a: add x; b: add y; a -> b; b -> a)	= {a↦{x, y}, b↦{x, y}}
-14	replicas(twopset; a, b\n  a: add x\n  a -> b\n  b: remove x\n  a: add x\n  b -> a\n)	= {a↦{}, b↦{}}
-24	join(TP, ({x, y}, {}), ({x}, {x}))	= ({x,y}, {x})
+5	replicas(gset; a, b; a: add x; b: add y; a -> b; b -> a)	= {a↦{x, y}, b↦{x, y}}
+8	join(S, {}, {x})	= {x}
+13	let TP = product(S, S)	= poset {({}, {}), ({}, {y}), ({}, {x}), ({}, {x,y}), ({y}, {}), ({y}, {y}), ({y}, {x}), ({y}, {x,y}), ({x}, {}), ({x}, {y}), ({x}, {x}), ({x}, {x,y}), ({x,y}, {}), ({x,y}, {y}), ({x,y}, {x}), ({x,y}, {x,y})}
+14	join(TP, ({x}, {}), ({x}, {x}))	= ({x}, {x})
+15	join(TP, ({x}, {x}), ({x}, {}))	= ({x}, {x})
+19	replicas(twopset; a, b\n  a: add x\n  a -> b\n  b: remove x\n  a: add x\n  b -> a\n)	= {a↦{}, b↦{}}
+32	le(TP, ({x}, {}), ({x}, {x}))	= true
+33	join(TP, ({x, y}, {}), ({x}, {x}))	= ({x,y}, {x})
