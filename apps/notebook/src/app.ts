@@ -7258,7 +7258,7 @@ const USER_NAMES = new Set<string>();
 
 /** Commands whose argument at `arg` is a variable bound over the call: `diff(f, x)`, `plot(f, x, …)`. */
 const BINDERS: Record<string, number> = { diff: 1, integrate: 1, plot: 1, epicycles: 1, sum: 1, subst: 1, manipulate: 1 };
-const BUILTIN_FN = new Set(["sin", "cos", "tan", "sec", "csc", "cot", "arcsin", "arccos", "arctan", "exp", "ln", "log", "sqrt", "abs", "conj", "re", "im", "arg", "sign", "det", "rref", "transpose", "dot", "norm", "solve",
+const BUILTIN_FN = new Set(["sin", "cos", "tan", "sec", "csc", "cot", "arcsin", "arccos", "arctan", "sinh", "cosh", "tanh", "exp", "ln", "log", "sqrt", "abs", "conj", "re", "im", "arg", "sign", "det", "rref", "transpose", "dot", "norm", "solve",
   "total", "mean", "variance", "stdev", "min", "max", "median", "prime", "even", "odd"]);
 /** Every command a cell can call: each reference page's (`reference.ts`), so a new command is
  *  highlighted with nothing more to list, and the other worlds' (`taut`, `system`, …). */

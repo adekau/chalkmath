@@ -1301,10 +1301,14 @@ theorem alem_var (x : String) (hx : x ∉ reserved) : ALem (.var x) := by
   exact ⟨_, _, h', ha, by rw [hp]; rfl, rfl⟩
 
 theorem mkCall_unary {f : String} (hf : f ∈ unaryNames) (args : List Expr) : mkCall f args = .fn f args := by
-  have : reciprocalOf f = none := by
+  have h : reciprocalOf f = none ∧ ∀ u, hyperbolic f u = none := by
     simp only [unaryNames, List.mem_cons, List.mem_nil_iff, or_false] at hf
-    rcases hf with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> rfl
-  unfold mkCall; rw [this]
+    rcases hf with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> exact ⟨rfl, fun _ => rfl⟩
+  unfold mkCall; rw [h.1]
+  match args with
+  | [] => rfl
+  | [u] => simp only [h.2 u, Option.getD_none]
+  | _ :: _ :: _ => rfl
 
 theorem alem_fn {f : String} (hf : f ∈ unaryNames) {a : Expr} (ha : Plain a) (hE : ELem a) :
     ALem (.fn f [a]) := by

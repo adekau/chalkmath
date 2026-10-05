@@ -268,9 +268,10 @@ differential test with zero mismatches.
   weaken the comparison.
 - **Notation that is not a function stays notation.** `sec`, `csc` and `cot` are read by the parser
   as `cos(u)^-1`, `sin(u)^-1` and `tan(u)^-1`, and `sin^-1(x)` is the reciprocal, as `sin^2(x)` is the
-  square (`arcsin` is written out). They need no semantics, rules or proofs of their own, and an
+  square (`arcsin` is written out). `cosh`, `sinh` and `tanh` are read as their definitions in `exp`,
+  `(exp(u) ± exp(-u))/2` and their quotient. They need no semantics, rules or proofs of their own, and an
   exercise answer written with them is compared by what it means. The cost is that answers are
-  printed in the three functions the engine has; a printer that writes `sec` back is presentation and
+  printed in the functions the engine has; a printer that writes `sec` or `cosh` back is presentation and
   can be added without touching the engine's terms.
 - **An exercise is checked by normal forms.** `engine.check` (`Exercise.lean`) evaluates a question
   like any cell (its value is the expected answer, its derivation the worked solution) and reduces the

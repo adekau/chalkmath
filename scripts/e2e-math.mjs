@@ -47,6 +47,8 @@ const CASES = [
   { src: "diff(arctan(x), x)", text: "1/(x^2 + 1)", step: "Chain rule" },
   { src: "integrate(1/(4+x^2), x)", text: "arctan(x/2)/2", step: "Arctangent integral" },
   { src: "integrate(1/sqrt(1-x^2), x)", text: "arcsin(x)", step: "Arcsine integral" },
+  // cosh, sinh and tanh, read as their definitions in exp
+  { src: "expand(cosh(x)^2 - sinh(x)^2)", text: "1", step: "Expand" },
   // the antiderivative finder's rules split at their conditions too
   { src: "integrate(1/x, x)", text: "ln(x)", step: "Power rule for integrals, assuming" },
   { src: "integrate(b^x, x)", text: "b^x/ln(b)", step: "Exponential integral, assuming the base" },

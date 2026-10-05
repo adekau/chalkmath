@@ -25,7 +25,8 @@ Mathematica does (`;;b` from 1, `a;;` to the last, `-1`); `All` is `All()`, a li
 
 A unary builtin may carry its power before its argument, `sin^2(x)` for `sin(x)^2` and
 `sin^-1(x)` for `sin(x)^-1` (the reciprocal, not `arcsin`). `sec(u)`, `csc(u)` and `cot(u)` are read
-as `cos(u)^-1`, `sin(u)^-1` and `tan(u)^-1`.
+as `cos(u)^-1`, `sin(u)^-1` and `tan(u)^-1`; `cosh(u)`, `sinh(u)` and `tanh(u)` as their definitions,
+`(exp(u) + exp(-u))/2`, `(exp(u) - exp(-u))/2` and `(exp(u) - exp(-u))/(exp(u) + exp(-u))`.
 
 Implicit multiplication (`2x`, `2(x+1)`, `x y`) is allowed when the previous token ends an atom
 and the next begins one, except number-after-number (`3 4` is an error). `IDENT (` is a call
@@ -71,7 +72,7 @@ structure Tok where
   deriving Repr, Inhabited
 
 def builtinFunctions : List String :=
-  ["sin", "cos", "tan", "sec", "csc", "cot", "arcsin", "arccos", "arctan",
+  ["sin", "cos", "tan", "sec", "csc", "cot", "arcsin", "arccos", "arctan", "sinh", "cosh", "tanh",
    "exp", "ln", "log", "sqrt", "abs", "conj", "re", "im", "arg",
    "diff", "simplify", "expand", "factor", "N", "det", "rref", "transpose", "solve", "subst", "integrate", "plot",
    "sign", "dot", "norm", "sum", "exptotrig", "epicycles", "dft", "manipulate", "column",
@@ -79,7 +80,7 @@ def builtinFunctions : List String :=
 
 /-- The unary builtins whose power is written before the argument: `sin^2(y)` is `sin(y)^2`. -/
 def powerFunctions : List String :=
-  ["sin", "cos", "tan", "sec", "csc", "cot", "arcsin", "arccos", "arctan", "exp", "ln", "log", "sqrt", "abs"]
+  ["sin", "cos", "tan", "sec", "csc", "cot", "arcsin", "arccos", "arctan", "sinh", "cosh", "tanh", "exp", "ln", "log", "sqrt", "abs"]
 
 /-- `sec`, `csc` and `cot` are notation, not functions: `sec u` is `(cos u)⁻¹`, and so on. The
 engine knows the three it is written with, so their derivatives, integrals and values need nothing
@@ -87,10 +88,24 @@ new, and an answer written with `sec` is compared as what it means. -/
 def reciprocalOf : String → Option String
   | "sec" => some "cos" | "csc" => some "sin" | "cot" => some "tan" | _ => none
 
-/-- A call `f(args)`, with the reciprocal functions read as what they mean. -/
+/-- `cosh`, `sinh` and `tanh` are notation too, for what they are defined as: the even and odd parts
+of `exp`, `cosh u = (eᵘ + e⁻ᵘ)/2` and `sinh u = (eᵘ - e⁻ᵘ)/2`, and `tanh u = sinh u / cosh u`. Every rule
+about `exp` applies to them, with its proof. -/
+def hyperbolic (f : String) (u : Expr) : Option Expr :=
+  let ep := Expr.fn "exp" [u]
+  let em := Expr.fn "exp" [.mul [Expr.minusOne, u]]
+  let half := Expr.num (Q.ofRat (mkRat 1 2))
+  match f with
+  | "cosh" => some (.mul [half, .add [ep, em]])
+  | "sinh" => some (.mul [half, .add [ep, .mul [Expr.minusOne, em]]])
+  | "tanh" => some (.mul [.add [ep, .mul [Expr.minusOne, em]], .pow (.add [ep, em]) Expr.minusOne])
+  | _ => none
+
+/-- A call `f(args)`, with the reciprocal and hyperbolic functions read as what they mean. -/
 def mkCall (f : String) (args : List Expr) : Expr :=
   match reciprocalOf f, args with
   | some g, [u] => .pow (.fn g [u]) Expr.minusOne
+  | _, [u] => (hyperbolic f u).getD (.fn f args)
   | _, _ => .fn f args
 
 -- Greek letters (α … ω) and the script ℯ are identifier characters, so `π`, `φ`, `ℯ^x` parse

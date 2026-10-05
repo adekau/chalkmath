@@ -244,6 +244,41 @@ export const FUNCTIONS: FnDoc[] = [
     ref: "https://mathworld.wolfram.com/Cotangent.html",
   },
   {
+    name: "cosh", area: "Elementary functions",
+    usage: [["cosh(x)", "gives the hyperbolic cosine of `x`, (e^x + e^-x) / 2."]],
+    details: [
+      "Notation, not a function of its own: `cosh(x)` is read as `(exp(x) + exp(-x))/2`, the even part of `exp`, and the answer is written that way.",
+      "So its derivative, its integrals and its values are those of `exp`, with their proofs, and an exercise answer written with `cosh` is checked by what it means.",
+      "`(cosh t, sinh t)` runs along the hyperbola x² − y² = 1 as `(cos t, sin t)` runs round the circle, and `cosh(i*t)` is `cos(t)`.",
+    ],
+    examples: [
+      basic("cosh(x)", "cosh(0)", "N(cosh(1))"),
+      section("Scope", "diff(cosh(x), x) - sinh(x)", "expand(cosh(x)^2 - sinh(x)^2)", "exptotrig(cosh(i*t))"),
+    ],
+    see: ["sinh", "tanh", "exp", "cos"],
+    ref: "https://mathworld.wolfram.com/HyperbolicCosine.html",
+  },
+  {
+    name: "sinh", area: "Elementary functions",
+    usage: [["sinh(x)", "gives the hyperbolic sine of `x`, (e^x − e^-x) / 2."]],
+    details: ["Notation, not a function of its own: `sinh(x)` is read as `(exp(x) - exp(-x))/2`, the odd part of `exp`, and the answer is written that way."],
+    examples: [
+      basic("sinh(x)", "diff(sinh(x), x) - cosh(x)", "expand(cosh(x) + sinh(x))"),
+    ],
+    see: ["cosh", "tanh", "exp", "sin"],
+    ref: "https://mathworld.wolfram.com/HyperbolicSine.html",
+  },
+  {
+    name: "tanh", area: "Elementary functions",
+    usage: [["tanh(x)", "gives the hyperbolic tangent of `x`, sinh x / cosh x."]],
+    details: ["Notation, not a function of its own: `tanh(x)` is read as `(exp(x) - exp(-x))/(exp(x) + exp(-x))`, and the answer is written that way."],
+    examples: [
+      basic("tanh(x)", "N(tanh(2))", "expand(diff(tanh(x), x) - (1 - tanh(x)^2))"),
+    ],
+    see: ["sinh", "cosh", "tan"],
+    ref: "https://mathworld.wolfram.com/HyperbolicTangent.html",
+  },
+  {
     name: "arcsin", area: "Elementary functions",
     usage: [["arcsin(x)", "gives the inverse sine of `x`, the angle from -π/2 to π/2 whose sine is `x`."]],
     details: [

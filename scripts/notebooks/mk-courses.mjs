@@ -2740,7 +2740,7 @@ theorem normalize_sound : ∀ (ops : List Op) (s : Option Nat), run s (normalize
 
 // ---------------------------------------------------------------------------------------------------
 course("calculus", "Calculus: derivatives and integrals",
-  "The rules of differentiation and the chain rule; the circle behind cos, sin and e^(it); tangent lines; then antiderivatives the engine checks by differentiating, definite integrals and Riemann sums.",
+  "The rules of differentiation and the chain rule; the circle behind cos, sin and e^(it), and the hyperbola behind cosh and sinh; tangent lines; then antiderivatives the engine checks by differentiating, definite integrals and Riemann sums.",
   "Calculus I–II", (add) => {
 
   add("01-rules.chalk", "The rules of differentiation", "Powers, sums, constant multiples and products: four rules, every step named.", ({ sec, md, m, ex }) => {
@@ -3012,7 +3012,117 @@ LP = label(P, "1 + iy") color 1
 `);
   });
 
-  add("04-tangent-lines.chalk", "Higher derivatives and tangent lines", "Derivatives of derivatives, slopes at a point, and the tangent line that follows a slider.", ({ sec, md, m, ex }) => {
+  // the sectors of the circle and the hyperbola, as polygons through points of the arc
+  const arc = (pt, n = 12) => Array.from({ length: n + 1 }, (_, k) => pt(`${k}*t/${n}`)).join(", ");
+  add("04-hyperbolic.chalk", "Hyperbolic functions: the other circle", "cosh and sinh as the even and odd parts of e^x, the hyperbola they walk along as cos and sin walk the circle, the area that t measures on both, and derivatives with no minus sign.", ({ sec, md, m, ex, sc }) => {
+    sec("Hyperbolic functions: the other circle");
+    md(r`
+> [!goal]
+> Build $\cosh$ and $\sinh$ out of $e^x$ and $e^{-x}$, see them walk along a hyperbola the way $\cos$ and $\sin$ walk round the circle, and read their derivatives off that picture.
+`);
+    md(r`The engine reads ‹cosh›, ‹sinh› and ‹tanh› as their definitions in ‹exp›, so its answers come back in exponentials. That is the point of this lesson: everything about them is something about $e^x$.`);
+    sec("Even and odd parts of e^x");
+    md(r`
+> [!definition] Hyperbolic cosine and sine
+> $\cosh x = \dfrac{e^x + e^{-x}}{2}$, the average of $e^x$ and its mirror image $e^{-x}$; and $\sinh x = \dfrac{e^x - e^{-x}}{2}$, half their difference.
+`);
+    sc(r`
+clock t from -1.39 to 1.4
+view -2, 2, -2.2, 4.6
+Ep = graph(exp(x), x, -1.5, 1.5) faint color 1
+Em = graph(exp(-x), x, -1.5, 1.5) faint color 2
+A = point(t + i*exp(t)) color 1
+B = point(t + i*exp(-t)) color 2
+AB = segment(A, B) dashed color 6
+Mc = point(t + i*cosh(t)) thick color 3
+Cg = graph(cosh(x), x, -1.4, t) thick color 3
+Cf = graph(cosh(x), x, -1.4, 1.4) thick color 3
+D = segment(Mc, A) thick color 4
+Ms = point(t + i*sinh(t)) thick color 4
+Sf = graph(sinh(x), x, -1.4, 1.4) thick color 4
+> show Ep, Em | $e^x$ (orange) grows to the right; its mirror image $e^{-x}$ (blue) grows to the left.
+> show A, B, AB, Mc, Cg; play t to 1.4 in 5s | At every $x$, take the point halfway between them: their average, $\cosh x$ (green). It is symmetric, an **even** function, lowest at $\cosh 0 = 1$.
+> hide Cg; show Cf, D | From the average up to $e^x$ is half their difference: $\sinh x$ (pink). So $e^x = \cosh x + \sinh x$.
+> show Ms, Sf | Drawn on its own, $\sinh x$ is **odd**: through $0$, and turned half a turn about it.
+> play t to -1.39 in 5s | Walk back. At every $x$, $e^x = \cosh x + \sinh x$ and $e^{-x} = \cosh x - \sinh x$: an even part and an odd part, the way every function splits.
+`);
+    m("cosh(x)");
+    m("expand(cosh(x) + sinh(x))", { work: true });
+    m("expand(cosh(x) - sinh(x))");
+    m("cosh(-x) - cosh(x)");
+    sec("The hyperbola");
+    md(r`$(\cos t, \sin t)$ stays on the circle because $\cos^2 t + \sin^2 t = 1$. Multiply out the definitions, and the hyperbolic pair satisfies the same equation with one sign changed:`);
+    m("expand(cosh(x)^2 - sinh(x)^2)");
+    md(r`
+> [!theorem] The unit hyperbola
+> $\cosh^2 t - \sinh^2 t = 1$: the point $(\cosh t, \sinh t)$ lies on the hyperbola $x^2 - y^2 = 1$, on its right branch, since $\cosh t > 0$.
+`);
+    sc(r`
+clock t from 0 to 1.4
+view -1.7, 2.7, -1.5, 2.45
+C = curve(exp(i*s), s, 0, 2pi) faint color 6
+H = curve(cosh(s) + i*sinh(s), s, -1.5, 1.5) color 3
+Q = point(exp(i*t)) thick color 1
+RQ = segment(0, Q) color 1
+P = point(cosh(t) + i*sinh(t)) thick color 3
+R = segment(0, P) color 3
+X = point(cosh(t)) color 2
+DX = segment(P, X) dashed color 2
+Y = point(i*sinh(t)) color 4
+DY = segment(P, Y) dashed color 4
+V = value(cosh(t)^2 - sinh(t)^2, "\cosh^2 t - \sinh^2 t = ")
+SC = poly(0, ${arc((u) => `exp(i*${u})`)}) color 1
+SH = poly(0, ${arc((u) => `cosh(${u}) + i*sinh(${u})`)}) color 3
+Ar = value(t/2, "\text{each shaded area} = ")
+> show C, Q, RQ | The unit circle, $x^2 + y^2 = 1$, and $(\cos t, \sin t)$ on it.
+> show H, P, R | The unit hyperbola, $x^2 - y^2 = 1$, and $(\cosh t, \sinh t)$ on it: the same recipe with one sign flipped.
+> show X, DX, Y, DY, V; play t to 1.4 in 4s | The shadows of the green point are $\cosh t$ (blue) and $\sinh t$ (pink). The point runs out along the hyperbola, and $\cosh^2 t - \sinh^2 t$ never leaves $1$.
+> hide X, DX, Y, DY, V; play t to 0 in 2s | So what is $t$? On the circle it is an angle. On the hyperbola it is not: the green segment's angle never reaches $45°$, however large $t$ grows.
+> show SC, SH, Ar; play t to 1.4 in 5s | But on both, $t$ measures an **area**: the sector swept out from $1$ has area $\frac{t}{2}$, on the circle and on the hyperbola alike. The hyperbola's sector is long and thin; its area grows at exactly the circle's rate.
+`);
+    md(r`Why $\frac t2$? A point $(x(s), y(s))$ moving from $s = 0$ to $t$ sweeps a sector of area $\frac12 \int_0^t (x y' - y x')\,ds$. For the hyperbola the integrand is $\cosh^2 s - \sinh^2 s$:`);
+    m("expand(cosh(s)*diff(sinh(s), s) - sinh(s)*diff(cosh(s), s))");
+    m("integrate(1, s, 0, t)/2");
+    md(r`For the circle it is $\cos^2 s + \sin^2 s$, which is $1$ too, the circle's own equation (the engine leaves it written that way):`);
+    m("expand(cos(s)*diff(sin(s), s) - sin(s)*diff(cos(s), s))");
+    sec("Derivatives with no minus sign");
+    md(r`The circle's point $e^{it}$ has velocity $i e^{it}$: the radius turned a quarter, so $\cos' = -\sin$ and $\sin' = \cos$. Differentiate the hyperbola's point instead:`);
+    m("diff(cosh(x), x) - sinh(x)", { work: true });
+    m("diff(sinh(x), x) - cosh(x)");
+    sc(r`
+clock t from -1.2 to 0.6
+view -1.4, 2.8, -1.8, 2.4
+H = curve(cosh(s) + i*sinh(s), s, -1.7, 1.7) faint color 3
+K = line(0, 1 + i) dashed color 6
+P = point(cosh(t) + i*sinh(t)) thick color 3
+R = arrow(0, P) color 3
+M = arrow(0, sinh(t) + i*cosh(t)) dashed color 4
+Vel = arrow(P, cosh(t) + sinh(t) + i*(sinh(t) + cosh(t))) thick color 4
+> show H, P, R | The point $(\cosh t, \sinh t)$ and its position arrow.
+> show Vel; play t to 0.6 in 4s | Its velocity (pink) is $(\sinh t, \cosh t)$. The circle's velocity is its radius turned a quarter; this one is never at right angles to the radius.
+> show K, M | It is the position with $x$ and $y$ swapped: its mirror image in the line $y = x$ (dashed, from $0$). Reflecting has no minus sign, and neither do $\cosh' = \sinh$ and $\sinh' = \cosh$.
+> play t to -0.9 in 4s | The velocity's tip runs along that line: it is at $(\cosh t + \sinh t)(1, 1) = e^t (1, 1)$.
+`);
+    sec("The circle, turned by i");
+    md(r`
+> [!intuition] cos is cosh at an imaginary argument
+> Put $it$ into the definition: $\cosh(it) = \frac{e^{it} + e^{-it}}{2}$, and Euler's formula turns that into $\cos t$. The hyperbola and the circle are one curve, $x^2 \mp y^2 = 1$, seen along the real and the imaginary axis.
+`);
+    m("exptotrig(cosh(i*t))", { work: true });
+    m("expand(exptotrig(sinh(i*t)))");
+    md(r`A chain hanging between two posts takes the shape of $\cosh$, the **catenary**. Near the bottom it is almost the parabola $1 + \frac{x^2}{2}$, and then it climbs away from it, exponentially:`);
+    m("plot([cosh(x), 1 + x^2/2], x, -3, 3)");
+    ex("diff(cosh(3x), x)", r`Differentiate $\cosh(3x)$.`, [r`$\cosh' = \sinh$, with no minus sign.`, r`The chain rule: times the inner derivative, $3$.`]);
+    ex("expand(cosh(x) + sinh(x))", r`What is $\cosh x + \sinh x$? Give it as a single function.`, [r`Add the two definitions: the $e^{-x}$ terms cancel.`]);
+    ex("cosh(0)", r`What is $\cosh 0$? Where is the point $(\cosh 0, \sinh 0)$ on the hyperbola?`, [r`$e^0 = 1$.`], { hide: true });
+    ex("expand(cosh(2x) - (cosh(x)^2 + sinh(x)^2))", r`Check the double-angle formula $\cosh 2x = \cosh^2 x + \sinh^2 x$: what is the difference of the two sides?`, [r`Write everything in $e^{x}$ and expand.`], { hide: true });
+    md(r`
+> [!summary]
+> $\cosh$ and $\sinh$ are the even and odd parts of $e^x$. The point $(\cosh t, \sinh t)$ walks the hyperbola $x^2 - y^2 = 1$ as $(\cos t, \sin t)$ walks the circle, with $t$ twice the area swept on both; its velocity is its mirror image, so $\cosh' = \sinh$ and $\sinh' = \cosh$; and at an imaginary argument the hyperbolic functions are the circular ones.
+`);
+  });
+
+  add("05-tangent-lines.chalk", "Higher derivatives and tangent lines", "Derivatives of derivatives, slopes at a point, and the tangent line that follows a slider.", ({ sec, md, m, ex }) => {
     sec("Higher derivatives and tangent lines");
     md(r`
 > [!goal]
@@ -3053,7 +3163,7 @@ LP = label(P, "1 + iy") color 1
 `);
   });
 
-  add("05-antiderivatives.chalk", "Antiderivatives, checked", "Integration as the search for a function whose derivative you know, accepted only after the engine differentiates it back.", ({ sec, md, m, ex }) => {
+  add("06-antiderivatives.chalk", "Antiderivatives, checked", "Integration as the search for a function whose derivative you know, accepted only after the engine differentiates it back.", ({ sec, md, m, ex }) => {
     sec("Antiderivatives, checked");
     md(r`
 > [!goal]
@@ -3100,7 +3210,7 @@ LP = label(P, "1 + iy") color 1
 `);
   });
 
-  add("06-definite-integrals.chalk", "Definite integrals and sums", "The fundamental theorem of calculus, finite sums, and Riemann sums that close in on the area as a slider adds rectangles.", ({ sec, md, m, ex }) => {
+  add("07-definite-integrals.chalk", "Definite integrals and sums", "The fundamental theorem of calculus, finite sums, and Riemann sums that close in on the area as a slider adds rectangles.", ({ sec, md, m, ex }) => {
     sec("Definite integrals and sums");
     md(r`
 > [!goal]
