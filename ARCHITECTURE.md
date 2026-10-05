@@ -24,6 +24,18 @@ differential test with zero mismatches.
 4. The engine is stateful per session (a notebook), stateless across sessions.
 5. New capabilities are added as optional fields, never by changing existing ones, so an old
    frontend keeps working against a new engine and vice versa.
+6. Every call settles. A reply that is not JSON-RPC (an HTTP error page, a line a crashing process
+   printed) fails the call it answers, oldest first, instead of throwing in the transport's listener
+   (`createClient`). An engine that goes away fails everything in flight: the stdio transport
+   reports the process's exit, and the native host (`leanNativeClient`) starts a new process on the
+   next call, saying the sessions are gone; the HTTP host also stops a request after a deadline (60 s,
+   `CHALKMATH_TIMEOUT`), since the one process serves every session in turn, and answers a body that
+   is not a request, or is over 1 MB, with an error rather than falling over. It listens on
+   `localhost` unless `CHALKMATH_HOST` says otherwise. In the browser, a call that traps in the
+   wasm (out of stack or memory) has already consumed the session store (`engine/c/shim.c`), so
+   the worker does not answer it: it fails as a worker, and the notebook offers the restart that
+   rebuilds the sessions. The wasm stack sits at the bottom of memory (`--stack-first`), so an
+   overflow traps instead of overwriting the static data above it.
 
 ## 3. The engine
 
@@ -106,6 +118,14 @@ differential test with zero mismatches.
   `N` with a `ln` in it take ten seconds. Newton's method for `ln` and `arctan` starts from a
   double-precision guess, which can only change how fast it converges: the candidates are still
   checked. `x^(1/2)`, which is how `sqrt` is written, is a square root, not `exp(½ ln x)`.
+- **An exact answer has a size.** `p^n` for numerals evaluates exactly, and the decimal of a number
+  is quadratic in its length (the browser's runtime has no GMP), so a power whose exact value would
+  pass `maxPowerBits` (65,536 bits, 19,728 digits) refuses the evaluation and says how many digits it
+  would have; so does a base of 0 or ±1 to an exponent past a machine word, which Lean's `Nat.pow`
+  cannot take. The check is a pass over the input before it is normalized (`powerTooLarge`,
+  `Limits.lean`, called by `normCell`), sizing each power of closed numeral terms in floating point,
+  so the rules and their proofs are untouched; a big power the rewriting assembles from small ones
+  is not caught, and Stop is the answer to it.
 - **A plain `e` is a variable.** `ℯ` (`\e`) is `exp(1)`, so `ℯ^x` is `exp(x)`, but the letter `e` is
   a variable like any other, even though `N` gives it Euler's value (`ieval` treats the name `e` as
   a constant, as `ieval_sound` assumes). A cell whose input has a free `e` says so under its answer:
@@ -431,6 +451,21 @@ beside each step comes from `engine.capabilities.ruleStatus` rather than a list 
 that could drift from `proofs/`. The one thing the page derives from source text is a cell's *kind*
 label, which is presentation only.
 
+**What the browser keeps.** Every open notebook is autosaved to `localStorage` after a run or an
+edit, coalesced, and flushed when the page is hidden (a phone closes a page without `beforeunload`).
+Each browser tab saves under a key of its own, `chalkmath.autosave.<tab id>`
+(`autosave-store.ts`): the id lasts the tab's life, reloads included (`sessionStorage`), and the tab
+holds a Web Lock of that name while it is open. When a tab starts, it adopts every autosave whose
+lock nobody holds — tabs that have closed, and the single shared key of older versions — opening
+their notebooks and folding their keys into its own, under a lock so two starting tabs cannot both
+take one. So two tabs never overwrite each other, a reload finds its own notebooks, a second tab
+does not open copies of a live tab's, and closing the browser loses nothing. An autosave that does
+not read is moved to a `chalkmath.autosave.bad.*` key, with a notice, rather than saved over. Typing
+does not serialize the notebook: deciding whether a notebook is unsaved (`docDirty`) compares its
+serialization, steps included, with the saved text, tens of milliseconds on a big notebook, so the
+tabs' unsaved marks and the autosave follow the typing once it pauses (`typed`). An error nothing
+caught is logged with the build id and shown in a notice, at most one every ten seconds.
+
 The visual math input (`packages/math-editor`) is the one exception to "does not parse", and it
 reads notation, not meaning. A cell has one source, its text: it is what is saved and what the
 engine is sent, and the text and typeset inputs are two views of it. The editor reads the text into
@@ -714,3 +749,16 @@ Mathlib lives only in `proofs/`. `lake exe cache get` there fetches prebuilt ole
 building from source takes hours). The wasm runtime is built from source for the pinned tag
 (`scripts/build-lean-wasm-runtime.sh`, results in `book/SPIKE-RESULTS.md`), cached under
 `engine/toolchains/<tag>` and keyed by tag.
+
+Emscripten is pinned too, in `engine/wasm/emscripten-version`, and every workflow that runs `emcc`
+(`lean-wasm.yml`, `pages.yml`, and CI's `wasm` job, which builds the engine for wasm on every pull
+request so a wasm-only breakage shows before the merge) installs that version and names it in its
+cache key: runtime objects built by one `emcc` are not linked by another.
+
+**What a deploy changes.** The build is the commit it was made from (`scripts/bundle.mjs`; shown in
+Help › About and in error reports). Every file the page loads by URL carries `?v=` and a hash of its
+own contents (`versioned`, `apps/notebook/src/version.ts`): the bundle builds the files in the order
+they refer to each other, hashes each once written, and gives the hashes to the builds that load
+them. So a browser downloads the engine's wasm, the Lean editor (2.6 MB compressed) or WebLLM again
+only when that file changed, not after every deploy as when the stamp was the build time. Lean's own
+large files are content-addressed in Cache Storage as well (§4b).

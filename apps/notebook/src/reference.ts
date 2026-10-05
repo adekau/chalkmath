@@ -65,6 +65,7 @@ export const FUNCTIONS: FnDoc[] = [
       "Every math cell is simplified anyway; `simplify` names the intent.",
       "The normal form collects like terms, combines powers of the same base, cancels what cancels and keeps arithmetic exact: fractions stay fractions and roots stay roots.",
       "Each rewrite is a step, with its rule and the rule's proof status.",
+      "A power of numbers is computed exactly up to 19,728 digits (65,536 bits); a bigger one, like `2^(10^9)`, is an error that says how many digits it would have. `N` cannot help there, since it computes the exact value first.",
     ],
     examples: [
       basic("simplify(x + x)", "simplify(x^2 * x^3 / x)"),

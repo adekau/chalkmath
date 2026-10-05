@@ -398,8 +398,19 @@ export function createClient(t: Transport): EngineClient {
   const listeners: ((e: Error) => void)[] = [];
   t.onError?.((e) => { failAll(e); for (const l of listeners) l(e); });
   t.onMessage((raw) => {
-    const msg = JSON.parse(raw) as RpcResponse;
-    if (msg.id === null) return;
+    let msg: RpcResponse | null = null;
+    try { msg = JSON.parse(raw) as RpcResponse; } catch { /* not JSON: answered below */ }
+    if (!msg || typeof msg !== "object") {
+      // a reply that is not JSON-RPC fails the oldest call instead of throwing in the transport's
+      // listener (which kills a Node host) and leaving it pending: the engines answer in order
+      const oldest = pending.keys().next();
+      if (oldest.done) return;
+      const p = pending.get(oldest.value)!;
+      pending.delete(oldest.value);
+      p.reject(new Error(`the engine sent a reply that is not JSON-RPC: ${raw.slice(0, 80)}`));
+      return;
+    }
+    if (msg.id === null || msg.id === undefined) return;
     const p = pending.get(msg.id);
     if (!p) return;
     pending.delete(msg.id);
@@ -426,6 +437,9 @@ export function serve(t: Transport, engine: EngineHandler): void {
     let req: RpcRequest;
     try { req = JSON.parse(raw) as RpcRequest; }
     catch { t.send(JSON.stringify({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } })); return; }
+    if (!req || typeof req !== "object" || typeof req.method !== "string") {
+      t.send(JSON.stringify({ jsonrpc: "2.0", id: null, error: { code: -32600, message: "Invalid Request" } })); return;
+    }
     try {
       const result = await engine.handle(req.method, req.params as never);
       t.send(JSON.stringify({ jsonrpc: "2.0", id: req.id, result }));

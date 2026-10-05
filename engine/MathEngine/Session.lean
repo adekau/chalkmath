@@ -1552,6 +1552,7 @@ def plotValue (s : Session) (cellId : String) (value : Expr) :
     | .fn "plot" (f :: .var x :: a :: b :: rest) =>
       match num a, num b with
       | some lo, some hi =>
+        if !(lo.isFinite && hi.isFinite) then (s, .error ("eval", "plot: the range must be finite numbers", none)) else
         let n := samples rest 300
         match record x f with
         | (s, .error msg) => (s, .error ("eval", msg, none))

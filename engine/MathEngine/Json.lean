@@ -24,7 +24,8 @@ def getBool (j : Json) (k : String) (d := false) : Bool :=
 private def escape (s : String) : String :=
   s.foldl (fun acc c => acc ++ match c with
     | '"' => "\\\"" | '\\' => "\\\\" | '\n' => "\\n" | '\r' => "\\r" | '\t' => "\\t"
-    | c => if c.val < 32 then s!"\\u{String.ofList (Nat.toDigits 16 c.val.toNat)}" else c.toString) ""
+    -- the other control characters as \u and four hex digits (JSON allows nothing shorter)
+    | c => if c.val < 32 then s!"\\u00{if c.val < 16 then "0" else ""}{String.ofList (Nat.toDigits 16 c.val.toNat)}" else c.toString) ""
 
 partial def render : Json → String
   | .null => "null"
@@ -56,6 +57,18 @@ private def lit (w : String) (v : Json) : PM Json := do
   for c in w.toList do expectC c
   pure v
 
+/-- The four hex digits of a `\u` escape. -/
+private def hex4 : PM Nat := do
+  let mut code := 0
+  for _ in [0:4] do
+    match ← peek with
+    | some h =>
+      let d := if h.isDigit then h.toNat - '0'.toNat else if 'a' ≤ h.toLower && h.toLower ≤ 'f' then h.toLower.toNat - 'a'.toNat + 10 else 16
+      if d == 16 then throw "bad \\u escape"
+      adv; code := code * 16 + d
+    | none => throw "bad \\u escape"
+  pure code
+
 private partial def strLit : PM String := do
   expectC '"'
   let rec go (acc : String) : PM String := do
@@ -68,14 +81,18 @@ private partial def strLit : PM String := do
       | some 'n' => adv; go (acc.push '\n')
       | some 't' => adv; go (acc.push '\t')
       | some 'r' => adv; go (acc.push '\r')
+      | some 'b' => adv; go (acc.push '\x08')
+      | some 'f' => adv; go (acc.push '\x0c')
       | some 'u' =>
         adv
-        let mut code := 0
-        for _ in [0:4] do
-          match ← peek with
-          | some h => adv; code := code * 16 + (if h.isDigit then h.toNat - '0'.toNat else h.toLower.toNat - 'a'.toNat + 10)
-          | none => throw "bad \\u escape"
-        go (acc.push (Char.ofNat code))
+        let code ← hex4
+        -- a character beyond the BMP comes as a surrogate pair, `\uD83D\uDE00`
+        if 0xD800 ≤ code && code < 0xDC00 && (← peek) == some '\\' then
+          adv; expectC 'u'
+          let lo ← hex4
+          if 0xDC00 ≤ lo && lo < 0xE000 then go (acc.push (Char.ofNat (0x10000 + (code - 0xD800) * 0x400 + (lo - 0xDC00))))
+          else throw "bad surrogate pair"
+        else go (acc.push (Char.ofNat code))
       | some c => adv; go (acc.push c)
       | none => throw "bad escape"
     | some c => adv; go (acc.push c)

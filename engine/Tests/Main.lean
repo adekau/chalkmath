@@ -1086,8 +1086,19 @@ def intRootTests : TestM Unit := do
   check "past maxRootBits nothing is searched" (toString (perfectPower (10 ^ 5000), qthPowerPart (10 ^ 5000) 2)) s!"(none, (1, {10 ^ 5000}))"
   check "radical display, 1,333 bits" (match parseStmt "sqrt(10^401)" with | .ok st => (match (normalizeT pipelineRules pipelineOrdered st.value).run' #[] with | .ok e => e.toLatex | .error m => m) | .error _ => "parse") s!"{10 ^ 200}\\sqrt\{10}"
 
+/-- The wire format: JSON the engine writes is JSON every reader accepts (`JSON.parse` refuses a short
+`\u` escape, and has no infinity), and the escapes it reads are the standard's. -/
+def jsonTests : TestM Unit := do
+  check "control characters escape to four hex digits" (Json.render (.str "a\x01\x1fb")) "\"a\\u0001\\u001fb\""
+  check "escapes read back" (toString ((Json.parse "\"\\b\\f\\u00e9\\ud83d\\ude00\"").toOption.map (·.render)))
+    s!"(some {Json.render (.str "\x08\x0cé😀")})"
+  check "a control character typed in a cell comes back in a reply that parses"
+    (toString ((Json.parse (rpc "engine.evaluate" "{\"sessionId\":\"j\",\"cellId\":\"c\",\"source\":\"1+\\u0001\"}")).toOption.isSome)) "true"
+  checkTrue "a plot range past a double is refused, not sent as inf"
+    (contains (rpc "engine.plot" "{\"sessionId\":\"j\",\"cellId\":\"p\",\"source\":\"plot(x, x, 0, 10^400)\"}") "the range must be finite")
+
 def main : IO UInt32 := do
-  let ((), failures) ← (do tests; sessionTests; integrateTests; trigTests; quietTests; partStatTests; workTests; scaleTests; checkTests; logicRelTests; algebraTests; systemsTests; complexNTests; intervalTests; intRootTests; goldenTests).run #[]
+  let ((), failures) ← (do tests; sessionTests; integrateTests; trigTests; quietTests; partStatTests; workTests; scaleTests; checkTests; logicRelTests; algebraTests; systemsTests; complexNTests; intervalTests; intRootTests; jsonTests; goldenTests).run #[]
   for f in failures do
     IO.println s!"FAIL {f.name}\n  expected: {f.expected}\n  actual:   {f.actual}"
   IO.println s!"{failures.size} failures"

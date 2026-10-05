@@ -210,7 +210,7 @@ Add one from Edit › Add Lean exercise or the ‹▾› between cells. Its edit
 ## Saving
 
 - **File › Save** (Ctrl/⌘+S) keeps the notebook in this browser's storage under its name; **Save as…** (Ctrl/⌘+Shift+S) gives it another. The first save of an untitled notebook asks for a name, and a name already saved here is pointed out before it is replaced. **Open…** lists the notebooks saved here.
-- Open tabs are kept as you work and come back when you reload the page, unsaved changes included; a tab with unsaved changes shows its name in italics, with a dot where its **×** is (a ‹*› after the name on a touch screen). A lesson from the Courses tab is never unsaved: it keeps your work on its own ([Courses and examples](#doc:examples)).
+- Open tabs are kept as you work and come back when you reload the page, unsaved changes included. Each browser tab keeps its own: ChalkMath open in a second browser tab starts empty and does not touch the first one's notebooks, and the notebooks of a browser tab you close come back in the next one you open; a tab with unsaved changes shows its name in italics, with a dot where its **×** is (a ‹*› after the name on a touch screen). A lesson from the Courses tab is never unsaved: it keeps your work on its own ([Courses and examples](#doc:examples)).
 - Browser storage belongs to this browser on this machine. Clearing the site's data clears it, and a private window forgets it. To keep a notebook, or move it to another machine, export it.
 
 ## Files and links
