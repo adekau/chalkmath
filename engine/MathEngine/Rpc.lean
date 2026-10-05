@@ -58,7 +58,7 @@ def ruleStatus : Json :=
     entry "diff.higher-order" "verified" "diff(f, x, n) for a positive integer n is written as n successive diff(·, x) (diffHigherOrder_spec), and those mean Mathlib's n-th iterated derivative of f read as a function of x (diffHigherOrder_soundR).",
     entry "cmd.simplify" "verified" "A cell's argument is already in normal form when the command sees it (the pipeline rewrites innermost first), so simplify returns it unchanged: the identity.",
     entry "cmd.subst" "verified" "Structural substitution e[x := v] (substVar) evaluates as e with x rebound to the value of v (cmdSubst_soundR, from substVar_soundR).",
-    entry "cmd.N" "verified" "The decimal is certified: interval arithmetic over the rationals holds the exact real value (ieval_sound), with Taylor remainders for exp, sin and cos (Real.exp_bound, Complex.exp_bound), ln checked by exp, sqrt by squaring and π to twenty digits (Real.pi_gt_d20), and the digits shown are the most, up to fifteen, within a unit of their last place of everything in the interval (certify_sound, cmdN_sound). arctan is pinned by tan (atanCheck_mem). A complex value is certified part by part: a rectangle of two intervals holds the principal value (cieval_sound), through the formulas for the parts of a product, a quotient, exp, sin and cos, a real argument to ln and sqrt, an integer power or a real base under a real exponent, and otherwise ln z = ln|z| + i arg z with the argument from arctan (arg_eq_arctan_of_re_pos, arg_eq_of_im_pos, clnI_mem) and b^e = exp(e ln b); each part's digits are within a unit of their last place (cmdN_soundC). Where the constants e and π have their values.",
+    entry "cmd.N" "verified" "The decimal is certified: interval arithmetic over the rationals holds the exact real value (ieval_sound), with Taylor remainders for exp, sin and cos (Real.exp_bound, Complex.exp_bound) on sums taken in interval arithmetic (expSumI_mem, trigSumI_mem), ln checked by exp, sqrt and x^(1/2) by squaring and π to twenty digits (Real.pi_gt_d20), and the digits shown are the most, up to fifteen, within a unit of their last place of everything in the interval (certify_sound, cmdN_sound). arctan is pinned by tan (atanCheck_mem). A complex value is certified part by part: a rectangle of two intervals holds the principal value (cieval_sound), through the formulas for the parts of a product, a quotient, exp, sin and cos, a real argument to ln and sqrt, an integer power or a real base under a real exponent, and otherwise ln z = ln|z| + i arg z with the argument from arctan (arg_eq_arctan_of_re_pos, arg_eq_of_im_pos, clnI_mem) and b^e = exp(e ln b); each part's digits are within a unit of their last place (cmdN_soundC). Where the constants e and π have their values.",
     entry "cmd.N.float" "unverified" "A floating-point approximation in IEEE-754 double precision, for what cmd.N cannot certify: a function across a pole or a jump, the logarithm or a power of a number on (or too near) the negative real axis, where the argument jumps, and arcsin and arccos. No error bound is proved.",
     entry "la.add" "verified" "Matrices of one shape add entrywise: the output has the input's value, read in evalV, which gives a matrix its value (laAdd_sound).",
     entry "la.scalar-mul" "verified" "A real factor multiplies every entry; real factors commute past a matrix (laScalarMul_sound, for a node whose children are normal, as the pipeline fires it).",
@@ -448,6 +448,15 @@ with no `In[n]` taken and `%` untouched. -/
 def numbered (st0 st : Store) (params : Json) (sessionId cellId : String) (j : Json) : Store × Json :=
   if params.getBool "quiet" then (st0, j) else withLabel st sessionId cellId j
 
+/-- The warning for a free `e`: the letter is a variable, not Euler's number `ℯ`. -/
+def eWarning : String :=
+  "e here is a variable, not Euler's number: e^x is not exp(x) and does not simplify like it (only N gives e Euler's value). For the constant, type \\e (it shows as ℯ), or write exp(x)."
+
+/-- Warnings about a cell's input (after the session's bindings are substituted), not counting the
+parameters a function definition binds. -/
+def inputWarnings (input : Expr) (params : List String) : List String :=
+  if (Expr.freeVars input).contains "e" && !params.contains "e" then [eWarning] else []
+
 def evaluate (st : Store) (params : Json) : Store × Json :=
   match params.getStr? "source" with
   | none => (st, errorJson "params" "missing source")
@@ -473,6 +482,9 @@ where
         let sem := if mentionsI d.input || mentionsI out then "complex" else "real"
         let res := #[("ok", .bool true), ("value", out.toJson), ("rendered", Rendered.toJson out paths), ("semantics", .str sem)]
         let res := res ++ workFields params d
+        let ps := match stmt with | .«let» _ ps _ => ps | _ => []
+        let warnings := inputWarnings d.input ps
+        let res := if warnings.isEmpty then res else res.push ("warnings", .arr (warnings.map .str).toArray)
         let res := match stmt with
           | .«let» name [] _ => res.push ("bound", .arr #[.str name])
           | .«let» name ps _ => (res.push ("bound", .arr #[.str name])).push ("params", .arr (ps.map .str).toArray)

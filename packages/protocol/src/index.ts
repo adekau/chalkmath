@@ -196,6 +196,9 @@ export interface EvaluateResult {
   /** Which semantics the cell is read in: "complex" when the input or output mentions `i`,
    *  otherwise "real". Decides which of a rule's statuses applies. Optional (rule 5). */
   semantics?: "real" | "complex";
+  /** Things about the input worth a word under the answer, such as a variable named `e` (not
+   *  Euler's number `ℯ`). Optional (rule 5). */
+  warnings?: string[];
 }
 
 export interface EvaluateError {

@@ -14,7 +14,9 @@ How each operation keeps its interval honest:
   so the numbers stay small (`lower`, `upper`).
 - `exp y` for `|y| ≤ 1` is the Taylor sum with its remainder (`Real.exp_bound`); a larger argument is
   halved `k` times and the result squared `k` times. `exp` is increasing, so an interval's image is
-  its ends' images.
+  its ends' images. The sum is itself taken in interval arithmetic (`expSumI`), each term the last
+  times `y/(m+1)`, rounded outward: the exact sum's denominator grows to thousands of bits, which
+  made `N` take seconds in the browser, whose runtime has no GMP.
 - `sin y`, `cos y` for `|y| ≤ 1` are the imaginary and real parts of the Taylor sum of `exp(iy)`
   (`Complex.exp_bound`); a larger argument is halved and doubled back (`sin 2x = 2 sin x cos x`,
   `cos 2x = 2 cos² x − 1`). An interval's image is its midpoint's, widened by its radius: both are
@@ -22,7 +24,8 @@ How each operation keeps its interval honest:
 - `ln q` is pinned between two candidates `l` checked by `exp`: `exp l ≤ q` means `l ≤ ln q`.
 - `sqrt q` is pinned between two candidates checked by squaring.
 - `π` is Mathlib's twenty digits (`Real.pi_gt_d20`, `Real.pi_lt_d20`); `e` is `exp 1`.
-- `b^x` is a power by an integer when `x` is one, and `exp(x ln b)` when `b > 0`.
+- `b^x` is a power by an integer when `x` is one, a square root when `x = 1/2`, and `exp(x ln b)`
+  when `b > 0`.
 
 A term outside this (a variable, `sign` across zero, `tan` across a pole, a negative base under a
 fractional power) gets no interval, and `N` says its value is a floating-point approximation.
@@ -105,8 +108,29 @@ def sinSum (y : Rat) : Nat → Rat
   | 0 => 0
   | n + 1 => sinSum y n + (if n % 2 = 1 then (if n % 4 = 1 then 1 else -1) * y ^ n / (fact n : Rat) else 0)
 
-/-- The Taylor remainder bound for `|y| ≤ 1`: `|y|^n (n+1) / (n! n)`. -/
-def remainder (y : Rat) (n : Nat) : Rat := rabs y ^ n * ((n + 1 : Nat) : Rat) / ((fact n * n : Nat) : Rat)
+/-- `x` rounded up to 32 bits below its leading bit: small enough to raise to a power. -/
+def coarseUp (x : Rat) : Rat := -floorTo ((Nat.log2 x.num.natAbs : Int) - (Nat.log2 x.den : Int) - 32) (-x)
+
+/-- The Taylor remainder bound for `|y| ≤ 1`, `|y|^n (n+1) / (n! n)`, with `|y|` rounded up first. -/
+def remainder (y : Rat) (n : Nat) : Rat := coarseUp (rabs y) ^ n * ((n + 1 : Nat) : Rat) / ((fact n * n : Nat) : Rat)
+
+/-- `expSum` and `cosSum`, `sinSum` above are what the intervals below hold; these are what runs.
+`expSumI y n` is an interval holding `expSum y n` and one holding the next term `y^n/n!`. -/
+def expSumI (y : Rat) : Nat → I × I
+  | 0 => (point 0, point 1)
+  | n + 1 =>
+    let st := expSumI y n
+    (add st.1 st.2, mul st.2 (point (y / ((n + 1 : Nat) : Rat))))
+
+/-- Intervals holding `cosSum y n`, `sinSum y n` and the next term's size `y^n/n!`. -/
+def trigSumI (y : Rat) : Nat → I × I × I
+  | 0 => (point 0, point 0, point 1)
+  | n + 1 =>
+    let p := trigSumI y n
+    let t := p.2.2
+    (if n % 2 = 0 then add p.1 (if n % 4 = 0 then t else neg t) else p.1,
+     if n % 2 = 1 then add p.2.1 (if n % 4 = 1 then t else neg t) else p.2.1,
+     mul t (point (y / ((n + 1 : Nat) : Rat))))
 
 /-- How many halvings bring `q` into `[-1, 1]`. -/
 def halvings (q : Rat) : Nat := Nat.log2 (q.num.natAbs / q.den) + 1
@@ -120,14 +144,17 @@ def expPoint (q : Rat) : Option I :=
   let k := halvings q
   let y := q / ((2 ^ k : Nat) : Rat)
   if rabs y ≤ 1 then
-    let s := expSum y terms
+    let s := (expSumI y terms).1
     let r := remainder y terms
-    some (sqN k (round ⟨s - r, s + r⟩))
+    some (sqN k (round ⟨s.lo - r, s.hi + r⟩))
   else none
+
+/-- `f y`, reusing `f x = fx` when `y = x`: a point interval's two ends are computed once. -/
+def again (f : Rat → Option I) (x y : Rat) (fx : I) : Option I := if y = x then some fx else f y
 
 def expI (a : I) : Option I := do
   let l ← expPoint a.lo
-  let h ← expPoint a.hi
+  let h ← again expPoint a.lo a.hi l
   return ⟨l.lo, h.hi⟩
 
 /-- Double an angle `k` times: `(sin, cos) ↦ (2 sin cos, 2 cos² − 1)`. -/
@@ -141,9 +168,8 @@ def sinCosPoint (q : Rat) : Option (I × I) :=
   let y := q / ((2 ^ k : Nat) : Rat)
   if rabs y ≤ 1 then
     let r := remainder y terms
-    let s := sinSum y terms
-    let c := cosSum y terms
-    some (dbl k (round ⟨s - r, s + r⟩, round ⟨c - r, c + r⟩))
+    let cs := trigSumI y terms
+    some (dbl k (round ⟨cs.2.1.lo - r, cs.2.1.hi + r⟩, round ⟨cs.1.lo - r, cs.1.hi + r⟩))
   else none
 
 def mid (a : I) : Rat := (a.lo + a.hi) / 2
@@ -170,10 +196,22 @@ def lnNewton (q : Rat) : Nat → Rat → Rat
     | some e => lnNewton q n (lower (l + q * mid e - 1))
     | none => l
 
+/-- A floating-point `ln q`, about fifteen digits, for Newton's method to start from; none where a
+double overflows. Any start would be sound: the candidates are checked with `exp`. -/
+def lnStart (q : Rat) : Option Rat :=
+  (Q.ofFloat (Float.log (Float.ofInt q.num) - Float.log (Float.ofNat q.den))).map (·.val)
+
+/-- Newton's answer for `ln q`. From the floating-point start three steps are enough (the error
+squares each step: 2⁻⁵⁰, 2⁻¹⁰⁰, 2⁻²⁰⁰); from the rough one, twelve. -/
+def lnApprox (q : Rat) : Rat :=
+  match lnStart q with
+  | some l => lnNewton q 3 l
+  | none => lnNewton q 12 (lnGuess q)
+
 /-- `ln q` for `q > 0`: candidates either side of Newton's answer, each checked with `exp`. -/
 def lnPoint (q : Rat) : Option I :=
   if 0 < q then
-    let l := lnNewton q 12 (lnGuess q)
+    let l := lnApprox q
     let ε := (1 + rabs l) / ((2 ^ 170 : Nat) : Rat)
     let a := lower (l - ε)
     let b := upper (l + ε)
@@ -184,7 +222,7 @@ def lnPoint (q : Rat) : Option I :=
 
 def lnI (a : I) : Option I := do
   let l ← lnPoint a.lo
-  let h ← lnPoint a.hi
+  let h ← again lnPoint a.lo a.hi l
   return ⟨l.lo, h.hi⟩
 
 /-- Newton's method for `√q`: `s ↦ (s + q/s)/2`. -/
@@ -217,11 +255,14 @@ def piI : I := ⟨314159265358979323846 / 100000000000000000000, 314159265358979
 /-- An integer, if the interval is exactly one. -/
 def asInt (a : I) : Option Int := if a.lo = a.hi ∧ a.lo.den = 1 then some a.lo.num else none
 
-/-- `b ^ x`: a power by an integer, or `exp(x ln b)` for `b > 0`. -/
+/-- `b ^ x`: a power by an integer, a square root for `x = 1/2` (how `sqrt` is written), or
+`exp(x ln b)` for `b > 0`. -/
 def powI (b x : I) : Option I :=
   match asInt x with
   | some n => if 0 ≤ n then some (npow b n.toNat) else inv (npow b n.natAbs)
-  | none => if 0 < b.lo then do expI (mul x (← lnI b)) else none
+  | none =>
+    if x.lo = 1 / 2 ∧ x.hi = 1 / 2 then sqrtI b
+    else if 0 < b.lo then do expI (mul x (← lnI b)) else none
 
 /-! ## `arctan` -/
 
@@ -238,7 +279,7 @@ sound: `atanCheck` decides. -/
 def atanCandidates (q : Rat) : Rat × Rat :=
   let start : Rat := match Q.ofFloat (Float.atan (Float.ofInt q.num / Float.ofNat q.den)) with
     | some r => r.val | none => 0
-  let θ := atanNewton q 8 start
+  let θ := atanNewton q 4 start
   let ε := (1 + rabs θ) / ((2 ^ 170 : Nat) : Rat)
   (lower (θ - ε), upper (θ + ε))
 
@@ -260,7 +301,7 @@ def atanPoint (q : Rat) : Option I := atanCheck q (atanCandidates q).1 (atanCand
 
 def atanI (a : I) : Option I := do
   let l ← atanPoint a.lo
-  let h ← atanPoint a.hi
+  let h ← again atanPoint a.lo a.hi l
   return ⟨l.lo, h.hi⟩
 
 def fnI (f : String) (a : I) : Option I :=

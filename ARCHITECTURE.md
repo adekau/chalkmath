@@ -76,6 +76,16 @@ differential test with zero mismatches.
   `ln z` and `b^e = exp(e ln b)` are certified too. What the intervals do not reach (a pole, a jump,
   the cut, where the argument jumps) falls to the old double-precision evaluation, `cmd.N.float`, which
   says it is not certified.
+  The numbers have to stay small, because the browser's runtime is built without GMP and its big
+  integers are slow: every operation rounds outward to 192 bits, the Taylor sums included (`expSumI`,
+  `trigSumI`, proved to hold the exact sums). The exact sums ran to thousands of bits and made one
+  `N` with a `ln` in it take ten seconds. Newton's method for `ln` and `arctan` starts from a
+  double-precision guess, which can only change how fast it converges: the candidates are still
+  checked. `x^(1/2)`, which is how `sqrt` is written, is a square root, not `exp(½ ln x)`.
+- **A plain `e` is a variable.** `ℯ` (`\e`) is `exp(1)`, so `ℯ^x` is `exp(x)`, but the letter `e` is
+  a variable like any other, even though `N` gives it Euler's value (`ieval` treats the name `e` as
+  a constant, as `ieval_sound` assumes). A cell whose input has a free `e` says so under its answer:
+  `engine.evaluate` returns `warnings` (`inputWarnings`, `Rpc.lean`), an optional field.
 - **Elimination is verified over ℚ by construction.** `LinAlgQ.lean` writes Gauss–Jordan as a
   list of the three elementary row operations, each invertible (the degenerate parameters are the
   identity), and proves `sol_rref`: the reduced matrix has the input's solution set. The `rref`

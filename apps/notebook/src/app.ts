@@ -242,6 +242,8 @@ interface Cell {
   /** λ-cells: the result with de Bruijn indices, and what it reads as (a Church numeral or boolean). */
   outDeBruijn?: string | undefined;
   reading?: string | undefined;
+  /** What the engine warned about the input (a variable named `e`, say), shown under the answer. */
+  warnings?: string[] | undefined;
   /** What the engine said the cell was, once it has answered; the badge guesses from the source until then. */
   kind?: string;
   /** Order-world cells: the Hasse diagram to draw, and the one-line summary. */
@@ -712,11 +714,13 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
       : await client.call("engine.evaluate", params);
     cell.ms = performance.now() - t0;
     queueMicrotask(autosave);
+    delete cell.warnings;
     if (r.ok) {
       cell.label = r.label ?? cell.label ?? nextLabel++;
       cell.outLatex = r.rendered.latex;
       cell.outText = r.rendered.text;
       cell.semantics = "semantics" in r && r.semantics === "complex" ? "complex" : "real";
+      if ("warnings" in r && r.warnings?.length) cell.warnings = r.warnings;
       cell.echoLatex = r.inputRendered?.latex;
       // a file's numbers can be hundreds of rows: then the interpretation names what made them instead
       // (a few numbers read better as themselves: mean([0.33; 4.87; …]))
@@ -893,7 +897,7 @@ async function evaluateFileCell(cell: Cell, fc: { bind?: string; file: FileValue
     renderHighlights();
   }
   delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.plot; delete cell.manip; delete cell.error;
-  delete cell.outDeBruijn; delete cell.reading; delete cell.kind; delete cell.hasse; delete cell.summary; delete cell.visuals;
+  delete cell.outDeBruijn; delete cell.reading; delete cell.warnings; delete cell.kind; delete cell.hasse; delete cell.summary; delete cell.visuals;
   cell.steps = []; delete cell.outline;
   cell.file = { name: file.name, mime: file.mime, size: fileSize(file), origin: file.origin };
   CELL_FILES.set(cell, file);
@@ -2398,7 +2402,7 @@ function moveCell(cell: Cell, by: -1 | 1) {
 }
 const hasOutput = (cell: Cell) => !!(cell.outLatex || cell.file || cell.error);
 function clearCellOutput(cell: Cell) {
-  delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.error; delete cell.plot; delete cell.manip; delete cell.hasse; delete cell.summary; delete cell.visuals; delete cell.file; delete cell.outDeBruijn; delete cell.reading;
+  delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.error; delete cell.plot; delete cell.manip; delete cell.hasse; delete cell.summary; delete cell.visuals; delete cell.file; delete cell.outDeBruijn; delete cell.reading; delete cell.warnings;
   delete cell.ask; delete cell.askTrail;
   cell.steps = []; delete cell.outline; cell.label = null;
   renderCellBody(cell); renderChrome(); renderSidebar(); autosave();
@@ -4718,6 +4722,7 @@ function renderCellBody(cell: Cell) {
     if (cell.reading && !answerHeld(cell)) { const rd = h("span", "reading", `≡ ${cell.reading}`); rd.title = "What the normal form encodes"; val.append(rd); }
     if (cell.summary && !cell.hasse && !answerHeld(cell)) { const rd = h("span", "reading", cell.summary); val.append(rd); }
     for (const box of cellVisuals(cell)) val.append(box);
+    if (!answerHeld(cell)) for (const w of cell.warnings ?? []) { const wn = h("div", "outwarn", `⚠ ${w}`); wn.setAttribute("role", "note"); val.append(wn); }
     out.append(val, h("div", "brk"));
     el.append(out);
     if (cell.ask && ASK_CELL.test(cell.src)) out.append(h("div"), askInfo(cell, !!ASK_CELL.exec(cell.src)?.[1]), h("div"));
