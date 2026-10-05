@@ -26,16 +26,29 @@ differential test with zero mismatches.
    frontend keeps working against a new engine and vice versa.
 6. Every call settles. A reply that is not JSON-RPC (an HTTP error page, a line a crashing process
    printed) fails the call it answers, oldest first, instead of throwing in the transport's listener
-   (`createClient`). An engine that goes away fails everything in flight: the stdio transport
-   reports the process's exit, and the native host (`leanNativeClient`) starts a new process on the
-   next call, saying the sessions are gone; the HTTP host also stops a request after a deadline (60 s,
-   `CHALKMATH_TIMEOUT`), since the one process serves every session in turn, and answers a body that
-   is not a request, or is over 1 MB, with an error rather than falling over. It listens on
-   `localhost` unless `CHALKMATH_HOST` says otherwise. In the browser, a call that traps in the
-   wasm (out of stack or memory) has already consumed the session store (`engine/c/shim.c`), so
-   the worker does not answer it: it fails as a worker, and the notebook offers the restart that
-   rebuilds the sessions. The wasm stack sits at the bottom of memory (`--stack-first`), so an
-   overflow traps instead of overwriting the static data above it.
+   (`createClient`); so does an error reply with no id, which says the request could not be read (a
+   body the host refused): the engines answer in order, so it is the oldest call's. A send that throws
+   fails its own call and leaves no entry behind to take another's reply. An engine's error keeps its
+   JSON-RPC code through every host (`RpcError`), so a frontend can tell a method this engine does not
+   have (`-32601`, rule 5's case) from an evaluation that failed. An engine that goes away fails
+   everything in flight: the stdio transport reports the process's exit, and the native host
+   (`leanNativeClient`) starts a new process on the next call, saying the sessions are gone. The native
+   process serves one request at a time, so the host queues the calls and writes them one by one, and
+   a call's deadline (60 s, `CHALKMATH_TIMEOUT`) counts from when its request is written, not from
+   when it was asked for: a deadline measured from the asking killed a healthy engine, with every
+   session in it, whenever other callers kept it busy for a minute. The HTTP host answers a body that
+   is not a request, or is over 1 MB, with an error rather than falling over, by the request's id
+   where its first bytes show it. It listens on `localhost` unless `CHALKMATH_HOST` says otherwise,
+   and answers any page's origin unless `CHALKMATH_ORIGIN` names the ones it serves. In the browser,
+   the worker passes the page's messages to the engine and its replies back as they are: `handle`
+   answers a JSON-RPC request with the reply to it, id included, so nothing is parsed or serialized
+   between the page and the engine, where a derivation can run to megabytes. The request is written
+   into memory `malloc` gives, not the wasm stack (`cwrap`'s own string conversion puts an argument
+   there, and the stack is the 1 MB the engine recurses on), and the reply is the Lean string itself,
+   freed after it is read. A call that traps in the wasm (out of stack or memory) has already consumed
+   the session store (`engine/c/shim.c`), so the worker does not answer it: it fails as a worker, and
+   the notebook offers the restart that rebuilds the sessions. The wasm stack sits at the bottom of
+   memory (`--stack-first`), so an overflow traps instead of overwriting the static data above it.
 
 ## 3. The engine
 
@@ -473,8 +486,25 @@ does not open copies of a live tab's, and closing the browser loses nothing. An 
 not read is moved to a `chalkmath.autosave.bad.*` key, with a notice, rather than saved over. Typing
 does not serialize the notebook: deciding whether a notebook is unsaved (`docDirty`) compares its
 serialization, steps included, with the saved text, tens of milliseconds on a big notebook, so the
-tabs' unsaved marks and the autosave follow the typing once it pauses (`typed`). An error nothing
+tabs' unsaved marks and the autosave follow the typing once it pauses (`typed`). Nor does
+evaluating: the chrome is redrawn twice per evaluation and on every change of the active cell, and
+its tab bar asks whether the notebook is unsaved, so it takes a serialization at most a moment old
+(`serializedNow`); what must be exact (typing's mark, the autosave, a save, a close) asks afresh.
+Running a cell at the end of the notebook adds the next cell alone (`appendCell`) rather than
+rebuilding every cell, and moving between cells only moves the active mark; the full rebuild
+(`renderCells`) is for a change of the cells' order or kind. What KaTeX typesets is kept
+(`tex`, a bounded memo), since a rebuild typesets every output and step again and almost none has
+changed. A record in a file or an autosave is checked field by field before it is a cell, so a
+damaged one makes an empty cell rather than an exception half-way through opening. An error nothing
 caught is logged with the build id and shown in a notice, at most one every ten seconds.
+
+A notebook keeps running in the background when its tab is left: its cells evaluate in its own
+session (`docOf(cell).sessionId`, never the session of the tab shown), its work is fetched from that
+session, and its finishing leaves the reader's selection in the notebook shown alone; its cells'
+elements are the ones its tab had, no longer on the page, and nothing is drawn into them (they are
+built again when the tab comes back). A cell's result is cleared in one place (`clearResult`): the
+output, the work and everything a reply puts beside them, so an error, a conversion, Clear all and
+a restart forget the same things (a stale `kind` or `visuals` used to survive some of them).
 
 The visual math input (`packages/math-editor`) is the one exception to "does not parse", and it
 reads notation, not meaning. A cell has one source, its text: it is what is saved and what the
@@ -683,7 +713,10 @@ settings, the cell) is `apps/notebook/src/ask-cells.ts`.
   numbers (or the formula), its sources and a quote; or a model that can search the web itself
   (OpenRouter's web search) does, and its citations are the sources.
 - **What the model says is checked, not trusted.** Every number it gives is looked for in what it
-  read (a number written in words counts) and flagged ⚠ when it is not there. A formula is read from
+  read (a number written in words counts; digits grouped by spaces, `1 234 567`, are one number) and
+  flagged ⚠ when it is not there. "What it read" is the evidence it was given, not every page whole:
+  a number that is on a page but was not in the evidence came from the model's memory, and across
+  five whole pages every small number and every year is somewhere. A formula is read from
   the LaTeX it quotes by code (`tex.ts`), never from the model's translation, and flagged when the
   pages do not write it that way. A question that asks to make something (a random matrix) is no
   lookup and is refused before any search. The model's memory is the last resort, and an answer

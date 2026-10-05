@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <string.h>
-int mathengine_init(void); char* mathengine_call(const char*); void mathengine_free(char*);
+int mathengine_init(void); const char* mathengine_call(const char*); void mathengine_free(const char*);
 int main(void) {
   if (mathengine_init()) return 1;
   const char* reqs[] = {
@@ -11,7 +11,7 @@ int main(void) {
   };
   for (int i = 0; i < 4; i++) {
     for (int rep = 0; rep < 500; rep++) {            /* 2000 calls: leaks/refcount bugs show up here */
-      char* r = mathengine_call(reqs[i]);
+      const char* r = mathengine_call(reqs[i]);
       if (rep == 0) puts(r);
       mathengine_free(r);
     }

@@ -220,9 +220,9 @@ class Writer {
     switch (a.k) {
       case "ch": this.out += a.c; return;
       case "frac": {
-        // bare only where nothing on the left would join the numerator and no power follows
+        // bare only where nothing on the left would join the numerator and no power or part follows
         const p = b[j - 1], pc = p?.k === "ch" ? p.c : null;
-        const bare = b[j + 1]?.k !== "sup" && (!p || p.k === "let" || pc === "+" || (pc === "-" ? binaryMinus(b, j - 1) : pc !== null && (isSep(pc) || keywordAt(b, j - 1) || (pc === " " && keywordAt(b, j - 2)))));
+        const bare = b[j + 1]?.k !== "sup" && b[j + 1]?.k !== "part" && (!p || p.k === "let" || pc === "+" || (pc === "-" ? binaryMinus(b, j - 1) : pc !== null && (isSep(pc) || keywordAt(b, j - 1) || (pc === " " && keywordAt(b, j - 2)))));
         if (!bare) this.out += "(";
         if (a.num.length > 0 && !additive(a.num)) this.block(a.num);
         else { this.out += "("; this.block(a.num); this.out += ")"; }

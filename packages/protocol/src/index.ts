@@ -391,10 +391,30 @@ export interface EngineHandler {
   handle<M extends MethodName>(method: M, params: Methods[M]["params"]): Promise<Methods[M]["result"]>;
 }
 
+/** An error reply from the engine, with its JSON-RPC code (`-32601` for a method this engine does
+ *  not have, which an old frontend against a new engine, or the reverse, can tell from a failure). The
+ *  message keeps the `code: message` form the hosts and the notebook show. */
+export class RpcError extends Error {
+  constructor(public readonly code: number, message: string, public readonly data?: unknown) {
+    super(`${code}: ${message}`);
+    this.name = "RpcError";
+  }
+  /** The message without the code in front, for a host that forwards the error with its code. */
+  get detail(): string { return this.message.replace(/^-?\d+: /, ""); }
+}
+
 export function createClient(t: Transport): EngineClient {
   let nextId = 1;
   const pending = new Map<number | string, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
   const failAll = (e: Error) => { for (const p of pending.values()) p.reject(e); pending.clear(); };
+  // the engines answer in order, so a reply that names no call is the oldest call's
+  const failOldest = (e: Error) => {
+    const oldest = pending.keys().next();
+    if (oldest.done) return;
+    const p = pending.get(oldest.value)!;
+    pending.delete(oldest.value);
+    p.reject(e);
+  };
   const listeners: ((e: Error) => void)[] = [];
   t.onError?.((e) => { failAll(e); for (const l of listeners) l(e); });
   t.onMessage((raw) => {
@@ -402,19 +422,20 @@ export function createClient(t: Transport): EngineClient {
     try { msg = JSON.parse(raw) as RpcResponse; } catch { /* not JSON: answered below */ }
     if (!msg || typeof msg !== "object") {
       // a reply that is not JSON-RPC fails the oldest call instead of throwing in the transport's
-      // listener (which kills a Node host) and leaving it pending: the engines answer in order
-      const oldest = pending.keys().next();
-      if (oldest.done) return;
-      const p = pending.get(oldest.value)!;
-      pending.delete(oldest.value);
-      p.reject(new Error(`the engine sent a reply that is not JSON-RPC: ${raw.slice(0, 80)}`));
+      // listener (which kills a Node host) and leaving it pending
+      failOldest(new Error(`the engine sent a reply that is not JSON-RPC: ${raw.slice(0, 80)}`));
       return;
     }
-    if (msg.id === null || msg.id === undefined) return;
+    if (msg.id === null || msg.id === undefined) {
+      // an error with no id says the request could not be read (a body the host refused, a parse
+      // error): it is the oldest call's answer, not a notification to drop
+      if ("error" in msg && msg.error) failOldest(new RpcError(msg.error.code, msg.error.message, msg.error.data));
+      return;
+    }
     const p = pending.get(msg.id);
     if (!p) return;
     pending.delete(msg.id);
-    if ("error" in msg) p.reject(new Error(`${msg.error.code}: ${msg.error.message}`));
+    if ("error" in msg) p.reject(new RpcError(msg.error.code, msg.error.message, msg.error.data));
     else p.resolve(msg.result);
   });
   return {
@@ -423,13 +444,23 @@ export function createClient(t: Transport): EngineClient {
       const req: RpcRequest = { jsonrpc: "2.0", id, method, params };
       return new Promise((resolve, reject) => {
         pending.set(id, { resolve: resolve as (v: unknown) => void, reject });
-        t.send(JSON.stringify(req));
+        // a send that throws (a closed socket, a worker gone) fails this call now, and does not
+        // leave an entry that would take the next reply meant for another call
+        try { t.send(JSON.stringify(req)); }
+        catch (e) { pending.delete(id); reject(e instanceof Error ? e : new Error(String(e))); }
       });
     },
     // closing abandons what is in flight: those calls fail now instead of never settling
     close() { t.close?.(); failAll(new Error("the engine connection was closed")); },
     onError(handler) { listeners.push(handler); },
   };
+}
+
+/** The error object a host answers with: an engine's own error keeps its code and data, anything
+ *  else is `-32000` with the message. */
+export function rpcErrorOf(e: unknown): RpcFailure["error"] {
+  if (e instanceof RpcError) return { code: e.code, message: e.detail, ...(e.data !== undefined ? { data: e.data } : {}) };
+  return { code: -32000, message: e instanceof Error ? e.message : String(e) };
 }
 
 export function serve(t: Transport, engine: EngineHandler): void {
@@ -444,8 +475,7 @@ export function serve(t: Transport, engine: EngineHandler): void {
       const result = await engine.handle(req.method, req.params as never);
       t.send(JSON.stringify({ jsonrpc: "2.0", id: req.id, result }));
     } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      t.send(JSON.stringify({ jsonrpc: "2.0", id: req.id, error: { code: -32000, message } }));
+      t.send(JSON.stringify({ jsonrpc: "2.0", id: req.id, error: rpcErrorOf(e) }));
     }
   });
 }
