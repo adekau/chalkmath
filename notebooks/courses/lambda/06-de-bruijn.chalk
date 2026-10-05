@@ -9,13 +9,37 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Write a term with de Bruijn indices, and use them to decide α-equivalence.",
+      "src": "> [!goal]\n> Write terms without bound names, so that α-equivalent terms are literally equal.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!definition] De Bruijn indices\n> Replace each bound variable by the number of λs between it and its binder: $0$ for the nearest. The λs lose their names. $\\lambda x.\\, \\lambda y.\\, x$ becomes $\\lambda.\\, \\lambda.\\, 1$. A free variable keeps its name.",
+      "src": "Names have cost us twice: substitution must rename to avoid capture (lesson 3), and $\\lambda x.\\, \\lambda y.\\, x$ and $\\lambda a.\\, \\lambda b.\\, a$ are one function with two spellings (lesson 2). Could every function have just one?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> What does a bound variable tell you? Only which λ it belongs to. How could you say that without a name?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Counting instead of naming",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Point at the binder by counting: replace each bound variable by how many λs it must step out past to reach its binder, $0$ for the nearest. The λs no longer need names. In $\\lambda x.\\, \\lambda y.\\, x$, the $x$ steps out past $\\lambda y$ to reach $\\lambda x$: one. So the term is $\\lambda.\\, \\lambda.\\, 1$, and so is $\\lambda a.\\, \\lambda b.\\, a$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] De Bruijn indices\n> Replace each bound variable by the number of λs between it and its binder: $0$ for the nearest. The λs lose their names. A free variable keeps its name.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -23,6 +47,12 @@
     {
       "src": "db: λx. λy. x",
       "showWork": true,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> Work out $\\lambda f.\\, \\lambda x.\\, f\\ (f\\ x)$ and $\\lambda x.\\, \\lambda y.\\, x\\ (\\lambda z.\\, z\\ y)$ before running them.",
+      "type": "markdown",
+      "showWork": false,
       "label": null
     },
     {
@@ -36,8 +66,18 @@
       "label": null
     },
     {
-      "src": "The same variable can have different indices in different places: in the last term $y$ is $0$ under one λ and $1$ under two.",
+      "src": "An index counts from where the variable stands, so it is not a label: the same variable gets different numbers at different depths, and different variables can share one.",
       "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "db: λx. x (λy. x)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "db: λx. x (λy. y)",
       "showWork": false,
       "label": null
     },
@@ -65,13 +105,41 @@
       "label": null
     },
     {
+      "src": "The price: shifting",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Without names nothing can be captured, so substitution never renames. It has its own bookkeeping instead. In $\\lambda z.\\, (\\lambda x.\\, \\lambda y.\\, x)\\ z$ the β-step gives $\\lambda z.\\, \\lambda y.\\, z$. Watch the $z$:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "db: λz. (λx. λy. x) z",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "db: λz. λy. z",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "As an argument it was $0$; put under $\\lambda y$ it is $1$, one more λ away from its binder. A term moved under a λ must have its free indices raised: **shifting**.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "In Lean",
       "type": "section",
       "showWork": false,
       "label": null
     },
     {
-      "src": "An interpreter on de Bruijn terms needs no renaming at all; the price is **shifting**: a term moved under a λ has its free indices raised by one.",
+      "src": "An interpreter on de Bruijn terms needs no renaming and no fresh names; it shifts instead.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -102,11 +170,17 @@
       "label": null
     },
     {
+      "src": "Answer with `true` or `false`; write both terms with indices first.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "alpha: λx. λy. y (λz. x), λa. λb. b (λb. a)",
       "type": "exercise",
       "prompt": "Are $\\lambda x.\\, \\lambda y.\\, y\\ (\\lambda z.\\, x)$ and $\\lambda a.\\, \\lambda b.\\, b\\ (\\lambda b.\\, a)$ α-equivalent?",
       "hints": [
-        "Write both with indices: the inner $x$ and $a$ are two λs up."
+        "The inner $x$ and $a$ each step out past two λs: both are $\\lambda.\\, \\lambda.\\, 0\\ (\\lambda.\\, 2)$."
       ],
       "showWork": false,
       "label": null
@@ -122,7 +196,17 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> De Bruijn indices count binders instead of naming them. Bound names disappear, so α-equivalent terms are equal, and substitution needs shifting instead of renaming.",
+      "src": "alpha: λx. x (λy. x), λa. a (λa. a)",
+      "type": "exercise",
+      "prompt": "Are $\\lambda x.\\, x\\ (\\lambda y.\\, x)$ and $\\lambda a.\\, a\\ (\\lambda a.\\, a)$ α-equivalent?",
+      "hints": [
+        "In the second, the inner $a$ belongs to the inner λ."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> De Bruijn indices point at a binder by counting the λs in between. Bound names disappear, so α-equivalent terms are equal, and substitution shifts indices instead of renaming.\n\nBack to lesson 1's question: with only functions, where are the numbers? Lesson 7.",
       "type": "markdown",
       "showWork": false,
       "label": null

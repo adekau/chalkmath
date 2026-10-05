@@ -347,7 +347,7 @@
     {
       "id": "lambda",
       "title": "λ-calculus I: computing with functions",
-      "blurb": "Terms, free and bound variables, substitution without capture, β-reduction and normal forms, evaluation strategies, de Bruijn indices, Church encodings and recursion by fixed points; an interpreter built in Lean alongside.",
+      "blurb": "What if functions were the only thing? Terms, free and bound variables, substitution without capture, β-reduction and normal forms, evaluation strategies, de Bruijn indices, Church encodings and recursion by fixed points; an interpreter built in Lean alongside.",
       "kind": "course",
       "level": "Logic and computation",
       "path": "courses/lambda",
@@ -356,42 +356,42 @@
         {
           "file": "01-terms.chalk",
           "title": "Terms and notation",
-          "blurb": "Variables, functions and applications; how terms are written and read; a first β-step."
+          "blurb": "A language with nothing but functions: variables, functions and applications, how they are written, and a first β-step."
         },
         {
           "file": "02-free-bound.chalk",
           "title": "Free and bound variables",
-          "blurb": "Which variables a λ binds, which are free, and why the names of bound ones do not matter."
+          "blurb": "Placeholders and outside values: which variables a λ binds, which are free, and why the names of bound ones do not matter."
         },
         {
           "file": "03-substitution.chalk",
           "title": "Substitution and capture",
-          "blurb": "Putting a term in for a variable, without capturing its free variables."
+          "blurb": "The obvious substitution, two ways it goes wrong, and the renaming that fixes it."
         },
         {
           "file": "04-beta.chalk",
           "title": "β-reduction and normal forms",
-          "blurb": "Reducing to normal form; terms that never stop; why the normal form is unique; η."
+          "blurb": "Chaining β-steps: where it stops, terms that never stop, why the order of steps cannot change the answer, and η."
         },
         {
           "file": "05-strategies.chalk",
           "title": "Evaluation strategies",
-          "blurb": "Which redex next: normal order, call by name, call by value, applicative order."
+          "blurb": "Which redex first: normal order, call by name, call by value, applicative order, and a term where the choice decides whether you finish."
         },
         {
           "file": "06-de-bruijn.chalk",
           "title": "De Bruijn indices",
-          "blurb": "Terms without bound names: indices count the λs, and α-equivalence becomes equality."
+          "blurb": "Terms without bound names: point at a variable's binder by counting λs, and α-equivalence becomes equality."
         },
         {
           "file": "07-church.chalk",
           "title": "Church encodings",
-          "blurb": "Booleans, numbers, arithmetic, pairs and lists, built from functions alone."
+          "blurb": "A thing is what you can do with it: booleans that choose, numerals that iterate, pairs, the predecessor puzzle, and lists."
         },
         {
           "file": "08-recursion.chalk",
           "title": "Recursion and fixed points",
-          "blurb": "No names, yet recursion: fixed-point combinators, factorial, and Y under call by value."
+          "blurb": "How a function can call itself without a name: self-application, the Y combinator derived from ω, factorial, and Z for call by value."
         }
       ]
     },

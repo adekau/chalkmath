@@ -9,19 +9,37 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Represent booleans, natural numbers, pairs and lists as functions, compute with them by reduction, and write new operations.",
+      "src": "> [!goal]\n> Build booleans, numbers and pairs out of functions, by asking what each one is for.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "Booleans",
+      "src": "Lesson 1 promised that functions are enough, yet there is no $\\mathsf{true}$ here and no $3$. To build them, ask what you **do** with a thing, and let the thing be that doing: a thing is what you can do with it.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Booleans choose",
       "type": "section",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!definition] Church booleans\n> $\\mathsf{true} = \\lambda t.\\, \\lambda f.\\, t$ and $\\mathsf{false} = \\lambda t.\\, \\lambda f.\\, f$: a boolean chooses one of two things. Then $\\mathsf{if}\\ b\\ x\\ y$ is just $b\\ x\\ y$, and $\\mathsf{not}\\ b = b\\ \\mathsf{false}\\ \\mathsf{true}$.",
+      "src": "What do you do with a boolean? Choose: \"if $b$ then $x$ else $y$\". So let the boolean be the chooser: $b\\ x\\ y$ should be $x$ when $b$ is true, and $y$ when it is false.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> Write $\\mathsf{true}$ and $\\mathsf{false}$: each takes two arguments.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Church booleans\n> $\\mathsf{true} = \\lambda t.\\, \\lambda f.\\, t$ keeps the first, and $\\mathsf{false} = \\lambda t.\\, \\lambda f.\\, f$ the second. Then $\\mathsf{if}\\ b\\ x\\ y$ is just $b\\ x\\ y$, and $\\mathsf{not}\\ b = b\\ \\mathsf{false}\\ \\mathsf{true}$.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -38,12 +56,18 @@
       "label": null
     },
     {
+      "src": "$\\mathsf{and}\\ p\\ q$ is \"if $p$ then $q$ else false\"; the library writes the \"false\" as $p$, which is false in that branch: $\\lambda p.\\, \\lambda q.\\, p\\ q\\ p$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "and true false",
       "showWork": false,
       "label": null
     },
     {
-      "src": "A definition, `name := term`, is there for the cells after it:",
+      "src": "A definition, `name := term`, is there for the cells after it. Exclusive or: if $p$, the opposite of $q$, else $q$:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -64,19 +88,42 @@
       "label": null
     },
     {
-      "src": "$\\mathsf{false}$ and $0$ are the same term, $\\lambda t.\\, \\lambda f.\\, f$: the reading names it as the numeral.",
+      "src": "$\\mathsf{false}$ and $0$ (below) are the same term, $\\lambda t.\\, \\lambda f.\\, f$: the reading names it as the numeral.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "Numbers",
+      "src": "Numerals iterate",
       "type": "section",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!definition] Church numerals\n> $n$ is the function that applies $f$ to $x$ $n$ times: $0 = \\lambda f.\\, \\lambda x.\\, x$, $1 = \\lambda f.\\, \\lambda x.\\, f\\ x$, $2 = \\lambda f.\\, \\lambda x.\\, f\\ (f\\ x)$. Then $\\mathsf{succ}\\ n$ applies $f$ once more, $\\mathsf{add}\\ m\\ n$ applies it $n$ times and then $m$ times, and $\\mathsf{mul}\\ m\\ n$ applies \"$f$ $n$ times\" $m$ times.",
+      "src": "What do you do with a natural number $n$? Do something $n$ times. So let $n$ be that: given $f$ and $x$, it applies $f$ to $x$, $n$ times.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Church numerals\n> $n$ is the function that applies $f$ to $x$ $n$ times: $0 = \\lambda f.\\, \\lambda x.\\, x$, $1 = \\lambda f.\\, \\lambda x.\\, f\\ x$, $2 = \\lambda f.\\, \\lambda x.\\, f\\ (f\\ x)$, and so on. In a λ-term a digit is its numeral.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "λf. λx. f (f (f x))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> Write $\\mathsf{succ}$: given $n$, apply $f$ once more than $n$ does. Then $\\mathsf{add}\\ m\\ n$: apply $f$ $n$ times, then $m$ more.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "$n\\ f\\ x$ is $f$ applied $n$ times, so $\\mathsf{succ} = \\lambda n.\\, \\lambda f.\\, \\lambda x.\\, f\\ (n\\ f\\ x)$, and $\\mathsf{add} = \\lambda m.\\, \\lambda n.\\, \\lambda f.\\, \\lambda x.\\, m\\ f\\ (n\\ f\\ x)$: start from $n\\ f\\ x$ and apply $f$ $m$ more times. ($\\lambda n.\\, \\lambda f.\\, \\lambda x.\\, n\\ f\\ (f\\ x)$, one extra $f$ first instead of last, is a successor just as good.) These are the library's:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -92,6 +139,12 @@
       "label": null
     },
     {
+      "src": "Multiplying is iterating an iteration: $\\mathsf{mul}\\ m\\ n = \\lambda f.\\, m\\ (n\\ f)$ does \"$f$, $n$ times\" $m$ times. And $\\mathsf{pow}\\ m\\ n = n\\ m$: $n$ copies of \"do it $m$ times\", composed.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "mul 2 3",
       "showWork": false,
       "label": null
@@ -102,7 +155,7 @@
       "label": null
     },
     {
-      "src": "A function that applies its argument twice is the numeral 2, and applying it to itself applies four times:",
+      "src": "So a function that applies its argument twice is the numeral 2, and applying it to itself applies four times:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -118,8 +171,26 @@
       "label": null
     },
     {
-      "src": "Pairs, and the predecessor",
+      "src": "The predecessor: a puzzle",
       "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Subtracting one looks easy and is not. A numeral can apply $f$; it can never undo it. Church himself at first doubted it could be done; his student Kleene found how.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> How do you get $n - 1$ from something that can only go forward $n$ times? A hint: go forward, but carry where you were one step ago.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Carrying two numbers needs a pair, and a pair is what you do with it: hand both to a selector.",
+      "type": "markdown",
       "showWork": false,
       "label": null
     },
@@ -135,7 +206,7 @@
       "label": null
     },
     {
-      "src": "Subtracting one is hard: a numeral can only apply $f$, never undo it. Kleene's trick counts up with pairs, $(0, 0) \\to (0, 1) \\to (1, 2) \\to \\cdots$, keeping the previous number in the first place. After $n$ steps the first place holds $n - 1$.",
+      "src": "Kleene's trick: start at $(0, 0)$ and step $(a, b) \\mapsto (b, b + 1)$, so $(0, 0) \\to (0, 1) \\to (1, 2) \\to (2, 3) \\to \\cdots$. The first place lags one behind the second, so after $n \\geq 1$ steps it holds $n - 1$; with no steps it holds $0$, which is as close as the naturals get to $0 - 1$.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -147,6 +218,12 @@
     },
     {
       "src": "pred 3",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Subtraction is then a predecessor iterated: $\\mathsf{sub}\\ m\\ n$ applies $\\mathsf{pred}$ to $m$, $n$ times. And $\\mathsf{iszero}\\ n = n\\ (\\lambda y.\\, \\mathsf{false})\\ \\mathsf{true}$: one application of \"make it false\" is enough to spoil $\\mathsf{true}$.",
+      "type": "markdown",
       "showWork": false,
       "label": null
     },
@@ -166,13 +243,19 @@
       "label": null
     },
     {
-      "src": "Lists",
+      "src": "Lists fold",
       "type": "section",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!definition] Church lists\n> A list is its own fold: given what to do with a head and the rest ($c$) and what to give for the empty list ($n$), it does it. $\\mathsf{nil} = \\lambda c.\\, \\lambda n.\\, n$ and $\\mathsf{cons}\\ h\\ t = \\lambda c.\\, \\lambda n.\\, c\\ h\\ (t\\ c\\ n)$, so $[1, 2]$ is $\\lambda c.\\, \\lambda n.\\, c\\ 1\\ (c\\ 2\\ n)$.",
+      "src": "What do you do with a list? Walk it: combine each head with the result for the rest, and say what to give for the empty list. So a list is its own fold.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Church lists\n> Given what to do with a head and the rest ($c$) and what to give for the empty list ($n$), a list does it: $\\mathsf{nil} = \\lambda c.\\, \\lambda n.\\, n$ and $\\mathsf{cons}\\ h\\ t = \\lambda c.\\, \\lambda n.\\, c\\ h\\ (t\\ c\\ n)$, so $[1, 2]$ is $\\lambda c.\\, \\lambda n.\\, c\\ 1\\ (c\\ 2\\ n)$.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -246,9 +329,15 @@
       "label": null
     },
     {
+      "src": "Answer with a numeral or a boolean by name, or with the λ-term. A cell that starts with a digit is read as arithmetic, so the last two questions name their strategy, `normal:`.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "pred 2",
       "type": "exercise",
-      "prompt": "Reduce $\\mathsf{pred}\\ 2$. Answer with a numeral, or the λ-term.",
+      "prompt": "Reduce $\\mathsf{pred}\\ 2$.",
       "hints": [
         "Two steps of the pair counter: $(0, 0) \\to (0, 1) \\to (1, 2)$."
       ],
@@ -256,19 +345,9 @@
       "label": null
     },
     {
-      "src": "pow 2 2",
-      "type": "exercise",
-      "prompt": "Reduce $\\mathsf{pow}\\ 2\\ 2$.",
-      "hints": [
-        "$2^2$."
-      ],
-      "showWork": false,
-      "label": null
-    },
-    {
       "src": "or false (not false)",
       "type": "exercise",
-      "prompt": "Reduce $\\mathsf{or}\\ \\mathsf{false}\\ (\\mathsf{not}\\ \\mathsf{false})$. Answer `true` or `false`.",
+      "prompt": "Reduce $\\mathsf{or}\\ \\mathsf{false}\\ (\\mathsf{not}\\ \\mathsf{false})$.",
       "hints": [
         "$\\mathsf{not}\\ \\mathsf{false}$ is $\\mathsf{true}$."
       ],
@@ -293,7 +372,27 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> With functions alone: booleans choose, numerals iterate, pairs wait for a selector, lists are their own folds. Arithmetic is composition of iterations, and the predecessor is a counter carried in a pair.",
+      "src": "normal: 3 not true",
+      "type": "exercise",
+      "prompt": "A numeral is a loop. Reduce $3\\ \\mathsf{not}\\ \\mathsf{true}$.",
+      "hints": [
+        "It applies $\\mathsf{not}$ to $\\mathsf{true}$ three times."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "normal: 2 (add 3) 0",
+      "type": "exercise",
+      "prompt": "Reduce $2\\ (\\mathsf{add}\\ 3)\\ 0$. Which operation on 2 and 3 have you invented?",
+      "hints": [
+        "It applies \"add 3\" to 0, twice."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> A thing is what you can do with it: booleans choose, numerals iterate, pairs wait for a selector, lists are their own folds. Arithmetic is iteration of iterations, and the predecessor is a counter carried in a pair.\n\nEvery loop here is a numeral, which knows in advance how many times to run. A loop that runs until it is done needs a function that calls itself. With no names, how can a function refer to itself? Lesson 8.",
       "type": "markdown",
       "showWork": false,
       "label": null
