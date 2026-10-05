@@ -3,25 +3,53 @@
   "name": "04-determinants.chalk",
   "cells": [
     {
-      "src": "Determinants",
+      "src": "Determinants: how a matrix scales area",
       "type": "section",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!goal]\n> Compute determinants, see that the determinant of a product is the product of determinants, and recognise a matrix with no inverse.",
+      "src": "> [!goal]\n> Find the factor by which a matrix scales area, get $ad - bc$ from a picture, and read a flip and the lack of an inverse off its sign and its zeros.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!definition] Determinant of a $2 \\times 2$ matrix\n> $\\det \\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix} = ad - bc$: the signed area of the parallelogram the columns span.",
+      "src": "Lesson 3's $\\begin{pmatrix} 1 & 2 \\\\ 2 & 4 \\end{pmatrix}$ squashed the plane onto a line, and could not be run backwards. How could you tell that from the four entries alone? Watch what a matrix does to area.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "let A = [1, 2; 3, 4]",
+      "src": "clock t from 0 to 1\nview -1.5, 5, -1.2, 4\nG1 = curve(-(1 + t*(2 + i)) + s*(i + t*(1 + i)), s, -1, 3) faint color 6\nG2 = curve(1 + t*(2 + i) + s*(i + t*(1 + i)), s, -1, 3) faint color 6\nG3 = curve(2*(1 + t*(2 + i)) + s*(i + t*(1 + i)), s, -1, 3) faint color 6\nH1 = curve(s*(1 + t*(2 + i)) - (i + t*(1 + i)), s, -1, 3) faint color 6\nH2 = curve(s*(1 + t*(2 + i)) + i + t*(1 + i), s, -1, 3) faint color 6\nH3 = curve(s*(1 + t*(2 + i)) + 2*(i + t*(1 + i)), s, -1, 3) faint color 6\nI = arrow(0, 1 + t*(2 + i)) thick color 2\nJ = arrow(0, i + t*(1 + i)) thick color 3\nQ1 = segment(1 + t*(2 + i), 1 + i + t*(3 + 2*i)) color 1\nQ2 = segment(i + t*(1 + i), 1 + i + t*(3 + 2*i)) color 1\nB1 = segment(0, 4) dashed color 4\nB2 = segment(4, 4 + 3i) dashed color 4\nB3 = segment(4 + 3i, 3i) dashed color 4\nB4 = segment(3i, 0) dashed color 4\n> wait 1s | The grid, and the unit square on $\\hat{\\imath}$ (blue) and $\\hat{\\jmath}$ (green): area $1$.\n> play t to 1 in 4s | Apply $\\begin{pmatrix} 3 & 1 \\\\ 1 & 2 \\end{pmatrix}$: $\\hat{\\imath}$ lands on $(3, 1)$, $\\hat{\\jmath}$ on $(1, 2)$, and the square on the parallelogram they span. Every other grid square becomes a copy of it.\n> show B1, B2, B3, B4 | Its area: box it in. The box is $3 + 1$ by $1 + 2$. Outside the parallelogram are two triangles of area $\\frac32$, two of area $1$, and two unit squares: $12 - 3 - 2 - 2 = 5$.",
+      "type": "scene",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Because the grid lines stay parallel and evenly spaced, every grid square becomes the same parallelogram, so every area (fill a shape with small squares) is scaled by one factor: the area of the parallelogram the columns span. That factor is the **determinant**. For columns $(a, c)$ and $(b, d)$ with positive entries, as in the picture, the box is $a + b$ by $c + d$, and what lies outside is two triangles of area $\\frac12 ac$, two of area $\\frac12 bd$, and two rectangles $b$ by $c$:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "expand((a + b)*(c + d) - a*c - b*d - 2*b*c)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Determinant of a $2 \\times 2$ matrix\n> $\\det \\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix} = ad - bc$: the factor by which the matrix scales area, with a sign that is the next section's subject.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "det([a, b; c, d])",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let A = [3, 1; 1, 2]",
       "showWork": false,
       "label": null
     },
@@ -32,45 +60,69 @@
       "stepwise": 0
     },
     {
-      "src": "det([2, 1, 0; 1, 3, 1; 0, 1, 2])",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "Products",
-      "type": "section",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "> [!theorem] Determinant of a product\n> $\\det(AB) = \\det A \\cdot \\det B$.",
+      "src": "> [!try]\n> Predict before computing. Stretching by $a$ across and by $d$ upwards should scale area by $ad$. A shear slides each square into a parallelogram with the same base and height, so it should not change area at all.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "let B = [0, 1; 1, 0]",
+      "src": "det([a, 0; 0, d])",
       "showWork": false,
       "label": null
     },
     {
-      "src": "det(A*B)",
+      "src": "det([1, k; 0, 1])",
       "showWork": false,
       "label": null
     },
     {
-      "src": "det(A)*det(B)",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "When the determinant is zero",
+      "src": "The sign: flipping the plane over",
       "type": "section",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!theorem] Invertibility\n> A square matrix has an inverse exactly when its determinant is not zero. A zero determinant means the columns lie on one line (or plane): the area they span is flat.",
+      "src": "$ad - bc$ can be negative, and an area cannot. Swap the columns of $\\begin{pmatrix} 1 & 0 \\\\ 0 & 1 \\end{pmatrix}$: $\\begin{pmatrix} 0 & 1 \\\\ 1 & 0 \\end{pmatrix}$ sends $\\hat{\\imath}$ to $(0, 1)$ and $\\hat{\\jmath}$ to $(1, 0)$, a mirror in the line $y = x$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "det([0, 1; 1, 0])",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "clock t from 0 to 1\nview -0.4, 1.6, -0.4, 1.4\nI = arrow(0, 1 - t + t*i) thick color 2\nLI = label(1 - t + t*i, \"\\hat{\\imath}\") color 2\nJ = arrow(0, t + (1 - t)*i) thick color 3\nLJ = label(t + (1 - t)*i, \"\\hat{\\jmath}\") color 3\nQ1 = segment(1 - t + t*i, 1 + i) color 1\nQ2 = segment(t + (1 - t)*i, 1 + i) color 1\n> wait 1s | The unit square: $\\hat{\\jmath}$ is a quarter turn counterclockwise from $\\hat{\\imath}$.\n> play t to 0.5 in 2.5s | Slide $\\hat{\\imath}$ toward $(0, 1)$ and $\\hat{\\jmath}$ toward $(1, 0)$. Halfway they meet, and the square is flat: area $0$.\n> play t to 1 in 2.5s | They pass each other, and the square opens out again, the same size but mirrored: now $\\hat{\\jmath}$ is clockwise from $\\hat{\\imath}$.",
+      "type": "scene",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The size of the area is unchanged; the negative sign records that the plane has been turned over. Halfway the matrix is $\\begin{pmatrix} \\frac12 & \\frac12 \\\\ \\frac12 & \\frac12 \\end{pmatrix}$, and along the way the determinant runs from $1$ to $-1$ through $0$:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "expand(det([1 - t, t; t, 1 - t]))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "That is no accident of this path: the determinant changes continuously as the entries do, so any continuous way of turning the plane into its mirror image passes through a moment with no area.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Zero: squashed flat",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Back to the opening question. A determinant of $0$ means the unit square goes to something with no area: the columns lie on one line, and the plane is squashed onto it (or onto $0$).",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -81,20 +133,98 @@
       "label": null
     },
     {
-      "src": "rref([1, 2; 2, 4])",
-      "showWork": true,
+      "src": "Squashing cannot be undone: many inputs land on each output, as lesson 3 found. When the determinant is not $0$ nothing is squashed, every target has exactly one input, and the move can be undone. Undoing $A$ means finding the inputs that $A$ sends to $\\hat{\\imath}$ and to $\\hat{\\jmath}$: those are the columns of the **inverse**. Elimination finds both at once, with both targets in the augmented matrix:",
+      "type": "markdown",
+      "showWork": false,
       "label": null
     },
     {
-      "src": "The reduced form has a row of zeros: the second column is twice the first.",
+      "src": "rref([3, 1, 1, 0; 1, 2, 0, 1])",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The right half is the inverse; $A$ times it gives back $\\hat{\\imath}$ and $\\hat{\\jmath}$. Every entry has $5 = \\det A$ underneath: dividing by the determinant is part of undoing a matrix, and a determinant of $0$ cannot be divided by.",
       "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A*[2/5, -1/5; -1/5, 3/5]",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!theorem] Invertibility\n> A square matrix has an inverse exactly when its determinant is not zero.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "One move after another",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Do $B$, then $A$. $B$ scales every area by $\\det B$, then $A$ scales the result by $\\det A$, so together they scale it by the product:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!theorem] Determinant of a product\n> $\\det(AB) = \\det A \\cdot \\det B$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let B = [1, -1; 1, 1]",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "det(B)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "det(A*B)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> Area scales multiply; they do not add. The tempting $\\det(A + B) = \\det A + \\det B$ is false: here it would be $5 + 2 = 7$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "det(A + B)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Three dimensions",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A $3 \\times 3$ matrix moves space, sending the three unit arrows to its three columns, and its determinant is the factor by which it scales volume: the signed volume of the slanted box the columns span. `det` expands it along the first row. A determinant of $0$ means space is squashed onto a plane, a line or a point.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "det([2, 1, 0; 1, 3, 1; 0, 1, 2])",
       "showWork": false,
       "label": null
     },
     {
       "src": "det([2, 1; 5, 3])",
       "type": "exercise",
-      "prompt": "Compute the determinant.",
+      "prompt": "By what factor does $\\begin{pmatrix} 2 & 1 \\\\ 5 & 3 \\end{pmatrix}$ scale area?",
       "hints": [
         "$ad - bc$ with $a = 2,\\ b = 1,\\ c = 5,\\ d = 3$."
       ],
@@ -112,17 +242,29 @@
       "label": null
     },
     {
+      "src": "det(2*[1, 2; 3, 4])",
+      "type": "exercise",
+      "prompt": "Invent it: $\\det \\begin{pmatrix} 1 & 2 \\\\ 3 & 4 \\end{pmatrix} = -2$. Predict the determinant of twice that matrix, $\\begin{pmatrix} 2 & 4 \\\\ 6 & 8 \\end{pmatrix}$, before computing it.",
+      "hints": [
+        "Doubling every entry doubles both columns: both sides of the parallelogram.",
+        "Not $2 \\cdot (-2)$."
+      ],
+      "hideQuestion": true,
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "det([1, 0, 0; 0, 2, 0; 0, 0, 3])",
       "type": "exercise",
-      "prompt": "Compute the determinant of this diagonal matrix.",
+      "prompt": "By what factor does $\\begin{pmatrix} 1 & 0 & 0 \\\\ 0 & 2 & 0 \\\\ 0 & 0 & 3 \\end{pmatrix}$ scale volume?",
       "hints": [
-        "For a diagonal matrix it is the product of the diagonal."
+        "It stretches the unit cube into a box, $1$ by $2$ by $3$."
       ],
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!summary]\n> The determinant is a single number that measures how a matrix scales area; it multiplies across products, and it is zero exactly when the matrix cannot be undone.",
+      "src": "> [!summary]\n> The determinant is the factor by which a matrix scales area (volume, in space): the area of the parallelogram its columns span, $ad - bc$ for a $2 \\times 2$ matrix. A negative sign means the plane is flipped over; $0$ means it is squashed flat, which is exactly when there is no inverse. One move after another multiplies the factors.\n>\n> A question this course leaves open: a matrix can knock a vector off the line it lies on, or only stretch it along that line. Which vectors does it only stretch, and by how much? $A v = \\lambda v$ with $v \\neq 0$ says that $A - \\lambda I$ squashes $v$ to $0$, so these stretch factors $\\lambda$ are where $\\det(A - \\lambda I) = 0$. They are called eigenvalues.",
       "type": "markdown",
       "showWork": false,
       "label": null

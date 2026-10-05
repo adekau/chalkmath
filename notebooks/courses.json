@@ -317,30 +317,30 @@
     {
       "id": "linear-algebra",
       "title": "Linear algebra: vectors, matrices and systems",
-      "blurb": "Vectors and the dot product, matrix arithmetic, solving systems by row reduction with verified row operations, and determinants.",
+      "blurb": "Vectors as arrows and as lists, matrices as moves of the plane, solving systems by elimination with verified row operations, and the determinant as the factor by which area scales.",
       "kind": "course",
       "level": "Linear algebra",
       "path": "courses/linear-algebra",
       "lessons": [
         {
           "file": "01-vectors.chalk",
-          "title": "Vectors and the dot product",
-          "blurb": "Adding and scaling vectors, lengths, and the dot product that measures angles."
+          "title": "Vectors: arrows, lists and the dot product",
+          "blurb": "Adding arrows tip to tail, stretching them, reaching every point with two of them, length, and the dot product as a shadow."
         },
         {
           "file": "02-matrices.chalk",
-          "title": "Matrices",
-          "blurb": "Matrix arithmetic, the product that is not commutative, the transpose, and a matrix acting on a vector."
+          "title": "Matrices as moves of the plane",
+          "blurb": "A matrix records where the two unit arrows land; from that, where it sends any vector, and multiplying matrices as one move after another, in an order that matters."
         },
         {
           "file": "03-systems.chalk",
-          "title": "Solving systems by row reduction",
-          "blurb": "An augmented matrix, the three row operations (each proved to keep the solutions), and reading the answer off the reduced form."
+          "title": "Solving systems by elimination",
+          "blurb": "Which input lands on a given output: elimination on the augmented matrix, row operations proved to keep the solutions, and the matrices that squash the plane, with no solution or infinitely many."
         },
         {
           "file": "04-determinants.chalk",
-          "title": "Determinants",
-          "blurb": "The determinant of 2×2 and 3×3 matrices, the product rule, and what a zero determinant means."
+          "title": "Determinants: how a matrix scales area",
+          "blurb": "The determinant as the factor by which a matrix scales area, ad − bc from a picture, its sign as a flip, zero as squashing with no inverse, and why determinants multiply."
         }
       ]
     },

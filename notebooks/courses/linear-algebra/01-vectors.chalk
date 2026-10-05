@@ -3,60 +3,146 @@
   "name": "01-vectors.chalk",
   "cells": [
     {
-      "src": "Vectors and the dot product",
+      "src": "Vectors: arrows, lists and the dot product",
       "type": "section",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!goal]\n> Add and scale vectors, find lengths, and use the dot product to tell when two vectors are perpendicular.",
+      "src": "> [!goal]\n> Add and stretch vectors, as arrows and as lists; reach any point by combining two of them; and see why multiplying entries and adding measures how far two vectors point the same way.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "A vector is a list of numbers in brackets, `[1, 2, 3]`. Vectors add and scale entry by entry.",
+      "src": "Walk 3 steps east and 1 north, then 1 east and 2 north. Where are you? Each walk is an arrow, a **vector**: a length and a direction, wherever it starts. So the question is how to add two arrows.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "let u = [1, 2, 3]",
+      "src": "clock t from 0 to 1\nview -0.5, 5, -0.5, 3.6\nU = arrow(0, 3 + i) thick color 2\nLU = label(3 + i, \"u\") color 2\nV = arrow(0, 1 + 2i) thick color 3\nLV = label(1 + 2i, \"v\") color 3\nW = arrow(t*(3 + i), t*(3 + i) + 1 + 2i) color 3\nS = arrow(0, 4 + 3i) thick color 1\nLS = label(4 + 3i, \"u + v\") color 1\n> show U, LU, V, LV | Two walks: $u$, three east and one north, and $v$, one east and two north.\n> show W; play t to 1 in 2s | Do one, then the other: slide $v$ so that it starts where $u$ ends.\n> show S, LS | The sum $u + v$ is where you end up, tip to tail: $(4, 3)$. The east steps add, $3 + 1$, and the north steps add, $1 + 2$.",
+      "type": "scene",
       "showWork": false,
       "label": null
     },
     {
-      "src": "let v = [4, -1, 2]",
+      "src": "So an arrow from $0$ is recorded by where its tip lands, a list of numbers in brackets, `[3, 1]`, and adding arrows tip to tail is adding lists entry by entry. Arrow or list, it is one object seen two ways: the arrow to think with, the list to compute with.",
+      "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "u + v",
+      "src": "[3, 1] + [1, 2]",
       "showWork": true,
       "label": null
     },
     {
-      "src": "2u",
+      "src": "Three entries make an arrow in space; any number of entries make a list that no picture shows, but the arithmetic is the same.",
+      "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "The dot product",
+      "src": "[1, 2, 3] + [4, -1, 2]",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Stretching",
       "type": "section",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!definition] Dot product and length\n> $u \\cdot v = \\sum_i u_i v_i$, and the length of $v$ is $\\lVert v \\rVert = \\sqrt{v \\cdot v}$.",
+      "src": "Doubling an arrow should double its length and keep its direction: two copies, tip to tail. As lists, $u + u$ doubles every entry. Any number $c$ works the same way, and a negative one turns the arrow round:",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "dot(u, v)",
-      "showWork": true,
+      "src": "clock c from -1.5 to 2\nview -5, 7, -2, 3\nU = arrow(0, 3 + i) faint color 2\nP = point(c*(3 + i)) color 1\nC = arrow(0, P) thick color 1\nLC = label(P, \"c\\,u\") color 1\n> show U; play c to 1 in 0.6s | The arrow $u = (3, 1)$.\n> show C, P, LC | $c\\,u$ with $c = 1$: $u$ itself.\n> play c to 2 in 2s | $c = 2$: twice as long, the same direction.\n> play c to 0.5 in 2s | $c = \\frac12$: half as long.\n> play c to -1.5 in 3s | Through $c = 0$ and out the other side: a negative $c$ points the arrow backwards.",
+      "type": "scene",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "2*[3, 1]",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "-[3, 1]",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Combining two arrows",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Stretch $u$ by $a$ and $v$ by $b$, then add: $a\\,u + b\\,v$ is a **linear combination** of $u$ and $v$. Which points can you reach this way? Drag `a` and `b`: the path walks $a\\,u$ from $0$, then $b\\,v$, and the small circle is the point $(5, 5)$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let a = 1",
+      "showWork": false,
       "label": null,
-      "stepwise": 0
+      "slider": {
+        "min": -4,
+        "max": 4,
+        "step": 0.5
+      },
+      "mode": "raw"
+    },
+    {
+      "src": "let b = 1",
+      "showWork": false,
+      "label": null,
+      "slider": {
+        "min": -4,
+        "max": 4,
+        "step": 0.5
+      },
+      "mode": "raw"
+    },
+    {
+      "src": "plot([t*a*(3 + i), a*(3 + i) + t*b*(1 + 2i), 5 + 5i + 0.15*exp(2*pi*i*t)], t, 0, 1)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "a*[3, 1] + b*[1, 2]",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> Reach the circle. Then try $(1, 7)$, or a point of your own.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Every point can be reached: stretched copies of $u$ and $v$ lay a slanted grid over the whole plane. That needs $u$ and $v$ to point in different directions. Had $v$ been $2u$, every combination would stay on the line through $u$, and no point off it could be reached. Finding $a$ and $b$ for a given point means solving two equations at once, which is lesson 3.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Length",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "How long is $(3, 4)$? It is the long side of a right triangle with legs $3$ and $4$, so by Pythagoras it is $\\sqrt{3^2 + 4^2} = 5$. In space, Pythagoras twice gives $\\sqrt{v_1^2 + v_2^2 + v_3^2}$. `norm` computes it.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
     },
     {
       "src": "norm([3, 4])",
@@ -64,18 +150,105 @@
       "label": null
     },
     {
-      "src": "norm(u)",
+      "src": "norm([1, 2, 3])",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!theorem] Angle\n> $u \\cdot v = \\lVert u \\rVert\\, \\lVert v \\rVert \\cos\\theta$, where $\\theta$ is the angle between them. So $u \\cdot v = 0$ exactly when $u$ and $v$ are perpendicular.",
+      "src": "How far does one arrow point along another?",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "How much do two arrows agree in direction? Make it a length. Take a direction, given by a unit arrow $\\hat u$ (length $1$), and shine a light at right angles to its line: any arrow $v$ casts a **shadow** on the line.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "clock w from 0.5 to 0.5 + 2pi\nview -2.6, 2.6, -2.2, 2.2\nL = segment(-2.5*exp(0.5*i), 2.5*exp(0.5*i)) faint color 6\nU = arrow(0, exp(0.5*i)) thick color 2\nLU = label(exp(0.5*i), \"\\hat u\") color 2\nV = point(2*exp(i*w)) color 3\nAV = arrow(0, V) color 3\nLV = label(V, \"v\") color 3\nS = point(2*cos(w - 0.5)*exp(0.5*i)) color 1\nAS = arrow(0, S) thick color 1\nD = segment(V, S) dashed color 1\n> show L, U, LU | A direction: the unit arrow $\\hat u$ and its line.\n> show V, AV, LV, S, AS, D | The shadow of $v$ on the line: how far $v$ goes in the direction $\\hat u$.\n> play w to 0.5 + pi/2 in 3s | As $v$ turns away from $\\hat u$ the shadow shrinks; at a right angle it is $0$.\n> play w to 0.5 + pi in 3s | Past a right angle the shadow points backwards: count its length as negative.\n> play w to 0.5 + 2pi in 4s | All the way round.",
+      "type": "scene",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "For the direction $\\hat{\\imath} = (1, 0)$, east, the shadow of $(v_1, v_2)$ is just its first entry, $v_1$. For a slanted direction $\\hat u = (u_1, u_2)$, two facts do all the work.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "First, shadows respect the arithmetic above: arrows tip to tail cast shadows tip to tail, and a stretched arrow casts a stretched shadow. Since $v = v_1 \\hat{\\imath} + v_2 \\hat{\\jmath}$, where $\\hat{\\jmath} = (0, 1)$, the shadow of $v$ is $v_1$ times the shadow of $\\hat{\\imath}$ plus $v_2$ times the shadow of $\\hat{\\jmath}$. Second, a symmetry:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "view -0.3, 1.45, -0.3, 1\nK = segment(-0.2*exp(0.6*i), 1.25*exp(0.6*i)) faint color 6\nI = arrow(0, 1) color 2\nLI = label(1, \"\\hat{\\imath}\") color 2\nU = arrow(0, exp(0.6*i)) color 4\nLU = label(exp(0.6*i), \"\\hat u\") color 4\nSU = segment(exp(0.6*i), cos(0.6)) dashed color 4\nHU = arrow(0, cos(0.6)) thick color 4\nSI = segment(1, cos(0.6)*exp(0.6*i)) dashed color 2\nHI = arrow(0, cos(0.6)*exp(0.6*i)) thick color 2\n> show K, I, LI, U, LU | Two unit arrows: $\\hat{\\imath}$, and the direction $\\hat u = (u_1, u_2)$.\n> show SU, HU | The shadow of $\\hat u$ on $\\hat{\\imath}$'s line is its first entry, $u_1$.\n> show SI, HI | The shadow of $\\hat{\\imath}$ on $\\hat u$'s line. The picture is symmetric about the line halfway between the two arrows, so the two shadows are mirror images: this one is $u_1$ too.",
+      "type": "scene",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "So the shadow of $\\hat{\\imath}$ on the direction $\\hat u$ is $u_1$, and likewise the shadow of $\\hat{\\jmath}$ is $u_2$. Put together, the shadow of $v$ is $u_1 v_1 + u_2 v_2$: multiply the entries and add.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Dot product\n> $u \\cdot v = u_1 v_1 + u_2 v_2 + \\cdots$, over all the entries. For a unit arrow $\\hat u$, $\\hat u \\cdot v$ is the signed length of $v$'s shadow on $\\hat u$'s line. Stretching $u$ stretches the product, so for any $u \\ne 0$, $u \\cdot v = \\lVert u \\rVert$ times that shadow; and $v \\cdot v = \\lVert v \\rVert^2$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "dot([3, 4], [1, 0])",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> $(1, 2)$ and $(2, -1)$ are at right angles. Predict their dot product before stepping through it.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
       "src": "dot([1, 2], [2, -1])",
+      "showWork": true,
+      "label": null,
+      "stepwise": 0
+    },
+    {
+      "src": "> [!theorem] Angle\n> For nonzero $u$ and $v$ at an angle $\\theta$, the shadow of $v$ on $u$'s line is $\\lVert v \\rVert \\cos\\theta$, so $u \\cdot v = \\lVert u \\rVert\\, \\lVert v \\rVert \\cos\\theta$. The sign tells the angle apart: $u \\cdot v$ is positive when $\\theta$ is less than a right angle, $0$ exactly when $u$ and $v$ are perpendicular, and negative when $\\theta$ is more.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Turned round, it measures angles: $\\cos\\theta = \\dfrac{u \\cdot v}{\\lVert u \\rVert\\, \\lVert v \\rVert}$. For $u = (3, 1)$ and $v = (1, 2)$ it gives $\\pi/4$, an eighth of a turn:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "N(arccos(dot([3, 1], [1, 2])/(norm([3, 1])*norm([1, 2]))))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "N(pi/4)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> The natural first guess multiplies entry by entry and stops there. That is `.*`, and it gives a vector, not a number: for the perpendicular pair above, $(2, -2)$, which says nothing about the angle by itself and changes if the axes are turned. The adding is what makes it a shadow: $2 + (-2) = 0$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "[1, 2] .* [2, -1]",
       "showWork": false,
       "label": null
     },
@@ -94,9 +267,21 @@
       "type": "exercise",
       "prompt": "How long is the vector $(6, 8)$?",
       "hints": [
+        "It is $(3, 4)$ stretched by $2$.",
         "$\\sqrt{6^2 + 8^2}$."
       ],
       "hideQuestion": true,
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "dot([1, 3], [2, -1])",
+      "type": "exercise",
+      "prompt": "Is the angle between $(1, 3)$ and $(2, -1)$ more or less than a right angle? Compute their dot product: its sign answers it.",
+      "hints": [
+        "$1 \\cdot 2 + 3 \\cdot (-1)$.",
+        "Negative means more than a right angle."
+      ],
       "showWork": false,
       "label": null
     },
@@ -111,7 +296,19 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> Vectors add and scale entrywise; the dot product turns two vectors into a number that is zero exactly when they are perpendicular.",
+      "src": "[-1, 4]",
+      "type": "exercise",
+      "prompt": "Find $a$ and $b$ with $a\\,(3, 1) + b\\,(1, 2) = (1, 7)$, with the sliders above or by hand. Answer with the two numbers as a list, $a$ first.",
+      "hints": [
+        "Compare entries: $3a + b = 1$ and $a + 2b = 7$.",
+        "The first gives $b = 1 - 3a$; put that into the second."
+      ],
+      "hideQuestion": true,
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> A vector is an arrow and a list at once: arrows add tip to tail, lists add entry by entry, and the two are the same. Two arrows in different directions, stretched and added, reach every point of the plane. The dot product, multiply the entries and add, is the shadow of one arrow on the other's line, times the other's length: zero exactly when they are perpendicular.\n>\n> Every vector is a combination of the two unit arrows: $(x, y) = x\\,\\hat{\\imath} + y\\,\\hat{\\jmath}$. So what happens to every vector at once if you move $\\hat{\\imath}$ and $\\hat{\\jmath}$? That is lesson 2.",
       "type": "markdown",
       "showWork": false,
       "label": null
