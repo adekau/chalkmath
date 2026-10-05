@@ -1,6 +1,6 @@
 {
   "chalk": 1,
-  "name": "04-safety-liveness.chalk",
+  "name": "05-safety-liveness.chalk",
   "cells": [
     {
       "src": "Safety and liveness",

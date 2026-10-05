@@ -216,7 +216,7 @@
     {
       "id": "systems",
       "title": "Transition systems, invariants and temporal logic",
-      "blurb": "A lost update as a path in a graph of states; invariants with counterexample traces and inductive proofs; a lock that fails and Peterson's that does not; safety and liveness under fairness; temporal logic as fixed points; happens-before, effectively-once delivery and refinement; rewriting systems, and retries under failure.",
+      "blurb": "A lost update as a path in a graph of states; invariants with counterexample traces and inductive proofs; a lock that fails and Peterson's that does not; one lock per key, and the gap between two atomic calls; safety and liveness under fairness; temporal logic as fixed points; happens-before, effectively-once delivery and refinement; rewriting systems, and retries under failure.",
       "kind": "course",
       "level": "Distributed systems",
       "path": "courses/systems",
@@ -238,37 +238,42 @@
           "blurb": "A lock built from a check and a take, the race the checker finds, two fixes (an atomic step, and Peterson's flags and turn), and an inductive proof."
         },
         {
-          "file": "04-safety-liveness.chalk",
+          "file": "04-per-key-locks.chalk",
+          "title": "Linearizability and per-key locks",
+          "blurb": "One lock per key, made on demand: why a library call may be one step and two calls may not, the run in which two jobs hold two locks for one key, a fresh name as all a new lock is, and a fix proved by induction."
+        },
+        {
+          "file": "05-safety-liveness.chalk",
           "title": "Safety and liveness",
           "blurb": "Nothing bad happens; something good eventually does. Finite counterexamples and infinite ones, deadlocks and lassos, and the fairness a scheduler must promise."
         },
         {
-          "file": "05-temporal-logic.chalk",
+          "file": "06-temporal-logic.chalk",
           "title": "Temporal logic as fixed points",
           "blurb": "Words for always and eventually, on some path and on every path; each one computed by repeating a step until nothing changes: least and greatest fixed points."
         },
         {
-          "file": "06-happens-before.chalk",
+          "file": "07-happens-before.chalk",
           "title": "Happens-before",
           "blurb": "Without a shared clock, ask which event could have caused which: a partial order, a single counter that cannot capture it, and vector clocks that can."
         },
         {
-          "file": "07-effectively-once.chalk",
+          "file": "08-effectively-once.chalk",
           "title": "Effectively-once delivery",
           "blurb": "A client that retries because it cannot tell a lost request from a lost reply; the duplicate that follows; and the idempotent handler that makes the effect happen once."
         },
         {
-          "file": "08-refinement.chalk",
+          "file": "09-refinement.chalk",
           "title": "Refinement",
           "blurb": "An implementation's steps are the specification's steps or invisible ones: checking that one system implements another, and an operation-rewriting optimization proved sound."
         },
         {
-          "file": "09-rewriting.chalk",
+          "file": "10-rewriting.chalk",
           "title": "Rewriting systems",
-          "blurb": "Lesson 8's folds as rules on terms: rewriting to a normal form, termination by a measure, and confluence by critical pairs."
+          "blurb": "Lesson 9's folds as rules on terms: rewriting to a normal form, termination by a measure, and confluence by critical pairs."
         },
         {
-          "file": "10-retries.chalk",
+          "file": "11-retries.chalk",
           "title": "Retries and backoff",
           "blurb": "Retrying a call that fails at random: the chance that every attempt fails, the expected number of attempts, and the load and wait that backoff trades."
         }

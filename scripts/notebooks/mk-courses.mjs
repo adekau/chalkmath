@@ -2862,8 +2862,68 @@ inductive Reachable {σ : Type} (T : TS σ) : σ → Prop where
   | init {s : σ} : T.init s → Reachable T s
   | step {s t : σ} : Reachable T s → T.step s t → Reachable T t`;
 
+/** Lesson 4's table of locks, one per key, made on demand: a job looks up the key's lock (`get`), making one if there
+ *  is none (`new`), waits on it, works, and on the way out removes the entry (`done`: release and remove as one step).
+ *  A lock is held when a job is inside with it; a new lock is the lowest name the other job does not hold. */
+const keyedJob = (j, o) => `  action ${j}get when ${j} = idle ∧ tab ≠ 0 do l${j} := tab, ${j} := got
+  action ${j}new when ${j} = idle ∧ tab = 0 ∧ l${o} ≠ 1 do tab := 1, l${j} := 1, ${j} := got
+  action ${j}new2 when ${j} = idle ∧ tab = 0 ∧ l${o} = 1 do tab := 2, l${j} := 2, ${j} := got
+  action ${j}wait when ${j} = got ∧ ¬(${o} = crit ∧ l${o} = l${j}) do ${j} := crit
+  action ${j}done when ${j} = crit do tab := 0, l${j} := 0, ${j} := idle`;
+const KEYED = `let Keyed = system(
+  var p in {idle, got, crit}
+  var q in {idle, got, crit}
+  var lp in 0..2
+  var lq in 0..2
+  var tab in 0..2
+  init p = idle ∧ q = idle ∧ lp = 0 ∧ lq = 0 ∧ tab = 0
+${keyedJob("p", "q")}
+${keyedJob("q", "p")}
+)`;
+/** The same table with a check after the take: a job that holds its lock looks at the table again and goes in only if
+ *  the entry still names that lock (`ok`); otherwise it releases and starts over (`retry`). On the way out it removes
+ *  the entry, then releases; with `swap`, it releases, then removes. A lock is held from the take to the release. */
+const checkedJob = (j, o, swap) => `  action ${j}get when ${j} = idle ∧ tab ≠ 0 do l${j} := tab, ${j} := got
+  action ${j}new when ${j} = idle ∧ tab = 0 ∧ l${o} ≠ 1 do tab := 1, l${j} := 1, ${j} := got
+  action ${j}new2 when ${j} = idle ∧ tab = 0 ∧ l${o} = 1 do tab := 2, l${j} := 2, ${j} := got
+  action ${j}wait when ${j} = got ∧ ¬((${o} = took ∨ ${o} = crit${swap ? "" : ` ∨ ${o} = out`}) ∧ l${o} = l${j}) do ${j} := took
+  action ${j}ok when ${j} = took ∧ tab = l${j} do ${j} := crit
+  action ${j}retry when ${j} = took ∧ tab ≠ l${j} do l${j} := 0, ${j} := idle
+${swap ? `  action ${j}release when ${j} = crit do ${j} := out
+  action ${j}remove when ${j} = out do tab := 0, l${j} := 0, ${j} := idle` : `  action ${j}remove when ${j} = crit do tab := 0, ${j} := out
+  action ${j}release when ${j} = out do l${j} := 0, ${j} := idle`}`;
+const checked = (name, swap = false) => `let ${name} = system(
+  var p in {idle, got, took, crit, out}
+  var q in {idle, got, took, crit, out}
+  var lp in 0..2
+  var lq in 0..2
+  var tab in 0..2
+  init p = idle ∧ q = idle ∧ lp = 0 ∧ lq = 0 ∧ tab = 0
+${checkedJob("p", "q", swap)}
+${checkedJob("q", "p", swap)}
+)`;
+/** The table with a count of the jobs using the entry, raised in the same step as the lookup; the last job out
+ *  removes the entry. */
+const countedJob = (j, o) => `  action ${j}get when ${j} = idle ∧ tab ≠ 0 do l${j} := tab, n := n + 1, ${j} := got
+  action ${j}new when ${j} = idle ∧ tab = 0 ∧ l${o} ≠ 1 do tab := 1, l${j} := 1, n := 1, ${j} := got
+  action ${j}new2 when ${j} = idle ∧ tab = 0 ∧ l${o} = 1 do tab := 2, l${j} := 2, n := 1, ${j} := got
+  action ${j}wait when ${j} = got ∧ ¬(${o} = crit ∧ l${o} = l${j}) do ${j} := crit
+  action ${j}leave when ${j} = crit ∧ n > 1 do n := n - 1, l${j} := 0, ${j} := idle
+  action ${j}last when ${j} = crit ∧ n = 1 do n := 0, tab := 0, l${j} := 0, ${j} := idle`;
+const COUNTED = `let Counted = system(
+  var p in {idle, got, crit}
+  var q in {idle, got, crit}
+  var lp in 0..2
+  var lq in 0..2
+  var tab in 0..2
+  var n in 0..2
+  init p = idle ∧ q = idle ∧ lp = 0 ∧ lq = 0 ∧ tab = 0 ∧ n = 0
+${countedJob("p", "q")}
+${countedJob("q", "p")}
+)`;
+
 course("systems", "Transition systems, invariants and temporal logic",
-  "A lost update as a path in a graph of states; invariants with counterexample traces and inductive proofs; a lock that fails and Peterson's that does not; safety and liveness under fairness; temporal logic as fixed points; happens-before, effectively-once delivery and refinement; rewriting systems, and retries under failure.",
+  "A lost update as a path in a graph of states; invariants with counterexample traces and inductive proofs; a lock that fails and Peterson's that does not; one lock per key, and the gap between two atomic calls; safety and liveness under fairness; temporal logic as fixed points; happens-before, effectively-once delivery and refinement; rewriting systems, and retries under failure.",
   "Distributed systems", (add) => {
 
   add("01-state-machines.chalk", "State machines and executions", "Two threads that lose an update: a system as variables, an initial state and guarded actions, and its graph of reachable states as every interleaving at once.", ({ sec, md, m, ex, lean, lx }) => {
@@ -3109,10 +3169,111 @@ def MutexInv (s : Mutex) : Prop :=
 > [!summary]
 > A lock that checks and then takes is a race, because the check and the take are separate steps; the checker finds the interleaving. One fix makes them one step, and an inductive invariant ("inside means holding the lock") proves it. Without an atomic step, flags alone deadlock, and Peterson's turn breaks the tie; the order of its two writes matters.
 `);
-    md(r`‹Turn› passes both checks, yet ‹p› cannot go in twice in a row: if ‹q› stops wanting in, ‹p› waits for ever. No state is bad; a good thing just never happens. Saying that needs a second kind of property, the next lesson's.`);
+    md(r`‹Turn› passes both checks, yet ‹p› cannot go in twice in a row: if ‹q› stops wanting in, ‹p› waits for ever. No state is bad; a good thing just never happens. Saying that needs a second kind of property, lesson 5's. Before that, the lock as programs keep it: one per key, in a table, with calls that each promise to be one step.`);
   });
 
-  add("04-safety-liveness.chalk", "Safety and liveness", "Nothing bad happens; something good eventually does. Finite counterexamples and infinite ones, deadlocks and lassos, and the fairness a scheduler must promise.", ({ sec, md, m, ex, lean, lx }) => {
+  add("04-per-key-locks.chalk", "Linearizability and per-key locks", "One lock per key, made on demand: why a library call may be one step and two calls may not, the run in which two jobs hold two locks for one key, a fresh name as all a new lock is, and a fix proved by induction.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Linearizability and per-key locks");
+    md(r`
+> [!goal]
+> Model a table with one lock per key, made on demand; say why each call on the table or on a lock is one step and the pair of them is not; find the run in which two jobs hold two different locks for one key; and fix it, with a proof.
+`);
+    md(r`A service runs jobs for many customers. Two jobs for the same customer must not overlap; jobs for different customers may. Lesson 3's lock, one for everything, would make every customer wait for every other. So keep a **table**: one lock per customer, made the first time a job for that customer arrives, and removed when the job is done, so that the table does not grow with every customer ever seen. A job for customer ‹key›:`);
+    md(`${FENCE}
+lock = table.getOrAdd(key, new Lock())    // the entry, made if there is none
+lock.wait()                               // blocks until the lock is free
+… the work for key …
+lock.release()
+table.remove(key)
+${FENCE}
+
+In .NET this is a ‹ConcurrentDictionary› of ‹SemaphoreSlim›s; in Go a ‹sync.Map› of mutexes. The shape is the same everywhere, and so is the bug.`);
+    md(r`
+> [!try]
+> Each line is a call that the library promises is atomic. Is the sequence? Before reading on, find an order of two jobs' steps that puts both into the work at once.
+`);
+    sec("When is a call one step?");
+    md(r`
+> [!definition] Linearizability
+> A call on a shared object is **linearizable** when it appears to take effect at one instant between its start and its return. An object is linearizable when every history of overlapping calls on it has the same effect as some sequence of those calls, one at a time, in an order that keeps each call before every call that started after it returned (Herlihy and Wing, 1990).
+`);
+    md(r`That is the licence for a model. A linearizable call is one action: its guard is when the instant can come (‹wait›'s instant comes when the lock is free), its updates are what the instant does. The real call runs many instructions, and the promise says that no one can tell. Lesson 3 used it without saying so: a compare-and-set is linearizable, and ‹Fix› made it one action. A table's ‹getOrAdd› and ‹remove›, a lock's ‹wait› and ‹release›: each comes with the promise.`);
+    md(r`The promise ends at the call's return. Two calls in a row are two instants with a gap between them, and lesson 3's check-then-act lived in such a gap: two calls on the one lock. Here the calls are on two objects, the table and the lock, and the gap is between the table's answer and the lock's take.`);
+    sec("A model");
+    md(r`Two jobs, ‹p› and ‹q›, for one customer (jobs for different customers never meet at an entry, so one key is enough). Each job is ‹idle›, has ‹got› a lock from the table, or is inside (‹crit›). ‹lp› and ‹lq› name the lock each job got, 0 for none; ‹tab› names the lock the table's entry holds, 0 for no entry. A new lock is a name no one has: the lowest of 1 and 2 that the other job does not hold (‹pnew›, ‹pnew2›). A lock is held when a job is inside with it, so ‹wait› is enabled when the other job is not inside with the same name. The model makes ‹release› and ‹remove› one step, ‹done›: joining two calls can only hide interleavings, so a bug the joined model finds, the program has too.`);
+    m(KEYED);
+    md(r`‹p› makes the lock and goes in; ‹q› looks it up, waits for ‹p›, and goes in after. The lock did its job:`);
+    m("trace(Keyed; pnew, qget, pwait, pdone, qwait, qdone)", { step: 0 });
+    md(r`
+> [!try]
+> Now let ‹p› come back for another job for the same customer. Find a run in which both are inside.
+`);
+    m("invariant(Keyed, ¬(p = crit ∧ q = crit))", { step: 0 });
+    md(r`‹p› makes lock 1 and goes in; ‹q› looks up lock 1 and waits on it. ‹p› finishes and removes the entry. ‹p›'s next job finds no entry, makes lock 2, and goes in. ‹q›'s wait on lock 1 succeeds: both inside. Each job holds a lock. They hold different locks. The table was there to give both jobs one name for "the lock for this key", and in the gap between ‹q›'s lookup and its take, that name went stale.`);
+    md(r`What should have held, and does not:`);
+    m("invariant(Keyed, (p = crit → lp = tab) ∧ (q = crit → lq = tab))", { step: 0 });
+    md(r`Whoever is inside holds the lock the table names now. ‹q› is inside with lock 1 and the table names nothing: ‹p› removed the entry. From there, ‹p›'s next job makes lock 2. This is the property a per-key lock rests on: with it, two jobs inside hold the table's one name, and a lock has one holder.`);
+    sec("Fresh names");
+    md(r`‹new Lock()› gives a name no one else has, and that is all it gives: one lock is told from another only by being a different one. The model gives out 1 and 2 in turn, and two names are enough for two jobs, because a name nobody holds any more can be given out again: nothing can tell it from a new one. In the process calculi this is **restriction**, $\nu x$: a name known to no one else, with the rule that a name no one knows is as good as new. In those words, the bug is two jobs holding different names for what the table was to make one name, the lock for this key.`);
+    sec("Checking after the take");
+    md(r`The gap cannot be closed: the table and the lock are two objects, and no call takes from both at once. Lesson 3 closed its gap by making the check and the take one step. Here, keep the gap and check after the take instead: once a job holds its lock, it looks at the table again. If the entry still names its lock, it goes in; if not, someone removed the entry while it waited, so it releases and starts over. And on the way out it removes the entry first, then releases:`);
+    md(`${FENCE}
+loop:
+  lock = table.getOrAdd(key, new Lock())
+  lock.wait()
+  if table.get(key) ≠ lock: lock.release(); continue
+  … the work for key …
+  table.remove(key)
+  lock.release()
+  break
+${FENCE}
+
+A job is ‹idle›, has ‹got› a lock, has taken it (‹took›), is inside (‹crit›), or is on the way ‹out› with the entry removed and the lock still held. A lock is held from the take to the release.`);
+    m(checked("Checked"));
+    m("invariant(Checked, ¬(p = crit ∧ q = crit))");
+    md(r`For a proof, lesson 2's induction. "Inside means holding the table's lock" is not inductive by itself:`);
+    m("inductive(Checked, (p = crit → lp = tab) ∧ (q = crit → lq = tab) ∧ ¬(p = crit ∧ q = crit))", { work: true });
+    md(r`The counterexample starts from a state no run reaches: ‹q› inside with no lock at all (‹lq = 0›) and no entry in the table; then ‹p›'s new entry names a lock ‹q› does not hold. What rules such states out is why the check works: a job has a name exactly when it is not idle, and a lock has one holder, from the take to the release. With both, it is inductive:`);
+    m("inductive(Checked, (p = crit → lp = tab) ∧ (q = crit → lq = tab) ∧ ¬((p = took ∨ p = crit ∨ p = out) ∧ (q = took ∨ q = crit ∨ q = out) ∧ lp = lq) ∧ (p = idle → lp = 0) ∧ (q = idle → lq = 0) ∧ (p ≠ idle → lp ≠ 0) ∧ (q ≠ idle → lq ≠ 0))");
+    sec("In Lean");
+    md(r`A fresh name, as a function: one more than the largest name in use. The lemma is the whole of what "fresh" means.`);
+    lean(r`/-- A name no lock in use has: one more than the largest. -/
+def freshName (used : List Nat) : Nat := used.foldr max 0 + 1
+
+/-- Every name in use is at most the largest. -/
+theorem le_foldr_max (used : List Nat) : ∀ x ∈ used, x ≤ used.foldr max 0 := by
+  intro x hx
+  induction used with
+  | nil => simp at hx
+  | cons y ys ih =>
+    simp only [List.foldr]
+    rcases List.mem_cons.mp hx with rfl | h
+    · exact Nat.le_max_left _ _
+    · exact Nat.le_trans (ih h) (Nat.le_max_right _ _)`);
+    lx(`theorem freshName_not_mem (used : List Nat) : freshName used ∉ used := by`, r`Prove that the fresh name is not in use.`, `  intro h
+  have := le_foldr_max used _ h
+  simp only [freshName] at this
+  omega`, [
+      r`Suppose it is in use (‹intro h›): then by ‹le_foldr_max› it is at most the largest name.`,
+      r`Unfold ‹freshName› in that fact (‹simp only [freshName] at this›); ‹omega› finishes.`,
+    ]);
+    sec("Exercises");
+    md(r`The same check, with the two calls on the way out the other way round: release, then remove.`);
+    m(checked("Swapped", true));
+    ex("invariant(Swapped, ¬(p = crit ∧ q = crit))", r`Is ‹Swapped› safe: never both inside? Answer ‹true› or ‹false›.`, [r`After ‹p› releases, ‹q› can take lock 1 and pass its check: the entry is still there.`, r`Then ‹p› removes the entry, and ‹p›'s next job makes lock 2.`], { hide: true });
+    ex("reach(Keyed, p = crit ∧ tab = 0)", r`In ‹Keyed›, can a job be inside while the table has no entry for the key? Answer ‹true› or ‹false›.`, [r`Let ‹q› look up ‹p›'s lock, go in and finish before ‹p› takes it.`], { hide: true });
+    md(r`A different fix counts the jobs using the entry. The lookup raises the count in the same step, and the last job out removes the entry. The table has to offer that: an update of the entry, lock and count together, as one call.`);
+    m(COUNTED);
+    ex("invariant(Counted, ¬(p = crit ∧ q = crit))", r`Is ‹Counted› safe: never both inside?`, []);
+    ex("reach(Counted, tab = 2)", r`Does ‹Counted› ever make a second lock? Answer ‹true› or ‹false›.`, [r`The entry goes only when the count is 0, so no job holds the old name, and the lowest free name is 1 again.`], { hide: true });
+    md(r`
+> [!summary]
+> A linearizable call takes effect at one instant, so a model may make it one action; the promise ends at the call's return. The gap between two calls, on the table and on the lock, is where a per-key lock fails: the entry is removed and made again between a lookup and a take, and two jobs hold two locks for one key. A new lock is only a fresh name. Checking the table again after the take, and removing before releasing, fixes it; an inductive invariant proves it.
+`);
+    md(r`‹Checked› never lets two in. But a job can take its lock, find the entry gone, and start over, and nothing says it will not find it gone every time, while the other job goes round and round. No state is bad; a good thing just never happens. Saying that needs a second kind of property, the next lesson's.`);
+  });
+
+  add("05-safety-liveness.chalk", "Safety and liveness", "Nothing bad happens; something good eventually does. Finite counterexamples and infinite ones, deadlocks and lassos, and the fairness a scheduler must promise.", ({ sec, md, m, ex, lean, lx }) => {
     sec("Safety and liveness");
     md(r`
 > [!goal]
@@ -3195,7 +3356,7 @@ def MutexInv (s : Mutex) : Prop :=
     md(r`Invariants, deadlocks, "eventually": three commands for three kinds of claim. The next lesson gives them one language, and one way to compute them all.`);
   });
 
-  add("05-temporal-logic.chalk", "Temporal logic as fixed points", "Words for always and eventually, on some path and on every path; each one computed by repeating a step until nothing changes: least and greatest fixed points.", ({ sec, md, m, ex, lean, lx }) => {
+  add("06-temporal-logic.chalk", "Temporal logic as fixed points", "Words for always and eventually, on some path and on every path; each one computed by repeating a step until nothing changes: least and greatest fixed points.", ({ sec, md, m, ex, lean, lx }) => {
     sec("Temporal logic as fixed points");
     md(r`
 > [!goal]
@@ -3259,7 +3420,7 @@ theorem EFk_mono {σ : Type} (T : TS σ) (P : σ → Prop) : ∀ k s, EFk T P k 
     md(r`All of this assumed one global state, and one step at a time. Machines that talk over a network share neither a state nor a clock. Which of their events came first? That is the next lesson.`);
   });
 
-  add("06-happens-before.chalk", "Happens-before", "Without a shared clock, ask which event could have caused which: a partial order, a single counter that cannot capture it, and vector clocks that can.", ({ sec, md, m, ex, lean, lx, sc }) => {
+  add("07-happens-before.chalk", "Happens-before", "Without a shared clock, ask which event could have caused which: a partial order, a single counter that cannot capture it, and vector clocks that can.", ({ sec, md, m, ex, lean, lx, sc }) => {
     sec("Happens-before");
     md(r`
 > [!goal]
@@ -3340,7 +3501,7 @@ def VC.merge (a b : VC) : VC := List.zipWith max a b
     md(r`Messages carry the influence. Networks lose messages, so senders send again, and then a message can arrive twice. What does that do to the receiver? That is the next lesson.`);
   });
 
-  add("07-effectively-once.chalk", "Effectively-once delivery", "A client that retries because it cannot tell a lost request from a lost reply; the duplicate that follows; and the idempotent handler that makes the effect happen once.", ({ sec, md, m, ex, lean, lx }) => {
+  add("08-effectively-once.chalk", "Effectively-once delivery", "A client that retries because it cannot tell a lost request from a lost reply; the duplicate that follows; and the idempotent handler that makes the effect happen once.", ({ sec, md, m, ex, lean, lx }) => {
     sec("Effectively-once delivery");
     md(r`
 > [!goal]
@@ -3362,7 +3523,7 @@ def VC.merge (a b : VC) : VC := List.zipWith max a b
     md(r`The same invariant, now true. **Effectively once** is at-least-once delivery plus an idempotent handler. Idempotence is a property of the handler, not of the network, so it can be proved once, about the handler alone.`);
     md(r`With a cap of two tries, both can be lost, and the client gives up:`);
     m("reach(Dedup, tries = 2 ∧ req = false ∧ reply = none ∧ applied = 0)", { step: 0 });
-    md(r`Without the cap the client retries for ever, and whether it eventually gets a reply is a liveness question. It holds when the network promises that a message sent again and again is eventually delivered: strong fairness, from lesson 4, on the steps that deliver.`);
+    md(r`Without the cap the client retries for ever, and whether it eventually gets a reply is a liveness question. It holds when the network promises that a message sent again and again is eventually delivered: strong fairness, from lesson 5, on the steps that deliver.`);
     m(`let Forever = system(
   var req in bool
   var applied in 0..2
@@ -3410,13 +3571,13 @@ def record (seen : List Nat) (m : Nat) : List Nat := if m ∈ seen then seen els
     md(r`‹Dedup› keeps "applied at most once" through every loss and retry. Is that all it does, or does it behave, step by step, like a server that applies each request exactly when asked? The next lesson makes "behaves like" precise.`);
   });
 
-  add("08-refinement.chalk", "Refinement", "An implementation's steps are the specification's steps or invisible ones: checking that one system implements another, and an operation-rewriting optimization proved sound.", ({ sec, md, m, ex, lean, lx }) => {
+  add("09-refinement.chalk", "Refinement", "An implementation's steps are the specification's steps or invisible ones: checking that one system implements another, and an operation-rewriting optimization proved sound.", ({ sec, md, m, ex, lean, lx }) => {
     sec("Refinement");
     md(r`
 > [!goal]
 > Check that a detailed system does only what an abstract one allows, by mapping its states and matching its steps.
 `);
-    md(r`A specification of lesson 7's server says only this: the request goes from not applied to applied, once. (‹applied› has room for a 2 that the specification never reaches, so that an implementation that goes there can be compared with it.)`);
+    md(r`A specification of lesson 8's server says only this: the request goes from not applied to applied, once. (‹applied› has room for a 2 that the specification never reaches, so that an implementation that goes there can be compared with it.)`);
     m("let Once = system(var applied in 0..2; init applied = 0; action apply when applied = 0 do applied := 1)");
     m(client("Dedup", true));
     md(r`
@@ -3517,13 +3678,13 @@ theorem normalize_sound : ∀ (ops : List Op) (s : Option Nat), run s (normalize
     md(r`‹normalize› folds a batch in one fixed order, from the right. An optimizer that may fold anywhere, in any order: does it always stop, and does the order change the answer? That is the next lesson.`);
   });
 
-  add("09-rewriting.chalk", "Rewriting systems", "Lesson 8's folds as rules on terms: rewriting to a normal form, termination by a measure, and confluence by critical pairs.", ({ sec, md, m, ex, lean, lx }) => {
+  add("10-rewriting.chalk", "Rewriting systems", "Lesson 9's folds as rules on terms: rewriting to a normal form, termination by a measure, and confluence by critical pairs.", ({ sec, md, m, ex, lean, lx }) => {
     sec("Rewriting systems");
     md(r`
 > [!goal]
 > Write an optimization as rewrite rules, show that rewriting always stops, and check that the order the rules fire in cannot change the answer.
 `);
-    md(r`Lesson 8's ‹normalize› folded a batch from the right. Written as rules instead, a fold may fire anywhere in the batch, in any order. That is more freedom, and two questions: does it always stop, and does every order give the same batch?`);
+    md(r`Lesson 9's ‹normalize› folded a batch from the right. Written as rules instead, a fold may fire anywhere in the batch, in any order. That is more freedom, and two questions: does it always stop, and does every order give the same batch?`);
     md(r`
 > [!definition] Term, rule, normal form
 > A **term** is a variable or a symbol applied to terms: ‹then(create(1), done)›. A **rule** $l \to r$ rewrites any instance of $l$, anywhere in a term, to the same instance of $r$. A **normal form** is a term no rule applies to.
@@ -3531,13 +3692,13 @@ theorem normalize_sound : ∀ (ops : List Op) (s : Option Nat), run s (normalize
     md(r`A batch is a term: ‹then(op, rest)› puts an operation before the rest, and ‹done› is the empty batch. The combinations are four rules. The variables are ‹u›, ‹v›, ‹w›, ‹x›, ‹y› and ‹z›; anything else is a symbol or a constant.`);
     m("let N = rules(\n  cu: then(create(x), then(update(y), z)) -> then(create(y), z)\n  uu: then(update(x), then(update(y), z)) -> then(update(y), z)\n  xc: then(u, then(create(y), z)) -> then(create(y), z)\n  xd: then(u, then(delete, z)) -> then(delete, z)\n)");
     m("rewrite(N, then(create(1), then(update(2), then(update(3), then(delete, then(create(4), done))))))", { step: 0 });
-    md(r`Each step names its rule and marks where it applied: the leftmost-outermost redex, the first instance of a left side from the root. The answer is the batch ‹normalize› gave in lesson 8, ‹[create 4]›.`);
+    md(r`Each step names its rule and marks where it applied: the leftmost-outermost redex, the first instance of a left side from the root. The answer is the batch ‹normalize› gave in lesson 9, ‹[create 4]›.`);
     sec("Termination");
     md(r`
 > [!try]
 > Why must rewriting with ‹N› stop, whatever the term and whatever order the rules fire in?
 `);
-    md(r`Every rule drops an operation, so the size (the number of symbols) goes down at each step, and a natural number cannot go down for ever: lesson 4's measure.`);
+    md(r`Every rule drops an operation, so the size (the number of symbols) goes down at each step, and a natural number cannot go down for ever: lesson 5's measure.`);
     m("terminates(N)", { work: true });
     md(r`Size is not always the right measure. Addition on numerals ‹0›, ‹s(0)›, ‹s(s(0))›, …:`);
     m("let A = rules(add(0, y) -> y; add(s(x), y) -> s(add(x, y)))");
@@ -3557,13 +3718,13 @@ theorem normalize_sound : ∀ (ops : List Op) (s : Option Nat), run s (normalize
     m("critical(N)", { work: true });
     md(r`
 > [!mistake]
-> Add lesson 8's tempting fold, "create then delete cancels out":
+> Add lesson 9's tempting fold, "create then delete cancels out":
 `);
     m("let M = rules(\n  cu: then(create(x), then(update(y), z)) -> then(create(y), z)\n  uu: then(update(x), then(update(y), z)) -> then(update(y), z)\n  xc: then(u, then(create(y), z)) -> then(create(y), z)\n  xd: then(u, then(delete, z)) -> then(delete, z)\n  cd: then(create(x), then(delete, z)) -> z\n)");
     m("critical(M)", { work: true });
-    md(r`The pair $(\mathsf{then}(\mathsf{delete}, z),\ z)$ does not join: the same batch normalizes to "delete" or to nothing depending on which rule fires first. Lesson 8's Lean found the store state where the two differ (the key already existed). Here the rules themselves show that something is wrong, before any semantics.`);
+    md(r`The pair $(\mathsf{then}(\mathsf{delete}, z),\ z)$ does not join: the same batch normalizes to "delete" or to nothing depending on which rule fires first. Lesson 9's Lean found the store state where the two differ (the key already existed). Here the rules themselves show that something is wrong, before any semantics.`);
     sec("Normalization never lengthens a batch");
-    md(r`Back in Lean, with lesson 8's ‹normalize›: it never makes a batch longer. (Its termination Lean checks by itself: the recursion is structural.)`);
+    md(r`Back in Lean, with lesson 9's ‹normalize›: it never makes a batch longer. (Its termination Lean checks by itself: the recursion is structural.)`);
     lx(`theorem normalize_length : ∀ ops : List Op, (normalize ops).length ≤ ops.length := by`, r`Prove it by induction on the batch.`, `  intro ops
   induction ops with
   | nil => simp [normalize]
@@ -3583,16 +3744,16 @@ theorem normalize_sound : ∀ (ops : List Op) (s : Option Nat), run s (normalize
 > [!summary]
 > Rewrite rules are an optimization written as equations directed left to right. A measure every rule lowers shows termination; joinable critical pairs show local confluence; together they give each term one normal form. A pair that does not join points at a rule to fix, or one to add (Knuth–Bendix completion).
 `);
-    md(r`A measure says a loop of rewriting stops. Lesson 7's retry loop stops for a blunter reason: a cap on the tries. What does the cap cost, in failures and in load? The last lesson counts.`);
+    md(r`A measure says a loop of rewriting stops. Lesson 8's retry loop stops for a blunter reason: a cap on the tries. What does the cap cost, in failures and in load? The last lesson counts.`);
   });
 
-  add("10-retries.chalk", "Retries and backoff", "Retrying a call that fails at random: the chance that every attempt fails, the expected number of attempts, and the load and wait that backoff trades.", ({ sec, md, m, ex }) => {
+  add("11-retries.chalk", "Retries and backoff", "Retrying a call that fails at random: the chance that every attempt fails, the expected number of attempts, and the load and wait that backoff trades.", ({ sec, md, m, ex }) => {
     sec("Retries and backoff");
     md(r`
 > [!goal]
 > Work out how often a capped retry loop gives up, how many calls it makes on average, and how long backoff makes it wait.
 `);
-    md(r`Lesson 7's client tried twice and could still give up. More tries make giving up rarer, and cost calls. How much rarer, and how many calls?`);
+    md(r`Lesson 8's client tried twice and could still give up. More tries make giving up rarer, and cost calls. How much rarer, and how many calls?`);
     md(r`Say each attempt fails with probability $q$, independently of the others, and the client tries at most $n$ times. Take $q = 1/10$:`);
     m("let q = 1/10");
     md(r`
@@ -3637,7 +3798,7 @@ theorem normalize_sound : ∀ (ops : List Op) (s : Option Nat), run s (normalize
     m("sum(100*2^k*q^(k + 1), k, 0, 3)", { work: true });
     md(r`
 > [!note]
-> Retries repeat requests. A request that the server applied but whose reply was lost is sent again: lesson 7's idempotent handler is what makes retrying safe.
+> Retries repeat requests. A request that the server applied but whose reply was lost is sent again: lesson 8's idempotent handler is what makes retrying safe.
 `);
     sec("Exercises");
     ex("(1/5)^3", r`A call fails with probability $1/5$. What is the chance that three attempts all fail?`, [r`Independent attempts: multiply.`]);

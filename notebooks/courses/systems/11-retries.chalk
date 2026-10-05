@@ -1,6 +1,6 @@
 {
   "chalk": 1,
-  "name": "10-retries.chalk",
+  "name": "11-retries.chalk",
   "cells": [
     {
       "src": "Retries and backoff",
@@ -15,7 +15,7 @@
       "label": null
     },
     {
-      "src": "Lesson 7's client tried twice and could still give up. More tries make giving up rarer, and cost calls. How much rarer, and how many calls?",
+      "src": "Lesson 8's client tried twice and could still give up. More tries make giving up rarer, and cost calls. How much rarer, and how many calls?",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -172,7 +172,7 @@
       "label": null
     },
     {
-      "src": "> [!note]\n> Retries repeat requests. A request that the server applied but whose reply was lost is sent again: lesson 7's idempotent handler is what makes retrying safe.",
+      "src": "> [!note]\n> Retries repeat requests. A request that the server applied but whose reply was lost is sent again: lesson 8's idempotent handler is what makes retrying safe.",
       "type": "markdown",
       "showWork": false,
       "label": null
