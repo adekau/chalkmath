@@ -22,19 +22,20 @@ theorem perfectPower_spec {a r k : ℕ} (h : perfectPower a = some (r, k)) : r ^
     exact natRoot_pow (by omega) hr'
   · simp at hk
 
-/-- `qthPowerPart b q = (m, s)` has `m ^ q * s = b` and `1 ≤ m`. -/
+/-- `qthPowerPart b q = (m, s)` has `m ^ q * s = b` and `1 ≤ m`: read off `checkedPart`'s guard,
+whatever the search behind it found. -/
+theorem checkedPart_spec (b q m : ℕ) :
+    (checkedPart b q m).1 ^ q * (checkedPart b q m).2 = b ∧ 1 ≤ (checkedPart b q m).1 := by
+  unfold checkedPart
+  split
+  · rename_i hm
+    simp only [Bool.and_eq_true, decide_eq_true_eq, beq_iff_eq] at hm
+    exact ⟨Nat.mul_div_cancel' (Nat.dvd_of_mod_eq_zero hm.2), hm.1⟩
+  · simp
+
 theorem qthPowerPart_spec (b q : ℕ) :
-    (qthPowerPart b q).1 ^ q * (qthPowerPart b q).2 = b ∧ 1 ≤ (qthPowerPart b q).1 := by
-  unfold qthPowerPart
-  simp only
-  cases hf : (List.range (2 ^ (Nat.log2 b / q + 1) + 1)).reverse.find? (fun m => m ≥ 1 && b % (m ^ q) == 0) with
-  | none => simp
-  | some m =>
-    have hp := List.find?_some hf
-    simp only [Bool.and_eq_true, decide_eq_true_eq, beq_iff_eq] at hp
-    obtain ⟨hm, hdvd⟩ := hp
-    simp only [Option.getD_some]
-    exact ⟨Nat.mul_div_cancel' (Nat.dvd_of_mod_eq_zero hdvd), hm⟩
+    (qthPowerPart b q).1 ^ q * (qthPowerPart b q).2 = b ∧ 1 ≤ (qthPowerPart b q).1 :=
+  checkedPart_spec _ _ _
 
 theorem Q_val_zpow (a : Q) (n : ℤ) : (a.zpow n).val = a.val ^ n := rfl
 

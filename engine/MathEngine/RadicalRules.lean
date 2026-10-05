@@ -27,23 +27,12 @@ says why: `√8 → 2√2` is `simp.radical`'s perfect-power step, with the work
 namespace MathEngine
 open Expr
 
-/-- The largest `k ≥ 2` with `r ^ k = a`, if `a ≥ 2` is a perfect power. -/
-def perfectPower (a : Nat) : Option (Nat × Nat) :=
-  (List.range (Nat.log2 a + 1)).reverse.findSome? fun k =>
-    if k ≥ 2 then (natRoot k a).map fun r => (r, k) else none
-
 /-- `k · b^x` with `b` an integer ≥ 2 and `x` not an integer: `(k, b, x)`; `k = 1` when absent. -/
 def radicalTerm : Expr → Option (Q × Q × Q)
   | .pow (.num b) (.num x) => if b.isInt && b.val.num ≥ 2 && !x.isInt then some (Q.one, b, x) else none
   | .mul [.num k, .pow (.num b) (.num x)] =>
     if b.isInt && b.val.num ≥ 2 && !x.isInt then some (k, b, x) else none
   | _ => none
-
-/-- `b = m^q · s` with `m` the largest such: the `q`-th-power part of a positive integer. -/
-def qthPowerPart (b q : Nat) : Nat × Nat :=
-  let hi := 2 ^ (Nat.log2 b / q + 1)
-  let m := ((List.range (hi + 1)).reverse.find? fun m => m ≥ 1 && b % (m ^ q) == 0).getD 1
-  (m, b / (m ^ q))
 
 /-- Two radicals with the same index and the same square-free part (`√50` and `√18` are `5√2` and
 `3√2`) whose exponents agree modulo 1: one radical with a numeral coefficient.

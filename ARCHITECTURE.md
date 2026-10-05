@@ -106,7 +106,12 @@ differential test with zero mismatches.
   silent rule where the two print alike and a visible `simp.radical` step where they do not
   (`√18` shows as `3√2`); the arithmetic the textbook writes out (`√32 = (2^5)^(1/2) = 2^2 · 2^(1/2)`)
   lives in the explanations, since those intermediate forms are heavier than the input and could
-  not be steps. `RadicalRules.lean`.
+  not be steps. `RadicalRules.lean`. The integer arithmetic under them (exact roots, perfect powers,
+  `q`-th-power parts, shared by the rules and the printer) searches by the bit length of a number,
+  never by its value, and returns only what it has checked: a root by bisection in `[2^b, 2^(b+1))`,
+  a `q`-th-power part by trial division up to `2^20` (exact below `2^(20(q+1))`, since past the cube
+  root of what is left a square factor can only be all of it). Numbers of `maxRootBits` (4096) bits
+  or more are not searched and stay as they are. `IntRoot.lean`.
 - **The λ-calculus is a second world in the same engine.** `Lambda.lean` has its own terms, parser
   and normal-order β-reducer; terms are encoded into `Expr` for the wire, so selection, explanation
   and origin tracking work unchanged. The de Bruijn view is computed with every step. Reduction is
@@ -268,9 +273,10 @@ differential test with zero mismatches.
   weaken the comparison.
 - **Notation that is not a function stays notation.** `sec`, `csc` and `cot` are read by the parser
   as `cos(u)^-1`, `sin(u)^-1` and `tan(u)^-1`, and `sin^-1(x)` is the reciprocal, as `sin^2(x)` is the
-  square (`arcsin` is written out). They need no semantics, rules or proofs of their own, and an
+  square (`arcsin` is written out). `cosh`, `sinh` and `tanh` are read as their definitions in `exp`,
+  `(exp(u) ± exp(-u))/2` and their quotient. They need no semantics, rules or proofs of their own, and an
   exercise answer written with them is compared by what it means. The cost is that answers are
-  printed in the three functions the engine has; a printer that writes `sec` back is presentation and
+  printed in the functions the engine has; a printer that writes `sec` or `cosh` back is presentation and
   can be added without touching the engine's terms.
 - **An exercise is checked by normal forms.** `engine.check` (`Exercise.lean`) evaluates a question
   like any cell (its value is the expected answer, its derivation the worked solution) and reduces the
@@ -448,8 +454,8 @@ subsequence, then interpolated position and opacity, a browser-side stand-in for
 Manim's job, outside the browser.
 
 **Scenes** are the notebook's own animations, in its flow rather than in a tab: a cell whose source is
-a short script (`scene.ts`) naming a clock, objects (points, curves, graphs, arrows, segments, traces,
-labels, equations) and beats (show, hide, play the clock, step an equation's work, each with a
+a short script (`scene.ts`) naming a clock, objects (points, curves, graphs, arrows, segments, lines,
+polygons, grids, traces, labels, equations, values) and beats (show, hide, play the clock, step an equation's work, each with a
 caption). It is a storyboard, like the studio's, and the same division holds: the page decides what
 shows when, the engine every number. Each object is a `plot` over the clock, a curve that moves with
 it a `manipulate` (whose frames are exact values, so the script's numbers are asked for first), an
@@ -458,13 +464,29 @@ no `In[n]` and leaves `%` alone. Between samples the page interpolates, as `mani
 while it plays; it never computes a coordinate itself. A scene plays once when it scrolls into view and
 is stepped beat by beat like a page of a book. Its samples are not saved; the cell runs again when the
 notebook opens, and `drive.mjs` checks every scene in the examples and courses the same way.
+The plane of a scene is ℂ, and a vector of two entries is the point it makes: which of a script's point
+expressions are vectors is the engine's answer (an `engine.check` of each, asked with the numbers), and
+a vector `v` is then sampled as `v[[1]] + i*v[[2]]`. A matrix is drawn as the grid it makes of the
+plane's, `grid(M)`, sampled as its two columns, since a linear map is decided by where it sends the
+basis; the page draws the lines through the columns' whole-number combinations. A scene's `let` is
+written in where it is used, so the engine sees whole expressions and the script stays short.
+A scene can leave the browser as a Manim script (`scene-manim.ts`, the cell's ⋮ menu, or
+`drive.mjs --manim`): the Python carries the engine's samples as data and redraws each object from them
+at a `ValueTracker` clock, each beat an `AnimationGroup` as long as the beat is in the notebook. The
+division holds there too: Manim renders and interpolates, and every coordinate is still the engine's.
 
 **Courses** (File › Courses and examples) opens a tab that lists *projects*:
 notebooks that belong together, either a course (lessons read in order) or a collection. They are
 `notebooks/courses.json` and `notebooks/courses/<course>/*.chalk`, generated by
 `scripts/notebooks/mk-courses.mjs` and served under `examples/`. A lesson opens in its own tab with its
 place in the project (`project` in the file), a bar with the previous and next lessons, and its
-exercises answered, which the page remembers per lesson in local storage. The lessons are built from
+exercises answered, which the page remembers per lesson in local storage. A lesson is not a document
+the reader owns, so it is never *unsaved*: its work (the notebook as the reader left it, without its
+steps) is kept in local storage under its project and file as it changes, and opening the lesson again
+restores it. The work is stored with a fingerprint of the lesson file it was opened from; when the
+file has changed since, the lesson opens as it is now with the answers to exercises of the same source
+carried over, rather than an old copy hiding the author's changes. Save as… turns a lesson into the
+reader's own notebook; Start over clears the kept work. The lessons are built from
 what the shell offers for teaching: exercise cells (checked by `engine.check`, §3), steps held back
 to be revealed one at a time, sliders on `let n = number` that re-run the cells out of date because of
 them, and Markdown callouts. Every lesson's answers are pinned in `notebooks/golden/` and checked in CI.

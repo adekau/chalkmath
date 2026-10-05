@@ -1,6 +1,6 @@
 {
   "chalk": 1,
-  "name": "06-definite-integrals.chalk",
+  "name": "07-definite-integrals.chalk",
   "cells": [
     {
       "src": "Area and the fundamental theorem",

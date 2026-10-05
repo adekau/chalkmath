@@ -210,7 +210,7 @@ Add one from Edit › Add Lean exercise or the ‹▾› between cells. Its edit
 ## Saving
 
 - **File › Save** (Ctrl/⌘+S) keeps the notebook in this browser's storage under its name; **Save as…** (Ctrl/⌘+Shift+S) gives it another. The first save of an untitled notebook asks for a name, and a name already saved here is pointed out before it is replaced. **Open…** lists the notebooks saved here.
-- Open tabs are kept as you work and come back when you reload the page, unsaved changes included; a tab with unsaved changes shows its name in italics, with a dot where its **×** is (a ‹*› after the name on a touch screen).
+- Open tabs are kept as you work and come back when you reload the page, unsaved changes included; a tab with unsaved changes shows its name in italics, with a dot where its **×** is (a ‹*› after the name on a touch screen). A lesson from the Courses tab is never unsaved: it keeps your work on its own ([Courses and examples](#doc:examples)).
 - Browser storage belongs to this browser on this machine. Clearing the site's data clears it, and a private window forgets it. To keep a notebook, or move it to another machine, export it.
 
 ## Files and links
@@ -365,13 +365,21 @@ The first line names the scene's **clock**, the variable it animates, and its ra
 
 | Object | What it draws |
 | --- | --- |
-| ‹point(z)› | a dot at ‹z›, a complex number (a real one sits on the real axis) |
+| ‹point(z)› | a dot at ‹z›: a complex number (a real one sits on the real axis), or a vector ‹[x, y]› |
 | ‹curve(z, s, a, b)› | the curve ‹z› traces as ‹s› runs from ‹a› to ‹b› |
 | ‹graph(f, x, a, b)› | the graph of ‹y = f(x)› |
 | ‹arrow(A, B)›, ‹segment(A, B)› | from ‹A› to ‹B›: point names or expressions |
+| ‹line(A, B)› | the whole line through ‹A› and ‹B› |
+| ‹poly(A, B, C, …)› | a filled polygon with those corners |
+| ‹grid(M)› | the plane's grid as the $2 \times 2$ matrix ‹M› moves it: the lines through ‹M›'s images of the whole-number points |
 | ‹trace(P)› | the path the point ‹P› has drawn since the trace appeared |
 | ‹label(A, "TeX")› | TeX beside a point |
 | ‹eq(e)› | an expression above the picture, as the engine prints it |
+| ‹value(e, "TeX")› | a real number above the picture, read off as the clock moves: ‹value(det(M), "\det = ")› |
+
+Wherever a point goes, a vector does: the plane is $\mathbb{C}$, and a vector of two entries, ‹[x, y]›, ‹[x; y]› or anything the engine evaluates to one, such as ‹A*[1; 0]›, is the point $x + iy$.
+
+‹let M = (1 - t)*[1, 0; 0, 1] + t*A› names an expression for the lines below it; the name is written in, in parentheses, wherever it is used. That matrix is the usual way to animate one: it is the identity when ‹t› is ‹0› and ‹A› when it is ‹1›, so ‹grid(M)› and ‹point(M*[1; 0])› move from where they are to where ‹A› sends them.
 
 Any of them may use the clock, and then it moves. After the closing parenthesis come styles: ‹faint›, ‹dashed›, ‹thick›, ‹color 1› to ‹color 6›. ‹view x0, x1, y0, y1› fixes the window (otherwise it takes in everything the scene ever draws, with equal scales on both axes, so a circle is a circle), and ‹noaxes› leaves out the axes.
 
@@ -384,7 +392,11 @@ Each line starting with ‹>› is a beat: actions separated by ‹;›, then �
 - ‹work E› steps an ‹eq› through the engine's derivation, each term morphing into the next.
 - ‹wait 2s› holds.
 
-The calculus course's lesson *Circles, exponentials and rotation* is told mostly in scenes.
+## As a video
+
+A scene's ⋮ menu has **Copy as Manim script** and **Save as Manim script (.py)**: the scene as a script for [Manim](https://www.manim.community), to render as a video on your computer (‹manim -pqh name.py›; Manim needs LaTeX). The script carries the engine's samples, so the video shows exactly what the notebook does: the same objects, colours, captions at the foot of the frame, beats of the same length, and each equation's steps morphing one into the next. Python only interpolates between the samples, as the page does. From the command line, ‹node scripts/notebooks/drive.mjs --manim out notebook.chalk› writes every scene of a notebook.
+
+The calculus course's lesson *Circles, exponentials and rotation* is told mostly in scenes, and the linear algebra course uses them for the plane: vectors tip to tail, a matrix moving the grid, the product as one map after another, row operations turning lines about their crossing, the determinant as an area, and eigenvectors.
 `],
   },
   {
@@ -398,7 +410,7 @@ The calculus course's lesson *Circles, exponentials and rotation* is told mostly
 3. **▶ Play** previews the scene in the page, matching glyphs between terms the way ‹TransformMatchingTex› does.
 4. The Python for the scene is beside it. Copy it into a file and render it with Manim on your computer, with the command shown (‹manim -pqh scene.py›).
 
-The page writes only the storyboard; rendering the video is Manim's job, outside the browser. Scenes are saved with the notebook: the studio shows the current notebook's, and none while no notebook is open.
+The page writes only the storyboard; rendering the video is Manim's job, outside the browser. A scene cell in a notebook can be saved as a Manim script too, from its ⋮ menu ([Scenes](#doc:scenes)). Scenes are saved with the notebook: the studio shows the current notebook's, and none while no notebook is open.
 `],
   },
   {
@@ -407,7 +419,9 @@ The page writes only the storyboard; rendering the video is Manim's job, outside
 
 Notebooks that come with ChalkMath, grouped into **projects**: a **course** is a sequence of lessons that build on each other, with exercises the engine checks; a **collection** is notebooks to explore in any order. File › Courses and examples opens the **Courses** tab, which lists them all.
 
-A lesson opens in its own tab with a bar above it: the course it belongs to, where it is in it, how many of its exercises you have answered, and **‹ Previous** and **Next ›**. The Courses tab remembers, in this browser, which lessons you have opened and finished. Change anything in a lesson; File › Save keeps your copy.
+A lesson opens in its own tab with a bar above it: the course it belongs to, where it is in it, how many of its exercises you have answered, and **‹ Previous** and **Next ›**. The Courses tab remembers, in this browser, which lessons you have opened and finished.
+
+A lesson keeps your work in this browser as you go: your answers, the hints you have shown and anything you change come back when you open it again, from the Courses tab or with **‹ Previous** and **Next ›**, even after closing its tab. So a lesson's tab is never marked unsaved and there is nothing to save; File › Save says so, and **Save as…** makes a notebook of your own from it. **Start over**, in the bar once you have worked in a lesson, clears your work and opens it as it came. If a lesson has changed since you worked on it, it opens as it is now, with your answers to the exercises it still has carried over.
 
 In a course that builds one Lean development across its lessons, each lesson's Lean sees the Lean of the lessons before it: their Lean cells, and their Lean exercises with the author's proofs. So a definition from lesson 1, or a theorem proved there, can be used in lesson 3.
 `, { insert: "examples" }],

@@ -11,6 +11,10 @@
 // Exercise cells are checked through `engine.check`: the question must evaluate, to its golden answer.
 // A scene cell is read and sampled as the page does it (apps/notebook/src/scene.ts, quiet requests):
 // its outcome is how many objects and beats it has and how long it plays, or the mistake at its line.
+// With --manim <dir>, each scene is also written as a Manim script, <dir>/<notebook>-<cell>.py, for
+// Manim to render on this computer (apps/notebook/src/scene-manim.ts):
+//   node scripts/notebooks/drive.mjs --manim out notebooks/courses/linear-algebra/04-determinants.chalk
+//   manim -pqh out/04-determinants-6.py
 // A cell that reads a file (import("…"), ⟦name⟧) is the page's to evaluate (files.ts), not the
 // engine's; it is skipped, and so is every cell that uses a name such a cell binds.
 import { spawn } from "node:child_process";
@@ -25,11 +29,15 @@ import { build as esbuild } from "esbuild";
 const sceneJs = path.join(tmpdir(), `chalk-drive-scene-${process.pid}.mjs`);
 writeFileSync(sceneJs, (await esbuild({ entryPoints: [new URL("../../apps/notebook/src/scene.ts", import.meta.url).pathname], bundle: true, format: "esm", write: false, platform: "neutral" })).outputFiles[0].text);
 const Scene = await import(pathToFileURL(sceneJs).href);
+const manimJs = path.join(tmpdir(), `chalk-drive-manim-${process.pid}.mjs`);
+writeFileSync(manimJs, (await esbuild({ entryPoints: [new URL("../../apps/notebook/src/scene-manim.ts", import.meta.url).pathname], bundle: true, format: "esm", write: false, platform: "neutral" })).outputFiles[0].text);
+const Manim = await import(pathToFileURL(manimJs).href);
 
 const args = process.argv.slice(2);
 const flags = new Set(args.filter((a) => a.startsWith("--")));
 const jsonOut = flags.has("--json") ? args[args.indexOf("--json") + 1] : null;
-const files = args.filter((a, k) => !a.startsWith("--") && args[k - 1] !== "--json");
+const manimDir = flags.has("--manim") ? args[args.indexOf("--manim") + 1] : null;
+const files = args.filter((a, k) => !a.startsWith("--") && args[k - 1] !== "--json" && args[k - 1] !== "--manim");
 const showSteps = flags.has("--steps");
 const golden = flags.has("--check") || flags.has("--update");
 const goldenDir = new URL("../../notebooks/golden/", import.meta.url).pathname;
@@ -53,7 +61,7 @@ async function drive(file, session) {
   for (let i = 0; i < nb.cells.length; i++) {
     const c = nb.cells[i];
     const exercise = c.type === "exercise" && !c.lean;   // a Lean exercise is Lean's to check (check-lean.mjs)
-    if (c.type === "scene" && c.src.trim()) { results.push(await driveScene(c.src, session, i)); continue; }
+    if (c.type === "scene" && c.src.trim()) { results.push(await driveScene(c.src, session, i, `${path.basename(file, ".chalk")}-${i}`)); continue; }
     if (c.type && c.type !== "math" && !exercise) continue;
     const src = c.src;
     if (!src.trim()) continue;
@@ -81,7 +89,7 @@ async function drive(file, session) {
 }
 
 /** A scene cell, as the page plays it: every request quiet, so the session is as the cells left it. */
-async function driveScene(src, session, i) {
+async function driveScene(src, session, i, name) {
   try {
     const spec = Scene.parseScene(src);
     const clock = spec.clock.name;
@@ -95,8 +103,12 @@ async function driveScene(src, session, i) {
       }
     };
     await ask(Scene.numberRequests(spec));
-    await ask(Scene.sampleRequests(spec, moves, Scene.numbersOf(spec, replies)));
+    await ask(Scene.sampleRequests(spec, moves, Scene.numbersOf(spec, replies), Scene.vectorsOf(replies)));
     const data = Scene.build(spec, replies);
+    if (manimDir) {
+      mkdirSync(manimDir, { recursive: true });
+      writeFileSync(path.join(manimDir, `${name}.py`), Manim.manimOfScene(data, name));
+    }
     const outcome = `scene: ${spec.objects.length} objects, ${data.timeline.beats.length} beats, ${data.timeline.total.toFixed(1)} s`;
     return { i, src, ok: true, outcome, text: outcome, steps: 0 };
   } catch (e) {

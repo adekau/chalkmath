@@ -23,7 +23,8 @@ import { ASK_CELL, AskError, askSettings, setAskSettings, runLookup, askSource, 
 import { fileCellOf, resolveFiles, importsIn, partContext, partHelp, fileExprValue, svgPoints, kindOf, tableOf, jsonOf, jsonTable, numericColumns, fileText, fileSize, fmtSize, mimeLabel, mimeFor, dataUrl, fileFromBytes, helpersFor, type FileValue, type FileRef, type FileScope, type Table } from "./files.js";
 import { dataGrid, matrixEntries } from "./datagrid.js";
 import { plotYRange, framesWindow, blendable, blend, playPosition, workLine } from "./animate.js";
-import { parseScene, numberRequests as sceneNumberRequests, sampleRequests as sceneSampleRequests, numbersOf as sceneNumbersOf, build as buildScene, frameAt as sceneFrameAt, SceneError, type SceneData, type Item as SceneItem, type XY } from "./scene.js";
+import { manimOfScene } from "./scene-manim.js";
+import { parseScene, numberRequests as sceneNumberRequests, sampleRequests as sceneSampleRequests, numbersOf as sceneNumbersOf, vectorsOf as sceneVectorsOf, build as buildScene, frameAt as sceneFrameAt, SceneError, type SceneData, type Item as SceneItem, type XY } from "./scene.js";
 import { DOC_PAGES, type DocPage, type DocPart } from "./docs.js";
 import { FUNCTIONS, FN_BY_NAME, AREAS, fnPage, evaluable, type FnDoc, type ExampleSection } from "./reference.js";
 import { ensureLean, syncLean, mountLean, unmountLean, focusLean, setLeanDark, infoview as leanInfoview, leanState, leanFailure, leanStoppedAt, leanProgress, leanChecked, initLeanIsolation, type LeanMessage } from "./lean-cells.js";
@@ -397,6 +398,11 @@ interface Nb {
   /** For a lesson of a course with a Lean prelude: the Lean of the lessons before it, in scope above the
    *  lesson's own Lean (its cells, and its exercises' statements with the author's proofs). */
   leanPrelude?: string;
+  /** For a lesson: a fingerprint of the file it was opened from, so the work kept for it (`keepLesson`)
+   *  is known to belong to that version of the lesson. */
+  lessonBase?: string;
+  /** For a lesson: the text last kept for it, so an unchanged lesson is not written again. */
+  lessonKept?: string;
 }
 
 /** A phone-sized screen: the sidebar floats over the paper and starts closed, the panel starts folded. */
@@ -1078,8 +1084,10 @@ function newDoc(name = "untitled.chalk", first = freshCell()): Nb {
   return d;
 }
 
-/** Whether a document differs from its last saved (or opened) state. */
+/** Whether a document differs from its last saved (or opened) state. A lesson never does: its work
+ *  is kept as it goes (`keepLesson`), so there is nothing to save and nothing to lose by closing it. */
 function docDirty(d: Nb): boolean {
+  if (d.project) return false;
   const live = d === currentDoc() ? serializeNotebook() : d.text;
   return live !== d.savedText;
 }
@@ -1096,6 +1104,7 @@ function closeDoc(i: number) {
   const d = S.docs[i]; if (!d) return;
   if (i === S.doc) stashDoc();
   if (docDirty(d) && !window.confirm(`Close ${d.name} without saving?`)) return;
+  keepLesson(d);
   if (client) void client.call("engine.resetSession", { sessionId: d.sessionId }).catch(() => undefined);
   S.docs.splice(i, 1);
   if (!S.docs.length) unloadDocs();
@@ -1135,7 +1144,7 @@ function renderTabs() {
     const dirty = docDirty(d);
     const on = S.tab === "notebook" && i === S.doc;
     const t = h("div", `tab${on ? " on" : ""}${dirty ? " dirty" : ""}`);
-    t.title = dirty ? `${d.name} — unsaved changes` : d.name;
+    t.title = dirty ? `${d.name} — unsaved changes` : d.project ? `${d.name} — a lesson: your work in it is kept as you go` : d.name;
     // the × of an unsaved notebook is a dot until pointed at (on a touch screen, a star after the name instead)
     const x = asButton(h("span", "x"), `Close ${d.name}`); x.title = "Close";
     x.append(h("span", "cx", "×"), ...(dirty ? [h("span", "dot", "●")] : []));
@@ -1276,7 +1285,7 @@ function serializeNotebook(): string {
 
 /** Replace the notebook with a file's contents: saved outputs show at once, then every cell is
  *  re-run in order so the engine's session (and with it `explain`) matches what is shown. */
-async function loadNotebook(text: string, name?: string, project?: ProjectRef, prelude?: string, inLibrary = false) {
+async function loadNotebook(text: string, name?: string, project?: ProjectRef, prelude?: string, inLibrary = false, lessonBase?: string) {
   let doc: ChalkFile;
   try { doc = JSON.parse(text) as ChalkFile; } catch { notify("err", "That file is not a ChalkMath notebook (it is not valid JSON)."); return; }
   if ((doc.chalk !== 1 && doc.lemma !== 1) || !Array.isArray(doc.cells)) { notify("err", "That file is not a ChalkMath notebook."); return; }
@@ -1285,6 +1294,7 @@ async function loadNotebook(text: string, name?: string, project?: ProjectRef, p
   if (inLibrary) d.inLibrary = true;
   const pr = project ?? projectRefOf(doc);
   if (pr) d.project = pr;
+  if (pr && lessonBase !== undefined) d.lessonBase = lessonBase;
   const pre = prelude ?? (typeof doc.leanPrelude === "string" ? doc.leanPrelude : "");
   if (pre) d.leanPrelude = pre;
   // an untouched new notebook is replaced; otherwise the file gets its own tab
@@ -1579,6 +1589,12 @@ function writeLibrary(lib: Library): boolean {
 /** Save the current notebook in the browser under its name; an untitled one never saved asks for a name first. */
 function saveNotebook() {
   const cur = currentDoc(); if (!cur) return;
+  // a lesson has nothing to save: its work is kept as it goes
+  if (cur.project) {
+    stashDoc(); keepLesson(cur);
+    notify("ok", "A lesson keeps your work in this browser as you go, so there is nothing to save. File › Save as… makes a notebook of your own from it.");
+    return;
+  }
   if (!cur.inLibrary && cur.name === "untitled.chalk") { saveNotebookAs(); return; }
   const text = serializeNotebook();
   const lib = readLibrary();
@@ -1624,6 +1640,8 @@ function saveNotebookAs() {
     closeModal();
     // a different name is a different entry in the library: it is not there until saved
     if (name !== cur.name) cur.inLibrary = false;
+    // a lesson saved as a notebook becomes one of the reader's own; the lesson keeps its work apart
+    if (cur.project) { stashDoc(); keepLesson(cur); delete cur.project; delete cur.lessonBase; delete cur.lessonKept; renderLessonBar(); }
     S.docName = name; cur.name = name;
     renderChrome(); saveNotebook();
   });
@@ -1754,7 +1772,9 @@ async function openExample(file: string, project?: ProjectRef): Promise<boolean>
     const text = await fetchExample(file);
     const p = project && projectById(project.id);
     const prelude = p?.leanPrelude ? await leanPreludeOf(p, project!.lesson) : undefined;
-    await loadNotebook(text, name, project, prelude);
+    // a lesson worked on before opens as it was left
+    const kept = p ? keptLesson(p, project!.lesson, text) : undefined;
+    await loadNotebook(kept ?? text, name, project, prelude, false, p ? fingerprint(text) : undefined);
     if (project) recordProgress();
     return true;
   } catch (e) {
@@ -1832,6 +1852,95 @@ function lessonState(p: Project, k: number, prog = readProgress()): { label: str
   if (!r.total) return { label: "Read", cls: "seen", frac: 1 };
   if (r.done >= r.total) return { label: `✓ ${r.total} of ${r.total}`, cls: "done", frac: 1 };
   return { label: `${r.done} of ${r.total} exercises`, cls: "part", frac: r.done / r.total };
+}
+
+// A lesson keeps its work in this browser as it goes, under its project and file, whether or not
+// its tab stays open: answers, hints shown and anything changed come back when it is opened again.
+// Next to the work is a fingerprint of the file it was opened from; a lesson that has changed since
+// opens afresh, with the answers to the exercises it still has carried over.
+
+interface KeptLesson { base: string; file: ChalkFile }
+type KeptLessons = Record<string, Record<string, KeptLesson>>;
+function readKept(): KeptLessons {
+  try { const j = JSON.parse(localStorage.getItem("chalkmath.lessons") ?? "{}") as KeptLessons; return j && typeof j === "object" ? j : {}; } catch { return {}; }
+}
+let keepWarned = false;
+function writeKept(all: KeptLessons): boolean {
+  try { localStorage.setItem("chalkmath.lessons", JSON.stringify(all)); keepWarned = false; return true; }
+  catch {
+    if (!keepWarned) notify("err", "Your work in this lesson could not be kept: this browser's storage is full or unavailable. File › Export to file keeps a copy.");
+    keepWarned = true; return false;
+  }
+}
+/** A short fingerprint of a lesson file (FNV-1a), to tell whether kept work belongs to it. */
+function fingerprint(text: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  return (h >>> 0).toString(16).padStart(8, "0");
+}
+/** The lesson file a project reference names, if the project is known. */
+function lessonFile(pr: ProjectRef | undefined): { p: Project; file: string } | undefined {
+  const p = pr && projectById(pr.id), l = p?.lessons[pr!.lesson];
+  return p && l ? { p, file: l.file } : undefined;
+}
+/** Keep a lesson's work, if it has changed since it was opened. Its steps are left out (the cells run
+ *  again when it opens, and bring them back); the outline of each cell's work stays. */
+function keepLesson(d: Nb) {
+  const at = lessonFile(d.project);
+  if (!at || !d.savedText || d.text === d.savedText || d.text === d.lessonKept) return;
+  const file = JSON.parse(d.text) as ChalkFile;
+  file.cells = file.cells.map(({ steps, ...c }) => steps?.length ? { ...c, outline: c.outline ?? outlineOf(steps) } : c);
+  const all = readKept();
+  const was = all[at.p.id]?.[at.file];
+  (all[at.p.id] ??= {})[at.file] = { base: d.lessonBase ?? was?.base ?? "", file };
+  if (!writeKept(all)) return;
+  d.lessonKept = d.text;
+  if (!was && d === currentDoc()) renderLessonBar();
+}
+/** The work kept for lesson `k`, as the text to open, given the lesson's file as it is now. Kept for an
+ *  older version of the file, it is the new file with the answers to the same exercises carried over. */
+function keptLesson(p: Project, k: number, shipped: string): string | undefined {
+  const l = p.lessons[k]; if (!l) return undefined;
+  const kept = readKept()[p.id]?.[l.file];
+  if (!kept || !Array.isArray(kept.file?.cells)) return undefined;
+  const base = fingerprint(shipped);
+  if (kept.base === base) return JSON.stringify(kept.file);
+  let doc: ChalkFile;
+  try { doc = JSON.parse(shipped) as ChalkFile; } catch { return undefined; }
+  const key = (c: ChalkFile["cells"][number]) => `${c.lean ? "lean:" : ""}${c.src}`;
+  const mine = new Map(kept.file.cells.filter((c) => c.type === "exercise").map((c) => [key(c), c]));
+  let carried = 0;
+  doc.cells = doc.cells.map((c) => {
+    const m = c.type === "exercise" ? mine.get(key(c)) : undefined;
+    if (!m || (!m.attempt && !m.hintsShown)) return c;
+    carried++;
+    return { ...c, attempt: m.attempt, hintsShown: m.hintsShown, verdict: m.verdict };
+  });
+  // kept again against the new file, or, with nothing to carry over, not at all
+  const all = readKept();
+  if (carried) (all[p.id] ??= {})[l.file] = { base, file: doc }; else delete all[p.id]![l.file];
+  writeKept(all);
+  if (!carried) return undefined;
+  notify("ok", `${l.title} has changed since you worked on it: your answers to its exercises were carried over.`);
+  return JSON.stringify(doc);
+}
+/** Whether lesson `k` has work kept for it. */
+const hasKept = (p: Project, k: number) => !!p.lessons[k] && !!readKept()[p.id]?.[p.lessons[k]!.file];
+/** Put the current lesson back as it came: its kept work is cleared and it opens afresh, in the same tab. */
+async function startLessonOver() {
+  const d = currentDoc(), at = lessonFile(d?.project);
+  if (!d || !at) return;
+  const k = d.project!.lesson, l = at.p.lessons[k]!;
+  if (!window.confirm(`Start “${l.title}” over? Your answers and changes in it are cleared.`)) return;
+  const i = S.doc;
+  closeDoc(i);
+  const all = readKept();
+  if (all[at.p.id]) { delete all[at.p.id]![at.file]; writeKept(all); }
+  if (!await openExample(lessonPath(at.p, k), { id: at.p.id, lesson: k })) return;
+  // back where its tab was
+  const fresh = currentDoc(), j = fresh ? S.docs.indexOf(fresh) : -1;
+  if (fresh && j >= 0 && j !== i && i <= S.docs.length - 1) { S.docs.splice(j, 1); S.docs.splice(i, 0, fresh); S.doc = i; renderTabs(); autosave(); }
+  log("ok", `started ${l.title} over`);
 }
 
 function openCourses(id: string | null = S.courses.project) {
@@ -1954,7 +2063,10 @@ function renderLessonBar() {
   crs.addEventListener("click", () => openCourses(p.id));
   where.append(crs, document.createTextNode(p.kind === "course" ? ` · Lesson ${k + 1} of ${p.lessons.length}` : ""));
   const st = lessonState(p, k);
-  bar.append(where, h("span", "lbtitle", l.title), h("span", `lbstate ${st.cls}`, st.label && st.cls !== "seen" ? st.label : ""), h("span", "spacer"),
+  const kept = h("span", "lbkept", "Kept as you go");
+  kept.title = "Your answers and changes in this lesson are kept in this browser as you work: there is nothing to save, and closing the tab loses nothing.";
+  bar.append(where, h("span", "lbtitle", l.title), h("span", `lbstate ${st.cls}`, st.label && st.cls !== "seen" ? st.label : ""), kept, h("span", "spacer"),
+    ...(hasKept(p, k) ? [btn("Start over", "Clear your answers and changes, and open the lesson as it came", () => void startLessonOver())] : []),
     btn("‹ Previous", k > 0 ? p.lessons[k - 1]!.title : "", k > 0 ? () => openLesson(p, k - 1) : null),
     btn("Next ›", k < p.lessons.length - 1 ? p.lessons[k + 1]!.title : "", k < p.lessons.length - 1 ? () => openLesson(p, k + 1) : null));
 }
@@ -2012,9 +2124,9 @@ function openFromLibrary(name: string) {
   void loadNotebook(JSON.stringify(entry.file), name, undefined, undefined, true);
 }
 
-function download(name: string, text: string) {
+function download(name: string, text: string, type = "application/json") {
   const a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+  a.href = URL.createObjectURL(new Blob([text], { type }));
   a.download = name; a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
@@ -2377,6 +2489,7 @@ function autosave() {
 function autosaveNow() {
   clearTimeout(autosaveTimer); autosaveTimer = 0;
   stashDoc();
+  for (const d of S.docs) keepLesson(d);
   const doc: Autosave = { chalkmath: 1, active: S.doc, docs: S.docs.map((d) => ({ file: JSON.parse(d.text) as ChalkFile, dirty: docDirty(d), ...(d.inLibrary ? { inLibrary: true } : {}) })) };
   try { localStorage.setItem("chalkmath.autosave", JSON.stringify(doc)); autosaveWarned = false; }
   catch {
@@ -5408,7 +5521,7 @@ async function runScene(cell: Cell) {
     };
     // the script's numbers first: a moving curve's frames are taken at them
     await ask(sceneNumberRequests(spec));
-    await ask(sceneSampleRequests(spec, moves, sceneNumbersOf(spec, replies)));
+    await ask(sceneSampleRequests(spec, moves, sceneNumbersOf(spec, replies), sceneVectorsOf(replies)));
     cell.scene = buildScene(spec, replies);
     cell.sceneT = 0; cell.scenePlayed = false;
     log("ok", `scene: ${spec.objects.length} objects, ${cell.scene.timeline.beats.length} beats, ${cell.scene.timeline.total.toFixed(1)} s`);
@@ -5591,9 +5704,33 @@ function drawScene(cell: Cell) {
   const colour = (it: SceneItem) => it.style.color ?? (data.spec.objects.findIndex((o) => o.name === it.name) % CURVE_COLOURS);
   const cls = (it: SceneItem, base: string) => `${base} c${colour(it)}${it.style.faint ? " faint" : ""}${it.style.dashed ? " dashed" : ""}${it.style.thick ? " thick" : ""}`;
   const seenLabels = new Set<string>();
-  // curves and lines first, points on top of them
-  for (const it of [...f.items.filter((x) => x.kind !== "dot"), ...f.items.filter((x) => x.kind === "dot")]) {
-    if (it.kind === "path") {
+  // grids at the back, then filled shapes, then curves and lines, points on top of them all
+  const layer = (it: SceneItem) => it.kind === "grid" ? 0 : it.kind === "poly" ? 1 : it.kind === "dot" ? 3 : 2;
+  // the window as the screen shows it, for the lines that run off it
+  const W0 = cx - SCENE_W / 2 / scale, W1 = cx + SCENE_W / 2 / scale, H0 = cy - SCENE_H / 2 / scale, H1 = cy + SCENE_H / 2 / scale;
+  const reach = Math.hypot(W1 - W0, H1 - H0) + Math.hypot(cx, cy);
+  for (const it of [...f.items].sort((a, b) => layer(a) - layer(b))) {
+    if (it.kind === "grid") {
+      // the lines k e1 + s e2 and s e1 + k e2, as far out as the window reaches in the grid's own
+      // coordinates (a flattened grid reaches everywhere: its lines are capped instead)
+      const [a, c] = it.e1, [b, d] = it.e2, det = a * d - b * c;
+      let K = 60;
+      if (Math.abs(det) > 1e-9) {
+        const corners = [[W0, H0], [W0, H1], [W1, H0], [W1, H1]] as const;
+        K = Math.min(60, Math.ceil(Math.max(...corners.flatMap(([x, y]) => [Math.abs((d * x - b * y) / det), Math.abs((a * y - c * x) / det)]))) + 1);
+      }
+      const at = (u: number, w: number) => [sx(u * a + w * b).toFixed(1), sy(u * c + w * d).toFixed(1)];
+      for (let k = -K; k <= K; k++) for (const [p, q] of [[at(k, -K), at(k, K)], [at(-K, k), at(K, k)]]) {
+        el("line", { x1: p![0]!, y1: p![1]!, x2: q![0]!, y2: q![1]!, opacity: it.opacity.toFixed(3), "data-name": it.name }, cls(it, `scene-grid${k === 0 ? " axis" : ""}`));
+      }
+    } else if (it.kind === "poly") {
+      el("polygon", { points: it.pts.map((p) => `${sx(p[0]).toFixed(1)},${sy(p[1]).toFixed(1)}`).join(" "), opacity: it.opacity.toFixed(3), "data-name": it.name }, cls(it, "scene-poly"));
+    } else if (it.kind === "line") {
+      const dx = it.to[0] - it.from[0], dy = it.to[1] - it.from[1], n = Math.hypot(dx, dy);
+      if (n < 1e-12) continue;
+      const ux = (dx / n) * reach, uy = (dy / n) * reach;
+      el("line", { x1: sx(it.from[0] - ux).toFixed(1), y1: sy(it.from[1] - uy).toFixed(1), x2: sx(it.from[0] + ux).toFixed(1), y2: sy(it.from[1] + uy).toFixed(1), opacity: it.opacity.toFixed(3), "data-name": it.name }, cls(it, "scene-path"));
+    } else if (it.kind === "path") {
       let d = "", pen = false;
       for (const p of it.pts as XY[]) {
         if (!p || !Number.isFinite(p[0]) || !Number.isFinite(p[1])) { pen = false; continue; }
@@ -5880,6 +6017,14 @@ function toggleCellMenu(cell: Cell, anchor: HTMLElement) {
     // the author's starting point: as many steps as show now, the rest left to the reader
     const k = cell.stepwise !== undefined ? revealedCount(cell) : 0;
     if (cell.stepwise !== undefined && k !== cell.stepwise && k < workCount(cell)) item(`Begin with ${k} step${k === 1 ? "" : "s"} shown`, () => setStepwise(cell, k));
+  }
+  if (cell.type === "scene") {
+    // the scene as a Manim script, its samples the engine's: rendered by Manim on the reader's computer
+    menu.append(h("div", "sep"));
+    const data = cell.scene;
+    const name = `${S.docName.replace(/\.chalk$/, "")}-${i}`;
+    item("Copy as Manim script", data ? copy(manimOfScene(data, name), "the Manim script") : null);
+    item("Save as Manim script (.py)", data ? () => { download(`${name}.py`, manimOfScene(data, name), "text/x-python"); notify("ok", `Saved ${name}.py: render it with manim -pqh ${name}.py`); } : null);
   }
   menu.append(h("div", "sep"));
   item("Duplicate cell", () => duplicateCell(cell));
@@ -7234,7 +7379,7 @@ const USER_NAMES = new Set<string>();
 
 /** Commands whose argument at `arg` is a variable bound over the call: `diff(f, x)`, `plot(f, x, …)`. */
 const BINDERS: Record<string, number> = { diff: 1, integrate: 1, plot: 1, epicycles: 1, sum: 1, subst: 1, manipulate: 1 };
-const BUILTIN_FN = new Set(["sin", "cos", "tan", "sec", "csc", "cot", "arcsin", "arccos", "arctan", "exp", "ln", "log", "sqrt", "abs", "conj", "re", "im", "arg", "sign", "det", "rref", "transpose", "dot", "norm", "solve",
+const BUILTIN_FN = new Set(["sin", "cos", "tan", "sec", "csc", "cot", "arcsin", "arccos", "arctan", "sinh", "cosh", "tanh", "exp", "ln", "log", "sqrt", "abs", "conj", "re", "im", "arg", "sign", "det", "rref", "transpose", "dot", "norm", "solve",
   "total", "mean", "variance", "stdev", "min", "max", "median", "prime", "even", "odd"]);
 /** Every command a cell can call: each reference page's (`reference.ts`), so a new command is
  *  highlighted with nothing more to list, and the other worlds' (`taut`, `system`, …). */

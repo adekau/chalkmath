@@ -264,7 +264,7 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> The determinant is the factor by which a matrix scales area (volume, in space): the area of the parallelogram its columns span, $ad - bc$ for a $2 \\times 2$ matrix. A negative sign means the plane is flipped over; $0$ means it is squashed flat, which is exactly when there is no inverse. One move after another multiplies the factors.\n>\n> A question this course leaves open: a matrix can knock a vector off the line it lies on, or only stretch it along that line. Which vectors does it only stretch, and by how much? $A v = \\lambda v$ with $v \\neq 0$ says that $A - \\lambda I$ squashes $v$ to $0$, so these stretch factors $\\lambda$ are where $\\det(A - \\lambda I) = 0$. They are called eigenvalues.",
+      "src": "> [!summary]\n> The determinant is the factor by which a matrix scales area (volume, in space): the area of the parallelogram its columns span, $ad - bc$ for a $2 \\times 2$ matrix. A negative sign means the plane is flipped over; $0$ means it is squashed flat, which is exactly when there is no inverse. One move after another multiplies the factors.",
       "type": "markdown",
       "showWork": false,
       "label": null

@@ -3653,7 +3653,7 @@ theorem normalize_sound : ∀ (ops : List Op) (s : Option Nat), run s (normalize
 
 // ---------------------------------------------------------------------------------------------------
 course("calculus", "Calculus: derivatives and integrals",
-  "The slope at a point, found by zooming in; the power, product and chain rules read off pictures; the circle behind cos, sin and e^(it); tangent lines and bending; then antiderivatives the engine checks by differentiating, and area as slope run backwards.",
+  "The slope at a point, found by zooming in; the power, product and chain rules read off pictures; the circle behind cos, sin and e^(it), and the hyperbola behind cosh and sinh; tangent lines and bending; then antiderivatives the engine checks by differentiating, and area as slope run backwards.",
   "Calculus I–II", (add) => {
 
   add("01-rules.chalk", "The rules of differentiation", "The slope at a point, as what secants settle on; the power rule from a growing square, the product rule from a growing rectangle.", ({ sec, md, m, ex, sc }) => {
@@ -4043,7 +4043,117 @@ LP = label(P, "1 + iy") color 1
 `);
   });
 
-  add("04-tangent-lines.chalk", "Tangent lines and the second derivative", "The tangent line as the best straight stand-in for a curve, estimates from it, and the second derivative as how fast the curve bends away.", ({ sec, md, m, ex, sc }) => {
+  // the sectors of the circle and the hyperbola, as polygons through points of the arc
+  const arc = (pt, n = 12) => Array.from({ length: n + 1 }, (_, k) => pt(`${k}*t/${n}`)).join(", ");
+  add("04-hyperbolic.chalk", "Hyperbolic functions: the other circle", "cosh and sinh as the even and odd parts of e^x, the hyperbola they walk along as cos and sin walk the circle, the area that t measures on both, and derivatives with no minus sign.", ({ sec, md, m, ex, sc }) => {
+    sec("Hyperbolic functions: the other circle");
+    md(r`
+> [!goal]
+> Build $\cosh$ and $\sinh$ out of $e^x$ and $e^{-x}$, see them walk along a hyperbola the way $\cos$ and $\sin$ walk round the circle, and read their derivatives off that picture.
+`);
+    md(r`The engine reads ‹cosh›, ‹sinh› and ‹tanh› as their definitions in ‹exp›, so its answers come back in exponentials. That is the point of this lesson: everything about them is something about $e^x$.`);
+    sec("Even and odd parts of e^x");
+    md(r`
+> [!definition] Hyperbolic cosine and sine
+> $\cosh x = \dfrac{e^x + e^{-x}}{2}$, the average of $e^x$ and its mirror image $e^{-x}$; and $\sinh x = \dfrac{e^x - e^{-x}}{2}$, half their difference.
+`);
+    sc(r`
+clock t from -1.39 to 1.4
+view -2, 2, -2.2, 4.6
+Ep = graph(exp(x), x, -1.5, 1.5) faint color 1
+Em = graph(exp(-x), x, -1.5, 1.5) faint color 2
+A = point(t + i*exp(t)) color 1
+B = point(t + i*exp(-t)) color 2
+AB = segment(A, B) dashed color 6
+Mc = point(t + i*cosh(t)) thick color 3
+Cg = graph(cosh(x), x, -1.4, t) thick color 3
+Cf = graph(cosh(x), x, -1.4, 1.4) thick color 3
+D = segment(Mc, A) thick color 4
+Ms = point(t + i*sinh(t)) thick color 4
+Sf = graph(sinh(x), x, -1.4, 1.4) thick color 4
+> show Ep, Em | $e^x$ (orange) grows to the right; its mirror image $e^{-x}$ (blue) grows to the left.
+> show A, B, AB, Mc, Cg; play t to 1.4 in 5s | At every $x$, take the point halfway between them: their average, $\cosh x$ (green). It is symmetric, an **even** function, lowest at $\cosh 0 = 1$.
+> hide Cg; show Cf, D | From the average up to $e^x$ is half their difference: $\sinh x$ (pink). So $e^x = \cosh x + \sinh x$.
+> show Ms, Sf | Drawn on its own, $\sinh x$ is **odd**: through $0$, and turned half a turn about it.
+> play t to -1.39 in 5s | Walk back. At every $x$, $e^x = \cosh x + \sinh x$ and $e^{-x} = \cosh x - \sinh x$: an even part and an odd part, the way every function splits.
+`);
+    m("cosh(x)");
+    m("expand(cosh(x) + sinh(x))", { work: true });
+    m("expand(cosh(x) - sinh(x))");
+    m("cosh(-x) - cosh(x)");
+    sec("The hyperbola");
+    md(r`$(\cos t, \sin t)$ stays on the circle because $\cos^2 t + \sin^2 t = 1$. Multiply out the definitions, and the hyperbolic pair satisfies the same equation with one sign changed:`);
+    m("expand(cosh(x)^2 - sinh(x)^2)");
+    md(r`
+> [!theorem] The unit hyperbola
+> $\cosh^2 t - \sinh^2 t = 1$: the point $(\cosh t, \sinh t)$ lies on the hyperbola $x^2 - y^2 = 1$, on its right branch, since $\cosh t > 0$.
+`);
+    sc(r`
+clock t from 0 to 1.4
+view -1.7, 2.7, -1.5, 2.45
+C = curve(exp(i*s), s, 0, 2pi) faint color 6
+H = curve(cosh(s) + i*sinh(s), s, -1.5, 1.5) color 3
+Q = point(exp(i*t)) thick color 1
+RQ = segment(0, Q) color 1
+P = point(cosh(t) + i*sinh(t)) thick color 3
+R = segment(0, P) color 3
+X = point(cosh(t)) color 2
+DX = segment(P, X) dashed color 2
+Y = point(i*sinh(t)) color 4
+DY = segment(P, Y) dashed color 4
+V = value(cosh(t)^2 - sinh(t)^2, "\cosh^2 t - \sinh^2 t = ")
+SC = poly(0, ${arc((u) => `exp(i*${u})`)}) color 1
+SH = poly(0, ${arc((u) => `cosh(${u}) + i*sinh(${u})`)}) color 3
+Ar = value(t/2, "\text{each shaded area} = ")
+> show C, Q, RQ | The unit circle, $x^2 + y^2 = 1$, and $(\cos t, \sin t)$ on it.
+> show H, P, R | The unit hyperbola, $x^2 - y^2 = 1$, and $(\cosh t, \sinh t)$ on it: the same recipe with one sign flipped.
+> show X, DX, Y, DY, V; play t to 1.4 in 4s | The shadows of the green point are $\cosh t$ (blue) and $\sinh t$ (pink). The point runs out along the hyperbola, and $\cosh^2 t - \sinh^2 t$ never leaves $1$.
+> hide X, DX, Y, DY, V; play t to 0 in 2s | So what is $t$? On the circle it is an angle. On the hyperbola it is not: the green segment's angle never reaches $45°$, however large $t$ grows.
+> show SC, SH, Ar; play t to 1.4 in 5s | But on both, $t$ measures an **area**: the sector swept out from $1$ has area $\frac{t}{2}$, on the circle and on the hyperbola alike. The hyperbola's sector is long and thin; its area grows at exactly the circle's rate.
+`);
+    md(r`Why $\frac t2$? A point $(x(s), y(s))$ moving from $s = 0$ to $t$ sweeps a sector of area $\frac12 \int_0^t (x y' - y x')\,ds$. For the hyperbola the integrand is $\cosh^2 s - \sinh^2 s$:`);
+    m("expand(cosh(s)*diff(sinh(s), s) - sinh(s)*diff(cosh(s), s))");
+    m("integrate(1, s, 0, t)/2");
+    md(r`For the circle it is $\cos^2 s + \sin^2 s$, which is $1$ too, the circle's own equation (the engine leaves it written that way):`);
+    m("expand(cos(s)*diff(sin(s), s) - sin(s)*diff(cos(s), s))");
+    sec("Derivatives with no minus sign");
+    md(r`The circle's point $e^{it}$ has velocity $i e^{it}$: the radius turned a quarter, so $\cos' = -\sin$ and $\sin' = \cos$. Differentiate the hyperbola's point instead:`);
+    m("diff(cosh(x), x) - sinh(x)", { work: true });
+    m("diff(sinh(x), x) - cosh(x)");
+    sc(r`
+clock t from -1.2 to 0.6
+view -1.4, 2.8, -1.8, 2.4
+H = curve(cosh(s) + i*sinh(s), s, -1.7, 1.7) faint color 3
+K = line(0, 1 + i) dashed color 6
+P = point(cosh(t) + i*sinh(t)) thick color 3
+R = arrow(0, P) color 3
+M = arrow(0, sinh(t) + i*cosh(t)) dashed color 4
+Vel = arrow(P, cosh(t) + sinh(t) + i*(sinh(t) + cosh(t))) thick color 4
+> show H, P, R | The point $(\cosh t, \sinh t)$ and its position arrow.
+> show Vel; play t to 0.6 in 4s | Its velocity (pink) is $(\sinh t, \cosh t)$. The circle's velocity is its radius turned a quarter; this one is never at right angles to the radius.
+> show K, M | It is the position with $x$ and $y$ swapped: its mirror image in the line $y = x$ (dashed, from $0$). Reflecting has no minus sign, and neither do $\cosh' = \sinh$ and $\sinh' = \cosh$.
+> play t to -0.9 in 4s | The velocity's tip runs along that line: it is at $(\cosh t + \sinh t)(1, 1) = e^t (1, 1)$.
+`);
+    sec("The circle, turned by i");
+    md(r`
+> [!intuition] cos is cosh at an imaginary argument
+> Put $it$ into the definition: $\cosh(it) = \frac{e^{it} + e^{-it}}{2}$, and Euler's formula turns that into $\cos t$. The hyperbola and the circle are one curve, $x^2 \mp y^2 = 1$, seen along the real and the imaginary axis.
+`);
+    m("exptotrig(cosh(i*t))", { work: true });
+    m("expand(exptotrig(sinh(i*t)))");
+    md(r`A chain hanging between two posts takes the shape of $\cosh$, the **catenary**. Near the bottom it is almost the parabola $1 + \frac{x^2}{2}$, and then it climbs away from it, exponentially:`);
+    m("plot([cosh(x), 1 + x^2/2], x, -3, 3)");
+    ex("diff(cosh(3x), x)", r`Differentiate $\cosh(3x)$.`, [r`$\cosh' = \sinh$, with no minus sign.`, r`The chain rule: times the inner derivative, $3$.`]);
+    ex("expand(cosh(x) + sinh(x))", r`What is $\cosh x + \sinh x$? Give it as a single function.`, [r`Add the two definitions: the $e^{-x}$ terms cancel.`]);
+    ex("cosh(0)", r`What is $\cosh 0$? Where is the point $(\cosh 0, \sinh 0)$ on the hyperbola?`, [r`$e^0 = 1$.`], { hide: true });
+    ex("expand(cosh(2x) - (cosh(x)^2 + sinh(x)^2))", r`Check the double-angle formula $\cosh 2x = \cosh^2 x + \sinh^2 x$: what is the difference of the two sides?`, [r`Write everything in $e^{x}$ and expand.`], { hide: true });
+    md(r`
+> [!summary]
+> $\cosh$ and $\sinh$ are the even and odd parts of $e^x$. The point $(\cosh t, \sinh t)$ walks the hyperbola $x^2 - y^2 = 1$ as $(\cos t, \sin t)$ walks the circle, with $t$ twice the area swept on both; its velocity is its mirror image, so $\cosh' = \sinh$ and $\sinh' = \cosh$; and at an imaginary argument the hyperbolic functions are the circular ones.
+`);
+  });
+
+  add("05-tangent-lines.chalk", "Tangent lines and the second derivative", "The tangent line as the best straight stand-in for a curve, estimates from it, and the second derivative as how fast the curve bends away.", ({ sec, md, m, ex, sc }) => {
     sec("Tangent lines and the second derivative");
     md(r`
 > [!goal]
@@ -4121,7 +4231,7 @@ T = segment(a + i*(a^3 - 3*a) - 0.7*(1 + i*(3*a^2 - 3)), a + i*(a^3 - 3*a) + 0.7
 `);
   });
 
-  add("05-antiderivatives.chalk", "Antiderivatives, checked", "Differentiation run backwards: guess a function with the given derivative, then check it by differentiating, as the engine does; substitution and parts as the chain and product rules undone.", ({ sec, md, m, ex }) => {
+  add("06-antiderivatives.chalk", "Antiderivatives, checked", "Differentiation run backwards: guess a function with the given derivative, then check it by differentiating, as the engine does; substitution and parts as the chain and product rules undone.", ({ sec, md, m, ex }) => {
     sec("Antiderivatives, checked");
     md(r`
 > [!goal]
@@ -4187,7 +4297,7 @@ T = segment(a + i*(a^3 - 3*a) - 0.7*(1 + i*(3*a^2 - 3)), a + i*(a^3 - 3*a) + 0.7
 `);
   });
 
-  add("06-definite-integrals.chalk", "Area and the fundamental theorem", "The area under a curve from rectangles, then exactly: the area so far grows at the rate of the curve's height, so it is an antiderivative.", ({ sec, md, m, ex, sc }) => {
+  add("07-definite-integrals.chalk", "Area and the fundamental theorem", "The area under a curve from rectangles, then exactly: the area so far grows at the rate of the curve's height, so it is an antiderivative.", ({ sec, md, m, ex, sc }) => {
     // the right Riemann rectangles of x^2 on [0, 1] with n strips, as segments: a scene's script lines
     const rects = (n, tag, color) => {
       const lines = [], names = [];
@@ -4283,7 +4393,7 @@ S2 = segment(X + i*X^2, X + 0.1 + i*X^2) color 3
 
 // ---------------------------------------------------------------------------------------------------
 course("linear-algebra", "Linear algebra: vectors, matrices and systems",
-  "Vectors as arrows and as lists, matrices as moves of the plane, solving systems by elimination with verified row operations, and the determinant as the factor by which area scales.",
+  "Vectors as arrows and as lists, matrices as moves of the plane, solving systems by elimination with verified row operations, the determinant as the factor by which area scales, and change of basis and eigenvectors.",
   "Linear algebra", (add) => {
 
   add("01-vectors.chalk", "Vectors: arrows, lists and the dot product", "Adding arrows tip to tail, stretching them, reaching every point with two of them, length, and the dot product as a shadow.", ({ sec, md, m, ex, sc }) => {
@@ -4730,8 +4840,98 @@ Q2 = segment(t + (1 - t)*i, 1 + i) color 1
     md(r`
 > [!summary]
 > The determinant is the factor by which a matrix scales area (volume, in space): the area of the parallelogram its columns span, $ad - bc$ for a $2 \times 2$ matrix. A negative sign means the plane is flipped over; $0$ means it is squashed flat, which is exactly when there is no inverse. One move after another multiplies the factors.
->
-> A question this course leaves open: a matrix can knock a vector off the line it lies on, or only stretch it along that line. Which vectors does it only stretch, and by how much? $A v = \lambda v$ with $v \neq 0$ says that $A - \lambda I$ squashes $v$ to $0$, so these stretch factors $\lambda$ are where $\det(A - \lambda I) = 0$. They are called eigenvalues.
+`);
+  });
+
+  add("05-change-of-basis.chalk", "Change of basis and eigenvectors", "Coordinates in a basis of your own choosing, the matrix that translates them, and the directions a matrix only stretches.", ({ sec, md, m, ex, sc }) => {
+    sec("Change of basis and eigenvectors");
+    md(r`
+> [!goal]
+> Describe a vector in a basis other than $e_1, e_2$, translate between the two descriptions with a matrix, and find the directions a matrix only stretches.
+`);
+    sec("Coordinates in another basis");
+    md(r`
+> [!definition] Basis and coordinates
+> Two vectors $b_1, b_2$ of the plane that do not lie on one line are a **basis**: every vector is $v = c_1 b_1 + c_2 b_2$ for exactly one pair $(c_1, c_2)$, its **coordinates** in that basis.
+`);
+    md(r`Take $b_1 = (2, 1)$ and $b_2 = (-1, 1)$. They draw a grid of their own, and the point at $(2, 1)$ on their grid is somewhere else on ours:`);
+    sc(r`
+clock t from 0 to 1
+view -3.6, 5.6, -1.2, 4.2
+let P = [2, -1; 1, 1]
+let M = (1 - t)*[1, 0; 0, 1] + t*P
+G0 = grid([1, 0; 0, 1]) faint color 6
+G = grid(M) color 2
+B1 = arrow(0, M*[1; 0]) thick color 3
+LB1 = label(M*[1; 0], "b_1") color 3
+B2 = arrow(0, M*[0; 1]) thick color 4
+LB2 = label(M*[0; 1], "b_2") color 4
+V = point(M*[2; 1]) thick color 1
+LV = label(M*[2; 1], "v") color 1
+W1 = arrow(0, 2*P*[1; 0]) color 3
+W2 = arrow(2*P*[1; 0], P*[2; 1]) color 4
+> show G0, B1, LB1, B2, LB2, V, LV | Our grid, with the point $(2, 1)$ on it.
+> show G; play t to 1 in 4s | Carry the grid along with $P = \begin{bmatrix} 2 & -1 \\ 1 & 1 \end{bmatrix}$, whose columns are $b_1$ and $b_2$. The point keeps its place on the grid, $(2, 1)$, and lands at $v = 2b_1 + b_2 = (3, 3)$.
+> show W1, W2 | Two steps along $b_1$ and one along $b_2$: in the new basis $v$ has coordinates $(2, 1)$, in ours $(3, 3)$.
+`);
+    md(r`So the matrix $P$ whose columns are the new basis turns coordinates in that basis into ours:`);
+    m("let P = [2, -1; 1, 1]");
+    m("P*[2; 1]");
+    md(r`
+> [!theorem] Finding coordinates is solving a system
+> The coordinates $c$ of $v$ in the basis are the solution of $Pc = v$: a system whose augmented matrix is $P$ with $v$ beside it. Since $b_1, b_2$ are a basis, $\det P \neq 0$ and the solution is unique.
+`);
+    m("rref([2, -1, 3; 1, 1, 3])", { work: true });
+    md(r`The last column is the coordinates, $(2, 1)$. Row reduction undid $P$.`);
+    sec("Eigenvectors");
+    md(r`
+> [!definition] Eigenvector and eigenvalue
+> A nonzero vector $v$ is an **eigenvector** of $A$ when $A$ only stretches it: $Av = \lambda v$ for a number $\lambda$, its **eigenvalue**. The line through $v$ is then carried onto itself.
+`);
+    md(r`Most vectors are turned off their line by a matrix. Watch $A = \begin{bmatrix} 2 & 1 \\ 1 & 2 \end{bmatrix}$, and three vectors: two on the dashed lines, one not.`);
+    sc(r`
+clock t from 0 to 1
+view -3.6, 4.6, -1.4, 3.9
+let A = [2, 1; 1, 2]
+let M = (1 - t)*[1, 0; 0, 1] + t*A
+G0 = grid([1, 0; 0, 1]) faint color 6
+G = grid(M) color 2
+K1 = line(0, [1, 1]) dashed color 3
+K2 = line(0, [1, -1]) dashed color 4
+U = arrow(0, M*[1; 1]) thick color 3
+LU = label(M*[1; 1], "u") color 3
+W = arrow(0, M*[-0.5; 0.5]) thick color 4
+LW = label(M*[-0.5; 0.5], "w") color 4
+X = arrow(0, M*[1; 0]) thick color 1
+KX = line(0, [1, 0]) dashed color 1
+> show G0, U, LU, W, LW, X, KX | Three vectors, each on a line through $0$: $u = (1, 1)$, $w = (-\frac12, \frac12)$, and $(1, 0)$ in orange.
+> show G; play t to 1 in 4s | Apply $A$. The orange vector $(1, 0)$ is turned off its line, to $(2, 1)$.
+> show K1, K2 | But $u$ stays on its line, stretched three times to $(3, 3)$, and $w$ stays exactly where it was. They are eigenvectors, with eigenvalues $3$ and $1$.
+`);
+    m("let A = [2, 1; 1, 2]");
+    m("A*[1; 1]");
+    m("A*[-1; 1]");
+    md(r`
+> [!theorem] The characteristic polynomial
+> $Av = \lambda v$ with $v \neq 0$ says $(A - \lambda I)v = 0$ has a nonzero solution: $A - \lambda I$ flattens the plane, so $\det(A - \lambda I) = 0$. The eigenvalues are the roots of this polynomial in $\lambda$.
+`);
+    md(r`For $A$, writing $x$ for $\lambda$: the polynomial is $x^2 - 4x + 3 = (x - 1)(x - 3)$, with roots $1$ and $3$.`);
+    m("expand(det(A - x*[1, 0; 0, 1]))");
+    m("subst(det(A - x*[1, 0; 0, 1]), x, 3)");
+    m("subst(det(A - x*[1, 0; 0, 1]), x, 1)");
+    md(r`
+> [!intuition] In its own basis a matrix is simple
+> In the basis of its eigenvectors, $b_1 = (1, 1)$ and $b_2 = (-1, 1)$, the matrix $A$ only stretches the first coordinate by $3$ and keeps the second: in those coordinates it is the diagonal matrix $\begin{bmatrix} 3 & 0 \\ 0 & 1 \end{bmatrix}$. Choosing the basis well is most of understanding a matrix.
+`);
+    ex("rref([1, 1, 3; 1, -1, 1])", r`Find the coordinates of $v = (3, 1)$ in the basis $b_1 = (1, 1)$, $b_2 = (1, -1)$: reduce the augmented matrix, and give the reduced matrix.`, [
+      r`The augmented matrix has $b_1$ and $b_2$ as columns, then $v$: ‹[1, 1, 3; 1, -1, 1]›.`,
+      r`The coordinates are the last column of the reduced matrix.`,
+    ]);
+    ex("[3, 0; 0, 1]*[2; 5]", r`In its eigenbasis, $A$ is $\begin{bmatrix} 3 & 0 \\ 0 & 1 \end{bmatrix}$. Apply it to the coordinates $(2, 5)$.`, [r`A diagonal matrix scales each coordinate by its own entry.`], { hide: true });
+    ex("[2, 1; 1, 2]*[1; -1]", r`Apply $A = \begin{bmatrix} 2 & 1 \\ 1 & 2 \end{bmatrix}$ to $(1, -1)$. Is $(1, -1)$ an eigenvector, and with which eigenvalue?`, [r`Compare the answer with $(1, -1)$ itself.`]);
+    md(r`
+> [!summary]
+> A basis gives every vector coordinates; the matrix of the basis turns them into ours, and row reduction turns ours into them. An eigenvector is a direction a matrix only stretches, its eigenvalue a root of $\det(A - \lambda I)$, and in a basis of eigenvectors the matrix is diagonal.
 `);
   });
 });

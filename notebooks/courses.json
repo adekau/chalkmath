@@ -277,7 +277,7 @@
     {
       "id": "calculus",
       "title": "Calculus: derivatives and integrals",
-      "blurb": "The slope at a point, found by zooming in; the power, product and chain rules read off pictures; the circle behind cos, sin and e^(it); tangent lines and bending; then antiderivatives the engine checks by differentiating, and area as slope run backwards.",
+      "blurb": "The slope at a point, found by zooming in; the power, product and chain rules read off pictures; the circle behind cos, sin and e^(it), and the hyperbola behind cosh and sinh; tangent lines and bending; then antiderivatives the engine checks by differentiating, and area as slope run backwards.",
       "kind": "course",
       "level": "Calculus I–II",
       "path": "courses/calculus",
@@ -298,17 +298,22 @@
           "blurb": "Why e^(it) walks round the unit circle: cosine and sine as shadows, multiplying by i as a quarter turn, Euler's formula, angles that add, and arctan as an angle."
         },
         {
-          "file": "04-tangent-lines.chalk",
+          "file": "04-hyperbolic.chalk",
+          "title": "Hyperbolic functions: the other circle",
+          "blurb": "cosh and sinh as the even and odd parts of e^x, the hyperbola they walk along as cos and sin walk the circle, the area that t measures on both, and derivatives with no minus sign."
+        },
+        {
+          "file": "05-tangent-lines.chalk",
           "title": "Tangent lines and the second derivative",
           "blurb": "The tangent line as the best straight stand-in for a curve, estimates from it, and the second derivative as how fast the curve bends away."
         },
         {
-          "file": "05-antiderivatives.chalk",
+          "file": "06-antiderivatives.chalk",
           "title": "Antiderivatives, checked",
           "blurb": "Differentiation run backwards: guess a function with the given derivative, then check it by differentiating, as the engine does; substitution and parts as the chain and product rules undone."
         },
         {
-          "file": "06-definite-integrals.chalk",
+          "file": "07-definite-integrals.chalk",
           "title": "Area and the fundamental theorem",
           "blurb": "The area under a curve from rectangles, then exactly: the area so far grows at the rate of the curve's height, so it is an antiderivative."
         }
@@ -317,7 +322,7 @@
     {
       "id": "linear-algebra",
       "title": "Linear algebra: vectors, matrices and systems",
-      "blurb": "Vectors as arrows and as lists, matrices as moves of the plane, solving systems by elimination with verified row operations, and the determinant as the factor by which area scales.",
+      "blurb": "Vectors as arrows and as lists, matrices as moves of the plane, solving systems by elimination with verified row operations, the determinant as the factor by which area scales, and change of basis and eigenvectors.",
       "kind": "course",
       "level": "Linear algebra",
       "path": "courses/linear-algebra",
@@ -341,6 +346,11 @@
           "file": "04-determinants.chalk",
           "title": "Determinants: how a matrix scales area",
           "blurb": "The determinant as the factor by which a matrix scales area, ad − bc from a picture, its sign as a flip, zero as squashing with no inverse, and why determinants multiply."
+        },
+        {
+          "file": "05-change-of-basis.chalk",
+          "title": "Change of basis and eigenvectors",
+          "blurb": "Coordinates in a basis of your own choosing, the matrix that translates them, and the directions a matrix only stretches."
         }
       ]
     },

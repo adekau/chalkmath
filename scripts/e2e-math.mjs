@@ -15,7 +15,7 @@
 // derivative and a column of a plot and a calculation dragged, against the engine's own frames), a
 // scene (sampled by the engine, scrubbed to its end, its equation stepped, % untouched), the tab
 // bar with more notebooks open than fit, and a course's lesson opened from the Courses tab, answered,
-// and followed to the next. Each is held to the engine's own answers through a client of the test's.
+// followed to the next, closed without a question and opened again with its answer kept. Each is held to the engine's own answers through a client of the test's.
 // Chromium: playwright-core's own, or the executable named by CHROMIUM. The engine: MATHENGINE, or
 // engine/.lake/build/bin/mathengine.
 import { chromium } from "playwright-core";
@@ -35,6 +35,7 @@ const CASES = [
   { src: "[1,2;3,4] * [5,6;7,8]", text: "[19, 22; 43, 50]", step: "Matrix product" },
   { src: "[1, 2] ./ [3, 10]", text: "[1/3, 1/5]", step: "Entrywise division" },
   { src: "N(sin(10^30))", text: "-0.0901169019121381", step: "Numerical value" },
+  { src: "sqrt(10^401)", text: "10^(401/2)", step: "Radical" },
   { src: "N((-8)^(1/3))", text: "1 + 1.73205080756888*i", step: "Numerical value" },
   { src: "N(exp(100))", text: "2.68811714181614*10^43", step: "Numerical value" },
   { src: "N(e^3.5)", text: "33.1154519586923", step: "Numerical value" },
@@ -47,6 +48,8 @@ const CASES = [
   { src: "diff(arctan(x), x)", text: "1/(x^2 + 1)", step: "Chain rule" },
   { src: "integrate(1/(4+x^2), x)", text: "arctan(x/2)/2", step: "Arctangent integral" },
   { src: "integrate(1/sqrt(1-x^2), x)", text: "arcsin(x)", step: "Arcsine integral" },
+  // cosh, sinh and tanh, read as their definitions in exp
+  { src: "expand(cosh(x)^2 - sinh(x)^2)", text: "1", step: "Expand" },
   // the antiderivative finder's rules split at their conditions too
   { src: "integrate(1/x, x)", text: "ln(x)", step: "Power rule for integrals, assuming" },
   { src: "integrate(b^x, x)", text: "b^x/ln(b)", step: "Exponential integral, assuming the base" },
@@ -286,6 +289,53 @@ async function scenes() {
   const o = await out(last);
   assert.equal(flatTex(o.tex ?? ""), "3", `% after a scene: ${JSON.stringify(o)}`);
   console.log(`✓ scene: 2 beats, the point at (${x.toFixed(3)}, ${y.toFixed(3)}) as the engine samples it, the equation stepped to its answer, % untouched`);
+  // the scene as a Manim script, from its ⋮ menu: the engine's samples, the beats, the equation's steps
+  await sceneCell.hover();
+  await sceneCell.locator(".cellacts .more").click();
+  const [dl] = await Promise.all([page.waitForEvent("download"), page.locator(".cellmenu .item", { hasText: "Save as Manim script" }).click()]);
+  const pyText = readFileSync(await dl.path(), "utf8");
+  assert.match(dl.suggestedFilename(), /\.py$/);
+  assert.match(pyText, /^from manim import \*$/m);
+  assert.match(pyText, /^class \w+\(Scene\):$/m);
+  const ptRow = pyText.split("\n").find((l) => l.endsWith("# a*exp(i*t)"));
+  assert.ok(ptRow, "the point's samples are in the script");
+  assert.match(ptRow, new RegExp(`\\(${+wx.toFixed(5)}, ${+wy.toFixed(5)}\\)\\],`), "its last sample is the engine's");
+  assert.equal(pyText.match(/self\.play\(AnimationGroup/g)?.length, 2, "a group of animations per beat");
+  assert.ok(pyText.includes(JSON.stringify(eq.rendered.latex)), "the equation's last step is the engine's");
+  console.log(`✓ scene as Manim: ${dl.suggestedFilename()}, the point's samples and the equation's steps the engine's`);
+  // a matrix moving the plane: a vector is a point, the grid is drawn, a value is read off
+  await menu("Edit", "Add math cell");
+  const la = (await cells().count()) - 1;
+  await run(la, "let A = [3, 1; 1, 2]");
+  await out(la);
+  await menu("Edit", "Add scene");
+  const grid = page.locator(".cell.scene").last();
+  await grid.locator("textarea.scenein").fill([
+    "clock t from 0 to 1",
+    "let M = (1 - t)*[1, 0; 0, 1] + t*A",
+    "G = grid(M)",
+    "V = point(M*[1; 1])",
+    "S = poly(0, M*[1; 0], M*[1; 1], M*[0; 1])",
+    'D = value(det(M), "\\det = ")',
+    "> show G, V, S, D; play t to 1 in 1s | Apply $A$.",
+  ].join("\n"));
+  await grid.locator("textarea.scenein").press("Shift+Enter");
+  const gp = grid.locator(".scene-player");
+  await gp.locator("svg").waitFor({ timeout: 30000 });
+  const gTotal = Number(await gp.locator(".scene-scrub").getAttribute("max"));
+  await gp.locator(".scene-play").evaluate((b) => { if (b.textContent === "❚❚") b.click(); });
+  await gp.locator(".scene-scrub").evaluate((r, t) => { r.value = String(t); r.dispatchEvent(new Event("input")); }, gTotal);
+  await reference.call("engine.evaluate", { sessionId: "e2e-scene", cellId: "A", source: "let A = [3, 1; 1, 2]" });
+  const av = await reference.call("engine.evaluate", { sessionId: "e2e-scene", cellId: "Av", source: "A*[1; 1]" });
+  const [ax, ay] = av.rendered.text.slice(1, -1).split(";").map(Number);
+  const vdot = gp.locator("svg circle[data-name=V]");
+  const [vx, vy] = [Number(await vdot.getAttribute("data-x")), Number(await vdot.getAttribute("data-y"))];
+  assert.ok(Math.abs(vx - ax) < 1e-3 && Math.abs(vy - ay) < 1e-3, `the vector is at (${vx}, ${vy}), the engine says A*[1; 1] = ${av.rendered.text}`);
+  assert.ok(await gp.locator("svg line[data-name=G]").count() > 4, "the grid's lines are drawn");
+  assert.equal((await gp.locator("svg polygon[data-name=S]").getAttribute("points")).split(" ").length, 4, "the square's image has four corners");
+  const det = await reference.call("engine.evaluate", { sessionId: "e2e-scene", cellId: "d", source: "det(A)" });
+  assert.equal(flatTex(await gp.locator(".scene-eq .katex-mathml annotation").last().textContent()), flatTex(`\\det = ${det.rendered.text}`), "the value read off is the engine's determinant");
+  console.log(`✓ scene: a grid moved by A, the vector (1, 1) carried to (${vx.toFixed(3)}, ${vy.toFixed(3)}), det = ${det.rendered.text} read off`);
 }
 
 /** The name dialog of File › Save as (and of the first save of an untitled notebook): a name typed and saved. */
@@ -720,6 +770,26 @@ async function features() {
   await page.locator(".lessonbar .lbcourse").click();
   await page.locator(".crslesson").first().locator(".crsstate", { hasText: `1 of ${total} exercises` }).waitFor({ timeout: 10000 });
   console.log(`✓ course: ${course.title}, lesson 1 answered (1 of ${total}), lesson 2 opened, progress remembered`);
+  // a lesson is never unsaved: it closes without asking, and opens again as it was left
+  const lessonTab = page.locator(`.tabbar .tab[title^="${course.lessons[0].file} — a lesson"]`);
+  assert.equal(await lessonTab.count(), 1, "the answered lesson has its tab");
+  assert.equal(await lessonTab.evaluate((t) => t.classList.contains("dirty")), false, "an answered lesson is not marked unsaved");
+  let asked = false;
+  const onDialog = (d) => { asked = true; void d.dismiss(); };
+  page.on("dialog", onDialog);
+  await lessonTab.hover();   // a tab in the background shows its × only when pointed at
+  await lessonTab.locator(".x").click();
+  page.off("dialog", onDialog);
+  assert.equal(asked, false, "closing a lesson does not ask to save it");
+  assert.equal(await lessonTab.count(), 0, "the lesson's tab closed");
+  await page.locator(".crslesson").first().locator(".crsgo").click();
+  await page.locator(".lessonbar .lbwhere", { hasText: `Lesson 1 of ${course.lessons.length}` }).waitFor({ timeout: 30000 });
+  await page.locator(".cell.exercise").first().locator(".xc-verdict.right").waitFor({ timeout: 30000 });
+  assert.equal(await page.locator(".cell.exercise").first().locator(".xc-in").inputValue(), expected.rendered.text, "the answer comes back");
+  await page.locator(".lessonbar .lbstate", { hasText: `1 of ${total} exercises` }).waitFor({ timeout: 10000 });
+  await page.locator(".lessonbar .lbkept").waitFor({ timeout: 10000 });
+  await page.locator(".lessonbar .lbbtn", { hasText: "Start over" }).waitFor({ timeout: 10000 });
+  console.log("✓ lesson: never unsaved, closed without asking, reopened with its answer kept");
 }
 
 let failed = false;

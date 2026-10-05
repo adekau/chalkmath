@@ -12,15 +12,15 @@ the engine omits is unverified.
 \rt{simp.identity}{verified}{The additive and multiplicative identities and the annihilator.}
 \rt{simp.fold-constants}{verified}{Exact rational arithmetic; $\mathbb{Q}$ embeds in $\mathbb{R}$.}
 \rt{simp.collect-like-terms}{verified}{Distributivity: $a t + b t = (a+b) t$.}
-\rt{simp.power}{verified}{Includes exact roots; the root search returns only checked roots.}
+\rt{simp.power}{verified}{Includes exact roots; the root search returns only checked roots, and is bounded by bit length (none past 4096 bits).}
 \rt{simp.collect-powers}{verified}{$b^m b^n = b^{m+n}$ for every real $b$: integer exponents of one sign ($x \cdot x = x^2$) or a positive numeral base (\lc{collectPowers_soundR}).}
 \rt{simp.collect-powers.assuming}{conditional}{The other merges, $x \cdot x^{-1} = x^0$ and $x^a x^b = x^{a+b}$: the step states its assumption, $b \neq 0$ for integer exponents and $b > 0$ otherwise (\lc{collectPowersAssuming_soundR_on}); at $x = 0$, $x \cdot x^{-1}$ turns $0$ into $1$ (\lc{not_collectPowersAssuming_soundR}).}
 \rt{simp.function}{verified}{$\sin/\cos = \tan$, $\sqrt a = a^{1/2}$, $\ln 1 = 0$, $e^0 = 1$, $\sin 0$, $\cos 0$, and $\lvert\cdot\rvert$ and sign of a numeral, for every real and every complex number (\lc{functionRules_soundR}, \lc{functionRules_soundC}).}
 \rt{simp.function.real}{verified}{$\ln e^x = x$, and $\ln b^p = p \ln b$ for an odd integer $p$, for every real number, keeping the domain (\lc{functionReal_soundR}); off over $\mathbb{C}$, where $\ln e^{4i} = (4 - 2\pi)i$ (\lc{not_functionReal_soundC}).}
 \rt{simp.function.assuming}{conditional}{$e^{\ln x} = x$, and $\ln b^p = p \ln b$ for $p$ not an odd integer: the step states $x > 0$ or $b > 0$ (\lc{functionAssuming_soundR_on}); $\ln x^2$ is defined at $x = -2$ and $2 \ln x$ is not.}
-\rt{simp.radical}{verified}{A perfect-power base is reduced ($8^{1/2} = 2^{3/2}$), same-index radicals multiply under one root, and $\sqrt{18}$ is written $18^{1/2}$, shown as $3\sqrt 2$; unconditional, the bases being positive integers.}
+\rt{simp.radical}{verified}{A perfect-power base is reduced ($8^{1/2} = 2^{3/2}$), same-index radicals multiply under one root, and $\sqrt{18}$ is written $18^{1/2}$, shown as $3\sqrt 2$; the searches are bounded by bit length ($\sqrt{10^{401}} = 10^{401/2}$), leaving a number of 4096 bits or more as it is; unconditional, the bases being positive integers.}
 \rt{simp.sqrt}{verified}{$\sqrt a = a^{1/2}$ for every real $a$. Silent: the two print alike.}
-\rt{simp.collect-radicals}{verified}{Radicals with the same square-free part collect, $\sqrt{50} - \sqrt{18} = 2\sqrt 2$; unconditional.}
+\rt{simp.collect-radicals}{verified}{Radicals with the same square-free part collect, $\sqrt{50} - \sqrt{18} = 2\sqrt 2$; the square-free part comes from trial division, exact below $2^{60}$ for square roots; unconditional.}
 \rt{simp.sort}{verified}{Commutativity: the arguments of $+$ and $\cdot$ are put in a canonical order (\lc{SemEqR.canon}). Silent: it reorders only.}
 \midrule \multicolumn{3}{l}{\textbf{Derivatives}} \\
 \rt{diff.constant}{verified}{A term the variable does not occur in has derivative $0$ (\lc{diff_constant_sound}).}
