@@ -725,6 +725,7 @@ async function features() {
   let asked = false;
   const onDialog = (d) => { asked = true; void d.dismiss(); };
   page.on("dialog", onDialog);
+  await lessonTab.hover();   // a tab in the background shows its × only when pointed at
   await lessonTab.locator(".x").click();
   page.off("dialog", onDialog);
   assert.equal(asked, false, "closing a lesson does not ask to save it");
