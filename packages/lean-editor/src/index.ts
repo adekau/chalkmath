@@ -25,6 +25,13 @@ class WorkerLeanMonaco extends LeanMonaco {
   protected override getWebSocketOptions(): never {
     return { $type: "WorkerDirect", worker: this.worker } as never;
   }
+  /** The Lean 4 extension's manifest without its `extensionDependencies` (the TOML extension, for
+   *  `lakefile.toml`), which this editor does not load: the extension host, activating Lean's extension
+   *  once startup finishes, finds it missing, and the handler for a missing dependency calls a service
+   *  this editor does not implement, which throws "unsupported" into the page. */
+  protected override getExtensionManifest(): ReturnType<LeanMonaco["getExtensionManifest"]> {
+    return { ...super.getExtensionManifest(), extensionDependencies: [] };
+  }
 }
 
 const SEVERITY: Record<number, LeanMessage["severity"]> = {
