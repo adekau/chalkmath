@@ -9,7 +9,19 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Prove statements whose step needs not just the case before but any smaller case, and see why that is no stronger than ordinary induction.",
+      "src": "> [!goal]\n> Prove statements whose step needs any smaller case, not just the one before, and see why that is no stronger than ordinary induction.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Try ordinary induction on \"every $n \\ge 2$ has a prime factor\". The step assumes 11 has a prime factor and must show that 12 does. That is no help: 12 is $2 \\times 6$, and the cases that help are its factors, which can be anywhere below it.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The fix is to assume more. When proving $P(n)$, assume $P(m)$ for every $m < n$, not only for $n - 1$:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -50,7 +62,7 @@
       "label": null
     },
     {
-      "src": "With stamps of 3 and 5, which amounts can you make exactly?",
+      "src": "> [!try]\n> With stamps of 3 and 5, which amounts can you make exactly, and which not? Find the largest one you cannot make before reading on.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -66,7 +78,7 @@
       "label": null
     },
     {
-      "src": "Every amount from 8 on: 8, 9 and 10 directly, and any $n \\ge 11$ from $n - 3$ plus one stamp of 3. The step reaches back three, so it needs three base cases.",
+      "src": "7 cannot be made; every amount from 8 on can. Make 8, 9 and 10 directly, and any $n \\ge 11$ from $n - 3$ plus one stamp of 3. The step reaches back three, to a case strong induction lets it use, so it needs three base cases.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -96,7 +108,7 @@
       "label": null
     },
     {
-      "src": "Each Fibonacci number uses the two before it, so a proof about them uses two earlier cases.",
+      "src": "Each Fibonacci number uses the two before it, so a proof about them uses two earlier cases, and needs two base cases.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -122,14 +134,26 @@
       "label": null
     },
     {
+      "src": "Strong induction assumes more, so it looks stronger. It is not:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "> [!theorem] Weak induction, strong induction, well-ordering\n> These are equivalent: each proves the others.\n>\n> - Strong induction gives weak: its hypothesis includes the case $n - 1$.\n> - Weak gives strong: apply weak induction to $Q(n)$ = \"$P(m)$ for every $m < n$\".\n> - Well-ordering (every non-empty set of naturals has a least element) gives strong induction: if $P$ failed somewhere, take the least $n$ where it fails; $P$ holds below $n$, so the step gives $P(n)$, a contradiction.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "The last form is the one lesson 9 generalizes: induction works on any relation with no infinite descending chains.",
+      "src": "The last form is the one lesson 9 generalizes: induction works along any relation with no infinite descending chain.",
       "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
       "showWork": false,
       "label": null
     },
@@ -146,7 +170,7 @@
     {
       "src": "∃ a ∈ 0..3, ∃ b ∈ 0..3, 11 = 4a + 5b",
       "type": "exercise",
-      "prompt": "Can 11 be made from stamps of 4 and 5?",
+      "prompt": "Can 11 be made from stamps of 4 and 5? Answer `true` or `false`.",
       "hints": [
         "Try $b = 0, 1, 2$."
       ],
@@ -154,7 +178,25 @@
       "label": null
     },
     {
+      "src": "> [!try]\n> The largest amount that cannot be made is 7 with stamps of 3 and 5, and 11 with stamps of 4 and 5. Guess the rule for stamps of $a$ and $b$ with no common factor, and test it on 3 and 7.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "It is $ab - a - b$ (Sylvester, 1884): $15 - 8 = 7$, $20 - 9 = 11$, and $21 - 10 = 11$ for 3 and 7.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "> [!summary]\n> Strong induction lets the step use every smaller case, with as many base cases as the step reaches back. It proves nothing ordinary induction cannot, but it fits arguments that split $n$ into smaller pieces.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Natural numbers are built from $0$ by $+1$, and induction follows that construction. Lists and trees are built too, from smaller lists and trees. The next lesson gives them their own induction.",
       "type": "markdown",
       "showWork": false,
       "label": null

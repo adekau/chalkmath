@@ -9,7 +9,13 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Decide the properties of a relation, with the pairs that break them; compute closures; and read an equivalence relation as a partition.",
+      "src": "> [!goal]\n> Decide the properties of a relation and point to the pairs that break them; compute closures; read an equivalence relation as a partition.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A service receives requests and drops duplicates. One day an action goes missing: a request was dropped as a duplicate when it was not one. Which requests should count as \"the same\"? The answer is a relation, and the bug, at the end of this lesson, is a fact about two relations.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -32,13 +38,19 @@
       "label": null
     },
     {
+      "src": "\"Is the same as\" has three properties anyone would insist on: everything is the same as itself; if $x$ is the same as $y$, then $y$ is the same as $x$; and two things the same as a third are the same as each other. \"Is at most\" keeps the first and the third, and turns the second around: $x \\le y$ and $y \\le x$ together only when $x = y$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "> [!definition] Reflexive, symmetric, antisymmetric, transitive\n> $R$ is **reflexive** when $x \\mathrel{R} x$ for every $x$; **symmetric** when $x \\mathrel{R} y$ gives $y \\mathrel{R} x$; **antisymmetric** when $x \\mathrel{R} y$ and $y \\mathrel{R} x$ give $x = y$; **transitive** when $x \\mathrel{R} y$ and $y \\mathrel{R} z$ give $x \\mathrel{R} z$.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "Each check shows the pairs that break the property in red.",
+      "src": "Each is a $\\forall$, so each falls to one counterexample: a failed check names the element or the pairs that break it, and the graph marks them.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -70,13 +82,7 @@
       "label": null
     },
     {
-      "src": "> [!definition] Closure\n> The **transitive closure** of $R$ is the least transitive relation containing it: add every pair forced by two that chain, and repeat until nothing new is forced. The reflexive and symmetric closures add $(x, x)$ and the reverse pairs.",
-      "type": "markdown",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "Step through it: each round adds the pairs that the last round's pairs force. The added pairs are dashed.",
+      "src": "> [!try]\n> $P$ below has $a \\to b$, $b \\to c$ and $c \\to d$. If $P$ has to be transitive, which pairs are you forced to add? Is one round of adding enough?",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -87,10 +93,28 @@
       "label": null
     },
     {
+      "src": "Step through it: each round adds the pairs that the last round's pairs force. The added pairs are dashed.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "closure(P, transitive)",
       "showWork": true,
       "label": null,
       "stepwise": 0
+    },
+    {
+      "src": "One round is not enough: $(a, d)$ is forced only once $(a, c)$ is there. The rounds stop when nothing new is forced.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Closure\n> The **transitive closure** of $R$ is the least transitive relation containing it: what you are forced to add, and nothing more. The reflexive and symmetric closures add the pairs $(x, x)$ and the reverse pairs.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
     },
     {
       "src": "> [!theorem] The closure is the least\n> Every pair a round adds lies in any transitive relation containing $R$, and the rounds stop only when the relation is transitive. So the result is transitive and inside every transitive relation containing $R$. Both facts are proved in Lean (the dot on each step).",
@@ -111,7 +135,7 @@
       "label": null
     },
     {
-      "src": "The commonest way to get one: give each element a label, and relate two elements when their labels are equal. That is the **kernel** of the labelling.",
+      "src": "The commonest way to get one: give each element a label, and relate two elements when their labels are equal. That is the **kernel** of the labelling. It is an equivalence for free, because equality of labels is.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -132,7 +156,7 @@
       "label": null
     },
     {
-      "src": "A relation that is not an equivalence has a closure that is one:",
+      "src": "A relation that is not an equivalence has a closure that is one: everything it is forced to identify.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -160,7 +184,7 @@
       "label": null
     },
     {
-      "src": "> [!example] Deduplicating by key\n> A service receives requests $r_1, \\dots, r_4$ and drops duplicates. Requests $r_1$ and $r_2$ carry key $k_1$ and the same action; $r_3$ and $r_4$ carry key $k_2$ but different actions. Deduplicating by key treats two requests as the same when their keys are equal (the relation $K$ above). What should count as the same is the same key *and* the same payload: the relation $A$.",
+      "src": "> [!example] Deduplicating by key\n> Back to the service. Requests $r_1$ and $r_2$ carry key $k_1$ and the same action; $r_3$ and $r_4$ carry key $k_2$ but different actions. Deduplicating by key treats two requests as the same when their keys are equal: the relation $K$ above. What should count as the same is the same key *and* the same payload: the relation $A$.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -255,7 +279,13 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> A relation's properties are checked pair by pair, and a failure is a pair you can point at. Closures add exactly what a property forces. An equivalence relation is a partition, and comparing two of them (finer, coarser) is how you find out which things get merged that should not be.",
+      "src": "> [!summary]\n> A relation's properties are checked pair by pair, and a failure is a pair you can point at. A closure adds exactly what a property forces. An equivalence relation is a partition, and comparing two of them (finer, coarser) is how you find out which things get merged that should not be.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Induction ran along \"one less than\" and \"is a part of\", and both have a property the next lesson names: you cannot step down them forever. Which relations have it, and how do you prove that one does?",
       "type": "markdown",
       "showWork": false,
       "label": null
