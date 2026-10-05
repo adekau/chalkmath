@@ -399,9 +399,9 @@ async function autosaveTabs() {
   assert.equal(await b.locator(".tabbar .tabstrip .tab .nm").count(), 0, "a second tab opened with the first tab's notebooks");
   await b.locator(".menus span", { hasText: "File" }).click();
   await b.locator(".dropdown .item", { hasText: "New notebook" }).first().click();
+  // typed, not run: typing is kept too, and this tab's engine is the page's default, which a bundle without wasm lacks
   const input = b.locator(".cell input.cellin").first();
-  await input.click(); await input.fill("7 * 6"); await input.press("Enter");
-  await b.locator(".cell .outval").first().waitFor({ timeout: 30000 });
+  await input.click(); await input.pressSequentially("7 * 6");
   await b.waitForFunction(() => Object.keys(localStorage).filter((k) => k.startsWith("chalkmath.autosave")).length === 2, null, { timeout: 5000 })
     .catch(() => assert.fail("the second tab's notebook was not kept apart"));
   assert.ok((await keys()).includes(mainKeys[0]), "the second tab saved over the first tab's notebooks");
