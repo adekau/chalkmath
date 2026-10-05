@@ -98,12 +98,16 @@ emcc -o "$OUT/bin/lean.js" @"$OUT/link.rsp" "$OUT/obj/cpp/shell/lean.cpp.o" $LIN
 #    one started beyond the pre-created pool is not ready in time: Lean's task manager adds a thread when
 #    a pooled task waits on another, and the server's main loop then stalls. So the pool is large, and
 #    the host caps Lean's own pool (LEAN_NUM_THREADS) well below it.
+#    It is linked at -O1, which leaves out Binaryen's optimizer (wasm-opt): in a browser a worker has a
+#    500 KB stack (Chromium), and what wasm-opt does at -O2/-O3 makes V8's frames for this code larger
+#    once V8 has optimized it, so Lean recursed less deep before running out (a `do` block of 17
+#    `let x ← …` lines against 23; ARCHITECTURE.md §4b). It costs 4 MB more of download, and no speed.
 echo "== linking lean-server.js"
 mkdir -p "$OUT/obj/server"
 LEAN_PATH="$PREFIX/lib/lean" "$LEAN" --c="$OUT/server-LeanWorker.c" wasm/server/LeanWorker.lean
 emcc $CFLAGS -c "$OUT/server-LeanWorker.c" -o "$OUT/obj/server/LeanWorker.o"
 emcc $CFLAGS -c wasm/server/leanweb.c -o "$OUT/obj/server/leanweb.o"
-emcc -o "$OUT/lean-server.js" @"$OUT/link.rsp" "$OUT/obj/server/LeanWorker.o" "$OUT/obj/server/leanweb.o" $LINKFLAGS \
+emcc -o "$OUT/lean-server.js" @"$OUT/link.rsp" "$OUT/obj/server/LeanWorker.o" "$OUT/obj/server/leanweb.o" $LINKFLAGS -O1 \
   -sMODULARIZE=1 -sEXPORT_NAME=createLeanServer -sENVIRONMENT=web,worker,node -sINVOKE_RUN=0 -sEXIT_RUNTIME=0 \
   -sPTHREAD_POOL_SIZE=32 \
   -sEXPORTED_FUNCTIONS=$EXPORTS,_leanweb_in_buf,_leanweb_in_cap,_leanweb_in_w,_leanweb_in_r \
