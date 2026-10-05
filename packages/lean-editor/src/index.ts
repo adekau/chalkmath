@@ -178,6 +178,10 @@ export async function startLean(o: LeanOptions): Promise<LeanNotebook> {
     },
     version() { return model.getVersionId(); },
     messages(id) { return JSON.parse(lastMessages.get(id) ?? "[]") as LeanMessage[]; },
+    cellAt(line) {
+      for (const [id, [first, last]] of ranges) if (line >= first && line <= last) return { id, line: line - first + 1 };
+      return null;
+    },
     mount(id, el) {
       const editor = monaco.editor.create(el, {
         model, automaticLayout: true, scrollBeyondLastLine: false, minimap: { enabled: false },

@@ -228,10 +228,46 @@ index 29b8598..1eb8d86 100644
              throw new Error("The Lean command-line driver can only run under Node.js. For the embeddable WASM library, see lean_wasm.cpp.");
          }
 diff --git a/src/runtime/object.cpp b/src/runtime/object.cpp
-index 9a8b4c5..98db144 100644
+index f18659b..7b35518 100644
 --- a/src/runtime/object.cpp
 +++ b/src/runtime/object.cpp
-@@ -1120,11 +1120,11 @@ extern "C" LEAN_EXPORT void lean_init_task_manager_using(unsigned num_workers) {
+@@ -740,6 +740,20 @@ extern "C" LEAN_EXPORT void lean_mark_mt(object * o) {
+ 
+ LEAN_THREAD_PTR(lean_task_object, g_current_task_object);
+ 
++// How many `sync` continuations this thread is running inside one another. A `sync` continuation of a task
++// that has finished runs at once, on the thread that asks for it, so a chain of them nests one call per
++// link: the language server fast-forwards over every command an edit leaves unchanged this way
++// (`Lean.Language.Lean.process.parseCmd`). Past `LEAN_SYNC_INLINE_MAX` links the rest of the chain runs
++// as an ordinary task, from the top of a pool thread's stack. A thread in a browser has a small stack
++// (Chromium gives a worker 500 KB), which a few hundred unchanged commands would otherwise overflow.
++#define LEAN_SYNC_INLINE_MAX 16
++LEAN_THREAD_VALUE(unsigned, g_sync_inline_depth, 0);
++struct scoped_sync_inline {
++    scoped_sync_inline() { g_sync_inline_depth++; }
++    ~scoped_sync_inline() { g_sync_inline_depth--; }
++};
++static bool sync_inline_ok() { return g_sync_inline_depth < LEAN_SYNC_INLINE_MAX; }
++
+ static lean_task_imp * alloc_task_imp(obj_arg c, unsigned prio, bool keep_alive) {
+     lean_task_imp * imp = (lean_task_imp*)lean_alloc_small_object(sizeof(lean_task_imp));
+     imp->m_closure     = c;
+@@ -802,8 +816,12 @@ class task_manager {
+         lean_assert(imp);
+         unsigned prio = imp->m_prio;
+         if (prio == LEAN_SYNC_PRIO) {
+-            run_task(lock, t);
+-            return;
++            if (sync_inline_ok()) {
++                scoped_sync_inline inline_scope;
++                run_task(lock, t);
++                return;
++            }
++            prio = imp->m_prio = LEAN_MAX_PRIO;   // too deep to run here: queue it, first in line
+         }
+         if (prio > LEAN_MAX_PRIO) {
+             spawn_dedicated_worker(t);
+@@ -1120,11 +1138,11 @@ extern "C" LEAN_EXPORT void lean_init_task_manager_using(unsigned num_workers) {
  }
  
  static unsigned get_lean_num_threads() {
@@ -245,3 +281,23 @@ index 9a8b4c5..98db144 100644
      return hardware_concurrency();
  }
  
+@@ -1221,7 +1239,8 @@ static obj_res task_map_fn(obj_arg f, obj_arg t, obj_arg w) {
+ 
+ extern "C" LEAN_EXPORT obj_res lean_task_map_core(obj_arg f, obj_arg t, unsigned prio,
+       bool sync, bool keep_alive) {
+-    if (!g_task_manager || (sync && lean_to_task(t)->m_value)) {
++    if (!g_task_manager || (sync && lean_to_task(t)->m_value && sync_inline_ok())) {
++        scoped_sync_inline inline_scope;
+         return lean_task_pure(apply_1(f, lean_task_get_own(t)));
+     } else {
+         lean_task_object * new_task = alloc_task(mk_closure_3_2(task_map_fn, f, t), sync ? LEAN_SYNC_PRIO : prio, keep_alive);
+@@ -1283,7 +1302,8 @@ static obj_res task_bind_fn1(obj_arg x, obj_arg f, obj_arg) {
+ 
+ extern "C" LEAN_EXPORT obj_res lean_task_bind_core(obj_arg x, obj_arg f, unsigned prio,
+       bool sync, bool keep_alive) {
+-    if (!g_task_manager || (sync && lean_to_task(x)->m_value)) {
++    if (!g_task_manager || (sync && lean_to_task(x)->m_value && sync_inline_ok())) {
++        scoped_sync_inline inline_scope;
+         return apply_1(f, lean_task_get_own(x));
+     } else {
+         lean_task_object * new_task = alloc_task(mk_closure_3_2(task_bind_fn1, x, f), sync ? LEAN_SYNC_PRIO : prio, keep_alive);

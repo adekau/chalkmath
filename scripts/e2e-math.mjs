@@ -37,6 +37,8 @@ const CASES = [
   { src: "N(sin(10^30))", text: "-0.0901169019121381", step: "Numerical value" },
   { src: "N((-8)^(1/3))", text: "1 + 1.73205080756888*i", step: "Numerical value" },
   { src: "N(exp(100))", text: "2.68811714181614*10^43", step: "Numerical value" },
+  { src: "N(e^3.5)", text: "33.1154519586923", step: "Numerical value" },
+  { src: "N(ln(2))", text: "0.693147180559945", step: "Numerical value" },
   { src: "factor(1/x + 1)", text: "(x + 1)/x", step: "Common denominator" },
   { src: "N(i^i)", text: "0.207879576350762", step: "Numerical value" },
   { src: "diff(ln(x), x)", text: "1/x", step: "Chain rule, assuming" },
@@ -333,11 +335,51 @@ async function scenes() {
   console.log(`✓ scene: a grid moved by A, the vector (1, 1) carried to (${vx.toFixed(3)}, ${vy.toFixed(3)}), det = ${det.rendered.text} read off`);
 }
 
+/** The name dialog of File › Save as (and of the first save of an untitled notebook): a name typed and saved. */
+async function saveAs(name) {
+  const dlg = page.locator(".modalcard[aria-label='Save notebook as']");
+  await dlg.waitFor({ timeout: 5000 });
+  await dlg.locator("input").fill(name);
+  await dlg.locator("button.primary").click();
+  await dlg.waitFor({ state: "detached", timeout: 5000 });
+}
+
+/** Saving an untitled notebook: the first save asks for a name instead of writing untitled.chalk over
+ *  another, a later save does not ask, and a second untitled notebook given the same name is told it
+ *  would replace the first. */
+async function saving() {
+  const dlg = page.locator(".modalcard[aria-label='Save notebook as']");
+  const current = () => page.locator(".tabbar .tabstrip .tab.on").getAttribute("title");
+  await menu("File", "New notebook");
+  await run(0, "1 + 1"); await out(0);
+  await page.keyboard.press("Control+s");
+  await dlg.waitFor({ timeout: 5000 }).catch(() => assert.fail("saving an untitled notebook asked for no name"));
+  assert.equal(await dlg.locator("input").inputValue(), "untitled", "the name offered");
+  await saveAs("first");
+  assert.equal(await current(), "first.chalk", "the notebook did not take the name given");
+  await run(1, "2 + 2"); await out(1);
+  await page.keyboard.press("Control+s");
+  await page.waitForFunction(() => !document.querySelector(".tabbar .tabstrip .tab.on .label")?.textContent?.endsWith("*"), null, { timeout: 5000 });
+  assert.equal(await dlg.count(), 0, "a notebook saved once asked for a name again");
+  await menu("File", "New notebook");
+  await menu("File", "Save");
+  await dlg.waitFor({ timeout: 5000 }).catch(() => assert.fail("a second untitled notebook saved without a name"));
+  await dlg.locator("input").fill("first");
+  assert.match(await dlg.locator(".savewarn").textContent(), /already saved/, "a name already saved is not pointed out");
+  assert.equal(await dlg.locator("button.primary").textContent(), "Replace");
+  await dlg.locator("button", { hasText: "Cancel" }).click();
+  assert.equal(await current(), "untitled.chalk", "cancelling renamed the notebook");
+  const lib = await page.evaluate(() => Object.keys(JSON.parse(localStorage.getItem("chalkmath.library") ?? "{}")));
+  assert.ok(lib.includes("first.chalk") && !lib.includes("untitled.chalk"), `the library holds ${JSON.stringify(lib)}`);
+  await page.locator(".tabbar .tabstrip .tab.on .x").click();   // untouched: closes without asking
+  console.log("✓ saving: an untitled notebook asked for a name, kept it, and a second one was warned before replacing it");
+}
+
 async function tabs() {
   const long = "a-notebook-with-a-name-far-too-long-for-any-tab.chalk";
   await menu("File", "New notebook");
-  page.once("dialog", (d) => d.accept(long));
   await menu("File", "Save as");
+  await saveAs(long);
   const strip = page.locator(".tabbar .tabstrip .tab");
   let added = 0;
   while (!(await page.locator(".tabbar.overflow").count())) {
@@ -511,6 +553,25 @@ async function features() {
   await page.locator(".usagetip .umore", { hasText: "subst" }).waitFor({ timeout: 5000 });
   await page.mouse.move(5, 5);
   console.log("✓ usage on hover: subst");
+  // a plain e is a variable, not Euler's number: the answer says so, in the engine's words; ℯ is quiet
+  // (each in a cell of its own: a cell that ran a power reopens in the visual editor)
+  const warned = async (src, k) => {
+    await menu("Edit", "Add math cell");
+    const wI = await all().count() - 1;
+    await all().nth(wI).locator("input.cellin").fill(src);
+    await all().nth(wI).locator("input.cellin").press("Enter");
+    const r = await ref(src, k);
+    await outIs(wI, r.rendered.latex, src);
+    return { engine: r.warnings, shown: await all().nth(wI).locator(".outval .outwarn").allTextContents() };
+  };
+  const ew = await warned("e^x", 40);
+  assert.ok(ew.engine?.length, "the engine did not warn about a variable named e");
+  assert.deepEqual(ew.shown, ew.engine.map((w) => `⚠ ${w}`), "the page does not show the engine's warning");
+  const cw = await warned("ℯ^x", 41);
+  assert.equal(cw.engine, undefined, "the engine warned about ℯ");
+  assert.deepEqual(cw.shown, [], "the page warned about ℯ");
+  await menu("Edit", "Add math cell");   // the next check writes into the last cell
+  console.log("✓ warnings: e^x says e is a variable, ℯ^x says nothing");
   // explain: each clickable part of an answer explains that part, the engine's own explain of its path
   // (a negated product prints without its -1, and its factors keep their true paths)
   const negSrc = "cos(t) - sin(t)^2/sqrt(2)";
@@ -620,6 +681,8 @@ async function features() {
   assert.ok((await page.locator(".mi-completions").innerText()).includes("∨"), "the typeset input does not list \\or");
   await page.keyboard.type("r \\not p");
   assert.equal(await all().nth(vk).locator(".mi").count(), 1, "the cell left the typeset input");
+  // every world's commands are highlighted as commands, not only calculus's
+  assert.deepEqual(await all().nth(vk).locator('.mi [data-hl="hcmd"]').allTextContents(), ["taut"], "taut is not highlighted as a command");
   await page.keyboard.press("Control+Shift+M");
   const vtyped = "taut(p ∨ ¬p)";
   assert.equal(await all().nth(vk).locator("input.cellin").inputValue(), vtyped, "the typeset cell's text");
@@ -677,6 +740,7 @@ async function features() {
   console.log(`✓ replicas: ${repWant.lanes.length} lanes, ${repWant.events.length} events, ${repWant.messages.length} messages drawn`);
   await manipulate();
   await scenes();
+  await saving();
   await tabs();
   // a course: the Courses tab, a lesson opened, answered, and followed to the next
   const manifest = JSON.parse(readFileSync(path.join(root, "notebooks/courses.json"), "utf8"));
