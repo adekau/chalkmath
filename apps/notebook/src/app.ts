@@ -1,5 +1,4 @@
 import { createClient, type EngineClient, type Step, type StepOutline, type Path, type RuleStatus, type Derivation, type WireExpr, type PlotResult, type ManipulateResult, type HasseData, type KnownVisual, type TruthTableData, type DigraphData, type OpTableData, type ContextTableData, type TypingNode, type TypingTreeData, type SpacetimeData } from "@chalkmath/protocol";
-declare const __BUILD_ID__: string;
 import { workerTransport, httpTransport } from "@chalkmath/engine-host";
 import { leanForPrelude } from "@chalkmath/lean-editor/prelude";
 import { read as readNotation, write as writeNotation, writeText, hasNotation, templateAt, templateInText, TEMPLATES, lex as lexNotation, type Stmt, type Caret, type MathEdit } from "@chalkmath/math-editor";
@@ -24,6 +23,7 @@ import { fileCellOf, resolveFiles, importsIn, partContext, partHelp, fileExprVal
 import { dataGrid, matrixEntries } from "./datagrid.js";
 import { plotYRange, framesWindow, blendable, blend, playPosition, workLine } from "./animate.js";
 import { manimOfScene } from "./scene-manim.js";
+import { BUILD, versioned } from "./version.js";
 import { gather, keyOf, KEY as AUTOSAVE_KEY, LEGACY_KEYS, parseAutosave, type Autosave as AutosaveOf } from "./autosave-store.js";
 import { parseScene, numberRequests as sceneNumberRequests, sampleRequests as sceneSampleRequests, numbersOf as sceneNumbersOf, vectorsOf as sceneVectorsOf, build as buildScene, frameAt as sceneFrameAt, SceneError, type SceneData, type Item as SceneItem, type XY } from "./scene.js";
 import { DOC_PAGES, type DocPage, type DocPart } from "./docs.js";
@@ -527,7 +527,7 @@ function reportUnexpected(e: unknown) {
   const msg = e instanceof Error ? e.message : String(e);
   // the browser's own benign report, and an editor's cancelled request, are not failures
   if (/^ResizeObserver loop|^Canceled$/.test(msg) || (e instanceof Error && e.name === "Canceled")) return;
-  log("err", `unexpected error (build ${typeof __BUILD_ID__ === "string" ? __BUILD_ID__ : "dev"}): ${msg}`);
+  log("err", `unexpected error (build ${BUILD}): ${msg}`);
   if (Date.now() - unexpectedShown < 10_000) return;
   unexpectedShown = Date.now();
   notify("err", `Something went wrong on the page: ${msg}. Your notebooks are kept; reloading the page starts it afresh.`);
@@ -573,7 +573,7 @@ async function connect() {
   let c: EngineClient;
   try {
     c = S.engineMode === "lean-worker"
-      ? createClient(workerTransport(new Worker(`engine-lean.worker.js?v=${typeof __BUILD_ID__ === "string" ? __BUILD_ID__ : "dev"}`)))
+      ? createClient(workerTransport(new Worker(versioned("engine-lean.worker.js"))))
       : createClient(httpTransport(S.httpUrl));
   } catch (e) { kernelFailed("The engine could not start in this browser.", e instanceof Error ? e.message : String(e)); return; }
   client = c;
@@ -1760,7 +1760,7 @@ const EXAMPLES: { file: string; title: string; blurb: string }[] = [
 
 /** A bundled notebook's text, by its path under examples/. */
 async function fetchExample(file: string): Promise<string> {
-  const res = await fetch(`examples/${file}?v=${typeof __BUILD_ID__ === "string" ? __BUILD_ID__ : "dev"}`);
+  const res = await fetch(versioned(`examples/${file}`));
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.text();
 }
@@ -1833,7 +1833,7 @@ function projectRefOf(file: { project?: unknown }): ProjectRef | undefined {
 }
 async function loadProjects() {
   try {
-    const res = await fetch(`examples/courses.json?v=${typeof __BUILD_ID__ === "string" ? __BUILD_ID__ : "dev"}`);
+    const res = await fetch(versioned("examples/courses.json"));
     if (!res.ok) return;
     const j = await res.json() as { projects?: unknown };
     const ok = Array.isArray(j.projects) ? (j.projects as Project[]).filter((p) => p && typeof p.id === "string" && typeof p.title === "string"
@@ -2131,7 +2131,7 @@ function showAbout() {
     p("Privacy: the engine runs in your browser. What you type is not sent to a server, and notebooks are kept in this browser's storage until you export them. The page loads nothing from other sites, except what a notebook asks for: an import(\"url\") cell, or an image in a Markdown cell."),
     links,
     legal,
-    p(`Build ${typeof __BUILD_ID__ === "string" ? __BUILD_ID__ : "dev"}${S.caps ? ` · engine ${S.caps.version}` : ""}`),
+    p(`Build ${BUILD}${S.caps ? ` · engine ${S.caps.version}` : ""}`),
   ]);
 }
 

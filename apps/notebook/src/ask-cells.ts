@@ -21,11 +21,10 @@
  * asks first.
  */
 import { lookup, wikipedia, webSearch, validAnswer, AskError, type AskResult, type Model, type Source } from "@chalkmath/ask";
+import { versioned } from "./version.js";
 
 export type { AskResult };
 export { AskError };
-declare const __BUILD_ID__: string;
-const stamp = typeof __BUILD_ID__ === "string" ? __BUILD_ID__ : "dev";
 
 /** A question cell: `?question`, or `let name = ?question`. */
 export const ASK_CELL = /^\s*(?:let\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*)?\?\s*([\s\S]*\S)\s*$/;
@@ -148,9 +147,9 @@ function chromeModel(lm: LMStatic): Model {
 }
 
 async function webgpuModel(id: string): Promise<Model> {
-  const mod = (await import(new URL(`ask/webllm.js?v=${stamp}`, location.href).href)) as typeof import("./webllm.js");
+  const mod = (await import(new URL(versioned("ask/webllm.js"), location.href).href)) as typeof import("./webllm.js");
   let last = -1;
-  return mod.createEngine(new URL(`ask/webllm-worker.js?v=${stamp}`, location.href).href, id, (fraction, text) => {
+  return mod.createEngine(new URL(versioned("ask/webllm-worker.js"), location.href).href, id, (fraction, text) => {
     const pct = Math.floor(fraction * 100);
     if (pct === last) return;
     last = pct;

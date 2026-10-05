@@ -709,3 +709,16 @@ Mathlib lives only in `proofs/`. `lake exe cache get` there fetches prebuilt ole
 building from source takes hours). The wasm runtime is built from source for the pinned tag
 (`scripts/build-lean-wasm-runtime.sh`, results in `book/SPIKE-RESULTS.md`), cached under
 `engine/toolchains/<tag>` and keyed by tag.
+
+Emscripten is pinned too, in `engine/wasm/emscripten-version`, and every workflow that runs `emcc`
+(`lean-wasm.yml`, `pages.yml`, and CI's `wasm` job, which builds the engine for wasm on every pull
+request so a wasm-only breakage shows before the merge) installs that version and names it in its
+cache key: runtime objects built by one `emcc` are not linked by another.
+
+**What a deploy changes.** The build is the commit it was made from (`scripts/bundle.mjs`; shown in
+Help › About and in error reports). Every file the page loads by URL carries `?v=` and a hash of its
+own contents (`versioned`, `apps/notebook/src/version.ts`): the bundle builds the files in the order
+they refer to each other, hashes each once written, and gives the hashes to the builds that load
+them. So a browser downloads the engine's wasm, the Lean editor (2.6 MB compressed) or WebLLM again
+only when that file changed, not after every deploy as when the stamp was the build time. Lean's own
+large files are content-addressed in Cache Storage as well (§4b).

@@ -13,11 +13,14 @@ type Module = {
 };
 declare const createMathEngine: (opts?: object) => Promise<Module>;
 declare const __BUILD_ID__: string;
-const stamp = typeof __BUILD_ID__ === "string" ? __BUILD_ID__ : "dev";
+declare const __ASSET_VERSIONS__: Record<string, string>;
+/** A file of the engine with its version, a hash of its contents (scripts/bundle.mjs), so the
+ *  browser keeps the wasm across deploys that did not change it; the build where it has none. */
+const versioned = (file: string) => `${file}?v=${(typeof __ASSET_VERSIONS__ === "object" && __ASSET_VERSIONS__[file]) || (typeof __BUILD_ID__ === "string" ? __BUILD_ID__ : "dev")}`;
 
-importScripts(`engine-lean.js?v=${stamp}`);
+importScripts(versioned("engine-lean.js"));
 
-const ready = createMathEngine({ locateFile: (p: string) => `${p}?v=${stamp}` }).then((M) => {
+const ready = createMathEngine({ locateFile: (p: string) => versioned(p) }).then((M) => {
   if (M.ccall("mathengine_init", "number", [], []) !== 0) throw new Error("Lean runtime failed to initialize");
   const call = M.cwrap("mathengine_call", "number", ["string"]) as (s: string) => number;
   const free = M.cwrap("mathengine_free", null, ["number"]) as (p: number) => void;

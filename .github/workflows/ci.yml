@@ -4,7 +4,9 @@ name: CI
 # `lake test` (the ported reference suite and the golden corpus), engine/ stays free of Mathlib, the
 # TypeScript packages build and pass their tests against the native engine, the notebook page
 # type-checks and bundles, and math cells typed into the bundled page in Chromium show the native
-# engine's answers and work, as do the notebook's teaching features (scripts/e2e-math.mjs). pages.yml deploys a main commit only after this has passed on it.
+# engine's answers and work, as do the notebook's teaching features (scripts/e2e-math.mjs); and the
+# engine builds for wasm, the way the deploy builds it, and answers there. pages.yml deploys a main
+# commit only after this has passed on it.
 
 on:
   push:
@@ -71,3 +73,41 @@ jobs:
           name: e2e-math
           path: e2e-math.png
           if-no-files-found: ignore
+
+  # The engine as the page runs it: Lean -> C -> wasm (scripts/build-wasm.sh), loaded and asked once
+  # (scripts/smoke-wasm.cjs). A change that builds natively can still fail to link or start for wasm,
+  # which used to show only in the deploy, after the merge. Same toolchain and cache as pages.yml, so a
+  # pull request reuses main's runtime build (Lean's runtime + Init for wasm32, ~15 minutes cold).
+  wasm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - name: Install elan (the Lean toolchain pinned in engine/lean-toolchain)
+        run: |
+          curl -sSfL https://github.com/leanprover/elan/releases/latest/download/elan-x86_64-unknown-linux-gnu.tar.gz | tar xz
+          ./elan-init -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - name: Which Emscripten (pinned in engine/wasm/emscripten-version)
+        id: emsdk
+        run: echo "version=$(cat engine/wasm/emscripten-version)" >> "$GITHUB_OUTPUT"
+      - uses: mymindstorm/setup-emsdk@v14
+        with: { version: "${{ steps.emsdk.outputs.version }}", actions-cache-folder: emsdk-cache }
+      - name: Cache the wasm runtime and the engine build
+        uses: actions/cache@v4
+        with:
+          path: |
+            engine/toolchains
+            engine/.lake
+          key: wasm-emsdk${{ steps.emsdk.outputs.version }}-${{ hashFiles('engine/lean-toolchain', 'engine/wasm/**', 'scripts/build-lean-wasm-runtime.sh', 'scripts/build-wasm.sh') }}-${{ hashFiles('engine/**/*.lean') }}
+          restore-keys: |
+            wasm-emsdk${{ steps.emsdk.outputs.version }}-${{ hashFiles('engine/lean-toolchain', 'engine/wasm/**', 'scripts/build-lean-wasm-runtime.sh', 'scripts/build-wasm.sh') }}-
+      - run: npm ci
+      - name: Build the engine for wasm
+        run: |
+          elan toolchain install "$(cat engine/lean-toolchain)"
+          npm run wasm
+      - name: Load the wasm engine and evaluate (capabilities, one evaluation)
+        run: node scripts/smoke-wasm.cjs apps/notebook/dist
