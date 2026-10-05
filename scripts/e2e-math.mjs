@@ -792,12 +792,14 @@ async function features() {
   console.log("✓ lesson: never unsaved, closed without asking, reopened with its answer kept");
   // Lean held: a page loaded after the browser stopped the one before it while Lean was starting (the mark
   // lean-cells.ts keeps until Lean has checked its first document) does not start Lean again by itself; a
-  // Lean cell says why, and a button starts it (in a page of its own: the mark is read as the page loads)
+  // Lean cell says why, and a button starts it (in a browser context of its own: the mark is read as the page loads)
   const MARK = "chalkmath.lean.starting";
-  await page.evaluate((k) => localStorage.setItem(k, "1"), MARK);
-  const again = await page.context().newPage();
+  const fresh = await browser.newContext();
+  const again = await fresh.newPage();
   try {
     await again.goto(`${base}/`);
+    await again.evaluate((k) => localStorage.setItem(k, "1"), MARK);
+    await again.reload();
     await again.locator(".menus span", { hasText: "File" }).click();
     await again.locator(".dropdown .item", { hasText: "New notebook" }).click();
     await again.locator(".menus span", { hasText: "Edit" }).click();
@@ -810,8 +812,7 @@ async function features() {
     await again.waitForFunction(() => !document.querySelector(".leanstate.held"), null, { timeout: 10000 });
     assert.equal(await again.evaluate((k) => localStorage.getItem(k), MARK), null, "starting Lean on request clears the mark");
   } finally {
-    await page.evaluate((k) => localStorage.removeItem(k), MARK);
-    await again.close();
+    await fresh.close();
   }
   console.log("✓ Lean held after the page stopped while it started: said so, and started on request");
 }
