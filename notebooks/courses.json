@@ -437,22 +437,22 @@
         {
           "file": "05-curry-howard.chalk",
           "title": "Propositions as types",
-          "blurb": "A type is a proposition, a term of it a proof: the Curry–Howard correspondence."
+          "blurb": "The typing rules turn out to be the rules of logic: a type is a proposition, a term a proof of it, β-reduction simplifies proofs, and Peirce's law, true by truth table, has no term."
         },
         {
           "file": "06-safety.chalk",
           "title": "Type safety",
-          "blurb": "Well-typed programs do not go wrong: progress and preservation, and a safety proof in Lean."
+          "blurb": "A program stuck with no rule to apply, the two promises a type must make about every step (progress and preservation), a looser rule that breaks one, and safety proved in Lean."
         },
         {
           "file": "07-polymorphism.chalk",
           "title": "Polymorphism",
-          "blurb": "One term at many types: type schemes, System F, and Church numerals that work at every type."
+          "blurb": "The identity written once for every type: why a defined name can be used at many types and an argument cannot, System F, and Church numerals at every type."
         },
         {
           "file": "08-dependent-types.chalk",
           "title": "Dependent types",
-          "blurb": "Types that depend on values; Lean's type theory; type checking is proof checking."
+          "blurb": "Types that mention values: a head that cannot be given an empty list, Π-types as ∀, and Lean checking a proof by checking a type."
         }
       ]
     },

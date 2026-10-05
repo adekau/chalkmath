@@ -1,5 +1,13 @@
-4	type: λf:A→B. λg:B→C. λx:A. g (f x)	= (A → B) → (B → C) → A → C
-6	taut((p → q) → (q → r) → p → r)	= ⊤
-9	taut(((p → q) → p) → p)	= ⊤
-17	type: λf:A→B→C. λb:B. λa:A. f a b	= (A → B → C) → B → A → C
-18	taut((p → q) → (¬q → ¬p))	= ⊤
+4	taut(p → q → p)	= ⊤
+6	taut((p → q → r) → (p → q) → p → r)	= ⊤
+8	taut(p → q)	= ⊥
+10	type: λx:A. y	✗ y is free and has no type: give it one in the context, as in `y : A ⊢ …`
+15	type: λf:A→B. λg:B→C. λx:A. g (f x)	= (A → B) → (B → C) → A → C
+19	type: a : A ⊢ (λx:A. λy:B. x) a	= B → A
+20	normal: (λx:A. λy:B. x) a	= λy. a
+24	taut(((p → q) → p) → p)	= ⊤
+27	type: λh:(A→B)→A. h (λa:A. a)	✗ h expects an argument of type A → B, but λa:A. a has type A → A
+32	type: λa:A. λk:A→F. k a	= A → (A → F) → F
+40	type: λf:A→B→C. λb:B. λa:A. f a b	= (A → B → C) → B → A → C
+41	infer: λf. λk. λa. k (f a)	= (α → β) → (β → γ) → α → γ
+42	taut(¬¬p → p)	= ⊤

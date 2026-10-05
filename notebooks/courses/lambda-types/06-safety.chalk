@@ -9,40 +9,127 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> State type safety, see preservation at work, and prove safety for a small typed language.",
+      "src": "> [!goal]\n> Find what \"a typed program cannot go wrong\" has to mean, step by step, and prove it for a small language.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!theorem] Type safety (Milner: \"well-typed programs cannot go wrong\")\n> - **Preservation**: if $\\Gamma \\vdash M : T$ and $M$ takes a step to $M'$, then $\\Gamma \\vdash M' : T$.\n> - **Progress**: a closed, typed term is a value or can take a step.\n>\n> Together: a typed program never gets stuck on a type error.",
+      "src": "In the pure λ-calculus everything is a function, so nonsense still computes: lesson 1's `if 2 a b` gave $a\\ (a\\ b)$. Real languages have data that is not a function, numbers and booleans, and there a program can reach a point where nothing applies. Let free names stand for such data, $\\mathsf{tt}$ a boolean and $n$ a number:",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "Preservation, on one step. The redex has type $A$:",
+      "src": "cbv: (λf. f n) tt",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Call by value stops at $\\mathsf{tt}\\ n$. It is not a value (a value is a λ or a name on its own), and no step applies, since $\\mathsf{tt}$ is not a function. The program is **stuck**: not finished, and unable to go on. A machine would crash here, or carry on with garbage. The type checker refuses it before it runs:",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "type: x:A ⊢ (λy:A. y) x",
+      "src": "type: tt : Bool, n : Nat ⊢ (λf:Nat→Nat. f n) tt",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> The checker looks at a program once, before it runs; running takes many steps. What must be true of a single step for that one check to protect them all?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Two promises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Two things. A typed term that is not yet a value must be able to take a step, so it is not stuck now. And the term after the step must still be typed, at the same type, so that the first promise applies to it as well. Watch the second over two steps. The term has type $B$:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "type: f : A → B, x : A ⊢ (λg:A→B. λy:A. g y) f x",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "normal: (λg:A→B. λy:A. g y) f x",
       "showWork": true,
       "label": null
     },
     {
-      "src": "normal: (λy:A. y) x",
+      "src": "> [!try]\n> What type does the middle term, $(\\lambda y{:}A.\\, f\\ y)\\ x$, have? And the last, $f\\ x$?",
+      "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "type: x:A ⊢ x",
+      "src": "type: f : A → B, x : A ⊢ (λy:A. f y) x",
       "showWork": false,
       "label": null
     },
     {
-      "src": "and so does what it reduces to. (Reduction erases the binders' types: they say which terms are allowed, not how they compute.)",
+      "src": "type: f : A → B, x : A ⊢ f x",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "$B$ each time. (Reduction drops the binders' types, so the engine prints $\\lambda y.\\, f\\ y$: they say which terms are allowed, not how they compute.) Every step keeps the type, and at every step being typed means not being stuck, so the chain never breaks.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!theorem] Type safety\n> - **Progress**: a closed, typed term is a value or can take a step.\n> - **Preservation**: if $\\Gamma \\vdash M : T$ and $M$ takes a step to $M'$, then $\\Gamma \\vdash M' : T$.\n>\n> Together, by induction on the number of steps: a closed typed term never reaches a stuck term. Milner's slogan (1978) is \"well-typed programs cannot go wrong\"; the two halves are Wright and Felleisen's way of proving it (1994).",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Why both",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Each promise can fail without the other. Take lesson 4's small language, with numbers, booleans, `+`, a test for zero and `if`, and a natural shortcut in the rule for `if`.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake] An `if` typed by its first branch\n> \"`if c then t else e` has the type of `t`\" is simpler than asking the two branches to agree, and it lets `if false then 1 else true` through as a number. That term is not stuck: it steps, to `true`, which is a boolean. Preservation fails, and with it the chain: a typed program can now get stuck (an exercise below builds one).",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Lesson 4's checker asks the branches to agree (`if A = B`). Here is the loose one, in Lean: it calls the program a number, and the program evaluates to a boolean.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- A looser checker: an if has the type of its first branch, whatever the second's. -/\ndef typeOfLoose : Expr → Option T\n  | .num _ => some .nat\n  | .tt | .ff => some .bool\n  | .add a b => match typeOfLoose a, typeOfLoose b with\n    | some .nat, some .nat => some .nat\n    | _, _ => none\n  | .isZero a => match typeOfLoose a with\n    | some .nat => some .bool\n    | _ => none\n  | .ite c t _ => match typeOfLoose c with\n    | some .bool => typeOfLoose t\n    | _ => none\n\n#eval typeOfLoose (.ite .ff (.num 1) .tt)\n#eval evalE (.ite .ff (.num 1) .tt)",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> Which rule would you loosen to break progress instead, so that a typed term is stuck at once?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Let `isZero` accept anything. `isZero true` is then a boolean, and no rule evaluates it. It takes no step, so preservation, a promise about steps, is kept; progress is the half that fails.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -54,7 +141,7 @@
       "label": null
     },
     {
-      "src": "> [!definition] Operational semantics\n> A **small-step** semantics says what one step does, $M \to M'$: the β-steps of every cell so far. A **big-step** semantics says what a whole program evaluates to, $M \\Downarrow v$, in one judgment, by recursion on the program. Progress and preservation are about small steps; the Lean evaluator below is big-step, so its safety theorem says it in one go: a typed program evaluates, and to a value of its type.",
+      "src": "> [!definition] Operational semantics\n> A **small-step** semantics says what one step does, $M \\to M'$: the β-steps of every cell so far. A **big-step** semantics says what a whole program evaluates to, $M \\Downarrow v$, in one judgment, by recursion on the program. Progress and preservation are about small steps. The Lean evaluator of lesson 4 is big-step, so its safety theorem says it in one go: a typed program evaluates, and to a value of its type.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -66,7 +153,7 @@
       "label": null
     },
     {
-      "src": "For the typed language of lesson 4, safety is one theorem: a program with a type evaluates to a value of that type. It never gets stuck, and it never comes back with the wrong kind of value.",
+      "src": "For lesson 4's language, with its strict rule for `if`, safety is one theorem: a program with a type evaluates to a value of that type. It never gets stuck, and it never comes back with the wrong kind of value.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -74,6 +161,12 @@
     {
       "src": "/-- A value's type: a number is a nat, a boolean a bool. -/\ndef Val.ty : Val → T\n  | .num _ => .nat\n  | .bool _ => .bool\n\ntheorem safety : ∀ (e : Expr) (τ : T), typeOfE e = some τ → ∃ v, evalE e = some v ∧ v.ty = τ := by\n  intro e\n  induction e with\n  | num n => intro τ h; cases h; exact ⟨.num n, rfl, rfl⟩\n  | tt => intro τ h; cases h; exact ⟨.bool true, rfl, rfl⟩\n  | ff => intro τ h; cases h; exact ⟨.bool false, rfl, rfl⟩\n  | add a b iha ihb =>\n    intro τ h\n    simp only [typeOfE] at h\n    split at h\n    · rename_i ha hb\n      cases h\n      obtain ⟨va, ea, ta⟩ := iha _ ha\n      obtain ⟨vb, eb, tb⟩ := ihb _ hb\n      cases va <;> cases vb <;> simp_all [Val.ty, evalE]\n    · cases h\n  | isZero a iha =>\n    intro τ h\n    simp only [typeOfE] at h\n    split at h\n    · rename_i ha\n      cases h\n      obtain ⟨va, ea, ta⟩ := iha _ ha\n      cases va <;> simp_all [Val.ty, evalE]\n    · cases h\n  | ite c t e ihc iht ihe =>\n    intro τ h\n    simp only [typeOfE] at h\n    split at h\n    · rename_i A B hc ht he\n      split at h\n      · rename_i hAB\n        cases h; subst hAB\n        obtain ⟨vc, ec, tc⟩ := ihc _ hc\n        cases vc with\n        | num _ => simp [Val.ty] at tc\n        | bool b =>\n          cases b\n          · obtain ⟨v, ev, tv⟩ := ihe _ he; exact ⟨v, by simp [evalE, ec, ev], tv⟩\n          · obtain ⟨v, ev, tv⟩ := iht _ ht; exact ⟨v, by simp [evalE, ec, ev], tv⟩\n      · cases h\n    · cases h",
       "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The proof leans on the strict rule exactly once: in the `ite` case, `subst hAB` makes the two branches' types one, so whichever branch runs has the promised type. For the loose checker the theorem is false, and this is the case that breaks.",
+      "type": "markdown",
       "showWork": false,
       "label": null
     },
@@ -91,8 +184,33 @@
       "label": null
     },
     {
+      "src": "theorem loose_gets_stuck : ∃ e, typeOfLoose e = some .nat ∧ evalE e = none := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Find a program that the loose checker calls a number and that gets stuck: evaluation gives `none`.",
+      "leanSolution": "  exact ⟨.add (.ite .ff (.num 1) .tt) (.num 1), rfl, rfl⟩",
+      "hints": [
+        "`if false then 1 else true` is a number to the loose checker and evaluates to a boolean. Use it where a number is needed.",
+        "`exact ⟨.add (.ite .ff (.num 1) .tt) (.num 1), rfl, rfl⟩`: both sides compute."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!note] What safety does not promise\n> Safety is only as strong as the types. Haskell's `head` has type `[a] -> a`, and at the empty list it has no `a` to give, so it raises an error. An error the language defines is not a stuck term, so safety holds, and the program still fails. Lesson 8 finds types that rule the empty list out.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "Exercises",
       "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Check preservation on one more step.",
+      "type": "markdown",
       "showWork": false,
       "label": null
     },
@@ -117,7 +235,13 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> Preservation keeps a term's type as it reduces, and progress says a typed term is never stuck. Together they are type safety: well-typed programs do not go wrong.",
+      "src": "> [!summary]\n> Without types a program can get stuck: not a value, and no rule applies. The checker runs once, so a type has to promise something about every step: progress (a typed term is a value or takes a step) and preservation (a step keeps the type). Loosen a rule and one of them fails: an `if` typed by one branch breaks preservation, an `isZero` that takes anything breaks progress. Together they are type safety, proved in Lean, in its big-step form, for lesson 4's language.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Safety has lesson 4's price: $(\\lambda f.\\, \\mathsf{pair}\\ (f\\ a)\\ (f\\ b))\\ (\\lambda x.\\, x)$ would never get stuck, and is refused, because $f$ can have only one type. Can one term have many?",
       "type": "markdown",
       "showWork": false,
       "label": null

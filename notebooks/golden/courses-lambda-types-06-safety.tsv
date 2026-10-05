@@ -1,5 +1,8 @@
-4	type: x:A ⊢ (λy:A. y) x	= A
-5	normal: (λy:A. y) x	= x
-6	type: x:A ⊢ x	= A
-15	type: f : A → B, x : A ⊢ (λg:A→B. g x) f	= B
-16	normal: (λg:A→B. g x) f	= f x
+3	cbv: (λf. f n) tt	= tt n
+5	type: tt : Bool, n : Nat ⊢ (λf:Nat→Nat. f n) tt	✗ λf:(Nat → Nat). f n expects an argument of type Nat → Nat, but tt has type Bool
+9	type: f : A → B, x : A ⊢ (λg:A→B. λy:A. g y) f x	= B
+10	normal: (λg:A→B. λy:A. g y) f x	= f x
+12	type: f : A → B, x : A ⊢ (λy:A. f y) x	= B
+13	type: f : A → B, x : A ⊢ f x	= B
+34	type: f : A → B, x : A ⊢ (λg:A→B. g x) f	= B
+35	normal: (λg:A→B. g x) f	= f x

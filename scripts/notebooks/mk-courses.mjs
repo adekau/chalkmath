@@ -6146,31 +6146,63 @@ def evalE : Expr → Option Val
     md(r`Look again at the arrow rules. From $B$, assuming $A$, conclude $A \to B$; from $A \to B$ and $A$, conclude $B$. Read $\to$ as "implies", and these are the rules for implication in logic. The next lesson asks whether that is a coincidence.`);
   });
 
-  add("05-curry-howard.chalk", "Propositions as types", "A type is a proposition, a term of it a proof: the Curry–Howard correspondence.", ({ sec, md, m, ex, lean, lx }) => {
+  add("05-curry-howard.chalk", "Propositions as types", "The typing rules turn out to be the rules of logic: a type is a proposition, a term a proof of it, β-reduction simplifies proofs, and Peirce's law, true by truth table, has no term.", ({ sec, md, m, ex, lean, lx }) => {
     sec("Propositions as types");
     md(r`
 > [!goal]
-> Read a type as a proposition and a term as its proof; prove implications by writing functions, and see where classical logic needs more.
+> Read a type as a proposition and a term as its proof, prove implications by writing functions, and find a tautology that no function proves.
 `);
+    md(r`Lesson 4 ended on a resemblance: read $\to$ as "implies", and the arrow rules look like the rules for implication. Test it on the types already found.`);
+    md(r`
+> [!try]
+> $K = \lambda x.\, \lambda y.\, x$ has type $A \to B \to A$. Read $A$ and $B$ as statements and $\to$ as "implies": is it true whatever $A$ and $B$ are?
+`);
+    m("taut(p → q → p)");
+    md(r`A tautology. So is $S$'s type, $(A \to B \to C) \to (A \to B) \to A \to C$:`);
+    m("taut((p → q → r) → (p → q) → p → r)");
+    md(r`
+> [!try]
+> Is every type a tautology? Look for a closed term of type $A \to B$, and ask the truth table about $p \to q$.
+`);
+    m("taut(p → q)");
+    md(r`Not a tautology, and no term either. A function of type $A \to B$ has to produce a $B$, and inside $\lambda x{:}A.\, \ldots$ the only thing at hand is $x : A$. Anything else is a variable with no type:`);
+    m("type: λx:A. y");
+    sec("Proofs as programs");
+    md(r`Put the typing rules next to natural deduction's rules for implication, and look only at the types:
+- **Var**: $x : A$ in the context gives $A$. In logic: use an assumption.
+- **→I**: if $M : B$ with $x : A$ added, then $\lambda x{:}A.\, M : A \to B$. In logic: assume $A$, prove $B$, and conclude $A \to B$, discharging the assumption.
+- **→E**: $M : A \to B$ and $N : A$ give $M\ N : B$. In logic: modus ponens.
+
+They are the same rules. A term records which rule was used where, so a term is a proof, written compactly, and its type is what it proves.`);
     md(r`
 > [!theorem] Curry–Howard
-> Read $A \to B$ as "$A$ implies $B$". Then a closed term of type $T$ is a proof of $T$ in intuitionistic propositional logic, and the typing rules are the rules of proof:
-> - Var is using an assumption;
-> - →I is proving $A \to B$ by assuming $A$ and proving $B$;
-> - →E is modus ponens: from $A \to B$ and $A$, conclude $B$.
->
-> β-reduction simplifies a proof that introduces an implication only to eliminate it at once.
+> Read base types as propositions and $A \to B$ as "$A$ implies $B$". A closed term of type $T$ is a proof of $T$ in intuitionistic propositional logic (its part with only $\to$), and every such proof is a term: Var is using an assumption, →I is proving an implication by assuming its premise, →E is modus ponens. (Curry saw it for combinators in the 1930s, Howard for λ-terms in 1969.)
 `);
-    md(r`$K$ proves $A \to B \to A$: from $A$, anything implies $A$. $S$ proves $(A \to B \to C) \to (A \to B) \to A \to C$. Composition proves that implication is transitive:`);
+    md(r`A derivation tree is then a proof tree. Here is composition's; read only the types, and it proves that implication is transitive: from $A \to B$ and $B \to C$, conclude $A \to C$.`);
     m("type: λf:A→B. λg:B→C. λx:A. g (f x)", { work: true });
-    md(r`Each of these is a tautology, as the logic world confirms:`);
-    m("taut((p → q) → (q → r) → p → r)");
-    sec("Where classical logic differs");
-    md(r`**Peirce's law**, $((A \to B) \to A) \to A$, is a tautology:`);
+    md(r`Curry's version: the types of $K$ and $S$ are exactly the two axioms of Hilbert's logic of implication, and application is modus ponens, its one rule.`);
+    sec("Simplifying a proof");
+    md(r`What does β-reduction do to a proof? A redex $(\lambda x{:}A.\, M)\ N$ proves $A \to B$ by →I only to use it at once by →E: a detour. The step puts the proof $N$ of $A$ wherever $M$ used the assumption $x$, and leaves a direct proof of the same conclusion.`);
+    m("type: a : A ⊢ (λx:A. λy:B. x) a");
+    m("normal: (λx:A. λy:B. x) a");
+    md(r`Both prove $B \to A$ from $a : A$; the second (printed without its binder's type) with no detour. Read as logic, lesson 4's theorem says that every proof simplifies to one with no detours (Prawitz, 1965). That gives a short proof that the logic is consistent. A closed term with no redex is a λ (anything else has a variable at its head, and a closed term has no free one), so its type is an arrow. A base type $A$ has no closed term in normal form, hence none at all: not everything is provable.`);
+    sec("A tautology with no proof");
+    md(r`Each rule keeps truth, row by row of a truth table, so every type with a term is a tautology. The converse is the real question. Take **Peirce's law**, $((A \to B) \to A) \to A$:`);
     m("taut(((p → q) → p) → p)");
-    md(r`but no λ-term has that type: it is not provable intuitionistically. Classical logic adds the excluded middle, $A \lor \lnot A$, as an axiom, a proof with no program inside.`);
+    md(r`
+> [!try]
+> Find a term of type $((A \to B) \to A) \to A$.
+`);
+    md(r`Given $h : (A \to B) \to A$, the only way to an $A$ is through $h$, and $h$ wants a function from $A$ to $B$. The obvious one to hand it returns what it is given:`);
+    m("type: λh:(A→B)→A. h (λa:A. a)");
+    md(r`That turns an $A$ into an $A$, not a $B$, and nothing in sight makes a $B$. No term does better: every term has a normal form, so it is enough to search the normal ones, and a short search finds none of this type. Peirce's law is true by truth table and has no proof here.`);
+    md(r`The truth table assumes that $A$ is true or false, one or the other, even when nobody can say which. A proof that is a program has to actually produce its $A$. Logic that asks for that is **intuitionistic**, and the simply typed terms prove exactly its implications. Classical logic adds the excluded middle, $A \lor \lnot A$, which no program proves: in the Lean below it comes from Lean's axiom of choice.`);
+    sec("Negation");
+    md(r`Simple types have only arrows, but negation fits. Let $F$ be a proposition with no proof, falsity, and read $\lnot A$ as $A \to F$: a way of turning a proof of $A$ into the impossible. (Lean defines ‹¬P› as ‹P → False›.) Then $A \to \lnot\lnot A$ is $A \to (A \to F) \to F$, and has a term:`);
+    m("type: λa:A. λk:A→F. k a");
+    md(r`The converse, $\lnot\lnot A \to A$, is again a tautology with no term: a $k : (A \to F) \to F$ only ever gives an $F$.`);
     sec("In Lean");
-    md(r`In Lean propositions are types and proofs are terms, literally. A proof by tactics builds a term; ‹fun› writes one directly.`);
+    md(r`In Lean propositions are types and proofs are terms, literally: a tactic proof builds a term, and ‹fun› writes one directly. ‹P ∧ Q› is a type of pairs, and a proof of ‹P ∨ Q› is one of the two, tagged with which.`);
     lean(r`theorem K_prop (P Q : Prop) : P → Q → P := fun p _ => p
 theorem S_prop (P Q R : Prop) : (P → Q → R) → (P → Q) → P → R := fun f g p => f p (g p)
 
@@ -6186,38 +6218,85 @@ theorem peirce (P Q : Prop) : ((P → Q) → P) → P := by
   exact ⟨q, p⟩`, [r`‹intro ⟨p, q⟩› takes the pair apart.`, r`Build the swapped pair with ‹⟨q, p⟩›.`]);
     sec("Exercises");
     ex("type: λf:A→B→C. λb:B. λa:A. f a b", r`What does $\lambda f{:}A \to B \to C.\, \lambda b{:}B.\, \lambda a{:}A.\, f\ a\ b$ prove? Give its type.`, [r`It swaps the order of two assumptions.`]);
-    ex("taut((p → q) → (¬q → ¬p))", r`Is contraposition a tautology? Answer ‹⊤› or ‹⊥›.`, []);
+    ex("infer: λf. λk. λa. k (f a)", r`Prove contraposition, $(A \to B) \to \lnot B \to \lnot A$, that is $(A \to B) \to (B \to F) \to A \to F$: write a term without types, in a cell of your own, taking its three arguments in that order, and give the type ‹infer:› finds for it.`, [
+      r`Given $a : A$, $f$ makes a $B$, and $k$ turns a $B$ into $F$.`,
+      r`It is composition again: $\lambda f.\, \lambda k.\, \lambda a.\, k\ (f\ a)$.`,
+    ], { hide: true });
+    ex("taut(¬¬p → p)", r`Is $\lnot\lnot A \to A$ a tautology? Answer ‹⊤› or ‹⊥›.`, []);
     md(r`
 > [!summary]
-> Types are propositions and terms are proofs: →I is assuming, →E is modus ponens, β simplifies proofs. The simply typed calculus proves exactly the intuitionistic implications; Peirce's law needs classical logic.
+> The typing rules are natural deduction's rules for implication: a type is a proposition and a closed term a proof of it; Var is an assumption, →I assuming, →E modus ponens, and a β-step removes a detour from a proof. Every type with a term is a tautology, but not every tautology has a term: Peirce's law and $\lnot\lnot A \to A$ need classical logic's excluded middle, which no program proves.
 `);
+    md(r`A proof is a program, and lesson 1 promised that a typed program cannot compute nonsense. What exactly does a type promise about a program while it runs?`);
   });
 
-  add("06-safety.chalk", "Type safety", "Well-typed programs do not go wrong: progress and preservation, and a safety proof in Lean.", ({ sec, md, m, ex, lean, lx }) => {
+  add("06-safety.chalk", "Type safety", "A program stuck with no rule to apply, the two promises a type must make about every step (progress and preservation), a looser rule that breaks one, and safety proved in Lean.", ({ sec, md, m, ex, lean, lx }) => {
     sec("Type safety");
     md(r`
 > [!goal]
-> State type safety, see preservation at work, and prove safety for a small typed language.
+> Find what "a typed program cannot go wrong" has to mean, step by step, and prove it for a small language.
 `);
+    md(r`In the pure λ-calculus everything is a function, so nonsense still computes: lesson 1's ‹if 2 a b› gave $a\ (a\ b)$. Real languages have data that is not a function, numbers and booleans, and there a program can reach a point where nothing applies. Let free names stand for such data, $\mathsf{tt}$ a boolean and $n$ a number:`);
+    m("cbv: (λf. f n) tt");
+    md(r`Call by value stops at $\mathsf{tt}\ n$. It is not a value (a value is a λ or a name on its own), and no step applies, since $\mathsf{tt}$ is not a function. The program is **stuck**: not finished, and unable to go on. A machine would crash here, or carry on with garbage. The type checker refuses it before it runs:`);
+    m("type: tt : Bool, n : Nat ⊢ (λf:Nat→Nat. f n) tt");
     md(r`
-> [!theorem] Type safety (Milner: "well-typed programs cannot go wrong")
-> - **Preservation**: if $\Gamma \vdash M : T$ and $M$ takes a step to $M'$, then $\Gamma \vdash M' : T$.
-> - **Progress**: a closed, typed term is a value or can take a step.
->
-> Together: a typed program never gets stuck on a type error.
+> [!try]
+> The checker looks at a program once, before it runs; running takes many steps. What must be true of a single step for that one check to protect them all?
 `);
-    md(r`Preservation, on one step. The redex has type $A$:`);
-    m("type: x:A ⊢ (λy:A. y) x", { work: true });
-    m("normal: (λy:A. y) x");
-    m("type: x:A ⊢ x");
-    md(r`and so does what it reduces to. (Reduction erases the binders' types: they say which terms are allowed, not how they compute.)`);
+    sec("Two promises");
+    md(r`Two things. A typed term that is not yet a value must be able to take a step, so it is not stuck now. And the term after the step must still be typed, at the same type, so that the first promise applies to it as well. Watch the second over two steps. The term has type $B$:`);
+    m("type: f : A → B, x : A ⊢ (λg:A→B. λy:A. g y) f x");
+    m("normal: (λg:A→B. λy:A. g y) f x", { work: true });
+    md(r`
+> [!try]
+> What type does the middle term, $(\lambda y{:}A.\, f\ y)\ x$, have? And the last, $f\ x$?
+`);
+    m("type: f : A → B, x : A ⊢ (λy:A. f y) x");
+    m("type: f : A → B, x : A ⊢ f x");
+    md(r`$B$ each time. (Reduction drops the binders' types, so the engine prints $\lambda y.\, f\ y$: they say which terms are allowed, not how they compute.) Every step keeps the type, and at every step being typed means not being stuck, so the chain never breaks.`);
+    md(r`
+> [!theorem] Type safety
+> - **Progress**: a closed, typed term is a value or can take a step.
+> - **Preservation**: if $\Gamma \vdash M : T$ and $M$ takes a step to $M'$, then $\Gamma \vdash M' : T$.
+>
+> Together, by induction on the number of steps: a closed typed term never reaches a stuck term. Milner's slogan (1978) is "well-typed programs cannot go wrong"; the two halves are Wright and Felleisen's way of proving it (1994).
+`);
+    sec("Why both");
+    md(r`Each promise can fail without the other. Take lesson 4's small language, with numbers, booleans, ‹+›, a test for zero and ‹if›, and a natural shortcut in the rule for ‹if›.`);
+    md(r`
+> [!mistake] An ‹if› typed by its first branch
+> "‹if c then t else e› has the type of ‹t›" is simpler than asking the two branches to agree, and it lets ‹if false then 1 else true› through as a number. That term is not stuck: it steps, to ‹true›, which is a boolean. Preservation fails, and with it the chain: a typed program can now get stuck (an exercise below builds one).
+`);
+    md(r`Lesson 4's checker asks the branches to agree (‹if A = B›). Here is the loose one, in Lean: it calls the program a number, and the program evaluates to a boolean.`);
+    lean(r`/-- A looser checker: an if has the type of its first branch, whatever the second's. -/
+def typeOfLoose : Expr → Option T
+  | .num _ => some .nat
+  | .tt | .ff => some .bool
+  | .add a b => match typeOfLoose a, typeOfLoose b with
+    | some .nat, some .nat => some .nat
+    | _, _ => none
+  | .isZero a => match typeOfLoose a with
+    | some .nat => some .bool
+    | _ => none
+  | .ite c t _ => match typeOfLoose c with
+    | some .bool => typeOfLoose t
+    | _ => none
+
+#eval typeOfLoose (.ite .ff (.num 1) .tt)
+#eval evalE (.ite .ff (.num 1) .tt)`);
+    md(r`
+> [!try]
+> Which rule would you loosen to break progress instead, so that a typed term is stuck at once?
+`);
+    md(r`Let ‹isZero› accept anything. ‹isZero true› is then a boolean, and no rule evaluates it. It takes no step, so preservation, a promise about steps, is kept; progress is the half that fails.`);
     sec("Small steps and big steps");
     md(r`
 > [!definition] Operational semantics
-> A **small-step** semantics says what one step does, $M 	o M'$: the β-steps of every cell so far. A **big-step** semantics says what a whole program evaluates to, $M \Downarrow v$, in one judgment, by recursion on the program. Progress and preservation are about small steps; the Lean evaluator below is big-step, so its safety theorem says it in one go: a typed program evaluates, and to a value of its type.
+> A **small-step** semantics says what one step does, $M \to M'$: the β-steps of every cell so far. A **big-step** semantics says what a whole program evaluates to, $M \Downarrow v$, in one judgment, by recursion on the program. Progress and preservation are about small steps. The Lean evaluator of lesson 4 is big-step, so its safety theorem says it in one go: a typed program evaluates, and to a value of its type.
 `);
     sec("Safety in Lean");
-    md(r`For the typed language of lesson 4, safety is one theorem: a program with a type evaluates to a value of that type. It never gets stuck, and it never comes back with the wrong kind of value.`);
+    md(r`For lesson 4's language, with its strict rule for ‹if›, safety is one theorem: a program with a type evaluates to a value of that type. It never gets stuck, and it never comes back with the wrong kind of value.`);
     lean(r`/-- A value's type: a number is a nat, a boolean a bool. -/
 def Val.ty : Val → T
   | .num _ => .nat
@@ -6265,6 +6344,7 @@ theorem safety : ∀ (e : Expr) (τ : T), typeOfE e = some τ → ∃ v, evalE e
           · obtain ⟨v, ev, tv⟩ := iht _ ht; exact ⟨v, by simp [evalE, ec, ev], tv⟩
       · cases h
     · cases h`);
+    md(r`The proof leans on the strict rule exactly once: in the ‹ite› case, ‹subst hAB› makes the two branches' types one, so whichever branch runs has the promised type. For the loose checker the theorem is false, and this is the case that breaks.`);
     lx(`theorem typed_add_evaluates (a b : Expr) (ha : typeOfE a = some .nat) (hb : typeOfE b = some .nat) :
     ∃ n, evalE (.add a b) = some (.num n) := by`, r`Use safety: adding two typed numbers gives a number.`, `  obtain ⟨va, ea, ta⟩ := safety a _ ha
   obtain ⟨vb, eb, tb⟩ := safety b _ hb
@@ -6272,34 +6352,64 @@ theorem safety : ∀ (e : Expr) (τ : T), typeOfE e = some τ → ∃ v, evalE e
       r`‹safety a _ ha› gives a value of ‹a› and that its type is ‹nat›; the same for ‹b›.`,
       r`Split both values with ‹cases›: a boolean contradicts its type, two numbers add. ‹simp_all [Val.ty, evalE]›.`,
     ]);
+    lx(`theorem loose_gets_stuck : ∃ e, typeOfLoose e = some .nat ∧ evalE e = none := by`, r`Find a program that the loose checker calls a number and that gets stuck: evaluation gives ‹none›.`, `  exact ⟨.add (.ite .ff (.num 1) .tt) (.num 1), rfl, rfl⟩`, [
+      r`‹if false then 1 else true› is a number to the loose checker and evaluates to a boolean. Use it where a number is needed.`,
+      r`‹exact ⟨.add (.ite .ff (.num 1) .tt) (.num 1), rfl, rfl⟩›: both sides compute.`,
+    ]);
+    md(r`
+> [!note] What safety does not promise
+> Safety is only as strong as the types. Haskell's ‹head› has type ‹[a] -> a›, and at the empty list it has no ‹a› to give, so it raises an error. An error the language defines is not a stuck term, so safety holds, and the program still fails. Lesson 8 finds types that rule the empty list out.
+`);
     sec("Exercises");
+    md(r`Check preservation on one more step.`);
     ex("type: f : A → B, x : A ⊢ (λg:A→B. g x) f", r`What type does $(\lambda g{:}A \to B.\, g\ x)\ f$ have, in the context $f : A \to B,\ x : A$?`, [r`The function returns $g\ x : B$.`]);
     ex("normal: (λg:A→B. g x) f", r`Reduce $(\lambda g{:}A \to B.\, g\ x)\ f$. By preservation, the result has the same type.`, [r`One β-step.`]);
     md(r`
 > [!summary]
-> Preservation keeps a term's type as it reduces, and progress says a typed term is never stuck. Together they are type safety: well-typed programs do not go wrong.
+> Without types a program can get stuck: not a value, and no rule applies. The checker runs once, so a type has to promise something about every step: progress (a typed term is a value or takes a step) and preservation (a step keeps the type). Loosen a rule and one of them fails: an ‹if› typed by one branch breaks preservation, an ‹isZero› that takes anything breaks progress. Together they are type safety, proved in Lean, in its big-step form, for lesson 4's language.
 `);
+    md(r`Safety has lesson 4's price: $(\lambda f.\, \mathsf{pair}\ (f\ a)\ (f\ b))\ (\lambda x.\, x)$ would never get stuck, and is refused, because $f$ can have only one type. Can one term have many?`);
   });
 
-  add("07-polymorphism.chalk", "Polymorphism", "One term at many types: type schemes, System F, and Church numerals that work at every type.", ({ sec, md, m, ex, lean, lx }) => {
+  add("07-polymorphism.chalk", "Polymorphism", "The identity written once for every type: why a defined name can be used at many types and an argument cannot, System F, and Church numerals at every type.", ({ sec, md, m, ex, lean, lx }) => {
     sec("Polymorphism");
     md(r`
 > [!goal]
-> Read an inferred type as a scheme for all its instances, and use System F's explicit polymorphism to type what simple types cannot.
+> Use one term at many types: find why a defined name can be and an argument cannot, and the quantifier that lets an argument be too.
 `);
-    md(r`The identity has type $\alpha \to \alpha$ for every $\alpha$: the type variables of an inferred type are implicitly **for all**. That is a type **scheme**, $\forall \alpha.\, \alpha \to \alpha$.`);
-    m("infer: λx. x");
-    m("infer: λf. λx. f (f x)");
-    md(r`In the simply typed calculus, though, one occurrence of a variable has one type. Church's $\mathsf{and}$ uses its argument at two types, and fails:`);
-    m("infer: and");
-    sec("System F");
+    md(r`Lesson 4 refused a harmless term: the identity, handed to a function that uses it on an $a : A$ and on a $b : B$.`);
+    m("infer: a : A, b : B ⊢ (λf. pair (f a) (f b)) id");
     md(r`
-> [!definition] System F (Girard, Reynolds)
-> Types may quantify over types: $\forall \alpha.\, T$. Terms may take a type as an argument, $\Lambda \alpha.\, M$, and be given one, $M\ [T]$. The polymorphic identity is $\Lambda \alpha.\, \lambda x{:}\alpha.\, x : \forall \alpha.\, \alpha \to \alpha$, and $\mathit{id}\ [\mathsf{Nat}] : \mathsf{Nat} \to \mathsf{Nat}$.
+> [!try]
+> Now use ‹id› in both places directly. Will this have a type?
 `);
-    md(r`In System F a Church numeral has the one type $\forall \alpha.\, (\alpha \to \alpha) \to \alpha \to \alpha$, and can be used at many. Even self-application has a type: $\lambda x{:}\forall \alpha.\, \alpha \to \alpha.\, x\ [\forall \alpha.\, \alpha \to \alpha]\ x$. System F still normalizes, but inference for it is undecidable (Wells, 1994), so ML and Haskell allow polymorphism only at ‹let› (Hindley–Milner), where inference stays decidable.`);
-    sec("In Lean");
-    md(r`Lean's ‹∀ α : Type› is System F's quantifier. A Church numeral is a polymorphic function, used at ‹Nat› to read it and at ‹String› for fun.`);
+    m("infer: a : A, b : B ⊢ pair (id a) (id b)", { work: true });
+    md(r`It does. ‹id› is a name, and names are unfolded before inference (the first step of the work), so each use is a copy of $\lambda x.\, x$ with a type variable of its own: one becomes $A \to A$, the other $B \to B$. In the refused term the identity is the value of one variable, $f$, and a variable has one type.`);
+    sec("Type schemes");
+    md(r`So a name deserves a type that each use can instantiate as it likes. Its inferred type already reads that way:`);
+    m("infer: id");
+    md(r`$\alpha$ may be anything, and each use may choose. Written out, the type is a **scheme**, $\forall \alpha.\, \alpha \to \alpha$: for every $\alpha$, a function from $\alpha$ to $\alpha$. $K$, with scheme $\forall \alpha\, \beta.\, \alpha \to \beta \to \alpha$, can be used at two types the same way:`);
+    m("infer: a : A, b : B ⊢ pair (K a b) (K b a)");
+    md(r`ML and Haskell build this into ‹let›: in ‹let id = λx. x in …›, ‹id› gets the scheme $\forall \alpha.\, \alpha \to \alpha$ and each use takes its own instance, as each unfolded copy did. This is **Hindley–Milner** typing: inference stays decidable and still finds principal types, as in lesson 3. A λ-bound variable still has one type.`);
+    sec("Quantifiers inside types");
+    md(r`Lesson 4's term needs more than schemes. Its function, $\lambda f.\, \mathsf{pair}\ (f\ a)\ (f\ b)$, wants an argument that works at every type, so its type would begin $(\forall \alpha.\, \alpha \to \alpha) \to \cdots$: a $\forall$ to the left of an arrow. A scheme can only put $\forall$ in front of a whole type. The fix is to make $\forall$ a type like any other, and types something a term can take and be given.`);
+    md(r`
+> [!definition] System F (Girard, 1972; Reynolds, 1974)
+> Types may quantify over types: $\forall \alpha.\, T$. A term may take a type as an argument, $\Lambda \alpha.\, M$, and be given one, $M\ [T]$, which puts $T$ for $\alpha$. The polymorphic identity is $\mathit{id} = \Lambda \alpha.\, \lambda x{:}\alpha.\, x : \forall \alpha.\, \alpha \to \alpha$, and $\mathit{id}\ [A] : A \to A$.
+`);
+    md(r`Lesson 4's term becomes $(\lambda f{:}\forall \alpha.\, \alpha \to \alpha.\, \langle f\ [A]\ a,\ f\ [B]\ b \rangle)\ \mathit{id}$, of type $A \times B$: $f$ is given $A$ in one place and $B$ in the other. Lean's ‹∀ α : Type› is System F's quantifier, and a type is an argument like any other:`);
+    lean(r`/-- The polymorphic identity: given a type, the identity on it. -/
+def polyId : ∀ α : Type, α → α := fun _ x => x
+
+/-- Lesson 4's term: a function whose argument must work at every type. -/
+def onBoth (f : ∀ α : Type, α → α) : Nat × String := (f Nat 1, f String "b")
+
+#eval onBoth polyId`);
+    sec("Numerals at every type");
+    md(r`Church numerals hit the same wall. A numeral iterates, $2\ f\ a = f\ (f\ a)$, at any type. Used twice by name, it types; passed in as an argument, it does not:`);
+    m("infer: f : A → A, a : A, g : B → B, b : B ⊢ pair (2 f a) (2 g b)");
+    m("infer: f : A → A, a : A, g : B → B, b : B ⊢ λn. pair (n f a) (n g b)");
+    md(r`In System F a numeral has one type that covers every use, $\mathsf{Nat} = \forall \alpha.\, (\alpha \to \alpha) \to \alpha \to \alpha$, and a function that takes a numeral can use it at any type it likes. In Lean, used at ‹Nat› to read it and at ‹String› for fun:`);
     lean(r`/-- Church numerals in System F: a numeral works at every type. -/
 def CNat := ∀ α : Type, (α → α) → α → α
 
@@ -6315,37 +6425,42 @@ def CNat.toNat (n : CNat) : Nat := n Nat (· + 1) 0
 
 #eval (cadd two three).toNat
 -- the same numeral, used at String
-#eval three String (· ++ "!") "go"
-
-/-- The polymorphic identity has one type for every type. -/
-def polyId : ∀ α : Type, α → α := fun _ x => x`);
+#eval three String (· ++ "!") "go"`);
+    md(r`System F keeps lesson 4's guarantee: every term still has a normal form (Girard, 1972), although even self-application now has a type, $\lambda x{:}\forall \alpha.\, \alpha \to \alpha.\, x\ [\forall \alpha.\, \alpha \to \alpha]\ x$. What it gives up is inference: whether a term without annotations has a System F type is undecidable (Wells, 1994). So ML stops at Hindley–Milner, and Haskell goes beyond it only where the programmer writes the types.`);
     lx(`theorem six : (cmul two three).toNat = 6 := by`, r`Check that $2 \cdot 3 = 6$ with System F numerals.`, `  rfl`, [r`Everything computes: ‹rfl›.`]);
+    lx(`theorem cpow_exists : ∃ p : CNat → CNat → CNat, (p two three).toNat = 8 := by`, r`Invent exponentiation: find ‹p› with ‹p two three› equal to $2^3 = 8$. ‹cmul› used ‹m› at the type ‹α›; use ‹n› at the type ‹α → α›, to iterate ‹m α›.`, `  exact ⟨fun m n α => n (α → α) (m α), rfl⟩`, [
+      r`‹m α : (α → α) → α → α› turns $f$ into $f$ applied $m$ times. Do that $n$ times, and $f$ is applied $m^n$ times.`,
+      r`‹exact ⟨fun m n α => n (α → α) (m α), rfl⟩›.`,
+    ]);
     sec("Exercises");
     md(r`Answer with letters for type variables.`);
     ex("infer: λf. λg. λx. f (g x)", r`Infer the most general type of $\lambda f.\, \lambda g.\, \lambda x.\, f\ (g\ x)$.`, [r`$g$ first, then $f$.`]);
     ex("infer: pair", r`Infer the type of $\mathsf{pair} = \lambda a.\, \lambda b.\, \lambda s.\, s\ a\ b$.`, [r`$s$ takes $a$ and $b$ and returns anything.`]);
+    ex("infer: a : A ⊢ id id a", r`In $\mathsf{id}\ \mathsf{id}\ a$, with $a : A$, the two copies of $\mathsf{id}$ are used at different types. Infer the type of the whole term.`, [r`The second $\mathsf{id}$ is used at $A \to A$, the first at $(A \to A) \to A \to A$.`]);
     md(r`
 > [!summary]
-> An inferred type is a scheme, true at every instance. System F makes the quantifier explicit and types more terms (Church $\mathsf{and}$, self-application), at the cost of decidable inference.
+> A defined name can be used at many types: each use is a copy, with its own instance of the name's scheme $\forall \alpha.\, \ldots$; ML's and Haskell's ‹let› work the same way (Hindley–Milner). A λ-bound variable has one type, so a function cannot ask for an argument that works at every type, until System F makes $\forall$ part of types and lets terms take types as arguments. Church numerals then have one type, $\forall \alpha.\, (\alpha \to \alpha) \to \alpha \to \alpha$, usable at any type; decidable inference is the price.
 `);
+    md(r`In System F a term can depend on a type. Can a type depend on a term: a list type that knows the list's length, so that a type can say "never the head of an empty list"?`);
   });
 
-  add("08-dependent-types.chalk", "Dependent types", "Types that depend on values; Lean's type theory; type checking is proof checking.", ({ sec, md, m, ex, lean, lx }) => {
+  add("08-dependent-types.chalk", "Dependent types", "Types that mention values: a head that cannot be given an empty list, Π-types as ∀, and Lean checking a proof by checking a type.", ({ sec, md, m, ex, lean, lx }) => {
     sec("Dependent types");
     md(r`
 > [!goal]
-> Use a type that depends on a value, and see that Lean's type checker, checking a proof, is the same idea as the first lesson's three rules.
+> Write a type that mentions a value, use it to rule out the head of an empty list, and see Lean check a proof by checking a type.
 `);
+    md(r`Lesson 6 left a hole in safety: a ‹head› of type ‹List α → α› promises an ‹α› for every list, the empty one too.`);
     md(r`
-> [!definition] The λ-cube
-> Starting from simple types, let terms depend on types (polymorphism: System F), types depend on types (type operators: $F_\omega$), and types depend on **terms** (dependent types). All three together is the **calculus of constructions**; Lean's type theory extends it with inductive types and universes.
+> [!try]
+> How would you write a ‹head› that never fails? What would its type have to know?
 `);
-    md(r`
-> [!definition] Π-types
-> A dependent function $(x : A) \to B(x)$ returns a value whose **type** depends on the argument. When $B$ does not mention $x$ it is the arrow $A \to B$. Read as a proposition it is $\forall x : A,\ B(x)$: Curry–Howard extends to quantifiers.
-`);
-    sec("In Lean");
-    md(r`Vectors carry their length in their type, so taking the head of an empty one is not an error at run time: it is a type error, and needs no case at all.`);
+    md(r`At the empty list there is nothing to return, and ‹α› may have no values at all. Either the result admits failure (‹Option α›), or the argument's type rules the empty list out. Lean's own ‹List.head› does the second:`);
+    lean(r`#check @List.head
+#eval [1, 2, 3].head (List.cons_ne_nil _ _)`);
+    md(r`After the list ‹as› comes a second argument, of type ‹as ≠ []›: a proof that this list is not empty. That type mentions ‹as›, a value given earlier. A type that mentions a value is **dependent**.`);
+    sec("Length in the type");
+    md(r`Another way: put the length in the list's type. ‹Vec α n› is the type of lists of length ‹n›: ‹nil› has length $0$, and ‹cons› adds one. ‹head› asks for a ‹Vec α (n + 1)› and needs no case for ‹nil› at all, since ‹nil›'s type, ‹Vec α 0›, is never ‹Vec α (n + 1)›.`);
     lean(r`/-- Vectors: lists whose length is in their type. -/
 inductive Vec (α : Type) : Nat → Type where
   | nil : Vec α 0
@@ -6361,6 +6476,11 @@ def toList : Vec α n → List α
   | nil => []
   | cons x xs => x :: xs.toList
 
+/-- n copies of x: the result's type depends on the number given. -/
+def replicate : (n : Nat) → α → Vec α n
+  | 0, _ => nil
+  | n + 1, x => cons x (replicate n x)
+
 def append : Vec α n → Vec α m → Vec α (m + n)
   | nil, ys => ys
   | cons x xs, ys => cons x (append xs ys)
@@ -6368,23 +6488,44 @@ def append : Vec α n → Vec α m → Vec α (m + n)
 end Vec
 
 #eval (Vec.cons 1 (Vec.cons 2 Vec.nil)).head
-#eval (Vec.append (Vec.cons 1 (Vec.cons 2 Vec.nil)) (Vec.cons 3 Vec.nil)).toList`);
+#eval (Vec.append (Vec.cons 1 (Vec.cons 2 Vec.nil)) (Vec.cons 3 Vec.nil)).toList
+#check Vec.replicate 3 'a'`);
+    md(r`
+> [!try]
+> What will Lean say to the head of ‹nil›?
+`);
+    lean(r`#check_failure (Vec.nil : Vec Nat 0).head`);
+    md(r`A type error, found before anything runs: ‹0› is not ‹n + 1› for any ‹n›. The head of an empty vector is not a failure at run time; it is not a program at all.`);
+    sec("Π-types");
+    md(r`Look at ‹replicate›'s type, ‹(n : Nat) → α → Vec α n›. The type of the result depends on the value of the argument: ‹replicate 3 'a'› is a ‹Vec Char 3›.`);
+    md(r`
+> [!definition] Π-types
+> A **dependent function type** $(x : A) \to B(x)$, also written $\Pi x{:}A.\, B(x)$, is the type of functions that take an $a : A$ to a value of type $B(a)$. When $B$ does not mention $x$, it is the arrow $A \to B$. Its rules are →I and →E grown up: $\lambda x{:}A.\, M$ has type $(x : A) \to B(x)$ when $M : B(x)$ with $x : A$ added; and if $f : (x : A) \to B(x)$ and $a : A$, then $f\ a : B(a)$, with $a$ put for $x$ in the type.
+`);
+    md(r`Curry–Howard comes along. Read $B(x)$ as a statement about $x$: a function taking each $x : A$ to a proof of $B(x)$ is a proof of $\forall x : A,\ B(x)$. Lean writes ‹∀ x : A, B x› and ‹(x : A) → B x› for the same type, and a proof by induction on ‹n› is such a function, built by recursion on ‹n›.`);
+    sec("Type checking runs programs");
+    md(r`Look at ‹append›'s type: lengths ‹n› and ‹m› give ‹m + n›. In the ‹cons› case, ‹xs› has some length ‹k› and the result, ‹cons x (append xs ys)›, has length ‹(m + k) + 1›; the type promised ‹m + (k + 1)›. The checker sees that they agree by computing: ‹+› is defined by recursion on its second argument, so ‹m + (k + 1)› reduces to ‹(m + k) + 1›. Write the type with ‹n + m› and the two sides no longer reduce to one, and Lean asks for a proof.`);
+    md(r`
+> [!theorem] Type checking is proof checking
+> A Lean theorem is a type and its proof a term. Lean's kernel checks a proof by type checking the term, with lesson 1's rules grown to Π-types and inductive types, and with computation inside types: two types that compute to the same thing are the same type. That is why ‹rfl›, the proof that a thing equals itself, proves ‹2 + 2 = 4›.
+`);
+    lean(r`theorem two_plus_two : 2 + 2 = 4 := rfl`);
     lx(`theorem Vec.toList_length : ∀ (v : Vec α n), v.toList.length = n := by`, r`The list of a vector of length $n$ has length $n$: the type was telling the truth.`, `  intro v
   induction v with
   | nil => rfl
   | cons x xs ih => simp [Vec.toList, ih]`, [r`‹induction v with›: ‹nil› is ‹rfl›.`, r`For ‹cons›, unfold ‹toList› and use the hypothesis: ‹simp [Vec.toList, ih]›.`]);
+    lx(`theorem Vec.eq_nil (v : Vec α 0) : v = .nil := by`, r`A vector of length $0$ can only be ‹nil›: the reason ‹head› needs no ‹nil› case, seen from the other side. Prove it.`, `  cases v
+  rfl`, [r`‹cases v› leaves one case: ‹cons› would need ‹0 = k + 1›, and Lean sees that it cannot be.`, r`What is left is ‹nil = nil›: ‹rfl›.`]);
+    sec("The map");
     md(r`
-> [!theorem] Type checking is proof checking
-> A Lean proof is a term, and checking the proof is type checking the term: the kernel applies rules like Var, →I and →E (generalized to Π-types and inductive types). ‹rfl : 2 + 2 = 4› type checks because both sides reduce to the same normal form.
+> [!definition] The λ-cube
+> Simple types let terms depend on terms: functions. Lesson 7 let terms depend on types (System F), and this lesson types depend on terms (dependent types). The third step, types that depend on types (type operators, such as ‹List›, which takes a type to a type), gives $F_\omega$. All three together are the **calculus of constructions** (Coquand and Huet, 1988); Lean's type theory adds inductive types, such as ‹Vec›, and a hierarchy of universes.
 `);
-    lean(r`theorem two_plus_two : 2 + 2 = 4 := rfl`);
     sec("Exercises");
-    md(r`A last review in the simply typed calculus.`);
-    ex("type: λf:A→A. λg:A→A. λx:A. f (g x)", r`What type does $\lambda f{:}A \to A.\, \lambda g{:}A \to A.\, \lambda x{:}A.\, f\ (g\ x)$ have?`, []);
-    ex("infer: λx. λy. λz. x z (y z)", r`Infer the type of $S$ without annotations.`, [r`It is the type of the axiom $(A \to B \to C) \to (A \to B) \to A \to C$, with variables.`]);
+    ex("infer: λx. λy. λz. x z (y z)", r`The course in one cell: infer the type of $S$ without annotations. Read as a proposition, it is lesson 5's second Hilbert axiom.`, [r`It is $(A \to B \to C) \to (A \to B) \to A \to C$, with variables.`]);
     md(r`
 > [!summary]
-> Dependent types let types mention values: a vector's length, a proposition's quantified variable. Lean's type theory has them, and its kernel checks proofs by checking types, as the three rules of the first lesson do.
+> A dependent type mentions a value: ‹as ≠ []›, ‹Vec α n›. With the length in the type, the head of an empty list is a type error, not a failure at run time. Π-types $(x : A) \to B(x)$ generalize the arrow and, read as propositions, are $\forall$: Curry–Howard reaches the quantifiers. Lean checks a proof this way: the proof is a term, and checking it is lesson 1's three rules, grown to Π-types and inductive types, with computation inside types.
 `);
   });
 }, { leanPrelude: true });
