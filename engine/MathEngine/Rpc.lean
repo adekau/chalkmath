@@ -455,7 +455,11 @@ def eWarning : String :=
 /-- Warnings about a cell's input (after the session's bindings are substituted), not counting the
 parameters a function definition binds. -/
 def inputWarnings (input : Expr) (params : List String) : List String :=
-  if (Expr.freeVars input).contains "e" && !params.contains "e" then [eWarning] else []
+  let fv := Expr.freeVars input
+  let eW := if fv.contains "e" && !params.contains "e" then [eWarning] else []
+  -- `1.5e3` lexes as `1.5` then the name `e3`, an implicit product: the engine has no exponent notation
+  let sci := fv.filter fun v => v.length ≥ 2 && v.front == 'e' && (v.drop 1).all Char.isDigit && !params.contains v
+  eW ++ sci.map fun v => s!"`{v}` is a variable here, so `1.5{v}` is `1.5 · {v}`: for scientific notation write `*10^{v.drop 1}`."
 
 def evaluate (st : Store) (params : Json) : Store × Json :=
   match params.getStr? "source" with

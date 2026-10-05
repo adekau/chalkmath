@@ -581,7 +581,9 @@ async function direct(q: string, plan: Plan, pages: Page[], o: AskOptions, trail
     if (!sources) { trail.push("Nothing on the pages read shares a word with the question."); return null; }
     say(`${o.model.id} is reading what was found`);
     reply = parseJson<DirectReply>(await ask(o.model, DIRECT_SYSTEM, `${ask0}\n\nSources:\n${sources}`, DIRECT_SCHEMA, o.signal));
-    readText = pages.map((p) => [p.text, ...p.tables.map((t) => [t.headers, ...t.rows].map((r) => r.join(" | ")).join("\n"))].join("\n")).join("\n");
+    // what the model was given, not every page whole: a number on a page it did not see came from its
+    // memory, and across five pages whole, every small number and every year is somewhere
+    readText = sources;
     const used = new Set((reply?.sources ?? []).map((s) => s.url ?? ""));
     const usedPages = pages.filter((p) => used.has(p.url));
     cites = (usedPages.length ? usedPages : pages).map((p) => ({ title: p.title, url: p.url }));

@@ -76,9 +76,13 @@ def sigDigits (a : Rat) (p : Nat) : Nat × Int := Id.run do
   if ip > 0 then
     e := (toString ip).length - 1
   else
-    -- a < 1: count leading zeros after the point (bounded search)
-    let mut j : Nat := 1
-    while j < 400 && a * tenPow j < 1 do j := j + 1
+    -- a < 1: the leading zeros after the point, estimated from the bit lengths (log₁₀ 2 ≈ 0.30103)
+    -- and then settled by a step or two. A search by one power of ten at a time was bounded at 400,
+    -- so every smaller number had the digit 0, and was certified as such.
+    let est : Int := (((Nat.log2 a.den : Int) - (Nat.log2 a.num.natAbs : Int)) * 30103) / 100000
+    let mut j : Nat := max 1 est.toNat
+    while a * tenPow j < 1 do j := j + 1
+    while j > 1 && a * tenPow (j - 1) ≥ 1 do j := j - 1
     e := -j
   let k : Int := (p : Int) - 1 - e
   let scaled := a * tenPow k + mkRat 1 2

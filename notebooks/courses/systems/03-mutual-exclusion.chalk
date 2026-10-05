@@ -244,7 +244,7 @@
       "label": null
     },
     {
-      "src": "`Turn` passes both checks, yet `p` cannot go in twice in a row: if `q` stops wanting in, `p` waits for ever. No state is bad; a good thing just never happens. Saying that needs a second kind of property, the next lesson's.",
+      "src": "`Turn` passes both checks, yet `p` cannot go in twice in a row: if `q` stops wanting in, `p` waits for ever. No state is bad; a good thing just never happens. Saying that needs a second kind of property, lesson 5's. Before that, the lock as programs keep it: one per key, in a table, with calls that each promise to be one step.",
       "type": "markdown",
       "showWork": false,
       "label": null

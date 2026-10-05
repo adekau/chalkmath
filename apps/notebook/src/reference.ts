@@ -965,7 +965,7 @@ export const FUNCTIONS: FnDoc[] = [
     examples: [
       basic("let R = rel({a, b, c, d}; a->b, b->c, c->d)", "closure(R, transitive)"),
       section("Scope", "let R = rel({a, b, c}; a->b, b->c)", "closure(R, reflexive)", "closure(R, symmetric)", "let E = closure(R, equivalence)", "classes(E)"),
-      section("Calls inside calls", "transitive(closure(R, transitive))", "classes(closure(R, equivalence))"),
+      section("Calls inside calls", "let R = rel({a, b, c}; a->b, b->c)", "transitive(closure(R, transitive))", "classes(closure(R, equivalence))"),
     ],
     see: ["transitive", "equivalence", "classes"],
     ref: "https://mathworld.wolfram.com/TransitiveClosure.html",

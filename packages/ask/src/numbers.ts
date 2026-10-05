@@ -60,7 +60,8 @@ export function numbersIn(s: string): number[] {
     out.push(b !== undefined && a >= 20 && a % 10 === 0 && b > 0 && b < 10 ? a + b : a);
   }
   const re = /[−–-]?\d{1,3}(?:,\d{3})+(?:\.\d+)?|[−–-]?\d*\.?\d+/g;
-  const t = s.replace(FOOTNOTE, "");
+  // `1 234 567` (a thin space, or a space the page reader made of one) is one number, as `strip` reads it
+  const t = s.replace(FOOTNOTE, "").replace(GROUP, "$1");
   for (let m = re.exec(t); m; m = re.exec(t)) {
     const n = Number(m[0].replace(/,/g, "").replace(/^[−–]/, "-"));
     if (Number.isFinite(n)) { out.push(n); if (n < 0) out.push(-n); }   // "2005-2024" reads as 2005 and -2024

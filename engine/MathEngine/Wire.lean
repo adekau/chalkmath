@@ -16,6 +16,18 @@ partial def Expr.toJson : Expr → Json
 
 def Path.toJson (p : Path) : Json := .arr (p.toArray.map fun i => .num (toString i))
 
+/-- Whether a step prints the same before and after. `after` is `before` with the subterm at the
+step's path replaced, so the two differ, if at all, where that subterm's parent prints: it alone
+is printed, O(subterm) per step, where printing both whole terms made an outline cost the steps
+times the term. At the root the whole term is the parent. -/
+def Step.quiet (s : Step) : Bool :=
+  -- (`let` is strict: the whole-term comparison is written where it is needed, not bound above)
+  match s.path with
+  | [] => s.before.toLatex false == s.after.toLatex false
+  | p => match s.before.at? p.dropLast, s.after.at? p.dropLast with
+    | some b, some a => b.toLatex false == a.toLatex false
+    | _, _ => s.before.toLatex false == s.after.toLatex false
+
 mutual
   /-- `paths` annotates the rendered term with subterm paths, so a page can make it selectable. -/
   partial def Step.toJson (s : Step) (paths : Bool := false) : Json :=
@@ -35,7 +47,7 @@ mutual
   costs what its steps say rather than what its terms weigh. `engine.steps` sends the terms. -/
   partial def Step.outlineJson (s : Step) : Json :=
     let base := #[("rule", .str s.rule), ("explanation", .str s.explanation), ("path", Path.toJson s.path)]
-    let base := if s.sub.isNone && s.before.toLatex false == s.after.toLatex false then base.push ("quiet", .bool true) else base
+    let base := if s.sub.isNone && Step.quiet s then base.push ("quiet", .bool true) else base
     .obj (match s.sub with | some d => base.push ("sub", d.outlineJson) | none => base)
   partial def Derivation.outlineJson (d : Derivation) : Json :=
     .obj #[("steps", .arr (d.steps.map Step.outlineJson))]

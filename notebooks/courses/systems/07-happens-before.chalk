@@ -1,6 +1,6 @@
 {
   "chalk": 1,
-  "name": "06-happens-before.chalk",
+  "name": "07-happens-before.chalk",
   "cells": [
     {
       "src": "Happens-before",

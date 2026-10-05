@@ -1,6 +1,6 @@
 {
   "chalk": 1,
-  "name": "07-effectively-once.chalk",
+  "name": "08-effectively-once.chalk",
   "cells": [
     {
       "src": "Effectively-once delivery",
@@ -90,7 +90,7 @@
       "stepwise": 0
     },
     {
-      "src": "Without the cap the client retries for ever, and whether it eventually gets a reply is a liveness question. It holds when the network promises that a message sent again and again is eventually delivered: strong fairness, from lesson 4, on the steps that deliver.",
+      "src": "Without the cap the client retries for ever, and whether it eventually gets a reply is a liveness question. It holds when the network promises that a message sent again and again is eventually delivered: strong fairness, from lesson 5, on the steps that deliver.",
       "type": "markdown",
       "showWork": false,
       "label": null
