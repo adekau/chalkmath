@@ -18,7 +18,8 @@ backwards through the derivation instead, after van Deursen, Klint and Tip, *Ori
 
 Between two recorded steps the rewriter may also have reordered or flattened arguments silently
 (`simp.sort`, `simp.flatten`); those gaps are bridged by the same matching over the whole term, with
-equality taken modulo exactly those two changes (`canonDeep`). Matching by equality (up to the argument order `canon` may change) is
+equality taken modulo exactly those two changes (`canonDeep`), and skipped where the two terms are
+one and the same. Matching by equality (up to the argument order `canon` may change) is
 ambiguous when a term has equal subterms in several places, so origins are *sets* of positions;
 the trace then reports every step any of them passed through. That is the one over-approximation
 left, and it is the same one the paper's "secondary origins" accept.
@@ -56,24 +57,31 @@ theorem at?_replaceAt_disjoint (new : Expr) : ∀ (e : Expr) (p q : Path), Disjo
 /-- The representative of a term up to what the rewriter changes *silently* — argument order
 (`simp.sort`), nesting of sums in sums and products in products (`simp.flatten`), and `√a` for
 `a^(1/2)` (`simp.sqrt`), the rules that leave no `Step`. Two terms with the same `canonDeep` are
-the same term to the tracer, which is exactly the invariant a silent rule must keep. -/
-partial def canonDeep (e : Expr) : Expr :=
-  match withChildren e ((children e).map canonDeep) with
+the same term to the tracer, which is exactly the invariant a silent rule must keep. `canonStep`
+is one level of it: the representative of a node whose children are representatives already. -/
+def canonStep (e : Expr) : Expr :=
+  match e with
   | .add es => canon (.add (es.flatMap unAdd))
   | .mul es => canon (.mul (es.flatMap unMul))
   | .fn "sqrt" [a] => .pow a (.num (Q.ofRat (mkRat 1 2)))
   | e' => canon e'
 
-/-- Positions at or below `root` in `t` whose subterm equals `sub` up to argument order. -/
+partial def canonDeep (e : Expr) : Expr := canonStep (withChildren e ((children e).map canonDeep))
+
+/-- Positions at or below `root` in `t` whose subterm equals `sub` up to argument order, outermost
+first. The representatives are built once, bottom up, as the tree is walked (`canonDeep` at every
+node cost each node its whole subterm, and `at?` from the root its depth), and a position is spelled
+out only where one is recorded; `rpath` carries it reversed, innermost index first. -/
 partial def occurrences (t : Expr) (sub : Expr) (root : Path := []) : List Path :=
   let target := canonDeep sub
-  let rec go (root : Path) : List Path :=
-    match t.at? root with
-    | none => []
-    | some here =>
-      let below := (children here).zipIdx.flatMap fun x => go (root ++ [x.2])
-      if equal (canonDeep here) target then root :: below else below
-  go root
+  let rec go (here : Expr) (rpath : Path) : Expr × List Path :=
+    let kids := (children here).zipIdx.map fun (c, j) => go c (j :: rpath)
+    let rep := canonStep (withChildren here (kids.map (·.1)))
+    let below := kids.flatMap (·.2)
+    (rep, if equal rep target then rpath.reverse :: below else below)
+  match t.at? root with
+  | none => []
+  | some here => (go here root.reverse).2
 
 /-- How a step relates to a position it was asked about. -/
 inductive Relation where
@@ -145,9 +153,12 @@ partial def traceBack (steps : Array StepInfo) : Nat → List Path → List (Nat
     let origins := folded.1.eraseDups
     let acc := acc ++ folded.2.reverse.eraseDups
     if i = 0 then acc else
-    -- bridge the silent reordering between step (i-1).after and step i.before
+    -- bridge the silent reordering between step (i-1).after and step i.before; where the two are one
+    -- term nothing moved, and a position is its own origin (matching it would also find every equal
+    -- subterm elsewhere, and the trace would say those were passed through too)
     let prev := steps[i - 1]!
-    let bridged := (origins.flatMap fun q => originsAcross prev.after st.before q).eraseDups
+    let bridged := if equal prev.after st.before then origins
+      else (origins.flatMap fun q => originsAcross prev.after st.before q).eraseDups
     traceBack steps i bridged acc
 
 /-- The steps that produced the subterm at `q` in the term after step `k` (or the output when `k`

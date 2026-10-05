@@ -21,19 +21,37 @@ def getStr? (j : Json) (k : String) : Option String :=
 def getBool (j : Json) (k : String) (d := false) : Bool :=
   match j.get? k with | some (.bool b) => b | _ => d
 
-private def escape (s : String) : String :=
-  s.foldl (fun acc c => acc ++ match c with
-    | '"' => "\\\"" | '\\' => "\\\\" | '\n' => "\\n" | '\r' => "\\r" | '\t' => "\\t"
-    -- the other control characters as \u and four hex digits (JSON allows nothing shorter)
-    | c => if c.val < 32 then s!"\\u00{if c.val < 16 then "0" else ""}{String.ofList (Nat.toDigits 16 c.val.toNat)}" else c.toString) ""
+/-- `s` appended to `acc` as the body of a JSON string: the quote, the backslash and the control
+characters escaped (the other control characters as `\u` and four hex digits, since JSON allows
+nothing shorter). -/
+private def pushEscaped (acc : String) (s : String) : String :=
+  s.foldl (fun acc c => match c with
+    | '"' => acc ++ "\\\"" | '\\' => acc ++ "\\\\" | '\n' => acc ++ "\\n" | '\r' => acc ++ "\\r" | '\t' => acc ++ "\\t"
+    | c => if c.val < 32 then acc ++ "\\u00" ++ (if c.val < 16 then "0" else "") ++ String.ofList (Nat.toDigits 16 c.val.toNat) else acc.push c) acc
 
-partial def render : Json → String
-  | .null => "null"
-  | .bool b => toString b
-  | .num s => s
-  | .str s => "\"" ++ escape s ++ "\""
-  | .arr xs => "[" ++ ",".intercalate (xs.toList.map render) ++ "]"
-  | .obj kvs => "{" ++ ",".intercalate (kvs.toList.map fun (k, v) => "\"" ++ escape k ++ "\":" ++ render v) ++ "}"
+/-- The text of `j`, written into one buffer: a value's children are written in place after it,
+not rendered on their own and copied in, so a value `d` deep renders in time linear in its text,
+not `d` times it (the term of a reply is a `Json` as deep as the term). The buffer is passed along
+and never shared, so each `++` and `push` extends it in place. -/
+partial def render (j : Json) : String := go j ""
+where
+  go : Json → String → String
+  | .null, acc => acc ++ "null"
+  | .bool b, acc => acc ++ toString b
+  | .num s, acc => acc ++ s
+  | .str s, acc => (pushEscaped (acc.push '"') s).push '"'
+  | .arr xs, acc => Id.run do
+    let mut acc := acc.push '['
+    for h : i in [:xs.size] do
+      if i > 0 then acc := acc.push ','
+      acc := go xs[i] acc
+    return acc.push ']'
+  | .obj kvs, acc => Id.run do
+    let mut acc := acc.push '{'
+    for h : i in [:kvs.size] do
+      if i > 0 then acc := acc.push ','
+      acc := go kvs[i].2 ((pushEscaped (acc.push '"') kvs[i].1).push '"' |>.push ':')
+    return acc.push '}'
 
 -- --- parser -------------------------------------------------------------
 structure P where

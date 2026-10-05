@@ -138,6 +138,50 @@ where
     | [] => []
     | r :: rs => freeVarsList r ++ freeVarsRows rs
 
+/-- `freeVars e ++ acc`, built from the right: a variable is consed onto what follows it, so a
+product the parser left-nested fifty thousand deep (`x*x*…*x`) takes time linear in it, where
+`freeVars` copies the list of the left operand at every level. `freeVars` stays the definition the
+proofs use (`freeVarsAcc_eq`); the compiled code takes this one (`freeVars_eq_freeVarsImpl`). -/
+def freeVarsAcc : Expr → List String → List String
+  | .num _, acc => acc
+  | .var x, acc => x :: acc
+  | .add es, acc | .mul es, acc | .fn _ es, acc => freeVarsListAcc es acc
+  | .pow b e, acc => freeVarsAcc b (freeVarsAcc e acc)
+  | .matrix rows, acc => freeVarsRowsAcc rows acc
+where
+  freeVarsListAcc : List Expr → List String → List String
+    | [], acc => acc
+    | e :: es, acc => freeVarsAcc e (freeVarsListAcc es acc)
+  freeVarsRowsAcc : List (List Expr) → List String → List String
+    | [], acc => acc
+    | r :: rs, acc => freeVarsListAcc r (freeVarsRowsAcc rs acc)
+
+theorem freeVarsAcc_eq : ∀ (e : Expr) (acc : List String), freeVarsAcc e acc = freeVars e ++ acc
+  | .num _, acc => by simp [freeVarsAcc, freeVars]
+  | .var x, acc => by simp [freeVarsAcc, freeVars]
+  | .add es, acc => by simp [freeVarsAcc, freeVars, freeVarsListAcc_eq es acc]
+  | .mul es, acc => by simp [freeVarsAcc, freeVars, freeVarsListAcc_eq es acc]
+  | .fn _ es, acc => by simp [freeVarsAcc, freeVars, freeVarsListAcc_eq es acc]
+  | .pow b e, acc => by simp [freeVarsAcc, freeVars, freeVarsAcc_eq b, freeVarsAcc_eq e]
+  | .matrix rows, acc => by simp [freeVarsAcc, freeVars, freeVarsRowsAcc_eq rows acc]
+where
+  freeVarsListAcc_eq : ∀ (es : List Expr) (acc : List String),
+      freeVarsAcc.freeVarsListAcc es acc = freeVars.freeVarsList es ++ acc
+    | [], acc => by simp [freeVarsAcc.freeVarsListAcc, freeVars.freeVarsList]
+    | e :: es, acc => by
+      simp [freeVarsAcc.freeVarsListAcc, freeVars.freeVarsList, freeVarsAcc_eq e, freeVarsListAcc_eq es acc]
+  freeVarsRowsAcc_eq : ∀ (rows : List (List Expr)) (acc : List String),
+      freeVarsAcc.freeVarsRowsAcc rows acc = freeVars.freeVarsRows rows ++ acc
+    | [], acc => by simp [freeVarsAcc.freeVarsRowsAcc, freeVars.freeVarsRows]
+    | r :: rs, acc => by
+      simp [freeVarsAcc.freeVarsRowsAcc, freeVars.freeVarsRows, freeVarsListAcc_eq r, freeVarsRowsAcc_eq rs acc]
+
+/-- `freeVars` as the compiled code computes it. -/
+def freeVarsImpl (e : Expr) : List String := freeVarsAcc e []
+
+@[csimp] theorem freeVars_eq_freeVarsImpl : @freeVars = @freeVarsImpl := by
+  funext e; simp [freeVarsImpl, freeVarsAcc_eq]
+
 def dependsOn (e : Expr) (x : String) : Bool := (freeVars e).contains x
 
 /-- Numbers first, then variables, then compound terms — `KIND_RANK` in `ast.ts`. -/
@@ -185,9 +229,6 @@ mutual
     | _, _ => false
 end
 
-instance : BEq Expr := ⟨beq⟩
-def equal (a b : Expr) : Bool := beq a b
-
 /-- Elementwise lifting of a relation on expressions to argument lists. Used to say "these children
 were each rewritten soundly", which is the induction hypothesis every congruence proof needs. -/
 def RelList (R : Expr → Expr → Prop) : List Expr → List Expr → Prop
@@ -225,6 +266,121 @@ mutual
       | nil => simp [beqRows] at h
       | cons s ss => simp [beqRows] at h; rw [beqList_eq r s h.1, beqRows_eq rs ss h.2]
 end
+
+mutual
+  theorem beq_refl : ∀ a : Expr, beq a a = true
+    | .num p => by simp [beq]
+    | .var x => by simp [beq]
+    | .add xs => by simp [beq, beqList_refl xs]
+    | .mul xs => by simp [beq, beqList_refl xs]
+    | .pow a b => by simp [beq, beq_refl a, beq_refl b]
+    | .fn f xs => by simp [beq, beqList_refl xs]
+    | .matrix r => by simp [beq, beqRows_refl r]
+  theorem beqList_refl : ∀ xs : List Expr, beqList xs xs = true
+    | [] => rfl
+    | x :: xs => by simp [beqList, beq_refl x, beqList_refl xs]
+  theorem beqRows_refl : ∀ rs : List (List Expr), beqRows rs rs = true
+    | [] => rfl
+    | r :: rs => by simp [beqRows, beqList_refl r, beqRows_refl rs]
+end
+
+/-! ### One and the same object compares equal in one step
+
+The rewriter compares a node with its canonical form at every level (`normAtT`), and the two share
+every child the rewriter did not rebuild. A structural walk cost such a comparison the size of the
+subterm, so a term `d` deep paid for its size `d` times over. `beqR` asks `withPtrEq` first: one
+and the same object compares equal at once, and only what differs is walked. `withPtrEq` wants
+the reflexivity of what it shortcuts, so `beqR` carries that proof along. It is `beq` itself
+(`beq_eq_beqImpl`), and the compiled code takes it in `beq`'s place. -/
+mutual
+  def beqR (a b : Expr) : {r : Bool // a = b → r = true} :=
+    let node : Unit → {r : Bool // a = b → r = true} := fun _ =>
+      match a with
+      | .num p => match b with
+        | .num q => ⟨p == q, fun h => by cases h; simp⟩
+        | .var _ | .add _ | .mul _ | .pow _ _ | .fn _ _ | .matrix _ => ⟨false, nofun⟩
+      | .var x => match b with
+        | .var y => ⟨x == y, fun h => by cases h; simp⟩
+        | .num _ | .add _ | .mul _ | .pow _ _ | .fn _ _ | .matrix _ => ⟨false, nofun⟩
+      | .add xs => match b with
+        | .add ys => let r := beqRList xs ys; ⟨r.1, fun h => r.2 (Expr.add.inj h)⟩
+        | .num _ | .var _ | .mul _ | .pow _ _ | .fn _ _ | .matrix _ => ⟨false, nofun⟩
+      | .mul xs => match b with
+        | .mul ys => let r := beqRList xs ys; ⟨r.1, fun h => r.2 (Expr.mul.inj h)⟩
+        | .num _ | .var _ | .add _ | .pow _ _ | .fn _ _ | .matrix _ => ⟨false, nofun⟩
+      | .pow a₁ a₂ => match b with
+        | .pow b₁ b₂ =>
+          let r₁ := beqR a₁ b₁
+          let r₂ := beqR a₂ b₂
+          ⟨r₁.1 && r₂.1, fun h => by cases h; simp [r₁.2 rfl, r₂.2 rfl]⟩
+        | .num _ | .var _ | .add _ | .mul _ | .fn _ _ | .matrix _ => ⟨false, nofun⟩
+      | .fn f xs => match b with
+        | .fn g ys => let r := beqRList xs ys; ⟨f == g && r.1, fun h => by cases h; simp [r.2 rfl]⟩
+        | .num _ | .var _ | .add _ | .mul _ | .pow _ _ | .matrix _ => ⟨false, nofun⟩
+      | .matrix rs => match b with
+        | .matrix ss => let r := beqRRows rs ss; ⟨r.1, fun h => r.2 (Expr.matrix.inj h)⟩
+        | .num _ | .var _ | .add _ | .mul _ | .pow _ _ | .fn _ _ => ⟨false, nofun⟩
+    ⟨withPtrEq a b (fun u => (node u).1) (fun h => (node ()).2 h), fun h => (node ()).2 h⟩
+  def beqRList (xs ys : List Expr) : {r : Bool // xs = ys → r = true} :=
+    match xs, ys with
+    | [], [] => ⟨true, fun _ => rfl⟩
+    | x :: xs, y :: ys =>
+      let r := beqR x y
+      let rs := beqRList xs ys
+      ⟨r.1 && rs.1, fun h => by cases h; simp [r.2 rfl, rs.2 rfl]⟩
+    | [], _ :: _ | _ :: _, [] => ⟨false, nofun⟩
+  def beqRRows (rs ss : List (List Expr)) : {r : Bool // rs = ss → r = true} :=
+    match rs, ss with
+    | [], [] => ⟨true, fun _ => rfl⟩
+    | r :: rs, s :: ss =>
+      let q := beqRList r s
+      let qs := beqRRows rs ss
+      ⟨q.1 && qs.1, fun h => by cases h; simp [q.2 rfl, qs.2 rfl]⟩
+    | [], _ :: _ | _ :: _, [] => ⟨false, nofun⟩
+end
+
+mutual
+  theorem beqR_eq : ∀ a b : Expr, (beqR a b).1 = true → a = b
+    | .num p, b, h => by cases b <;> simp [beqR, withPtrEq] at h; rw [h]
+    | .var x, b, h => by cases b <;> simp [beqR, withPtrEq] at h; rw [h]
+    | .add xs, b, h => by cases b <;> simp [beqR, withPtrEq] at h; rw [beqRList_eq xs _ h]
+    | .mul xs, b, h => by cases b <;> simp [beqR, withPtrEq] at h; rw [beqRList_eq xs _ h]
+    | .pow a₁ a₂, b, h => by cases b <;> simp [beqR, withPtrEq] at h; rw [beqR_eq a₁ _ h.1, beqR_eq a₂ _ h.2]
+    | .fn f xs, b, h => by cases b <;> simp [beqR, withPtrEq] at h; rw [h.1, beqRList_eq xs _ h.2]
+    | .matrix r, b, h => by cases b <;> simp [beqR, withPtrEq] at h; rw [beqRRows_eq r _ h]
+  theorem beqRList_eq : ∀ xs ys : List Expr, (beqRList xs ys).1 = true → xs = ys
+    | [], ys, h => by cases ys <;> simp [beqRList] at h; rfl
+    | x :: xs, ys, h => by
+      cases ys with
+      | nil => simp [beqRList] at h
+      | cons y ys => simp [beqRList] at h; rw [beqR_eq x y h.1, beqRList_eq xs ys h.2]
+  theorem beqRRows_eq : ∀ rs ss : List (List Expr), (beqRRows rs ss).1 = true → rs = ss
+    | [], ss, h => by cases ss <;> simp [beqRRows] at h; rfl
+    | r :: rs, ss, h => by
+      cases ss with
+      | nil => simp [beqRRows] at h
+      | cons s ss => simp [beqRRows] at h; rw [beqRList_eq r s h.1, beqRRows_eq rs ss h.2]
+end
+
+/-- `beq` as the compiled code runs it. -/
+def beqImpl (a b : Expr) : Bool := (beqR a b).1
+
+@[csimp] theorem beq_eq_beqImpl : @beq = @beqImpl := by
+  funext a b
+  by_cases h : a = b
+  · subst h; rw [beq_refl]; exact ((beqR a a).2 rfl).symm
+  · have h1 : beq a b = false := by
+      cases hb : beq a b with
+      | true => exact absurd (beq_eq a b hb) h
+      | false => rfl
+    have h2 : beqImpl a b = false := by
+      cases hb : beqImpl a b with
+      | true => exact absurd (beqR_eq a b hb) h
+      | false => rfl
+    rw [h1, h2]
+
+instance : BEq Expr := ⟨beq⟩
+def equal (a b : Expr) : Bool := beq a b
 
 theorem equal_eq {a b : Expr} (h : equal a b = true) : a = b := beq_eq a b h
 
