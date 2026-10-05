@@ -14,7 +14,8 @@ dimensions disagree, a determinant of a non-square matrix.
 - `laAdd_sound`, `laScalarMul_sound`, `laMul_sound`, `laTranspose_sound`, `laDet_sound`,
   `laPow_sound`, `diffMatrix_sound`: wherever the input has a value, the rule's output has the same
   one. The determinant is Mathlib's `Matrix.det` (the engine's Laplace expansion is proved equal to it,
-  `detExpr_value`), the power is the power in the monoid of square matrices (`matPow_value`), a product
+  `detExpr_value`), the power is the power in the monoid of square matrices (`matPow_value`, and `ratM_pow` for the
+  exact power of a matrix of numerals), a product
   is associative and its real factors commute past its matrices (`mulVals_nf`, `mulV_assoc`), and the
   derivative of a matrix is taken entry by entry.
 
@@ -925,28 +926,98 @@ theorem matMul_sum (n : ℕ) (A B : Matrix (Fin n) (Fin n) ℝ) {i j : ℕ} (hi 
   intro k _
   rw [ofM_apply _ hi k.isLt, ofM_apply _ k.isLt hj]
 
-/-- **The literal `matPow` builds is the power** in the monoid of square matrices. -/
-theorem matPow_value {ρ : EnvR} {rows : List (List Expr)} {n : ℕ} (hn : 0 < n) (hd : dims rows = (n, n))
-    (hne : rows ≠ []) (hrect : ∀ row ∈ rows, row.length = n)
-    (hent : ∀ i j, i < n → j < n → evalV ρ (entry rows i j) = some (.sc (entV ρ rows i j))) :
-    ∀ m, dims (matPow rows m) = (n, n) ∧ matPow rows m ≠ [] ∧ (∀ row ∈ matPow rows m, row.length = n) ∧
-      ∀ i j, i < n → j < n → evalV ρ (entry (matPow rows m) i j) = some (.sc (ofM (litM ρ rows n ^ (m + 1)) i j))
-  | 0 => by
-    refine ⟨hd, hne, hrect, fun i j hi hj => ?_⟩
-    rw [show matPow rows 0 = rows from rfl, hent i j hi hj, pow_one, ofM_apply _ hi hj]; rfl
-  | m + 1 => by
-    obtain ⟨hdm, -, -, hentm⟩ := matPow_value hn hd hne hrect hent m
-    have hgrid : matPow rows (m + 1) = (List.range n).map fun i => (List.range n).map fun j =>
-        mulEntry rows (matPow rows m) n i j := by
-      simp only [matPow, matMul, hd, hdm]
-    refine ⟨?_, ?_, ?_, fun i j hi hj => ?_⟩
-    · rw [hgrid]; simp [dims, List.head?_map, List.head?_range, show n ≠ 0 by omega]
-    · rw [hgrid]; exact grid_ne_nil _ hn
-    · rw [hgrid]; exact grid_rect n n _
-    · rw [hgrid, entry_grid n n _ hi hj]
-      rw [mulEntry_value (F := ofM (litM ρ rows n)) (G := ofM (litM ρ rows n ^ (m + 1)))
-        (fun i k hi hk => by rw [hent i k hi hk, ofM_apply _ hi hk]; rfl) hentm hi hj]
-      rw [matMul_sum n _ _ hi hj, ← pow_succ']
+/-- A square literal whose entries have the real values of the Mathlib matrix `A`. -/
+def SqLit (ρ : EnvR) (n : ℕ) (rows : List (List Expr)) (A : Matrix (Fin n) (Fin n) ℝ) : Prop :=
+  dims rows = (n, n) ∧ rows ≠ [] ∧ (∀ row ∈ rows, row.length = n) ∧
+    ∀ i j, i < n → j < n → evalV ρ (entry rows i j) = some (.sc (ofM A i j))
+
+/-- The literal `matMul` builds from two square literals is their product. -/
+theorem sqLit_matMul {ρ : EnvR} {n : ℕ} (hn : 0 < n) {a b : List (List Expr)} {A B : Matrix (Fin n) (Fin n) ℝ}
+    (ha : SqLit ρ n a A) (hb : SqLit ρ n b B) : SqLit ρ n (matMul a b) (A * B) := by
+  obtain ⟨hda, -, -, hea⟩ := ha
+  obtain ⟨hdb, -, -, heb⟩ := hb
+  have hgrid : matMul a b = (List.range n).map fun i => (List.range n).map fun j => mulEntry a b n i j := by
+    simp only [matMul, hda, hdb]
+  rw [hgrid]
+  refine ⟨?_, grid_ne_nil _ hn, grid_rect n n _, fun i j hi hj => ?_⟩
+  · simp [dims, List.head?_map, List.head?_range, show n ≠ 0 by omega]
+  · rw [entry_grid n n _ hi hj, mulEntry_value (F := ofM A) (G := ofM B) hea heb hi hj, matMul_sum n _ _ hi hj]
+
+/-- **The literal `matPow` builds is the power** in the monoid of square matrices: repeated squaring
+is `A^(2m) = (A·A)^m` and `A^(2m+1) = A·(A·A)^m`. -/
+theorem matPow_value {ρ : EnvR} {n : ℕ} (hn : 0 < n) :
+    ∀ (k : ℕ) {rows : List (List Expr)} {A : Matrix (Fin n) (Fin n) ℝ}, SqLit ρ n rows A → 1 ≤ k →
+      SqLit ρ n (matPow rows k) (A ^ k) := by
+  intro k
+  induction k using Nat.strong_induction_on with
+  | _ k ih =>
+    intro rows A h hk
+    rw [matPow]
+    dsimp only
+    split_ifs with h1 h2
+    · obtain rfl : k = 1 := by omega
+      rwa [pow_one]
+    · have := ih (k / 2) (by omega) (sqLit_matMul hn h h) (by omega)
+      rwa [← sq, ← pow_mul, Nat.mul_div_cancel' (Nat.dvd_of_mod_eq_zero h2)] at this
+    · have := sqLit_matMul hn h (ih (k / 2) (by omega) (sqLit_matMul hn h h) (by omega))
+      rwa [← sq, ← pow_mul, ← pow_succ', show 2 * (k / 2) + 1 = k by omega] at this
+
+/-! ### The exact path: a matrix of numerals, powered over ℚ -/
+
+/-- A matrix of rationals, read as a real `n × n` matrix. -/
+def ratM (n : ℕ) (m : List (List ℚ)) : Matrix (Fin n) (Fin n) ℝ := toM n n fun i j => (ratEntry m i j : ℝ)
+
+theorem ratEntry_grid (n : ℕ) (f : ℕ → ℕ → ℚ) {i j : ℕ} (hi : i < n) (hj : j < n) :
+    ratEntry ((List.range n).map fun i => (List.range n).map fun j => f i j) i j = f i j := by
+  simp [ratEntry, List.getD_eq_getElem?_getD, hi, hj]
+
+theorem ratM_mul (n : ℕ) (a b : List (List ℚ)) : ratM n (ratMul n a b) = ratM n a * ratM n b := by
+  ext i j
+  rw [Matrix.mul_apply]
+  simp only [ratM, toM_apply, ratMul, ratEntry_grid n _ i.isLt j.isLt, Rat.cast_list_sum, List.map_map]
+  have := sum_range_list n fun k => (ratEntry a i k : ℝ) * ratEntry b k j
+  rw [Fin.sum_univ_eq_sum_range (fun k => (ratEntry a i k : ℝ) * ratEntry b k j) n, ← this]
+  congr 1; apply List.map_congr_left; intro k _; simp
+
+theorem ratM_id (n : ℕ) : ratM n (ratId n) = 1 := by
+  ext i j
+  simp only [ratM, toM_apply, ratId, ratEntry_grid n _ i.isLt j.isLt, Matrix.one_apply, Fin.ext_iff]
+  split_ifs <;> simp
+
+/-- **`ratPow` is the power**, by the same repeated squaring as `matPow_value`. -/
+theorem ratM_pow (n : ℕ) : ∀ (k : ℕ) (a : List (List ℚ)), ratM n (ratPow n a k) = ratM n a ^ k := by
+  intro k
+  induction k using Nat.strong_induction_on with
+  | _ k ih =>
+    intro a
+    rw [ratPow]
+    dsimp only
+    split_ifs with h0 h2
+    · subst h0; rw [pow_zero, ratM_id]
+    · rw [ih (k / 2) (by omega), ratM_mul, ← sq, ← pow_mul, Nat.mul_div_cancel' (Nat.dvd_of_mod_eq_zero h2)]
+    · rw [ratM_mul, ih (k / 2) (by omega), ratM_mul, ← sq, ← pow_mul, ← pow_succ',
+        show 2 * (k / 2) + 1 = k by omega]
+
+theorem ratEntry_numVal (rows : List (List Expr)) (i j : ℕ) :
+    ratEntry (rows.map (·.map numVal)) i j = numVal (entry rows i j) := by
+  simp only [ratEntry, entry, List.getD_eq_getElem?_getD, List.getElem?_map]
+  cases rows[i]? with
+  | none => simp [numVal, Expr.zero, Q.zero, Q.ofInt]
+  | some row =>
+    simp only [Option.map_some, Option.getD_some, List.getElem?_map]
+    cases row[j]? <;> simp [numVal, Expr.zero, Q.zero, Q.ofInt]
+
+/-- What `asRatRows` reads: every entry is a numeral, and the rationals are their values. -/
+theorem asRatRows_some {rows : List (List Expr)} {rs : List (List ℚ)} {approx : Bool}
+    (h : asRatRows rows = some (rs, approx)) :
+    rs = rows.map (·.map numVal) ∧ ∀ row ∈ rows, ∀ e ∈ row, ∃ q, e = .num q := by
+  unfold asRatRows at h
+  split_ifs at h with hall
+  simp only [Option.some.injEq, Prod.mk.injEq] at h
+  refine ⟨h.1.symm, fun row hrow e he => ?_⟩
+  simp only [List.all_eq_true] at hall
+  have := hall row hrow e he
+  cases e <;> first | exact ⟨_, rfl⟩ | simp at this
 
 theorem Q_isInt_cast {q : Q} (h : q.isInt = true) : (q.val : ℝ) = ((q.val.num : ℤ) : ℝ) := by
   simp only [Q.isInt, beq_iff_eq] at h
@@ -1002,16 +1073,36 @@ theorem laPow_sound (ρ : EnvR) {e : Expr} {res : RuleResult} (h : laPow.apply e
           rw [ofM_apply _ hi hj]; simp [toM]
         · rename_i hk1'
           have hk2 : k ≠ 1 := by simpa using hk1'
-          cases hb
-          obtain ⟨hdP, hneP, hrectP, hentP⟩ := matPow_value hc hdims hne (hlen ▸ hrect) hent' (k - 1)
-          rw [evalV_matrix_eq_some]
-          have hlenP : (matPow rows (k - 1)).length = c := by
-            have : (dims (matPow rows (k - 1))).1 = c := by rw [hdP]
-            simpa [dims] using this
-          refine ⟨c, hc, hneP, hrectP, fun i j hi hj => ⟨_, hentP i j (hlenP ▸ hi) hj⟩, ?_⟩
-          rw [hlenP, hkk]
-          apply mk_congr; intro i j hi hj
-          rw [entV, hentP i j hi hj, scalOf, toM_mk_eq, show k - 1 + 1 = k by omega]
+          split at hb
+          · -- every entry a numeral: the power over ℚ
+            rename_i rs approx hrat
+            cases hb
+            obtain ⟨hrs, hnum⟩ := asRatRows_some hrat
+            have hM : ratM c rs = litM ρ rows c := by
+              ext i j
+              have hi : (i : ℕ) < rows.length := hlen ▸ i.isLt
+              have hrow : rows[(i : ℕ)].length = c := hrect _ (List.getElem_mem hi)
+              have hmem : entry rows i j ∈ rows[(i : ℕ)] := by
+                rw [entry, getD_of_lt _ _ hi, getD_of_lt _ _ (by rw [hrow]; exact j.isLt)]
+                exact List.getElem_mem _
+              obtain ⟨q, hq⟩ := hnum _ (List.getElem_mem hi) _ hmem
+              simp only [ratM, litM, toM_apply, hrs, ratEntry_numVal, entV, hq, evalV_num, numVal, scalOf]
+            rw [ratLit, evalV_grid (fun i j => (ratEntry (ratPow c rs k) i j : ℝ)) hc hc
+              (fun i j _ _ => evalV_num _), hkk]
+            congr 1; apply mk_congr; intro i j hi hj
+            rw [toM_mk_eq, ← hM, ← ratM_pow, ratM, ofM_apply _ hi hj, toM_apply]
+          · cases hb
+            have hsq : SqLit ρ c rows (litM ρ rows c) :=
+              ⟨hdims, hne, hlen ▸ hrect, fun i j hi hj => by rw [hent' i j hi hj, ofM_apply _ hi hj]; rfl⟩
+            obtain ⟨hdP, hneP, hrectP, hentP⟩ := matPow_value hc k hsq hk1
+            rw [evalV_matrix_eq_some]
+            have hlenP : (matPow rows k).length = c := by
+              have : (dims (matPow rows k)).1 = c := by rw [hdP]
+              simpa [dims] using this
+            refine ⟨c, hc, hneP, hrectP, fun i j hi hj => ⟨_, hentP i j (hlenP ▸ hi) hj⟩, ?_⟩
+            rw [hlenP, hkk]
+            apply mk_congr; intro i j hi hj
+            rw [entV, hentP i j hi hj, scalOf, toM_mk_eq]
       · cases hb; simp [refuse] at he
   · cases hb
 
