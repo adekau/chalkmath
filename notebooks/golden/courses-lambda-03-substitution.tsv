@@ -1,8 +1,11 @@
-4	subst: x y, x := λz. z	= (λz. z) y
-5	subst: λx. x y, x := z	= λx. x y
-8	subst: λy. x y, x := y	= λy'. y y'
-9	subst: λy. λx. x y z, z := x y	= λy'. λx'. x' y' (x y)
-11	(λx. λy. x y) y	= λy'. y y'
-20	subst: (λx. x) x, x := y	= (λx. x) y
-21	subst: λz. x z, x := z	= λz'. z z'
-22	subst: λy. x, x := λw. w	= λy. λw. w
+5	subst: x y, x := λz. z	= (λz. z) y
+6	subst: λx. x y, x := z	= λx. x y
+9	(λx. λy. x) y a	= y
+10	(λy. y) a	= a
+16	subst: λy. x y, x := y	= λy'. y y'
+17	subst: λy. λx. x y z, z := x y	= λy'. λx'. x' y' (x y)
+19	(λx. λy. x y) y	= λy'. y y'
+28	subst: x (λx. x y), x := y	= y (λx. x y)
+29	subst: λz. x z, x := z	= λz'. z z'
+30	subst: λy. x, x := λw. w	= λy. λw. w
+31	(λx. λy. y x) y	= λy'. y' y

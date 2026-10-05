@@ -3571,40 +3571,55 @@ course("linear-algebra", "Linear algebra: vectors, matrices and systems",
 // prelude): an interpreter for the untyped calculus, then a typed calculus, a typed language and its
 // safety proof. After "A Programmer's Guide to Lambda Calculus", whose Lean the first course follows.
 course("lambda", "λ-calculus I: computing with functions",
-  "Terms, free and bound variables, substitution without capture, β-reduction and normal forms, evaluation strategies, de Bruijn indices, Church encodings and recursion by fixed points; an interpreter built in Lean alongside.",
+  "What if functions were the only thing? Terms, free and bound variables, substitution without capture, β-reduction and normal forms, evaluation strategies, de Bruijn indices, Church encodings and recursion by fixed points; an interpreter built in Lean alongside.",
   "Logic and computation", (add) => {
 
-  add("01-terms.chalk", "Terms and notation", "Variables, functions and applications; how terms are written and read; a first β-step.", ({ sec, md, m, ex, lean, lx }) => {
+  add("01-terms.chalk", "Terms and notation", "A language with nothing but functions: variables, functions and applications, how they are written, and a first β-step.", ({ sec, md, m, ex, lean, lx }) => {
     sec("Terms and notation");
     md(r`
 > [!goal]
-> Read and write λ-terms: know where a function's body ends, how applications group, and what a term means as a tree.
+> Read and write λ-terms, and take a first step of computation with them.
 `);
+    md(r`What if functions were the only thing? No numbers, no booleans, no loops, no data: only functions, which take a function and give back a function. It sounds too little to compute anything with. This course shows it is enough: by lesson 7 these functions count, add and choose, and by lesson 8 they loop. First, what would such programs look like?`);
+    sec("Functions without names");
+    md(r`Start from a function you know, $f(x) = x + 1$. The name $f$ is not needed to say what it does: write $x \mapsto x + 1$, or in Church's notation $\lambda x.\, x + 1$. Now take away $+$ and $1$, since there are only functions. Three things are left to write:`);
     md(r`
 > [!definition] λ-terms
-> A **term** is one of three things: a **variable** $x$; a **function** (an abstraction) $\lambda x.\, M$, which takes $x$ and gives $M$; or an **application** $M\ N$, the function $M$ applied to the argument $N$. Nothing else: no numbers, no booleans, no names for functions. Everything else will be built from these three.
+> A **term** is one of three things: a **variable** $x$; a **function** (an abstraction) $\lambda x.\, M$, which takes $x$ and gives $M$; or an **application** $M\ N$, the function $M$ applied to the argument $N$, written side by side with no brackets round the argument. Nothing else: everything else will be built from these three.
 `);
-    md(r`Type λ as ‹\lam› then space, or a backslash: ‹\x. x› is $\lambda x.\, x$. Three conventions keep the parentheses down:
+    md(r`Type λ as ‹\lam› then space, or a backslash: ‹\x. x› is $\lambda x.\, x$.`);
+    sec("Two arguments, and the parentheses");
+    md(r`
+> [!try]
+> Every function here takes one argument. How would you write a function of two, such as $(x, y) \mapsto x$?
+`);
+    md(r`Take $x$ and give back a function that takes $y$: $\lambda x.\, \lambda y.\, x$. Giving it $a$ and then $b$ is $((\lambda x.\, \lambda y.\, x)\ a)\ b$. Functions returning functions are everywhere, so three conventions keep the parentheses down:
 
-- application groups to the left: $f\ a\ b$ is $(f\ a)\ b$;
+- application groups to the left: $f\ a\ b$ is $(f\ a)\ b$, the arguments taken one at a time;
 - a λ's body reaches as far right as it can: $\lambda x.\, f\ x$ is $\lambda x.\, (f\ x)$, not $(\lambda x.\, f)\ x$;
-- $\lambda x\ y.\, M$ is short for $\lambda x.\, \lambda y.\, M$, a function returning a function.
+- $\lambda x\ y.\, M$ is short for $\lambda x.\, \lambda y.\, M$.
 
-A cell with only a term prints it back with as few parentheses as these rules allow.`);
-    m("λx y z. x z (y z)");
+A cell with only a term prints it back with as few parentheses as these rules allow (the reading beside the first is a preview of lesson 7):`);
     m("(λx. (λy. (x y)))");
+    m("λx y z. x z (y z)");
     sec("A first β-step");
+    md(r`With nothing but functions, the only thing that can happen is a function meeting its argument. What should $(\lambda x.\, M)\ N$ become? What $f(3)$ becomes for $f(x) = x + 1$: the body, with the argument put in for the parameter.`);
     md(r`
 > [!definition] β-reduction
 > A **redex** is a function applied to an argument, $(\lambda x.\, M)\ N$. It **reduces** to $M[x := N]$: the body with $N$ put in for every $x$. One such step is a **β-step**.
 `);
     m("(λx. x) y", { work: true });
-    md(r`Application groups left, so the identity is applied to $\lambda y.\, y$ first, and the result to $z$:`);
+    md(r`
+> [!try]
+> $\lambda x.\, \lambda y.\, x$ takes two arguments. Which one does it give back? Predict $(\lambda x.\, \lambda y.\, x)\ a\ b$, then step through it.
+`);
+    m("(λx. λy. x) a b", { step: 0 });
+    md(r`Application groups left, so here the identity is applied to $\lambda y.\, y$ first, and the result to $z$:`);
     m("(λx. x) (λy. y) z", { step: 0 });
-    md(r`A redex can sit inside a function body; normal order (the engine's default, lesson 5) reduces it there too:`);
+    md(r`A redex can sit inside a function body; the engine reduces it there too (which redex goes first is lesson 5's question):`);
     m("λx. (λy. y) x", { work: true });
     sec("In Lean");
-    md(r`This course builds an interpreter for the λ-calculus in Lean, a piece per lesson; each lesson's Lean sees the lessons' before it. First the terms: an inductive type with one constructor per kind of term.`);
+    md(r`This course builds an interpreter for the λ-calculus in Lean, a piece per lesson; each lesson's Lean sees the Lean of the lessons before it. First the terms: an inductive type with one constructor per kind of term.`);
     lean(r`/-- λ-terms with named variables: a variable, a function λx. body, an application f a. -/
 inductive Term where
   | var : String → Term
@@ -3641,41 +3656,56 @@ example : K.size = 3 := rfl`);
       r`‹simp [Term.size]› unfolds the size; ‹omega› finishes the arithmetic. Combine them with ‹<;>›.`,
     ]);
     sec("Exercises");
-    md(r`Reduce each term to the end. An answer is compared after reducing it too, so any name for a bound variable is right.`);
-    ex("(λx. λy. x) a b", r`Reduce $(\lambda x.\, \lambda y.\, x)\ a\ b$.`, [r`Application groups left: first $(\lambda x.\, \lambda y.\, x)\ a$.`]);
+    md(r`Reduce until no redex is left, and write the result. Answers are compared up to the names of bound variables, so $\lambda a.\, a$ is as good as $\lambda x.\, x$; an answer that still has a redex in it is sent back.`);
+    ex("(λx. λy. y) a b", r`Reduce $(\lambda x.\, \lambda y.\, y)\ a\ b$.`, [r`Application groups left: first $(\lambda x.\, \lambda y.\, y)\ a$, which throws $a$ away.`]);
     ex("(λf. f a) (λx. x)", r`Reduce $(\lambda f.\, f\ a)\ (\lambda x.\, x)$.`, [r`Put $\lambda x.\, x$ for $f$, then reduce again.`]);
     ex("(λx. x x) (λy. y)", r`Reduce $(\lambda x.\, x\ x)\ (\lambda y.\, y)$.`, [r`$x$ is replaced by $\lambda y.\, y$ twice: $(\lambda y.\, y)\ (\lambda y.\, y)$.`]);
+    ex("λf. λx. f (f x)", r`Write a function that takes $f$ and then $x$, and applies $f$ to $x$ twice.`, [
+      r`Two parameters: $\lambda f.\, \lambda x.\, \ldots$`,
+      r`Applying $f$ twice is $f\ (f\ x)$.`,
+    ], { hide: true });
     md(r`
 > [!summary]
-> Terms are variables, functions and applications. Application groups left and a λ reaches right. Computation is the β-step: a function applied to an argument becomes its body, with the argument put in.
+> Terms are variables, functions and applications. A function of two arguments is a function returning a function, so application groups left; a λ reaches right. Computation is the β-step: a function applied to an argument becomes its body, with the argument put in.
+
+In $\lambda x.\, x\ y$, the $x$ is the function's own. Where does $y$ come from? Lesson 2 sorts the variables a function owns from those it does not.
 `);
   });
 
-  add("02-free-bound.chalk", "Free and bound variables", "Which variables a λ binds, which are free, and why the names of bound ones do not matter.", ({ sec, md, m, ex, lean, lx }) => {
+  add("02-free-bound.chalk", "Free and bound variables", "Placeholders and outside values: which variables a λ binds, which are free, and why the names of bound ones do not matter.", ({ sec, md, m, ex, lean, lx }) => {
     sec("Free and bound variables");
     md(r`
 > [!goal]
-> Tell bound variables from free ones, compute the free variables of a term, and decide when two terms are the same up to renaming.
+> Tell the variables a λ owns from the ones it does not, and see when renaming one is harmless.
 `);
+    md(r`What does $\lambda x.\, x\ y$ do? Given $a$ it gives $a\ y$. The $x$ is a placeholder for the argument. The $y$ is something else: a value from outside the function, which this term does not fix. Mathematics has the same two roles: in $\sum_{i=1}^{n} i\,k$ and $\int_0^1 x\,t\ dx$, the $i$ and the $x$ are placeholders, and $n$, $k$ and $t$ come from outside.`);
+    md(r`
+> [!try]
+> $\sum_{j=1}^{n} j\,k$ means the same as $\sum_{i=1}^{n} i\,k$; renaming $k$ changes the meaning. In $\lambda x.\, x\ y$, which of $x$ and $y$ could you rename without changing what the function does?
+`);
+    sec("Bound and free");
+    md(r`The answer is $x$: the λ owns it, and renaming it together with the λ changes nothing. The $y$ belongs to whoever supplies it.`);
     md(r`
 > [!definition] Free and bound
 > In $\lambda x.\, M$ the λ **binds** $x$: every $x$ in $M$ (not under another $\lambda x$) refers to it. An occurrence of a variable is **bound** when some λ above it has its name, and **free** otherwise. The free variables:
 > $$FV(x) = \{x\}, \quad FV(\lambda x.\, M) = FV(M) \setminus \{x\}, \quad FV(M\ N) = FV(M) \cup FV(N).$$
 > A term with no free variables is **closed**, a **combinator**.
 `);
-    md(r`The command ‹fv:› computes them and names the bound ones:`);
+    md(r`Each clause says one thing: a variable alone is free; a λ takes its own variable out; an application has the free variables of both sides. The command ‹fv:› computes them and names the bound ones:`);
     m("fv: λx. x y", { work: true });
-    md(r`The same name can be free in one place and bound in another. Here the first $x$ is bound by its λ, and the second is outside it:`);
+    md(r`The same name can be free in one place and bound in another. Here $x$ is bound on the left and free on the right, and $y$ the other way round, so both are listed as free and as bound:`);
     m("fv: (λx. x y) (λy. x y)");
     m("fv: λf. λx. f (f x)");
-    sec("α-equivalence");
+    sec("Renaming placeholders");
+    md(r`So $\lambda x.\, x$ and $\lambda y.\, y$ are the same function: both give back what they get. Renaming a bound variable, everywhere it is bound, changes nothing. Now try it on $\lambda x.\, y$, the function that ignores its argument and gives $y$. Rename $x$ to $y$ and you get $\lambda y.\, y$, the identity: the new name caught the free $y$.`);
     md(r`
 > [!definition] α-equivalence
-> Renaming a bound variable, together with every occurrence it binds, gives the same function: $\lambda x.\, x$ and $\lambda y.\, y$ are both the identity. Terms that differ only so are **α-equivalent**, and are treated as equal. The new name must not be one that is free in the body, or it would be captured: $\lambda x.\, y$ (the constant function giving $y$) is not $\lambda y.\, y$.
+> Renaming a bound variable, together with every occurrence it binds, to a name not free in its body gives the same function. Terms that differ only so are **α-equivalent**, and are treated as equal: $\lambda x.\, x$ and $\lambda y.\, y$ are, $\lambda x.\, y$ and $\lambda y.\, y$ are not.
 `);
     md(r`‹alpha: s, t› decides it, by comparing the terms with their bound names removed (lesson 6 shows how):`);
     m("alpha: λx. λy. x y, λa. λb. a b", { work: true });
     m("alpha: λx. y, λy. y");
+    md(r`Keep the failure in mind: lesson 3 meets it again, in the middle of a β-step.`);
     sec("In Lean");
     md(r`Free variables follow the definition clause by clause.`);
     lean(r`/-- The free variables: FV(x) = {x}, FV(λx. b) = FV(b) \ {x}, FV(f a) = FV(f) ∪ FV(a). -/
@@ -3704,39 +3734,52 @@ example : closed (lam "x" (var "y")) = false := by decide`);
     ex("alpha: λx. x y, λy. y y", r`Are $\lambda x.\, x\ y$ and $\lambda y.\, y\ y$ α-equivalent?`, [r`Renaming $x$ to $y$ would capture the free $y$.`]);
     md(r`
 > [!summary]
-> A λ binds its variable in its body; everything else is free. Bound names can be changed at will, as long as no free variable gets captured. That is α-equivalence, and terms are equal up to it.
+> A λ binds its variable in its body; every other variable is free, a value from outside. Bound names can be changed at will, as long as no free variable gets captured. That is α-equivalence, and terms are equal up to it.
+
+A β-step puts an argument into a body. What if the argument has a free $y$ and the body has a $\lambda y$? Lesson 3.
 `);
   });
 
-  add("03-substitution.chalk", "Substitution and capture", "Putting a term in for a variable, without capturing its free variables.", ({ sec, md, m, ex, lean, lx }) => {
+  add("03-substitution.chalk", "Substitution and capture", "The obvious substitution, two ways it goes wrong, and the renaming that fixes it.", ({ sec, md, m, ex, lean, lx }) => {
     sec("Substitution and capture");
     md(r`
 > [!goal]
-> Compute $M[x := N]$, renaming bound variables where the substitution would otherwise capture a free variable of $N$.
+> Find the rule for $M[x := N]$, the substitution a β-step does, by repairing the obvious rule where it fails.
 `);
+    md(r`A β-step turns $(\lambda x.\, M)\ N$ into "$M$ with $N$ put in for $x$". Writing that out looks like a formality: replace every $x$ in $M$ by $N$. It is not, and seeing why is the whole lesson.`);
+    sec("Two ways the obvious rule fails");
+    md(r`First failure: $((\lambda x.\, x)\ x)[x := y]$. Replacing every $x$ gives $(\lambda y.\, y)\ y$. But the $x$ in $\lambda x.\, x$ belongs to its own λ (lesson 2); only the last $x$ is free, so the answer is $(\lambda x.\, x)\ y$. Repair: replace only **free** occurrences, and stop at a λ that binds $x$ again. ‹subst: M, x := N› does it:`);
+    m("subst: x y, x := λz. z", { work: true });
+    m("subst: λx. x y, x := z", { work: true });
+    md(r`Second failure, subtler. $\lambda y.\, x$ ignores its argument and gives $x$. Put $y$ in for $x$ with the repaired rule: $(\lambda y.\, x)[x := y] = \lambda y.\, y$, the identity.`);
+    md(r`
+> [!try]
+> Predict both before running them. $(\lambda x.\, \lambda y.\, x)\ y\ a$ gives $y$ and then $a$ to a function that keeps its first argument. $(\lambda y.\, y)\ a$ is where the step $(\lambda y.\, x)[x := y] = \lambda y.\, y$ would lead.
+`);
+    m("(λx. λy. x) y a");
+    m("(λy. y) a");
+    md(r`The function keeps its first argument, $y$; the naive step led to $a$. The $y$ put in was free, a value from outside, but it landed under a $\lambda y$ and now means the parameter: it has been **captured**.`);
+    md(r`
+> [!try]
+> How would you repair it? Lesson 2 has the tool.
+`);
+    md(r`The name of a bound variable does not matter, so move it out of the way first. $\lambda y.\, x$ is the same function as $\lambda y'.\, x$, and $(\lambda y'.\, x)[x := y] = \lambda y'.\, y$: a function that ignores its argument and gives $y$, as it should. The new name must be **fresh**: free neither in what is put in nor in the body.`);
     md(r`
 > [!definition] Substitution
 > $M[x := N]$ replaces the free occurrences of $x$ in $M$ by $N$:
 > - $x[x := N] = N$, and $y[x := N] = y$ for another variable $y$;
 > - $(M_1\ M_2)[x := N] = M_1[x := N]\ M_2[x := N]$;
-> - $(\lambda x.\, M)[x := N] = \lambda x.\, M$: here $x$ is bound, so there is nothing to replace;
+> - $(\lambda x.\, M)[x := N] = \lambda x.\, M$: here $x$ is bound, so there is nothing to replace (the first repair);
 > - $(\lambda y.\, M)[x := N] = \lambda y.\, M[x := N]$ when $y$ is not free in $N$;
-> - otherwise rename $y$ first, to a fresh $z$: $\lambda z.\, M[y := z][x := N]$.
+> - otherwise rename $y$ first, to a fresh $z$: $\lambda z.\, M[y := z][x := N]$ (the second).
 `);
-    md(r`‹subst: M, x := N› does it, the renaming as its own step:`);
-    m("subst: x y, x := λz. z", { work: true });
-    m("subst: λx. x y, x := z", { work: true });
-    sec("Capture");
-    md(r`
-> [!mistake] Capture
-> Substituting blindly into $\lambda y.\, x$ for $x := y$ gives $\lambda y.\, y$: the identity. But $\lambda y.\, x$ ignores its argument, and so should the result, returning the free $y$. The $y$ that was put in has been **captured** by the λ. The fifth rule renames the binder first: $\lambda y'.\, y$.
-`);
+    md(r`The engine does the renaming as its own step:`);
     m("subst: λy. x y, x := y", { work: true });
     m("subst: λy. λx. x y z, z := x y", { work: true });
     md(r`A β-step is a substitution, so it renames too:`);
     m("(λx. λy. x y) y", { work: true });
     sec("In Lean");
-    md(r`The naive substitution first, to see it capture:`);
+    md(r`The obvious substitution first, with the first repair. It captures:`);
     lean(r`/-- Substitution as it first comes to mind: put s for every free x, stopping under a binder named x. -/
 def substNaive (x : String) (s : Term) : Term → Term
   | var y => if y = x then s else var y
@@ -3752,7 +3795,7 @@ def substNaive (x : String) (s : Term) : Term → Term
       r`‹induction t with› gives a case per constructor, with induction hypotheses for the subterms.`,
       r`In the ‹var› and ‹lam› cases, split on ‹y = x› with ‹by_cases h : y = x›, then ‹simp [substNaive, h]› (add ‹ih› where there is one).`,
     ]);
-    md(r`The real one renames. Its recursive call is on a renamed body, which is not a subterm, so Lean cannot see on its own that it stops: we say why (renaming keeps the size) and Lean checks it.`);
+    md(r`The real one renames. Renaming $y$ to $z$ is done with the naive substitution, so $z$ must avoid every name in the body, bound ones too: a $\lambda z$ inside would capture it. And its recursive call is on a renamed body, which is not a subterm, so Lean cannot see on its own that it stops: we say why (renaming keeps the size) and Lean checks it.`);
     lean(r`/-- A name not in avoid: x, x', x'', … (avoid is finite, so one of the first length + 1 is free). -/
 def fresh (avoid : List String) (x : String) : String :=
   go x avoid.length
@@ -3760,6 +3803,12 @@ where
   go (c : String) : Nat → String
     | 0 => c
     | n + 1 => if c ∈ avoid then go (c ++ "'") n else c
+
+/-- Every name in a term, bound or free. -/
+def allVars : Term → List String
+  | var x => [x]
+  | lam x b => x :: allVars b
+  | app f a => allVars f ++ allVars a
 
 /-- Rename the variable y to z. -/
 def rename (y z : String) (b : Term) : Term := substNaive y (var z) b
@@ -3778,58 +3827,81 @@ def subst (x : String) (s : Term) : Term → Term
   | lam y b =>
     if y = x then lam y b
     else if y ∈ freeVars s then
-      let z := fresh (freeVars s ++ freeVars b ++ [x]) y
+      let z := fresh (freeVars s ++ allVars b ++ [x]) y
       lam z (subst x s (rename y z b))
     else lam y (subst x s b)
 termination_by t => t.size
 decreasing_by all_goals simp_wf <;> simp [size_rename, Term.size] <;> omega
 
-#eval (subst "x" (var "y") (lam "y" (var "x"))).pretty`);
+#eval (subst "x" (var "y") (lam "y" (var "x"))).pretty
+-- the body binds y', so the fresh name is y''
+#eval (subst "x" (var "y") (lam "y" (lam "y'" (app (var "x") (var "y"))))).pretty`);
     sec("Exercises");
-    md(r`An answer is compared with the result up to the names of bound variables, and is not reduced: write the term the substitution gives.`);
-    ex("subst: (λx. x) x, x := y", r`Compute $((\lambda x.\, x)\ x)[x := y]$.`, [r`Only the free $x$ changes; the one under $\lambda x$ is bound.`]);
+    md(r`A ‹subst› answer is compared with the result up to the names of bound variables, and is not reduced: write the term the substitution gives.`);
+    ex("subst: x (λx. x y), x := y", r`Compute $(x\ (\lambda x.\, x\ y))[x := y]$.`, [r`Only the first $x$ is free; the λ binds the others.`]);
     ex("subst: λz. x z, x := z", r`Compute $(\lambda z.\, x\ z)[x := z]$.`, [r`The binder $z$ would capture the $z$ put in: rename it first.`]);
     ex("subst: λy. x, x := λw. w", r`Compute $(\lambda y.\, x)[x := \lambda w.\, w]$.`, [r`$\lambda w.\, w$ has no free variables, so nothing can be captured.`]);
+    ex("(λx. λy. y x) y", r`Reduce $(\lambda x.\, \lambda y.\, y\ x)\ y$ to normal form, with the renaming you invented.`, [r`The $y$ passed in is free; the $\lambda y$ would capture it. Rename the binder, say to $z$, first.`]);
     md(r`
 > [!summary]
-> Substitution replaces free occurrences only, and renames a binder that would capture a free variable of what is put in. It is the whole of β-reduction's work.
+> Substitution replaces free occurrences only, and renames a binder that would capture a free variable of what is put in. Both rules come from the obvious rule failing, and together they are the whole of β-reduction's work.
+
+With substitution settled, β-steps can be chained. Does the chain always end, and does it matter which redex goes first? Lesson 4.
 `);
   });
 
-  add("04-beta.chalk", "β-reduction and normal forms", "Reducing to normal form; terms that never stop; why the normal form is unique; η.", ({ sec, md, m, ex, lean, lx }) => {
+  add("04-beta.chalk", "β-reduction and normal forms", "Chaining β-steps: where it stops, terms that never stop, why the order of steps cannot change the answer, and η.", ({ sec, md, m, ex, lean, lx }) => {
     sec("β-reduction and normal forms");
     md(r`
 > [!goal]
-> Reduce a term to normal form, recognise terms that have none, and know why the normal form, when there is one, does not depend on the order of the steps.
+> Reduce terms to normal form, meet terms that have none, and see why the order of the steps can decide whether you finish but never where.
 `);
+    md(r`Keep taking β-steps, and three questions come up at once. Does it stop? If it stops, is the end the same whichever redex you pick each time? And can the choice decide whether it stops at all?`);
+    sec("Where it stops");
     md(r`
 > [!definition] Normal form
-> A term with no redex is in **normal form**. A term **has** a normal form when some sequence of β-steps reaches one.
+> A term with no redex is in **normal form**: it cannot take a step, and it is the term's answer. A term **has** a normal form when some sequence of β-steps reaches one.
 `);
     m("(λx. λy. y x) a (λz. z)", { step: 0 });
+    md(r`‹S›, ‹K› and ‹I› are library combinators, unfolded in one δ-step: $S = \lambda x\ y\ z.\, x\ z\ (y\ z)$, $K = \lambda x\ y.\, x$, $I = \lambda x.\, x$. $S\ K\ K$ turns out to be the identity:`);
     m("S K K a", { work: true });
     sec("Terms that never stop");
-    md(r`$\Omega = (\lambda x.\, x\ x)\ (\lambda x.\, x\ x)$ reduces to itself, for ever. The library calls $\lambda x.\, x\ x$ ‹omega›. A step count after the strategy's name shows the first few steps instead of refusing:`);
+    md(r`A β-step uses up a λ, but it also copies the argument once for each use of the parameter. So look for a term that, applied to itself, makes a copy of itself.`);
+    md(r`
+> [!try]
+> $\omega = \lambda x.\, x\ x$ applies its argument to itself. What is $\omega\ \omega$ after one step?
+`);
+    md(r`The library calls $\omega$ ‹omega›. A step count after the strategy's name shows that many steps instead of refusing:`);
     m("normal 2: omega omega", { work: true });
+    md(r`$\Omega = \omega\ \omega$ steps to itself, for ever. The engine gives up:`);
     m("omega omega");
-    md(r`Some terms grow as they go, and the engine stops them once they are too big:`);
+    md(r`Triple instead of double, and the term grows as it goes, until the engine stops it:`);
     m("(λx. x x x) (λx. x x x)");
-    md(r`And some have a normal form even though a careless order of steps would never find it: $K\ I\ \Omega$ throws $\Omega$ away.`);
+    sec("Does the order matter?");
+    md(r`$(\lambda x.\, \lambda y.\, y)\ \Omega$ has two redexes: the whole term, and $\Omega$ inside it. Reduce $\Omega$ and you are back where you started, for ever. Reduce the outer one and $\Omega$ is thrown away, since $x$ is not used:`);
     m("normal: (λx. λy. y) (omega omega)", { work: true });
-    sec("Confluence");
+    md(r`So the order can decide **whether** you reach a normal form. Can it decide **which**? Take a term where both paths finish: $(\lambda x.\, x\ x)\ ((\lambda y.\, y)\ z)$. Outer redex first copies the inner redex and reduces it twice; inner first (‹applicative:›, lesson 5) reduces it once and copies the result.`);
+    md(r`
+> [!try]
+> Predict both answers, and which path is shorter.
+`);
+    m("normal: (λx. x x) ((λy. y) z)", { work: true });
+    m("applicative: (λx. x x) ((λy. y) z)", { work: true });
+    md(r`Three steps one way, two the other, and the same end. That is no accident:`);
     md(r`
 > [!theorem] Church–Rosser
-> If $M$ reduces to $N_1$ and to $N_2$, then $N_1$ and $N_2$ both reduce to some common $P$. So a term has **at most one** normal form, up to α: the order of the steps can change whether you get there, never where.
+> If $M$ reduces to $N_1$ and to $N_2$ (each in any number of steps), then $N_1$ and $N_2$ both reduce to some common $P$. So a term has **at most one** normal form, up to α: the order of the steps can change whether you get there, never where.
 `);
     md(r`That is why a λ-term has a meaning, and why an exercise can compare normal forms.`);
     sec("η");
+    md(r`$\lambda x.\, f\ x$ and $f$ are different terms, both in normal form. Yet applied to any $a$, both give $f\ a$. Should they count as equal?`);
     md(r`
 > [!definition] η-reduction
-> $\lambda x.\, f\ x$ reduces to $f$ when $x$ is not free in $f$: both give $f\ a$ for every $a$. Adding this rule says that a function is determined by what it does (**extensionality**).
+> $\lambda x.\, f\ x$ reduces to $f$ when $x$ is not free in $f$. Adding this rule says that a function is determined by what it does (**extensionality**).
 `);
     m("eta: λx. λy. f x y", { work: true });
     m("eta: λx. x x");
-    md(r`$\lambda x.\, x\ x$ is not an η-redex: $x$ is free in the function part.`);
+    md(r`$\lambda x.\, x\ x$ is not an η-redex: $x$ is free in the function part, so dropping the λ would change what $x$ means.`);
     sec("In Lean");
     md(r`A step contracts the leftmost-outermost redex; evaluation takes steps on fuel, because some terms never stop.`);
     lean(r`/-- One normal-order step: contract the leftmost-outermost redex, if there is one. -/
@@ -3857,19 +3929,40 @@ def eval : Nat → Term → Term
     sec("Exercises");
     ex("(λx. λy. x) y", r`Reduce $(\lambda x.\, \lambda y.\, x)\ y$ to normal form. (The trap: $\lambda y.\, y$ is wrong.)`, [r`Rename the inner binder first, say to $z$: $\lambda z.\, y$.`], { hide: true });
     ex("(λf. λx. f (f x)) (λy. y y)", r`Reduce $(\lambda f.\, \lambda x.\, f\ (f\ x))\ (\lambda y.\, y\ y)$ to normal form.`, [r`After the first step: $\lambda x.\, (\lambda y.\, y\ y)\ ((\lambda y.\, y\ y)\ x)$. Normal order then reduces the outer redex.`]);
+    ex("(λx. λy. x) (λz. z) (omega omega)", r`$(\lambda x.\, \lambda y.\, x)\ (\lambda z.\, z)\ \Omega$ has a normal form. Choose your redexes well and find it.`, [r`Never touch $\Omega$: the function throws its second argument away.`]);
     ex("eta: λx. (λy. g y) x", r`Reduce $\lambda x.\, (\lambda y.\, g\ y)\ x$ with β and η.`, [r`$\lambda y.\, g\ y$ is an η-redex.`]);
     md(r`
 > [!summary]
-> A normal form is a term with no redex. Some terms have none, and some have one only along the right path. By Church–Rosser, a term has at most one normal form. η adds extensionality: $\lambda x.\, f\ x$ is $f$.
+> A normal form is a term with no redex. Some terms have none, and some reach one only along the right path. By Church–Rosser a term has at most one normal form, so the order of steps decides whether you get there, never where. η adds extensionality: $\lambda x.\, f\ x$ is $f$.
+
+If the order can decide whether we finish, which order should an interpreter use? Lesson 5.
 `);
   });
 
-  add("05-strategies.chalk", "Evaluation strategies", "Which redex next: normal order, call by name, call by value, applicative order.", ({ sec, md, m, ex, lean, lx }) => {
+  add("05-strategies.chalk", "Evaluation strategies", "Which redex first: normal order, call by name, call by value, applicative order, and a term where the choice decides whether you finish.", ({ sec, md, m, ex, lean, lx }) => {
     sec("Evaluation strategies");
     md(r`
 > [!goal]
-> Reduce a term under each of the four classic strategies, and say what each finds, what it misses, and what it costs.
+> Compare the classic answers to "which redex first?": what each finds, where each stops, and what each costs.
 `);
+    md(r`An interpreter has to pick a redex by a fixed rule. Two rules come to mind, and every programming language picks one: evaluate the argument before the call, as $f(g(x))$ does in most languages; or hand the argument over as it is, and evaluate it only where it is used.`);
+    md(r`
+> [!try]
+> $K = \lambda x.\, \lambda y.\, x$ throws its second argument away. Under each rule, what happens to $K\ I\ \Omega$?
+`);
+    sec("A term where the choice decides");
+    md(r`Hand arguments over as they are, and $\Omega$ is never touched:`);
+    m("normal: K I (omega omega)", { work: true });
+    m("cbn: K I (omega omega)");
+    md(r`Evaluate arguments first, and you never get past it. A step count shows how it goes round:`);
+    m("cbv 4: K I (omega omega)", { work: true });
+    m("applicative: K I (omega omega)");
+    md(r`Normal order is the safe choice, always:`);
+    md(r`
+> [!theorem] Standardization
+> If a term has a normal form, normal order reaches it.
+`);
+    md(r`The four classic strategies are the two rules, each with and without reducing inside a function body:`);
     md(r`
 > [!definition] Strategies
 > - **Normal order** (‹normal:›): the leftmost-outermost redex, also under λ, to the normal form.
@@ -3877,26 +3970,18 @@ def eval : Nat → Term → Term
 > - **Call by value** (‹cbv:›): the function, then the argument, are reduced to **values** (a λ or a variable) before the call; never under a λ.
 > - **Applicative order** (‹applicative:›): the leftmost-innermost redex, under λ too: call by value that goes all the way.
 `);
-    sec("Which terminate");
-    md(r`$K\ I\ \Omega$ ignores $\Omega$. The strategies that pass arguments unevaluated never touch it:`);
-    m("normal: K I (omega omega)", { work: true });
-    m("cbn: K I (omega omega)");
-    md(r`The ones that evaluate arguments first never finish. A step count shows how they go round:`);
-    m("cbv 4: K I (omega omega)", { work: true });
-    m("applicative: K I (omega omega)");
-    md(r`
-> [!theorem] Standardization
-> If a term has a normal form, normal order reaches it.
-`);
-    sec("What they stop at");
-    md(r`Call by name and call by value do not look inside a λ: a function is already a result.`);
+    sec("Where they stop");
+    md(r`Call by name and call by value do not look inside a λ: a function is already a result, and its body runs when it is called.`);
     m("cbn: λx. (λy. y) x");
     m("cbv: (λx. x) (λy. (λz. z) y)");
     sec("What they cost");
-    md(r`Call by name copies an unevaluated argument, and may evaluate the copy twice; call by value evaluates it once, first:`);
+    md(r`
+> [!try]
+> In $(\lambda x.\, x\ x)\ ((\lambda y.\, y)\ z)$ the argument is used twice. Call by name copies it unevaluated; call by value evaluates it first. Predict where each stops.
+`);
     m("cbn: (λx. x x) ((λy. y) z)", { work: true });
     m("cbv: (λx. x x) ((λy. y) z)", { work: true });
-    md(r`Call by name never even reached the redex in the argument: $z\ ((\lambda y.\, y)\ z)$ is a weak head normal form. Normal order goes on to $z\ z$. Most languages call by value; Haskell calls by **need**, call by name that remembers an argument once evaluated.`);
+    md(r`Call by value did the argument's step once, first. Call by name copied the unevaluated argument, and stopped at $z\ ((\lambda y.\, y)\ z)$, a weak head normal form; normal order goes on into the copies and does the same step twice (lesson 4). Most languages call by value; Haskell calls by **need**: call by name that remembers an argument once it is evaluated, so it is done at most once, and never if unused.`);
     sec("In Lean");
     lean(r`/-- Call by value treats variables and λs as values. -/
 def isValue : Term → Bool
@@ -3928,34 +4013,55 @@ def KIΩ : Term := app (app K I) (app ω ω)
     sec("Exercises");
     md(r`Write the term the strategy stops at; it is compared up to bound names, not reduced further.`);
     ex("cbv: (λx. λy. y) ((λz. z) w)", r`Reduce $(\lambda x.\, \lambda y.\, y)\ ((\lambda z.\, z)\ w)$ by value.`, [r`The argument is reduced first, to $w$; then the call.`]);
+    ex("cbn: (λx. λy. x) ((λz. z) w)", r`Reduce $(\lambda x.\, \lambda y.\, x)\ ((\lambda z.\, z)\ w)$ by name. Is the argument ever evaluated?`, [r`The argument goes in unevaluated, under $\lambda y$, where call by name does not look.`]);
     ex("cbn: (λx. x x) ((λy. y) z)", r`Reduce $(\lambda x.\, x\ x)\ ((\lambda y.\, y)\ z)$ by name. Where does it stop?`, [r`The argument goes in unevaluated, twice. Then the head is reduced, and only the head.`]);
     ex("cbn: λx. (λy. y) x", r`Reduce $\lambda x.\, (\lambda y.\, y)\ x$ by name.`, [r`Call by name does not reduce under a λ.`]);
     md(r`
 > [!summary]
-> Normal order finds every normal form there is. Call by name and call by value stop at functions; call by value evaluates arguments first, once, and can loop on an argument nobody needs.
+> A strategy answers "which redex first?". Normal order finds every normal form there is. Call by name and call by value stop at functions; call by value evaluates arguments first, once, and can loop on an argument nobody needs.
+
+Every strategy here renames bound variables to substitute, and lesson 2 had to compare terms up to renaming. Names are a nuisance: can we do without them? Lesson 6.
 `);
   });
 
-  add("06-de-bruijn.chalk", "De Bruijn indices", "Terms without bound names: indices count the λs, and α-equivalence becomes equality.", ({ sec, md, m, ex, lean, lx }) => {
+  add("06-de-bruijn.chalk", "De Bruijn indices", "Terms without bound names: point at a variable's binder by counting λs, and α-equivalence becomes equality.", ({ sec, md, m, ex, lean, lx }) => {
     sec("De Bruijn indices");
     md(r`
 > [!goal]
-> Write a term with de Bruijn indices, and use them to decide α-equivalence.
+> Write terms without bound names, so that α-equivalent terms are literally equal.
 `);
+    md(r`Names have cost us twice: substitution must rename to avoid capture (lesson 3), and $\lambda x.\, \lambda y.\, x$ and $\lambda a.\, \lambda b.\, a$ are one function with two spellings (lesson 2). Could every function have just one?`);
+    md(r`
+> [!try]
+> What does a bound variable tell you? Only which λ it belongs to. How could you say that without a name?
+`);
+    sec("Counting instead of naming");
+    md(r`Point at the binder by counting: replace each bound variable by how many λs it must step out past to reach its binder, $0$ for the nearest. The λs no longer need names. In $\lambda x.\, \lambda y.\, x$, the $x$ steps out past $\lambda y$ to reach $\lambda x$: one. So the term is $\lambda.\, \lambda.\, 1$, and so is $\lambda a.\, \lambda b.\, a$.`);
     md(r`
 > [!definition] De Bruijn indices
-> Replace each bound variable by the number of λs between it and its binder: $0$ for the nearest. The λs lose their names. $\lambda x.\, \lambda y.\, x$ becomes $\lambda.\, \lambda.\, 1$. A free variable keeps its name.
+> Replace each bound variable by the number of λs between it and its binder: $0$ for the nearest. The λs lose their names. A free variable keeps its name.
 `);
     m("db: λx. λy. x", { work: true });
+    md(r`
+> [!try]
+> Work out $\lambda f.\, \lambda x.\, f\ (f\ x)$ and $\lambda x.\, \lambda y.\, x\ (\lambda z.\, z\ y)$ before running them.
+`);
     m("db: λf. λx. f (f x)");
     m("db: λx. λy. x (λz. z y)");
-    md(r`The same variable can have different indices in different places: in the last term $y$ is $0$ under one λ and $1$ under two.`);
+    md(r`An index counts from where the variable stands, so it is not a label: the same variable gets different numbers at different depths, and different variables can share one.`);
+    m("db: λx. x (λy. x)");
+    m("db: λx. x (λy. y)");
     sec("α-equivalence is equality");
     md(r`Two terms are α-equivalent exactly when their de Bruijn forms are equal: there are no bound names left to differ. That is how ‹alpha:› decides.`);
     m("alpha: λx. λy. x (λz. z y), λa. λb. a (λc. c b)", { work: true });
     md(r`The View menu's de Bruijn indices shows every λ-cell's result, and every step, this way.`);
+    sec("The price: shifting");
+    md(r`Without names nothing can be captured, so substitution never renames. It has its own bookkeeping instead. In $\lambda z.\, (\lambda x.\, \lambda y.\, x)\ z$ the β-step gives $\lambda z.\, \lambda y.\, z$. Watch the $z$:`);
+    m("db: λz. (λx. λy. x) z");
+    m("db: λz. λy. z");
+    md(r`As an argument it was $0$; put under $\lambda y$ it is $1$, one more λ away from its binder. A term moved under a λ must have its free indices raised: **shifting**.`);
     sec("In Lean");
-    md(r`An interpreter on de Bruijn terms needs no renaming at all; the price is **shifting**: a term moved under a λ has its free indices raised by one.`);
+    md(r`An interpreter on de Bruijn terms needs no renaming and no fresh names; it shifts instead.`);
     lean(r`/-- De Bruijn terms: a bound variable is the number of λs between it and its binder. -/
 inductive DB where
   | bvar : Nat → DB
@@ -3996,61 +4102,88 @@ example : (DB.lam (.bvar 1)).shift 1 0 = .lam (.bvar 2) := by decide`);
       r`Each case is ‹simp [DB.shift]›, with the induction hypotheses where there are some; ‹free› is ‹rfl›.`,
     ]);
     sec("Exercises");
-    ex("alpha: λx. λy. y (λz. x), λa. λb. b (λb. a)", r`Are $\lambda x.\, \lambda y.\, y\ (\lambda z.\, x)$ and $\lambda a.\, \lambda b.\, b\ (\lambda b.\, a)$ α-equivalent?`, [r`Write both with indices: the inner $x$ and $a$ are two λs up.`]);
+    md(r`Answer with ‹true› or ‹false›; write both terms with indices first.`);
+    ex("alpha: λx. λy. y (λz. x), λa. λb. b (λb. a)", r`Are $\lambda x.\, \lambda y.\, y\ (\lambda z.\, x)$ and $\lambda a.\, \lambda b.\, b\ (\lambda b.\, a)$ α-equivalent?`, [r`The inner $x$ and $a$ each step out past two λs: both are $\lambda.\, \lambda.\, 0\ (\lambda.\, 2)$.`]);
     ex("alpha: λx. λy. x, λy. λx. x", r`Are $\lambda x.\, \lambda y.\, x$ and $\lambda y.\, \lambda x.\, x$ α-equivalent?`, [r`In indices: $\lambda.\, \lambda.\, 1$ and $\lambda.\, \lambda.\, 0$.`]);
+    ex("alpha: λx. x (λy. x), λa. a (λa. a)", r`Are $\lambda x.\, x\ (\lambda y.\, x)$ and $\lambda a.\, a\ (\lambda a.\, a)$ α-equivalent?`, [r`In the second, the inner $a$ belongs to the inner λ.`]);
     md(r`
 > [!summary]
-> De Bruijn indices count binders instead of naming them. Bound names disappear, so α-equivalent terms are equal, and substitution needs shifting instead of renaming.
+> De Bruijn indices point at a binder by counting the λs in between. Bound names disappear, so α-equivalent terms are equal, and substitution shifts indices instead of renaming.
+
+Back to lesson 1's question: with only functions, where are the numbers? Lesson 7.
 `);
   });
 
-  add("07-church.chalk", "Church encodings", "Booleans, numbers, arithmetic, pairs and lists, built from functions alone.", ({ sec, md, m, ex, lean, lx }) => {
+  add("07-church.chalk", "Church encodings", "A thing is what you can do with it: booleans that choose, numerals that iterate, pairs, the predecessor puzzle, and lists.", ({ sec, md, m, ex, lean, lx }) => {
     sec("Church encodings");
     md(r`
 > [!goal]
-> Represent booleans, natural numbers, pairs and lists as functions, compute with them by reduction, and write new operations.
+> Build booleans, numbers and pairs out of functions, by asking what each one is for.
 `);
-    sec("Booleans");
+    md(r`Lesson 1 promised that functions are enough, yet there is no $\mathsf{true}$ here and no $3$. To build them, ask what you **do** with a thing, and let the thing be that doing: a thing is what you can do with it.`);
+    sec("Booleans choose");
+    md(r`What do you do with a boolean? Choose: "if $b$ then $x$ else $y$". So let the boolean be the chooser: $b\ x\ y$ should be $x$ when $b$ is true, and $y$ when it is false.`);
+    md(r`
+> [!try]
+> Write $\mathsf{true}$ and $\mathsf{false}$: each takes two arguments.
+`);
     md(r`
 > [!definition] Church booleans
-> $\mathsf{true} = \lambda t.\, \lambda f.\, t$ and $\mathsf{false} = \lambda t.\, \lambda f.\, f$: a boolean chooses one of two things. Then $\mathsf{if}\ b\ x\ y$ is just $b\ x\ y$, and $\mathsf{not}\ b = b\ \mathsf{false}\ \mathsf{true}$.
+> $\mathsf{true} = \lambda t.\, \lambda f.\, t$ keeps the first, and $\mathsf{false} = \lambda t.\, \lambda f.\, f$ the second. Then $\mathsf{if}\ b\ x\ y$ is just $b\ x\ y$, and $\mathsf{not}\ b = b\ \mathsf{false}\ \mathsf{true}$.
 `);
     md(r`The library has ‹true›, ‹false›, ‹if›, ‹not›, ‹and›, ‹or›. Names are unfolded in one δ-step; the result is read back when it is a boolean or a numeral.`);
     m("if true a b", { work: true });
+    md(r`$\mathsf{and}\ p\ q$ is "if $p$ then $q$ else false"; the library writes the "false" as $p$, which is false in that branch: $\lambda p.\, \lambda q.\, p\ q\ p$.`);
     m("and true false");
-    md(r`A definition, ‹name := term›, is there for the cells after it:`);
+    md(r`A definition, ‹name := term›, is there for the cells after it. Exclusive or: if $p$, the opposite of $q$, else $q$:`);
     m("xor := λp. λq. p (not q) q");
     m("xor true false");
     m("xor true true");
-    md(r`$\mathsf{false}$ and $0$ are the same term, $\lambda t.\, \lambda f.\, f$: the reading names it as the numeral.`);
-    sec("Numbers");
+    md(r`$\mathsf{false}$ and $0$ (below) are the same term, $\lambda t.\, \lambda f.\, f$: the reading names it as the numeral.`);
+    sec("Numerals iterate");
+    md(r`What do you do with a natural number $n$? Do something $n$ times. So let $n$ be that: given $f$ and $x$, it applies $f$ to $x$, $n$ times.`);
     md(r`
 > [!definition] Church numerals
-> $n$ is the function that applies $f$ to $x$ $n$ times: $0 = \lambda f.\, \lambda x.\, x$, $1 = \lambda f.\, \lambda x.\, f\ x$, $2 = \lambda f.\, \lambda x.\, f\ (f\ x)$. Then $\mathsf{succ}\ n$ applies $f$ once more, $\mathsf{add}\ m\ n$ applies it $n$ times and then $m$ times, and $\mathsf{mul}\ m\ n$ applies "$f$ $n$ times" $m$ times.
+> $n$ is the function that applies $f$ to $x$ $n$ times: $0 = \lambda f.\, \lambda x.\, x$, $1 = \lambda f.\, \lambda x.\, f\ x$, $2 = \lambda f.\, \lambda x.\, f\ (f\ x)$, and so on. In a λ-term a digit is its numeral.
 `);
+    m("λf. λx. f (f (f x))");
+    md(r`
+> [!try]
+> Write $\mathsf{succ}$: given $n$, apply $f$ once more than $n$ does. Then $\mathsf{add}\ m\ n$: apply $f$ $n$ times, then $m$ more.
+`);
+    md(r`$n\ f\ x$ is $f$ applied $n$ times, so $\mathsf{succ} = \lambda n.\, \lambda f.\, \lambda x.\, f\ (n\ f\ x)$, and $\mathsf{add} = \lambda m.\, \lambda n.\, \lambda f.\, \lambda x.\, m\ f\ (n\ f\ x)$: start from $n\ f\ x$ and apply $f$ $m$ more times. ($\lambda n.\, \lambda f.\, \lambda x.\, n\ f\ (f\ x)$, one extra $f$ first instead of last, is a successor just as good.) These are the library's:`);
     m("succ 2", { work: true });
     m("add 2 3");
+    md(r`Multiplying is iterating an iteration: $\mathsf{mul}\ m\ n = \lambda f.\, m\ (n\ f)$ does "$f$, $n$ times" $m$ times. And $\mathsf{pow}\ m\ n = n\ m$: $n$ copies of "do it $m$ times", composed.`);
     m("mul 2 3");
     m("pow 2 3");
-    md(r`A function that applies its argument twice is the numeral 2, and applying it to itself applies four times:`);
+    md(r`So a function that applies its argument twice is the numeral 2, and applying it to itself applies four times:`);
     m("twice := λf. λx. f (f x)");
     m("twice twice succ 0");
-    sec("Pairs, and the predecessor");
+    sec("The predecessor: a puzzle");
+    md(r`Subtracting one looks easy and is not. A numeral can apply $f$; it can never undo it. Church himself at first doubted it could be done; his student Kleene found how.`);
+    md(r`
+> [!try]
+> How do you get $n - 1$ from something that can only go forward $n$ times? A hint: go forward, but carry where you were one step ago.
+`);
+    md(r`Carrying two numbers needs a pair, and a pair is what you do with it: hand both to a selector.`);
     md(r`
 > [!definition] Pairs
 > $\mathsf{pair}\ a\ b = \lambda s.\, s\ a\ b$ holds $a$ and $b$ until a selector comes: $\mathsf{fst}\ p = p\ \mathsf{true}$ and $\mathsf{snd}\ p = p\ \mathsf{false}$.
 `);
     m("fst (pair a b)", { work: true });
-    md(r`Subtracting one is hard: a numeral can only apply $f$, never undo it. Kleene's trick counts up with pairs, $(0, 0) \to (0, 1) \to (1, 2) \to \cdots$, keeping the previous number in the first place. After $n$ steps the first place holds $n - 1$.`);
+    md(r`Kleene's trick: start at $(0, 0)$ and step $(a, b) \mapsto (b, b + 1)$, so $(0, 0) \to (0, 1) \to (1, 2) \to (2, 3) \to \cdots$. The first place lags one behind the second, so after $n \geq 1$ steps it holds $n - 1$; with no steps it holds $0$, which is as close as the naturals get to $0 - 1$.`);
     m("pred := λn. fst (n (λp. pair (snd p) (succ (snd p))) (pair 0 0))");
     m("pred 3");
+    md(r`Subtraction is then a predecessor iterated: $\mathsf{sub}\ m\ n$ applies $\mathsf{pred}$ to $m$, $n$ times. And $\mathsf{iszero}\ n = n\ (\lambda y.\, \mathsf{false})\ \mathsf{true}$: one application of "make it false" is enough to spoil $\mathsf{true}$.`);
     m("sub := λm. λn. n pred m");
     m("sub 3 1");
     m("iszero (pred 1)");
-    sec("Lists");
+    sec("Lists fold");
+    md(r`What do you do with a list? Walk it: combine each head with the result for the rest, and say what to give for the empty list. So a list is its own fold.`);
     md(r`
 > [!definition] Church lists
-> A list is its own fold: given what to do with a head and the rest ($c$) and what to give for the empty list ($n$), it does it. $\mathsf{nil} = \lambda c.\, \lambda n.\, n$ and $\mathsf{cons}\ h\ t = \lambda c.\, \lambda n.\, c\ h\ (t\ c\ n)$, so $[1, 2]$ is $\lambda c.\, \lambda n.\, c\ 1\ (c\ 2\ n)$.
+> Given what to do with a head and the rest ($c$) and what to give for the empty list ($n$), a list does it: $\mathsf{nil} = \lambda c.\, \lambda n.\, n$ and $\mathsf{cons}\ h\ t = \lambda c.\, \lambda n.\, c\ h\ (t\ c\ n)$, so $[1, 2]$ is $\lambda c.\, \lambda n.\, c\ 1\ (c\ 2\ n)$.
 `);
     m("nil := λc. λn. n");
     m("cons := λh. λt. λc. λn. c h (t c n)");
@@ -4075,43 +4208,74 @@ def church {α : Type} : Nat → (α → α) → α → α
       r`In the successor case ‹(k + 1) + n› is not syntactically ‹(k + n) + 1›: rewrite with ‹Nat.succ_add› first, then ‹simp [church, ih]›.`,
     ]);
     sec("Exercises");
-    ex("pred 2", r`Reduce $\mathsf{pred}\ 2$. Answer with a numeral, or the λ-term.`, [r`Two steps of the pair counter: $(0, 0) \to (0, 1) \to (1, 2)$.`]);
-    ex("pow 2 2", r`Reduce $\mathsf{pow}\ 2\ 2$.`, [r`$2^2$.`]);
-    ex("or false (not false)", r`Reduce $\mathsf{or}\ \mathsf{false}\ (\mathsf{not}\ \mathsf{false})$. Answer ‹true› or ‹false›.`, [r`$\mathsf{not}\ \mathsf{false}$ is $\mathsf{true}$.`]);
+    md(r`Answer with a numeral or a boolean by name, or with the λ-term. A cell that starts with a digit is read as arithmetic, so the last two questions name their strategy, ‹normal:›.`);
+    ex("pred 2", r`Reduce $\mathsf{pred}\ 2$.`, [r`Two steps of the pair counter: $(0, 0) \to (0, 1) \to (1, 2)$.`]);
+    ex("or false (not false)", r`Reduce $\mathsf{or}\ \mathsf{false}\ (\mathsf{not}\ \mathsf{false})$.`, [r`$\mathsf{not}\ \mathsf{false}$ is $\mathsf{true}$.`]);
     ex("snd (pair 1 (succ 1))", r`Reduce $\mathsf{snd}\ (\mathsf{pair}\ 1\ (\mathsf{succ}\ 1))$.`, []);
     ex("cons 1 (cons 1 (cons 1 nil)) add 0", r`Sum the list $[1, 1, 1]$: reduce $\mathsf{cons}\ 1\ (\mathsf{cons}\ 1\ (\mathsf{cons}\ 1\ \mathsf{nil}))\ \mathsf{add}\ 0$.`, [r`The list puts $\mathsf{add}$ between its elements and $0$ at the end: $1 + (1 + (1 + 0))$.`]);
+    ex("normal: 3 not true", r`A numeral is a loop. Reduce $3\ \mathsf{not}\ \mathsf{true}$.`, [r`It applies $\mathsf{not}$ to $\mathsf{true}$ three times.`]);
+    ex("normal: 2 (add 3) 0", r`Reduce $2\ (\mathsf{add}\ 3)\ 0$. Which operation on 2 and 3 have you invented?`, [r`It applies "add 3" to 0, twice.`]);
     md(r`
 > [!summary]
-> With functions alone: booleans choose, numerals iterate, pairs wait for a selector, lists are their own folds. Arithmetic is composition of iterations, and the predecessor is a counter carried in a pair.
+> A thing is what you can do with it: booleans choose, numerals iterate, pairs wait for a selector, lists are their own folds. Arithmetic is iteration of iterations, and the predecessor is a counter carried in a pair.
+
+Every loop here is a numeral, which knows in advance how many times to run. A loop that runs until it is done needs a function that calls itself. With no names, how can a function refer to itself? Lesson 8.
 `);
   });
 
-  add("08-recursion.chalk", "Recursion and fixed points", "No names, yet recursion: fixed-point combinators, factorial, and Y under call by value.", ({ sec, md, m, ex, lean, lx }) => {
+  add("08-recursion.chalk", "Recursion and fixed points", "How a function can call itself without a name: self-application, the Y combinator derived from ω, factorial, and Z for call by value.", ({ sec, md, m, ex, lean, lx }) => {
     sec("Recursion and fixed points");
     md(r`
 > [!goal]
-> Write a recursive function without naming it, using a fixed-point combinator, and see why call by value needs a different one.
+> Write a recursive function without naming it: find the trick that lets a function call itself, and the combinator that packages it.
 `);
-    md(r`A recursive definition, $\mathsf{fact} = \lambda n.\, \mathsf{if}\ (n = 0)\ 1\ (n \cdot \mathsf{fact}\ (n - 1))$, mentions itself, and λ-terms cannot. Abstract the self-reference instead: $F = \lambda \mathit{self}.\, \lambda n.\, \ldots\ \mathit{self}\ (n-1)$. A factorial is a **fixed point** of $F$: a $g$ with $F\ g = g$.`);
+    md(r`The factorial is "if $n = 0$ then $1$ else $n \cdot \mathsf{fact}\ (n - 1)$". The definition mentions $\mathsf{fact}$, and a λ-term has no names to mention: ‹name := term› is shorthand, unfolded before reduction. How can a function refer to itself without a name?`);
+    md(r`The factorial needs lesson 7's predecessor (each lesson starts with only the library):`);
+    m("pred := λn. fst (n (λp. pair (snd p) (succ (snd p))) (pair 0 0))");
+    md(r`
+> [!mistake]
+> The natural first try is to write the name anyway. Inside its own definition ‹fact› is not yet defined, so it is a free variable: $\mathsf{fact}\ 0$ works, because it never recurses, and $\mathsf{fact}\ 1$ gets stuck on the free ‹fact›.
+`);
+    m("fact := λn. if (iszero n) 1 (mul n (fact (pred n)))");
+    m("fact 0");
+    m("fact 1");
+    sec("A term that copies itself");
+    md(r`One term from lesson 4 does refer to itself, in a way: $\omega = \lambda x.\, x\ x$, applied to itself, hands itself its own copy.`);
+    m("normal 2: omega omega", { work: true });
+    md(r`That is the trick. A function cannot name itself, but it can be **given** itself, as an argument. Add a parameter $\mathit{self}$, write $\mathit{self}\ \mathit{self}$ where the function would call itself, and start it off as $\omega$ does, by applying it to itself:`);
+    m("G := λself. λn. if (iszero n) 1 (mul n (self self (pred n)))");
+    m("G G 3");
+    md(r`$G\ G\ 3$ becomes "if $3 = 0$ then $1$ else $3 \cdot (G\ G\ (\mathsf{pred}\ 3))$": the copy of $G$ it was given is passed on, with a copy of itself.`);
+    sec("Packaging the trick: Y");
+    md(r`Writing $\mathit{self}\ \mathit{self}$ in every recursive function is a nuisance. We would rather write the honest step, $F = \lambda \mathit{self}.\, \lambda n.\, \ldots\ \mathit{self}\ (n - 1)$, and have something tie the knot. We want a term $X$ with $F\ X = X$: then $X$ is the factorial, since putting it in for $\mathit{self}$ gives it back. $X$ is a **fixed point** of $F$.`);
+    md(r`
+> [!try]
+> $\omega\ \omega$ steps to itself. Slip an $F$ into $\omega$ so that each copy is passed through $F$: what does $(\lambda x.\, F\ (x\ x))\ (\lambda x.\, F\ (x\ x))$ step to?
+`);
+    md(r`It steps to $F\ ((\lambda x.\, F\ (x\ x))\ (\lambda x.\, F\ (x\ x)))$: $F$ applied to the term we started from. A fixed point of $F$. Abstract over $F$:`);
     md(r`
 > [!definition] The Y combinator
-> $Y = \lambda f.\, (\lambda x.\, f\ (x\ x))\ (\lambda x.\, f\ (x\ x))$ satisfies $Y\ g = g\ (Y\ g)$ for every $g$: $Y\ g$ is a fixed point of $g$.
+> $Y = \lambda f.\, (\lambda x.\, f\ (x\ x))\ (\lambda x.\, f\ (x\ x))$ satisfies $Y\ g = g\ (Y\ g)$ for every $g$: $Y\ g$ is a fixed point of $g$. The equation is up to β: the two sides reduce to a common term, not one to the other.
 `);
-    m("normal 2: Y g", { work: true });
-    md(r`Each unfolding hands $g$ another copy of $Y\ g$, as many as it asks for.`);
+    m("normal 2: Y g", { step: 0 });
+    md(r`The last line is also what $g\ (Y\ g)$ reduces to, in one step. Each unfolding hands $g$ another copy of the self-application, as many as it asks for.`);
     sec("Factorial");
-    md(r`$Y\ F$ has no normal form (it unfolds for ever), so the definition is kept as written; applied to a number, $F$'s test stops the unfolding.`);
-    m("pred := λn. fst (n (λp. pair (snd p) (succ (snd p))) (pair 0 0))");
+    md(r`$Y\ F$ has no normal form (it unfolds for ever), so the engine keeps the definition as written; applied to a number, $F$'s test stops the unfolding. Defining ‹fact› again replaces the stuck one:`);
     m("fact := Y (λself. λn. if (iszero n) 1 (mul n (self (pred n))))");
     m("fact 2");
     m("fact 3", { work: true });
-    md(r`That took 1525 β-steps, and $\mathsf{fact}\ 4$ takes over ten thousand: numerals in unary, a predecessor that counts up from $0$ every time, and arguments copied unevaluated and computed again. The work shows the first steps and the last, and says how many it leaves out. This is why real languages build numbers in.`);
+    md(r`That took 1030 β-steps, and $\mathsf{fact}\ 4$ takes 6732: numerals in unary, a predecessor that counts up from $0$ every time, and arguments copied unevaluated and computed again. The work shows the first steps and the last, and says how many it leaves out. This is why real languages build numbers in.`);
     sec("Under call by value");
-    md(r`Call by value evaluates $Y\ g$'s argument $(\lambda x.\, g\ (x\ x))\ (\lambda x.\, g\ (x\ x))$ before calling $g$, and that unfolds again first, for ever:`);
+    md(r`
+> [!try]
+> $Y\ g$ reduces to $g\ (A\ A)$ with $A = \lambda x.\, g\ (x\ x)$. Call by value evaluates an argument before the call. What happens to $A\ A$?
+`);
+    md(r`$A\ A$ steps to $g\ (A\ A)$, whose argument is $A\ A$ again: call by value never finishes evaluating $g$'s argument, so $g$ is never called.`);
     m("cbv 3: Y g", { work: true });
+    md(r`The repair is to make the self-application a value, which waits until it is called: wrap it in a λ, $\lambda v.\, x\ x\ v$ (an η-expansion, lesson 4).`);
     md(r`
 > [!definition] The Z combinator
-> $Z = \lambda f.\, (\lambda x.\, f\ (\lambda v.\, x\ x\ v))\ (\lambda x.\, f\ (\lambda v.\, x\ x\ v))$ wraps the self-application in a λ (an η-expansion), so it is a value and waits until it is called.
+> $Z = \lambda f.\, (\lambda x.\, f\ (\lambda v.\, x\ x\ v))\ (\lambda x.\, f\ (\lambda v.\, x\ x\ v))$. $Z\ g$ reduces to $g$ applied to a λ that wraps the self-application: a value, so call by value stops there, and the copy unfolds only when $g$ calls it.
 `);
     m("Z := λf. (λx. f (λv. x x v)) (λx. f (λv. x x v))");
     m("cbv: Z g");
@@ -4120,7 +4284,7 @@ def church {α : Type} : Nat → (α → α) → α → α
 > With booleans, numerals, pairs and a fixed-point combinator, every computable function on the numbers can be written as a λ-term (Kleene; Turing showed λ-definable and Turing-computable coincide). Which terms have a normal form is then undecidable, which is why the engine reduces on a budget.
 `);
     sec("In Lean");
-    md(r`Lean has no Y: every function must be shown to terminate, and a recursion on a smaller number does. Yet the factorial is still a fixed point of its defining step.`);
+    md(r`Lean has no Y: self-application has no type (λ-calculus II shows why), and a recursive Lean definition must be shown to terminate, as a recursion on a smaller number is. Yet the factorial is still a fixed point of its defining step.`);
     lean(r`def fact : Nat → Nat
   | 0 => 1
   | n + 1 => (n + 1) * fact n
@@ -4141,9 +4305,15 @@ theorem fact_fixed : ∀ n, F fact n = fact n := by
     sec("Exercises");
     ex("normal 1: Y g", r`Take one step of $Y\ g$ in normal order. What is the term?`, [r`Put $g$ for $f$ in $Y$'s body.`]);
     ex("fact 1", r`Reduce $\mathsf{fact}\ 1$.`, [r`$1 \cdot \mathsf{fact}\ 0 = 1$.`]);
+    ex("Y (λself. λn. if (iszero n) 0 (add n (self (pred n)))) 3", r`Change the factorial so that it sums instead: $0$ at $0$, and $n$ plus the sum up to $n - 1$ otherwise. Write it with $Y$ in a cell of your own. What does it give for $3$?`, [
+      r`Replace ‹1› by ‹0› and ‹mul› by ‹add› in the step given to ‹Y›.`,
+      r`$3 + 2 + 1 + 0$.`,
+    ], { hide: true });
     md(r`
 > [!summary]
-> Recursion without names is a fixed point: $Y\ g = g\ (Y\ g)$. Call by value needs $Z$, which delays the self-application. With fixed points the λ-calculus computes everything a computer can, and so whether a term stops is undecidable.
+> A function cannot name itself, but it can be given itself: self-application, as in $\omega$. $Y$ packages the trick: $Y\ g = g\ (Y\ g)$, a fixed point. Call by value needs $Z$, which delays the self-application. With fixed points the λ-calculus computes everything a computer can, and so whether a term stops is undecidable.
+
+λ-calculus II adds types, and finds that they rule out $\omega$, $\Omega$ and $Y$: every simply typed term has a normal form.
 `);
   });
 }, { leanPrelude: true });

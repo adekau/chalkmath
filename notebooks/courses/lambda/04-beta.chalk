@@ -9,13 +9,25 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Reduce a term to normal form, recognise terms that have none, and know why the normal form, when there is one, does not depend on the order of the steps.",
+      "src": "> [!goal]\n> Reduce terms to normal form, meet terms that have none, and see why the order of the steps can decide whether you finish but never where.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!definition] Normal form\n> A term with no redex is in **normal form**. A term **has** a normal form when some sequence of β-steps reaches one.",
+      "src": "Keep taking β-steps, and three questions come up at once. Does it stop? If it stops, is the end the same whichever redex you pick each time? And can the choice decide whether it stops at all?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Where it stops",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Normal form\n> A term with no redex is in **normal form**: it cannot take a step, and it is the term's answer. A term **has** a normal form when some sequence of β-steps reaches one.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -25,6 +37,12 @@
       "showWork": true,
       "label": null,
       "stepwise": 0
+    },
+    {
+      "src": "`S`, `K` and `I` are library combinators, unfolded in one δ-step: $S = \\lambda x\\ y\\ z.\\, x\\ z\\ (y\\ z)$, $K = \\lambda x\\ y.\\, x$, $I = \\lambda x.\\, x$. $S\\ K\\ K$ turns out to be the identity:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
     },
     {
       "src": "S K K a",
@@ -38,7 +56,19 @@
       "label": null
     },
     {
-      "src": "$\\Omega = (\\lambda x.\\, x\\ x)\\ (\\lambda x.\\, x\\ x)$ reduces to itself, for ever. The library calls $\\lambda x.\\, x\\ x$ `omega`. A step count after the strategy's name shows the first few steps instead of refusing:",
+      "src": "A β-step uses up a λ, but it also copies the argument once for each use of the parameter. So look for a term that, applied to itself, makes a copy of itself.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> $\\omega = \\lambda x.\\, x\\ x$ applies its argument to itself. What is $\\omega\\ \\omega$ after one step?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The library calls $\\omega$ `omega`. A step count after the strategy's name shows that many steps instead of refusing:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -49,12 +79,18 @@
       "label": null
     },
     {
+      "src": "$\\Omega = \\omega\\ \\omega$ steps to itself, for ever. The engine gives up:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "omega omega",
       "showWork": false,
       "label": null
     },
     {
-      "src": "Some terms grow as they go, and the engine stops them once they are too big:",
+      "src": "Triple instead of double, and the term grows as it goes, until the engine stops it:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -65,7 +101,13 @@
       "label": null
     },
     {
-      "src": "And some have a normal form even though a careless order of steps would never find it: $K\\ I\\ \\Omega$ throws $\\Omega$ away.",
+      "src": "Does the order matter?",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "$(\\lambda x.\\, \\lambda y.\\, y)\\ \\Omega$ has two redexes: the whole term, and $\\Omega$ inside it. Reduce $\\Omega$ and you are back where you started, for ever. Reduce the outer one and $\\Omega$ is thrown away, since $x$ is not used:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -76,13 +118,35 @@
       "label": null
     },
     {
-      "src": "Confluence",
-      "type": "section",
+      "src": "So the order can decide **whether** you reach a normal form. Can it decide **which**? Take a term where both paths finish: $(\\lambda x.\\, x\\ x)\\ ((\\lambda y.\\, y)\\ z)$. Outer redex first copies the inner redex and reduces it twice; inner first (`applicative:`, lesson 5) reduces it once and copies the result.",
+      "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!theorem] Church–Rosser\n> If $M$ reduces to $N_1$ and to $N_2$, then $N_1$ and $N_2$ both reduce to some common $P$. So a term has **at most one** normal form, up to α: the order of the steps can change whether you get there, never where.",
+      "src": "> [!try]\n> Predict both answers, and which path is shorter.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "normal: (λx. x x) ((λy. y) z)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "applicative: (λx. x x) ((λy. y) z)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "Three steps one way, two the other, and the same end. That is no accident:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!theorem] Church–Rosser\n> If $M$ reduces to $N_1$ and to $N_2$ (each in any number of steps), then $N_1$ and $N_2$ both reduce to some common $P$. So a term has **at most one** normal form, up to α: the order of the steps can change whether you get there, never where.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -100,7 +164,13 @@
       "label": null
     },
     {
-      "src": "> [!definition] η-reduction\n> $\\lambda x.\\, f\\ x$ reduces to $f$ when $x$ is not free in $f$: both give $f\\ a$ for every $a$. Adding this rule says that a function is determined by what it does (**extensionality**).",
+      "src": "$\\lambda x.\\, f\\ x$ and $f$ are different terms, both in normal form. Yet applied to any $a$, both give $f\\ a$. Should they count as equal?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] η-reduction\n> $\\lambda x.\\, f\\ x$ reduces to $f$ when $x$ is not free in $f$. Adding this rule says that a function is determined by what it does (**extensionality**).",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -116,7 +186,7 @@
       "label": null
     },
     {
-      "src": "$\\lambda x.\\, x\\ x$ is not an η-redex: $x$ is free in the function part.",
+      "src": "$\\lambda x.\\, x\\ x$ is not an η-redex: $x$ is free in the function part, so dropping the λ would change what $x$ means.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -180,6 +250,16 @@
       "label": null
     },
     {
+      "src": "(λx. λy. x) (λz. z) (omega omega)",
+      "type": "exercise",
+      "prompt": "$(\\lambda x.\\, \\lambda y.\\, x)\\ (\\lambda z.\\, z)\\ \\Omega$ has a normal form. Choose your redexes well and find it.",
+      "hints": [
+        "Never touch $\\Omega$: the function throws its second argument away."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "eta: λx. (λy. g y) x",
       "type": "exercise",
       "prompt": "Reduce $\\lambda x.\\, (\\lambda y.\\, g\\ y)\\ x$ with β and η.",
@@ -190,7 +270,7 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> A normal form is a term with no redex. Some terms have none, and some have one only along the right path. By Church–Rosser, a term has at most one normal form. η adds extensionality: $\\lambda x.\\, f\\ x$ is $f$.",
+      "src": "> [!summary]\n> A normal form is a term with no redex. Some terms have none, and some reach one only along the right path. By Church–Rosser a term has at most one normal form, so the order of steps decides whether you get there, never where. η adds extensionality: $\\lambda x.\\, f\\ x$ is $f$.\n\nIf the order can decide whether we finish, which order should an interpreter use? Lesson 5.",
       "type": "markdown",
       "showWork": false,
       "label": null

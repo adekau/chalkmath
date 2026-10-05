@@ -9,25 +9,31 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Reduce a term under each of the four classic strategies, and say what each finds, what it misses, and what it costs.",
+      "src": "> [!goal]\n> Compare the classic answers to \"which redex first?\": what each finds, where each stops, and what each costs.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!definition] Strategies\n> - **Normal order** (`normal:`): the leftmost-outermost redex, also under λ, to the normal form.\n> - **Call by name** (`cbn:`): the leftmost-outermost redex, never under a λ, the argument passed unevaluated. It stops at a **weak head normal form**: a λ, or a variable applied to arguments.\n> - **Call by value** (`cbv:`): the function, then the argument, are reduced to **values** (a λ or a variable) before the call; never under a λ.\n> - **Applicative order** (`applicative:`): the leftmost-innermost redex, under λ too: call by value that goes all the way.",
+      "src": "An interpreter has to pick a redex by a fixed rule. Two rules come to mind, and every programming language picks one: evaluate the argument before the call, as $f(g(x))$ does in most languages; or hand the argument over as it is, and evaluate it only where it is used.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "Which terminate",
+      "src": "> [!try]\n> $K = \\lambda x.\\, \\lambda y.\\, x$ throws its second argument away. Under each rule, what happens to $K\\ I\\ \\Omega$?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A term where the choice decides",
       "type": "section",
       "showWork": false,
       "label": null
     },
     {
-      "src": "$K\\ I\\ \\Omega$ ignores $\\Omega$. The strategies that pass arguments unevaluated never touch it:",
+      "src": "Hand arguments over as they are, and $\\Omega$ is never touched:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -43,7 +49,7 @@
       "label": null
     },
     {
-      "src": "The ones that evaluate arguments first never finish. A step count shows how they go round:",
+      "src": "Evaluate arguments first, and you never get past it. A step count shows how it goes round:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -59,19 +65,37 @@
       "label": null
     },
     {
+      "src": "Normal order is the safe choice, always:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "> [!theorem] Standardization\n> If a term has a normal form, normal order reaches it.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "What they stop at",
+      "src": "The four classic strategies are the two rules, each with and without reducing inside a function body:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Strategies\n> - **Normal order** (`normal:`): the leftmost-outermost redex, also under λ, to the normal form.\n> - **Call by name** (`cbn:`): the leftmost-outermost redex, never under a λ, the argument passed unevaluated. It stops at a **weak head normal form**: a λ, or a variable applied to arguments.\n> - **Call by value** (`cbv:`): the function, then the argument, are reduced to **values** (a λ or a variable) before the call; never under a λ.\n> - **Applicative order** (`applicative:`): the leftmost-innermost redex, under λ too: call by value that goes all the way.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Where they stop",
       "type": "section",
       "showWork": false,
       "label": null
     },
     {
-      "src": "Call by name and call by value do not look inside a λ: a function is already a result.",
+      "src": "Call by name and call by value do not look inside a λ: a function is already a result, and its body runs when it is called.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -93,7 +117,7 @@
       "label": null
     },
     {
-      "src": "Call by name copies an unevaluated argument, and may evaluate the copy twice; call by value evaluates it once, first:",
+      "src": "> [!try]\n> In $(\\lambda x.\\, x\\ x)\\ ((\\lambda y.\\, y)\\ z)$ the argument is used twice. Call by name copies it unevaluated; call by value evaluates it first. Predict where each stops.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -109,7 +133,7 @@
       "label": null
     },
     {
-      "src": "Call by name never even reached the redex in the argument: $z\\ ((\\lambda y.\\, y)\\ z)$ is a weak head normal form. Normal order goes on to $z\\ z$. Most languages call by value; Haskell calls by **need**, call by name that remembers an argument once evaluated.",
+      "src": "Call by value did the argument's step once, first. Call by name copied the unevaluated argument, and stopped at $z\\ ((\\lambda y.\\, y)\\ z)$, a weak head normal form; normal order goes on into the copies and does the same step twice (lesson 4). Most languages call by value; Haskell calls by **need**: call by name that remembers an argument once it is evaluated, so it is done at most once, and never if unused.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -161,6 +185,16 @@
       "label": null
     },
     {
+      "src": "cbn: (λx. λy. x) ((λz. z) w)",
+      "type": "exercise",
+      "prompt": "Reduce $(\\lambda x.\\, \\lambda y.\\, x)\\ ((\\lambda z.\\, z)\\ w)$ by name. Is the argument ever evaluated?",
+      "hints": [
+        "The argument goes in unevaluated, under $\\lambda y$, where call by name does not look."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "cbn: (λx. x x) ((λy. y) z)",
       "type": "exercise",
       "prompt": "Reduce $(\\lambda x.\\, x\\ x)\\ ((\\lambda y.\\, y)\\ z)$ by name. Where does it stop?",
@@ -181,7 +215,7 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> Normal order finds every normal form there is. Call by name and call by value stop at functions; call by value evaluates arguments first, once, and can loop on an argument nobody needs.",
+      "src": "> [!summary]\n> A strategy answers \"which redex first?\". Normal order finds every normal form there is. Call by name and call by value stop at functions; call by value evaluates arguments first, once, and can loop on an argument nobody needs.\n\nEvery strategy here renames bound variables to substitute, and lesson 2 had to compare terms up to renaming. Names are a nuisance: can we do without them? Lesson 6.",
       "type": "markdown",
       "showWork": false,
       "label": null
