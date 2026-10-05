@@ -531,6 +531,8 @@ def functionAssuming : Rule simpW where
 
 /-- `p ^ q` for numerals: integer exponents evaluate; `p^(1/n)` evaluates when `p` is a perfect `n`-th power. -/
 def powNumeric (p q : Q) : Option RuleResult :=
+  -- `0^(-n)` is `1/0`, and core `Rat` (as Mathlib's `ℚ`) makes it 0; the proofs are stated over that
+  -- arithmetic, and the reply says so in a warning (`derivationWarnings`, Rpc.lean)
   if q.isInt then some ⟨.num (p.zpow q.val.num), s!"Evaluate the numeric power: {p.toText}^{q.toText} = {(p.zpow q.val.num).toText}.", none, none⟩
   else if q.val.num == 1 then
     match exactRoot p.val q.val.den with

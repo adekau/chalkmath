@@ -452,10 +452,26 @@ def numbered (st0 st : Store) (params : Json) (sessionId cellId : String) (j : J
 def eWarning : String :=
   "e here is a variable, not Euler's number: e^x is not exp(x) and does not simplify like it (only N gives e Euler's value). For the constant, type \\e (it shows as ℯ), or write exp(x)."
 
+/-- The steps that evaluated a zero base to a negative power, `1/0` in some form, to `0`: core `Rat`
+(as Mathlib's `ℚ`) makes it so, the theorems are stated over that arithmetic, and the rule answers;
+the reader is told, under the answer, that a division by zero was taken as zero on the way. -/
+partial def zeroPowers (d : Derivation) : List String :=
+  d.steps.foldl (init := []) fun acc s =>
+    let here := match s.before.at? s.path with
+      | some (.pow (.num p) (.num q)) =>
+        if p.isZero && q.isInt && q.isNeg then [s!"Division by zero: {p.toText}^{q.toText} (1/0) is undefined; the engine takes it as 0, as ℚ does, and the work shows where."] else []
+      | _ => []
+    acc ++ here ++ (match s.sub with | some sd => zeroPowers sd | none => [])
+def derivationWarnings (d : Derivation) : List String := (zeroPowers d).eraseDups
+
 /-- Warnings about a cell's input (after the session's bindings are substituted), not counting the
 parameters a function definition binds. -/
 def inputWarnings (input : Expr) (params : List String) : List String :=
-  if (Expr.freeVars input).contains "e" && !params.contains "e" then [eWarning] else []
+  let fv := Expr.freeVars input
+  let eW := if fv.contains "e" && !params.contains "e" then [eWarning] else []
+  -- `1.5e3` lexes as `1.5` then the name `e3`, an implicit product: the engine has no exponent notation
+  let sci := fv.filter fun v => v.length ≥ 2 && v.front == 'e' && (v.drop 1).all Char.isDigit && !params.contains v
+  eW ++ sci.map fun v => s!"`{v}` is a variable here, so `1.5{v}` is `1.5 · {v}`: for scientific notation write `*10^{v.drop 1}`."
 
 def evaluate (st : Store) (params : Json) : Store × Json :=
   match params.getStr? "source" with
@@ -483,7 +499,7 @@ where
         let res := #[("ok", .bool true), ("value", out.toJson), ("rendered", Rendered.toJson out paths), ("semantics", .str sem)]
         let res := res ++ workFields params d
         let ps := match stmt with | .«let» _ ps _ => ps | _ => []
-        let warnings := inputWarnings d.input ps
+        let warnings := inputWarnings d.input ps ++ derivationWarnings d
         let res := if warnings.isEmpty then res else res.push ("warnings", .arr (warnings.map .str).toArray)
         let res := match stmt with
           | .«let» name [] _ => res.push ("bound", .arr #[.str name])

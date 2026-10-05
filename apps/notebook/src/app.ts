@@ -3919,7 +3919,8 @@ function visualBlocked(cell: Cell): string | null {
   if (cell.type) return "it is not a math cell";
   const src = cellSrc(cell);
   if (cell.tree && writeText(cell.tree) === src) return null;   // the visual input's own, holes and all
-  if ((cell.kind ?? cellKind(src)) === "lookup") return "questions are edited as text";
+  // a question, even one with no words yet (`?`, `let V = ?`, just typed): `cellKind` wants the words
+  if ((cell.kind ?? cellKind(src)) === "lookup" || /^\s*(?:let\s+[A-Za-z_][A-Za-z0-9_]*\s*=\s*)?\?/.test(src)) return "questions are edited as text";
   return null;
 }
 const cellMode = (cell: Cell) => cell.mode ?? S.inputMode;

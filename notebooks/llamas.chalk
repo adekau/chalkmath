@@ -427,7 +427,7 @@
       "label": null
     },
     {
-      "src": "We have a major problem with this formula, however. We need a value for $k=0$. This formula, with $k=0$, would result in a divide by $0$, which we cannot do. As a result, we need to define $c_k$ for when $k=0$ and for when $k\\not = 0$. With $k = 0$ the exponentials are $1$:\n\n$$\nc_0 = \\frac{1}{2\\pi}\\left( \\int_0^\\pi{1\\,dt} - \\int_{-\\pi}^0{1\\,dt} \\right) = \\frac{1}{2\\pi}(\\pi - \\pi) = 0\n$$\n\nHanded $k = 0$, the engine substitutes before it integrates, so the exponentials are already $1$ and there is no division by zero:",
+      "src": "We have a major problem with this formula, however. We need a value for $k=0$. This formula, with $k=0$, would result in a divide by $0$, which we cannot do. As a result, we need to define $c_k$ for when $k=0$ and for when $k\\not = 0$. With $k = 0$ the exponentials are $1$:\n\n$$\nc_0 = \\frac{1}{2\\pi}\\left( \\int_0^\\pi{1\\,dt} - \\int_{-\\pi}^0{1\\,dt} \\right) = \\frac{1}{2\\pi}(\\pi - \\pi) = 0\n$$\n\nHanded $k = 0$, the engine evaluates the closed form above, where every $1/k$ is $1/0$: it follows $\\mathbb{Q}$'s convention that $1/0 = 0$, says in a warning that it did, and so answers $0$, the right value for the wrong reason. The cases below give the right reason:",
       "type": "markdown",
       "showWork": false,
       "label": null

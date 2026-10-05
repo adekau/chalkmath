@@ -186,7 +186,35 @@ mutual
 end
 
 instance : BEq Expr := ⟨beq⟩
-def equal (a b : Expr) : Bool := beq a b
+
+mutual
+  /-- `beq` with a shortcut: two references to one object are equal without a walk. The rewriter
+  asks after every node whether `canon` changed it, and `canon` rebuilds only a sum's or product's
+  list, out of the same children, so the answer is found at the root or one level down, where a
+  structural walk read the whole subtree at every node: quadratic on a deep term. -/
+  unsafe def beqFast (a b : Expr) : Bool :=
+    if ptrEq a b then true else
+    match a, b with
+    | .num p, .num q => p == q
+    | .var x, .var y => x == y
+    | .add xs, .add ys => beqListFast xs ys
+    | .mul xs, .mul ys => beqListFast xs ys
+    | .pow a b, .pow c d => beqFast a c && beqFast b d
+    | .fn f xs, .fn g ys => f == g && beqListFast xs ys
+    | .matrix r, .matrix s => beqRowsFast r s
+    | _, _ => false
+  unsafe def beqListFast : List Expr → List Expr → Bool
+    | [], [] => true
+    | x :: xs, y :: ys => beqFast x y && beqListFast xs ys
+    | _, _ => false
+  unsafe def beqRowsFast : List (List Expr) → List (List Expr) → Bool
+    | [], [] => true
+    | r :: rs, s :: ss => beqListFast r s && beqRowsFast rs ss
+    | _, _ => false
+end
+
+/-- Structural equality (`beq`), run as `beqFast`: the same answer, found faster where the two share structure. -/
+@[implemented_by beqFast] def equal (a b : Expr) : Bool := beq a b
 
 /-- Elementwise lifting of a relation on expressions to argument lists. Used to say "these children
 were each rewritten soundly", which is the induction hypothesis every congruence proof needs. -/

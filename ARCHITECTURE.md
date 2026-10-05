@@ -44,7 +44,7 @@ differential test with zero mismatches.
    answers a JSON-RPC request with the reply to it, id included, so nothing is parsed or serialized
    between the page and the engine, where a derivation can run to megabytes. The request is written
    into memory `malloc` gives, not the wasm stack (`cwrap`'s own string conversion puts an argument
-   there, and the stack is the 1 MB the engine recurses on), and the reply is the Lean string itself,
+   there, and the stack is the 4 MB the engine recurses on), and the reply is the Lean string itself,
    freed after it is read. A call that traps in the wasm (out of stack or memory) has already consumed
    the session store (`engine/c/shim.c`), so the worker does not answer it: it fails as a worker, and
    the notebook offers the restart that rebuilds the sessions. The wasm stack sits at the bottom of
@@ -94,9 +94,15 @@ differential test with zero mismatches.
   or a label spells one out; a label is written only to depth 64 (`pathLabelDepth`), so the echo of a
   pathologically deep input stays linear, and the notebook finds a deeper subterm by its nearest
   labelled ancestor. A sum or a product of ten thousand terms, or ten thousand `-` signs, answers in a
-  fraction of a second, outline and paths included. An outline still prints each step's terms once,
-  to say whether it is quiet: it is linear in the steps times the term, not in what a derivation
-  weighs on the wire.
+  fraction of a second, outline and paths included. An outline says whether a step is quiet (prints
+  the same before and after) by printing the parent of the subterm the step rewrote, on both sides
+  (`Step.quiet`): `after` is `before` with that subterm replaced, so the two can differ only where
+  its parent prints, and printing both whole terms made an outline cost the steps times the term.
+  The rewriter asks after every node whether `canon` reordered it; `canon` rebuilds only a sum's or
+  product's list out of the same children, so `equal` is run as `beqFast`, structural equality with a
+  pointer-equality shortcut (`implemented_by`; the logical definition the proofs use is untouched),
+  and the answer is found at the root or one level down rather than by walking the subtree at every
+  node, which was quadratic on a deep term (`sin(sin(…))`, `x^x^…`).
 - **Termination is a proof obligation, not a budget.** A rule bundles a proof that it strictly
   decreases a measure; `normalize` is well-founded on that measure and never `partial`. The
   verified `simplify` uses one additive measure (`Rewrite.lean`). The whole notebook pipeline —
@@ -116,7 +122,10 @@ differential test with zero mismatches.
   by Taylor sums with their remainder bounds after halving the argument, then squaring or doubling
   back, `ln` pinned by `exp`, `sqrt` by squaring, `π` to Mathlib's twenty digits. It prints the most
   digits, up to fifteen, that the interval pins down, each within a unit of its last place
-  (`certify_sound`). A complex value is a rectangle, an interval for each part (`Ival.cieval`),
+  (`certify_sound`). The exponent of a number's leading digit comes from its numerator's and
+  denominator's bit lengths (`Q.sigDigits`), not from a search by one power of ten at a time: that
+  search was bounded at 400, so every number below `10^-400` had the digit `0`, and `N(exp(-1000))`
+  was `0`, certified. A complex value is a rectangle, an interval for each part (`Ival.cieval`),
   through the formulas for the parts of a product, a quotient, `exp`, `sin` and `cos`; `ln` and
   `sqrt` of a real number and a real number to a real power have their principal values in closed
   form (`cieval_sound`, `cmdN_soundC` in `proofs/Proofs/IntervalC.lean`). `arctan` is pinned by `tan`
@@ -131,6 +140,16 @@ differential test with zero mismatches.
   `N` with a `ln` in it take ten seconds. Newton's method for `ln` and `arctan` starts from a
   double-precision guess, which can only change how fast it converges: the candidates are still
   checked. `x^(1/2)`, which is how `sqrt` is written, is a square root, not `exp(½ ln x)`.
+- **Division by zero is zero, and says so.** Core `Rat` (and Mathlib's `ℚ`) make `0⁻¹ = 0`, so
+  `1/0`, `0^(-1)` and `1/(y − y)` evaluate to `0` by the numeric power rule (`powNumeric`), and the
+  theorems, stated over that arithmetic, hold. A closed form evaluated at a removable singularity
+  (the Fourier coefficient `c(k)` of `llamas.chalk` at `k = 0`, whose `1/k` terms all vanish) gets the
+  right value by it, and refusing instead broke those cells. So the rule answers, and the reply
+  carries a warning for every step that took a zero base to a negative power
+  (`derivationWarnings`, `Rpc.lean`), shown under the answer: the reader sees that a division by
+  zero was taken as zero, and the work shows where. Refusing in the rule, with its theorems
+  (`powNumeric_num`, the ℂ and domain soundness, the termination case) restated, is the stricter
+  option, left for when the lessons are written for it.
 - **An exact answer has a size.** `p^n` for numerals evaluates exactly, and the decimal of a number
   is quadratic in its length (the browser's runtime has no GMP), so a power whose exact value would
   pass `maxPowerBits` (65,536 bits, 19,728 digits) refuses the evaluation and says how many digits it
@@ -142,7 +161,9 @@ differential test with zero mismatches.
 - **A plain `e` is a variable.** `ℯ` (`\e`) is `exp(1)`, so `ℯ^x` is `exp(x)`, but the letter `e` is
   a variable like any other, even though `N` gives it Euler's value (`ieval` treats the name `e` as
   a constant, as `ieval_sound` assumes). A cell whose input has a free `e` says so under its answer:
-  `engine.evaluate` returns `warnings` (`inputWarnings`, `Rpc.lean`), an optional field.
+  `engine.evaluate` returns `warnings` (`inputWarnings`, `Rpc.lean`), an optional field. So does a
+  cell with a free `e3`: `1.5e3` lexes as `1.5` and the name `e3`, an implicit product, since the
+  engine has no exponent notation, and the warning says to write `1.5*10^3`.
 - **Elimination is verified over ℚ by construction.** `LinAlgQ.lean` writes Gauss–Jordan as a
   list of the three elementary row operations, each invertible (the degenerate parameters are the
   identity), and proves `sol_rref`: the reduced matrix has the input's solution set. The `rref`
