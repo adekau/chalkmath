@@ -438,8 +438,9 @@ export function clockAt(tl: Timeline, start: number, t: number): number {
 /** How visible an object is at time `t`, 0 to 1. */
 export function opacityAt(tl: Timeline, name: string, t: number): number {
   const ev = tl.vis[name];
-  if (!ev) return 1;
-  let o = 0;
+  if (!ev || !ev.length) return 1;
+  // shown from the start when its first beat hides it; otherwise it waits for its first `show`
+  let o = ev[0]!.on ? 0 : 1;
   for (const e of ev) {
     if (t < e.t) break;
     const p = clamp01((t - e.t) / FADE);
@@ -470,18 +471,24 @@ export function build(spec: SceneSpec, replies: Record<string, unknown>): SceneD
   const eqs: Record<string, string[]> = {};
   const values: Record<string, (number | null)[]> = {};
   const vectors = vectorsOf(replies);
+  // the first curve of a plot reply; a reply with none is the engine refusing, said at the object's line
+  const series0 = (key: string, r: Record<string, unknown> = get(key)): Series => {
+    const s = (r["series"] as Series[] | undefined)?.[0];
+    if (!s || !Array.isArray(s.points)) throw new SceneError(`the engine gave no samples for ${key.slice(key.indexOf(":") + 1)}`, lineOf(spec, key));
+    return s;
+  };
   for (const key of Object.keys(replies)) {
-    if (key.startsWith("pt:")) points[key.slice(3)] = toXY(get(key)["series"][0] as Series);
+    if (key.startsWith("pt:")) points[key.slice(3)] = toXY(series0(key));
     if (key.startsWith("val:")) {
-      const s = get(key)["series"][0] as Series;
+      const s = series0(key);
       if (s.parametric) throw new SceneError(`a value is a real number, and ${key.slice(4)} is not`, lineOf(spec, key));
       values[key.slice(4)] = s.points.map(([, b]) => b);
     }
     if (key.startsWith("cv:")) {
       const r = get(key), o = spec.objects.find((o) => o.name === key.slice(3))!, graph = o.kind === "graph";
       curves[o.name] = r["frames"]
-        ? { frames: (r["frames"] as { value: number; plot: { series: Series[] } }[]).map((f) => ({ value: f.value, pts: toXY(f.plot.series[0]!, graph) })) }
-        : { pts: toXY(r["series"][0] as Series, graph) };
+        ? { frames: (r["frames"] as { value: number; plot: Record<string, unknown> }[]).map((f) => ({ value: f.value, pts: toXY(series0(key, f.plot), graph) })) }
+        : { pts: toXY(series0(key), graph) };
     }
     if (key.startsWith("eq:")) {
       const r = get(key);

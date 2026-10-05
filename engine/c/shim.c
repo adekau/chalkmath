@@ -2,8 +2,8 @@
  * C ABI around the Lean engine. This is the *only* C in the project.
  *
  *   mathengine_init()              -- initialize the Lean runtime + module (call once)
- *   mathengine_call(const char*)   -- JSON-RPC request in, JSON-RPC response out (caller frees)
- *   mathengine_free(char*)         -- free a response
+ *   mathengine_call(const char*)   -- JSON-RPC request in, JSON-RPC response out (read it, then free it)
+ *   mathengine_free(const char*)   -- release a response (the last call's; the engine keeps it until then)
  *
  * The engine is a pure function `handleS : Store → String → Store × String`; the session store is
  * held here in a static between calls, so the host (worker, server) stays stateless.
@@ -11,8 +11,6 @@
  * exercises the identical call path, so the wasm build only adds the toolchain, not new code.
  */
 #include <lean/lean.h>
-#include <stdlib.h>
-#include <string.h>
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #define KEEP EMSCRIPTEN_KEEPALIVE
@@ -28,6 +26,7 @@ extern lean_object* initialize_mathengine_MathEngine(uint8_t builtin);
 extern lean_object* mathengine_handle_state(lean_object* store, lean_object* request);
 
 static lean_object* g_store = NULL;   /* MathEngine.Store; the empty list is the scalar 0 */
+static lean_object* g_last = NULL;    /* the reply of the last call, whose characters the caller holds until mathengine_free */
 
 KEEP int mathengine_init(void) {
   lean_initialize_runtime_module();
@@ -39,17 +38,25 @@ KEEP int mathengine_init(void) {
   return 0;
 }
 
-KEEP char* mathengine_call(const char* request) {
+/* The reply is the Lean string itself, not a copy: the caller reads it (the worker turns it into a
+ * JavaScript string) and then frees it, which releases the Lean object. A call before init, or after
+ * a call that trapped (the store is gone with it), answers with an error rather than dereferencing
+ * nothing; that literal is not freed. */
+KEEP const char* mathengine_call(const char* request) {
+  if (g_store == NULL) return "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32000,\"message\":\"the engine has no session store: it is not initialized, or a call crashed\"}}";
   lean_object* req = lean_mk_string(request);                 /* owned */
-  lean_object* pair = mathengine_handle_state(g_store, req);  /* consumes both, returns owned (store, string) */
-  lean_object* store = lean_ctor_get(pair, 0);
+  lean_object* store = g_store;
+  g_store = NULL;                                             /* taken by the call: a trap inside it leaves nothing dangling */
+  lean_object* pair = mathengine_handle_state(store, req);    /* consumes both, returns owned (store, string) */
+  store = lean_ctor_get(pair, 0);
   lean_object* res = lean_ctor_get(pair, 1);
   lean_inc(store); lean_inc(res);
   lean_dec(pair);
   g_store = store;
-  char* out = strdup(lean_string_cstr(res));
-  lean_dec(res);
-  return out;
+  g_last = res;
+  return lean_string_cstr(res);
 }
 
-KEEP void mathengine_free(char* s) { free(s); }
+KEEP void mathengine_free(const char* s) {
+  if (g_last != NULL && s == lean_string_cstr(g_last)) { lean_dec(g_last); g_last = NULL; }
+}

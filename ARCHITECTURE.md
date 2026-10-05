@@ -26,16 +26,29 @@ differential test with zero mismatches.
    frontend keeps working against a new engine and vice versa.
 6. Every call settles. A reply that is not JSON-RPC (an HTTP error page, a line a crashing process
    printed) fails the call it answers, oldest first, instead of throwing in the transport's listener
-   (`createClient`). An engine that goes away fails everything in flight: the stdio transport
-   reports the process's exit, and the native host (`leanNativeClient`) starts a new process on the
-   next call, saying the sessions are gone; the HTTP host also stops a request after a deadline (60 s,
-   `CHALKMATH_TIMEOUT`), since the one process serves every session in turn, and answers a body that
-   is not a request, or is over 1 MB, with an error rather than falling over. It listens on
-   `localhost` unless `CHALKMATH_HOST` says otherwise. In the browser, a call that traps in the
-   wasm (out of stack or memory) has already consumed the session store (`engine/c/shim.c`), so
-   the worker does not answer it: it fails as a worker, and the notebook offers the restart that
-   rebuilds the sessions. The wasm stack sits at the bottom of memory (`--stack-first`), so an
-   overflow traps instead of overwriting the static data above it.
+   (`createClient`); so does an error reply with no id, which says the request could not be read (a
+   body the host refused): the engines answer in order, so it is the oldest call's. A send that throws
+   fails its own call and leaves no entry behind to take another's reply. An engine's error keeps its
+   JSON-RPC code through every host (`RpcError`), so a frontend can tell a method this engine does not
+   have (`-32601`, rule 5's case) from an evaluation that failed. An engine that goes away fails
+   everything in flight: the stdio transport reports the process's exit, and the native host
+   (`leanNativeClient`) starts a new process on the next call, saying the sessions are gone. The native
+   process serves one request at a time, so the host queues the calls and writes them one by one, and
+   a call's deadline (60 s, `CHALKMATH_TIMEOUT`) counts from when its request is written, not from
+   when it was asked for: a deadline measured from the asking killed a healthy engine, with every
+   session in it, whenever other callers kept it busy for a minute. The HTTP host answers a body that
+   is not a request, or is over 1 MB, with an error rather than falling over, by the request's id
+   where its first bytes show it. It listens on `localhost` unless `CHALKMATH_HOST` says otherwise,
+   and answers any page's origin unless `CHALKMATH_ORIGIN` names the ones it serves. In the browser,
+   the worker passes the page's messages to the engine and its replies back as they are: `handle`
+   answers a JSON-RPC request with the reply to it, id included, so nothing is parsed or serialized
+   between the page and the engine, where a derivation can run to megabytes. The request is written
+   into memory `malloc` gives, not the wasm stack (`cwrap`'s own string conversion puts an argument
+   there, and the stack is the 4 MB the engine recurses on), and the reply is the Lean string itself,
+   freed after it is read. A call that traps in the wasm (out of stack or memory) has already consumed
+   the session store (`engine/c/shim.c`), so the worker does not answer it: it fails as a worker, and
+   the notebook offers the restart that rebuilds the sessions. The wasm stack sits at the bottom of
+   memory (`--stack-first`), so an overflow traps instead of overwriting the static data above it.
 
 ## 3. The engine
 
@@ -81,9 +94,15 @@ differential test with zero mismatches.
   or a label spells one out; a label is written only to depth 64 (`pathLabelDepth`), so the echo of a
   pathologically deep input stays linear, and the notebook finds a deeper subterm by its nearest
   labelled ancestor. A sum or a product of ten thousand terms, or ten thousand `-` signs, answers in a
-  fraction of a second, outline and paths included. An outline still prints each step's terms once,
-  to say whether it is quiet: it is linear in the steps times the term, not in what a derivation
-  weighs on the wire.
+  fraction of a second, outline and paths included. An outline says whether a step is quiet (prints
+  the same before and after) by printing the parent of the subterm the step rewrote, on both sides
+  (`Step.quiet`): `after` is `before` with that subterm replaced, so the two can differ only where
+  its parent prints, and printing both whole terms made an outline cost the steps times the term.
+  The rewriter asks after every node whether `canon` reordered it; `canon` rebuilds only a sum's or
+  product's list out of the same children, so `equal` is run as `beqFast`, structural equality with a
+  pointer-equality shortcut (`implemented_by`; the logical definition the proofs use is untouched),
+  and the answer is found at the root or one level down rather than by walking the subtree at every
+  node, which was quadratic on a deep term (`sin(sin(…))`, `x^x^…`).
 - **Termination is a proof obligation, not a budget.** A rule bundles a proof that it strictly
   decreases a measure; `normalize` is well-founded on that measure and never `partial`. The
   verified `simplify` uses one additive measure (`Rewrite.lean`). The whole notebook pipeline —
@@ -103,7 +122,10 @@ differential test with zero mismatches.
   by Taylor sums with their remainder bounds after halving the argument, then squaring or doubling
   back, `ln` pinned by `exp`, `sqrt` by squaring, `π` to Mathlib's twenty digits. It prints the most
   digits, up to fifteen, that the interval pins down, each within a unit of its last place
-  (`certify_sound`). A complex value is a rectangle, an interval for each part (`Ival.cieval`),
+  (`certify_sound`). The exponent of a number's leading digit comes from its numerator's and
+  denominator's bit lengths (`Q.sigDigits`), not from a search by one power of ten at a time: that
+  search was bounded at 400, so every number below `10^-400` had the digit `0`, and `N(exp(-1000))`
+  was `0`, certified. A complex value is a rectangle, an interval for each part (`Ival.cieval`),
   through the formulas for the parts of a product, a quotient, `exp`, `sin` and `cos`; `ln` and
   `sqrt` of a real number and a real number to a real power have their principal values in closed
   form (`cieval_sound`, `cmdN_soundC` in `proofs/Proofs/IntervalC.lean`). `arctan` is pinned by `tan`
@@ -118,6 +140,16 @@ differential test with zero mismatches.
   `N` with a `ln` in it take ten seconds. Newton's method for `ln` and `arctan` starts from a
   double-precision guess, which can only change how fast it converges: the candidates are still
   checked. `x^(1/2)`, which is how `sqrt` is written, is a square root, not `exp(½ ln x)`.
+- **Division by zero is zero, and says so.** Core `Rat` (and Mathlib's `ℚ`) make `0⁻¹ = 0`, so
+  `1/0`, `0^(-1)` and `1/(y − y)` evaluate to `0` by the numeric power rule (`powNumeric`), and the
+  theorems, stated over that arithmetic, hold. A closed form evaluated at a removable singularity
+  (the Fourier coefficient `c(k)` of `llamas.chalk` at `k = 0`, whose `1/k` terms all vanish) gets the
+  right value by it, and refusing instead broke those cells. So the rule answers, and the reply
+  carries a warning for every step that took a zero base to a negative power
+  (`derivationWarnings`, `Rpc.lean`), shown under the answer: the reader sees that a division by
+  zero was taken as zero, and the work shows where. Refusing in the rule, with its theorems
+  (`powNumeric_num`, the ℂ and domain soundness, the termination case) restated, is the stricter
+  option, left for when the lessons are written for it.
 - **An exact answer has a size.** `p^n` for numerals evaluates exactly, and the decimal of a number
   is quadratic in its length (the browser's runtime has no GMP), so a power whose exact value would
   pass `maxPowerBits` (65,536 bits, 19,728 digits) refuses the evaluation and says how many digits it
@@ -129,7 +161,9 @@ differential test with zero mismatches.
 - **A plain `e` is a variable.** `ℯ` (`\e`) is `exp(1)`, so `ℯ^x` is `exp(x)`, but the letter `e` is
   a variable like any other, even though `N` gives it Euler's value (`ieval` treats the name `e` as
   a constant, as `ieval_sound` assumes). A cell whose input has a free `e` says so under its answer:
-  `engine.evaluate` returns `warnings` (`inputWarnings`, `Rpc.lean`), an optional field.
+  `engine.evaluate` returns `warnings` (`inputWarnings`, `Rpc.lean`), an optional field. So does a
+  cell with a free `e3`: `1.5e3` lexes as `1.5` and the name `e3`, an implicit product, since the
+  engine has no exponent notation, and the warning says to write `1.5*10^3`.
 - **Elimination is verified over ℚ by construction.** `LinAlgQ.lean` writes Gauss–Jordan as a
   list of the three elementary row operations, each invertible (the degenerate parameters are the
   identity), and proves `sol_rref`: the reduced matrix has the input's solution set. The `rref`
@@ -473,8 +507,25 @@ does not open copies of a live tab's, and closing the browser loses nothing. An 
 not read is moved to a `chalkmath.autosave.bad.*` key, with a notice, rather than saved over. Typing
 does not serialize the notebook: deciding whether a notebook is unsaved (`docDirty`) compares its
 serialization, steps included, with the saved text, tens of milliseconds on a big notebook, so the
-tabs' unsaved marks and the autosave follow the typing once it pauses (`typed`). An error nothing
+tabs' unsaved marks and the autosave follow the typing once it pauses (`typed`). Nor does
+evaluating: the chrome is redrawn twice per evaluation and on every change of the active cell, and
+its tab bar asks whether the notebook is unsaved, so it takes a serialization at most a moment old
+(`serializedNow`); what must be exact (typing's mark, the autosave, a save, a close) asks afresh.
+Running a cell at the end of the notebook adds the next cell alone (`appendCell`) rather than
+rebuilding every cell, and moving between cells only moves the active mark; the full rebuild
+(`renderCells`) is for a change of the cells' order or kind. What KaTeX typesets is kept
+(`tex`, a bounded memo), since a rebuild typesets every output and step again and almost none has
+changed. A record in a file or an autosave is checked field by field before it is a cell, so a
+damaged one makes an empty cell rather than an exception half-way through opening. An error nothing
 caught is logged with the build id and shown in a notice, at most one every ten seconds.
+
+A notebook keeps running in the background when its tab is left: its cells evaluate in its own
+session (`docOf(cell).sessionId`, never the session of the tab shown), its work is fetched from that
+session, and its finishing leaves the reader's selection in the notebook shown alone; its cells'
+elements are the ones its tab had, no longer on the page, and nothing is drawn into them (they are
+built again when the tab comes back). A cell's result is cleared in one place (`clearResult`): the
+output, the work and everything a reply puts beside them, so an error, a conversion, Clear all and
+a restart forget the same things (a stale `kind` or `visuals` used to survive some of them).
 
 The visual math input (`packages/math-editor`) is the one exception to "does not parse", and it
 reads notation, not meaning. A cell has one source, its text: it is what is saved and what the
@@ -683,7 +734,10 @@ settings, the cell) is `apps/notebook/src/ask-cells.ts`.
   numbers (or the formula), its sources and a quote; or a model that can search the web itself
   (OpenRouter's web search) does, and its citations are the sources.
 - **What the model says is checked, not trusted.** Every number it gives is looked for in what it
-  read (a number written in words counts) and flagged ⚠ when it is not there. A formula is read from
+  read (a number written in words counts; digits grouped by spaces, `1 234 567`, are one number) and
+  flagged ⚠ when it is not there. "What it read" is the evidence it was given, not every page whole:
+  a number that is on a page but was not in the evidence came from the model's memory, and across
+  five whole pages every small number and every year is somewhere. A formula is read from
   the LaTeX it quotes by code (`tex.ts`), never from the model's translation, and flagged when the
   pages do not write it that way. A question that asks to make something (a random matrix) is no
   lookup and is refused before any search. The model's memory is the last resort, and an answer

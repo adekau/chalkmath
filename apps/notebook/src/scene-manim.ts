@@ -165,7 +165,7 @@ export function manimOfScene(data: SceneData, name: string): string {
     const col = py(colour(o));
     const width = o.style.thick ? 6 : o.style.faint ? 2.5 : 4;
     const sOp = o.style.faint ? 0.38 : 1;
-    const start = tl.vis[o.name]?.length ? 0 : 1;
+    const start = tl.vis[o.name]?.[0]?.on ? 0 : 1;   // hidden until its first `show`; there until its first `hide`
     const v = `op[${py(o.name)}]`;
     w(`        ${v} = ValueTracker(${start})  # ${o.kind} ${o.name}`);
     const redraw = (body: string[]) => {
@@ -219,7 +219,7 @@ export function manimOfScene(data: SceneData, name: string): string {
         break;
       case "trace": {
         const pt = P(anchor(o.args[0]!));
-        w(`        trace_from[${py(o.name)}] = ${tl.vis[o.name]?.length ? "None" : "FROM"}`);
+        w(`        trace_from[${py(o.name)}] = ${tl.vis[o.name]?.[0]?.on ? "None" : "FROM"}`);
         redraw([`c0 = trace_from[${py(o.name)}]`,
           `if c0 is None or ${v}.get_value() <= 0: return VMobject()`,
           "lo, hi = sorted((c0, c()))",

@@ -185,7 +185,8 @@ export function tableOf(f: FileValue): Table {
     if (!first.includes(",")) delim = first.includes("\t") ? "\t" : first.includes(";") ? ";" : ",";
   }
   const all = parseDelimited(text, delim);
-  const cols = Math.max(0, ...all.map((r) => r.length));
+  let cols = 0;   // not `Math.max(...rows)`: a file of a hundred thousand rows is too many arguments
+  for (const r of all) if (r.length > cols) cols = r.length;
   const pad = (r: string[]) => r.length < cols ? [...r, ...Array<string>(cols - r.length).fill("")] : r;
   const head = all[0];
   const isHeader = !!head && all.length > 1 && head.every((s) => s.trim() !== "" && !isNumeric(s));
@@ -400,9 +401,18 @@ export function jsonOf(f: FileValue): Json {
   return v;
 }
 
-/** A JSON value that is a list of records (objects of plain values) or of equal lists: a table. */
+/** A JSON value that is a list of records (objects of plain values) or of equal lists: a table.
+ *  Computed once per value: the completions ask for a file's table on every keystroke. */
+const JSON_TABLES = new WeakMap<object, Table | null>();
 export function jsonTable(v: Json): Table | null {
   if (!Array.isArray(v) || !v.length) return null;
+  const hit = JSON_TABLES.get(v);
+  if (hit !== undefined) return hit;
+  const t = jsonTableOf(v);
+  JSON_TABLES.set(v, t);
+  return t;
+}
+function jsonTableOf(v: Json[]): Table | null {
   const cell = (x: Json | undefined) => x === undefined || x === null ? "" : typeof x === "object" ? JSON.stringify(x) : String(x);
   if (v.every((x) => isObj(x))) {
     const header = [...new Set(v.flatMap((x) => Object.keys(x as object)))];
@@ -410,7 +420,8 @@ export function jsonTable(v: Json): Table | null {
     return { header, rows: v.map((x) => header.map((k) => cell((x as { [k: string]: Json })[k]))), cols: header.length };
   }
   if (v.every((x) => Array.isArray(x)) && (v as Json[][]).every((x) => !x.some((y) => typeof y === "object" && y !== null))) {
-    const cols = Math.max(...(v as Json[][]).map((x) => x.length));
+    let cols = 0;
+    for (const x of v as Json[][]) if (x.length > cols) cols = x.length;
     if (!cols) return null;
     return { header: null, rows: (v as Json[][]).map((x) => Array.from({ length: cols }, (_, j) => cell(x[j]))), cols };
   }
