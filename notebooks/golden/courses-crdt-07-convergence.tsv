@@ -1,4 +1,11 @@
-5	let Mx = op({0, 1, 2, 3}; [0, 1, 2, 3; 1, 1, 2, 3; 2, 2, 2, 3; 3, 3, 3, 3])	= [0, 1, 2, 3; 1, 1, 2, 3; 2, 2, 2, 3; 3, 3, 3, 3]
-6	fold(Mx; 1, 3, 2)	= 3
-7	fold(Mx; 2, 2, 1, 3, 1)	= 3
-17	fold(Mx; 3, 0, 3, 1)	= 3
+6	let Ow = op({a, b}; [a, b; a, b])	= [a, b; a, b]
+7	fold(Ow; a, b)	= b
+8	fold(Ow; b, a)	= a
+10	let RPS = op({r, p, s}; [r, p, r; p, p, s; r, s, s])	= [r, p, r; p, p, s; r, s, s]
+11	commutative(RPS)	= true
+12	associative(RPS)	= false
+17	let Mx = op({0, 1, 2, 3}; [0, 1, 2, 3; 1, 1, 2, 3; 2, 2, 2, 3; 3, 3, 3, 3])	= [0, 1, 2, 3; 1, 1, 2, 3; 2, 2, 2, 3; 3, 3, 3, 3]
+18	fold(Mx; 1, 3, 2)	= 3
+19	fold(Mx; 2, 2, 1, 3, 1)	= 3
+30	fold(Mx; 3, 0, 3, 1)	= 3
+31	fold(RPS; s, p, r)	= r

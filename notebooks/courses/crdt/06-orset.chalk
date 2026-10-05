@@ -9,31 +9,54 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Build a set where removal only cancels the additions the remover observed, so that when an add and a remove race the add wins, and follow the book's proof of that slogan.",
+      "src": "> [!goal]\n> Build a set where a remove cancels exactly the adds its replica has seen, so that re-adds work and an add racing a remove wins.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "The G-Set never forgets, the 2P-Set forgets once and forever, and the LWW-Element-Set lets a clock decide, so a remove can cancel an add its issuer never saw. The **observed-remove set** tags every add with a unique identifier; a remove tombstones the tags it has seen. An element is present when some tag of it is not tombstoned. A concurrent add carries a tag the remove never saw, so it survives: **add wins**.",
+      "src": "The 2P-Set's tombstone on $x$ kills every later add of $x$; the LWW-Element-Set lets a clock decide, so a remove can kill an add its replica never saw. Both remove too much.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!theorem] Add wins\n> If an add of $e$ is concurrent with a remove of $e$, then after both are merged $e$ is in the set. The proof (the longest in the book) runs on an invariant of reachable states, not on the algebra alone.",
+      "src": "> [!try]\n> When replica $b$ removes $x$, which adds of $x$ should that remove cancel? What would the state need so that the merge can tell?",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "Add wins, run",
+      "src": "The adds $b$ has seen, and no others: not future ones, not concurrent ones it has not heard of. To cancel \"the adds I have seen\" the merge must tell adds apart, so give each add a **unique tag**: the replica and its own count of adds, a pair no replica mints twice. A remove tombstones the tags of $x$ it has seen. $x$ is in the set while some tag of it is not tombstoned. A re-add mints a fresh tag, which no old tombstone covers.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] OR-Set\n> An **observed-remove set** keeps a set of tagged adds and a set of tombstoned tags, both grow-only. Adding $x$ at replica $i$ records $x$ with a fresh tag of $i$'s; removing $x$ tombstones every tag of $x$ the replica holds; merge is union on each part; $x$ is a member when it has a tag that is not tombstoned.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The 2P-Set's failure, rerun",
       "type": "section",
       "showWork": false,
       "label": null
     },
     {
-      "src": "Each add makes a tag of its own (`x@a1` is `a`'s first add); a remove removes the tags of that element its replica has seen. Here `b` removes `x` while `a` adds it again: the new tag was not seen, so it survives.",
+      "src": "The schedule that lost the 2P-Set's re-add, with one more message so that both replicas hear everything:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "replicas(twopset; a, b\n  a: add x\n  a -> b\n  b: remove x\n  a: add x\n  b -> a\n  a -> b\n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The same schedule on an OR-Set. Each add makes a tag of its own (`x@a1` is `a`'s first add); `b`'s remove tombstones `x@a1`, the only tag it has seen, and `x@a2` survives:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -41,6 +64,18 @@
     {
       "src": "replicas(orset; a, b\n  a: add x\n  a -> b\n  b: remove x\n  a: add x\n  b -> a\n  a -> b\n)",
       "showWork": true,
+      "label": null
+    },
+    {
+      "src": "> [!theorem] Add wins\n> Replica $i$ adds $e$ to its state $s_A$; concurrently, a peer removes $e$ from its state $s_B$, which has not seen that add ($s_B$'s count for $i$ is at most $s_A$'s). If both states are well formed, then $e$ is a member of the merge of the two results. Well formed means an invariant every reachable state keeps: tombstones cover only recorded adds, and a replica's count for each replica is above every tag of that replica's it has recorded.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> Tags must never be reused. Let the re-add recycle the old tag `x@a1`: then $b$'s earlier remove, which tombstoned `x@a1`, also kills the re-add (`tag_reuse_bites` in the Lean below).",
+      "type": "markdown",
+      "showWork": false,
       "label": null
     },
     {
@@ -87,7 +122,40 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> Unique tags make removal precise: a remove deletes what it observed and nothing else. Add wins, re-adds work, and the cost is tombstones that never go away.",
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "An OR-Set state for one element $x$, as a pair (tags added, tags tombstoned) over two tags: `t1`, an add both replicas saw, and `t2`, a later re-add.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let T = subsets({t1, t2})",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let OR = product(T, T)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "join(OR, ({t1, t2}, {}), ({t1}, {t1}))",
+      "type": "exercise",
+      "prompt": "Replica $a$ holds $(\\{t1, t2\\}, \\{\\})$. Replica $b$ removed $x$ having seen only `t1`: it holds $(\\{t1\\}, \\{t1\\})$. Merge them. Write it as `({…}, {…})`.",
+      "hints": [
+        "Union each half.",
+        "`t2` is added and not tombstoned, so $x$ is still in the set: add wins."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> A unique tag on every add makes removal precise: a remove deletes what it observed and nothing else. Re-adds work, a concurrent add survives a remove, and the cost is tombstones that never go away. Every run so far has ended with the replicas agreeing; the next lesson proves they always will.",
       "type": "markdown",
       "showWork": false,
       "label": null

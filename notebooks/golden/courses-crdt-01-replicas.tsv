@@ -1,11 +1,13 @@
-5	let Ow = op({a, b}; [a, b; a, b])	= [a, b; a, b]
-6	commutative(Ow)	= false
-7	fold(Ow; a, b)	= b
-8	fold(Ow; b, a)	= a
-10	let Mx = op({0, 1, 2}; [0, 1, 2; 1, 1, 2; 2, 2, 2])	= [0, 1, 2; 1, 1, 2; 2, 2, 2]
-11	semilattice(Mx)	= true
-12	fold(Mx; 2, 0, 1, 1)	= 2
-17	replicas(gcounter; a, b, c\n  a: inc\n  b: inc\n  b: inc\n  a -> b\n  b -> c\n)	= {a↦1, b↦3, c↦3}
-19	replicas(gcounter; a, b, c\n  a: inc\n  b: inc\n  b: inc\n  a -> b\n  b -> c\n  c -> a\n)	= {a↦3, b↦3, c↦3}
-31	commutative(Mx)	= true
-32	fold(Ow; b, a, b, a)	= a
+6	replicas(lww; a, b\n  a: write 1\n  b: write 1\n  a -> b\n  b -> a\n)	= {a↦1, b↦1}
+10	let Ow = op({a, b}; [a, b; a, b])	= [a, b; a, b]
+11	commutative(Ow)	= false
+13	fold(Ow; a, b)	= b
+14	fold(Ow; b, a)	= a
+18	let Mx = op({0, 1, 2}; [0, 1, 2; 1, 1, 2; 2, 2, 2])	= [0, 1, 2; 1, 1, 2; 2, 2, 2]
+19	semilattice(Mx)	= true
+20	fold(Mx; 2, 0, 1, 1)	= 2
+21	fold(Mx; 1, 1, 0, 2)	= 2
+27	replicas(gcounter; a, b\n  a: inc\n  b: inc\n  a -> b\n  b -> a\n)	= {a↦2, b↦2}
+40	commutative(Mx)	= true
+41	idempotent(Ow)	= true
+42	fold(Ow; b, a, b, a)	= a

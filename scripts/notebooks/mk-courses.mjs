@@ -1608,33 +1608,120 @@ const crdtAudit = crdtCells(crdtLines.findIndex((l, k) => l.startsWith("/- ===="
 const OPEN = "open Order.PartialOrder Order.BoundedJoinSemilattice in\n";
 
 course("crdt", "CRDTs: replicated data that converges",
-  "From Propagators to Replicas: counters, sets and registers that replicas update without coordinating and merge as joins; the main theorem that they converge; gossip, version vectors, op-based CRDTs, a replicated store, and the limits.",
+  "From Propagators to Replicas: counters, sets and registers that replicas update without coordinating and merge as joins, each design the fix for the last one's bug; the main theorem that they converge; gossip, version vectors, op-based CRDTs, a replicated store, and the limits.",
   "Distributed systems", (add) => {
 
-  add("01-replicas.chalk", "Replicas and the merge discipline", "Why merging copies is hard, and the one discipline that makes it easy: states in a semilattice, merge as join.", ({ sec, md, m, ex, lean }) => {
+  add("01-replicas.chalk", "Replicas and the merge discipline", "Two replicas lose an update; the three laws a merge needs so that the network cannot make it lose one: states in a semilattice, merge as join.", ({ sec, md, m, ex, lean }) => {
     sec("Replicas and the merge discipline");
     md(r`
 > [!goal]
-> See how replicas that accept updates locally diverge, why "overwrite" and other casual merges lose updates, and state the discipline every design in this course obeys: the state is a bounded join-semilattice, updates go up, and merge is the join.
+> Watch two replicas lose an update, find the three laws a merge must obey so that the network cannot make it lose one, and name what obeys them: a state-based CRDT.
 `);
-    md(r`Several machines keep a copy (a **replica**) of the same logical value, accept updates locally without waiting for each other, and reconcile later over a network that delays, drops, duplicates and reorders. Accepting updates locally is easy. Merging afterwards, so that every replica ends with the same state and that state reflects every update, is the hard part.`);
-    sec("Overwrite is not a merge");
-    md(r`"Keep the incoming value" depends on who hears from whom last. As an operation it is not commutative, so two replicas that exchange states end up swapped rather than equal:`);
+    md(r`A like counter runs on two phones, ‹a› and ‹b›. Each phone keeps its own copy of the count (a **replica**), so that a tap registers at once, even offline, and the phones sync when they can. Both start at 0, each user taps once, and then the phones sync. Both should read 2.`);
+    md(r`
+> [!try]
+> The obvious design: each replica stores a number; a tap reads it, adds one and stores the result; a sync passes the latest number across. Predict what each phone reads after the sync.
+`);
+    sec("A lost update");
+    md(r`‹replicas(…)› runs a design on named replicas through a schedule, one event per line: ‹a: …› is a local update at ‹a›, and ‹a -> b› has ‹b› merge ‹a›'s state. It answers with each replica's reading and draws a **space-time diagram**: a lane per replica, an arrow per message. Here the design is ‹lww›, "keep the latest write", and each tap writes what its phone read plus one, so both write 1. Step through it:`);
+    m(`replicas(lww; a, b
+  a: write 1
+  b: write 1
+  a -> b
+  b -> a
+)`, { step: 0 });
+    md(r`The phones agree, and they are wrong: two taps, and both read 1. Each tap wrote "0 plus one"; the sync kept one write and dropped the other. No message was lost and nothing crashed, yet an update vanished. This is the **lost update**, and each design in this course is the fix for the previous design's version of it.`);
+    sec("Overwrite does not even agree");
+    md(r`‹lww› at least drops the same write everywhere: it compares timestamps (lesson 5). Plain overwrite, "keep the incoming value", does not. As a table, row $x$, column $y$ is what a replica holding $x$ keeps on hearing $y$:`);
     m("let Ow = op({a, b}; [a, b; a, b])");
     m("commutative(Ow)", { work: true });
+    md(r`A replica that hears $a$ and then $b$ ends at $b$; one that hears $b$ and then $a$ ends at $a$. The same messages in a different order leave the two in different states, for good:`);
     m("fold(Ow; a, b)");
     m("fold(Ow; b, a)");
-    md(r`"Keep the larger" is a join. Any order of exchanges, any grouping, any duplicates, the same result:`);
-    m("let Mx = op({0, 1, 2}; [0, 1, 2; 1, 1, 2; 2, 2, 2])");
-    m("semilattice(Mx)");
-    m("fold(Mx; 2, 0, 1, 1)");
+    sec("What a merge must not care about");
     md(r`
-> [!definition] The merge discipline
-> A **state-based CRDT** keeps its state in a bounded join-semilattice, makes every update **inflationary** (the new state is above the old), and merges by the **join**. Then a replica stores not a value but everything it has heard about the value, and hearing the same things in any order gives the same state.
+> [!try]
+> A real network delays messages, so they arrive in any **order**; replicas pass on what they have heard, so updates arrive already **grouped** into other replicas' states; and it retries, so a message can arrive **twice**. For each, what must a merge $\sqcup$ satisfy so that it cannot change the outcome?
 `);
-    md(r`This is the propagator cell from *Order and lattices*, read again: there a cell gathered partial information from propagators on one scheduler; here a replica gathers it from other replicas over an unreliable network. The algebra is the same.`);
-    sec("Replicas in the notebook");
-    md(r`‹replicas(…)› runs a CRDT on named replicas through a schedule of events, one per line: ‹a: inc› updates replica ‹a›, and ‹a -> b› has ‹b› merge ‹a›'s state. It answers with each replica's reading and whether they have converged, and draws a **space-time diagram**: a lane per replica, an arrow per message. Step through it: the diagram grows event by event.`);
+    md(r`One law each:
+- order: $x \sqcup y = y \sqcup x$ (**commutative**);
+- grouping: $(x \sqcup y) \sqcup z = x \sqcup (y \sqcup z)$ (**associative**);
+- duplicates: $x \sqcup x = x$ (**idempotent**).
+
+An operation with all three is a **semilattice**, and a semilattice is the same thing as a join: setting $x \sqsubseteq y$ when $x \sqcup y = y$ gives a partial order in which $x \sqcup y$ is the least upper bound. Overwrite breaks the first law. "Keep the larger" keeps all three, so any order, grouping or repetition of the same messages gives the same result:`);
+    m("let Mx = op({0, 1, 2}; [0, 1, 2; 1, 1, 2; 2, 2, 2])");
+    m("semilattice(Mx)", { work: true });
+    m("fold(Mx; 2, 0, 1, 1)");
+    m("fold(Mx; 1, 1, 0, 2)");
+    md(r`A merge that is a join only ever moves up. So an update must move up too: an update that moved a state down would be undone by the first merge with a replica that had not heard of it, whose state is still above. Lesson 3 meets this as a bug.`);
+    md(r`
+> [!definition] State-based CRDT
+> A **state-based CRDT** keeps each replica's state in a join-semilattice with a least element $\bot$ (the state before anything has happened), makes every update **inflationary** (it goes up: $s \sqsubseteq u(s)$), and merges by the join. A replica then holds not a value but everything it has heard about the value, and hearing the same things in any order, grouping or number of times gives the same state.
+`);
+    md(r`This is the propagator cell from *Order and lattices* read again: there a cell gathered partial information from propagators on one scheduler; here a replica gathers it from other replicas over an unreliable network. The algebra is the same.`);
+    sec("A preview of the fix");
+    md(r`"Keep the larger" on the count itself does not save the like counter: after their taps both phones hold 1, and $\max(1, 1) = 1$. Adding the counts would remember both taps, but addition is not idempotent: a sync delivered twice counts its taps twice. Yet here is the same schedule on the counter the next lesson builds:`);
+    m(`replicas(gcounter; a, b
+  a: inc
+  b: inc
+  a -> b
+  b -> a
+)`);
+    md(r`Two taps, and both read 2.`);
+    sec("In Lean");
+    md(r`The book's Lean, chapter by chapter, runs in this course's lessons; each lesson sees the ones before it. First the merge discipline as classes (with notation $\sqcup$ for the join, $\bot$ for the bottom, $\sqsubseteq$ for "knows at least as much"), the laws every join obeys (the ACI toolkit: associative, commutative, idempotent), the propagator machinery re-read as replicas, and chapter 1's naive counter, where an overwriting sync loses an update and ends at 2 when the truth is 3.`);
+    for (const c of crdtLesson(0)) lean(c);
+    sec("Exercises");
+    ex("commutative(Mx)", r`Is "keep the larger" commutative?`, []);
+    ex("idempotent(Ow)", r`Overwrite breaks commutativity. Does it keep idempotence, $x \sqcup x = x$ for every $x$? Answer ‹true› or ‹false›.`, [r`A replica holding $x$ hears $x$ again. What does overwrite keep?`]);
+    ex("fold(Ow; b, a, b, a)", r`Under overwrite, a replica hears $b$, $a$, $b$, $a$ in that order. What does it hold?`, [r`The last one heard wins.`]);
+    md(r`
+> [!summary]
+> A merge that chooses between values (overwrite, the latest write) loses updates, or leaves replicas disagreeing. A merge that is commutative, associative and idempotent, that is a join, makes the order, grouping and repetition of messages irrelevant; with updates that only go up, that is a state-based CRDT. It leaves a question for the next lesson: the count cannot be a single number, so what state would let "the larger of two states" keep every tap?
+`);
+  });
+
+  add("02-gcounter.chalk", "The G-Counter", "Counting without coordination: why one number cannot be merged, and the fix, one slot per replica merged by pointwise maximum.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("The G-Counter");
+    md(r`
+> [!goal]
+> Find a state for a counter whose join keeps every increment exactly once, and see why one slot per replica is forced.
+`);
+    md(r`Lesson 1 left the like counter broken. Both merges of a single number fail:
+- **max** forgets: two phones that each counted one tap hold 1 and 1, and $\max(1, 1) = 1$;
+- **sum** double-counts: it is not idempotent, so a state delivered twice adds its taps twice.
+
+Max has the right laws; the state is too poor. Two 1s could be the same tap heard twice or two different taps, and max has to assume the first.`);
+    md(r`
+> [!try]
+> What could the state record so that the larger of two states never mixes up two different taps? Think about who made each tap.
+`);
+    sec("One slot per replica");
+    md(r`Record the taps **per replica**. Every replica keeps a slot for every replica and only ever increments its own. Then each slot has a single writer, so of two values for slot $a$ the larger one already counts every tap the smaller one does: max, slot by slot, is exactly right. The value is the sum of the slots. For two replicas a state is a pair, and the states form a product of chains:`);
+    m("let C4 = chain(4)");
+    m("let G = product(C4, C4)");
+    m("join(G, (2, 0), (1, 3))", { work: true });
+    md(r`Replica $a$ has counted 2 taps and heard of none of $b$'s; replica $b$ has heard of 1 of $a$'s and counted 3 of its own. Merged: $(2, 3)$, value 5, every tap once. Merging an older state such as $(1, 0)$, or the same state again, changes nothing:`);
+    m("join(G, (2, 3), (1, 0))");
+    md(r`
+> [!definition] G-Counter
+> A **G-Counter** (grow-only counter) on replicas $1, \dots, R$ is a vector of $R$ naturals, all zero at the start. Replica $i$ increments only entry $i$; merge is the entrywise maximum; the value is the sum of the entries.
+`);
+    md(r`
+> [!mistake]
+> Why only its own slot? Let any replica bump any slot. From $(1, 0)$, replicas $a$ and $b$ each count a tap in slot $a$, and both hold $(2, 0)$. Their merge:
+`);
+    m("join(G, (2, 0), (2, 0))");
+    md(r`Three taps, value 2: the lost update is back, because slot $a$ now has two writers.`);
+    sec("The lost update, fixed");
+    md(r`Lesson 1's schedule, on a G-Counter. The work shows each state as a map from replicas to their slots:`);
+    m(`replicas(gcounter; a, b
+  a: inc
+  b: inc
+  a -> b
+  b -> a
+)`, { work: true });
+    md(r`Merges need not be symmetric or complete. Step through three replicas: ‹a› sends to ‹b›, and ‹b› to ‹c›.`);
     m(`replicas(gcounter; a, b, c
   a: inc
   b: inc
@@ -1642,7 +1729,10 @@ course("crdt", "CRDTs: replicated data that converges",
   a -> b
   b -> c
 )`, { step: 0 });
-    md(r`Replica ‹a› has not heard from anyone, so the replicas have not converged. One more message does it:`);
+    md(r`
+> [!try]
+> ‹b› and ‹c› read 3, but ‹a› has heard from no one and reads 1. Which single message makes all three agree?
+`);
     m(`replicas(gcounter; a, b, c
   a: inc
   b: inc
@@ -1652,40 +1742,7 @@ course("crdt", "CRDTs: replicated data that converges",
   c -> a
 )`);
     sec("In Lean");
-    md(r`The book's Lean, chapter by chapter, runs in this course's lessons; each lesson sees the ones before it. First the merge discipline as classes (with notation $\sqcup$ for the join, $\bot$ for the bottom, $\sqsubseteq$ for "knows at least as much"), the laws every join obeys (the ACI toolkit), the propagator machinery re-read as replicas, and the chapter 1 demonstrations of naive merges going wrong.`);
-    for (const c of crdtLesson(0)) lean(c);
-    sec("Exercises");
-    ex("commutative(Mx)", r`Is "keep the larger" commutative?`, []);
-    ex("fold(Ow; b, a, b, a)", r`Under overwrite, a replica hears $b$, $a$, $b$, $a$ in that order. What does it hold?`, [r`The last one heard wins.`]);
-    md(r`
-> [!summary]
-> Replicas that accept updates locally must reconcile, and reconciliation must remember rather than choose. Keeping states in a semilattice and merging by the join makes the order, grouping and repetition of messages irrelevant.
-`);
-  });
-
-  add("02-gcounter.chalk", "The G-Counter", "Counting without coordination: one slot per replica, merged by pointwise maximum.", ({ sec, md, m, ex, lean, lx }) => {
-    sec("The G-Counter");
-    md(r`
-> [!goal]
-> Build a grow-only counter that replicas increment independently and merge without losing or double-counting, and see why one slot per replica is forced.
-`);
-    md(r`A like button: taps land on the nearest replica, replicas exchange states when they can, and everyone should eventually see the same total. A single shared number cannot be merged (max loses taps, sum double-counts repeats). The **G-Counter** keeps one slot per replica, each replica only increments its own slot, merge takes the maximum slot by slot, and the value is the sum of the slots.`);
-    md(r`Two replicas' slots form a product of chains, and merge is its join:`);
-    m("let C4 = chain(4)");
-    m("let G = product(C4, C4)");
-    m("join(G, (2, 0), (1, 3))", { work: true });
-    md(r`Replica 1 has counted 2 taps and replica 2 has counted 3: merged, $(2, 3)$, total 5. Merging the same states again changes nothing; merging an older state ($(1, 0)$) changes nothing either.`);
-    m("join(G, (2, 3), (1, 0))");
-    sec("A G-Counter, run");
-    md(r`Each replica counts its own increments in its own slot; a merge takes the larger count, slot by slot. The work shows each state as a map from replicas to their slots.`);
-    m(`replicas(gcounter; a, b
-  a: inc
-  a: inc
-  b: inc
-  a -> b
-  b -> a
-)`, { work: true });
-    sec("In Lean");
+    md(r`The chapter opens with the two failed merges as theorems, ‹max_undercounts› and ‹add_overcounts›, and then builds the G-Counter as a function from replicas to naturals.`);
     for (const c of crdtLesson(1)) lean(c);
     md(r`The executable G-Counter renders as a list; rendering a merge is zipping the renders with $\max$. The lemma behind it:`);
     lx(`theorem zipWith_map_map {α β : Type} (f : β → β → β) (g h : α → β) :
@@ -1731,70 +1788,111 @@ example :
   decide`);
     sec("Exercises");
     ex("join(G, (3, 1), (2, 2))", r`Merge the G-Counter states $(3, 1)$ and $(2, 2)$. Write the pair as ‹(x, y)›.`, [r`Slot by slot, the maximum.`]);
+    ex("join(G, (1, 3), (1, 2))", r`Replica $b$ holds $(1, 3)$. A delayed message arrives holding $(1, 2)$, an older state of $b$'s own. Merge it in.`, [r`Slot by slot, the maximum: an older state is below the current one.`]);
     md(r`
 > [!summary]
-> A G-Counter gives each replica its own slot; increments touch only one's own slot, merge is the pointwise maximum, and the value is the sum. Merging twice or merging stale states changes nothing, so the network may duplicate and reorder freely.
+> A single number cannot be merged: max cannot tell two taps from one tap heard twice, and sum counts repeats. One slot per replica, each with a single writer, makes max right: merge slot by slot, read the sum. Merging twice or merging stale states changes nothing, so the network may duplicate and reorder freely. But every update only adds: how do you count down when every update must go up?
 `);
   });
 
-  add("03-pncounter.chalk", "The PN-Counter", "Counting down without going down: two grow-only counters, and a query that subtracts.", ({ sec, md, m, ex, lean }) => {
+  add("03-pncounter.chalk", "The PN-Counter", "Counting down without going down: the decrement a merge undoes, and the fix, two grow-only counters and a value that subtracts.", ({ sec, md, m, ex, lean }) => {
     sec("The PN-Counter");
     md(r`
 > [!goal]
-> Support decrements while keeping every update inflationary, by separating the state (which only grows) from the query (which may go down).
+> Add decrements to the counter while every update still moves the state up.
 `);
-    md(r`A decrement makes the number smaller, but the discipline requires updates to go up. The way out: a decrement is not the removal of an increment but a new event in its own right. Keep two G-Counters, $P$ for increments and $N$ for decrements, and let the **query** compute $P - N$. The state never goes down; the report does.`);
-    md(r`For one replica the state is a pair $(p, n)$, ordered componentwise:`);
+    md(r`The like button needs an unlike. The obvious decrement: a replica lowers its own slot.`);
+    md(r`
+> [!try]
+> Replica $a$ has counted 2 taps, state $(2, 0)$, and $b$ has heard of them, so $b$ holds $(2, 0)$ too. Now $a$ decrements, to $(1, 0)$, and then $b$'s state arrives. Predict the merge.
+`);
+    m("let C4 = chain(4)");
+    m("let G = product(C4, C4)");
+    m("join(G, (1, 0), (2, 0))", { work: true });
+    md(r`The decrement is undone. The join only goes up, the decrement went down, and $b$'s stale state, still above, wins: lesson 1's warning about updates that are not inflationary, now as a bug.`);
+    sec("Count the decrements");
+    md(r`The way out is the move every design in this course makes: if a merge loses information, put that information in the state. A decrement is not the removal of an increment but an event of its own, and events can be counted, in a G-Counter of their own. Keep two G-Counters, $P$ for increments and $N$ for decrements, and read the value as $P - N$. Every update raises one of them, so the state only goes up while the value may go down.`);
+    md(r`
+> [!definition] PN-Counter
+> A **PN-Counter** is a pair of G-Counters $(P, N)$. Replica $i$ increments by raising its entry of $P$ and decrements by raising its entry of $N$; merge is the join of each half; the value is $\sum P - \sum N$.
+`);
+    md(r`For one replica a state is a pair $(p, n)$, ordered componentwise:`);
     m("let C3 = chain(3)");
     m("let PN = product(C3, C3)");
     m("le(PN, (1, 0), (1, 1))", { work: true });
-    md(r`$(1, 0) \sqsubseteq (1, 1)$: a decrement moved the state up, while the value went from 1 to 0. Information grows even when the number shrinks.`);
-    sec("A PN-Counter, run");
-    md(r`The state is a pair of G-Counters, increments and decrements; the reading subtracts.`);
+    md(r`$(1, 0) \sqsubseteq (1, 1)$: a decrement moved the state up while the value went from 1 to 0.`);
+    sec("The decrement survives");
+    md(r`The schedule that undid the decrement, on a PN-Counter: $a$ counts two, $b$ hears of them, $a$ decrements, and $b$'s stale state reaches $a$. The state is a pair of G-Counters, increments and decrements:`);
     m(`replicas(pncounter; a, b
   a: inc
+  a: inc
+  a -> b
+  a: dec
+  b -> a
+  a -> b
+)`, { work: true });
+    md(r`$b$'s state is no longer above $a$'s: $a$ has a decrement that $b$ lacks, and the merge keeps it. Both read 1.`);
+    md(r`
+> [!mistake]
+> The value of a merge is not the larger value. An increment at $a$ (value 1) and a decrement at $b$ (value $-1$) merge to 0, not $\max(1, -1) = 1$:
+`);
+    m(`replicas(pncounter; a, b
   a: inc
   b: dec
   a -> b
   b -> a
-)`, { work: true });
+)`);
+    md(r`Only the state is merged; the value is read off it, and it is not monotone in the state.`);
     sec("In Lean");
+    md(r`The chapter proves both halves of that: ‹decr_inflationary› (the state goes up) and ‹value_not_monotone› (the value need not), with ‹value_merge_ne_max› for the mistake above.`);
     for (const c of crdtLesson(2)) lean(c);
-    md(r`A query that clamps at zero hides the negative truth: a seed for the last lesson.`);
+    md(r`A value that clamps at zero hides the negative truth: a seed for the last lesson.`);
     lean(`def clampedValue {R : Nat} (p : PNCounter R) : Nat :=
   (PNCounter.value p).toNat
 
 example : clampedValue (PNCounter.decr 0 (⊥ : PNCounter 1)) = 0 := by decide
 example : PNCounter.value (PNCounter.decr 0 (⊥ : PNCounter 1)) < 0 := by decide`);
     sec("Exercises");
-    ex("le(PN, (2, 0), (1, 1))", r`Is the state $(2, 0)$ below $(1, 1)$? Answer ‹true› or ‹false›.`, [r`Compare componentwise.`]);
+    ex("le(PN, (2, 0), (1, 1))", r`For one replica, is the state $(2, 0)$ below $(1, 1)$? Answer ‹true› or ‹false›.`, [r`Compare componentwise.`]);
+    ex("join(product(G, G), ((2, 0), (1, 0)), ((1, 1), (0, 1)))", r`Two replicas $a$, $b$; write a PN state as $(P, N)$, each half a pair of slots ($a$'s, $b$'s). Replica $a$ holds $((2, 0), (1, 0))$ and $b$ holds $((1, 1), (0, 1))$. Merge them. (The merged state reads $3 - 2 = 1$.)`, [r`$P$ and $N$ merge separately, each slot by the maximum.`]);
     md(r`
 > [!summary]
-> Split state from query: the state is a pair of grow-only counters and only rises; the query $P - N$ may fall. The value is not monotone in the state, and that is fine, because only the state is merged.
+> A decrement that lowers the state is undone by the next merge with a replica that has not heard of it. Counting decrements as events of their own keeps every update going up: the state is a pair of grow-only counters, and only the value, $P - N$, falls. Sets come next. Adding an element is easy; what is the decrement of a set?
 `);
   });
 
-  add("04-sets.chalk", "Sets that only grow", "G-Set and 2P-Set: union as the merge, finite sets as sorted lists, and the removal that cannot be undone.", ({ sec, md, m, ex, lean, lx }) => {
+  add("04-sets.chalk", "Sets that only grow", "G-Set and 2P-Set: union as the merge, the removal a merge brings back, tombstones, and the re-add they forbid.", ({ sec, md, m, ex, lean, lx }) => {
     sec("Sets that only grow");
     md(r`
 > [!goal]
-> Replicate sets: a grow-only set merged by union, and a two-phase set that supports removal with a second grow-only set of tombstones, at the price of never re-adding.
+> Replicate a set: adding merges by union for free; see why removing does not, and what it costs to make it work.
 `);
-    md(r`A **G-Set** is the powerset lattice: states are finite sets, the order is inclusion, the merge is union. To compute with finite sets (print them, decide equalities) the book represents them as **strictly sorted lists**: same members, same list, which is what antisymmetry needs.`);
+    md(r`A shared shopping list. Adding is the easy half: replicas add items, and a merge takes the union. Union is a join (commutative, associative, idempotent), so a **G-Set** (grow-only set: states are sets, ordered by inclusion, merged by union) is a CRDT with no further thought:`);
     m("let S = subsets({x, y})");
     m("join(S, {x}, {y})");
-    sec("Removal: the 2P-Set");
-    md(r`Removing from a G-Set would make the state go down. A **2P-Set** keeps two G-Sets, the added and the removed (tombstones); an element is in the set when it is added and not removed. Both halves only grow, so the pair is a product semilattice:`);
+    m("replicas(gset; a, b; a: add x; b: add y; a -> b; b -> a)");
+    sec("Removal is the hard part");
+    md(r`
+> [!try]
+> Both replicas hold $\{x\}$. Replica $a$ deletes $x$, leaving $\{\}$; then $b$'s state arrives. Predict the merge.
+`);
+    m("join(S, {}, {x})", { work: true });
+    md(r`$x$ is back. Deleting moved the state down, and the join undid it: lesson 3's undone decrement, for sets. The fix is lesson 3's too: do not perform the removal, record it.`);
+    sec("Tombstones: the 2P-Set");
+    md(r`Keep a second grow-only set, the removed elements (**tombstones**). An element is in the set when it has been added and not removed. Both halves only grow, so a state is a pair in a product of semilattices:`);
+    md(r`
+> [!definition] 2P-Set
+> A **2P-Set** (two-phase set) is a pair of G-Sets $(A, T)$, the added and the tombstoned elements. Adding $x$ puts it in $A$, removing it puts it in $T$, merge is union on each half, and the members are $A \setminus T$.
+`);
     m("let TP = product(S, S)");
     m("join(TP, ({x}, {}), ({x}, {x}))", { work: true });
     m("join(TP, ({x}, {x}), ({x}, {}))");
+    md(r`The removal survives the merge, in either order.`);
+    sec("Removed for ever");
     md(r`
-> [!mistake]
-> A removed element can never come back: its tombstone outranks every later add, because the merge cannot tell a re-add from an old add it has already seen. The next lessons fix this two ways: with timestamps (last writer wins) and with unique tags (the OR-Set).
+> [!try]
+> $a$ adds $x$ and tells $b$; $b$ removes it; meanwhile $a$ adds $x$ again. After they exchange states, is $x$ in the set?
 `);
-    sec("Sets, run");
-    md(r`A G-Set merges by union. A 2P-Set keeps a second set of removed elements, also merged by union, and reads the added minus the removed: so a removal is for ever, and adding again does nothing.`);
-    m("replicas(gset; a, b; a: add x; b: add y; a -> b; b -> a)");
     m(`replicas(twopset; a, b
   a: add x
   a -> b
@@ -1802,7 +1900,13 @@ example : PNCounter.value (PNCounter.decr 0 (⊥ : PNCounter 1)) < 0 := by decid
   a: add x
   b -> a
 )`, { work: true });
+    md(r`
+> [!mistake]
+> Both read $\{\}$: the re-add is lost, the lost update again. $a$'s second add puts $x$ in the added set, where it already is, so the merge cannot tell a re-add from the old add it has seen, and the tombstone outranks both. The next lessons tell adds apart, two ways: by time (last writer wins) and by a unique tag on each add (the OR-Set).
+`);
+    md(r`In the simulator a 2P-Set replica may remove only an element it has seen added, so a tombstone never comes before its add.`);
     sec("In Lean");
+    md(r`To compute with finite sets (print them, decide equalities) the book represents them as **strictly sorted lists**: same members, same list, which is what antisymmetry needs. The chapter also proves the failed attempt wrong, ‹naiveRemove_resurrects›, and the 2P-Set's limit, ‹no_readd›.`);
     for (const c of crdtLesson(3)) lean(c);
     md(r`A sorted, duplicate-free sublist is no longer than the list it sits in; so a G-Set's size can only grow.`);
     lean(`${OPEN}theorem sorted_subset_length {α : Type} [TotalOrder α] :
@@ -1835,59 +1939,105 @@ example : PNCounter.value (PNCounter.decr 0 (⊥ : PNCounter 1)) < 0 := by decid
     lx(`theorem size_monotone {s t : GSet} (h : s ⊑ t) :
     SList.size s ≤ SList.size t := by`, r`Prove that a G-Set's size never shrinks under the information order.`, `  exact sorted_subset_length s.sorted t.sorted h`, [r`‹sorted_subset_length› does the work; a G-Set carries the proof that its list is sorted (‹s.sorted›).`]);
     sec("Exercises");
+    ex("le(TP, ({x}, {}), ({x}, {x}))", r`Is removing $x$ an inflation: is the 2P-Set state $(\{x\}, \{\})$ below $(\{x\}, \{x\})$? Answer ‹true› or ‹false›.`, [r`Compare the halves separately, by inclusion.`]);
     ex("join(TP, ({x, y}, {}), ({x}, {x}))", r`Merge the 2P-Set states $(\{x, y\}, \{\})$ and $(\{x\}, \{x\})$. Write it as ‹({…}, {…})›.`, [r`Union the added sets and the removed sets separately.`]);
     md(r`
 > [!summary]
-> Union is a join, so grow-only sets replicate for free. Removal needs tombstones, which only grow too; the 2P-Set pays for that with "removed once, removed forever".
+> Union is a join, so grow-only sets replicate for free. Deleting goes down and is undone by the next merge, so a removal must be recorded as a tombstone, which only grows too. The 2P-Set pays for that with "removed once, removed for ever": it cannot tell a re-add from an old add. Telling them apart needs more in the state, and the first idea is a clock.
 `);
   });
 
-  add("05-lww.chalk", "Last writer wins", "Overwrite, done lawfully: timestamps in the state, ties broken by replica, and the LWW-Element-Set.", ({ sec, md, m, ex, lean, lx }) => {
+  add("05-lww.chalk", "Last writer wins", "Overwrite, done lawfully: timestamps in the state, ties broken by replica, and what the merge silently throws away.", ({ sec, md, m, ex, lean, lx }) => {
     sec("Last writer wins");
     md(r`
 > [!goal]
-> Recover overwrite semantics as a join, by putting time in the state; see why ties must be broken and what convergence still costs.
+> Make "the latest write wins" a lawful merge by putting time in the state, and see what it silently discards.
 `);
-    md(r`A display name, a thermostat set point: here the *last* write should win. The move is the one every design in this course makes: if the merge needs information, put it in the state. Each write carries a stamp, and merge keeps the write with the larger stamp, breaking ties by replica identity. That is a join on a lexicographic order.`);
-    md(r`Done naively ("on a tie, keep the incoming one"), the merge is not commutative:`);
+    md(r`Some values should be overwritten: a display name, a thermostat's set point. Lesson 1's overwrite did not even converge, because "latest" meant "heard last", which differs from replica to replica. And the 2P-Set could not re-add because its merge could not tell which came later, the remove or the add. Both need the merge to know which write came later, so put that in the state: each write carries a **timestamp**, and the merge keeps the write with the larger one.`);
+    md(r`
+> [!try]
+> Two replicas write different values with the same timestamp. Which should the merge keep?
+`);
+    md(r`The naive answer, "on a tie, keep the incoming one", is overwrite again on tied writes, and it is not commutative:`);
     m("let Naive = op({w1, w2}; [w1, w2; w1, w2])");
     m("commutative(Naive)", { work: true });
+    md(r`Break ties with something every replica agrees on: the writer's identity. Compare writes by (timestamp, replica), lexicographically. That is a total order, and the maximum in a total order is a join. On three writes, ‹w3a› (stamp 3 at $a$), ‹w3b› (stamp 3 at $b$) and ‹w5a› (stamp 5 at $a$):`);
+    m("let Lex = op({w3a, w3b, w5a}; [w3a, w3b, w5a; w3b, w3b, w5a; w5a, w5a, w5a])");
+    m("semilattice(Lex)");
+    md(r`
+> [!definition] LWW-Register
+> A **last-writer-wins register** holds a value with its stamp (timestamp, replica), or nothing ($\bot$, never written). A write at time $t$ by replica $i$ joins in the stamped write; merge keeps the write with the lexicographically larger stamp.
+`);
     sec("A register, run");
-    md(r`An LWW-Register keeps the write with the latest timestamp, ties broken by replica. ‹write v @ t› gives the timestamp; without one, it is the event's number. The write that wins need not be the one made last in real time:`);
+    md(r`‹write v @ t› gives the timestamp; without one, it is the event's number. Here $b$ writes after $a$ in the schedule, but with a smaller stamp:`);
     m(`replicas(lww; a, b
   a: write red @ 5
   b: write blue @ 3
   a -> b
   b -> a
 )`, { work: true });
+    md(r`Red wins: "last" means the largest stamp, not the latest moment, and the clocks of different machines disagree. On a tie the replica decides, the same way at every replica (here ‹b›, listed after ‹a›):`);
+    m(`replicas(lww; a, b
+  a: write red @ 3
+  b: write blue @ 3
+  a -> b
+  b -> a
+)`);
+    sec("What it throws away");
+    md(r`
+> [!mistake]
+> Lesson 1's lost update was an LWW register: two taps each wrote "0 plus one", and the merge kept one. LWW converges by choosing, and the loser of two concurrent writes is discarded without a trace. For a display name that is the intended meaning; for a counter it loses taps.
+`);
+    m(`replicas(lww; a, b
+  a: write 1
+  b: write 1
+  a -> b
+  b -> a
+)`);
+    md(r`The **LWW-Element-Set** puts one LWW register per element, holding "added" or "removed". It fixes the 2P-Set's re-add (a later add outranks an earlier remove), but by the clock: a remove can cancel an add its replica never saw, if its stamp happens to be larger.`);
     sec("In Lean");
     for (const c of crdtLesson(4)) lean(c);
-    md(r`Three replicas with tied naive timestamps: grouping one merge differently changes the answer.`);
+    md(r`The book's naive merge keeps the left write on a tie. Three tied writes: swapping the order of the first merge changes the answer.`);
     lean(`example :
     LWW.naiveMerge (LWW.naiveMerge (3, 1) (3, 2)) (3, 3)
       ≠ LWW.naiveMerge (LWW.naiveMerge (3, 2) (3, 1)) (3, 3) := by decide`);
     lx(`${OPEN}theorem lww_merge_bot {R : Nat} (x : LWW.LWWReg R Nat) : ⊥ ⊔ x = x := by`, r`Prove that the never-written register is the identity of merge.`, `  exact Order.sup_bot_left x`, [r`Every bounded join-semilattice has $\bot \sqcup x = x$: look in the merge discipline's toolkit for ‹sup_bot_left›.`]);
     sec("Exercises");
-    ex("associative(Naive)", r`Is the naive merge associative? Answer ‹true› or ‹false›.`, [r`$(x \cdot y) \cdot z$ and $x \cdot (y \cdot z)$ both give $z$.`]);
+    ex("associative(Naive)", r`Is the naive tie merge associative? Answer ‹true› or ‹false›.`, [r`$(x \cdot y) \cdot z$ and $x \cdot (y \cdot z)$ both give $z$.`]);
+    ex("fold(Lex; w3a, w3b, w3a)", r`With ties broken by replica, a replica holding ‹w3a› hears ‹w3b›, then its own ‹w3a› again. What does it hold?`, [r`Same timestamp: the replica breaks the tie, and $b$ comes after $a$.`]);
     md(r`
 > [!summary]
-> Timestamps in the state turn overwrite into a join. Ties must be broken deterministically, or merging stops being commutative. The register converges, but one of two concurrent writes is silently discarded: convergence is not the same as keeping what users meant.
+> Timestamps in the state turn overwrite into a join, provided ties are broken the same way everywhere; otherwise merging stops being commutative. The register converges, but one of two concurrent writes is silently discarded: converging is not the same as keeping what users did. What a set needs is a remove that cancels exactly the adds it has seen, with no clock involved.
 `);
   });
 
-  add("06-orset.chalk", "The OR-Set: add wins", "Observed-remove: a remove deletes only the adds it has seen, so a concurrent add survives.", ({ sec, md, m, lean, lx }) => {
+  add("06-orset.chalk", "The OR-Set: add wins", "Observed-remove: tag every add, and let a remove delete only the tags it has seen, so re-adds work and a concurrent add survives.", ({ sec, md, m, ex, lean, lx }) => {
     sec("The OR-Set: add wins");
     md(r`
 > [!goal]
-> Build a set where removal only cancels the additions the remover observed, so that when an add and a remove race the add wins, and follow the book's proof of that slogan.
+> Build a set where a remove cancels exactly the adds its replica has seen, so that re-adds work and an add racing a remove wins.
 `);
-    md(r`The G-Set never forgets, the 2P-Set forgets once and forever, and the LWW-Element-Set lets a clock decide, so a remove can cancel an add its issuer never saw. The **observed-remove set** tags every add with a unique identifier; a remove tombstones the tags it has seen. An element is present when some tag of it is not tombstoned. A concurrent add carries a tag the remove never saw, so it survives: **add wins**.`);
+    md(r`The 2P-Set's tombstone on $x$ kills every later add of $x$; the LWW-Element-Set lets a clock decide, so a remove can kill an add its replica never saw. Both remove too much.`);
     md(r`
-> [!theorem] Add wins
-> If an add of $e$ is concurrent with a remove of $e$, then after both are merged $e$ is in the set. The proof (the longest in the book) runs on an invariant of reachable states, not on the algebra alone.
+> [!try]
+> When replica $b$ removes $x$, which adds of $x$ should that remove cancel? What would the state need so that the merge can tell?
 `);
-    sec("Add wins, run");
-    md(r`Each add makes a tag of its own (‹x@a1› is ‹a›'s first add); a remove removes the tags of that element its replica has seen. Here ‹b› removes ‹x› while ‹a› adds it again: the new tag was not seen, so it survives.`);
+    md(r`The adds $b$ has seen, and no others: not future ones, not concurrent ones it has not heard of. To cancel "the adds I have seen" the merge must tell adds apart, so give each add a **unique tag**: the replica and its own count of adds, a pair no replica mints twice. A remove tombstones the tags of $x$ it has seen. $x$ is in the set while some tag of it is not tombstoned. A re-add mints a fresh tag, which no old tombstone covers.`);
+    md(r`
+> [!definition] OR-Set
+> An **observed-remove set** keeps a set of tagged adds and a set of tombstoned tags, both grow-only. Adding $x$ at replica $i$ records $x$ with a fresh tag of $i$'s; removing $x$ tombstones every tag of $x$ the replica holds; merge is union on each part; $x$ is a member when it has a tag that is not tombstoned.
+`);
+    sec("The 2P-Set's failure, rerun");
+    md(r`The schedule that lost the 2P-Set's re-add, with one more message so that both replicas hear everything:`);
+    m(`replicas(twopset; a, b
+  a: add x
+  a -> b
+  b: remove x
+  a: add x
+  b -> a
+  a -> b
+)`);
+    md(r`The same schedule on an OR-Set. Each add makes a tag of its own (‹x@a1› is ‹a›'s first add); ‹b›'s remove tombstones ‹x@a1›, the only tag it has seen, and ‹x@a2› survives:`);
     m(`replicas(orset; a, b
   a: add x
   a -> b
@@ -1896,35 +2046,64 @@ example : PNCounter.value (PNCounter.decr 0 (⊥ : PNCounter 1)) < 0 := by decid
   b -> a
   a -> b
 )`, { work: true });
+    md(r`
+> [!theorem] Add wins
+> Replica $i$ adds $e$ to its state $s_A$; concurrently, a peer removes $e$ from its state $s_B$, which has not seen that add ($s_B$'s count for $i$ is at most $s_A$'s). If both states are well formed, then $e$ is a member of the merge of the two results. Well formed means an invariant every reachable state keeps: tombstones cover only recorded adds, and a replica's count for each replica is above every tag of that replica's it has recorded.
+`);
+    md(r`
+> [!mistake]
+> Tags must never be reused. Let the re-add recycle the old tag ‹x@a1›: then $b$'s earlier remove, which tombstoned ‹x@a1›, also kills the re-add (‹tag_reuse_bites› in the Lean below).
+`);
     sec("In Lean");
     for (const c of crdtLesson(5)) lean(c);
     md(r`Tombstones are the price: they only ever accumulate.`);
     lx(`theorem orset_tombs_size_monotone {R : Nat} {s t : ORSet R} (h : s ⊑ t) :
     SList.size s.tombs ≤ SList.size t.tombs := by`, r`Prove that an OR-Set's tombstones never shrink.`, `  exact sorted_subset_length s.tombs.sorted t.tombs.sorted h.2.1`, [r`The order on OR-Set states compares the tombstone sets as its second component: ‹h.2.1›.`, r`Lesson 4's ‹sorted_subset_length› finishes it.`]);
+    sec("Exercises");
+    md(r`An OR-Set state for one element $x$, as a pair (tags added, tags tombstoned) over two tags: ‹t1›, an add both replicas saw, and ‹t2›, a later re-add.`);
+    m("let T = subsets({t1, t2})");
+    m("let OR = product(T, T)");
+    ex("join(OR, ({t1, t2}, {}), ({t1}, {t1}))", r`Replica $a$ holds $(\{t1, t2\}, \{\})$. Replica $b$ removed $x$ having seen only ‹t1›: it holds $(\{t1\}, \{t1\})$. Merge them. Write it as ‹({…}, {…})›.`, [r`Union each half.`, r`‹t2› is added and not tombstoned, so $x$ is still in the set: add wins.`]);
     md(r`
 > [!summary]
-> Unique tags make removal precise: a remove deletes what it observed and nothing else. Add wins, re-adds work, and the cost is tombstones that never go away.
+> A unique tag on every add makes removal precise: a remove deletes what it observed and nothing else. Re-adds work, a concurrent add survives a remove, and the cost is tombstones that never go away. Every run so far has ended with the replicas agreeing; the next lesson proves they always will.
 `);
   });
 
-  add("07-convergence.chalk", "Multisets, folds and the main theorem", "Quotient types for 'the same updates, in any order', and strong eventual consistency proved once for every CRDT.", ({ sec, md, m, ex, lean, lx }) => {
+  add("07-convergence.chalk", "Multisets, folds and the main theorem", "Why the three laws are exactly enough: drop one and a network breaks it; keep all three and the same updates give the same state, proved once for every CRDT.", ({ sec, md, m, ex, lean, lx }) => {
     sec("Multisets, folds and the main theorem");
     md(r`
 > [!goal]
-> State and prove the main theorem: replicas that have received the same updates, in any order and with any repetitions, are in the same state. Along the way, learn quotient types.
+> Prove, once for every design in this course, that replicas which have received the same updates are in the same state, and see that each of the three laws is needed.
 `);
-    md(r`Each earlier lesson ended with replicas agreeing after scrambled deliveries; none proved they must. A replica receives a *sequence* of updates, but what should matter is the *collection* of them, order and repetition being noise. The honest type for that is a **quotient**: lists modulo permutation are multisets.`);
+    md(r`Every run so far ended with the replicas agreeing, but a run is one schedule. Lesson 1 matched each law of a join to something the network does: commutativity to reordering, associativity to relaying, idempotence to duplication.`);
+    md(r`
+> [!try]
+> Drop one law at a time. Which network behaviour can then make two replicas with the same updates disagree?
+`);
+    sec("Drop a law, break a network");
+    md(r`Drop commutativity: overwrite. Two replicas hear the same two messages in different orders and disagree:`);
+    m("let Ow = op({a, b}; [a, b; a, b])");
+    m("fold(Ow; a, b)");
+    m("fold(Ow; b, a)");
+    md(r`Drop associativity: "keep the winner" of rock, paper, scissors. It is commutative and idempotent, but grouping matters:`);
+    m("let RPS = op({r, p, s}; [r, p, r; p, p, s; r, s, s])");
+    m("commutative(RPS)");
+    m("associative(RPS)", { work: true });
+    md(r`A replica that merged $r$ and $p$ and then hears $s$ holds $s$; one that holds $r$ and hears from a relay that had already merged $p$ and $s$ holds $r$. Drop idempotence: addition is commutative and associative, and one duplicated delivery counts twice (‹comm_assoc_not_enough› in the Lean below).`);
+    sec("Keep all three");
     md(r`
 > [!theorem] Strong eventual consistency
-> For any state-based CRDT, folding the join over two delivery sequences with the same members gives the same state. Order does not matter (commutativity and associativity), and repeats do not matter (idempotence).
+> In any join-semilattice, folding the join from $\bot$ over two delivery lists with the same members, in any order and with any number of repetitions, gives the same state.
 `);
-    md(r`On a small table, any order and any repetition of the same updates:`);
+    md(r`On a small table, the same updates in different orders and multiplicities:`);
     m("let Mx = op({0, 1, 2, 3}; [0, 1, 2, 3; 1, 1, 2, 3; 2, 2, 2, 3; 3, 3, 3, 3])");
     m("fold(Mx; 1, 3, 2)");
     m("fold(Mx; 2, 2, 1, 3, 1)");
+    md(r`The proof does not shuffle lists. Each fold is the least upper bound of the members of its list, and the two lists have the same members, so the folds are the least upper bound of the same set, and a least upper bound is unique (antisymmetry). Along the way the book makes "a list, up to order" a type, a **quotient**: lists modulo permutation are multisets, and the fold is defined on them because a permutation does not change it.`);
     sec("In Lean");
     for (const c of crdtLesson(6)) lean(c);
-    md(r`Multiset union is well-defined on the quotient because appending respects permutation, on either side:`);
+    md(r`Multiset union is well defined on the quotient because appending respects permutation, on either side:`);
     lean(`theorem perm_append_right {α : Type} (m : List α) {l₁ l₂ : List α}
     (h : Perm l₁ l₂) : Perm (l₁ ++ m) (l₂ ++ m) := by
   induction h with
@@ -1944,22 +2123,27 @@ example : PNCounter.value (PNCounter.decr 0 (⊥ : PNCounter 1)) < 0 := by decid
 example : msetUnion (MSet.ofList [1, 2]) (MSet.ofList [3])
     = MSet.ofList [1, 2, 3] := rfl`);
     sec("Exercises");
-    ex("fold(Mx; 3, 0, 3, 1)", r`A replica receives $3, 0, 3, 1$. What is its state?`, []);
+    ex("fold(Mx; 3, 0, 3, 1)", r`Under "keep the larger", a replica receives $3, 0, 3, 1$. What is its state?`, []);
+    ex("fold(RPS; s, p, r)", r`Under the rock-paper-scissors merge, a replica receives $s$, $p$, $r$ in that order. What does it hold? (Above, $r$, $p$, $s$ gave $s$.)`, [r`$s \cdot p = s$ first.`]);
     md(r`
 > [!summary]
-> The main theorem is proved once: for any CRDT whose merge is a join, the same multiset of updates gives the same state. Quotient types make "same updates, any order" a type, and the fold over it well-defined.
+> Each law of a join answers one thing the network does, and without any one of them some network makes replicas disagree. With all three, the main theorem holds for every state-based CRDT at once: the same set of updates, in any order and any number of times, gives the same state. Its hypothesis is "the same updates". The next lesson asks what a network must do to deliver that.
 `);
   });
 
-  add("08-delivery.chalk", "Delivery: gossip, duplication and reordering", "A trace semantics for an at-least-once network, eventual delivery implies convergence, and a gossip driver that provably stops.", ({ sec, md, m, lean, lx }) => {
+  add("08-delivery.chalk", "Delivery: gossip, duplication and reordering", "What the network may do to messages, why only loss matters, eventual delivery as the one requirement, and a gossip driver that provably stops.", ({ sec, md, m, ex, lean, lx }) => {
     sec("Delivery: gossip, duplication and reordering");
     md(r`
 > [!goal]
-> Model the network: every execution an adversarial at-least-once network could produce, as a relation; prove that eventual delivery gives convergence; and write a gossip driver whose termination Lean accepts.
+> Find the one thing a state-based CRDT needs from the network, prove that it gives convergence, and write a gossip driver whose termination Lean accepts.
 `);
-    md(r`The main theorem assumed replicas had received the same set of updates. Where do those sets come from? This lesson builds the network twice: as an inductive **trace semantics** (a step relation: update, send, deliver, with messages duplicated and reordered at will), and as an **executable gossip driver** run to quiescence, whose termination is proved by well-founded recursion.`);
-    sec("Delayed and duplicated messages, run");
-    md(r`‹m := a› puts a copy of ‹a›'s state in flight; ‹b <- m› delivers it, possibly later, possibly twice. An old message delivered after newer ones, or twice, changes nothing more, because the merge is a join:`);
+    md(r`The main theorem assumed that the replicas had received the same updates. A real network delays messages, delivers them out of order, delivers them twice, and loses them. Which of these can a join absorb?`);
+    sec("Delayed and duplicated messages");
+    md(r`‹m := a› puts a copy of ‹a›'s state in flight; ‹b <- m› delivers it, possibly later, possibly twice.`);
+    md(r`
+> [!try]
+> Below, ‹m› leaves ‹a› after its first increment and reaches ‹b› only after ‹b› has heard ‹a›'s newer state, and then again. Predict whether the old message changes ‹b›.
+`);
     m(`replicas(gcounter; a, b, c
   a: inc
   m := a
@@ -1970,6 +2154,17 @@ example : msetUnion (MSet.ofList [1, 2]) (MSet.ofList [3])
   c <- m
   b -> c
 )`, { step: 0 });
+    md(r`It changes nothing: an old state is below the newer one, so joining it in is a no-op, and a duplicate is idempotence at work. ‹c› gets the stale message first and catches up through ‹b›.`);
+    sec("Lost messages");
+    md(r`A message that never arrives is different:`);
+    m(`replicas(gcounter; a, b
+  a: inc
+  m := a
+  a: inc
+)`);
+    md(r`No merge can recover an update that never reached a replica. So the one requirement is **eventual delivery**: every update reaches every replica in the end, directly or relayed inside some other replica's state, after any delays and duplicates.`);
+    sec("The network, twice over");
+    md(r`The Lean builds the network two ways. As a **trace semantics**: a step relation on configurations (an update, a send, or the delivery of any message in flight, which stays in flight, so it can be delivered again or never), and the theorem that once every update has reached every replica, all replicas hold equal states. And as an **executable gossip driver**, run until no exchange teaches anyone anything new; Lean accepts its recursion because a measure, the number of updates still missing somewhere, strictly decreases with each exchange.`);
     sec("In Lean");
     for (const c of crdtLesson(7)) lean(c);
     md(r`Replicas never forget: what a replica has seen only grows along any execution.`);
@@ -1995,45 +2190,86 @@ example : msetUnion (MSet.ofList [1, 2]) (MSet.ofList [3])
       r`Induction on the reachability derivation: ‹refl› and ‹tail›.`,
       r`In the ‹tail› case, case on the last step: an update or a delivery may add to some replica's list (‹by_cases› on whether it is ‹r›); a send changes nothing.`,
     ]);
+    sec("Exercises");
+    m("let C3 = chain(3)");
+    m("let G = product(C3, C3)");
+    ex("le(G, (1, 0), (2, 1))", r`A G-Counter replica holds $(2, 1)$ when a delayed message holding $(1, 0)$ arrives. Is the message's state below the replica's, so that delivering it changes nothing? Answer ‹true› or ‹false›.`, [r`Compare slot by slot.`]);
     md(r`
 > [!summary]
-> An at-least-once network is a relation on configurations; eventual delivery is a property of executions; and under it, every state-based CRDT converges. The gossip driver runs that argument as a program, and its termination is a theorem.
+> Delay, reordering and duplication cost a join nothing; only loss matters, so eventual delivery is the whole requirement, and under it every state-based CRDT converges. The gossip driver runs that argument as a program, and its termination is a theorem. One question has waited since lesson 5: LWW threw away one of two concurrent writes. How could a replica even tell that two writes were concurrent?
 `);
   });
 
-  add("09-version-vectors.chalk", "Version vectors and causality", "Time without clocks: the G-Counter again, read as a causal history, and concurrency as incomparability.", ({ sec, md, m, ex, lean, lx }) => {
+  add("09-version-vectors.chalk", "Version vectors and causality", "Time without clocks: record how much you have seen from each replica, which is the G-Counter again, and read concurrency as incomparability.", ({ sec, md, m, ex, lean, lx }) => {
     sec("Version vectors and causality");
     md(r`
 > [!goal]
-> Track causality without clocks: a version vector records how many events of each replica have been seen; happened-before is its order, and concurrency is incomparability.
+> Tell "newer" from "concurrent" without clocks, by recording how many events of each replica have been seen.
 `);
-    md(r`A **version vector** has one entry per replica: how many of that replica's events have been seen. Its merge is the pointwise maximum and its bottom is all zeroes: it is exactly the G-Counter, read differently. Event $e$ **happened before** $f$ when $e$'s vector is below $f$'s; two events are **concurrent** when neither vector is below the other.`);
+    md(r`LWW compared timestamps, so of two writes it always called one later, even when neither writer had seen the other's write. To do better a replica must answer a different question: had the writer of this state seen my write, or did we write without knowing of each other?`);
+    md(r`
+> [!try]
+> What could a state carry to answer that? Think of what a G-Counter's slots record.
+`);
+    md(r`For each replica, how many of its events I have seen. That is a G-Counter's state read differently: a slot per replica, merged by the maximum, all zeroes at the start.`);
+    md(r`
+> [!definition] Version vector
+> A **version vector** has one entry per replica: how many of that replica's events have been seen. Event $e$ **happened before** $f$ when $e$'s vector is strictly below $f$'s; $e$ and $f$ are **concurrent** when neither vector is below the other.
+`);
     m("let C3 = chain(3)");
     m("let V = product(C3, C3)");
     m("le(V, (1, 0), (0, 1))", { work: true });
     m("le(V, (0, 1), (1, 0))");
     m("join(V, (1, 0), (0, 1))");
-    md(r`A tick at replica 1 and a tick at replica 2 are concurrent: neither saw the other. Concurrency is not a failure to know the order; it is a fact about what each replica had seen.`);
+    md(r`A first event at replica 1 and a first event at replica 2 are concurrent: neither saw the other. Concurrency is not a failure to know the order; it is a fact about what each replica had seen. Their join, $(1, 1)$, is a history that includes both.`);
+    sec("Clocks on a diagram");
+    md(r`‹clocks› computes the vector of every event in a space-time diagram: each process as its events in order, each arrow a message from its sending to its receipt. Here ‹a1› sends to ‹b2›, and ‹b1› to ‹a3›:`);
+    m("clocks({a1, a2, a3}, {b1, b2}; a1->b2, b1->a3)");
+    md(r`‹a1› at $(1, 0)$ is below ‹b2› at $(1, 2)$: through the message, ‹a1› happened before ‹b2›. ‹a2› at $(2, 0)$ and ‹b2› at $(1, 2)$ are incomparable: concurrent. The happens-before order itself:`);
+    m("let E = events({a1, a2, a3}, {b1, b2}; a1->b2, b1->a3)");
+    m("concurrent(E, a2, b2)");
+    md(r`With version vectors a register can keep both of two concurrent writes instead of dropping one (a multi-value register; this course does not build it), and a network can deliver **causally**: hold a message until it is the next event of its sender and everything it depends on has been seen.`);
     sec("In Lean");
     for (const c of crdtLesson(8)) lean(c);
     lx(`${OPEN}theorem vv_merge_lub {R : Nat} {v w u : VV R} (hv : v ⊑ u) (hw : w ⊑ u) :
     v ⊔ w ⊑ u := by`, r`Prove that the merged version vector is below any vector above both: it is the least upper bound of the two histories.`, `  exact sup_le v w u hv hw`, [r`It is the join's defining property, ‹sup_le›.`]);
     sec("Exercises");
-    ex("le(V, (1, 1), (2, 1))", r`Did the event with vector $(1, 1)$ happen before the one with $(2, 1)$? Answer ‹true› or ‹false›.`, []);
+    ex("le(V, (1, 1), (2, 1))", r`Is the version vector $(1, 1)$ below $(2, 1)$, so that its event happened before the other? Answer ‹true› or ‹false›.`, []);
     ex("join(V, (2, 0), (0, 1))", r`Merge the version vectors $(2, 0)$ and $(0, 1)$.`, [r`Pointwise maximum.`]);
+    ex("concurrent(E, a3, b2)", r`In the diagram above, are ‹a3› and ‹b2› concurrent? Answer ‹true› or ‹false›.`, [r`Compare their clocks, $(3, 1)$ and $(1, 2)$.`]);
     md(r`
 > [!summary]
-> Version vectors are G-Counters that count events; their order is causality, their join is merging histories, and incomparable vectors are concurrent events. Causal delivery waits until a message is the next event of its sender and everything it depends on has been seen.
+> Version vectors are G-Counters that count events: their order is causality, their join merges histories, and incomparable vectors are concurrent events. Every design so far ships whole states. A state with a slot per replica grows with the system; why not ship just the operation?
 `);
   });
 
-  add("10-op-based.chalk", "Op-based CRDTs", "Shipping operations instead of states: commutativity moves from the merge to the operations, and duplication becomes the network's problem.", ({ sec, md, lean, lx }) => {
+  add("10-op-based.chalk", "Op-based CRDTs", "Shipping operations instead of states: what the join used to absorb becomes the network's job, commuting operations and exactly-once delivery.", ({ sec, md, m, lean, lx }) => {
     sec("Op-based CRDTs");
     md(r`
 > [!goal]
-> Compare the two traditions: state-based replicas ship states and join them; operation-based replicas ship operations and apply them. See what each asks of the network, and how one simulates the other.
+> Ship operations instead of states, and find out what the network must then promise.
 `);
-    md(r`In an **op-based** CRDT a replica ships the operation it performed ("increment slot 3", "add element 7"), and every receiver applies it. Messages are small, but there is no join to hide behind: if operations arrive out of order they must **commute**, and if one arrives twice it is applied twice, so the transport must deliver **exactly once**. The burden moves from the algebra to the network.`);
+    md(r`A G-Counter's state has a slot per replica. With thousands of replicas, every sync ships thousands of numbers to say "one more tap". Why not ship the operation itself, "increment slot 3"?`);
+    md(r`
+> [!try]
+> Lesson 8's network delays, reorders, duplicates and loses messages. Which of these can a message saying "increment slot 3" survive, applied on arrival?
+`);
+    md(r`Reordering, yes: increments commute. Duplication, no: an increment applied twice counts twice, and there is no join to absorb the repeat. A state-based counter shrugs off the same duplicate:`);
+    m(`replicas(gcounter; a, b
+  a: inc
+  m := a
+  b <- m
+  b <- m
+)`);
+    md(r`
+> [!definition] Op-based CRDT
+> In an **operation-based** CRDT a replica ships each operation it performs, and every replica applies every operation once. Concurrent operations must **commute**, so that the order of arrival does not matter, and the transport must deliver each operation **exactly once**.
+`);
+    md(r`
+> [!mistake]
+> Sets are worse. Add and remove of the same element do not commute, so an op-based set also needs causal delivery; and a duplicated old remove, delivered after a re-add, kills the re-add. The Lean below proves both (‹setops_not_comm›, ‹op_set_dup_kills_readd›), and the counter's double count (‹op_dup_overcounts›).
+`);
+    md(r`The burden moves from the algebra to the network, in exchange for small messages. The two readings agree where they meet: for operations that only go up, joining the states a replica would ship after each operation gives exactly the state that replaying its operations gives (‹foldJoin_statesAlong›).`);
     sec("In Lean");
     for (const c of crdtLesson(9)) lean(c);
     md(r`Increments commute, so the G-Counter is also an op-based CRDT:`);
@@ -2052,32 +2288,79 @@ example : msetUnion (MSet.ofList [1, 2]) (MSet.ofList [3])
     · rw [increment_comm]`);
     md(r`
 > [!summary]
-> State-based CRDTs tolerate any network that eventually delivers; op-based CRDTs need commuting operations and exactly-once delivery, in exchange for small messages. Each can simulate the other.
+> State-based CRDTs tolerate any network that eventually delivers; op-based CRDTs need commuting operations and exactly-once delivery, in exchange for small messages. For inflationary operations the Lean proves the two readings of a history agree. Every part is now built: can they be put together into one store without new proofs?
 `);
   });
 
-  add("11-capstone.chalk", "Capstone: a replicated store", "A collaborative shopping list from the course's parts: an OR-Set of items, each with a PN-Counter quantity, converging with no new proofs.", ({ sec, md, lean }) => {
+  add("11-capstone.chalk", "Capstone: a replicated store", "A collaborative shopping list from the course's parts: an OR-Set of items, each with a PN-Counter quantity, converging with no new proofs.", ({ sec, md, m, lean }) => {
     sec("Capstone: a replicated store");
     md(r`
 > [!goal]
-> Assemble a collaborative shopping list from the earlier designs, run three replicas under an adversarial schedule, and see that its convergence needs no new proof.
+> Assemble a collaborative shopping list from the earlier designs, run it under a scrambled schedule, and see that its convergence needs no new proof.
 `);
-    md(r`The list is an OR-Set of items (adds must win, re-adds must work), and each item has a quantity that goes up and down, a PN-Counter, one per item: a pointwise function lattice. Products and function spaces of semilattices are semilattices, so the store is one, and the main theorem applies to it as it is. Alice, Bob and Carol edit concurrently; their messages are reordered and duplicated; they agree.`);
+    md(r`Alice, Bob and Carol share a shopping list. Items come and go, and an item can be crossed off and put back; each item has a quantity that goes up and down.`);
+    md(r`
+> [!try]
+> Which design from this course would you use for the items, and which for a quantity? Why not the others?
+`);
+    md(r`Items: an **OR-Set**. A G-Set cannot remove, a 2P-Set cannot re-add, and an LWW-Element-Set lets a clock cancel an add the remover never saw. Quantities: a **PN-Counter** per item. An LWW register would drop one of two concurrent changes, and a G-Counter cannot go down.`);
+    sec("The list, run");
+    md(r`Alice and Carol both add bread; Bob adds eggs, thinks better of it, and adds milk; then Alice crosses bread off, having seen only her own add. The messages arrive in no particular order, one of them twice:`);
+    m(`replicas(orset; alice, bob, carol
+  alice: add bread
+  carol: add bread
+  bob: add eggs
+  bob: remove eggs
+  bob: add milk
+  alice: remove bread
+  bob -> alice
+  carol -> alice
+  bob -> alice
+  alice -> bob
+  alice -> carol
+)`, { work: true });
+    md(r`Bread stays: Alice's remove tombstoned only her own tag, and Carol's concurrent add wins. Eggs are gone, milk is there, and all three agree. Bread's quantity, a PN-Counter, with Alice adding two and Carol one:`);
+    m(`replicas(pncounter; alice, bob, carol
+  alice: inc
+  alice: inc
+  carol: inc
+  alice -> bob
+  carol -> bob
+  bob -> alice
+  bob -> carol
+)`);
+    sec("Why no new proof");
+    md(r`The store is a pair, an OR-Set and a map from items to PN-Counters. A product of semilattices is a semilattice (join each part), and so is a map into one (join pointwise). So the store is a state-based CRDT as it stands, and lesson 7's theorem applies to it unchanged: in the Lean, ‹sec_store› is one line. The Lean runs the whole store (items and quantities) under three schedules, orderly, reversed with duplicates, and chaotic with self-merges, and prints the same list for every replica: bread ×3, milk ×1, no eggs.`);
     sec("In Lean");
     for (const c of crdtLesson(10)) lean(c);
     md(r`
 > [!summary]
-> Composition is the payoff: a store built from verified parts, with lattice products and function spaces, inherits strong eventual consistency without a single new proof.
+> Composition is the payoff: a store built from verified parts, with lattice products and pointwise maps, inherits strong eventual consistency without a single new proof. Every replica agrees on the list. Is what they agree on always right?
 `);
   });
 
-  add("12-limits.chalk", "What CRDTs cannot do", "Agreement is not correctness: invariants that need coordination, and the axiom audit.", ({ sec, md, lean }) => {
+  add("12-limits.chalk", "What CRDTs cannot do", "Agreement is not correctness: a balance that converges below zero, invariants that need coordination, and the axiom audit.", ({ sec, md, m, lean }) => {
     sec("What CRDTs cannot do");
     md(r`
 > [!goal]
-> Walk the boundary of the promise: strong eventual consistency says replicas agree, not that what they agree on is right; some invariants cannot be kept without coordination.
+> Find the boundary of the promise: replicas that converge agree, but what they agree on can still be wrong, and some invariants cannot be kept without coordination.
 `);
-    md(r`A last-writer-wins register converges while discarding one of two concurrent writes. A bank balance that must never go negative cannot be a CRDT: two replicas can each approve a withdrawal that is fine locally, and no merge can make both right. Invariants that span replicas need coordination (a lock, consensus, an escrow of rights) somewhere; CRDTs are for the state that does not.`);
+    md(r`A bank balance as a PN-Counter, with one rule: it must never go below zero. The balance is 1, and both replicas know it. Each receives a withdrawal of 1 and approves it, because locally the balance is 1.`);
+    md(r`
+> [!try]
+> Predict the balance once the replicas have synced.
+`);
+    m(`replicas(pncounter; a, b
+  a: inc
+  a -> b
+  a: dec
+  b: dec
+  a -> b
+  b -> a
+)`, { work: true });
+    md(r`Both read $-1$. They have converged, and the rule is broken. No cleverer merge fixes it: in the Lean, ‹no_bank_merge› shows that no idempotent merge can honour both of two withdrawals of 80 from 100. Idempotence forces the merge of $20$ with $20$ to be $20$, while honouring both withdrawals needs $-60$. Each replica was right about its own state and neither could know about the other's withdrawal without asking it first.`);
+    md(r`The same boundary showed up earlier. LWW converges by discarding one of two concurrent writes. Tombstones pile up for ever, and throwing one away safely needs to know that every replica has seen its remove: agreement about the state of everyone, which is coordination again.`);
+    md(r`Invariants that span replicas (no overdraft, unique usernames, at most ten seats sold) need coordination somewhere: a lock, consensus, or an escrow that hands each replica a share it may spend alone. CRDTs are for the state that does not need it.`);
     sec("In Lean");
     for (const c of crdtLesson(11)) lean(c);
     md(r`

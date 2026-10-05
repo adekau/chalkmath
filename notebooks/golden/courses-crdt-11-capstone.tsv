@@ -1,1 +1,2 @@
-
+7	replicas(orset; alice, bob, carol\n  alice: add bread\n  carol: add bread\n  bob: add eggs\n  bob: remove eggs\n  bob: add milk\n  alice: remove bread\n  bob -> alice\n  carol -> alice\n  bob -> alice\n  alice -> bob\n  alice -> carol\n)	= {alice↦{bread, milk}, bob↦{bread, milk}, carol↦{bread, milk}}
+9	replicas(pncounter; alice, bob, carol\n  alice: inc\n  alice: inc\n  carol: inc\n  alice -> bob\n  carol -> bob\n  bob -> alice\n  bob -> carol\n)	= {alice↦3, bob↦3, carol↦3}

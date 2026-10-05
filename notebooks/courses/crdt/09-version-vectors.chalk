@@ -9,13 +9,31 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Track causality without clocks: a version vector records how many events of each replica have been seen; happened-before is its order, and concurrency is incomparability.",
+      "src": "> [!goal]\n> Tell \"newer\" from \"concurrent\" without clocks, by recording how many events of each replica have been seen.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "A **version vector** has one entry per replica: how many of that replica's events have been seen. Its merge is the pointwise maximum and its bottom is all zeroes: it is exactly the G-Counter, read differently. Event $e$ **happened before** $f$ when $e$'s vector is below $f$'s; two events are **concurrent** when neither vector is below the other.",
+      "src": "LWW compared timestamps, so of two writes it always called one later, even when neither writer had seen the other's write. To do better a replica must answer a different question: had the writer of this state seen my write, or did we write without knowing of each other?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> What could a state carry to answer that? Think of what a G-Counter's slots record.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "For each replica, how many of its events I have seen. That is a G-Counter's state read differently: a slot per replica, merged by the maximum, all zeroes at the start.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Version vector\n> A **version vector** has one entry per replica: how many of that replica's events have been seen. Event $e$ **happened before** $f$ when $e$'s vector is strictly below $f$'s; $e$ and $f$ are **concurrent** when neither vector is below the other.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -46,7 +64,46 @@
       "label": null
     },
     {
-      "src": "A tick at replica 1 and a tick at replica 2 are concurrent: neither saw the other. Concurrency is not a failure to know the order; it is a fact about what each replica had seen.",
+      "src": "A first event at replica 1 and a first event at replica 2 are concurrent: neither saw the other. Concurrency is not a failure to know the order; it is a fact about what each replica had seen. Their join, $(1, 1)$, is a history that includes both.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Clocks on a diagram",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`clocks` computes the vector of every event in a space-time diagram: each process as its events in order, each arrow a message from its sending to its receipt. Here `a1` sends to `b2`, and `b1` to `a3`:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "clocks({a1, a2, a3}, {b1, b2}; a1->b2, b1->a3)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`a1` at $(1, 0)$ is below `b2` at $(1, 2)$: through the message, `a1` happened before `b2`. `a2` at $(2, 0)$ and `b2` at $(1, 2)$ are incomparable: concurrent. The happens-before order itself:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let E = events({a1, a2, a3}, {b1, b2}; a1->b2, b1->a3)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "concurrent(E, a2, b2)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "With version vectors a register can keep both of two concurrent writes instead of dropping one (a multi-value register; this course does not build it), and a network can deliver **causally**: hold a message until it is the next event of its sender and everything it depends on has been seen.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -84,7 +141,7 @@
     {
       "src": "le(V, (1, 1), (2, 1))",
       "type": "exercise",
-      "prompt": "Did the event with vector $(1, 1)$ happen before the one with $(2, 1)$? Answer `true` or `false`.",
+      "prompt": "Is the version vector $(1, 1)$ below $(2, 1)$, so that its event happened before the other? Answer `true` or `false`.",
       "showWork": false,
       "label": null
     },
@@ -99,7 +156,17 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> Version vectors are G-Counters that count events; their order is causality, their join is merging histories, and incomparable vectors are concurrent events. Causal delivery waits until a message is the next event of its sender and everything it depends on has been seen.",
+      "src": "concurrent(E, a3, b2)",
+      "type": "exercise",
+      "prompt": "In the diagram above, are `a3` and `b2` concurrent? Answer `true` or `false`.",
+      "hints": [
+        "Compare their clocks, $(3, 1)$ and $(1, 2)$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Version vectors are G-Counters that count events: their order is causality, their join merges histories, and incomparable vectors are concurrent events. Every design so far ships whole states. A state with a slot per replica grows with the system; why not ship just the operation?",
       "type": "markdown",
       "showWork": false,
       "label": null

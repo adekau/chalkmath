@@ -9,19 +9,25 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Recover overwrite semantics as a join, by putting time in the state; see why ties must be broken and what convergence still costs.",
+      "src": "> [!goal]\n> Make \"the latest write wins\" a lawful merge by putting time in the state, and see what it silently discards.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "A display name, a thermostat set point: here the *last* write should win. The move is the one every design in this course makes: if the merge needs information, put it in the state. Each write carries a stamp, and merge keeps the write with the larger stamp, breaking ties by replica identity. That is a join on a lexicographic order.",
+      "src": "Some values should be overwritten: a display name, a thermostat's set point. Lesson 1's overwrite did not even converge, because \"latest\" meant \"heard last\", which differs from replica to replica. And the 2P-Set could not re-add because its merge could not tell which came later, the remove or the add. Both need the merge to know which write came later, so put that in the state: each write carries a **timestamp**, and the merge keeps the write with the larger one.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "Done naively (\"on a tie, keep the incoming one\"), the merge is not commutative:",
+      "src": "> [!try]\n> Two replicas write different values with the same timestamp. Which should the merge keep?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The naive answer, \"on a tie, keep the incoming one\", is overwrite again on tied writes, and it is not commutative:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -37,13 +43,35 @@
       "label": null
     },
     {
+      "src": "Break ties with something every replica agrees on: the writer's identity. Compare writes by (timestamp, replica), lexicographically. That is a total order, and the maximum in a total order is a join. On three writes, `w3a` (stamp 3 at $a$), `w3b` (stamp 3 at $b$) and `w5a` (stamp 5 at $a$):",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let Lex = op({w3a, w3b, w5a}; [w3a, w3b, w5a; w3b, w3b, w5a; w5a, w5a, w5a])",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "semilattice(Lex)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] LWW-Register\n> A **last-writer-wins register** holds a value with its stamp (timestamp, replica), or nothing ($\\bot$, never written). A write at time $t$ by replica $i$ joins in the stamped write; merge keeps the write with the lexicographically larger stamp.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "A register, run",
       "type": "section",
       "showWork": false,
       "label": null
     },
     {
-      "src": "An LWW-Register keeps the write with the latest timestamp, ties broken by replica. `write v @ t` gives the timestamp; without one, it is the event's number. The write that wins need not be the one made last in real time:",
+      "src": "`write v @ t` gives the timestamp; without one, it is the event's number. Here $b$ writes after $a$ in the schedule, but with a smaller stamp:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -51,6 +79,40 @@
     {
       "src": "replicas(lww; a, b\n  a: write red @ 5\n  b: write blue @ 3\n  a -> b\n  b -> a\n)",
       "showWork": true,
+      "label": null
+    },
+    {
+      "src": "Red wins: \"last\" means the largest stamp, not the latest moment, and the clocks of different machines disagree. On a tie the replica decides, the same way at every replica (here `b`, listed after `a`):",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "replicas(lww; a, b\n  a: write red @ 3\n  b: write blue @ 3\n  a -> b\n  b -> a\n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "What it throws away",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> Lesson 1's lost update was an LWW register: two taps each wrote \"0 plus one\", and the merge kept one. LWW converges by choosing, and the loser of two concurrent writes is discarded without a trace. For a display name that is the intended meaning; for a counter it loses taps.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "replicas(lww; a, b\n  a: write 1\n  b: write 1\n  a -> b\n  b -> a\n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The **LWW-Element-Set** puts one LWW register per element, holding \"added\" or \"removed\". It fixes the 2P-Set's re-add (a later add outranks an earlier remove), but by the clock: a remove can cancel an add its replica never saw, if its stamp happens to be larger.",
+      "type": "markdown",
+      "showWork": false,
       "label": null
     },
     {
@@ -102,7 +164,7 @@
       "label": null
     },
     {
-      "src": "Three replicas with tied naive timestamps: grouping one merge differently changes the answer.",
+      "src": "The book's naive merge keeps the left write on a tie. Three tied writes: swapping the order of the first merge changes the answer.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -134,7 +196,7 @@
     {
       "src": "associative(Naive)",
       "type": "exercise",
-      "prompt": "Is the naive merge associative? Answer `true` or `false`.",
+      "prompt": "Is the naive tie merge associative? Answer `true` or `false`.",
       "hints": [
         "$(x \\cdot y) \\cdot z$ and $x \\cdot (y \\cdot z)$ both give $z$."
       ],
@@ -142,7 +204,17 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> Timestamps in the state turn overwrite into a join. Ties must be broken deterministically, or merging stops being commutative. The register converges, but one of two concurrent writes is silently discarded: convergence is not the same as keeping what users meant.",
+      "src": "fold(Lex; w3a, w3b, w3a)",
+      "type": "exercise",
+      "prompt": "With ties broken by replica, a replica holding `w3a` hears `w3b`, then its own `w3a` again. What does it hold?",
+      "hints": [
+        "Same timestamp: the replica breaks the tie, and $b$ comes after $a$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Timestamps in the state turn overwrite into a join, provided ties are broken the same way everywhere; otherwise merging stops being commutative. The register converges, but one of two concurrent writes is silently discarded: converging is not the same as keeping what users did. What a set needs is a remove that cancels exactly the adds it has seen, with no clock involved.",
       "type": "markdown",
       "showWork": false,
       "label": null
