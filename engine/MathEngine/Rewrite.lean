@@ -306,14 +306,16 @@ def replaceAt (e : Expr) (path : Path) (new : Expr) : Expr :=
 /-- The innermost matrix literal a firing at `path` is strictly inside: the longest proper prefix of
 `path` at which `e` has a matrix. -/
 def enclosingMatrix (e : Expr) (path : Path) : Option Path :=
-  go e path [] none
+  (go e path 0 none).map path.take
 where
-  go (e : Expr) : Path → Path → Option Path → Option Path
+  -- the depth of the deepest matrix passed so far: building each prefix on the way down would
+  -- make a deep path cost its depth squared, at every step of a derivation
+  go (e : Expr) : Path → Nat → Option Nat → Option Nat
     | [], _, best => best
-    | i :: rest, pre, best =>
-      let best := if e.isMatrix then some pre else best
+    | i :: rest, d, best =>
+      let best := if e.isMatrix then some d else best
       match (children e)[i]? with
-      | some c => go c rest (pre ++ [i]) best
+      | some c => go c rest (d + 1) best
       | none => best
 
 /-- Where entry `k` (row-major) of a matrix with these rows sits, in words. -/

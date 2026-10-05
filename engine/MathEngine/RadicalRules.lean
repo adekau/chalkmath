@@ -53,6 +53,9 @@ def mergeRadicals (s t : Expr) : Option Expr :=
     else none
   | _, _ => none
 
+/-- A numeral to a numeral power: the only factors `mulRadicalPair` merges. -/
+def isNumPow : Expr → Bool | .pow (.num _) (.num _) => true | _ => false
+
 /-- `a^(p/q) · b^(r/q) = (a^p · b^r)^(1/q)` for integer bases ≥ 2. -/
 def mulRadicalPair (s t : Expr) : Option Expr :=
   match s, t with
@@ -97,7 +100,15 @@ def findPairGo (f : Expr → Expr → Option Expr) (acc : List Expr) : List Expr
     | some (m, _, others) => some (m, others)
     | none => findPairGo f (acc ++ [a]) rest
 
-def findPair (f : Expr → Expr → Option Expr) (es : List Expr) : Option (Expr × List Expr) := findPairGo f [] es
+/-- The first element with a partner under `f`, merged with its first partner, and the others.
+Trying every pair costs the square of the list's length, at every visit to the node, so a rule first
+asks `worth`, a cheap test that fails only where no pair can merge (fewer than two candidates). -/
+def findPair (worth : List Expr → Bool) (f : Expr → Expr → Option Expr) (es : List Expr) :
+    Option (Expr × List Expr) :=
+  if worth es then findPairGo f [] es else none
+
+/-- At least two elements satisfy `p`. -/
+def twoOf (p : Expr → Bool) (es : List Expr) : Bool := 2 ≤ (es.filter p).length
 
 theorem findPairGo_perm (f : Expr → Expr → Option Expr) : ∀ (l acc : List Expr) {m others},
     findPairGo f acc l = some (m, others) → ∃ a b, f a b = some m ∧ (acc ++ l).Perm (a :: b :: others)
@@ -112,9 +123,12 @@ theorem findPairGo_perm (f : Expr → Expr → Option Expr) : ∀ (l acc : List 
     · obtain ⟨a', b, hg, hperm⟩ := findPairGo_perm f rest (acc ++ [a]) h
       exact ⟨a', b, hg, by simpa [List.append_assoc] using hperm⟩
 
-theorem findPair_perm (f : Expr → Expr → Option Expr) (es : List Expr) {m others}
-    (h : findPair f es = some (m, others)) : ∃ a b, f a b = some m ∧ es.Perm (a :: b :: others) := by
-  simpa using findPairGo_perm f es [] h
+theorem findPair_perm {worth : List Expr → Bool} (f : Expr → Expr → Option Expr) (es : List Expr) {m others}
+    (h : findPair worth f es = some (m, others)) : ∃ a b, f a b = some m ∧ es.Perm (a :: b :: others) := by
+  unfold findPair at h
+  split at h
+  · simpa using findPairGo_perm f es [] h
+  · cases h
 
 /-! ## The rules -/
 
@@ -237,7 +251,7 @@ def collectRadicals : PlainRule :=
   { name := "simp.collect-radicals", apply := fun e =>
       match e with
       | .add es =>
-        match findPair mergeRadicals es with
+        match findPair (twoOf fun t => (radicalTerm t).isSome) mergeRadicals es with
         | some (m, others) =>
           let res := addN (m :: others)
           if M res < M e then
@@ -251,7 +265,7 @@ def mulRadicals : PlainRule :=
   { name := "simp.radical", apply := fun e =>
       match e with
       | .mul es =>
-        match findPair mulRadicalPair es with
+        match findPair (twoOf isNumPow) mulRadicalPair es with
         | some (m, others) =>
           let res := mulN (m :: others)
           if M res < M e then

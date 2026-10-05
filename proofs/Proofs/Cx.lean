@@ -189,6 +189,40 @@ theorem prodC_flatMap_unMul (ρ : EnvC) (es : List Expr) :
   | nil => rfl
   | cons e es ih => rw [List.flatMap_cons, prodC_append, prodC_unMul, ih, prodC_cons]
 
+mutual
+  theorem sumC_addArgs (ρ : EnvC) : ∀ (e : Expr) (acc : List Expr),
+      sumC ρ (addArgs e acc) = evalC ρ e + sumC ρ acc
+    | .add es, acc => by rw [addArgs, sumC_addArgsList ρ es acc, evalC_add]
+    | .num _, _ | .var _, _ | .mul _, _ | .pow _ _, _ | .fn _ _, _ | .matrix _, _ => by simp [addArgs]
+  theorem sumC_addArgsList (ρ : EnvC) : ∀ (es acc : List Expr),
+      sumC ρ (addArgsList es acc) = sumC ρ es + sumC ρ acc
+    | [], acc => by simp [addArgsList]
+    | e :: es, acc => by rw [addArgsList, sumC_addArgs ρ e, sumC_addArgsList ρ es acc, sumC_cons]; ring
+end
+
+mutual
+  theorem prodC_mulArgs (ρ : EnvC) : ∀ (e : Expr) (acc : List Expr),
+      prodC ρ (mulArgs e acc) = evalC ρ e * prodC ρ acc
+    | .mul es, acc => by rw [mulArgs, prodC_mulArgsList ρ es acc, evalC_mul]
+    | .num _, _ | .var _, _ | .add _, _ | .pow _ _, _ | .fn _ _, _ | .matrix _, _ => by simp [mulArgs]
+  theorem prodC_mulArgsList (ρ : EnvC) : ∀ (es acc : List Expr),
+      prodC ρ (mulArgsList es acc) = prodC ρ es * prodC ρ acc
+    | [], acc => by simp [mulArgsList]
+    | e :: es, acc => by rw [mulArgsList, prodC_mulArgs ρ e, prodC_mulArgsList ρ es acc, prodC_cons]; ring
+end
+
+/-- Opening a chain (`openChain`, the pipeline's `simp.flatten` all the way down) keeps the value over ℂ. -/
+theorem openChain_soundC {e e' : Expr} (h : openChain e = some e') (ρ : EnvC) : evalC ρ e' = evalC ρ e := by
+  cases e <;> simp only [openChain, reduceCtorEq] at h
+  · split at h
+    · split at h
+      · cases h
+      · cases h; simp [sumC_addArgsList]
+    · cases h
+  · split at h
+    · cases h; simp [prodC_mulArgsList]
+    · cases h
+
 theorem flatten_soundC : RuleSoundC flatten := by
   intro e r h ρ
   cases e <;> simp only [flatten, flattenApply, reduceCtorEq] at h
@@ -317,37 +351,23 @@ theorem evalC_coeffRest {e : Expr} {c : Q} {t : Expr} (h : coeffRest e = (c, t))
   · subst he; subst ht; simp
   · subst he; subst hc; simp
 
-theorem mergeTerms_soundC (ρ : EnvC) : ∀ (es l : List Expr) (t : Expr),
-    mergeTerms es = some (l, t) → sumC ρ l = sumC ρ es
-  | [], _, _, h => by simp [mergeTerms] at h
-  | e :: rest, l, t, h => by
-    simp only [mergeTerms] at h
-    obtain ⟨c, u, hcu⟩ : ∃ c u, coeffRest e = (c, u) := ⟨_, _, rfl⟩
-    rw [hcu] at h
-    simp only at h
-    split at h
-    · split at h
-      · rename_i f hf
-        simp only [Option.some.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, rfl⟩ := h
-        have hp : Expr.equal (coeffRest f).2 u = true := by simpa using List.find?_some hf
-        have hfu : coeffRest f = ((coeffRest f).1, u) := by rw [← Expr.equal_eq hp]
-        have h1 : sumC ρ rest
-            = evalC ρ f + sumC ρ (removeFirst (fun x => (coeffRest x).2.equal u) rest) := by
-          rw [sumC_perm ρ (perm_find?_removeFirst _ rest f hf), sumC_cons]
-        rw [sumC_cons, sumC_cons, h1, evalC_coeffRest hcu, evalC_coeffRest hfu]
-        simp only [evalC_mul, prodC_cons, prodC_nil, evalC_num, Q_val_add, Rat.cast_add]
-        ring
-      · simp only [Option.map_eq_some_iff] at h
-        obtain ⟨⟨l', t'⟩, hm, hl⟩ := h
-        simp only [Prod.mk.injEq] at hl
-        obtain ⟨rfl, rfl⟩ := hl
-        rw [sumC_cons, sumC_cons, mergeTerms_soundC ρ rest l' t' hm]
-    · simp only [Option.map_eq_some_iff] at h
-      obtain ⟨⟨l', t'⟩, hm, hl⟩ := h
-      simp only [Prod.mk.injEq] at hl
-      obtain ⟨rfl, rfl⟩ := hl
-      rw [sumC_cons, sumC_cons, mergeTerms_soundC ρ rest l' t' hm]
+theorem coeffFold_soundC (ρ : EnvC) {u : Expr} (others : List Expr) : ∀ (fs : List Expr) (c : Q),
+    (∀ f ∈ fs, (coeffRest f).2 = u) →
+    sumC ρ (.mul [.num (coeffFold c fs), u] :: others) = (c.val : ℂ) * evalC ρ u + sumC ρ (fs ++ others)
+  | [], c, _ => by simp [coeffFold]
+  | f :: fs, c, h => by
+    simp only [coeffFold]
+    rw [coeffFold_soundC ρ others fs _ (fun g hg => h g (List.mem_cons_of_mem _ hg)), List.cons_append,
+      sumC_cons, evalC_coeffRest (coeffRest_of_snd (h f List.mem_cons_self)) ρ, Q_val_add, Rat.cast_add]
+    ring
+
+theorem mergeTerms_soundC (ρ : EnvC) (es l : List Expr) (t : Expr) (h : mergeTerms es = some (l, t)) :
+    sumC ρ l = sumC ρ es := by
+  simp only [mergeTerms, Option.map_eq_some_iff] at h
+  obtain ⟨⟨u, e, fs, others⟩, hg, hl⟩ := h
+  simp only [Prod.mk.injEq] at hl; obtain ⟨rfl, rfl⟩ := hl
+  obtain ⟨hperm, he, hfs, -, -⟩ := termGroup_spec hg
+  rw [coeffFold_soundC ρ others fs _ hfs, sumC_perm ρ hperm, sumC_cons, evalC_coeffRest (coeffRest_of_snd he) ρ]
 
 theorem collectTerms_soundC : RuleSoundC collectTerms := by
   intro e r h ρ

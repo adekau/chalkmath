@@ -20,6 +20,10 @@ row    := expr (',' expr)*
 Mathematica does (`;;b` from 1, `a;;` to the last, `-1`); `All` is `All()`, a list `{i, j}` is
 `List(i, j)`. `[[` after a term cannot be anything else: a nested matrix literal is refused.
 
+A sum comes out as one node: the parser builds `a + b + c` as `(a + b) + c` and then opens the left
+spine of every sum (`openSpine`), so a long sum is not a chain as deep as it is long. A sum in
+parentheses after the first term, `a + (b + c)`, stays a sum in a sum, as it prints.
+
 `a ./ b` and `a .* b` are MATLAB's entrywise division and product, `ediv(a, b)` and `emul(a, b)`
 (`la.ediv`, `la.emul`); `/` and `*` stay the matrix inverse and product.
 
@@ -510,7 +514,44 @@ def paramList (c : PCtx) (ps : List String) (k : Nat) : Except ParseError (List 
     else paramList c ps (k + 2)
 termination_by c.toks.size - k
 
-/-- Parse a statement. `known` lists session-defined function names that may be called. -/
+mutual
+  /-- A sum the parser built one term at a time, `((a + b) + c) + d`, as the one sum it is,
+  `a + b + c + d`: the left spine of every sum opened. A sum typed in parentheses as a later term,
+  `a + (b + c)`, keeps them. The two print alike, so nothing the reader sees changes, but a long sum
+  is no longer a chain as deep as it is long, with a path as long at each of its terms. -/
+  def openSpine : Expr → Expr
+    | .num q => .num q
+    | .var x => .var x
+    | .add [] => .add []
+    | .add (f :: rest) => .add (spineOf f (openSpineList rest))
+    | .mul es => .mul (openSpineList es)
+    | .pow b x => .pow (openSpine b) (openSpine x)
+    | .fn g es => .fn g (openSpineList es)
+    | .matrix rows => .matrix (openSpineRows rows)
+  /-- The terms of the left spine of `e`, each opened, before `acc`. -/
+  def spineOf : Expr → List Expr → List Expr
+    | .add (g :: r), acc => spineOf g (openSpineList r ++ acc)
+    | .add [], acc => .add [] :: acc
+    | .num q, acc => .num q :: acc
+    | .var x, acc => .var x :: acc
+    | .mul es, acc => .mul (openSpineList es) :: acc
+    | .pow b x, acc => .pow (openSpine b) (openSpine x) :: acc
+    | .fn g es, acc => .fn g (openSpineList es) :: acc
+    | .matrix rows, acc => .matrix (openSpineRows rows) :: acc
+  def openSpineList : List Expr → List Expr
+    | [] => []
+    | e :: es => openSpine e :: openSpineList es
+  def openSpineRows : List (List Expr) → List (List Expr)
+    | [] => []
+    | r :: rs => openSpineList r :: openSpineRows rs
+end
+
+def Stmt.mapValue (f : Expr → Expr) : Stmt → Stmt
+  | .«let» name ps v => .«let» name ps (f v)
+  | .expr v => .expr (f v)
+
+/-- Parse a statement. `known` lists session-defined function names that may be called. Sums come
+out with their left spine opened (`openSpine`). -/
 def parseStmt (src : String) (known : List String := []) : Except ParseError Stmt := do
   let toks ← lex src
   let c : PCtx := { toks, known }
@@ -529,7 +570,7 @@ def parseStmt (src : String) (known : List String := []) : Except ParseError Stm
       pure (Stmt.expr v, m) : Except ParseError (Stmt × Nat))
   let t := c.tok j
   if t.kind != .eof then failT s!"unexpected '{t.s}'" t
-  pure stmt
+  pure (stmt.mapValue openSpine)
 
 def parse (src : String) (known : List String := []) : Except ParseError Expr :=
   (parseStmt src known).map Stmt.value

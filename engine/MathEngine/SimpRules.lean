@@ -371,7 +371,9 @@ def findTanGo (acc : List Expr) : List Expr → Option (Expr × List Expr)
       | none => findTanGo (acc ++ [f]) rest
     | none => findTanGo (acc ++ [f]) rest
 
-def findTan (es : List Expr) : Option (Expr × List Expr) := findTanGo [] es
+/-- `findTanGo` looks at every pair of factors; a product without a sine has none to find. -/
+def findTan (es : List Expr) : Option (Expr × List Expr) :=
+  if es.any fun f => (sinArg f).isSome then findTanGo [] es else none
 
 theorem findTanGo_perm : ∀ (l acc : List Expr) {u others}, findTanGo acc l = some (u, others) →
     ∃ c, isCosInv u c = true ∧ (acc ++ l).Perm (.fn "sin" [u] :: c :: others)
@@ -393,7 +395,10 @@ theorem findTanGo_perm : ∀ (l acc : List Expr) {u others}, findTanGo acc l = s
 
 theorem findTan_perm (es : List Expr) {u others} (h : findTan es = some (u, others)) :
     ∃ c, isCosInv u c = true ∧ es.Perm (.fn "sin" [u] :: c :: others) := by
-  simpa using findTanGo_perm es [] h
+  unfold findTan at h
+  split at h
+  · simpa using findTanGo_perm es [] h
+  · cases h
 
 def functionApply : Expr → Option RuleResult
   | .mul es =>
@@ -575,16 +580,69 @@ def powerRules : Rule simpW where
 -- simp.collect-powers
 -- ---------------------------------------------------------------------------
 
-/-- Merge `t^a · t^b` into `t^(a+b)` for the first pair of factors with equal, big bases. -/
-def mergePowers : List Expr → Option (List Expr × Expr)
-  | [] => none
-  | e :: rest =>
-    let (b, x) := baseExp e
-    if bigBase b then
-      match rest.find? (fun f => equal (baseExp f).1 b) with
-      | some f => some ((.pow b (addExp x (baseExp f).2)) :: removeFirst (fun f => equal (baseExp f).1 b) rest, b)
-      | none => (mergePowers rest).map fun (l, t) => (e :: l, t)
-    else (mergePowers rest).map fun (l, t) => (e :: l, t)
+/-- Is `e` a power of `b` (a factor `b` counting as `b^1`)? -/
+def ofBase (b e : Expr) : Bool := equal (baseExp e).1 b
+
+/-- A big base that two factors share. A few bases are compared pairwise, the first that recurs;
+many are sorted and neighbours compared, so a product of `n` factors costs `n log n` rather than `n²`.
+This is only where to look: the rule merges whatever factors have the base it returns
+(`powerGroup`), and every theorem about the rule holds for any base, so the search may use the
+structural order `compare`, which nothing is proved about. (A short product, the kind a proof
+computes with, never reaches it.) -/
+def repeatedBase (es : List Expr) : Option Expr :=
+  let bs := (es.map fun e => (baseExp e).1).filter bigBase
+  if bs.length ≤ 8 then firstRepeat bs else adjacent (bs.mergeSort fun a b => compare a b != .gt)
+where
+  firstRepeat : List Expr → Option Expr
+    | [] => none
+    | a :: rest => if rest.any (equal a) then some a else firstRepeat rest
+  adjacent : List Expr → Option Expr
+    | a :: b :: rest => if equal a b then some a else adjacent (b :: rest)
+    | _ => none
+
+/-- The factors that share a repeated big base `b`, two or more: `(b, e, fs, others)` with `e` the
+first of them, `fs` the rest, and `others` the factors with another base, all in their order. -/
+def powerGroup (es : List Expr) : Option (Expr × Expr × List Expr × List Expr) :=
+  match repeatedBase es with
+  | some b =>
+    match es.filter (ofBase b) with
+    | e :: f :: fs => if bigBase b then some (b, e, f :: fs, es.filter fun g => !ofBase b g) else none
+    | _ => none
+  | none => none
+
+theorem powerGroup_spec {es : List Expr} {b e : Expr} {fs others : List Expr}
+    (h : powerGroup es = some (b, e, fs, others)) :
+    es.Perm (e :: (fs ++ others)) ∧ (baseExp e).1 = b ∧ (∀ f ∈ fs, (baseExp f).1 = b) ∧ fs ≠ [] ∧
+      bigBase b = true := by
+  unfold powerGroup at h
+  split at h
+  · rename_i b' _
+    split at h
+    · rename_i e' f' fs' hfil
+      split at h
+      · rename_i hbig
+        simp only [Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨rfl, rfl, rfl, rfl⟩ := h
+        have hmem : ∀ g ∈ e' :: f' :: fs', (baseExp g).1 = b' := fun g hg => by
+          rw [← hfil] at hg; exact equal_eq (List.mem_filter.mp hg).2
+        refine ⟨?_, hmem e' List.mem_cons_self, fun g hg => hmem g (List.mem_cons_of_mem _ hg), by simp, hbig⟩
+        have := List.filter_append_perm (ofBase b') es
+        rw [hfil] at this
+        exact this.symm
+      · cases h
+    · cases h
+  · cases h
+
+/-- `x` plus each exponent of `fs` in turn: the exponent of the merged power. -/
+def expFold (x : Expr) : List Expr → Expr
+  | [] => x
+  | f :: fs => expFold (addExp x (baseExp f).2) fs
+
+/-- Merge every factor of a repeated big base `b` into one power: `b^m · b^n · … = b^(m+n+…)`.
+The exponents are added one factor at a time (`expFold`), so the merge is the pair merge repeated,
+and a product of `n` equal factors takes one step, not `n`. -/
+def mergePowers (es : List Expr) : Option (List Expr × Expr) :=
+  (powerGroup es).map fun (b, e, fs, others) => (.pow b (expFold (baseExp e).2 fs) :: others, b)
 
 def collectPowersApply : Expr → Option RuleResult
   | .mul es =>
@@ -611,36 +669,30 @@ theorem M_merged_lt (e f b x xf : Expr) (he : baseExp e = (b, x)) (hf : baseExp 
   · rw [he', hx', hf']; have := M_addExp_le Expr.one xf; rw [M_pow, M_pow]; simp only [M_one] at *; omega
   · rw [he', hx', hf', hxf', M_pow, Expr.one, M_addExp_num]; omega
 
-theorem mergePowers_lt : ∀ (es l : List Expr) (t : Expr), mergePowers es = some (l, t) → ML l < ML es
-  | [], _, _, h => by simp [mergePowers] at h
-  | e :: rest, l, t, h => by
-    simp only [mergePowers] at h
-    obtain ⟨b, x, hbx⟩ : ∃ b x, baseExp e = (b, x) := ⟨_, _, rfl⟩
-    rw [hbx] at h
-    simp only at h
-    split at h
-    · rename_i hbig
-      split at h
-      · rename_i f hf
-        simp only [Option.some.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, rfl⟩ := h
-        have hp : equal (baseExp f).1 b = true := by simpa using List.find?_some hf
-        have hfb : (baseExp f).1 = b := equal_eq hp
-        have hlt := M_merged_lt e f b x (baseExp f).2 hbx (by rw [← hfb]) hbig
-        have := ML_removeFirst hf
-        rw [ML_cons, ML_cons]; omega
-      · simp only [Option.map_eq_some_iff] at h
-        obtain ⟨⟨l', t'⟩, hm, hl⟩ := h
-        simp only [Prod.mk.injEq] at hl
-        obtain ⟨rfl, rfl⟩ := hl
-        have := mergePowers_lt rest l' t' hm
-        rw [ML_cons, ML_cons]; omega
-    · simp only [Option.map_eq_some_iff] at h
-      obtain ⟨⟨l', t'⟩, hm, hl⟩ := h
-      simp only [Prod.mk.injEq] at hl
-      obtain ⟨rfl, rfl⟩ := hl
-      have := mergePowers_lt rest l' t' hm
-      rw [ML_cons, ML_cons]; omega
+theorem baseExp_of_fst {f b : Expr} (h : (baseExp f).1 = b) : baseExp f = (b, (baseExp f).2) := by
+  rw [← h]
+
+/-- Each further factor merged in makes the power lighter than the factors were. -/
+theorem M_expFold_le (b : Expr) (hb : bigBase b = true) : ∀ (x : Expr) (fs : List Expr),
+    (∀ f ∈ fs, (baseExp f).1 = b) → M (.pow b (expFold x fs)) ≤ M (.pow b x) + ML fs
+  | x, [], _ => by simp [expFold, measureList]
+  | x, f :: fs, h => by
+    have h1 := M_merged_lt (.pow b x) f b x (baseExp f).2 rfl (baseExp_of_fst (h f List.mem_cons_self)) hb
+    have ih := M_expFold_le b hb (addExp x (baseExp f).2) fs (fun g hg => h g (List.mem_cons_of_mem _ hg))
+    simp only [expFold, ML_cons]; omega
+
+theorem mergePowers_lt (es l : List Expr) (t : Expr) (h : mergePowers es = some (l, t)) : ML l < ML es := by
+  simp only [mergePowers, Option.map_eq_some_iff] at h
+  obtain ⟨⟨b, e, fs, others⟩, hg, hl⟩ := h
+  simp only [Prod.mk.injEq] at hl; obtain ⟨rfl, rfl⟩ := hl
+  obtain ⟨hperm, he, hfs, hne, hbig⟩ := powerGroup_spec hg
+  rw [measureList_perm simpW hperm]
+  match fs, hne, hfs with
+  | f :: fs', _, hfs =>
+    have h1 := M_merged_lt e f b (baseExp e).2 (baseExp f).2 (baseExp_of_fst he)
+      (baseExp_of_fst (hfs f List.mem_cons_self)) hbig
+    have h2 := M_expFold_le b hbig (addExp (baseExp e).2 (baseExp f).2) fs' (fun g hg => hfs g (List.mem_cons_of_mem _ hg))
+    simp only [expFold, ML_cons, measureList_append] at *; omega
 
 theorem collectPowersApply_decreasing : ∀ e r, collectPowersApply e = some r → measure simpW r.result < measure simpW e := by
     intro e r h
@@ -652,17 +704,6 @@ theorem collectPowersApply_decreasing : ∀ e r, collectPowersApply e = some r �
       simp only [M_mul]; have := mergePowers_lt es l t hm; omega
     · simp at h
 
-/-- The base and the two exponents of the pair `mergePowers` merges: the same search. -/
-def mergedExps : List Expr → Option (Expr × Expr × Expr)
-  | [] => none
-  | e :: rest =>
-    let (b, x) := baseExp e
-    if bigBase b then
-      match rest.find? (fun f => equal (baseExp f).1 b) with
-      | some f => some (b, x, (baseExp f).2)
-      | none => mergedExps rest
-    else mergedExps rest
-
 /-- `b^m · b^n = b^(m+n)` for every real `b`: a positive numeral base, or integer exponents of one
 sign (at `b = 0`, `x·x⁻¹` would turn `0` into `1`). -/
 def powSafe (b x y : Expr) : Bool :=
@@ -670,12 +711,24 @@ def powSafe (b x y : Expr) : Bool :=
     | some m, some n => (decide (0 ≤ m) && decide (0 ≤ n)) || (decide (m ≤ 0) && decide (n ≤ 0))
     | _, _ => false
 
+/-- For the merges `expFold` makes one factor at a time, `x` with the exponent of each factor of
+`fs` in turn: whether every one holds at every real base (`powSafe`), and whether every one that
+does not has integer exponents, so that it needs only `b ≠ 0`. -/
+def foldSafety (b x : Expr) : List Expr → Bool × Bool
+  | [] => (true, true)
+  | f :: fs =>
+    let y := (baseExp f).2
+    let r := foldSafety b (addExp x y) fs
+    (powSafe b x y && r.1, (powSafe b x y || ((intExp x).isSome && (intExp y).isSome)) && r.2)
+
 /-- What a `simp.collect-powers` step assumes of its base, where it assumes anything: `(b, true)` for
-`b ≠ 0` (integer exponents of either sign), `(b, false)` for `b > 0` (other exponents). -/
+`b ≠ 0` (each merge has integer exponents, or holds at every base), `(b, false)` for `b > 0`. -/
 def collectAssumed : Expr → Option (Expr × Bool)
   | .mul es =>
-    match mergedExps es with
-    | some (b, x, y) => if powSafe b x y then none else some (b, (intExp x).isSome && (intExp y).isSome)
+    match powerGroup es with
+    | some (b, e, fs, _) =>
+      let s := foldSafety b (baseExp e).2 fs
+      if s.1 then none else some (b, s.2)
     | none => none
   | _ => none
 
@@ -714,16 +767,62 @@ def collectPowersAssuming : Rule simpW where
 -- simp.collect-like-terms
 -- ---------------------------------------------------------------------------
 
-/-- Merge `a·t + b·t` into `(a+b)·t` for the first pair of terms with equal, big rests. -/
-def mergeTerms : List Expr → Option (List Expr × Expr)
-  | [] => none
-  | e :: rest =>
-    let (c, t) := coeffRest e
-    if bigBase t then
-      match rest.find? (fun f => equal (coeffRest f).2 t) with
-      | some f => some ((.mul [.num (c + (coeffRest f).1), t]) :: removeFirst (fun f => equal (coeffRest f).2 t) rest, t)
-      | none => (mergeTerms rest).map fun (l, u) => (e :: l, u)
-    else (mergeTerms rest).map fun (l, u) => (e :: l, u)
+/-- Is `e` a multiple of `t` (its rest, `coeffRest`, is `t`)? -/
+def ofRest (t e : Expr) : Bool := equal (coeffRest e).2 t
+
+/-- A big rest that two neighbouring terms share, the first such pair. Like terms are neighbours once
+a sum is in canonical order (`leAdd` sorts by the rest before the coefficient), and both rewriters put
+a node in that order before any rule sees it, so one pass finds them. As with `repeatedBase`, this is
+only where to look: the theorems about the rule hold whatever rest it returns. -/
+def likeRest : List Expr → Option Expr
+  | e :: f :: rest =>
+    if bigBase (coeffRest e).2 && equal (coeffRest f).2 (coeffRest e).2 then some (coeffRest e).2
+    else likeRest (f :: rest)
+  | _ => none
+
+/-- The terms with a shared big rest `t`, two or more: `(t, e, fs, others)` with `e` the first of
+them, `fs` the rest, and `others` the terms with another rest, all in their order. -/
+def termGroup (es : List Expr) : Option (Expr × Expr × List Expr × List Expr) :=
+  match likeRest es with
+  | some t =>
+    match es.filter (ofRest t) with
+    | e :: f :: fs => if bigBase t then some (t, e, f :: fs, es.filter fun g => !ofRest t g) else none
+    | _ => none
+  | none => none
+
+theorem termGroup_spec {es : List Expr} {t e : Expr} {fs others : List Expr}
+    (h : termGroup es = some (t, e, fs, others)) :
+    es.Perm (e :: (fs ++ others)) ∧ (coeffRest e).2 = t ∧ (∀ f ∈ fs, (coeffRest f).2 = t) ∧ fs ≠ [] ∧
+      bigBase t = true := by
+  unfold termGroup at h
+  split at h
+  · rename_i t' _
+    split at h
+    · rename_i e' f' fs' hfil
+      split at h
+      · rename_i hbig
+        simp only [Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨rfl, rfl, rfl, rfl⟩ := h
+        have hmem : ∀ g ∈ e' :: f' :: fs', (coeffRest g).2 = t' := fun g hg => by
+          rw [← hfil] at hg; exact equal_eq (List.mem_filter.mp hg).2
+        refine ⟨?_, hmem e' List.mem_cons_self, fun g hg => hmem g (List.mem_cons_of_mem _ hg), by simp, hbig⟩
+        have := List.filter_append_perm (ofRest t') es
+        rw [hfil] at this
+        exact this.symm
+      · cases h
+    · cases h
+  · cases h
+
+/-- `c` plus the coefficient of each term of `fs` in turn: the coefficient of the merged term. -/
+def coeffFold (c : Q) : List Expr → Q
+  | [] => c
+  | f :: fs => coeffFold (c + (coeffRest f).1) fs
+
+/-- Merge every term of the first shared big rest `t` into one: `a·t + b·t + … = (a+b+…)·t`. The
+coefficients are added one term at a time (`coeffFold`), so the merge is the pair merge repeated,
+and a sum of `n` like terms takes one step, not `n`. -/
+def mergeTerms (es : List Expr) : Option (List Expr × Expr) :=
+  (termGroup es).map fun (t, e, fs, others) => (.mul [.num (coeffFold (coeffRest e).1 fs), t] :: others, t)
 
 def collectTermsApply : Expr → Option RuleResult
   | .add es =>
@@ -765,36 +864,33 @@ theorem M_mergedTerm_lt (e f : Expr) (c cf : Q) (t : Expr) (he : coeffRest e = (
   · subst h2; have := he'.2 h1; omega
   · have := he'.2 h1; have := hf'.2 h2; omega
 
-theorem mergeTerms_lt : ∀ (es l : List Expr) (t : Expr), mergeTerms es = some (l, t) → ML l < ML es
-  | [], _, _, h => by simp [mergeTerms] at h
-  | e :: rest, l, t, h => by
-    simp only [mergeTerms] at h
-    obtain ⟨c, u, hcu⟩ : ∃ c u, coeffRest e = (c, u) := ⟨_, _, rfl⟩
-    rw [hcu] at h
-    simp only at h
-    split at h
-    · rename_i hbig
-      split at h
-      · rename_i f hf
-        simp only [Option.some.injEq, Prod.mk.injEq] at h
-        obtain ⟨rfl, rfl⟩ := h
-        have hp : equal (coeffRest f).2 u = true := by simpa using List.find?_some hf
-        have hfu : (coeffRest f).2 = u := equal_eq hp
-        have hlt := M_mergedTerm_lt e f c (coeffRest f).1 u hcu (by rw [← hfu]) hbig
-        have := ML_removeFirst hf
-        rw [ML_cons, ML_cons]; omega
-      · simp only [Option.map_eq_some_iff] at h
-        obtain ⟨⟨l', t'⟩, hm, hl⟩ := h
-        simp only [Prod.mk.injEq] at hl
-        obtain ⟨rfl, rfl⟩ := hl
-        have := mergeTerms_lt rest l' t' hm
-        rw [ML_cons, ML_cons]; omega
-    · simp only [Option.map_eq_some_iff] at h
-      obtain ⟨⟨l', t'⟩, hm, hl⟩ := h
-      simp only [Prod.mk.injEq] at hl
-      obtain ⟨rfl, rfl⟩ := hl
-      have := mergeTerms_lt rest l' t' hm
-      rw [ML_cons, ML_cons]; omega
+theorem coeffRest_of_snd {f t : Expr} (h : (coeffRest f).2 = t) : coeffRest f = ((coeffRest f).1, t) := by
+  rw [← h]
+
+/-- The merged term's own rest is `t`: merging another like term into it is the pair merge again. -/
+theorem coeffRest_merged (c : Q) (t : Expr) : coeffRest (.mul [.num c, t]) = (c, t) := rfl
+
+theorem M_coeffFold_le (t : Expr) (hb : bigBase t = true) : ∀ (c : Q) (fs : List Expr),
+    (∀ f ∈ fs, (coeffRest f).2 = t) → M (.mul [.num (coeffFold c fs), t]) ≤ M (.mul [.num c, t]) + ML fs
+  | c, [], _ => by simp [coeffFold, measureList]
+  | c, f :: fs, h => by
+    have h1 := M_mergedTerm_lt (.mul [.num c, t]) f c (coeffRest f).1 t (coeffRest_merged c t)
+      (coeffRest_of_snd (h f List.mem_cons_self)) hb
+    have ih := M_coeffFold_le t hb (c + (coeffRest f).1) fs (fun g hg => h g (List.mem_cons_of_mem _ hg))
+    simp only [coeffFold, ML_cons]; omega
+
+theorem mergeTerms_lt (es l : List Expr) (t : Expr) (h : mergeTerms es = some (l, t)) : ML l < ML es := by
+  simp only [mergeTerms, Option.map_eq_some_iff] at h
+  obtain ⟨⟨u, e, fs, others⟩, hg, hl⟩ := h
+  simp only [Prod.mk.injEq] at hl; obtain ⟨rfl, rfl⟩ := hl
+  obtain ⟨hperm, he, hfs, hne, hbig⟩ := termGroup_spec hg
+  rw [measureList_perm simpW hperm]
+  match fs, hne, hfs with
+  | f :: fs', _, hfs =>
+    have h1 := M_mergedTerm_lt e f (coeffRest e).1 (coeffRest f).1 u (coeffRest_of_snd he)
+      (coeffRest_of_snd (hfs f List.mem_cons_self)) hbig
+    have h2 := M_coeffFold_le u hbig ((coeffRest e).1 + (coeffRest f).1) fs' (fun g hg => hfs g (List.mem_cons_of_mem _ hg))
+    simp only [coeffFold, ML_cons, measureList_append] at *; omega
 
 def collectTerms : Rule simpW where
   name := "simp.collect-like-terms"

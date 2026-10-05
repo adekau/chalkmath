@@ -48,6 +48,30 @@ differential test with zero mismatches.
   explanation and path, and whether it prints the same before and after) and fetches the terms
   with `engine.steps` when a cell's work is opened; the session already keeps every cell's
   derivation, for `explain`, so nothing is computed twice and nothing is left out.
+- **A long sum is one node, worked once.** The cost of a cell should grow with its size, not its
+  square, and three things kept a sum of a thousand terms from that. The parser reads `a + b + c`
+  as `(a + b) + c`, a chain as deep as the sum is long, so it opens the left spine of every sum it
+  builds (`openSpine`, `Parser.lean`; the two print alike, and `parse_toText` already held modulo
+  `flat`). A chain the rules build, or one of products (`-…-x` is `-1·(-1·(…))`), the rewriter
+  opens in one silent `simp.flatten` step before it works inside it (`openChain`, `Terminate.lean`),
+  so it is not worked level by level, each level a step with a path as long as the chain is deep;
+  the step decreases `μ` on any term, normal children or not (`openChain_lt`), and keeps the value
+  over ℝ and ℂ and the domain (`openChain_soundR`, `openChain_soundC`, `openChain_def`). And the
+  rules that merge do a whole group per step: `simp.collect-like-terms` adds every term with the
+  same rest, `simp.collect-powers` every factor with the same base, one at a time, so the proofs are
+  the pair merge's, repeated (`coeffFold`, `expFold`); a sum of `n` like terms is one step, not `n`
+  steps each rebuilding and re-normalizing the whole sum. Where to look is a hint the theorems do not
+  depend on: like terms are neighbours once `canon` has sorted a sum, and repeated bases are found by
+  sorting them (with the unproved `compare`), only the merge itself is proved. The rules that pair
+  arguments up (`findPair`: `cx.arithmetic`, `simp.collect-radicals`, `simp.radical`'s products;
+  `findTan`) first ask a linear question that is false only where no pair can merge. Paths are built
+  by consing, innermost index first, in the rewriter and the printer, and reversed only where a step
+  or a label spells one out; a label is written only to depth 64 (`pathLabelDepth`), so the echo of a
+  pathologically deep input stays linear, and the notebook finds a deeper subterm by its nearest
+  labelled ancestor. A sum or a product of ten thousand terms, or ten thousand `-` signs, answers in a
+  fraction of a second, outline and paths included. An outline still prints each step's terms once,
+  to say whether it is quiet: it is linear in the steps times the term, not in what a derivation
+  weighs on the wire.
 - **Termination is a proof obligation, not a budget.** A rule bundles a proof that it strictly
   decreases a measure; `normalize` is well-founded on that measure and never `partial`. The
   verified `simplify` uses one additive measure (`Rewrite.lean`). The whole notebook pipeline —

@@ -177,11 +177,17 @@ def gaussMul (a b : Expr) : Option Expr :=
   | some x, some y => if x.isReal && y.isReal then none else some (gaussE (x.mul y))
   | _, _ => none
 
+/-- Two Gaussian factors, one of them not real: the products `gaussMul` multiplies need both. -/
+def gaussPairs (es : List Expr) : Bool :=
+  twoOf (fun a => (gaussFactor a).isSome) es && es.any fun a => match gaussFactor a with
+    | some g => !g.isReal
+    | none => false
+
 def cxArith : PlainRule :=
   { name := "cx.arithmetic", apply := fun e =>
       match e with
       | .mul es =>
-        match findPair gaussMul es with
+        match findPair gaussPairs gaussMul es with
         | some (m, others) => guarded (mulN (m :: others)) e "$(a + bi)(c + di) = (ac - bd) + (ad + bc)\\,i$: complex numbers multiply by the distributive law and $i^2 = -1$."
         | none => none
       | _ => none }

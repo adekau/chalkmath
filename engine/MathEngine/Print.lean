@@ -16,12 +16,20 @@ fn exp [a]             →  exp(a)    (LaTeX: e^{a})
 Every printed subterm knows its `Path`; with `paths := true` the LaTeX output wraps each
 subterm in `\htmlData{path=...}{...}`, which KaTeX renders as `<span data-path="0.1">`. That is
 how the notebook turns a click into a `Path` for `engine.explain`.
+
+The printer carries a subterm's path reversed, innermost index first: going down is then a cons
+rather than a copy of the path so far, which on a deep term cost its depth at every node. A label
+spells the path out, so it is as long as the subterm is deep; the subterms of a term nested deeper
+than `pathLabelDepth` are not labelled, so a pathological input (ten thousand `-` signs) renders in
+time and space linear in it. The notebook already finds a subterm by its nearest labelled
+ancestor.
 -/
 namespace MathEngine
 open Expr
 
 /-- What differs between the text and LaTeX outputs. -/
 structure Target where
+  /-- Label a subterm's text with its path, given innermost index first. -/
   wrap : Path → String → String
   num : Q → String
   var : String → String
@@ -65,8 +73,12 @@ private def greek : List (String × String) :=
    ("Γ", "\\Gamma"), ("Δ", "\\Delta"), ("Θ", "\\Theta"), ("Λ", "\\Lambda"), ("Σ", "\\Sigma"), ("Φ", "\\Phi"), ("Ω", "\\Omega")]
 private def pathStr (p : Path) : String := if p.isEmpty then "root" else ".".intercalate (p.map toString)
 
+/-- How deep a subterm may sit and still be labelled with its path. -/
+def pathLabelDepth : Nat := 64
+
 def latexTarget (paths : Bool) : Target where
-  wrap p s := if paths then s!"\\htmlData\{path={pathStr p}}\{{s}}" else s
+  -- `p` is reversed (innermost index first); `drop` tests its length in at most `pathLabelDepth` steps
+  wrap p s := if paths && (p.drop pathLabelDepth).isEmpty then s!"\\htmlData\{path={pathStr p.reverse}}\{{s}}" else s
   num q := q.toLatex
   var n := match greek.lookup n with
     | some g => g
@@ -254,7 +266,7 @@ mutual
     | .matrix rows =>
       let w := (rows.head?.map List.length).getD 0
       let rs := (enum rows.attach).map fun (r, ⟨row, _⟩) =>
-        (enum row.attach).map fun (j, ⟨c, _⟩) => print c (path ++ [r * w + j]) T P_ADD
+        (enum row.attach).map fun (j, ⟨c, _⟩) => print c ((r * w + j) :: path) T P_ADD
       (T.matrix rs, P_ATOM)
     | .fn name args =>
       -- the heads that print their children at a precedence of their own come first, so no child is
@@ -262,48 +274,48 @@ mutual
       let own : Option (String × Nat) := match name, args with
         -- the λ-calculus world: λx. body binds as far right as possible; application is juxtaposition
         | "λ", [xv, body] =>
-          let x := print xv (path ++ [0]) T P_ADD
-          let b := print body (path ++ [1]) T P_LAM
+          let x := print xv (0 :: path) T P_ADD
+          let b := print body (1 :: path) T P_LAM
           some (if T.times != "*" then s!"\\lambda {x}.\\, {b}" else s!"λ{x}. {b}", P_LAM)
         | "λ:", [xv, ty, body] =>
-          let x := print xv (path ++ [0]) T P_ADD
-          let ts := print ty (path ++ [1]) T P_ADD
-          let b := print body (path ++ [2]) T P_LAM
+          let x := print xv (0 :: path) T P_ADD
+          let ts := print ty (1 :: path) T P_ADD
+          let b := print body (2 :: path) T P_LAM
           let ts := match ty with | .fn "→" _ => T.parens ts | _ => ts
           some (if T.times != "*" then s!"\\lambda {x}\{:}{ts}.\\, {b}" else s!"λ{x}:{ts}. {b}", P_LAM)
         | "λ.", [body] =>
-          let b := print body (path ++ [0]) T P_LAM
+          let b := print body (0 :: path) T P_LAM
           some (if T.times != "*" then s!"\\lambda.\\, {b}" else s!"λ. {b}", P_LAM)
         | "@", [f, a] =>
-          let fs := print f (path ++ [0]) T P_APP
-          let as := print a (path ++ [1]) T (P_APP + 1)
+          let fs := print f (0 :: path) T P_APP
+          let as := print a (1 :: path) T (P_APP + 1)
           some (if T.times != "*" then s!"{fs}\\ {as}" else s!"{fs} {as}", P_APP)
         -- Mathematica's Part: m[[2, 1;;3]], and the specs it takes
         | "part", m :: specs =>
-          let ms := print m (path ++ [0]) T P_ATOM
+          let ms := print m (0 :: path) T P_ATOM
           let inner := ", ".intercalate (printArgs specs 1 path T)
           some (if T.times != "*" then s!"{ms}\\llbracket {inner}\\rrbracket" else s!"{ms}[[{inner}]]", P_ATOM)
         -- MATLAB's entrywise operators. Lower than a product as a whole, so it is grouped wherever a
         -- factor or a left operand would otherwise take it in: `x*(a ./ b)`, `(a ./ b) ./ c`
         | "ediv", [a, b] | "emul", [a, b] =>
-          let l := print a (path ++ [0]) T P_MUL
-          let r := print b (path ++ [1]) T P_POW
+          let l := print a (0 :: path) T P_MUL
+          let r := print b (1 :: path) T P_POW
           let op := if T.times != "*" then (if name == "ediv" then "\\oslash" else "\\odot") else (if name == "ediv" then "./" else ".*")
           some (s!"{l} {op} {r}", P_ADD)
         -- the logic world: connectives by their own precedence (↔ < → < ∨ < ∧ < ¬), quantifiers reach right
-        | "¬", [a] => some ((if T.times != "*" then "\\lnot " else "¬") ++ logicOperand T a (print a (path ++ [0]) T P_ADD) 5, P_ATOM)
+        | "¬", [a] => some ((if T.times != "*" then "\\lnot " else "¬") ++ logicOperand T a (print a (0 :: path) T P_ADD) 5, P_ATOM)
         | "∧", [a, b] | "∨", [a, b] =>
           let lvl := logicLevel name
           let op := if T.times != "*" then (if name == "∧" then " \\land " else " \\lor ") else s!" {name} "
-          some (logicOperand T a (print a (path ++ [0]) T P_ADD) lvl ++ op ++ logicOperand T b (print b (path ++ [1]) T P_ADD) (lvl + 1), P_ATOM)
+          some (logicOperand T a (print a (0 :: path) T P_ADD) lvl ++ op ++ logicOperand T b (print b (1 :: path) T P_ADD) (lvl + 1), P_ATOM)
         | "→", [a, b] | "↔", [a, b] =>
           let lvl := logicLevel name
           let op := if T.times != "*" then (if name == "→" then " \\to " else " \\leftrightarrow ") else s!" {name} "
-          some (logicOperand T a (print a (path ++ [0]) T P_ADD) (lvl + 1) ++ op ++ logicOperand T b (print b (path ++ [1]) T P_ADD) lvl, P_ATOM)
+          some (logicOperand T a (print a (0 :: path) T P_ADD) (lvl + 1) ++ op ++ logicOperand T b (print b (1 :: path) T P_ADD) lvl, P_ATOM)
         | "∀", [xv, dv, body] | "∃", [xv, dv, body] =>
-          let x := print xv (path ++ [0]) T P_ADD
-          let d := print dv (path ++ [1]) T P_ADD
-          let body := logicOperand T body (print body (path ++ [2]) T P_ADD) 0
+          let x := print xv (0 :: path) T P_ADD
+          let d := print dv (1 :: path) T P_ADD
+          let body := logicOperand T body (print body (2 :: path) T P_ADD) 0
           some (if T.times != "*" then s!"{if name == "∀" then "\\forall" else "\\exists"} {x} \\in {d},\\ {body}" else s!"{name} {x} ∈ {d}, {body}", P_ATOM)
         | _, _ => none
       match own with
@@ -315,21 +327,21 @@ mutual
       match (if T.times != "*" then radicalLatex b x else none) with
       | some r => r
       | none =>
-      if x.isNumEq (Q.ofRat (mkRat 1 2)) then (T.sqrt (print b (path ++ [0]) T P_ADD), P_ATOM)
+      if x.isNumEq (Q.ofRat (mkRat 1 2)) then (T.sqrt (print b (0 :: path) T P_ADD), P_ATOM)
       else match x with
       | .num q =>
         if q.isNeg then
           -- standalone x^(-n) → 1/x^n
           let n := q.neg
-          let base := print b (path ++ [0]) T (if n.isOne then T.denomPrec else P_POW + 1)
+          let base := print b (0 :: path) T (if n.isOne then T.denomPrec else P_POW + 1)
           let den := match (if T.times != "*" then radicalLatex b (.num n) else none) with
             | some (r, _) => r
             | none =>
               if n.isOne then base
-              else if (Expr.num n).isNumEq (Q.ofRat (mkRat 1 2)) then T.sqrt (print b (path ++ [0]) T P_ADD)   -- x^(-1/2) → 1/sqrt(x)
+              else if (Expr.num n).isNumEq (Q.ofRat (mkRat 1 2)) then T.sqrt (print b (0 :: path) T P_ADD)   -- x^(-1/2) → 1/sqrt(x)
               else
                 -- in text a fractional exponent needs its parentheses: 1/2^(3/2), not 1/2^3/2
-                let e := T.wrap (path ++ [1]) (T.num n)
+                let e := T.wrap (1 :: path) (T.num n)
                 T.pow base (if T.times == "*" && !n.isInt then T.parens e else e)
           (T.frac (T.num Q.one) den, P_MUL)
         else powRaw b (.num q) path T
@@ -341,8 +353,8 @@ mutual
 
   /-- `b^x` with a non-negative or symbolic exponent. -/
   def powRaw (b x : Expr) (path : Path) (T : Target) : String × Nat :=
-    let bs := print b (path ++ [0]) T (P_POW + 1)  -- left of ^ needs parens for anything non-atomic incl. -3 and 2^3
-    let xs := print x (path ++ [1]) T P_POW        -- right-assoc: 2^3^4 is 2^(3^4)
+    let bs := print b (0 :: path) T (P_POW + 1)  -- left of ^ needs parens for anything non-atomic incl. -3 and 2^3
+    let xs := print x (1 :: path) T P_POW        -- right-assoc: 2^3^4 is 2^(3^4)
     -- in text a fractional exponent needs its parentheses: 2^(3/2), not 2^3/2 (an exact one binds as a
     -- division and has them already; a decimal, 2^(0.5), does not)
     let xs := if T.times == "*" && (match x with | .num q => !q.isInt && q.approx | _ => false) then T.parens xs else xs
@@ -354,7 +366,7 @@ mutual
   def printArgs (args : List Expr) (i : Nat) (path : Path) (T : Target) : List String :=
     match args with
     | [] => []
-    | a :: rest => print a (path ++ [i]) T P_ADD :: printArgs rest (i + 1) path T
+    | a :: rest => print a (i :: path) T P_ADD :: printArgs rest (i + 1) path T
   termination_by 8 * Expr.sizeList args + 5
   decreasing_by all_goals (have := Expr.size_pos a; print_decreasing)
 
@@ -364,10 +376,10 @@ mutual
     | [] => acc
     | a :: rest =>
       let negative := (splitCoeff a).1.isNeg
-      let acc := if i == 0 && !negative then acc ++ print a (path ++ [i]) T P_ADD
+      let acc := if i == 0 && !negative then acc ++ print a (i :: path) T P_ADD
         else
           let sign := if negative then " - " else " + "
-          let termStr := if negative then negTerm a (path ++ [i]) T else print a (path ++ [i]) T P_MUL
+          let termStr := if negative then negTerm a (i :: path) T else print a (i :: path) T P_MUL
           acc ++ (if i == 0 then sign.trimAscii.copy else sign) ++ termStr
       addTerms rest (i + 1) path T acc
   termination_by 8 * Expr.sizeList args + 7
@@ -388,7 +400,7 @@ mutual
       -- factors keep their true paths: the numeral is child 0, the rest follow)
       else print (.mul (.num q.neg :: rs)) p T P_MUL
     | .mul [.num q, r] =>
-      if q.neg.isOne then print r (p ++ [1]) T P_MUL else print (.mul [.num q.neg, r]) p T P_MUL
+      if q.neg.isOne then print r (1 :: p) T P_MUL else print (.mul [.num q.neg, r]) p T P_MUL
     | .mul (.num q :: r :: rs) =>
       if q.neg.isOne then
         let (s, prec) := mulRaw (r :: rs) p 1 T
@@ -399,7 +411,7 @@ mutual
   termination_by 8 * a.size + 5
   decreasing_by all_goals print_decreasing
 
-  /-- The product of `args`, its `i`-th factor at `path ++ [i + off]`: `off` is 1 for the factors
+  /-- The product of `args`, its `i`-th factor at `i + off :: path`: `off` is 1 for the factors
   of `mul [-1, a, b]` printed without their sign. -/
   def mulRaw (args : List Expr) (path : Path) (off : Nat) (T : Target) : String × Nat :=
     match (if T.times != "*" then mulRadicalLatex T.num args else none) with
@@ -407,6 +419,9 @@ mutual
     | none =>
     -- Partition into numerator / denominator factors; a leading -1 becomes a unary minus.
     let (sign, numer, denom) := mulFactors args 0 path off T "" [] []
+    -- gathered last factor first, a cons each
+    let numer := numer.reverse
+    let denom := denom.reverse
     let n := if numer.isEmpty then T.num Q.one else T.times.intercalate numer
     if denom.isEmpty then (sign ++ n, if sign.isEmpty then P_MUL else P_NEG)
     else
@@ -415,13 +430,14 @@ mutual
   termination_by 8 * Expr.sizeList args + 7
   decreasing_by all_goals print_decreasing
 
-  /-- The factors of a product from the `i`-th, sorted into a sign, a numerator and a denominator. -/
+  /-- The factors of a product from the `i`-th, sorted into a sign, a numerator and a denominator,
+  each gathered last factor first. -/
   def mulFactors (args : List Expr) (i : Nat) (path : Path) (off : Nat) (T : Target)
       (sign : String) (numer denom : List String) : String × List String × List String :=
     match args with
     | [] => (sign, numer, denom)
     | f :: rest =>
-      let (sign, numer, denom) := mulFactor f i (path ++ [i + off]) T sign numer denom
+      let (sign, numer, denom) := mulFactor f i ((i + off) :: path) T sign numer denom
       mulFactors rest (i + 1) path off T sign numer denom
   termination_by 8 * Expr.sizeList args + 6
   decreasing_by all_goals (have := Expr.size_pos f; print_decreasing)
@@ -437,27 +453,27 @@ mutual
           let sign := if q.isNeg then ("-" : String) else sign
           let a := q.abs
           -- an integer (a `1` stays visible: the identity step removes it) or an approximate decimal prints as is
-          if a.isInt || q.approx then (sign, if q.isNeg && a.isOne then numer else numer ++ [T.wrap p (T.num a)], denom)
+          if a.isInt || q.approx then (sign, if q.isNeg && a.isOne then numer else T.wrap p (T.num a) :: numer, denom)
           else
             let pn := Q.ofInt a.val.num
             let dn := Q.ofInt (Int.ofNat a.val.den)
-            (sign, if pn.isOne then numer else numer ++ [T.wrap p (T.num pn)], denom ++ [if pn.isOne then T.wrap p (T.num dn) else T.num dn])
-        else (sign, numer ++ [print (.num q) p T (P_MUL + 1)], denom)
+            (sign, if pn.isOne then numer else T.wrap p (T.num pn) :: numer, (if pn.isOne then T.wrap p (T.num dn) else T.num dn) :: denom)
+        else (sign, print (.num q) p T (P_MUL + 1) :: numer, denom)
       | .pow b (.num q) =>
         if q.isNeg then
           let n := q.neg
-          let base := print b (p ++ [0]) T (if n.isOne then T.denomPrec else P_POW + 1)
+          let base := print b (0 :: p) T (if n.isOne then T.denomPrec else P_POW + 1)
           let den := match (if T.times != "*" then radicalLatex b (.num n) else none) with
             | some (r, _) => r
             | none =>
               if n.isOne then base
-              else if (Expr.num n).isNumEq (Q.ofRat (mkRat 1 2)) then T.sqrt (print b (p ++ [0]) T P_ADD)   -- ·x^(-1/2) → /sqrt(x)
+              else if (Expr.num n).isNumEq (Q.ofRat (mkRat 1 2)) then T.sqrt (print b (0 :: p) T P_ADD)   -- ·x^(-1/2) → /sqrt(x)
               else
-                let e := T.wrap (p ++ [1]) (T.num n)
+                let e := T.wrap (1 :: p) (T.num n)
                 T.pow base (if T.times == "*" && !n.isInt then T.parens e else e)
-          (sign, numer, denom ++ [T.wrap p den])
-        else (sign, numer ++ [print (.pow b (.num q)) p T P_MUL], denom)
-      | a => (sign, numer ++ [print a p T P_MUL], denom)
+          (sign, numer, T.wrap p den :: denom)
+        else (sign, print (.pow b (.num q)) p T P_MUL :: numer, denom)
+      | a => (sign, print a p T P_MUL :: numer, denom)
   termination_by 8 * f.size + 5
   decreasing_by all_goals print_decreasing
 end
