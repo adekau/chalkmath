@@ -2,10 +2,10 @@
 4	let Cat = subsets({fin, hr})	= poset {{}, {hr}, {fin}, {fin,hr}}
 5	let SC = product(Lv, Cat)	= poset {(low, {}), (low, {hr}), (low, {fin}), (low, {fin,hr}), (high, {}), (high, {hr}), (high, {fin}), (high, {fin,hr})}
 6	lattice(SC)	= true
-9	join(SC, (low, {fin}), (high, {}))	= (high, {fin})
-10	join(SC, (high, {hr}), (low, {fin}))	= (high, {fin,hr})
-13	let Fl = rel({salary, report, audit}; salary->report, report->audit)	= {(salary, report), (report, audit)}
-14	secure(SC, Fl; salary->(high, {hr}), report->(high, {hr, fin}), audit->(low, {fin}))	= false
-16	secure(SC, Fl; salary->(high, {hr}), report->(high, {hr, fin}), audit->(high, {hr, fin}))	= true
-23	join(SC, (low, {fin}), (high, {hr}))	= (high, {fin,hr})
-24	le(SC, (high, {}), (low, {fin}))	= false
+10	join(SC, (low, {fin}), (high, {}))	= (high, {fin})
+11	join(SC, (high, {hr}), (low, {fin}))	= (high, {fin,hr})
+14	let Fl = rel({salary, report, audit}; salary->report, report->audit)	= {(salary, report), (report, audit)}
+15	secure(SC, Fl; salary->(high, {hr}), report->(high, {hr, fin}), audit->(low, {fin}))	= false
+17	secure(SC, Fl; salary->(high, {hr}), report->(high, {hr, fin}), audit->(high, {hr, fin}))	= true
+24	join(SC, (low, {fin}), (high, {hr}))	= (high, {fin,hr})
+25	le(SC, (high, {}), (low, {fin}))	= false

@@ -68,12 +68,12 @@
         {
           "file": "01-partial-orders.chalk",
           "title": "Relations and partial orders",
-          "blurb": "Partial orders on numbers, divisibility and sets, Hasse diagrams, and the definitions in Lean."
+          "blurb": "What \"at most\" has to mean: partial orders on numbers, divisibility and sets, Hasse diagrams, and the definitions in Lean."
         },
         {
           "file": "02-special-elements.chalk",
           "title": "Special elements and monotone maps",
-          "blurb": "Least, greatest, maximal and minimal elements, bounds, joins and meets, and monotone maps."
+          "blurb": "What replaces \"the larger of two\": bounds, joins and meets, when they fail to exist, and maps that respect the order."
         },
         {
           "file": "03-lattices.chalk",
@@ -83,22 +83,22 @@
         {
           "file": "04-fixed-points.chalk",
           "title": "Complete lattices and fixed points",
-          "blurb": "Complete lattices, the Knaster–Tarski theorem, and least fixed points by iteration."
+          "blurb": "Apply until nothing changes: complete lattices, the Knaster–Tarski theorem, and least fixed points by iteration."
         },
         {
           "file": "05-semilattices.chalk",
-          "title": "Semilattices as algebras",
-          "blurb": "Join as an operation with laws: associative, commutative, idempotent, and the order it gives back."
+          "title": "Semilattices: the laws of a merge",
+          "blurb": "Messages arrive in any order, grouped any way, twice: the three laws a merge needs, and the order every such merge hides."
         },
         {
           "file": "06-merges.chalk",
           "title": "A merge is a join",
-          "blurb": "Max, union, last-writer-wins and records merged field by field: why replicas that merge this way agree."
+          "blurb": "Records merged field by field and last-writer-wins registers: merges that are joins, built and proved in Lean."
         },
         {
           "file": "07-distributive.chalk",
           "title": "Distributive and Boolean lattices",
-          "blurb": "M₃ and N₅ as the witnesses, complements, and the Boolean lattices of sets and squarefree divisors."
+          "blurb": "Does meet distribute over join? M₃ and N₅ as the witnesses, unique complements, and the Boolean lattices of sets and squarefree divisors."
         },
         {
           "file": "08-access-decisions.chalk",
@@ -112,18 +112,18 @@
         },
         {
           "file": "10-galois.chalk",
-          "title": "Closure operators and Galois connections",
-          "blurb": "Closure operators, Galois connections between two orders, and the concept lattice of a formal context."
+          "title": "Galois connections and closure operators",
+          "blurb": "Best approximations between a fine order and a coarse one, the closure operators they make, and the concept lattice of a formal context."
         },
         {
           "file": "11-fixed-points-in-practice.chalk",
           "title": "Fixed points in practice",
-          "blurb": "Apply until nothing changes: reachability as a least fixed point, and why the iteration stops."
+          "blurb": "Apply until nothing changes: reachability as a least fixed point, why start at the bottom, and why the iteration stops."
         },
         {
           "file": "12-propagators.chalk",
           "title": "The propagator model",
-          "blurb": "Cells that only gain information, in a lattice; propagators as monotone functions between them."
+          "blurb": "Cells that only gain information, in a lattice; propagators as monotone functions between them; why the answer does not depend on the schedule."
         },
         {
           "file": "13-propagator-network.chalk",
@@ -133,7 +133,7 @@
         {
           "file": "14-intervals.chalk",
           "title": "The interval lattice",
-          "blurb": "Bounds on a number as partial information: intersection as the merge, and interval arithmetic propagators."
+          "blurb": "Bounds on a number as partial information: intersection as the merge, interval arithmetic propagators, and what a contradiction does to termination."
         },
         {
           "file": "15-capstones.chalk",

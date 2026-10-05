@@ -9,13 +9,13 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Recognize \"apply until nothing changes\" as computing a least fixed point, compute one on a lattice of sets, and see why it stops.",
+      "src": "> [!goal]\n> Recognise \"apply until nothing changes\" as computing a least fixed point, compute one on a lattice of sets, and see why it stops and why it finds exactly what is forced.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "Many algorithms keep applying a step until it has no effect: closing a set under rules, propagating facts, computing what can be reached. When the step is monotone and starts from the bottom, the result is the **least** fixed point (Kleene), and it is the smallest set closed under the step.",
+      "src": "Which pages can a crawler reach from the home page? Which facts follow from a set of rules? Which variables might be unset at some line of a program? The algorithm is the same loop each time: start with what you know, apply the step, add what it gives, and stop when it gives nothing new. Lesson 4 said when such a loop stops and what it finds. Here it is at work.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -48,6 +48,12 @@
       "label": null
     },
     {
+      "src": "> [!try]\n> Step through the iteration. Before each step, say which nodes the next set adds.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "lfp(P4, reach)",
       "showWork": true,
       "label": null,
@@ -60,19 +66,47 @@
       "label": null
     },
     {
+      "src": "Why start at the bottom",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The reachable set is a fixed point: the step adds nothing to it. It is not the only one.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "fixpoints(P4, reach)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "gfp(P4, reach)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "$\\{a, b, c, d\\}$ is closed under successors too: no edge leads out of it. Iterating down from the top stops there at once, and the answer contains $d$, which is not reachable. The least fixed point contains only what is forced, and starting from $\\bot$ is what finds it: every set in the chain from $\\bot$ is below every fixed point, so the chain cannot overshoot.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "Why it stops",
       "type": "section",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!theorem] The ascending chain condition\n> If every increasing chain $x_0 \\le x_1 \\le \\cdots$ in a lattice is eventually constant (always true on a finite lattice), then iterating a monotone $f$ from $\\bot$ reaches a fixed point after finitely many steps, and it is the least one.",
+      "src": "> [!theorem] The ascending chain condition\n> If every increasing chain $x_0 \\le x_1 \\le \\cdots$ in a lattice with a bottom is eventually constant (always true on a finite lattice), then iterating a monotone $f$ from $\\bot$ reaches a fixed point after finitely many steps, and it is the least one.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "On the subsets of an $n$-element set a chain has at most $n + 1$ distinct elements, so the iteration takes at most $n$ steps. In Lean, every iterate is below every fixed point above the start:",
+      "src": "On the subsets of an $n$-element set a strictly increasing chain has at most $n + 1$ sets, so the iteration takes at most $n$ steps that change anything. In Lean, every iterate is below every fixed point above the start:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -112,7 +146,18 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> \"Apply until nothing changes\" computes a least fixed point when the step is monotone and starts from the bottom. On a finite lattice it always stops, and what it finds is the smallest solution: everything forced, nothing more.",
+      "src": "fixpoints(P4, R3)",
+      "type": "exercise",
+      "prompt": "List every fixed point of `R3`, as a set of sets. Why is there only one this time?",
+      "hints": [
+        "A fixed point contains $d$ and is closed under successors.",
+        "From $d$ every node is reachable, so the only such set is all of them: `{{a,b,c,d}}`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> \"Apply until nothing changes\" computes a least fixed point when the step is monotone and starts from the bottom. On a finite lattice it always stops, and what it finds is the smallest solution: everything forced, nothing more. Starting from the top finds the greatest, which can contain things nothing forced.\n\nThat was one set and one step. Next: many cells, each holding part of an answer, and many small steps reading and writing them, in whatever order a scheduler picks.",
       "type": "markdown",
       "showWork": false,
       "label": null

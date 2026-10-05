@@ -9,7 +9,13 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> State and prove the Knaster–Tarski theorem, and compute least and greatest fixed points of monotone maps on finite lattices by iterating from the bottom and the top.",
+      "src": "> [!goal]\n> See why \"apply until nothing changes\" stops and what it finds: the least fixed point of a monotone map, by Knaster–Tarski in general and by iterating from the bottom on a finite lattice.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Many computations are a loop: apply a rule, then again, until nothing changes. Closing a set of facts under some rules, finding everything reachable from a start, solving constraints. Two questions decide whether such a loop is any good: does it stop, and does its answer depend on accidents such as where it started?\n\n> [!try]\n> Take the map on the divisors of 12 that sends $1 \\mapsto 2$ and $3 \\mapsto 6$ and fixes the rest (`f` below). Start at $1$ and apply it until nothing changes; then start at $12$. Do you land in the same place? Which elements does it not move at all?",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -74,7 +80,7 @@
       "label": null
     },
     {
-      "src": "## Why fixed points matter\n\nA *fixed point* of $f : L \\to L$ is an element $x$ with $f(x) = x$ — where an iterative process *stabilises*.\n\n- **Propagator networks.** Cell values stop changing when the propagators reach a fixed point of “apply all propagators once”. That stable state is the least fixed point: the most conservative set of conclusions forced by the constraints, nothing more.\n- **Dataflow analysis.** A compiler iterates a flow function until it stabilises; the result is its least fixed point.\n- **Denotational semantics.** The meaning of a recursive program is the least fixed point of a semantic functional.\n- **Regular expressions.** The set matched by $a^*$ is the least fixed point of $S \\mapsto \\{\\varepsilon\\} \\cup a \\cdot S$.\n\n## The Knaster–Tarski fixed-point theorem\n\n**Theorem (Knaster–Tarski, 1955).** Let $(L, \\le)$ be a complete lattice and $f : L \\to L$ monotone. Then $f$ has a *least fixed point* $\\mu f = \\bigwedge \\{x \\mid f(x) \\le x\\}$ and a *greatest fixed point* $\\nu f = \\bigvee \\{x \\mid x \\le f(x)\\}$.\n\n*Proof.* Let $P = \\{x \\mid f(x) \\le x\\}$, the *pre-fixed points*, and $m = \\bigwedge P$.\n\n*Step 1: $f(m) \\le m$.* For every $x \\in P$, $m \\le x$, so $f(m) \\le f(x) \\le x$ by monotonicity. Hence $f(m)$ is a lower bound of $P$, so $f(m) \\le m$.\n\n*Step 2: $m \\le f(m)$.* Applying $f$ to Step 1 gives $f(f(m)) \\le f(m)$, so $f(m) \\in P$; since $m$ is the infimum of $P$, $m \\le f(m)$.\n\nSo $f(m) = m$. Any fixed point $x^*$ has $f(x^*) = x^* \\le x^*$, so $x^* \\in P$ and $m \\le x^*$: $m$ is the *least* fixed point. $\\square$",
+      "src": "## Why fixed points matter\n\nA *fixed point* of $f : L \\to L$ is an element $x$ with $f(x) = x$ — where an iterative process *stabilises*.\n\n- **Propagator networks.** Cell values stop changing when the propagators reach a fixed point of “apply all propagators once”. That stable state is the least fixed point: the most conservative set of conclusions forced by the constraints, nothing more.\n- **Dataflow analysis.** A compiler iterates a flow function until it stabilises; the result is a fixed point, the least one in the order the analysis is set up in.\n- **Denotational semantics.** The meaning of a recursive program is the least fixed point of a semantic functional.\n- **Regular expressions.** The set matched by $a^*$ is the least fixed point of $S \\mapsto \\{\\varepsilon\\} \\cup a \\cdot S$.\n\n## The Knaster–Tarski fixed-point theorem\n\n**Theorem (Knaster–Tarski, 1955).** Let $(L, \\le)$ be a complete lattice and $f : L \\to L$ monotone. Then $f$ has a *least fixed point* $\\mu f = \\bigwedge \\{x \\mid f(x) \\le x\\}$ and a *greatest fixed point* $\\nu f = \\bigvee \\{x \\mid x \\le f(x)\\}$.\n\n*Proof.* Let $P = \\{x \\mid f(x) \\le x\\}$, the *pre-fixed points*, and $m = \\bigwedge P$.\n\n*Step 1: $f(m) \\le m$.* For every $x \\in P$, $m \\le x$, so $f(m) \\le f(x) \\le x$ by monotonicity. Hence $f(m)$ is a lower bound of $P$, so $f(m) \\le m$.\n\n*Step 2: $m \\le f(m)$.* Applying $f$ to Step 1 gives $f(f(m)) \\le f(m)$, so $f(m) \\in P$; since $m$ is the infimum of $P$, $m \\le f(m)$.\n\nSo $f(m) = m$. Any fixed point $x^*$ has $f(x^*) = x^* \\le x^*$, so $x^* \\in P$ and $m \\le x^*$: $m$ is the *least* fixed point. $\\square$",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -128,7 +134,7 @@
       "label": null
     },
     {
-      "src": "## Chains and convergence\n\nChains are the lattice-theoretic version of sequences in calculus, and understanding them is essential to understanding why iterative computations terminate.\n\n**Definition.** A *chain* in a poset is a subset in which every pair is comparable. An *ascending chain* is a chain written as a sequence $a_0 \\le a_1 \\le a_2 \\le \\cdots$.\n\nThe parallel with calculus is direct:\n\n$$\\begin{array}{ll}\n\\textbf{Calculus} & \\textbf{Lattice theory} \\\\ \\hline\n\\text{sequence } a_0 \\le a_1 \\le a_2 \\le \\cdots & \\text{ascending chain} \\\\\n\\text{limit } \\lim_{n\\to\\infty} a_n & \\text{supremum } \\bigsqcup_n a_n \\\\\n\\text{convergence} & \\text{chain stabilising} \\\\\n\\text{completeness of } \\mathbb{R} & \\text{completeness of the lattice} \\\\\n\\text{Cauchy sequence} & \\text{ascending chain condition}\n\\end{array}$$\n\nJust as the completeness of $\\mathbb{R}$ guarantees every bounded ascending sequence a limit, the completeness of a lattice guarantees every chain a supremum. Without it the supremum might not exist in your structure — exactly as $\\sqrt 2$ does not exist in $\\mathbb{Q}$ although rational sequences converge to it.\n\n**The ascending chain condition.** A poset satisfies the ACC if every strictly ascending chain $a_0 < a_1 < \\cdots$ is finite. Then the Kleene chain must stabilise at some $f^n(\\bot) = f^{n+1}(\\bot)$: a fixed point in finitely many iterations. Every finite poset satisfies the ACC trivially — a strictly ascending chain in `chain(5)` has at most five elements — which is why every `lfp` cell in this notebook terminates. `FlatNat` in Part II satisfies it too (its chains are $\\bot < \\mathrm{known}(n)$, length two); the interval lattice does *not* — $[0,10] < [0,9] < [0,8] < \\cdots$ — which is why interval propagators need a widening operator.\n\n**$\\bot$ is the starting point, not the limit.** The supremum of the Kleene chain is not $\\bot$; $\\bot$ is its *minimum*. For the sequence $0, \\tfrac12, \\tfrac34, \\tfrac78, \\ldots$ the minimum is $0$ and the limit is $1$. The chain in `lfp(D, dbl)` starts at $1$ and ends at $4$:",
+      "src": "## Chains and convergence\n\nChains are the lattice-theoretic version of sequences in calculus, and understanding them is essential to understanding why iterative computations terminate.\n\n**Definition.** A *chain* in a poset is a subset in which every pair is comparable. An *ascending chain* is a chain written as a sequence $a_0 \\le a_1 \\le a_2 \\le \\cdots$.\n\nThe parallel with calculus is direct:\n\n$$\\begin{array}{ll}\n\\textbf{Calculus} & \\textbf{Lattice theory} \\\\ \\hline\n\\text{sequence } a_0 \\le a_1 \\le a_2 \\le \\cdots & \\text{ascending chain} \\\\\n\\text{limit } \\lim_{n\\to\\infty} a_n & \\text{supremum } \\bigsqcup_n a_n \\\\\n\\text{convergence} & \\text{chain stabilising} \\\\\n\\text{completeness of } \\mathbb{R} & \\text{completeness of the lattice}\n\\end{array}$$\n\nJust as the completeness of $\\mathbb{R}$ guarantees every bounded ascending sequence a limit, the completeness of a lattice guarantees every chain a supremum. Without it the supremum might not exist in your structure — exactly as $\\sqrt 2$ does not exist in $\\mathbb{Q}$ although rational sequences converge to it.\n\n**The ascending chain condition.** A poset satisfies the ACC if every strictly ascending chain $a_0 < a_1 < \\cdots$ is finite. Then the Kleene chain must stabilise at some $f^n(\\bot) = f^{n+1}(\\bot)$: a fixed point in finitely many iterations. Every finite poset satisfies the ACC trivially — a strictly ascending chain in `chain(5)` has at most five elements — which is why every `lfp` cell in this notebook terminates. The flat lattice of Part II (nothing known, a value, a contradiction) satisfies it too, although it is infinite: no chain has more than three elements. The interval lattice on the integers does *not* once a bound may be infinite — $[0, \\infty) < [1, \\infty) < [2, \\infty) < \\cdots$ narrows forever — which is why interval propagators need a widening operator.\n\n**$\\bot$ is the starting point, not the limit.** The supremum of the Kleene chain is not $\\bot$; $\\bot$ is its *minimum*. For the sequence $0, \\tfrac12, \\tfrac34, \\tfrac78, \\ldots$ the minimum is $0$ and the limit is $1$. The chain in `lfp(D, dbl)` starts at $1$ and ends at $4$:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -211,7 +217,29 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> On a complete lattice every monotone map has a least and a greatest fixed point. On a finite one they are reached by iterating from $\\bot$ and from $\\top$: the Kleene chain, every element of which is below every fixed point.",
+      "src": "A new map: `tri` multiplies by 3 where the product is still a divisor of 12, and fixes the rest.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let tri = map(D; 1 -> 3, 2 -> 6, 4 -> 12)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "lfp(D, tri)",
+      "type": "exercise",
+      "prompt": "Iterate by hand from $\\bot$: what is the least fixed point of `tri`?",
+      "hints": [
+        "$1 \\mapsto 3$, and then?",
+        "`tri` is monotone (check it with `monotone(D, tri)`), so where the chain stops is the least fixed point."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> On a complete lattice every monotone map has a least and a greatest fixed point (Knaster–Tarski). With a bottom and no infinite ascending chains, on any finite lattice for instance, the least one is reached by iterating from $\\bot$. Monotonicity makes the chain climb: $\\bot \\le f(\\bot)$, and $f^n(\\bot) \\le f^{n+1}(\\bot)$ gives $f^{n+1}(\\bot) \\le f^{n+2}(\\bot)$. Finite height means it can climb only finitely often. Where it stops is a fixed point, and below every other one.\n\nSo far a join was found by searching a picture. Next, turned around: the join as an operation, a way of merging two states, and the laws any such merge must obey.",
       "type": "markdown",
       "showWork": false,
       "label": null

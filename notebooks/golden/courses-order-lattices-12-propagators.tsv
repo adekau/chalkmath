@@ -1,10 +1,11 @@
-4	let F = poset({unknown, 1, 2, 3, conflict}; unknown < 1, unknown < 2, unknown < 3, 1 < conflict, 2 < conflict, 3 < conflict)	= poset {unknown, 1, 2, 3, conflict}
-5	lattice(F)	= true
-6	join(F, unknown, 2)	= 2
+3	let F = poset({unknown, 1, 2, 3, conflict}; unknown < 1, unknown < 2, unknown < 3, 1 < conflict, 2 < conflict, 3 < conflict)	= poset {unknown, 1, 2, 3, conflict}
+4	lattice(F)	= true
+5	join(F, unknown, 2)	= 2
 7	join(F, 2, 3)	= conflict
-10	let inc = map(F; 1->2, 2->3, 3->conflict)	= {1↦2, 2↦3, 3↦conflict}   [every other element is fixed]
-11	monotone(F, inc)	= true
-12	let guess = map(F; unknown->1)	= {unknown↦1}   [every other element is fixed]
-13	monotone(F, guess)	= false
-19	join(F, 1, 1)	= 1
-20	monotone(F, guess)	= false
+8	join(F, 3, 2)	= conflict
+13	let inc = map(F; 1->2, 2->3, 3->conflict)	= {1↦2, 2↦3, 3↦conflict}   [every other element is fixed]
+14	monotone(F, inc)	= true
+15	let guess = map(F; unknown->1)	= {unknown↦1}   [every other element is fixed]
+16	monotone(F, guess)	= false
+23	join(F, 1, 1)	= 1
+24	monotone(F, guess)	= false

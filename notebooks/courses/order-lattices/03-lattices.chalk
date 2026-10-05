@@ -15,6 +15,22 @@
       "label": null
     },
     {
+      "src": "The join answers \"the least thing that contains both\", when there is one. A merge that sometimes has no answer is no use to a program, so ask for posets where every pair has a join, and also a **meet**: the greatest thing below both, what two states have in common.\n\n> [!try]\n> Predict, then check below: which of these is a lattice? The permissions diamond; the vee, $a < b$ and $a < c$; the divisors of 12.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let Perm = poset({none, read, write, rw}; none < read, none < write, read < rw, write < rw)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "lattice(Perm)",
+      "showWork": true,
+      "label": null
+    },
+    {
       "src": "From the earlier lessons, the names this one uses:",
       "type": "markdown",
       "showWork": false,
@@ -370,7 +386,7 @@
       "label": null
     },
     {
-      "src": "## Exercises\n\n**3.1 Lattice of intervals.** Define `Interval` as pairs $[l, h]$ with $l \\le h$, ordered by $[l_1, h_1] \\le [l_2, h_2] \\iff l_2 \\le l_1 \\wedge h_1 \\le h_2$ — “containment by a smaller interval”, the *precision* or *information* order. Prove it is a partial order; what are meet and join? (Meet is the smallest interval containing both — the convex hull; join is the intersection, when it is non-empty. Chapter 7 makes this the interval lattice of the propagators.)\n\n**3.2 Absorption.** In any lattice, $a \\sqcap (a \\sqcup b) = a$. The instance in $D$ with $a = 4$, $b = 6$: $4 \\sqcup 6 = 12$ and $4 \\sqcap 12 = 4$.",
+      "src": "## Exercises\n\n**3.1 Lattice of intervals.** Define `Interval` as pairs $[l, h]$ with $l \\le h$, ordered by $[l_1, h_1] \\le [l_2, h_2] \\iff l_1 \\le l_2 \\wedge h_2 \\le h_1$ — the second interval lies inside the first, so it says more about where the number is: the *precision* or *information* order, in which smaller intervals are higher. Prove it is a partial order; what are meet and join? (Meet is the smallest interval containing both — the convex hull; join is the intersection, when it is non-empty. Two disjoint intervals have no join until an “empty” element, a contradiction, is added on top. Chapter 7 makes this the interval lattice of the propagators.)\n\n**3.2 Absorption.** In any lattice, $a \\sqcap (a \\sqcup b) = a$. The instance in $D$ with $a = 4$, $b = 6$: $4 \\sqcup 6 = 12$ and $4 \\sqcap 12 = 4$.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -461,7 +477,7 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> A lattice has every pairwise join and meet. Turning the order upside down swaps them (duality). Booleans, powersets and divisors are lattices; the vee is not, and M₃ and N₅ are lattices that fail the distributive law.",
+      "src": "> [!summary]\n> A lattice has every pairwise join and meet. Turning the order upside down swaps them (duality). Booleans, powersets and divisors are lattices; the vee is not, and M₃ and N₅ are lattices that fail the distributive law.\n\nIn a lattice any two elements can be merged. Next, a map applied again and again until nothing changes: when that stops, and where.",
       "type": "markdown",
       "showWork": false,
       "label": null

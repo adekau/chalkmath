@@ -9,13 +9,13 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Represent partial knowledge of a number as an interval, merge intervals by intersecting them, and propagate bounds through arithmetic.",
+      "src": "> [!goal]\n> Represent partial knowledge of a number as an interval, merge intervals by intersecting them, propagate bounds through arithmetic, and see where termination needs care.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "\"The value is between 1 and 5\" is partial information, more than \"unknown\" and less than \"it is 3\". Two such facts merge into their **intersection**; an empty intersection is a contradiction. Ordered by information, smaller intervals are higher.",
+      "src": "$x$ is between $1$ and $5$, $y$ between $2$ and $3$, and $x + y$ is between $0$ and $6$. What do you know about $x$?\n\n> [!try]\n> Work it out by hand before reading on.\n\nTwo steps do it. $x + y \\ge 1 + 2 = 3$, so $x + y$ is between $3$ and $6$; then $x = (x + y) - y \\le 6 - 2 = 4$. No number was ever known exactly, only bounds, and each step narrowed one. \"The value is between 1 and 5\" is partial information: more than \"unknown\", less than \"it is 3\". Two such facts about one number merge into their **intersection**, and an empty intersection is a contradiction. Ordered by information, smaller intervals are higher.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -47,6 +47,17 @@
       "label": null
     },
     {
+      "src": "The meet goes the other way: what two facts have in common, the smallest interval containing both.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "meet(I, i00, i22)",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "In Lean",
       "type": "section",
       "showWork": false,
@@ -71,7 +82,7 @@
       "label": null
     },
     {
-      "src": "From $x \\in [1, 5]$, $y \\in [2, 3]$ and $x + y \\in [0, 6]$: $z \\ge 3$, so $z \\in [3, 6]$, and $x = z - y \\le 4$, so $x \\in [1, 4]$.",
+      "src": "The network repeats the reasoning above: $z$ narrows to $[3, 6]$, then $x$ to $[1, 4]$, and $y$ stays $[2, 3]$.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -85,6 +96,30 @@
       "hints": [
         "Unfold `Ival.within` and `Ival.add` everywhere with `simp only`; what is left is linear arithmetic."
       ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "When a contradiction never settles",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Lesson 13's loop stopped because the flat lattice has no long chains. `Ival` has infinitely many ways to be empty: `⟨5, 3⟩` and `⟨6, 3⟩` are different values that both mean \"no number\", and the second is above the first. Give the network a contradiction, $x = 5$ and $y = 5$ but $x + y = 0$, and watch $x$'s raw bounds round by round:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- x = 5 and y = 5, but x + y = 0: four rounds of the propagators, and x's bounds after each. -/\ndef ivalContradiction : IO Unit := do\n  let x ← Cell.new (⟨5, 5⟩ : Ival)\n  let y ← Cell.new (⟨5, 5⟩ : Ival)\n  let z ← Cell.new (⟨0, 0⟩ : Ival)\n  for round in [1, 2, 3, 4] do\n    for p in ivalSum x y z do\n      let _ ← p\n    let v ← x.read\n    IO.println s!\"round {round}: x = ⟨{v.lo}, {v.hi}⟩, which is {v}\"\n\n#eval ivalContradiction",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> Every round changes the cells, so `runToFixpoint` on this network would never return, although every cell has meant \"empty\" since the first round. The fix is to make all empty intervals one element, a single top, as `Flat` has a single `conflict`. Then a cell that starts with finite bounds can narrow only finitely often, and the loop stops. Termination comes from the lattice, so a lattice with infinite ascending chains needs this care, or the *widening* operators of static analysis, which jump ahead to a bound instead of creeping towards it.",
+      "type": "markdown",
       "showWork": false,
       "label": null
     },
@@ -115,7 +150,7 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> Intervals are partial information about numbers; merging is intersection, and an empty one is a contradiction. Interval arithmetic gives monotone propagators, so a network of them narrows every bound as far as the constraints force, and stops.",
+      "src": "> [!summary]\n> Intervals are partial information about numbers; merging is intersection, and an empty one is a contradiction. Interval arithmetic gives monotone propagators, so a network of them narrows every bound as far as the constraints force. When the constraints are consistent it stops; a contradiction stops only once every empty interval is the same element.\n\nA Sudoku square is not a number to bound but a choice among a few digits, and what we know of it is the set of digits still possible. Next, and last: two capstones.",
       "type": "markdown",
       "showWork": false,
       "label": null

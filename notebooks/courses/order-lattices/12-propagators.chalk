@@ -9,19 +9,13 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Model partial information as a lattice, merges as joins, and computations as monotone propagators; see why a propagator must never guess.",
+      "src": "> [!goal]\n> Model partial information as a lattice and computations as monotone propagators, and see why a network's answer does not depend on the order things run in, and why a propagator must never guess.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!definition] Cells and propagators\n> A **cell** holds what is known so far about a value, an element of a lattice ordered by information. New information is **merged** in with the join, so a cell's content only rises. A **propagator** reads cells and writes its conclusions to another cell; a network runs propagators until nothing changes.",
-      "type": "markdown",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "The simplest information lattice for a number: nothing known, one of the values, or a contradiction.",
+      "src": "Three numbers are tied by $x + y = z$. One source says $x = 3$, another says $z = 10$. Three small computations can each fill in one number from the other two, and a scheduler runs them in whatever order it likes, perhaps in parallel, perhaps one of them twice. How do we make sure the answer does not depend on the schedule?\n\nThe idea of the propagator model: a place that holds a value, a **cell**, never forgets. It holds what is known so far, and new information is merged in, never written over. The simplest lattice of information about a number: nothing known, one of the values, or a contradiction.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -42,8 +36,31 @@
       "label": null
     },
     {
+      "src": "> [!try]\n> One computation writes $2$ to a cell and another writes $3$. Overwriting keeps whichever ran last. What does merging give, in each order?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "join(F, 2, 3)",
       "showWork": true,
+      "label": null
+    },
+    {
+      "src": "join(F, 3, 2)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Either order gives `conflict`: the disagreement is reported, not decided by the schedule.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Cells and propagators\n> A **cell** holds what is known so far about a value, an element of a lattice ordered by information. New information is **merged** in with the join, so a cell's content only rises. A **propagator** reads cells and writes its conclusions to another cell; a network runs propagators until nothing changes.",
+      "type": "markdown",
+      "showWork": false,
       "label": null
     },
     {
@@ -53,7 +70,7 @@
       "label": null
     },
     {
-      "src": "A propagator must give at least as much output when it knows more. \"Add one\" is monotone; \"guess 1 when nothing is known\" is not, because learning the value is 2 would make it take back its answer.",
+      "src": "A propagator must say at least as much when it knows more. \"Add one\" is monotone; \"guess 1 when nothing is known\" is not, because learning that the value is 2 would make it take its answer back.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -79,7 +96,13 @@
       "label": null
     },
     {
-      "src": "> [!theorem] Networks of monotone propagators converge\n> Each propagator's output only rises as its inputs rise, and cells only rise under merges, so the cells' contents form an ascending chain. On a lattice with no infinite ascending chains the network reaches a fixed point, the least one, whatever order the propagators run in.",
+      "src": "> [!theorem] Networks of monotone propagators converge\n> Cells only rise under merges, and a monotone propagator's output only rises as its inputs rise. If every propagator keeps getting its turn, then on a lattice with no infinite ascending chains the network reaches a state that no propagator changes; that state is the least one, above the starting contents, that every propagator leaves alone, so it is the same whatever order the propagators ran in.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The argument is lesson 11's: every state the network passes through is below every state that all propagators leave alone, so whichever order it climbs in, it stops at the least of them. A guessing propagator breaks this. Run it before the real value $2$ arrives, and the cell becomes $1$ and then `conflict`; run it after, and it leaves the $2$ alone. The answer depends on the schedule, which is exactly what monotonicity rules out.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -133,7 +156,7 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> Partial information is a lattice; merging is the join; propagators are monotone maps. A network of them converges to the least fixed point, whatever order they run in, and a propagator that guesses breaks that.",
+      "src": "> [!summary]\n> Partial information is a lattice; merging is the join; propagators are monotone maps. A network of them converges to the least state that every propagator leaves alone, whatever order they run in, and a propagator that guesses breaks that.\n\nNext: such a network, running, in Lean.",
       "type": "markdown",
       "showWork": false,
       "label": null

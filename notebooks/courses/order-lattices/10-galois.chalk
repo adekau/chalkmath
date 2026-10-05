@@ -3,67 +3,25 @@
   "name": "10-galois.chalk",
   "cells": [
     {
-      "src": "Closure operators and Galois connections",
+      "src": "Galois connections and closure operators",
       "type": "section",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!goal]\n> Recognize closure operators and Galois connections, see how one gives the other, and build the concept lattice of a small formal context.",
+      "src": "> [!goal]\n> Find the best approximation of an element of one order in another, recognise the pattern as a Galois connection, and see the closure operator it makes; then build the concept lattice of a small formal context.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!definition] Closure operator\n> A map $c$ on a poset is a **closure operator** when it is **extensive** ($x \\le c(x)$), **monotone**, and **idempotent** ($c(c(x)) = c(x)$). Its fixed points are the **closed** elements.",
+      "src": "A ruler is marked only at the even lengths $0, 2, 4, 6$, read as $0, 1, 2, 3$. A length $x$ from $0$ to $6$ has to be reported as one reading $y$, and the reading must never understate it: $x \\le 2y$. Several readings are safe. The best is the least of them, $\\lceil x/2 \\rceil$.\n\n> [!try]\n> For which readings $y$ is $\\lceil x/2 \\rceil \\le y$? Compare them with the safe readings.\n\nThey are the same: $\\lceil x / 2 \\rceil \\le y$ exactly when $x \\le 2y$. That one equivalence says everything about $\\lceil x/2 \\rceil$: it is safe (take $y = \\lceil x/2 \\rceil$), and it is below every safe reading.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "let D = divisors(12)",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "let cl = map(D; 3->6)",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "closureop(D, cl)",
-      "showWork": true,
-      "label": null
-    },
-    {
-      "src": "fixpoints(D, cl)",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "let bad = map(D; 2->1)",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "closureop(D, bad)",
-      "showWork": true,
-      "label": null
-    },
-    {
-      "src": "Galois connections",
-      "type": "section",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "> [!definition] Galois connection\n> Monotone maps $f : P \\to Q$ and $g : Q \\to P$ form a **Galois connection** when $f(x) \\le y \\iff x \\le g(y)$ for all $x$ and $y$. Then $g \\circ f$ is a closure operator on $P$.",
-      "type": "markdown",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "Halving and doubling: $\\lceil x / 2 \\rceil \\le y$ exactly when $x \\le 2y$.",
+      "src": "> [!definition] Galois connection\n> Monotone maps $f : P \\to Q$ and $g : Q \\to P$ form a **Galois connection** when $f(x) \\le y \\iff x \\le g(y)$ for all $x$ and $y$. Then $f(x)$ is the best approximation of $x$ in $Q$ from above, as $g$ judges it: the least $y$ with $x \\le g(y)$.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -94,12 +52,93 @@
       "label": null
     },
     {
-      "src": "let same = map(C4, C7; 0->0, 1->1, 2->2, 3->3)",
+      "src": "> [!mistake]\n> The first guess at \"halve\" is often to round down. It understates: a length of $1$ would read $0$. The check names that pair.",
+      "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "galois(C7, C4, half, same)",
+      "src": "let flo = map(C7, C4; 0->0, 1->0, 2->1, 3->1, 4->2, 5->2, 6->3)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "galois(C7, C4, flo, dbl)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "Rounding down has its own job: it is the best approximation from *below*. The largest reading that never overstates $x$ is $\\lfloor x/2 \\rfloor$, since $2y \\le x \\iff y \\le \\lfloor x/2 \\rfloor$: doubling and rounding down form a Galois connection the other way round.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "galois(C4, C7, dbl, flo)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Round trips are closures",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Measure, then read back the length the reading stands for: $x \\mapsto 2\\lceil x/2 \\rceil$, which rounds up to an even length. It never goes down, it is monotone, and doing it twice is doing it once.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let even = map(C7; 1->2, 3->4, 5->6)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "closureop(C7, even)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "fixpoints(C7, even)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Closure operator\n> A map $c$ on a poset is a **closure operator** when it is **extensive** ($x \\le c(x)$), **monotone**, and **idempotent** ($c(c(x)) = c(x)$). Its fixed points are the **closed** elements.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "For every Galois connection, $g \\circ f$ is a closure operator on $P$. Here the closed elements are the even lengths, the ones the ruler states exactly. Closure operators also turn up on their own. On the divisors of 12, sending $3$ up to $6$ is one; sending $2$ down to $1$ is not, since a closure never goes down:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let D = divisors(12)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let cl = map(D; 3->6)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "closureop(D, cl)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let bad = map(D; 2->1)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "closureop(D, bad)",
       "showWork": true,
       "label": null
     },
@@ -126,7 +165,7 @@
       "label": null
     },
     {
-      "src": "The two maps \"the attributes these objects share\" and \"the objects having these attributes\" form a Galois connection (reversing the order), and the concepts are its closed pairs. The bat sits below both \"flies\" and \"mammal\": the lattice finds the category nobody named.",
+      "src": "The two maps \"the attributes these objects share\" and \"the objects having these attributes\" form a Galois connection (one that reverses the order: more objects share fewer attributes), and the concepts are its closed pairs. The bat sits below both \"flies\" and \"mammal\": the lattice finds the category nobody named.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -169,24 +208,27 @@
       "label": null
     },
     {
-      "src": "closureop(D, bad)",
+      "src": "galois(C4, C7, dbl, half)",
       "type": "exercise",
-      "prompt": "Is `bad` a closure operator? Answer `true` or `false`.",
+      "prompt": "Doubling is the lower partner of rounding down. Is it also the lower partner of rounding up: is `galois(C4, C7, dbl, half)` true? Answer `true` or `false`.",
       "hints": [
-        "Is $2 \\le$ `bad`$(2)$?"
+        "Try $x = 1$, $y = 1$: is $2 \\cdot 1 \\le 1$? Is $1 \\le \\lceil 1/2 \\rceil$?"
       ],
       "showWork": false,
       "label": null
     },
     {
-      "src": "galois(C7, C4, half, dbl)",
+      "src": "fixpoints(D, cl)",
       "type": "exercise",
-      "prompt": "Do halving (rounded up) and doubling form a Galois connection?",
+      "prompt": "List the closed elements of `cl`, the closure that sends $3$ to $6$.",
+      "hints": [
+        "Every element `cl` does not move."
+      ],
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!summary]\n> A closure operator adds what a property forces and stops; a Galois connection is a pair of maps that are \"adjoint\", and composing them gives a closure. Formal concept analysis is a Galois connection between objects and attributes, and its closed pairs are a lattice of concepts.",
+      "src": "> [!summary]\n> A Galois connection pairs each element with its best approximation in another order, $f(x) \\le y \\iff x \\le g(y)$; composing the two maps gives a closure operator, which adds what is forced and then stops. Formal concept analysis is a Galois connection between objects and attributes, and its closed pairs are a lattice of concepts.\n\nComputing a closure in practice means applying a step until it adds nothing. Next: that loop, and why it stops.",
       "type": "markdown",
       "showWork": false,
       "label": null
