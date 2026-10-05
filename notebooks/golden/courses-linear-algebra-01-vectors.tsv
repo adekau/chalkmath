@@ -1,24 +1,25 @@
-3	clock t from 0 to 1\nview -0.5, 5, -0.5, 3.6\nU = arrow(0, 3 + i) thick color 2\nLU = label(3 + i, "u") color 2\nV = arrow(0, 1 + 2i) thick color 3\nLV = label(1 + 2i, "v") color 3\nW = arrow(t*(3 + i), t*(3 + i) + 1 + 2i) color 3\nS = arrow(0, 4 + 3i) thick color 1\nLS = label(4 + 3i, "u + v") color 1\n> show U, LU, V, LV | Two walks: $u$, three east and one north, and $v$, one east and two north.\n> show W; play t to 1 in 2s | Do one, then the other: slide $v$ so that it starts where $u$ ends.\n> show S, LS | The sum $u + v$ is where you end up, tip to tail: $(4, 3)$. The east steps add, $3 + 1$, and the north steps add, $1 + 2$.	scene: 7 objects, 3 beats, 23.7 s
+3	clock t from 0 to 1\nview -0.5, 5, -0.5, 3.6\nU = arrow(0, [3, 1]) thick color 3\nLU = label([3, 1], "u") color 3\nV = arrow(0, [1, 2]) thick color 4\nLV = label([1, 2], "v") color 4\nW = arrow(t*[3, 1], t*[3, 1] + [1, 2]) color 4\nS = arrow(0, [4, 3]) thick color 1\nLS = label([4, 3], "u + v") color 1\n> show U, LU, V, LV | Two walks: $u$, three east and one north, and $v$, one east and two north.\n> show W; play t to 1 in 2s | Do one, then the other: slide $v$, without turning it, until it starts where $u$ ends.\n> show S, LS | The sum $u + v$ is where you end up, tip to tail: $(4, 3)$. The east steps add, $3 + 1$, and the north steps add, $1 + 2$.	scene: 7 objects, 3 beats, 24.3 s
 5	[3, 1] + [1, 2]	= [4, 3]
 7	[1, 2, 3] + [4, -1, 2]	= [5, 1, 5]
-10	clock c from -1.5 to 2\nview -5, 7, -2, 3\nU = arrow(0, 3 + i) faint color 2\nP = point(c*(3 + i)) color 1\nC = arrow(0, P) thick color 1\nLC = label(P, "c\\,u") color 1\n> show U; play c to 1 in 0.6s | The arrow $u = (3, 1)$.\n> show C, P, LC | $c\\,u$ with $c = 1$: $u$ itself.\n> play c to 2 in 2s | $c = 2$: twice as long, the same direction.\n> play c to 0.5 in 2s | $c = \\frac12$: half as long.\n> play c to -1.5 in 3s | Through $c = 0$ and out the other side: a negative $c$ points the arrow backwards.	scene: 4 objects, 5 beats, 21.5 s
+10	clock c from -1.5 to 2\nview -5, 7, -2, 3\nU = arrow(0, [3, 1]) faint color 3\nP = point(c*[3, 1]) color 1\nC = arrow(0, P) thick color 1\nLC = label(P, "c\\,u") color 1\nK = value(c, "c = ")\n> show U; play c to 1 in 0.6s | The arrow $u = (3, 1)$.\n> show C, P, LC, K | $c\\,u$ with $c = 1$: $u$ itself.\n> play c to 2 in 2s | $c = 2$: twice as long, the same direction.\n> play c to 0.5 in 2s | $c = \\frac12$: half as long.\n> play c to -1.5 in 3s | Through $c = 0$ and out the other side: a negative $c$ points the arrow backwards.	scene: 5 objects, 5 beats, 21.5 s
 11	2*[3, 1]	= [6, 2]
 12	-[3, 1]	= [-3, -1]
 15	let a = 1	= 1
 16	let b = 1	= 1
 17	plot([t*a*(3 + i), a*(3 + i) + t*b*(1 + 2i), 5 + 5i + 0.15*exp(2*pi*i*t)], t, 0, 1)	= [t*(3 + i), t*(1 + 2*i) + 3 + i, 5 + 5*i + 0.15*exp(2*i*π*t)]
 18	a*[3, 1] + b*[1, 2]	= [4, 3]
-23	norm([3, 4])	= 5
-24	norm([1, 2, 3])	= sqrt(14)
-27	clock w from 0.5 to 0.5 + 2pi\nview -2.6, 2.6, -2.2, 2.2\nL = segment(-2.5*exp(0.5*i), 2.5*exp(0.5*i)) faint color 6\nU = arrow(0, exp(0.5*i)) thick color 2\nLU = label(exp(0.5*i), "\\hat u") color 2\nV = point(2*exp(i*w)) color 3\nAV = arrow(0, V) color 3\nLV = label(V, "v") color 3\nS = point(2*cos(w - 0.5)*exp(0.5*i)) color 1\nAS = arrow(0, S) thick color 1\nD = segment(V, S) dashed color 1\n> show L, U, LU | A direction: the unit arrow $\\hat u$ and its line.\n> show V, AV, LV, S, AS, D | The shadow of $v$ on the line: how far $v$ goes in the direction $\\hat u$.\n> play w to 0.5 + pi/2 in 3s | As $v$ turns away from $\\hat u$ the shadow shrinks; at a right angle it is $0$.\n> play w to 0.5 + pi in 3s | Past a right angle the shadow points backwards: count its length as negative.\n> play w to 0.5 + 2pi in 4s | All the way round.	scene: 9 objects, 5 beats, 28.1 s
-30	view -0.3, 1.45, -0.3, 1\nK = segment(-0.2*exp(0.6*i), 1.25*exp(0.6*i)) faint color 6\nI = arrow(0, 1) color 2\nLI = label(1, "\\hat{\\imath}") color 2\nU = arrow(0, exp(0.6*i)) color 4\nLU = label(exp(0.6*i), "\\hat u") color 4\nSU = segment(exp(0.6*i), cos(0.6)) dashed color 4\nHU = arrow(0, cos(0.6)) thick color 4\nSI = segment(1, cos(0.6)*exp(0.6*i)) dashed color 2\nHI = arrow(0, cos(0.6)*exp(0.6*i)) thick color 2\n> show K, I, LI, U, LU | Two unit arrows: $\\hat{\\imath}$, and the direction $\\hat u = (u_1, u_2)$.\n> show SU, HU | The shadow of $\\hat u$ on $\\hat{\\imath}$'s line is its first entry, $u_1$.\n> show SI, HI | The shadow of $\\hat{\\imath}$ on $\\hat u$'s line. The picture is symmetric about the line halfway between the two arrows, so the two shadows are mirror images: this one is $u_1$ too.	scene: 9 objects, 3 beats, 23.0 s
-33	dot([3, 4], [1, 0])	= 3
-35	dot([1, 2], [2, -1])	= 0
-38	N(arccos(dot([3, 1], [1, 2])/(norm([3, 1])*norm([1, 2]))))	= 0.785398163397448
-39	N(pi/4)	= 0.785398163397448
-41	[1, 2] .* [2, -1]	= [2, -2]
-42	dot([1, 2, 3], [4, 5, 6])	= 32
-43	norm([6, 8])	= 10
-44	dot([1, 3], [2, -1])	= -1
-45	dot([2, 3], [3, -2])	= 0
-46	[-1, 4]	= [-1, 4]
+21	clock t from 0 to 1\nview -3, 7, -1.5, 6\nlet M = [3, 1 + 5*t; 1, 2]\nG0 = grid([1, 0; 0, 1]) faint color 6\nG = grid(M) color 2\nU = arrow(0, [3, 1]) thick color 3\nLU = label([3, 1], "u") color 3\nV = arrow(0, M*[0; 1]) thick color 4\nLV = label(M*[0; 1], "v") color 4\nP = point([5, 5]) color 1\nW1 = arrow(0, [3, 1]) color 1\nW2 = arrow([3, 1], [5, 5]) color 1\n> show U, LU, V, LV | $u = (3, 1)$ and $v = (1, 2)$, on the square grid of whole steps east and north.\n> show G | Their stretched copies, $a\\,u + b\\,v$ for whole numbers $a$ and $b$, lay a slanted grid over the whole plane, as whole steps east and north lay the square one. Every point lies in some cell of it, and fractions of $u$ and $v$ reach inside the cell.\n> show P, W1, W2 | The circle's point $(5, 5)$ is a corner: $1\\,u + 2\\,v$.\n> hide P, W1, W2; play t to 1 in 4s | Now swing $v$ round to $(6, 2) = 2u$. The cells flatten, and at the end every combination lies on the line through $u$: no point off it can be reached.	scene: 9 objects, 4 beats, 41.6 s
+25	norm([3, 4])	= 5
+26	norm([1, 2, 3])	= sqrt(14)
+29	clock w from 0 to 2pi\nview -2.6, 2.6, -2.2, 2.2\nlet u = [cos(0.5), sin(0.5)]\nlet v = [2*cos(w + 0.5), 2*sin(w + 0.5)]\nK = line(0, u) faint color 6\nU = arrow(0, u) thick color 5\nLU = label(u, "\\hat u") color 5\nV = arrow(0, v) color 4\nLV = label(v, "v") color 4\nS = arrow(0, 2*cos(w)*u) thick color 1\nD = segment(v, 2*cos(w)*u) dashed color 1\nH = value(2*cos(w), "\\text{shadow} = ")\n> show K, U, LU | A direction: the unit arrow $\\hat u$ and its line.\n> show V, LV, S, D, H | An arrow $v$ of length $2$, and its shadow on the line: how far $v$ goes in the direction $\\hat u$. Along $\\hat u$, the shadow is all of $v$.\n> play w to pi/2 in 3s | As $v$ turns away from $\\hat u$ the shadow shrinks; at a right angle it is $0$.\n> play w to pi in 3s | Past a right angle the shadow points backwards: count its length as negative, down to $-2$.\n> play w to 2pi in 4s | All the way round.	scene: 8 objects, 5 beats, 33.7 s
+32	view -0.3, 1.45, -0.3, 1\nlet u = [cos(0.6), sin(0.6)]\nK = line(0, u) faint color 6\nF = line(0, [cos(0.3), sin(0.3)]) dashed color 6\nI = arrow(0, [1, 0]) color 3\nLI = label([1, 0], "\\hat{\\imath}") color 3\nU = arrow(0, u) color 5\nLU = label(u, "\\hat u") color 5\nSU = segment(u, [cos(0.6), 0]) dashed color 5\nHU = arrow(0, [cos(0.6), 0]) thick color 5\nSI = segment([1, 0], cos(0.6)*u) dashed color 3\nHI = arrow(0, cos(0.6)*u) thick color 3\n> show K, I, LI, U, LU | Two unit arrows: $\\hat{\\imath}$, and the direction $\\hat u = (u_1, u_2)$.\n> show SU, HU | The shadow of $\\hat u$ on $\\hat{\\imath}$'s line is its first entry, $u_1$.\n> show F, SI, HI | The shadow of $\\hat{\\imath}$ on $\\hat u$'s line. Fold the picture along the dashed line, halfway between the two arrows: $\\hat{\\imath}$ and $\\hat u$ swap places, and so do their lines and the two shadows. So this one is $u_1$ long too.	scene: 10 objects, 3 beats, 26.3 s
+35	dot([3, 4], [1, 0])	= 3
+37	dot([1, 2], [2, -1])	= 0
+40	N(arccos(dot([3, 1], [1, 2])/(norm([3, 1])*norm([1, 2]))))	= 0.785398163397448
+41	N(pi/4)	= 0.785398163397448
+43	[1, 2] .* [2, -1]	= [2, -2]
+44	dot([1, 2, 3], [4, 5, 6])	= 32
+45	norm([6, 8])	= 10
+46	dot([1, 3], [2, -1])	= -1
+47	dot([2, 3], [3, -2])	= 0
+48	[-1, 4]	= [-1, 4]

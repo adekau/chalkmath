@@ -350,7 +350,7 @@
         {
           "file": "05-change-of-basis.chalk",
           "title": "Change of basis and eigenvectors",
-          "blurb": "Coordinates in a basis of your own choosing, the matrix that translates them, and the directions a matrix only stretches."
+          "blurb": "Describing the plane with arrows of your own choosing, the matrix that translates between descriptions, and the arrows a matrix only stretches, in which it is a diagonal matrix."
         }
       ]
     },

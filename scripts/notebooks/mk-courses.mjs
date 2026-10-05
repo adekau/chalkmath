@@ -4406,15 +4406,15 @@ course("linear-algebra", "Linear algebra: vectors, matrices and systems",
     sc(r`
 clock t from 0 to 1
 view -0.5, 5, -0.5, 3.6
-U = arrow(0, 3 + i) thick color 2
-LU = label(3 + i, "u") color 2
-V = arrow(0, 1 + 2i) thick color 3
-LV = label(1 + 2i, "v") color 3
-W = arrow(t*(3 + i), t*(3 + i) + 1 + 2i) color 3
-S = arrow(0, 4 + 3i) thick color 1
-LS = label(4 + 3i, "u + v") color 1
+U = arrow(0, [3, 1]) thick color 3
+LU = label([3, 1], "u") color 3
+V = arrow(0, [1, 2]) thick color 4
+LV = label([1, 2], "v") color 4
+W = arrow(t*[3, 1], t*[3, 1] + [1, 2]) color 4
+S = arrow(0, [4, 3]) thick color 1
+LS = label([4, 3], "u + v") color 1
 > show U, LU, V, LV | Two walks: $u$, three east and one north, and $v$, one east and two north.
-> show W; play t to 1 in 2s | Do one, then the other: slide $v$ so that it starts where $u$ ends.
+> show W; play t to 1 in 2s | Do one, then the other: slide $v$, without turning it, until it starts where $u$ ends.
 > show S, LS | The sum $u + v$ is where you end up, tip to tail: $(4, 3)$. The east steps add, $3 + 1$, and the north steps add, $1 + 2$.
 `);
     md(r`So an arrow from $0$ is recorded by where its tip lands, a list of numbers in brackets, ‹[3, 1]›, and adding arrows tip to tail is adding lists entry by entry. Arrow or list, it is one object seen two ways: the arrow to think with, the list to compute with.`);
@@ -4426,12 +4426,13 @@ LS = label(4 + 3i, "u + v") color 1
     sc(r`
 clock c from -1.5 to 2
 view -5, 7, -2, 3
-U = arrow(0, 3 + i) faint color 2
-P = point(c*(3 + i)) color 1
+U = arrow(0, [3, 1]) faint color 3
+P = point(c*[3, 1]) color 1
 C = arrow(0, P) thick color 1
 LC = label(P, "c\,u") color 1
+K = value(c, "c = ")
 > show U; play c to 1 in 0.6s | The arrow $u = (3, 1)$.
-> show C, P, LC | $c\,u$ with $c = 1$: $u$ itself.
+> show C, P, LC, K | $c\,u$ with $c = 1$: $u$ itself.
 > play c to 2 in 2s | $c = 2$: twice as long, the same direction.
 > play c to 0.5 in 2s | $c = \frac12$: half as long.
 > play c to -1.5 in 3s | Through $c = 0$ and out the other side: a negative $c$ points the arrow backwards.
@@ -4448,7 +4449,26 @@ LC = label(P, "c\,u") color 1
 > [!try]
 > Reach the circle. Then try $(1, 7)$, or a point of your own.
 `);
-    md(r`Every point can be reached: stretched copies of $u$ and $v$ lay a slanted grid over the whole plane. That needs $u$ and $v$ to point in different directions. Had $v$ been $2u$, every combination would stay on the line through $u$, and no point off it could be reached. Finding $a$ and $b$ for a given point means solving two equations at once, which is lesson 3.`);
+    md(r`Every point can be reached, and a picture says why:`);
+    sc(r`
+clock t from 0 to 1
+view -3, 7, -1.5, 6
+let M = [3, 1 + 5*t; 1, 2]
+G0 = grid([1, 0; 0, 1]) faint color 6
+G = grid(M) color 2
+U = arrow(0, [3, 1]) thick color 3
+LU = label([3, 1], "u") color 3
+V = arrow(0, M*[0; 1]) thick color 4
+LV = label(M*[0; 1], "v") color 4
+P = point([5, 5]) color 1
+W1 = arrow(0, [3, 1]) color 1
+W2 = arrow([3, 1], [5, 5]) color 1
+> show U, LU, V, LV | $u = (3, 1)$ and $v = (1, 2)$, on the square grid of whole steps east and north.
+> show G | Their stretched copies, $a\,u + b\,v$ for whole numbers $a$ and $b$, lay a slanted grid over the whole plane, as whole steps east and north lay the square one. Every point lies in some cell of it, and fractions of $u$ and $v$ reach inside the cell.
+> show P, W1, W2 | The circle's point $(5, 5)$ is a corner: $1\,u + 2\,v$.
+> hide P, W1, W2; play t to 1 in 4s | Now swing $v$ round to $(6, 2) = 2u$. The cells flatten, and at the end every combination lies on the line through $u$: no point off it can be reached.
+`);
+    md(r`So two arrows reach every point exactly when they do not lie along one line through $0$. Finding $a$ and $b$ for a given point means solving two equations at once, which is lesson 3.`);
     sec("Length");
     md(r`How long is $(3, 4)$? It is the long side of a right triangle with legs $3$ and $4$, so by Pythagoras it is $\sqrt{3^2 + 4^2} = 5$. In space, Pythagoras twice gives $\sqrt{v_1^2 + v_2^2 + v_3^2}$. ‹norm› computes it.`);
     m("norm([3, 4])", { work: true });
@@ -4456,39 +4476,42 @@ LC = label(P, "c\,u") color 1
     sec("How far does one arrow point along another?");
     md(r`How much do two arrows agree in direction? Make it a length. Take a direction, given by a unit arrow $\hat u$ (length $1$), and shine a light at right angles to its line: any arrow $v$ casts a **shadow** on the line.`);
     sc(r`
-clock w from 0.5 to 0.5 + 2pi
+clock w from 0 to 2pi
 view -2.6, 2.6, -2.2, 2.2
-L = segment(-2.5*exp(0.5*i), 2.5*exp(0.5*i)) faint color 6
-U = arrow(0, exp(0.5*i)) thick color 2
-LU = label(exp(0.5*i), "\hat u") color 2
-V = point(2*exp(i*w)) color 3
-AV = arrow(0, V) color 3
-LV = label(V, "v") color 3
-S = point(2*cos(w - 0.5)*exp(0.5*i)) color 1
-AS = arrow(0, S) thick color 1
-D = segment(V, S) dashed color 1
-> show L, U, LU | A direction: the unit arrow $\hat u$ and its line.
-> show V, AV, LV, S, AS, D | The shadow of $v$ on the line: how far $v$ goes in the direction $\hat u$.
-> play w to 0.5 + pi/2 in 3s | As $v$ turns away from $\hat u$ the shadow shrinks; at a right angle it is $0$.
-> play w to 0.5 + pi in 3s | Past a right angle the shadow points backwards: count its length as negative.
-> play w to 0.5 + 2pi in 4s | All the way round.
+let u = [cos(0.5), sin(0.5)]
+let v = [2*cos(w + 0.5), 2*sin(w + 0.5)]
+K = line(0, u) faint color 6
+U = arrow(0, u) thick color 5
+LU = label(u, "\hat u") color 5
+V = arrow(0, v) color 4
+LV = label(v, "v") color 4
+S = arrow(0, 2*cos(w)*u) thick color 1
+D = segment(v, 2*cos(w)*u) dashed color 1
+H = value(2*cos(w), "\text{shadow} = ")
+> show K, U, LU | A direction: the unit arrow $\hat u$ and its line.
+> show V, LV, S, D, H | An arrow $v$ of length $2$, and its shadow on the line: how far $v$ goes in the direction $\hat u$. Along $\hat u$, the shadow is all of $v$.
+> play w to pi/2 in 3s | As $v$ turns away from $\hat u$ the shadow shrinks; at a right angle it is $0$.
+> play w to pi in 3s | Past a right angle the shadow points backwards: count its length as negative, down to $-2$.
+> play w to 2pi in 4s | All the way round.
 `);
     md(r`For the direction $\hat{\imath} = (1, 0)$, east, the shadow of $(v_1, v_2)$ is just its first entry, $v_1$. For a slanted direction $\hat u = (u_1, u_2)$, two facts do all the work.`);
     md(r`First, shadows respect the arithmetic above: arrows tip to tail cast shadows tip to tail, and a stretched arrow casts a stretched shadow. Since $v = v_1 \hat{\imath} + v_2 \hat{\jmath}$, where $\hat{\jmath} = (0, 1)$, the shadow of $v$ is $v_1$ times the shadow of $\hat{\imath}$ plus $v_2$ times the shadow of $\hat{\jmath}$. Second, a symmetry:`);
     sc(r`
 view -0.3, 1.45, -0.3, 1
-K = segment(-0.2*exp(0.6*i), 1.25*exp(0.6*i)) faint color 6
-I = arrow(0, 1) color 2
-LI = label(1, "\hat{\imath}") color 2
-U = arrow(0, exp(0.6*i)) color 4
-LU = label(exp(0.6*i), "\hat u") color 4
-SU = segment(exp(0.6*i), cos(0.6)) dashed color 4
-HU = arrow(0, cos(0.6)) thick color 4
-SI = segment(1, cos(0.6)*exp(0.6*i)) dashed color 2
-HI = arrow(0, cos(0.6)*exp(0.6*i)) thick color 2
+let u = [cos(0.6), sin(0.6)]
+K = line(0, u) faint color 6
+F = line(0, [cos(0.3), sin(0.3)]) dashed color 6
+I = arrow(0, [1, 0]) color 3
+LI = label([1, 0], "\hat{\imath}") color 3
+U = arrow(0, u) color 5
+LU = label(u, "\hat u") color 5
+SU = segment(u, [cos(0.6), 0]) dashed color 5
+HU = arrow(0, [cos(0.6), 0]) thick color 5
+SI = segment([1, 0], cos(0.6)*u) dashed color 3
+HI = arrow(0, cos(0.6)*u) thick color 3
 > show K, I, LI, U, LU | Two unit arrows: $\hat{\imath}$, and the direction $\hat u = (u_1, u_2)$.
 > show SU, HU | The shadow of $\hat u$ on $\hat{\imath}$'s line is its first entry, $u_1$.
-> show SI, HI | The shadow of $\hat{\imath}$ on $\hat u$'s line. The picture is symmetric about the line halfway between the two arrows, so the two shadows are mirror images: this one is $u_1$ too.
+> show F, SI, HI | The shadow of $\hat{\imath}$ on $\hat u$'s line. Fold the picture along the dashed line, halfway between the two arrows: $\hat{\imath}$ and $\hat u$ swap places, and so do their lines and the two shadows. So this one is $u_1$ long too.
 `);
     md(r`So the shadow of $\hat{\imath}$ on the direction $\hat u$ is $u_1$, and likewise the shadow of $\hat{\jmath}$ is $u_2$. Put together, the shadow of $v$ is $u_1 v_1 + u_2 v_2$: multiply the entries and add.`);
     md(r`
@@ -4503,7 +4526,7 @@ HI = arrow(0, cos(0.6)*exp(0.6*i)) thick color 2
     m("dot([1, 2], [2, -1])", { step: 0 });
     md(r`
 > [!theorem] Angle
-> For nonzero $u$ and $v$ at an angle $\theta$, the shadow of $v$ on $u$'s line is $\lVert v \rVert \cos\theta$, so $u \cdot v = \lVert u \rVert\, \lVert v \rVert \cos\theta$. The sign tells the angle apart: $u \cdot v$ is positive when $\theta$ is less than a right angle, $0$ exactly when $u$ and $v$ are perpendicular, and negative when $\theta$ is more.
+> For nonzero $u$ and $v$ at an angle $\theta$, the shadow of $v$ on $u$'s line is $\lVert v \rVert \cos\theta$ (the shadow scene's readout, $2\cos\theta$, was $\hat u \cdot v$), so $u \cdot v = \lVert u \rVert\, \lVert v \rVert \cos\theta$. The sign tells the angle apart: $u \cdot v$ is positive when $\theta$ is less than a right angle, $0$ exactly when $u$ and $v$ are perpendicular, and negative when $\theta$ is more.
 `);
     md(r`Turned round, it measures angles: $\cos\theta = \dfrac{u \cdot v}{\lVert u \rVert\, \lVert v \rVert}$. For $u = (3, 1)$ and $v = (1, 2)$ it gives $\pi/4$, an eighth of a turn:`);
     m("N(arccos(dot([3, 1], [1, 2])/(norm([3, 1])*norm([1, 2]))))");
@@ -4538,27 +4561,20 @@ HI = arrow(0, cos(0.6)*exp(0.6*i)) thick color 2
     md(r`Move the whole plane: stretch it, turn it, slant it, but keep the grid lines straight, parallel and evenly spaced, and keep $0$ where it is. Such a move is called **linear**. How much do you need to write down to know where every point goes?`);
     sc(r`
 clock t from 0 to 1
-view -4.5, 4.5, -3.5, 4.5
-G1 = curve(-2*(1 + t*(1 + i)) + s*(i - t), s, -3, 3) faint color 6
-G2 = curve(-(1 + t*(1 + i)) + s*(i - t), s, -3, 3) faint color 6
-G3 = curve(1 + t*(1 + i) + s*(i - t), s, -3, 3) faint color 6
-G4 = curve(2*(1 + t*(1 + i)) + s*(i - t), s, -3, 3) faint color 6
-H1 = curve(s*(1 + t*(1 + i)) - 2*(i - t), s, -3, 3) faint color 6
-H2 = curve(s*(1 + t*(1 + i)) - (i - t), s, -3, 3) faint color 6
-H3 = curve(s*(1 + t*(1 + i)) + i - t, s, -3, 3) faint color 6
-H4 = curve(s*(1 + t*(1 + i)) + 2*(i - t), s, -3, 3) faint color 6
-X0 = curve(s*(1 + t*(1 + i)), s, -3, 3) color 6
-Y0 = curve(s*(i - t), s, -3, 3) color 6
-I = arrow(0, 1 + t*(1 + i)) thick color 2
-LI = label(1 + t*(1 + i), "\hat{\imath}") color 2
-J = arrow(0, i - t) thick color 3
-LJ = label(i - t, "\hat{\jmath}") color 3
-D1 = segment(1 + t*(1 + i), 1 + t*(1 + i) + i - t) dashed color 3
-D2 = segment(1 + t*(1 + i) + i - t, 1 + t*(1 + i) + 2*(i - t)) dashed color 3
-V = point(1 + t*(1 + i) + 2*(i - t)) color 1
-AV = arrow(0, V) color 1
-LV = label(V, "v") color 1
-> show D1, D2, V, AV, LV | The grid, the unit arrows $\hat{\imath} = (1, 0)$ (blue) and $\hat{\jmath} = (0, 1)$ (green), and $v = (1, 2) = \hat{\imath} + 2\hat{\jmath}$: one step along $\hat{\imath}$, two along $\hat{\jmath}$.
+view -3.2, 3.8, -1.2, 3.8
+let A = [2, -1; 1, 1]
+let M = (1 - t)*[1, 0; 0, 1] + t*A
+G0 = grid([1, 0; 0, 1]) faint color 6
+G = grid(M) color 2
+I = arrow(0, M*[1; 0]) thick color 3
+LI = label(M*[1; 0], "\hat{\imath}") color 3
+J = arrow(0, M*[0; 1]) thick color 4
+LJ = label(M*[0; 1], "\hat{\jmath}") color 4
+D1 = segment(M*[1; 0], M*[1; 1]) dashed color 4
+D2 = segment(M*[1; 1], M*[1; 2]) dashed color 4
+V = arrow(0, M*[1; 2]) color 1
+LV = label(M*[1; 2], "v") color 1
+> show D1, D2, V, LV | The grid, the unit arrows $\hat{\imath} = (1, 0)$ (green) and $\hat{\jmath} = (0, 1)$ (pink), and $v = (1, 2) = \hat{\imath} + 2\hat{\jmath}$: one step along $\hat{\imath}$, two along $\hat{\jmath}$.
 > play t to 1 in 4s | Move the plane. The grid lines stay straight, parallel and evenly spaced, and $0$ stays put. $\hat{\imath}$ lands on $(2, 1)$ and $\hat{\jmath}$ on $(-1, 1)$.
 > wait 1s | And $v$ is still one step along the new $\hat{\imath}$ and two along the new $\hat{\jmath}$: it lands on $(2, 1) + 2\,(-1, 1) = (0, 3)$.
 `);
@@ -4588,18 +4604,22 @@ LV = label(V, "v") color 1
     md(r`Shear, then turn. Where do $\hat{\imath}$ and $\hat{\jmath}$ end up?`);
     sc(r`
 clock t from 0 to 2
-view -2.6, 2.6, -0.6, 2.4
-I1 = arrow(0, 1) thick color 2
-J1 = arrow(0, t + i) thick color 3
-Q1 = segment(1, 1 + t + i) color 1
-Q2 = segment(t + i, 1 + t + i) color 1
-I2 = arrow(0, exp(i*pi*(t - 1)/2)) thick color 2
-J2 = arrow(0, (1 + i)*exp(i*pi*(t - 1)/2)) thick color 3
-Q3 = segment(exp(i*pi*(t - 1)/2), (2 + i)*exp(i*pi*(t - 1)/2)) color 1
-Q4 = segment((1 + i)*exp(i*pi*(t - 1)/2), (2 + i)*exp(i*pi*(t - 1)/2)) color 1
-> show I1, J1, Q1, Q2 | The unit square on $\hat{\imath}$ (blue) and $\hat{\jmath}$ (green).
+view -2.8, 2.8, -0.8, 2.6
+let S = [1, 1; 0, 1]
+let Sh = (1 - t)*[1, 0; 0, 1] + t*S
+let Tn = [cos(pi*(t - 1)/2), -sin(pi*(t - 1)/2); sin(pi*(t - 1)/2), cos(pi*(t - 1)/2)]*S
+G0 = grid([1, 0; 0, 1]) faint color 6
+G1 = grid(Sh) color 2
+Q1 = poly(0, Sh*[1; 0], Sh*[1; 1], Sh*[0; 1]) color 1
+I1 = arrow(0, Sh*[1; 0]) thick color 3
+J1 = arrow(0, Sh*[0; 1]) thick color 4
+G2 = grid(Tn) color 2
+Q2 = poly(0, Tn*[1; 0], Tn*[1; 1], Tn*[0; 1]) color 1
+I2 = arrow(0, Tn*[1; 0]) thick color 3
+J2 = arrow(0, Tn*[0; 1]) thick color 4
+> show G1, Q1, I1, J1 | The unit square on $\hat{\imath}$ (green) and $\hat{\jmath}$ (pink).
 > play t to 1 in 2s | First the shear $S$: $\hat{\imath}$ stays put, $\hat{\jmath}$ slides over to $(1, 1)$.
-> hide I1, J1, Q1, Q2; show I2, J2, Q3, Q4 | Then the quarter turn $R$, applied to wherever things are now.
+> hide G1, Q1, I1, J1; show G2, Q2, I2, J2 | Then the quarter turn $R$, applied to wherever things are now.
 > play t to 2 in 2s | $\hat{\imath}$ ends at $(0, 1)$ and $\hat{\jmath}$ at $(-1, 1)$: the columns of the combined move.
 `);
     md(r`Each column of the combined move is $R$ applied to a column of $S$: the shear sent $\hat{\jmath}$ to $(1, 1)$, $S$'s second column, and the turn took it on from there. That is how matrices multiply. The combined move is written $RS$, with $S$ on the right, because it acts on a vector as $R(Sv)$: as in $f(g(x))$, the one written nearer the vector happens first.`);
@@ -4617,22 +4637,28 @@ Q4 = segment((1 + i)*exp(i*pi*(t - 1)/2), (2 + i)*exp(i*pi*(t - 1)/2)) color 1
 `);
     sc(r`
 clock t from 0 to 2
-view -2.6, 2.6, -0.6, 2.4
-G1 = arrow(0, i) faint color 2
-G2 = arrow(0, -1 + i) faint color 3
-I1 = arrow(0, exp(i*pi*t/2)) thick color 2
-J1 = arrow(0, i*exp(i*pi*t/2)) thick color 3
-Q1 = segment(exp(i*pi*t/2), (1 + i)*exp(i*pi*t/2)) color 1
-Q2 = segment(i*exp(i*pi*t/2), (1 + i)*exp(i*pi*t/2)) color 1
-I2 = arrow(0, t - 1 + i) thick color 2
-J2 = arrow(0, -1) thick color 3
-Q3 = segment(t - 1 + i, t - 2 + i) color 1
-Q4 = segment(-1, t - 2 + i) color 1
-> show I1, J1, Q1, Q2 | The same square; this time the turn comes first.
+view -2.8, 2.8, -0.8, 2.6
+let R = [0, -1; 1, 0]
+let S = [1, 1; 0, 1]
+let Tn = [cos(pi*t/2), -sin(pi*t/2); sin(pi*t/2), cos(pi*t/2)]
+let Sh = ((2 - t)*[1, 0; 0, 1] + (t - 1)*S)*R
+G0 = grid([1, 0; 0, 1]) faint color 6
+G1 = grid(Tn) color 2
+Q1 = poly(0, Tn*[1; 0], Tn*[1; 1], Tn*[0; 1]) color 1
+I1 = arrow(0, Tn*[1; 0]) thick color 3
+J1 = arrow(0, Tn*[0; 1]) thick color 4
+G2 = grid(Sh) color 2
+Q2 = poly(0, Sh*[1; 0], Sh*[1; 1], Sh*[0; 1]) color 1
+I2 = arrow(0, Sh*[1; 0]) thick color 3
+J2 = arrow(0, Sh*[0; 1]) thick color 4
+F = poly(0, [0, 1], [-1, 2], [-1, 1]) faint color 6
+FI = arrow(0, [0, 1]) faint color 3
+FJ = arrow(0, [-1, 1]) faint color 4
+> show G1, Q1, I1, J1 | The same square; this time the turn comes first.
 > play t to 1 in 2s | The quarter turn $R$: $\hat{\imath}$ goes to $(0, 1)$, $\hat{\jmath}$ to $(-1, 0)$.
-> hide I1, J1, Q1, Q2; show I2, J2, Q3, Q4 | Then the shear $S$, which slides each point sideways by its height.
+> hide G1, Q1, I1, J1; show G2, Q2, I2, J2 | Then the shear $S$, which slides each point sideways by its height.
 > play t to 2 in 2s | $\hat{\imath}$, at height $1$, slides to $(1, 1)$; $\hat{\jmath}$, at height $0$, stays at $(-1, 0)$.
-> show G1, G2 | Faint: where shear-then-turn left them. A different move.
+> show F, FI, FJ | Faint: where shear-then-turn left the square. A different move.
 `);
     md(r`
 > [!mistake]
@@ -4679,6 +4705,28 @@ Q4 = segment(-1, t - 2 + i) color 1
     m("rref([1, 2, 5; 3, 4, 6])", { step: 0 });
     md(r`The result is in **reduced row echelon form**: each variable stands alone in its own row. The first row says $x = -4$, the second $y = \frac92$. Run it forwards to check:`);
     m("[1, 2; 3, 4]*[-4; 9/2]");
+    md(r`Why do the moves never lose the answer, or make up a new one? Draw the equations. The points $(x, y)$ with $x + 2y = 5$ form a line, and so do those with $3x + 4y = 6$; the solution is where the two lines cross.`);
+    sc(r`
+clock t from 0 to 2
+view -7.5, 3.5, -0.8, 6.8
+let a2 = 3 - 3*t
+let b2 = 4 - 6*t
+let c2 = 6 - 15*t
+let b1 = 4 - 2*t
+let c1 = 14 - 9*t
+L1 = line([1, 2], [-1, 3]) thick color 3
+L2 = line(c2/(a2^2 + b2^2)*[a2, b2], c2/(a2^2 + b2^2)*[a2, b2] + [-b2, a2]) thick color 4
+L2b = line([0, 4.5], [1, 4.5]) thick color 4
+L1m = line(c1/(1 + b1^2)*[1, b1], c1/(1 + b1^2)*[1, b1] + [-b1, 1]) thick color 3
+X = point([-4, 4.5]) thick color 1
+LX = label([-4, 4.5], "(-4, \tfrac92)") color 1
+> show L1, L2, X, LX | The two equations as lines: $x + 2y = 5$ (green) and $3x + 4y = 6$ (pink). The solution is where they cross.
+> play t to 1 in 3s | Take $3$ times the first row from the second, a little at a time. Part way, the row is $3x + 4y - s\,(x + 2y) = 6 - 5s$, true wherever both equations are: the pink line turns about the crossing, and ends level, $-2y = -9$.
+> hide L2; show L2b | Scale the second row by $-\frac12$: $y = \frac92$. The same line, written more simply.
+> hide L1; show L1m; play t to 2 in 3s | Take twice the second row from the first. Now the green line turns, about the same point, until it stands upright: $x = -4$.
+> | Reduced, each line names one coordinate, and the crossing never moved: $x = -4$, $y = \frac92$.
+`);
+    md(r`So no move loses the solution: a combination of the equations holds wherever both do, and its line goes through the crossing. Nor does a move make up a new one, because each move can be undone, and undoing it would lose that new solution.`);
     md(r`
 > [!theorem] Row operations keep the solutions
 > Swapping two rows, scaling a row by a nonzero number and adding a multiple of one row to another do not change the set of solutions. Each move can be undone by another (swap back, scale by the reciprocal, subtract the multiple again), so no solution is gained and none is lost. For rational entries each of the three is proved in Lean, as is elimination as a whole and the claim that its result is in reduced row echelon form: the green dots on the steps.
@@ -4694,23 +4742,20 @@ Q4 = segment(-1, t - 2 + i) color 1
     sc(r`
 clock t from 0 to 1
 view -3, 6, -2, 8
-G1 = curve(-2*(1 + 2*t*i) + s*(i + t*(2 + 3*i)), s, -3, 3) faint color 6
-G2 = curve(-(1 + 2*t*i) + s*(i + t*(2 + 3*i)), s, -3, 3) faint color 6
-G3 = curve(1 + 2*t*i + s*(i + t*(2 + 3*i)), s, -3, 3) faint color 6
-G4 = curve(2*(1 + 2*t*i) + s*(i + t*(2 + 3*i)), s, -3, 3) faint color 6
-H1 = curve(s*(1 + 2*t*i) - 2*(i + t*(2 + 3*i)), s, -3, 3) faint color 6
-H2 = curve(s*(1 + 2*t*i) - (i + t*(2 + 3*i)), s, -3, 3) faint color 6
-H3 = curve(s*(1 + 2*t*i) + i + t*(2 + 3*i), s, -3, 3) faint color 6
-H4 = curve(s*(1 + 2*t*i) + 2*(i + t*(2 + 3*i)), s, -3, 3) faint color 6
-I = arrow(0, 1 + 2*t*i) thick color 2
-J = arrow(0, i + t*(2 + 3*i)) thick color 3
-P1 = point(3*(1 + 2*t*i)) color 1
-P2 = point(1 + 2*t*i + i + t*(2 + 3*i)) color 1
-P3 = point(-(1 + 2*t*i) + 2*(i + t*(2 + 3*i))) color 1
-T = point(3 + 7i) color 4
-LT = label(T, "(3, 7)") color 4
-> wait 1s | The grid, $\hat{\imath}$ (blue) and $\hat{\jmath}$ (green), and three points: $(3, 0)$, $(1, 1)$ and $(-1, 2)$.
-> play t to 1 in 4s | Apply the matrix: $\hat{\imath}$ goes to $(1, 2)$, $\hat{\jmath}$ to $(2, 4)$, and the whole plane is squashed onto the line $y = 2x$. All three points land on $(3, 6)$.
+let M = (1 - t)*[1, 0; 0, 1] + t*[1, 2; 2, 4]
+G0 = grid([1, 0; 0, 1]) faint color 6
+G = grid(M) color 2
+Q = poly(0, M*[1; 0], M*[1; 1], M*[0; 1]) color 5
+K = line(0, [1, 2]) dashed color 6
+I = arrow(0, M*[1; 0]) thick color 3
+J = arrow(0, M*[0; 1]) thick color 4
+P1 = point(M*[3; 0]) color 1
+P2 = point(M*[1; 1]) color 1
+P3 = point(M*[-1; 2]) color 1
+T = point([3, 7]) thick color 6
+LT = label([3, 7], "(3, 7)") color 6
+> wait 1s | The grid, the unit square on $\hat{\imath}$ (green) and $\hat{\jmath}$ (pink), and three points: $(3, 0)$, $(1, 1)$ and $(-1, 2)$.
+> show K; play t to 1 in 4s | Apply the matrix: $\hat{\imath}$ goes to $(1, 2)$, $\hat{\jmath}$ to $(2, 4)$, and the whole plane is squashed onto the line $y = 2x$, the square to a segment of it. All three points land on $(3, 6)$.
 > show T, LT | Nothing lands on $(3, 7)$, off the line.
 `);
     md(r`Every output lies on one line. A target on it, such as $(3, 6)$, is hit by a whole line of inputs; a target off it, such as $(3, 7)$, by none. Elimination finds both:`);
@@ -4749,24 +4794,24 @@ LT = label(T, "(3, 7)") color 4
     md(r`Lesson 3's $\begin{pmatrix} 1 & 2 \\ 2 & 4 \end{pmatrix}$ squashed the plane onto a line, and could not be run backwards. How could you tell that from the four entries alone? Watch what a matrix does to area.`);
     sc(r`
 clock t from 0 to 1
-view -1.5, 5, -1.2, 4
-G1 = curve(-(1 + t*(2 + i)) + s*(i + t*(1 + i)), s, -1, 3) faint color 6
-G2 = curve(1 + t*(2 + i) + s*(i + t*(1 + i)), s, -1, 3) faint color 6
-G3 = curve(2*(1 + t*(2 + i)) + s*(i + t*(1 + i)), s, -1, 3) faint color 6
-H1 = curve(s*(1 + t*(2 + i)) - (i + t*(1 + i)), s, -1, 3) faint color 6
-H2 = curve(s*(1 + t*(2 + i)) + i + t*(1 + i), s, -1, 3) faint color 6
-H3 = curve(s*(1 + t*(2 + i)) + 2*(i + t*(1 + i)), s, -1, 3) faint color 6
-I = arrow(0, 1 + t*(2 + i)) thick color 2
-J = arrow(0, i + t*(1 + i)) thick color 3
-Q1 = segment(1 + t*(2 + i), 1 + i + t*(3 + 2*i)) color 1
-Q2 = segment(i + t*(1 + i), 1 + i + t*(3 + 2*i)) color 1
-B1 = segment(0, 4) dashed color 4
-B2 = segment(4, 4 + 3i) dashed color 4
-B3 = segment(4 + 3i, 3i) dashed color 4
-B4 = segment(3i, 0) dashed color 4
-> wait 1s | The grid, and the unit square on $\hat{\imath}$ (blue) and $\hat{\jmath}$ (green): area $1$.
-> play t to 1 in 4s | Apply $\begin{pmatrix} 3 & 1 \\ 1 & 2 \end{pmatrix}$: $\hat{\imath}$ lands on $(3, 1)$, $\hat{\jmath}$ on $(1, 2)$, and the square on the parallelogram they span. Every other grid square becomes a copy of it.
-> show B1, B2, B3, B4 | Its area: box it in. The box is $3 + 1$ by $1 + 2$. Outside the parallelogram are two triangles of area $\frac32$, two of area $1$, and two unit squares: $12 - 3 - 2 - 2 = 5$.
+view -1.5, 5.8, -1.2, 5.4
+let M = (1 - t)*[1, 0; 0, 1] + t*[3, 1; 1, 2]
+G0 = grid([1, 0; 0, 1]) faint color 6
+G = grid(M) color 2
+Q = poly(0, M*[1; 0], M*[1; 1], M*[0; 1]) color 1
+N = poly(M*[0; 1], M*[1; 1], M*[1; 2], M*[0; 2]) color 5
+I = arrow(0, M*[1; 0]) thick color 3
+J = arrow(0, M*[0; 1]) thick color 4
+A = value(det(M), "\text{area} = ")
+T1 = poly(0, [3, 0], [3, 1]) faint color 3
+T2 = poly([4, 3], [1, 3], [1, 2]) faint color 3
+T3 = poly([3, 1], [4, 1], [4, 3]) faint color 4
+T4 = poly([1, 2], [0, 2], 0) faint color 4
+S1 = poly([3, 0], [4, 0], [4, 1], [3, 1]) faint color 6
+S2 = poly([0, 2], [1, 2], [1, 3], [0, 3]) faint color 6
+> show N; wait 1s | The grid, and the unit square on $\hat{\imath}$ (green) and $\hat{\jmath}$ (pink): area $1$, like the square above it.
+> show A; play t to 1 in 4s | Apply $\begin{pmatrix} 3 & 1 \\ 1 & 2 \end{pmatrix}$: $\hat{\imath}$ lands on $(3, 1)$, $\hat{\jmath}$ on $(1, 2)$, and the square on the parallelogram they span. The square above it, and every other grid square, becomes a copy of it.
+> hide N; show T1, T2, T3, T4, S1, S2 | Why $5$: box it in. The box is $3 + 1$ by $1 + 2$. Outside the parallelogram are two triangles of area $\frac32$ (green), two of area $1$ (pink) and two unit squares: $12 - 3 - 2 - 2 = 5$.
 `);
     md(r`Because the grid lines stay parallel and evenly spaced, every grid square becomes the same parallelogram, so every area (fill a shape with small squares) is scaled by one factor: the area of the parallelogram the columns span. That factor is the **determinant**. For columns $(a, c)$ and $(b, d)$ with positive entries, as in the picture, the box is $a + b$ by $c + d$, and what lies outside is two triangles of area $\frac12 ac$, two of area $\frac12 bd$, and two rectangles $b$ by $c$:`);
     m("expand((a + b)*(c + d) - a*c - b*d - 2*b*c)");
@@ -4788,22 +4833,25 @@ B4 = segment(3i, 0) dashed color 4
     m("det([0, 1; 1, 0])");
     sc(r`
 clock t from 0 to 1
-view -0.4, 1.6, -0.4, 1.4
-I = arrow(0, 1 - t + t*i) thick color 2
-LI = label(1 - t + t*i, "\hat{\imath}") color 2
-J = arrow(0, t + (1 - t)*i) thick color 3
-LJ = label(t + (1 - t)*i, "\hat{\jmath}") color 3
-Q1 = segment(1 - t + t*i, 1 + i) color 1
-Q2 = segment(t + (1 - t)*i, 1 + i) color 1
+view -0.8, 1.8, -0.5, 1.5
+let M = [1 - t, t; t, 1 - t]
+G0 = grid([1, 0; 0, 1]) faint color 6
+G = grid(M) color 2
+Q = poly(0, M*[1; 0], M*[1; 1], M*[0; 1]) color 1
+I = arrow(0, M*[1; 0]) thick color 3
+LI = label(M*[1; 0], "\hat{\imath}") color 3
+J = arrow(0, M*[0; 1]) thick color 4
+LJ = label(M*[0; 1], "\hat{\jmath}") color 4
+D = value(det(M), "\det = ")
 > wait 1s | The unit square: $\hat{\jmath}$ is a quarter turn counterclockwise from $\hat{\imath}$.
-> play t to 0.5 in 2.5s | Slide $\hat{\imath}$ toward $(0, 1)$ and $\hat{\jmath}$ toward $(1, 0)$. Halfway they meet, and the square is flat: area $0$.
-> play t to 1 in 2.5s | They pass each other, and the square opens out again, the same size but mirrored: now $\hat{\jmath}$ is clockwise from $\hat{\imath}$.
+> play t to 0.5 in 2.5s | Slide $\hat{\imath}$ toward $(0, 1)$ and $\hat{\jmath}$ toward $(1, 0)$. Halfway they meet, the square is flat, and the determinant is $0$.
+> play t to 1 in 2.5s | They pass each other, and the square opens out again, the same size but mirrored: now $\hat{\jmath}$ is clockwise from $\hat{\imath}$, and the determinant is $-1$.
 `);
-    md(r`The size of the area is unchanged; the negative sign records that the plane has been turned over. Halfway the matrix is $\begin{pmatrix} \frac12 & \frac12 \\ \frac12 & \frac12 \end{pmatrix}$, and along the way the determinant runs from $1$ to $-1$ through $0$:`);
+    md(r`The size of the area is unchanged; the negative sign records that the plane has been turned over. Halfway the matrix is $\begin{pmatrix} \frac12 & \frac12 \\ \frac12 & \frac12 \end{pmatrix}$, both columns on the line $y = x$. Along the way the determinant the scene read off is a straight run from $1$ to $-1$:`);
     m("expand(det([1 - t, t; t, 1 - t]))");
     md(r`That is no accident of this path: the determinant changes continuously as the entries do, so any continuous way of turning the plane into its mirror image passes through a moment with no area.`);
     sec("Zero: squashed flat");
-    md(r`Back to the opening question. A determinant of $0$ means the unit square goes to something with no area: the columns lie on one line, and the plane is squashed onto it (or onto $0$).`);
+    md(r`Back to the opening question. A determinant of $0$ means the unit square goes to something with no area: the columns lie on one line, and the plane is squashed onto it (or onto $0$), as in lesson 3's picture.`);
     m("det([1, 2; 2, 4])");
     md(r`Squashing cannot be undone: many inputs land on each output, as lesson 3 found. When the determinant is not $0$ nothing is squashed, every target has exactly one input, and the move can be undone. Undoing $A$ means finding the inputs that $A$ sends to $\hat{\imath}$ and to $\hat{\jmath}$: those are the columns of the **inverse**. Elimination finds both at once, with both targets in the augmented matrix:`);
     m("rref([3, 1, 1, 0; 1, 2, 0, 1])");
@@ -4840,21 +4888,20 @@ Q2 = segment(t + (1 - t)*i, 1 + i) color 1
     md(r`
 > [!summary]
 > The determinant is the factor by which a matrix scales area (volume, in space): the area of the parallelogram its columns span, $ad - bc$ for a $2 \times 2$ matrix. A negative sign means the plane is flipped over; $0$ means it is squashed flat, which is exactly when there is no inverse. One move after another multiplies the factors.
+>
+> A diagonal matrix such as $\begin{pmatrix} 3 & 0 \\ 0 & 1 \end{pmatrix}$ is the easiest kind to understand: it stretches along the axes, by $3$ and by $1$, and its determinant is $3 \cdot 1$. Most matrices are not diagonal. But perhaps that is only because $\hat{\imath}$ and $\hat{\jmath}$ are the wrong arrows to describe them with: are there directions a matrix only stretches? Lesson 5.
 `);
   });
 
-  add("05-change-of-basis.chalk", "Change of basis and eigenvectors", "Coordinates in a basis of your own choosing, the matrix that translates them, and the directions a matrix only stretches.", ({ sec, md, m, ex, sc }) => {
+  add("05-change-of-basis.chalk", "Change of basis and eigenvectors", "Describing the plane with arrows of your own choosing, the matrix that translates between descriptions, and the arrows a matrix only stretches, in which it is a diagonal matrix.", ({ sec, md, m, ex, sc }) => {
     sec("Change of basis and eigenvectors");
     md(r`
 > [!goal]
-> Describe a vector in a basis other than $e_1, e_2$, translate between the two descriptions with a matrix, and find the directions a matrix only stretches.
+> Describe vectors with two arrows of your own choosing, translate between that description and ours, and find the arrows a matrix only stretches.
 `);
+    md(r`Lesson 4 ended on a hope. $A = \begin{pmatrix} 2 & 1 \\ 1 & 2 \end{pmatrix}$ sends $\hat{\imath}$ to $(2, 1)$ and $\hat{\jmath}$ to $(1, 2)$: it turns both and stretches both, and its columns say little more. Seen through other arrows, might it be as simple as a diagonal matrix? That is two questions. How do you describe the plane with arrows other than $\hat{\imath}$ and $\hat{\jmath}$? And which arrows suit $A$?`);
     sec("Coordinates in another basis");
-    md(r`
-> [!definition] Basis and coordinates
-> Two vectors $b_1, b_2$ of the plane that do not lie on one line are a **basis**: every vector is $v = c_1 b_1 + c_2 b_2$ for exactly one pair $(c_1, c_2)$, its **coordinates** in that basis.
-`);
-    md(r`Take $b_1 = (2, 1)$ and $b_2 = (-1, 1)$. They draw a grid of their own, and the point at $(2, 1)$ on their grid is somewhere else on ours:`);
+    md(r`Lesson 1 found that two arrows not on one line reach every point: their stretched copies lay a slanted grid over the plane. So any such pair can stand in for $\hat{\imath}$ and $\hat{\jmath}$. Take $b_1 = (2, 1)$ and $b_2 = (-1, 1)$, and walk two steps along $b_1$ and one along $b_2$. Where do you end up, in our terms?`);
     sc(r`
 clock t from 0 to 1
 view -3.6, 5.6, -1.2, 4.2
@@ -4870,25 +4917,35 @@ V = point(M*[2; 1]) thick color 1
 LV = label(M*[2; 1], "v") color 1
 W1 = arrow(0, 2*P*[1; 0]) color 3
 W2 = arrow(2*P*[1; 0], P*[2; 1]) color 4
-> show G0, B1, LB1, B2, LB2, V, LV | Our grid, with the point $(2, 1)$ on it.
-> show G; play t to 1 in 4s | Carry the grid along with $P = \begin{bmatrix} 2 & -1 \\ 1 & 1 \end{bmatrix}$, whose columns are $b_1$ and $b_2$. The point keeps its place on the grid, $(2, 1)$, and lands at $v = 2b_1 + b_2 = (3, 3)$.
-> show W1, W2 | Two steps along $b_1$ and one along $b_2$: in the new basis $v$ has coordinates $(2, 1)$, in ours $(3, 3)$.
+> show G0, B1, LB1, B2, LB2, V, LV | Our grid, and the point $(2, 1)$ on it: two steps along $\hat{\imath}$ and one along $\hat{\jmath}$. The two arrows are about to become $b_1$ and $b_2$.
+> show G; play t to 1 in 4s | Carry the grid along with $P = \begin{pmatrix} 2 & -1 \\ 1 & 1 \end{pmatrix}$, whose columns are $b_1$ and $b_2$. The arrows land on $b_1$ and $b_2$, the grid becomes theirs, and the point keeps its place on it: it lands at $v = 2b_1 + b_2 = (3, 3)$.
+> show W1, W2 | Two steps along $b_1$ and one along $b_2$: described with $b_1$ and $b_2$, $v$ is $(2, 1)$; described with $\hat{\imath}$ and $\hat{\jmath}$, it is $(3, 3)$.
 `);
-    md(r`So the matrix $P$ whose columns are the new basis turns coordinates in that basis into ours:`);
+    md(r`Each vector has exactly one such description. Two different pairs for one vector would subtract to a combination of $b_1$ and $b_2$ that is $0$ without both numbers being $0$, and then $b_1$ and $b_2$ would lie on one line.`);
+    md(r`
+> [!definition] Basis and coordinates
+> Two vectors $b_1, b_2$ of the plane that do not lie on one line are a **basis**: every vector is $v = c_1 b_1 + c_2 b_2$ for exactly one pair $(c_1, c_2)$, its **coordinates** in that basis. $\hat{\imath}$ and $\hat{\jmath}$ are one basis among many.
+`);
+    md(r`Their coordinates into ours is what the scene did, with $P$, the matrix whose columns are $b_1$ and $b_2$. Lesson 2 says why: $P$ sends $(c_1, c_2)$ to $c_1$ times its first column plus $c_2$ times its second, which is $c_1 b_1 + c_2 b_2$.`);
     m("let P = [2, -1; 1, 1]");
     m("P*[2; 1]");
+    md(r`Ours into theirs is the same question run backwards, which is lesson 3's: which input does $P$ send to $v$?`);
     md(r`
-> [!theorem] Finding coordinates is solving a system
-> The coordinates $c$ of $v$ in the basis are the solution of $Pc = v$: a system whose augmented matrix is $P$ with $v$ beside it. Since $b_1, b_2$ are a basis, $\det P \neq 0$ and the solution is unique.
+> [!try]
+> Before the next cell: which augmented matrix gives the coordinates of $(3, 3)$, and what should its last column come out as?
 `);
     m("rref([2, -1, 3; 1, 1, 3])", { work: true });
-    md(r`The last column is the coordinates, $(2, 1)$. Row reduction undid $P$.`);
-    sec("Eigenvectors");
+    md(r`The last column is the coordinates, $(2, 1)$: elimination undid $P$.`);
     md(r`
-> [!definition] Eigenvector and eigenvalue
-> A nonzero vector $v$ is an **eigenvector** of $A$ when $A$ only stretches it: $Av = \lambda v$ for a number $\lambda$, its **eigenvalue**. The line through $v$ is then carried onto itself.
+> [!theorem] Finding coordinates is solving a system
+> The coordinates $c$ of $v$ in the basis are the solution of $Pc = v$: elimination on $P$ with $v$ beside it. Since $b_1$ and $b_2$ are not on one line, $\det P \neq 0$ (lesson 4), and there is exactly one solution.
 `);
-    md(r`Most vectors are turned off their line by a matrix. Watch $A = \begin{bmatrix} 2 & 1 \\ 1 & 2 \end{bmatrix}$, and three vectors: two on the dashed lines, one not.`);
+    sec("Arrows a matrix only stretches");
+    md(r`Now the second question: which arrows suit $A$? The best would be arrows that $A$ does not turn at all, only stretches. Along such an arrow, $A$ acts like a plain number.`);
+    md(r`
+> [!try]
+> $A$ sends $(1, 0)$ to its first column, $(2, 1)$: off the line through $(1, 0)$. Before the scene, work out where it sends $(1, 1)$. Is that on the line through $(1, 1)$?
+`);
     sc(r`
 clock t from 0 to 1
 view -3.6, 4.6, -1.4, 3.9
@@ -4906,32 +4963,56 @@ X = arrow(0, M*[1; 0]) thick color 1
 KX = line(0, [1, 0]) dashed color 1
 > show G0, U, LU, W, LW, X, KX | Three vectors, each on a line through $0$: $u = (1, 1)$, $w = (-\frac12, \frac12)$, and $(1, 0)$ in orange.
 > show G; play t to 1 in 4s | Apply $A$. The orange vector $(1, 0)$ is turned off its line, to $(2, 1)$.
-> show K1, K2 | But $u$ stays on its line, stretched three times to $(3, 3)$, and $w$ stays exactly where it was. They are eigenvectors, with eigenvalues $3$ and $1$.
+> show K1, K2 | But $u$ stays on its line, stretched three times to $(3, 3)$, and $w$ stays exactly where it was: stretched by $1$.
+`);
+    md(r`Arrows like $u$ and $w$ are what we were looking for, and they have a name.`);
+    md(r`
+> [!definition] Eigenvector and eigenvalue
+> A nonzero vector $v$ is an **eigenvector** of $A$ when $A$ only stretches it: $Av = \lambda v$ for a number $\lambda$, its **eigenvalue**. The line through $v$ is then carried onto itself. In the scene, $u$ has eigenvalue $3$ and $w$ has eigenvalue $1$.
 `);
     m("let A = [2, 1; 1, 2]");
     m("A*[1; 1]");
     m("A*[-1; 1]");
+    md(r`$u$ and $w$ were found by looking at a picture. How would you find them for a matrix you cannot picture?`);
+    md(r`
+> [!try]
+> Invent it. $Av = \lambda v$ says $(A - \lambda I)v = 0$, where $I = \begin{pmatrix} 1 & 0 \\ 0 & 1 \end{pmatrix}$: the matrix $A - \lambda I$ sends a nonzero vector to $0$. What does lesson 4 say about such a matrix, and what equation does that give for $\lambda$?
+`);
     md(r`
 > [!theorem] The characteristic polynomial
-> $Av = \lambda v$ with $v \neq 0$ says $(A - \lambda I)v = 0$ has a nonzero solution: $A - \lambda I$ flattens the plane, so $\det(A - \lambda I) = 0$. The eigenvalues are the roots of this polynomial in $\lambda$.
+> If $A - \lambda I$ sends a nonzero $v$ to $0$, where it also sends $0$, it squashes the plane and cannot be undone, so $\det(A - \lambda I) = 0$. That is an equation in $\lambda$ alone: the eigenvalues are the roots of the polynomial $\det(A - \lambda I)$.
 `);
-    md(r`For $A$, writing $x$ for $\lambda$: the polynomial is $x^2 - 4x + 3 = (x - 1)(x - 3)$, with roots $1$ and $3$.`);
+    md(r`For $A$, writing $x$ for $\lambda$: $(2 - x)^2 - 1 = x^2 - 4x + 3 = (x - 1)(x - 3)$, with roots $1$ and $3$, the two stretches in the scene.`);
     m("expand(det(A - x*[1, 0; 0, 1]))");
     m("subst(det(A - x*[1, 0; 0, 1]), x, 3)");
     m("subst(det(A - x*[1, 0; 0, 1]), x, 1)");
+    md(r`Each eigenvalue then gives its eigenvectors: the inputs that $A - \lambda I$ sends to $0$, found by elimination again. For $\lambda = 3$, $A - 3I = \begin{pmatrix} -1 & 1 \\ 1 & -1 \end{pmatrix}$, with $0$ as the target:`);
+    m("rref([-1, 1, 0; 1, -1, 0])", { work: true });
+    md(r`A row of zeros, and $x - y = 0$: a whole line of solutions, the line through $u = (1, 1)$.`);
+    sec("The matrix in its own basis");
+    md(r`Back to the opening question. Describe the plane with the eigenvectors, $b_1 = (1, 1)$ and $b_2 = (-1, 1)$, and ask, as lesson 2 did, where $A$ sends the two arrows. Multiplying by the matrix whose columns they are does both at once:`);
+    m("A*[1, -1; 1, 1]");
+    md(r`
+> [!try]
+> The columns are $3b_1$ and $b_2$. Written in the new basis, what are their coordinates? So what matrix is $A$, described with $b_1$ and $b_2$?
+`);
     md(r`
 > [!intuition] In its own basis a matrix is simple
-> In the basis of its eigenvectors, $b_1 = (1, 1)$ and $b_2 = (-1, 1)$, the matrix $A$ only stretches the first coordinate by $3$ and keeps the second: in those coordinates it is the diagonal matrix $\begin{bmatrix} 3 & 0 \\ 0 & 1 \end{bmatrix}$. Choosing the basis well is most of understanding a matrix.
+> In the basis of its eigenvectors, $A$ sends $b_1$ to $3b_1$, coordinates $(3, 0)$, and $b_2$ to itself, $(0, 1)$: described with them, $A$ is the diagonal matrix $\begin{pmatrix} 3 & 0 \\ 0 & 1 \end{pmatrix}$, a stretch by $3$ along $u$'s line and none along $w$'s. That is what the scene showed and what the columns $(2, 1)$ and $(1, 2)$ hid; even $\det A = 3$ is the product of the two stretches. Choosing the basis well is most of understanding a matrix.
 `);
     ex("rref([1, 1, 3; 1, -1, 1])", r`Find the coordinates of $v = (3, 1)$ in the basis $b_1 = (1, 1)$, $b_2 = (1, -1)$: reduce the augmented matrix, and give the reduced matrix.`, [
       r`The augmented matrix has $b_1$ and $b_2$ as columns, then $v$: ‹[1, 1, 3; 1, -1, 1]›.`,
       r`The coordinates are the last column of the reduced matrix.`,
     ]);
-    ex("[3, 0; 0, 1]*[2; 5]", r`In its eigenbasis, $A$ is $\begin{bmatrix} 3 & 0 \\ 0 & 1 \end{bmatrix}$. Apply it to the coordinates $(2, 5)$.`, [r`A diagonal matrix scales each coordinate by its own entry.`], { hide: true });
-    ex("[2, 1; 1, 2]*[1; -1]", r`Apply $A = \begin{bmatrix} 2 & 1 \\ 1 & 2 \end{bmatrix}$ to $(1, -1)$. Is $(1, -1)$ an eigenvector, and with which eigenvalue?`, [r`Compare the answer with $(1, -1)$ itself.`]);
+    ex("[2, 1; 1, 2]*[1; -1]", r`Apply $A = \begin{pmatrix} 2 & 1 \\ 1 & 2 \end{pmatrix}$ to $(1, -1)$, as a column. Then compare: is $(1, -1)$ an eigenvector, and with which eigenvalue?`, [r`Compare the answer with $(1, -1)$ itself.`]);
+    ex("[3, 0; 0, 1]*[2; 5]", r`Described with its eigenvectors, $A$ is $\begin{pmatrix} 3 & 0 \\ 0 & 1 \end{pmatrix}$. The vector with coordinates $(2, 5)$ in that basis: what are the coordinates of where $A$ sends it? Answer as a column.`, [r`A diagonal matrix scales each coordinate by its own entry.`], { hide: true });
+    ex("expand(det([0, -1; 1, 0] - x*[1, 0; 0, 1]))", r`Invent it: the quarter turn $R = \begin{pmatrix} 0 & -1 \\ 1 & 0 \end{pmatrix}$ of lesson 2 turns every arrow, so it should have no eigenvectors. Give $\det(R - xI)$, expanded, and see why it has no real roots.`, [
+      r`$R - xI = \begin{pmatrix} -x & -1 \\ 1 & -x \end{pmatrix}$.`,
+      r`Its determinant is $(-x)(-x) - (-1) \cdot 1$.`,
+    ], { hide: true });
     md(r`
 > [!summary]
-> A basis gives every vector coordinates; the matrix of the basis turns them into ours, and row reduction turns ours into them. An eigenvector is a direction a matrix only stretches, its eigenvalue a root of $\det(A - \lambda I)$, and in a basis of eigenvectors the matrix is diagonal.
+> Any two arrows not on one line are a basis, and give every vector coordinates. The matrix $P$ whose columns they are turns those coordinates into ours, and elimination turns ours into them. An eigenvector is an arrow a matrix only stretches, by its eigenvalue, a root of $\det(A - \lambda I)$. Described with a basis of eigenvectors, the matrix is diagonal: a stretch along each. Not every matrix has one: a quarter turn turns every arrow.
 `);
   });
 });
