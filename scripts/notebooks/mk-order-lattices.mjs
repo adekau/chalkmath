@@ -260,7 +260,7 @@ instance {α β : Type} [PartialOrder α] [PartialOrder β] : PartialOrder (α �
   le_trans _ _ _ h1 h2 := ⟨le_trans _ _ _ h1.1 h2.1, le_trans _ _ _ h1.2 h2.2⟩
 `);
 md(r`
-The engine has no product constructor (yet), but a small product can be written out: $\mathbf{2} \times \mathbf{2}$, with $x_{ij}$ standing for the pair $(i, j)$ —
+The engine's ‹product(P, Q)› builds products (the course's later lessons use it), but a small one is clearer written out: $\mathbf{2} \times \mathbf{2}$, with $x_{ij}$ standing for the pair $(i, j)$ —
 `);
 m("let Sq = poset({x00, x01, x10, x11}; x00 < x01, x00 < x10, x01 < x11, x10 < x11)");
 m("le(Sq, x01, x10)");
@@ -393,7 +393,7 @@ theorem Monotone.comp {α β γ : Type} [PartialOrder α] [PartialOrder β] [Par
 `);
 md(r`
 
-The engine's maps are maps from a poset *to itself*, given as a table; elements not listed are fixed. The book's ‹double12› sends $n$ to $2n$ when that is still a divisor of $12$ and leaves it alone otherwise. Monotone: if $a \mid b$ then $2a \mid 2b$.
+The maps here go from a poset *to itself*, given as a table; elements not listed are fixed. The book's ‹double12› sends $n$ to $2n$ when that is still a divisor of $12$ and leaves it alone otherwise. Monotone: if $a \mid b$ then $2a \mid 2b$.
 `);
 m("let dbl = map(D; 1 -> 2, 2 -> 4, 3 -> 6, 6 -> 12)");
 m("monotone(D, dbl)", true);
@@ -655,7 +655,7 @@ m("join(N5, bot, q)");
 md(r`
 ## Exercises
 
-**3.1 Lattice of intervals.** Define ‹Interval› as pairs $[l, h]$ with $l \le h$, ordered by $[l_1, h_1] \le [l_2, h_2] \iff l_2 \le l_1 \wedge h_1 \le h_2$ — “containment by a smaller interval”, the *precision* or *information* order. Prove it is a partial order; what are meet and join? (Meet is the smallest interval containing both — the convex hull; join is the intersection, when it is non-empty. Chapter 7 makes this the interval lattice of the propagators.)
+**3.1 Lattice of intervals.** Define ‹Interval› as pairs $[l, h]$ with $l \le h$, ordered by $[l_1, h_1] \le [l_2, h_2] \iff l_1 \le l_2 \wedge h_2 \le h_1$ — the second interval lies inside the first, so it says more about where the number is: the *precision* or *information* order, in which smaller intervals are higher. Prove it is a partial order; what are meet and join? (Meet is the smallest interval containing both — the convex hull; join is the intersection, when it is non-empty. Two disjoint intervals have no join until an “empty” element, a contradiction, is added on top. Chapter 7 makes this the interval lattice of the propagators.)
 
 **3.2 Absorption.** In any lattice, $a \sqcap (a \sqcup b) = a$. The instance in $D$ with $a = 4$, $b = 6$: $4 \sqcup 6 = 12$ and $4 \sqcap 12 = 4$.
 `);
@@ -725,7 +725,7 @@ md(r`
 A *fixed point* of $f : L \to L$ is an element $x$ with $f(x) = x$ — where an iterative process *stabilises*.
 
 - **Propagator networks.** Cell values stop changing when the propagators reach a fixed point of “apply all propagators once”. That stable state is the least fixed point: the most conservative set of conclusions forced by the constraints, nothing more.
-- **Dataflow analysis.** A compiler iterates a flow function until it stabilises; the result is its least fixed point.
+- **Dataflow analysis.** A compiler iterates a flow function until it stabilises; the result is a fixed point, the least one in the order the analysis is set up in.
 - **Denotational semantics.** The meaning of a recursive program is the least fixed point of a semantic functional.
 - **Regular expressions.** The set matched by $a^*$ is the least fixed point of $S \mapsto \{\varepsilon\} \cup a \cdot S$.
 
@@ -791,13 +791,12 @@ $$\begin{array}{ll}
 \text{sequence } a_0 \le a_1 \le a_2 \le \cdots & \text{ascending chain} \\
 \text{limit } \lim_{n\to\infty} a_n & \text{supremum } \bigsqcup_n a_n \\
 \text{convergence} & \text{chain stabilising} \\
-\text{completeness of } \mathbb{R} & \text{completeness of the lattice} \\
-\text{Cauchy sequence} & \text{ascending chain condition}
+\text{completeness of } \mathbb{R} & \text{completeness of the lattice}
 \end{array}$$
 
 Just as the completeness of $\mathbb{R}$ guarantees every bounded ascending sequence a limit, the completeness of a lattice guarantees every chain a supremum. Without it the supremum might not exist in your structure — exactly as $\sqrt 2$ does not exist in $\mathbb{Q}$ although rational sequences converge to it.
 
-**The ascending chain condition.** A poset satisfies the ACC if every strictly ascending chain $a_0 < a_1 < \cdots$ is finite. Then the Kleene chain must stabilise at some $f^n(\bot) = f^{n+1}(\bot)$: a fixed point in finitely many iterations. Every finite poset satisfies the ACC trivially — a strictly ascending chain in ‹chain(5)› has at most five elements — which is why every ‹lfp› cell in this notebook terminates. ‹FlatNat› in Part II satisfies it too (its chains are $\bot < \mathrm{known}(n)$, length two); the interval lattice does *not* — $[0,10] < [0,9] < [0,8] < \cdots$ — which is why interval propagators need a widening operator.
+**The ascending chain condition.** A poset satisfies the ACC if every strictly ascending chain $a_0 < a_1 < \cdots$ is finite. Then the Kleene chain must stabilise at some $f^n(\bot) = f^{n+1}(\bot)$: a fixed point in finitely many iterations. Every finite poset satisfies the ACC trivially — a strictly ascending chain in ‹chain(5)› has at most five elements — which is why every ‹lfp› cell in this notebook terminates. The flat lattice of Part II (nothing known, a value, a contradiction) satisfies it too, although it is infinite: no chain has more than three elements. The interval lattice on the integers does *not* once a bound may be infinite — $[0, \infty) < [1, \infty) < [2, \infty) < \cdots$ narrows forever — which is why interval propagators need a widening operator.
 
 **$\bot$ is the starting point, not the limit.** The supremum of the Kleene chain is not $\bot$; $\bot$ is its *minimum*. For the sequence $0, \tfrac12, \tfrac34, \tfrac78, \ldots$ the minimum is $0$ and the limit is $1$. The chain in ‹lfp(D, dbl)› starts at $1$ and ends at $4$:
 `);
@@ -829,7 +828,7 @@ The rest of the book leaves finite mathematics for programs: propagator *cells* 
 
 **What the engine checked.** Every order-world cell above runs on rules in the ledger's verified column: ‹order.closure› (the three laws, ‹checkPartialOrder_none›), ‹order.covers› (‹covers_spec›), ‹order.upper-bounds› / ‹order.least› (‹sup_spec›, ‹sup_none›) and their duals, ‹order.lattice›, ‹order.cover› for ‹le›, ‹order.monotone› (‹monotone_of_none›), and ‹order.iterate› / ‹order.fixed› (‹iter_le_fixed›). The Lean cells are the book's definitions and theorems, checked by Lean in your browser; they are about all posets and lattices. A few needed small changes to stand on Lean's core library alone, without Mathlib: the ‹LE› instance that lets a partial order write ‹≤›, notation for ‹⊓ ⊔ ⊥ ⊤›, ‹Set› defined as predicates, the ‹calc› in ‹mul_eq_one_left› written upward (core has no ‹Trans› instance for ‹≥›), the partial-order fields of ‹Dual›'s instance, and the last step of ‹knaster_tarski›.
 
-**What the engine does not have yet**, found by writing this notebook: a product-poset constructor and a dual (Exercises 1.3, 1.4 are written out by hand); maps between *different* posets and maps whose table uses set literals, so $S \mapsto S \cup \{x\}$ on a powerset cannot be typed; nested order expressions such as ‹meet(D, 4, join(D, 4, 6))›; a ‹distributive(P)› check; and an $n$-ary ‹sup› / ‹inf› of a set, which ‹upper› and ‹lower› only approximate.
+**What the engine does not have yet**, found by writing this notebook: a dual constructor (Exercise 1.4 is written out by hand); an element computed by a nested call, such as ‹meet(D, 4, join(D, 4, 6))› (a nested call can build a poset, as in ‹lattice(product(chain(2), chain(2)))›, but not an element of one); and an $n$-ary ‹sup› / ‹inf› of a set, which ‹upper› and ‹lower› only approximate. Products (‹product›), maps between two posets and maps on a powerset (‹map(P, Q; …)›, ‹map(P; {}->{a}, …)›) and a ‹distributive› check have since arrived; the course *Order and lattices* uses them.
 `);
 
 const nb = { chalk: 1, name: "order-lattices.chalk", cells, scenes: [] };

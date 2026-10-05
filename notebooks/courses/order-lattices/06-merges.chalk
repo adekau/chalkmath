@@ -9,20 +9,14 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> See why a merge that is a join can be applied in any order and any number of times with the same result, build merges for numbers, flags, timestamped values and records, and prove their laws in Lean.",
+      "src": "> [!goal]\n> Build merges that are joins for records and for timestamped values (\"last writer wins\"), and prove their laws once and for all in Lean.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "Two copies of some data (replicas) change independently and later exchange states. Each **merges** the other's state into its own. They end up equal, whatever order the messages arrive in and however often they are repeated, exactly when the merge is associative, commutative and idempotent: a join.",
+      "src": "Lesson 5 found the laws a merge needs, in $\\max$ and in union. Real replicated state is richer. A user profile has a visit count and a \"verified\" flag: can it be merged field by field? A setting should hold the last value anyone wrote, but \"keep the newer one\" was not commutative. This lesson builds both merges and checks their laws.\n\nFirst, what the laws buy. With $\\max$, neither the order of the states nor their repetition makes a difference.\n\n> [!try]\n> Predict both folds before running them: the same states, shuffled, one of them sent twice.",
       "type": "markdown",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "Order and repetition do not matter",
-      "type": "section",
       "showWork": false,
       "label": null
     },
@@ -42,7 +36,7 @@
       "label": null
     },
     {
-      "src": "Associativity lets the merges be grouped any way, commutativity lets them arrive in any order, and idempotence lets a message be delivered twice.",
+      "src": "Replicas that merge with a join therefore **converge**: two that have received the same states, in any order, grouped any way, any number of times, hold the same value.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -50,6 +44,12 @@
     {
       "src": "Records merge field by field",
       "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A record of two fields can merge each field with that field's merge. Each law for pairs is the same law in each field, so it is a join again:",
+      "type": "markdown",
       "showWork": false,
       "label": null
     },
@@ -85,6 +85,12 @@
       "label": null
     },
     {
+      "src": "Each replica had learnt one field; the merge keeps both, and nothing more: the least record that knows everything either knew.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "In Lean",
       "type": "section",
       "showWork": false,
@@ -93,6 +99,18 @@
     {
       "src": "instance : Semilattice Nat where\n  merge := max\n  merge_comm := Nat.max_comm\n  merge_assoc := Nat.max_assoc\n  merge_idem := Nat.max_self\n\ninstance : Semilattice Bool where\n  merge := (· || ·)\n  merge_comm := by decide\n  merge_assoc := by decide\n  merge_idem := by decide\n\n/-- A record merges field by field: proved once, for any two field types. -/\ninstance {α β : Type} [Semilattice α] [Semilattice β] : Semilattice (α × β) where\n  merge p q := (merge p.1 q.1, merge p.2 q.2)\n  merge_comm p q := by rw [merge_comm p.1, merge_comm p.2]\n  merge_assoc p q r := by simp only [merge_assoc]\n  merge_idem p := by simp only [merge_idem]\n\n#eval merge (3, true) (5, false)",
       "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Last writer wins",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A register holds one value, and the last write should win. \"Keep the newer one\" failed because \"newer\" meant \"arrived later\", and messages arrive at two replicas in different orders. Put the time into the data instead: every write carries a timestamp, and the merge keeps the one with the later timestamp. Now both replicas compare the same numbers. One gap is left: two writes with the same timestamp.\n\n> [!try]\n> What should the merge do on a tie, so that it stays commutative?",
+      "type": "markdown",
       "showWork": false,
       "label": null
     },
@@ -109,7 +127,7 @@
       "label": null
     },
     {
-      "src": "> [!mistake]\n> Without the tie-break (\"keep the second on a tie\") the merge is not commutative: two replicas that each received the other's write last would keep different values forever.",
+      "src": "> [!mistake]\n> The natural tie-break, \"keep the second on a tie\", is \"keep the newer one\" again, for those writes: not commutative. Two replicas that each received the other's write last would keep different values forever. Any rule that picks the same winner whichever comes first will do; \"the larger value\" is one.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -151,7 +169,7 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> A merge that is a join can be applied in any grouping, any order and any number of times: replicas that exchange states converge. Maxima, unions, last-writer-wins registers and records of them are all joins, and the product proof is written once for every record.",
+      "src": "> [!summary]\n> A merge that is a join can be applied in any grouping, any order and any number of times: replicas that exchange states converge. Maxima, unions, last-writer-wins registers and records of them are all joins, and the product proof is written once for every record.\n\nEvery merge so far was a join. A lattice also has meets, \"what two states have in common\", and the two operations need not get along. Next: when they do, and what that buys.",
       "type": "markdown",
       "showWork": false,
       "label": null

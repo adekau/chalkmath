@@ -9,13 +9,35 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Recognize a partial order, compute in one (divisibility, subsets, chains), read its Hasse diagram, and state the definitions in Lean.",
+      "src": "> [!goal]\n> Say exactly what \"at most\" must mean, recognise a partial order (divisibility, subsets, chains), read its Hasse diagram, and state the definition in Lean.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> *“The concept of an ordering is one of the most basic in all of mathematics, and yet we rarely pause to examine what it actually requires.”*\n\nThis notebook is the first part of *From Zero to Propagators*, a book that builds up from binary relations to lattices and fixed points and then uses them to write verified propagator networks in Lean 4. Part I — relations, partial orders, special elements, monotone maps, lattices, and the Knaster–Tarski fixed-point theorem — is *finite* mathematics, and the ChalkMath engine has a small world for exactly that. So where the book stops to run a Lean `#eval`, this notebook runs a cell, and where the book draws a Hasse diagram by hand, the engine draws it from the order.\n\n**How to read it.** A cell whose head is one of the order-world commands is evaluated by the engine's finite-poset world rather than as an algebraic expression:\n\n- `let P = poset({a,b,c}; a<b, a<c)` — a poset from a generating relation; the engine takes the reflexive-transitive closure and *checks* reflexivity, antisymmetry and transitivity. `divisors(n)`, `subsets({…})` and `chain(n)` are the three families the book uses most.\n- `hasse(P)` draws the covers; `le(P, a, b)` decides $a \\le b$ by exhibiting a chain of covers.\n- `upper(P, {a,b})`, `lower`, `join` (or `sup`), `meet` (or `inf`), `top`, `bottom`, `maximal`, `minimal`, `lattice`.\n- `let f = map(P; a->b, c->d)` — a map given as a table (elements not listed are fixed); `monotone(P, f)`, `fixpoints(P, f)`, `lfp(P, f)`, `gfp(P, f)`.\n\nTurn on **show work** for a cell (the ▸ beside it) to see the derivation: which elements are the upper bounds, why the least of them is the join, the Kleene chain climbing to a fixed point. Every rule these cells use is in the verified column of the ledger — `PosetProofs.lean` proves the decisions correct (`checkPartialOrder_none`, `covers_spec`, `sup_spec`, `iter_le_fixed`).\n\nWhere the book proves a theorem in Lean, the proof is a **Lean cell**: Lean 4 itself, running in your browser, checks it, and checks it again as you edit it. Put the cursor inside a proof and the panel's **Lean goals** tab shows what is left to prove at that point. The Lean cells are one Lean file read top to bottom, so a definition in one cell is in scope in every cell after it. The engine decides facts about *particular* finite posets; the Lean proofs are about *all* of them.\n\nThe first time, Lean and its library are a large download (about 140 MB, which the browser then keeps), so the Lean cells can take a minute to check while the engine's cells are already answering.",
+      "src": "Some things line up: ages, prices, dates. Many things we still call \"more\" or \"later\" do not.\n\n- Two people edit copies of a document offline. Each copy is later than the one they started from, but neither is later than the other.\n- Permission to read and permission to write are each more than no permission and less than both, yet neither is more than the other.\n- $4$ and $6$ both divide $12$, but neither divides the other.\n\nHere are the permissions as an order. The engine draws it with \"more\" upwards, one edge for each step up:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let Perm = poset({none, read, write, rw}; none < read, none < write, read < rw, write < rw)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "le(Perm, read, write)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> What is the least a relation \"$x$ is at most $y$\" must satisfy to deserve the name? Make a list before reading on.\n\nThree properties come up, and the chapter below names them. Everything is at most itself (**reflexive**). \"At most\" passes along: $x \\le y$ and $y \\le z$ give $x \\le z$ (**transitive**). And if $x \\le y$ and $y \\le x$, then $x$ and $y$ are the same thing (**antisymmetric**), or else \"at most\" could not tell them apart. \"Any two can be compared\" is not on the list. Leaving it off is the point: it is what *partial* means.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!note] Reading the cells\n> Turn on **show work** (the ▸ beside a cell) to see how the engine decided an answer. The Lean cells are the book's definitions and proofs, checked by Lean 4 in your browser; with the cursor inside a proof, the **Lean goals** tab shows what is left to prove. The first time, Lean is a large download (about 140 MB, kept afterwards), so the Lean cells can take a minute while the engine's cells already answer.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -300,7 +322,7 @@
       "label": null
     },
     {
-      "src": "The engine has no product constructor (yet), but a small product can be written out: $\\mathbf{2} \\times \\mathbf{2}$, with $x_{ij}$ standing for the pair $(i, j)$ —",
+      "src": "The engine's `product(P, Q)` builds products (the course's later lessons use it), but a small one is clearer written out: $\\mathbf{2} \\times \\mathbf{2}$, with $x_{ij}$ standing for the pair $(i, j)$ —",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -374,7 +396,29 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> A partial order is reflexive, antisymmetric and transitive; not every two elements need be comparable. Divisibility, inclusion and $\\le$ on numbers are the first examples, and a Hasse diagram draws one by its covers.",
+      "src": "Why antisymmetry? Ann and Bob are the same age and Cy is older. Here is \"is no older than\" as a relation, each arrow $x \\to y$ read \"$x$ is no older than $y$\":",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let Age = rel({ann, bob, cy}; ann->ann, bob->bob, cy->cy, ann->bob, bob->ann, ann->cy, bob->cy)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "antisymmetric(Age)",
+      "type": "exercise",
+      "prompt": "Is `Age` antisymmetric?",
+      "hints": [
+        "Ann is no older than Bob, and Bob is no older than Ann. Are they the same person?",
+        "`Age` is reflexive and transitive but not antisymmetric: a *preorder*. It orders ages, not people; treat people of the same age as one element and it becomes a partial order."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> A partial order is reflexive, antisymmetric and transitive; not every two elements need be comparable. Divisibility, inclusion and $\\le$ on numbers are the first examples, and a Hasse diagram draws one by its covers.\n\nWithout comparability two elements may have no larger one: neither read nor write is above the other. What takes the place of \"the larger of the two\" is the next lesson's question.",
       "type": "markdown",
       "showWork": false,
       "label": null

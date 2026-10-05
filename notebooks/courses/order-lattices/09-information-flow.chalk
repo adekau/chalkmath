@@ -9,13 +9,13 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Build a lattice of security classes as a product, label data with classes, and check that every flow of information goes up the lattice; then prove the rule for combining inputs.",
+      "src": "> [!goal]\n> Label data with security classes, find the class a computed value must get, and check that every flow of information in a program goes up the lattice; then prove the rule for combining inputs.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!definition] Security classes (Denning)\n> A **security class** is a level and a set of categories: $(\\mathrm{high}, \\{\\mathrm{fin}\\})$ is high-level data about finance. Classes are ordered componentwise, level by level and categories by inclusion, so they form a product lattice. Information may flow from class $a$ to class $b$ only when $a \\le b$.",
+      "src": "A payroll program reads salaries, which are secret and about HR, builds a report from them, and writes a summary to a folder the finance team reads. Is that a leak? To answer, every value needs a label saying how sensitive it is, and labels need an order, \"at least as sensitive as\".\n\nA label here has two parts: a level, low or high, and the set of categories the data is about, from $\\{\\mathrm{fin}, \\mathrm{hr}\\}$. One label is below another when it is below in both parts, so the labels are the product of a chain and a powerset:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -41,13 +41,19 @@
       "label": null
     },
     {
+      "src": "> [!definition] Security classes (Denning)\n> A **security class** is a level and a set of categories, ordered componentwise: level by level, categories by inclusion. Information may flow from class $a$ to class $b$ only when $a \\le b$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "Combining inputs",
       "type": "section",
       "showWork": false,
       "label": null
     },
     {
-      "src": "A value computed from two inputs may reveal both, so its class must be at least each of theirs: at least their join.",
+      "src": "> [!try]\n> A value is computed from a $(\\mathrm{low}, \\{\\mathrm{fin}\\})$ input and a $(\\mathrm{high}, \\{\\})$ input. Which classes could it safely get? Which one should it get?\n\nIt may reveal something about each input, so its class must be at least each of theirs: an upper bound. Every upper bound is safe; the least one keeps the value as widely usable as possible. So a computed value gets the join of its inputs' classes:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -69,7 +75,7 @@
       "label": null
     },
     {
-      "src": "A program's flows form a relation: $x \\to y$ when information about $x$ reaches $y$. It is secure when every flow goes up. A report built from salaries and then summarized for an audit:",
+      "src": "A program's flows form a relation: $x \\to y$ when information about $x$ reaches $y$. It is secure when every flow goes up. The payroll program:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -85,7 +91,7 @@
       "label": null
     },
     {
-      "src": "The audit summary is labelled $(\\mathrm{low}, \\{\\mathrm{fin}\\})$, below the report it reads: the flow goes down, and the graph marks it. Raising the audit's class fixes it:",
+      "src": "The audit summary is labelled $(\\mathrm{low}, \\{\\mathrm{fin}\\})$, strictly below the report it reads: the flow goes down, and the graph marks it. Raising the audit's class fixes it:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -159,7 +165,7 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> Security classes form a product lattice; data flows only upward, a computation's output gets the join of its inputs' classes, and a program is secure when its labelling is monotone along every flow.",
+      "src": "> [!summary]\n> Security classes form a product lattice; data flows only upward, a computation's output gets the join of its inputs' classes, and a program is secure when its labelling is monotone along every flow.\n\nSecurity classes are a lattice we designed. Often there are two orders already, a fine one and a coarse one, and the question is how to translate between them as faithfully as possible. Next: Galois connections.",
       "type": "markdown",
       "showWork": false,
       "label": null

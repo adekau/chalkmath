@@ -15,7 +15,7 @@
       "label": null
     },
     {
-      "src": "A cell is a mutable reference whose writes merge. Writing reports whether the content changed, which is how the scheduler knows when to stop.",
+      "src": "Lesson 12 argued that a network of monotone propagators on a lattice without infinite ascending chains stops, and that its answer does not depend on the schedule. Here is one to run. It takes three pieces: a cell, a propagator, and a scheduler.\n\nA cell is a mutable reference whose writes merge. Writing reports whether the content changed, which is how the scheduler knows when to stop.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -45,13 +45,13 @@
       "label": null
     },
     {
-      "src": "> [!try]\n> Edit `sumExample`: start $z$ at `Flat.known 2` instead. The subtraction $2 - 3$ is impossible, $y$ becomes a contradiction, and the network still stops.",
+      "src": "> [!try]\n> Edit the Lean above and predict before each run.\n> - Reverse the list in `sumConstraint`. Does the answer change?\n> - Start $z$ at `Flat.known 2` instead. The subtraction $2 - 3$ is impossible: where does the contradiction end up, and does the network still stop?",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!note] Why the lattice is load-bearing\n> The loop stops because each write either changes nothing or moves a cell up a lattice with no infinite ascending chains, and it gives the same answer in any order because merges are joins. Replace the merge with \"overwrite\" and both guarantees are gone.",
+      "src": "> [!note] Why the lattice is load-bearing\n> The loop stops because each write either changes nothing or moves a cell up the flat lattice, where no chain has more than three elements. It gives the same answer in any order because merges are joins and the propagators are monotone. Replace the merge with \"overwrite\" and both guarantees are gone: two propagators that disagree could overwrite each other forever, and which one wrote last would decide the answer.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -76,7 +76,7 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> A propagator network is cells that merge, propagators that read and write them, and a loop that runs until quiescence. Monotone propagators over a lattice make the loop stop, and make its answer independent of the order things run in.",
+      "src": "> [!summary]\n> A propagator network is cells that merge, propagators that read and write them, and a loop that runs until quiescence. Monotone propagators over a lattice of finite height make the loop stop, and make its answer independent of the order things run in.\n\nThe flat lattice knows a number exactly or not at all. Often what we know is a range, \"between 1 and 5\". Next: intervals.",
       "type": "markdown",
       "showWork": false,
       "label": null

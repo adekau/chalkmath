@@ -9,7 +9,29 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Find the extremal elements and bounds of a poset, compute joins and meets (and see when they do not exist), and decide whether a map is monotone.",
+      "src": "> [!goal]\n> Find what replaces \"the larger of two\" in a partial order, the join, see when it does not exist, and tell a monotone map from one that is not.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Any two numbers have a larger one, $\\max(x, y)$. Read and write have none: neither is above the other. What is the best substitute?\n\n> [!try]\n> Before running the cell: what should \"read combined with write\" be, and what makes it *the* answer rather than just *an* answer?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let Perm = poset({none, read, write, rw}; none < read, none < write, read < rw, write < rw)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "join(Perm, read, write)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "It must be above both: an **upper bound**. Of the upper bounds it should be the least, so that it adds nothing neither side asked for: the **least upper bound**, or **join**, $\\mathrm{read} \\vee \\mathrm{write} = \\mathrm{rw}$. Merging what two people know works the same way: the least state of knowledge that contains both. The chapter makes this precise, and finds posets where no least upper bound exists, one of them in a published figure that claims otherwise.\n\nIt ends with the maps that respect an order, **monotone** maps: give one more, and it gives back more. They are the maps whose fixed points the later lessons compute.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -205,7 +227,7 @@
       "label": null
     },
     {
-      "src": "The engine's maps are maps from a poset *to itself*, given as a table; elements not listed are fixed. The book's `double12` sends $n$ to $2n$ when that is still a divisor of $12$ and leaves it alone otherwise. Monotone: if $a \\mid b$ then $2a \\mid 2b$.",
+      "src": "The maps here go from a poset *to itself*, given as a table; elements not listed are fixed. The book's `double12` sends $n$ to $2n$ when that is still a divisor of $12$ and leaves it alone otherwise. Monotone: if $a \\mid b$ then $2a \\mid 2b$.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -393,7 +415,7 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> A maximum is above everything; a maximal element has nothing above it. The join of two elements is their least upper bound, when there is one. A monotone map keeps the order, and those are the maps whose fixed points the next lessons find.",
+      "src": "> [!summary]\n> A maximum is above everything; a maximal element has nothing above it. The join of two elements is their least upper bound, when there is one. A monotone map keeps the order.\n\nEvery two divisors of 12 have a join and a meet; the vee's two upper elements have no join, and $c$ and $d$ in $E$ have none either. Posets in which every pair has both are lattices: next.",
       "type": "markdown",
       "showWork": false,
       "label": null

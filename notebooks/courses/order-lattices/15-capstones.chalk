@@ -15,13 +15,19 @@
       "label": null
     },
     {
+      "src": "What we know of a Sudoku square is the set of digits still possible. It only shrinks as we learn, two facts about one square merge by intersecting, and an empty set is a contradiction: one more lattice of partial information, ordered by reverse inclusion. The machinery of the last three lessons applies unchanged, and so does a type checker's.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "Sudoku",
       "type": "section",
       "showWork": false,
       "label": null
     },
     {
-      "src": "Each square holds the set of digits still possible: a lattice ordered by reverse inclusion, where merging intersects. A square whose set is down to one digit removes that digit from its **peers**, the squares sharing its row, column or box. Here is a 4×4 grid; candidates are bits, so intersection is bitwise and.",
+      "src": "A square whose set is down to one digit removes that digit from its **peers**, the squares sharing its row, column or box. Here is a 4×4 grid; candidates are bits, so intersection is bitwise and.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -33,7 +39,7 @@
       "label": null
     },
     {
-      "src": "> [!try]\n> Change `puzzle`: remove a clue and see which squares stay undecided (shown as `.`). Elimination alone does not solve every Sudoku; the book adds a second propagator (\"the only place a digit can go in a unit\") and, for hard ones, search.",
+      "src": "Four clues, and elimination alone fills all sixteen squares: every square that comes down to one digit narrows its peers in turn.\n\n> [!try]\n> Change `puzzle`: remove a clue and see which squares stay undecided (shown as `.`). Elimination alone does not solve every Sudoku; the book adds a second propagator (\"the only place a digit can go in a unit\") and, for hard ones, search.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -75,7 +81,7 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> Sudoku and type inference are both \"partial information, merged and propagated to a fixed point\". The lattice makes the merges order-independent and the loop terminate; the propagators carry the problem's rules. That is the whole of the propagator model, from the first lesson's partial orders to a working solver.",
+      "src": "> [!summary]\n> Sudoku and type inference are both \"partial information, merged and propagated to a fixed point\". The lattice makes the merges order-independent and the loop terminate; the propagators carry the problem's rules. That is the whole of the propagator model, from the first lesson's partial orders to a working solver.\n\nThe same merges, sent between machines instead of between cells, are the subject of the course *CRDTs: replicated data that converges*.",
       "type": "markdown",
       "showWork": false,
       "label": null

@@ -1,55 +1,57 @@
-3	let D = divisors(12)	= poset {1, 2, 3, 4, 6, 12}
-4	let P3 = subsets({a, b, c})	= poset {{}, {c}, {b}, {b,c}, {a}, {a,c}, {a,b}, {a,b,c}}
-5	let Sq = poset({x00, x01, x10, x11}; x00 < x01, x00 < x10, x01 < x11, x10 < x11)	= poset {x00, x01, x10, x11}
-6	let Dop = poset({1, 2, 3, 4, 6, 12}; 12 < 4, 12 < 6, 4 < 2, 6 < 2, 6 < 3, 2 < 1, 3 < 1)	= poset {1, 2, 3, 4, 6, 12}
-7	let E = poset({a, b, c, d, e, f, g}; a < b, a < c, b < c, b < d, c < e, d < e, c < f, d < f, e < g, f < g)	= poset {a, b, c, d, e, f, g}
-9	let L4 = poset({m, a, b, j}; m < a, m < b, a < j, b < j)	= poset {m, a, b, j}
-10	meet(L4, a, b)	= m
-11	join(L4, a, b)	= j
-12	lattice(L4)	= true
-18	meet(D, 4, 6)	= 2
-19	meet(D, 6, 4)	= 2
-20	meet(D, 6, 6)	= 6
-21	join(D, 4, 2)	= 4
-23	meet(D, 2, 6)	= 2
-24	le(D, 2, 6)	= true
-28	meet(Dop, 4, 6)	= 12
-29	join(Dop, 4, 6)	= 2
-30	bottom(Dop)	= 12
-34	let B = poset({false, true}; false < true)	= poset {false, true}
-35	join(B, false, true)	= true
-36	meet(B, false, true)	= false
-37	lattice(B)	= true
-39	let P2 = subsets({x, y})	= poset {{}, {y}, {x}, {x,y}}
-40	join(P2, {x}, {y})	= {x,y}
-41	meet(P2, {x}, {y})	= {}
-42	lattice(P3)	= true
-44	join(D, 4, 6)	= 12
-45	meet(D, 3, 4)	= 1
-46	join(D, 3, 4)	= 12
-47	lattice(D)	= true
-49	let V = poset({a, b, c}; a < b, a < c)	= poset {a, b, c}
-50	lattice(V)	= false
-51	lattice(E)	= false
-53	let M3 = poset({bot, a, b, c, top}; bot < a, bot < b, bot < c, a < top, b < top, c < top)	= poset {bot, a, b, c, top}
-54	lattice(M3)	= true
-56	join(M3, b, c)	= top
-57	meet(M3, a, top)	= a
-58	meet(M3, a, b)	= bot
-59	meet(M3, a, c)	= bot
-60	join(M3, bot, bot)	= bot
-62	let N5 = poset({bot, p, q, r, top}; bot < p, bot < q, q < r, p < top, r < top)	= poset {bot, p, q, r, top}
-63	lattice(N5)	= true
-64	join(N5, p, q)	= top
-65	meet(N5, r, top)	= r
-66	meet(N5, r, p)	= bot
-67	meet(N5, r, q)	= q
-68	join(N5, bot, q)	= q
-70	join(D, 4, 6)	= 12
-71	meet(D, 4, 12)	= 4
-75	join(D, 2, 6)	= 6
-77	lattice(Sq)	= true
-78	join(Sq, x01, x10)	= x11
-80	lattice(V)	= false
-81	meet(D, 4, 6)	= 2
-82	join(Dop, 4, 6)	= 2
+3	let Perm = poset({none, read, write, rw}; none < read, none < write, read < rw, write < rw)	= poset {none, read, write, rw}
+4	lattice(Perm)	= true
+6	let D = divisors(12)	= poset {1, 2, 3, 4, 6, 12}
+7	let P3 = subsets({a, b, c})	= poset {{}, {c}, {b}, {b,c}, {a}, {a,c}, {a,b}, {a,b,c}}
+8	let Sq = poset({x00, x01, x10, x11}; x00 < x01, x00 < x10, x01 < x11, x10 < x11)	= poset {x00, x01, x10, x11}
+9	let Dop = poset({1, 2, 3, 4, 6, 12}; 12 < 4, 12 < 6, 4 < 2, 6 < 2, 6 < 3, 2 < 1, 3 < 1)	= poset {1, 2, 3, 4, 6, 12}
+10	let E = poset({a, b, c, d, e, f, g}; a < b, a < c, b < c, b < d, c < e, d < e, c < f, d < f, e < g, f < g)	= poset {a, b, c, d, e, f, g}
+12	let L4 = poset({m, a, b, j}; m < a, m < b, a < j, b < j)	= poset {m, a, b, j}
+13	meet(L4, a, b)	= m
+14	join(L4, a, b)	= j
+15	lattice(L4)	= true
+21	meet(D, 4, 6)	= 2
+22	meet(D, 6, 4)	= 2
+23	meet(D, 6, 6)	= 6
+24	join(D, 4, 2)	= 4
+26	meet(D, 2, 6)	= 2
+27	le(D, 2, 6)	= true
+31	meet(Dop, 4, 6)	= 12
+32	join(Dop, 4, 6)	= 2
+33	bottom(Dop)	= 12
+37	let B = poset({false, true}; false < true)	= poset {false, true}
+38	join(B, false, true)	= true
+39	meet(B, false, true)	= false
+40	lattice(B)	= true
+42	let P2 = subsets({x, y})	= poset {{}, {y}, {x}, {x,y}}
+43	join(P2, {x}, {y})	= {x,y}
+44	meet(P2, {x}, {y})	= {}
+45	lattice(P3)	= true
+47	join(D, 4, 6)	= 12
+48	meet(D, 3, 4)	= 1
+49	join(D, 3, 4)	= 12
+50	lattice(D)	= true
+52	let V = poset({a, b, c}; a < b, a < c)	= poset {a, b, c}
+53	lattice(V)	= false
+54	lattice(E)	= false
+56	let M3 = poset({bot, a, b, c, top}; bot < a, bot < b, bot < c, a < top, b < top, c < top)	= poset {bot, a, b, c, top}
+57	lattice(M3)	= true
+59	join(M3, b, c)	= top
+60	meet(M3, a, top)	= a
+61	meet(M3, a, b)	= bot
+62	meet(M3, a, c)	= bot
+63	join(M3, bot, bot)	= bot
+65	let N5 = poset({bot, p, q, r, top}; bot < p, bot < q, q < r, p < top, r < top)	= poset {bot, p, q, r, top}
+66	lattice(N5)	= true
+67	join(N5, p, q)	= top
+68	meet(N5, r, top)	= r
+69	meet(N5, r, p)	= bot
+70	meet(N5, r, q)	= q
+71	join(N5, bot, q)	= q
+73	join(D, 4, 6)	= 12
+74	meet(D, 4, 12)	= 4
+78	join(D, 2, 6)	= 6
+80	lattice(Sq)	= true
+81	join(Sq, x01, x10)	= x11
+83	lattice(V)	= false
+84	meet(D, 4, 6)	= 2
+85	join(Dop, 4, 6)	= 2

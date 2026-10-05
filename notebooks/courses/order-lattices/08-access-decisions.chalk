@@ -9,13 +9,13 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Model the combining algorithms of an access-control policy as operations, see which are semilattices (so rule order cannot matter) and which are not, and prove that adding a rule never turns a deny into a permit.",
+      "src": "> [!goal]\n> Combine permit and deny the way access-control policies do, see which combining rules are semilattices (so rule order cannot matter) and which are not, and prove that adding a rule never turns a deny into a permit.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "An access policy has many rules. For a given request each rule says **permit**, **deny**, or **not applicable** (na), and a *combining algorithm* turns their answers into one. The standard ones (XACML's) are operations on $\\{\\mathrm{na}, \\mathrm{permit}, \\mathrm{deny}\\}$, so they are tables with laws.",
+      "src": "A file server checks a request against three rules. One says **permit**, one says **deny**, and one does not apply (**na**). Should it grant the request? Should the answer change if an administrator reorders the rules?\n\nThere is no single right answer: it is a choice, called a *combining algorithm*. The standard ones (XACML's, here without its error values) are operations on $\\{\\mathrm{na}, \\mathrm{permit}, \\mathrm{deny}\\}$, so they are tables with laws, and lesson 5 says what to look for: if the operation is a semilattice, the decision cannot depend on the order or grouping of the rules.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -53,7 +53,7 @@
       "label": null
     },
     {
-      "src": "It is the join of the chain $\\mathrm{na} < \\mathrm{permit} < \\mathrm{deny}$: a rule's decision can only push the result up. Because it is a semilattice, the decision for a list of rules does not depend on their order or grouping:",
+      "src": "It is the join of the chain $\\mathrm{na} < \\mathrm{permit} < \\mathrm{deny}$: a rule's decision can only push the result up, and a policy with no applicable rule says na.\n\n> [!try]\n> The second fold lists the same rules in another order. Predict its answer before running it.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -195,7 +195,7 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> Deny-overrides and permit-overrides are joins of a three-element chain, so a policy's decision under them does not depend on rule order. First-applicable is associative but not commutative: there the order of rules is part of the policy.",
+      "src": "> [!summary]\n> Deny-overrides and permit-overrides are joins of a three-element chain, so a policy's decision under them does not depend on rule order. First-applicable is associative but not commutative: there the order of rules is part of the policy.\n\nHere the lattice ordered the *answers* to a request. Next it orders the *data*: every value carries a security class, and information may only flow up.",
       "type": "markdown",
       "showWork": false,
       "label": null

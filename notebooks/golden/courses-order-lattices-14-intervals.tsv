@@ -2,5 +2,6 @@
 5	lattice(I)	= true
 6	join(I, i01, i12)	= i11
 7	join(I, i00, i22)	= empty
-15	join(I, i02, i12)	= i12
-16	join(I, i01, i22)	= empty
+9	meet(I, i00, i22)	= i02
+21	join(I, i02, i12)	= i12
+22	join(I, i01, i22)	= empty
