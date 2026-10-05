@@ -104,6 +104,20 @@ test("the other worlds' notation is typed as its text reads, and an edit keeps t
   assert.equal(text("{end}{←}{⌫}b", "let SF = system(var p in {a,b}; init p=a)"), "let SF = system(var p in {a,b}; init p=b)");
   // Shift+Enter's line break is an atom of its own
   assert.equal(text("x\ny"), "x\ny");
+  // in a system, `,` is an action's (one body, not a next argument), and ↑ ↓ go between its lines,
+  // as far along as the caret was, and leave it only from the first or last line
+  const sys = "system(\n  var x in 0..2\n  action t when x = 0 do x := 1, y := 2\n)";
+  assert.equal(text("{end}{←}{←},z := 3", sys), "system(\n  var x in 0..2\n  action t when x = 0 do x := 1, y := 2, z := 3\n)");
+  assert.equal(typed("{end}{←}{←},", sys).e.stmt.body[0].args.length, 1);
+  assert.equal(text("{end}{←}{↑}{↑}{→}{→}{→}Q", sys), "system(\n  varQ x in 0..2\n  action t when x = 0 do x := 1, y := 2\n)");
+  assert.equal(text("{end}{←}{↑}{↑}{↓}{→}{→}{→}Q", sys), "system(\n  var x in 0..2\n  actQion t when x = 0 do x := 1, y := 2\n)");
+  const top = typed("{end}{←}{↑}{↑}{↑}", sys).e;
+  assert.equal(top.vertical(-1), false);
+  assert.equal(typed("{end}{←}", sys).e.vertical(1), false);
+  // a fraction on a line still goes between its parts first; from the denominator, ↓ is the next line
+  const frac = "system(\nvar x in 0..2\ninit x = 1/2\nvar y in 0..1\n)", toNum = "{end}{←}{↑}{↑}" + "{→}".repeat(9);
+  assert.equal(text(toNum + "{↓}Q", frac), "system(\nvar x in 0..2\ninit x = 1/(2Q)\nvar y in 0..1\n)");
+  assert.equal(text(toNum + "{↓}{↓}Q", frac), "system(\nvar x in 0..2\ninit x = 1/2\nvar y iQn 0..1\n)");
   // raw text takes its characters as typed
   const raw = new MathEdit(read("f(x").stmt);
   raw.end(); raw.left(); raw.left(); raw.type("+");

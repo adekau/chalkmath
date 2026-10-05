@@ -92,6 +92,8 @@ test("the other worlds' notation reads as math between separators", () => {
     "TWO := succ (succ zero)": "[T W O := s u c c ␣ (paren [s u c c ␣ z e r o])]",
     "add 2 3": "[a d d ␣ 2 ␣ 3]",
     "system(var x in 0..2\ninit x = 0)": "[(system [v a r ␣ x ␣ i n ␣ 0 .. 2 \n i n i t ␣ x = 0])]",
+    // a system's parentheses are one body: an action's `,` separates its updates, not arguments
+    "system(var x in 0..2\naction t when x = 0 do x := 1, y := 2)": "[(system [v a r ␣ x ␣ i n ␣ 0 .. 2 \n a c t i o n ␣ t ␣ w h e n ␣ x = 0 ␣ d o ␣ x := 1 , y := 2])]",
     // a keyword ends a product, as a separator does: `a` alone is the numerator
     "action t when a/2 < 1 do x := 1": "[a c t i o n ␣ t ␣ w h e n ␣ (frac [a] [2]) < 1 ␣ d o ␣ x := 1]",
   };
