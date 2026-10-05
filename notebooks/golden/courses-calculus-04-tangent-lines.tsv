@@ -1,11 +1,18 @@
-2	let f = x^3 - 3x	= x^3 - 3*x
-3	diff(f, x)	= 3*x^2 - 3
-5	diff(f, x, 2)	= 6*x
-8	subst(diff(f, x), x, 2)	= 9
-11	let a = 2	= 2
-12	let s = subst(diff(f, x), x, a)	= 9
-13	let t = subst(f, x, a) + s*(x - a)	= 9*(x - 2) + 2
-14	plot([f, t], x, -2.5, 2.5)	= [x^3 - 3*x, 9*(x - 2) + 2]
-16	subst(diff(x^2, x), x, 3)	= 6
-17	diff(x^4, x, 2)	= 12*x^2
-18	subst(diff(f, x, 2), x, 1)	= 6
+4	subst(diff(sqrt(x), x), x, 4)	= 1/4
+5	2 + subst(diff(sqrt(x), x), x, 4)*(4.1 - 4)	= 2.025
+6	N(sqrt(4.1))	= 2.02484567313166
+10	let f = x^3 - 3x	= x^3 - 3*x
+11	diff(f, x)	= 3*x^2 - 3
+12	let a = 2	= 2
+13	let s = subst(diff(f, x), x, a)	= 9
+14	let t = subst(f, x, a) + s*(x - a)	= 9*(x - 2) + 2
+15	plot([f, t], x, -2.5, 2.5)	= [x^3 - 3*x, 9*(x - 2) + 2]
+19	expand(subst(f - (2 + 9*(x - 2)), x, 2 + h))	= h^3 + 6*h^2
+21	expand(subst(f - (2 + 8*(x - 2)), x, 2 + h))	= h^3 + 6*h^2 + h
+25	clock a from -1.7 to 1.7\nview -2.4, 2.4, -3, 3\nG = graph(x^3 - 3*x, x, -2.3, 2.3) color 2\nP = point(a + i*(a^3 - 3*a)) thick color 1\nT = segment(a + i*(a^3 - 3*a) - 0.7*(1 + i*(3*a^2 - 3)), a + i*(a^3 - 3*a) + 0.7*(1 + i*(3*a^2 - 3))) thick color 1\n> show G, P, T | The curve $y = x^3 - 3x$ and its tangent line at a point.\n> play a to 0 in 5s | Roll the point to the right. The tangent turns clockwise: its slope falls, from about $5.7$ to $-3$. The curve bends down, and the tangent lies above it.\n> play a to 1.7 in 5s | At $x = 0$, where the bending switches, the tangent crosses the curve. Past it the tangent turns back the other way: the slope rises again. The curve bends up, and the tangent lies below it.	scene: 3 objects, 3 beats, 29.9 s
+27	diff(f, x, 2)	= 6*x
+30	subst(diff(x^2, x), x, 3)	= 6
+31	3 + subst(diff(sqrt(x), x), x, 9)*(9.6 - 9)	= 3.1
+32	diff(x^4, x, 2)	= 12*x^2
+33	subst(diff(f, x, 2), x, 1)	= 6
+34	diff(sin(x), x, 2)	= -sin(x)

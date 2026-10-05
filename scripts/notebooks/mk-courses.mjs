@@ -2740,23 +2740,31 @@ theorem normalize_sound : ∀ (ops : List Op) (s : Option Nat), run s (normalize
 
 // ---------------------------------------------------------------------------------------------------
 course("calculus", "Calculus: derivatives and integrals",
-  "The rules of differentiation and the chain rule; the circle behind cos, sin and e^(it); tangent lines; then antiderivatives the engine checks by differentiating, definite integrals and Riemann sums.",
+  "The slope at a point, found by zooming in; the power, product and chain rules read off pictures; the circle behind cos, sin and e^(it); tangent lines and bending; then antiderivatives the engine checks by differentiating, and area as slope run backwards.",
   "Calculus I–II", (add) => {
 
-  add("01-rules.chalk", "The rules of differentiation", "Powers, sums, constant multiples and products: four rules, every step named.", ({ sec, md, m, ex }) => {
+  add("01-rules.chalk", "The rules of differentiation", "The slope at a point, as what secants settle on; the power rule from a growing square, the product rule from a growing rectangle.", ({ sec, md, m, ex, sc }) => {
     sec("The rules of differentiation");
     md(r`
 > [!goal]
-> Differentiate polynomials and products with four rules, and read every step the engine takes.
-
-‹diff(f, x)› is the derivative of $f$ with respect to $x$. The engine does not look the answer up: it applies one rule at a time, and each rule is a step you can read, with a dot that says whether the rule is proved in Lean.
+> Say what the slope of a curve at one point means, and see where the power and product rules come from, well enough to rebuild them.
 `);
-    md(r`
-> [!definition] Derivative
-> The derivative of $f$ at $x$ is $f'(x) = \lim_{h \to 0} \dfrac{f(x + h) - f(x)}{h}$, the slope of the graph there. The rules below are consequences of this definition, so they can be applied without taking a limit each time.
+    md(r`A slope is rise over run, between two points. On a straight line any two points give the same answer; on the graph of $y = x^2$ they do not, since it curves. Yet a speedometer shows one speed at one instant, and a curve looks steeper at some points than at others. What can "the slope at a point" mean, when a slope needs two points?`);
+    sec("Zoom in");
+    md(r`Magnify the graph of $y = x^2$ around the point $(1, 1)$, which stays where the axes cross:`);
+    sc(r`
+clock z from 1 to 40
+view -1, 1, -2.2, 2.2
+T = graph(2*x, x, -1, 1) dashed color 6
+G = graph(z*((1 + x/z)^2 - 1), x, -1, 1) thick color 1
+P = point(0) color 1
+> show G, P | The curve $y = x^2$ near the point $(1, 1)$, placed where the axes cross.
+> play z to 40 in 6s | Zoom in, up to $40$ times. The bend straightens out.
+> show T | What is left looks like a line, of slope $2$: the slope of $x^2$ at $1$.
 `);
+    md(r`Close up, a smooth curve looks straight, and a straight line has a slope. That slope is the slope at the point. To compute it without a microscope, take two points of the graph and let them close in.`);
     sec("From secant to tangent");
-    md(r`The fraction in the definition is the slope of a **secant**: the line through two points of the graph, $(x, f(x))$ and $(x + h, f(x + h))$. Take $f(x) = x^2$ at $x = 1$, and leave $h$ a letter: ‹m› is the secant's slope in terms of $h$, ‹L› the secant, and ‹T› the tangent, the line through $(1, 1)$ with slope $f'(1)$.`);
+    md(r`The line through two points of the graph, $(x, f(x))$ and $(x + h, f(x + h))$, is a **secant**, and its slope is $\dfrac{f(x + h) - f(x)}{h}$. Take $f(x) = x^2$ at $x = 1$, and leave $h$ a letter: ‹m› is the secant's slope in terms of $h$, ‹L› the secant, and ‹T› the line the zoom showed, through $(1, 1)$ with slope $2$ (‹diff›, below, computes it).`);
     m("let f = x^2");
     m("let m = (subst(f, x, 1 + h) - subst(f, x, 1)) / h");
     m("let L = subst(f, x, 1) + m*(x - 1)");
@@ -2765,13 +2773,58 @@ course("calculus", "Calculus: derivatives and integrals",
     m("manipulate(column(plot([f, L, T], x, -0.5, 3), m, L, T), h, 2, 0.05)");
     md(r`
 > [!try]
-> Press ‹▶ Play›. As $h$ shrinks toward $0$ the second point slides down the curve toward $(1, 1)$, and the secant ‹L› turns onto the tangent ‹T›. Under the picture, ‹m› is worked out at each $h$: rise over run, $\dfrac{(1 + h)^2 - 1}{h}$ with $h$ put in, closing in on $f'(1) = 2$. Drag the slider to stop anywhere and read the calculation there.
+> Before you press ‹▶ Play›: what number will ‹m› close in on? Then play it. As $h$ shrinks toward $0$ the second point slides down the curve toward $(1, 1)$, and the secant ‹L› turns onto the tangent ‹T›. Under the picture, ‹m› is worked out at each $h$: $\dfrac{(1 + h)^2 - 1}{h}$ with $h$ put in, closing in on $2$, the slope the zoom showed.
 `);
-    md(r`The slope is never computed *at* $h = 0$, where the fraction is $\frac00$: the derivative is the number the slopes approach.`);
+    md(r`The slope is never computed *at* $h = 0$, where the fraction is $\frac00$: it is the number the secant slopes settle on. That number gets a name.`);
+    md(r`
+> [!definition] Derivative
+> The derivative of $f$ at $x$ is $f'(x) = \lim_{h \to 0} \dfrac{f(x + h) - f(x)}{h}$: the number the secant slopes settle on, the slope of the line the graph looks like when you zoom in.
+`);
+    md(r`‹diff(f, x)› is the derivative of $f$ with respect to $x$. The engine takes no limits: it applies rules, one at a time, and each rule is a step you can read, with a dot that says whether the rule is proved in Lean. The rest of this lesson finds where two of those rules come from.`);
+    sec("Why the derivative of x² is 2x");
+    md(r`Do the limit once, at any $x$. The secant slope of $x^2$ between $x$ and $x + h$, multiplied out:`);
+    m("expand(((x + h)^2 - x^2)/h)", { work: true });
+    md(r`It is $2x + h$. (Cancelling $h$ assumes $h \neq 0$, and the step says so: at $h = 0$ the fraction means nothing.) As $h$ shrinks, $2x + h$ settles on $2x$. A picture says why. Read $x^2$ as the area of a square of side $x$, and lengthen the side by a little, $dx$:`);
+    sc(r`
+clock d from 0 to 0.5
+noaxes
+view -0.3, 2.3, -0.3, 2.3
+S1 = segment(0, 1.5) color 2
+S2 = segment(1.5, 1.5 + 1.5*i) color 2
+S3 = segment(1.5 + 1.5*i, 1.5*i) color 2
+S4 = segment(1.5*i, 0) color 2
+LX = label(0.75 - 0.15*i, "x") color 2
+R1 = segment(1.5, 1.5 + d) color 1
+R2 = segment(1.5 + d, 1.5 + d + 1.5*i) color 1
+R3 = segment(1.5 + 1.5*i, 1.5 + d + 1.5*i) color 1
+T1 = segment(1.5*i, (1.5 + d)*i) color 1
+T2 = segment((1.5 + d)*i, 1.5 + (1.5 + d)*i) color 1
+T3 = segment(1.5 + 1.5*i, 1.5 + (1.5 + d)*i) color 1
+C1 = segment(1.5 + d + 1.5*i, 1.5 + d + (1.5 + d)*i) color 3
+C2 = segment(1.5 + (1.5 + d)*i, 1.5 + d + (1.5 + d)*i) color 3
+LR = label(1.5 + d + 0.75*i, "x\,dx") color 1
+LT = label(0.75 + (1.5 + d)*i, "x\,dx") color 1
+LC = label(1.5 + d + (1.5 + d)*i, "dx^2") color 3
+> show S1, S2, S3, S4, LX | A square of side $x$: its area is $x^2$.
+> show R1, R2, R3, T1, T2, T3, C1, C2, LR, LT, LC; play d to 0.5 in 2s | Lengthen the side by $dx$. The new area is two strips, $x\,dx$ each, and a corner, $dx^2$.
+> play d to 0.04 in 4s | Make $dx$ small. The strips thin in proportion to $dx$; the corner, $dx$ times $dx$, vanishes much faster.
+`);
+    md(r`The area grows by $2x\,dx + dx^2$. Divided by $dx$, that is $2x + dx$: the secant slope above, with $h$ called $dx$. As $dx$ shrinks the corner stops counting, and what is left is the two strips: $d(x^2) = 2x\,dx$. The $2$ in $2x$ is there because the square grows on two sides.`);
+    md(r`
+> [!try]
+> Now a cube of side $x$, volume $x^3$. Lengthen every edge by $dx$, keeping one corner fixed. Some of the new volume is thin slabs of area $x^2$ and thickness $dx$: how many? The rest (rods along the edges, a small cube at the far corner) is a multiple of $dx^2$ or $dx^3$, and vanishes faster. Predict the derivative of $x^3$, then answer the exercise.
+`);
+    ex("diff(x^3, x)", r`Invent it: from the cube, what is the derivative of $x^3$?`, [
+      r`The slabs are on the three faces that do not touch the fixed corner.`,
+      r`Three slabs of $x^2\,dx$: divide the new volume by $dx$ and let $dx$ shrink.`,
+    ]);
+    md(r`Multiplied out, the cube's growth is exactly those pieces: three slabs, three rods and a small cube.`);
+    m("expand((x + h)^3 - x^3)");
+    md(r`The same count works in any number of dimensions, and so does the algebra: $(x + h)^n = x^n + n x^{n-1} h + (\text{terms with } h^2)$.`);
     sec("Powers, sums and constants");
     md(r`
 > [!theorem] Power, sum and constant-multiple rules
-> $\dfrac{d}{dx} x^n = n x^{n-1}$, $\quad (f + g)' = f' + g'$, $\quad (c f)' = c f'$, and a constant has derivative $0$.
+> $\dfrac{d}{dx} x^n = n x^{n-1}$ for a whole number $n$ (and, for $x > 0$, for any real $n$); $\quad (f + g)' = f' + g'$: nudge a sum and each part adds its own change; $\quad (c f)' = c f'$: stretch a graph upward and every slope stretches with it; and a constant has derivative $0$.
 `);
     m("diff(x^5, x)", { work: true });
     md(r`A polynomial takes all four. Step through it: before each ‹▸ Next step›, say which rule comes next.`);
@@ -2781,16 +2834,44 @@ course("calculus", "Calculus: derivatives and integrals",
       r`Each term: $\frac{d}{dx}\, a x^n = a n x^{n-1}$, and the constant $2$ has derivative $0$.`,
     ]);
     sec("Products");
-    md(r`
-> [!theorem] Product rule
-> $(fg)' = f'g + fg'$: differentiate one factor at a time and add.
-`);
-    m("diff(x^2 * sin(x), x)", { step: 0 });
+    md(r`Now a product $f g$. The natural guess is the product of the derivatives, $f' g'$. Test it where the answer is known: $x^2 \cdot x^3 = x^5$, whose derivative is $5x^4$. The guess gives:`);
+    m("diff(x^2, x) * diff(x^3, x)");
     md(r`
 > [!mistake]
-> The derivative of a product is **not** the product of the derivatives. Here is $f' \cdot g'$ for the same $f = x^2$ and $g = \sin x$, which is not the answer above:
+> $6x^3$ is not $5x^4$; it is not even the right power. The derivative of a product is **not** the product of the derivatives.
 `);
-    m("diff(x^2, x) * diff(sin(x), x)");
+    md(r`Go back to areas. Read $f g$ as a rectangle with sides $f$ and $g$, and nudge $x$: $f$ grows by $df$, $g$ by $dg$.`);
+    sc(r`
+clock d from 0 to 0.5
+noaxes
+view -0.4, 3, -0.4, 2.1
+B1 = segment(0, 2) color 2
+B2 = segment(2, 2 + 1.2*i) color 2
+B3 = segment(2 + 1.2*i, 1.2*i) color 2
+B4 = segment(1.2*i, 0) color 2
+LF = label(1 - 0.2*i, "f") color 2
+LG = label(-0.2 + 0.6*i, "g") color 2
+R1 = segment(2, 2 + d) color 1
+R2 = segment(2 + d, 2 + d + 1.2*i) color 1
+R3 = segment(2 + 1.2*i, 2 + d + 1.2*i) color 1
+LR = label(2 + d + 0.6*i, "g\,df") color 1
+T1 = segment(1.2*i, (1.2 + 0.6*d)*i) color 4
+T2 = segment((1.2 + 0.6*d)*i, 2 + (1.2 + 0.6*d)*i) color 4
+T3 = segment(2 + 1.2*i, 2 + (1.2 + 0.6*d)*i) color 4
+LT = label(1 + (1.2 + 0.6*d)*i, "f\,dg") color 4
+C1 = segment(2 + d + 1.2*i, 2 + d + (1.2 + 0.6*d)*i) color 3
+C2 = segment(2 + (1.2 + 0.6*d)*i, 2 + d + (1.2 + 0.6*d)*i) color 3
+LC = label(2 + d + (1.2 + 0.6*d)*i, "df\,dg") color 3
+> show B1, B2, B3, B4, LF, LG | A rectangle with sides $f$ and $g$: its area is the product $fg$.
+> show R1, R2, R3, LR, T1, T2, T3, LT, C1, C2, LC; play d to 0.5 in 2s | Nudge $x$: $f$ grows by $df$ and $g$ by $dg$. The new area is a strip $g\,df$, a strip $f\,dg$ and a corner $df\,dg$.
+> play d to 0.05 in 4s | Make the nudge small. The strips shrink in proportion to it; the corner, a product of two small changes, vanishes faster.
+`);
+    md(r`
+> [!theorem] Product rule
+> $d(fg) = g\,df + f\,dg + df\,dg$, and the corner vanishes faster than the nudge: $(fg)' = f'g + fg'$. The guess $f'g'$ is what survives in the corner alone, $df\,dg = f'g'\,dx^2$: the one piece that does not count.
+`);
+    md(r`On $x^2 \cdot x^3$: $2x \cdot x^3 + x^2 \cdot 3x^2 = 5x^4$, as it should be. Step through a product whose factors do not merge:`);
+    m("diff(x^2 * sin(x), x)", { step: 0 });
     ex("diff(x^3 * cos(x), x)", r`Differentiate $x^3 \cos x$.`, [
       r`It is a product: $f = x^3$ and $g = \cos x$.`,
       r`$f' = 3x^2$ and $g' = -\sin x$; now $f'g + fg'$.`,
@@ -2801,26 +2882,59 @@ course("calculus", "Calculus: derivatives and integrals",
     ]);
     md(r`
 > [!summary]
-> Four rules differentiate every polynomial and every product of functions you know: power, sum, constant multiple, product. The next lesson adds the fifth, for functions inside functions.
+> Zoom in on a smooth curve and it looks like a line: the derivative is that line's slope, the number the secant slopes settle on. The power rule is the strips of a growing square (the slabs of a growing cube), the product rule the strips of a growing rectangle; in both the corner vanishes. These rules reach $x^2$ and $\sin x$, but not $\sin(x^2)$, a function inside another: that is the next lesson.
 `);
   });
 
-  add("02-chain-rule.chalk", "The chain rule", "Functions of functions: the outer derivative times the inner one, with a slider to watch the inner factor.", ({ sec, md, m, ex }) => {
+  add("02-chain-rule.chalk", "The chain rule", "Functions of functions: follow a nudge through the inner function and then the outer one, and see why the inner derivative comes out in front.", ({ sec, md, m, ex, sc }) => {
     sec("The chain rule");
     md(r`
 > [!goal]
-> Differentiate a function of a function, such as $\sin(x^2)$ or $e^{3x}$, and see where the inner derivative goes.
+> Differentiate a function of a function, such as $\sin(x^2)$, and see why the derivative of the inside comes out in front.
 `);
+    md(r`The rules so far handle $x^2$ and $\sin x$, but not $\sin(x^2)$: the sine of something that is itself changing. The natural guess is to differentiate the outside and leave the inside alone, giving $\cos(x^2)$. Plot the true derivative against the guess:`);
+    m("plot([diff(sin(x^2), x), cos(x^2)], x, 0, 3)");
+    md(r`
+> [!mistake]
+> The guess $\cos(x^2)$ is wrong: the true derivative is $2x\cos(x^2)$, the guess times $2x$, so they agree only at $x = \frac12$ and where both are $0$. $2x$ is the derivative of the inside. Why should it multiply?
+`);
+    sec("Follow a nudge");
+    md(r`Follow a small nudge through each function in turn, on three number lines: $x$ on top, $x^2$ in the middle, $\sin x^2$ at the bottom.`);
+    sc(r`
+clock a from 1 to 1.5
+noaxes
+view -1.4, 3.3, -0.5, 2.5
+X = segment(-1.2 + 2*i, 3.2 + 2*i) faint color 6
+G = segment(-1.2 + i, 3.2 + i) faint color 6
+F = segment(-1.2, 3.2) faint color 6
+LX = label(-1.3 + 2*i, "x") color 6
+LG = label(-1.3 + i, "x^2") color 6
+LF = label(-1.3 + 0*i, "\sin x^2") color 6
+DX = arrow(a + 2*i, a + 0.2 + 2*i) thick color 1
+DG = arrow(a^2 + i, (a + 0.2)^2 + i) thick color 2
+DF = arrow(sin(a^2), sin((a + 0.2)^2)) thick color 3
+M1 = segment(a + 2*i, a^2 + i) dashed color 6
+M2 = segment(a^2 + i, sin(a^2)) dashed color 6
+> show DX | A nudge to $x$.
+> show M1, DG | Squaring turns it into a nudge to $x^2$, about $2x$ times as long: the inner derivative.
+> show M2, DF | The sine scales that nudge by $\cos(x^2)$: the outer derivative, taken where the inside is.
+> play a to 1.5 in 6s | Move $x$ from $1$ to $1.5$. The middle nudge grows, about $2x$ times the top one; the bottom one is the middle one times $\cos(x^2)$, which falls to $0$ at $x^2 = \pi/2$ and then turns the nudge round.
+`);
+    md(r`A nudge $dx$ moves $x^2$ by about $2x\,dx$. That nudge, $dg = 2x\,dx$, moves $\sin g$ by about $\cos(g)\,dg$, with $g = x^2$. Altogether $d(\sin x^2) \approx \cos(x^2) \cdot 2x \cdot dx$. The guess forgot that the inside moves at its own rate, $2x$ times as fast as $x$.`);
     md(r`
 > [!theorem] Chain rule
-> $\dfrac{d}{dx} f(g(x)) = f'(g(x))\, g'(x)$: the outer derivative, evaluated at the inner function, times the inner derivative.
+> $\dfrac{d}{dx} f(g(x)) = f'(g(x))\, g'(x)$, where $g$ is differentiable at $x$ and $f$ at $g(x)$: the outer derivative, taken at the inner function, times the inner derivative. In nudges: $dg = g'(x)\,dx$ and $df = f'(g)\,dg$.
 `);
     m("diff(sin(x^2), x)", { step: 0 });
+    md(r`
+> [!try]
+> Predict the derivative of $e^{3x}$ before you open the work: what is the inside, and how fast does it move?
+`);
     m("diff(exp(3x), x)", { work: true });
     sec("The inner derivative comes out in front");
     md(r`
 > [!try]
-> Drag ‹a›. The derivative of $\sin(ax)$ is $a\cos(ax)$: the inner derivative $a$ is a factor in front, so the derivative's curve is $a$ times taller and the slopes are $a$ times steeper.
+> Drag ‹a›. In $\sin(ax)$ the inside runs $a$ times as fast as $x$, so the wave goes by $a$ times as fast: the derivative $a\cos(ax)$ has the inner derivative $a$ in front, its curve is $a$ times taller, and the slopes are $a$ times steeper.
 `);
     m("let a = 2", { slider: [1, 6, 1] });
     m("diff(sin(a*x), x)");
@@ -2828,7 +2942,8 @@ course("calculus", "Calculus: derivatives and integrals",
     sec("Chains inside chains");
     md(r`A power of a sum is a chain too: the outer function is $u^5$, the inner $2x + 1$.`);
     m("diff((2x + 1)^5, x)", { step: 0 });
-    m("diff(ln(x^2 + 1), x)", { work: true });
+    md(r`Three layers make three factors, one per layer, each taken at what is inside it:`);
+    m("diff(exp(sin(x^2)), x)", { work: true });
     ex("diff(cos(x^3), x)", r`Differentiate $\cos(x^3)$.`, [
       r`The outer function is $\cos u$, the inner $u = x^3$.`,
       r`$(\cos u)' = -\sin u$ and $(x^3)' = 3x^2$.`,
@@ -2840,12 +2955,15 @@ course("calculus", "Calculus: derivatives and integrals",
       r`The outer function is $u^3$, the inner $u = x^2 + 1$.`,
       r`Factored or multiplied out, either form is right: the check compares normal forms.`,
     ]);
+    ex("diff(ln(x), x)", r`Invent it: for $x > 0$, $e^{\ln x} = x$. Differentiate both sides, using the chain rule on the left (the inside is $\ln x$), and solve for the derivative of $\ln x$.`, [
+      r`The left side's derivative is $e^{\ln x} \cdot (\ln x)'$, which is $x \cdot (\ln x)'$.`,
+      r`The right side's derivative is $1$.`,
+    ]);
     md(r`
 > [!summary]
-> Peel the function from the outside in: differentiate the outer layer, keep the inside as it is, and multiply by the derivative of the inside.
+> Follow a nudge: the inside stretches it by $g'(x)$, then the outside by $f'(g)$. The derivative of the inside comes out in front because the inside moves at its own rate. One chain is worth a lesson of its own: $e^{it}$, where the inside is multiplied by $i$. What does a point do whose velocity is its position times $i$?
 `);
   });
-
   add("03-circles.chalk", "Circles, exponentials and rotation", "Why e^(it) walks round the unit circle: cosine and sine as shadows, multiplying by i as a quarter turn, Euler's formula, angles that add, and arctan as an angle.", ({ sec, md, m, ex, sc }) => {
     sec("Circles, exponentials and rotation");
     md(r`
@@ -2873,7 +2991,7 @@ DY = segment(P, Y) dashed color 3
 > show P, R, L, W; play t to 0.7 in 2s | Walk a distance $t$ round it, counterclockwise from $1$. Where you stand is $\cos t + i \sin t$.
 > show X, DX, Y, DY | The **cosine** is your shadow on the horizontal axis (blue), the **sine** your shadow on the vertical one (green).
 > play t to pi/2 in 2s | A quarter of the way round, at $t = \pi/2$, the sine is at its peak and the cosine is $0$.
-> play t to 2pi in 5s | Once round: each shadow swings between $-1$ and $1$, a quarter turn behind the other.
+> play t to 2pi in 5s | Once round: each shadow swings between $-1$ and $1$, the sine a quarter turn behind the cosine.
 `);
     md(r`Unrolled against the distance walked, the two shadows are the familiar waves:`);
     sc(r`
@@ -2973,7 +3091,7 @@ LP = label(exp(i*(0.6 + b)), "e^{ia} e^{ib}") color 1
     m("abs(z)");
     m("N(arg(z))");
     m("N(arctan(1))");
-    md(r`So ‹arctan› measures an angle, and its derivative $\dfrac{1}{1 + y^2}$ is how fast the angle grows as the point climbs the line through $1$. Adding those small turns from $y = 0$ to $y = 1$ gives the angle to $1 + i$, an eighth of a turn, $\pi/4$; four of them make $\pi$.`);
+    md(r`So ‹arctan› measures an angle, and its derivative $\dfrac{1}{1 + y^2}$ is how fast the angle grows as the point climbs the vertical line through $1$. Adding those small turns from $y = 0$ to $y = 1$ gives the angle to $1 + i$, an eighth of a turn, $\pi/4$; four of them make $\pi$.`);
     sc(r`
 clock y from 0.01 to 1
 view -0.3, 1.5, -0.25, 1.15
@@ -2984,14 +3102,14 @@ LA = label(0.36*exp(i*arctan(y)/2), "\arctan y") color 2
 R = arrow(0, P) color 1
 P = point(1 + i*y) thick color 1
 LP = label(P, "1 + iy") color 1
-> show C, K, R, P, LP | A point climbing the line through $1$: the point $1 + iy$.
+> show C, K, R, P, LP | A point climbing the vertical line through $1$: the point $1 + iy$.
 > show AR, LA | Its angle from the real axis is $\arctan y$.
 > play y to 1 in 6s | The angle grows fast at first and slower as the point climbs, at the rate $\frac{1}{1 + y^2}$. At $y = 1$ it is an eighth of a turn, $\pi/4$.
 `);
     m("integrate(1/(1 + y^2), y)", { work: true });
     m("N(4*integrate(1/(1 + y^2), y, 0, 1))");
     sec("Circles riding on circles");
-    md(r`A sum of terms $c_k e^{ikt}$ is circles riding on circles, each turning $k$ times per lap, with radius $|c_k|$. ‹epicycles› draws them; enough of them draw any closed curve, which is what the *Llamas* notebook does.`);
+    md(r`A sum of terms $c_k e^{ikt}$ is circles riding on circles, each turning $k$ times per lap, with radius $|c_k|$. ‹epicycles› draws them; enough of them trace any closed curve you can draw, as closely as you like, which is what the *Llamas* notebook does.`);
     m("epicycles(exp(i*t) + exp(3*i*t)/3, t)");
     ex("i*(1 + 2i)", r`Turn $1 + 2i$ a quarter turn counterclockwise about $0$.`, [
       r`Multiply by $i$, and use $i^2 = -1$.`,
@@ -3008,38 +3126,71 @@ LP = label(P, "1 + iy") color 1
     ]);
     md(r`
 > [!summary]
-> Multiplying by $i$ turns a quarter, so a rate of $i$ times the position goes round a circle: $e^{it} = \cos t + i\sin t$. The derivatives of $\cos$ and $\sin$, the angle-sum formulas and $\arctan$ as an angle all come from that walk.
+> Multiplying by $i$ turns a quarter, so a rate of $i$ times the position goes round a circle: $e^{it} = \cos t + i\sin t$. The derivatives of $\cos$ and $\sin$, the angle-sum formulas and $\arctan$ as an angle all come from that walk. Next, back on the real line: the tangent line as a stand-in for a curve, and what the derivative of the derivative says about its shape.
 `);
   });
 
-  add("04-tangent-lines.chalk", "Higher derivatives and tangent lines", "Derivatives of derivatives, slopes at a point, and the tangent line that follows a slider.", ({ sec, md, m, ex }) => {
-    sec("Higher derivatives and tangent lines");
+  add("04-tangent-lines.chalk", "Tangent lines and the second derivative", "The tangent line as the best straight stand-in for a curve, estimates from it, and the second derivative as how fast the curve bends away.", ({ sec, md, m, ex, sc }) => {
+    sec("Tangent lines and the second derivative");
     md(r`
 > [!goal]
-> Take second derivatives, find the slope of a curve at a point, and draw the tangent line there.
+> Use the tangent line as a stand-in for a curve near a point, see why it is the best straight line there, and read the curve's bending from the second derivative.
 `);
-    m("let f = x^3 - 3x");
-    m("diff(f, x)");
-    md(r`‹diff(f, x, 2)› differentiates twice: the second derivative, which measures how the slope itself changes.`);
-    m("diff(f, x, 2)", { work: true });
-    sec("Slope at a point");
-    md(r`The slope at one point is the derivative with a number put in for $x$: ‹subst(e, x, v)› substitutes.`);
-    m("subst(diff(f, x), x, 2)", { work: true });
-    sec("The tangent line");
+    md(r`Without a calculator: what is $\sqrt{4.1}$? You know $\sqrt 4 = 2$, and $4.1$ is close to $4$. Zoomed in near $4$, the graph of $\sqrt x$ looks like a line (lesson 1), so follow the line instead of the curve.`);
+    md(r`
+> [!try]
+> The slope of $\sqrt x = x^{1/2}$ at $4$ is $\frac12 \cdot 4^{-1/2} = \frac14$. Moving $0.1$ to the right, a line of that slope rises $0.1 \cdot \frac14$. Estimate $\sqrt{4.1}$ before the next cells do.
+`);
+    m("subst(diff(sqrt(x), x), x, 4)", { work: true });
+    m("2 + subst(diff(sqrt(x), x), x, 4)*(4.1 - 4)");
+    m("N(sqrt(4.1))");
+    md(r`The estimate $2.025$ is off by less than $0.0002$. The line it used, through the point with the curve's slope there, is the tangent line.`);
     md(r`
 > [!definition] Tangent line
-> The tangent line to $y = f(x)$ at $x = a$ is $y = f(a) + f'(a)\,(x - a)$: the line through the point with the curve's slope there.
+> The tangent line to $y = f(x)$ at $x = a$ is $y = f(a) + f'(a)\,(x - a)$: the line through $(a, f(a))$ with the curve's slope there.
 `);
+    sec("The tangent line");
+    m("let f = x^3 - 3x");
+    m("diff(f, x)");
     m("let a = 2", { slider: [-2, 2, 1] });
     m("let s = subst(diff(f, x), x, a)");
     m("let t = subst(f, x, a) + s*(x - a)");
     m("plot([f, t], x, -2.5, 2.5)");
     md(r`
 > [!try]
-> Drag ‹a›. At which points is the tangent flat? There $f'(a) = 3a^2 - 3 = 0$, so $a = \pm 1$: the top of the hump and the bottom of the dip.
+> Drag ‹a›. At which points is the tangent flat? Predict first. There $f'(a) = 3a^2 - 3 = 0$, so $a = \pm 1$: the top of the hump and the bottom of the dip.
 `);
+    sec("Why this line and not another");
+    md(r`Many lines pass through $(2, f(2)) = (2, 2)$. What makes the tangent, $y = 2 + 9(x - 2)$, the best? Measure the gap between curve and line a distance $h$ from the point:`);
+    m("expand(subst(f - (2 + 9*(x - 2)), x, 2 + h))");
+    md(r`The gap is $6h^2 + h^3$: no term in $h$ alone. Halve $h$ and the gap falls to about a quarter. Tilt the line, to slope $8$ say, and the gap gets an $h$ term:`);
+    m("expand(subst(f - (2 + 8*(x - 2)), x, 2 + h))");
+    md(r`For small $h$ the $h$ term is far larger than the others, so this gap shrinks only in proportion to $h$. Any slope but $9$ leaves an $h$ term, $(9 - \text{slope})\,h$; only the tangent's gap shrinks faster than $h$. That is the sense in which it is the best straight-line approximation near the point, and why the estimate of $\sqrt{4.1}$ was so close.`);
+    sec("How the slope changes");
+    md(r`The $6h^2$ is the curve bending away from its tangent. Bending is the slope changing, so watch the slope: roll the tangent along the curve.`);
+    sc(r`
+clock a from -1.7 to 1.7
+view -2.4, 2.4, -3, 3
+G = graph(x^3 - 3*x, x, -2.3, 2.3) color 2
+P = point(a + i*(a^3 - 3*a)) thick color 1
+T = segment(a + i*(a^3 - 3*a) - 0.7*(1 + i*(3*a^2 - 3)), a + i*(a^3 - 3*a) + 0.7*(1 + i*(3*a^2 - 3))) thick color 1
+> show G, P, T | The curve $y = x^3 - 3x$ and its tangent line at a point.
+> play a to 0 in 5s | Roll the point to the right. The tangent turns clockwise: its slope falls, from about $5.7$ to $-3$. The curve bends down, and the tangent lies above it.
+> play a to 1.7 in 5s | At $x = 0$, where the bending switches, the tangent crosses the curve. Past it the tangent turns back the other way: the slope rises again. The curve bends up, and the tangent lies below it.
+`);
+    md(r`How fast the slope changes is the derivative of the derivative, the **second derivative** $f''$. ‹diff(f, x, 2)› differentiates twice. Before you open the work: the slope falls left of $0$ and rises right of it, so what sign should $f''$ have on each side?`);
+    m("diff(f, x, 2)", { work: true });
+    md(r`
+> [!definition] Second derivative, bending
+> $f''$ is the derivative of $f'$: the rate at which the slope changes. Where $f'' > 0$ the slope rises and the curve bends up, lying above its tangents; where $f'' < 0$ it bends down, below them.
+`);
+    md(r`Here $f''(x) = 6x$: the curve bends down for $x < 0$, around the hump, and up for $x > 0$, around the dip. And at $x = 2$, $f''(2) = 12$, half of which is the $6$ in the gap $6h^2$: the second derivative says how fast the curve leaves its tangent.`);
     ex("subst(diff(x^2, x), x, 3)", r`What is the slope of $y = x^2$ at $x = 3$?`, [
       r`The slope is the derivative, $2x$, at $x = 3$.`,
+    ], { hide: true });
+    ex("3 + subst(diff(sqrt(x), x), x, 9)*(9.6 - 9)", r`Estimate $\sqrt{9.6}$ with the tangent line of $\sqrt x$ at $x = 9$. Give it as a decimal.`, [
+      r`$\sqrt 9 = 3$, and the slope there is $\frac{1}{2\sqrt 9} = \frac16$.`,
+      r`Follow the tangent $0.6$ to the right: $3 + 0.6 \cdot \frac16$.`,
     ], { hide: true });
     ex("diff(x^4, x, 2)", r`Find the second derivative of $x^4$.`, [
       r`Differentiate twice: $x^4 \to 4x^3 \to \dots$`,
@@ -3047,96 +3198,172 @@ LP = label(P, "1 + iy") color 1
     ex("subst(diff(f, x, 2), x, 1)", r`For the $f$ above, what is $f''(1)$?`, [
       r`$f''(x) = 6x$ (the cell above shows it).`,
     ], { hide: true });
+    ex("diff(sin(x), x, 2)", r`Find the second derivative of $\sin x$. Predict first: on an arch where $\sin x > 0$, which way does the wave bend, so what sign has $f''$ there?`, [
+      r`The arches above the axis bend down, so $f'' < 0$ where $\sin x > 0$.`,
+      r`$(\sin x)' = \cos x$ and $(\cos x)' = -\sin x$.`,
+    ]);
     md(r`
 > [!summary]
-> The derivative at a point is a number, the slope there; the tangent line is the straight line with that slope through the point. Where the slope is zero the curve turns.
+> Near a point a smooth curve is nearly its tangent line, $y = f(a) + f'(a)(x - a)$: the only line whose gap shrinks faster than the distance. The second derivative is how fast the slope changes: the curve bends up where $f'' > 0$ and down where $f'' < 0$. So far: given a function, find its rate of change. Next, the other way round: given the rate, find the function.
 `);
   });
 
-  add("05-antiderivatives.chalk", "Antiderivatives, checked", "Integration as the search for a function whose derivative you know, accepted only after the engine differentiates it back.", ({ sec, md, m, ex }) => {
+  add("05-antiderivatives.chalk", "Antiderivatives, checked", "Differentiation run backwards: guess a function with the given derivative, then check it by differentiating, as the engine does; substitution and parts as the chain and product rules undone.", ({ sec, md, m, ex }) => {
     sec("Antiderivatives, checked");
     md(r`
 > [!goal]
-> Find antiderivatives, including by substitution and by parts, and see why every answer the engine gives is checked.
+> Run differentiation backwards: given a rate, find a function that has it, and check the answer by differentiating it.
 `);
+    md(r`Which function has derivative $x^3$? There is no formula to apply yet, only the rules for going forwards. So guess, and check.`);
+    md(r`
+> [!try]
+> The power rule lowers a power by one, so a guess is $x^4$. Differentiate it: how far off is it, and how do you fix it?
+`);
+    m("diff(x^4, x)");
+    m("diff(x^4/4, x)");
+    md(r`$x^4$ gives four times too much; $\frac{x^4}{4}$ is right. That is the whole method: guess, differentiate, fix the guess.`);
     md(r`
 > [!definition] Antiderivative
-> $F$ is an antiderivative of $f$ when $F' = f$. Any two differ by a constant, so the engine gives one and leaves out the $+\,C$.
+> $F$ is an antiderivative of $f$ when $F' = f$. Adding a constant changes no slope, so $\frac{x^4}{4} + 1$ works too; on an interval any two antiderivatives differ by a constant, since a function with derivative $0$ there is constant. The engine gives one and leaves out the $+\,C$.
 `);
-    md(r`‹integrate(f, x)› searches for an antiderivative with a few textbook rules. The search proves nothing, so its steps are marked **checked** (a hollow dot): the answer is accepted only when the engine differentiates it and gets $f$ back. Open the work to see the guess and the check.`);
+    sec("Guess and check, by the engine");
+    md(r`‹integrate(f, x)› works the same way. A few textbook rules make the guess; then, whatever made it, the engine differentiates the guess and answers only if the integrand comes back. Open the work: the guess, ‹Power rule for integrals›, then ‹Check by differentiating›.`);
     m("integrate(x^3, x)", { work: true });
     m("integrate(3x^2 + 2x + 1, x)");
-    sec("Substitution");
+    md(r`Most of the guessing rules (powers, sums, constant factors, the table of $\sin$, $\cos$, $e^x$) are proved in Lean as well. The two below, substitution and integration by parts, are not: their steps are marked **checked** (a hollow dot), and for them the check by differentiating is the proof.`);
+    sec("Substitution: the chain rule backwards");
+    md(r`Which function has derivative $2x\cos(x^2)$? You have seen this shape before: lesson 2 made it as the derivative of $\sin(x^2)$, the outer derivative $\cos(x^2)$ times the inner derivative $2x$.`);
     md(r`
-> [!theorem] Substitution
-> $\int f(g(x))\, g'(x)\, dx = F(g(x))$ where $F' = f$: the chain rule, read backwards.
+> [!try]
+> Predict the engine's answer, then open its work and find the inner function it chose.
 `);
     m("integrate(2x*cos(x^2), x)", { work: true });
-    sec("By parts");
+    md(r`
+> [!theorem] Substitution
+> $\int f(g(x))\, g'(x)\, dx = F(g(x))$ where $F' = f$: the chain rule, read backwards. The sign to look for is an inner function with its derivative standing beside it.
+`);
+    md(r`Without the inner derivative there is nothing to undo. $e^{x^2}$ has an antiderivative (the area under it, next lesson), but none that can be written with powers, $e^x$, $\ln$ and the trigonometric functions, so every guess fails, and the engine says so:`);
+    m("integrate(exp(x^2), x)");
+    sec("By parts: the product rule backwards");
+    md(r`Which function has derivative $x e^x$? Guess $x e^x$ itself, and differentiate:`);
+    m("diff(x*exp(x), x)");
+    md(r`The product rule gives the wanted $x e^x$, plus an extra $e^x$. Take the extra away: subtract a function whose derivative is $e^x$, which is $e^x$ itself.`);
+    m("diff(x*exp(x) - exp(x), x)");
     md(r`
 > [!theorem] Integration by parts
-> $\int u\, dv = uv - \int v\, du$: the product rule, read backwards.
+> $\int u\, dv = uv - \int v\, du$: the product rule, read backwards. Above, $u = x$ and $dv = e^x\,dx$: $uv = x e^x$ was the first guess, and $\int v\,du = \int e^x\,dx$ the extra taken away.
 `);
     m("integrate(x*exp(x), x)", { work: true });
-    md(r`Check it yourself: differentiate the answer, and the integrand comes back.`);
-    m("diff(x*exp(x) - exp(x), x)");
     md(r`
 > [!mistake]
 > An antiderivative is not unique: $x^4$ and $x^4 + 1$ both have derivative $4x^3$. The exercises compare answers exactly, so give them **without** the $+\,C$.
 `);
     ex("integrate(4x^3, x)", r`Find an antiderivative of $4x^3$.`, [r`Which power has derivative $4x^3$?`]);
-    ex("integrate(cos(3x), x)", r`Find an antiderivative of $\cos 3x$.`, [
+    ex("integrate(cos(3x), x)", r`Find an antiderivative of $\cos 3x$: guess, differentiate, fix.`, [
       r`$\sin 3x$ is close: its derivative is $3\cos 3x$.`,
       r`Divide by the inner derivative $3$.`,
     ]);
     ex("integrate(2x*exp(x^2), x)", r`Find an antiderivative of $2x\,e^{x^2}$.`, [r`Substitute $u = x^2$: then $du = 2x\,dx$.`]);
     ex("integrate(x*cos(x), x)", r`Find an antiderivative of $x \cos x$.`, [
-      r`By parts, with $u = x$ and $dv = \cos x\,dx$.`,
-      r`$uv - \int v\,du = x \sin x - \int \sin x\,dx$.`,
+      r`Guess $x \sin x$ and differentiate it: what extra term appears?`,
+      r`By parts, with $u = x$ and $dv = \cos x\,dx$: $uv - \int v\,du = x \sin x - \int \sin x\,dx$.`,
     ]);
     md(r`
 > [!summary]
-> Integration is guessing; differentiation is checking. Substitution undoes the chain rule and parts undoes the product rule.
+> Integration is guessing; differentiation is checking. Substitution undoes the chain rule and parts undoes the product rule, and some functions, like $e^{x^2}$, have no antiderivative built from the usual functions. Why run differentiation backwards at all? Because of area: the next lesson.
 `);
   });
 
-  add("06-definite-integrals.chalk", "Definite integrals and sums", "The fundamental theorem of calculus, finite sums, and Riemann sums that close in on the area as a slider adds rectangles.", ({ sec, md, m, ex }) => {
-    sec("Definite integrals and sums");
+  add("06-definite-integrals.chalk", "Area and the fundamental theorem", "The area under a curve from rectangles, then exactly: the area so far grows at the rate of the curve's height, so it is an antiderivative.", ({ sec, md, m, ex, sc }) => {
+    // the right Riemann rectangles of x^2 on [0, 1] with n strips, as segments: a scene's script lines
+    const rects = (n, tag, color) => {
+      const lines = [], names = [];
+      const seg = (name, a, b) => { lines.push(`${name} = segment(${a}, ${b}) color ${color}`); names.push(name); };
+      for (let j = 0; j <= n; j++) seg(`${tag}v${j}`, `${j}/${n}`, `${j}/${n} + ${Math.min(j + 1, n) ** 2}/${n * n}*i`);
+      for (let k = 1; k <= n; k++) seg(`${tag}t${k}`, `${k - 1}/${n} + ${k * k}/${n * n}*i`, `${k}/${n} + ${k * k}/${n * n}*i`);
+      return { lines: lines.join("\n"), names: names.join(", ") };
+    };
+    const r5 = rects(5, "A", 1), r10 = rects(10, "B", 4);
+    sec("Area and the fundamental theorem");
     md(r`
 > [!goal]
-> Evaluate definite integrals with the fundamental theorem, compute finite sums, and watch Riemann sums approach an integral.
+> Find the area under a curve: first approximately, with rectangles, then exactly, from an antiderivative, and see why an antiderivative gives it.
 `);
-    md(r`
-> [!theorem] Fundamental theorem of calculus
-> If $F' = f$ on $[a, b]$, then $\displaystyle\int_a^b f(x)\,dx = F(b) - F(a)$.
+    md(r`What is the area under $y = x^2$ from $0$ to $1$? Geometry has formulas for rectangles and triangles, not for a curved edge. It is less than $\frac12$, the triangle under the diagonal $y = x$, since the curve stays below the diagonal. Guess a number before reading on.`);
+    sec("Rectangles");
+    md(r`Rectangles we can add. Cut the region into strips, and replace each strip by a rectangle as tall as the curve at the strip's right edge:`);
+    sc(`
+clock t from 0 to 1
+view -0.1, 1.15, -0.1, 1.1
+F = graph(x^2, x, 0, 1) thick color 2
+${r5.lines}
+${r10.lines}
+> show F | The curve $y = x^2$ from $0$ to $1$.
+> show ${r5.names} | Five strips of width $\\frac15$; the $k$-th rectangle is $(k/5)^2$ tall. Each one pokes above the curve, so together they are too big.
+> hide ${r5.names}; show ${r10.names} | Ten strips: the parts above the curve are thinner, and the total is closer.
 `);
-    md(r`‹integrate(f, x, a, b)› finds a checked antiderivative, then evaluates it at the bounds. Step through it.`);
-    m("integrate(x^2, x, 0, 1)", { step: 0 });
-    m("integrate(sin(x), x, 0, pi)");
-    sec("Sums");
-    md(r`‹sum(f, k, a, b)› adds $f$ for $k = a, a + 1, \dots, b$.`);
-    m("sum(k, k, 1, 10)");
+    md(r`Five rectangles of width $\frac15$ and heights $\left(\frac15\right)^2, \left(\frac25\right)^2, \dots, \left(\frac55\right)^2$. ‹sum(f, k, a, b)› adds $f$ for $k = a, a + 1, \dots, b$:`);
     m("sum(k^2, k, 1, 5)", { work: true });
-    sec("Riemann sums");
+    m("sum((k/5)^2 / 5, k, 1, 5)");
+    md(r`$\frac{11}{25} = 0.44$: too big, as the picture said. More strips poke out less.`);
     md(r`
-> [!definition] Right Riemann sum
-> Cut $[0, 1]$ into $n$ strips of width $\frac1n$ and stand a rectangle of height $f(\frac kn)$ on the $k$-th: the area of the rectangles is $\displaystyle\sum_{k=1}^{n} f\!\left(\tfrac kn\right) \tfrac1n$.
+> [!definition] Right Riemann sum, definite integral
+> Cut $[0, 1]$ into $n$ strips of width $\frac1n$ and stand a rectangle of height $f(\frac kn)$ on the $k$-th: the area of the rectangles is $\displaystyle\sum_{k=1}^{n} f\!\left(\tfrac kn\right) \tfrac1n$. For a continuous $f$ these sums approach a single number as $n$ grows: the **definite integral** $\int_0^1 f(x)\,dx$, the area under the curve. On $[a, b]$ it is the same, with strips of width $\frac{b - a}{n}$.
 `);
     m("let n = 10", { slider: [1, 60, 1] });
     m("let R = sum((k/n)^2 / n, k, 1, n)");
     m("N(R)");
     md(r`
 > [!try]
-> Drag ‹n›. The sum is an exact fraction for every $n$, and its decimal closes in on $\int_0^1 x^2\,dx = \frac13 \approx 0.333$ from above: the rectangles stand above the curve.
+> Drag ‹n›. The sum is an exact fraction for every $n$, and its decimal falls toward a number from above: the rectangles stand above the curve. Which number? Even at $n = 60$ it is still $0.34\ldots$, so the sums alone are slow to say.
 `);
-    ex("integrate(x, x, 0, 2)", r`Evaluate $\displaystyle\int_0^2 x\,dx$.`, [r`An antiderivative is $\frac{x^2}{2}$; evaluate at $2$ and at $0$.`]);
+    sec("The area so far");
+    md(r`For the exact value, change the question: not the area up to $1$, but the area up to any $x$. Call it $A(x)$, the area so far. How fast does it grow as $x$ moves?`);
+    sc(r`
+clock X from 0.6 to 1.5
+view -0.1, 1.6, -0.15, 2.4
+F = graph(x^2, x, 0, 1.5) color 2
+LF = label(0.6 + 1.6*i, "f(x) = x^2") color 2
+E = segment(X, X + i*X^2) color 2
+A = graph(x^3/3, x, 0, X) thick color 1
+P = point(X + i*X^3/3) color 1
+LA = label(P, "A(x)") color 1
+S1 = segment(X + 0.1, X + 0.1 + i*X^2) color 3
+S2 = segment(X + i*X^2, X + 0.1 + i*X^2) color 3
+> show F, LF, E | The curve $y = x^2$, and the region under it from $0$ to $x$.
+> show A, P, LA; play X to 1.5 in 5s | Move $x$ and plot the area so far, $A(x)$, as it grows.
+> show S1, S2; play X to 1 in 3s | Push $x$ on by $dx$: the area gains a thin strip, of height $f(x)$ and width $dx$. So $dA \approx f(x)\,dx$: the slope of $A$ is $f$.
+`);
+    md(r`Push $x$ on by $dx$ and $A$ grows by a strip of height $f(x)$ and width $dx$, area about $f(x)\,dx$ (the sliver between the strip's top and the curve is smaller still, of the order of $dx^2$). So $dA \approx f(x)\,dx$: the slope of the area so far is the height of the curve, $A' = f$. The area so far is an antiderivative, and lesson 5 finds those.`);
+    md(r`For $f = x^2$: $A(x) = \frac{x^3}{3} + C$, and $A(0) = 0$, since there is no area yet, so $C = 0$ and the area up to $1$ is $\frac13$. Any antiderivative $F$ gives the same difference $F(1) - F(0)$: the $C$ cancels.`);
+    md(r`
+> [!theorem] Fundamental theorem of calculus
+> If $f$ is continuous on $[a, b]$ and $F' = f$ there, then $\displaystyle\int_a^b f(x)\,dx = F(b) - F(a)$.
+`);
+    md(r`‹integrate(f, x, a, b)› finds a checked antiderivative, then evaluates it at the bounds. Step through it:`);
+    m("integrate(x^2, x, 0, 1)", { step: 0 });
+    md(r`$\frac13 = 0.333\ldots$: the number the Riemann sums were falling toward.`);
+    sec("Signed area");
+    md(r`One arch of the sine wave, from $0$ to $\pi$, has area exactly $2$:`);
+    m("integrate(sin(x), x, 0, pi)");
+    md(r`
+> [!mistake]
+> Twice the interval is not twice the area. From $0$ to $2\pi$ the second arch lies below the axis, where $f < 0$: the strips $f(x)\,dx$ count as negative, and the two arches cancel. A definite integral is a *signed* area.
+`);
+    m("integrate(sin(x), x, 0, 2pi)");
+    ex("integrate(x, x, 0, 2)", r`Evaluate $\displaystyle\int_0^2 x\,dx$. (Check it against the triangle it is the area of.)`, [r`An antiderivative is $\frac{x^2}{2}$; evaluate at $2$ and at $0$.`]);
     ex("integrate(x^2, x, 1, 3)", r`Evaluate $\displaystyle\int_1^3 x^2\,dx$.`, [r`$F(x) = \frac{x^3}{3}$; the answer is $F(3) - F(1)$.`]);
+    ex("integrate(x^3, x, 0, 1)", r`Invent it: what is the area under $y = x^3$ from $0$ to $1$? Find the area-so-far function first.`, [
+      r`$A' = x^3$ and $A(0) = 0$.`,
+      r`$A(x) = \frac{x^4}{4}$; the area is $A(1)$.`,
+    ], { hide: true });
     ex("sum(2k - 1, k, 1, 6)", r`Add the first six odd numbers, $1 + 3 + 5 + \dots + 11$.`, [
       r`Try $1$, then $1 + 3$, then $1 + 3 + 5$: what do the totals have in common?`,
+      r`Lesson 1's growing square: from side $k - 1$ to side $k$ it gains two strips and a corner, $2(k - 1) + 1 = 2k - 1$ unit squares.`,
     ], { hide: true });
     md(r`
 > [!summary]
-> A definite integral is a difference of antiderivative values, and the limit of Riemann sums: the same number reached two ways.
+> Area is the number rectangle sums approach. The area so far grows at the rate of the curve's height, so it is an antiderivative, and the area from $a$ to $b$ is $F(b) - F(a)$, signed. Slope and area undo each other: that is the fundamental theorem, and the two halves of this course are one subject.
 `);
   });
 });

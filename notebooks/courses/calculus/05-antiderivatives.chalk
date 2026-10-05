@@ -9,19 +9,53 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Find antiderivatives, including by substitution and by parts, and see why every answer the engine gives is checked.",
+      "src": "> [!goal]\n> Run differentiation backwards: given a rate, find a function that has it, and check the answer by differentiating it.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!definition] Antiderivative\n> $F$ is an antiderivative of $f$ when $F' = f$. Any two differ by a constant, so the engine gives one and leaves out the $+\\,C$.",
+      "src": "Which function has derivative $x^3$? There is no formula to apply yet, only the rules for going forwards. So guess, and check.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "`integrate(f, x)` searches for an antiderivative with a few textbook rules. The search proves nothing, so its steps are marked **checked** (a hollow dot): the answer is accepted only when the engine differentiates it and gets $f$ back. Open the work to see the guess and the check.",
+      "src": "> [!try]\n> The power rule lowers a power by one, so a guess is $x^4$. Differentiate it: how far off is it, and how do you fix it?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "diff(x^4, x)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "diff(x^4/4, x)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "$x^4$ gives four times too much; $\\frac{x^4}{4}$ is right. That is the whole method: guess, differentiate, fix the guess.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Antiderivative\n> $F$ is an antiderivative of $f$ when $F' = f$. Adding a constant changes no slope, so $\\frac{x^4}{4} + 1$ works too; on an interval any two antiderivatives differ by a constant, since a function with derivative $0$ there is constant. The engine gives one and leaves out the $+\\,C$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Guess and check, by the engine",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`integrate(f, x)` works the same way. A few textbook rules make the guess; then, whatever made it, the engine differentiates the guess and answers only if the integrand comes back. Open the work: the guess, `Power rule for integrals`, then `Check by differentiating`.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -37,13 +71,25 @@
       "label": null
     },
     {
-      "src": "Substitution",
+      "src": "Most of the guessing rules (powers, sums, constant factors, the table of $\\sin$, $\\cos$, $e^x$) are proved in Lean as well. The two below, substitution and integration by parts, are not: their steps are marked **checked** (a hollow dot), and for them the check by differentiating is the proof.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Substitution: the chain rule backwards",
       "type": "section",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!theorem] Substitution\n> $\\int f(g(x))\\, g'(x)\\, dx = F(g(x))$ where $F' = f$: the chain rule, read backwards.",
+      "src": "Which function has derivative $2x\\cos(x^2)$? You have seen this shape before: lesson 2 made it as the derivative of $\\sin(x^2)$, the outer derivative $\\cos(x^2)$ times the inner derivative $2x$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> Predict the engine's answer, then open its work and find the inner function it chose.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -54,24 +100,41 @@
       "label": null
     },
     {
-      "src": "By parts",
-      "type": "section",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "> [!theorem] Integration by parts\n> $\\int u\\, dv = uv - \\int v\\, du$: the product rule, read backwards.",
+      "src": "> [!theorem] Substitution\n> $\\int f(g(x))\\, g'(x)\\, dx = F(g(x))$ where $F' = f$: the chain rule, read backwards. The sign to look for is an inner function with its derivative standing beside it.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "integrate(x*exp(x), x)",
-      "showWork": true,
+      "src": "Without the inner derivative there is nothing to undo. $e^{x^2}$ has an antiderivative (the area under it, next lesson), but none that can be written with powers, $e^x$, $\\ln$ and the trigonometric functions, so every guess fails, and the engine says so:",
+      "type": "markdown",
+      "showWork": false,
       "label": null
     },
     {
-      "src": "Check it yourself: differentiate the answer, and the integrand comes back.",
+      "src": "integrate(exp(x^2), x)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "By parts: the product rule backwards",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Which function has derivative $x e^x$? Guess $x e^x$ itself, and differentiate:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "diff(x*exp(x), x)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The product rule gives the wanted $x e^x$, plus an extra $e^x$. Take the extra away: subtract a function whose derivative is $e^x$, which is $e^x$ itself.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -79,6 +142,17 @@
     {
       "src": "diff(x*exp(x) - exp(x), x)",
       "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!theorem] Integration by parts\n> $\\int u\\, dv = uv - \\int v\\, du$: the product rule, read backwards. Above, $u = x$ and $dv = e^x\\,dx$: $uv = x e^x$ was the first guess, and $\\int v\\,du = \\int e^x\\,dx$ the extra taken away.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "integrate(x*exp(x), x)",
+      "showWork": true,
       "label": null
     },
     {
@@ -100,7 +174,7 @@
     {
       "src": "integrate(cos(3x), x)",
       "type": "exercise",
-      "prompt": "Find an antiderivative of $\\cos 3x$.",
+      "prompt": "Find an antiderivative of $\\cos 3x$: guess, differentiate, fix.",
       "hints": [
         "$\\sin 3x$ is close: its derivative is $3\\cos 3x$.",
         "Divide by the inner derivative $3$."
@@ -123,14 +197,14 @@
       "type": "exercise",
       "prompt": "Find an antiderivative of $x \\cos x$.",
       "hints": [
-        "By parts, with $u = x$ and $dv = \\cos x\\,dx$.",
-        "$uv - \\int v\\,du = x \\sin x - \\int \\sin x\\,dx$."
+        "Guess $x \\sin x$ and differentiate it: what extra term appears?",
+        "By parts, with $u = x$ and $dv = \\cos x\\,dx$: $uv - \\int v\\,du = x \\sin x - \\int \\sin x\\,dx$."
       ],
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!summary]\n> Integration is guessing; differentiation is checking. Substitution undoes the chain rule and parts undoes the product rule.",
+      "src": "> [!summary]\n> Integration is guessing; differentiation is checking. Substitution undoes the chain rule and parts undoes the product rule, and some functions, like $e^{x^2}$, have no antiderivative built from the usual functions. Why run differentiation backwards at all? Because of area: the next lesson.",
       "type": "markdown",
       "showWork": false,
       "label": null

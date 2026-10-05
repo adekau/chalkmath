@@ -277,7 +277,7 @@
     {
       "id": "calculus",
       "title": "Calculus: derivatives and integrals",
-      "blurb": "The rules of differentiation and the chain rule; the circle behind cos, sin and e^(it); tangent lines; then antiderivatives the engine checks by differentiating, definite integrals and Riemann sums.",
+      "blurb": "The slope at a point, found by zooming in; the power, product and chain rules read off pictures; the circle behind cos, sin and e^(it); tangent lines and bending; then antiderivatives the engine checks by differentiating, and area as slope run backwards.",
       "kind": "course",
       "level": "Calculus I–II",
       "path": "courses/calculus",
@@ -285,12 +285,12 @@
         {
           "file": "01-rules.chalk",
           "title": "The rules of differentiation",
-          "blurb": "Powers, sums, constant multiples and products: four rules, every step named."
+          "blurb": "The slope at a point, as what secants settle on; the power rule from a growing square, the product rule from a growing rectangle."
         },
         {
           "file": "02-chain-rule.chalk",
           "title": "The chain rule",
-          "blurb": "Functions of functions: the outer derivative times the inner one, with a slider to watch the inner factor."
+          "blurb": "Functions of functions: follow a nudge through the inner function and then the outer one, and see why the inner derivative comes out in front."
         },
         {
           "file": "03-circles.chalk",
@@ -299,18 +299,18 @@
         },
         {
           "file": "04-tangent-lines.chalk",
-          "title": "Higher derivatives and tangent lines",
-          "blurb": "Derivatives of derivatives, slopes at a point, and the tangent line that follows a slider."
+          "title": "Tangent lines and the second derivative",
+          "blurb": "The tangent line as the best straight stand-in for a curve, estimates from it, and the second derivative as how fast the curve bends away."
         },
         {
           "file": "05-antiderivatives.chalk",
           "title": "Antiderivatives, checked",
-          "blurb": "Integration as the search for a function whose derivative you know, accepted only after the engine differentiates it back."
+          "blurb": "Differentiation run backwards: guess a function with the given derivative, then check it by differentiating, as the engine does; substitution and parts as the chain and product rules undone."
         },
         {
           "file": "06-definite-integrals.chalk",
-          "title": "Definite integrals and sums",
-          "blurb": "The fundamental theorem of calculus, finite sums, and Riemann sums that close in on the area as a slider adds rectangles."
+          "title": "Area and the fundamental theorem",
+          "blurb": "The area under a curve from rectangles, then exactly: the area so far grows at the rate of the curve's height, so it is an antiderivative."
         }
       ]
     },

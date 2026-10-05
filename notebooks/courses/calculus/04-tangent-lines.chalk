@@ -3,14 +3,59 @@
   "name": "04-tangent-lines.chalk",
   "cells": [
     {
-      "src": "Higher derivatives and tangent lines",
+      "src": "Tangent lines and the second derivative",
       "type": "section",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!goal]\n> Take second derivatives, find the slope of a curve at a point, and draw the tangent line there.",
+      "src": "> [!goal]\n> Use the tangent line as a stand-in for a curve near a point, see why it is the best straight line there, and read the curve's bending from the second derivative.",
       "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Without a calculator: what is $\\sqrt{4.1}$? You know $\\sqrt 4 = 2$, and $4.1$ is close to $4$. Zoomed in near $4$, the graph of $\\sqrt x$ looks like a line (lesson 1), so follow the line instead of the curve.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> The slope of $\\sqrt x = x^{1/2}$ at $4$ is $\\frac12 \\cdot 4^{-1/2} = \\frac14$. Moving $0.1$ to the right, a line of that slope rises $0.1 \\cdot \\frac14$. Estimate $\\sqrt{4.1}$ before the next cells do.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "subst(diff(sqrt(x), x), x, 4)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "2 + subst(diff(sqrt(x), x), x, 4)*(4.1 - 4)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "N(sqrt(4.1))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The estimate $2.025$ is off by less than $0.0002$. The line it used, through the point with the curve's slope there, is the tangent line.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Tangent line\n> The tangent line to $y = f(x)$ at $x = a$ is $y = f(a) + f'(a)\\,(x - a)$: the line through $(a, f(a))$ with the curve's slope there.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The tangent line",
+      "type": "section",
       "showWork": false,
       "label": null
     },
@@ -21,46 +66,6 @@
     },
     {
       "src": "diff(f, x)",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "`diff(f, x, 2)` differentiates twice: the second derivative, which measures how the slope itself changes.",
-      "type": "markdown",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "diff(f, x, 2)",
-      "showWork": true,
-      "label": null
-    },
-    {
-      "src": "Slope at a point",
-      "type": "section",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "The slope at one point is the derivative with a number put in for $x$: `subst(e, x, v)` substitutes.",
-      "type": "markdown",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "subst(diff(f, x), x, 2)",
-      "showWork": true,
-      "label": null
-    },
-    {
-      "src": "The tangent line",
-      "type": "section",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "> [!definition] Tangent line\n> The tangent line to $y = f(x)$ at $x = a$ is $y = f(a) + f'(a)\\,(x - a)$: the line through the point with the curve's slope there.",
-      "type": "markdown",
       "showWork": false,
       "label": null
     },
@@ -91,7 +96,82 @@
       "label": null
     },
     {
-      "src": "> [!try]\n> Drag `a`. At which points is the tangent flat? There $f'(a) = 3a^2 - 3 = 0$, so $a = \\pm 1$: the top of the hump and the bottom of the dip.",
+      "src": "> [!try]\n> Drag `a`. At which points is the tangent flat? Predict first. There $f'(a) = 3a^2 - 3 = 0$, so $a = \\pm 1$: the top of the hump and the bottom of the dip.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Why this line and not another",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Many lines pass through $(2, f(2)) = (2, 2)$. What makes the tangent, $y = 2 + 9(x - 2)$, the best? Measure the gap between curve and line a distance $h$ from the point:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "expand(subst(f - (2 + 9*(x - 2)), x, 2 + h))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The gap is $6h^2 + h^3$: no term in $h$ alone. Halve $h$ and the gap falls to about a quarter. Tilt the line, to slope $8$ say, and the gap gets an $h$ term:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "expand(subst(f - (2 + 8*(x - 2)), x, 2 + h))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "For small $h$ the $h$ term is far larger than the others, so this gap shrinks only in proportion to $h$. Any slope but $9$ leaves an $h$ term, $(9 - \\text{slope})\\,h$; only the tangent's gap shrinks faster than $h$. That is the sense in which it is the best straight-line approximation near the point, and why the estimate of $\\sqrt{4.1}$ was so close.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "How the slope changes",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The $6h^2$ is the curve bending away from its tangent. Bending is the slope changing, so watch the slope: roll the tangent along the curve.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "clock a from -1.7 to 1.7\nview -2.4, 2.4, -3, 3\nG = graph(x^3 - 3*x, x, -2.3, 2.3) color 2\nP = point(a + i*(a^3 - 3*a)) thick color 1\nT = segment(a + i*(a^3 - 3*a) - 0.7*(1 + i*(3*a^2 - 3)), a + i*(a^3 - 3*a) + 0.7*(1 + i*(3*a^2 - 3))) thick color 1\n> show G, P, T | The curve $y = x^3 - 3x$ and its tangent line at a point.\n> play a to 0 in 5s | Roll the point to the right. The tangent turns clockwise: its slope falls, from about $5.7$ to $-3$. The curve bends down, and the tangent lies above it.\n> play a to 1.7 in 5s | At $x = 0$, where the bending switches, the tangent crosses the curve. Past it the tangent turns back the other way: the slope rises again. The curve bends up, and the tangent lies below it.",
+      "type": "scene",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "How fast the slope changes is the derivative of the derivative, the **second derivative** $f''$. `diff(f, x, 2)` differentiates twice. Before you open the work: the slope falls left of $0$ and rises right of it, so what sign should $f''$ have on each side?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "diff(f, x, 2)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Second derivative, bending\n> $f''$ is the derivative of $f'$: the rate at which the slope changes. Where $f'' > 0$ the slope rises and the curve bends up, lying above its tangents; where $f'' < 0$ it bends down, below them.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Here $f''(x) = 6x$: the curve bends down for $x < 0$, around the hump, and up for $x > 0$, around the dip. And at $x = 2$, $f''(2) = 12$, half of which is the $6$ in the gap $6h^2$: the second derivative says how fast the curve leaves its tangent.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -102,6 +182,18 @@
       "prompt": "What is the slope of $y = x^2$ at $x = 3$?",
       "hints": [
         "The slope is the derivative, $2x$, at $x = 3$."
+      ],
+      "hideQuestion": true,
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "3 + subst(diff(sqrt(x), x), x, 9)*(9.6 - 9)",
+      "type": "exercise",
+      "prompt": "Estimate $\\sqrt{9.6}$ with the tangent line of $\\sqrt x$ at $x = 9$. Give it as a decimal.",
+      "hints": [
+        "$\\sqrt 9 = 3$, and the slope there is $\\frac{1}{2\\sqrt 9} = \\frac16$.",
+        "Follow the tangent $0.6$ to the right: $3 + 0.6 \\cdot \\frac16$."
       ],
       "hideQuestion": true,
       "showWork": false,
@@ -129,7 +221,18 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> The derivative at a point is a number, the slope there; the tangent line is the straight line with that slope through the point. Where the slope is zero the curve turns.",
+      "src": "diff(sin(x), x, 2)",
+      "type": "exercise",
+      "prompt": "Find the second derivative of $\\sin x$. Predict first: on an arch where $\\sin x > 0$, which way does the wave bend, so what sign has $f''$ there?",
+      "hints": [
+        "The arches above the axis bend down, so $f'' < 0$ where $\\sin x > 0$.",
+        "$(\\sin x)' = \\cos x$ and $(\\cos x)' = -\\sin x$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Near a point a smooth curve is nearly its tangent line, $y = f(a) + f'(a)(x - a)$: the only line whose gap shrinks faster than the distance. The second derivative is how fast the slope changes: the curve bends up where $f'' > 0$ and down where $f'' < 0$. So far: given a function, find its rate of change. Next, the other way round: given the rate, find the function.",
       "type": "markdown",
       "showWork": false,
       "label": null
