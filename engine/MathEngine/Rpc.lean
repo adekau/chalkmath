@@ -491,7 +491,8 @@ where
           | _ => res
         (st, .obj res)
 
-private def floatJson (x : Float) : Json := .num (toString x)
+/-- A float on the wire; JSON has no infinity or NaN, so those are `null`. -/
+private def floatJson (x : Float) : Json := if x.isFinite then .num (toString x) else .null
 
 /-- A plot's own fields on the wire: the variable and range, each curve's term and samples, and
 the epicycles' circles. -/

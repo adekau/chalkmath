@@ -106,6 +106,8 @@ export function read(src: string, known: readonly string[] = []): ReadResult {
     finish(stmt.body, cs);
     return { ok: true, stmt };
   } catch (e) {
+    // nesting deeper than the browser's stack (`(((…1…)))` ten thousand deep) is text too
+    if (e instanceof RangeError) return { ok: false, error: { message: "too deeply nested to read", span: { start: 0, end: cs.length } }, stmt: rawStmt(cs) };
     if (!(e instanceof Fail)) throw e;
     return { ok: false, error: e.error, stmt: rawStmt(cs) };
   }

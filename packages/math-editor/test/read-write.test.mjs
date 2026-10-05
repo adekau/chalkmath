@@ -113,6 +113,11 @@ test("every text reads: what has no structure is raw text, written back as it wa
   assert.ok(mean.ok && JSON.stringify(mean.stmt).includes('"k":"call"'), JSON.stringify(mean));
   // whitespace alone is kept too
   assert.equal(write(read("   ").stmt).text, "   ");
+  // nesting past the stack is raw text too, not an exception that stops the page drawing its cells
+  const deep = "(".repeat(100000) + "1" + ")".repeat(100000);
+  const r = read(deep);
+  assert.equal(r.ok ? null : r.error.message, "too deeply nested to read");
+  assert.equal(write(r.stmt).text, deep);
 });
 
 test("writing puts back exactly the parentheses the engine needs", () => {

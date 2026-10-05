@@ -19,6 +19,9 @@ OUT=../apps/notebook/dist; mkdir -p "$OUT"
 # -sDEFAULT_TO_CXX: the Lean runtime is C++ (debug.cpp uses iostreams), so the link needs libc++ even
 # though the driver is emcc and every input here is C; newer emscripten no longer assumes it.
 # -DLEAN_EMSCRIPTEN: lean.h's 32-bit layout for static scalars (see build-lean-wasm-runtime.sh)
+# The stack: optimized builds put static data below emscripten's stack (64 KB by default), so an
+# overflow would overwrite it silently; --stack-first puts the stack at the bottom of memory, where an
+# overflow traps, and the worker then reports the engine crashed (packages/engine-host/src/worker-lean.ts).
 emcc -O2 -DLEAN_EMSCRIPTEN -sDEFAULT_TO_CXX=1 -o "$OUT/engine-lean.js" \
   -I "$TC/include" -I toolchains/src/libuv/include -L "$TC/lib" \
   c/shim.c c/uv-stubs.c $(find .lake/build/ir/MathEngine -name '*.c') .lake/build/ir/MathEngine.c \
@@ -26,5 +29,6 @@ emcc -O2 -DLEAN_EMSCRIPTEN -sDEFAULT_TO_CXX=1 -o "$OUT/engine-lean.js" \
   -sMODULARIZE=1 -sEXPORT_NAME=createMathEngine -sENVIRONMENT=worker,node \
   -sEXPORTED_FUNCTIONS=_mathengine_init,_mathengine_call,_mathengine_free,_malloc,_free \
   -sEXPORTED_RUNTIME_METHODS=ccall,cwrap,UTF8ToString,stringToUTF8,lengthBytesUTF8 \
-  -sALLOW_MEMORY_GROWTH=1 -sEXIT_RUNTIME=0 -fwasm-exceptions
+  -sALLOW_MEMORY_GROWTH=1 -sEXIT_RUNTIME=0 -fwasm-exceptions \
+  -sSTACK_SIZE=1MB -Wl,--stack-first
 ls -la "$OUT"/engine-lean.*

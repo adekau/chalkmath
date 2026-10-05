@@ -18,11 +18,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# the build job reads; only the deploy job, which runs no third-party code but GitHub's, may publish
 permissions:
   contents: read
   actions: read   # which commit CI last passed on
-  pages: write
-  id-token: write
 
 concurrency:
   group: pages
@@ -56,17 +55,21 @@ jobs:
           curl -sSfL https://github.com/leanprover/elan/releases/latest/download/elan-x86_64-unknown-linux-gnu.tar.gz | tar xz
           ./elan-init -y --default-toolchain none
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - name: Which Emscripten (pinned in engine/wasm/emscripten-version, the one Lean for wasm is built with)
+        id: emsdk
+        run: echo "version=$(cat engine/wasm/emscripten-version)" >> "$GITHUB_OUTPUT"
       - uses: mymindstorm/setup-emsdk@v14
-        with: { version: latest, actions-cache-folder: emsdk-cache }
+        with: { version: "${{ steps.emsdk.outputs.version }}", actions-cache-folder: emsdk-cache }
       - name: Cache the wasm runtime and the engine build
         uses: actions/cache@v4
         with:
           path: |
             engine/toolchains
             engine/.lake
-          key: wasm-${{ hashFiles('engine/lean-toolchain', 'engine/wasm/**', 'scripts/build-lean-wasm-runtime.sh') }}-${{ hashFiles('engine/**/*.lean') }}
+          # the Emscripten version by name: runtime objects built by one emcc are not linked by another
+          key: wasm-emsdk${{ steps.emsdk.outputs.version }}-${{ hashFiles('engine/lean-toolchain', 'engine/wasm/**', 'scripts/build-lean-wasm-runtime.sh', 'scripts/build-wasm.sh') }}-${{ hashFiles('engine/**/*.lean') }}
           restore-keys: |
-            wasm-${{ hashFiles('engine/lean-toolchain', 'engine/wasm/**', 'scripts/build-lean-wasm-runtime.sh') }}-
+            wasm-emsdk${{ steps.emsdk.outputs.version }}-${{ hashFiles('engine/lean-toolchain', 'engine/wasm/**', 'scripts/build-lean-wasm-runtime.sh', 'scripts/build-wasm.sh') }}-
       - run: npm ci
       - name: Install the pinned Lean toolchain and show the tool versions
         run: |
@@ -99,6 +102,9 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

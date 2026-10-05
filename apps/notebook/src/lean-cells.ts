@@ -13,11 +13,10 @@
  * the page reloads once.
  */
 import type { LeanNotebook, LeanMessage, CellView, LeanOptions } from "@chalkmath/lean-editor/types";
+import { versioned } from "./version.js";
 
 export type { LeanMessage };
-declare const __BUILD_ID__: string;
 declare const __LEAN_BUILT__: boolean;
-const stamp = typeof __BUILD_ID__ === "string" ? __BUILD_ID__ : "dev";
 const PREF = "chalkmath.lean";
 
 /** `held`: not started, because the page stopped the last time Lean started in it (see `STARTING`). */
@@ -146,7 +145,7 @@ export function ensureLean(h: LeanHooks): Promise<LeanNotebook | null> {
   setProgress({ phase: "editor" });
   starting = (async () => {
     try {
-      const url = new URL(`lean/lean-editor.js?v=${stamp}`, location.href).href;
+      const url = new URL(versioned("lean/lean-editor.js"), location.href).href;
       const mod = (await import(url)) as { startLean(o: LeanOptions): Promise<LeanNotebook> };
       const channel = `chalkmath-lean-${crypto.randomUUID()}`;
       const bc = new BroadcastChannel(channel);
@@ -157,7 +156,7 @@ export function ensureLean(h: LeanHooks): Promise<LeanNotebook | null> {
           : p.phase === "checking" ? { phase: "checking" } : null);
       };
       setProgress({ phase: "starting" });   // a download is reported only for what this browser does not have
-      const worker = new Worker(`lean/lean-server.worker.js?v=${stamp}&progress=${channel}`);
+      const worker = new Worker(`${versioned("lean/lean-server.worker.js")}&progress=${channel}`);
       // Lean's own progress reports: which version of the document it is checking, and whether it is done
       worker.addEventListener("message", (e: MessageEvent<{ method?: string; params?: { textDocument?: { version?: number }; processing?: unknown[] } }>) => {
         if (e.data?.method !== "$/lean/fileProgress") return;
