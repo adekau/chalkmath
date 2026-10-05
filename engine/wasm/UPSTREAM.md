@@ -129,3 +129,11 @@ kind, each one silent on 64-bit native targets:
 - **Oleans are pointer-size specific,** so a wasm32 Lean needs the library compiled by a wasm32 Lean; the
   release's `linux_wasm32` build ships none for its own use in a browser. Init at v4.34.1 is 649 modules, whose
   `.olean.private` parts (needed by `import` of an ordinary file) are most of the ~114 MB compressed.
+- **Fast-forwarding over unchanged commands nests one call per command.** After an edit,
+  `Lean.Language.Lean.process.parseCmd` reuses each unchanged command with `BaseIO.chainTask (sync := true)`
+  on tasks that have finished, and `lean_task_map_core`/`lean_task_bind_core` run such a continuation inline:
+  the chain recurses through every command before the edit. Natively 8 MB of stack hides it; a browser gives a
+  worker 500 KB (Chromium), which a few hundred commands overflowed on every keystroke, stopping the server. We
+  run at most 16 `sync` continuations inside one another per thread and queue the rest as ordinary tasks
+  (`object.cpp` in our patch). An upstream answer could bound the depth in the runtime the same way, or have
+  the fast-forward loop instead of recursing.

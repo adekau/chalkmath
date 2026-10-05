@@ -38,6 +38,9 @@ all four of the following, in the same change:
    - CI evaluates every cell of `notebooks/welcome.chalk` against the native engine, and holds every
      example notebook and course lesson to its golden outcomes in `notebooks/golden/`
      (`scripts/notebooks/drive.mjs --check`; `--update` after a deliberate change);
+   - `lean-cells.yml` runs every notebook's and lesson's Lean through Lean in Chromium
+     (`scripts/notebooks/check-lean-browser.mjs`): Lean that native Lean accepts can still run a browser
+     thread out of stack, so run it on a change to a notebook's Lean;
    - `npm run smoke:lean` and `npm run smoke:ask` drive Lean cells and `?` lookups in Chromium. They
      are run by hand and are not in CI; run them when a change touches those.
 

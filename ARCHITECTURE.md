@@ -525,6 +525,23 @@ language server answers LSP for Lean cells.
   some 5 s of one native thread, mostly the kernel checking the book's structures and proofs.
   Compiling each course's prelude to 32-bit oleans with the wasm Lean, imported instead of inlined,
   would make it a download; that is not built.
+- **A thread's stack.** Every one of Lean's threads is a web worker, and Chromium gives a worker 500 KB
+  of stack (Lean's threads have 8 MB natively), of which Lean compiled to wasm needs far more per level of
+  recursion than native Lean: some 20 KB per statement of a `do` block, so one of about 25 `let x ← …`
+  lines, or 20 once V8 has optimized the code (optimized frames are larger here), runs out. The thread's
+  "Maximum call stack size exceeded" stops the whole server, as a stack overflow stops a native worker;
+  the page says Lean stopped, why, and at which line of which cell (`lean-cells.ts`). Two things are
+  done about it. Lean's language server fast-forwards over the commands an edit leaves unchanged with
+  `sync` continuations of finished tasks, which run inline, one call inside the next per command, so an
+  edit after a few hundred commands (a late lesson of a course, with its prelude) overflowed every time:
+  the runtime runs at most 16 such continuations inside one another and queues the rest as ordinary
+  tasks, on fresh stacks (`lean-compiler-emscripten.patch`, `object.cpp`). Lean computes semantic tokens
+  with recursion as deep as the commands a request spans, so the in-browser watchdog offers them for
+  ranges only, and the editor asks for the lines its views show (`lean-server.ts`). A document of some
+  1,500 commands still overflows as it opens; no notebook or lesson is near that. Elaboration itself is as
+  deep as the Lean it checks, so the shipped Lean is kept shallow (small definitions), and
+  `lean-cells.yml` (`scripts/notebooks/check-lean-browser.mjs`) runs every notebook and lesson through
+  the browser's Lean, opened and then edited at its end.
 - **Cost.** Nothing loads until a notebook has a Lean cell. Then, compressed: the editor (~3 MB), the
   server (~24 MB) and Init's 32-bit oleans (~114 MB: their private parts, proofs included, are most of it,
   and an ordinary file's implicit `import Init` needs them), once per browser: the worker keeps the large

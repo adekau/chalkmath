@@ -7,7 +7,8 @@
  * answers `initialize` and starts one `lean --worker` process per open file. A page cannot start
  * processes, so this module takes the watchdog's place for one document:
  *   - `initialize` is answered here, with the reply the real watchdog gives (`capabilities`, printed
- *     at build time by engine/wasm/server/capabilities.lean);
+ *     at build time by engine/wasm/server/capabilities.lean), less semantic tokens for the whole
+ *     document (`rangeTokensOnly`);
  *   - the first `textDocument/didOpen` starts the wasm worker and hands it `initialize` + `didOpen`, the
  *     handshake the watchdog performs (`startFileWorker`);
  *   - of the client's notifications, only those the watchdog forwards and the file worker handles are
@@ -55,6 +56,17 @@ export interface LeanServerOptions {
  *  rest stop at the watchdog. */
 const FORWARDED = new Set(["textDocument/didChange", "$/cancelRequest", "$/lean/rpc/release", "$/lean/rpc/keepAlive"]);
 const WATCHDOG_ONLY = new Set(["$/lean/ileanHeaderSetupInfo", "$/lean/ileanInfoUpdate", "$/lean/ileanInfoFinal", "$/lean/importClosure"]);
+
+/** The `initialize` reply with semantic tokens offered for ranges only, so the editor asks for the lines it
+ *  shows. Lean computes a request's tokens with recursion as deep as the commands it spans, and a whole
+ *  long document (a late lesson of a course, with its prelude) runs a browser thread out of stack, which
+ *  stops the server (ARCHITECTURE.md §4b). */
+export function rangeTokensOnly(initializeResult: unknown): unknown {
+  const r = initializeResult as { capabilities?: { semanticTokensProvider?: Record<string, unknown> } } | null;
+  const tokens = r?.capabilities?.semanticTokensProvider;
+  if (!tokens) return initializeResult;
+  return { ...r, capabilities: { ...r!.capabilities, semanticTokensProvider: { ...tokens, full: false, range: true } } };
+}
 
 /** Splits a byte stream into LSP messages (`Content-Length` framing). */
 export function lspFramer(onMessage: (msg: LspMessage) => void): (bytes: Uint8Array) => void {
@@ -145,7 +157,7 @@ export function startLeanServer(o: LeanServerOptions): { receive(msg: LspMessage
       switch (msg.method) {
         case "initialize":
           initParams = msg.params;
-          o.send({ jsonrpc: "2.0", id: msg.id ?? null, result: o.initializeResult });
+          o.send({ jsonrpc: "2.0", id: msg.id ?? null, result: rangeTokensOnly(o.initializeResult) });
           return;
         case "initialized": case "exit":
           return;

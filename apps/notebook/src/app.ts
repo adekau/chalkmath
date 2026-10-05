@@ -26,7 +26,7 @@ import { plotYRange, framesWindow, blendable, blend, playPosition, workLine } fr
 import { parseScene, numberRequests as sceneNumberRequests, sampleRequests as sceneSampleRequests, numbersOf as sceneNumbersOf, build as buildScene, frameAt as sceneFrameAt, SceneError, type SceneData, type Item as SceneItem, type XY } from "./scene.js";
 import { DOC_PAGES, type DocPage, type DocPart } from "./docs.js";
 import { FUNCTIONS, FN_BY_NAME, AREAS, fnPage, evaluable, type FnDoc, type ExampleSection } from "./reference.js";
-import { ensureLean, syncLean, mountLean, unmountLean, focusLean, setLeanDark, infoview as leanInfoview, leanState, leanFailure, leanProgress, leanChecked, initLeanIsolation, type LeanMessage } from "./lean-cells.js";
+import { ensureLean, syncLean, mountLean, unmountLean, focusLean, setLeanDark, infoview as leanInfoview, leanState, leanFailure, leanStoppedAt, leanProgress, leanChecked, initLeanIsolation, type LeanMessage } from "./lean-cells.js";
 /** The one trusted KaTeX command is `\htmlData`, which carries the engine's subterm paths. LaTeX can
  *  come from a file someone else wrote (saved outputs render before any re-run), and a blanket
  *  `trust: true` would let it add `\href{javascript:…}`, arbitrary styles, or remote images. */
@@ -4458,6 +4458,17 @@ function leanStatus(): HTMLElement | null {
   return box;
 }
 
+/** Where Lean was when its server stopped, said on the cell it was checking (the course's prelude: on the
+ *  first Lean cell). */
+function leanStoppedHere(cell: Cell): string {
+  const at = leanStoppedAt();
+  if (!at) return "";
+  if (at.id === cell.id) return ` It was checking line ${at.line} of ${cell.type === "exercise" ? "this proof" : "this cell"}.`;
+  if (at.id === `${cell.id}${STMT_SUFFIX}`) return " It was checking this exercise's statement.";
+  if (at.id === PRELUDE_ID && S.cells.find(isLeanCell) === cell) return " It was checking the Lean of the course's earlier lessons, which this lesson starts from.";
+  return "";
+}
+
 /** A Lean cell's output: what Lean says about its lines (an #eval's value, errors, warnings); the goals
  *  at the cursor are in the panel's Lean goals tab. */
 function renderLeanBody(cell: Cell) {
@@ -4467,7 +4478,7 @@ function renderLeanBody(cell: Cell) {
   const st = leanState();
   if (st === "failed" || st === "isolating") {
     body.append(h("div", `leanstate ${st}`,
-      st === "failed" ? `Lean did not start: ${leanFailure()}` : "Preparing the page for Lean: it reloads once."));
+      st === "failed" ? `${leanFailure()}${leanStoppedHere(cell)}` : "Preparing the page for Lean: it reloads once."));
   } else if (S.cells.find(isLeanCell) === cell) {
     const status = leanStatus();
     if (status) body.append(status);
@@ -5094,7 +5105,7 @@ function renderLeanExercise(cell: Cell, box: HTMLElement) {
   below.innerHTML = "";
   if (S.cells.find(isLeanCell) === cell) { const st = leanStatus(); if (st) below.append(st); }
   const state = leanState();
-  if (state === "failed" || state === "isolating") below.append(h("div", `leanstate ${state}`, state === "failed" ? `Lean did not start: ${leanFailure()}` : "Preparing the page for Lean: it reloads once."));
+  if (state === "failed" || state === "isolating") below.append(h("div", `leanstate ${state}`, state === "failed" ? `${leanFailure()}${leanStoppedHere(cell)}` : "Preparing the page for Lean: it reloads once."));
   // what Lean says about the proof (its lines), and the statement's own errors (an unproved goal is reported at `by`)
   const ms = [...(cell.leanStmtMessages ?? []).filter((m) => m.severity === "error").map((m) => ({ ...m, where: "statement" })),
     ...(cell.leanMessages ?? []).map((m) => ({ ...m, where: `${m.line}:${m.column}` }))];
