@@ -55,57 +55,114 @@ function course(id, title, blurb, level, build, o = {}) {
 }
 
 // ---------------------------------------------------------------------------------------------------
+/** Lesson 5's picture of induction: a row of dominoes, the step an arrow from each to the next, the base case a push. */
+const dominoScene = (() => {
+  const N = 8, ks = [...Array(N).keys()];
+  const names = (p, n = N) => ks.slice(0, n).map((k) => `${p}${k}`).join(", ");
+  return [
+    `clock t from -1 to ${N + 1}`, "noaxes", `view -1.5, ${N + 0.5}, -0.8, 2.6`,
+    // domino k tips over around t = k, until it leans on the next one
+    ...ks.map((k) => `D${k} = segment(${k}, ${k} + 1.6*exp(i*(pi/2 - 0.675/(1 + exp(-8*(t - ${k})))))) thick color 1`),
+    ...ks.map((k) => `L${k} = label(${k} - 0.35i, "P(${k})")`),
+    ...ks.slice(0, N - 1).map((k) => `K${k} = arrow(${k + 0.15} + 2i, ${k + 0.85} + 2i) color 4`),
+    "A = arrow(-1.2 + 1.4i, -0.1 + 1.4i) thick color 2",
+    `> show ${names("D")}, ${names("L")} | A domino for each statement: $P(0)$, $P(1)$, $P(2)$, and so on. A domino down is a statement proved.`,
+    `> show ${names("K", N - 1)} | The step, $P(n) \\to P(n+1)$ for every $n$: each domino stands where its fall knocks over the next. By itself it knocks nothing over.`,
+    `> show A; play t to ${N + 1} in 6s | The base case: push the first. Then each falls in turn, however far along the line it stands.`,
+  ].join("\n");
+})();
+/** Lesson 5's odd numbers as layers of a square: layer k is the 2k − 1 dots with max(x, y) = k − 1. */
+const oddSquareScene = (() => {
+  const layers = [1, 2, 3, 4, 5].map((k) => {
+    const dots = [];
+    for (let a = 0; a < k; a++) for (let b = 0; b < k; b++) if (Math.max(a, b) === k - 1) dots.push([`Q${k}_${dots.length}`, `point(${a} + ${b}i) thick color ${k}`]);
+    return dots;
+  });
+  const show = (...ks) => ks.flatMap((k) => layers[k - 1].map(([n]) => n)).join(", ");
+  return [
+    "noaxes", "view -1, 5, -1, 5",
+    ...layers.flat().map(([n, d]) => `${n} = ${d}`),
+    `> show ${show(1)} | $1$.`,
+    `> show ${show(2)} | Three more dots, round a corner: $1 + 3 = 4$, a $2 \\times 2$ square.`,
+    `> show ${show(3)} | Five more: $1 + 3 + 5 = 9$, a $3 \\times 3$ square.`,
+    `> show ${show(4, 5)} | Each odd number wraps the square in one more layer: the $n \\times n$ square plus $2n + 1$ dots is the $(n+1) \\times (n+1)$ one.`,
+  ].join("\n");
+})();
+
 course("logic", "Logic and proof technique",
   "Propositions and truth tables, normal forms, proofs as Lean tactics, quantifiers, three kinds of induction, relations and well-founded termination: the toolkit every later course uses.",
   "Discrete mathematics", (add) => {
 
-  add("01-truth-tables.chalk", "Propositions and truth tables", "Connectives, truth tables, tautologies, and satisfying assignments as witnesses.", ({ sec, md, m, ex }) => {
+  add("01-truth-tables.chalk", "Propositions and truth tables", "Why “if … then” is defined the way it is, truth tables, tautologies, and satisfying assignments as witnesses.", ({ sec, md, m, ex }) => {
     sec("Propositions and truth tables");
     md(r`
 > [!goal]
-> Read a formula of propositional logic, build its truth table, and decide whether it is always true, sometimes true, or never true, with a row that shows it.
+> Decide whether a formula is always, sometimes or never true, and point to the row that shows it.
 `);
     md(r`
+> [!try]
+> "If it rains, I bring an umbrella." Four days: rain and an umbrella, rain and none, dry and an umbrella, dry and none. On which of them did I break my word?
+`);
+    md(r`Only on the second. The promise says nothing about dry days, so they cannot break it. Hold on to that: it is what "if … then" means in logic.`);
+    md(r`
 > [!definition] Proposition, connective
-> A **proposition** is a statement that is either true or false. Variables $p, q, r$ stand for propositions, and the **connectives** build bigger ones: $\lnot p$ (not), $p \land q$ (and), $p \lor q$ (or), $p \to q$ (if … then), $p \leftrightarrow q$ (if and only if). $\top$ is true and $\bot$ is false.
+> A **proposition** is a statement that is either true or false. Variables $p, q, r$ stand for propositions, and **connectives** build bigger ones: $\lnot p$ (not), $p \land q$ (and), $p \lor q$ (or), $p \to q$ (if … then), $p \leftrightarrow q$ (if and only if). $\top$ is true and $\bot$ is false.
 `);
     md(r`Type the glyphs, or their ASCII spellings: ‹!p›, ‹p && q›, ‹p || q›, ‹p -> q›, ‹p <-> q›, ‹true›, ‹false›. A cell with a connective in it is a logic cell.`);
     m("p && q -> p");
-    sec("Truth tables");
-    md(r`
-> [!definition] Truth table
-> A formula's **truth table** lists every assignment of true and false to its variables, one row each, with the formula's value. $n$ variables make $2^n$ rows.
-`);
+    md(r`A connective is defined by its value for each combination of values of its parts. For "and" and "or" there is nothing to argue about:`);
     m("truthtable(p ∧ q)");
     m("truthtable(p ∨ q)");
+    sec(`What "if … then" has to mean`);
+    md(r`$p \to q$ is false when $p$ is true and $q$ false: rain and no umbrella. The rows with $p$ false are settled by how mathematics uses "if … then". "Every multiple of 4 is even" means: for every $n$, if $4 \mid n$ then $n$ is even. That is true, so the implication must be true for every $n$, the ones that are not multiples of 4 included. Read ‹∀ n ∈ 1..12› as "for every $n$ from 1 to 12" (lesson 4 is about it):`);
+    m("∀ n ∈ 1..12, 4 ∣ n → even(n)");
+    md(r`
+> [!try]
+> Two natural guesses for "if $p$ then $q$" are "$p$ and $q$" and "$p$ if and only if $q$". Predict the $n$ at which each one makes this true statement false, then look.
+`);
+    m("∀ n ∈ 1..12, 4 ∣ n ∧ even(n)", { work: true });
+    m("∀ n ∈ 1..12, 4 ∣ n ↔ even(n)", { work: true });
+    md(r`"And" fails at $n = 1$, where $p$ and $q$ are both false; "if and only if" fails at $n = 2$, where $p$ is false and $q$ true. For "every multiple of 4 is even" to come out true, both of those rows must be true. The table is forced: false in the one row that breaks the promise, true in the other three.`);
     md(r`
 > [!definition] Implication
-> $p \to q$ is false in exactly one row: $p$ true and $q$ false. When $p$ is false the implication holds whatever $q$ is ("vacuously"): a promise "if it rains, I bring an umbrella" is not broken on a dry day.
+> $p \to q$ is false exactly when $p$ is true and $q$ is false. When $p$ is false it is true whatever $q$ is (**vacuously** true): a dry day keeps the promise.
 `);
     m("truthtable(p → q)");
+    sec("Truth tables");
+    md(r`A formula's **truth table** lists every assignment of true and false to its variables, one row each, with the formula's value. One variable needs 2 rows, two need 4.`);
+    md(r`
+> [!try]
+> How many rows does a formula in $p$, $q$ and $r$ need? One in 10 variables?
+`);
+    m("truthtable((p → q) ∧ (q → r) → (p → r))");
+    md(r`Each new variable doubles the count, since every old row appears once with it true and once with it false: $n$ variables make $2^n$ rows, and 10 make 1024. This formula is true in all 8 rows: if $p$ gives $q$ and $q$ gives $r$, then $p$ gives $r$, whatever $p$, $q$ and $r$ say.`);
     sec("Tautologies and counterexamples");
     md(r`
 > [!definition] Tautology, satisfiable, contradiction
 > A formula is a **tautology** when every row is true, **satisfiable** when some row is, and a **contradiction** when none is. A row where it is false is a **counterexample**; a row where it is true is a **witness**.
 `);
-    md(r`‹taut› decides by the table. When the answer is ⊥ the step names the row that falsifies it.`);
+    md(r`
+> [!try]
+> $(p \to q) \lor (q \to p)$ says "of any two statements, one implies the other". That sounds false. Is it a tautology? Decide before you look.
+`);
+    md(r`‹taut› decides by the table; when the answer is ⊥, the step names a row that falsifies the formula.`);
     m("taut((p → q) ∨ (q → p))", { work: true });
+    md(r`It is: if $q$ is true then $p \to q$ is, and if $q$ is false then $q \to p$ is. The implication of logic asks only about truth values, never about a connection between $p$ and $q$. A single implication is not a tautology, and the step shows the row that breaks it:`);
     m("taut(p → q)", { work: true });
-    m("truthtable((p → q) ∧ (q → r) → (p → r))");
-    md(r`‹sat› gives a satisfying assignment, as a map from each variable to its value, or ⊥ when there is none; ‹falsify› gives a counterexample the same way.`);
+    md(r`‹sat› gives a witness, as a map from each variable to its value, or ⊥ when there is none; ‹falsify› gives a counterexample the same way.`);
     m("sat((p ∨ q) ∧ ¬p)", { work: true });
     m("sat(p ∧ ¬p)");
     m("falsify(p ∧ q → r)");
     sec("The converse and the contrapositive");
     md(r`
 > [!mistake]
-> $p \to q$ does not say $q \to p$ (the **converse**). "If $n$ is divisible by 4 then $n$ is even" is true; "if $n$ is even then $n$ is divisible by 4" is not. ‹equiv› decides whether two formulas have the same table, and names a row where they differ:
+> A common slip is to read $p \to q$ as saying $q \to p$ as well (the **converse**). "If $n$ is divisible by 4 then $n$ is even" is true; "if $n$ is even then $n$ is divisible by 4" is not ($n = 2$). ‹equiv› decides whether two formulas have the same table, and names a row where they differ:
 `);
     m("equiv(p → q, q → p)", { work: true });
-    md(r`The **contrapositive** $\lnot q \to \lnot p$ is equivalent, which is why a proof "suppose not $q$ … then not $p$" proves $p \to q$.`);
+    md(r`What does follow is the **contrapositive** $\lnot q \to \lnot p$: if $q$ failed, $p$ cannot have held, or the promise was broken. That is why a proof "suppose not $q$ … then not $p$" proves $p \to q$.`);
     m("equiv(p → q, ¬q → ¬p)");
     sec("Exercises");
-    md(r`Answer ‹true› or ‹false› (or ⊤, ⊥) for ‹taut› and ‹equiv›. For ‹sat› and ‹falsify›, give an assignment, as a map such as ‹{p ↦ true, q ↦ false}› or as a conjunction of literals such as ‹p ∧ ¬q›; any assignment that works is right.`);
+    md(r`Answer ‹true› or ‹false› (or ⊤, ⊥) for ‹taut› and ‹equiv›. For ‹sat› and ‹falsify›, give an assignment, as a map such as ‹{p ↦ true, q ↦ false}› or as a conjunction of literals such as ‹p ∧ ¬q›; any assignment that works is right. Where a formula is asked for, any formula with the right truth table is right.`);
     ex("taut(p → (q → p))", r`Is $p \to (q \to p)$ a tautology?`, [
       r`The only way an implication fails is a true premise and a false conclusion. Can $q \to p$ be false while $p$ is true?`,
     ]);
@@ -118,6 +175,10 @@ course("logic", "Logic and proof technique",
     ex("equiv(¬(p → q), p ∧ ¬q)", r`Are $\lnot(p \to q)$ and $p \land \lnot q$ equivalent?`, [
       r`$p \to q$ is false in exactly one row.`,
     ]);
+    ex("¬(p ↔ q)", r`Invent a connective: write a formula that is true when exactly one of $p$, $q$ is true ("exclusive or").`, [
+      r`"At least one" is $p \lor q$. Which row of $p \lor q$ is true but should not be?`,
+      r`Rule that row out: $(p \lor q) \land \lnot(\ldots)$.`,
+    ], { hide: true });
     sec("Knights and knaves");
     md(r`
 > [!example] A puzzle as a satisfiability question
@@ -129,20 +190,40 @@ course("logic", "Logic and proof technique",
     ], { hide: true });
     md(r`
 > [!summary]
-> A propositional formula is decided by its truth table: true in every row (a tautology), in some row (satisfiable, with a witness), or in none (a contradiction). A counterexample is a single row, and one is enough.
+> A connective is its truth table, and the table of $\to$ is forced: it is the only one that makes "every multiple of 4 is even" true. A formula is decided by its table: true in every row (a tautology), in some row (satisfiable, with a witness), or in none (a contradiction). One row is a counterexample, and one is enough.
 `);
+    md(r`This lesson went from a formula to its table. The next goes the other way: given any table at all, is there a formula that has it?`);
   });
 
-  add("02-normal-forms.chalk", "Equivalence and normal forms", "The laws of logic as rewrites: negation normal form, CNF and DNF, one law a step.", ({ sec, md, m, ex }) => {
+  add("02-normal-forms.chalk", "Equivalence and normal forms", "A formula for any truth table, read off its rows; then the laws of logic as rewrites: negation normal form, CNF and DNF, one law a step.", ({ sec, md, m, ex }) => {
     sec("Equivalence and normal forms");
     md(r`
 > [!goal]
-> Rewrite a formula into negation normal form, conjunctive normal form and disjunctive normal form, naming the law used at each step, and check an answer by its truth table.
+> Write down a formula for any truth table, then reach the same normal forms from a formula by the laws of logic, one law a step.
+`);
+    md(r`Lesson 1 went from a formula to its table. Here is a table with no formula:`);
+    md(r`
+$$\begin{array}{ccc|c} p & q & r & \ ? \\ \hline T & T & T & F \\ T & T & F & T \\ T & F & T & T \\ T & F & F & F \\ F & T & T & F \\ F & T & F & F \\ F & F & T & F \\ F & F & F & T \end{array}$$
 `);
     md(r`
-> [!definition] Logical equivalence
-> $\varphi \equiv \psi$ when $\varphi$ and $\psi$ have the same value under every assignment: the same truth table. Replacing a subformula by an equivalent one does not change the value of the whole.
+> [!try]
+> Find a formula with this table. Better: a method that works for any table.
 `);
+    sec("A formula for any table");
+    md(r`Take one true row, $p, q, r = T, T, F$. The formula $p \land q \land \lnot r$ is true in that row and in no other: each literal pins down one variable. Write one such formula for each true row and join them with $\lor$. The result is true exactly when one of them is, which is exactly in the true rows:`);
+    m("truthtable((p ∧ q ∧ ¬r) ∨ (p ∧ ¬q ∧ r) ∨ (¬p ∧ ¬q ∧ ¬r))");
+    md(r`Nothing in that used this particular table. So every truth table has a formula, built from $\lnot$, $\land$ and $\lor$ alone (a table with no true row gets $\bot$).`);
+    md(r`
+> [!definition] Literal, term, clause, DNF, CNF
+> A **literal** is a variable or its negation. A **term** is an $\land$ of literals and a **clause** an $\lor$ of them. A formula is in **disjunctive normal form** (DNF) when it is an $\lor$ of terms, as the one just built is, and in **conjunctive normal form** (CNF) when it is an $\land$ of clauses.
+`);
+    md(r`The same works upside down. A clause can be false in exactly one row: $\lnot p \lor \lnot q \lor \lnot r$ is false only at $T, T, T$. One such clause for each false row, joined with $\land$, rules out the false rows and nothing else: a CNF. So every formula is equivalent to one in DNF and to one in CNF.`);
+    md(r`
+> [!definition] Logical equivalence
+> $\varphi \equiv \psi$ when $\varphi$ and $\psi$ have the same value under every assignment: the same truth table. Replacing a part of a formula by an equivalent one does not change the value of the whole.
+`);
+    sec("Without the table");
+    md(r`Reading off rows costs a term per true row, and a formula in 20 variables has $2^{20} = 1048576$ rows. The laws of logic work on the formula instead. Each replaces a part by an equivalent part, and each is checked once and for all by a table of a few rows.`);
     md(r`
 > [!theorem] The laws used below
 > $p \to q \equiv \lnot p \lor q$, $\quad p \leftrightarrow q \equiv (p \to q) \land (q \to p)$, $\quad \lnot\lnot p \equiv p$,
@@ -151,7 +232,7 @@ course("logic", "Logic and proof technique",
 >
 > distribution: $p \lor (q \land r) \equiv (p \lor q) \land (p \lor r)$ and $p \land (q \lor r) \equiv (p \land q) \lor (p \land r)$.
 `);
-    md(r`Each is proved in Lean over the booleans, and the engine's normal forms are proved to keep the value of the formula (the dot next to each step).`);
+    md(r`The first is lesson 1's table of $\to$ read as a formula: false only when $p$ is true and $q$ false. Each law is proved in Lean over the booleans, and the engine's normal forms are proved to keep the value of the formula (the dot next to each step).`);
     sec("Negation normal form");
     md(r`
 > [!definition] Negation normal form (NNF)
@@ -162,22 +243,22 @@ course("logic", "Logic and proof technique",
     m("nnf(¬(p → q))", { work: true });
     md(r`
 > [!mistake]
-> $\lnot(p \land q)$ is **not** $\lnot p \land \lnot q$: De Morgan's law swaps $\land$ for $\lor$. The engine finds the row where they differ:
+> The natural guess is that $\lnot$ just moves inside: $\lnot(p \land q) \equiv \lnot p \land \lnot q$. But "not both" is weaker than "neither". The engine finds the row where they differ:
 `);
     m("equiv(¬(p ∧ q), ¬p ∧ ¬q)", { work: true });
+    md(r`At $p$ true and $q$ false, "not both" holds and "neither" does not. De Morgan's law is the repair: the $\land$ turns into $\lor$, since "not both" means "at least one fails".`);
     sec("Conjunctive and disjunctive normal form");
-    md(r`
-> [!definition] CNF and DNF
-> A **literal** is a variable or its negation. A **clause** is an $\lor$ of literals and a **term** an $\land$ of them. A formula is in **conjunctive normal form** when it is an $\land$ of clauses, and in **disjunctive normal form** when it is an $\lor$ of terms.
-`);
-    md(r`From NNF, distribute $\lor$ over $\land$ for CNF (or $\land$ over $\lor$ for DNF). A clause that contains both $p$ and $\lnot p$ is always true and drops out; so does a term with both, which is always false.`);
+    md(r`From NNF, distribute $\lor$ over $\land$ for CNF (or $\land$ over $\lor$ for DNF), as $a(b + c) = ab + ac$ in arithmetic, except that here each distributes over the other. A clause that contains both $p$ and $\lnot p$ is always true and drops out; so does a term with both, which is always false.`);
     m("cnf(p ∨ (q ∧ r))", { work: true });
     m("cnf(p ↔ q)", { step: 0 });
     m("dnf(p ↔ q)", { step: 0 });
+    md(r`The DNF lists the two true rows of the table of $p \leftrightarrow q$, both false or both true, reached without the table.`);
     md(r`
-> [!note] Why CNF
-> A CNF is a list of constraints that must all hold, each satisfied by any one of its literals. SAT solvers, which decide satisfiability for formulas with millions of variables, take their input in CNF.
+> [!note] Why CNF, and its cost
+> A CNF is a list of constraints that must all hold, each satisfied by any one of its literals. SAT solvers, which decide satisfiability for formulas with millions of variables, take their input in CNF. Distribution has a price, though: each further pair joined by $\lor$ doubles the clauses.
 `);
+    m("cnf((p ∧ q) ∨ (r ∧ s) ∨ (t ∧ u))");
+    md(r`Three pairs give $2^3 = 8$ clauses, and $n$ pairs $2^n$. Solvers avoid that by naming subformulas with new variables (the Tseitin encoding), which keeps satisfiability rather than equivalence.`);
     sec("Exercises");
     md(r`Your answer must be in the form asked for and equivalent to the formula. Equivalence is decided by truth table, so a "not yet" is definite: the answer differs from the formula in some row.`);
     ex("nnf(¬(p ∨ ¬q))", r`Put $\lnot(p \lor \lnot q)$ in negation normal form.`, [
@@ -190,27 +271,38 @@ course("logic", "Logic and proof technique",
     ex("cnf(¬(p ∧ q) ∧ (p ∨ q))", r`Put $\lnot(p \land q) \land (p \lor q)$ in CNF. (It says "exactly one of $p$, $q$".)`, [
       r`Only the first part needs work: De Morgan.`,
     ]);
+    ex("dnf((p ∧ q) ∨ (q ∧ r) ∨ (p ∧ r))", r`The **majority** of $p$, $q$, $r$ is true when at least two of them are. Write it in DNF, from its truth table or from the words.`, [
+      r`Its true rows are $T, T, T$, then $T, T, F$, then $T, F, T$, then $F, T, T$: one term each.`,
+      r`Or shorter: any two being true is enough, and a term need not mention the third variable.`,
+    ], { hide: true });
     md(r`
 > [!summary]
-> The laws of logic are rewrites that keep the truth table. NNF pushes negations onto the variables; CNF and DNF then distribute. Any formula has all three forms, and the truth table decides whether a proposed one is right.
+> Every truth table has a formula: the $\lor$ of its true rows (a DNF), or the $\land$ of clauses that rule out its false rows (a CNF). The laws of logic reach the same forms from a formula without its table: NNF pushes negations onto the variables, and distributing gives CNF or DNF.
 `);
+    md(r`Tables and laws decide formulas about $p$ and $q$. Neither can check a statement about every number, which has infinitely many rows. The next lesson builds proofs instead, step by step, and has Lean check them.`);
   });
 
-  add("03-natural-deduction.chalk", "Proofs as Lean tactics", "Natural deduction in Lean: introduce and use each connective, and see proofs as programs.", ({ sec, md, lean, lx }) => {
+  add("03-natural-deduction.chalk", "Proofs as Lean tactics", "Natural deduction in Lean: what it takes to prove each connective and what you can do with one, and proofs as programs.", ({ sec, md, m, lean, lx }) => {
     sec("Proofs as Lean tactics");
     md(r`
 > [!goal]
-> Prove propositional statements in Lean with the rules of natural deduction, written as tactics: ‹intro›, ‹exact›, ‹constructor›, ‹cases›, ‹left› and ‹right›.
+> Prove propositional statements in Lean by asking, for each connective, what it takes to prove one and what you can do with one.
 `);
-    md(r`A truth table checks a formula by trying every row. A **proof** derives it by rules, each a small, obviously valid step, and it works where a table cannot: for statements about infinitely many numbers, or with variables that are not just true or false. Lean checks every step.`);
+    md(r`A truth table checks a formula by trying every row. That stops working for "every natural number $n$ satisfies $n + 0 = n$": the rows never end. A **proof** derives a statement by rules instead, each a small step that is obviously valid, and Lean checks every step. What should the rules be?`);
+    sec("What each connective needs");
+    md(r`
+> [!try]
+> To convince someone of $p \land q$, what must you hand them? If someone hands you a proof of $p \land q$, what can you get out of it? Ask the same of $p \lor q$ and of $p \to q$ before reading on.
+`);
+    md(r`
+- $p \land q$: hand over a proof of each, a pair. Given one, you can take either half.
+- $p \lor q$: hand over a proof of one of them, saying which. Given one, you do not know which side you have, so you must finish the job in both cases.
+- $p \to q$: hand over a method that turns any proof of $p$ into a proof of $q$; to build it, assume $p$ and derive $q$. Given one and a proof of $p$, apply it and get $q$.
+- $\lnot p$ is $p \to \bot$: a method that turns any proof of $p$ into a contradiction.
+`);
     md(r`
 > [!definition] Introduction and elimination
-> Each connective has rules that **introduce** it (how to prove it) and rules that **eliminate** it (how to use it):
->
-> - $p \to q$: to prove it, assume $p$ and prove $q$ (‹intro›); to use it, apply it to a proof of $p$.
-> - $p \land q$: prove both (‹constructor›, or ‹⟨hp, hq⟩›); from it, take either (‹h.1›, ‹h.2›).
-> - $p \lor q$: prove one (‹left›, ‹right›); to use it, prove the goal in both cases (‹cases›).
-> - $\lnot p$ is $p \to \bot$: to prove it, assume $p$ and reach a contradiction.
+> Natural deduction is these answers written as rules: for each connective, how to **introduce** it (prove it) and how to **eliminate** it (use it). In Lean, ‹intro› assumes the premise of $\to$, and applying ‹h hp› uses one; ‹constructor› or ‹⟨hp, hq⟩› builds $\land$, and ‹h.1›, ‹h.2› take it apart; ‹left› and ‹right› build $\lor$, and ‹cases› uses it.
 `);
     lean(r`example (p q : Prop) (hp : p) (hq : q) : p ∧ q := by
   constructor
@@ -243,36 +335,62 @@ example (p q : Prop) : p → p ∨ q := by
     sec("Proofs are programs");
     md(r`
 > [!note] Curry–Howard
-> The term ‹fun hp => h (Or.inl hp)› above is a program: a function taking a proof of $p$ to a proof of $\bot$. In Lean a proof of $p \to q$ *is* a function from proofs of $p$ to proofs of $q$, and a proof of $p \land q$ is a pair. Propositions are types and proofs are their values; checking a proof is type checking. The λ-calculus courses come back to this.
+> "A method that turns any proof of $p$ into a proof of $q$" is a function, and in Lean it is one: the term ‹fun hp => h (Or.inl hp)› from the last exercise takes a proof of $p$ to a proof of $\bot$. A proof of $p \land q$ is a pair. Propositions are types and proofs are their values; checking a proof is type checking. The λ-calculus courses come back to this.
 `);
     lean(r`example (p q : Prop) : p ∧ q → q ∧ p := fun ⟨hp, hq⟩ => ⟨hq, hp⟩`);
     md(r`
 > [!mistake]
-> Every tautology has a truth table, but not every tautology has a proof by these rules alone. $\lnot\lnot p \to p$ is a tautology, yet the rules above only give $p$ from evidence for $p$. It needs one more principle, the excluded middle (‹Classical.em p : p ∨ ¬p›), or proof by contradiction:
+> It is natural to expect every tautology to have a proof by these rules. $\lnot\lnot p \to p$ is a tautology:
 `);
+    m("taut(¬¬p → p)");
+    md(r`Yet the rules above give no proof of it. A proof of $\lnot\lnot p$ is a function that turns refutations of $p$ into contradictions, and nothing in it is evidence for $p$. It needs one more principle, the excluded middle (‹Classical.em p : p ∨ ¬p›), or proof by contradiction:`);
     lean(r`theorem dne (p : Prop) : ¬¬p → p := by
   intro h
   exact Classical.byContradiction h`);
     md(r`
 > [!summary]
-> Natural deduction gives each connective rules to introduce and to eliminate it, and Lean's tactics are those rules. A proof of an implication is a function; a proof of a conjunction is a pair.
+> Each connective's rules say what it takes to prove it and what you can do with it, and Lean's tactics are those rules. A proof of an implication is a function; a proof of a conjunction is a pair. Excluded middle is the one extra principle classical logic adds.
 `);
+    md(r`So far every statement was about $p$ and $q$. Most statements in mathematics are about every number, or some number. The next lesson adds $\forall$ and $\exists$.`);
   });
 
-  add("04-quantifiers.chalk", "Predicates and quantifiers", "∀ and ∃ over finite sets, with the element that decides them; quantifiers in Lean.", ({ sec, md, m, ex, lean, lx }) => {
+  add("04-quantifiers.chalk", "Predicates and quantifiers", "∀ as a long ∧ and ∃ as a long ∨: counterexamples and witnesses, negation by De Morgan, the order of quantifiers, and quantifiers in Lean.", ({ sec, md, m, ex, lean, lx }) => {
     sec("Predicates and quantifiers");
     md(r`
 > [!goal]
-> Read and decide statements with $\forall$ and $\exists$ over a finite set, find the counterexample or the witness, negate them, and prove simple ones in Lean.
+> Read $\forall$ as a long $\land$ and $\exists$ as a long $\lor$; find the counterexample or the witness; negate them; prove simple ones in Lean.
 `);
+    md(r`"Every multiple of 4 is even", "some prime is even": statements like these are about a whole set of things at once. Over a small set they are formulas you already know. "For every $n$ in $\{1, 2, 3\}$, $n^2 \ge 2n$" says three things joined by $\land$:`);
+    m("∀ n ∈ {1, 2, 3}, n^2 ≥ 2n", { work: true });
+    m("(1^2 ≥ 2*1) ∧ (2^2 ≥ 2*2) ∧ (3^2 ≥ 2*3)");
     md(r`
 > [!definition] Quantifiers
-> $\forall n \in S,\ \varphi(n)$ says $\varphi$ holds for every $n$ in $S$; $\exists n \in S,\ \varphi(n)$ says it holds for at least one. A $\forall$ is refuted by one **counterexample**; an $\exists$ is proved by one **witness**.
+> $\forall n \in S,\ \varphi(n)$ says $\varphi$ holds for every $n$ in $S$: over $S = \{1, 2, 3\}$ it is $\varphi(1) \land \varphi(2) \land \varphi(3)$. $\exists n \in S,\ \varphi(n)$ says it holds for at least one: $\varphi(1) \lor \varphi(2) \lor \varphi(3)$. So a $\forall$ is refuted by one false case, a **counterexample**, and an $\exists$ is proved by one true case, a **witness**.
 `);
     md(r`Over a finite set the engine checks every element in order, and names the one that decided. Type ‹forall n in 1..10, …› or the glyphs; the body can compare numbers and use ‹prime›, ‹even›, ‹odd› and ‹∣› (divides).`);
     m("∀ n ∈ 1..10, n^2 ≥ n", { work: true });
     m("∀ n ∈ 1..10, n^2 ≥ 2n", { work: true });
     m("∃ n ∈ {4, 6, 9, 11}, prime(n)", { work: true });
+    sec("Negation");
+    md(r`
+> [!try]
+> What is "not every $n$ has $\varphi(n)$", written without a $\lnot$ in front? Write it as $\lnot(\varphi(1) \land \varphi(2) \land \varphi(3))$ and use De Morgan from lesson 2.
+`);
+    md(r`
+> [!theorem] Negating a quantifier
+> $\lnot \forall n,\ \varphi(n) \equiv \exists n,\ \lnot\varphi(n)$ and $\lnot \exists n,\ \varphi(n) \equiv \forall n,\ \lnot\varphi(n)$: "not every" is "some not", and "none" is "every not". It is De Morgan's law for a long $\land$ or $\lor$.
+`);
+    m("¬(∀ n ∈ 1..10, n^2 ≥ 2n)");
+    m("∃ n ∈ 1..10, ¬(n^2 ≥ 2n)", { work: true });
+    md(r`The witness of the second is the counterexample of the first: $n = 1$.`);
+    sec("The order of quantifiers");
+    md(r`
+> [!mistake]
+> Swapping two quantifiers looks harmless and is not. "Every $n$ has some $m$ different from it" is true; "some $m$ is different from every $n$" is false, since that $m$ would have to differ from itself.
+`);
+    m("∀ n ∈ 1..6, ∃ m ∈ 1..6, m ≠ n");
+    m("∃ m ∈ 1..6, ∀ n ∈ 1..6, m ≠ n");
+    md(r`Read them as a game. In $\forall n\, \exists m$ your opponent picks $n$ first and you answer with an $m$ that may depend on it. In $\exists m\, \forall n$ you must commit to one $m$ before seeing any $n$, which is harder.`);
     sec("Checking is not proving");
     md(r`
 > [!mistake]
@@ -280,28 +398,16 @@ example (p q : Prop) : p → p ∨ q := by
 `);
     m("∀ n ∈ 1..39, prime(n^2 + n + 41)");
     m("∀ n ∈ 1..40, prime(n^2 + n + 41)", { work: true });
-    md(r`At $n = 40$ it is $41^2$. Checking finds counterexamples; only a proof covers all $n$. The induction lessons are about those proofs.`);
-    sec("Negation and order");
-    md(r`
-> [!theorem] Negating a quantifier
-> $\lnot \forall n,\ \varphi(n) \equiv \exists n,\ \lnot\varphi(n)$ and $\lnot \exists n,\ \varphi(n) \equiv \forall n,\ \lnot\varphi(n)$: "not every" is "some not".
-`);
-    m("¬(∀ n ∈ 1..10, n^2 ≥ 2n)");
-    m("∃ n ∈ 1..10, ¬(n^2 ≥ 2n)", { work: true });
-    md(r`
-> [!mistake]
-> The order of quantifiers matters. "Every $n$ has some $m$ different from it" is true; "some $m$ is different from every $n$" is false, since $m$ would have to differ from itself.
-`);
-    m("∀ n ∈ 1..6, ∃ m ∈ 1..6, m ≠ n");
-    m("∃ m ∈ 1..6, ∀ n ∈ 1..6, m ≠ n");
+    md(r`At $n = 40$ it is $40^2 + 40 + 41 = 41^2$. Thirty-nine checks passed and the fortieth failed. Checking finds counterexamples; only a proof covers every $n$.`);
     sec("Exercises");
     md(r`Answer ‹true› or ‹false›.`);
     ex("∀ n ∈ 1..20, prime(n) → odd(n)", r`Is every prime between 1 and 20 odd?`, [r`One prime is even.`]);
     ex("∃ n ∈ 3..30, n^2 = 2^n", r`Is there an $n$ between 3 and 30 with $n^2 = 2^n$?`, [r`Try small powers of 2.`]);
     ex("∀ n ∈ 1..12, 3 ∣ n^3 - n", r`Does 3 divide $n^3 - n$ for every $n$ from 1 to 12?`, [r`Factor it: $n^3 - n = (n-1)\,n\,(n+1)$. What is true of three consecutive numbers?`]);
     ex("∀ n ∈ 1..10, n^2 ≤ 2^n", r`Is $n^2 \le 2^n$ for every $n$ from 1 to 10?`, [r`Compute both sides for $n = 3$.`]);
+    ex("∀ n ∈ 1..10, ∃ m ∈ 1..10, m > n", r`Play the game: for every $n$ from 1 to 10, is there an $m$ from 1 to 10 with $m > n$?`, [r`Which $n$ has no answer inside $1..10$? Over all natural numbers the answer would change.`]);
     sec("Quantifiers in Lean");
-    md(r`In Lean, a proof of $\exists n, P(n)$ is a pair: the witness and a proof that it works. A proof of $\forall n, P(n)$ is a function taking any $n$ to a proof of $P(n)$.`);
+    md(r`Over all natural numbers there is no finite $\land$ to check, so Lean asks for proofs, built the way lesson 3's were. A proof of $\exists n, P(n)$ is a pair: the witness and a proof that it works. A proof of $\forall n, P(n)$ is a function taking any $n$ to a proof of $P(n)$.`);
     lean(r`example : ∃ n : Nat, n * n = 16 := ⟨4, rfl⟩
 
 example : ∀ n : Nat, n + 0 = n := fun _ => rfl`);
@@ -312,31 +418,42 @@ example : ∀ n : Nat, n + 0 = n := fun _ => rfl`);
   exact h ⟨x, hx⟩`, [r`‹¬ P x› is ‹P x → False›: introduce the proof ‹hx› too.`, r`Then ‹⟨x, hx⟩› proves the ‹∃› that ‹h› denies.`]);
     md(r`
 > [!summary]
-> A $\forall$ falls to one counterexample and an $\exists$ stands on one witness. Over a finite set both can be checked; over all numbers they must be proved. Negation swaps them, and their order changes the meaning.
+> $\forall$ is a long $\land$ and $\exists$ a long $\lor$: one counterexample refutes a $\forall$, one witness proves an $\exists$, and negation swaps them by De Morgan's law. Their order changes the meaning. Over a finite set both can be checked; over all numbers they must be proved.
 `);
+    md(r`Euler's polynomial passed 39 checks and still failed. How can a finite argument cover every natural number? The next lesson's answer is induction.`);
   });
 
-  add("05-induction.chalk", "Induction on the natural numbers", "Weak induction: check a formula for small n, then prove it for all n in Lean.", ({ sec, md, m, ex, lean, lx }) => {
+  add("05-induction.chalk", "Induction on the natural numbers", "Why checking is not enough, and induction as a recipe that produces a proof for any n: dominoes, sums, and proofs in Lean.", ({ sec, md, m, ex, lean, lx, sc }) => {
     sec("Induction on the natural numbers");
     md(r`
 > [!goal]
-> Prove statements about every natural number by induction: a base case and a step from $n$ to $n + 1$.
+> Prove a statement for every natural number from two finite pieces: a base case and a step from $n$ to $n + 1$.
 `);
+    md(r`Euler's polynomial passed 39 checks before it failed. Fermat did worse: $2^{2^n} + 1$ is prime for $n = 0, 1, 2, 3, 4$ (it is 3, 5, 17, 257 and 65537), and he believed it always was.`);
+    m("∀ n ∈ 0..4, prime(2^(2^n) + 1)");
+    m("(2^(2^5) + 1) / 641");
+    md(r`Euler found that the very next one, $2^{32} + 1 = 4294967297$, is $641 \times 6700417$. No number of checks proves a statement about every $n$. So what could?`);
+    sec("A step instead of a list");
     md(r`Is $1 + 2 + \cdots + n = \dfrac{n(n+1)}{2}$? Drag ‹n› and compare.`);
     m("let n = 5", { slider: [1, 30, 1] });
     m("sum(k, k, 1, n)");
     m("n(n+1)/2");
-    md(r`And for every $n$ up to 20 at once:`);
     m("∀ n ∈ 1..20, sum(k, k, 1, n) = n(n+1)/2");
-    md(r`Twenty cases are evidence, not a proof (Euler's polynomial worked for 39). Induction proves all of them.`);
-    sec("The principle");
+    md(r`Twenty more checks. Instead, show how each case gives the next. If the sum up to $k$ is $\frac{k(k+1)}{2}$, the sum up to $k + 1$ adds $k + 1$, and the formula should then give $\frac{(k+1)(k+2)}{2}$. The difference is zero for every $k$:`);
+    m("expand(k(k+1)/2 + (k+1) - (k+1)(k+2)/2)");
+    md(r`That one identity, with the case $n = 1$ ($1 = \frac{1 \cdot 2}{2}$), is a proof for every $n$. For $n = 1000$, start at 1 and apply the step 999 times: the argument is a recipe that produces the proof for any $n$ you name.`);
+    sc(dominoScene);
     md(r`
 > [!theorem] Induction
 > If $P(0)$ holds, and $P(n)$ implies $P(n + 1)$ for every $n$, then $P(n)$ holds for every natural number $n$.
 `);
     md(r`
+> [!mistake]
+> Both halves are needed, and the step alone can look convincing. Let $P(n)$ say $n = n + 1$. If $n = n + 1$ then, adding 1, $n + 1 = n + 2$: the step holds for every $n$. But $P(0)$ says $0 = 1$, so no domino is ever pushed, and $P(n)$ is false for every $n$.
+`);
+    md(r`
 > [!note] Why it works
-> $P(0)$ gives $P(1)$, which gives $P(2)$, and so on: every $n$ is reached from $0$ by finitely many steps of $+1$. In Lean this is not an axiom but the way ‹Nat› is defined: a natural number is ‹zero› or ‹succ n›, and the ‹induction› tactic is the recursion that follows that definition.
+> Every $n$ is reached from $0$ by finitely many steps of $+1$. In Lean this is not an axiom but the way ‹Nat› is defined: a natural number is ‹zero› or ‹succ n›, and the ‹induction› tactic is the recursion that follows that definition.
 `);
     md(r`In Lean, define the sum by recursion and prove the formula (doubled, to stay in ‹Nat›):`);
     lean(r`def sumTo : Nat → Nat
@@ -351,7 +468,14 @@ theorem sumTo_formula (n : Nat) : 2 * sumTo n = n * (n + 1) := by
   | succ k ih =>
     simp only [sumTo, Nat.mul_add, ih]
     grind`);
-    md(r`The ‹succ› case has the **induction hypothesis** ‹ih : 2 * sumTo k = k * (k + 1)› and must prove the formula for ‹k + 1›. Unfolding ‹sumTo› once and using ‹ih› leaves arithmetic, which ‹grind› finishes.`);
+    md(r`The ‹succ› case has the **induction hypothesis** ‹ih : 2 * sumTo k = k * (k + 1)› and must prove the formula for ‹k + 1›. Unfolding ‹sumTo› once and using ‹ih› leaves the identity above, which ‹grind› finishes.`);
+    sec("Odd numbers");
+    md(r`
+> [!try]
+> Add up the first few odd numbers: $1$, $1 + 3$, $1 + 3 + 5$, $1 + 3 + 5 + 7$. Guess the formula, then find its induction step in the picture.
+`);
+    sc(oddSquareScene);
+    md(r`The sum of the first $n$ odd numbers is $n^2$, and the picture is the induction step: $n^2 + (2n + 1) = (n + 1)^2$.`);
     sec("Exercises");
     md(r`First check, then prove. Answer ‹true› or ‹false›:`);
     ex("∀ n ∈ 1..15, 2^n ≥ n + 1", r`Is $2^n \ge n + 1$ for $n$ from 1 to 15?`, []);
@@ -364,7 +488,7 @@ theorem oddSum_eq (n : Nat) : oddSum n = n * n := by`, r`Prove that the sum of t
   | zero => rfl
   | succ k ih =>
     simp only [oddSum, ih]
-    grind`, [r`‹induction n with›, then a case for ‹zero› and one for ‹succ k ih›.`, r`In the ‹succ› case, ‹simp only [oddSum, ih]› leaves ‹k * k + (2 * k + 1) = (k + 1) * (k + 1)›.`]);
+    grind`, [r`‹induction n with›, then a case for ‹zero› and one for ‹succ k ih›.`, r`In the ‹succ› case, ‹simp only [oddSum, ih]› leaves ‹k * k + (2 * k + 1) = (k + 1) * (k + 1)›: the picture's step.`]);
     lx(r`theorem lt_two_pow' (n : Nat) : n + 1 ≤ 2 ^ n := by`, r`Prove $n + 1 \le 2^n$ for every $n$.`, r`  induction n with
   | zero => decide
   | succ k ih =>
@@ -372,16 +496,19 @@ theorem oddSum_eq (n : Nat) : oddSum n = n * n := by`, r`Prove that the sum of t
     omega`, [r`The step: from $k + 1 \le 2^k$, show $k + 2 \le 2^k \cdot 2$.`, r`‹rw [Nat.pow_succ]› turns ‹2 ^ (k + 1)› into ‹2 ^ k * 2›; then ‹omega› treats ‹2 ^ k› as a number.`]);
     md(r`
 > [!summary]
-> Induction proves $P(n)$ for all $n$ from a base case and a step. Checking cases finds mistakes; the step is the proof. In Lean, ‹induction› splits the goal into those two cases and hands the step its hypothesis.
+> Induction proves $P(n)$ for every $n$ from a base case and a step: a recipe that builds the proof for any $n$ you name. Checking cases finds mistakes; the step is the proof. In Lean, ‹induction› splits the goal into those two cases and hands the step its hypothesis.
 `);
+    md(r`The step here only ever used the case just before. To show 12 has a prime factor, 11 is no help; 12's factors 2, 3, 4 and 6 are. The next lesson lets the step use any smaller case.`);
   });
 
-  add("06-strong-induction.chalk", "Strong induction", "Course-of-values arguments: using every smaller case, and how strong induction, weak induction and well-ordering relate.", ({ sec, md, m, ex, lean, lx }) => {
+  add("06-strong-induction.chalk", "Strong induction", "When the step needs more than the case before: prime factors, making change, and why strong induction, weak induction and well-ordering are one principle.", ({ sec, md, m, ex, lean, lx }) => {
     sec("Strong induction");
     md(r`
 > [!goal]
-> Prove statements whose step needs not just the case before but any smaller case, and see why that is no stronger than ordinary induction.
+> Prove statements whose step needs any smaller case, not just the one before, and see why that is no stronger than ordinary induction.
 `);
+    md(r`Try ordinary induction on "every $n \ge 2$ has a prime factor". The step assumes 11 has a prime factor and must show that 12 does. That is no help: 12 is $2 \times 6$, and the cases that help are its factors, which can be anywhere below it.`);
+    md(r`The fix is to assume more. When proving $P(n)$, assume $P(m)$ for every $m < n$, not only for $n - 1$:`);
     md(r`
 > [!theorem] Strong induction
 > If, for every $n$, $P(m)$ for all $m < n$ implies $P(n)$, then $P(n)$ holds for every $n$.
@@ -394,10 +521,13 @@ theorem oddSum_eq (n : Nat) : oddSum n = n * n := by`, r`Prove that the sum of t
 `);
     m("∀ n ∈ 2..60, ∃ p ∈ 2..n, prime(p) ∧ p ∣ n");
     sec("Postage stamps");
-    md(r`With stamps of 3 and 5, which amounts can you make exactly?`);
+    md(r`
+> [!try]
+> With stamps of 3 and 5, which amounts can you make exactly, and which not? Find the largest one you cannot make before reading on.
+`);
     m("∀ n ∈ 8..40, ∃ a ∈ 0..14, ∃ b ∈ 0..8, n = 3a + 5b");
     m("∃ a ∈ 0..3, ∃ b ∈ 0..2, 7 = 3a + 5b");
-    md(r`Every amount from 8 on: 8, 9 and 10 directly, and any $n \ge 11$ from $n - 3$ plus one stamp of 3. The step reaches back three, so it needs three base cases.`);
+    md(r`7 cannot be made; every amount from 8 on can. Make 8, 9 and 10 directly, and any $n \ge 11$ from $n - 3$ plus one stamp of 3. The step reaches back three, to a case strong induction lets it use, so it needs three base cases.`);
     lean(r`theorem stamps (n : Nat) (h : 8 ≤ n) : ∃ a b, n = 3 * a + 5 * b := by
   induction n using Nat.strongRecOn with
   | _ n ih =>
@@ -415,7 +545,7 @@ theorem oddSum_eq (n : Nat) : oddSum n = n * n := by`, r`Prove that the sum of t
   | n + 2 => fib n + fib (n + 1)
 
 #eval (List.range 12).map fib`);
-    md(r`Each Fibonacci number uses the two before it, so a proof about them uses two earlier cases.`);
+    md(r`Each Fibonacci number uses the two before it, so a proof about them uses two earlier cases, and needs two base cases.`);
     lx(r`theorem fib_lt_two_pow (n : Nat) : fib n < 2 ^ n := by`, r`Prove $F_n < 2^n$ by strong induction.`, r`  induction n using Nat.strongRecOn with
   | _ n ih =>
     match n with
@@ -432,6 +562,7 @@ theorem oddSum_eq (n : Nat) : oddSum n = n * n := by`, r`Prove that the sum of t
       r`$F_k + F_{k+1} < 2^k + 2^{k+1} \le 2^{k+2}$. Rewrite the powers with ‹Nat.pow_succ› so ‹omega› sees ‹2 ^ k› as one number.`,
     ]);
     sec("Three forms of one principle");
+    md(r`Strong induction assumes more, so it looks stronger. It is not:`);
     md(r`
 > [!theorem] Weak induction, strong induction, well-ordering
 > These are equivalent: each proves the others.
@@ -440,26 +571,37 @@ theorem oddSum_eq (n : Nat) : oddSum n = n * n := by`, r`Prove that the sum of t
 > - Weak gives strong: apply weak induction to $Q(n)$ = "$P(m)$ for every $m < n$".
 > - Well-ordering (every non-empty set of naturals has a least element) gives strong induction: if $P$ failed somewhere, take the least $n$ where it fails; $P$ holds below $n$, so the step gives $P(n)$, a contradiction.
 `);
-    md(r`The last form is the one lesson 9 generalizes: induction works on any relation with no infinite descending chains.`);
+    md(r`The last form is the one lesson 9 generalizes: induction works along any relation with no infinite descending chain.`);
+    sec("Exercises");
     ex("∀ n ∈ 12..50, ∃ a ∈ 0..12, ∃ b ∈ 0..10, n = 4a + 5b", r`With stamps of 4 and 5, can every amount from 12 to 50 be made exactly? Answer ‹true› or ‹false›.`, [r`12, 13, 14 and 15 directly; then reach back by 4.`]);
-    ex("∃ a ∈ 0..3, ∃ b ∈ 0..3, 11 = 4a + 5b", r`Can 11 be made from stamps of 4 and 5?`, [r`Try $b = 0, 1, 2$.`]);
+    ex("∃ a ∈ 0..3, ∃ b ∈ 0..3, 11 = 4a + 5b", r`Can 11 be made from stamps of 4 and 5? Answer ‹true› or ‹false›.`, [r`Try $b = 0, 1, 2$.`]);
+    md(r`
+> [!try]
+> The largest amount that cannot be made is 7 with stamps of 3 and 5, and 11 with stamps of 4 and 5. Guess the rule for stamps of $a$ and $b$ with no common factor, and test it on 3 and 7.
+`);
+    md(r`It is $ab - a - b$ (Sylvester, 1884): $15 - 8 = 7$, $20 - 9 = 11$, and $21 - 10 = 11$ for 3 and 7.`);
     md(r`
 > [!summary]
 > Strong induction lets the step use every smaller case, with as many base cases as the step reaches back. It proves nothing ordinary induction cannot, but it fits arguments that split $n$ into smaller pieces.
 `);
+    md(r`Natural numbers are built from $0$ by $+1$, and induction follows that construction. Lists and trees are built too, from smaller lists and trees. The next lesson gives them their own induction.`);
   });
 
-  add("07-structural-induction.chalk", "Structural induction", "Induction on lists, trees and expressions, and a small simplifier proved sound.", ({ sec, md, lean, lx }) => {
+  add("07-structural-induction.chalk", "Structural induction", "The same idea for anything defined by constructors: lists, trees, expressions, and a small simplifier proved sound.", ({ sec, md, lean, lx }) => {
     sec("Structural induction");
     md(r`
 > [!goal]
-> Prove properties of recursive data (lists, trees, expressions) by induction on their structure, and prove a small program transformation correct.
+> Prove properties of recursive data (lists, trees, expressions) by induction on how they are built, and prove a small program transformation correct.
+`);
+    md(r`Lesson 5 said Lean's induction on ‹Nat› is not an axiom: it comes from how ‹Nat› is built, from ‹zero› by ‹succ›. A base case for ‹zero›, a step for ‹succ›. Other types are built the same way. A list is either empty, ‹[]›, or an element in front of a shorter list, ‹x :: xs›.`);
+    md(r`
+> [!try]
+> Guess the induction principle for lists: what must you prove to know $P$ holds for every list?
 `);
     md(r`
 > [!definition] Structural induction
-> A type defined by constructors (a list is ‹[]› or ‹x :: xs›) has an induction principle with a case per constructor, and a hypothesis for each recursive part. To prove $P$ for every list: prove $P([\,])$, and $P(xs) \to P(x :: xs)$.
+> A type defined by constructors has an induction principle with a case per constructor, and a hypothesis for each recursive part. For lists: prove $P([\,])$, and $P(xs) \to P(x :: xs)$ for every $x$ and $xs$. Natural numbers are the special case ‹zero› and ‹succ n›.
 `);
-    md(r`Natural numbers are the special case ‹zero› or ‹succ n›: the last two lessons were structural induction on ‹Nat›.`);
     sec("Lists");
     lean(r`def len {α : Type} : List α → Nat
   | [] => 0
@@ -469,7 +611,7 @@ theorem len_append {α : Type} (xs ys : List α) : len (xs ++ ys) = len xs + len
   induction xs with
   | nil => simp [len]
   | cons x xs ih => simp [len, ih]; omega`);
-    md(r`Induction is on ‹xs›, the list that ‹++› recurses on: ‹(x :: xs) ++ ys = x :: (xs ++ ys)›, which is exactly where the hypothesis applies.`);
+    md(r`Induction is on ‹xs›, the list that ‹++› recurses on: ‹(x :: xs) ++ ys = x :: (xs ++ ys)›, which is exactly where the hypothesis applies. Induction on ‹ys› would get stuck, since ‹++› does nothing with ‹ys› until ‹xs› runs out.`);
     sec("Trees");
     lean(r`inductive Tree where
   | leaf
@@ -482,7 +624,11 @@ def Tree.mirror : Tree → Tree
 def Tree.size : Tree → Nat
   | .leaf => 0
   | .node l _ r => l.size + 1 + r.size`);
-    md(r`A ‹node› has two recursive parts, so its case has two hypotheses, one for each subtree.`);
+    md(r`
+> [!try]
+> A ‹node› is built from two smaller trees. How many induction hypotheses should its case get?
+`);
+    md(r`Two, one for each subtree: the recipe needs the property for both parts before it can build it for the whole.`);
     lx(r`theorem Tree.mirror_mirror (t : Tree) : t.mirror.mirror = t := by`, r`Mirroring twice gives back the tree.`, r`  induction t with
   | leaf => rfl
   | node l v r ihl ihr => simp [Tree.mirror, ihl, ihr]`, [r`‹induction t with | leaf => … | node l v r ihl ihr => …›.`, r`In the ‹node› case, unfold ‹Tree.mirror› and use both hypotheses: ‹simp [Tree.mirror, ihl, ihr]›.`]);
@@ -513,7 +659,7 @@ def Ex.simp : Ex → Ex
 #eval (Ex.add (.num 0) (.mul (.num 3) (.add (.num 4) (.num 0)))).simp.eval`);
     md(r`
 > [!note] Soundness is a fold
-> A simplifier is **sound** when it never changes what an expression means. ChalkMath's own engine is proved sound this way: each rewrite rule keeps the value, and a structural induction carries that through the whole term. Here is the same argument in miniature.
+> A simplifier is **sound** when it never changes what an expression means. Checking examples cannot show that, for the reason lesson 4 gave; structural induction can: if simplifying the parts keeps their values, simplifying the whole does. ChalkMath's engine argues the same way: a rewrite rule proved to keep the value keeps it inside any larger term, by a structural induction, and the dot on a step says whether its rule has such a proof.
 `);
     lx(r`theorem Ex.simp_sound (e : Ex) : e.simp.eval = e.eval := by`, r`Prove the simplifier sound: it keeps the value of every expression.`, r`  induction e with
   | num n => rfl
@@ -529,37 +675,45 @@ def Ex.simp : Ex → Ex
 > [!summary]
 > Every inductive type comes with its own induction: a case per constructor and a hypothesis per recursive part. Lists, trees and syntax trees are proved about the same way as numbers, and "a transformation keeps the meaning" is a structural induction.
 `);
+    md(r`Every induction so far ran along a relation: "is one less than", "is less than", "is a part of". Which relations can induction run along? First, relations themselves, and what it means to close one up.`);
   });
 
-  add("08-relations.chalk", "Relations", "Properties with counterexamples, closures step by step, equivalence classes and partitions, and a deduplication bug.", ({ sec, md, m, ex }) => {
+  add("08-relations.chalk", "Relations", "When do two things count as the same? Properties with counterexamples, closures as what you are forced to add, equivalence classes, and a deduplication bug.", ({ sec, md, m, ex }) => {
     sec("Relations");
     md(r`
 > [!goal]
-> Decide the properties of a relation, with the pairs that break them; compute closures; and read an equivalence relation as a partition.
+> Decide the properties of a relation and point to the pairs that break them; compute closures; read an equivalence relation as a partition.
 `);
+    md(r`A service receives requests and drops duplicates. One day an action goes missing: a request was dropped as a duplicate when it was not one. Which requests should count as "the same"? The answer is a relation, and the bug, at the end of this lesson, is a fact about two relations.`);
     md(r`
 > [!definition] Relation
 > A **relation** on a set $S$ is a set of pairs $(x, y)$ of elements of $S$; write $x \mathrel{R} y$ when $(x, y)$ is one of them. Draw it as a graph: an arrow from $x$ to $y$ for each pair.
 `);
     m("let R = rel({a, b, c}; a->b, b->c, b->b)");
     sec("Properties");
+    md(r`"Is the same as" has three properties anyone would insist on: everything is the same as itself; if $x$ is the same as $y$, then $y$ is the same as $x$; and two things the same as a third are the same as each other. "Is at most" keeps the first and the third, and turns the second around: $x \le y$ and $y \le x$ together only when $x = y$.`);
     md(r`
 > [!definition] Reflexive, symmetric, antisymmetric, transitive
 > $R$ is **reflexive** when $x \mathrel{R} x$ for every $x$; **symmetric** when $x \mathrel{R} y$ gives $y \mathrel{R} x$; **antisymmetric** when $x \mathrel{R} y$ and $y \mathrel{R} x$ give $x = y$; **transitive** when $x \mathrel{R} y$ and $y \mathrel{R} z$ give $x \mathrel{R} z$.
 `);
-    md(r`Each check shows the pairs that break the property in red.`);
+    md(r`Each is a $\forall$, so each falls to one counterexample: a failed check names the element or the pairs that break it, and the graph marks them.`);
     m("reflexive(R)", { work: true });
     m("symmetric(R)", { work: true });
     m("antisymmetric(R)");
     m("transitive(R)", { work: true });
     sec("Closures");
     md(r`
-> [!definition] Closure
-> The **transitive closure** of $R$ is the least transitive relation containing it: add every pair forced by two that chain, and repeat until nothing new is forced. The reflexive and symmetric closures add $(x, x)$ and the reverse pairs.
+> [!try]
+> $P$ below has $a \to b$, $b \to c$ and $c \to d$. If $P$ has to be transitive, which pairs are you forced to add? Is one round of adding enough?
 `);
-    md(r`Step through it: each round adds the pairs that the last round's pairs force. The added pairs are dashed.`);
     m("let P = rel({a, b, c, d}; a->b, b->c, c->d)");
+    md(r`Step through it: each round adds the pairs that the last round's pairs force. The added pairs are dashed.`);
     m("closure(P, transitive)", { step: 0 });
+    md(r`One round is not enough: $(a, d)$ is forced only once $(a, c)$ is there. The rounds stop when nothing new is forced.`);
+    md(r`
+> [!definition] Closure
+> The **transitive closure** of $R$ is the least transitive relation containing it: what you are forced to add, and nothing more. The reflexive and symmetric closures add the pairs $(x, x)$ and the reverse pairs.
+`);
     md(r`
 > [!theorem] The closure is the least
 > Every pair a round adds lies in any transitive relation containing $R$, and the rounds stop only when the relation is transitive. So the result is transitive and inside every transitive relation containing $R$. Both facts are proved in Lean (the dot on each step).
@@ -569,11 +723,11 @@ def Ex.simp : Ex → Ex
 > [!definition] Equivalence relation, class, partition
 > An **equivalence relation** is reflexive, symmetric and transitive: it says when two elements count as the same. The **class** of $x$ is everything related to it, the classes **partition** the set (every element in exactly one), and the set of classes is the **quotient** $S/{\sim}$.
 `);
-    md(r`The commonest way to get one: give each element a label, and relate two elements when their labels are equal. That is the **kernel** of the labelling.`);
+    md(r`The commonest way to get one: give each element a label, and relate two elements when their labels are equal. That is the **kernel** of the labelling. It is an equivalence for free, because equality of labels is.`);
     m("let K = kernel({r1, r2, r3, r4}; r1->k1, r2->k1, r3->k2, r4->k2)");
     m("equivalence(K)");
     m("classes(K)", { work: true });
-    md(r`A relation that is not an equivalence has a closure that is one:`);
+    md(r`A relation that is not an equivalence has a closure that is one: everything it is forced to identify.`);
     m("let E = closure(R, equivalence)");
     m("classes(E)");
     sec("Finer and coarser");
@@ -583,7 +737,7 @@ def Ex.simp : Ex → Ex
 `);
     md(r`
 > [!example] Deduplicating by key
-> A service receives requests $r_1, \dots, r_4$ and drops duplicates. Requests $r_1$ and $r_2$ carry key $k_1$ and the same action; $r_3$ and $r_4$ carry key $k_2$ but different actions. Deduplicating by key treats two requests as the same when their keys are equal (the relation $K$ above). What should count as the same is the same key *and* the same payload: the relation $A$.
+> Back to the service. Requests $r_1$ and $r_2$ carry key $k_1$ and the same action; $r_3$ and $r_4$ carry key $k_2$ but different actions. Deduplicating by key treats two requests as the same when their keys are equal: the relation $K$ above. What should count as the same is the same key *and* the same payload: the relation $A$.
 `);
     m("let A = kernel({r1, r2, r3, r4}; r1->a, r2->a, r3->b, r4->c)");
     m("finer(A, K)", { work: true });
@@ -603,44 +757,53 @@ def Ex.simp : Ex → Ex
     ex("finer(T, U)", r`Is $T$ finer than $U$: does every class of $T$ lie inside a class of $U$?`, [r`Write out the classes of $U$, then look at the class of $T$ that contains $b$.`]);
     md(r`
 > [!summary]
-> A relation's properties are checked pair by pair, and a failure is a pair you can point at. Closures add exactly what a property forces. An equivalence relation is a partition, and comparing two of them (finer, coarser) is how you find out which things get merged that should not be.
+> A relation's properties are checked pair by pair, and a failure is a pair you can point at. A closure adds exactly what a property forces. An equivalence relation is a partition, and comparing two of them (finer, coarser) is how you find out which things get merged that should not be.
 `);
+    md(r`Induction ran along "one less than" and "is a part of", and both have a property the next lesson names: you cannot step down them forever. Which relations have it, and how do you prove that one does?`);
   });
 
-  add("09-well-founded.chalk", "Well-founded relations and termination", "No infinite descent: cycles as counterexamples, measures as proofs, and termination in Lean.", ({ sec, md, m, ex, lean, lx }) => {
+  add("09-well-founded.chalk", "Well-founded relations and termination", "No infinite descent: why a loop stops, cycles as counterexamples, measures as proofs, and termination in Lean.", ({ sec, md, m, ex, lean, lx }) => {
     sec("Well-founded relations and termination");
     md(r`
 > [!goal]
-> Recognize a well-founded relation, prove one with a measure, and prove that recursive functions terminate.
+> Recognize a relation with no infinite descent, prove it has none with a measure, and prove that recursive functions terminate.
 `);
+    md(r`Euclid's algorithm replaces $(a, b)$ by $(b, a \bmod b)$ until $b = 0$: $(48, 18)$, $(18, 12)$, $(12, 6)$, $(6, 0)$. Why does it stop for every input, not just this one? The second number goes down at every step, since $a \bmod b < b$, and a natural number cannot go down forever.`);
     md(r`
 > [!definition] Well-founded
 > Read $x \mathrel{R} y$ as "$x$ steps to $y$". $R$ is **well-founded** when there is no infinite chain of steps $x_0 \mathrel{R} x_1 \mathrel{R} x_2 \mathrel{R} \cdots$. On a finite set that means exactly: no cycle.
 `);
-    md(r`This is the setting of the last two lessons: induction is valid along any well-founded relation, because a counterexample could be followed down forever otherwise. $<$ on $\mathbb{N}$ is the familiar case.`);
+    md(r`This is what made the induction lessons work. Induction is valid along any well-founded relation: if $P$ failed somewhere, the step would point to a smaller place where it fails, and to a smaller one from there, an infinite descent. $<$ on $\mathbb{N}$ is lesson 6's case, and "is a part of" lesson 7's.`);
     m("let R = rel({a, b, c, d}; a->b, b->c, a->c, c->d)");
     m("wellfounded(R)", { work: true });
     m("let C = rel({x, y, z}; x->y, y->z, z->x)");
     m("wellfounded(C)", { work: true });
     sec("Measures");
+    md(r`On a big or infinite set you cannot follow every chain. Do what the Euclid argument did: find a number that goes down at every step.`);
     md(r`
 > [!theorem] A measure proves termination
 > If a function $m$ to the natural numbers goes down along every step ($x \mathrel{R} y$ gives $m(y) < m(x)$), $R$ is well-founded: an infinite chain of steps would be an infinite decreasing chain of natural numbers.
 `);
     m("measure(R; a->3, b->2, c->1, d->0)", { work: true });
     m("measure(R; a->3, b->2, c->2, d->0)", { work: true });
-    md(r`A cycle can have no measure: going round it would return to the same value having gone down.`);
+    md(r`
+> [!try]
+> Find a measure for the cycle $C$: numbers for $x$, $y$ and $z$ that go down along all three steps.
+`);
+    m("measure(C; x->2, y->1, z->0)", { work: true });
+    md(r`There is none: going round the cycle would come back to the same value, having gone down at every step. The measure has to land in the natural numbers, too. Into the integers, $0, -1, -2, \dots$ goes down forever, and so does $1, \frac12, \frac14, \dots$ in the rationals: a measure is only as good as the order it lands in.`);
     sec("Termination in Lean");
-    md(r`Lean accepts a recursive definition only when it can see that it stops. Structural recursion (on a smaller part) it checks itself; otherwise it asks for a measure with ‹termination_by› and, if needed, a proof that each call decreases it with ‹decreasing_by›.`);
+    md(r`Lean accepts a recursive definition only when it can see that it stops. Structural recursion (on a smaller part) it checks itself; otherwise it asks for a measure with ‹termination_by› and, if needed, a proof that each call decreases it with ‹decreasing_by›. Here is Euclid's algorithm with its measure:`);
     lean(r`def gcd' (a b : Nat) : Nat :=
   if _h : b = 0 then a else gcd' b (a % b)
 termination_by b
 decreasing_by exact Nat.mod_lt _ (by omega)
 
 #eval gcd' 48 18`);
+    md(r`Some functions have no single number that goes down. Ackermann's function calls itself with $m$ smaller and $n$ anything, or with $m$ the same and $n$ smaller:`);
     md(r`
 > [!definition] Lexicographic order
-> Pairs are compared by their first components, and by the second only when the first are equal. It is well-founded when both orders are, even though the second component can grow without bound whenever the first goes down.
+> Pairs are compared by their first components, and by the second only when the first are equal, as words are in a dictionary. It is well-founded when both orders are, even though the second component can grow without bound whenever the first goes down.
 `);
     lean(r`def ack : Nat → Nat → Nat
   | 0, n => n + 1
@@ -649,20 +812,20 @@ decreasing_by exact Nat.mod_lt _ (by omega)
 termination_by m n => (m, n)
 
 #eval ack 2 3`);
-    md(r`Ackermann's function: in every call either $m$ goes down, or $m$ stays and $n$ goes down. No single number measures it, but the pair does.`);
+    md(r`In every call either $m$ goes down, or $m$ stays and $n$ goes down. No single number measures it, but the pair does.`);
     sec("Exercises");
     m("let G = rel({s, t, u, v}; s->t, t->u, u->s, u->v)");
     ex("wellfounded(G)", r`Is $G$ well-founded? Answer ‹true› or ‹false›.`, [r`Follow the arrows from $s$.`]);
     m("let H = rel({1, 2, 3, 4, 5}; 5->3, 3->1, 4->2, 5->4, 2->1)");
-    ex("measure(H; 1->0, 2->1, 3->1, 4->2, 5->2)", r`Does the measure $1 \mapsto 0$, $2 \mapsto 1$, $3 \mapsto 1$, $4 \mapsto 2$, $5 \mapsto 2$ go down along every step of $H$?`, [r`Check each arrow: the number at its head must be smaller than at its tail.`]);
+    ex("measure(H; 1->0, 2->1, 3->1, 4->2, 5->2)", r`Does the measure $1 \mapsto 0$, $2 \mapsto 1$, $3 \mapsto 1$, $4 \mapsto 2$, $5 \mapsto 2$ go down along every step of $H$? Answer ‹true› or ‹false›.`, [r`Check each arrow: the number at its head must be smaller than at its tail.`]);
     lx(r`theorem half_lt (n : Nat) (h : 0 < n) : n / 2 < n := by`, r`Halving a positive number makes it smaller: the measure argument for binary search.`, r`  omega`, [r`‹omega› knows about division by a numeral.`]);
     md(r`
 > [!note] The engine's own termination proof
-> ChalkMath's simplifier never runs on a step budget. Every rule in its pipeline comes with a proof that it decreases a well-founded ordering on terms (‹pipelineOrdered› in the engine's Lean), the same argument as a measure, only the measure is an ordering on expression trees.
+> ChalkMath's simplifier never runs on a step budget. Every rule in its pipeline decreases a well-founded ordering on terms: proved in Lean (‹pipelineOrdered›), or, for rules that hand the work to code the ordering cannot see into (commands, matrix arithmetic), checked on each output. It is the same argument as a measure, only the measure is an ordering on expression trees.
 `);
     md(r`
 > [!summary]
-> Well-founded means no infinite descent; on a finite set, no cycle. A measure into the naturals proves it, a cycle refutes it, and Lean's ‹termination_by› is a measure written down.
+> Well-founded means no infinite descent; on a finite set, no cycle. A measure into the naturals proves it, a cycle refutes it, and Lean's ‹termination_by› is a measure written down. Every induction in this course ran along a well-founded relation.
 `);
   });
 }, { leanPrelude: true });

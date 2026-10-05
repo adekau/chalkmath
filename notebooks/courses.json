@@ -12,47 +12,47 @@
         {
           "file": "01-truth-tables.chalk",
           "title": "Propositions and truth tables",
-          "blurb": "Connectives, truth tables, tautologies, and satisfying assignments as witnesses."
+          "blurb": "Why “if … then” is defined the way it is, truth tables, tautologies, and satisfying assignments as witnesses."
         },
         {
           "file": "02-normal-forms.chalk",
           "title": "Equivalence and normal forms",
-          "blurb": "The laws of logic as rewrites: negation normal form, CNF and DNF, one law a step."
+          "blurb": "A formula for any truth table, read off its rows; then the laws of logic as rewrites: negation normal form, CNF and DNF, one law a step."
         },
         {
           "file": "03-natural-deduction.chalk",
           "title": "Proofs as Lean tactics",
-          "blurb": "Natural deduction in Lean: introduce and use each connective, and see proofs as programs."
+          "blurb": "Natural deduction in Lean: what it takes to prove each connective and what you can do with one, and proofs as programs."
         },
         {
           "file": "04-quantifiers.chalk",
           "title": "Predicates and quantifiers",
-          "blurb": "∀ and ∃ over finite sets, with the element that decides them; quantifiers in Lean."
+          "blurb": "∀ as a long ∧ and ∃ as a long ∨: counterexamples and witnesses, negation by De Morgan, the order of quantifiers, and quantifiers in Lean."
         },
         {
           "file": "05-induction.chalk",
           "title": "Induction on the natural numbers",
-          "blurb": "Weak induction: check a formula for small n, then prove it for all n in Lean."
+          "blurb": "Why checking is not enough, and induction as a recipe that produces a proof for any n: dominoes, sums, and proofs in Lean."
         },
         {
           "file": "06-strong-induction.chalk",
           "title": "Strong induction",
-          "blurb": "Course-of-values arguments: using every smaller case, and how strong induction, weak induction and well-ordering relate."
+          "blurb": "When the step needs more than the case before: prime factors, making change, and why strong induction, weak induction and well-ordering are one principle."
         },
         {
           "file": "07-structural-induction.chalk",
           "title": "Structural induction",
-          "blurb": "Induction on lists, trees and expressions, and a small simplifier proved sound."
+          "blurb": "The same idea for anything defined by constructors: lists, trees, expressions, and a small simplifier proved sound."
         },
         {
           "file": "08-relations.chalk",
           "title": "Relations",
-          "blurb": "Properties with counterexamples, closures step by step, equivalence classes and partitions, and a deduplication bug."
+          "blurb": "When do two things count as the same? Properties with counterexamples, closures as what you are forced to add, equivalence classes, and a deduplication bug."
         },
         {
           "file": "09-well-founded.chalk",
           "title": "Well-founded relations and termination",
-          "blurb": "No infinite descent: cycles as counterexamples, measures as proofs, and termination in Lean."
+          "blurb": "No infinite descent: why a loop stops, cycles as counterexamples, measures as proofs, and termination in Lean."
         }
       ]
     },

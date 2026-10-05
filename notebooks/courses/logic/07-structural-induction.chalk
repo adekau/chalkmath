@@ -9,19 +9,25 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Prove properties of recursive data (lists, trees, expressions) by induction on their structure, and prove a small program transformation correct.",
+      "src": "> [!goal]\n> Prove properties of recursive data (lists, trees, expressions) by induction on how they are built, and prove a small program transformation correct.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!definition] Structural induction\n> A type defined by constructors (a list is `[]` or `x :: xs`) has an induction principle with a case per constructor, and a hypothesis for each recursive part. To prove $P$ for every list: prove $P([\\,])$, and $P(xs) \\to P(x :: xs)$.",
+      "src": "Lesson 5 said Lean's induction on `Nat` is not an axiom: it comes from how `Nat` is built, from `zero` by `succ`. A base case for `zero`, a step for `succ`. Other types are built the same way. A list is either empty, `[]`, or an element in front of a shorter list, `x :: xs`.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "Natural numbers are the special case `zero` or `succ n`: the last two lessons were structural induction on `Nat`.",
+      "src": "> [!try]\n> Guess the induction principle for lists: what must you prove to know $P$ holds for every list?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Structural induction\n> A type defined by constructors has an induction principle with a case per constructor, and a hypothesis for each recursive part. For lists: prove $P([\\,])$, and $P(xs) \\to P(x :: xs)$ for every $x$ and $xs$. Natural numbers are the special case `zero` and `succ n`.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -39,7 +45,7 @@
       "label": null
     },
     {
-      "src": "Induction is on `xs`, the list that `++` recurses on: `(x :: xs) ++ ys = x :: (xs ++ ys)`, which is exactly where the hypothesis applies.",
+      "src": "Induction is on `xs`, the list that `++` recurses on: `(x :: xs) ++ ys = x :: (xs ++ ys)`, which is exactly where the hypothesis applies. Induction on `ys` would get stuck, since `++` does nothing with `ys` until `xs` runs out.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -57,7 +63,13 @@
       "label": null
     },
     {
-      "src": "A `node` has two recursive parts, so its case has two hypotheses, one for each subtree.",
+      "src": "> [!try]\n> A `node` is built from two smaller trees. How many induction hypotheses should its case get?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Two, one for each subtree: the recipe needs the property for both parts before it can build it for the whole.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -106,7 +118,7 @@
       "label": null
     },
     {
-      "src": "> [!note] Soundness is a fold\n> A simplifier is **sound** when it never changes what an expression means. ChalkMath's own engine is proved sound this way: each rewrite rule keeps the value, and a structural induction carries that through the whole term. Here is the same argument in miniature.",
+      "src": "> [!note] Soundness is a fold\n> A simplifier is **sound** when it never changes what an expression means. Checking examples cannot show that, for the reason lesson 4 gave; structural induction can: if simplifying the parts keeps their values, simplifying the whole does. ChalkMath's engine argues the same way: a rewrite rule proved to keep the value keeps it inside any larger term, by a structural induction, and the dot on a step says whether its rule has such a proof.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -127,6 +139,12 @@
     },
     {
       "src": "> [!summary]\n> Every inductive type comes with its own induction: a case per constructor and a hypothesis per recursive part. Lists, trees and syntax trees are proved about the same way as numbers, and \"a transformation keeps the meaning\" is a structural induction.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Every induction so far ran along a relation: \"is one less than\", \"is less than\", \"is a part of\". Which relations can induction run along? First, relations themselves, and what it means to close one up.",
       "type": "markdown",
       "showWork": false,
       "label": null

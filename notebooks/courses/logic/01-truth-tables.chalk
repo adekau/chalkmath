@@ -9,13 +9,25 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Read a formula of propositional logic, build its truth table, and decide whether it is always true, sometimes true, or never true, with a row that shows it.",
+      "src": "> [!goal]\n> Decide whether a formula is always, sometimes or never true, and point to the row that shows it.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!definition] Proposition, connective\n> A **proposition** is a statement that is either true or false. Variables $p, q, r$ stand for propositions, and the **connectives** build bigger ones: $\\lnot p$ (not), $p \\land q$ (and), $p \\lor q$ (or), $p \\to q$ (if … then), $p \\leftrightarrow q$ (if and only if). $\\top$ is true and $\\bot$ is false.",
+      "src": "> [!try]\n> \"If it rains, I bring an umbrella.\" Four days: rain and an umbrella, rain and none, dry and an umbrella, dry and none. On which of them did I break my word?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Only on the second. The promise says nothing about dry days, so they cannot break it. Hold on to that: it is what \"if … then\" means in logic.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Proposition, connective\n> A **proposition** is a statement that is either true or false. Variables $p, q, r$ stand for propositions, and **connectives** build bigger ones: $\\lnot p$ (not), $p \\land q$ (and), $p \\lor q$ (or), $p \\to q$ (if … then), $p \\leftrightarrow q$ (if and only if). $\\top$ is true and $\\bot$ is false.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -32,13 +44,7 @@
       "label": null
     },
     {
-      "src": "Truth tables",
-      "type": "section",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "> [!definition] Truth table\n> A formula's **truth table** lists every assignment of true and false to its variables, one row each, with the formula's value. $n$ variables make $2^n$ rows.",
+      "src": "A connective is defined by its value for each combination of values of its parts. For \"and\" and \"or\" there is nothing to argue about:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -54,13 +60,81 @@
       "label": null
     },
     {
-      "src": "> [!definition] Implication\n> $p \\to q$ is false in exactly one row: $p$ true and $q$ false. When $p$ is false the implication holds whatever $q$ is (\"vacuously\"): a promise \"if it rains, I bring an umbrella\" is not broken on a dry day.",
+      "src": "What \"if … then\" has to mean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "$p \\to q$ is false when $p$ is true and $q$ false: rain and no umbrella. The rows with $p$ false are settled by how mathematics uses \"if … then\". \"Every multiple of 4 is even\" means: for every $n$, if $4 \\mid n$ then $n$ is even. That is true, so the implication must be true for every $n$, the ones that are not multiples of 4 included. Read `∀ n ∈ 1..12` as \"for every $n$ from 1 to 12\" (lesson 4 is about it):",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "∀ n ∈ 1..12, 4 ∣ n → even(n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> Two natural guesses for \"if $p$ then $q$\" are \"$p$ and $q$\" and \"$p$ if and only if $q$\". Predict the $n$ at which each one makes this true statement false, then look.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "∀ n ∈ 1..12, 4 ∣ n ∧ even(n)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "∀ n ∈ 1..12, 4 ∣ n ↔ even(n)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "\"And\" fails at $n = 1$, where $p$ and $q$ are both false; \"if and only if\" fails at $n = 2$, where $p$ is false and $q$ true. For \"every multiple of 4 is even\" to come out true, both of those rows must be true. The table is forced: false in the one row that breaks the promise, true in the other three.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Implication\n> $p \\to q$ is false exactly when $p$ is true and $q$ is false. When $p$ is false it is true whatever $q$ is (**vacuously** true): a dry day keeps the promise.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
       "src": "truthtable(p → q)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Truth tables",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A formula's **truth table** lists every assignment of true and false to its variables, one row each, with the formula's value. One variable needs 2 rows, two need 4.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> How many rows does a formula in $p$, $q$ and $r$ need? One in 10 variables?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "truthtable((p → q) ∧ (q → r) → (p → r))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Each new variable doubles the count, since every old row appears once with it true and once with it false: $n$ variables make $2^n$ rows, and 10 make 1024. This formula is true in all 8 rows: if $p$ gives $q$ and $q$ gives $r$, then $p$ gives $r$, whatever $p$, $q$ and $r$ say.",
+      "type": "markdown",
       "showWork": false,
       "label": null
     },
@@ -77,7 +151,13 @@
       "label": null
     },
     {
-      "src": "`taut` decides by the table. When the answer is ⊥ the step names the row that falsifies it.",
+      "src": "> [!try]\n> $(p \\to q) \\lor (q \\to p)$ says \"of any two statements, one implies the other\". That sounds false. Is it a tautology? Decide before you look.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`taut` decides by the table; when the answer is ⊥, the step names a row that falsifies the formula.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -88,17 +168,18 @@
       "label": null
     },
     {
+      "src": "It is: if $q$ is true then $p \\to q$ is, and if $q$ is false then $q \\to p$ is. The implication of logic asks only about truth values, never about a connection between $p$ and $q$. A single implication is not a tautology, and the step shows the row that breaks it:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "taut(p → q)",
       "showWork": true,
       "label": null
     },
     {
-      "src": "truthtable((p → q) ∧ (q → r) → (p → r))",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "`sat` gives a satisfying assignment, as a map from each variable to its value, or ⊥ when there is none; `falsify` gives a counterexample the same way.",
+      "src": "`sat` gives a witness, as a map from each variable to its value, or ⊥ when there is none; `falsify` gives a counterexample the same way.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -125,7 +206,7 @@
       "label": null
     },
     {
-      "src": "> [!mistake]\n> $p \\to q$ does not say $q \\to p$ (the **converse**). \"If $n$ is divisible by 4 then $n$ is even\" is true; \"if $n$ is even then $n$ is divisible by 4\" is not. `equiv` decides whether two formulas have the same table, and names a row where they differ:",
+      "src": "> [!mistake]\n> A common slip is to read $p \\to q$ as saying $q \\to p$ as well (the **converse**). \"If $n$ is divisible by 4 then $n$ is even\" is true; \"if $n$ is even then $n$ is divisible by 4\" is not ($n = 2$). `equiv` decides whether two formulas have the same table, and names a row where they differ:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -136,7 +217,7 @@
       "label": null
     },
     {
-      "src": "The **contrapositive** $\\lnot q \\to \\lnot p$ is equivalent, which is why a proof \"suppose not $q$ … then not $p$\" proves $p \\to q$.",
+      "src": "What does follow is the **contrapositive** $\\lnot q \\to \\lnot p$: if $q$ failed, $p$ cannot have held, or the promise was broken. That is why a proof \"suppose not $q$ … then not $p$\" proves $p \\to q$.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -153,7 +234,7 @@
       "label": null
     },
     {
-      "src": "Answer `true` or `false` (or ⊤, ⊥) for `taut` and `equiv`. For `sat` and `falsify`, give an assignment, as a map such as `{p ↦ true, q ↦ false}` or as a conjunction of literals such as `p ∧ ¬q`; any assignment that works is right.",
+      "src": "Answer `true` or `false` (or ⊤, ⊥) for `taut` and `equiv`. For `sat` and `falsify`, give an assignment, as a map such as `{p ↦ true, q ↦ false}` or as a conjunction of literals such as `p ∧ ¬q`; any assignment that works is right. Where a formula is asked for, any formula with the right truth table is right.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -199,6 +280,18 @@
       "label": null
     },
     {
+      "src": "¬(p ↔ q)",
+      "type": "exercise",
+      "prompt": "Invent a connective: write a formula that is true when exactly one of $p$, $q$ is true (\"exclusive or\").",
+      "hints": [
+        "\"At least one\" is $p \\lor q$. Which row of $p \\lor q$ is true but should not be?",
+        "Rule that row out: $(p \\lor q) \\land \\lnot(\\ldots)$."
+      ],
+      "hideQuestion": true,
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "Knights and knaves",
       "type": "section",
       "showWork": false,
@@ -223,7 +316,13 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> A propositional formula is decided by its truth table: true in every row (a tautology), in some row (satisfiable, with a witness), or in none (a contradiction). A counterexample is a single row, and one is enough.",
+      "src": "> [!summary]\n> A connective is its truth table, and the table of $\\to$ is forced: it is the only one that makes \"every multiple of 4 is even\" true. A formula is decided by its table: true in every row (a tautology), in some row (satisfiable, with a witness), or in none (a contradiction). One row is a counterexample, and one is enough.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "This lesson went from a formula to its table. The next goes the other way: given any table at all, is there a formula that has it?",
       "type": "markdown",
       "showWork": false,
       "label": null
