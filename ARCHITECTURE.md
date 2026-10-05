@@ -571,6 +571,17 @@ language server answers LSP for Lean cells.
   size, and the files' URLs change with every deploy), so they are downloaded again only when Lean changes. The site gets Lean from a
   release `lean-wasm.yml` publishes whenever Lean's build inputs change (`scripts/lean-wasm-key.sh` names it),
   so a deploy does not spend two hours building it.
+- **Memory.** Running, Lean takes over a gigabyte: its heap (the library's oleans read into it, 512 MB to
+  start with), the library in its filesystem (~280 MB), the module, and the pool's 32 workers. The worker
+  unpacks the library as it decompresses, into one array per file, which the filesystem keeps rather than
+  copying (`canOwn`): reading the whole pack into one buffer and copying the files out of it held the
+  library three times over at the peak, 250 MB more. A browser that stops a page for its memory (iOS
+  Safari does, and reloads it, and gives up after a few tries with "A problem repeatedly occurred") would
+  otherwise stop it again on every load, since the page restores the lesson and the lesson starts Lean.
+  So the notebook marks Lean as starting (`localStorage`) until it has checked its first document, and
+  clears the mark when Lean stops on its own and when the page is left (`pagehide`, which a page the
+  browser stops never fires). A page that loads with the mark set holds Lean: its Lean cells say why, with
+  a button that starts it, and the rest of the notebook works (`lean-cells.ts`).
 
 ## 4c. Lookups (`?` cells)
 

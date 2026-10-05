@@ -790,6 +790,30 @@ async function features() {
   await page.locator(".lessonbar .lbkept").waitFor({ timeout: 10000 });
   await page.locator(".lessonbar .lbbtn", { hasText: "Start over" }).waitFor({ timeout: 10000 });
   console.log("✓ lesson: never unsaved, closed without asking, reopened with its answer kept");
+  // Lean held: a page loaded after the browser stopped the one before it while Lean was starting (the mark
+  // lean-cells.ts keeps until Lean has checked its first document) does not start Lean again by itself; a
+  // Lean cell says why, and a button starts it (in a page of its own: the mark is read as the page loads)
+  const MARK = "chalkmath.lean.starting";
+  await page.evaluate((k) => localStorage.setItem(k, "1"), MARK);
+  const again = await page.context().newPage();
+  try {
+    await again.goto(`${base}/`);
+    await again.locator(".menus span", { hasText: "File" }).click();
+    await again.locator(".dropdown .item", { hasText: "New notebook" }).click();
+    await again.locator(".menus span", { hasText: "Edit" }).click();
+    await again.locator(".dropdown .item", { hasText: "Add Lean cell" }).click();
+    const note = again.locator(".cell.lean .leanstate.held");
+    await note.waitFor({ timeout: 10000 });
+    assert.match(await note.textContent(), /the browser stopped the page/, "the held Lean cell says why");
+    assert.equal(again.workers().some((w) => w.url().includes("lean-server")), false, "Lean's server started although it was held");
+    await note.locator("button", { hasText: "Start Lean" }).click();
+    await again.waitForFunction(() => !document.querySelector(".leanstate.held"), null, { timeout: 10000 });
+    assert.equal(await again.evaluate((k) => localStorage.getItem(k), MARK), null, "starting Lean on request clears the mark");
+  } finally {
+    await page.evaluate((k) => localStorage.removeItem(k), MARK);
+    await again.close();
+  }
+  console.log("✓ Lean held after the page stopped while it started: said so, and started on request");
 }
 
 let failed = false;

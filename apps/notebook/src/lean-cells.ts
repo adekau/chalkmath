@@ -20,7 +20,8 @@ declare const __LEAN_BUILT__: boolean;
 const stamp = typeof __BUILD_ID__ === "string" ? __BUILD_ID__ : "dev";
 const PREF = "chalkmath.lean";
 
-export type LeanState = "off" | "isolating" | "starting" | "ready" | "failed";
+/** `held`: not started, because the page stopped the last time Lean started in it (see `STARTING`). */
+export type LeanState = "off" | "isolating" | "starting" | "ready" | "failed" | "held";
 let state: LeanState = "off";
 let failure = "";
 let session: LeanNotebook | null = null;
@@ -72,12 +73,33 @@ let hooks: LeanHooks | null = null;
 /** The theme Lean should show: the notebook's, which can change after Lean has started. */
 let dark = true;
 
-const setState = (s: LeanState, why = "") => { state = s; failure = why; hooks?.onState(); };
+const setState = (s: LeanState, why = "") => {
+  state = s; failure = why;
+  if (s === "failed") settled();   // ("ready" is the editor: Lean itself is still loading)
+  hooks?.onState();
+};
 const notStarted = (why: string) => setState("failed", `Lean did not start: ${why}`);
 /** A browser gives each of its threads a small stack (Chromium: 500 KB to a worker, against the 8 MB Lean's
  *  threads have natively), and Lean compiled to wasm needs more of it per level of recursion than native
  *  Lean: Lean that elaborates deep enough runs out of it, and the thread's error stops the whole server. */
 const OUT_OF_STACK = "it ran out of stack. A browser gives Lean far less stack than it has natively, and something here nests too deeply for it (a long do block, say: smaller definitions help)";
+
+/** Set while Lean starts, until it has checked its first document, and cleared when the page is left. A page
+ *  that finds it set was loaded after the browser stopped the page before it while Lean was starting:
+ *  out of memory, most likely (Lean and its library take over a gigabyte; iOS Safari ends such a page,
+ *  reloads it, and gives up with "A problem repeatedly occurred" once Lean has stopped it a few times).
+ *  Lean then waits to be asked, so the rest of the notebook still works. */
+const STARTING = "chalkmath.lean.starting";
+const HELD = "Lean did not start: the last time it started here, the browser stopped the page, most likely because Lean needs more memory than it allows a page (over a gigabyte)";
+const marked = () => { try { return localStorage.getItem(STARTING) !== null; } catch { return false; } };
+const mark = (on: boolean) => { try { if (on) localStorage.setItem(STARTING, String(Date.now())); else localStorage.removeItem(STARTING); } catch { /* private mode */ } };
+/** Whether Lean is starting in this page: the mark is set while it is and the page is shown. */
+let marking = false;
+/** Lean has checked its first document, or stopped on its own. */
+const settled = () => { if (marking) { marking = false; mark(false); } };
+addEventListener("pagehide", () => { if (marking) mark(false); });
+addEventListener("pageshow", () => { if (marking) mark(true); });   // back from the back-forward cache
+let held = marked();
 
 /** Browsers that honor `Cross-Origin-Embedder-Policy: credentialless`, which leaves images from other
  *  sites loading (require-corp, Safari's only option, blocks those that do not opt in). */
@@ -113,11 +135,13 @@ export function ensureLean(h: LeanHooks): Promise<LeanNotebook | null> {
   hooks = h;
   if (starting) return starting;
   dark = h.dark;
+  if (held) { if (state !== "held") setState("held", HELD); return Promise.resolve(null); }
   if (typeof __LEAN_BUILT__ === "boolean" && !__LEAN_BUILT__) {
     notStarted("this copy of ChalkMath was built without Lean itself (npm run lean-wasm, then npm run bundle)");
     return Promise.resolve(null);
   }
   if (!self.crossOriginIsolated) { void isolate(); return Promise.resolve(null); }
+  marking = true; mark(true);
   setState("starting");
   setProgress({ phase: "editor" });
   starting = (async () => {
@@ -128,7 +152,7 @@ export function ensureLean(h: LeanHooks): Promise<LeanNotebook | null> {
       const bc = new BroadcastChannel(channel);
       bc.onmessage = (e: MessageEvent<{ phase: string; loaded?: number; total?: number }>) => {
         const p = e.data;
-        if (p.phase === "done") bc.close();
+        if (p.phase === "done") { bc.close(); settled(); }
         setProgress(p.phase === "download" ? { phase: "download", loaded: p.loaded!, total: p.total! }
           : p.phase === "checking" ? { phase: "checking" } : null);
       };
@@ -169,6 +193,13 @@ export function ensureLean(h: LeanHooks): Promise<LeanNotebook | null> {
     }
   })();
   return starting;
+}
+
+/** Starts Lean when it was held (`STARTING`): the reader asked to try again. */
+export function startLeanAnyway(h: LeanHooks): Promise<LeanNotebook | null> {
+  held = false;
+  mark(false);
+  return ensureLean(h);
 }
 
 /** The version Lean last reported on, and whether it was still checking it. */

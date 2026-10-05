@@ -27,7 +27,7 @@ import { manimOfScene } from "./scene-manim.js";
 import { parseScene, numberRequests as sceneNumberRequests, sampleRequests as sceneSampleRequests, numbersOf as sceneNumbersOf, vectorsOf as sceneVectorsOf, build as buildScene, frameAt as sceneFrameAt, SceneError, type SceneData, type Item as SceneItem, type XY } from "./scene.js";
 import { DOC_PAGES, type DocPage, type DocPart } from "./docs.js";
 import { FUNCTIONS, FN_BY_NAME, AREAS, fnPage, evaluable, type FnDoc, type ExampleSection } from "./reference.js";
-import { ensureLean, syncLean, mountLean, unmountLean, focusLean, setLeanDark, infoview as leanInfoview, leanState, leanFailure, leanStoppedAt, leanProgress, leanChecked, initLeanIsolation, type LeanMessage } from "./lean-cells.js";
+import { ensureLean, syncLean, mountLean, unmountLean, focusLean, setLeanDark, infoview as leanInfoview, leanState, leanFailure, leanStoppedAt, leanProgress, leanChecked, initLeanIsolation, startLeanAnyway, type LeanMessage } from "./lean-cells.js";
 /** The one trusted KaTeX command is `\htmlData`, which carries the engine's subterm paths. LaTeX can
  *  come from a file someone else wrote (saved outputs render before any re-run), and a blanket
  *  `trust: true` would let it add `\href{javascript:…}`, arbitrary styles, or remote images. */
@@ -4628,17 +4628,31 @@ function leanStoppedHere(cell: Cell): string {
   return "";
 }
 
+/** Why Lean is not running, said on a Lean cell: it stopped (and where), the page reloads to prepare for it,
+ *  or it is held because the page stopped the last time it started, with a button that starts it. */
+function leanStateNote(cell: Cell): HTMLElement | null {
+  const st = leanState();
+  if (st === "held") {
+    const note = h("div", "leanstate held", `${leanFailure()}. `);
+    const go = h("button", "smallbtn", "Start Lean");
+    go.addEventListener("click", () => void startLeanAnyway(leanHooks()));
+    note.append(go);
+    return note;
+  }
+  if (st === "failed") return h("div", "leanstate failed", `${leanFailure()}${leanStoppedHere(cell)}`);
+  if (st === "isolating") return h("div", "leanstate isolating", "Preparing the page for Lean: it reloads once.");
+  return null;
+}
+
 /** A Lean cell's output: what Lean says about its lines (an #eval's value, errors, warnings); the goals
  *  at the cursor are in the panel's Lean goals tab. */
 function renderLeanBody(cell: Cell) {
   const el = cell.el; if (!el) return;
   const body = el.querySelector(".cellbody") as HTMLElement;
   body.innerHTML = "";
-  const st = leanState();
-  if (st === "failed" || st === "isolating") {
-    body.append(h("div", `leanstate ${st}`,
-      st === "failed" ? `${leanFailure()}${leanStoppedHere(cell)}` : "Preparing the page for Lean: it reloads once."));
-  } else if (S.cells.find(isLeanCell) === cell) {
+  const note = leanStateNote(cell);
+  if (note) body.append(note);
+  else if (S.cells.find(isLeanCell) === cell) {
     const status = leanStatus();
     if (status) body.append(status);
   }
@@ -5264,7 +5278,8 @@ function renderLeanExercise(cell: Cell, box: HTMLElement) {
   below.innerHTML = "";
   if (S.cells.find(isLeanCell) === cell) { const st = leanStatus(); if (st) below.append(st); }
   const state = leanState();
-  if (state === "failed" || state === "isolating") below.append(h("div", `leanstate ${state}`, state === "failed" ? `${leanFailure()}${leanStoppedHere(cell)}` : "Preparing the page for Lean: it reloads once."));
+  const note = leanStateNote(cell);
+  if (note) below.append(note);
   // what Lean says about the proof (its lines), and the statement's own errors (an unproved goal is reported at `by`)
   const ms = [...(cell.leanStmtMessages ?? []).filter((m) => m.severity === "error").map((m) => ({ ...m, where: "statement" })),
     ...(cell.leanMessages ?? []).map((m) => ({ ...m, where: `${m.line}:${m.column}` }))];
@@ -5275,7 +5290,7 @@ function renderLeanExercise(cell: Cell, box: HTMLElement) {
   }
   const v = cell.verdict;
   const verdict = h("div", "xc-verdict");
-  if (state !== "ready") verdict.append(h("span", "xc-pending", state === "failed" ? "" : "Waiting for Lean…"));
+  if (state !== "ready") verdict.append(h("span", "xc-pending", state === "failed" || state === "held" ? "" : "Waiting for Lean…"));
   else if (!leanChecked()) { verdict.classList.add("old"); verdict.append(h("span", "xc-pending", "Lean is checking…")); }
   else if (v?.equivalent) { verdict.classList.add("right"); verdict.append(h("span", "xc-mark", "✓"), document.createTextNode(" Proved: Lean accepts the proof, and nothing is left as sorry.")); }
   else if (v) { verdict.classList.add("wrong"); verdict.append(h("span", "xc-mark", "✗"), document.createTextNode(` Not yet: ${v.error?.message ?? "Lean does not accept the proof"}.`)); }
