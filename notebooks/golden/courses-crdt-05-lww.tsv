@@ -1,4 +1,9 @@
-4	let Naive = op({w1, w2}; [w1, w2; w1, w2])	= [w1, w2; w1, w2]
-5	commutative(Naive)	= false
-8	replicas(lww; a, b\n  a: write red @ 5\n  b: write blue @ 3\n  a -> b\n  b -> a\n)	= {a↦red, b↦red}
-21	associative(Naive)	= true
+5	let Naive = op({w1, w2}; [w1, w2; w1, w2])	= [w1, w2; w1, w2]
+6	commutative(Naive)	= false
+8	let Lex = op({w3a, w3b, w5a}; [w3a, w3b, w5a; w3b, w3b, w5a; w5a, w5a, w5a])	= [w3a, w3b, w5a; w3b, w3b, w5a; w5a, w5a, w5a]
+9	semilattice(Lex)	= true
+13	replicas(lww; a, b\n  a: write red @ 5\n  b: write blue @ 3\n  a -> b\n  b -> a\n)	= {a↦red, b↦red}
+15	replicas(lww; a, b\n  a: write red @ 3\n  b: write blue @ 3\n  a -> b\n  b -> a\n)	= {a↦blue, b↦blue}
+18	replicas(lww; a, b\n  a: write 1\n  b: write 1\n  a -> b\n  b -> a\n)	= {a↦1, b↦1}
+32	associative(Naive)	= true
+33	fold(Lex; w3a, w3b, w3a)	= w3b

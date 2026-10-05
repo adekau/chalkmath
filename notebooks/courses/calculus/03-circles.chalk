@@ -33,7 +33,7 @@
       "label": null
     },
     {
-      "src": "clock t from 0 to 2pi\nC = curve(exp(i*s), s, 0, 2pi) faint color 6\nP = point(exp(i*t)) thick color 1\nW = trace(P) color 1\nR = arrow(0, P) color 1\nL = label(P, \"\\cos t + i \\sin t\") color 1\nX = point(cos(t)) color 2\nDX = segment(P, X) dashed color 2\nY = point(i*sin(t)) color 3\nDY = segment(P, Y) dashed color 3\n> show C | The unit circle: every point at distance $1$ from $0$.\n> show P, R, L, W; play t to 0.7 in 2s | Walk a distance $t$ round it, counterclockwise from $1$. Where you stand is $\\cos t + i \\sin t$.\n> show X, DX, Y, DY | The **cosine** is your shadow on the horizontal axis (blue), the **sine** your shadow on the vertical one (green).\n> play t to pi/2 in 2s | A quarter of the way round, at $t = \\pi/2$, the sine is at its peak and the cosine is $0$.\n> play t to 2pi in 5s | Once round: each shadow swings between $-1$ and $1$, a quarter turn behind the other.",
+      "src": "clock t from 0 to 2pi\nC = curve(exp(i*s), s, 0, 2pi) faint color 6\nP = point(exp(i*t)) thick color 1\nW = trace(P) color 1\nR = arrow(0, P) color 1\nL = label(P, \"\\cos t + i \\sin t\") color 1\nX = point(cos(t)) color 2\nDX = segment(P, X) dashed color 2\nY = point(i*sin(t)) color 3\nDY = segment(P, Y) dashed color 3\n> show C | The unit circle: every point at distance $1$ from $0$.\n> show P, R, L, W; play t to 0.7 in 2s | Walk a distance $t$ round it, counterclockwise from $1$. Where you stand is $\\cos t + i \\sin t$.\n> show X, DX, Y, DY | The **cosine** is your shadow on the horizontal axis (blue), the **sine** your shadow on the vertical one (green).\n> play t to pi/2 in 2s | A quarter of the way round, at $t = \\pi/2$, the sine is at its peak and the cosine is $0$.\n> play t to 2pi in 5s | Once round: each shadow swings between $-1$ and $1$, the sine a quarter turn behind the cosine.",
       "type": "scene",
       "showWork": false,
       "label": null
@@ -261,13 +261,13 @@
       "label": null
     },
     {
-      "src": "So `arctan` measures an angle, and its derivative $\\dfrac{1}{1 + y^2}$ is how fast the angle grows as the point climbs the line through $1$. Adding those small turns from $y = 0$ to $y = 1$ gives the angle to $1 + i$, an eighth of a turn, $\\pi/4$; four of them make $\\pi$.",
+      "src": "So `arctan` measures an angle, and its derivative $\\dfrac{1}{1 + y^2}$ is how fast the angle grows as the point climbs the vertical line through $1$. Adding those small turns from $y = 0$ to $y = 1$ gives the angle to $1 + i$, an eighth of a turn, $\\pi/4$; four of them make $\\pi$.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "clock y from 0.01 to 1\nview -0.3, 1.5, -0.25, 1.15\nC = curve(exp(i*s), s, 0, pi/2) faint color 6\nK = segment(1, 1 + i) faint color 6\nAR = curve(0.35*exp(i*s), s, 0, arctan(y)) thick color 2\nLA = label(0.36*exp(i*arctan(y)/2), \"\\arctan y\") color 2\nR = arrow(0, P) color 1\nP = point(1 + i*y) thick color 1\nLP = label(P, \"1 + iy\") color 1\n> show C, K, R, P, LP | A point climbing the line through $1$: the point $1 + iy$.\n> show AR, LA | Its angle from the real axis is $\\arctan y$.\n> play y to 1 in 6s | The angle grows fast at first and slower as the point climbs, at the rate $\\frac{1}{1 + y^2}$. At $y = 1$ it is an eighth of a turn, $\\pi/4$.",
+      "src": "clock y from 0.01 to 1\nview -0.3, 1.5, -0.25, 1.15\nC = curve(exp(i*s), s, 0, pi/2) faint color 6\nK = segment(1, 1 + i) faint color 6\nAR = curve(0.35*exp(i*s), s, 0, arctan(y)) thick color 2\nLA = label(0.36*exp(i*arctan(y)/2), \"\\arctan y\") color 2\nR = arrow(0, P) color 1\nP = point(1 + i*y) thick color 1\nLP = label(P, \"1 + iy\") color 1\n> show C, K, R, P, LP | A point climbing the vertical line through $1$: the point $1 + iy$.\n> show AR, LA | Its angle from the real axis is $\\arctan y$.\n> play y to 1 in 6s | The angle grows fast at first and slower as the point climbs, at the rate $\\frac{1}{1 + y^2}$. At $y = 1$ it is an eighth of a turn, $\\pi/4$.",
       "type": "scene",
       "showWork": false,
       "label": null
@@ -289,7 +289,7 @@
       "label": null
     },
     {
-      "src": "A sum of terms $c_k e^{ikt}$ is circles riding on circles, each turning $k$ times per lap, with radius $|c_k|$. `epicycles` draws them; enough of them draw any closed curve, which is what the *Llamas* notebook does.",
+      "src": "A sum of terms $c_k e^{ikt}$ is circles riding on circles, each turning $k$ times per lap, with radius $|c_k|$. `epicycles` draws them; enough of them trace any closed curve you can draw, as closely as you like, which is what the *Llamas* notebook does.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -343,7 +343,7 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> Multiplying by $i$ turns a quarter, so a rate of $i$ times the position goes round a circle: $e^{it} = \\cos t + i\\sin t$. The derivatives of $\\cos$ and $\\sin$, the angle-sum formulas and $\\arctan$ as an angle all come from that walk.",
+      "src": "> [!summary]\n> Multiplying by $i$ turns a quarter, so a rate of $i$ times the position goes round a circle: $e^{it} = \\cos t + i\\sin t$. The derivatives of $\\cos$ and $\\sin$, the angle-sum formulas and $\\arctan$ as an angle all come from that walk. Now flip one sign: $x^2 - y^2 = 1$ is a hyperbola. What walks it the way $(\\cos t, \\sin t)$ walks the circle, and what does $t$ measure there, where it cannot be an angle?",
       "type": "markdown",
       "showWork": false,
       "label": null

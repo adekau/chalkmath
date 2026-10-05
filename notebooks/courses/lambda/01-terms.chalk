@@ -9,25 +9,56 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Read and write λ-terms: know where a function's body ends, how applications group, and what a term means as a tree.",
+      "src": "> [!goal]\n> Read and write λ-terms, and take a first step of computation with them.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!definition] λ-terms\n> A **term** is one of three things: a **variable** $x$; a **function** (an abstraction) $\\lambda x.\\, M$, which takes $x$ and gives $M$; or an **application** $M\\ N$, the function $M$ applied to the argument $N$. Nothing else: no numbers, no booleans, no names for functions. Everything else will be built from these three.",
+      "src": "What if functions were the only thing? No numbers, no booleans, no loops, no data: only functions, which take a function and give back a function. It sounds too little to compute anything with. This course shows it is enough: by lesson 7 these functions count, add and choose, and by lesson 8 they loop. First, what would such programs look like?",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "Type λ as `\\lam` then space, or a backslash: `\\x. x` is $\\lambda x.\\, x$. Three conventions keep the parentheses down:\n\n- application groups to the left: $f\\ a\\ b$ is $(f\\ a)\\ b$;\n- a λ's body reaches as far right as it can: $\\lambda x.\\, f\\ x$ is $\\lambda x.\\, (f\\ x)$, not $(\\lambda x.\\, f)\\ x$;\n- $\\lambda x\\ y.\\, M$ is short for $\\lambda x.\\, \\lambda y.\\, M$, a function returning a function.\n\nA cell with only a term prints it back with as few parentheses as these rules allow.",
+      "src": "Functions without names",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Start from a function you know, $f(x) = x + 1$. The name $f$ is not needed to say what it does: write $x \\mapsto x + 1$, or in Church's notation $\\lambda x.\\, x + 1$. Now take away $+$ and $1$, since there are only functions. Three things are left to write:",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "λx y z. x z (y z)",
+      "src": "> [!definition] λ-terms\n> A **term** is one of three things: a **variable** $x$; a **function** (an abstraction) $\\lambda x.\\, M$, which takes $x$ and gives $M$; or an **application** $M\\ N$, the function $M$ applied to the argument $N$, written side by side with no brackets round the argument. Nothing else: everything else will be built from these three.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Type λ as `\\lam` then space, or a backslash: `\\x. x` is $\\lambda x.\\, x$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Two arguments, and the parentheses",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> Every function here takes one argument. How would you write a function of two, such as $(x, y) \\mapsto x$?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Take $x$ and give back a function that takes $y$: $\\lambda x.\\, \\lambda y.\\, x$. Giving it $a$ and then $b$ is $((\\lambda x.\\, \\lambda y.\\, x)\\ a)\\ b$. Functions returning functions are everywhere, so three conventions keep the parentheses down:\n\n- application groups to the left: $f\\ a\\ b$ is $(f\\ a)\\ b$, the arguments taken one at a time;\n- a λ's body reaches as far right as it can: $\\lambda x.\\, f\\ x$ is $\\lambda x.\\, (f\\ x)$, not $(\\lambda x.\\, f)\\ x$;\n- $\\lambda x\\ y.\\, M$ is short for $\\lambda x.\\, \\lambda y.\\, M$.\n\nA cell with only a term prints it back with as few parentheses as these rules allow (the reading beside the first is a preview of lesson 7):",
+      "type": "markdown",
       "showWork": false,
       "label": null
     },
@@ -37,8 +68,19 @@
       "label": null
     },
     {
+      "src": "λx y z. x z (y z)",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "A first β-step",
       "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "With nothing but functions, the only thing that can happen is a function meeting its argument. What should $(\\lambda x.\\, M)\\ N$ become? What $f(3)$ becomes for $f(x) = x + 1$: the body, with the argument put in for the parameter.",
+      "type": "markdown",
       "showWork": false,
       "label": null
     },
@@ -54,7 +96,19 @@
       "label": null
     },
     {
-      "src": "Application groups left, so the identity is applied to $\\lambda y.\\, y$ first, and the result to $z$:",
+      "src": "> [!try]\n> $\\lambda x.\\, \\lambda y.\\, x$ takes two arguments. Which one does it give back? Predict $(\\lambda x.\\, \\lambda y.\\, x)\\ a\\ b$, then step through it.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "(λx. λy. x) a b",
+      "showWork": true,
+      "label": null,
+      "stepwise": 0
+    },
+    {
+      "src": "Application groups left, so here the identity is applied to $\\lambda y.\\, y$ first, and the result to $z$:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -66,7 +120,7 @@
       "stepwise": 0
     },
     {
-      "src": "A redex can sit inside a function body; normal order (the engine's default, lesson 5) reduces it there too:",
+      "src": "A redex can sit inside a function body; the engine reduces it there too (which redex goes first is lesson 5's question):",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -83,7 +137,7 @@
       "label": null
     },
     {
-      "src": "This course builds an interpreter for the λ-calculus in Lean, a piece per lesson; each lesson's Lean sees the lessons' before it. First the terms: an inductive type with one constructor per kind of term.",
+      "src": "This course builds an interpreter for the λ-calculus in Lean, a piece per lesson; each lesson's Lean sees the Lean of the lessons before it. First the terms: an inductive type with one constructor per kind of term.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -114,17 +168,17 @@
       "label": null
     },
     {
-      "src": "Reduce each term to the end. An answer is compared after reducing it too, so any name for a bound variable is right.",
+      "src": "Reduce until no redex is left, and write the result. Answers are compared up to the names of bound variables, so $\\lambda a.\\, a$ is as good as $\\lambda x.\\, x$; an answer that still has a redex in it is sent back.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "(λx. λy. x) a b",
+      "src": "(λx. λy. y) a b",
       "type": "exercise",
-      "prompt": "Reduce $(\\lambda x.\\, \\lambda y.\\, x)\\ a\\ b$.",
+      "prompt": "Reduce $(\\lambda x.\\, \\lambda y.\\, y)\\ a\\ b$.",
       "hints": [
-        "Application groups left: first $(\\lambda x.\\, \\lambda y.\\, x)\\ a$."
+        "Application groups left: first $(\\lambda x.\\, \\lambda y.\\, y)\\ a$, which throws $a$ away."
       ],
       "showWork": false,
       "label": null
@@ -150,7 +204,19 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> Terms are variables, functions and applications. Application groups left and a λ reaches right. Computation is the β-step: a function applied to an argument becomes its body, with the argument put in.",
+      "src": "λf. λx. f (f x)",
+      "type": "exercise",
+      "prompt": "Write a function that takes $f$ and then $x$, and applies $f$ to $x$ twice.",
+      "hints": [
+        "Two parameters: $\\lambda f.\\, \\lambda x.\\, \\ldots$",
+        "Applying $f$ twice is $f\\ (f\\ x)$."
+      ],
+      "hideQuestion": true,
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Terms are variables, functions and applications. A function of two arguments is a function returning a function, so application groups left; a λ reaches right. Computation is the β-step: a function applied to an argument becomes its body, with the argument put in.\n\nIn $\\lambda x.\\, x\\ y$, the $x$ is the function's own. Where does $y$ come from? Lesson 2 sorts the variables a function owns from those it does not.",
       "type": "markdown",
       "showWork": false,
       "label": null

@@ -9,13 +9,29 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Read and decide statements with $\\forall$ and $\\exists$ over a finite set, find the counterexample or the witness, negate them, and prove simple ones in Lean.",
+      "src": "> [!goal]\n> Read $\\forall$ as a long $\\land$ and $\\exists$ as a long $\\lor$; find the counterexample or the witness; negate them; prove simple ones in Lean.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!definition] Quantifiers\n> $\\forall n \\in S,\\ \\varphi(n)$ says $\\varphi$ holds for every $n$ in $S$; $\\exists n \\in S,\\ \\varphi(n)$ says it holds for at least one. A $\\forall$ is refuted by one **counterexample**; an $\\exists$ is proved by one **witness**.",
+      "src": "\"Every multiple of 4 is even\", \"some prime is even\": statements like these are about a whole set of things at once. Over a small set they are formulas you already know. \"For every $n$ in $\\{1, 2, 3\\}$, $n^2 \\ge 2n$\" says three things joined by $\\land$:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "∀ n ∈ {1, 2, 3}, n^2 ≥ 2n",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "(1^2 ≥ 2*1) ∧ (2^2 ≥ 2*2) ∧ (3^2 ≥ 2*3)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Quantifiers\n> $\\forall n \\in S,\\ \\varphi(n)$ says $\\varphi$ holds for every $n$ in $S$: over $S = \\{1, 2, 3\\}$ it is $\\varphi(1) \\land \\varphi(2) \\land \\varphi(3)$. $\\exists n \\in S,\\ \\varphi(n)$ says it holds for at least one: $\\varphi(1) \\lor \\varphi(2) \\lor \\varphi(3)$. So a $\\forall$ is refuted by one false case, a **counterexample**, and an $\\exists$ is proved by one true case, a **witness**.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -42,6 +58,68 @@
       "label": null
     },
     {
+      "src": "Negation",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> What is \"not every $n$ has $\\varphi(n)$\", written without a $\\lnot$ in front? Write it as $\\lnot(\\varphi(1) \\land \\varphi(2) \\land \\varphi(3))$ and use De Morgan from lesson 2.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!theorem] Negating a quantifier\n> $\\lnot \\forall n,\\ \\varphi(n) \\equiv \\exists n,\\ \\lnot\\varphi(n)$ and $\\lnot \\exists n,\\ \\varphi(n) \\equiv \\forall n,\\ \\lnot\\varphi(n)$: \"not every\" is \"some not\", and \"none\" is \"every not\". It is De Morgan's law for a long $\\land$ or $\\lor$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "¬(∀ n ∈ 1..10, n^2 ≥ 2n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "∃ n ∈ 1..10, ¬(n^2 ≥ 2n)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "The witness of the second is the counterexample of the first: $n = 1$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The order of quantifiers",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> Swapping two quantifiers looks harmless and is not. \"Every $n$ has some $m$ different from it\" is true; \"some $m$ is different from every $n$\" is false, since that $m$ would have to differ from itself.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "∀ n ∈ 1..6, ∃ m ∈ 1..6, m ≠ n",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "∃ m ∈ 1..6, ∀ n ∈ 1..6, m ≠ n",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Read them as a game. In $\\forall n\\, \\exists m$ your opponent picks $n$ first and you answer with an $m$ that may depend on it. In $\\exists m\\, \\forall n$ you must commit to one $m$ before seeing any $n$, which is harder.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "Checking is not proving",
       "type": "section",
       "showWork": false,
@@ -64,46 +142,8 @@
       "label": null
     },
     {
-      "src": "At $n = 40$ it is $41^2$. Checking finds counterexamples; only a proof covers all $n$. The induction lessons are about those proofs.",
+      "src": "At $n = 40$ it is $40^2 + 40 + 41 = 41^2$. Thirty-nine checks passed and the fortieth failed. Checking finds counterexamples; only a proof covers every $n$.",
       "type": "markdown",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "Negation and order",
-      "type": "section",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "> [!theorem] Negating a quantifier\n> $\\lnot \\forall n,\\ \\varphi(n) \\equiv \\exists n,\\ \\lnot\\varphi(n)$ and $\\lnot \\exists n,\\ \\varphi(n) \\equiv \\forall n,\\ \\lnot\\varphi(n)$: \"not every\" is \"some not\".",
-      "type": "markdown",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "¬(∀ n ∈ 1..10, n^2 ≥ 2n)",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "∃ n ∈ 1..10, ¬(n^2 ≥ 2n)",
-      "showWork": true,
-      "label": null
-    },
-    {
-      "src": "> [!mistake]\n> The order of quantifiers matters. \"Every $n$ has some $m$ different from it\" is true; \"some $m$ is different from every $n$\" is false, since $m$ would have to differ from itself.",
-      "type": "markdown",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "∀ n ∈ 1..6, ∃ m ∈ 1..6, m ≠ n",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "∃ m ∈ 1..6, ∀ n ∈ 1..6, m ≠ n",
       "showWork": false,
       "label": null
     },
@@ -160,13 +200,23 @@
       "label": null
     },
     {
+      "src": "∀ n ∈ 1..10, ∃ m ∈ 1..10, m > n",
+      "type": "exercise",
+      "prompt": "Play the game: for every $n$ from 1 to 10, is there an $m$ from 1 to 10 with $m > n$?",
+      "hints": [
+        "Which $n$ has no answer inside $1..10$? Over all natural numbers the answer would change."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "Quantifiers in Lean",
       "type": "section",
       "showWork": false,
       "label": null
     },
     {
-      "src": "In Lean, a proof of $\\exists n, P(n)$ is a pair: the witness and a proof that it works. A proof of $\\forall n, P(n)$ is a function taking any $n$ to a proof of $P(n)$.",
+      "src": "Over all natural numbers there is no finite $\\land$ to check, so Lean asks for proofs, built the way lesson 3's were. A proof of $\\exists n, P(n)$ is a pair: the witness and a proof that it works. A proof of $\\forall n, P(n)$ is a function taking any $n$ to a proof of $P(n)$.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -215,7 +265,13 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> A $\\forall$ falls to one counterexample and an $\\exists$ stands on one witness. Over a finite set both can be checked; over all numbers they must be proved. Negation swaps them, and their order changes the meaning.",
+      "src": "> [!summary]\n> $\\forall$ is a long $\\land$ and $\\exists$ a long $\\lor$: one counterexample refutes a $\\forall$, one witness proves an $\\exists$, and negation swaps them by De Morgan's law. Their order changes the meaning. Over a finite set both can be checked; over all numbers they must be proved.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Euler's polynomial passed 39 checks and still failed. How can a finite argument cover every natural number? The next lesson's answer is induction.",
       "type": "markdown",
       "showWork": false,
       "label": null

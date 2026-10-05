@@ -1,7 +1,12 @@
-3	infer: omega	✗ occurs check: τ1 = τ1 → τ2 has no solution (τ1 would have to contain itself), so the term has no simple type
-4	infer: Y	✗ occurs check: τ2 = τ2 → τ3 has no solution (τ2 would have to contain itself), so the term has no simple type
-9	infer: 3	= (α → α) → α → α
-10	infer: mul	= (α → β) → (γ → α) → γ → β
-12	infer: and	✗ occurs check: τ3 = (τ2 → τ3) → τ4 has no solution (τ3 would have to contain itself), so the term has no simple type
-19	infer: λx. λy. x y y	= (α → α → β) → α → β
-20	infer: λf. f (λx. x)	= ((α → α) → β) → β
+3	normal 4: Y f	= f (f (f ((λx. f (x x)) (λx. f (x x)))))   (stopped after 4 steps: not yet a normal form)
+5	infer: omega	✗ occurs check: τ1 = τ1 → τ2 has no solution (τ1 would have to contain itself), so the term has no simple type
+6	infer: Y	✗ occurs check: τ2 = τ2 → τ3 has no solution (τ2 would have to contain itself), so the term has no simple type
+15	normal: (λf. pair (f a) (f b)) (λx. x)	= λs. s a b
+16	infer: a : A, b : B ⊢ (λf. pair (f a) (f b)) (λx. x)	✗ cannot unify A with B, so the term has no simple type
+20	infer: 3	= (α → α) → α → α
+21	infer: mul	= (α → β) → (γ → α) → γ → β
+24	infer: and	✗ occurs check: τ3 = (τ2 → τ3) → τ4 has no solution (τ3 would have to contain itself), so the term has no simple type
+26	infer: λp. λq. p q false	= (α → (β → γ → γ) → δ) → α → δ
+33	infer: λx. λy. x y y	= (α → α → β) → α → β
+34	infer: λf. f (λx. x)	= ((α → α) → β) → β
+35	infer: λp. λq. p true q	= ((α → β → α) → γ → δ) → γ → δ

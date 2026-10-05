@@ -9,13 +9,13 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Decide distributivity with a witness triple when it fails, find complements, and recognize Boolean lattices.",
+      "src": "> [!goal]\n> Decide whether meet distributes over join, with the witness when it does not, and see why distributivity is what makes complements (\"not $x$\") unique.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!definition] Distributive lattice\n> A lattice is **distributive** when $x \\wedge (y \\vee z) = (x \\wedge y) \\vee (x \\wedge z)$ for all $x, y, z$ (the dual law then follows).",
+      "src": "For sets, $\\cap$ distributes over $\\cup$: $A \\cap (B \\cup C) = (A \\cap B) \\cup (A \\cap C)$, the way $\\times$ distributes over $+$. Every lattice has a meet and a join. Does the meet always distribute over the join?\n\n> [!try]\n> M₃ below has a bottom, three incomparable atoms $a, b, c$, and a top. Compute both sides of $a \\wedge (b \\vee c) = (a \\wedge b) \\vee (a \\wedge c)$ by hand before running the check.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -31,6 +31,12 @@
       "label": null
     },
     {
+      "src": "The left side is $a \\wedge \\top = a$, the right $\\bot \\vee \\bot = \\bot$. The pentagon N₅ fails too:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "let N5 = poset({bot, p, q, r, top}; bot < p, bot < q, q < r, p < top, r < top)",
       "showWork": false,
       "label": null
@@ -38,6 +44,12 @@
     {
       "src": "distributive(N5)",
       "showWork": true,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Distributive lattice\n> A lattice is **distributive** when $x \\wedge (y \\vee z) = (x \\wedge y) \\vee (x \\wedge z)$ for all $x, y, z$ (the dual law then follows).",
+      "type": "markdown",
+      "showWork": false,
       "label": null
     },
     {
@@ -63,7 +75,13 @@
       "label": null
     },
     {
-      "src": "> [!definition] Complement\n> In a lattice with $\\bot$ and $\\top$, a **complement** of $x$ is a $y$ with $x \\vee y = \\top$ and $x \\wedge y = \\bot$. In a distributive lattice an element has at most one.",
+      "src": "Why care? Distributivity is what makes \"not $x$\" mean one thing.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Complement\n> In a lattice with $\\bot$ and $\\top$, a **complement** of $x$ is a $y$ with $x \\vee y = \\top$ and $x \\wedge y = \\bot$.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -71,6 +89,12 @@
     {
       "src": "complement(M3, a)",
       "showWork": true,
+      "label": null
+    },
+    {
+      "src": "In M₃, $a$ has two complements, so \"not $a$\" is ambiguous. In a distributive lattice that cannot happen. If $y$ and $y'$ are both complements of $x$, then\n$$y = y \\wedge (x \\vee y') = (y \\wedge x) \\vee (y \\wedge y') = \\bot \\vee (y \\wedge y') = y \\wedge y',$$\nand in the same way $y' = y \\wedge y'$, so $y = y'$. Distributivity was used once, in the middle step: it is exactly what the uniqueness needs. Among the divisors of 12, complements are unique, but some elements have none:",
+      "type": "markdown",
+      "showWork": false,
       "label": null
     },
     {
@@ -84,7 +108,7 @@
       "label": null
     },
     {
-      "src": "$2$ has no complement among the divisors of 12: any $y$ with $\\operatorname{lcm}(2, y) = 12$ is a multiple of 4 or of 3 times 4, and then $\\gcd(2, y) = 2$.",
+      "src": "$2$ has no complement: $\\operatorname{lcm}(2, y) = 12$ forces $4 \\mid y$ and $3 \\mid y$, so $y = 12$, and then $\\gcd(2, 12) = 2$, not $1$.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -96,7 +120,7 @@
       "label": null
     },
     {
-      "src": "> [!definition] Boolean lattice\n> A **Boolean lattice** is distributive and complemented. The subsets of a set are the model: complement is set complement.",
+      "src": "> [!definition] Boolean lattice\n> A **Boolean lattice** is distributive and complemented: every element has a complement, and only one. The subsets of a set are the model: complement is set complement.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -187,7 +211,18 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> Distributivity can fail, and M₃ and N₅ are why. Boolean lattices are distributive with complements; the subsets of a set, and the divisors of a squarefree number, are the examples.",
+      "src": "complement(N5, p)",
+      "type": "exercise",
+      "prompt": "Predict first: are complements unique in the pentagon N₅? Then list the complements of $p$.",
+      "hints": [
+        "Try each element $y$: is $p \\vee y = \\top$ and $p \\wedge y = \\bot$?",
+        "N₅ is not distributive, so nothing forces a single answer."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Distributivity can fail, and M₃ and N₅ are why. It is what makes complements unique. Boolean lattices are distributive with complements; the subsets of a set, and the divisors of a squarefree number, are the examples.\n\nNext, a small lattice with a job: the answers an access rule can give, and the ways a policy combines them.",
       "type": "markdown",
       "showWork": false,
       "label": null

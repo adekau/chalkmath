@@ -1,14 +1,25 @@
-3	let u = [1, 2, 3]	= [1, 2, 3]
-4	let v = [4, -1, 2]	= [4, -1, 2]
-5	u + v	= [5, 1, 5]
-6	2u	= [2, 4, 6]
-8	clock t from 0 to 1\nview -0.8, 5.2, -0.6, 3.6\nU = arrow(0, [3, 1]) thick color 3\nLU = label([3, 1], "u") color 3\nV = arrow(0, [1, 2]) thick color 4\nLV = label([1, 2], "v") color 4\nVS = arrow(t*[3, 1], t*[3, 1] + [1, 2]) color 4\nW = arrow(0, [4, 3]) thick color 1\nLW = label([4, 3], "u + v") color 1\n> show U, LU, V, LV | Two vectors in the plane, $u = (3, 1)$ and $v = (1, 2)$, each an arrow from $0$.\n> show VS; play t to 1 in 2s | Slide $v$ along $u$, without turning it, until it starts where $u$ ends.\n> show W, LW | The sum runs from the start of $u$ to the tip of the moved $v$: $u + v = (4, 3)$, the entries added.	scene: 7 objects, 3 beats, 22.7 s
-9	[3, 1] + [1, 2]	= [4, 3]
-12	dot(u, v)	= 8
-13	norm([3, 4])	= 5
-14	norm(u)	= sqrt(14)
-16	dot([1, 2], [2, -1])	= 0
-18	clock t from 0 to 2pi\nview -3.2, 3.6, -2.4, 2.6\nU = arrow(0, [2.5, 0]) thick color 3\nLU = label([2.5, 0], "u") color 3\nV = arrow(0, [2*cos(t), 2*sin(t)]) thick color 4\nLV = label([2*cos(t), 2*sin(t)], "v") color 4\nDROP = segment([2*cos(t), 2*sin(t)], [2*cos(t), 0]) dashed color 6\nSH = segment(0, [2*cos(t), 0]) thick color 1\nD = value(dot([2.5, 0], [2*cos(t), 2*sin(t)]), "u \\cdot v = ")\n> show U, LU, V, LV, D | $u$ is $2.5$ long and $v$ is $2$. Pointing the same way, $u \\cdot v = 2.5 \\cdot 2 = 5$.\n> show DROP, SH; play t to 1 in 2s | Turn $v$. Its shadow on $u$'s line (orange) shortens, and the dot product with it: $2.5$ times the shadow.\n> play t to pi/2 in 2s | At a right angle the shadow is a point: $u \\cdot v = 0$. Perpendicular vectors are exactly those with dot product zero.\n> play t to pi in 2s | Past a right angle the shadow points backwards, and the dot product is negative.\n> play t to 2pi in 4s | Once round: $u \\cdot v = \\lVert u \\rVert \\lVert v \\rVert \\cos\\theta = 5\\cos\\theta$.	scene: 7 objects, 5 beats, 37.4 s
-19	dot([1, 2, 3], [4, 5, 6])	= 32
-20	norm([6, 8])	= 10
-21	dot([2, 3], [3, -2])	= 0
+3	clock t from 0 to 1\nview -0.5, 5, -0.5, 3.6\nU = arrow(0, [3, 1]) thick color 3\nLU = label([3, 1], "u") color 3\nV = arrow(0, [1, 2]) thick color 4\nLV = label([1, 2], "v") color 4\nW = arrow(t*[3, 1], t*[3, 1] + [1, 2]) color 4\nS = arrow(0, [4, 3]) thick color 1\nLS = label([4, 3], "u + v") color 1\n> show U, LU, V, LV | Two walks: $u$, three east and one north, and $v$, one east and two north.\n> show W; play t to 1 in 2s | Do one, then the other: slide $v$, without turning it, until it starts where $u$ ends.\n> show S, LS | The sum $u + v$ is where you end up, tip to tail: $(4, 3)$. The east steps add, $3 + 1$, and the north steps add, $1 + 2$.	scene: 7 objects, 3 beats, 24.3 s
+5	[3, 1] + [1, 2]	= [4, 3]
+7	[1, 2, 3] + [4, -1, 2]	= [5, 1, 5]
+10	clock c from -1.5 to 2\nview -5, 7, -2, 3\nU = arrow(0, [3, 1]) faint color 3\nP = point(c*[3, 1]) color 1\nC = arrow(0, P) thick color 1\nLC = label(P, "c\\,u") color 1\nK = value(c, "c = ")\n> show U; play c to 1 in 0.6s | The arrow $u = (3, 1)$.\n> show C, P, LC, K | $c\\,u$ with $c = 1$: $u$ itself.\n> play c to 2 in 2s | $c = 2$: twice as long, the same direction.\n> play c to 0.5 in 2s | $c = \\frac12$: half as long.\n> play c to -1.5 in 3s | Through $c = 0$ and out the other side: a negative $c$ points the arrow backwards.	scene: 5 objects, 5 beats, 21.5 s
+11	2*[3, 1]	= [6, 2]
+12	-[3, 1]	= [-3, -1]
+15	let a = 1	= 1
+16	let b = 1	= 1
+17	plot([t*a*(3 + i), a*(3 + i) + t*b*(1 + 2i), 5 + 5i + 0.15*exp(2*pi*i*t)], t, 0, 1)	= [t*(3 + i), t*(1 + 2*i) + 3 + i, 5 + 5*i + 0.15*exp(2*i*π*t)]
+18	a*[3, 1] + b*[1, 2]	= [4, 3]
+21	clock t from 0 to 1\nview -3, 7, -1.5, 6\nlet M = [3, 1 + 5*t; 1, 2]\nG0 = grid([1, 0; 0, 1]) faint color 6\nG = grid(M) color 2\nU = arrow(0, [3, 1]) thick color 3\nLU = label([3, 1], "u") color 3\nV = arrow(0, M*[0; 1]) thick color 4\nLV = label(M*[0; 1], "v") color 4\nP = point([5, 5]) color 1\nW1 = arrow(0, [3, 1]) color 1\nW2 = arrow([3, 1], [5, 5]) color 1\n> show U, LU, V, LV | $u = (3, 1)$ and $v = (1, 2)$, on the square grid of whole steps east and north.\n> show G | Their stretched copies, $a\\,u + b\\,v$ for whole numbers $a$ and $b$, lay a slanted grid over the whole plane, as whole steps east and north lay the square one. Every point lies in some cell of it, and fractions of $u$ and $v$ reach inside the cell.\n> show P, W1, W2 | The circle's point $(5, 5)$ is a corner: $1\\,u + 2\\,v$.\n> hide P, W1, W2; play t to 1 in 4s | Now swing $v$ round to $(6, 2) = 2u$. The cells flatten, and at the end every combination lies on the line through $u$: no point off it can be reached.	scene: 9 objects, 4 beats, 41.6 s
+25	norm([3, 4])	= 5
+26	norm([1, 2, 3])	= sqrt(14)
+29	clock w from 0 to 2pi\nview -2.6, 2.6, -2.2, 2.2\nlet u = [cos(0.5), sin(0.5)]\nlet v = [2*cos(w + 0.5), 2*sin(w + 0.5)]\nK = line(0, u) faint color 6\nU = arrow(0, u) thick color 5\nLU = label(u, "\\hat u") color 5\nV = arrow(0, v) color 4\nLV = label(v, "v") color 4\nS = arrow(0, 2*cos(w)*u) thick color 1\nD = segment(v, 2*cos(w)*u) dashed color 1\nH = value(2*cos(w), "\\text{shadow} = ")\n> show K, U, LU | A direction: the unit arrow $\\hat u$ and its line.\n> show V, LV, S, D, H | An arrow $v$ of length $2$, and its shadow on the line: how far $v$ goes in the direction $\\hat u$. Along $\\hat u$, the shadow is all of $v$.\n> play w to pi/2 in 3s | As $v$ turns away from $\\hat u$ the shadow shrinks; at a right angle it is $0$.\n> play w to pi in 3s | Past a right angle the shadow points backwards: count its length as negative, down to $-2$.\n> play w to 2pi in 4s | All the way round.	scene: 8 objects, 5 beats, 33.7 s
+32	view -0.3, 1.45, -0.3, 1\nlet u = [cos(0.6), sin(0.6)]\nK = line(0, u) faint color 6\nF = line(0, [cos(0.3), sin(0.3)]) dashed color 6\nI = arrow(0, [1, 0]) color 3\nLI = label([1, 0], "\\hat{\\imath}") color 3\nU = arrow(0, u) color 5\nLU = label(u, "\\hat u") color 5\nSU = segment(u, [cos(0.6), 0]) dashed color 5\nHU = arrow(0, [cos(0.6), 0]) thick color 5\nSI = segment([1, 0], cos(0.6)*u) dashed color 3\nHI = arrow(0, cos(0.6)*u) thick color 3\n> show K, I, LI, U, LU | Two unit arrows: $\\hat{\\imath}$, and the direction $\\hat u = (u_1, u_2)$.\n> show SU, HU | The shadow of $\\hat u$ on $\\hat{\\imath}$'s line is its first entry, $u_1$.\n> show F, SI, HI | The shadow of $\\hat{\\imath}$ on $\\hat u$'s line. Fold the picture along the dashed line, halfway between the two arrows: $\\hat{\\imath}$ and $\\hat u$ swap places, and so do their lines and the two shadows. So this one is $u_1$ long too.	scene: 10 objects, 3 beats, 26.3 s
+35	dot([3, 4], [1, 0])	= 3
+37	dot([1, 2], [2, -1])	= 0
+40	N(arccos(dot([3, 1], [1, 2])/(norm([3, 1])*norm([1, 2]))))	= 0.785398163397448
+41	N(pi/4)	= 0.785398163397448
+43	[1, 2] .* [2, -1]	= [2, -2]
+44	dot([1, 2, 3], [4, 5, 6])	= 32
+45	norm([6, 8])	= 10
+46	dot([1, 3], [2, -1])	= -1
+47	dot([2, 3], [3, -2])	= 0
+48	[-1, 4]	= [-1, 4]

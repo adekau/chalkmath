@@ -9,19 +9,81 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Read a type as a proposition and a term as its proof; prove implications by writing functions, and see where classical logic needs more.",
+      "src": "> [!goal]\n> Read a type as a proposition and a term as its proof, prove implications by writing functions, and find a tautology that no function proves.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!theorem] Curry–Howard\n> Read $A \\to B$ as \"$A$ implies $B$\". Then a closed term of type $T$ is a proof of $T$ in intuitionistic propositional logic, and the typing rules are the rules of proof:\n> - Var is using an assumption;\n> - →I is proving $A \\to B$ by assuming $A$ and proving $B$;\n> - →E is modus ponens: from $A \\to B$ and $A$, conclude $B$.\n>\n> β-reduction simplifies a proof that introduces an implication only to eliminate it at once.",
+      "src": "Lesson 4 ended on a resemblance: read $\\to$ as \"implies\", and the arrow rules look like the rules for implication. Test it on the types already found.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "$K$ proves $A \\to B \\to A$: from $A$, anything implies $A$. $S$ proves $(A \\to B \\to C) \\to (A \\to B) \\to A \\to C$. Composition proves that implication is transitive:",
+      "src": "> [!try]\n> $K = \\lambda x.\\, \\lambda y.\\, x$ has type $A \\to B \\to A$. Read $A$ and $B$ as statements and $\\to$ as \"implies\": is it true whatever $A$ and $B$ are?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "taut(p → q → p)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A tautology. So is $S$'s type, $(A \\to B \\to C) \\to (A \\to B) \\to A \\to C$:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "taut((p → q → r) → (p → q) → p → r)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> Is every type a tautology? Look for a closed term of type $A \\to B$, and ask the truth table about $p \\to q$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "taut(p → q)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Not a tautology, and no term either. A function of type $A \\to B$ has to produce a $B$, and inside $\\lambda x{:}A.\\, \\ldots$ the only thing at hand is $x : A$. Anything else is a variable with no type:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "type: λx:A. y",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Proofs as programs",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Put the typing rules next to natural deduction's rules for implication, and look only at the types:\n- **Var**: $x : A$ in the context gives $A$. In logic: use an assumption.\n- **→I**: if $M : B$ with $x : A$ added, then $\\lambda x{:}A.\\, M : A \\to B$. In logic: assume $A$, prove $B$, and conclude $A \\to B$, discharging the assumption.\n- **→E**: $M : A \\to B$ and $N : A$ give $M\\ N : B$. In logic: modus ponens.\n\nThey are the same rules. A term records which rule was used where, so a term is a proof, written compactly, and its type is what it proves.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!theorem] Curry–Howard\n> Read base types as propositions and $A \\to B$ as \"$A$ implies $B$\". A closed term of type $T$ is a proof of $T$ in intuitionistic propositional logic (its part with only $\\to$), and every such proof is a term: Var is using an assumption, →I is proving an implication by assuming its premise, →E is modus ponens. (Curry saw it for combinators in the 1930s, Howard for λ-terms in 1969.)",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A derivation tree is then a proof tree. Here is composition's; read only the types, and it proves that implication is transitive: from $A \\to B$ and $B \\to C$, conclude $A \\to C$.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -32,24 +94,47 @@
       "label": null
     },
     {
-      "src": "Each of these is a tautology, as the logic world confirms:",
+      "src": "Curry's version: the types of $K$ and $S$ are exactly the two axioms of Hilbert's logic of implication, and application is modus ponens, its one rule.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "taut((p → q) → (q → r) → p → r)",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "Where classical logic differs",
+      "src": "Simplifying a proof",
       "type": "section",
       "showWork": false,
       "label": null
     },
     {
-      "src": "**Peirce's law**, $((A \\to B) \\to A) \\to A$, is a tautology:",
+      "src": "What does β-reduction do to a proof? A redex $(\\lambda x{:}A.\\, M)\\ N$ proves $A \\to B$ by →I only to use it at once by →E: a detour. The step puts the proof $N$ of $A$ wherever $M$ used the assumption $x$, and leaves a direct proof of the same conclusion.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "type: a : A ⊢ (λx:A. λy:B. x) a",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "normal: (λx:A. λy:B. x) a",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Both prove $B \\to A$ from $a : A$; the second (printed without its binder's type) with no detour. Read as logic, lesson 4's theorem says that every proof simplifies to one with no detours (Prawitz, 1965). That gives a short proof that the logic is consistent. A closed term with no redex is a λ (anything else has a variable at its head, and a closed term has no free one), so its type is an arrow. A base type $A$ has no closed term in normal form, hence none at all: not everything is provable.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A tautology with no proof",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Each rule keeps truth, row by row of a truth table, so every type with a term is a tautology. The converse is the real question. Take **Peirce's law**, $((A \\to B) \\to A) \\to A$:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -60,7 +145,53 @@
       "label": null
     },
     {
-      "src": "but no λ-term has that type: it is not provable intuitionistically. Classical logic adds the excluded middle, $A \\lor \\lnot A$, as an axiom, a proof with no program inside.",
+      "src": "> [!try]\n> Find a term of type $((A \\to B) \\to A) \\to A$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Given $h : (A \\to B) \\to A$, the only way to an $A$ is through $h$, and $h$ wants a function from $A$ to $B$. The obvious one to hand it returns what it is given:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "type: λh:(A→B)→A. h (λa:A. a)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "That turns an $A$ into an $A$, not a $B$, and nothing in sight makes a $B$. No term does better: every term has a normal form, so it is enough to search the normal ones, and a short search finds none of this type. Peirce's law is true by truth table and has no proof here.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The truth table assumes that $A$ is true or false, one or the other, even when nobody can say which. A proof that is a program has to actually produce its $A$. Logic that asks for that is **intuitionistic**, and the simply typed terms prove exactly its implications. Classical logic adds the excluded middle, $A \\lor \\lnot A$, which no program proves: in the Lean below it comes from Lean's axiom of choice.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Negation",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Simple types have only arrows, but negation fits. Let $F$ be a proposition with no proof, falsity, and read $\\lnot A$ as $A \\to F$: a way of turning a proof of $A$ into the impossible. (Lean defines `¬P` as `P → False`.) Then $A \\to \\lnot\\lnot A$ is $A \\to (A \\to F) \\to F$, and has a term:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "type: λa:A. λk:A→F. k a",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The converse, $\\lnot\\lnot A \\to A$, is again a tautology with no term: a $k : (A \\to F) \\to F$ only ever gives an $F$.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -72,7 +203,7 @@
       "label": null
     },
     {
-      "src": "In Lean propositions are types and proofs are terms, literally. A proof by tactics builds a term; `fun` writes one directly.",
+      "src": "In Lean propositions are types and proofs are terms, literally: a tactic proof builds a term, and `fun` writes one directly. `P ∧ Q` is a type of pairs, and a proof of `P ∨ Q` is one of the two, tagged with which.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -126,14 +257,32 @@
       "label": null
     },
     {
-      "src": "taut((p → q) → (¬q → ¬p))",
+      "src": "infer: λf. λk. λa. k (f a)",
       "type": "exercise",
-      "prompt": "Is contraposition a tautology? Answer `⊤` or `⊥`.",
+      "prompt": "Prove contraposition, $(A \\to B) \\to \\lnot B \\to \\lnot A$, that is $(A \\to B) \\to (B \\to F) \\to A \\to F$: write a term without types, in a cell of your own, taking its three arguments in that order, and give the type `infer:` finds for it.",
+      "hints": [
+        "Given $a : A$, $f$ makes a $B$, and $k$ turns a $B$ into $F$.",
+        "It is composition again: $\\lambda f.\\, \\lambda k.\\, \\lambda a.\\, k\\ (f\\ a)$."
+      ],
+      "hideQuestion": true,
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!summary]\n> Types are propositions and terms are proofs: →I is assuming, →E is modus ponens, β simplifies proofs. The simply typed calculus proves exactly the intuitionistic implications; Peirce's law needs classical logic.",
+      "src": "taut(¬¬p → p)",
+      "type": "exercise",
+      "prompt": "Is $\\lnot\\lnot A \\to A$ a tautology? Answer `⊤` or `⊥`.",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> The typing rules are natural deduction's rules for implication: a type is a proposition and a closed term a proof of it; Var is an assumption, →I assuming, →E modus ponens, and a β-step removes a detour from a proof. Every type with a term is a tautology, but not every tautology has a term: Peirce's law and $\\lnot\\lnot A \\to A$ need classical logic's excluded middle, which no program proves.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A proof is a program, and lesson 1 promised that a typed program cannot compute nonsense. What exactly does a type promise about a program while it runs?",
       "type": "markdown",
       "showWork": false,
       "label": null

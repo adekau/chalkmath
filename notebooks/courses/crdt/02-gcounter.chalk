@@ -9,19 +9,31 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Build a grow-only counter that replicas increment independently and merge without losing or double-counting, and see why one slot per replica is forced.",
+      "src": "> [!goal]\n> Find a state for a counter whose join keeps every increment exactly once, and see why one slot per replica is forced.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "A like button: taps land on the nearest replica, replicas exchange states when they can, and everyone should eventually see the same total. A single shared number cannot be merged (max loses taps, sum double-counts repeats). The **G-Counter** keeps one slot per replica, each replica only increments its own slot, merge takes the maximum slot by slot, and the value is the sum of the slots.",
+      "src": "Lesson 1 left the like counter broken. Both merges of a single number fail:\n- **max** forgets: two phones that each counted one tap hold 1 and 1, and $\\max(1, 1) = 1$;\n- **sum** double-counts: it is not idempotent, so a state delivered twice adds its taps twice.\n\nMax has the right laws; the state is too poor. Two 1s could be the same tap heard twice or two different taps, and max has to assume the first.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "Two replicas' slots form a product of chains, and merge is its join:",
+      "src": "> [!try]\n> What could the state record so that the larger of two states never mixes up two different taps? Think about who made each tap.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "One slot per replica",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Record the taps **per replica**. Every replica keeps a slot for every replica and only ever increments its own. Then each slot has a single writer, so of two values for slot $a$ the larger one already counts every tap the smaller one does: max, slot by slot, is exactly right. The value is the sum of the slots. For two replicas a state is a pair, and the states form a product of chains:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -42,7 +54,7 @@
       "label": null
     },
     {
-      "src": "Replica 1 has counted 2 taps and replica 2 has counted 3: merged, $(2, 3)$, total 5. Merging the same states again changes nothing; merging an older state ($(1, 0)$) changes nothing either.",
+      "src": "Replica $a$ has counted 2 taps and heard of none of $b$'s; replica $b$ has heard of 1 of $a$'s and counted 3 of its own. Merged: $(2, 3)$, value 5, every tap once. Merging an older state such as $(1, 0)$, or the same state again, changes nothing:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -53,25 +65,77 @@
       "label": null
     },
     {
-      "src": "A G-Counter, run",
-      "type": "section",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "Each replica counts its own increments in its own slot; a merge takes the larger count, slot by slot. The work shows each state as a map from replicas to their slots.",
+      "src": "> [!definition] G-Counter\n> A **G-Counter** (grow-only counter) on replicas $1, \\dots, R$ is a vector of $R$ naturals, all zero at the start. Replica $i$ increments only entry $i$; merge is the entrywise maximum; the value is the sum of the entries.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "replicas(gcounter; a, b\n  a: inc\n  a: inc\n  b: inc\n  a -> b\n  b -> a\n)",
+      "src": "> [!mistake]\n> Why only its own slot? Let any replica bump any slot. From $(1, 0)$, replicas $a$ and $b$ each count a tap in slot $a$, and both hold $(2, 0)$. Their merge:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "join(G, (2, 0), (2, 0))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Three taps, value 2: the lost update is back, because slot $a$ now has two writers.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The lost update, fixed",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Lesson 1's schedule, on a G-Counter. The work shows each state as a map from replicas to their slots:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "replicas(gcounter; a, b\n  a: inc\n  b: inc\n  a -> b\n  b -> a\n)",
       "showWork": true,
+      "label": null
+    },
+    {
+      "src": "Merges need not be symmetric or complete. Step through three replicas: `a` sends to `b`, and `b` to `c`.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "replicas(gcounter; a, b, c\n  a: inc\n  b: inc\n  b: inc\n  a -> b\n  b -> c\n)",
+      "showWork": true,
+      "label": null,
+      "stepwise": 0
+    },
+    {
+      "src": "> [!try]\n> `b` and `c` read 3, but `a` has heard from no one and reads 1. Which single message makes all three agree?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "replicas(gcounter; a, b, c\n  a: inc\n  b: inc\n  b: inc\n  a -> b\n  b -> c\n  c -> a\n)",
+      "showWork": false,
       "label": null
     },
     {
       "src": "In Lean",
       "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The chapter opens with the two failed merges as theorems, `max_undercounts` and `add_overcounts`, and then builds the G-Counter as a function from replicas to naturals.",
+      "type": "markdown",
       "showWork": false,
       "label": null
     },
@@ -141,7 +205,17 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> A G-Counter gives each replica its own slot; increments touch only one's own slot, merge is the pointwise maximum, and the value is the sum. Merging twice or merging stale states changes nothing, so the network may duplicate and reorder freely.",
+      "src": "join(G, (1, 3), (1, 2))",
+      "type": "exercise",
+      "prompt": "Replica $b$ holds $(1, 3)$. A delayed message arrives holding $(1, 2)$, an older state of $b$'s own. Merge it in.",
+      "hints": [
+        "Slot by slot, the maximum: an older state is below the current one."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> A single number cannot be merged: max cannot tell two taps from one tap heard twice, and sum counts repeats. One slot per replica, each with a single writer, makes max right: merge slot by slot, read the sum. Merging twice or merging stale states changes nothing, so the network may duplicate and reorder freely. But every update only adds: how do you count down when every update must go up?",
       "type": "markdown",
       "showWork": false,
       "label": null

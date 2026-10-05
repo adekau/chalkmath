@@ -1,6 +1,10 @@
-5	type: λx:A. x	= A → A
-9	type: λf:A→B. λx:A. f x	= (A → B) → A → B
-11	type: f : A → B, x : A ⊢ f x	= B
-18	type: λx:A. λy:B. x	= A → B → A
-19	type: λf:A→A. λx:A. f (f x)	= (A → A) → A → A
-20	type: f : A → B ⊢ λx:A. f x	= A → B
+3	if 2 a b	= a (a b)
+5	normal 3: omega omega	= (λx. x x) (λx. x x)   (stopped after 3 steps: not yet a normal form)
+12	type: λx:A. x	= A → A
+15	type: if : Bool → A → A → A, two : Nat, a : A, b : A ⊢ if two a b	✗ if expects an argument of type Bool, but two has type Nat
+17	type: if : Bool → A → A → A, yes : Bool, a : A, b : A ⊢ if yes a b	= A
+23	type: λf:A→B. λx:A. f x	= (A → B) → A → B
+30	type: λx:A. λy:B. x	= A → B → A
+31	type: λf:A→A. λx:A. f (f x)	= (A → A) → A → A
+32	type: f : A → B ⊢ λx:A. f x	= A → B
+33	type: λf:(A→B)→C. λg:A→B. f g	= ((A → B) → C) → (A → B) → C

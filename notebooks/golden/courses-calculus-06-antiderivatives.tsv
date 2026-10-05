@@ -1,9 +1,13 @@
-4	integrate(x^3, x)	= x^4/4
-5	integrate(3x^2 + 2x + 1, x)	= x^3 + x^2 + x
-8	integrate(2x*cos(x^2), x)	= sin(x^2)
-11	integrate(x*exp(x), x)	= x*exp(x) - exp(x)
-13	diff(x*exp(x) - exp(x), x)	= x*exp(x)
-15	integrate(4x^3, x)	= x^4
-16	integrate(cos(3x), x)	= sin(3*x)/3
-17	integrate(2x*exp(x^2), x)	= exp(x^2)
-18	integrate(x*cos(x), x)	= x*sin(x) + cos(x)
+4	diff(x^4, x)	= 4*x^3
+5	diff(x^4/4, x)	= x^3
+10	integrate(x^3, x)	= x^4/4
+11	integrate(3x^2 + 2x + 1, x)	= x^3 + x^2 + x
+16	integrate(2x*cos(x^2), x)	= sin(x^2)
+19	integrate(exp(x^2), x)	✗ integrate: no antiderivative of exp(x^2) found by the available rules (sums, constant factors, powers, the elementary table, linear substitution, u-substitution, integration by parts)
+22	diff(x*exp(x), x)	= x*exp(x) + exp(x)
+24	diff(x*exp(x) - exp(x), x)	= x*exp(x)
+26	integrate(x*exp(x), x)	= x*exp(x) - exp(x)
+28	integrate(4x^3, x)	= x^4
+29	integrate(cos(3x), x)	= sin(3*x)/3
+30	integrate(2x*exp(x^2), x)	= exp(x^2)
+31	integrate(x*cos(x), x)	= x*sin(x) + cos(x)

@@ -1,7 +1,12 @@
-4	let Two = system(var a in 0..2; var b in 0..2; init a = 0 ∧ b = 0; action ta when a < 2 do a := a + 1; action tb when b < 2 do b := b + 1)	= system({a, b}, {ta, tb})   [9 reachable states]
-5	let Sum = system(var s in 0..4; init s = 0; action t when s < 4 do s := s + 1)	= system({s}, {t})   [5 reachable states]
-6	refines(Two, Sum; s := a + b)	= true
-8	let Jump = system(var a in 0..2; var b in 0..2; init a = 0 ∧ b = 0; action both when a < 2 ∧ b < 2 do a := a + 1, b := b + 1)	= system({a, b}, {both})   [3 reachable states]
-9	refines(Jump, Sum; s := a + b)	= false
+3	let Once = system(var applied in 0..2; init applied = 0; action apply when applied = 0 do applied := 1)	= system({applied}, {apply})   [2 reachable states]
+4	let Dedup = system(\n  var tries in 0..2\n  var req in bool\n  var applied in 0..2\n  var seen in bool\n  var reply in {none, flying, got}\n  init tries = 0 ∧ req = false ∧ applied = 0 ∧ seen = false ∧ reply = none\n  action send when tries < 2 ∧ req = false ∧ reply ≠ got do tries := tries + 1, req := true\n  action lose when req = true do req := false\n  action deliver when req = true ∧ seen = false do req := false, applied := applied + 1, seen := true, reply := flying\n  action again when req = true ∧ seen = true do req := false, reply := flying\n  action loseReply when reply = flying do reply := none\n  action gotReply when reply = flying do reply := got\n)	= system({tries, req, applied, seen, reply}, {send, lose, deliver, again, loseReply, gotReply})   [14 reachable states]
+7	refines(Dedup, Once; applied := applied)	= true
+8	let Retry = system(\n  var tries in 0..2\n  var req in bool\n  var applied in 0..2\n  var reply in {none, flying, got}\n  init tries = 0 ∧ req = false ∧ applied = 0 ∧ reply = none\n  action send when tries < 2 ∧ req = false ∧ reply ≠ got do tries := tries + 1, req := true\n  action lose when req = true do req := false\n  action deliver when req = true do req := false, applied := applied + 1, reply := flying\n  action loseReply when reply = flying do reply := none\n  action gotReply when reply = flying do reply := got\n)	= system({tries, req, applied, reply}, {send, lose, deliver, loseReply, gotReply})   [17 reachable states]
+9	refines(Retry, Once; applied := applied)	= false
+13	let Two = system(var a in 0..2; var b in 0..2; init a = 0 ∧ b = 0; action ta when a < 2 do a := a + 1; action tb when b < 2 do b := b + 1)	= system({a, b}, {ta, tb})   [9 reachable states]
+14	let Sum = system(var s in 0..4; init s = 0; action t when s < 4 do s := s + 1)	= system({s}, {t})   [5 reachable states]
+15	refines(Two, Sum; s := a + b)	= true
+17	let Jump = system(var a in 0..2; var b in 0..2; init a = 0 ∧ b = 0; action both when a < 2 ∧ b < 2 do a := a + 1, b := b + 1)	= system({a, b}, {both})   [3 reachable states]
 18	refines(Jump, Sum; s := a + b)	= false
-19	refines(Two, Sum; s := a + b)	= true
+28	refines(Two, Sum; s := a)	= true
+29	refines(Jump, Sum; s := a + b)	= false

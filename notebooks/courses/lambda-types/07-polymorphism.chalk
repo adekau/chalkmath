@@ -9,71 +9,140 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Read an inferred type as a scheme for all its instances, and use System F's explicit polymorphism to type what simple types cannot.",
+      "src": "> [!goal]\n> Use one term at many types: find why a defined name can be and an argument cannot, and the quantifier that lets an argument be too.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "The identity has type $\\alpha \\to \\alpha$ for every $\\alpha$: the type variables of an inferred type are implicitly **for all**. That is a type **scheme**, $\\forall \\alpha.\\, \\alpha \\to \\alpha$.",
+      "src": "Lesson 4 refused a harmless term: the identity, handed to a function that uses it on an $a : A$ and on a $b : B$.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "infer: λx. x",
+      "src": "infer: a : A, b : B ⊢ (λf. pair (f a) (f b)) id",
       "showWork": false,
       "label": null
     },
     {
-      "src": "infer: λf. λx. f (f x)",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "In the simply typed calculus, though, one occurrence of a variable has one type. Church's $\\mathsf{and}$ uses its argument at two types, and fails:",
+      "src": "> [!try]\n> Now use `id` in both places directly. Will this have a type?",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "infer: and",
+      "src": "infer: a : A, b : B ⊢ pair (id a) (id b)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "It does. `id` is a name, and names are unfolded before inference (the first step of the work), so each use is a copy of $\\lambda x.\\, x$ with a type variable of its own: one becomes $A \\to A$, the other $B \\to B$. In the refused term the identity is the value of one variable, $f$, and a variable has one type.",
+      "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "System F",
+      "src": "Type schemes",
       "type": "section",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!definition] System F (Girard, Reynolds)\n> Types may quantify over types: $\\forall \\alpha.\\, T$. Terms may take a type as an argument, $\\Lambda \\alpha.\\, M$, and be given one, $M\\ [T]$. The polymorphic identity is $\\Lambda \\alpha.\\, \\lambda x{:}\\alpha.\\, x : \\forall \\alpha.\\, \\alpha \\to \\alpha$, and $\\mathit{id}\\ [\\mathsf{Nat}] : \\mathsf{Nat} \\to \\mathsf{Nat}$.",
+      "src": "So a name deserves a type that each use can instantiate as it likes. Its inferred type already reads that way:",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "In System F a Church numeral has the one type $\\forall \\alpha.\\, (\\alpha \\to \\alpha) \\to \\alpha \\to \\alpha$, and can be used at many. Even self-application has a type: $\\lambda x{:}\\forall \\alpha.\\, \\alpha \\to \\alpha.\\, x\\ [\\forall \\alpha.\\, \\alpha \\to \\alpha]\\ x$. System F still normalizes, but inference for it is undecidable (Wells, 1994), so ML and Haskell allow polymorphism only at `let` (Hindley–Milner), where inference stays decidable.",
+      "src": "infer: id",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "$\\alpha$ may be anything, and each use may choose. Written out, the type is a **scheme**, $\\forall \\alpha.\\, \\alpha \\to \\alpha$: for every $\\alpha$, a function from $\\alpha$ to $\\alpha$. $K$, with scheme $\\forall \\alpha\\, \\beta.\\, \\alpha \\to \\beta \\to \\alpha$, can be used at two types the same way:",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "In Lean",
+      "src": "infer: a : A, b : B ⊢ pair (K a b) (K b a)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "ML and Haskell build this into `let`: in `let id = λx. x in …`, `id` gets the scheme $\\forall \\alpha.\\, \\alpha \\to \\alpha$ and each use takes its own instance, as each unfolded copy did. This is **Hindley–Milner** typing: inference stays decidable and still finds principal types, as in lesson 3. A λ-bound variable still has one type.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Quantifiers inside types",
       "type": "section",
       "showWork": false,
       "label": null
     },
     {
-      "src": "Lean's `∀ α : Type` is System F's quantifier. A Church numeral is a polymorphic function, used at `Nat` to read it and at `String` for fun.",
+      "src": "Lesson 4's term needs more than schemes. Its function, $\\lambda f.\\, \\mathsf{pair}\\ (f\\ a)\\ (f\\ b)$, wants an argument that works at every type, so its type would begin $(\\forall \\alpha.\\, \\alpha \\to \\alpha) \\to \\cdots$: a $\\forall$ to the left of an arrow. A scheme can only put $\\forall$ in front of a whole type. The fix is to make $\\forall$ a type like any other, and types something a term can take and be given.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "/-- Church numerals in System F: a numeral works at every type. -/\ndef CNat := ∀ α : Type, (α → α) → α → α\n\ndef czero : CNat := fun _ _ x => x\ndef csucc (n : CNat) : CNat := fun α f x => f (n α f x)\ndef cadd (m n : CNat) : CNat := fun α f x => m α f (n α f x)\ndef cmul (m n : CNat) : CNat := fun α f => m α (n α f)\ndef two : CNat := csucc (csucc czero)\ndef three : CNat := csucc two\n\n/-- Read a numeral by using it at Nat. -/\ndef CNat.toNat (n : CNat) : Nat := n Nat (· + 1) 0\n\n#eval (cadd two three).toNat\n-- the same numeral, used at String\n#eval three String (· ++ \"!\") \"go\"\n\n/-- The polymorphic identity has one type for every type. -/\ndef polyId : ∀ α : Type, α → α := fun _ x => x",
+      "src": "> [!definition] System F (Girard, 1972; Reynolds, 1974)\n> Types may quantify over types: $\\forall \\alpha.\\, T$. A term may take a type as an argument, $\\Lambda \\alpha.\\, M$, and be given one, $M\\ [T]$, which puts $T$ for $\\alpha$. The polymorphic identity is $\\mathit{id} = \\Lambda \\alpha.\\, \\lambda x{:}\\alpha.\\, x : \\forall \\alpha.\\, \\alpha \\to \\alpha$, and $\\mathit{id}\\ [A] : A \\to A$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Lesson 4's term becomes $(\\lambda f{:}\\forall \\alpha.\\, \\alpha \\to \\alpha.\\, \\langle f\\ [A]\\ a,\\ f\\ [B]\\ b \\rangle)\\ \\mathit{id}$, of type $A \\times B$: $f$ is given $A$ in one place and $B$ in the other. Lean's `∀ α : Type` is System F's quantifier, and a type is an argument like any other:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- The polymorphic identity: given a type, the identity on it. -/\ndef polyId : ∀ α : Type, α → α := fun _ x => x\n\n/-- Lesson 4's term: a function whose argument must work at every type. -/\ndef onBoth (f : ∀ α : Type, α → α) : Nat × String := (f Nat 1, f String \"b\")\n\n#eval onBoth polyId",
       "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Numerals at every type",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Church numerals hit the same wall. A numeral iterates, $2\\ f\\ a = f\\ (f\\ a)$, at any type. Used twice by name, it types; passed in as an argument, it does not:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "infer: f : A → A, a : A, g : B → B, b : B ⊢ pair (2 f a) (2 g b)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "infer: f : A → A, a : A, g : B → B, b : B ⊢ λn. pair (n f a) (n g b)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In System F a numeral has one type that covers every use, $\\mathsf{Nat} = \\forall \\alpha.\\, (\\alpha \\to \\alpha) \\to \\alpha \\to \\alpha$, and a function that takes a numeral can use it at any type it likes. In Lean, used at `Nat` to read it and at `String` for fun:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- Church numerals in System F: a numeral works at every type. -/\ndef CNat := ∀ α : Type, (α → α) → α → α\n\ndef czero : CNat := fun _ _ x => x\ndef csucc (n : CNat) : CNat := fun α f x => f (n α f x)\ndef cadd (m n : CNat) : CNat := fun α f x => m α f (n α f x)\ndef cmul (m n : CNat) : CNat := fun α f => m α (n α f)\ndef two : CNat := csucc (csucc czero)\ndef three : CNat := csucc two\n\n/-- Read a numeral by using it at Nat. -/\ndef CNat.toNat (n : CNat) : Nat := n Nat (· + 1) 0\n\n#eval (cadd two three).toNat\n-- the same numeral, used at String\n#eval three String (· ++ \"!\") \"go\"",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "System F keeps lesson 4's guarantee: every term still has a normal form (Girard, 1972), although even self-application now has a type, $\\lambda x{:}\\forall \\alpha.\\, \\alpha \\to \\alpha.\\, x\\ [\\forall \\alpha.\\, \\alpha \\to \\alpha]\\ x$. What it gives up is inference: whether a term without annotations has a System F type is undecidable (Wells, 1994). So ML stops at Hindley–Milner, and Haskell goes beyond it only where the programmer writes the types.",
+      "type": "markdown",
       "showWork": false,
       "label": null
     },
@@ -85,6 +154,19 @@
       "leanSolution": "  rfl",
       "hints": [
         "Everything computes: `rfl`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem cpow_exists : ∃ p : CNat → CNat → CNat, (p two three).toNat = 8 := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Invent exponentiation: find `p` with `p two three` equal to $2^3 = 8$. `cmul` used `m` at the type `α`; use `n` at the type `α → α`, to iterate `m α`.",
+      "leanSolution": "  exact ⟨fun m n α => n (α → α) (m α), rfl⟩",
+      "hints": [
+        "`m α : (α → α) → α → α` turns $f$ into $f$ applied $m$ times. Do that $n$ times, and $f$ is applied $m^n$ times.",
+        "`exact ⟨fun m n α => n (α → α) (m α), rfl⟩`."
       ],
       "showWork": false,
       "label": null
@@ -122,7 +204,23 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> An inferred type is a scheme, true at every instance. System F makes the quantifier explicit and types more terms (Church $\\mathsf{and}$, self-application), at the cost of decidable inference.",
+      "src": "infer: a : A ⊢ id id a",
+      "type": "exercise",
+      "prompt": "In $\\mathsf{id}\\ \\mathsf{id}\\ a$, with $a : A$, the two copies of $\\mathsf{id}$ are used at different types. Infer the type of the whole term.",
+      "hints": [
+        "The second $\\mathsf{id}$ is used at $A \\to A$, the first at $(A \\to A) \\to A \\to A$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> A defined name can be used at many types: each use is a copy, with its own instance of the name's scheme $\\forall \\alpha.\\, \\ldots$; ML's and Haskell's `let` work the same way (Hindley–Milner). A λ-bound variable has one type, so a function cannot ask for an argument that works at every type, until System F makes $\\forall$ part of types and lets terms take types as arguments. Church numerals then have one type, $\\forall \\alpha.\\, (\\alpha \\to \\alpha) \\to \\alpha \\to \\alpha$, usable at any type; decidable inference is the price.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In System F a term can depend on a type. Can a type depend on a term: a list type that knows the list's length, so that a type can say \"never the head of an empty list\"?",
       "type": "markdown",
       "showWork": false,
       "label": null

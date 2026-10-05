@@ -3,115 +3,93 @@
   "name": "02-matrices.chalk",
   "cells": [
     {
-      "src": "Matrices",
+      "src": "Matrices as moves of the plane",
       "type": "section",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!goal]\n> Multiply matrices, see a matrix as a map of the plane and a product as one map after another (which is why the order matters), and transpose.",
+      "src": "> [!goal]\n> Read a matrix as a move of the plane, work out from its columns where it sends any vector, and multiply matrices as one move after another.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "Rows are separated by `;`: `[1, 2; 3, 4]` is the $2 \\times 2$ matrix with first row $1, 2$.",
+      "src": "Move the whole plane: stretch it, turn it, slant it, but keep the grid lines straight, parallel and evenly spaced, and keep $0$ where it is. Such a move is called **linear**. How much do you need to write down to know where every point goes?",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "let A = [1, 2; 3, 4]",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "let B = [0, 1; 1, 0]",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "> [!definition] Matrix product\n> The entry in row $i$, column $j$ of $AB$ is the dot product of row $i$ of $A$ with column $j$ of $B$.",
-      "type": "markdown",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "A*B",
-      "showWork": true,
-      "label": null
-    },
-    {
-      "src": "> [!mistake]\n> Matrix multiplication is not commutative: $AB$ and $BA$ are different matrices. Here $B$ swaps: on the right of $A$ it swaps $A$'s columns, on the left its rows.",
-      "type": "markdown",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "B*A",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "transpose(A)",
-      "showWork": true,
-      "label": null
-    },
-    {
-      "src": "A matrix acting on a vector",
-      "type": "section",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "A column vector is a matrix with one column, `[1; 1]`. $A$ sends it to the sum of $A$'s columns.",
-      "type": "markdown",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "A*[1; 1]",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "> [!definition] A matrix is a map\n> A $2 \\times 2$ matrix moves every point of the plane: $v$ goes to $Av$. Since $v = x\\,e_1 + y\\,e_2$, it goes to $x\\,Ae_1 + y\\,Ae_2$, and $Ae_1$, $Ae_2$ are the matrix's columns. **The columns say where the basis vectors land, and that decides everything else.**",
-      "type": "markdown",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "clock t from 0 to 1\nview -2.6, 4.2, -0.9, 3.4\nlet A = [2, -1; 1, 1]\nlet M = (1 - t)*[1, 0; 0, 1] + t*A\nG0 = grid([1, 0; 0, 1]) faint color 6\nG = grid(M) color 2\nE1 = arrow(0, M*[1; 0]) thick color 3\nL1 = label(M*[1; 0], \"e_1\") color 3\nE2 = arrow(0, M*[0; 1]) thick color 4\nL2 = label(M*[0; 1], \"e_2\") color 4\nV = arrow(0, M*[1; 2]) thick color 1\nLV = label(M*[1; 2], \"v\") color 1\n> show G0, E1, L1, E2, L2, V, LV | The basis vectors $e_1 = (1, 0)$ and $e_2 = (0, 1)$, and $v = (1, 2) = e_1 + 2e_2$.\n> show G; play t to 1 in 4s | Apply $A = \\begin{bmatrix} 2 & -1 \\\\ 1 & 1 \\end{bmatrix}$ to every point at once. The grid lines stay straight, parallel and evenly spaced, and $0$ stays put: that is what *linear* means.\n> wait 1s | $e_1$ lands on $(2, 1)$, $A$'s first column, and $e_2$ on $(-1, 1)$, its second. And $v = e_1 + 2e_2$ lands on the same combination of them, $(2, 1) + 2(-1, 1) = (0, 3)$.",
+      "src": "clock t from 0 to 1\nview -3.2, 3.8, -1.2, 3.8\nlet A = [2, -1; 1, 1]\nlet M = (1 - t)*[1, 0; 0, 1] + t*A\nG0 = grid([1, 0; 0, 1]) faint color 6\nG = grid(M) color 2\nI = arrow(0, M*[1; 0]) thick color 3\nLI = label(M*[1; 0], \"\\hat{\\imath}\") color 3\nJ = arrow(0, M*[0; 1]) thick color 4\nLJ = label(M*[0; 1], \"\\hat{\\jmath}\") color 4\nD1 = segment(M*[1; 0], M*[1; 1]) dashed color 4\nD2 = segment(M*[1; 1], M*[1; 2]) dashed color 4\nV = arrow(0, M*[1; 2]) color 1\nLV = label(M*[1; 2], \"v\") color 1\n> show D1, D2, V, LV | The grid, the unit arrows $\\hat{\\imath} = (1, 0)$ (green) and $\\hat{\\jmath} = (0, 1)$ (pink), and $v = (1, 2) = \\hat{\\imath} + 2\\hat{\\jmath}$: one step along $\\hat{\\imath}$, two along $\\hat{\\jmath}$.\n> play t to 1 in 4s | Move the plane. The grid lines stay straight, parallel and evenly spaced, and $0$ stays put. $\\hat{\\imath}$ lands on $(2, 1)$ and $\\hat{\\jmath}$ on $(-1, 1)$.\n> wait 1s | And $v$ is still one step along the new $\\hat{\\imath}$ and two along the new $\\hat{\\jmath}$: it lands on $(2, 1) + 2\\,(-1, 1) = (0, 3)$.",
       "type": "scene",
       "showWork": false,
       "label": null
     },
     {
-      "src": "[2, -1; 1, 1]*[1; 2]",
+      "src": "Two arrows' worth. Every vector is $x\\,\\hat{\\imath} + y\\,\\hat{\\jmath}$, and a linear move keeps that recipe, so wherever $\\hat{\\imath}$ and $\\hat{\\jmath}$ land, $(x, y)$ lands on $x$ times the first landing spot plus $y$ times the second.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "So write down the two landing spots, side by side as columns: that table is a **matrix**. Rows are separated by `;`, so the columns read downwards: here $\\hat{\\imath}$ lands on $(2, 1)$ and $\\hat{\\jmath}$ on $(-1, 1)$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let A = [2, -1; 1, 1]",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> Before the next cell: where does $A$ send $(1, 2)$, written as a column `[1; 2]`? Use only the columns.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A*[1; 2]",
       "showWork": true,
       "label": null
     },
     {
-      "src": "One map after another",
+      "src": "The same for any input $(x, y)$: $x$ times the first column plus $y$ times the second. That is the whole rule for a matrix times a vector, with nothing to memorise:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "x*[2; 1] + y*[-1; 1]",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A*[x; y]",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Matrix times vector\n> $\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix} \\begin{pmatrix} x \\\\ y \\end{pmatrix} = x \\begin{pmatrix} a \\\\ c \\end{pmatrix} + y \\begin{pmatrix} b \\\\ d \\end{pmatrix} = \\begin{pmatrix} ax + by \\\\ cx + dy \\end{pmatrix}$. Each entry of the answer is a row of the matrix dotted with the vector.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "[a, b; c, d]*[x; y]",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Moves, read off their columns",
       "type": "section",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!theorem] The product is composition\n> $(AB)v = A(Bv)$: applying $AB$ is applying $B$ first, then $A$. So the product's order is the order of the maps, read from the right.",
+      "src": "To write down a move, ask where $\\hat{\\imath}$ and $\\hat{\\jmath}$ go. A quarter turn counterclockwise sends $\\hat{\\imath}$ to $(0, 1)$ and $\\hat{\\jmath}$ to $(-1, 0)$. A shear slides each point sideways by its height: $\\hat{\\imath}$ stays, and $\\hat{\\jmath}$ slides to $(1, 1)$.",
       "type": "markdown",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "Turn the plane a quarter turn with $R = \\begin{bmatrix} 0 & -1 \\\\ 1 & 0 \\end{bmatrix}$, then shear it with $S = \\begin{bmatrix} 1 & 1 \\\\ 0 & 1 \\end{bmatrix}$, which slides each row of the grid sideways by its height:",
-      "type": "markdown",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "clock t from 0 to 2\nview -3.4, 3.4, -1.4, 2.4\nlet R = [0, -1; 1, 0]\nlet S = [1, 1; 0, 1]\nlet Turn = [cos(pi*t/2), -sin(pi*t/2); sin(pi*t/2), cos(pi*t/2)]\nlet Shear = ((2 - t)*[1, 0; 0, 1] + (t - 1)*S)*R\nG0 = grid([1, 0; 0, 1]) faint color 6\nG1 = grid(Turn) color 2\nA1 = arrow(0, Turn*[1; 0]) thick color 3\nB1 = arrow(0, Turn*[0; 1]) thick color 4\nG2 = grid(Shear) color 2\nA2 = arrow(0, Shear*[1; 0]) thick color 3\nB2 = arrow(0, Shear*[0; 1]) thick color 4\n> hide G2, A2, B2; show G0, G1, A1, B1 | The plane, with $e_1$ (green) and $e_2$ (pink).\n> play t to 1 in 3s | First $R$: a quarter turn. $e_1$ goes to $(0, 1)$, $e_2$ to $(-1, 0)$.\n> hide G1, A1, B1; show G2, A2, B2; play t to 2 in 3s | Then $S$: everything slides right by its height. $e_1$ ends at $(1, 1)$ and $e_2$ at $(-1, 0)$: the columns of $SR$.",
-      "type": "scene",
       "showWork": false,
       "label": null
     },
@@ -126,55 +104,140 @@
       "label": null
     },
     {
-      "src": "S*R",
+      "src": "R*[3; 1]",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "S*[3; 1]",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "One move after another",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Shear, then turn. Where do $\\hat{\\imath}$ and $\\hat{\\jmath}$ end up?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "clock t from 0 to 2\nview -2.8, 2.8, -0.8, 2.6\nlet S = [1, 1; 0, 1]\nlet Sh = (1 - t)*[1, 0; 0, 1] + t*S\nlet Tn = [cos(pi*(t - 1)/2), -sin(pi*(t - 1)/2); sin(pi*(t - 1)/2), cos(pi*(t - 1)/2)]*S\nG0 = grid([1, 0; 0, 1]) faint color 6\nG1 = grid(Sh) color 2\nQ1 = poly(0, Sh*[1; 0], Sh*[1; 1], Sh*[0; 1]) color 1\nI1 = arrow(0, Sh*[1; 0]) thick color 3\nJ1 = arrow(0, Sh*[0; 1]) thick color 4\nG2 = grid(Tn) color 2\nQ2 = poly(0, Tn*[1; 0], Tn*[1; 1], Tn*[0; 1]) color 1\nI2 = arrow(0, Tn*[1; 0]) thick color 3\nJ2 = arrow(0, Tn*[0; 1]) thick color 4\n> show G1, Q1, I1, J1 | The unit square on $\\hat{\\imath}$ (green) and $\\hat{\\jmath}$ (pink).\n> play t to 1 in 2s | First the shear $S$: $\\hat{\\imath}$ stays put, $\\hat{\\jmath}$ slides over to $(1, 1)$.\n> hide G1, Q1, I1, J1; show G2, Q2, I2, J2 | Then the quarter turn $R$, applied to wherever things are now.\n> play t to 2 in 2s | $\\hat{\\imath}$ ends at $(0, 1)$ and $\\hat{\\jmath}$ at $(-1, 1)$: the columns of the combined move.",
+      "type": "scene",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Each column of the combined move is $R$ applied to a column of $S$: the shear sent $\\hat{\\jmath}$ to $(1, 1)$, $S$'s second column, and the turn took it on from there. That is how matrices multiply. The combined move is written $RS$, with $S$ on the right, because it acts on a vector as $R(Sv)$: as in $f(g(x))$, the one written nearer the vector happens first.",
+      "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
       "src": "R*S",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "R*(S*[3; 1])",
       "showWork": false,
       "label": null
     },
     {
-      "src": "$RS$ shears first and turns second, and lands somewhere else: $e_1$ goes to $(0, 1)$, not $(1, 1)$. The same two maps in the other order are a different map.",
+      "src": "(R*S)*[3; 1]",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Matrix product\n> Column $j$ of $AB$ is $A$ times column $j$ of $B$: $AB$ is the move \"$B$, then $A$\". So its entry in row $i$, column $j$ is row $i$ of $A$ dotted with column $j$ of $B$, which is the quick way to compute it.",
       "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The order matters",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> Now turn first, then shear. Predict where $\\hat{\\imath}$ lands before the scene plays: the turn sends it to $(0, 1)$, and then the shear slides it sideways by its height.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "clock t from 0 to 2\nview -2.8, 2.8, -0.8, 2.6\nlet R = [0, -1; 1, 0]\nlet S = [1, 1; 0, 1]\nlet Tn = [cos(pi*t/2), -sin(pi*t/2); sin(pi*t/2), cos(pi*t/2)]\nlet Sh = ((2 - t)*[1, 0; 0, 1] + (t - 1)*S)*R\nG0 = grid([1, 0; 0, 1]) faint color 6\nG1 = grid(Tn) color 2\nQ1 = poly(0, Tn*[1; 0], Tn*[1; 1], Tn*[0; 1]) color 1\nI1 = arrow(0, Tn*[1; 0]) thick color 3\nJ1 = arrow(0, Tn*[0; 1]) thick color 4\nG2 = grid(Sh) color 2\nQ2 = poly(0, Sh*[1; 0], Sh*[1; 1], Sh*[0; 1]) color 1\nI2 = arrow(0, Sh*[1; 0]) thick color 3\nJ2 = arrow(0, Sh*[0; 1]) thick color 4\nF = poly(0, [0, 1], [-1, 2], [-1, 1]) faint color 6\nFI = arrow(0, [0, 1]) faint color 3\nFJ = arrow(0, [-1, 1]) faint color 4\n> show G1, Q1, I1, J1 | The same square; this time the turn comes first.\n> play t to 1 in 2s | The quarter turn $R$: $\\hat{\\imath}$ goes to $(0, 1)$, $\\hat{\\jmath}$ to $(-1, 0)$.\n> hide G1, Q1, I1, J1; show G2, Q2, I2, J2 | Then the shear $S$, which slides each point sideways by its height.\n> play t to 2 in 2s | $\\hat{\\imath}$, at height $1$, slides to $(1, 1)$; $\\hat{\\jmath}$, at height $0$, stays at $(-1, 0)$.\n> show F, FI, FJ | Faint: where shear-then-turn left the square. A different move.",
+      "type": "scene",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> With numbers the order of a product never matters, so the natural guess is $SR = RS$. The pictures already disagree, and so does the engine:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "S*R",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Some pairs do commute (two turns, for instance), but in general $AB \\neq BA$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "[2, -1; 1, 1]*[3; -1]",
+      "type": "exercise",
+      "prompt": "Where does $A = \\begin{pmatrix} 2 & -1 \\\\ 1 & 1 \\end{pmatrix}$ send $(3, -1)$? Work it out from the columns, then type it as a column, `[p; q]`.",
+      "hints": [
+        "$3$ times the first column minus the second: $3\\,(2, 1) - (-1, 1)$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "[0, 1; 1, 0]",
+      "type": "exercise",
+      "prompt": "Invent it: write the matrix of the mirror in the line $y = x$, which swaps $\\hat{\\imath}$ and $\\hat{\\jmath}$.",
+      "hints": [
+        "Where does $\\hat{\\imath}$ land? That is the first column."
+      ],
+      "hideQuestion": true,
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "[0, -1; 1, 0]*[0, -1; 1, 0]",
+      "type": "exercise",
+      "prompt": "A quarter turn done twice is a half turn. Write its matrix from where $\\hat{\\imath}$ and $\\hat{\\jmath}$ land, then check that it is $RR$.",
+      "hints": [
+        "A half turn sends $\\hat{\\imath}$ to $(-1, 0)$."
+      ],
+      "hideQuestion": true,
       "showWork": false,
       "label": null
     },
     {
       "src": "[1, 2; 3, 4]*[0, 1; 1, 0]",
       "type": "exercise",
-      "prompt": "Multiply.",
+      "prompt": "Multiply. The right-hand matrix swaps $\\hat{\\imath}$ and $\\hat{\\jmath}$, and it happens first: predict what that does to the columns of the left-hand one.",
       "hints": [
-        "Row $i$ of the first times column $j$ of the second.",
-        "The answer is a matrix: type it as `[a, b; c, d]`."
+        "Column $1$ of the product is $\\begin{pmatrix} 1 & 2 \\\\ 3 & 4 \\end{pmatrix}$ times $(0, 1)$: its second column.",
+        "The answer is a matrix: type it as `[p, q; r, s]`."
       ],
       "showWork": false,
       "label": null
     },
     {
-      "src": "[2, 0; 1, 3]*[1; 2]",
-      "type": "exercise",
-      "prompt": "Apply the matrix to the vector.",
-      "hints": [
-        "The first entry is $2 \\cdot 1 + 0 \\cdot 2$.",
-        "The answer is a column: `[a; b]`."
-      ],
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "transpose([1, 2, 3; 4, 5, 6])",
-      "type": "exercise",
-      "prompt": "Transpose the $2 \\times 3$ matrix.",
-      "hints": [
-        "Rows become columns: the answer is $3 \\times 2$."
-      ],
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "> [!summary]\n> A matrix is a map of the plane, decided by where its columns send the basis vectors; a matrix times a vector is that combination of the columns. A product is one map after another, which is why its order matters.",
+      "src": "> [!summary]\n> A matrix is a linear move of the plane, written down as where $\\hat{\\imath}$ and $\\hat{\\jmath}$ land, its columns. It sends $(x, y)$ to $x$ times the first column plus $y$ times the second. The product $AB$ is \"$B$, then $A$\", its columns $A$ times the columns of $B$, and the order matters.\n>\n> Lesson 2 ran the move forwards. Lesson 3 runs it backwards: given where a vector landed, which vector was it?",
       "type": "markdown",
       "showWork": false,
       "label": null

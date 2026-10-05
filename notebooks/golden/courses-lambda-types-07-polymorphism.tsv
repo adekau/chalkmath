@@ -1,5 +1,9 @@
-3	infer: λx. x	= α → α
-4	infer: λf. λx. f (f x)	= (α → α) → α → α
-6	infer: and	✗ occurs check: τ3 = (τ2 → τ3) → τ4 has no solution (τ3 would have to contain itself), so the term has no simple type
-16	infer: λf. λg. λx. f (g x)	= (α → β) → (γ → α) → γ → β
-17	infer: pair	= α → β → (α → β → γ) → γ
+3	infer: a : A, b : B ⊢ (λf. pair (f a) (f b)) id	✗ cannot unify A with B, so the term has no simple type
+5	infer: a : A, b : B ⊢ pair (id a) (id b)	= (A → B → α) → α
+9	infer: id	= α → α
+11	infer: a : A, b : B ⊢ pair (K a b) (K b a)	= (A → B → α) → α
+20	infer: f : A → A, a : A, g : B → B, b : B ⊢ pair (2 f a) (2 g b)	= (A → B → α) → α
+21	infer: f : A → A, a : A, g : B → B, b : B ⊢ λn. pair (n f a) (n g b)	✗ cannot unify A with B, so the term has no simple type
+29	infer: λf. λg. λx. f (g x)	= (α → β) → (γ → α) → γ → β
+30	infer: pair	= α → β → (α → β → γ) → γ
+31	infer: a : A ⊢ id id a	= A

@@ -1,17 +1,18 @@
 3	let M3 = poset({bot, a, b, c, top}; bot < a, bot < b, bot < c, a < top, b < top, c < top)	= poset {bot, a, b, c, top}
 4	distributive(M3)	= false
-5	let N5 = poset({bot, p, q, r, top}; bot < p, bot < q, q < r, p < top, r < top)	= poset {bot, p, q, r, top}
-6	distributive(N5)	= false
-8	let D = divisors(12)	= poset {1, 2, 3, 4, 6, 12}
-9	distributive(D)	= true
-12	complement(M3, a)	= {b, c}
-13	complement(D, 4)	= {3}
-14	complement(D, 2)	= {}
-18	let P = subsets({x, y, z})	= poset {{}, {z}, {y}, {y,z}, {x}, {x,z}, {x,y}, {x,y,z}}
-19	boolean(P)	= true
-20	let D30 = divisors(30)	= poset {1, 2, 3, 5, 6, 10, 15, 30}
-21	boolean(D30)	= true
-22	complement(D30, 6)	= {5}
-27	complement(M3, b)	= {a, c}
-28	boolean(D)	= false
-29	complement(D30, 10)	= {3}
+6	let N5 = poset({bot, p, q, r, top}; bot < p, bot < q, q < r, p < top, r < top)	= poset {bot, p, q, r, top}
+7	distributive(N5)	= false
+10	let D = divisors(12)	= poset {1, 2, 3, 4, 6, 12}
+11	distributive(D)	= true
+15	complement(M3, a)	= {b, c}
+17	complement(D, 4)	= {3}
+18	complement(D, 2)	= {}
+22	let P = subsets({x, y, z})	= poset {{}, {z}, {y}, {y,z}, {x}, {x,z}, {x,y}, {x,y,z}}
+23	boolean(P)	= true
+24	let D30 = divisors(30)	= poset {1, 2, 3, 5, 6, 10, 15, 30}
+25	boolean(D30)	= true
+26	complement(D30, 6)	= {5}
+31	complement(M3, b)	= {a, c}
+32	boolean(D)	= false
+33	complement(D30, 10)	= {3}
+34	complement(N5, p)	= {q, r}

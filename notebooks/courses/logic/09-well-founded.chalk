@@ -9,7 +9,13 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Recognize a well-founded relation, prove one with a measure, and prove that recursive functions terminate.",
+      "src": "> [!goal]\n> Recognize a relation with no infinite descent, prove it has none with a measure, and prove that recursive functions terminate.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Euclid's algorithm replaces $(a, b)$ by $(b, a \\bmod b)$ until $b = 0$: $(48, 18)$, $(18, 12)$, $(12, 6)$, $(6, 0)$. Why does it stop for every input, not just this one? The second number goes down at every step, since $a \\bmod b < b$, and a natural number cannot go down forever.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -21,7 +27,7 @@
       "label": null
     },
     {
-      "src": "This is the setting of the last two lessons: induction is valid along any well-founded relation, because a counterexample could be followed down forever otherwise. $<$ on $\\mathbb{N}$ is the familiar case.",
+      "src": "This is what made the induction lessons work. Induction is valid along any well-founded relation: if $P$ failed somewhere, the step would point to a smaller place where it fails, and to a smaller one from there, an infinite descent. $<$ on $\\mathbb{N}$ is lesson 6's case, and \"is a part of\" lesson 7's.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -53,6 +59,12 @@
       "label": null
     },
     {
+      "src": "On a big or infinite set you cannot follow every chain. Do what the Euclid argument did: find a number that goes down at every step.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "> [!theorem] A measure proves termination\n> If a function $m$ to the natural numbers goes down along every step ($x \\mathrel{R} y$ gives $m(y) < m(x)$), $R$ is well-founded: an infinite chain of steps would be an infinite decreasing chain of natural numbers.",
       "type": "markdown",
       "showWork": false,
@@ -69,7 +81,18 @@
       "label": null
     },
     {
-      "src": "A cycle can have no measure: going round it would return to the same value having gone down.",
+      "src": "> [!try]\n> Find a measure for the cycle $C$: numbers for $x$, $y$ and $z$ that go down along all three steps.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "measure(C; x->2, y->1, z->0)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "There is none: going round the cycle would come back to the same value, having gone down at every step. The measure has to land in the natural numbers, too. Into the integers, $0, -1, -2, \\dots$ goes down forever, and so does $1, \\frac12, \\frac14, \\dots$ in the rationals: a measure is only as good as the order it lands in.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -81,7 +104,7 @@
       "label": null
     },
     {
-      "src": "Lean accepts a recursive definition only when it can see that it stops. Structural recursion (on a smaller part) it checks itself; otherwise it asks for a measure with `termination_by` and, if needed, a proof that each call decreases it with `decreasing_by`.",
+      "src": "Lean accepts a recursive definition only when it can see that it stops. Structural recursion (on a smaller part) it checks itself; otherwise it asks for a measure with `termination_by` and, if needed, a proof that each call decreases it with `decreasing_by`. Here is Euclid's algorithm with its measure:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -93,7 +116,13 @@
       "label": null
     },
     {
-      "src": "> [!definition] Lexicographic order\n> Pairs are compared by their first components, and by the second only when the first are equal. It is well-founded when both orders are, even though the second component can grow without bound whenever the first goes down.",
+      "src": "Some functions have no single number that goes down. Ackermann's function calls itself with $m$ smaller and $n$ anything, or with $m$ the same and $n$ smaller:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Lexicographic order\n> Pairs are compared by their first components, and by the second only when the first are equal, as words are in a dictionary. It is well-founded when both orders are, even though the second component can grow without bound whenever the first goes down.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -105,7 +134,7 @@
       "label": null
     },
     {
-      "src": "Ackermann's function: in every call either $m$ goes down, or $m$ stays and $n$ goes down. No single number measures it, but the pair does.",
+      "src": "In every call either $m$ goes down, or $m$ stays and $n$ goes down. No single number measures it, but the pair does.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -139,7 +168,7 @@
     {
       "src": "measure(H; 1->0, 2->1, 3->1, 4->2, 5->2)",
       "type": "exercise",
-      "prompt": "Does the measure $1 \\mapsto 0$, $2 \\mapsto 1$, $3 \\mapsto 1$, $4 \\mapsto 2$, $5 \\mapsto 2$ go down along every step of $H$?",
+      "prompt": "Does the measure $1 \\mapsto 0$, $2 \\mapsto 1$, $3 \\mapsto 1$, $4 \\mapsto 2$, $5 \\mapsto 2$ go down along every step of $H$? Answer `true` or `false`.",
       "hints": [
         "Check each arrow: the number at its head must be smaller than at its tail."
       ],
@@ -159,13 +188,13 @@
       "label": null
     },
     {
-      "src": "> [!note] The engine's own termination proof\n> ChalkMath's simplifier never runs on a step budget. Every rule in its pipeline comes with a proof that it decreases a well-founded ordering on terms (`pipelineOrdered` in the engine's Lean), the same argument as a measure, only the measure is an ordering on expression trees.",
+      "src": "> [!note] The engine's own termination proof\n> ChalkMath's simplifier never runs on a step budget. Every rule in its pipeline decreases a well-founded ordering on terms: proved in Lean (`pipelineOrdered`), or, for rules that hand the work to code the ordering cannot see into (commands, matrix arithmetic), checked on each output. It is the same argument as a measure, only the measure is an ordering on expression trees.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!summary]\n> Well-founded means no infinite descent; on a finite set, no cycle. A measure into the naturals proves it, a cycle refutes it, and Lean's `termination_by` is a measure written down.",
+      "src": "> [!summary]\n> Well-founded means no infinite descent; on a finite set, no cycle. A measure into the naturals proves it, a cycle refutes it, and Lean's `termination_by` is a measure written down. Every induction in this course ran along a well-founded relation.",
       "type": "markdown",
       "showWork": false,
       "label": null

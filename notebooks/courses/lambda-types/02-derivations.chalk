@@ -9,13 +9,47 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Build and read derivations in a context, say exactly why an ill-typed term fails, and know that a term's type is unique.",
+      "src": "> [!goal]\n> Say exactly where a term with no type gets stuck, read derivations in a context, and see why a term has only one type.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "The checker works bottom-up: to type $\\lambda x{:}A.\\, M$ it adds $x : A$ to the context and types $M$; to type $M\\ N$ it types both and checks that they fit. The tree is read the other way, from the axioms down. Long contexts are named $\\Gamma_1, \\Gamma_2, \\ldots$ under the tree.",
+      "src": "$\\Omega$'s half, $\\lambda x.\\, x\\ x$, applies $x$ to $x$, so $x$ must be a function. Try to give it a type.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> What goes wrong with $x : A$? With $x : A \\to A$? Predict each message.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "type: λx:A. x x",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "type: λx:A→A. x x",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A base type cannot be applied. An arrow can, but $x : A \\to A$ wants an $A$ and is handed itself. Whatever type $T$ you pick, $x\\ x$ needs $T = T \\to B$ for some $B$: $T$ would be a proper part of itself, and no type is. So $\\lambda x.\\, x\\ x$ has no type, and $\\Omega$ has none either. Lesson 4 returns to what that buys.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Reading a derivation",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A derivation is a certificate: each step can be checked on its own, against its premises. The checker builds it bottom-up: to type $\\lambda x{:}A.\\, M$ it adds $x : A$ to the context and types $M$; to type $M\\ N$ it types both and checks that they fit. The tree is read the other way, from the axioms down. Long contexts are named $\\Gamma_1, \\Gamma_2, \\ldots$ under the tree.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -26,19 +60,20 @@
       "label": null
     },
     {
-      "src": "Why a term has no type",
+      "src": "Where a derivation gets stuck",
       "type": "section",
       "showWork": false,
       "label": null
     },
     {
-      "src": "Three things can go wrong, and each has its message:",
+      "src": "Each rule has a condition, and a term without a type is one where some condition fails: Var, when a name has no type; →E, when the function is not a function (as with $x\\ x$ at $x : A$), or when its argument has the wrong type.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "type: λx:A. x x",
+      "src": "> [!try]\n> Which condition fails in each of these?",
+      "type": "markdown",
       "showWork": false,
       "label": null
     },
@@ -53,13 +88,47 @@
       "label": null
     },
     {
-      "src": "An inner binder hides an outer one of the same name, and the context remembers only the nearest:",
+      "src": "Shadowing",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake] The outer x\n> A natural guess for $\\lambda x{:}A.\\, \\lambda x{:}B.\\, x$ is $A \\to B \\to A$, reading the last $x$ as the first binder's. But the inner binder hides the outer one: the context remembers only the nearest $x$.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
       "src": "type: λx:A. λx:B. x",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "It has to be so, or the type would disagree with what the term does: given two arguments, it returns the second.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "normal: (λx. λx. x) a b",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "One type",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "At no node of a derivation is there a choice: the term's shape picks the rule, and the binder's type extends the context. So a term has at most one type in a context; the Lean below proves it. Take the binder's type away and the choice is back: $\\lambda x.\\, x$ could be $A \\to A$, or $B \\to B$, or $(A \\to B) \\to A \\to B$, and the checker will not guess:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "type: λx. x",
       "showWork": false,
       "label": null
     },
@@ -121,7 +190,25 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> A derivation types a term from its parts in a context. A term fails when a variable has no type, an argument has the wrong type, or a non-function is applied. The checker is sound, and types are unique.",
+      "src": "type: y : A ⊢ λx:A→B. x y",
+      "type": "exercise",
+      "prompt": "In the context $y : A$, the term $\\lambda x{:}T.\\, x\\ y$ should give back a $B$. Choose $T$, and give the type of the whole term.",
+      "hints": [
+        "$x$ is applied to $y : A$ and must return a $B$.",
+        "So $T = A \\to B$, and the term has type $T \\to B$."
+      ],
+      "hideQuestion": true,
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> A derivation is a certificate, checked rule by rule. A term has no type when a rule's condition fails: a variable with no type, a non-function applied, an argument of the wrong type; $\\lambda x.\\, x\\ x$ fails for every choice of type. An inner binder hides an outer one. The checker is sound, and a term has at most one type in a context.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Every binder so far carried its type, and without them the checker refuses. Must every type be written, or can it be worked out from how a term uses its variables?",
       "type": "markdown",
       "showWork": false,
       "label": null

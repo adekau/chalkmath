@@ -9,13 +9,19 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Compute the chance that a retried call fails, the attempts it costs on average, and the time exponential backoff waits, as finite sums.",
+      "src": "> [!goal]\n> Work out how often a capped retry loop gives up, how many calls it makes on average, and how long backoff makes it wait.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "A call fails with probability $q$, each attempt independently of the others, and the client tries at most $n$ times. Take $q = 1/10$:",
+      "src": "Lesson 7's client tried twice and could still give up. More tries make giving up rarer, and cost calls. How much rarer, and how many calls?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Say each attempt fails with probability $q$, independently of the others, and the client tries at most $n$ times. Take $q = 1/10$:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -26,7 +32,13 @@
       "label": null
     },
     {
-      "src": "> [!definition] Independent attempts\n> The attempts all fail with probability $q \\cdot q \\cdots q = q^n$. The first success comes at attempt $k$ with probability $q^{k-1}(1 - q)$: $k - 1$ failures, then a success.",
+      "src": "> [!try]\n> What is the chance that three attempts all fail? That five do not all fail?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Independent failures multiply: all $n$ fail with probability $q^n$.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -42,7 +54,7 @@
       "label": null
     },
     {
-      "src": "Adding up the chance of succeeding first at each attempt gives the same number, as it must:",
+      "src": "The same number comes from the other side. The first success is at attempt $k$ with probability $q^{k-1}(1 - q)$: $k - 1$ failures, then a success. Adding these up for $k = 1, \\dots, 5$ gives the chance of some success:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -53,7 +65,7 @@
       "label": null
     },
     {
-      "src": "That is the geometric sum. With a symbol for $q$, multiplying by $1 - r$ telescopes:",
+      "src": "That they agree is the geometric sum. With a symbol for $q$, multiplying by $1 - r$ telescopes:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -81,7 +93,13 @@
       "label": null
     },
     {
-      "src": "A shorter way: there is an attempt $k + 1$ exactly when the first $k$ failed, with probability $q^k$. Summing those chances counts the attempts:",
+      "src": "> [!try]\n> There is a shorter way. When does the client make an attempt $k + 1$ at all?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exactly when the first $k$ attempts failed, which has probability $q^k$. Each attempt counts one when it happens, so the expected count is the sum of those chances:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -92,7 +110,7 @@
       "label": null
     },
     {
-      "src": "> [!mistake]\n> Retries look free when failures are rare: $1.1111$ calls per request. But failures are rarely independent. When a server is overloaded, most calls fail, and the retries are more load on the server that is already failing:",
+      "src": "> [!mistake]\n> Retries look free when failures are rare: $1.1111$ calls per request. But failures are rarely independent. When a server is overloaded most calls fail, and the retries are more load on the server that is already failing:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -103,8 +121,19 @@
       "label": null
     },
     {
-      "src": "At $q = 9/10$ every request costs four calls: the retries quadruple the load just when the server can take the least. Hence retry budgets, which cap retries at a fraction of the traffic, and backoff.",
+      "src": "At $q = 9/10$ every request costs about four calls ($4.0951$): retries multiply the load just when the server can take the least. Hence retry budgets, which cap retries at a fraction of the traffic, and backoff.",
       "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The expected attempts as a function of the failure rate:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "manipulate(sum(p^k, k, 0, 4), p, 0, 1)",
       "showWork": false,
       "label": null
     },
@@ -140,17 +169,6 @@
     {
       "src": "sum(100*2^k*q^(k + 1), k, 0, 3)",
       "showWork": true,
-      "label": null
-    },
-    {
-      "src": "The expected attempts as a function of the failure rate, with a slider:",
-      "type": "markdown",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "manipulate(sum(p^k, k, 0, 4), p, 0, 1)",
-      "showWork": false,
       "label": null
     },
     {
@@ -206,7 +224,7 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> Independent attempts multiply: $q^n$ fail, and the expected attempts are $\\sum_{k<n} q^k$. Under overload $q$ is near one and retries multiply the load; backoff spaces them out, and on average costs little when failures are rare.",
+      "src": "> [!summary]\n> Independent attempts multiply: all $n$ fail with probability $q^n$, and the expected attempts are $\\sum_{k<n} q^k$. Under overload $q$ is near one and retries multiply the load; backoff spaces them out, and costs little on average when failures are rare. Retrying is only safe with an idempotent handler.",
       "type": "markdown",
       "showWork": false,
       "label": null

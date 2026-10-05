@@ -9,19 +9,37 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Prove propositional statements in Lean with the rules of natural deduction, written as tactics: `intro`, `exact`, `constructor`, `cases`, `left` and `right`.",
+      "src": "> [!goal]\n> Prove propositional statements in Lean by asking, for each connective, what it takes to prove one and what you can do with one.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "A truth table checks a formula by trying every row. A **proof** derives it by rules, each a small, obviously valid step, and it works where a table cannot: for statements about infinitely many numbers, or with variables that are not just true or false. Lean checks every step.",
+      "src": "A truth table checks a formula by trying every row. That stops working for \"every natural number $n$ satisfies $n + 0 = n$\": the rows never end. A **proof** derives a statement by rules instead, each a small step that is obviously valid, and Lean checks every step. What should the rules be?",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!definition] Introduction and elimination\n> Each connective has rules that **introduce** it (how to prove it) and rules that **eliminate** it (how to use it):\n>\n> - $p \\to q$: to prove it, assume $p$ and prove $q$ (`intro`); to use it, apply it to a proof of $p$.\n> - $p \\land q$: prove both (`constructor`, or `⟨hp, hq⟩`); from it, take either (`h.1`, `h.2`).\n> - $p \\lor q$: prove one (`left`, `right`); to use it, prove the goal in both cases (`cases`).\n> - $\\lnot p$ is $p \\to \\bot$: to prove it, assume $p$ and reach a contradiction.",
+      "src": "What each connective needs",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> To convince someone of $p \\land q$, what must you hand them? If someone hands you a proof of $p \\land q$, what can you get out of it? Ask the same of $p \\lor q$ and of $p \\to q$ before reading on.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "- $p \\land q$: hand over a proof of each, a pair. Given one, you can take either half.\n- $p \\lor q$: hand over a proof of one of them, saying which. Given one, you do not know which side you have, so you must finish the job in both cases.\n- $p \\to q$: hand over a method that turns any proof of $p$ into a proof of $q$; to build it, assume $p$ and derive $q$. Given one and a proof of $p$, apply it and get $q$.\n- $\\lnot p$ is $p \\to \\bot$: a method that turns any proof of $p$ into a contradiction.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Introduction and elimination\n> Natural deduction is these answers written as rules: for each connective, how to **introduce** it (prove it) and how to **eliminate** it (use it). In Lean, `intro` assumes the premise of $\\to$, and applying `h hp` uses one; `constructor` or `⟨hp, hq⟩` builds $\\land$, and `h.1`, `h.2` take it apart; `left` and `right` build $\\lor$, and `cases` uses it.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -121,7 +139,7 @@
       "label": null
     },
     {
-      "src": "> [!note] Curry–Howard\n> The term `fun hp => h (Or.inl hp)` above is a program: a function taking a proof of $p$ to a proof of $\\bot$. In Lean a proof of $p \\to q$ *is* a function from proofs of $p$ to proofs of $q$, and a proof of $p \\land q$ is a pair. Propositions are types and proofs are their values; checking a proof is type checking. The λ-calculus courses come back to this.",
+      "src": "> [!note] Curry–Howard\n> \"A method that turns any proof of $p$ into a proof of $q$\" is a function, and in Lean it is one: the term `fun hp => h (Or.inl hp)` from the last exercise takes a proof of $p$ to a proof of $\\bot$. A proof of $p \\land q$ is a pair. Propositions are types and proofs are their values; checking a proof is type checking. The λ-calculus courses come back to this.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -133,7 +151,18 @@
       "label": null
     },
     {
-      "src": "> [!mistake]\n> Every tautology has a truth table, but not every tautology has a proof by these rules alone. $\\lnot\\lnot p \\to p$ is a tautology, yet the rules above only give $p$ from evidence for $p$. It needs one more principle, the excluded middle (`Classical.em p : p ∨ ¬p`), or proof by contradiction:",
+      "src": "> [!mistake]\n> It is natural to expect every tautology to have a proof by these rules. $\\lnot\\lnot p \\to p$ is a tautology:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "taut(¬¬p → p)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Yet the rules above give no proof of it. A proof of $\\lnot\\lnot p$ is a function that turns refutations of $p$ into contradictions, and nothing in it is evidence for $p$. It needs one more principle, the excluded middle (`Classical.em p : p ∨ ¬p`), or proof by contradiction:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -145,7 +174,13 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> Natural deduction gives each connective rules to introduce and to eliminate it, and Lean's tactics are those rules. A proof of an implication is a function; a proof of a conjunction is a pair.",
+      "src": "> [!summary]\n> Each connective's rules say what it takes to prove it and what you can do with it, and Lean's tactics are those rules. A proof of an implication is a function; a proof of a conjunction is a pair. Excluded middle is the one extra principle classical logic adds.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "So far every statement was about $p$ and $q$. Most statements in mathematics are about every number, or some number. The next lesson adds $\\forall$ and $\\exists$.",
       "type": "markdown",
       "showWork": false,
       "label": null

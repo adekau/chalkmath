@@ -9,7 +9,31 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Tell bound variables from free ones, compute the free variables of a term, and decide when two terms are the same up to renaming.",
+      "src": "> [!goal]\n> Tell the variables a λ owns from the ones it does not, and see when renaming one is harmless.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "What does $\\lambda x.\\, x\\ y$ do? Given $a$ it gives $a\\ y$. The $x$ is a placeholder for the argument. The $y$ is something else: a value from outside the function, which this term does not fix. Mathematics has the same two roles: in $\\sum_{i=1}^{n} i\\,k$ and $\\int_0^1 x\\,t\\ dx$, the $i$ and the $x$ are placeholders, and $n$, $k$ and $t$ come from outside.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> $\\sum_{j=1}^{n} j\\,k$ means the same as $\\sum_{i=1}^{n} i\\,k$; renaming $k$ changes the meaning. In $\\lambda x.\\, x\\ y$, which of $x$ and $y$ could you rename without changing what the function does?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Bound and free",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The answer is $x$: the λ owns it, and renaming it together with the λ changes nothing. The $y$ belongs to whoever supplies it.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -21,7 +45,7 @@
       "label": null
     },
     {
-      "src": "The command `fv:` computes them and names the bound ones:",
+      "src": "Each clause says one thing: a variable alone is free; a λ takes its own variable out; an application has the free variables of both sides. The command `fv:` computes them and names the bound ones:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -32,7 +56,7 @@
       "label": null
     },
     {
-      "src": "The same name can be free in one place and bound in another. Here the first $x$ is bound by its λ, and the second is outside it:",
+      "src": "The same name can be free in one place and bound in another. Here $x$ is bound on the left and free on the right, and $y$ the other way round, so both are listed as free and as bound:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -48,13 +72,19 @@
       "label": null
     },
     {
-      "src": "α-equivalence",
+      "src": "Renaming placeholders",
       "type": "section",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!definition] α-equivalence\n> Renaming a bound variable, together with every occurrence it binds, gives the same function: $\\lambda x.\\, x$ and $\\lambda y.\\, y$ are both the identity. Terms that differ only so are **α-equivalent**, and are treated as equal. The new name must not be one that is free in the body, or it would be captured: $\\lambda x.\\, y$ (the constant function giving $y$) is not $\\lambda y.\\, y$.",
+      "src": "So $\\lambda x.\\, x$ and $\\lambda y.\\, y$ are the same function: both give back what they get. Renaming a bound variable, everywhere it is bound, changes nothing. Now try it on $\\lambda x.\\, y$, the function that ignores its argument and gives $y$. Rename $x$ to $y$ and you get $\\lambda y.\\, y$, the identity: the new name caught the free $y$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] α-equivalence\n> Renaming a bound variable, together with every occurrence it binds, to a name not free in its body gives the same function. Terms that differ only so are **α-equivalent**, and are treated as equal: $\\lambda x.\\, x$ and $\\lambda y.\\, y$ are, $\\lambda x.\\, y$ and $\\lambda y.\\, y$ are not.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -72,6 +102,12 @@
     },
     {
       "src": "alpha: λx. y, λy. y",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Keep the failure in mind: lesson 3 meets it again, in the middle of a β-step.",
+      "type": "markdown",
       "showWork": false,
       "label": null
     },
@@ -159,7 +195,7 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> A λ binds its variable in its body; everything else is free. Bound names can be changed at will, as long as no free variable gets captured. That is α-equivalence, and terms are equal up to it.",
+      "src": "> [!summary]\n> A λ binds its variable in its body; every other variable is free, a value from outside. Bound names can be changed at will, as long as no free variable gets captured. That is α-equivalence, and terms are equal up to it.\n\nA β-step puts an argument into a body. What if the argument has a free $y$ and the body has a $\\lambda y$? Lesson 3.",
       "type": "markdown",
       "showWork": false,
       "label": null

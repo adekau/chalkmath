@@ -1,6 +1,10 @@
-4	let C4 = chain(4)	= poset {0, 1, 2, 3}
-5	let G = product(C4, C4)	= poset {(0, 0), (0, 1), (0, 2), (0, 3), (1, 0), (1, 1), (1, 2), (1, 3), (2, 0), (2, 1), (2, 2), (2, 3), (3, 0), (3, 1), (3, 2), (3, 3)}
-6	join(G, (2, 0), (1, 3))	= (2, 3)
-8	join(G, (2, 3), (1, 0))	= (2, 3)
-11	replicas(gcounter; a, b\n  a: inc\n  a: inc\n  b: inc\n  a -> b\n  b -> a\n)	= {a↦3, b↦3}
-21	join(G, (3, 1), (2, 2))	= (3, 2)
+6	let C4 = chain(4)	= poset {0, 1, 2, 3}
+7	let G = product(C4, C4)	= poset {(0, 0), (0, 1), (0, 2), (0, 3), (1, 0), (1, 1), (1, 2), (1, 3), (2, 0), (2, 1), (2, 2), (2, 3), (3, 0), (3, 1), (3, 2), (3, 3)}
+8	join(G, (2, 0), (1, 3))	= (2, 3)
+10	join(G, (2, 3), (1, 0))	= (2, 3)
+13	join(G, (2, 0), (2, 0))	= (2, 0)
+17	replicas(gcounter; a, b\n  a: inc\n  b: inc\n  a -> b\n  b -> a\n)	= {a↦2, b↦2}
+19	replicas(gcounter; a, b, c\n  a: inc\n  b: inc\n  b: inc\n  a -> b\n  b -> c\n)	= {a↦1, b↦3, c↦3}
+21	replicas(gcounter; a, b, c\n  a: inc\n  b: inc\n  b: inc\n  a -> b\n  b -> c\n  c -> a\n)	= {a↦3, b↦3, c↦3}
+32	join(G, (3, 1), (2, 2))	= (3, 2)
+33	join(G, (1, 3), (1, 2))	= (1, 3)

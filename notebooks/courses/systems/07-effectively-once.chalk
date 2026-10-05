@@ -9,52 +9,99 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Model a channel that may deliver a message twice, and see that an idempotent handler gives each message its effect exactly once while a non-idempotent one does not.",
+      "src": "> [!goal]\n> See why retrying a request applies it twice, and make the effect happen once anyway.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "A network that guarantees delivery retries, and retries duplicate. **Exactly-once delivery** is not something a network can promise; **effectively once** is: deliver at least once, and make applying a message twice the same as applying it once.",
+      "src": "A client asks a server to add 5 to a balance, and hears nothing back. Either the request was lost, and the server did nothing, or the reply was lost, and the server has already added 5. The client cannot tell which. Sending again is the only way to be sure the request gets through.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "let Dup = system(\n  var sent in 0..1\n  var copies in 0..2\n  var applied in 0..3\n  init sent = 0 ∧ copies = 0 ∧ applied = 0\n  action send when sent = 0 do sent := 1, copies := 1\n  action duplicate when copies = 1 ∧ applied = 0 do copies := 2\n  action deliver when copies > 0 do copies := copies - 1, applied := applied + 1\n)",
+      "src": "A model: the client tries at most twice; the network may lose the request or the reply; the server adds one to `applied` for each request it receives.",
+      "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "invariant(Dup, applied ≤ sent)",
+      "src": "let Retry = system(\n  var tries in 0..2\n  var req in bool\n  var applied in 0..2\n  var reply in {none, flying, got}\n  init tries = 0 ∧ req = false ∧ applied = 0 ∧ reply = none\n  action send when tries < 2 ∧ req = false ∧ reply ≠ got do tries := tries + 1, req := true\n  action lose when req = true do req := false\n  action deliver when req = true do req := false, applied := applied + 1, reply := flying\n  action loseReply when reply = flying do reply := none\n  action gotReply when reply = flying do reply := got\n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> Can the request be applied twice? Does a message have to be lost for that?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "invariant(Retry, applied ≤ 1)",
       "showWork": true,
       "label": null,
       "stepwise": 0
     },
     {
-      "src": "The handler adds each delivery to a count, so a duplicate doubles the effect. An idempotent handler records that the message was seen:",
+      "src": "No message was lost. The server applied the request, and while the reply was still on its way the client stopped waiting and sent again; the server applied that too. A lost reply does the same, one step later. Retries turn \"at most once\" into **at least once**: the client can make sure a request is applied, but not that it is applied only once. **Exactly-once delivery** is not something a network can promise.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "let Idem = system(\n  var sent in 0..1\n  var copies in 0..2\n  var seen in bool\n  init sent = 0 ∧ copies = 0 ∧ seen = false\n  action send when sent = 0 do sent := 1, copies := 1\n  action duplicate when copies = 1 do copies := 2\n  action deliver when copies > 0 do copies := copies - 1, seen := true\n)",
+      "src": "Making a duplicate harmless",
+      "type": "section",
       "showWork": false,
       "label": null
     },
     {
-      "src": "invariant(Idem, seen = true → sent = 1)",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "eventually(Idem, seen = true)",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "Here every run delivers, because delivering is all the system can do once the message is sent. In a real system other work competes for the same machine, and it is fairness that guarantees delivery: a liveness question for the channel, separate from the handler's safety.",
+      "src": "What can be promised is an effect that happens once. Make applying a request twice the same as applying it once: the handler is **idempotent**. Here the server remembers that it has applied the request (in practice, its id), and answers a repeat without applying it:",
       "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let Dedup = system(\n  var tries in 0..2\n  var req in bool\n  var applied in 0..2\n  var seen in bool\n  var reply in {none, flying, got}\n  init tries = 0 ∧ req = false ∧ applied = 0 ∧ seen = false ∧ reply = none\n  action send when tries < 2 ∧ req = false ∧ reply ≠ got do tries := tries + 1, req := true\n  action lose when req = true do req := false\n  action deliver when req = true ∧ seen = false do req := false, applied := applied + 1, seen := true, reply := flying\n  action again when req = true ∧ seen = true do req := false, reply := flying\n  action loseReply when reply = flying do reply := none\n  action gotReply when reply = flying do reply := got\n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "invariant(Dedup, applied ≤ 1)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The same invariant, now true. **Effectively once** is at-least-once delivery plus an idempotent handler. Idempotence is a property of the handler, not of the network, so it can be proved once, about the handler alone.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "With a cap of two tries, both can be lost, and the client gives up:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "reach(Dedup, tries = 2 ∧ req = false ∧ reply = none ∧ applied = 0)",
+      "showWork": true,
+      "label": null,
+      "stepwise": 0
+    },
+    {
+      "src": "Without the cap the client retries for ever, and whether it eventually gets a reply is a liveness question. It holds when the network promises that a message sent again and again is eventually delivered: strong fairness, from lesson 4, on the steps that deliver.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let Forever = system(\n  var req in bool\n  var applied in 0..2\n  var seen in bool\n  var reply in {none, flying, got}\n  init req = false ∧ applied = 0 ∧ seen = false ∧ reply = none\n  action send when req = false ∧ reply ≠ got do req := true\n  action lose when req = true do req := false\n  strong fair action deliver when req = true ∧ seen = false do req := false, applied := applied + 1, seen := true, reply := flying\n  strong fair action again when req = true ∧ seen = true do req := false, reply := flying\n  action loseReply when reply = flying do reply := none\n  strong fair action gotReply when reply = flying do reply := got\n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "eventually(Forever, reply = got)",
       "showWork": false,
       "label": null
     },
@@ -89,21 +136,42 @@
       "label": null
     },
     {
-      "src": "invariant(Dup, applied ≤ sent)",
-      "type": "exercise",
-      "prompt": "Does the counting handler apply each message at most once?",
+      "src": "Some requests are idempotent without any memory. \"Set `x` to 1\" in place of \"add 1 to `x`\":",
+      "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "invariant(Idem, seen = true → sent = 1)",
-      "type": "exercise",
-      "prompt": "Is the idempotent handler's effect always backed by a sent message?",
+      "src": "let Put = system(\n  var tries in 0..2\n  var req in bool\n  var x in 0..2\n  var reply in {none, flying, got}\n  init tries = 0 ∧ req = false ∧ x = 0 ∧ reply = none\n  action send when tries < 2 ∧ req = false ∧ reply ≠ got do tries := tries + 1, req := true\n  action lose when req = true do req := false\n  action deliver when req = true do req := false, x := 1, reply := flying\n  action loseReply when reply = flying do reply := none\n  action gotReply when reply = flying do reply := got\n)",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!summary]\n> Retrying networks duplicate. Effectively-once processing is at-least-once delivery plus an idempotent handler, and idempotence is a one-line theorem about the handler, not a property of the network.",
+      "src": "invariant(Put, x ≤ 1)",
+      "type": "exercise",
+      "prompt": "Retries and all, does $x \\le 1$ hold in every reachable state of `Put`? Answer `true` or `false`.",
+      "hints": [
+        "Applying `x := 1` twice leaves `x = 1`."
+      ],
+      "hideQuestion": true,
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "invariant(Retry, applied ≤ 1)",
+      "type": "exercise",
+      "prompt": "Does the counting handler, `Retry`, apply the request at most once?",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> A client that hears nothing cannot tell a lost request from a lost reply, so it retries, and retries duplicate. Effectively-once processing is at-least-once delivery plus an idempotent handler, and idempotence is a one-line theorem about the handler, not a property of the network.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`Dedup` keeps \"applied at most once\" through every loss and retry. Is that all it does, or does it behave, step by step, like a server that applies each request exactly when asked? The next lesson makes \"behaves like\" precise.",
       "type": "markdown",
       "showWork": false,
       "label": null

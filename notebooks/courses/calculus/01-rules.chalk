@@ -9,13 +9,37 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Differentiate polynomials and products with four rules, and read every step the engine takes.\n\n`diff(f, x)` is the derivative of $f$ with respect to $x$. The engine does not look the answer up: it applies one rule at a time, and each rule is a step you can read, with a dot that says whether the rule is proved in Lean.",
+      "src": "> [!goal]\n> Say what the slope of a curve at one point means, and see where the power and product rules come from, well enough to rebuild them.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!definition] Derivative\n> The derivative of $f$ at $x$ is $f'(x) = \\lim_{h \\to 0} \\dfrac{f(x + h) - f(x)}{h}$, the slope of the graph there. The rules below are consequences of this definition, so they can be applied without taking a limit each time.",
+      "src": "A slope is rise over run, between two points. On a straight line any two points give the same answer; on the graph of $y = x^2$ they do not, since it curves. Yet a speedometer shows one speed at one instant, and a curve looks steeper at some points than at others. What can \"the slope at a point\" mean, when a slope needs two points?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Zoom in",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Magnify the graph of $y = x^2$ around the point $(1, 1)$, which stays where the axes cross:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "clock z from 1 to 40\nview -1, 1, -2.2, 2.2\nT = graph(2*x, x, -1, 1) dashed color 6\nG = graph(z*((1 + x/z)^2 - 1), x, -1, 1) thick color 1\nP = point(0) color 1\n> show G, P | The curve $y = x^2$ near the point $(1, 1)$, placed where the axes cross.\n> play z to 40 in 6s | Zoom in, up to $40$ times. The bend straightens out.\n> show T | What is left looks like a line, of slope $2$: the slope of $x^2$ at $1$.",
+      "type": "scene",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Close up, a smooth curve looks straight, and a straight line has a slope. That slope is the slope at the point. To compute it without a microscope, take two points of the graph and let them close in.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -27,7 +51,7 @@
       "label": null
     },
     {
-      "src": "The fraction in the definition is the slope of a **secant**: the line through two points of the graph, $(x, f(x))$ and $(x + h, f(x + h))$. Take $f(x) = x^2$ at $x = 1$, and leave $h$ a letter: `m` is the secant's slope in terms of $h$, `L` the secant, and `T` the tangent, the line through $(1, 1)$ with slope $f'(1)$.",
+      "src": "The line through two points of the graph, $(x, f(x))$ and $(x + h, f(x + h))$, is a **secant**, and its slope is $\\dfrac{f(x + h) - f(x)}{h}$. Take $f(x) = x^2$ at $x = 1$, and leave $h$ a letter: `m` is the secant's slope in terms of $h$, `L` the secant, and `T` the line the zoom showed, through $(1, 1)$ with slope $2$ (`diff`, below, computes it).",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -64,13 +88,94 @@
       "label": null
     },
     {
-      "src": "> [!try]\n> Press `▶ Play`. As $h$ shrinks toward $0$ the second point slides down the curve toward $(1, 1)$, and the secant `L` turns onto the tangent `T`. Under the picture, `m` is worked out at each $h$: rise over run, $\\dfrac{(1 + h)^2 - 1}{h}$ with $h$ put in, closing in on $f'(1) = 2$. Drag the slider to stop anywhere and read the calculation there.",
+      "src": "> [!try]\n> Before you press `▶ Play`: what number will `m` close in on? Then play it. As $h$ shrinks toward $0$ the second point slides down the curve toward $(1, 1)$, and the secant `L` turns onto the tangent `T`. Under the picture, `m` is worked out at each $h$: $\\dfrac{(1 + h)^2 - 1}{h}$ with $h$ put in, closing in on $2$, the slope the zoom showed.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "The slope is never computed *at* $h = 0$, where the fraction is $\\frac00$: the derivative is the number the slopes approach.",
+      "src": "The slope is never computed *at* $h = 0$, where the fraction is $\\frac00$: it is the number the secant slopes settle on. That number gets a name.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Derivative\n> The derivative of $f$ at $x$ is $f'(x) = \\lim_{h \\to 0} \\dfrac{f(x + h) - f(x)}{h}$: the number the secant slopes settle on, the slope of the line the graph looks like when you zoom in.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`diff(f, x)` is the derivative of $f$ with respect to $x$. The engine takes no limits: it applies rules, one at a time, and each rule is a step you can read, with a dot that says whether the rule is proved in Lean. The rest of this lesson finds where two of those rules come from.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Why the derivative of x² is 2x",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Do the limit once, at any $x$. The secant slope of $x^2$ between $x$ and $x + h$, multiplied out:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "expand(((x + h)^2 - x^2)/h)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "It is $2x + h$. (Cancelling $h$ assumes $h \\neq 0$, and the step says so: at $h = 0$ the fraction means nothing.) As $h$ shrinks, $2x + h$ settles on $2x$. A picture says why. Read $x^2$ as the area of a square of side $x$, and lengthen the side by a little, $dx$:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "clock d from 0 to 0.5\nnoaxes\nview -0.3, 2.3, -0.3, 2.3\nS = poly(0, 1.5, 1.5 + 1.5*i, 1.5*i) color 2\nLX = label(0.75 - 0.15*i, \"x\") color 2\nR = poly(1.5, 1.5 + d, 1.5 + d + 1.5*i, 1.5 + 1.5*i) color 1\nT = poly(1.5*i, 1.5 + 1.5*i, 1.5 + (1.5 + d)*i, (1.5 + d)*i) color 1\nC = poly(1.5 + 1.5*i, 1.5 + d + 1.5*i, 1.5 + d + (1.5 + d)*i, 1.5 + (1.5 + d)*i) color 3\nLR = label(1.5 + d + 0.75*i, \"x\\,dx\") color 1\nLT = label(0.75 + (1.5 + d)*i, \"x\\,dx\") color 1\nLC = label(1.5 + d + (1.5 + d)*i, \"dx^2\") color 3\n> show S, LX | A square of side $x$: its area is $x^2$.\n> show R, T, C, LR, LT, LC; play d to 0.5 in 2s | Lengthen the side by $dx$. The new area is two strips, $x\\,dx$ each, and a corner, $dx^2$.\n> play d to 0.04 in 4s | Make $dx$ small. The strips thin in proportion to $dx$; the corner, $dx$ times $dx$, vanishes much faster.",
+      "type": "scene",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The area grows by $2x\\,dx + dx^2$. Divided by $dx$, that is $2x + dx$: the secant slope above, with $h$ called $dx$. As $dx$ shrinks the corner stops counting, and what is left is the two strips: $d(x^2) = 2x\\,dx$. The $2$ in $2x$ is there because the square grows on two sides.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> Now a cube of side $x$, volume $x^3$. Lengthen every edge by $dx$, keeping one corner fixed. Some of the new volume is thin slabs of area $x^2$ and thickness $dx$: how many? The rest (rods along the edges, a small cube at the far corner) is a multiple of $dx^2$ or $dx^3$, and vanishes faster. Predict the derivative of $x^3$, then answer the exercise.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "diff(x^3, x)",
+      "type": "exercise",
+      "prompt": "Invent it: from the cube, what is the derivative of $x^3$?",
+      "hints": [
+        "The slabs are on the three faces that do not touch the fixed corner.",
+        "Three slabs of $x^2\\,dx$: divide the new volume by $dx$ and let $dx$ shrink."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Multiplied out, the cube's growth is exactly those pieces: three slabs, three rods and a small cube.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "expand((x + h)^3 - x^3)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The same count works in any number of dimensions, and so does the algebra: $(x + h)^n = x^n + n x^{n-1} h + (\\text{terms with } h^2)$.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -82,7 +187,7 @@
       "label": null
     },
     {
-      "src": "> [!theorem] Power, sum and constant-multiple rules\n> $\\dfrac{d}{dx} x^n = n x^{n-1}$, $\\quad (f + g)' = f' + g'$, $\\quad (c f)' = c f'$, and a constant has derivative $0$.",
+      "src": "> [!theorem] Power, sum and constant-multiple rules\n> $\\dfrac{d}{dx} x^n = n x^{n-1}$ for a whole number $n$ (and, for $x > 0$, for any real $n$); $\\quad (f + g)' = f' + g'$: nudge a sum and each part adds its own change; $\\quad (c f)' = c f'$: stretch a graph upward and every slope stretches with it; and a constant has derivative $0$.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -122,7 +227,42 @@
       "label": null
     },
     {
-      "src": "> [!theorem] Product rule\n> $(fg)' = f'g + fg'$: differentiate one factor at a time and add.",
+      "src": "Now a product $f g$. The natural guess is the product of the derivatives, $f' g'$. Test it where the answer is known: $x^2 \\cdot x^3 = x^5$, whose derivative is $5x^4$. The guess gives:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "diff(x^2, x) * diff(x^3, x)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> $6x^3$ is not $5x^4$; it is not even the right power. The derivative of a product is **not** the product of the derivatives.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Go back to areas. Read $f g$ as a rectangle with sides $f$ and $g$, and nudge $x$: $f$ grows by $df$, $g$ by $dg$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "clock d from 0 to 0.5\nnoaxes\nview -0.4, 3, -0.4, 2.1\nB = poly(0, 2, 2 + 1.2*i, 1.2*i) color 2\nLF = label(1 - 0.2*i, \"f\") color 2\nLG = label(-0.2 + 0.6*i, \"g\") color 2\nR = poly(2, 2 + d, 2 + d + 1.2*i, 2 + 1.2*i) color 1\nLR = label(2 + d + 0.6*i, \"g\\,df\") color 1\nT = poly(1.2*i, 2 + 1.2*i, 2 + (1.2 + 0.6*d)*i, (1.2 + 0.6*d)*i) color 4\nLT = label(1 + (1.2 + 0.6*d)*i, \"f\\,dg\") color 4\nC = poly(2 + 1.2*i, 2 + d + 1.2*i, 2 + d + (1.2 + 0.6*d)*i, 2 + (1.2 + 0.6*d)*i) color 3\nLC = label(2 + d + (1.2 + 0.6*d)*i, \"df\\,dg\") color 3\n> show B, LF, LG | A rectangle with sides $f$ and $g$: its area is the product $fg$.\n> show R, LR, T, LT, C, LC; play d to 0.5 in 2s | Nudge $x$: $f$ grows by $df$ and $g$ by $dg$. The new area is a strip $g\\,df$, a strip $f\\,dg$ and a corner $df\\,dg$.\n> play d to 0.05 in 4s | Make the nudge small. The strips shrink in proportion to it; the corner, a product of two small changes, vanishes faster.",
+      "type": "scene",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!theorem] Product rule\n> $d(fg) = g\\,df + f\\,dg + df\\,dg$, and the corner vanishes faster than the nudge: $(fg)' = f'g + fg'$. The guess $f'g'$ is what survives in the corner alone, $df\\,dg = f'g'\\,dx^2$: the one piece that does not count.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "On $x^2 \\cdot x^3$: $2x \\cdot x^3 + x^2 \\cdot 3x^2 = 5x^4$, as it should be. Step through a product whose factors do not merge:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -132,17 +272,6 @@
       "showWork": true,
       "label": null,
       "stepwise": 0
-    },
-    {
-      "src": "> [!mistake]\n> The derivative of a product is **not** the product of the derivatives. Here is $f' \\cdot g'$ for the same $f = x^2$ and $g = \\sin x$, which is not the answer above:",
-      "type": "markdown",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "diff(x^2, x) * diff(sin(x), x)",
-      "showWork": false,
-      "label": null
     },
     {
       "src": "diff(x^3 * cos(x), x)",
@@ -167,7 +296,7 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> Four rules differentiate every polynomial and every product of functions you know: power, sum, constant multiple, product. The next lesson adds the fifth, for functions inside functions.",
+      "src": "> [!summary]\n> Zoom in on a smooth curve and it looks like a line: the derivative is that line's slope, the number the secant slopes settle on. The power rule is the strips of a growing square (the slabs of a growing cube), the product rule the strips of a growing rectangle; in both the corner vanishes. These rules reach $x^2$ and $\\sin x$, but not $\\sin(x^2)$, a function inside another: that is the next lesson.",
       "type": "markdown",
       "showWork": false,
       "label": null

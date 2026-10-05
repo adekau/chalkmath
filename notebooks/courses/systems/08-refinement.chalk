@@ -9,19 +9,69 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Check that a detailed system implements an abstract one by mapping its states and matching its steps, and prove an operation-rewriting optimization sound against the semantics it preserves.",
+      "src": "> [!goal]\n> Check that a detailed system does only what an abstract one allows, by mapping its states and matching its steps.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!definition] Refinement\n> A concrete system $C$ **refines** an abstract system $A$ under a mapping from $C$'s states to $A$'s when every initial state maps to an initial state, and every step of $C$ maps to a step of $A$ or to no change at all (a **stutter**). Then every behavior of $C$, seen through the mapping, is a behavior of $A$: properties proved of $A$ hold of $C$.",
+      "src": "A specification of lesson 7's server says only this: the request goes from not applied to applied, once. (`applied` has room for a 2 that the specification never reaches, so that an implementation that goes there can be compared with it.)",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "Two counters, abstracted to their sum:",
+      "src": "let Once = system(var applied in 0..2; init applied = 0; action apply when applied = 0 do applied := 1)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let Dedup = system(\n  var tries in 0..2\n  var req in bool\n  var applied in 0..2\n  var seen in bool\n  var reply in {none, flying, got}\n  init tries = 0 ∧ req = false ∧ applied = 0 ∧ seen = false ∧ reply = none\n  action send when tries < 2 ∧ req = false ∧ reply ≠ got do tries := tries + 1, req := true\n  action lose when req = true do req := false\n  action deliver when req = true ∧ seen = false do req := false, applied := applied + 1, seen := true, reply := flying\n  action again when req = true ∧ seen = true do req := false, reply := flying\n  action loseReply when reply = flying do reply := none\n  action gotReply when reply = flying do reply := got\n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> `Dedup` has six actions and `Once` one. In what sense could `Dedup` behave like `Once`?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Look at `Dedup` only through `applied`. `deliver` takes it from 0 to 1, a step of `Once`. Every other action (sending, losing, replying) leaves it alone: through this window, nothing happens. Such a step is a **stutter**, and allowing it is what lets an implementation have moving parts the specification never mentions.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "refines(Dedup, Once; applied := applied)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let Retry = system(\n  var tries in 0..2\n  var req in bool\n  var applied in 0..2\n  var reply in {none, flying, got}\n  init tries = 0 ∧ req = false ∧ applied = 0 ∧ reply = none\n  action send when tries < 2 ∧ req = false ∧ reply ≠ got do tries := tries + 1, req := true\n  action lose when req = true do req := false\n  action deliver when req = true do req := false, applied := applied + 1, reply := flying\n  action loseReply when reply = flying do reply := none\n  action gotReply when reply = flying do reply := got\n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "refines(Retry, Once; applied := applied)",
+      "showWork": true,
+      "label": null,
+      "stepwise": 0
+    },
+    {
+      "src": "`Retry`'s second delivery takes `applied` from 1 to 2: through the window, it does something `Once` never does.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Refinement\n> A concrete system $C$ **refines** an abstract system $A$ under a mapping from $C$'s states to $A$'s when every initial state maps to an initial state, and every step of $C$ maps to a step of $A$ or to no change at all (a stutter). Then every behaviour of $C$, seen through the mapping, is a behaviour of $A$, so every safety property proved of $A$ holds of $C$ seen the same way.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The mapping can combine variables. Two counters, seen through their sum:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -65,7 +115,7 @@
       "label": null
     },
     {
-      "src": "A client queues operations on a key (create, update, delete) and sends them in a batch. An optimizer folds adjacent operations into one: $\\mathsf{update}\\,a;\\ \\mathsf{update}\\,b$ becomes $\\mathsf{update}\\,b$. It must not change what the batch does to the store. That is refinement again, for a rewriting: every rewrite must leave the store's final state the same, from every starting state.",
+      "src": "A client queues operations on a key (create, update, delete) and sends them in a batch. An optimizer folds adjacent operations into one: $\\mathsf{update}\\,a;\\ \\mathsf{update}\\,b$ becomes $\\mathsf{update}\\,b$. The batch must still do the same to the store: the same idea as refinement, for a rewriting. Every fold must leave the store's final state the same, from every starting state.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -90,13 +140,19 @@
       "label": null
     },
     {
+      "src": "One fold at a time is sound; so is folding a whole batch, by induction on it:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "/-- Normalize a batch: fold each operation into the next one where they combine. -/\ndef normalize : List Op → List Op\n  | [] => []\n  | a :: rest =>\n    match normalize rest with\n    | b :: tl => match combine a b with\n      | some c => c :: tl\n      | none => a :: b :: tl\n    | [] => [a]\n\ntheorem normalize_sound : ∀ (ops : List Op) (s : Option Nat), run s (normalize ops) = run s ops := by\n  intro ops\n  induction ops with\n  | nil => intro s; rfl\n  | cons a rest ih =>\n    intro s\n    simp only [normalize, run, List.foldl_cons]\n    split\n    · rename_i b tl heq\n      split\n      · rename_i c hc\n        have := ih (Op.apply s a)\n        rw [heq] at this\n        simp only [run, List.foldl_cons] at this ⊢\n        rw [← this, ← combine_sound a b c hc s]\n      · have := ih (Op.apply s a)\n        rw [heq] at this\n        simp only [run, List.foldl_cons] at this ⊢\n        exact this\n    · rename_i heq\n      have := ih (Op.apply s a)\n      rw [heq] at this\n      simp only [run, List.foldl_cons, List.foldl_nil] at this ⊢\n      exact this\n\n#eval normalize [.create 1, .update 2, .update 3, .delete, .create 4]",
       "type": "lean",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!mistake]\n> \"Create then delete cancels out\" looks like a fine rewrite, and it is wrong: if the key already existed, the pair deletes it, and the empty batch would not. Lean finds the starting state:",
+      "src": "> [!mistake]\n> \"Create then delete cancels out\" looks like a fine fold, and it is wrong: if the key already existed, the pair deletes it, and the empty batch would not. Lean finds the starting state:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -114,6 +170,16 @@
       "label": null
     },
     {
+      "src": "refines(Two, Sum; s := a)",
+      "type": "exercise",
+      "prompt": "Look at `Two` through `a` alone: `s := a`. Does it still refine `Sum`?",
+      "hints": [
+        "What does `tb` look like through `a`?"
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "refines(Jump, Sum; s := a + b)",
       "type": "exercise",
       "prompt": "Does `Jump` refine `Sum` under the sum mapping?",
@@ -121,14 +187,13 @@
       "label": null
     },
     {
-      "src": "refines(Two, Sum; s := a + b)",
-      "type": "exercise",
-      "prompt": "Does `Two`?",
+      "src": "> [!summary]\n> Refinement checks that an implementation only does what the specification allows, with its internal steps as stutters. A rewriting of operations is sound in the same sense: same effect from every state, which a structural induction proves once for every batch.",
+      "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!summary]\n> Refinement checks that an implementation only does what the specification allows, up to stuttering. A rewriting of operations is sound when it refines the same way: same effect from every state, which a structural induction proves once for every batch.",
+      "src": "`normalize` folds a batch in one fixed order, from the right. An optimizer that may fold anywhere, in any order: does it always stop, and does the order change the answer? That is the next lesson.",
       "type": "markdown",
       "showWork": false,
       "label": null

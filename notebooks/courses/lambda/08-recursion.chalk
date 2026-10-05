@@ -9,19 +9,114 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Write a recursive function without naming it, using a fixed-point combinator, and see why call by value needs a different one.",
+      "src": "> [!goal]\n> Write a recursive function without naming it: find the trick that lets a function call itself, and the combinator that packages it.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "A recursive definition, $\\mathsf{fact} = \\lambda n.\\, \\mathsf{if}\\ (n = 0)\\ 1\\ (n \\cdot \\mathsf{fact}\\ (n - 1))$, mentions itself, and λ-terms cannot. Abstract the self-reference instead: $F = \\lambda \\mathit{self}.\\, \\lambda n.\\, \\ldots\\ \\mathit{self}\\ (n-1)$. A factorial is a **fixed point** of $F$: a $g$ with $F\\ g = g$.",
+      "src": "The factorial is \"if $n = 0$ then $1$ else $n \\cdot \\mathsf{fact}\\ (n - 1)$\". The definition mentions $\\mathsf{fact}$, and a λ-term has no names to mention: `name := term` is shorthand, unfolded before reduction. How can a function refer to itself without a name?",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!definition] The Y combinator\n> $Y = \\lambda f.\\, (\\lambda x.\\, f\\ (x\\ x))\\ (\\lambda x.\\, f\\ (x\\ x))$ satisfies $Y\\ g = g\\ (Y\\ g)$ for every $g$: $Y\\ g$ is a fixed point of $g$.",
+      "src": "The factorial needs lesson 7's predecessor (each lesson starts with only the library):",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "pred := λn. fst (n (λp. pair (snd p) (succ (snd p))) (pair 0 0))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> The natural first try is to write the name anyway. Inside its own definition `fact` is not yet defined, so it is a free variable: $\\mathsf{fact}\\ 0$ works, because it never recurses, and $\\mathsf{fact}\\ 1$ gets stuck on the free `fact`.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "fact := λn. if (iszero n) 1 (mul n (fact (pred n)))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "fact 0",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "fact 1",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A term that copies itself",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "One term from lesson 4 does refer to itself, in a way: $\\omega = \\lambda x.\\, x\\ x$, applied to itself, hands itself its own copy.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "normal 2: omega omega",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "That is the trick. A function cannot name itself, but it can be **given** itself, as an argument. Add a parameter $\\mathit{self}$, write $\\mathit{self}\\ \\mathit{self}$ where the function would call itself, and start it off as $\\omega$ does, by applying it to itself:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "G := λself. λn. if (iszero n) 1 (mul n (self self (pred n)))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "G G 3",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "$G\\ G\\ 3$ becomes \"if $3 = 0$ then $1$ else $3 \\cdot (G\\ G\\ (\\mathsf{pred}\\ 3))$\": the copy of $G$ it was given is passed on, with a copy of itself.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Packaging the trick: Y",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Writing $\\mathit{self}\\ \\mathit{self}$ in every recursive function is a nuisance. We would rather write the honest step, $F = \\lambda \\mathit{self}.\\, \\lambda n.\\, \\ldots\\ \\mathit{self}\\ (n - 1)$, and have something tie the knot. We want a term $X$ with $F\\ X = X$: then $X$ is the factorial, since putting it in for $\\mathit{self}$ gives it back. $X$ is a **fixed point** of $F$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> $\\omega\\ \\omega$ steps to itself. Slip an $F$ into $\\omega$ so that each copy is passed through $F$: what does $(\\lambda x.\\, F\\ (x\\ x))\\ (\\lambda x.\\, F\\ (x\\ x))$ step to?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "It steps to $F\\ ((\\lambda x.\\, F\\ (x\\ x))\\ (\\lambda x.\\, F\\ (x\\ x)))$: $F$ applied to the term we started from. A fixed point of $F$. Abstract over $F$:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] The Y combinator\n> $Y = \\lambda f.\\, (\\lambda x.\\, f\\ (x\\ x))\\ (\\lambda x.\\, f\\ (x\\ x))$ satisfies $Y\\ g = g\\ (Y\\ g)$ for every $g$: $Y\\ g$ is a fixed point of $g$. The equation is up to β: the two sides reduce to a common term, not one to the other.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -29,10 +124,11 @@
     {
       "src": "normal 2: Y g",
       "showWork": true,
-      "label": null
+      "label": null,
+      "stepwise": 0
     },
     {
-      "src": "Each unfolding hands $g$ another copy of $Y\\ g$, as many as it asks for.",
+      "src": "The last line is also what $g\\ (Y\\ g)$ reduces to, in one step. Each unfolding hands $g$ another copy of the self-application, as many as it asks for.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -44,13 +140,8 @@
       "label": null
     },
     {
-      "src": "$Y\\ F$ has no normal form (it unfolds for ever), so the definition is kept as written; applied to a number, $F$'s test stops the unfolding.",
+      "src": "$Y\\ F$ has no normal form (it unfolds for ever), so the engine keeps the definition as written; applied to a number, $F$'s test stops the unfolding. Defining `fact` again replaces the stuck one:",
       "type": "markdown",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "pred := λn. fst (n (λp. pair (snd p) (succ (snd p))) (pair 0 0))",
       "showWork": false,
       "label": null
     },
@@ -70,7 +161,7 @@
       "label": null
     },
     {
-      "src": "That took 1525 β-steps, and $\\mathsf{fact}\\ 4$ takes over ten thousand: numerals in unary, a predecessor that counts up from $0$ every time, and arguments copied unevaluated and computed again. The work shows the first steps and the last, and says how many it leaves out. This is why real languages build numbers in.",
+      "src": "That took 1030 β-steps, and $\\mathsf{fact}\\ 4$ takes 6732: numerals in unary, a predecessor that counts up from $0$ every time, and arguments copied unevaluated and computed again. The work shows the first steps and the last, and says how many it leaves out. This is why real languages build numbers in.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -82,7 +173,13 @@
       "label": null
     },
     {
-      "src": "Call by value evaluates $Y\\ g$'s argument $(\\lambda x.\\, g\\ (x\\ x))\\ (\\lambda x.\\, g\\ (x\\ x))$ before calling $g$, and that unfolds again first, for ever:",
+      "src": "> [!try]\n> $Y\\ g$ reduces to $g\\ (A\\ A)$ with $A = \\lambda x.\\, g\\ (x\\ x)$. Call by value evaluates an argument before the call. What happens to $A\\ A$?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "$A\\ A$ steps to $g\\ (A\\ A)$, whose argument is $A\\ A$ again: call by value never finishes evaluating $g$'s argument, so $g$ is never called.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -93,7 +190,13 @@
       "label": null
     },
     {
-      "src": "> [!definition] The Z combinator\n> $Z = \\lambda f.\\, (\\lambda x.\\, f\\ (\\lambda v.\\, x\\ x\\ v))\\ (\\lambda x.\\, f\\ (\\lambda v.\\, x\\ x\\ v))$ wraps the self-application in a λ (an η-expansion), so it is a value and waits until it is called.",
+      "src": "The repair is to make the self-application a value, which waits until it is called: wrap it in a λ, $\\lambda v.\\, x\\ x\\ v$ (an η-expansion, lesson 4).",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] The Z combinator\n> $Z = \\lambda f.\\, (\\lambda x.\\, f\\ (\\lambda v.\\, x\\ x\\ v))\\ (\\lambda x.\\, f\\ (\\lambda v.\\, x\\ x\\ v))$. $Z\\ g$ reduces to $g$ applied to a λ that wraps the self-application: a value, so call by value stops there, and the copy unfolds only when $g$ calls it.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -121,7 +224,7 @@
       "label": null
     },
     {
-      "src": "Lean has no Y: every function must be shown to terminate, and a recursion on a smaller number does. Yet the factorial is still a fixed point of its defining step.",
+      "src": "Lean has no Y: self-application has no type (λ-calculus II shows why), and a recursive Lean definition must be shown to terminate, as a recursion on a smaller number is. Yet the factorial is still a fixed point of its defining step.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -172,7 +275,19 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> Recursion without names is a fixed point: $Y\\ g = g\\ (Y\\ g)$. Call by value needs $Z$, which delays the self-application. With fixed points the λ-calculus computes everything a computer can, and so whether a term stops is undecidable.",
+      "src": "Y (λself. λn. if (iszero n) 0 (add n (self (pred n)))) 3",
+      "type": "exercise",
+      "prompt": "Change the factorial so that it sums instead: $0$ at $0$, and $n$ plus the sum up to $n - 1$ otherwise. Write it with $Y$ in a cell of your own. What does it give for $3$?",
+      "hints": [
+        "Replace `1` by `0` and `mul` by `add` in the step given to `Y`.",
+        "$3 + 2 + 1 + 0$."
+      ],
+      "hideQuestion": true,
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> A function cannot name itself, but it can be given itself: self-application, as in $\\omega$. $Y$ packages the trick: $Y\\ g = g\\ (Y\\ g)$, a fixed point. Call by value needs $Z$, which delays the self-application. With fixed points the λ-calculus computes everything a computer can, and so whether a term stops is undecidable.\n\nλ-calculus II adds types, and finds that they rule out $\\omega$, $\\Omega$ and $Y$: every simply typed term has a normal form.",
       "type": "markdown",
       "showWork": false,
       "label": null

@@ -9,13 +9,13 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Find a race by model checking, fix it, prove the fix by an inductive invariant, and see the model in TLA+.",
+      "src": "> [!goal]\n> Build a lock that lets at most one thread into its critical section, find what is wrong with the first attempts from the checker's traces, and prove the fix.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "A service must run at most one job per customer at a time. Each worker checks that no job is running, then starts one: **check, then act**. Two workers, one lock:",
+      "src": "The lost update needs both threads between a read and a write. Make that stretch a **critical section** that at most one thread may be in. The obvious lock: look at it, and if it is free, take it. Two threads, one lock:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -26,7 +26,7 @@
       "label": null
     },
     {
-      "src": "Step through the counterexample: both workers check while the lock is free, then both take it.",
+      "src": "> [!try]\n> Can both threads get in? If so, in how few steps?",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -38,13 +38,19 @@
       "stepwise": 0
     },
     {
-      "src": "The fix",
+      "src": "Both look while the lock is free, then both take it: **check, then act**, with a gap between. It is lesson 1's bug again, one level up: reading the lock and writing it are separate steps.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Closing the gap",
       "type": "section",
       "showWork": false,
       "label": null
     },
     {
-      "src": "Make the check and the taking one action, as a compare-and-set or a database's conditional write does:",
+      "src": "Make the check and the take one action, as a compare-and-set instruction or a database's conditional write does:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -60,7 +66,7 @@
       "label": null
     },
     {
-      "src": "The model checker has tried every reachable state. A proof covers every state at once: the property is not inductive by itself (from an unreachable state where one is inside without the lock, the other can enter), but it is once strengthened with \"whoever is inside holds the lock\":",
+      "src": "The checker has tried all 3 reachable states. For a proof, lesson 2's induction: is \"not both inside\" inductive?",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -71,7 +77,62 @@
       "label": null
     },
     {
+      "src": "Not by itself: from an unreachable state where `q` is inside without the lock, `p` can enter. What rules it out is why the lock works: whoever is inside holds the lock. Strengthened with that, it is inductive:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "inductive(Fix, (p = crit → lock = true) ∧ (q = crit → lock = true) ∧ ¬(p = crit ∧ q = crit))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Without an atomic step",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Can two threads exclude each other with nothing but ordinary reads and writes? Give each a flag. Raising it first, then looking, closes the gap: a thread only looks once its own flag is up.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let Flags = system(\n  var p in {idle, want, crit}\n  var q in {idle, want, crit}\n  var fp in bool\n  var fq in bool\n  init p = idle ∧ q = idle ∧ fp = false ∧ fq = false\n  action pwant when p = idle do fp := true, p := want\n  action penter when p = want ∧ fq = false do p := crit\n  action pexit when p = crit do fp := false, p := idle\n  action qwant when q = idle do fq := true, q := want\n  action qenter when q = want ∧ fp = false do q := crit\n  action qexit when q = crit do fq := false, q := idle\n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "invariant(Flags, ¬(p = crit ∧ q = crit))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "deadlock(Flags)",
+      "showWork": true,
+      "label": null,
+      "stepwise": 0
+    },
+    {
+      "src": "Safe, but both can raise their flags and then wait for each other for ever: a **deadlock**. The trace says what is missing: a tie-breaker for when both want in. Add a shared `turn`. After raising its flag, each thread gives the turn to the other, and enters once the other's flag is down or the turn has come back to it. Whoever wrote `turn` last waits. This is **Peterson's algorithm**:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let Peterson = system(\n  var p in {idle, flag, wait, crit}\n  var q in {idle, flag, wait, crit}\n  var fp in bool\n  var fq in bool\n  var turn in {P, Q}\n  init p = idle ∧ q = idle ∧ fp = false ∧ fq = false ∧ turn = P\n  action pflag when p = idle do fp := true, p := flag\n  action pyield when p = flag do turn := Q, p := wait\n  action penter when p = wait ∧ (fq = false ∨ turn = P) do p := crit\n  action pexit when p = crit do fp := false, p := idle\n  action qflag when q = idle do fq := true, q := flag\n  action qyield when q = flag do turn := P, q := wait\n  action qenter when q = wait ∧ (fp = false ∨ turn = Q) do q := crit\n  action qexit when q = crit do fq := false, q := idle\n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "invariant(Peterson, ¬(p = crit ∧ q = crit))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "deadlock(Peterson)",
       "showWork": false,
       "label": null
     },
@@ -82,7 +143,7 @@
       "label": null
     },
     {
-      "src": "The same model in TLA+, for the TLC model checker:\n\n```\nVARIABLES p, q, lock\nInit == p = \"idle\" /\\ q = \"idle\" /\\ lock = FALSE\nPEnter == p = \"idle\" /\\ lock = FALSE /\\ p' = \"crit\" /\\ lock' = TRUE /\\ UNCHANGED q\nPExit  == p = \"crit\" /\\ p' = \"idle\" /\\ lock' = FALSE /\\ UNCHANGED q\nQEnter == q = \"idle\" /\\ lock = FALSE /\\ q' = \"crit\" /\\ lock' = TRUE /\\ UNCHANGED p\nQExit  == q = \"crit\" /\\ q' = \"idle\" /\\ lock' = FALSE /\\ UNCHANGED p\nNext == PEnter \\/ PExit \\/ QEnter \\/ QExit\nMutualExclusion == ~(p = \"crit\" /\\ q = \"crit\")\n```\n\nThe primed variables are the next state's; `UNCHANGED` says what an action leaves alone, which here is implicit.",
+      "src": "The atomic lock in TLA+, for the TLC model checker:\n\n```\nVARIABLES p, q, lock\nInit == p = \"idle\" /\\ q = \"idle\" /\\ lock = FALSE\nPEnter == p = \"idle\" /\\ lock = FALSE /\\ p' = \"crit\" /\\ lock' = TRUE /\\ UNCHANGED q\nPExit  == p = \"crit\" /\\ p' = \"idle\" /\\ lock' = FALSE /\\ UNCHANGED q\nQEnter == q = \"idle\" /\\ lock = FALSE /\\ q' = \"crit\" /\\ lock' = TRUE /\\ UNCHANGED p\nQExit  == q = \"crit\" /\\ q' = \"idle\" /\\ lock' = FALSE /\\ UNCHANGED p\nNext == PEnter \\/ PExit \\/ QEnter \\/ QExit\nMutualExclusion == ~(p = \"crit\" /\\ q = \"crit\")\n```\n\nThe primed variables are the next state's; `UNCHANGED` says what an action leaves alone, which a system cell leaves implicit.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -90,6 +151,12 @@
     {
       "src": "In Lean",
       "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The atomic lock again, and lesson 2's induction with the strengthened invariant:",
+      "type": "markdown",
       "showWork": false,
       "label": null
     },
@@ -124,21 +191,60 @@
       "label": null
     },
     {
-      "src": "reach(Fix, p = crit ∧ q = crit)",
-      "type": "exercise",
-      "prompt": "Can both workers be inside at once in `Fix`?",
+      "src": "Peterson's algorithm with its two writes the other way round: give away the turn first, then raise the flag.",
+      "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "reach(Race, p = crit ∧ q = crit)",
-      "type": "exercise",
-      "prompt": "And in `Race`?",
+      "src": "let Swapped = system(\n  var p in {idle, flag, wait, crit}\n  var q in {idle, flag, wait, crit}\n  var fp in bool\n  var fq in bool\n  var turn in {P, Q}\n  init p = idle ∧ q = idle ∧ fp = false ∧ fq = false ∧ turn = P\n  action pyield when p = idle do turn := Q, p := flag\n  action pflag when p = flag do fp := true, p := wait\n  action penter when p = wait ∧ (fq = false ∨ turn = P) do p := crit\n  action pexit when p = crit do fp := false, p := idle\n  action qyield when q = idle do turn := P, q := flag\n  action qflag when q = flag do fq := true, q := wait\n  action qenter when q = wait ∧ (fp = false ∨ turn = Q) do q := crit\n  action qexit when q = crit do fq := false, q := idle\n)",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!summary]\n> Check-then-act is a race whenever the check and the act are separate steps: the model checker finds the interleaving and shows it step by step. The fix makes them one step, and an inductive invariant (strengthened with \"inside means holding the lock\") proves it for every state.",
+      "src": "reach(Swapped, p = crit ∧ q = crit)",
+      "type": "exercise",
+      "prompt": "Can both threads be inside at once in `Swapped`? Answer `true` or `false`.",
+      "hints": [
+        "Let `p` give away the turn, then `q`: now the turn is `p`'s. Can `q` get in before `p`'s flag goes up?"
+      ],
+      "hideQuestion": true,
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Strict alternation: one shared `turn`, and each thread hands it over on the way out.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let Turn = system(\n  var p in {idle, crit}\n  var q in {idle, crit}\n  var turn in {P, Q}\n  init p = idle ∧ q = idle ∧ turn = P\n  action penter when p = idle ∧ turn = P do p := crit\n  action pexit when p = crit do p := idle, turn := Q\n  action qenter when q = idle ∧ turn = Q do q := crit\n  action qexit when q = crit do q := idle, turn := P\n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "invariant(Turn, ¬(p = crit ∧ q = crit))",
+      "type": "exercise",
+      "prompt": "Is `Turn` safe: never both inside?",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "deadlock(Turn)",
+      "type": "exercise",
+      "prompt": "Can `Turn` deadlock?",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> A lock that checks and then takes is a race, because the check and the take are separate steps; the checker finds the interleaving. One fix makes them one step, and an inductive invariant (\"inside means holding the lock\") proves it. Without an atomic step, flags alone deadlock, and Peterson's turn breaks the tie; the order of its two writes matters.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`Turn` passes both checks, yet `p` cannot go in twice in a row: if `q` stops wanting in, `p` waits for ever. No state is bad; a good thing just never happens. Saying that needs a second kind of property, the next lesson's.",
       "type": "markdown",
       "showWork": false,
       "label": null

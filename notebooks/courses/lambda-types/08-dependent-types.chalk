@@ -9,37 +9,121 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Use a type that depends on a value, and see that Lean's type checker, checking a proof, is the same idea as the first lesson's three rules.",
+      "src": "> [!goal]\n> Write a type that mentions a value, use it to rule out the head of an empty list, and see Lean check a proof by checking a type.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!definition] The λ-cube\n> Starting from simple types, let terms depend on types (polymorphism: System F), types depend on types (type operators: $F_\\omega$), and types depend on **terms** (dependent types). All three together is the **calculus of constructions**; Lean's type theory extends it with inductive types and universes.",
+      "src": "Lesson 6 left a hole in safety: a `head` of type `List α → α` promises an `α` for every list, the empty one too.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!definition] Π-types\n> A dependent function $(x : A) \\to B(x)$ returns a value whose **type** depends on the argument. When $B$ does not mention $x$ it is the arrow $A \\to B$. Read as a proposition it is $\\forall x : A,\\ B(x)$: Curry–Howard extends to quantifiers.",
+      "src": "> [!try]\n> How would you write a `head` that never fails? What would its type have to know?",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "In Lean",
+      "src": "At the empty list there is nothing to return, and `α` may have no values at all. Either the result admits failure (`Option α`), or the argument's type rules the empty list out. Lean's own `List.head` does the second:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "#check @List.head\n#eval [1, 2, 3].head (List.cons_ne_nil _ _)",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "After the list `as` comes a second argument, of type `as ≠ []`: a proof that this list is not empty. That type mentions `as`, a value given earlier. A type that mentions a value is **dependent**.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Length in the type",
       "type": "section",
       "showWork": false,
       "label": null
     },
     {
-      "src": "Vectors carry their length in their type, so taking the head of an empty one is not an error at run time: it is a type error, and needs no case at all.",
+      "src": "Another way: put the length in the list's type. `Vec α n` is the type of lists of length `n`: `nil` has length $0$, and `cons` adds one. `head` asks for a `Vec α (n + 1)` and needs no case for `nil` at all, since `nil`'s type, `Vec α 0`, is never `Vec α (n + 1)`.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "/-- Vectors: lists whose length is in their type. -/\ninductive Vec (α : Type) : Nat → Type where\n  | nil : Vec α 0\n  | cons : α → Vec α n → Vec α (n + 1)\n\nnamespace Vec\n\n/-- The head of a nonempty vector: there is no case for nil, because the type rules it out. -/\ndef head : Vec α (n + 1) → α\n  | cons x _ => x\n\ndef toList : Vec α n → List α\n  | nil => []\n  | cons x xs => x :: xs.toList\n\ndef append : Vec α n → Vec α m → Vec α (m + n)\n  | nil, ys => ys\n  | cons x xs, ys => cons x (append xs ys)\n\nend Vec\n\n#eval (Vec.cons 1 (Vec.cons 2 Vec.nil)).head\n#eval (Vec.append (Vec.cons 1 (Vec.cons 2 Vec.nil)) (Vec.cons 3 Vec.nil)).toList",
+      "src": "/-- Vectors: lists whose length is in their type. -/\ninductive Vec (α : Type) : Nat → Type where\n  | nil : Vec α 0\n  | cons : α → Vec α n → Vec α (n + 1)\n\nnamespace Vec\n\n/-- The head of a nonempty vector: there is no case for nil, because the type rules it out. -/\ndef head : Vec α (n + 1) → α\n  | cons x _ => x\n\ndef toList : Vec α n → List α\n  | nil => []\n  | cons x xs => x :: xs.toList\n\n/-- n copies of x: the result's type depends on the number given. -/\ndef replicate : (n : Nat) → α → Vec α n\n  | 0, _ => nil\n  | n + 1, x => cons x (replicate n x)\n\ndef append : Vec α n → Vec α m → Vec α (m + n)\n  | nil, ys => ys\n  | cons x xs, ys => cons x (append xs ys)\n\nend Vec\n\n#eval (Vec.cons 1 (Vec.cons 2 Vec.nil)).head\n#eval (Vec.append (Vec.cons 1 (Vec.cons 2 Vec.nil)) (Vec.cons 3 Vec.nil)).toList\n#check Vec.replicate 3 'a'",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> What will Lean say to the head of `nil`?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "#check_failure (Vec.nil : Vec Nat 0).head",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A type error, found before anything runs: `0` is not `n + 1` for any `n`. The head of an empty vector is not a failure at run time; it is not a program at all.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Π-types",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Look at `replicate`'s type, `(n : Nat) → α → Vec α n`. The type of the result depends on the value of the argument: `replicate 3 'a'` is a `Vec Char 3`.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Π-types\n> A **dependent function type** $(x : A) \\to B(x)$, also written $\\Pi x{:}A.\\, B(x)$, is the type of functions that take an $a : A$ to a value of type $B(a)$. When $B$ does not mention $x$, it is the arrow $A \\to B$. Its rules are →I and →E grown up: $\\lambda x{:}A.\\, M$ has type $(x : A) \\to B(x)$ when $M : B(x)$ with $x : A$ added; and if $f : (x : A) \\to B(x)$ and $a : A$, then $f\\ a : B(a)$, with $a$ put for $x$ in the type.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Curry–Howard comes along. Read $B(x)$ as a statement about $x$: a function taking each $x : A$ to a proof of $B(x)$ is a proof of $\\forall x : A,\\ B(x)$. Lean writes `∀ x : A, B x` and `(x : A) → B x` for the same type, and a proof by induction on `n` is such a function, built by recursion on `n`.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Type checking runs programs",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Look at `append`'s type: lengths `n` and `m` give `m + n`. In the `cons` case, `xs` has some length `k` and the result, `cons x (append xs ys)`, has length `(m + k) + 1`; the type promised `m + (k + 1)`. The checker sees that they agree by computing: `+` is defined by recursion on its second argument, so `m + (k + 1)` reduces to `(m + k) + 1`. Write the type with `n + m` and the two sides no longer reduce to one, and Lean asks for a proof.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!theorem] Type checking is proof checking\n> A Lean theorem is a type and its proof a term. Lean's kernel checks a proof by type checking the term, with lesson 1's rules grown to Π-types and inductive types, and with computation inside types: two types that compute to the same thing are the same type. That is why `rfl`, the proof that a thing equals itself, proves `2 + 2 = 4`.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem two_plus_two : 2 + 2 = 4 := rfl",
       "type": "lean",
       "showWork": false,
       "label": null
@@ -58,14 +142,27 @@
       "label": null
     },
     {
-      "src": "> [!theorem] Type checking is proof checking\n> A Lean proof is a term, and checking the proof is type checking the term: the kernel applies rules like Var, →I and →E (generalized to Π-types and inductive types). `rfl : 2 + 2 = 4` type checks because both sides reduce to the same normal form.",
-      "type": "markdown",
+      "src": "theorem Vec.eq_nil (v : Vec α 0) : v = .nil := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "A vector of length $0$ can only be `nil`: the reason `head` needs no `nil` case, seen from the other side. Prove it.",
+      "leanSolution": "  cases v\n  rfl",
+      "hints": [
+        "`cases v` leaves one case: `cons` would need `0 = k + 1`, and Lean sees that it cannot be.",
+        "What is left is `nil = nil`: `rfl`."
+      ],
       "showWork": false,
       "label": null
     },
     {
-      "src": "theorem two_plus_two : 2 + 2 = 4 := rfl",
-      "type": "lean",
+      "src": "The map",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] The λ-cube\n> Simple types let terms depend on terms: functions. Lesson 7 let terms depend on types (System F), and this lesson types depend on terms (dependent types). The third step, types that depend on types (type operators, such as `List`, which takes a type to a type), gives $F_\\omega$. All three together are the **calculus of constructions** (Coquand and Huet, 1988); Lean's type theory adds inductive types, such as `Vec`, and a hierarchy of universes.",
+      "type": "markdown",
       "showWork": false,
       "label": null
     },
@@ -76,30 +173,17 @@
       "label": null
     },
     {
-      "src": "A last review in the simply typed calculus.",
-      "type": "markdown",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "type: λf:A→A. λg:A→A. λx:A. f (g x)",
-      "type": "exercise",
-      "prompt": "What type does $\\lambda f{:}A \\to A.\\, \\lambda g{:}A \\to A.\\, \\lambda x{:}A.\\, f\\ (g\\ x)$ have?",
-      "showWork": false,
-      "label": null
-    },
-    {
       "src": "infer: λx. λy. λz. x z (y z)",
       "type": "exercise",
-      "prompt": "Infer the type of $S$ without annotations.",
+      "prompt": "The course in one cell: infer the type of $S$ without annotations. Read as a proposition, it is lesson 5's second Hilbert axiom.",
       "hints": [
-        "It is the type of the axiom $(A \\to B \\to C) \\to (A \\to B) \\to A \\to C$, with variables."
+        "It is $(A \\to B \\to C) \\to (A \\to B) \\to A \\to C$, with variables."
       ],
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!summary]\n> Dependent types let types mention values: a vector's length, a proposition's quantified variable. Lean's type theory has them, and its kernel checks proofs by checking types, as the three rules of the first lesson do.",
+      "src": "> [!summary]\n> A dependent type mentions a value: `as ≠ []`, `Vec α n`. With the length in the type, the head of an empty list is a type error, not a failure at run time. Π-types $(x : A) \\to B(x)$ generalize the arrow and, read as propositions, are $\\forall$: Curry–Howard reaches the quantifiers. Lean checks a proof this way: the proof is a term, and checking it is lesson 1's three rules, grown to Π-types and inductive types, with computation inside types.",
       "type": "markdown",
       "showWork": false,
       "label": null

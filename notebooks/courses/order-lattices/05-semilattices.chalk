@@ -3,37 +3,84 @@
   "name": "05-semilattices.chalk",
   "cells": [
     {
-      "src": "Semilattices as algebras",
+      "src": "Semilattices: the laws of a merge",
       "type": "section",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!goal]\n> Read a join as an operation, check its three laws on a table (with the elements that break them when they fail), and recover the order from the operation.",
+      "src": "> [!goal]\n> Derive the three laws a merge must obey from the ways messages travel, and recover an order from any operation that obeys them.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "The join of a lattice is an operation $x \\vee y$ on its elements, and it obeys laws whatever the lattice. Turned around, any operation with those laws defines an order.",
+      "src": "Two copies (**replicas**) of some data, say the highest score seen in a game, live on two machines. Now and then each sends its state to the other, which **merges** it into its own: $x \\cdot y$. The network is unreliable in three ways:\n\n1. messages arrive in any order;\n2. a replica may merge a batch of messages before passing on the result;\n3. a message may arrive twice.\n\nWe want two replicas that have received the same messages to hold the same value, however the network behaved.\n\n> [!try]\n> Before reading on, turn each of the three hazards into an equation the merge must satisfy.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!definition] Semilattice\n> A **semilattice** is a set with an operation $\\cdot$ that is **associative** ($(x \\cdot y) \\cdot z = x \\cdot (y \\cdot z)$), **commutative** ($x \\cdot y = y \\cdot x$) and **idempotent** ($x \\cdot x = x$).",
-      "type": "markdown",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "Operations as tables",
+      "src": "Three hazards, three laws",
       "type": "section",
       "showWork": false,
       "label": null
     },
     {
-      "src": "An operation on a finite set is its table: row $x$, column $y$ holds $x \\cdot y$. Here is $\\max$ on $\\{0, 1, 2\\}$.",
+      "src": "Any order: $x \\cdot y = y \\cdot x$, **commutative**. Any grouping: $(x \\cdot y) \\cdot z = x \\cdot (y \\cdot z)$, **associative**. Twice: $x \\cdot x = x$, **idempotent**: merging what you already have changes nothing.\n\nEach law is needed. Here are natural merges, written as tables (row $x$, column $y$ holds $x \\cdot y$), each breaking one law. \"Keep the newer one\", $x \\cdot y = y$, depends on which message arrived last:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let K = op({a, b, c}; [a, b, c; a, b, c; a, b, c])",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "commutative(K)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "\"Average, rounded down\" depends on how the messages were batched:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let AVG = op({0, 1, 2}; [0, 0, 1; 0, 1, 1; 1, 1, 2])",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "associative(AVG)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "\"Add\" (capped at 2, to stay in the set) counts a duplicated message twice:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let ADD = op({0, 1, 2}; [0, 1, 2; 1, 2, 2; 2, 2, 2])",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "fold(ADD; 1)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "fold(ADD; 1, 1)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "\"Keep the larger\", $\\max$, survives all three:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -49,7 +96,8 @@
       "label": null
     },
     {
-      "src": "identity(M)",
+      "src": "> [!definition] Semilattice\n> A **semilattice** is a set with an operation that is **associative**, **commutative** and **idempotent**: an operation whose result does not depend on the order, the grouping or the repetition of what it combines.",
+      "type": "markdown",
       "showWork": false,
       "label": null
     },
@@ -70,8 +118,25 @@
       "label": null
     },
     {
-      "src": "The order an operation gives",
+      "src": "identity(M)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "An **identity**, an element that changes nothing, is the natural starting state of a replica that has heard nothing yet: $0$ for $\\max$, $\\varnothing$ for union.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The order hiding in a merge",
       "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "$\\max$ merges $0, 1, 2$, which are ordered $0 < 1 < 2$; union merges sets, which are ordered by $\\subseteq$. In both, the merge is the join of the order.\n\n> [!try]\n> Given only the table of a semilattice, how would you get the order back? Ask when merging $x$ into $y$ tells $y$ nothing new.",
+      "type": "markdown",
       "showWork": false,
       "label": null
     },
@@ -92,57 +157,20 @@
       "label": null
     },
     {
-      "src": "The union table gives back the powerset's diamond. The engine's `order` is proved to produce a partial order whose join is the operation (`semilattice_order`).",
+      "src": "The union table gives back the powerset's diamond. The engine's `order` is proved to produce a partial order whose join is the operation (`semilattice_order`). Without the laws there is no order to find: averaging is refused, with the triple that breaks associativity.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "When a law fails",
-      "type": "section",
+      "src": "order(AVG)",
       "showWork": false,
       "label": null
     },
     {
-      "src": "Rock, paper, scissors: $x \\cdot y$ is the winner of $x$ against $y$. Commutative and idempotent, but not associative, so there is no order behind it. The table marks the four entries the two sides of the law read.",
+      "src": "So the laws a merge needs and the laws of a join are the same three. A safe merge *is* the join of an order, \"knows at least as much as\", and every merge moves a replica up it.",
       "type": "markdown",
       "showWork": false,
-      "label": null
-    },
-    {
-      "src": "let RPS = op({r, p, s}; [r, p, r; p, p, s; r, s, s])",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "commutative(RPS)",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "associative(RPS)",
-      "showWork": true,
-      "label": null
-    },
-    {
-      "src": "order(RPS)",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "\"Keep the newer one\", $x \\cdot y = y$, is associative and idempotent but not commutative: the result depends on the order the values arrive in.",
-      "type": "markdown",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "let K = op({a, b, c}; [a, b, c; a, b, c; a, b, c])",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "commutative(K)",
-      "showWork": true,
       "label": null
     },
     {
@@ -226,6 +254,16 @@
       "label": null
     },
     {
+      "src": "join(order(W), 1, 2)",
+      "type": "exercise",
+      "prompt": "In the order $W$ gives, what is the join of $1$ and $2$? Read it off the table before computing it.",
+      "hints": [
+        "The join of the order is the merge: row 1, column 2."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "associative(K)",
       "type": "exercise",
       "prompt": "Is \"keep the newer one\" associative?",
@@ -236,7 +274,7 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> A semilattice is an associative, commutative, idempotent operation, and it is the same thing as an order with joins: $x \\le y$ exactly when $x \\cdot y = y$. A table decides the three laws, and a failure is a triple or a pair you can point at.",
+      "src": "> [!summary]\n> A merge that ignores order, grouping and repetition is associative, commutative and idempotent: a semilattice. Every semilattice is an order, $x \\le y$ exactly when $x \\cdot y = y$, and its merge is the join. A table decides the three laws, and a failure is a triple or a pair you can point at.\n\n$\\max$ and union are merges of this kind. Next: the merges real systems use, for records of several fields and for \"the last write wins\", and whether they are joins too.",
       "type": "markdown",
       "showWork": false,
       "label": null

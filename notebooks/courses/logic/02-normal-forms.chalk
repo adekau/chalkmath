@@ -9,13 +9,78 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Rewrite a formula into negation normal form, conjunctive normal form and disjunctive normal form, naming the law used at each step, and check an answer by its truth table.",
+      "src": "> [!goal]\n> Write down a formula for any truth table, then reach the same normal forms from a formula by the laws of logic, one law a step.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!definition] Logical equivalence\n> $\\varphi \\equiv \\psi$ when $\\varphi$ and $\\psi$ have the same value under every assignment: the same truth table. Replacing a subformula by an equivalent one does not change the value of the whole.",
+      "src": "Lesson 1 went from a formula to its table. Here is a table with no formula:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "$$\\begin{array}{ccc|c} p & q & r & \\ ? \\\\ \\hline T & T & T & F \\\\ T & T & F & T \\\\ T & F & T & T \\\\ T & F & F & F \\\\ F & T & T & F \\\\ F & T & F & F \\\\ F & F & T & F \\\\ F & F & F & T \\end{array}$$",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> Find a formula with this table. Better: a method that works for any table.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A formula for any table",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Take one true row, $p, q, r = T, T, F$. The formula $p \\land q \\land \\lnot r$ is true in that row and in no other: each literal pins down one variable. Write one such formula for each true row and join them with $\\lor$. The result is true exactly when one of them is, which is exactly in the true rows:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "truthtable((p ∧ q ∧ ¬r) ∨ (p ∧ ¬q ∧ r) ∨ (¬p ∧ ¬q ∧ ¬r))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Nothing in that used this particular table. So every truth table has a formula, built from $\\lnot$, $\\land$ and $\\lor$ alone (a table with no true row gets $\\bot$).",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Literal, term, clause, DNF, CNF\n> A **literal** is a variable or its negation. A **term** is an $\\land$ of literals and a **clause** an $\\lor$ of them. A formula is in **disjunctive normal form** (DNF) when it is an $\\lor$ of terms, as the one just built is, and in **conjunctive normal form** (CNF) when it is an $\\land$ of clauses.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The same works upside down. A clause can be false in exactly one row: $\\lnot p \\lor \\lnot q \\lor \\lnot r$ is false only at $T, T, T$. One such clause for each false row, joined with $\\land$, rules out the false rows and nothing else: a CNF. So every formula is equivalent to one in DNF and to one in CNF.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Logical equivalence\n> $\\varphi \\equiv \\psi$ when $\\varphi$ and $\\psi$ have the same value under every assignment: the same truth table. Replacing a part of a formula by an equivalent one does not change the value of the whole.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Without the table",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Reading off rows costs a term per true row, and a formula in 20 variables has $2^{20} = 1048576$ rows. The laws of logic work on the formula instead. Each replaces a part by an equivalent part, and each is checked once and for all by a table of a few rows.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -27,7 +92,7 @@
       "label": null
     },
     {
-      "src": "Each is proved in Lean over the booleans, and the engine's normal forms are proved to keep the value of the formula (the dot next to each step).",
+      "src": "The first is lesson 1's table of $\\to$ read as a formula: false only when $p$ is true and $q$ false. Each law is proved in Lean over the booleans, and the engine's normal forms are proved to keep the value of the formula (the dot next to each step).",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -62,7 +127,7 @@
       "label": null
     },
     {
-      "src": "> [!mistake]\n> $\\lnot(p \\land q)$ is **not** $\\lnot p \\land \\lnot q$: De Morgan's law swaps $\\land$ for $\\lor$. The engine finds the row where they differ:",
+      "src": "> [!mistake]\n> The natural guess is that $\\lnot$ just moves inside: $\\lnot(p \\land q) \\equiv \\lnot p \\land \\lnot q$. But \"not both\" is weaker than \"neither\". The engine finds the row where they differ:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -73,19 +138,19 @@
       "label": null
     },
     {
+      "src": "At $p$ true and $q$ false, \"not both\" holds and \"neither\" does not. De Morgan's law is the repair: the $\\land$ turns into $\\lor$, since \"not both\" means \"at least one fails\".",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "Conjunctive and disjunctive normal form",
       "type": "section",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!definition] CNF and DNF\n> A **literal** is a variable or its negation. A **clause** is an $\\lor$ of literals and a **term** an $\\land$ of them. A formula is in **conjunctive normal form** when it is an $\\land$ of clauses, and in **disjunctive normal form** when it is an $\\lor$ of terms.",
-      "type": "markdown",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "From NNF, distribute $\\lor$ over $\\land$ for CNF (or $\\land$ over $\\lor$ for DNF). A clause that contains both $p$ and $\\lnot p$ is always true and drops out; so does a term with both, which is always false.",
+      "src": "From NNF, distribute $\\lor$ over $\\land$ for CNF (or $\\land$ over $\\lor$ for DNF), as $a(b + c) = ab + ac$ in arithmetic, except that here each distributes over the other. A clause that contains both $p$ and $\\lnot p$ is always true and drops out; so does a term with both, which is always false.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -108,7 +173,24 @@
       "stepwise": 0
     },
     {
-      "src": "> [!note] Why CNF\n> A CNF is a list of constraints that must all hold, each satisfied by any one of its literals. SAT solvers, which decide satisfiability for formulas with millions of variables, take their input in CNF.",
+      "src": "The DNF lists the two true rows of the table of $p \\leftrightarrow q$, both false or both true, reached without the table.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!note] Why CNF, and its cost\n> A CNF is a list of constraints that must all hold, each satisfied by any one of its literals. SAT solvers, which decide satisfiability for formulas with millions of variables, take their input in CNF. Distribution has a price, though: each further pair joined by $\\lor$ doubles the clauses.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "cnf((p ∧ q) ∨ (r ∧ s) ∨ (t ∧ u))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Three pairs give $2^3 = 8$ clauses, and $n$ pairs $2^n$. Solvers avoid that by naming subformulas with new variables (the Tseitin encoding), which keeps satisfiability rather than equivalence.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -177,7 +259,25 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> The laws of logic are rewrites that keep the truth table. NNF pushes negations onto the variables; CNF and DNF then distribute. Any formula has all three forms, and the truth table decides whether a proposed one is right.",
+      "src": "dnf((p ∧ q) ∨ (q ∧ r) ∨ (p ∧ r))",
+      "type": "exercise",
+      "prompt": "The **majority** of $p$, $q$, $r$ is true when at least two of them are. Write it in DNF, from its truth table or from the words.",
+      "hints": [
+        "Its true rows are $T, T, T$, then $T, T, F$, then $T, F, T$, then $F, T, T$: one term each.",
+        "Or shorter: any two being true is enough, and a term need not mention the third variable."
+      ],
+      "hideQuestion": true,
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Every truth table has a formula: the $\\lor$ of its true rows (a DNF), or the $\\land$ of clauses that rule out its false rows (a CNF). The laws of logic reach the same forms from a formula without its table: NNF pushes negations onto the variables, and distributing gives CNF or DNF.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Tables and laws decide formulas about $p$ and $q$. Neither can check a statement about every number, which has infinitely many rows. The next lesson builds proofs instead, step by step, and has Lean check them.",
       "type": "markdown",
       "showWork": false,
       "label": null

@@ -27,7 +27,7 @@ mathematics (a dedupe-by-key bug, an information-flow lattice, a CRDT store, a t
 
 ### 1 · Logic and proof technique (9 lessons) — written
 
-`notebooks/courses/logic/`, with a Lean prelude: 39 exercises, 18 checked by the engine and 21 by Lean.
+`notebooks/courses/logic/`, with a Lean prelude: 42 exercises, 27 checked by the engine and 15 by Lean.
 
 1. Propositions and truth tables: tautologies, satisfying assignments as witnesses. *E1*
 2. Equivalence and normal forms: NNF, CNF and DNF as stepped rewrites, each law named. Equivalence
@@ -48,8 +48,8 @@ mathematics (a dedupe-by-key bug, an information-flow lattice, a CRDT store, a t
 
 ### 2 · Order and lattices (15 lessons; one course, the book's Parts I and II) — written
 
-`notebooks/courses/order-lattices/`, with a Lean prelude: 44 exercises, 26 checked by the engine and
-18 by Lean. Lessons 1–4 are `order-lattices.chalk`'s chapters, generated from it (each carries the
+`notebooks/courses/order-lattices/`, with a Lean prelude: 49 exercises, 38 checked by the engine and
+11 by Lean. Lessons 1–4 are `order-lattices.chalk`'s chapters, generated from it (each carries the
 earlier chapters' `let` cells it reads); Part II's Lean is the course's own, built on one algebraic
 `Semilattice` class (merge as join) rather than the book's class hierarchy, which clashes with Part I's.
 
@@ -57,8 +57,8 @@ Follows *From Zero to Propagators* (lean4learning), with a Lean prelude across i
 
 1–4. Relations and partial orders; special elements and monotone maps; lattices; complete lattices
    and Knaster–Tarski (today's `order-lattices.chalk`, split into lessons). *Order world as it is*
-5. Semilattices as algebras: join as an operation, its laws checked with a counterexample triple, the
-   order recovered from it. *E4, N3 operation tables*
+5. Semilattices, the laws of a merge: the three laws derived from what a network does to messages, each
+   shown necessary by a merge that breaks only it, and the order recovered from the operation. *E4, N3 operation tables*
 6. A merge is a join: last-writer-wins, max, union, records merged field by field (a product
    semilattice), proved in Lean for a generic field wrapper. *E4*
 7. Distributive and Boolean lattices: M3 and N5 as the witnesses, complements, powersets. *E4*
@@ -75,7 +75,7 @@ Follows *From Zero to Propagators* (lean4learning), with a Lean prelude across i
    examples with a counterexample flow and proved in Lean. Set beside lesson 8: there the lattice
    orders *decisions* about a request; here it orders *data*, and the policy is a constraint on every
    flow. *E4 products, maps between posets*
-10. Closure operators and Galois connections; formal concept analysis (a context's concept lattice,
+10. Galois connections as best approximations, and closure operators as their round trips; formal concept analysis (a context's concept lattice,
    drawn as a Hasse diagram). *E4*
 11. Fixed points in practice: idempotence, "apply until nothing changes" as a Kleene chain, termination
     by the ascending chain condition.
@@ -84,7 +84,7 @@ Follows *From Zero to Propagators* (lean4learning), with a Lean prelude across i
 
 ### 3 · Transition systems, invariants and temporal logic (10 lessons) — written
 
-`notebooks/courses/systems/`, with a Lean prelude: 35 exercises, 25 checked by the engine and 10 by
+`notebooks/courses/systems/`, with a Lean prelude: 37 exercises, 28 checked by the engine and 9 by
 Lean. Systems are written over several lines (N6). "One task per tenant" is taught as one job per
 customer. Lesson 8's normalization keeps only the rewrites that are sound from every starting state;
 "create; delete → ∅" is shown false when the key already existed.
@@ -141,7 +141,7 @@ type in Lean; dependent types and Lean's type checking as proof checking. *E6, N
 `notebooks/sources/Crdt.lean` (two `Decidable` instances in chapter 10 built explicitly; 4.28-era
 deprecation notices switched off; the capstone's `runSchedule` split into smaller definitions, as one
 `do` block ran Lean in the browser out of stack) and split at its chapter headings; its compiled solutions are the
-lessons' Lean exercises (9), beside 8 engine exercises on joins, folds and version vectors. Seven
+lessons' Lean exercises (8), beside 18 engine exercises on joins, folds and version vectors. Ten
 lessons also run their CRDT on replicas in the notebook (N8), drawn as a space-time diagram.
 
 Follows *From Propagators to Replicas* (lean4learning), with a Lean prelude across its lessons; needs
@@ -185,7 +185,7 @@ substitution and de Bruijn indices as commands. **Done.**
 - N7 A course's Lean prelude. **Done.**
 - N8 A replica simulation: replicas exchanging state, duplicated and reordered, converging. **Done**:
   `replicas(…)` runs G- and PN-counters, G-, 2P- and OR-sets and an LWW-register through a schedule,
-  drawn as a space-time diagram that steps event by event; seven CRDT lessons run it.
+  drawn as a space-time diagram that steps event by event; ten CRDT lessons run it.
 
 ## Order
 

@@ -9,8 +9,36 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Prove statements about every natural number by induction: a base case and a step from $n$ to $n + 1$.",
+      "src": "> [!goal]\n> Prove a statement for every natural number from two finite pieces: a base case and a step from $n$ to $n + 1$.",
       "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Euler's polynomial passed 39 checks before it failed. Fermat did worse: $2^{2^n} + 1$ is prime for $n = 0, 1, 2, 3, 4$ (it is 3, 5, 17, 257 and 65537), and he believed it always was.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "∀ n ∈ 0..4, prime(2^(2^n) + 1)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "(2^(2^5) + 1) / 641",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Euler found that the very next one, $2^{32} + 1 = 4294967297$, is $641 \\times 6700417$. No number of checks proves a statement about every $n$. So what could?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A step instead of a list",
+      "type": "section",
       "showWork": false,
       "label": null
     },
@@ -42,25 +70,30 @@
       "label": null
     },
     {
-      "src": "And for every $n$ up to 20 at once:",
-      "type": "markdown",
-      "showWork": false,
-      "label": null
-    },
-    {
       "src": "∀ n ∈ 1..20, sum(k, k, 1, n) = n(n+1)/2",
       "showWork": false,
       "label": null
     },
     {
-      "src": "Twenty cases are evidence, not a proof (Euler's polynomial worked for 39). Induction proves all of them.",
+      "src": "Twenty more checks. Instead, show how each case gives the next. If the sum up to $k$ is $\\frac{k(k+1)}{2}$, the sum up to $k + 1$ adds $k + 1$, and the formula should then give $\\frac{(k+1)(k+2)}{2}$. The difference is zero for every $k$:",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "The principle",
-      "type": "section",
+      "src": "expand(k(k+1)/2 + (k+1) - (k+1)(k+2)/2)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "That one identity, with the case $n = 1$ ($1 = \\frac{1 \\cdot 2}{2}$), is a proof for every $n$. For $n = 1000$, start at 1 and apply the step 999 times: the argument is a recipe that produces the proof for any $n$ you name.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "clock t from -1 to 9\nnoaxes\nview -1.5, 8.5, -0.8, 2.6\nD0 = segment(0, 0 + 1.6*exp(i*(pi/2 - 0.675/(1 + exp(-8*(t - 0)))))) thick color 1\nD1 = segment(1, 1 + 1.6*exp(i*(pi/2 - 0.675/(1 + exp(-8*(t - 1)))))) thick color 1\nD2 = segment(2, 2 + 1.6*exp(i*(pi/2 - 0.675/(1 + exp(-8*(t - 2)))))) thick color 1\nD3 = segment(3, 3 + 1.6*exp(i*(pi/2 - 0.675/(1 + exp(-8*(t - 3)))))) thick color 1\nD4 = segment(4, 4 + 1.6*exp(i*(pi/2 - 0.675/(1 + exp(-8*(t - 4)))))) thick color 1\nD5 = segment(5, 5 + 1.6*exp(i*(pi/2 - 0.675/(1 + exp(-8*(t - 5)))))) thick color 1\nD6 = segment(6, 6 + 1.6*exp(i*(pi/2 - 0.675/(1 + exp(-8*(t - 6)))))) thick color 1\nD7 = segment(7, 7 + 1.6*exp(i*(pi/2 - 0.675/(1 + exp(-8*(t - 7)))))) thick color 1\nL0 = label(0 - 0.35i, \"P(0)\")\nL1 = label(1 - 0.35i, \"P(1)\")\nL2 = label(2 - 0.35i, \"P(2)\")\nL3 = label(3 - 0.35i, \"P(3)\")\nL4 = label(4 - 0.35i, \"P(4)\")\nL5 = label(5 - 0.35i, \"P(5)\")\nL6 = label(6 - 0.35i, \"P(6)\")\nL7 = label(7 - 0.35i, \"P(7)\")\nK0 = arrow(0.15 + 2i, 0.85 + 2i) color 4\nK1 = arrow(1.15 + 2i, 1.85 + 2i) color 4\nK2 = arrow(2.15 + 2i, 2.85 + 2i) color 4\nK3 = arrow(3.15 + 2i, 3.85 + 2i) color 4\nK4 = arrow(4.15 + 2i, 4.85 + 2i) color 4\nK5 = arrow(5.15 + 2i, 5.85 + 2i) color 4\nK6 = arrow(6.15 + 2i, 6.85 + 2i) color 4\nA = arrow(-1.2 + 1.4i, -0.1 + 1.4i) thick color 2\n> show D0, D1, D2, D3, D4, D5, D6, D7, L0, L1, L2, L3, L4, L5, L6, L7 | A domino for each statement: $P(0)$, $P(1)$, $P(2)$, and so on. A domino down is a statement proved.\n> show K0, K1, K2, K3, K4, K5, K6 | The step, $P(n) \\to P(n+1)$ for every $n$: each domino stands where its fall knocks over the next. By itself it knocks nothing over.\n> show A; play t to 9 in 6s | The base case: push the first. Then each falls in turn, however far along the line it stands.",
+      "type": "scene",
       "showWork": false,
       "label": null
     },
@@ -71,7 +104,13 @@
       "label": null
     },
     {
-      "src": "> [!note] Why it works\n> $P(0)$ gives $P(1)$, which gives $P(2)$, and so on: every $n$ is reached from $0$ by finitely many steps of $+1$. In Lean this is not an axiom but the way `Nat` is defined: a natural number is `zero` or `succ n`, and the `induction` tactic is the recursion that follows that definition.",
+      "src": "> [!mistake]\n> Both halves are needed, and the step alone can look convincing. Let $P(n)$ say $n = n + 1$. If $n = n + 1$ then, adding 1, $n + 1 = n + 2$: the step holds for every $n$. But $P(0)$ says $0 = 1$, so no domino is ever pushed, and $P(n)$ is false for every $n$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!note] Why it works\n> Every $n$ is reached from $0$ by finitely many steps of $+1$. In Lean this is not an axiom but the way `Nat` is defined: a natural number is `zero` or `succ n`, and the `induction` tactic is the recursion that follows that definition.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -89,7 +128,31 @@
       "label": null
     },
     {
-      "src": "The `succ` case has the **induction hypothesis** `ih : 2 * sumTo k = k * (k + 1)` and must prove the formula for `k + 1`. Unfolding `sumTo` once and using `ih` leaves arithmetic, which `grind` finishes.",
+      "src": "The `succ` case has the **induction hypothesis** `ih : 2 * sumTo k = k * (k + 1)` and must prove the formula for `k + 1`. Unfolding `sumTo` once and using `ih` leaves the identity above, which `grind` finishes.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Odd numbers",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> Add up the first few odd numbers: $1$, $1 + 3$, $1 + 3 + 5$, $1 + 3 + 5 + 7$. Guess the formula, then find its induction step in the picture.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "noaxes\nview -1, 5, -1, 5\nQ1_0 = point(0 + 0i) thick color 1\nQ2_0 = point(0 + 1i) thick color 2\nQ2_1 = point(1 + 0i) thick color 2\nQ2_2 = point(1 + 1i) thick color 2\nQ3_0 = point(0 + 2i) thick color 3\nQ3_1 = point(1 + 2i) thick color 3\nQ3_2 = point(2 + 0i) thick color 3\nQ3_3 = point(2 + 1i) thick color 3\nQ3_4 = point(2 + 2i) thick color 3\nQ4_0 = point(0 + 3i) thick color 4\nQ4_1 = point(1 + 3i) thick color 4\nQ4_2 = point(2 + 3i) thick color 4\nQ4_3 = point(3 + 0i) thick color 4\nQ4_4 = point(3 + 1i) thick color 4\nQ4_5 = point(3 + 2i) thick color 4\nQ4_6 = point(3 + 3i) thick color 4\nQ5_0 = point(0 + 4i) thick color 5\nQ5_1 = point(1 + 4i) thick color 5\nQ5_2 = point(2 + 4i) thick color 5\nQ5_3 = point(3 + 4i) thick color 5\nQ5_4 = point(4 + 0i) thick color 5\nQ5_5 = point(4 + 1i) thick color 5\nQ5_6 = point(4 + 2i) thick color 5\nQ5_7 = point(4 + 3i) thick color 5\nQ5_8 = point(4 + 4i) thick color 5\n> show Q1_0 | $1$.\n> show Q2_0, Q2_1, Q2_2 | Three more dots, round a corner: $1 + 3 = 4$, a $2 \\times 2$ square.\n> show Q3_0, Q3_1, Q3_2, Q3_3, Q3_4 | Five more: $1 + 3 + 5 = 9$, a $3 \\times 3$ square.\n> show Q4_0, Q4_1, Q4_2, Q4_3, Q4_4, Q4_5, Q4_6, Q5_0, Q5_1, Q5_2, Q5_3, Q5_4, Q5_5, Q5_6, Q5_7, Q5_8 | Each odd number wraps the square in one more layer: the $n \\times n$ square plus $2n + 1$ dots is the $(n+1) \\times (n+1)$ one.",
+      "type": "scene",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The sum of the first $n$ odd numbers is $n^2$, and the picture is the induction step: $n^2 + (2n + 1) = (n + 1)^2$.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -131,7 +194,7 @@
       "leanSolution": "  induction n with\n  | zero => rfl\n  | succ k ih =>\n    simp only [oddSum, ih]\n    grind",
       "hints": [
         "`induction n with`, then a case for `zero` and one for `succ k ih`.",
-        "In the `succ` case, `simp only [oddSum, ih]` leaves `k * k + (2 * k + 1) = (k + 1) * (k + 1)`."
+        "In the `succ` case, `simp only [oddSum, ih]` leaves `k * k + (2 * k + 1) = (k + 1) * (k + 1)`: the picture's step."
       ],
       "showWork": false,
       "label": null
@@ -150,7 +213,13 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> Induction proves $P(n)$ for all $n$ from a base case and a step. Checking cases finds mistakes; the step is the proof. In Lean, `induction` splits the goal into those two cases and hands the step its hypothesis.",
+      "src": "> [!summary]\n> Induction proves $P(n)$ for every $n$ from a base case and a step: a recipe that builds the proof for any $n$ you name. Checking cases finds mistakes; the step is the proof. In Lean, `induction` splits the goal into those two cases and hands the step its hypothesis.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The step here only ever used the case just before. To show 12 has a prime factor, 11 is no help; 12's factors 2, 3, 4 and 6 are. The next lesson lets the step use any smaller case.",
       "type": "markdown",
       "showWork": false,
       "label": null

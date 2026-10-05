@@ -9,13 +9,54 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Differentiate a function of a function, such as $\\sin(x^2)$ or $e^{3x}$, and see where the inner derivative goes.",
+      "src": "> [!goal]\n> Differentiate a function of a function, such as $\\sin(x^2)$, and see why the derivative of the inside comes out in front.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!theorem] Chain rule\n> $\\dfrac{d}{dx} f(g(x)) = f'(g(x))\\, g'(x)$: the outer derivative, evaluated at the inner function, times the inner derivative.",
+      "src": "The rules so far handle $x^2$ and $\\sin x$, but not $\\sin(x^2)$: the sine of something that is itself changing. The natural guess is to differentiate the outside and leave the inside alone, giving $\\cos(x^2)$. Plot the true derivative against the guess:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "plot([diff(sin(x^2), x), cos(x^2)], x, 0, 3)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> The guess $\\cos(x^2)$ is wrong: the true derivative is $2x\\cos(x^2)$, the guess times $2x$, so they agree only at $x = \\frac12$ and where both are $0$. $2x$ is the derivative of the inside. Why should it multiply?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Follow a nudge",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Follow a small nudge through each function in turn, on three number lines: $x$ on top, $x^2$ in the middle, $\\sin x^2$ at the bottom.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "clock a from 1 to 1.5\nnoaxes\nview -1.4, 3.3, -0.5, 2.5\nX = segment(-1.2 + 2*i, 3.2 + 2*i) faint color 6\nG = segment(-1.2 + i, 3.2 + i) faint color 6\nF = segment(-1.2, 3.2) faint color 6\nLX = label(-1.3 + 2*i, \"x\") color 6\nLG = label(-1.3 + i, \"x^2\") color 6\nLF = label(-1.3 + 0*i, \"\\sin x^2\") color 6\nDX = arrow(a + 2*i, a + 0.2 + 2*i) thick color 1\nDG = arrow(a^2 + i, (a + 0.2)^2 + i) thick color 2\nDF = arrow(sin(a^2), sin((a + 0.2)^2)) thick color 3\nM1 = segment(a + 2*i, a^2 + i) dashed color 6\nM2 = segment(a^2 + i, sin(a^2)) dashed color 6\n> show DX | A nudge to $x$.\n> show M1, DG | Squaring turns it into a nudge to $x^2$, about $2x$ times as long: the inner derivative.\n> show M2, DF | The sine scales that nudge by $\\cos(x^2)$: the outer derivative, taken where the inside is.\n> play a to 1.5 in 6s | Move $x$ from $1$ to $1.5$. The middle nudge grows, about $2x$ times the top one; the bottom one is the middle one times $\\cos(x^2)$, which falls to $0$ at $x^2 = \\pi/2$ and then turns the nudge round.",
+      "type": "scene",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A nudge $dx$ moves $x^2$ by about $2x\\,dx$. That nudge, $dg = 2x\\,dx$, moves $\\sin g$ by about $\\cos(g)\\,dg$, with $g = x^2$. Altogether $d(\\sin x^2) \\approx \\cos(x^2) \\cdot 2x \\cdot dx$. The guess forgot that the inside moves at its own rate, $2x$ times as fast as $x$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!theorem] Chain rule\n> $\\dfrac{d}{dx} f(g(x)) = f'(g(x))\\, g'(x)$, where $g$ is differentiable at $x$ and $f$ at $g(x)$: the outer derivative, taken at the inner function, times the inner derivative. In nudges: $dg = g'(x)\\,dx$ and $df = f'(g)\\,dg$.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -25,6 +66,12 @@
       "showWork": true,
       "label": null,
       "stepwise": 0
+    },
+    {
+      "src": "> [!try]\n> Predict the derivative of $e^{3x}$ before you open the work: what is the inside, and how fast does it move?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
     },
     {
       "src": "diff(exp(3x), x)",
@@ -38,7 +85,7 @@
       "label": null
     },
     {
-      "src": "> [!try]\n> Drag `a`. The derivative of $\\sin(ax)$ is $a\\cos(ax)$: the inner derivative $a$ is a factor in front, so the derivative's curve is $a$ times taller and the slopes are $a$ times steeper.",
+      "src": "> [!try]\n> Drag `a`. In $\\sin(ax)$ the inside runs $a$ times as fast as $x$, so the wave goes by $a$ times as fast: the derivative $a\\cos(ax)$ has the inner derivative $a$ in front, its curve is $a$ times taller, and the slopes are $a$ times steeper.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -83,7 +130,13 @@
       "stepwise": 0
     },
     {
-      "src": "diff(ln(x^2 + 1), x)",
+      "src": "Three layers make three factors, one per layer, each taken at what is inside it:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "diff(exp(sin(x^2)), x)",
       "showWork": true,
       "label": null
     },
@@ -120,7 +173,18 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> Peel the function from the outside in: differentiate the outer layer, keep the inside as it is, and multiply by the derivative of the inside.",
+      "src": "diff(ln(x), x)",
+      "type": "exercise",
+      "prompt": "Invent it: for $x > 0$, $e^{\\ln x} = x$. Differentiate both sides, using the chain rule on the left (the inside is $\\ln x$), and solve for the derivative of $\\ln x$.",
+      "hints": [
+        "The left side's derivative is $e^{\\ln x} \\cdot (\\ln x)'$, which is $x \\cdot (\\ln x)'$.",
+        "The right side's derivative is $1$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Follow a nudge: the inside stretches it by $g'(x)$, then the outside by $f'(g)$. The derivative of the inside comes out in front because the inside moves at its own rate. One chain is worth a lesson of its own: $e^{it}$, where the inside is multiplied by $i$. What does a point do whose velocity is its position times $i$?",
       "type": "markdown",
       "showWork": false,
       "label": null

@@ -1,1 +1,1 @@
-
+4	replicas(pncounter; a, b\n  a: inc\n  a -> b\n  a: dec\n  b: dec\n  a -> b\n  b -> a\n)	= {a↦-1, b↦-1}

@@ -9,25 +9,55 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> See how replicas that accept updates locally diverge, why \"overwrite\" and other casual merges lose updates, and state the discipline every design in this course obeys: the state is a bounded join-semilattice, updates go up, and merge is the join.",
+      "src": "> [!goal]\n> Watch two replicas lose an update, find the three laws a merge must obey so that the network cannot make it lose one, and name what obeys them: a state-based CRDT.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "Several machines keep a copy (a **replica**) of the same logical value, accept updates locally without waiting for each other, and reconcile later over a network that delays, drops, duplicates and reorders. Accepting updates locally is easy. Merging afterwards, so that every replica ends with the same state and that state reflects every update, is the hard part.",
+      "src": "A like counter runs on two phones, `a` and `b`. Each phone keeps its own copy of the count (a **replica**), so that a tap registers at once, even offline, and the phones sync when they can. Both start at 0, each user taps once, and then the phones sync. Both should read 2.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "Overwrite is not a merge",
+      "src": "> [!try]\n> The obvious design: each replica stores a number; a tap reads it, adds one and stores the result; a sync passes the latest number across. Predict what each phone reads after the sync.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A lost update",
       "type": "section",
       "showWork": false,
       "label": null
     },
     {
-      "src": "\"Keep the incoming value\" depends on who hears from whom last. As an operation it is not commutative, so two replicas that exchange states end up swapped rather than equal:",
+      "src": "`replicas(…)` runs a design on named replicas through a schedule, one event per line: `a: …` is a local update at `a`, and `a -> b` has `b` merge `a`'s state. It answers with each replica's reading and draws a **space-time diagram**: a lane per replica, an arrow per message. Here the design is `lww`, \"keep the latest write\", and each tap writes what its phone read plus one, so both write 1. Step through it:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "replicas(lww; a, b\n  a: write 1\n  b: write 1\n  a -> b\n  b -> a\n)",
+      "showWork": true,
+      "label": null,
+      "stepwise": 0
+    },
+    {
+      "src": "The phones agree, and they are wrong: two taps, and both read 1. Each tap wrote \"0 plus one\"; the sync kept one write and dropped the other. No message was lost and nothing crashed, yet an update vanished. This is the **lost update**, and each design in this course is the fix for the previous design's version of it.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Overwrite does not even agree",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`lww` at least drops the same write everywhere: it compares timestamps (lesson 5). Plain overwrite, \"keep the incoming value\", does not. As a table, row $x$, column $y$ is what a replica holding $x$ keeps on hearing $y$:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -43,6 +73,12 @@
       "label": null
     },
     {
+      "src": "A replica that hears $a$ and then $b$ ends at $b$; one that hears $b$ and then $a$ ends at $a$. The same messages in a different order leave the two in different states, for good:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "fold(Ow; a, b)",
       "showWork": false,
       "label": null
@@ -53,7 +89,19 @@
       "label": null
     },
     {
-      "src": "\"Keep the larger\" is a join. Any order of exchanges, any grouping, any duplicates, the same result:",
+      "src": "What a merge must not care about",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> A real network delays messages, so they arrive in any **order**; replicas pass on what they have heard, so updates arrive already **grouped** into other replicas' states; and it retries, so a message can arrive **twice**. For each, what must a merge $\\sqcup$ satisfy so that it cannot change the outcome?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "One law each:\n- order: $x \\sqcup y = y \\sqcup x$ (**commutative**);\n- grouping: $(x \\sqcup y) \\sqcup z = x \\sqcup (y \\sqcup z)$ (**associative**);\n- duplicates: $x \\sqcup x = x$ (**idempotent**).\n\nAn operation with all three is a **semilattice**, and a semilattice is the same thing as a join: setting $x \\sqsubseteq y$ when $x \\sqcup y = y$ gives a partial order in which $x \\sqcup y$ is the least upper bound. Overwrite breaks the first law. \"Keep the larger\" keeps all three, so any order, grouping or repetition of the same messages gives the same result:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -65,7 +113,7 @@
     },
     {
       "src": "semilattice(Mx)",
-      "showWork": false,
+      "showWork": true,
       "label": null
     },
     {
@@ -74,43 +122,48 @@
       "label": null
     },
     {
-      "src": "> [!definition] The merge discipline\n> A **state-based CRDT** keeps its state in a bounded join-semilattice, makes every update **inflationary** (the new state is above the old), and merges by the **join**. Then a replica stores not a value but everything it has heard about the value, and hearing the same things in any order gives the same state.",
+      "src": "fold(Mx; 1, 1, 0, 2)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A merge that is a join only ever moves up. So an update must move up too: an update that moved a state down would be undone by the first merge with a replica that had not heard of it, whose state is still above. Lesson 3 meets this as a bug.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "This is the propagator cell from *Order and lattices*, read again: there a cell gathered partial information from propagators on one scheduler; here a replica gathers it from other replicas over an unreliable network. The algebra is the same.",
+      "src": "> [!definition] State-based CRDT\n> A **state-based CRDT** keeps each replica's state in a join-semilattice with a least element $\\bot$ (the state before anything has happened), makes every update **inflationary** (it goes up: $s \\sqsubseteq u(s)$), and merges by the join. A replica then holds not a value but everything it has heard about the value, and hearing the same things in any order, grouping or number of times gives the same state.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "Replicas in the notebook",
+      "src": "This is the propagator cell from *Order and lattices* read again: there a cell gathered partial information from propagators on one scheduler; here a replica gathers it from other replicas over an unreliable network. The algebra is the same.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A preview of the fix",
       "type": "section",
       "showWork": false,
       "label": null
     },
     {
-      "src": "`replicas(…)` runs a CRDT on named replicas through a schedule of events, one per line: `a: inc` updates replica `a`, and `a -> b` has `b` merge `a`'s state. It answers with each replica's reading and whether they have converged, and draws a **space-time diagram**: a lane per replica, an arrow per message. Step through it: the diagram grows event by event.",
+      "src": "\"Keep the larger\" on the count itself does not save the like counter: after their taps both phones hold 1, and $\\max(1, 1) = 1$. Adding the counts would remember both taps, but addition is not idempotent: a sync delivered twice counts its taps twice. Yet here is the same schedule on the counter the next lesson builds:",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "replicas(gcounter; a, b, c\n  a: inc\n  b: inc\n  b: inc\n  a -> b\n  b -> c\n)",
-      "showWork": true,
-      "label": null,
-      "stepwise": 0
-    },
-    {
-      "src": "Replica `a` has not heard from anyone, so the replicas have not converged. One more message does it:",
-      "type": "markdown",
+      "src": "replicas(gcounter; a, b\n  a: inc\n  b: inc\n  a -> b\n  b -> a\n)",
       "showWork": false,
       "label": null
     },
     {
-      "src": "replicas(gcounter; a, b, c\n  a: inc\n  b: inc\n  b: inc\n  a -> b\n  b -> c\n  c -> a\n)",
+      "src": "Two taps, and both read 2.",
+      "type": "markdown",
       "showWork": false,
       "label": null
     },
@@ -121,7 +174,7 @@
       "label": null
     },
     {
-      "src": "The book's Lean, chapter by chapter, runs in this course's lessons; each lesson sees the ones before it. First the merge discipline as classes (with notation $\\sqcup$ for the join, $\\bot$ for the bottom, $\\sqsubseteq$ for \"knows at least as much\"), the laws every join obeys (the ACI toolkit), the propagator machinery re-read as replicas, and the chapter 1 demonstrations of naive merges going wrong.",
+      "src": "The book's Lean, chapter by chapter, runs in this course's lessons; each lesson sees the ones before it. First the merge discipline as classes (with notation $\\sqcup$ for the join, $\\bot$ for the bottom, $\\sqsubseteq$ for \"knows at least as much\"), the laws every join obeys (the ACI toolkit: associative, commutative, idempotent), the propagator machinery re-read as replicas, and chapter 1's naive counter, where an overwriting sync loses an update and ends at 2 when the truth is 3.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -188,6 +241,16 @@
       "label": null
     },
     {
+      "src": "idempotent(Ow)",
+      "type": "exercise",
+      "prompt": "Overwrite breaks commutativity. Does it keep idempotence, $x \\sqcup x = x$ for every $x$? Answer `true` or `false`.",
+      "hints": [
+        "A replica holding $x$ hears $x$ again. What does overwrite keep?"
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "fold(Ow; b, a, b, a)",
       "type": "exercise",
       "prompt": "Under overwrite, a replica hears $b$, $a$, $b$, $a$ in that order. What does it hold?",
@@ -198,7 +261,7 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> Replicas that accept updates locally must reconcile, and reconciliation must remember rather than choose. Keeping states in a semilattice and merging by the join makes the order, grouping and repetition of messages irrelevant.",
+      "src": "> [!summary]\n> A merge that chooses between values (overwrite, the latest write) loses updates, or leaves replicas disagreeing. A merge that is commutative, associative and idempotent, that is a join, makes the order, grouping and repetition of messages irrelevant; with updates that only go up, that is a state-based CRDT. It leaves a question for the next lesson: the count cannot be a single number, so what state would let \"the larger of two states\" keep every tap?",
       "type": "markdown",
       "showWork": false,
       "label": null

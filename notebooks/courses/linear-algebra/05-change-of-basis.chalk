@@ -9,7 +9,13 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Describe a vector in a basis other than $e_1, e_2$, translate between the two descriptions with a matrix, and find the directions a matrix only stretches.",
+      "src": "> [!goal]\n> Describe vectors with two arrows of your own choosing, translate between that description and ours, and find the arrows a matrix only stretches.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Lesson 4 ended on a hope. $A = \\begin{pmatrix} 2 & 1 \\\\ 1 & 2 \\end{pmatrix}$ sends $\\hat{\\imath}$ to $(2, 1)$ and $\\hat{\\jmath}$ to $(1, 2)$: it turns both and stretches both, and its columns say little more. Seen through other arrows, might it be as simple as a diagonal matrix? That is two questions. How do you describe the plane with arrows other than $\\hat{\\imath}$ and $\\hat{\\jmath}$? And which arrows suit $A$?",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -21,25 +27,31 @@
       "label": null
     },
     {
-      "src": "> [!definition] Basis and coordinates\n> Two vectors $b_1, b_2$ of the plane that do not lie on one line are a **basis**: every vector is $v = c_1 b_1 + c_2 b_2$ for exactly one pair $(c_1, c_2)$, its **coordinates** in that basis.",
+      "src": "Lesson 1 found that two arrows not on one line reach every point: their stretched copies lay a slanted grid over the plane. So any such pair can stand in for $\\hat{\\imath}$ and $\\hat{\\jmath}$. Take $b_1 = (2, 1)$ and $b_2 = (-1, 1)$, and walk two steps along $b_1$ and one along $b_2$. Where do you end up, in our terms?",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "Take $b_1 = (2, 1)$ and $b_2 = (-1, 1)$. They draw a grid of their own, and the point at $(2, 1)$ on their grid is somewhere else on ours:",
-      "type": "markdown",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "clock t from 0 to 1\nview -3.6, 5.6, -1.2, 4.2\nlet P = [2, -1; 1, 1]\nlet M = (1 - t)*[1, 0; 0, 1] + t*P\nG0 = grid([1, 0; 0, 1]) faint color 6\nG = grid(M) color 2\nB1 = arrow(0, M*[1; 0]) thick color 3\nLB1 = label(M*[1; 0], \"b_1\") color 3\nB2 = arrow(0, M*[0; 1]) thick color 4\nLB2 = label(M*[0; 1], \"b_2\") color 4\nV = point(M*[2; 1]) thick color 1\nLV = label(M*[2; 1], \"v\") color 1\nW1 = arrow(0, 2*P*[1; 0]) color 3\nW2 = arrow(2*P*[1; 0], P*[2; 1]) color 4\n> show G0, B1, LB1, B2, LB2, V, LV | Our grid, with the point $(2, 1)$ on it.\n> show G; play t to 1 in 4s | Carry the grid along with $P = \\begin{bmatrix} 2 & -1 \\\\ 1 & 1 \\end{bmatrix}$, whose columns are $b_1$ and $b_2$. The point keeps its place on the grid, $(2, 1)$, and lands at $v = 2b_1 + b_2 = (3, 3)$.\n> show W1, W2 | Two steps along $b_1$ and one along $b_2$: in the new basis $v$ has coordinates $(2, 1)$, in ours $(3, 3)$.",
+      "src": "clock t from 0 to 1\nview -3.6, 5.6, -1.2, 4.2\nlet P = [2, -1; 1, 1]\nlet M = (1 - t)*[1, 0; 0, 1] + t*P\nG0 = grid([1, 0; 0, 1]) faint color 6\nG = grid(M) color 2\nB1 = arrow(0, M*[1; 0]) thick color 3\nLB1 = label(M*[1; 0], \"b_1\") color 3\nB2 = arrow(0, M*[0; 1]) thick color 4\nLB2 = label(M*[0; 1], \"b_2\") color 4\nV = point(M*[2; 1]) thick color 1\nLV = label(M*[2; 1], \"v\") color 1\nW1 = arrow(0, 2*P*[1; 0]) color 3\nW2 = arrow(2*P*[1; 0], P*[2; 1]) color 4\n> show G0, B1, LB1, B2, LB2, V, LV | Our grid, and the point $(2, 1)$ on it: two steps along $\\hat{\\imath}$ and one along $\\hat{\\jmath}$. The two arrows are about to become $b_1$ and $b_2$.\n> show G; play t to 1 in 4s | Carry the grid along with $P = \\begin{pmatrix} 2 & -1 \\\\ 1 & 1 \\end{pmatrix}$, whose columns are $b_1$ and $b_2$. The arrows land on $b_1$ and $b_2$, the grid becomes theirs, and the point keeps its place on it: it lands at $v = 2b_1 + b_2 = (3, 3)$.\n> show W1, W2 | Two steps along $b_1$ and one along $b_2$: described with $b_1$ and $b_2$, $v$ is $(2, 1)$; described with $\\hat{\\imath}$ and $\\hat{\\jmath}$, it is $(3, 3)$.",
       "type": "scene",
       "showWork": false,
       "label": null
     },
     {
-      "src": "So the matrix $P$ whose columns are the new basis turns coordinates in that basis into ours:",
+      "src": "Each vector has exactly one such description. Two different pairs for one vector would subtract to a combination of $b_1$ and $b_2$ that is $0$ without both numbers being $0$, and then $b_1$ and $b_2$ would lie on one line.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Basis and coordinates\n> Two vectors $b_1, b_2$ of the plane that do not lie on one line are a **basis**: every vector is $v = c_1 b_1 + c_2 b_2$ for exactly one pair $(c_1, c_2)$, its **coordinates** in that basis. $\\hat{\\imath}$ and $\\hat{\\jmath}$ are one basis among many.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Their coordinates into ours is what the scene did, with $P$, the matrix whose columns are $b_1$ and $b_2$. Lesson 2 says why: $P$ sends $(c_1, c_2)$ to $c_1$ times its first column plus $c_2$ times its second, which is $c_1 b_1 + c_2 b_2$.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -55,7 +67,13 @@
       "label": null
     },
     {
-      "src": "> [!theorem] Finding coordinates is solving a system\n> The coordinates $c$ of $v$ in the basis are the solution of $Pc = v$: a system whose augmented matrix is $P$ with $v$ beside it. Since $b_1, b_2$ are a basis, $\\det P \\neq 0$ and the solution is unique.",
+      "src": "Ours into theirs is the same question run backwards, which is lesson 3's: which input does $P$ send to $v$?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> Before the next cell: which augmented matrix gives the coordinates of $(3, 3)$, and what should its last column come out as?",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -66,32 +84,50 @@
       "label": null
     },
     {
-      "src": "The last column is the coordinates, $(2, 1)$. Row reduction undid $P$.",
+      "src": "The last column is the coordinates, $(2, 1)$: elimination undid $P$.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "Eigenvectors",
+      "src": "> [!theorem] Finding coordinates is solving a system\n> The coordinates $c$ of $v$ in the basis are the solution of $Pc = v$: elimination on $P$ with $v$ beside it. Since $b_1$ and $b_2$ are not on one line, $\\det P \\neq 0$ (lesson 4), and there is exactly one solution.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Arrows a matrix only stretches",
       "type": "section",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!definition] Eigenvector and eigenvalue\n> A nonzero vector $v$ is an **eigenvector** of $A$ when $A$ only stretches it: $Av = \\lambda v$ for a number $\\lambda$, its **eigenvalue**. The line through $v$ is then carried onto itself.",
+      "src": "Now the second question: which arrows suit $A$? The best would be arrows that $A$ does not turn at all, only stretches. Along such an arrow, $A$ acts like a plain number.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "Most vectors are turned off their line by a matrix. Watch $A = \\begin{bmatrix} 2 & 1 \\\\ 1 & 2 \\end{bmatrix}$, and three vectors: two on the dashed lines, one not.",
+      "src": "> [!try]\n> $A$ sends $(1, 0)$ to its first column, $(2, 1)$: off the line through $(1, 0)$. Before the scene, work out where it sends $(1, 1)$. Is that on the line through $(1, 1)$?",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "clock t from 0 to 1\nview -3.6, 4.6, -1.4, 3.9\nlet A = [2, 1; 1, 2]\nlet M = (1 - t)*[1, 0; 0, 1] + t*A\nG0 = grid([1, 0; 0, 1]) faint color 6\nG = grid(M) color 2\nK1 = line(0, [1, 1]) dashed color 3\nK2 = line(0, [1, -1]) dashed color 4\nU = arrow(0, M*[1; 1]) thick color 3\nLU = label(M*[1; 1], \"u\") color 3\nW = arrow(0, M*[-0.5; 0.5]) thick color 4\nLW = label(M*[-0.5; 0.5], \"w\") color 4\nX = arrow(0, M*[1; 0]) thick color 1\nKX = line(0, [1, 0]) dashed color 1\n> show G0, U, LU, W, LW, X, KX | Three vectors, each on a line through $0$: $u = (1, 1)$, $w = (-\\frac12, \\frac12)$, and $(1, 0)$ in orange.\n> show G; play t to 1 in 4s | Apply $A$. The orange vector $(1, 0)$ is turned off its line, to $(2, 1)$.\n> show K1, K2 | But $u$ stays on its line, stretched three times to $(3, 3)$, and $w$ stays exactly where it was. They are eigenvectors, with eigenvalues $3$ and $1$.",
+      "src": "clock t from 0 to 1\nview -3.6, 4.6, -1.4, 3.9\nlet A = [2, 1; 1, 2]\nlet M = (1 - t)*[1, 0; 0, 1] + t*A\nG0 = grid([1, 0; 0, 1]) faint color 6\nG = grid(M) color 2\nK1 = line(0, [1, 1]) dashed color 3\nK2 = line(0, [1, -1]) dashed color 4\nU = arrow(0, M*[1; 1]) thick color 3\nLU = label(M*[1; 1], \"u\") color 3\nW = arrow(0, M*[-0.5; 0.5]) thick color 4\nLW = label(M*[-0.5; 0.5], \"w\") color 4\nX = arrow(0, M*[1; 0]) thick color 1\nKX = line(0, [1, 0]) dashed color 1\n> show G0, U, LU, W, LW, X, KX | Three vectors, each on a line through $0$: $u = (1, 1)$, $w = (-\\frac12, \\frac12)$, and $(1, 0)$ in orange.\n> show G; play t to 1 in 4s | Apply $A$. The orange vector $(1, 0)$ is turned off its line, to $(2, 1)$.\n> show K1, K2 | But $u$ stays on its line, stretched three times to $(3, 3)$, and $w$ stays exactly where it was: stretched by $1$.",
       "type": "scene",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Arrows like $u$ and $w$ are what we were looking for, and they have a name.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Eigenvector and eigenvalue\n> A nonzero vector $v$ is an **eigenvector** of $A$ when $A$ only stretches it: $Av = \\lambda v$ for a number $\\lambda$, its **eigenvalue**. The line through $v$ is then carried onto itself. In the scene, $u$ has eigenvalue $3$ and $w$ has eigenvalue $1$.",
+      "type": "markdown",
       "showWork": false,
       "label": null
     },
@@ -111,13 +147,25 @@
       "label": null
     },
     {
-      "src": "> [!theorem] The characteristic polynomial\n> $Av = \\lambda v$ with $v \\neq 0$ says $(A - \\lambda I)v = 0$ has a nonzero solution: $A - \\lambda I$ flattens the plane, so $\\det(A - \\lambda I) = 0$. The eigenvalues are the roots of this polynomial in $\\lambda$.",
+      "src": "$u$ and $w$ were found by looking at a picture. How would you find them for a matrix you cannot picture?",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "For $A$, writing $x$ for $\\lambda$: the polynomial is $x^2 - 4x + 3 = (x - 1)(x - 3)$, with roots $1$ and $3$.",
+      "src": "> [!try]\n> Invent it. $Av = \\lambda v$ says $(A - \\lambda I)v = 0$, where $I = \\begin{pmatrix} 1 & 0 \\\\ 0 & 1 \\end{pmatrix}$: the matrix $A - \\lambda I$ sends a nonzero vector to $0$. What does lesson 4 say about such a matrix, and what equation does that give for $\\lambda$?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!theorem] The characteristic polynomial\n> If $A - \\lambda I$ sends a nonzero $v$ to $0$, where it also sends $0$, it squashes the plane and cannot be undone, so $\\det(A - \\lambda I) = 0$. That is an equation in $\\lambda$ alone: the eigenvalues are the roots of the polynomial $\\det(A - \\lambda I)$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "For $A$, writing $x$ for $\\lambda$: $(2 - x)^2 - 1 = x^2 - 4x + 3 = (x - 1)(x - 3)$, with roots $1$ and $3$, the two stretches in the scene.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -138,7 +186,47 @@
       "label": null
     },
     {
-      "src": "> [!intuition] In its own basis a matrix is simple\n> In the basis of its eigenvectors, $b_1 = (1, 1)$ and $b_2 = (-1, 1)$, the matrix $A$ only stretches the first coordinate by $3$ and keeps the second: in those coordinates it is the diagonal matrix $\\begin{bmatrix} 3 & 0 \\\\ 0 & 1 \\end{bmatrix}$. Choosing the basis well is most of understanding a matrix.",
+      "src": "Each eigenvalue then gives its eigenvectors: the inputs that $A - \\lambda I$ sends to $0$, found by elimination again. For $\\lambda = 3$, $A - 3I = \\begin{pmatrix} -1 & 1 \\\\ 1 & -1 \\end{pmatrix}$, with $0$ as the target:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "rref([-1, 1, 0; 1, -1, 0])",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "A row of zeros, and $x - y = 0$: a whole line of solutions, the line through $u = (1, 1)$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The matrix in its own basis",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Back to the opening question. Describe the plane with the eigenvectors, $b_1 = (1, 1)$ and $b_2 = (-1, 1)$, and ask, as lesson 2 did, where $A$ sends the two arrows. Multiplying by the matrix whose columns they are does both at once:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A*[1, -1; 1, 1]",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> The columns are $3b_1$ and $b_2$. Written in the new basis, what are their coordinates? So what matrix is $A$, described with $b_1$ and $b_2$?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!intuition] In its own basis a matrix is simple\n> In the basis of its eigenvectors, $A$ sends $b_1$ to $3b_1$, coordinates $(3, 0)$, and $b_2$ to itself, $(0, 1)$: described with them, $A$ is the diagonal matrix $\\begin{pmatrix} 3 & 0 \\\\ 0 & 1 \\end{pmatrix}$, a stretch by $3$ along $u$'s line and none along $w$'s. That is what the scene showed and what the columns $(2, 1)$ and $(1, 2)$ hid; even $\\det A = 3$ is the product of the two stretches. Choosing the basis well is most of understanding a matrix.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -155,9 +243,19 @@
       "label": null
     },
     {
+      "src": "[2, 1; 1, 2]*[1; -1]",
+      "type": "exercise",
+      "prompt": "Apply $A = \\begin{pmatrix} 2 & 1 \\\\ 1 & 2 \\end{pmatrix}$ to $(1, -1)$, as a column. Then compare: is $(1, -1)$ an eigenvector, and with which eigenvalue?",
+      "hints": [
+        "Compare the answer with $(1, -1)$ itself."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "[3, 0; 0, 1]*[2; 5]",
       "type": "exercise",
-      "prompt": "In its eigenbasis, $A$ is $\\begin{bmatrix} 3 & 0 \\\\ 0 & 1 \\end{bmatrix}$. Apply it to the coordinates $(2, 5)$.",
+      "prompt": "Described with its eigenvectors, $A$ is $\\begin{pmatrix} 3 & 0 \\\\ 0 & 1 \\end{pmatrix}$. The vector with coordinates $(2, 5)$ in that basis: what are the coordinates of where $A$ sends it? Answer as a column.",
       "hints": [
         "A diagonal matrix scales each coordinate by its own entry."
       ],
@@ -166,17 +264,19 @@
       "label": null
     },
     {
-      "src": "[2, 1; 1, 2]*[1; -1]",
+      "src": "expand(det([0, -1; 1, 0] - x*[1, 0; 0, 1]))",
       "type": "exercise",
-      "prompt": "Apply $A = \\begin{bmatrix} 2 & 1 \\\\ 1 & 2 \\end{bmatrix}$ to $(1, -1)$. Is $(1, -1)$ an eigenvector, and with which eigenvalue?",
+      "prompt": "Invent it: the quarter turn $R = \\begin{pmatrix} 0 & -1 \\\\ 1 & 0 \\end{pmatrix}$ of lesson 2 turns every arrow, so it should have no eigenvectors. Give $\\det(R - xI)$, expanded, and see why it has no real roots.",
       "hints": [
-        "Compare the answer with $(1, -1)$ itself."
+        "$R - xI = \\begin{pmatrix} -x & -1 \\\\ 1 & -x \\end{pmatrix}$.",
+        "Its determinant is $(-x)(-x) - (-1) \\cdot 1$."
       ],
+      "hideQuestion": true,
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!summary]\n> A basis gives every vector coordinates; the matrix of the basis turns them into ours, and row reduction turns ours into them. An eigenvector is a direction a matrix only stretches, its eigenvalue a root of $\\det(A - \\lambda I)$, and in a basis of eigenvectors the matrix is diagonal.",
+      "src": "> [!summary]\n> Any two arrows not on one line are a basis, and give every vector coordinates. The matrix $P$ whose columns they are turns those coordinates into ours, and elimination turns ours into them. An eigenvector is an arrow a matrix only stretches, by its eigenvalue, a root of $\\det(A - \\lambda I)$. Described with a basis of eigenvectors, the matrix is diagonal: a stretch along each. Not every matrix has one: a quarter turn turns every arrow.",
       "type": "markdown",
       "showWork": false,
       "label": null

@@ -9,19 +9,25 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Order the events of a distributed computation by what could have influenced what, compute that order with vector clocks, and recognize concurrent events.",
+      "src": "> [!goal]\n> Order the events of machines that only talk by messages by what could have influenced what, and compute that order with vector clocks.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!definition] Happens-before (Lamport)\n> Event $e$ **happens before** $f$ when $e$ comes earlier on the same process, or $e$ sends a message that $f$ receives, or a chain of these leads from $e$ to $f$. Events neither of which happens before the other are **concurrent**. Happens-before is a partial order.",
+      "src": "Machine `a` logs a debit at 10:00:02 by its clock; machine `b` logs a credit at 10:00:01 by its own. Which came first? Clocks drift, so the timestamps do not say. The question that matters is a different one: could the debit have caused the credit?",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "Two processes; `a1` sends a message received at `b2`, and `b1` one received at `a3`:",
+      "src": "clock t from 0 to 1\nview 0, 5, -0.6, 1.6\nnoaxes\nLA = segment(0.6 + i, 4.6 + i) faint\nLB = segment(0.6, 4.6) faint\nNA = label(0.3 + i, \"a\")\nNB = label(0.3, \"b\")\nA1 = point(1 + i) color 1\nA2 = point(2.2 + i) color 1\nA3 = point(4 + i) color 1\nB1 = point(1.6) color 2\nB2 = point(3.2) color 2\nLA1 = label(A1, \"a_1\")\nLA2 = label(A2, \"a_2\")\nLA3 = label(A3, \"a_3\")\nLB1 = label(B1, \"b_1\")\nLB2 = label(B2, \"b_2\")\nM1 = arrow(1 + i, 3.2) color 3\nM2 = arrow(1.6, 4 + i) color 3\nS = point(1 + i + t*(2.2 - i)) thick color 3\n> show LA, LB, NA, NB | Two machines, $a$ and $b$; time runs to the right.\n> show A1, A2, A3, LA1, LA2, LA3, B1, B2, LB1, LB2 | Their events, each machine's in its own order.\n> show M1, M2 | Two messages: $a_1$ sends one that $b_2$ receives, and $b_1$ one that $a_3$ receives.\n> show S; play t to 1 in 2s | Information moves only forward along a machine's line, or along a message. What $a_1$ knew can reach $b_2$: $a_1$ could have caused $b_2$.\n> wait 1s | $a_2$ happens earlier than $b_2$, but no path leads from $a_2$ to $b_2$: nothing $a_2$ did can have reached $b_2$, and nothing of $b_2$ can have reached $a_2$.",
+      "type": "scene",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Happens-before (Lamport)\n> Event $e$ **happens before** $f$ when $e$ comes earlier on the same machine, or $e$ sends a message that $f$ receives, or a chain of these leads from $e$ to $f$. Events neither of which happens before the other are **concurrent**. Happens-before is a partial order.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -42,13 +48,47 @@
       "label": null
     },
     {
-      "src": "Vector clocks",
+      "src": "> [!mistake]\n> Messages cannot travel back in time: a pattern where an event would happen before itself is not a computation.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "events({a1, a2}, {b1, b2}; a2->b1, b2->a1)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Computing it locally",
       "type": "section",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!definition] Vector clock\n> Each event gets a vector with an entry per process: how many of that process's events happen before it or are it. Then $e$ happens before $f$ exactly when $e$'s vector is below $f$'s in every entry.",
+      "src": "No machine sees the whole diagram. Can each event carry a tag, computed from what its machine has seen, such that comparing two tags says whether one event happens before the other?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The first idea is one number per event, Lamport's clock: count up by one at each event, and on receiving a message, first catch up with the number it carries. If $e$ happens before $f$, $e$'s number is smaller. Here $a_1, a_2, a_3$ get $1, 2, 3$ and $b_1, b_2$ get $1, 2$. But the converse fails: $b_1$'s 1 is below $a_2$'s 2, and yet",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "le(E, b1, a2)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "One number cannot record *whose* events it has heard of. So keep a number per machine: for each machine, how many of its events this event has heard of.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Vector clock\n> Each event gets a vector with an entry per machine: how many of that machine's events happen before it or are it. For two different events, $e$ happens before $f$ exactly when $e$'s vector is $\\le$ $f$'s in every entry.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -59,19 +99,8 @@
       "label": null
     },
     {
-      "src": "$a_2 = (2, 0)$ and $b_2 = (1, 2)$: neither is below the other, so they are concurrent. A process computes its clocks without a global clock: tick its own entry at each event, attach the vector to messages, and on receipt take the entrywise maximum.",
+      "src": "$a_2 = (2, 0)$ and $b_2 = (1, 2)$: neither is below the other, so they are concurrent. A machine computes its clocks with no global clock: count its own entry up at each event, attach the vector to every message, and on receipt take the entrywise maximum with the message's.",
       "type": "markdown",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "> [!mistake]\n> Messages cannot travel back in time: a pattern where an event would happen before itself is not a computation.",
-      "type": "markdown",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "events({a1, a2}, {b1, b2}; a2->b1, b2->a1)",
       "showWork": false,
       "label": null
     },
@@ -121,7 +150,23 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> Happens-before is the partial order of possible influence; vector clocks compute it locally, and two events are concurrent exactly when their clocks are incomparable.",
+      "src": "le(E, a2, b2)",
+      "type": "exercise",
+      "prompt": "$a_2$'s vector is $(2, 0)$ and $b_2$'s is $(1, 2)$. Does `a2` happen before `b2`?",
+      "hints": [
+        "Compare the vectors entry by entry."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Without a shared clock, \"earlier\" is the wrong question; \"could have influenced\" is the right one, and it is a partial order. A single counter respects it but cannot detect concurrency; a vector of counters, one per machine, computes it exactly and locally.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Messages carry the influence. Networks lose messages, so senders send again, and then a message can arrive twice. What does that do to the receiver? That is the next lesson.",
       "type": "markdown",
       "showWork": false,
       "label": null

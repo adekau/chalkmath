@@ -9,25 +9,31 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Model the network: every execution an adversarial at-least-once network could produce, as a relation; prove that eventual delivery gives convergence; and write a gossip driver whose termination Lean accepts.",
+      "src": "> [!goal]\n> Find the one thing a state-based CRDT needs from the network, prove that it gives convergence, and write a gossip driver whose termination Lean accepts.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "The main theorem assumed replicas had received the same set of updates. Where do those sets come from? This lesson builds the network twice: as an inductive **trace semantics** (a step relation: update, send, deliver, with messages duplicated and reordered at will), and as an **executable gossip driver** run to quiescence, whose termination is proved by well-founded recursion.",
+      "src": "The main theorem assumed that the replicas had received the same updates. A real network delays messages, delivers them out of order, delivers them twice, and loses them. Which of these can a join absorb?",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "Delayed and duplicated messages, run",
+      "src": "Delayed and duplicated messages",
       "type": "section",
       "showWork": false,
       "label": null
     },
     {
-      "src": "`m := a` puts a copy of `a`'s state in flight; `b <- m` delivers it, possibly later, possibly twice. An old message delivered after newer ones, or twice, changes nothing more, because the merge is a join:",
+      "src": "`m := a` puts a copy of `a`'s state in flight; `b <- m` delivers it, possibly later, possibly twice.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> Below, `m` leaves `a` after its first increment and reaches `b` only after `b` has heard `a`'s newer state, and then again. Predict whether the old message changes `b`.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -37,6 +43,47 @@
       "showWork": true,
       "label": null,
       "stepwise": 0
+    },
+    {
+      "src": "It changes nothing: an old state is below the newer one, so joining it in is a no-op, and a duplicate is idempotence at work. `c` gets the stale message first and catches up through `b`.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Lost messages",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A message that never arrives is different:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "replicas(gcounter; a, b\n  a: inc\n  m := a\n  a: inc\n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "No merge can recover an update that never reached a replica. So the one requirement is **eventual delivery**: every update reaches every replica in the end, directly or relayed inside some other replica's state, after any delays and duplicates.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The network, twice over",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The Lean builds the network two ways. As a **trace semantics**: a step relation on configurations (an update, a send, or the delivery of any message in flight, which stays in flight, so it can be delivered again or never), and the theorem that once every update has reached every replica, all replicas hold equal states. And as an **executable gossip driver**, run until no exchange teaches anyone anything new; Lean accepts its recursion because a measure, the number of updates still missing somewhere, strictly decreases with each exchange.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
     },
     {
       "src": "In Lean",
@@ -94,7 +141,33 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> An at-least-once network is a relation on configurations; eventual delivery is a property of executions; and under it, every state-based CRDT converges. The gossip driver runs that argument as a program, and its termination is a theorem.",
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let C3 = chain(3)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let G = product(C3, C3)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "le(G, (1, 0), (2, 1))",
+      "type": "exercise",
+      "prompt": "A G-Counter replica holds $(2, 1)$ when a delayed message holding $(1, 0)$ arrives. Is the message's state below the replica's, so that delivering it changes nothing? Answer `true` or `false`.",
+      "hints": [
+        "Compare slot by slot."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Delay, reordering and duplication cost a join nothing; only loss matters, so eventual delivery is the whole requirement, and under it every state-based CRDT converges. The gossip driver runs that argument as a program, and its termination is a theorem. One question has waited since lesson 5: LWW threw away one of two concurrent writes. How could a replica even tell that two writes were concurrent?",
       "type": "markdown",
       "showWork": false,
       "label": null

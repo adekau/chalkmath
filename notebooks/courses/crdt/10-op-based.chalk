@@ -9,13 +9,48 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Compare the two traditions: state-based replicas ship states and join them; operation-based replicas ship operations and apply them. See what each asks of the network, and how one simulates the other.",
+      "src": "> [!goal]\n> Ship operations instead of states, and find out what the network must then promise.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "In an **op-based** CRDT a replica ships the operation it performed (\"increment slot 3\", \"add element 7\"), and every receiver applies it. Messages are small, but there is no join to hide behind: if operations arrive out of order they must **commute**, and if one arrives twice it is applied twice, so the transport must deliver **exactly once**. The burden moves from the algebra to the network.",
+      "src": "A G-Counter's state has a slot per replica. With thousands of replicas, every sync ships thousands of numbers to say \"one more tap\". Why not ship the operation itself, \"increment slot 3\"?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> Lesson 8's network delays, reorders, duplicates and loses messages. Which of these can a message saying \"increment slot 3\" survive, applied on arrival?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Reordering, yes: increments commute. Duplication, no: an increment applied twice counts twice, and there is no join to absorb the repeat. A state-based counter shrugs off the same duplicate:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "replicas(gcounter; a, b\n  a: inc\n  m := a\n  b <- m\n  b <- m\n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Op-based CRDT\n> In an **operation-based** CRDT a replica ships each operation it performs, and every replica applies every operation once. Concurrent operations must **commute**, so that the order of arrival does not matter, and the transport must deliver each operation **exactly once**.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> Sets are worse. Add and remove of the same element do not commute, so an op-based set also needs causal delivery; and a duplicated old remove, delivered after a re-add, kills the re-add. The Lean below proves both (`setops_not_comm`, `op_set_dup_kills_readd`), and the counter's double count (`op_dup_overcounts`).",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The burden moves from the algebra to the network, in exchange for small messages. The two readings agree where they meet: for operations that only go up, joining the states a replica would ship after each operation gives exactly the state that replaying its operations gives (`foldJoin_statesAlong`).",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -63,7 +98,7 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> State-based CRDTs tolerate any network that eventually delivers; op-based CRDTs need commuting operations and exactly-once delivery, in exchange for small messages. Each can simulate the other.",
+      "src": "> [!summary]\n> State-based CRDTs tolerate any network that eventually delivers; op-based CRDTs need commuting operations and exactly-once delivery, in exchange for small messages. For inflationary operations the Lean proves the two readings of a history agree. Every part is now built: can they be put together into one store without new proofs?",
       "type": "markdown",
       "showWork": false,
       "label": null
