@@ -1,0 +1,14 @@
+5	clock t from 0 to 1\nview -3.6, 5.6, -1.2, 4.2\nlet P = [2, -1; 1, 1]\nlet M = (1 - t)*[1, 0; 0, 1] + t*P\nG0 = grid([1, 0; 0, 1]) faint color 6\nG = grid(M) color 2\nB1 = arrow(0, M*[1; 0]) thick color 3\nLB1 = label(M*[1; 0], "b_1") color 3\nB2 = arrow(0, M*[0; 1]) thick color 4\nLB2 = label(M*[0; 1], "b_2") color 4\nV = point(M*[2; 1]) thick color 1\nLV = label(M*[2; 1], "v") color 1\nW1 = arrow(0, 2*P*[1; 0]) color 3\nW2 = arrow(2*P*[1; 0], P*[2; 1]) color 4\n> show G0, B1, LB1, B2, LB2, V, LV | Our grid, with the point $(2, 1)$ on it.\n> show G; play t to 1 in 4s | Carry the grid along with $P = \\begin{bmatrix} 2 & -1 \\\\ 1 & 1 \\end{bmatrix}$, whose columns are $b_1$ and $b_2$. The point keeps its place on the grid, $(2, 1)$, and lands at $v = 2b_1 + b_2 = (3, 3)$.\n> show W1, W2 | Two steps along $b_1$ and one along $b_2$: in the new basis $v$ has coordinates $(2, 1)$, in ours $(3, 3)$.	scene: 10 objects, 3 beats, 28.3 s
+7	let P = [2, -1; 1, 1]	= [2, -1; 1, 1]
+8	P*[2; 1]	= [3; 3]
+10	rref([2, -1, 3; 1, 1, 3])	= [1, 0, 2; 0, 1, 1]
+15	clock t from 0 to 1\nview -3.6, 4.6, -1.4, 3.9\nlet A = [2, 1; 1, 2]\nlet M = (1 - t)*[1, 0; 0, 1] + t*A\nG0 = grid([1, 0; 0, 1]) faint color 6\nG = grid(M) color 2\nK1 = line(0, [1, 1]) dashed color 3\nK2 = line(0, [1, -1]) dashed color 4\nU = arrow(0, M*[1; 1]) thick color 3\nLU = label(M*[1; 1], "u") color 3\nW = arrow(0, M*[-0.5; 0.5]) thick color 4\nLW = label(M*[-0.5; 0.5], "w") color 4\nX = arrow(0, M*[1; 0]) thick color 1\nKX = line(0, [1, 0]) dashed color 1\n> show G0, U, LU, W, LW, X, KX | Three vectors, each on a line through $0$: $u = (1, 1)$, $w = (-\\frac12, \\frac12)$, and $(1, 0)$ in orange.\n> show G; play t to 1 in 4s | Apply $A$. The orange vector $(1, 0)$ is turned off its line, to $(2, 1)$.\n> show K1, K2 | But $u$ stays on its line, stretched three times to $(3, 3)$, and $w$ stays exactly where it was. They are eigenvectors, with eigenvalues $3$ and $1$.	scene: 10 objects, 3 beats, 25.0 s
+16	let A = [2, 1; 1, 2]	= [2, 1; 1, 2]
+17	A*[1; 1]	= [3; 3]
+18	A*[-1; 1]	= [-1; 1]
+21	expand(det(A - x*[1, 0; 0, 1]))	= x^2 - 4*x + 3
+22	subst(det(A - x*[1, 0; 0, 1]), x, 3)	= 0
+23	subst(det(A - x*[1, 0; 0, 1]), x, 1)	= 0
+25	rref([1, 1, 3; 1, -1, 1])	= [1, 0, 2; 0, 1, 1]
+26	[3, 0; 0, 1]*[2; 5]	= [6; 5]
+27	[2, 1; 1, 2]*[1; -1]	= [1; -1]

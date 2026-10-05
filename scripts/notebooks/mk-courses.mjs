@@ -3143,10 +3143,10 @@ LP = label(P, "1 + iy") color 1
 
 // ---------------------------------------------------------------------------------------------------
 course("linear-algebra", "Linear algebra: vectors, matrices and systems",
-  "Vectors and the dot product, matrix arithmetic, solving systems by row reduction with verified row operations, and determinants.",
+  "Vectors and the dot product, matrices as maps of the plane, solving systems by row reduction with verified row operations, determinants as areas, and change of basis and eigenvectors.",
   "Linear algebra", (add) => {
 
-  add("01-vectors.chalk", "Vectors and the dot product", "Adding and scaling vectors, lengths, and the dot product that measures angles.", ({ sec, md, m, ex }) => {
+  add("01-vectors.chalk", "Vectors and the dot product", "Adding and scaling vectors, lengths, and the dot product that measures angles.", ({ sec, md, m, ex, sc }) => {
     sec("Vectors and the dot product");
     md(r`
 > [!goal]
@@ -3157,6 +3157,22 @@ course("linear-algebra", "Linear algebra: vectors, matrices and systems",
     m("let v = [4, -1, 2]");
     m("u + v", { work: true });
     m("2u");
+    md(r`In the plane a vector is an arrow from $0$, and adding is putting arrows tip to tail:`);
+    sc(r`
+clock t from 0 to 1
+view -0.8, 5.2, -0.6, 3.6
+U = arrow(0, [3, 1]) thick color 3
+LU = label([3, 1], "u") color 3
+V = arrow(0, [1, 2]) thick color 4
+LV = label([1, 2], "v") color 4
+VS = arrow(t*[3, 1], t*[3, 1] + [1, 2]) color 4
+W = arrow(0, [4, 3]) thick color 1
+LW = label([4, 3], "u + v") color 1
+> show U, LU, V, LV | Two vectors in the plane, $u = (3, 1)$ and $v = (1, 2)$, each an arrow from $0$.
+> show VS; play t to 1 in 2s | Slide $v$ along $u$, without turning it, until it starts where $u$ ends.
+> show W, LW | The sum runs from the start of $u$ to the tip of the moved $v$: $u + v = (4, 3)$, the entries added.
+`);
+    m("[3, 1] + [1, 2]");
     sec("The dot product");
     md(r`
 > [!definition] Dot product and length
@@ -3170,6 +3186,23 @@ course("linear-algebra", "Linear algebra: vectors, matrices and systems",
 > $u \cdot v = \lVert u \rVert\, \lVert v \rVert \cos\theta$, where $\theta$ is the angle between them. So $u \cdot v = 0$ exactly when $u$ and $v$ are perpendicular.
 `);
     m("dot([1, 2], [2, -1])");
+    md(r`Why the angle? Drop $v$ straight onto the line of $u$. Its shadow there is $\lVert v \rVert \cos\theta$ long, and $u \cdot v$ is $\lVert u \rVert$ times that shadow:`);
+    sc(r`
+clock t from 0 to 2pi
+view -3.2, 3.6, -2.4, 2.6
+U = arrow(0, [2.5, 0]) thick color 3
+LU = label([2.5, 0], "u") color 3
+V = arrow(0, [2*cos(t), 2*sin(t)]) thick color 4
+LV = label([2*cos(t), 2*sin(t)], "v") color 4
+DROP = segment([2*cos(t), 2*sin(t)], [2*cos(t), 0]) dashed color 6
+SH = segment(0, [2*cos(t), 0]) thick color 1
+D = value(dot([2.5, 0], [2*cos(t), 2*sin(t)]), "u \cdot v = ")
+> show U, LU, V, LV, D | $u$ is $2.5$ long and $v$ is $2$. Pointing the same way, $u \cdot v = 2.5 \cdot 2 = 5$.
+> show DROP, SH; play t to 1 in 2s | Turn $v$. Its shadow on $u$'s line (orange) shortens, and the dot product with it: $2.5$ times the shadow.
+> play t to pi/2 in 2s | At a right angle the shadow is a point: $u \cdot v = 0$. Perpendicular vectors are exactly those with dot product zero.
+> play t to pi in 2s | Past a right angle the shadow points backwards, and the dot product is negative.
+> play t to 2pi in 4s | Once round: $u \cdot v = \lVert u \rVert \lVert v \rVert \cos\theta = 5\cos\theta$.
+`);
     ex("dot([1, 2, 3], [4, 5, 6])", r`Compute $(1, 2, 3) \cdot (4, 5, 6)$.`, [r`Multiply entry by entry and add: $1 \cdot 4 + 2 \cdot 5 + 3 \cdot 6$.`]);
     ex("norm([6, 8])", r`How long is the vector $(6, 8)$?`, [r`$\sqrt{6^2 + 8^2}$.`], { hide: true });
     ex("dot([2, 3], [3, -2])", r`Compute $(2, 3) \cdot (3, -2)$. What does the answer say about the two vectors?`, [r`Zero means perpendicular.`]);
@@ -3179,11 +3212,11 @@ course("linear-algebra", "Linear algebra: vectors, matrices and systems",
 `);
   });
 
-  add("02-matrices.chalk", "Matrices", "Matrix arithmetic, the product that is not commutative, the transpose, and a matrix acting on a vector.", ({ sec, md, m, ex }) => {
+  add("02-matrices.chalk", "Matrices", "Matrix arithmetic, a matrix as a map of the plane, the product as one map after another (and why the order matters), and the transpose.", ({ sec, md, m, ex, sc }) => {
     sec("Matrices");
     md(r`
 > [!goal]
-> Multiply matrices, see that the order matters, transpose, and apply a matrix to a vector.
+> Multiply matrices, see a matrix as a map of the plane and a product as one map after another (which is why the order matters), and transpose.
 `);
     md(r`Rows are separated by ‹;›: ‹[1, 2; 3, 4]› is the $2 \times 2$ matrix with first row $1, 2$.`);
     m("let A = [1, 2; 3, 4]");
@@ -3202,16 +3235,67 @@ course("linear-algebra", "Linear algebra: vectors, matrices and systems",
     sec("A matrix acting on a vector");
     md(r`A column vector is a matrix with one column, ‹[1; 1]›. $A$ sends it to the sum of $A$'s columns.`);
     m("A*[1; 1]");
+    md(r`
+> [!definition] A matrix is a map
+> A $2 \times 2$ matrix moves every point of the plane: $v$ goes to $Av$. Since $v = x\,e_1 + y\,e_2$, it goes to $x\,Ae_1 + y\,Ae_2$, and $Ae_1$, $Ae_2$ are the matrix's columns. **The columns say where the basis vectors land, and that decides everything else.**
+`);
+    sc(r`
+clock t from 0 to 1
+view -2.6, 4.2, -0.9, 3.4
+let A = [2, -1; 1, 1]
+let M = (1 - t)*[1, 0; 0, 1] + t*A
+G0 = grid([1, 0; 0, 1]) faint color 6
+G = grid(M) color 2
+E1 = arrow(0, M*[1; 0]) thick color 3
+L1 = label(M*[1; 0], "e_1") color 3
+E2 = arrow(0, M*[0; 1]) thick color 4
+L2 = label(M*[0; 1], "e_2") color 4
+V = arrow(0, M*[1; 2]) thick color 1
+LV = label(M*[1; 2], "v") color 1
+> show G0, E1, L1, E2, L2, V, LV | The basis vectors $e_1 = (1, 0)$ and $e_2 = (0, 1)$, and $v = (1, 2) = e_1 + 2e_2$.
+> show G; play t to 1 in 4s | Apply $A = \begin{bmatrix} 2 & -1 \\ 1 & 1 \end{bmatrix}$ to every point at once. The grid lines stay straight, parallel and evenly spaced, and $0$ stays put: that is what *linear* means.
+> wait 1s | $e_1$ lands on $(2, 1)$, $A$'s first column, and $e_2$ on $(-1, 1)$, its second. And $v = e_1 + 2e_2$ lands on the same combination of them, $(2, 1) + 2(-1, 1) = (0, 3)$.
+`);
+    m("[2, -1; 1, 1]*[1; 2]", { work: true });
+    sec("One map after another");
+    md(r`
+> [!theorem] The product is composition
+> $(AB)v = A(Bv)$: applying $AB$ is applying $B$ first, then $A$. So the product's order is the order of the maps, read from the right.
+`);
+    md(r`Turn the plane a quarter turn with $R = \begin{bmatrix} 0 & -1 \\ 1 & 0 \end{bmatrix}$, then shear it with $S = \begin{bmatrix} 1 & 1 \\ 0 & 1 \end{bmatrix}$, which slides each row of the grid sideways by its height:`);
+    sc(r`
+clock t from 0 to 2
+view -3.4, 3.4, -1.4, 2.4
+let R = [0, -1; 1, 0]
+let S = [1, 1; 0, 1]
+let Turn = [cos(pi*t/2), -sin(pi*t/2); sin(pi*t/2), cos(pi*t/2)]
+let Shear = ((2 - t)*[1, 0; 0, 1] + (t - 1)*S)*R
+G0 = grid([1, 0; 0, 1]) faint color 6
+G1 = grid(Turn) color 2
+A1 = arrow(0, Turn*[1; 0]) thick color 3
+B1 = arrow(0, Turn*[0; 1]) thick color 4
+G2 = grid(Shear) color 2
+A2 = arrow(0, Shear*[1; 0]) thick color 3
+B2 = arrow(0, Shear*[0; 1]) thick color 4
+> hide G2, A2, B2; show G0, G1, A1, B1 | The plane, with $e_1$ (green) and $e_2$ (pink).
+> play t to 1 in 3s | First $R$: a quarter turn. $e_1$ goes to $(0, 1)$, $e_2$ to $(-1, 0)$.
+> hide G1, A1, B1; show G2, A2, B2; play t to 2 in 3s | Then $S$: everything slides right by its height. $e_1$ ends at $(1, 1)$ and $e_2$ at $(-1, 0)$: the columns of $SR$.
+`);
+    m("let R = [0, -1; 1, 0]");
+    m("let S = [1, 1; 0, 1]");
+    m("S*R");
+    m("R*S");
+    md(r`$RS$ shears first and turns second, and lands somewhere else: $e_1$ goes to $(0, 1)$, not $(1, 1)$. The same two maps in the other order are a different map.`);
     ex("[1, 2; 3, 4]*[0, 1; 1, 0]", r`Multiply.`, [r`Row $i$ of the first times column $j$ of the second.`, r`The answer is a matrix: type it as ‹[a, b; c, d]›.`]);
     ex("[2, 0; 1, 3]*[1; 2]", r`Apply the matrix to the vector.`, [r`The first entry is $2 \cdot 1 + 0 \cdot 2$.`, r`The answer is a column: ‹[a; b]›.`]);
     ex("transpose([1, 2, 3; 4, 5, 6])", r`Transpose the $2 \times 3$ matrix.`, [r`Rows become columns: the answer is $3 \times 2$.`]);
     md(r`
 > [!summary]
-> A matrix product is a table of dot products, and its order matters; a matrix times a vector is a combination of the matrix's columns.
+> A matrix is a map of the plane, decided by where its columns send the basis vectors; a matrix times a vector is that combination of the columns. A product is one map after another, which is why its order matters.
 `);
   });
 
-  add("03-systems.chalk", "Solving systems by row reduction", "An augmented matrix, the three row operations (each proved to keep the solutions), and reading the answer off the reduced form.", ({ sec, md, m, ex }) => {
+  add("03-systems.chalk", "Solving systems by row reduction", "An augmented matrix, the three row operations (each proved to keep the solutions, and seen to turn the lines about their crossing), and reading the answer off the reduced form.", ({ sec, md, m, ex, sc }) => {
     sec("Solving systems by row reduction");
     md(r`
 > [!goal]
@@ -3224,6 +3308,30 @@ course("linear-algebra", "Linear algebra: vectors, matrices and systems",
 `);
     m("rref([1, 2, 5; 3, 4, 6])", { work: true });
     md(r`Read it off: the first row says $x = -4$, the second $y = \frac92$.`);
+    md(r`
+> [!intuition] Row operations turn the lines
+> Each equation in two unknowns is a line, and the solution is where the lines cross. A combination of two equations holds wherever both do, so its line passes through the same crossing. Row reduction turns the lines about that point until they stand level and upright, where the answer can be read off.
+`);
+    sc(r`
+clock t from 0 to 2
+view -7.5, 3.5, -0.8, 6.8
+let a2 = 3 - 3*t
+let b2 = 4 - 6*t
+let c2 = 6 - 15*t
+let b1 = 4 - 2*t
+let c1 = 14 - 9*t
+L1 = line([1, 2], [-1, 3]) thick color 3
+L2 = line(c2/(a2^2 + b2^2)*[a2, b2], c2/(a2^2 + b2^2)*[a2, b2] + [-b2, a2]) thick color 4
+L2b = line([0, 4.5], [1, 4.5]) thick color 4
+L1m = line(c1/(1 + b1^2)*[1, b1], c1/(1 + b1^2)*[1, b1] + [-b1, 1]) thick color 3
+X = point([-4, 4.5]) thick color 1
+LX = label([-4, 4.5], "(-4, \tfrac92)") color 1
+> show L1, L2, X, LX | Each equation is a line: $x + 2y = 5$ (green) and $3x + 4y = 6$ (pink). The solution is where they cross.
+> play t to 1 in 3s | Subtract $3$ times the first row from the second. The pink line turns about the crossing, and ends level: $-2y = -9$.
+> hide L2; show L2b | Scale the second row by $-\frac12$: $y = \frac92$. The same line, written more simply.
+> hide L1; show L1m; play t to 2 in 3s | Subtract twice the second row from the first. Now the green line turns, about the same point, until it stands upright: $x = -4$.
+> | Reduced, each line names one coordinate, and the crossing never moved: $x = -4$, $y = \frac92$.
+`);
     sec("Three equations");
     m("rref([2, 1, -1, 8; -3, -1, 2, -11; -2, 1, 2, -3])", { work: true });
     md(r`
@@ -3244,7 +3352,7 @@ course("linear-algebra", "Linear algebra: vectors, matrices and systems",
 `);
   });
 
-  add("04-determinants.chalk", "Determinants", "The determinant of 2×2 and 3×3 matrices, the product rule, and what a zero determinant means.", ({ sec, md, m, ex }) => {
+  add("04-determinants.chalk", "Determinants", "The determinant as the factor a matrix scales area by (negative when it flips the plane), the product rule, and what a zero determinant means.", ({ sec, md, m, ex, sc }) => {
     sec("Determinants");
     md(r`
 > [!goal]
@@ -3256,7 +3364,43 @@ course("linear-algebra", "Linear algebra: vectors, matrices and systems",
 `);
     m("let A = [1, 2; 3, 4]");
     m("det(A)", { step: 0 });
+    md(r`The unit square is spanned by $e_1$ and $e_2$. A matrix sends it to the parallelogram its columns span, and every other square of the grid to a copy of that: so the determinant is the factor the matrix scales **every** area by.`);
+    sc(r`
+clock t from 0 to 1
+view -3.6, 5.2, -1.4, 3.6
+let M = (1 - t)*[1, 0; 0, 1] + t*[3, 1; 1, 2]
+G0 = grid([1, 0; 0, 1]) faint color 6
+G = grid(M) color 2
+Sq = poly(0, M*[1; 0], M*[1; 1], M*[0; 1]) color 1
+Nb = poly(0, M*[0; 1], M*[-1; 1], M*[-1; 0]) color 5
+E1 = arrow(0, M*[1; 0]) thick color 3
+L1 = label(M*[1; 0], "e_1") color 3
+E2 = arrow(0, M*[0; 1]) thick color 4
+L2 = label(M*[0; 1], "e_2") color 4
+D = value(det(M), "\text{area} = \det = ")
+> show G0, Sq, Nb, E1, L1, E2, L2, D | The unit square, spanned by $e_1$ (green) and $e_2$ (pink), and the square beside it: area $1$ each.
+> show G; play t to 1 in 4s | Apply $\begin{bmatrix} 3 & 1 \\ 1 & 2 \end{bmatrix}$. The square becomes the parallelogram its columns span, of area $3 \cdot 2 - 1 \cdot 1 = 5$.
+> | The square beside it, and every square of the grid, grows by the same factor $5$. So does any shape, made of small enough squares.
+`);
+    md(r`A determinant can be negative. Move the plane from $I$ to $\begin{bmatrix} 1 & 2 \\ 2 & 1 \end{bmatrix}$ and watch the order of $e_1$ and $e_2$:`);
+    sc(r`
+clock t from 0 to 1
+view -1.6, 4, -0.9, 3.6
+let M = (1 - t)*[1, 0; 0, 1] + t*[1, 2; 2, 1]
+G0 = grid([1, 0; 0, 1]) faint color 6
+G = grid(M) color 2
+Sq = poly(0, M*[1; 0], M*[1; 1], M*[0; 1]) color 1
+E1 = arrow(0, M*[1; 0]) thick color 3
+L1 = label(M*[1; 0], "e_1") color 3
+E2 = arrow(0, M*[0; 1]) thick color 4
+L2 = label(M*[0; 1], "e_2") color 4
+D = value(det(M), "\det = ")
+> show G0, G, Sq, E1, L1, E2, L2, D | Turning counterclockwise from $e_1$ you meet $e_2$.
+> play t to 0.5 in 3s | The columns lean toward each other, and the square flattens to a segment: determinant $0$.
+> play t to 1 in 3s | Then it opens again, turned over: now $e_2$ is met turning *clockwise* from $e_1$. The area is $3$ and the sign records the flip: $\det = -3$. The lesson's $A$, with $\det A = -2$, turns the plane over too.
+`);
     m("det([2, 1, 0; 1, 3, 1; 0, 1, 2])");
+    md(r`For a $3 \times 3$ matrix the determinant is the factor volumes scale by.`);
     sec("Products");
     md(r`
 > [!theorem] Determinant of a product
@@ -3271,6 +3415,21 @@ course("linear-algebra", "Linear algebra: vectors, matrices and systems",
 > A square matrix has an inverse exactly when its determinant is not zero. A zero determinant means the columns lie on one line (or plane): the area they span is flat.
 `);
     m("det([1, 2; 2, 4])");
+    sc(r`
+clock t from 0 to 1
+view -3.5, 4.5, -1.2, 5.2
+let M = (1 - t)*[1, 0; 0, 1] + t*[1, 2; 2, 4]
+G0 = grid([1, 0; 0, 1]) faint color 6
+K = line(0, [1, 2]) dashed color 6
+G = grid(M) color 2
+Sq = poly(0, M*[1; 0], M*[1; 1], M*[0; 1]) color 1
+E1 = arrow(0, M*[1; 0]) thick color 3
+E2 = arrow(0, M*[0; 1]) thick color 4
+D = value(det(M), "\det = ")
+> show G0, G, Sq, E1, E2, D | The plane, and the matrix moving from $I$ to $\begin{bmatrix} 1 & 2 \\ 2 & 4 \end{bmatrix}$.
+> show K; play t to 1 in 4s | Its second column is twice its first, so both land on one line, and so does every point of the plane: the square is flattened, its area $0$.
+> | Squashed onto a line, the plane cannot be unfolded again: many points went to each point of the line, and no matrix can tell them apart. That is why a zero determinant means no inverse.
+`);
     m("rref([1, 2; 2, 4])", { work: true });
     md(r`The reduced form has a row of zeros: the second column is twice the first.`);
     ex("det([2, 1; 5, 3])", r`Compute the determinant.`, [r`$ad - bc$ with $a = 2,\ b = 1,\ c = 5,\ d = 3$.`]);
@@ -3278,7 +3437,99 @@ course("linear-algebra", "Linear algebra: vectors, matrices and systems",
     ex("det([1, 0, 0; 0, 2, 0; 0, 0, 3])", r`Compute the determinant of this diagonal matrix.`, [r`For a diagonal matrix it is the product of the diagonal.`]);
     md(r`
 > [!summary]
-> The determinant is a single number that measures how a matrix scales area; it multiplies across products, and it is zero exactly when the matrix cannot be undone.
+> The determinant is the factor a matrix scales area by, negative when it turns the plane over; it multiplies across products (scaling by one factor, then another), and it is zero exactly when the plane is flattened and the matrix cannot be undone.
+`);
+  });
+
+  add("05-change-of-basis.chalk", "Change of basis and eigenvectors", "Coordinates in a basis of your own choosing, the matrix that translates them, and the directions a matrix only stretches.", ({ sec, md, m, ex, sc }) => {
+    sec("Change of basis and eigenvectors");
+    md(r`
+> [!goal]
+> Describe a vector in a basis other than $e_1, e_2$, translate between the two descriptions with a matrix, and find the directions a matrix only stretches.
+`);
+    sec("Coordinates in another basis");
+    md(r`
+> [!definition] Basis and coordinates
+> Two vectors $b_1, b_2$ of the plane that do not lie on one line are a **basis**: every vector is $v = c_1 b_1 + c_2 b_2$ for exactly one pair $(c_1, c_2)$, its **coordinates** in that basis.
+`);
+    md(r`Take $b_1 = (2, 1)$ and $b_2 = (-1, 1)$. They draw a grid of their own, and the point at $(2, 1)$ on their grid is somewhere else on ours:`);
+    sc(r`
+clock t from 0 to 1
+view -3.6, 5.6, -1.2, 4.2
+let P = [2, -1; 1, 1]
+let M = (1 - t)*[1, 0; 0, 1] + t*P
+G0 = grid([1, 0; 0, 1]) faint color 6
+G = grid(M) color 2
+B1 = arrow(0, M*[1; 0]) thick color 3
+LB1 = label(M*[1; 0], "b_1") color 3
+B2 = arrow(0, M*[0; 1]) thick color 4
+LB2 = label(M*[0; 1], "b_2") color 4
+V = point(M*[2; 1]) thick color 1
+LV = label(M*[2; 1], "v") color 1
+W1 = arrow(0, 2*P*[1; 0]) color 3
+W2 = arrow(2*P*[1; 0], P*[2; 1]) color 4
+> show G0, B1, LB1, B2, LB2, V, LV | Our grid, with the point $(2, 1)$ on it.
+> show G; play t to 1 in 4s | Carry the grid along with $P = \begin{bmatrix} 2 & -1 \\ 1 & 1 \end{bmatrix}$, whose columns are $b_1$ and $b_2$. The point keeps its place on the grid, $(2, 1)$, and lands at $v = 2b_1 + b_2 = (3, 3)$.
+> show W1, W2 | Two steps along $b_1$ and one along $b_2$: in the new basis $v$ has coordinates $(2, 1)$, in ours $(3, 3)$.
+`);
+    md(r`So the matrix $P$ whose columns are the new basis turns coordinates in that basis into ours:`);
+    m("let P = [2, -1; 1, 1]");
+    m("P*[2; 1]");
+    md(r`
+> [!theorem] Finding coordinates is solving a system
+> The coordinates $c$ of $v$ in the basis are the solution of $Pc = v$: a system whose augmented matrix is $P$ with $v$ beside it. Since $b_1, b_2$ are a basis, $\det P \neq 0$ and the solution is unique.
+`);
+    m("rref([2, -1, 3; 1, 1, 3])", { work: true });
+    md(r`The last column is the coordinates, $(2, 1)$. Row reduction undid $P$.`);
+    sec("Eigenvectors");
+    md(r`
+> [!definition] Eigenvector and eigenvalue
+> A nonzero vector $v$ is an **eigenvector** of $A$ when $A$ only stretches it: $Av = \lambda v$ for a number $\lambda$, its **eigenvalue**. The line through $v$ is then carried onto itself.
+`);
+    md(r`Most vectors are turned off their line by a matrix. Watch $A = \begin{bmatrix} 2 & 1 \\ 1 & 2 \end{bmatrix}$, and three vectors: two on the dashed lines, one not.`);
+    sc(r`
+clock t from 0 to 1
+view -3.6, 4.6, -1.4, 3.9
+let A = [2, 1; 1, 2]
+let M = (1 - t)*[1, 0; 0, 1] + t*A
+G0 = grid([1, 0; 0, 1]) faint color 6
+G = grid(M) color 2
+K1 = line(0, [1, 1]) dashed color 3
+K2 = line(0, [1, -1]) dashed color 4
+U = arrow(0, M*[1; 1]) thick color 3
+LU = label(M*[1; 1], "u") color 3
+W = arrow(0, M*[-0.5; 0.5]) thick color 4
+LW = label(M*[-0.5; 0.5], "w") color 4
+X = arrow(0, M*[1; 0]) thick color 1
+KX = line(0, [1, 0]) dashed color 1
+> show G0, U, LU, W, LW, X, KX | Three vectors, each on a line through $0$: $u = (1, 1)$, $w = (-\frac12, \frac12)$, and $(1, 0)$ in orange.
+> show G; play t to 1 in 4s | Apply $A$. The orange vector $(1, 0)$ is turned off its line, to $(2, 1)$.
+> show K1, K2 | But $u$ stays on its line, stretched three times to $(3, 3)$, and $w$ stays exactly where it was. They are eigenvectors, with eigenvalues $3$ and $1$.
+`);
+    m("let A = [2, 1; 1, 2]");
+    m("A*[1; 1]");
+    m("A*[-1; 1]");
+    md(r`
+> [!theorem] The characteristic polynomial
+> $Av = \lambda v$ with $v \neq 0$ says $(A - \lambda I)v = 0$ has a nonzero solution: $A - \lambda I$ flattens the plane, so $\det(A - \lambda I) = 0$. The eigenvalues are the roots of this polynomial in $\lambda$.
+`);
+    md(r`For $A$, writing $x$ for $\lambda$: the polynomial is $x^2 - 4x + 3 = (x - 1)(x - 3)$, with roots $1$ and $3$.`);
+    m("expand(det(A - x*[1, 0; 0, 1]))");
+    m("subst(det(A - x*[1, 0; 0, 1]), x, 3)");
+    m("subst(det(A - x*[1, 0; 0, 1]), x, 1)");
+    md(r`
+> [!intuition] In its own basis a matrix is simple
+> In the basis of its eigenvectors, $b_1 = (1, 1)$ and $b_2 = (-1, 1)$, the matrix $A$ only stretches the first coordinate by $3$ and keeps the second: in those coordinates it is the diagonal matrix $\begin{bmatrix} 3 & 0 \\ 0 & 1 \end{bmatrix}$. Choosing the basis well is most of understanding a matrix.
+`);
+    ex("rref([1, 1, 3; 1, -1, 1])", r`Find the coordinates of $v = (3, 1)$ in the basis $b_1 = (1, 1)$, $b_2 = (1, -1)$: reduce the augmented matrix, and give the reduced matrix.`, [
+      r`The augmented matrix has $b_1$ and $b_2$ as columns, then $v$: ‹[1, 1, 3; 1, -1, 1]›.`,
+      r`The coordinates are the last column of the reduced matrix.`,
+    ]);
+    ex("[3, 0; 0, 1]*[2; 5]", r`In its eigenbasis, $A$ is $\begin{bmatrix} 3 & 0 \\ 0 & 1 \end{bmatrix}$. Apply it to the coordinates $(2, 5)$.`, [r`A diagonal matrix scales each coordinate by its own entry.`], { hide: true });
+    ex("[2, 1; 1, 2]*[1; -1]", r`Apply $A = \begin{bmatrix} 2 & 1 \\ 1 & 2 \end{bmatrix}$ to $(1, -1)$. Is $(1, -1)$ an eigenvector, and with which eigenvalue?`, [r`Compare the answer with $(1, -1)$ itself.`]);
+    md(r`
+> [!summary]
+> A basis gives every vector coordinates; the matrix of the basis turns them into ours, and row reduction turns ours into them. An eigenvector is a direction a matrix only stretches, its eigenvalue a root of $\det(A - \lambda I)$, and in a basis of eigenvectors the matrix is diagonal.
 `);
   });
 });

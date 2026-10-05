@@ -9,7 +9,7 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Multiply matrices, see that the order matters, transpose, and apply a matrix to a vector.",
+      "src": "> [!goal]\n> Multiply matrices, see a matrix as a map of the plane and a product as one map after another (which is why the order matters), and transpose.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -75,6 +75,73 @@
       "label": null
     },
     {
+      "src": "> [!definition] A matrix is a map\n> A $2 \\times 2$ matrix moves every point of the plane: $v$ goes to $Av$. Since $v = x\\,e_1 + y\\,e_2$, it goes to $x\\,Ae_1 + y\\,Ae_2$, and $Ae_1$, $Ae_2$ are the matrix's columns. **The columns say where the basis vectors land, and that decides everything else.**",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "clock t from 0 to 1\nview -2.6, 4.2, -0.9, 3.4\nlet A = [2, -1; 1, 1]\nlet M = (1 - t)*[1, 0; 0, 1] + t*A\nG0 = grid([1, 0; 0, 1]) faint color 6\nG = grid(M) color 2\nE1 = arrow(0, M*[1; 0]) thick color 3\nL1 = label(M*[1; 0], \"e_1\") color 3\nE2 = arrow(0, M*[0; 1]) thick color 4\nL2 = label(M*[0; 1], \"e_2\") color 4\nV = arrow(0, M*[1; 2]) thick color 1\nLV = label(M*[1; 2], \"v\") color 1\n> show G0, E1, L1, E2, L2, V, LV | The basis vectors $e_1 = (1, 0)$ and $e_2 = (0, 1)$, and $v = (1, 2) = e_1 + 2e_2$.\n> show G; play t to 1 in 4s | Apply $A = \\begin{bmatrix} 2 & -1 \\\\ 1 & 1 \\end{bmatrix}$ to every point at once. The grid lines stay straight, parallel and evenly spaced, and $0$ stays put: that is what *linear* means.\n> wait 1s | $e_1$ lands on $(2, 1)$, $A$'s first column, and $e_2$ on $(-1, 1)$, its second. And $v = e_1 + 2e_2$ lands on the same combination of them, $(2, 1) + 2(-1, 1) = (0, 3)$.",
+      "type": "scene",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "[2, -1; 1, 1]*[1; 2]",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "One map after another",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!theorem] The product is composition\n> $(AB)v = A(Bv)$: applying $AB$ is applying $B$ first, then $A$. So the product's order is the order of the maps, read from the right.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Turn the plane a quarter turn with $R = \\begin{bmatrix} 0 & -1 \\\\ 1 & 0 \\end{bmatrix}$, then shear it with $S = \\begin{bmatrix} 1 & 1 \\\\ 0 & 1 \\end{bmatrix}$, which slides each row of the grid sideways by its height:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "clock t from 0 to 2\nview -3.4, 3.4, -1.4, 2.4\nlet R = [0, -1; 1, 0]\nlet S = [1, 1; 0, 1]\nlet Turn = [cos(pi*t/2), -sin(pi*t/2); sin(pi*t/2), cos(pi*t/2)]\nlet Shear = ((2 - t)*[1, 0; 0, 1] + (t - 1)*S)*R\nG0 = grid([1, 0; 0, 1]) faint color 6\nG1 = grid(Turn) color 2\nA1 = arrow(0, Turn*[1; 0]) thick color 3\nB1 = arrow(0, Turn*[0; 1]) thick color 4\nG2 = grid(Shear) color 2\nA2 = arrow(0, Shear*[1; 0]) thick color 3\nB2 = arrow(0, Shear*[0; 1]) thick color 4\n> hide G2, A2, B2; show G0, G1, A1, B1 | The plane, with $e_1$ (green) and $e_2$ (pink).\n> play t to 1 in 3s | First $R$: a quarter turn. $e_1$ goes to $(0, 1)$, $e_2$ to $(-1, 0)$.\n> hide G1, A1, B1; show G2, A2, B2; play t to 2 in 3s | Then $S$: everything slides right by its height. $e_1$ ends at $(1, 1)$ and $e_2$ at $(-1, 0)$: the columns of $SR$.",
+      "type": "scene",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let R = [0, -1; 1, 0]",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let S = [1, 1; 0, 1]",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "S*R",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "R*S",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "$RS$ shears first and turns second, and lands somewhere else: $e_1$ goes to $(0, 1)$, not $(1, 1)$. The same two maps in the other order are a different map.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "[1, 2; 3, 4]*[0, 1; 1, 0]",
       "type": "exercise",
       "prompt": "Multiply.",
@@ -107,7 +174,7 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> A matrix product is a table of dot products, and its order matters; a matrix times a vector is a combination of the matrix's columns.",
+      "src": "> [!summary]\n> A matrix is a map of the plane, decided by where its columns send the basis vectors; a matrix times a vector is that combination of the columns. A product is one map after another, which is why its order matters.",
       "type": "markdown",
       "showWork": false,
       "label": null

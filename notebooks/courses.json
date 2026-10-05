@@ -317,7 +317,7 @@
     {
       "id": "linear-algebra",
       "title": "Linear algebra: vectors, matrices and systems",
-      "blurb": "Vectors and the dot product, matrix arithmetic, solving systems by row reduction with verified row operations, and determinants.",
+      "blurb": "Vectors and the dot product, matrices as maps of the plane, solving systems by row reduction with verified row operations, determinants as areas, and change of basis and eigenvectors.",
       "kind": "course",
       "level": "Linear algebra",
       "path": "courses/linear-algebra",
@@ -330,17 +330,22 @@
         {
           "file": "02-matrices.chalk",
           "title": "Matrices",
-          "blurb": "Matrix arithmetic, the product that is not commutative, the transpose, and a matrix acting on a vector."
+          "blurb": "Matrix arithmetic, a matrix as a map of the plane, the product as one map after another (and why the order matters), and the transpose."
         },
         {
           "file": "03-systems.chalk",
           "title": "Solving systems by row reduction",
-          "blurb": "An augmented matrix, the three row operations (each proved to keep the solutions), and reading the answer off the reduced form."
+          "blurb": "An augmented matrix, the three row operations (each proved to keep the solutions, and seen to turn the lines about their crossing), and reading the answer off the reduced form."
         },
         {
           "file": "04-determinants.chalk",
           "title": "Determinants",
-          "blurb": "The determinant of 2×2 and 3×3 matrices, the product rule, and what a zero determinant means."
+          "blurb": "The determinant as the factor a matrix scales area by (negative when it flips the plane), the product rule, and what a zero determinant means."
+        },
+        {
+          "file": "05-change-of-basis.chalk",
+          "title": "Change of basis and eigenvectors",
+          "blurb": "Coordinates in a basis of your own choosing, the matrix that translates them, and the directions a matrix only stretches."
         }
       ]
     },

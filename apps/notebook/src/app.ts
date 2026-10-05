@@ -23,7 +23,7 @@ import { ASK_CELL, AskError, askSettings, setAskSettings, runLookup, askSource, 
 import { fileCellOf, resolveFiles, importsIn, partContext, partHelp, fileExprValue, svgPoints, kindOf, tableOf, jsonOf, jsonTable, numericColumns, fileText, fileSize, fmtSize, mimeLabel, mimeFor, dataUrl, fileFromBytes, helpersFor, type FileValue, type FileRef, type FileScope, type Table } from "./files.js";
 import { dataGrid, matrixEntries } from "./datagrid.js";
 import { plotYRange, framesWindow, blendable, blend, playPosition, workLine } from "./animate.js";
-import { parseScene, numberRequests as sceneNumberRequests, sampleRequests as sceneSampleRequests, numbersOf as sceneNumbersOf, build as buildScene, frameAt as sceneFrameAt, SceneError, type SceneData, type Item as SceneItem, type XY } from "./scene.js";
+import { parseScene, numberRequests as sceneNumberRequests, sampleRequests as sceneSampleRequests, numbersOf as sceneNumbersOf, vectorsOf as sceneVectorsOf, build as buildScene, frameAt as sceneFrameAt, SceneError, type SceneData, type Item as SceneItem, type XY } from "./scene.js";
 import { DOC_PAGES, type DocPage, type DocPart } from "./docs.js";
 import { FUNCTIONS, FN_BY_NAME, AREAS, fnPage, evaluable, type FnDoc, type ExampleSection } from "./reference.js";
 import { ensureLean, syncLean, mountLean, unmountLean, focusLean, setLeanDark, infoview as leanInfoview, leanState, leanFailure, leanProgress, leanChecked, initLeanIsolation, type LeanMessage } from "./lean-cells.js";
@@ -5346,7 +5346,7 @@ async function runScene(cell: Cell) {
     };
     // the script's numbers first: a moving curve's frames are taken at them
     await ask(sceneNumberRequests(spec));
-    await ask(sceneSampleRequests(spec, moves, sceneNumbersOf(spec, replies)));
+    await ask(sceneSampleRequests(spec, moves, sceneNumbersOf(spec, replies), sceneVectorsOf(replies)));
     cell.scene = buildScene(spec, replies);
     cell.sceneT = 0; cell.scenePlayed = false;
     log("ok", `scene: ${spec.objects.length} objects, ${cell.scene.timeline.beats.length} beats, ${cell.scene.timeline.total.toFixed(1)} s`);
@@ -5529,9 +5529,33 @@ function drawScene(cell: Cell) {
   const colour = (it: SceneItem) => it.style.color ?? (data.spec.objects.findIndex((o) => o.name === it.name) % CURVE_COLOURS);
   const cls = (it: SceneItem, base: string) => `${base} c${colour(it)}${it.style.faint ? " faint" : ""}${it.style.dashed ? " dashed" : ""}${it.style.thick ? " thick" : ""}`;
   const seenLabels = new Set<string>();
-  // curves and lines first, points on top of them
-  for (const it of [...f.items.filter((x) => x.kind !== "dot"), ...f.items.filter((x) => x.kind === "dot")]) {
-    if (it.kind === "path") {
+  // grids at the back, then filled shapes, then curves and lines, points on top of them all
+  const layer = (it: SceneItem) => it.kind === "grid" ? 0 : it.kind === "poly" ? 1 : it.kind === "dot" ? 3 : 2;
+  // the window as the screen shows it, for the lines that run off it
+  const W0 = cx - SCENE_W / 2 / scale, W1 = cx + SCENE_W / 2 / scale, H0 = cy - SCENE_H / 2 / scale, H1 = cy + SCENE_H / 2 / scale;
+  const reach = Math.hypot(W1 - W0, H1 - H0) + Math.hypot(cx, cy);
+  for (const it of [...f.items].sort((a, b) => layer(a) - layer(b))) {
+    if (it.kind === "grid") {
+      // the lines k e1 + s e2 and s e1 + k e2, as far out as the window reaches in the grid's own
+      // coordinates (a flattened grid reaches everywhere: its lines are capped instead)
+      const [a, c] = it.e1, [b, d] = it.e2, det = a * d - b * c;
+      let K = 60;
+      if (Math.abs(det) > 1e-9) {
+        const corners = [[W0, H0], [W0, H1], [W1, H0], [W1, H1]] as const;
+        K = Math.min(60, Math.ceil(Math.max(...corners.flatMap(([x, y]) => [Math.abs((d * x - b * y) / det), Math.abs((a * y - c * x) / det)]))) + 1);
+      }
+      const at = (u: number, w: number) => [sx(u * a + w * b).toFixed(1), sy(u * c + w * d).toFixed(1)];
+      for (let k = -K; k <= K; k++) for (const [p, q] of [[at(k, -K), at(k, K)], [at(-K, k), at(K, k)]]) {
+        el("line", { x1: p![0]!, y1: p![1]!, x2: q![0]!, y2: q![1]!, opacity: it.opacity.toFixed(3), "data-name": it.name }, cls(it, `scene-grid${k === 0 ? " axis" : ""}`));
+      }
+    } else if (it.kind === "poly") {
+      el("polygon", { points: it.pts.map((p) => `${sx(p[0]).toFixed(1)},${sy(p[1]).toFixed(1)}`).join(" "), opacity: it.opacity.toFixed(3), "data-name": it.name }, cls(it, "scene-poly"));
+    } else if (it.kind === "line") {
+      const dx = it.to[0] - it.from[0], dy = it.to[1] - it.from[1], n = Math.hypot(dx, dy);
+      if (n < 1e-12) continue;
+      const ux = (dx / n) * reach, uy = (dy / n) * reach;
+      el("line", { x1: sx(it.from[0] - ux).toFixed(1), y1: sy(it.from[1] - uy).toFixed(1), x2: sx(it.from[0] + ux).toFixed(1), y2: sy(it.from[1] + uy).toFixed(1), opacity: it.opacity.toFixed(3), "data-name": it.name }, cls(it, "scene-path"));
+    } else if (it.kind === "path") {
       let d = "", pen = false;
       for (const p of it.pts as XY[]) {
         if (!p || !Number.isFinite(p[0]) || !Number.isFinite(p[1])) { pen = false; continue; }

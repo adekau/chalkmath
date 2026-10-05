@@ -438,8 +438,8 @@ subsequence, then interpolated position and opacity, a browser-side stand-in for
 Manim's job, outside the browser.
 
 **Scenes** are the notebook's own animations, in its flow rather than in a tab: a cell whose source is
-a short script (`scene.ts`) naming a clock, objects (points, curves, graphs, arrows, segments, traces,
-labels, equations) and beats (show, hide, play the clock, step an equation's work, each with a
+a short script (`scene.ts`) naming a clock, objects (points, curves, graphs, arrows, segments, lines,
+polygons, grids, traces, labels, equations, values) and beats (show, hide, play the clock, step an equation's work, each with a
 caption). It is a storyboard, like the studio's, and the same division holds: the page decides what
 shows when, the engine every number. Each object is a `plot` over the clock, a curve that moves with
 it a `manipulate` (whose frames are exact values, so the script's numbers are asked for first), an
@@ -448,6 +448,12 @@ no `In[n]` and leaves `%` alone. Between samples the page interpolates, as `mani
 while it plays; it never computes a coordinate itself. A scene plays once when it scrolls into view and
 is stepped beat by beat like a page of a book. Its samples are not saved; the cell runs again when the
 notebook opens, and `drive.mjs` checks every scene in the examples and courses the same way.
+The plane of a scene is ℂ, and a vector of two entries is the point it makes: which of a script's point
+expressions are vectors is the engine's answer (an `engine.check` of each, asked with the numbers), and
+a vector `v` is then sampled as `v[[1]] + i*v[[2]]`. A matrix is drawn as the grid it makes of the
+plane's, `grid(M)`, sampled as its two columns, since a linear map is decided by where it sends the
+basis; the page draws the lines through the columns' whole-number combinations. A scene's `let` is
+written in where it is used, so the engine sees whole expressions and the script stays short.
 
 **Courses** (File › Courses and examples) opens a tab that lists *projects*:
 notebooks that belong together, either a course (lessons read in order) or a collection. They are

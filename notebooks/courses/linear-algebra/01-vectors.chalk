@@ -41,6 +41,23 @@
       "label": null
     },
     {
+      "src": "In the plane a vector is an arrow from $0$, and adding is putting arrows tip to tail:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "clock t from 0 to 1\nview -0.8, 5.2, -0.6, 3.6\nU = arrow(0, [3, 1]) thick color 3\nLU = label([3, 1], \"u\") color 3\nV = arrow(0, [1, 2]) thick color 4\nLV = label([1, 2], \"v\") color 4\nVS = arrow(t*[3, 1], t*[3, 1] + [1, 2]) color 4\nW = arrow(0, [4, 3]) thick color 1\nLW = label([4, 3], \"u + v\") color 1\n> show U, LU, V, LV | Two vectors in the plane, $u = (3, 1)$ and $v = (1, 2)$, each an arrow from $0$.\n> show VS; play t to 1 in 2s | Slide $v$ along $u$, without turning it, until it starts where $u$ ends.\n> show W, LW | The sum runs from the start of $u$ to the tip of the moved $v$: $u + v = (4, 3)$, the entries added.",
+      "type": "scene",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "[3, 1] + [1, 2]",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "The dot product",
       "type": "section",
       "showWork": false,
@@ -76,6 +93,18 @@
     },
     {
       "src": "dot([1, 2], [2, -1])",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Why the angle? Drop $v$ straight onto the line of $u$. Its shadow there is $\\lVert v \\rVert \\cos\\theta$ long, and $u \\cdot v$ is $\\lVert u \\rVert$ times that shadow:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "clock t from 0 to 2pi\nview -3.2, 3.6, -2.4, 2.6\nU = arrow(0, [2.5, 0]) thick color 3\nLU = label([2.5, 0], \"u\") color 3\nV = arrow(0, [2*cos(t), 2*sin(t)]) thick color 4\nLV = label([2*cos(t), 2*sin(t)], \"v\") color 4\nDROP = segment([2*cos(t), 2*sin(t)], [2*cos(t), 0]) dashed color 6\nSH = segment(0, [2*cos(t), 0]) thick color 1\nD = value(dot([2.5, 0], [2*cos(t), 2*sin(t)]), \"u \\cdot v = \")\n> show U, LU, V, LV, D | $u$ is $2.5$ long and $v$ is $2$. Pointing the same way, $u \\cdot v = 2.5 \\cdot 2 = 5$.\n> show DROP, SH; play t to 1 in 2s | Turn $v$. Its shadow on $u$'s line (orange) shortens, and the dot product with it: $2.5$ times the shadow.\n> play t to pi/2 in 2s | At a right angle the shadow is a point: $u \\cdot v = 0$. Perpendicular vectors are exactly those with dot product zero.\n> play t to pi in 2s | Past a right angle the shadow points backwards, and the dot product is negative.\n> play t to 2pi in 4s | Once round: $u \\cdot v = \\lVert u \\rVert \\lVert v \\rVert \\cos\\theta = 5\\cos\\theta$.",
+      "type": "scene",
       "showWork": false,
       "label": null
     },
