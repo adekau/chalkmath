@@ -2385,12 +2385,17 @@ theorem merge_seen_left (v w : VV R) : v ⊑ v ⊔ w := le_sup_left v w
 def deliverable (i : Fin R) (s recv : VV R) : Prop :=
   s i = recv i + 1 ∧ ∀ j, j ≠ i → s j ≤ recv j
 
+/-- One other replica's dependency, decided. (A definition of its own: the
+    notebook's Lean runs in a browser, whose stack is far smaller than Lean's
+    own, and the instance below written as one term runs it out.) -/
+def deliverableAt (i : Fin R) (s recv : VV R) (j : Fin R) : Decidable (j ≠ i → s j ≤ recv j) :=
+  match Nat.decEq j.val i.val, Nat.decLe (s j) (recv j) with
+  | isTrue hv, _ => isTrue (fun hne => absurd (Fin.ext hv) hne)
+  | isFalse _, isTrue hle => isTrue (fun _ => hle)
+  | isFalse hv, isFalse hle => isFalse (fun h => hle (h (fun he => hv (congrArg Fin.val he))))
+
 instance {i : Fin R} {s recv : VV R} : Decidable (deliverable i s recv) :=
-  @instDecidableAnd _ _ (Nat.decEq _ _) (@Nat.decidableForallFin R (fun j => j ≠ i → s j ≤ recv j)
-    (fun j => match Nat.decEq j.val i.val, Nat.decLe (s j) (recv j) with
-      | isTrue hv, _ => isTrue (fun hne => absurd (Fin.ext hv) hne)
-      | isFalse _, isTrue hle => isTrue (fun _ => hle)
-      | isFalse hv, isFalse hle => isFalse (fun h => hle (h (fun he => hv (congrArg Fin.val he))))))
+  @instDecidableAnd _ _ (Nat.decEq _ _) (@Nat.decidableForallFin R _ (deliverableAt i s recv))
 
 /-- Interlude: causal facts, decided. -/
 def interlude : List (String × Bool) :=
