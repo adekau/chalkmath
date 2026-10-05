@@ -54,6 +54,8 @@ test("the tree is the engine's parse: precedence, implicit products, what the nu
     "arctan(x)": "[(arctan [x])]",
     "arg(1+i)": "[(arg [1 + i])]",
     "sec^2(x)": "[(sec [x]) (^ [2])]",
+    "cosh^2(x)": "[(cosh [x]) (^ [2])]",
+    "tanh(2x)": "[(tanh [2 x])]",
     "arcsin x": "[a r c s i n ␣ x]",
     "%": "[%]", "%%": "[% %]", "%2": "[% 2]", "% 2": "[% ␣ 2]",
     "diff(x^2, x, 2)": "[(diff [x (^ [2])] [x] [2])]",

@@ -28,13 +28,13 @@ export type ReadResult = { ok: true; stmt: Stmt } | { ok: false; error: ReadErro
 
 /** `builtinFunctions` in `Parser.lean`: a name followed by `(` is a call only if it is one of these
  *  or a function the session defined (`known`); otherwise it is a product, `f·(x)`. */
-export const BUILTIN_FUNCTIONS = ["sin", "cos", "tan", "sec", "csc", "cot", "arcsin", "arccos", "arctan", "exp", "ln", "log", "sqrt", "abs", "conj", "re", "im", "arg",
+export const BUILTIN_FUNCTIONS = ["sin", "cos", "tan", "sec", "csc", "cot", "arcsin", "arccos", "arctan", "sinh", "cosh", "tanh", "exp", "ln", "log", "sqrt", "abs", "conj", "re", "im", "arg",
   "diff", "simplify", "expand", "factor", "N", "det", "rref", "transpose", "solve", "subst", "integrate", "plot",
   "sign", "dot", "norm", "sum", "exptotrig", "epicycles", "dft", "manipulate", "column",
   "total", "mean", "variance", "stdev", "min", "max", "median"];
 
 /** `powerFunctions`: `sin^2(y)` is `sin(y)^2` for these, and `sin^-1(y)` is `sin(y)^-1`. */
-const POWER_FNS = ["sin", "cos", "tan", "sec", "csc", "cot", "arcsin", "arccos", "arctan", "exp", "ln", "log", "sqrt", "abs"];
+const POWER_FNS = ["sin", "cos", "tan", "sec", "csc", "cot", "arcsin", "arccos", "arctan", "sinh", "cosh", "tanh", "exp", "ln", "log", "sqrt", "abs"];
 
 /** The math grammar's operators; any other is another world's, a separator here. */
 const MATH_OPS = new Set(["+", "-", "*", "/", "^", "(", ")", "[", "]", ",", ";", "%", "./", ".*"]);
