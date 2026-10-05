@@ -9,13 +9,53 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Give a type to a λ-term with typed binders, by the three rules of the simply typed λ-calculus, and read its derivation tree.",
+      "src": "> [!goal]\n> Find what a label on a term has to say to rule out nonsense before anything runs, and type terms by the three rules that follow.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "In the untyped calculus anything can be applied to anything: $\\mathsf{true}\\ 1\\ 0$ reduces happily, and $\\Omega$ runs for ever. Types sort terms by what they can be given and what they give back, and refuse the rest before anything runs.",
+      "src": "The untyped calculus refuses nothing. Hand $\\mathsf{if}$ a numeral where it expects a boolean:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "if 2 a b",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "No complaint: $2$ is a function like everything else, so it takes $a$ and $b$ and gives $a\\ (a\\ b)$, which means nothing. Some terms never answer at all. $\\Omega = (\\lambda x.\\, x\\ x)\\ (\\lambda x.\\, x\\ x)$ steps to itself:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "normal 3: omega omega",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "It is back where it started after each step. The engine gives up after 10,000 steps; nothing in the term warned that it would never stop.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> Without running anything, what would you need to know about $f$ and $a$ to be sure that $f\\ a$ makes sense?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Types",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Two things: that $f$ is a function, and that $a$ is the kind of thing $f$ expects. So label each term with what it is: data of some kind ($\\mathsf{Nat}$, $\\mathsf{Bool}$, or just $A$, $B$), or a function from one kind to another, written $A \\to B$. Such a label is a **type**. A label must be checked, not trusted, so each binder states the type of what it binds: $\\lambda x{:}A.\\, M$ takes an $A$.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -27,7 +67,7 @@
       "label": null
     },
     {
-      "src": "Type `->` for → and write the type after a colon: `type: \\x:A. x`.",
+      "src": "Type `->` for → and write the type after a colon: `type: \\x:A. x`. The identity on $A$ takes an $A$ and gives it back:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -44,13 +84,53 @@
       "label": null
     },
     {
+      "src": "A term is built in one of three ways, and each way needs a rule saying what its type is.\n- A **variable** has the type its binder gave it.\n- A **function** $\\lambda x{:}A.\\, M$: assume $x : A$ and find the type $B$ of the body. The function turns $A$s into $B$s, so it has type $A \\to B$.\n- An **application** $M\\ N$ answers the question above: $M$ must have an arrow type $A \\to B$, and $N$ must have type $A$, exactly. Then $M\\ N$ has type $B$.\n\nFree names get their types from a **context**, written before `⊢` (or `|-`). With $\\mathsf{Bool}$ and $\\mathsf{Nat}$ kept apart, the nonsense from the start fails the third rule:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "type: if : Bool → A → A → A, two : Nat, a : A, b : A ⊢ if two a b",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "and the version that makes sense goes through:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "type: if : Bool → A → A → A, yes : Bool, a : A, b : A ⊢ if yes a b",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake] Asking only for a function\n> A looser application rule, \"$M$ is some function\", lets `if two a b` through: $\\mathsf{if}$ is a function. The argument's type has to be the one the function expects, or the label says nothing. (Encoded as pure λ-terms, Church's $2$ and $\\mathsf{if}$ are just functions, and the inference of lesson 3 accepts `if 2 a b`: it is base types such as $\\mathsf{Nat}$ and $\\mathsf{Bool}$ that tell numbers from booleans.)",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "> [!definition] Typing rules\n> A **context** $\\Gamma$ lists the types of the variables in scope; a **judgment** $\\Gamma \\vdash M : T$ says $M$ has type $T$ there.\n> - **Var**: if $x : T$ is in $\\Gamma$, then $\\Gamma \\vdash x : T$.\n> - **→I** (abstraction): if $\\Gamma, x : A \\vdash M : B$, then $\\Gamma \\vdash \\lambda x{:}A.\\, M : A \\to B$.\n> - **→E** (application): if $\\Gamma \\vdash M : A \\to B$ and $\\Gamma \\vdash N : A$, then $\\Gamma \\vdash M\\ N : B$.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "Every typed term has a **derivation**: a tree of rules, the judgment at the bottom, axioms (Var) at the top. `type:` draws it, and lists its steps from the top down.",
+      "src": "Derivations",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Typing $\\lambda f{:}A \\to B.\\, \\lambda x{:}A.\\, f\\ x$ uses all three rules: Var for $f$ and for $x$, →E for $f\\ x$, then →I for each binder. Stacked with each rule's premises above its conclusion, they form a tree, the **derivation**: axioms (Var) at the top, the judgment about the whole term at the bottom. `type:` draws it and lists its steps from the top down.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> Work out the type yourself, then step through the derivation.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -58,18 +138,8 @@
     {
       "src": "type: λf:A→B. λx:A. f x",
       "showWork": true,
-      "label": null
-    },
-    {
-      "src": "Free variables get their types from a context written before `⊢` (or `|-`):",
-      "type": "markdown",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "type: f : A → B, x : A ⊢ f x",
-      "showWork": false,
-      "label": null
+      "label": null,
+      "stepwise": 0
     },
     {
       "src": "In Lean",
@@ -138,11 +208,30 @@
       "src": "type: f : A → B ⊢ λx:A. f x",
       "type": "exercise",
       "prompt": "In the context $f : A \\to B$, what type does $\\lambda x{:}A.\\, f\\ x$ have?",
+      "hints": [
+        "The context's $f$ is not a binder of the term: only $x$ adds an arrow."
+      ],
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!summary]\n> Types are base types and arrows. Three rules type every term that has a type: Var reads the context, →I types a function by its body, →E types an application when the argument fits. A derivation is the tree of rules used.",
+      "src": "type: λf:(A→B)→C. λg:A→B. f g",
+      "type": "exercise",
+      "prompt": "A function can take a function as its argument. What type does $\\lambda f{:}(A \\to B) \\to C.\\, \\lambda g{:}A \\to B.\\, f\\ g$ have?",
+      "hints": [
+        "$f\\ g : C$. Put the binders' types in front, in parentheses where a type is itself an arrow."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Untyped terms can compute nonsense, or never stop. A type labels a term as data of a base type or as a function $A \\to B$, and binders state their types. Three rules, one per way of building a term, give a term its type: Var reads the context, →I types a function by its body, →E types an application when the argument has exactly the type the function expects. A derivation is the tree of rules used.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "$\\Omega$ is built from $\\lambda x.\\, x\\ x$. What type could that $x$ have? The next lesson tries, and reads what the checker says when a term has no type.",
       "type": "markdown",
       "showWork": false,
       "label": null

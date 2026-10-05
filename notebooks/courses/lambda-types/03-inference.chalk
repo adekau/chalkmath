@@ -9,7 +9,60 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Find the most general type of a term whose binders have no types, by setting up equations between types and solving them.",
+      "src": "> [!goal]\n> Find the most general type of a term whose binders have no types, by solving the equations its applications impose.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Without a type on its binder, $\\lambda x.\\, x$ has the type $A \\to A$, and $B \\to B$, and $(A \\to B) \\to A \\to B$: no single answer, until we ask for the best one.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> Find a type for $\\lambda f.\\, \\lambda x.\\, f\\ x$ by hand. What were you forced to decide, and what could you leave open?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Unknowns and equations",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Treat the unknown types like unknowns in algebra. Say $f : \\tau_1$ and $x : \\tau_2$, and call the type of $f\\ x$ $\\tau_3$. Only the application forces anything: $f\\ x$ types when $f$ is a function from $x$'s type to the result's, $\\tau_1 = \\tau_2 \\to \\tau_3$. Put that in, and the term has type $(\\tau_2 \\to \\tau_3) \\to \\tau_2 \\to \\tau_3$. Nothing constrains $\\tau_2$ and $\\tau_3$, so they stay variables, $\\alpha$ and $\\beta$:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "infer: λf. λx. f x",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "Equations can meet. In $\\lambda f.\\, \\lambda x.\\, f\\ (f\\ x)$, $f$ is applied twice, and each application gives an equation for $f$'s type.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> Predict the type: what does applying $f$ to its own result force?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "infer: λf. λx. f (f x)",
+      "showWork": true,
+      "label": null,
+      "stepwise": 0
+    },
+    {
+      "src": "Two arrows are equal only when their arguments are equal and their results are, so $\\tau_2 \\to \\tau_3 = \\tau_3 \\to \\tau_4$ splits into $\\tau_2 = \\tau_3$ and $\\tau_3 = \\tau_4$: $f$ must return the type it takes. The answer, $(\\alpha \\to \\alpha) \\to \\alpha \\to \\alpha$, is the type of the Church numeral $2$.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -21,17 +74,24 @@
       "label": null
     },
     {
-      "src": "infer: λf. λx. f x",
-      "showWork": true,
+      "src": "$S$, three binders and three applications, goes the same way:",
+      "type": "markdown",
+      "showWork": false,
       "label": null
     },
     {
       "src": "infer: S",
-      "showWork": true,
+      "showWork": false,
       "label": null
     },
     {
-      "src": "The result is the **principal type**: every other type of the term is an instance of it (Hindley). $K$ has type $A \\to B \\to A$, and also $(A \\to A) \\to B \\to A \\to A$:",
+      "src": "The most general type",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The variables left over are a promise: any types put for them give a type of the term. $K$ comes out as $\\alpha \\to \\beta \\to \\alpha$,",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -42,13 +102,19 @@
       "label": null
     },
     {
+      "src": "so $A \\to B \\to A$ and $(A \\to A) \\to B \\to A \\to A$ are types of $K$ too: instances of it. Unification never commits to more than the equations force, so the type it finds is the **principal type**: every type of the term is an instance of it (Hindley, 1969). One answer covers them all.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "The occurs check",
       "type": "section",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!mistake] Self-application\n> In $\\lambda x.\\, x\\ x$, $x$ is applied to itself, so its type would satisfy $\\tau = \\tau \\to \\sigma$: a type containing itself. Unification refuses (the **occurs check**), and the term has no simple type.",
+      "src": "Lesson 2 showed that $\\lambda x.\\, x\\ x$ has no type by trying guesses. Inference finds it in one equation: $x : \\tau_1$ applied to itself gives $\\tau_1 = \\tau_1 \\to \\tau_2$.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -59,7 +125,19 @@
       "label": null
     },
     {
-      "src": "Types given and types found mix: annotated binders keep their types, and the rest is inferred around them.",
+      "src": "> [!mistake] Just substitute\n> Putting $\\tau_1 \\to \\tau_2$ for $\\tau_1$ never ends: $\\tau_1 = (\\tau_1 \\to \\tau_2) \\to \\tau_2 = ((\\tau_1 \\to \\tau_2) \\to \\tau_2) \\to \\tau_2 = \\cdots$. A variable cannot be solved by a type that contains it, so unification checks for that (the **occurs check**) and gives up. Allowing the infinite type instead would give $\\Omega$ a type.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Some types given",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Types given and types found mix: annotated binders keep their types, and the rest is inferred around them. A free variable gets a type variable too, and the answer says what it had to be.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -75,7 +153,7 @@
       "label": null
     },
     {
-      "src": "Every inferred type is checked: the term, annotated with it, goes through the type checker, and the tree shown is that check.",
+      "src": "Every inferred type is checked: the term, annotated with it, goes through the type checker of lesson 1, and the tree shown is that check.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -154,7 +232,24 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> Inference gives unknown types variables, turns each application into an equation, and solves the equations by unification. The occurs check rejects a type that would contain itself. The answer is the most general type, and every other type is an instance of it.",
+      "src": "infer: λx. λy. x (y x)",
+      "type": "exercise",
+      "prompt": "Infer the type of $\\lambda x.\\, \\lambda y.\\, x\\ (y\\ x)$, by writing its two equations and solving them.",
+      "hints": [
+        "Say $x : \\tau_1$, $y : \\tau_2$. Then $y\\ x$ gives $\\tau_2 = \\tau_1 \\to \\tau_3$, and $x\\ (y\\ x)$ gives $\\tau_1 = \\tau_3 \\to \\tau_4$.",
+        "Put the second into the first: $y : (\\tau_3 \\to \\tau_4) \\to \\tau_3$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Inference gives each unknown type a variable, turns each application into an equation, and solves the equations by unification. The occurs check rejects a type that would contain itself. The answer is the principal type: every other type of the term is an instance of it.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "$\\lambda x.\\, x\\ x$ has no simple type, so neither do $\\Omega$ and $Y$, the terms that loop. Are they the only terms types rule out, and can a typed term ever run for ever?",
       "type": "markdown",
       "showWork": false,
       "label": null

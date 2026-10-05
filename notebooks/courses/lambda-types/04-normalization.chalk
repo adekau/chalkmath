@@ -9,13 +9,24 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> See which untyped terms have no simple type, know the theorem that every typed term has a normal form, and what that costs.",
+      "src": "> [!goal]\n> See $\\Omega$ and $Y$ fail to type, see why every typed term reaches a normal form, and what that guarantee costs.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "$\\Omega$ and $Y$ are built on self-application, and the occurs check refuses both:",
+      "src": "Lesson 1 opened with $\\Omega$ looping. $Y$, which gives the untyped calculus its recursion, unfolds for as long as you let it:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "normal 4: Y f",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> Both are built on self-application. What will inference say about each?",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -31,13 +42,65 @@
       "label": null
     },
     {
+      "src": "The occurs check both times: inside $Y$, $\\lambda x.\\, f\\ (x\\ x)$ has the same $x\\ x$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Every typed term stops",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Is that luck, or can no typed term loop? Watch what a β-step does to types. A redex $(\\lambda x{:}A.\\, M)\\ N$ uses up a function of type $A \\to B$. A redex the step creates is headed by a function of type $A$ or $B$: smaller than $A \\to B$. New work appears only at smaller types, and types cannot shrink for ever. That is not yet a proof, since a step can also copy redexes already inside $N$; Tait's method turns the idea into one.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "> [!theorem] Strong normalization\n> In the simply typed λ-calculus every reduction sequence of a typed term is finite: every typed term has a normal form, and every strategy reaches it (Tait, 1967).",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "So the engine's step budget is never needed for a typed term. The price: no fixed-point combinator, so no unbounded recursion. The simply typed λ-calculus is not Turing complete, and real typed languages add recursion back as a primitive (`fix`, `let rec`).",
+      "src": "So a typed term never loops. It can still take a long time: the theorem says reduction ends, not that it ends soon, and a short typed term can have an enormous normal form.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The price",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Every typed term stops, so no fixed-point combinator has a type, and the simply typed calculus has no unbounded recursion: it is not Turing complete. Typed languages add recursion back as a primitive (`fix`, `let rec`), and give up termination with it.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Types also refuse some terms that would run fine. Give the identity to a function that uses its argument on an $a$ and on a $b$:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "normal: (λf. pair (f a) (f b)) (λx. x)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "infer: a : A, b : B ⊢ (λf. pair (f a) (f b)) (λx. x)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "It reduces to the pair of $a$ and $b$, but a simply typed $f$ has one type, and the identity is needed at $A \\to A$ and at $B \\to B$. An identity written once for every type is lesson 7's polymorphism.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -49,7 +112,7 @@
       "label": null
     },
     {
-      "src": "A Church numeral has type $(\\alpha \\to \\alpha) \\to \\alpha \\to \\alpha$, and arithmetic is typed at those types:",
+      "src": "Much of Church's arithmetic survives. A numeral has type $(\\alpha \\to \\alpha) \\to \\alpha \\to \\alpha$, and multiplication is typed:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -65,7 +128,13 @@
       "label": null
     },
     {
-      "src": "Not everything survives. Church's $\\mathsf{and} = \\lambda p.\\, \\lambda q.\\, p\\ q\\ p$ passes $p$ to itself, at a second type:",
+      "src": "`mul`'s principal type is more general than numerals need: put $A \\to A$ for each of $\\alpha, \\beta, \\gamma$ and it becomes $N \\to N \\to N$, where $N = (A \\to A) \\to A \\to A$ is the type of numerals at $A$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Not all of it survives. Church's $\\mathsf{and} = \\lambda p.\\, \\lambda q.\\, p\\ q\\ p$ passes $p$ to itself:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -76,7 +145,18 @@
       "label": null
     },
     {
-      "src": "A simple type cannot be used at two types. Polymorphism (lesson 7) can.",
+      "src": "> [!try]\n> When $p$ is false, $p\\ q\\ p$ returns $p$, which is false. So what could stand in place of the last $p$? Predict whether the result has a type.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "infer: λp. λq. p q false",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The same truth table, no self-application, and a type.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -88,7 +168,7 @@
       "label": null
     },
     {
-      "src": "A small typed language: numbers, booleans, addition, a test for zero and `if`. Its evaluator is structurally recursive, so Lean accepts it as total: it always stops, the strong normalization of this language. A program can still be stuck: `1 + true` has no value.",
+      "src": "A small typed language: numbers, booleans, addition, a test for zero and `if`. Its evaluator is structurally recursive, so Lean accepts it as total: it always stops. With no functions in the language, termination is that easy; for λ-terms it is the theorem above. A program can still be stuck: `1 + true` has no value, and the type checker refuses it before it runs.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -138,7 +218,25 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> Self-application has no simple type, so neither $\\Omega$ nor $Y$ does. Every typed term has a normal form; the cost is that the simply typed calculus cannot express unbounded recursion.",
+      "src": "infer: λp. λq. p true q",
+      "type": "exercise",
+      "prompt": "Church's $\\mathsf{or} = \\lambda p.\\, \\lambda q.\\, p\\ p\\ q$ passes $p$ to itself too, and has no simple type. When $p$ is true, the $p$ it passes is true. Repair it the same way as `and`, and infer the type of the result.",
+      "hints": [
+        "Replace the middle $p$ by $\\mathsf{true}$: $\\lambda p.\\, \\lambda q.\\, p\\ \\mathsf{true}\\ q$.",
+        "$\\mathsf{true} : \\alpha \\to \\beta \\to \\alpha$, and $p$ takes it and then $q$."
+      ],
+      "hideQuestion": true,
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Self-application has no simple type, so neither $\\Omega$ nor $Y$ does. Every typed term reaches a normal form (strong normalization): a β-step makes new work only at smaller types. The price: no unbounded recursion, and some harmless terms refused, since a simply typed function uses its argument at one type.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Look again at the arrow rules. From $B$, assuming $A$, conclude $A \\to B$; from $A \\to B$ and $A$, conclude $B$. Read $\\to$ as \"implies\", and these are the rules for implication in logic. The next lesson asks whether that is a coincidence.",
       "type": "markdown",
       "showWork": false,
       "label": null

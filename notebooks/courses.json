@@ -407,22 +407,22 @@
         {
           "file": "01-simple-types.chalk",
           "title": "Simple types",
-          "blurb": "Types for terms: base types and arrows, annotated binders, and the three typing rules."
+          "blurb": "What goes wrong without types, what a type has to record to prevent it, and the three typing rules that follow."
         },
         {
           "file": "02-derivations.chalk",
           "title": "Typing derivations",
-          "blurb": "Contexts and judgments, why a term fails to type, and the checker proved sound."
+          "blurb": "Why Ω's half has no type, where a derivation gets stuck, shadowing, one type per term, and the checker proved sound."
         },
         {
           "file": "03-inference.chalk",
           "title": "Type inference",
-          "blurb": "Types without annotations: type variables, equations, unification and the occurs check."
+          "blurb": "Types without annotations: unknown types as variables, the equations a term imposes, unification and the occurs check."
         },
         {
           "file": "04-normalization.chalk",
           "title": "What types rule out",
-          "blurb": "No Ω, no Y: typed terms always stop. The cost, and a typed language that cannot loop."
+          "blurb": "Ω and Y fail to type, every typed term stops, and what that costs."
         },
         {
           "file": "05-curry-howard.chalk",

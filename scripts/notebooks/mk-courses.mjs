@@ -3869,20 +3869,43 @@ course("lambda-types", "λ-calculus II: types and proofs",
   "The simply typed λ-calculus: typing rules and derivation trees, type inference by unification, what types rule out, propositions as types, type safety, polymorphism and dependent types, with the theory proved in Lean.",
   "Logic and computation", (add) => {
 
-  add("01-simple-types.chalk", "Simple types", "Types for terms: base types and arrows, annotated binders, and the three typing rules.", ({ sec, md, m, ex, lean, lx }) => {
+  add("01-simple-types.chalk", "Simple types", "What goes wrong without types, what a type has to record to prevent it, and the three typing rules that follow.", ({ sec, md, m, ex, lean, lx }) => {
     sec("Simple types");
     md(r`
 > [!goal]
-> Give a type to a λ-term with typed binders, by the three rules of the simply typed λ-calculus, and read its derivation tree.
+> Find what a label on a term has to say to rule out nonsense before anything runs, and type terms by the three rules that follow.
 `);
-    md(r`In the untyped calculus anything can be applied to anything: $\mathsf{true}\ 1\ 0$ reduces happily, and $\Omega$ runs for ever. Types sort terms by what they can be given and what they give back, and refuse the rest before anything runs.`);
+    md(r`The untyped calculus refuses nothing. Hand $\mathsf{if}$ a numeral where it expects a boolean:`);
+    m("if 2 a b");
+    md(r`No complaint: $2$ is a function like everything else, so it takes $a$ and $b$ and gives $a\ (a\ b)$, which means nothing. Some terms never answer at all. $\Omega = (\lambda x.\, x\ x)\ (\lambda x.\, x\ x)$ steps to itself:`);
+    m("normal 3: omega omega");
+    md(r`It is back where it started after each step. The engine gives up after 10,000 steps; nothing in the term warned that it would never stop.`);
+    md(r`
+> [!try]
+> Without running anything, what would you need to know about $f$ and $a$ to be sure that $f\ a$ makes sense?
+`);
+    sec("Types");
+    md(r`Two things: that $f$ is a function, and that $a$ is the kind of thing $f$ expects. So label each term with what it is: data of some kind ($\mathsf{Nat}$, $\mathsf{Bool}$, or just $A$, $B$), or a function from one kind to another, written $A \to B$. Such a label is a **type**. A label must be checked, not trusted, so each binder states the type of what it binds: $\lambda x{:}A.\, M$ takes an $A$.`);
     md(r`
 > [!definition] Simple types
 > A **type** is a **base type** ($A$, $B$, $\mathsf{Nat}$, …) or an **arrow** $A \to B$, the type of functions from $A$ to $B$. The arrow groups to the right: $A \to B \to C$ is $A \to (B \to C)$, a function returning a function. A binder carries its type: $\lambda x{:}A.\, M$.
 `);
-    md(r`Type ‹->› for → and write the type after a colon: ‹type: \x:A. x›.`);
+    md(r`Type ‹->› for → and write the type after a colon: ‹type: \x:A. x›. The identity on $A$ takes an $A$ and gives it back:`);
     m("type: λx:A. x");
     sec("The rules");
+    md(r`A term is built in one of three ways, and each way needs a rule saying what its type is.
+- A **variable** has the type its binder gave it.
+- A **function** $\lambda x{:}A.\, M$: assume $x : A$ and find the type $B$ of the body. The function turns $A$s into $B$s, so it has type $A \to B$.
+- An **application** $M\ N$ answers the question above: $M$ must have an arrow type $A \to B$, and $N$ must have type $A$, exactly. Then $M\ N$ has type $B$.
+
+Free names get their types from a **context**, written before ‹⊢› (or ‹|-›). With $\mathsf{Bool}$ and $\mathsf{Nat}$ kept apart, the nonsense from the start fails the third rule:`);
+    m("type: if : Bool → A → A → A, two : Nat, a : A, b : A ⊢ if two a b");
+    md(r`and the version that makes sense goes through:`);
+    m("type: if : Bool → A → A → A, yes : Bool, a : A, b : A ⊢ if yes a b");
+    md(r`
+> [!mistake] Asking only for a function
+> A looser application rule, "$M$ is some function", lets ‹if two a b› through: $\mathsf{if}$ is a function. The argument's type has to be the one the function expects, or the label says nothing. (Encoded as pure λ-terms, Church's $2$ and $\mathsf{if}$ are just functions, and the inference of lesson 3 accepts ‹if 2 a b›: it is base types such as $\mathsf{Nat}$ and $\mathsf{Bool}$ that tell numbers from booleans.)
+`);
     md(r`
 > [!definition] Typing rules
 > A **context** $\Gamma$ lists the types of the variables in scope; a **judgment** $\Gamma \vdash M : T$ says $M$ has type $T$ there.
@@ -3890,10 +3913,13 @@ course("lambda-types", "λ-calculus II: types and proofs",
 > - **→I** (abstraction): if $\Gamma, x : A \vdash M : B$, then $\Gamma \vdash \lambda x{:}A.\, M : A \to B$.
 > - **→E** (application): if $\Gamma \vdash M : A \to B$ and $\Gamma \vdash N : A$, then $\Gamma \vdash M\ N : B$.
 `);
-    md(r`Every typed term has a **derivation**: a tree of rules, the judgment at the bottom, axioms (Var) at the top. ‹type:› draws it, and lists its steps from the top down.`);
-    m("type: λf:A→B. λx:A. f x", { work: true });
-    md(r`Free variables get their types from a context written before ‹⊢› (or ‹|-›):`);
-    m("type: f : A → B, x : A ⊢ f x");
+    sec("Derivations");
+    md(r`Typing $\lambda f{:}A \to B.\, \lambda x{:}A.\, f\ x$ uses all three rules: Var for $f$ and for $x$, →E for $f\ x$, then →I for each binder. Stacked with each rule's premises above its conclusion, they form a tree, the **derivation**: axioms (Var) at the top, the judgment about the whole term at the bottom. ‹type:› draws it and lists its steps from the top down.`);
+    md(r`
+> [!try]
+> Work out the type yourself, then step through the derivation.
+`);
+    m("type: λf:A→B. λx:A. f x", { step: 0 });
     sec("In Lean");
     md(r`The typing relation, as an inductive proposition with one constructor per rule; a derivation is a proof built from them.`);
     lean(r`/-- Simple types: base types and arrows. -/
@@ -3933,28 +3959,51 @@ example : HasType [] (.lam "x" A (.var "x")) (A ⇒ A) := .abs (.var rfl)`);
     md(r`Answer with a type, writing ‹->› for →: ‹(A -> B) -> A -> B›.`);
     ex("type: λx:A. λy:B. x", r`What type does $\lambda x{:}A.\, \lambda y{:}B.\, x$ have?`, [r`Two arguments, $A$ then $B$; it returns the first.`]);
     ex("type: λf:A→A. λx:A. f (f x)", r`What type does $\lambda f{:}A \to A.\, \lambda x{:}A.\, f\ (f\ x)$ have?`, [r`$f\ x : A$, so $f\ (f\ x) : A$ too.`]);
-    ex("type: f : A → B ⊢ λx:A. f x", r`In the context $f : A \to B$, what type does $\lambda x{:}A.\, f\ x$ have?`, []);
+    ex("type: f : A → B ⊢ λx:A. f x", r`In the context $f : A \to B$, what type does $\lambda x{:}A.\, f\ x$ have?`, [r`The context's $f$ is not a binder of the term: only $x$ adds an arrow.`]);
+    ex("type: λf:(A→B)→C. λg:A→B. f g", r`A function can take a function as its argument. What type does $\lambda f{:}(A \to B) \to C.\, \lambda g{:}A \to B.\, f\ g$ have?`, [r`$f\ g : C$. Put the binders' types in front, in parentheses where a type is itself an arrow.`]);
     md(r`
 > [!summary]
-> Types are base types and arrows. Three rules type every term that has a type: Var reads the context, →I types a function by its body, →E types an application when the argument fits. A derivation is the tree of rules used.
+> Untyped terms can compute nonsense, or never stop. A type labels a term as data of a base type or as a function $A \to B$, and binders state their types. Three rules, one per way of building a term, give a term its type: Var reads the context, →I types a function by its body, →E types an application when the argument has exactly the type the function expects. A derivation is the tree of rules used.
 `);
+    md(r`$\Omega$ is built from $\lambda x.\, x\ x$. What type could that $x$ have? The next lesson tries, and reads what the checker says when a term has no type.`);
   });
 
-  add("02-derivations.chalk", "Typing derivations", "Contexts and judgments, why a term fails to type, and the checker proved sound.", ({ sec, md, m, ex, lean, lx }) => {
+  add("02-derivations.chalk", "Typing derivations", "Why Ω's half has no type, where a derivation gets stuck, shadowing, one type per term, and the checker proved sound.", ({ sec, md, m, ex, lean, lx }) => {
     sec("Typing derivations");
     md(r`
 > [!goal]
-> Build and read derivations in a context, say exactly why an ill-typed term fails, and know that a term's type is unique.
+> Say exactly where a term with no type gets stuck, read derivations in a context, and see why a term has only one type.
 `);
-    md(r`The checker works bottom-up: to type $\lambda x{:}A.\, M$ it adds $x : A$ to the context and types $M$; to type $M\ N$ it types both and checks that they fit. The tree is read the other way, from the axioms down. Long contexts are named $\Gamma_1, \Gamma_2, \ldots$ under the tree.`);
-    m("type: λf:A→B. λg:B→C. λx:A. g (f x)", { work: true });
-    sec("Why a term has no type");
-    md(r`Three things can go wrong, and each has its message:`);
+    md(r`$\Omega$'s half, $\lambda x.\, x\ x$, applies $x$ to $x$, so $x$ must be a function. Try to give it a type.`);
+    md(r`
+> [!try]
+> What goes wrong with $x : A$? With $x : A \to A$? Predict each message.
+`);
     m("type: λx:A. x x");
+    m("type: λx:A→A. x x");
+    md(r`A base type cannot be applied. An arrow can, but $x : A \to A$ wants an $A$ and is handed itself. Whatever type $T$ you pick, $x\ x$ needs $T = T \to B$ for some $B$: $T$ would be a proper part of itself, and no type is. So $\lambda x.\, x\ x$ has no type, and $\Omega$ has none either. Lesson 4 returns to what that buys.`);
+    sec("Reading a derivation");
+    md(r`A derivation is a certificate: each step can be checked on its own, against its premises. The checker builds it bottom-up: to type $\lambda x{:}A.\, M$ it adds $x : A$ to the context and types $M$; to type $M\ N$ it types both and checks that they fit. The tree is read the other way, from the axioms down. Long contexts are named $\Gamma_1, \Gamma_2, \ldots$ under the tree.`);
+    m("type: λf:A→B. λg:B→C. λx:A. g (f x)", { work: true });
+    sec("Where a derivation gets stuck");
+    md(r`Each rule has a condition, and a term without a type is one where some condition fails: Var, when a name has no type; →E, when the function is not a function (as with $x\ x$ at $x : A$), or when its argument has the wrong type.`);
+    md(r`
+> [!try]
+> Which condition fails in each of these?
+`);
     m("type: λf:A→B. λx:B. f x");
     m("type: λx:A. y");
-    md(r`An inner binder hides an outer one of the same name, and the context remembers only the nearest:`);
+    sec("Shadowing");
+    md(r`
+> [!mistake] The outer x
+> A natural guess for $\lambda x{:}A.\, \lambda x{:}B.\, x$ is $A \to B \to A$, reading the last $x$ as the first binder's. But the inner binder hides the outer one: the context remembers only the nearest $x$.
+`);
     m("type: λx:A. λx:B. x");
+    md(r`It has to be so, or the type would disagree with what the term does: given two arguments, it returns the second.`);
+    m("normal: (λx. λx. x) a b");
+    sec("One type");
+    md(r`At no node of a derivation is there a choice: the term's shape picks the rule, and the binder's type extends the context. So a term has at most one type in a context; the Lean below proves it. Take the binder's type away and the choice is back: $\lambda x.\, x$ could be $A \to A$, or $B \to B$, or $(A \to B) \to A \to B$, and the checker will not guess:`);
+    m("type: λx. x");
     sec("In Lean");
     md(r`The checker, as a function, and the proof that it is right: whatever type it returns, the term has that type by the rules. The engine's ‹type:› is the same checker, with the same theorem (‹check_sound›), which is why its steps are marked verified.`);
     lean(r`/-- The checker: the type, if the term has one. -/
@@ -3998,18 +4047,35 @@ theorem typeOf_sound : ∀ (t : Tm) (Γ : Ctx) (T : Ty), typeOf Γ t = some T �
     sec("Exercises");
     ex("type: f : A → B, g : B → C ⊢ λx:A. g (f x)", r`In the context $f : A \to B,\ g : B \to C$, what type does $\lambda x{:}A.\, g\ (f\ x)$ have?`, [r`$f\ x : B$, then $g$ takes it to $C$.`]);
     ex("type: λx:A→B→C. λy:A→B. λz:A. x z (y z)", r`What type does $\lambda x{:}A \to B \to C.\, \lambda y{:}A \to B.\, \lambda z{:}A.\, x\ z\ (y\ z)$ have? (It is $S$.)`, [r`The body has type $C$; put the three binders' types in front.`]);
+    ex("type: y : A ⊢ λx:A→B. x y", r`In the context $y : A$, the term $\lambda x{:}T.\, x\ y$ should give back a $B$. Choose $T$, and give the type of the whole term.`, [r`$x$ is applied to $y : A$ and must return a $B$.`, r`So $T = A \to B$, and the term has type $T \to B$.`], { hide: true });
     md(r`
 > [!summary]
-> A derivation types a term from its parts in a context. A term fails when a variable has no type, an argument has the wrong type, or a non-function is applied. The checker is sound, and types are unique.
+> A derivation is a certificate, checked rule by rule. A term has no type when a rule's condition fails: a variable with no type, a non-function applied, an argument of the wrong type; $\lambda x.\, x\ x$ fails for every choice of type. An inner binder hides an outer one. The checker is sound, and a term has at most one type in a context.
 `);
+    md(r`Every binder so far carried its type, and without them the checker refuses. Must every type be written, or can it be worked out from how a term uses its variables?`);
   });
 
-  add("03-inference.chalk", "Type inference", "Types without annotations: type variables, equations, unification and the occurs check.", ({ sec, md, m, ex, lean, lx }) => {
+  add("03-inference.chalk", "Type inference", "Types without annotations: unknown types as variables, the equations a term imposes, unification and the occurs check.", ({ sec, md, m, ex, lean, lx }) => {
     sec("Type inference");
     md(r`
 > [!goal]
-> Find the most general type of a term whose binders have no types, by setting up equations between types and solving them.
+> Find the most general type of a term whose binders have no types, by solving the equations its applications impose.
 `);
+    md(r`Without a type on its binder, $\lambda x.\, x$ has the type $A \to A$, and $B \to B$, and $(A \to B) \to A \to B$: no single answer, until we ask for the best one.`);
+    md(r`
+> [!try]
+> Find a type for $\lambda f.\, \lambda x.\, f\ x$ by hand. What were you forced to decide, and what could you leave open?
+`);
+    sec("Unknowns and equations");
+    md(r`Treat the unknown types like unknowns in algebra. Say $f : \tau_1$ and $x : \tau_2$, and call the type of $f\ x$ $\tau_3$. Only the application forces anything: $f\ x$ types when $f$ is a function from $x$'s type to the result's, $\tau_1 = \tau_2 \to \tau_3$. Put that in, and the term has type $(\tau_2 \to \tau_3) \to \tau_2 \to \tau_3$. Nothing constrains $\tau_2$ and $\tau_3$, so they stay variables, $\alpha$ and $\beta$:`);
+    m("infer: λf. λx. f x", { work: true });
+    md(r`Equations can meet. In $\lambda f.\, \lambda x.\, f\ (f\ x)$, $f$ is applied twice, and each application gives an equation for $f$'s type.`);
+    md(r`
+> [!try]
+> Predict the type: what does applying $f$ to its own result force?
+`);
+    m("infer: λf. λx. f (f x)", { step: 0 });
+    md(r`Two arrows are equal only when their arguments are equal and their results are, so $\tau_2 \to \tau_3 = \tau_3 \to \tau_4$ splits into $\tau_2 = \tau_3$ and $\tau_3 = \tau_4$: $f$ must return the type it takes. The answer, $(\alpha \to \alpha) \to \alpha \to \alpha$, is the type of the Church numeral $2$.`);
     md(r`
 > [!definition] Inference
 > 1. Give each binder without a type, and each application's result, a **type variable** $\tau_1, \tau_2, \ldots$.
@@ -4017,20 +4083,24 @@ theorem typeOf_sound : ∀ (t : Tm) (Γ : Ctx) (T : Ty), typeOf Γ t = some T �
 > 3. Solve the equations one at a time (**unification**): an equation $\tau = T$ puts $T$ for $\tau$ everywhere; two arrows are equal when their arguments and their results are.
 > 4. The variables left are named $\alpha, \beta, \ldots$: any types put for them give a type of the term.
 `);
-    m("infer: λf. λx. f x", { work: true });
-    m("infer: S", { work: true });
-    md(r`The result is the **principal type**: every other type of the term is an instance of it (Hindley). $K$ has type $A \to B \to A$, and also $(A \to A) \to B \to A \to A$:`);
+    md(r`$S$, three binders and three applications, goes the same way:`);
+    m("infer: S");
+    sec("The most general type");
+    md(r`The variables left over are a promise: any types put for them give a type of the term. $K$ comes out as $\alpha \to \beta \to \alpha$,`);
     m("infer: K");
+    md(r`so $A \to B \to A$ and $(A \to A) \to B \to A \to A$ are types of $K$ too: instances of it. Unification never commits to more than the equations force, so the type it finds is the **principal type**: every type of the term is an instance of it (Hindley, 1969). One answer covers them all.`);
     sec("The occurs check");
-    md(r`
-> [!mistake] Self-application
-> In $\lambda x.\, x\ x$, $x$ is applied to itself, so its type would satisfy $\tau = \tau \to \sigma$: a type containing itself. Unification refuses (the **occurs check**), and the term has no simple type.
-`);
+    md(r`Lesson 2 showed that $\lambda x.\, x\ x$ has no type by trying guesses. Inference finds it in one equation: $x : \tau_1$ applied to itself gives $\tau_1 = \tau_1 \to \tau_2$.`);
     m("infer: λx. x x");
-    md(r`Types given and types found mix: annotated binders keep their types, and the rest is inferred around them.`);
+    md(r`
+> [!mistake] Just substitute
+> Putting $\tau_1 \to \tau_2$ for $\tau_1$ never ends: $\tau_1 = (\tau_1 \to \tau_2) \to \tau_2 = ((\tau_1 \to \tau_2) \to \tau_2) \to \tau_2 = \cdots$. A variable cannot be solved by a type that contains it, so unification checks for that (the **occurs check**) and gives up. Allowing the infinite type instead would give $\Omega$ a type.
+`);
+    sec("Some types given");
+    md(r`Types given and types found mix: annotated binders keep their types, and the rest is inferred around them. A free variable gets a type variable too, and the answer says what it had to be.`);
     m("infer: λf:A→B. λx. f x");
     m("infer: f x");
-    md(r`Every inferred type is checked: the term, annotated with it, goes through the type checker, and the tree shown is that check.`);
+    md(r`Every inferred type is checked: the term, annotated with it, goes through the type checker of lesson 1, and the tree shown is that check.`);
     sec("In Lean");
     md(r`Lean infers too, by the same kind of unification: give it some types and it finds the rest.`);
     lean(r`#check fun (f : Nat → Bool) x => f x
@@ -4044,35 +4114,57 @@ theorem typeOf_sound : ∀ (t : Tm) (Γ : Ctx) (T : Ty), typeOf Γ t = some T �
     ex("infer: λx. λy. y", r`Infer the type of $\lambda x.\, \lambda y.\, y$.`, [r`Two arguments of unrelated types; it returns the second.`]);
     ex("infer: λf. λg. λx. g (f x)", r`Infer the type of composition, $\lambda f.\, \lambda g.\, \lambda x.\, g\ (f\ x)$.`, [r`$x : \alpha$, $f : \alpha \to \beta$, $g : \beta \to \gamma$.`]);
     ex("infer: λx. λf. f x", r`Infer the type of $\lambda x.\, \lambda f.\, f\ x$.`, [r`$f$ is applied to $x$.`]);
+    ex("infer: λx. λy. x (y x)", r`Infer the type of $\lambda x.\, \lambda y.\, x\ (y\ x)$, by writing its two equations and solving them.`, [r`Say $x : \tau_1$, $y : \tau_2$. Then $y\ x$ gives $\tau_2 = \tau_1 \to \tau_3$, and $x\ (y\ x)$ gives $\tau_1 = \tau_3 \to \tau_4$.`, r`Put the second into the first: $y : (\tau_3 \to \tau_4) \to \tau_3$.`]);
     md(r`
 > [!summary]
-> Inference gives unknown types variables, turns each application into an equation, and solves the equations by unification. The occurs check rejects a type that would contain itself. The answer is the most general type, and every other type is an instance of it.
+> Inference gives each unknown type a variable, turns each application into an equation, and solves the equations by unification. The occurs check rejects a type that would contain itself. The answer is the principal type: every other type of the term is an instance of it.
 `);
+    md(r`$\lambda x.\, x\ x$ has no simple type, so neither do $\Omega$ and $Y$, the terms that loop. Are they the only terms types rule out, and can a typed term ever run for ever?`);
   });
 
-  add("04-normalization.chalk", "What types rule out", "No Ω, no Y: typed terms always stop. The cost, and a typed language that cannot loop.", ({ sec, md, m, ex, lean, lx }) => {
+  add("04-normalization.chalk", "What types rule out", "Ω and Y fail to type, every typed term stops, and what that costs.", ({ sec, md, m, ex, lean, lx }) => {
     sec("What types rule out");
     md(r`
 > [!goal]
-> See which untyped terms have no simple type, know the theorem that every typed term has a normal form, and what that costs.
+> See $\Omega$ and $Y$ fail to type, see why every typed term reaches a normal form, and what that guarantee costs.
 `);
-    md(r`$\Omega$ and $Y$ are built on self-application, and the occurs check refuses both:`);
+    md(r`Lesson 1 opened with $\Omega$ looping. $Y$, which gives the untyped calculus its recursion, unfolds for as long as you let it:`);
+    m("normal 4: Y f");
+    md(r`
+> [!try]
+> Both are built on self-application. What will inference say about each?
+`);
     m("infer: omega");
     m("infer: Y");
+    md(r`The occurs check both times: inside $Y$, $\lambda x.\, f\ (x\ x)$ has the same $x\ x$.`);
+    sec("Every typed term stops");
+    md(r`Is that luck, or can no typed term loop? Watch what a β-step does to types. A redex $(\lambda x{:}A.\, M)\ N$ uses up a function of type $A \to B$. A redex the step creates is headed by a function of type $A$ or $B$: smaller than $A \to B$. New work appears only at smaller types, and types cannot shrink for ever. That is not yet a proof, since a step can also copy redexes already inside $N$; Tait's method turns the idea into one.`);
     md(r`
 > [!theorem] Strong normalization
 > In the simply typed λ-calculus every reduction sequence of a typed term is finite: every typed term has a normal form, and every strategy reaches it (Tait, 1967).
 `);
-    md(r`So the engine's step budget is never needed for a typed term. The price: no fixed-point combinator, so no unbounded recursion. The simply typed λ-calculus is not Turing complete, and real typed languages add recursion back as a primitive (‹fix›, ‹let rec›).`);
+    md(r`So a typed term never loops. It can still take a long time: the theorem says reduction ends, not that it ends soon, and a short typed term can have an enormous normal form.`);
+    sec("The price");
+    md(r`Every typed term stops, so no fixed-point combinator has a type, and the simply typed calculus has no unbounded recursion: it is not Turing complete. Typed languages add recursion back as a primitive (‹fix›, ‹let rec›), and give up termination with it.`);
+    md(r`Types also refuse some terms that would run fine. Give the identity to a function that uses its argument on an $a$ and on a $b$:`);
+    m("normal: (λf. pair (f a) (f b)) (λx. x)");
+    m("infer: a : A, b : B ⊢ (λf. pair (f a) (f b)) (λx. x)");
+    md(r`It reduces to the pair of $a$ and $b$, but a simply typed $f$ has one type, and the identity is needed at $A \to A$ and at $B \to B$. An identity written once for every type is lesson 7's polymorphism.`);
     sec("Typed numerals");
-    md(r`A Church numeral has type $(\alpha \to \alpha) \to \alpha \to \alpha$, and arithmetic is typed at those types:`);
+    md(r`Much of Church's arithmetic survives. A numeral has type $(\alpha \to \alpha) \to \alpha \to \alpha$, and multiplication is typed:`);
     m("infer: 3");
     m("infer: mul");
-    md(r`Not everything survives. Church's $\mathsf{and} = \lambda p.\, \lambda q.\, p\ q\ p$ passes $p$ to itself, at a second type:`);
+    md(r`‹mul›'s principal type is more general than numerals need: put $A \to A$ for each of $\alpha, \beta, \gamma$ and it becomes $N \to N \to N$, where $N = (A \to A) \to A \to A$ is the type of numerals at $A$.`);
+    md(r`Not all of it survives. Church's $\mathsf{and} = \lambda p.\, \lambda q.\, p\ q\ p$ passes $p$ to itself:`);
     m("infer: and");
-    md(r`A simple type cannot be used at two types. Polymorphism (lesson 7) can.`);
+    md(r`
+> [!try]
+> When $p$ is false, $p\ q\ p$ returns $p$, which is false. So what could stand in place of the last $p$? Predict whether the result has a type.
+`);
+    m("infer: λp. λq. p q false");
+    md(r`The same truth table, no self-application, and a type.`);
     sec("In Lean");
-    md(r`A small typed language: numbers, booleans, addition, a test for zero and ‹if›. Its evaluator is structurally recursive, so Lean accepts it as total: it always stops, the strong normalization of this language. A program can still be stuck: ‹1 + true› has no value.`);
+    md(r`A small typed language: numbers, booleans, addition, a test for zero and ‹if›. Its evaluator is structurally recursive, so Lean accepts it as total: it always stops. With no functions in the language, termination is that easy; for λ-terms it is the theorem above. A program can still be stuck: ‹1 + true› has no value, and the type checker refuses it before it runs.`);
     lean(r`inductive Expr where
   | num : Nat → Expr
   | tt : Expr
@@ -4125,10 +4217,12 @@ def evalE : Expr → Option Val
     sec("Exercises");
     ex("infer: λx. λy. x y y", r`Infer the type of $\lambda x.\, \lambda y.\, x\ y\ y$.`, [r`$x$ takes $y$ twice.`]);
     ex("infer: λf. f (λx. x)", r`Infer the type of $\lambda f.\, f\ (\lambda x.\, x)$.`, [r`$f$ is given the identity, of type $\alpha \to \alpha$.`]);
+    ex("infer: λp. λq. p true q", r`Church's $\mathsf{or} = \lambda p.\, \lambda q.\, p\ p\ q$ passes $p$ to itself too, and has no simple type. When $p$ is true, the $p$ it passes is true. Repair it the same way as ‹and›, and infer the type of the result.`, [r`Replace the middle $p$ by $\mathsf{true}$: $\lambda p.\, \lambda q.\, p\ \mathsf{true}\ q$.`, r`$\mathsf{true} : \alpha \to \beta \to \alpha$, and $p$ takes it and then $q$.`], { hide: true });
     md(r`
 > [!summary]
-> Self-application has no simple type, so neither $\Omega$ nor $Y$ does. Every typed term has a normal form; the cost is that the simply typed calculus cannot express unbounded recursion.
+> Self-application has no simple type, so neither $\Omega$ nor $Y$ does. Every typed term reaches a normal form (strong normalization): a β-step makes new work only at smaller types. The price: no unbounded recursion, and some harmless terms refused, since a simply typed function uses its argument at one type.
 `);
+    md(r`Look again at the arrow rules. From $B$, assuming $A$, conclude $A \to B$; from $A \to B$ and $A$, conclude $B$. Read $\to$ as "implies", and these are the rules for implication in logic. The next lesson asks whether that is a coincidence.`);
   });
 
   add("05-curry-howard.chalk", "Propositions as types", "A type is a proposition, a term of it a proof: the Curry–Howard correspondence.", ({ sec, md, m, ex, lean, lx }) => {
