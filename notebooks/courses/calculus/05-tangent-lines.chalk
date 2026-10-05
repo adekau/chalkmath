@@ -15,7 +15,7 @@
       "label": null
     },
     {
-      "src": "Without a calculator: what is $\\sqrt{4.1}$? You know $\\sqrt 4 = 2$, and $4.1$ is close to $4$. Zoomed in near $4$, the graph of $\\sqrt x$ looks like a line (lesson 1), so follow the line instead of the curve.",
+      "src": "Back on the real line, with one curve and one point. Without a calculator: what is $\\sqrt{4.1}$? You know $\\sqrt 4 = 2$, and $4.1$ is close to $4$. Zoomed in near $4$, the graph of $\\sqrt x$ looks like a line (lesson 1), so follow the line instead of the curve.",
       "type": "markdown",
       "showWork": false,
       "label": null

@@ -9,13 +9,49 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Build $\\cosh$ and $\\sinh$ out of $e^x$ and $e^{-x}$, see them walk along a hyperbola the way $\\cos$ and $\\sin$ walk round the circle, and read their derivatives off that picture.",
+      "src": "> [!goal]\n> Find the functions that walk the hyperbola $x^2 - y^2 = 1$ as $\\cos$ and $\\sin$ walk the circle, and read their derivatives off that picture.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "The engine reads `cosh`, `sinh` and `tanh` as their definitions in `exp`, so its answers come back in exponentials. That is the point of this lesson: everything about them is something about $e^x$.",
+      "src": "The circle $x^2 + y^2 = 1$ is walked by $(\\cos t, \\sin t)$. Flip one sign and $x^2 - y^2 = 1$ is a hyperbola. What walks that?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Factor the hyperbola",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Look again at how the circle was walked. Over $\\mathbb{C}$ its equation factors, $x^2 + y^2 = (x + iy)(x - iy)$, and the point $x + iy = e^{it}$ makes the other factor $x - iy = e^{-it}$, so the product is $1$. The hyperbola's equation factors with no $i$ at all: $x^2 - y^2 = (x + y)(x - y)$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> Invent it: copy the circle's move without the $i$, and set $x + y = e^t$. What must $x - y$ be for the product to be $1$? Solve the two equations for $x$ and $y$ before reading on.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "$x - y = e^{-t}$; adding and subtracting the two equations gives $x = \\frac{e^t + e^{-t}}{2}$ and $y = \\frac{e^t - e^{-t}}{2}$. Any positive number in place of $e^t$ would give a point of the right branch. $e^t$ is the circle's choice with the $i$ taken out, and the rest of the lesson shows what it buys: $t$ measures the same thing on both curves, and the derivatives come out as simply as $\\cos' = -\\sin$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Hyperbolic cosine and sine\n> $\\cosh x = \\dfrac{e^x + e^{-x}}{2}$, the average of $e^x$ and its mirror image $e^{-x}$; and $\\sinh x = \\dfrac{e^x - e^{-x}}{2}$, half their difference.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The engine reads `cosh`, `sinh` and `tanh` as these definitions in `exp`, so its answers come back in exponentials: everything about them is something about $e^x$.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -23,12 +59,6 @@
     {
       "src": "Even and odd parts of e^x",
       "type": "section",
-      "showWork": false,
-      "label": null
-    },
-    {
-      "src": "> [!definition] Hyperbolic cosine and sine\n> $\\cosh x = \\dfrac{e^x + e^{-x}}{2}$, the average of $e^x$ and its mirror image $e^{-x}$; and $\\sinh x = \\dfrac{e^x - e^{-x}}{2}$, half their difference.",
-      "type": "markdown",
       "showWork": false,
       "label": null
     },
@@ -65,7 +95,7 @@
       "label": null
     },
     {
-      "src": "$(\\cos t, \\sin t)$ stays on the circle because $\\cos^2 t + \\sin^2 t = 1$. Multiply out the definitions, and the hyperbolic pair satisfies the same equation with one sign changed:",
+      "src": "$(\\cos t, \\sin t)$ stays on the circle because $\\cos^2 t + \\sin^2 t = 1$. The hyperbolic pair was built to satisfy the same equation with one sign changed; multiplied out, the definitions confirm it:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -121,7 +151,13 @@
       "label": null
     },
     {
-      "src": "The circle's point $e^{it}$ has velocity $i e^{it}$: the radius turned a quarter, so $\\cos' = -\\sin$ and $\\sin' = \\cos$. Differentiate the hyperbola's point instead:",
+      "src": "The circle's point $e^{it}$ has velocity $i e^{it}$: the radius turned a quarter, so $\\cos' = -\\sin$ and $\\sin' = \\cos$. Differentiate the hyperbola's point instead.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> Predict first: differentiate $\\frac{e^x + e^{-x}}{2}$ term by term. Which function comes out, and with what sign? The cells check your answer by subtracting it.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -137,7 +173,7 @@
       "label": null
     },
     {
-      "src": "clock t from -1.2 to 0.6\nview -1.4, 2.8, -1.8, 2.4\nH = curve(cosh(s) + i*sinh(s), s, -1.7, 1.7) faint color 3\nK = line(0, 1 + i) dashed color 6\nP = point(cosh(t) + i*sinh(t)) thick color 3\nR = arrow(0, P) color 3\nM = arrow(0, sinh(t) + i*cosh(t)) dashed color 4\nVel = arrow(P, cosh(t) + sinh(t) + i*(sinh(t) + cosh(t))) thick color 4\n> show H, P, R | The point $(\\cosh t, \\sinh t)$ and its position arrow.\n> show Vel; play t to 0.6 in 4s | Its velocity (pink) is $(\\sinh t, \\cosh t)$. The circle's velocity is its radius turned a quarter; this one is never at right angles to the radius.\n> show K, M | It is the position with $x$ and $y$ swapped: its mirror image in the line $y = x$ (dashed, from $0$). Reflecting has no minus sign, and neither do $\\cosh' = \\sinh$ and $\\sinh' = \\cosh$.\n> play t to -0.9 in 4s | The velocity's tip runs along that line: it is at $(\\cosh t + \\sinh t)(1, 1) = e^t (1, 1)$.",
+      "src": "clock t from -1.2 to 0.6\nview -1.4, 2.8, -1.8, 2.4\nH = curve(cosh(s) + i*sinh(s), s, -1.7, 1.7) faint color 3\nK = line(0, 1 + i) dashed color 6\nP = point(cosh(t) + i*sinh(t)) thick color 3\nR = arrow(0, P) color 3\nM = arrow(0, sinh(t) + i*cosh(t)) dashed color 4\nVel = arrow(P, cosh(t) + sinh(t) + i*(sinh(t) + cosh(t))) thick color 4\n> show H, P, R | The point $(\\cosh t, \\sinh t)$ and its position arrow.\n> show Vel; play t to 0.6 in 4s | Its velocity (pink) is $(\\sinh t, \\cosh t)$. The circle's velocity is its radius turned a quarter; this one is at right angles to the radius only at the vertex, $t = 0$.\n> show K, M | It is the position with $x$ and $y$ swapped: its mirror image in the line $y = x$ (dashed, from $0$). Reflecting has no minus sign, and neither do $\\cosh' = \\sinh$ and $\\sinh' = \\cosh$.\n> play t to -0.9 in 4s | The velocity's tip runs along that line: it is at $(\\cosh t + \\sinh t)(1, 1) = e^t (1, 1)$.",
       "type": "scene",
       "showWork": false,
       "label": null
@@ -149,7 +185,7 @@
       "label": null
     },
     {
-      "src": "> [!intuition] cos is cosh at an imaginary argument\n> Put $it$ into the definition: $\\cosh(it) = \\frac{e^{it} + e^{-it}}{2}$, and Euler's formula turns that into $\\cos t$. The hyperbola and the circle are one curve, $x^2 \\mp y^2 = 1$, seen along the real and the imaginary axis.",
+      "src": "> [!intuition] cos is cosh at an imaginary argument\n> Put $it$ into the definition: $\\cosh(it) = \\frac{e^{it} + e^{-it}}{2}$, and Euler's formula turns that into $\\cos t$; likewise $\\sinh(it) = i \\sin t$. Put $x = \\cos t$ and $y = i \\sin t$ into the hyperbola's $x^2 - y^2 = 1$ and it becomes the circle's $\\cos^2 t + \\sin^2 t = 1$: the circle is the hyperbola with $y$ made imaginary.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -165,7 +201,7 @@
       "label": null
     },
     {
-      "src": "A chain hanging between two posts takes the shape of $\\cosh$, the **catenary**. Near the bottom it is almost the parabola $1 + \\frac{x^2}{2}$, and then it climbs away from it, exponentially:",
+      "src": "A chain hanging between two posts takes the shape of $\\cosh$, stretched to $a \\cosh(x/a)$ for some $a$: the **catenary**. Near the bottom $\\cosh x$ is almost the parabola $1 + \\frac{x^2}{2}$, and then it climbs away from it, exponentially:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -187,19 +223,21 @@
       "label": null
     },
     {
-      "src": "expand(cosh(x) + sinh(x))",
+      "src": "sinh(x)",
       "type": "exercise",
-      "prompt": "What is $\\cosh x + \\sinh x$? Give it as a single function.",
+      "prompt": "Invent it: $\\sin$ is the function with $f'' = -f$, $f(0) = 0$ and $f'(0) = 1$. Which function has $f'' = f$, $f(0) = 0$ and $f'(0) = 1$?",
       "hints": [
-        "Add the two definitions: the $e^{-x}$ terms cancel."
+        "Take the minus sign away: look among $\\cosh$ and $\\sinh$, whose derivatives have none.",
+        "$\\sinh 0 = 0$ and $\\sinh' 0 = \\cosh 0 = 1$."
       ],
+      "hideQuestion": true,
       "showWork": false,
       "label": null
     },
     {
       "src": "cosh(0)",
       "type": "exercise",
-      "prompt": "What is $\\cosh 0$? Where is the point $(\\cosh 0, \\sinh 0)$ on the hyperbola?",
+      "prompt": "What is $\\cosh 0$, the $x$-coordinate of the point $t = 0$ on the hyperbola?",
       "hints": [
         "$e^0 = 1$."
       ],
@@ -219,7 +257,7 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> $\\cosh$ and $\\sinh$ are the even and odd parts of $e^x$. The point $(\\cosh t, \\sinh t)$ walks the hyperbola $x^2 - y^2 = 1$ as $(\\cos t, \\sin t)$ walks the circle, with $t$ twice the area swept on both; its velocity is its mirror image, so $\\cosh' = \\sinh$ and $\\sinh' = \\cosh$; and at an imaginary argument the hyperbolic functions are the circular ones.",
+      "src": "> [!summary]\n> Factor $x^2 - y^2$ as the circle's equation factors over $\\mathbb{C}$, and $\\cosh$ and $\\sinh$ fall out: the even and odd parts of $e^x$. The point $(\\cosh t, \\sinh t)$ walks the hyperbola $x^2 - y^2 = 1$ as $(\\cos t, \\sin t)$ walks the circle, with $t$ twice the area swept on both; its velocity is its mirror image, so $\\cosh' = \\sinh$ and $\\sinh' = \\cosh$; and $\\cosh(it) = \\cos t$, $\\sinh(it) = i \\sin t$. Next, back on the real line: how well does a tangent line stand in for its curve, and what does the derivative of the derivative say about the curve's shape?",
       "type": "markdown",
       "showWork": false,
       "label": null

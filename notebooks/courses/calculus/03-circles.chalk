@@ -343,7 +343,7 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> Multiplying by $i$ turns a quarter, so a rate of $i$ times the position goes round a circle: $e^{it} = \\cos t + i\\sin t$. The derivatives of $\\cos$ and $\\sin$, the angle-sum formulas and $\\arctan$ as an angle all come from that walk. Next, back on the real line: the tangent line as a stand-in for a curve, and what the derivative of the derivative says about its shape.",
+      "src": "> [!summary]\n> Multiplying by $i$ turns a quarter, so a rate of $i$ times the position goes round a circle: $e^{it} = \\cos t + i\\sin t$. The derivatives of $\\cos$ and $\\sin$, the angle-sum formulas and $\\arctan$ as an angle all come from that walk. Now flip one sign: $x^2 - y^2 = 1$ is a hyperbola. What walks it the way $(\\cos t, \\sin t)$ walks the circle, and what does $t$ measure there, where it cannot be an angle?",
       "type": "markdown",
       "showWork": false,
       "label": null

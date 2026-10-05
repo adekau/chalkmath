@@ -3702,24 +3702,16 @@ P = point(0) color 1
 clock d from 0 to 0.5
 noaxes
 view -0.3, 2.3, -0.3, 2.3
-S1 = segment(0, 1.5) color 2
-S2 = segment(1.5, 1.5 + 1.5*i) color 2
-S3 = segment(1.5 + 1.5*i, 1.5*i) color 2
-S4 = segment(1.5*i, 0) color 2
+S = poly(0, 1.5, 1.5 + 1.5*i, 1.5*i) color 2
 LX = label(0.75 - 0.15*i, "x") color 2
-R1 = segment(1.5, 1.5 + d) color 1
-R2 = segment(1.5 + d, 1.5 + d + 1.5*i) color 1
-R3 = segment(1.5 + 1.5*i, 1.5 + d + 1.5*i) color 1
-T1 = segment(1.5*i, (1.5 + d)*i) color 1
-T2 = segment((1.5 + d)*i, 1.5 + (1.5 + d)*i) color 1
-T3 = segment(1.5 + 1.5*i, 1.5 + (1.5 + d)*i) color 1
-C1 = segment(1.5 + d + 1.5*i, 1.5 + d + (1.5 + d)*i) color 3
-C2 = segment(1.5 + (1.5 + d)*i, 1.5 + d + (1.5 + d)*i) color 3
+R = poly(1.5, 1.5 + d, 1.5 + d + 1.5*i, 1.5 + 1.5*i) color 1
+T = poly(1.5*i, 1.5 + 1.5*i, 1.5 + (1.5 + d)*i, (1.5 + d)*i) color 1
+C = poly(1.5 + 1.5*i, 1.5 + d + 1.5*i, 1.5 + d + (1.5 + d)*i, 1.5 + (1.5 + d)*i) color 3
 LR = label(1.5 + d + 0.75*i, "x\,dx") color 1
 LT = label(0.75 + (1.5 + d)*i, "x\,dx") color 1
 LC = label(1.5 + d + (1.5 + d)*i, "dx^2") color 3
-> show S1, S2, S3, S4, LX | A square of side $x$: its area is $x^2$.
-> show R1, R2, R3, T1, T2, T3, C1, C2, LR, LT, LC; play d to 0.5 in 2s | Lengthen the side by $dx$. The new area is two strips, $x\,dx$ each, and a corner, $dx^2$.
+> show S, LX | A square of side $x$: its area is $x^2$.
+> show R, T, C, LR, LT, LC; play d to 0.5 in 2s | Lengthen the side by $dx$. The new area is two strips, $x\,dx$ each, and a corner, $dx^2$.
 > play d to 0.04 in 4s | Make $dx$ small. The strips thin in proportion to $dx$; the corner, $dx$ times $dx$, vanishes much faster.
 `);
     md(r`The area grows by $2x\,dx + dx^2$. Divided by $dx$, that is $2x + dx$: the secant slope above, with $h$ called $dx$. As $dx$ shrinks the corner stops counting, and what is left is the two strips: $d(x^2) = 2x\,dx$. The $2$ in $2x$ is there because the square grows on two sides.`);
@@ -3758,25 +3750,17 @@ LC = label(1.5 + d + (1.5 + d)*i, "dx^2") color 3
 clock d from 0 to 0.5
 noaxes
 view -0.4, 3, -0.4, 2.1
-B1 = segment(0, 2) color 2
-B2 = segment(2, 2 + 1.2*i) color 2
-B3 = segment(2 + 1.2*i, 1.2*i) color 2
-B4 = segment(1.2*i, 0) color 2
+B = poly(0, 2, 2 + 1.2*i, 1.2*i) color 2
 LF = label(1 - 0.2*i, "f") color 2
 LG = label(-0.2 + 0.6*i, "g") color 2
-R1 = segment(2, 2 + d) color 1
-R2 = segment(2 + d, 2 + d + 1.2*i) color 1
-R3 = segment(2 + 1.2*i, 2 + d + 1.2*i) color 1
+R = poly(2, 2 + d, 2 + d + 1.2*i, 2 + 1.2*i) color 1
 LR = label(2 + d + 0.6*i, "g\,df") color 1
-T1 = segment(1.2*i, (1.2 + 0.6*d)*i) color 4
-T2 = segment((1.2 + 0.6*d)*i, 2 + (1.2 + 0.6*d)*i) color 4
-T3 = segment(2 + 1.2*i, 2 + (1.2 + 0.6*d)*i) color 4
+T = poly(1.2*i, 2 + 1.2*i, 2 + (1.2 + 0.6*d)*i, (1.2 + 0.6*d)*i) color 4
 LT = label(1 + (1.2 + 0.6*d)*i, "f\,dg") color 4
-C1 = segment(2 + d + 1.2*i, 2 + d + (1.2 + 0.6*d)*i) color 3
-C2 = segment(2 + (1.2 + 0.6*d)*i, 2 + d + (1.2 + 0.6*d)*i) color 3
+C = poly(2 + 1.2*i, 2 + d + 1.2*i, 2 + d + (1.2 + 0.6*d)*i, 2 + (1.2 + 0.6*d)*i) color 3
 LC = label(2 + d + (1.2 + 0.6*d)*i, "df\,dg") color 3
-> show B1, B2, B3, B4, LF, LG | A rectangle with sides $f$ and $g$: its area is the product $fg$.
-> show R1, R2, R3, LR, T1, T2, T3, LT, C1, C2, LC; play d to 0.5 in 2s | Nudge $x$: $f$ grows by $df$ and $g$ by $dg$. The new area is a strip $g\,df$, a strip $f\,dg$ and a corner $df\,dg$.
+> show B, LF, LG | A rectangle with sides $f$ and $g$: its area is the product $fg$.
+> show R, LR, T, LT, C, LC; play d to 0.5 in 2s | Nudge $x$: $f$ grows by $df$ and $g$ by $dg$. The new area is a strip $g\,df$, a strip $f\,dg$ and a corner $df\,dg$.
 > play d to 0.05 in 4s | Make the nudge small. The strips shrink in proportion to it; the corner, a product of two small changes, vanishes faster.
 `);
     md(r`
@@ -4039,24 +4023,32 @@ LP = label(P, "1 + iy") color 1
     ]);
     md(r`
 > [!summary]
-> Multiplying by $i$ turns a quarter, so a rate of $i$ times the position goes round a circle: $e^{it} = \cos t + i\sin t$. The derivatives of $\cos$ and $\sin$, the angle-sum formulas and $\arctan$ as an angle all come from that walk. Next, back on the real line: the tangent line as a stand-in for a curve, and what the derivative of the derivative says about its shape.
+> Multiplying by $i$ turns a quarter, so a rate of $i$ times the position goes round a circle: $e^{it} = \cos t + i\sin t$. The derivatives of $\cos$ and $\sin$, the angle-sum formulas and $\arctan$ as an angle all come from that walk. Now flip one sign: $x^2 - y^2 = 1$ is a hyperbola. What walks it the way $(\cos t, \sin t)$ walks the circle, and what does $t$ measure there, where it cannot be an angle?
 `);
   });
 
   // the sectors of the circle and the hyperbola, as polygons through points of the arc
   const arc = (pt, n = 12) => Array.from({ length: n + 1 }, (_, k) => pt(`${k}*t/${n}`)).join(", ");
-  add("04-hyperbolic.chalk", "Hyperbolic functions: the other circle", "cosh and sinh as the even and odd parts of e^x, the hyperbola they walk along as cos and sin walk the circle, the area that t measures on both, and derivatives with no minus sign.", ({ sec, md, m, ex, sc }) => {
+  add("04-hyperbolic.chalk", "Hyperbolic functions: the other circle", "cosh and sinh found by factoring the hyperbola as the circle factors over ℂ: the even and odd parts of e^x, the area that t measures on both curves, and derivatives with no minus sign.", ({ sec, md, m, ex, sc }) => {
     sec("Hyperbolic functions: the other circle");
     md(r`
 > [!goal]
-> Build $\cosh$ and $\sinh$ out of $e^x$ and $e^{-x}$, see them walk along a hyperbola the way $\cos$ and $\sin$ walk round the circle, and read their derivatives off that picture.
+> Find the functions that walk the hyperbola $x^2 - y^2 = 1$ as $\cos$ and $\sin$ walk the circle, and read their derivatives off that picture.
 `);
-    md(r`The engine reads ‹cosh›, ‹sinh› and ‹tanh› as their definitions in ‹exp›, so its answers come back in exponentials. That is the point of this lesson: everything about them is something about $e^x$.`);
-    sec("Even and odd parts of e^x");
+    md(r`The circle $x^2 + y^2 = 1$ is walked by $(\cos t, \sin t)$. Flip one sign and $x^2 - y^2 = 1$ is a hyperbola. What walks that?`);
+    sec("Factor the hyperbola");
+    md(r`Look again at how the circle was walked. Over $\mathbb{C}$ its equation factors, $x^2 + y^2 = (x + iy)(x - iy)$, and the point $x + iy = e^{it}$ makes the other factor $x - iy = e^{-it}$, so the product is $1$. The hyperbola's equation factors with no $i$ at all: $x^2 - y^2 = (x + y)(x - y)$.`);
+    md(r`
+> [!try]
+> Invent it: copy the circle's move without the $i$, and set $x + y = e^t$. What must $x - y$ be for the product to be $1$? Solve the two equations for $x$ and $y$ before reading on.
+`);
+    md(r`$x - y = e^{-t}$; adding and subtracting the two equations gives $x = \frac{e^t + e^{-t}}{2}$ and $y = \frac{e^t - e^{-t}}{2}$. Any positive number in place of $e^t$ would give a point of the right branch. $e^t$ is the circle's choice with the $i$ taken out, and the rest of the lesson shows what it buys: $t$ measures the same thing on both curves, and the derivatives come out as simply as $\cos' = -\sin$.`);
     md(r`
 > [!definition] Hyperbolic cosine and sine
 > $\cosh x = \dfrac{e^x + e^{-x}}{2}$, the average of $e^x$ and its mirror image $e^{-x}$; and $\sinh x = \dfrac{e^x - e^{-x}}{2}$, half their difference.
 `);
+    md(r`The engine reads ‹cosh›, ‹sinh› and ‹tanh› as these definitions in ‹exp›, so its answers come back in exponentials: everything about them is something about $e^x$.`);
+    sec("Even and odd parts of e^x");
     sc(r`
 clock t from -1.39 to 1.4
 view -2, 2, -2.2, 4.6
@@ -4082,7 +4074,7 @@ Sf = graph(sinh(x), x, -1.4, 1.4) thick color 4
     m("expand(cosh(x) - sinh(x))");
     m("cosh(-x) - cosh(x)");
     sec("The hyperbola");
-    md(r`$(\cos t, \sin t)$ stays on the circle because $\cos^2 t + \sin^2 t = 1$. Multiply out the definitions, and the hyperbolic pair satisfies the same equation with one sign changed:`);
+    md(r`$(\cos t, \sin t)$ stays on the circle because $\cos^2 t + \sin^2 t = 1$. The hyperbolic pair was built to satisfy the same equation with one sign changed; multiplied out, the definitions confirm it:`);
     m("expand(cosh(x)^2 - sinh(x)^2)");
     md(r`
 > [!theorem] The unit hyperbola
@@ -4117,7 +4109,11 @@ Ar = value(t/2, "\text{each shaded area} = ")
     md(r`For the circle it is $\cos^2 s + \sin^2 s$, which is $1$ too, the circle's own equation (the engine leaves it written that way):`);
     m("expand(cos(s)*diff(sin(s), s) - sin(s)*diff(cos(s), s))");
     sec("Derivatives with no minus sign");
-    md(r`The circle's point $e^{it}$ has velocity $i e^{it}$: the radius turned a quarter, so $\cos' = -\sin$ and $\sin' = \cos$. Differentiate the hyperbola's point instead:`);
+    md(r`The circle's point $e^{it}$ has velocity $i e^{it}$: the radius turned a quarter, so $\cos' = -\sin$ and $\sin' = \cos$. Differentiate the hyperbola's point instead.`);
+    md(r`
+> [!try]
+> Predict first: differentiate $\frac{e^x + e^{-x}}{2}$ term by term. Which function comes out, and with what sign? The cells check your answer by subtracting it.
+`);
     m("diff(cosh(x), x) - sinh(x)", { work: true });
     m("diff(sinh(x), x) - cosh(x)");
     sc(r`
@@ -4130,26 +4126,29 @@ R = arrow(0, P) color 3
 M = arrow(0, sinh(t) + i*cosh(t)) dashed color 4
 Vel = arrow(P, cosh(t) + sinh(t) + i*(sinh(t) + cosh(t))) thick color 4
 > show H, P, R | The point $(\cosh t, \sinh t)$ and its position arrow.
-> show Vel; play t to 0.6 in 4s | Its velocity (pink) is $(\sinh t, \cosh t)$. The circle's velocity is its radius turned a quarter; this one is never at right angles to the radius.
+> show Vel; play t to 0.6 in 4s | Its velocity (pink) is $(\sinh t, \cosh t)$. The circle's velocity is its radius turned a quarter; this one is at right angles to the radius only at the vertex, $t = 0$.
 > show K, M | It is the position with $x$ and $y$ swapped: its mirror image in the line $y = x$ (dashed, from $0$). Reflecting has no minus sign, and neither do $\cosh' = \sinh$ and $\sinh' = \cosh$.
 > play t to -0.9 in 4s | The velocity's tip runs along that line: it is at $(\cosh t + \sinh t)(1, 1) = e^t (1, 1)$.
 `);
     sec("The circle, turned by i");
     md(r`
 > [!intuition] cos is cosh at an imaginary argument
-> Put $it$ into the definition: $\cosh(it) = \frac{e^{it} + e^{-it}}{2}$, and Euler's formula turns that into $\cos t$. The hyperbola and the circle are one curve, $x^2 \mp y^2 = 1$, seen along the real and the imaginary axis.
+> Put $it$ into the definition: $\cosh(it) = \frac{e^{it} + e^{-it}}{2}$, and Euler's formula turns that into $\cos t$; likewise $\sinh(it) = i \sin t$. Put $x = \cos t$ and $y = i \sin t$ into the hyperbola's $x^2 - y^2 = 1$ and it becomes the circle's $\cos^2 t + \sin^2 t = 1$: the circle is the hyperbola with $y$ made imaginary.
 `);
     m("exptotrig(cosh(i*t))", { work: true });
     m("expand(exptotrig(sinh(i*t)))");
-    md(r`A chain hanging between two posts takes the shape of $\cosh$, the **catenary**. Near the bottom it is almost the parabola $1 + \frac{x^2}{2}$, and then it climbs away from it, exponentially:`);
+    md(r`A chain hanging between two posts takes the shape of $\cosh$, stretched to $a \cosh(x/a)$ for some $a$: the **catenary**. Near the bottom $\cosh x$ is almost the parabola $1 + \frac{x^2}{2}$, and then it climbs away from it, exponentially:`);
     m("plot([cosh(x), 1 + x^2/2], x, -3, 3)");
     ex("diff(cosh(3x), x)", r`Differentiate $\cosh(3x)$.`, [r`$\cosh' = \sinh$, with no minus sign.`, r`The chain rule: times the inner derivative, $3$.`]);
-    ex("expand(cosh(x) + sinh(x))", r`What is $\cosh x + \sinh x$? Give it as a single function.`, [r`Add the two definitions: the $e^{-x}$ terms cancel.`]);
-    ex("cosh(0)", r`What is $\cosh 0$? Where is the point $(\cosh 0, \sinh 0)$ on the hyperbola?`, [r`$e^0 = 1$.`], { hide: true });
+    ex("sinh(x)", r`Invent it: $\sin$ is the function with $f'' = -f$, $f(0) = 0$ and $f'(0) = 1$. Which function has $f'' = f$, $f(0) = 0$ and $f'(0) = 1$?`, [
+      r`Take the minus sign away: look among $\cosh$ and $\sinh$, whose derivatives have none.`,
+      r`$\sinh 0 = 0$ and $\sinh' 0 = \cosh 0 = 1$.`,
+    ], { hide: true });
+    ex("cosh(0)", r`What is $\cosh 0$, the $x$-coordinate of the point $t = 0$ on the hyperbola?`, [r`$e^0 = 1$.`], { hide: true });
     ex("expand(cosh(2x) - (cosh(x)^2 + sinh(x)^2))", r`Check the double-angle formula $\cosh 2x = \cosh^2 x + \sinh^2 x$: what is the difference of the two sides?`, [r`Write everything in $e^{x}$ and expand.`], { hide: true });
     md(r`
 > [!summary]
-> $\cosh$ and $\sinh$ are the even and odd parts of $e^x$. The point $(\cosh t, \sinh t)$ walks the hyperbola $x^2 - y^2 = 1$ as $(\cos t, \sin t)$ walks the circle, with $t$ twice the area swept on both; its velocity is its mirror image, so $\cosh' = \sinh$ and $\sinh' = \cosh$; and at an imaginary argument the hyperbolic functions are the circular ones.
+> Factor $x^2 - y^2$ as the circle's equation factors over $\mathbb{C}$, and $\cosh$ and $\sinh$ fall out: the even and odd parts of $e^x$. The point $(\cosh t, \sinh t)$ walks the hyperbola $x^2 - y^2 = 1$ as $(\cos t, \sin t)$ walks the circle, with $t$ twice the area swept on both; its velocity is its mirror image, so $\cosh' = \sinh$ and $\sinh' = \cosh$; and $\cosh(it) = \cos t$, $\sinh(it) = i \sin t$. Next, back on the real line: how well does a tangent line stand in for its curve, and what does the derivative of the derivative say about the curve's shape?
 `);
   });
 
@@ -4159,7 +4158,7 @@ Vel = arrow(P, cosh(t) + sinh(t) + i*(sinh(t) + cosh(t))) thick color 4
 > [!goal]
 > Use the tangent line as a stand-in for a curve near a point, see why it is the best straight line there, and read the curve's bending from the second derivative.
 `);
-    md(r`Without a calculator: what is $\sqrt{4.1}$? You know $\sqrt 4 = 2$, and $4.1$ is close to $4$. Zoomed in near $4$, the graph of $\sqrt x$ looks like a line (lesson 1), so follow the line instead of the curve.`);
+    md(r`Back on the real line, with one curve and one point. Without a calculator: what is $\sqrt{4.1}$? You know $\sqrt 4 = 2$, and $4.1$ is close to $4$. Zoomed in near $4$, the graph of $\sqrt x$ looks like a line (lesson 1), so follow the line instead of the curve.`);
     md(r`
 > [!try]
 > The slope of $\sqrt x = x^{1/2}$ at $4$ is $\frac12 \cdot 4^{-1/2} = \frac14$. Moving $0.1$ to the right, a line of that slope rises $0.1 \cdot \frac14$. Estimate $\sqrt{4.1}$ before the next cells do.
@@ -4298,15 +4297,21 @@ T = segment(a + i*(a^3 - 3*a) - 0.7*(1 + i*(3*a^2 - 3)), a + i*(a^3 - 3*a) + 0.7
   });
 
   add("07-definite-integrals.chalk", "Area and the fundamental theorem", "The area under a curve from rectangles, then exactly: the area so far grows at the rate of the curve's height, so it is an antiderivative.", ({ sec, md, m, ex, sc }) => {
-    // the right Riemann rectangles of x^2 on [0, 1] with n strips, as segments: a scene's script lines
+    // the right Riemann rectangles of x^2 on [0, 1] with n strips, filled: a scene's script lines
     const rects = (n, tag, color) => {
       const lines = [], names = [];
-      const seg = (name, a, b) => { lines.push(`${name} = segment(${a}, ${b}) color ${color}`); names.push(name); };
-      for (let j = 0; j <= n; j++) seg(`${tag}v${j}`, `${j}/${n}`, `${j}/${n} + ${Math.min(j + 1, n) ** 2}/${n * n}*i`);
-      for (let k = 1; k <= n; k++) seg(`${tag}t${k}`, `${k - 1}/${n} + ${k * k}/${n * n}*i`, `${k}/${n} + ${k * k}/${n * n}*i`);
+      for (let k = 1; k <= n; k++) {
+        const h = `${k * k}/${n * n}*i`;
+        lines.push(`${tag}${k} = poly(${k - 1}/${n}, ${k}/${n}, ${k}/${n} + ${h}, ${k - 1}/${n} + ${h}) color ${color}`);
+        names.push(`${tag}${k}`);
+      }
       return { lines: lines.join("\n"), names: names.join(", ") };
     };
-    const r5 = rects(5, "A", 1), r10 = rects(10, "B", 4);
+    // the region under x^2 from 0 to `to`, as a polygon through points of the curve
+    // the j-th arch of the sine wave, from j*pi to (j + 1)*pi, as a polygon through points of the curve
+    const arch = (j, n = 16) => Array.from({ length: n + 1 }, (_, k) => `pi*${j * n + k}/${n} + i*sin(pi*${j * n + k}/${n})`).join(", ");
+    const under = (to, n = 16) => `poly(0, ${Array.from({ length: n }, (_, k) => `${k + 1}*${to}/${n} + i*(${k + 1}*${to}/${n})^2`).join(", ")}, ${to})`;
+    const r5 = rects(5, "A", 1), r10 = rects(10, "B", 4), r20 = rects(20, "C", 5);
     sec("Area and the fundamental theorem");
     md(r`
 > [!goal]
@@ -4319,11 +4324,14 @@ T = segment(a + i*(a^3 - 3*a) - 0.7*(1 + i*(3*a^2 - 3)), a + i*(a^3 - 3*a) + 0.7
 clock t from 0 to 1
 view -0.1, 1.15, -0.1, 1.1
 F = graph(x^2, x, 0, 1) thick color 2
+U = ${under(1)} color 2
 ${r5.lines}
 ${r10.lines}
-> show F | The curve $y = x^2$ from $0$ to $1$.
+${r20.lines}
+> show F, U | The curve $y = x^2$ from $0$ to $1$, and the area under it: the number we want.
 > show ${r5.names} | Five strips of width $\\frac15$; the $k$-th rectangle is $(k/5)^2$ tall. Each one pokes above the curve, so together they are too big.
-> hide ${r5.names}; show ${r10.names} | Ten strips: the parts above the curve are thinner, and the total is closer.
+> hide ${r5.names}; show ${r10.names} | Ten strips: the slivers above the curve are thinner, and the total is closer.
+> hide ${r10.names}; show ${r20.names} | Twenty: the slivers thin again. Each doubling of the strips about halves what pokes out.
 `);
     md(r`Five rectangles of width $\frac15$ and heights $\left(\frac15\right)^2, \left(\frac25\right)^2, \dots, \left(\frac55\right)^2$. ‹sum(f, k, a, b)› adds $f$ for $k = a, a + 1, \dots, b$:`);
     m("sum(k^2, k, 1, 5)", { work: true });
@@ -4347,17 +4355,16 @@ clock X from 0.6 to 1.5
 view -0.1, 1.6, -0.15, 2.4
 F = graph(x^2, x, 0, 1.5) color 2
 LF = label(0.6 + 1.6*i, "f(x) = x^2") color 2
-E = segment(X, X + i*X^2) color 2
+U = ${under("X")} color 2
 A = graph(x^3/3, x, 0, X) thick color 1
 P = point(X + i*X^3/3) color 1
 LA = label(P, "A(x)") color 1
-S1 = segment(X + 0.1, X + 0.1 + i*X^2) color 3
-S2 = segment(X + i*X^2, X + 0.1 + i*X^2) color 3
-> show F, LF, E | The curve $y = x^2$, and the region under it from $0$ to $x$.
+S = poly(X, X + 0.1, X + 0.1 + i*X^2, X + i*X^2) color 3
+> show F, LF, U | The curve $y = x^2$, and the region under it from $0$ to $x$.
 > show A, P, LA; play X to 1.5 in 5s | Move $x$ and plot the area so far, $A(x)$, as it grows.
-> show S1, S2; play X to 1 in 3s | Push $x$ on by $dx$: the area gains a thin strip, of height $f(x)$ and width $dx$. So $dA \approx f(x)\,dx$: the slope of $A$ is $f$.
+> show S; play X to 1 in 3s | Push $x$ on by $dx$: the area gains a thin strip, of height $f(x)$ and width $dx$. So $dA \approx f(x)\,dx$: the slope of $A$ is $f$.
 `);
-    md(r`Push $x$ on by $dx$ and $A$ grows by a strip of height $f(x)$ and width $dx$, area about $f(x)\,dx$ (the sliver between the strip's top and the curve is smaller still, of the order of $dx^2$). So $dA \approx f(x)\,dx$: the slope of the area so far is the height of the curve, $A' = f$. The area so far is an antiderivative, and lesson 5 finds those.`);
+    md(r`Push $x$ on by $dx$ and $A$ grows by a strip of height $f(x)$ and width $dx$, area about $f(x)\,dx$ (the sliver between the strip's top and the curve is smaller still, of the order of $dx^2$). So $dA \approx f(x)\,dx$: the slope of the area so far is the height of the curve, $A' = f$. The area so far is an antiderivative, and lesson 6 finds those.`);
     md(r`For $f = x^2$: $A(x) = \frac{x^3}{3} + C$, and $A(0) = 0$, since there is no area yet, so $C = 0$ and the area up to $1$ is $\frac13$. Any antiderivative $F$ gives the same difference $F(1) - F(0)$: the $C$ cancels.`);
     md(r`
 > [!theorem] Fundamental theorem of calculus
@@ -4372,6 +4379,16 @@ S2 = segment(X + i*X^2, X + 0.1 + i*X^2) color 3
     md(r`
 > [!mistake]
 > Twice the interval is not twice the area. From $0$ to $2\pi$ the second arch lies below the axis, where $f < 0$: the strips $f(x)\,dx$ count as negative, and the two arches cancel. A definite integral is a *signed* area.
+`);
+    sc(r`
+view -0.3, 6.6, -1.3, 1.3
+G = graph(sin(x), x, 0, 2pi) thick color 2
+P = poly(${arch(0)}) color 1
+N = poly(${arch(1)}) color 4
+LP = label(pi/2 + 0.4*i, "+2") color 1
+LN = label(3*pi/2 - 0.5*i, "-2") color 4
+> show G, P, LP | From $0$ to $\pi$ the arch is above the axis: its strips $f(x)\,dx$ are positive, and it counts $+2$.
+> show N, LN | From $\pi$ to $2\pi$ it is below: its strips are negative, and it counts $-2$. Together, $0$.
 `);
     m("integrate(sin(x), x, 0, 2pi)");
     ex("integrate(x, x, 0, 2)", r`Evaluate $\displaystyle\int_0^2 x\,dx$. (Check it against the triangle it is the area of.)`, [r`An antiderivative is $\frac{x^2}{2}$; evaluate at $2$ and at $0$.`]);

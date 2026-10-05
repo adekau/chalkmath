@@ -300,7 +300,7 @@
         {
           "file": "04-hyperbolic.chalk",
           "title": "Hyperbolic functions: the other circle",
-          "blurb": "cosh and sinh as the even and odd parts of e^x, the hyperbola they walk along as cos and sin walk the circle, the area that t measures on both, and derivatives with no minus sign."
+          "blurb": "cosh and sinh found by factoring the hyperbola as the circle factors over ℂ: the even and odd parts of e^x, the area that t measures on both curves, and derivatives with no minus sign."
         },
         {
           "file": "05-tangent-lines.chalk",
