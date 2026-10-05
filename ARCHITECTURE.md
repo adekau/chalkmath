@@ -374,6 +374,16 @@ differential test with zero mismatches.
   `Congruence`, so the same fold applies. Every rule the pipeline runs without an assumption keeps the
   domain (`simpRulesSafe_soundD`, the parity, radical and square-root rules); `ln(b^p) = p ln b` for an
   even `p` did not, and is now `simp.function.assuming` ("Assuming $x > 0$").
+- **Division by zero is refused, not zero.** `Rat` (and `evalR`, `evalC`) make `0⁻¹ = 0`, so evaluating
+  `0^(-1)` by the arithmetic alone would answer `1/0 = 0`, `1/(y-y) = 0` and `N(1/0) = 0`, each with a
+  verified step. `simp.power` keeps the value the theorems are about (`powNumeric` still returns
+  `.num (p.zpow q)`, so `powerRules_soundR`, `powerRules_soundC` and `powNumeric_num` are untouched) and
+  sets the result's `error` when the base is zero and the exponent a negative integer; `normalizeT`
+  then refuses the cell ("Division by zero: 0^-1 is undefined"). It is the one verified rule that
+  refuses, and only on a term mathematics leaves undefined; `Def` already says `0^(-1)` is nowhere
+  defined, so the domain theorems have nothing to say about it. A notebook that needs a value at a
+  pole writes the case out (`llamas.chalk` defines its Fourier coefficient `c_0` separately and sums
+  over `k ≠ 0`).
 - **A cell is read over ℝ or over ℂ, and the rules know which.** A cell whose input mentions `i`, or
   whose real answer does (`sqrt(-1)`), is normalized over ℂ (`normCell`): the pipeline takes the
   reading as a parameter (`pipelineRulesWith norm real`) and turns off `simp.function.real`, the cases

@@ -529,9 +529,14 @@ def functionAssuming : Rule simpW where
 -- simp.power
 -- ---------------------------------------------------------------------------
 
-/-- `p ^ q` for numerals: integer exponents evaluate; `p^(1/n)` evaluates when `p` is a perfect `n`-th power. -/
+/-- `p ^ q` for numerals: integer exponents evaluate; `p^(1/n)` evaluates when `p` is a perfect `n`-th power.
+`0^(-n)` refuses the cell: mathematics leaves it undefined, and `Rat`'s `0⁻¹ = 0` would otherwise make
+`1/0` (and `1/(y-y)`, `N(1/0)`) answer `0`. The result's value is still `p.zpow q`, so the theorems about
+the rule's value (`powerRules_soundR`, `powNumeric_num`) are unchanged; only the `error` field refuses. -/
 def powNumeric (p q : Q) : Option RuleResult :=
-  if q.isInt then some ⟨.num (p.zpow q.val.num), s!"Evaluate the numeric power: {p.toText}^{q.toText} = {(p.zpow q.val.num).toText}.", none, none⟩
+  if q.isInt then
+    some ⟨.num (p.zpow q.val.num), s!"Evaluate the numeric power: {p.toText}^{q.toText} = {(p.zpow q.val.num).toText}.", none,
+      if p.isZero && q.isNeg then some s!"Division by zero: {p.toText}^{q.toText} is undefined" else none⟩
   else if q.val.num == 1 then
     match exactRoot p.val q.val.den with
     | some r =>
