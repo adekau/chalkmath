@@ -90,6 +90,7 @@ export const FUNCTIONS: FnDoc[] = [
       "The shape a hand derivation ends in: expand and collect, put the sum over a common denominator (Mathematica's `Together`), then take out the common factor.",
       "It is one presentation of the normal form, not a factorization into irreducibles: $x^2 - 1$ stays as it is.",
       "The combined form is checked before it is shown: it and the input, each times the common denominator, must normalize to the same term. So the two agree wherever the denominator is not zero, and the step says which denominator it assumes nonzero: `factor(1/x + 1)` is `(x + 1)/x`, assuming $x \\neq 0$ (at $x = 0$ the input is undefined).",
+      "`expand` undoes it only up to value: `expand(factor(e))` equals `e` wherever the denominator is not zero, but it keeps every term over that denominator, so it is usually written differently from `e`.",
     ],
     examples: [
       basic("factor(x^2 + 2*x)", "factor(a/x + b/y)"),
