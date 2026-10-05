@@ -210,7 +210,7 @@ Add one from Edit › Add Lean exercise or the ‹▾› between cells. Its edit
 ## Saving
 
 - **File › Save** (Ctrl/⌘+S) keeps the notebook in this browser's storage under its name; **Save as…** (Ctrl/⌘+Shift+S) gives it another. **Open…** lists the notebooks saved here.
-- Open tabs are kept as you work and come back when you reload the page, unsaved changes included; a tab with unsaved changes shows its name in italics, with a dot where its **×** is (a ‹*› after the name on a touch screen).
+- Open tabs are kept as you work and come back when you reload the page, unsaved changes included; a tab with unsaved changes shows its name in italics, with a dot where its **×** is (a ‹*› after the name on a touch screen). A lesson from the Courses tab is never unsaved: it keeps your work on its own ([Courses and examples](#doc:examples)).
 - Browser storage belongs to this browser on this machine. Clearing the site's data clears it, and a private window forgets it. To keep a notebook, or move it to another machine, export it.
 
 ## Files and links
@@ -407,7 +407,9 @@ The page writes only the storyboard; rendering the video is Manim's job, outside
 
 Notebooks that come with ChalkMath, grouped into **projects**: a **course** is a sequence of lessons that build on each other, with exercises the engine checks; a **collection** is notebooks to explore in any order. File › Courses and examples opens the **Courses** tab, which lists them all.
 
-A lesson opens in its own tab with a bar above it: the course it belongs to, where it is in it, how many of its exercises you have answered, and **‹ Previous** and **Next ›**. The Courses tab remembers, in this browser, which lessons you have opened and finished. Change anything in a lesson; File › Save keeps your copy.
+A lesson opens in its own tab with a bar above it: the course it belongs to, where it is in it, how many of its exercises you have answered, and **‹ Previous** and **Next ›**. The Courses tab remembers, in this browser, which lessons you have opened and finished.
+
+A lesson keeps your work in this browser as you go: your answers, the hints you have shown and anything you change come back when you open it again, from the Courses tab or with **‹ Previous** and **Next ›**, even after closing its tab. So a lesson's tab is never marked unsaved and there is nothing to save; File › Save says so, and **Save as…** makes a notebook of your own from it. **Start over**, in the bar once you have worked in a lesson, clears your work and opens it as it came. If a lesson has changed since you worked on it, it opens as it is now, with your answers to the exercises it still has carried over.
 
 In a course that builds one Lean development across its lessons, each lesson's Lean sees the Lean of the lessons before it: their Lean cells, and their Lean exercises with the author's proofs. So a definition from lesson 1, or a theorem proved there, can be used in lesson 3.
 `, { insert: "examples" }],
