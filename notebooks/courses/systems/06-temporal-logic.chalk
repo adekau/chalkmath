@@ -1,6 +1,6 @@
 {
   "chalk": 1,
-  "name": "05-temporal-logic.chalk",
+  "name": "06-temporal-logic.chalk",
   "cells": [
     {
       "src": "Temporal logic as fixed points",

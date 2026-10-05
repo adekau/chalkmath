@@ -1,6 +1,6 @@
 {
   "chalk": 1,
-  "name": "08-refinement.chalk",
+  "name": "09-refinement.chalk",
   "cells": [
     {
       "src": "Refinement",
@@ -15,7 +15,7 @@
       "label": null
     },
     {
-      "src": "A specification of lesson 7's server says only this: the request goes from not applied to applied, once. (`applied` has room for a 2 that the specification never reaches, so that an implementation that goes there can be compared with it.)",
+      "src": "A specification of lesson 8's server says only this: the request goes from not applied to applied, once. (`applied` has room for a 2 that the specification never reaches, so that an implementation that goes there can be compared with it.)",
       "type": "markdown",
       "showWork": false,
       "label": null
