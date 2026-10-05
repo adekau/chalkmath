@@ -339,7 +339,9 @@ theorem natRoot_pow {n x a : ℕ} (hn : n ≠ 0) (h : natRoot n x = some a) : a 
     simp only [Option.some.injEq] at h
     rw [h] at hx ⊢
     rcases (show a = 0 ∨ a = 1 by omega) with rfl | rfl <;> simp [hn]
-  · exact natRootGo_pow n x _ _ _ _ h
+  · split at h
+    · simp at h
+    · exact natRootGo_pow n x _ _ _ _ h
 
 theorem exactRoot_spec {r : ℚ} {n : ℕ} {a : ℚ} (hn : n ≠ 0) (h : exactRoot r n = some a) :
     0 ≤ a ∧ a ^ n = r := by
