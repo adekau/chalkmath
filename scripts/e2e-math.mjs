@@ -15,7 +15,7 @@
 // derivative and a column of a plot and a calculation dragged, against the engine's own frames), a
 // scene (sampled by the engine, scrubbed to its end, its equation stepped, % untouched), the tab
 // bar with more notebooks open than fit, and a course's lesson opened from the Courses tab, answered,
-// and followed to the next. Each is held to the engine's own answers through a client of the test's.
+// followed to the next, closed without a question and opened again with its answer kept. Each is held to the engine's own answers through a client of the test's.
 // Chromium: playwright-core's own, or the executable named by CHROMIUM. The engine: MATHENGINE, or
 // engine/.lake/build/bin/mathengine.
 import { chromium } from "playwright-core";
@@ -753,6 +753,26 @@ async function features() {
   await page.locator(".lessonbar .lbcourse").click();
   await page.locator(".crslesson").first().locator(".crsstate", { hasText: `1 of ${total} exercises` }).waitFor({ timeout: 10000 });
   console.log(`✓ course: ${course.title}, lesson 1 answered (1 of ${total}), lesson 2 opened, progress remembered`);
+  // a lesson is never unsaved: it closes without asking, and opens again as it was left
+  const lessonTab = page.locator(`.tabbar .tab[title^="${course.lessons[0].file} — a lesson"]`);
+  assert.equal(await lessonTab.count(), 1, "the answered lesson has its tab");
+  assert.equal(await lessonTab.evaluate((t) => t.classList.contains("dirty")), false, "an answered lesson is not marked unsaved");
+  let asked = false;
+  const onDialog = (d) => { asked = true; void d.dismiss(); };
+  page.on("dialog", onDialog);
+  await lessonTab.hover();   // a tab in the background shows its × only when pointed at
+  await lessonTab.locator(".x").click();
+  page.off("dialog", onDialog);
+  assert.equal(asked, false, "closing a lesson does not ask to save it");
+  assert.equal(await lessonTab.count(), 0, "the lesson's tab closed");
+  await page.locator(".crslesson").first().locator(".crsgo").click();
+  await page.locator(".lessonbar .lbwhere", { hasText: `Lesson 1 of ${course.lessons.length}` }).waitFor({ timeout: 30000 });
+  await page.locator(".cell.exercise").first().locator(".xc-verdict.right").waitFor({ timeout: 30000 });
+  assert.equal(await page.locator(".cell.exercise").first().locator(".xc-in").inputValue(), expected.rendered.text, "the answer comes back");
+  await page.locator(".lessonbar .lbstate", { hasText: `1 of ${total} exercises` }).waitFor({ timeout: 10000 });
+  await page.locator(".lessonbar .lbkept").waitFor({ timeout: 10000 });
+  await page.locator(".lessonbar .lbbtn", { hasText: "Start over" }).waitFor({ timeout: 10000 });
+  console.log("✓ lesson: never unsaved, closed without asking, reopened with its answer kept");
 }
 
 let failed = false;
