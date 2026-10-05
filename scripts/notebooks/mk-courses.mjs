@@ -3825,15 +3825,23 @@ course("calculus", "Calculus: derivatives and integrals",
 `);
     md(r`A slope is rise over run, between two points. On a straight line any two points give the same answer; on the graph of $y = x^2$ they do not, since it curves. Yet a speedometer shows one speed at one instant, and a curve looks steeper at some points than at others. What can "the slope at a point" mean, when a slope needs two points?`);
     sec("Zoom in");
-    md(r`Magnify the graph of $y = x^2$ around the point $(1, 1)$, which stays where the axes cross:`);
+    md(r`Magnify the graph of $y = x^2$ around the point $(1, 1)$, held in the middle of the picture. The axes and the graph paper are magnified with it:`);
     sc(r`
-clock z from 1 to 40
+clock s from 0 to ln(40)
+let z = exp(s)
 view -1, 1, -2.2, 2.2
-T = graph(2*x, x, -1, 1) dashed color 6
-G = graph(z*((1 + x/z)^2 - 1), x, -1, 1) thick color 1
+noaxes
+U = grid([z, 0; 0, z]) faint color 2
+F = grid([z/10, 0; 0, z/10]) faint color 2
+H = grid([z/100, 0; 0, z/100]) faint color 2
+X = line(-z*i, 1 - z*i) color 6
+Y = line(-z, -z + i) color 6
+G = graph(z*((1 + x/z)^2 - 1), x, -5, 5) thick color 1
+T = graph(2*x, x, -5, 5) dashed color 6
 P = point(0) color 1
-> show G, P | The curve $y = x^2$ near the point $(1, 1)$, placed where the axes cross.
-> play z to 40 in 6s | Zoom in, up to $40$ times. The bend straightens out.
+> show U, F, X, Y, G, P | The curve $y = x^2$ and its axes, on graph paper ruled in units and tenths. The point $(1, 1)$ is in the middle.
+> play s to ln(10) in 4s | Zoom in $10$ times, paper and all. The axes run off, the tenths spread out to where the units were, and the bend straightens out.
+> show H; play s to ln(40) in 3s | On to $40$ times, with hundredths now in sight. The curve is all but straight.
 > show T | What is left looks like a line, of slope $2$: the slope of $x^2$ at $1$.
 `);
     md(r`Close up, a smooth curve looks straight, and a straight line has a slope. That slope is the slope at the point. To compute it without a microscope, take two points of the graph and let them close in.`);
