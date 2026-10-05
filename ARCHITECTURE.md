@@ -549,8 +549,13 @@ language server answers LSP for Lean cells.
   would make it a download; that is not built.
 - **A thread's stack.** Every one of Lean's threads is a web worker, and Chromium gives a worker 500 KB
   of stack (Lean's threads have 8 MB natively), of which Lean compiled to wasm needs far more per level of
-  recursion than native Lean: some 20 KB per statement of a `do` block, so one of about 25 `let x ← …`
-  lines, or 20 once V8 has optimized the code (optimized frames are larger here), runs out. The thread's
+  recursion than native Lean: some 20 KB per statement of a `do` block, so one of about 24 `let x ← …`
+  lines runs out. Not the size of any one frame (a function on that path has some 14 locals) but their
+  number, about 110 wasm frames per statement, each larger in V8 than natively. The server is linked
+  without Binaryen's optimizer (`-O1`): with it (`-O3`), V8's frames once it has optimized the code were
+  larger still, and the limit fell to 17 lines, against 23 without (where the lessons stand, with V8's
+  optimized code: 12 of 59 overflowed, against 4). Compiling the C with less inlining, or optimizing
+  without Binaryen's inlining, did no better on both counts. The thread's
   "Maximum call stack size exceeded" stops the whole server, as a stack overflow stops a native worker;
   the page says Lean stopped, why, and at which line of which cell (`lean-cells.ts`). Two things are
   done about it. Lean's language server fast-forwards over the commands an edit leaves unchanged with
