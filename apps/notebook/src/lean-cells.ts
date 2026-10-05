@@ -43,7 +43,13 @@ export function infoview(): HTMLElement {
 }
 
 export const leanState = () => state;
+/** Why Lean is not running, as a sentence the notebook shows. */
 export const leanFailure = () => failure;
+/** The cell, and the line in it, Lean was checking when its server stopped (null: none, or not known). */
+let stoppedAt: { id: string; line: number } | null = null;
+export const leanStoppedAt = () => stoppedAt;
+/** The first line (1-based) of the document Lean is still checking, from its `$/lean/fileProgress`. */
+let checkingLine: number | null = null;
 
 /** Where Lean is in loading, while it loads (null once it has checked the notebook, or before it starts):
  *  the editor, then Lean's download (reported by its worker, packages/engine-host/src/worker-lean-server.ts),
@@ -67,6 +73,11 @@ let hooks: LeanHooks | null = null;
 let dark = true;
 
 const setState = (s: LeanState, why = "") => { state = s; failure = why; hooks?.onState(); };
+const notStarted = (why: string) => setState("failed", `Lean did not start: ${why}`);
+/** A browser gives each of its threads a small stack (Chromium: 500 KB to a worker, against the 8 MB Lean's
+ *  threads have natively), and Lean compiled to wasm needs more of it per level of recursion than native
+ *  Lean: Lean that elaborates deep enough runs out of it, and the thread's error stops the whole server. */
+const OUT_OF_STACK = "it ran out of stack. A browser gives Lean far less stack than it has natively, and something here nests too deeply for it (a long do block, say: smaller definitions help)";
 
 /** Browsers that honor `Cross-Origin-Embedder-Policy: credentialless`, which leaves images from other
  *  sites loading (require-corp, Safari's only option, blocks those that do not opt in). */
@@ -76,9 +87,9 @@ const credentialless = () => "chrome" in window || /Firefox\//.test(navigator.us
  *  (a browser without service workers, or one that refuses them, would reload forever). */
 async function isolate(): Promise<void> {
   try { localStorage.setItem(PREF, "on"); } catch { /* private mode */ }
-  if (!("serviceWorker" in navigator)) { setState("failed", "this browser has no service workers, which Lean cells need to isolate the page"); return; }
+  if (!("serviceWorker" in navigator)) { notStarted("this browser has no service workers, which Lean cells need to isolate the page"); return; }
   if (sessionStorage.getItem("chalkmath.isolating")) {
-    setState("failed", "the page could not be cross-origin isolated (its service worker was not allowed to add the headers)");
+    notStarted("the page could not be cross-origin isolated (its service worker was not allowed to add the headers)");
     return;
   }
   setState("isolating");
@@ -103,7 +114,7 @@ export function ensureLean(h: LeanHooks): Promise<LeanNotebook | null> {
   if (starting) return starting;
   dark = h.dark;
   if (typeof __LEAN_BUILT__ === "boolean" && !__LEAN_BUILT__) {
-    setState("failed", "this copy of ChalkMath was built without Lean itself (npm run lean-wasm, then npm run bundle)");
+    notStarted("this copy of ChalkMath was built without Lean itself (npm run lean-wasm, then npm run bundle)");
     return Promise.resolve(null);
   }
   if (!self.crossOriginIsolated) { void isolate(); return Promise.resolve(null); }
@@ -127,10 +138,21 @@ export function ensureLean(h: LeanHooks): Promise<LeanNotebook | null> {
       worker.addEventListener("message", (e: MessageEvent<{ method?: string; params?: { textDocument?: { version?: number }; processing?: unknown[] } }>) => {
         if (e.data?.method !== "$/lean/fileProgress") return;
         checkedVersion = e.data.params?.textDocument?.version ?? -1;
-        busy = (e.data.params?.processing?.length ?? 0) > 0;
+        const left = (e.data.params?.processing ?? []) as { range: { start: { line: number } } }[];
+        busy = left.length > 0;
+        checkingLine = busy ? Math.min(...left.map((p) => p.range.start.line)) + 1 : null;
         hooks?.onChecked?.();
       });
-      worker.addEventListener("error", (e) => { setProgress(null); setState("failed", e.message || "Lean's server stopped"); });
+      worker.addEventListener("error", (e) => {
+        if (state === "failed") return;   // the dying worker reports more than once
+        // before Lean has its library loaded, it did not start; after, it stopped while checking
+        const ran = state === "ready" && (progress === null || progress.phase === "checking");
+        setProgress(null);
+        if (!ran) { notStarted(e.message || "its server stopped"); return; }
+        stoppedAt = checkingLine === null ? null : session?.cellAt(checkingLine) ?? null;
+        const why = /Maximum call stack size exceeded|too much recursion/.test(e.message) ? OUT_OF_STACK : e.message || "its server stopped";
+        setState("failed", `Lean stopped: ${why}. Reload the page to start it again.`);
+      });
       const started = dark;
       session = await mod.startLean({ worker, infoview: infoview(), dark: started,
         onSource: (id, src) => hooks?.onSource(id, src), onMessages: (id, ms) => hooks?.onMessages(id, ms) });
@@ -142,7 +164,7 @@ export function ensureLean(h: LeanHooks): Promise<LeanNotebook | null> {
       return session;
     } catch (e) {
       progress = null;
-      setState("failed", e instanceof Error ? e.message : String(e));
+      notStarted(e instanceof Error ? e.message : String(e));
       return null;
     }
   })();

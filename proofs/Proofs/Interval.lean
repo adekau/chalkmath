@@ -175,12 +175,40 @@ theorem expSum_cast (y : ℚ) : ∀ n : ℕ,
   | 0 => by simp [expSum]
   | n + 1 => by rw [expSum, Finset.sum_range_succ, ← expSum_cast y n, fact_eq]; push_cast; ring
 
-theorem remainder_cast (y : ℚ) (n : ℕ) :
-    ((remainder y n : ℚ) : ℝ) = |(y : ℝ)| ^ n * ((n.succ : ℝ) / (n.factorial * n : ℝ)) := by
-  unfold remainder
-  push_cast
-  rw [rabs_cast, fact_eq]
-  ring
+theorem le_coarseUp (x : ℚ) : x ≤ coarseUp x := by
+  unfold coarseUp; have := floorTo_le ((Nat.log2 x.num.natAbs : ℤ) - (Nat.log2 x.den : ℤ) - 32) (-x); linarith
+
+/-- The remainder computed is at least Taylor's: `|y|` is rounded up before the power. -/
+theorem remainder_ge (y : ℚ) (n : ℕ) :
+    |(y : ℝ)| ^ n * ((n.succ : ℝ) / (n.factorial * n : ℝ)) ≤ ((remainder y n : ℚ) : ℝ) := by
+  have h1 : |(y : ℝ)| ≤ ((coarseUp (rabs y) : ℚ) : ℝ) := by
+    rw [← rabs_cast]; exact_mod_cast le_coarseUp _
+  have hp : |(y : ℝ)| ^ n ≤ ((coarseUp (rabs y) : ℚ) : ℝ) ^ n := pow_le_pow_left₀ (abs_nonneg _) h1 n
+  have hq : (0 : ℝ) ≤ (n.succ : ℝ) / (n.factorial * n : ℝ) := by positivity
+  calc |(y : ℝ)| ^ n * ((n.succ : ℝ) / (n.factorial * n : ℝ))
+      ≤ ((coarseUp (rabs y) : ℚ) : ℝ) ^ n * ((n.succ : ℝ) / (n.factorial * n : ℝ)) :=
+        mul_le_mul_of_nonneg_right hp hq
+    _ = ((remainder y n : ℚ) : ℝ) := by unfold remainder; push_cast; rw [fact_eq]; ring
+
+/-- The interval Taylor sum holds the exact one, and the next term. -/
+theorem expSumI_mem (y : ℚ) : ∀ n : ℕ,
+    Mem (expSumI y n).1 ((expSum y n : ℚ) : ℝ) ∧ Mem (expSumI y n).2 ((y : ℝ) ^ n / (n.factorial : ℝ))
+  | 0 => by
+    simp only [expSumI]
+    exact ⟨point_mem' (by simp [expSum]), point_mem' (by simp)⟩
+  | n + 1 => by
+    obtain ⟨h1, h2⟩ := expSumI_mem y n
+    have hs : ((expSum y (n + 1) : ℚ) : ℝ) = (expSum y n : ℝ) + (y : ℝ) ^ n / (n.factorial : ℝ) := by
+      rw [expSum, fact_eq]; push_cast; ring
+    have ht : (y : ℝ) ^ (n + 1) / ((n + 1).factorial : ℝ) =
+        (y : ℝ) ^ n / (n.factorial : ℝ) * ((y / ((n + 1 : ℕ) : ℚ) : ℚ) : ℝ) := by
+      have hf : (n.factorial : ℝ) ≠ 0 := by positivity
+      have hn : (n : ℝ) + 1 ≠ 0 := by positivity
+      rw [Nat.factorial_succ]; push_cast; field_simp; ring
+    simp only [expSumI]
+    refine ⟨?_, ?_⟩
+    · rw [hs]; exact add_mem h1 h2
+    · rw [ht]; exact mul_mem h2 (point_mem _)
 
 theorem two_pow_cast (k : ℕ) : ((((2 ^ k : ℕ) : ℚ)) : ℝ) = (2 : ℝ) ^ k := by push_cast; ring
 
@@ -202,9 +230,10 @@ theorem expPoint_mem {q : ℚ} {a : I} (h : expPoint q = some a) : Mem a (Real.e
     set k := halvings q
     set y : ℚ := q / ((2 ^ k : ℕ) : ℚ) with hydef
     have hy' : |(y : ℝ)| ≤ 1 := by rw [← rabs_cast]; exact_mod_cast hy
-    have hb := Real.exp_bound hy' (n := terms) (by decide)
-    rw [← expSum_cast, ← remainder_cast] at hb
-    have base : Mem (round ⟨expSum y terms - remainder y terms, expSum y terms + remainder y terms⟩) (Real.exp y) := by
+    have hb := le_trans (Real.exp_bound hy' (n := terms) (by decide)) (remainder_ge y terms)
+    rw [← expSum_cast] at hb
+    obtain ⟨hs1, hs2⟩ := (expSumI_mem y terms).1
+    have base : Mem (round ⟨(expSumI y terms).1.lo - remainder y terms, (expSumI y terms).1.hi + remainder y terms⟩) (Real.exp y) := by
       apply round_mem
       rw [abs_le] at hb
       constructor <;> push_cast <;> linarith [hb.1, hb.2]
@@ -214,8 +243,24 @@ theorem expPoint_mem {q : ℚ} {a : I} (h : expPoint q = some a) : Mem a (Real.e
     rwa [hq] at this
   · cases h
 
+/-- Reusing `f x` for `f y` when `y = x` gives `f y`. -/
+theorem again_eq {f : ℚ → Option I} {x y : ℚ} {fx : I} (h : f x = some fx) : again f x y fx = f y := by
+  unfold again; split
+  · rename_i e; subst e; exact h.symm
+  · rfl
+
+/-- So an interval function that reuses its lower end's value is the one that computes both. -/
+theorem bind_again {f : ℚ → Option I} {x y : ℚ} {k : I → I → Option I} :
+    (f x >>= fun l => again f x y l >>= k l) = (f x >>= fun l => f y >>= k l) := by
+  cases h : f x with
+  | none => rfl
+  | some l =>
+    show again f x y l >>= k l = f y >>= k l
+    rw [again_eq h]
+
 theorem expI_mem {a b : I} {x : ℝ} (ha : Mem a x) (h : expI a = some b) : Mem b (Real.exp x) := by
   unfold expI at h
+  rw [bind_again] at h
   cases hl : expPoint a.lo with
   | none => simp [hl] at h
   | some l =>
@@ -252,15 +297,49 @@ theorem trigSum_cast (y : ℚ) : ∀ n : ℕ,
     · simp [h, show n % 2 = 0 by omega, Complex.I_sq]; ring
     · simp [h, show n % 2 = 1 by omega, i3]; ring
 
+/-- The interval sums of `exp(iy)`'s parts hold the exact ones, and the next term's size. -/
+theorem trigSumI_mem (y : ℚ) : ∀ n : ℕ,
+    Mem (trigSumI y n).1 ((cosSum y n : ℚ) : ℝ) ∧ Mem (trigSumI y n).2.1 ((sinSum y n : ℚ) : ℝ) ∧
+      Mem (trigSumI y n).2.2 ((y : ℝ) ^ n / (n.factorial : ℝ))
+  | 0 => by
+    simp only [trigSumI]
+    exact ⟨point_mem' (by simp [cosSum]), point_mem' (by simp [sinSum]), point_mem' (by simp)⟩
+  | n + 1 => by
+    obtain ⟨hc, hs, ht⟩ := trigSumI_mem y n
+    have ht' : (y : ℝ) ^ (n + 1) / ((n + 1).factorial : ℝ) =
+        (y : ℝ) ^ n / (n.factorial : ℝ) * ((y / ((n + 1 : ℕ) : ℚ) : ℚ) : ℝ) := by
+      have hf : (n.factorial : ℝ) ≠ 0 := by positivity
+      have hn : (n : ℝ) + 1 ≠ 0 := by positivity
+      rw [Nat.factorial_succ]; push_cast; field_simp; ring
+    have hcos : ((cosSum y (n + 1) : ℚ) : ℝ) = (cosSum y n : ℝ) +
+        (if n % 2 = 0 then (if n % 4 = 0 then (y : ℝ) ^ n / (n.factorial : ℝ) else -((y : ℝ) ^ n / (n.factorial : ℝ))) else 0) := by
+      rw [cosSum, fact_eq]; split_ifs <;> push_cast <;> ring
+    have hsin : ((sinSum y (n + 1) : ℚ) : ℝ) = (sinSum y n : ℝ) +
+        (if n % 2 = 1 then (if n % 4 = 1 then (y : ℝ) ^ n / (n.factorial : ℝ) else -((y : ℝ) ^ n / (n.factorial : ℝ))) else 0) := by
+      rw [sinSum, fact_eq]; split_ifs <;> push_cast <;> ring
+    simp only [trigSumI]
+    refine ⟨?_, ?_, ?_⟩
+    · rw [hcos]
+      split_ifs
+      · exact add_mem hc ht
+      · exact add_mem hc (neg_mem ht)
+      · simpa using hc
+    · rw [hsin]
+      split_ifs
+      · exact add_mem hs ht
+      · exact add_mem hs (neg_mem ht)
+      · simpa using hs
+    · rw [ht']; exact mul_mem ht (point_mem _)
+
 theorem trig_bound (y : ℚ) (hy : |(y : ℝ)| ≤ 1) :
     |Real.cos y - cosSum y terms| ≤ remainder y terms ∧ |Real.sin y - sinSum y terms| ≤ remainder y terms := by
   have hn : ‖((y : ℝ) : ℂ) * Complex.I‖ ≤ 1 := by
     rw [norm_mul, Complex.norm_I, mul_one, Complex.norm_real, Real.norm_eq_abs]; exact hy
   have hb := Complex.exp_bound hn (n := terms) (by decide)
   rw [norm_mul, Complex.norm_I, mul_one, Complex.norm_real, Real.norm_eq_abs] at hb
-  have hr : |(y : ℝ)| ^ terms * ((terms.succ : ℝ) * (terms.factorial * terms : ℝ)⁻¹) = remainder y terms := by
-    rw [remainder_cast]; ring
-  rw [hr] at hb
+  have hr : |(y : ℝ)| ^ terms * ((terms.succ : ℝ) * (terms.factorial * terms : ℝ)⁻¹) ≤ remainder y terms := by
+    rw [← div_eq_mul_inv]; exact remainder_ge y terms
+  replace hb := le_trans hb hr
   obtain ⟨h1, h2⟩ := trigSum_cast y terms
   constructor
   · rw [← Complex.exp_ofReal_mul_I_re, ← h1, ← Complex.sub_re]
@@ -294,9 +373,10 @@ theorem sinCosPoint_mem {q : ℚ} {s c : I} (h : sinCosPoint q = some (s, c)) :
     have hy' : |(y : ℝ)| ≤ 1 := by rw [← rabs_cast]; exact_mod_cast hy
     obtain ⟨hcb, hsb⟩ := trig_bound y hy'
     rw [abs_le] at hcb hsb
-    have bs : Mem (round ⟨sinSum y terms - remainder y terms, sinSum y terms + remainder y terms⟩) (Real.sin y) := by
+    obtain ⟨⟨hc1, hc2⟩, ⟨hs1, hs2⟩, -⟩ := trigSumI_mem y terms
+    have bs : Mem (round ⟨(trigSumI y terms).2.1.lo - remainder y terms, (trigSumI y terms).2.1.hi + remainder y terms⟩) (Real.sin y) := by
       apply round_mem; constructor <;> push_cast <;> linarith [hsb.1, hsb.2]
-    have bc : Mem (round ⟨cosSum y terms - remainder y terms, cosSum y terms + remainder y terms⟩) (Real.cos y) := by
+    have bc : Mem (round ⟨(trigSumI y terms).1.lo - remainder y terms, (trigSumI y terms).1.hi + remainder y terms⟩) (Real.cos y) := by
       apply round_mem; constructor <;> push_cast <;> linarith [hcb.1, hcb.2]
     have := dbl_mem k _ _ _ bs bc
     have hq : (y : ℝ) * 2 ^ k = q := by
@@ -360,6 +440,7 @@ theorem lnPoint_mem {q : ℚ} {b : I} (h : lnPoint q = some b) : Mem b (Real.log
 theorem lnI_mem {a b : I} {x : ℝ} (ha : Mem a x) (hpos : 0 < a.lo) (h : lnI a = some b) :
     Mem b (Real.log x) := by
   unfold lnI at h
+  rw [bind_again] at h
   cases hl : lnPoint a.lo with
   | none => simp [hl] at h
   | some l =>
@@ -467,6 +548,7 @@ theorem atanPoint_mem {q : ℚ} {b : I} (h : atanPoint q = some b) : Mem b (Real
 
 theorem atanI_mem {a b : I} {x : ℝ} (ha : Mem a x) (h : atanI a = some b) : Mem b (Real.arctan x) := by
   unfold atanI at h
+  rw [bind_again] at h
   cases hl : atanPoint a.lo with
   | none => simp [hl] at h
   | some l =>
@@ -512,7 +594,17 @@ theorem powI_mem {b e c : I} {x v : ℝ} (hb : Mem b x) (he : Mem e v) (h : powI
       rw [this, zpow_neg, zpow_natCast]
       exact inv_mem (npow_mem hb _) h
   · split at h
-    · rename_i _ hpos
+    · -- `x^(1/2)` is `√x`
+      rename_i _ hhalf
+      obtain ⟨h1, h2⟩ := hhalf
+      have hv : v = 1 / 2 := by
+        obtain ⟨he1, he2⟩ := he
+        rw [h1] at he1; rw [h2] at he2; push_cast at he1 he2; linarith
+      subst hv
+      rw [← Real.sqrt_eq_rpow]
+      exact sqrtI_mem hb h
+    split at h
+    · rename_i _ _ hpos
       have hp : (0 : ℝ) < b.lo := by exact_mod_cast hpos
       have hx : 0 < x := lt_of_lt_of_le hp hb.1
       rw [Real.rpow_def_of_pos hx, mul_comm]

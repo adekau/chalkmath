@@ -103,6 +103,15 @@ function host() {
     return index.map(([p, size]) => { const d = buf.subarray(off, off + size); off += size; return [p, d]; });
   }
 
+  // An error on one of Lean's threads ends the server. Emscripten rethrows the thread's error event as it is,
+  // which reaches the page as "[object ErrorEvent]": rethrow what it says instead (a stack overflow, mostly).
+  self.addEventListener("error", (e) => {
+    if (!(e.error instanceof ErrorEvent)) return;
+    e.preventDefault();
+    const message = e.error.message.replace(/^Uncaught /, "");
+    setTimeout(() => { throw new Error(message); });
+  });
+
   const early: LspMessage[] = [];
   let receive = (m: LspMessage) => { early.push(m); };
   self.onmessage = (ev: MessageEvent<LspMessage>) => receive(ev.data);
