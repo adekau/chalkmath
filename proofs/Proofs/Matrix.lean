@@ -964,28 +964,29 @@ theorem matPow_value {ρ : EnvR} {n : ℕ} (hn : 0 < n) :
 
 /-! ### The exact path: a matrix of numerals, powered over ℚ -/
 
-/-- A matrix of rationals, read as a real `n × n` matrix. -/
-def ratM (n : ℕ) (m : List (List ℚ)) : Matrix (Fin n) (Fin n) ℝ := toM n n fun i j => (ratEntry m i j : ℝ)
+/-- A matrix of numbers, read as a real `n × n` matrix (the approximate flags are a printing hint
+and have no value). -/
+def ratM (n : ℕ) (m : List (List Q)) : Matrix (Fin n) (Fin n) ℝ := toM n n fun i j => ((ratEntry m i j).val : ℝ)
 
-theorem ratEntry_grid (n : ℕ) (f : ℕ → ℕ → ℚ) {i j : ℕ} (hi : i < n) (hj : j < n) :
+theorem ratEntry_grid (n : ℕ) (f : ℕ → ℕ → Q) {i j : ℕ} (hi : i < n) (hj : j < n) :
     ratEntry ((List.range n).map fun i => (List.range n).map fun j => f i j) i j = f i j := by
   simp [ratEntry, List.getD_eq_getElem?_getD, hi, hj]
 
-theorem ratM_mul (n : ℕ) (a b : List (List ℚ)) : ratM n (ratMul n a b) = ratM n a * ratM n b := by
+theorem ratM_mul (n : ℕ) (a b : List (List Q)) : ratM n (ratMul n a b) = ratM n a * ratM n b := by
   ext i j
   rw [Matrix.mul_apply]
   simp only [ratM, toM_apply, ratMul, ratEntry_grid n _ i.isLt j.isLt, Rat.cast_list_sum, List.map_map]
-  have := sum_range_list n fun k => (ratEntry a i k : ℝ) * ratEntry b k j
-  rw [Fin.sum_univ_eq_sum_range (fun k => (ratEntry a i k : ℝ) * ratEntry b k j) n, ← this]
+  have := sum_range_list n fun k => ((ratEntry a i k).val : ℝ) * (ratEntry b k j).val
+  rw [Fin.sum_univ_eq_sum_range (fun k => ((ratEntry a i k).val : ℝ) * (ratEntry b k j).val) n, ← this]
   congr 1; apply List.map_congr_left; intro k _; simp
 
 theorem ratM_id (n : ℕ) : ratM n (ratId n) = 1 := by
   ext i j
   simp only [ratM, toM_apply, ratId, ratEntry_grid n _ i.isLt j.isLt, Matrix.one_apply, Fin.ext_iff]
-  split_ifs <;> simp
+  split_ifs <;> simp [Q.one, Q.zero, Q.ofInt]
 
 /-- **`ratPow` is the power**, by the same repeated squaring as `matPow_value`. -/
-theorem ratM_pow (n : ℕ) : ∀ (k : ℕ) (a : List (List ℚ)), ratM n (ratPow n a k) = ratM n a ^ k := by
+theorem ratM_pow (n : ℕ) : ∀ (k : ℕ) (a : List (List Q)), ratM n (ratPow n a k) = ratM n a ^ k := by
   intro k
   induction k using Nat.strong_induction_on with
   | _ k ih =>
@@ -998,23 +999,22 @@ theorem ratM_pow (n : ℕ) : ∀ (k : ℕ) (a : List (List ℚ)), ratM n (ratPow
     · rw [ratM_mul, ih (k / 2) (by omega), ratM_mul, ← sq, ← pow_mul, ← pow_succ',
         show 2 * (k / 2) + 1 = k by omega]
 
-theorem ratEntry_numVal (rows : List (List Expr)) (i j : ℕ) :
-    ratEntry (rows.map (·.map numVal)) i j = numVal (entry rows i j) := by
+theorem ratEntry_numQ (rows : List (List Expr)) (i j : ℕ) :
+    ratEntry (rows.map (·.map numQ)) i j = numQ (entry rows i j) := by
   simp only [ratEntry, entry, List.getD_eq_getElem?_getD, List.getElem?_map]
   cases rows[i]? with
-  | none => simp [numVal, Expr.zero, Q.zero, Q.ofInt]
+  | none => simp [numQ, Expr.zero]
   | some row =>
     simp only [Option.map_some, Option.getD_some, List.getElem?_map]
-    cases row[j]? <;> simp [numVal, Expr.zero, Q.zero, Q.ofInt]
+    cases row[j]? <;> simp [numQ, Expr.zero]
 
-/-- What `asRatRows` reads: every entry is a numeral, and the rationals are their values. -/
-theorem asRatRows_some {rows : List (List Expr)} {rs : List (List ℚ)} {approx : Bool}
-    (h : asRatRows rows = some (rs, approx)) :
-    rs = rows.map (·.map numVal) ∧ ∀ row ∈ rows, ∀ e ∈ row, ∃ q, e = .num q := by
-  unfold asRatRows at h
+/-- What `asNumRows` reads: every entry is a numeral, and the numbers are theirs. -/
+theorem asNumRows_some {rows : List (List Expr)} {qs : List (List Q)} (h : asNumRows rows = some qs) :
+    qs = rows.map (·.map numQ) ∧ ∀ row ∈ rows, ∀ e ∈ row, ∃ q, e = .num q := by
+  unfold asNumRows at h
   split_ifs at h with hall
-  simp only [Option.some.injEq, Prod.mk.injEq] at h
-  refine ⟨h.1.symm, fun row hrow e he => ?_⟩
+  simp only [Option.some.injEq] at h
+  refine ⟨h.symm, fun row hrow e he => ?_⟩
   simp only [List.all_eq_true] at hall
   have := hall row hrow e he
   cases e <;> first | exact ⟨_, rfl⟩ | simp at this
@@ -1075,9 +1075,9 @@ theorem laPow_sound (ρ : EnvR) {e : Expr} {res : RuleResult} (h : laPow.apply e
           have hk2 : k ≠ 1 := by simpa using hk1'
           split at hb
           · -- every entry a numeral: the power over ℚ
-            rename_i rs approx hrat
+            rename_i rs hrat
             cases hb
-            obtain ⟨hrs, hnum⟩ := asRatRows_some hrat
+            obtain ⟨hrs, hnum⟩ := asNumRows_some hrat
             have hM : ratM c rs = litM ρ rows c := by
               ext i j
               have hi : (i : ℕ) < rows.length := hlen ▸ i.isLt
@@ -1086,9 +1086,9 @@ theorem laPow_sound (ρ : EnvR) {e : Expr} {res : RuleResult} (h : laPow.apply e
                 rw [entry, getD_of_lt _ _ hi, getD_of_lt _ _ (by rw [hrow]; exact j.isLt)]
                 exact List.getElem_mem _
               obtain ⟨q, hq⟩ := hnum _ (List.getElem_mem hi) _ hmem
-              simp only [ratM, litM, toM_apply, hrs, ratEntry_numVal, entV, hq, evalV_num, numVal, scalOf]
-            rw [ratLit, evalV_grid (E := fun i j => .num (Q.ofRat (ratEntry (ratPow c rs k) i j) approx))
-              (fun i j => (ratEntry (ratPow c rs k) i j : ℝ)) hc hc (fun i j _ _ => evalV_num ρ _), hkk]
+              simp only [ratM, litM, toM_apply, hrs, ratEntry_numQ, entV, hq, evalV_num, numQ, scalOf]
+            rw [ratLit, evalV_grid (E := fun i j => .num (ratEntry (ratPow c rs k) i j))
+              (fun i j => ((ratEntry (ratPow c rs k) i j).val : ℝ)) hc hc (fun i j _ _ => evalV_num ρ _), hkk]
             congr 1; apply mk_congr; intro i j hi hj
             rw [toM_mk_eq, show toM c c (entV ρ rows) = ratM c rs from hM.symm, ← ratM_pow, ratM, ofM_apply _ hi hj,
               toM_apply]

@@ -36,6 +36,8 @@ const CASES = [
   // a power by repeated squaring, exact over ℚ: written out as M·M^99 it would never finish
   { src: "[1, 1; 1, 0]^100", text: "[573147844013817084101, 354224848179261915075; 354224848179261915075, 218922995834555169026]", step: "Matrix power" },
   { src: "[1, x; 0, 1]^6", text: "[1, 6*x; 0, 1]", step: "Matrix power" },
+  // a decimal makes approximate only the entries it reaches, as in M * M
+  { src: "[0.5, 0; 0, 1/3]^2", text: "[0.25, 0; 0, 1/9]", step: "Matrix power" },
   { src: "[1,2;3,4]^0", error: "a matrix can only be raised to a positive integer power" },
   { src: "[1, 2] ./ [3, 10]", text: "[1/3, 1/5]", step: "Entrywise division" },
   { src: "N(sin(10^30))", text: "-0.0901169019121381", step: "Numerical value" },
