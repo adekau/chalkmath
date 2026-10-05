@@ -1087,10 +1087,11 @@ theorem laPow_sound (ρ : EnvR) {e : Expr} {res : RuleResult} (h : laPow.apply e
                 exact List.getElem_mem _
               obtain ⟨q, hq⟩ := hnum _ (List.getElem_mem hi) _ hmem
               simp only [ratM, litM, toM_apply, hrs, ratEntry_numVal, entV, hq, evalV_num, numVal, scalOf]
-            rw [ratLit, evalV_grid (fun i j => (ratEntry (ratPow c rs k) i j : ℝ)) hc hc
-              (fun i j _ _ => evalV_num _), hkk]
+            rw [ratLit, evalV_grid (E := fun i j => .num (Q.ofRat (ratEntry (ratPow c rs k) i j) approx))
+              (fun i j => (ratEntry (ratPow c rs k) i j : ℝ)) hc hc (fun i j _ _ => evalV_num ρ _), hkk]
             congr 1; apply mk_congr; intro i j hi hj
-            rw [toM_mk_eq, ← hM, ← ratM_pow, ratM, ofM_apply _ hi hj, toM_apply]
+            rw [toM_mk_eq, show toM c c (entV ρ rows) = ratM c rs from hM.symm, ← ratM_pow, ratM, ofM_apply _ hi hj,
+              toM_apply]
           · cases hb
             have hsq : SqLit ρ c rows (litM ρ rows c) :=
               ⟨hdims, hne, hlen ▸ hrect, fun i j hi hj => by rw [hent' i j hi hj, ofM_apply _ hi hj]; rfl⟩
