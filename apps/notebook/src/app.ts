@@ -7235,8 +7235,13 @@ const USER_NAMES = new Set<string>();
 /** Commands whose argument at `arg` is a variable bound over the call: `diff(f, x)`, `plot(f, x, …)`. */
 const BINDERS: Record<string, number> = { diff: 1, integrate: 1, plot: 1, epicycles: 1, sum: 1, subst: 1, manipulate: 1 };
 const BUILTIN_FN = new Set(["sin", "cos", "tan", "sec", "csc", "cot", "arcsin", "arccos", "arctan", "exp", "ln", "log", "sqrt", "abs", "conj", "re", "im", "arg", "sign", "det", "rref", "transpose", "dot", "norm", "solve",
-  "total", "mean", "variance", "stdev", "min", "max", "median"]);
-const COMMANDS = new Set(["diff", "integrate", "plot", "manipulate", "epicycles", "dft", "import", "samplePoints", "matrix", "dimensions", "sum", "exptotrig", "expand", "factor", "simplify", "N", "subst", "poset", "map", "monotone", "lfp", "gfp", "fixpoints", "hasse", "join", "meet", "sup", "inf", "upper", "lower", "top", "bottom", "maximal", "minimal", "lattice", "le", "divisors", "subsets", "chain"]);
+  "total", "mean", "variance", "stdev", "min", "max", "median", "prime", "even", "odd"]);
+/** Every command a cell can call: each reference page's (`reference.ts`), so a new command is
+ *  highlighted with nothing more to list, and the other worlds' (`taut`, `system`, …). */
+const COMMANDS = new Set([
+  ...FUNCTIONS.filter((f) => !f.notation && /^[A-Za-z]\w*$/.test(f.name) && !BUILTIN_FN.has(f.name)).map((f) => f.name),
+  ...WORLD_FNS.filter((n) => !BUILTIN_FN.has(n)), "sup", "inf",
+]);
 const CONSTANTS = new Set(["pi", "π", "e", "ℯ", "i", "phi", "φ", "All"]);
 
 type Tok = { kind: "id" | "num" | "op" | "ws" | "kw" | "asset" | "str"; text: string; start: number };
