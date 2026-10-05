@@ -1,5 +1,12 @@
-4	rref([1, 2, 5; 3, 4, 6])	= [1, 0, -4; 0, 1, 9/2]
-7	rref([2, 1, -1, 8; -3, -1, 2, -11; -2, 1, 2, -3])	= [1, 0, 0, 2; 0, 1, 0, 3; 0, 0, 1, -1]
-9	subst(subst(subst(2x + y - z, x, 2), y, 3), z, -1)	= 8
-10	rref([1, 1, 3; 1, -1, 1])	= [1, 0, 2; 0, 1, 1]
-11	rref([2, 4, 6; 1, 3, 4])	= [1, 0, 1; 0, 1, 1]
+4	[1, 2; 3, 4]*[x; y]	= [x + 2*y; 3*x + 4*y]
+8	rref([1, 2, 5; 3, 4, 6])	= [1, 0, -4; 0, 1, 9/2]
+10	[1, 2; 3, 4]*[-4; 9/2]	= [5; 6]
+15	rref([2, 1, -1, 8; -3, -1, 2, -11; -2, 1, 2, -3])	= [1, 0, 0, 2; 0, 1, 0, 3; 0, 0, 1, -1]
+17	[2, 1, -1; -3, -1, 2; -2, 1, 2]*[2; 3; -1]	= [8; -11; -3]
+20	clock t from 0 to 1\nview -3, 6, -2, 8\nG1 = curve(-2*(1 + 2*t*i) + s*(i + t*(2 + 3*i)), s, -3, 3) faint color 6\nG2 = curve(-(1 + 2*t*i) + s*(i + t*(2 + 3*i)), s, -3, 3) faint color 6\nG3 = curve(1 + 2*t*i + s*(i + t*(2 + 3*i)), s, -3, 3) faint color 6\nG4 = curve(2*(1 + 2*t*i) + s*(i + t*(2 + 3*i)), s, -3, 3) faint color 6\nH1 = curve(s*(1 + 2*t*i) - 2*(i + t*(2 + 3*i)), s, -3, 3) faint color 6\nH2 = curve(s*(1 + 2*t*i) - (i + t*(2 + 3*i)), s, -3, 3) faint color 6\nH3 = curve(s*(1 + 2*t*i) + i + t*(2 + 3*i), s, -3, 3) faint color 6\nH4 = curve(s*(1 + 2*t*i) + 2*(i + t*(2 + 3*i)), s, -3, 3) faint color 6\nI = arrow(0, 1 + 2*t*i) thick color 2\nJ = arrow(0, i + t*(2 + 3*i)) thick color 3\nP1 = point(3*(1 + 2*t*i)) color 1\nP2 = point(1 + 2*t*i + i + t*(2 + 3*i)) color 1\nP3 = point(-(1 + 2*t*i) + 2*(i + t*(2 + 3*i))) color 1\nT = point(3 + 7i) color 4\nLT = label(T, "(3, 7)") color 4\n> wait 1s | The grid, $\\hat{\\imath}$ (blue) and $\\hat{\\jmath}$ (green), and three points: $(3, 0)$, $(1, 1)$ and $(-1, 2)$.\n> play t to 1 in 4s | Apply the matrix: $\\hat{\\imath}$ goes to $(1, 2)$, $\\hat{\\jmath}$ to $(2, 4)$, and the whole plane is squashed onto the line $y = 2x$. All three points land on $(3, 6)$.\n> show T, LT | Nothing lands on $(3, 7)$, off the line.	scene: 15 objects, 3 beats, 22.7 s
+22	rref([1, 2, 3; 2, 4, 6])	= [1, 2, 3; 0, 0, 0]
+24	rref([1, 2, 3; 2, 4, 7])	= [1, 2, 0; 0, 0, 1]
+26	rref([1, 1, 3; 1, -1, 1])	= [1, 0, 2; 0, 1, 1]
+27	rref([2, 4, 6; 1, 3, 4])	= [1, 0, 1; 0, 1, 1]
+28	rref([3, 1, 5; 1, 2, 5])	= [1, 0, 1; 0, 1, 2]
+29	rref([1, -1, 2; -2, 2, 1])	= [1, -1, 0; 0, 0, 1]

@@ -3143,142 +3143,455 @@ LP = label(P, "1 + iy") color 1
 
 // ---------------------------------------------------------------------------------------------------
 course("linear-algebra", "Linear algebra: vectors, matrices and systems",
-  "Vectors and the dot product, matrix arithmetic, solving systems by row reduction with verified row operations, and determinants.",
+  "Vectors as arrows and as lists, matrices as moves of the plane, solving systems by elimination with verified row operations, and the determinant as the factor by which area scales.",
   "Linear algebra", (add) => {
 
-  add("01-vectors.chalk", "Vectors and the dot product", "Adding and scaling vectors, lengths, and the dot product that measures angles.", ({ sec, md, m, ex }) => {
-    sec("Vectors and the dot product");
+  add("01-vectors.chalk", "Vectors: arrows, lists and the dot product", "Adding arrows tip to tail, stretching them, reaching every point with two of them, length, and the dot product as a shadow.", ({ sec, md, m, ex, sc }) => {
+    sec("Vectors: arrows, lists and the dot product");
     md(r`
 > [!goal]
-> Add and scale vectors, find lengths, and use the dot product to tell when two vectors are perpendicular.
+> Add and stretch vectors, as arrows and as lists; reach any point by combining two of them; and see why multiplying entries and adding measures how far two vectors point the same way.
 `);
-    md(r`A vector is a list of numbers in brackets, ‹[1, 2, 3]›. Vectors add and scale entry by entry.`);
-    m("let u = [1, 2, 3]");
-    m("let v = [4, -1, 2]");
-    m("u + v", { work: true });
-    m("2u");
-    sec("The dot product");
-    md(r`
-> [!definition] Dot product and length
-> $u \cdot v = \sum_i u_i v_i$, and the length of $v$ is $\lVert v \rVert = \sqrt{v \cdot v}$.
+    md(r`Walk 3 steps east and 1 north, then 1 east and 2 north. Where are you? Each walk is an arrow, a **vector**: a length and a direction, wherever it starts. So the question is how to add two arrows.`);
+    sc(r`
+clock t from 0 to 1
+view -0.5, 5, -0.5, 3.6
+U = arrow(0, 3 + i) thick color 2
+LU = label(3 + i, "u") color 2
+V = arrow(0, 1 + 2i) thick color 3
+LV = label(1 + 2i, "v") color 3
+W = arrow(t*(3 + i), t*(3 + i) + 1 + 2i) color 3
+S = arrow(0, 4 + 3i) thick color 1
+LS = label(4 + 3i, "u + v") color 1
+> show U, LU, V, LV | Two walks: $u$, three east and one north, and $v$, one east and two north.
+> show W; play t to 1 in 2s | Do one, then the other: slide $v$ so that it starts where $u$ ends.
+> show S, LS | The sum $u + v$ is where you end up, tip to tail: $(4, 3)$. The east steps add, $3 + 1$, and the north steps add, $1 + 2$.
 `);
-    m("dot(u, v)", { step: 0 });
-    m("norm([3, 4])", { work: true });
-    m("norm(u)");
-    md(r`
-> [!theorem] Angle
-> $u \cdot v = \lVert u \rVert\, \lVert v \rVert \cos\theta$, where $\theta$ is the angle between them. So $u \cdot v = 0$ exactly when $u$ and $v$ are perpendicular.
+    md(r`So an arrow from $0$ is recorded by where its tip lands, a list of numbers in brackets, ‹[3, 1]›, and adding arrows tip to tail is adding lists entry by entry. Arrow or list, it is one object seen two ways: the arrow to think with, the list to compute with.`);
+    m("[3, 1] + [1, 2]", { work: true });
+    md(r`Three entries make an arrow in space; any number of entries make a list that no picture shows, but the arithmetic is the same.`);
+    m("[1, 2, 3] + [4, -1, 2]");
+    sec("Stretching");
+    md(r`Doubling an arrow should double its length and keep its direction: two copies, tip to tail. As lists, $u + u$ doubles every entry. Any number $c$ works the same way, and a negative one turns the arrow round:`);
+    sc(r`
+clock c from -1.5 to 2
+view -5, 7, -2, 3
+U = arrow(0, 3 + i) faint color 2
+P = point(c*(3 + i)) color 1
+C = arrow(0, P) thick color 1
+LC = label(P, "c\,u") color 1
+> show U; play c to 1 in 0.6s | The arrow $u = (3, 1)$.
+> show C, P, LC | $c\,u$ with $c = 1$: $u$ itself.
+> play c to 2 in 2s | $c = 2$: twice as long, the same direction.
+> play c to 0.5 in 2s | $c = \frac12$: half as long.
+> play c to -1.5 in 3s | Through $c = 0$ and out the other side: a negative $c$ points the arrow backwards.
 `);
-    m("dot([1, 2], [2, -1])");
-    ex("dot([1, 2, 3], [4, 5, 6])", r`Compute $(1, 2, 3) \cdot (4, 5, 6)$.`, [r`Multiply entry by entry and add: $1 \cdot 4 + 2 \cdot 5 + 3 \cdot 6$.`]);
-    ex("norm([6, 8])", r`How long is the vector $(6, 8)$?`, [r`$\sqrt{6^2 + 8^2}$.`], { hide: true });
-    ex("dot([2, 3], [3, -2])", r`Compute $(2, 3) \cdot (3, -2)$. What does the answer say about the two vectors?`, [r`Zero means perpendicular.`]);
-    md(r`
-> [!summary]
-> Vectors add and scale entrywise; the dot product turns two vectors into a number that is zero exactly when they are perpendicular.
-`);
-  });
-
-  add("02-matrices.chalk", "Matrices", "Matrix arithmetic, the product that is not commutative, the transpose, and a matrix acting on a vector.", ({ sec, md, m, ex }) => {
-    sec("Matrices");
-    md(r`
-> [!goal]
-> Multiply matrices, see that the order matters, transpose, and apply a matrix to a vector.
-`);
-    md(r`Rows are separated by ‹;›: ‹[1, 2; 3, 4]› is the $2 \times 2$ matrix with first row $1, 2$.`);
-    m("let A = [1, 2; 3, 4]");
-    m("let B = [0, 1; 1, 0]");
-    md(r`
-> [!definition] Matrix product
-> The entry in row $i$, column $j$ of $AB$ is the dot product of row $i$ of $A$ with column $j$ of $B$.
-`);
-    m("A*B", { work: true });
-    md(r`
-> [!mistake]
-> Matrix multiplication is not commutative: $AB$ and $BA$ are different matrices. Here $B$ swaps: on the right of $A$ it swaps $A$'s columns, on the left its rows.
-`);
-    m("B*A");
-    m("transpose(A)", { work: true });
-    sec("A matrix acting on a vector");
-    md(r`A column vector is a matrix with one column, ‹[1; 1]›. $A$ sends it to the sum of $A$'s columns.`);
-    m("A*[1; 1]");
-    ex("[1, 2; 3, 4]*[0, 1; 1, 0]", r`Multiply.`, [r`Row $i$ of the first times column $j$ of the second.`, r`The answer is a matrix: type it as ‹[a, b; c, d]›.`]);
-    ex("[2, 0; 1, 3]*[1; 2]", r`Apply the matrix to the vector.`, [r`The first entry is $2 \cdot 1 + 0 \cdot 2$.`, r`The answer is a column: ‹[a; b]›.`]);
-    ex("transpose([1, 2, 3; 4, 5, 6])", r`Transpose the $2 \times 3$ matrix.`, [r`Rows become columns: the answer is $3 \times 2$.`]);
-    md(r`
-> [!summary]
-> A matrix product is a table of dot products, and its order matters; a matrix times a vector is a combination of the matrix's columns.
-`);
-  });
-
-  add("03-systems.chalk", "Solving systems by row reduction", "An augmented matrix, the three row operations (each proved to keep the solutions), and reading the answer off the reduced form.", ({ sec, md, m, ex }) => {
-    sec("Solving systems by row reduction");
-    md(r`
-> [!goal]
-> Solve a system of linear equations by reducing its augmented matrix, and read each row operation.
-`);
-    md(r`The system $x + 2y = 5,\ 3x + 4y = 6$ is the augmented matrix ‹[1, 2, 5; 3, 4, 6]›: one row per equation, the right-hand sides in the last column.`);
-    md(r`
-> [!theorem] Row operations keep the solutions
-> Swapping two rows, scaling a row by a nonzero number, and adding a multiple of one row to another do not change the solution set. Each of the three is proved in Lean (the green dots), and so is the claim that the result is in reduced row echelon form.
-`);
-    m("rref([1, 2, 5; 3, 4, 6])", { work: true });
-    md(r`Read it off: the first row says $x = -4$, the second $y = \frac92$.`);
-    sec("Three equations");
-    m("rref([2, 1, -1, 8; -3, -1, 2, -11; -2, 1, 2, -3])", { work: true });
+    m("2*[3, 1]");
+    m("-[3, 1]");
+    sec("Combining two arrows");
+    md(r`Stretch $u$ by $a$ and $v$ by $b$, then add: $a\,u + b\,v$ is a **linear combination** of $u$ and $v$. Which points can you reach this way? Drag ‹a› and ‹b›: the path walks $a\,u$ from $0$, then $b\,v$, and the small circle is the point $(5, 5)$.`);
+    m("let a = 1", { slider: [-4, 4, 0.5] });
+    m("let b = 1", { slider: [-4, 4, 0.5] });
+    m("plot([t*a*(3 + i), a*(3 + i) + t*b*(1 + 2i), 5 + 5i + 0.15*exp(2*pi*i*t)], t, 0, 1)");
+    m("a*[3, 1] + b*[1, 2]");
     md(r`
 > [!try]
-> Check the solution $x = 2,\ y = 3,\ z = -1$: put it into the first equation, $2x + y - z$.
+> Reach the circle. Then try $(1, 7)$, or a point of your own.
 `);
-    m("subst(subst(subst(2x + y - z, x, 2), y, 3), z, -1)");
+    md(r`Every point can be reached: stretched copies of $u$ and $v$ lay a slanted grid over the whole plane. That needs $u$ and $v$ to point in different directions. Had $v$ been $2u$, every combination would stay on the line through $u$, and no point off it could be reached. Finding $a$ and $b$ for a given point means solving two equations at once, which is lesson 3.`);
+    sec("Length");
+    md(r`How long is $(3, 4)$? It is the long side of a right triangle with legs $3$ and $4$, so by Pythagoras it is $\sqrt{3^2 + 4^2} = 5$. In space, Pythagoras twice gives $\sqrt{v_1^2 + v_2^2 + v_3^2}$. ‹norm› computes it.`);
+    m("norm([3, 4])", { work: true });
+    m("norm([1, 2, 3])");
+    sec("How far does one arrow point along another?");
+    md(r`How much do two arrows agree in direction? Make it a length. Take a direction, given by a unit arrow $\hat u$ (length $1$), and shine a light at right angles to its line: any arrow $v$ casts a **shadow** on the line.`);
+    sc(r`
+clock w from 0.5 to 0.5 + 2pi
+view -2.6, 2.6, -2.2, 2.2
+L = segment(-2.5*exp(0.5*i), 2.5*exp(0.5*i)) faint color 6
+U = arrow(0, exp(0.5*i)) thick color 2
+LU = label(exp(0.5*i), "\hat u") color 2
+V = point(2*exp(i*w)) color 3
+AV = arrow(0, V) color 3
+LV = label(V, "v") color 3
+S = point(2*cos(w - 0.5)*exp(0.5*i)) color 1
+AS = arrow(0, S) thick color 1
+D = segment(V, S) dashed color 1
+> show L, U, LU | A direction: the unit arrow $\hat u$ and its line.
+> show V, AV, LV, S, AS, D | The shadow of $v$ on the line: how far $v$ goes in the direction $\hat u$.
+> play w to 0.5 + pi/2 in 3s | As $v$ turns away from $\hat u$ the shadow shrinks; at a right angle it is $0$.
+> play w to 0.5 + pi in 3s | Past a right angle the shadow points backwards: count its length as negative.
+> play w to 0.5 + 2pi in 4s | All the way round.
+`);
+    md(r`For the direction $\hat{\imath} = (1, 0)$, east, the shadow of $(v_1, v_2)$ is just its first entry, $v_1$. For a slanted direction $\hat u = (u_1, u_2)$, two facts do all the work.`);
+    md(r`First, shadows respect the arithmetic above: arrows tip to tail cast shadows tip to tail, and a stretched arrow casts a stretched shadow. Since $v = v_1 \hat{\imath} + v_2 \hat{\jmath}$, where $\hat{\jmath} = (0, 1)$, the shadow of $v$ is $v_1$ times the shadow of $\hat{\imath}$ plus $v_2$ times the shadow of $\hat{\jmath}$. Second, a symmetry:`);
+    sc(r`
+view -0.3, 1.45, -0.3, 1
+K = segment(-0.2*exp(0.6*i), 1.25*exp(0.6*i)) faint color 6
+I = arrow(0, 1) color 2
+LI = label(1, "\hat{\imath}") color 2
+U = arrow(0, exp(0.6*i)) color 4
+LU = label(exp(0.6*i), "\hat u") color 4
+SU = segment(exp(0.6*i), cos(0.6)) dashed color 4
+HU = arrow(0, cos(0.6)) thick color 4
+SI = segment(1, cos(0.6)*exp(0.6*i)) dashed color 2
+HI = arrow(0, cos(0.6)*exp(0.6*i)) thick color 2
+> show K, I, LI, U, LU | Two unit arrows: $\hat{\imath}$, and the direction $\hat u = (u_1, u_2)$.
+> show SU, HU | The shadow of $\hat u$ on $\hat{\imath}$'s line is its first entry, $u_1$.
+> show SI, HI | The shadow of $\hat{\imath}$ on $\hat u$'s line. The picture is symmetric about the line halfway between the two arrows, so the two shadows are mirror images: this one is $u_1$ too.
+`);
+    md(r`So the shadow of $\hat{\imath}$ on the direction $\hat u$ is $u_1$, and likewise the shadow of $\hat{\jmath}$ is $u_2$. Put together, the shadow of $v$ is $u_1 v_1 + u_2 v_2$: multiply the entries and add.`);
+    md(r`
+> [!definition] Dot product
+> $u \cdot v = u_1 v_1 + u_2 v_2 + \cdots$, over all the entries. For a unit arrow $\hat u$, $\hat u \cdot v$ is the signed length of $v$'s shadow on $\hat u$'s line. Stretching $u$ stretches the product, so for any $u \ne 0$, $u \cdot v = \lVert u \rVert$ times that shadow; and $v \cdot v = \lVert v \rVert^2$.
+`);
+    m("dot([3, 4], [1, 0])");
+    md(r`
+> [!try]
+> $(1, 2)$ and $(2, -1)$ are at right angles. Predict their dot product before stepping through it.
+`);
+    m("dot([1, 2], [2, -1])", { step: 0 });
+    md(r`
+> [!theorem] Angle
+> For nonzero $u$ and $v$ at an angle $\theta$, the shadow of $v$ on $u$'s line is $\lVert v \rVert \cos\theta$, so $u \cdot v = \lVert u \rVert\, \lVert v \rVert \cos\theta$. The sign tells the angle apart: $u \cdot v$ is positive when $\theta$ is less than a right angle, $0$ exactly when $u$ and $v$ are perpendicular, and negative when $\theta$ is more.
+`);
+    md(r`Turned round, it measures angles: $\cos\theta = \dfrac{u \cdot v}{\lVert u \rVert\, \lVert v \rVert}$. For $u = (3, 1)$ and $v = (1, 2)$ it gives $\pi/4$, an eighth of a turn:`);
+    m("N(arccos(dot([3, 1], [1, 2])/(norm([3, 1])*norm([1, 2]))))");
+    m("N(pi/4)");
+    md(r`
+> [!mistake]
+> The natural first guess multiplies entry by entry and stops there. That is ‹.*›, and it gives a vector, not a number: for the perpendicular pair above, $(2, -2)$, which says nothing about the angle by itself and changes if the axes are turned. The adding is what makes it a shadow: $2 + (-2) = 0$.
+`);
+    m("[1, 2] .* [2, -1]");
+    ex("dot([1, 2, 3], [4, 5, 6])", r`Compute $(1, 2, 3) \cdot (4, 5, 6)$.`, [r`Multiply entry by entry and add: $1 \cdot 4 + 2 \cdot 5 + 3 \cdot 6$.`]);
+    ex("norm([6, 8])", r`How long is the vector $(6, 8)$?`, [r`It is $(3, 4)$ stretched by $2$.`, r`$\sqrt{6^2 + 8^2}$.`], { hide: true });
+    ex("dot([1, 3], [2, -1])", r`Is the angle between $(1, 3)$ and $(2, -1)$ more or less than a right angle? Compute their dot product: its sign answers it.`, [r`$1 \cdot 2 + 3 \cdot (-1)$.`, r`Negative means more than a right angle.`]);
+    ex("dot([2, 3], [3, -2])", r`Compute $(2, 3) \cdot (3, -2)$. What does the answer say about the two vectors?`, [r`Zero means perpendicular.`]);
+    ex("[-1, 4]", r`Find $a$ and $b$ with $a\,(3, 1) + b\,(1, 2) = (1, 7)$, with the sliders above or by hand. Answer with the two numbers as a list, $a$ first.`, [
+      r`Compare entries: $3a + b = 1$ and $a + 2b = 7$.`,
+      r`The first gives $b = 1 - 3a$; put that into the second.`,
+    ], { hide: true });
+    md(r`
+> [!summary]
+> A vector is an arrow and a list at once: arrows add tip to tail, lists add entry by entry, and the two are the same. Two arrows in different directions, stretched and added, reach every point of the plane. The dot product, multiply the entries and add, is the shadow of one arrow on the other's line, times the other's length: zero exactly when they are perpendicular.
+>
+> Every vector is a combination of the two unit arrows: $(x, y) = x\,\hat{\imath} + y\,\hat{\jmath}$. So what happens to every vector at once if you move $\hat{\imath}$ and $\hat{\jmath}$? That is lesson 2.
+`);
+  });
+
+  add("02-matrices.chalk", "Matrices as moves of the plane", "A matrix records where the two unit arrows land; from that, where it sends any vector, and multiplying matrices as one move after another, in an order that matters.", ({ sec, md, m, ex, sc }) => {
+    sec("Matrices as moves of the plane");
+    md(r`
+> [!goal]
+> Read a matrix as a move of the plane, work out from its columns where it sends any vector, and multiply matrices as one move after another.
+`);
+    md(r`Move the whole plane: stretch it, turn it, slant it, but keep the grid lines straight, parallel and evenly spaced, and keep $0$ where it is. Such a move is called **linear**. How much do you need to write down to know where every point goes?`);
+    sc(r`
+clock t from 0 to 1
+view -4.5, 4.5, -3.5, 4.5
+G1 = curve(-2*(1 + t*(1 + i)) + s*(i - t), s, -3, 3) faint color 6
+G2 = curve(-(1 + t*(1 + i)) + s*(i - t), s, -3, 3) faint color 6
+G3 = curve(1 + t*(1 + i) + s*(i - t), s, -3, 3) faint color 6
+G4 = curve(2*(1 + t*(1 + i)) + s*(i - t), s, -3, 3) faint color 6
+H1 = curve(s*(1 + t*(1 + i)) - 2*(i - t), s, -3, 3) faint color 6
+H2 = curve(s*(1 + t*(1 + i)) - (i - t), s, -3, 3) faint color 6
+H3 = curve(s*(1 + t*(1 + i)) + i - t, s, -3, 3) faint color 6
+H4 = curve(s*(1 + t*(1 + i)) + 2*(i - t), s, -3, 3) faint color 6
+X0 = curve(s*(1 + t*(1 + i)), s, -3, 3) color 6
+Y0 = curve(s*(i - t), s, -3, 3) color 6
+I = arrow(0, 1 + t*(1 + i)) thick color 2
+LI = label(1 + t*(1 + i), "\hat{\imath}") color 2
+J = arrow(0, i - t) thick color 3
+LJ = label(i - t, "\hat{\jmath}") color 3
+D1 = segment(1 + t*(1 + i), 1 + t*(1 + i) + i - t) dashed color 3
+D2 = segment(1 + t*(1 + i) + i - t, 1 + t*(1 + i) + 2*(i - t)) dashed color 3
+V = point(1 + t*(1 + i) + 2*(i - t)) color 1
+AV = arrow(0, V) color 1
+LV = label(V, "v") color 1
+> show D1, D2, V, AV, LV | The grid, the unit arrows $\hat{\imath} = (1, 0)$ (blue) and $\hat{\jmath} = (0, 1)$ (green), and $v = (1, 2) = \hat{\imath} + 2\hat{\jmath}$: one step along $\hat{\imath}$, two along $\hat{\jmath}$.
+> play t to 1 in 4s | Move the plane. The grid lines stay straight, parallel and evenly spaced, and $0$ stays put. $\hat{\imath}$ lands on $(2, 1)$ and $\hat{\jmath}$ on $(-1, 1)$.
+> wait 1s | And $v$ is still one step along the new $\hat{\imath}$ and two along the new $\hat{\jmath}$: it lands on $(2, 1) + 2\,(-1, 1) = (0, 3)$.
+`);
+    md(r`Two arrows' worth. Every vector is $x\,\hat{\imath} + y\,\hat{\jmath}$, and a linear move keeps that recipe, so wherever $\hat{\imath}$ and $\hat{\jmath}$ land, $(x, y)$ lands on $x$ times the first landing spot plus $y$ times the second.`);
+    md(r`So write down the two landing spots, side by side as columns: that table is a **matrix**. Rows are separated by ‹;›, so the columns read downwards: here $\hat{\imath}$ lands on $(2, 1)$ and $\hat{\jmath}$ on $(-1, 1)$.`);
+    m("let A = [2, -1; 1, 1]");
+    md(r`
+> [!try]
+> Before the next cell: where does $A$ send $(1, 2)$, written as a column ‹[1; 2]›? Use only the columns.
+`);
+    m("A*[1; 2]", { work: true });
+    md(r`The same for any input $(x, y)$: $x$ times the first column plus $y$ times the second. That is the whole rule for a matrix times a vector, with nothing to memorise:`);
+    m("x*[2; 1] + y*[-1; 1]");
+    m("A*[x; y]");
+    md(r`
+> [!definition] Matrix times vector
+> $\begin{pmatrix} a & b \\ c & d \end{pmatrix} \begin{pmatrix} x \\ y \end{pmatrix} = x \begin{pmatrix} a \\ c \end{pmatrix} + y \begin{pmatrix} b \\ d \end{pmatrix} = \begin{pmatrix} ax + by \\ cx + dy \end{pmatrix}$. Each entry of the answer is a row of the matrix dotted with the vector.
+`);
+    m("[a, b; c, d]*[x; y]");
+    sec("Moves, read off their columns");
+    md(r`To write down a move, ask where $\hat{\imath}$ and $\hat{\jmath}$ go. A quarter turn counterclockwise sends $\hat{\imath}$ to $(0, 1)$ and $\hat{\jmath}$ to $(-1, 0)$. A shear slides each point sideways by its height: $\hat{\imath}$ stays, and $\hat{\jmath}$ slides to $(1, 1)$.`);
+    m("let R = [0, -1; 1, 0]");
+    m("let S = [1, 1; 0, 1]");
+    m("R*[3; 1]");
+    m("S*[3; 1]");
+    sec("One move after another");
+    md(r`Shear, then turn. Where do $\hat{\imath}$ and $\hat{\jmath}$ end up?`);
+    sc(r`
+clock t from 0 to 2
+view -2.6, 2.6, -0.6, 2.4
+I1 = arrow(0, 1) thick color 2
+J1 = arrow(0, t + i) thick color 3
+Q1 = segment(1, 1 + t + i) color 1
+Q2 = segment(t + i, 1 + t + i) color 1
+I2 = arrow(0, exp(i*pi*(t - 1)/2)) thick color 2
+J2 = arrow(0, (1 + i)*exp(i*pi*(t - 1)/2)) thick color 3
+Q3 = segment(exp(i*pi*(t - 1)/2), (2 + i)*exp(i*pi*(t - 1)/2)) color 1
+Q4 = segment((1 + i)*exp(i*pi*(t - 1)/2), (2 + i)*exp(i*pi*(t - 1)/2)) color 1
+> show I1, J1, Q1, Q2 | The unit square on $\hat{\imath}$ (blue) and $\hat{\jmath}$ (green).
+> play t to 1 in 2s | First the shear $S$: $\hat{\imath}$ stays put, $\hat{\jmath}$ slides over to $(1, 1)$.
+> hide I1, J1, Q1, Q2; show I2, J2, Q3, Q4 | Then the quarter turn $R$, applied to wherever things are now.
+> play t to 2 in 2s | $\hat{\imath}$ ends at $(0, 1)$ and $\hat{\jmath}$ at $(-1, 1)$: the columns of the combined move.
+`);
+    md(r`Each column of the combined move is $R$ applied to a column of $S$: the shear sent $\hat{\jmath}$ to $(1, 1)$, $S$'s second column, and the turn took it on from there. That is how matrices multiply. The combined move is written $RS$, with $S$ on the right, because it acts on a vector as $R(Sv)$: as in $f(g(x))$, the one written nearer the vector happens first.`);
+    m("R*S", { work: true });
+    m("R*(S*[3; 1])");
+    m("(R*S)*[3; 1]");
+    md(r`
+> [!definition] Matrix product
+> Column $j$ of $AB$ is $A$ times column $j$ of $B$: $AB$ is the move "$B$, then $A$". So its entry in row $i$, column $j$ is row $i$ of $A$ dotted with column $j$ of $B$, which is the quick way to compute it.
+`);
+    sec("The order matters");
+    md(r`
+> [!try]
+> Now turn first, then shear. Predict where $\hat{\imath}$ lands before the scene plays: the turn sends it to $(0, 1)$, and then the shear slides it sideways by its height.
+`);
+    sc(r`
+clock t from 0 to 2
+view -2.6, 2.6, -0.6, 2.4
+G1 = arrow(0, i) faint color 2
+G2 = arrow(0, -1 + i) faint color 3
+I1 = arrow(0, exp(i*pi*t/2)) thick color 2
+J1 = arrow(0, i*exp(i*pi*t/2)) thick color 3
+Q1 = segment(exp(i*pi*t/2), (1 + i)*exp(i*pi*t/2)) color 1
+Q2 = segment(i*exp(i*pi*t/2), (1 + i)*exp(i*pi*t/2)) color 1
+I2 = arrow(0, t - 1 + i) thick color 2
+J2 = arrow(0, -1) thick color 3
+Q3 = segment(t - 1 + i, t - 2 + i) color 1
+Q4 = segment(-1, t - 2 + i) color 1
+> show I1, J1, Q1, Q2 | The same square; this time the turn comes first.
+> play t to 1 in 2s | The quarter turn $R$: $\hat{\imath}$ goes to $(0, 1)$, $\hat{\jmath}$ to $(-1, 0)$.
+> hide I1, J1, Q1, Q2; show I2, J2, Q3, Q4 | Then the shear $S$, which slides each point sideways by its height.
+> play t to 2 in 2s | $\hat{\imath}$, at height $1$, slides to $(1, 1)$; $\hat{\jmath}$, at height $0$, stays at $(-1, 0)$.
+> show G1, G2 | Faint: where shear-then-turn left them. A different move.
+`);
+    md(r`
+> [!mistake]
+> With numbers the order of a product never matters, so the natural guess is $SR = RS$. The pictures already disagree, and so does the engine:
+`);
+    m("S*R");
+    md(r`Some pairs do commute (two turns, for instance), but in general $AB \neq BA$.`);
+    ex("[2, -1; 1, 1]*[3; -1]", r`Where does $A = \begin{pmatrix} 2 & -1 \\ 1 & 1 \end{pmatrix}$ send $(3, -1)$? Work it out from the columns, then type it as a column, ‹[p; q]›.`, [
+      r`$3$ times the first column minus the second: $3\,(2, 1) - (-1, 1)$.`,
+    ]);
+    ex("[0, 1; 1, 0]", r`Invent it: write the matrix of the mirror in the line $y = x$, which swaps $\hat{\imath}$ and $\hat{\jmath}$.`, [
+      r`Where does $\hat{\imath}$ land? That is the first column.`,
+    ], { hide: true });
+    ex("[0, -1; 1, 0]*[0, -1; 1, 0]", r`A quarter turn done twice is a half turn. Write its matrix from where $\hat{\imath}$ and $\hat{\jmath}$ land, then check that it is $RR$.`, [
+      r`A half turn sends $\hat{\imath}$ to $(-1, 0)$.`,
+    ], { hide: true });
+    ex("[1, 2; 3, 4]*[0, 1; 1, 0]", r`Multiply. The right-hand matrix swaps $\hat{\imath}$ and $\hat{\jmath}$, and it happens first: predict what that does to the columns of the left-hand one.`, [
+      r`Column $1$ of the product is $\begin{pmatrix} 1 & 2 \\ 3 & 4 \end{pmatrix}$ times $(0, 1)$: its second column.`,
+      r`The answer is a matrix: type it as ‹[p, q; r, s]›.`,
+    ]);
+    md(r`
+> [!summary]
+> A matrix is a linear move of the plane, written down as where $\hat{\imath}$ and $\hat{\jmath}$ land, its columns. It sends $(x, y)$ to $x$ times the first column plus $y$ times the second. The product $AB$ is "$B$, then $A$", its columns $A$ times the columns of $B$, and the order matters.
+>
+> Lesson 2 ran the move forwards. Lesson 3 runs it backwards: given where a vector landed, which vector was it?
+`);
+  });
+
+  add("03-systems.chalk", "Solving systems by elimination", "Which input lands on a given output: elimination on the augmented matrix, row operations proved to keep the solutions, and the matrices that squash the plane, with no solution or infinitely many.", ({ sec, md, m, ex, sc }) => {
+    sec("Solving systems by elimination");
+    md(r`
+> [!goal]
+> Find which input a matrix sends to a given output by elimination on the augmented matrix, and see when there is one answer, none, or infinitely many.
+`);
+    md(r`Lesson 2 ran a matrix forwards. Now run one backwards: $\begin{pmatrix} 1 & 2 \\ 3 & 4 \end{pmatrix}$ sends some $(x, y)$ to $(5, 6)$. Which?`);
+    md(r`The matrix sends $(x, y)$ to $x$ times its first column plus $y$ times its second. So the question is which combination of the columns makes $(5, 6)$; entry by entry, it is two equations, $x + 2y = 5$ and $3x + 4y = 6$.`);
+    m("[1, 2; 3, 4]*[x; y]");
+    sec("Elimination");
+    md(r`By hand you would eliminate: take $3$ times the first equation from the second, so that $x$ drops out of it; solve that for $y$; put it back. Only the numbers matter, so write the system as one table, the **augmented matrix**: one row per equation, the right-hand sides in the last column, ‹[1, 2, 5; 3, 4, 6]›.`);
+    md(r`
+> [!try]
+> Each step below is a move on the equations: swap two, scale one by a nonzero number, or add a multiple of one to another. Before stepping, predict the first move and what the second row becomes.
+`);
+    m("rref([1, 2, 5; 3, 4, 6])", { step: 0 });
+    md(r`The result is in **reduced row echelon form**: each variable stands alone in its own row. The first row says $x = -4$, the second $y = \frac92$. Run it forwards to check:`);
+    m("[1, 2; 3, 4]*[-4; 9/2]");
+    md(r`
+> [!theorem] Row operations keep the solutions
+> Swapping two rows, scaling a row by a nonzero number and adding a multiple of one row to another do not change the set of solutions. Each move can be undone by another (swap back, scale by the reciprocal, subtract the multiple again), so no solution is gained and none is lost. For rational entries each of the three is proved in Lean, as is elimination as a whole and the claim that its result is in reduced row echelon form: the green dots on the steps.
+`);
+    md(r`Scaling by $0$ is the one move left out, because it cannot be undone: it turns an equation into $0 = 0$ and forgets it.`);
+    sec("Three equations");
+    md(r`Three unknowns, three equations, the same moves: $2x + y - z = 8$, $-3x - y + 2z = -11$, $-2x + y + 2z = -3$.`);
+    m("rref([2, 1, -1, 8; -3, -1, 2, -11; -2, 1, 2, -3])", { work: true });
+    md(r`So $x = 2$, $y = 3$, $z = -1$. Forwards again, all three equations at once:`);
+    m("[2, 1, -1; -3, -1, 2; -2, 1, 2]*[2; 3; -1]");
+    sec("When it fails");
+    md(r`Not every matrix can be run backwards. $\begin{pmatrix} 1 & 2 \\ 2 & 4 \end{pmatrix}$ sends $\hat{\imath}$ to $(1, 2)$ and $\hat{\jmath}$ to $(2, 4)$, in the same direction. Watch the plane:`);
+    sc(r`
+clock t from 0 to 1
+view -3, 6, -2, 8
+G1 = curve(-2*(1 + 2*t*i) + s*(i + t*(2 + 3*i)), s, -3, 3) faint color 6
+G2 = curve(-(1 + 2*t*i) + s*(i + t*(2 + 3*i)), s, -3, 3) faint color 6
+G3 = curve(1 + 2*t*i + s*(i + t*(2 + 3*i)), s, -3, 3) faint color 6
+G4 = curve(2*(1 + 2*t*i) + s*(i + t*(2 + 3*i)), s, -3, 3) faint color 6
+H1 = curve(s*(1 + 2*t*i) - 2*(i + t*(2 + 3*i)), s, -3, 3) faint color 6
+H2 = curve(s*(1 + 2*t*i) - (i + t*(2 + 3*i)), s, -3, 3) faint color 6
+H3 = curve(s*(1 + 2*t*i) + i + t*(2 + 3*i), s, -3, 3) faint color 6
+H4 = curve(s*(1 + 2*t*i) + 2*(i + t*(2 + 3*i)), s, -3, 3) faint color 6
+I = arrow(0, 1 + 2*t*i) thick color 2
+J = arrow(0, i + t*(2 + 3*i)) thick color 3
+P1 = point(3*(1 + 2*t*i)) color 1
+P2 = point(1 + 2*t*i + i + t*(2 + 3*i)) color 1
+P3 = point(-(1 + 2*t*i) + 2*(i + t*(2 + 3*i))) color 1
+T = point(3 + 7i) color 4
+LT = label(T, "(3, 7)") color 4
+> wait 1s | The grid, $\hat{\imath}$ (blue) and $\hat{\jmath}$ (green), and three points: $(3, 0)$, $(1, 1)$ and $(-1, 2)$.
+> play t to 1 in 4s | Apply the matrix: $\hat{\imath}$ goes to $(1, 2)$, $\hat{\jmath}$ to $(2, 4)$, and the whole plane is squashed onto the line $y = 2x$. All three points land on $(3, 6)$.
+> show T, LT | Nothing lands on $(3, 7)$, off the line.
+`);
+    md(r`Every output lies on one line. A target on it, such as $(3, 6)$, is hit by a whole line of inputs; a target off it, such as $(3, 7)$, by none. Elimination finds both:`);
+    m("rref([1, 2, 3; 2, 4, 6])", { work: true });
+    md(r`A row of zeros: the second equation was twice the first, and only $x + 2y = 3$ is left, a whole line of solutions.`);
+    m("rref([1, 2, 3; 2, 4, 7])", { work: true });
+    md(r`The last row says $0x + 0y = 1$: no solution.`);
     ex("rref([1, 1, 3; 1, -1, 1])", r`Solve $x + y = 3,\ x - y = 1$ by reducing the augmented matrix. Give the reduced matrix.`, [
       r`The augmented matrix is ‹[1, 1, 3; 1, -1, 1]›.`,
-      r`Subtract the first row from the second, then scale.`,
+      r`Subtract the first row from the second, giving $0, -2, -2$; scale that by $-\frac12$; then subtract it from the first row.`,
     ], { hide: true });
     ex("rref([2, 4, 6; 1, 3, 4])", r`Reduce the augmented matrix of $2x + 4y = 6,\ x + 3y = 4$.`, [
       r`Scale the first row by $\frac12$ first.`,
     ], { hide: true });
+    ex("rref([3, 1, 5; 1, 2, 5])", r`Lesson 1 asked for $a$ and $b$ with $a\,(3, 1) + b\,(1, 2) = (5, 5)$, found by dragging. Find them by elimination: give the reduced augmented matrix.`, [
+      r`The columns are $(3, 1)$, $(1, 2)$ and the target $(5, 5)$: ‹[3, 1, 5; 1, 2, 5]›.`,
+    ], { hide: true });
+    ex("rref([1, -1, 2; -2, 2, 1])", r`Reduce the augmented matrix of $x - y = 2,\ -2x + 2y = 1$. How many solutions are there?`, [
+      r`Add twice the first row to the second.`,
+      r`A row $0, 0, c$ with $c \neq 0$ says $0 = c$.`,
+    ], { hide: true });
     md(r`
 > [!summary]
-> Row reduction is elimination written on the matrix: three operations, none of which changes the solutions, until each variable stands alone in its row.
+> Solving $A\,x = b$ asks which input $A$ sends to $b$. Elimination answers it with three moves on the augmented matrix, each of which can be undone and so keeps the solutions, until each variable stands alone. A matrix that squashes the plane onto a line cannot be run backwards: a target on the line has infinitely many inputs, one off it has none.
+>
+> How can you tell from the matrix alone, before solving anything, whether it squashes the plane? Lesson 4 measures what it does to area.
 `);
   });
 
-  add("04-determinants.chalk", "Determinants", "The determinant of 2×2 and 3×3 matrices, the product rule, and what a zero determinant means.", ({ sec, md, m, ex }) => {
-    sec("Determinants");
+  add("04-determinants.chalk", "Determinants: how a matrix scales area", "The determinant as the factor by which a matrix scales area, ad − bc from a picture, its sign as a flip, zero as squashing with no inverse, and why determinants multiply.", ({ sec, md, m, ex, sc }) => {
+    sec("Determinants: how a matrix scales area");
     md(r`
 > [!goal]
-> Compute determinants, see that the determinant of a product is the product of determinants, and recognise a matrix with no inverse.
+> Find the factor by which a matrix scales area, get $ad - bc$ from a picture, and read a flip and the lack of an inverse off its sign and its zeros.
 `);
+    md(r`Lesson 3's $\begin{pmatrix} 1 & 2 \\ 2 & 4 \end{pmatrix}$ squashed the plane onto a line, and could not be run backwards. How could you tell that from the four entries alone? Watch what a matrix does to area.`);
+    sc(r`
+clock t from 0 to 1
+view -1.5, 5, -1.2, 4
+G1 = curve(-(1 + t*(2 + i)) + s*(i + t*(1 + i)), s, -1, 3) faint color 6
+G2 = curve(1 + t*(2 + i) + s*(i + t*(1 + i)), s, -1, 3) faint color 6
+G3 = curve(2*(1 + t*(2 + i)) + s*(i + t*(1 + i)), s, -1, 3) faint color 6
+H1 = curve(s*(1 + t*(2 + i)) - (i + t*(1 + i)), s, -1, 3) faint color 6
+H2 = curve(s*(1 + t*(2 + i)) + i + t*(1 + i), s, -1, 3) faint color 6
+H3 = curve(s*(1 + t*(2 + i)) + 2*(i + t*(1 + i)), s, -1, 3) faint color 6
+I = arrow(0, 1 + t*(2 + i)) thick color 2
+J = arrow(0, i + t*(1 + i)) thick color 3
+Q1 = segment(1 + t*(2 + i), 1 + i + t*(3 + 2*i)) color 1
+Q2 = segment(i + t*(1 + i), 1 + i + t*(3 + 2*i)) color 1
+B1 = segment(0, 4) dashed color 4
+B2 = segment(4, 4 + 3i) dashed color 4
+B3 = segment(4 + 3i, 3i) dashed color 4
+B4 = segment(3i, 0) dashed color 4
+> wait 1s | The grid, and the unit square on $\hat{\imath}$ (blue) and $\hat{\jmath}$ (green): area $1$.
+> play t to 1 in 4s | Apply $\begin{pmatrix} 3 & 1 \\ 1 & 2 \end{pmatrix}$: $\hat{\imath}$ lands on $(3, 1)$, $\hat{\jmath}$ on $(1, 2)$, and the square on the parallelogram they span. Every other grid square becomes a copy of it.
+> show B1, B2, B3, B4 | Its area: box it in. The box is $3 + 1$ by $1 + 2$. Outside the parallelogram are two triangles of area $\frac32$, two of area $1$, and two unit squares: $12 - 3 - 2 - 2 = 5$.
+`);
+    md(r`Because the grid lines stay parallel and evenly spaced, every grid square becomes the same parallelogram, so every area (fill a shape with small squares) is scaled by one factor: the area of the parallelogram the columns span. That factor is the **determinant**. For columns $(a, c)$ and $(b, d)$ with positive entries, as in the picture, the box is $a + b$ by $c + d$, and what lies outside is two triangles of area $\frac12 ac$, two of area $\frac12 bd$, and two rectangles $b$ by $c$:`);
+    m("expand((a + b)*(c + d) - a*c - b*d - 2*b*c)");
     md(r`
 > [!definition] Determinant of a $2 \times 2$ matrix
-> $\det \begin{pmatrix} a & b \\ c & d \end{pmatrix} = ad - bc$: the signed area of the parallelogram the columns span.
+> $\det \begin{pmatrix} a & b \\ c & d \end{pmatrix} = ad - bc$: the factor by which the matrix scales area, with a sign that is the next section's subject.
 `);
-    m("let A = [1, 2; 3, 4]");
+    m("det([a, b; c, d])");
+    m("let A = [3, 1; 1, 2]");
     m("det(A)", { step: 0 });
-    m("det([2, 1, 0; 1, 3, 1; 0, 1, 2])");
-    sec("Products");
+    md(r`
+> [!try]
+> Predict before computing. Stretching by $a$ across and by $d$ upwards should scale area by $ad$. A shear slides each square into a parallelogram with the same base and height, so it should not change area at all.
+`);
+    m("det([a, 0; 0, d])");
+    m("det([1, k; 0, 1])");
+    sec("The sign: flipping the plane over");
+    md(r`$ad - bc$ can be negative, and an area cannot. Swap the columns of $\begin{pmatrix} 1 & 0 \\ 0 & 1 \end{pmatrix}$: $\begin{pmatrix} 0 & 1 \\ 1 & 0 \end{pmatrix}$ sends $\hat{\imath}$ to $(0, 1)$ and $\hat{\jmath}$ to $(1, 0)$, a mirror in the line $y = x$.`);
+    m("det([0, 1; 1, 0])");
+    sc(r`
+clock t from 0 to 1
+view -0.4, 1.6, -0.4, 1.4
+I = arrow(0, 1 - t + t*i) thick color 2
+LI = label(1 - t + t*i, "\hat{\imath}") color 2
+J = arrow(0, t + (1 - t)*i) thick color 3
+LJ = label(t + (1 - t)*i, "\hat{\jmath}") color 3
+Q1 = segment(1 - t + t*i, 1 + i) color 1
+Q2 = segment(t + (1 - t)*i, 1 + i) color 1
+> wait 1s | The unit square: $\hat{\jmath}$ is a quarter turn counterclockwise from $\hat{\imath}$.
+> play t to 0.5 in 2.5s | Slide $\hat{\imath}$ toward $(0, 1)$ and $\hat{\jmath}$ toward $(1, 0)$. Halfway they meet, and the square is flat: area $0$.
+> play t to 1 in 2.5s | They pass each other, and the square opens out again, the same size but mirrored: now $\hat{\jmath}$ is clockwise from $\hat{\imath}$.
+`);
+    md(r`The size of the area is unchanged; the negative sign records that the plane has been turned over. Halfway the matrix is $\begin{pmatrix} \frac12 & \frac12 \\ \frac12 & \frac12 \end{pmatrix}$, and along the way the determinant runs from $1$ to $-1$ through $0$:`);
+    m("expand(det([1 - t, t; t, 1 - t]))");
+    md(r`That is no accident of this path: the determinant changes continuously as the entries do, so any continuous way of turning the plane into its mirror image passes through a moment with no area.`);
+    sec("Zero: squashed flat");
+    md(r`Back to the opening question. A determinant of $0$ means the unit square goes to something with no area: the columns lie on one line, and the plane is squashed onto it (or onto $0$).`);
+    m("det([1, 2; 2, 4])");
+    md(r`Squashing cannot be undone: many inputs land on each output, as lesson 3 found. When the determinant is not $0$ nothing is squashed, every target has exactly one input, and the move can be undone. Undoing $A$ means finding the inputs that $A$ sends to $\hat{\imath}$ and to $\hat{\jmath}$: those are the columns of the **inverse**. Elimination finds both at once, with both targets in the augmented matrix:`);
+    m("rref([3, 1, 1, 0; 1, 2, 0, 1])");
+    md(r`The right half is the inverse; $A$ times it gives back $\hat{\imath}$ and $\hat{\jmath}$. Every entry has $5 = \det A$ underneath: dividing by the determinant is part of undoing a matrix, and a determinant of $0$ cannot be divided by.`);
+    m("A*[2/5, -1/5; -1/5, 3/5]");
+    md(r`
+> [!theorem] Invertibility
+> A square matrix has an inverse exactly when its determinant is not zero.
+`);
+    sec("One move after another");
+    md(r`Do $B$, then $A$. $B$ scales every area by $\det B$, then $A$ scales the result by $\det A$, so together they scale it by the product:`);
     md(r`
 > [!theorem] Determinant of a product
 > $\det(AB) = \det A \cdot \det B$.
 `);
-    m("let B = [0, 1; 1, 0]");
+    m("let B = [1, -1; 1, 1]");
+    m("det(B)");
     m("det(A*B)");
-    m("det(A)*det(B)");
-    sec("When the determinant is zero");
     md(r`
-> [!theorem] Invertibility
-> A square matrix has an inverse exactly when its determinant is not zero. A zero determinant means the columns lie on one line (or plane): the area they span is flat.
+> [!mistake]
+> Area scales multiply; they do not add. The tempting $\det(A + B) = \det A + \det B$ is false: here it would be $5 + 2 = 7$.
 `);
-    m("det([1, 2; 2, 4])");
-    m("rref([1, 2; 2, 4])", { work: true });
-    md(r`The reduced form has a row of zeros: the second column is twice the first.`);
-    ex("det([2, 1; 5, 3])", r`Compute the determinant.`, [r`$ad - bc$ with $a = 2,\ b = 1,\ c = 5,\ d = 3$.`]);
+    m("det(A + B)");
+    sec("Three dimensions");
+    md(r`A $3 \times 3$ matrix moves space, sending the three unit arrows to its three columns, and its determinant is the factor by which it scales volume: the signed volume of the slanted box the columns span. ‹det› expands it along the first row. A determinant of $0$ means space is squashed onto a plane, a line or a point.`);
+    m("det([2, 1, 0; 1, 3, 1; 0, 1, 2])");
+    ex("det([2, 1; 5, 3])", r`By what factor does $\begin{pmatrix} 2 & 1 \\ 5 & 3 \end{pmatrix}$ scale area?`, [r`$ad - bc$ with $a = 2,\ b = 1,\ c = 5,\ d = 3$.`]);
     ex("det([3, 6; 1, 2])", r`Compute the determinant. Is the matrix invertible?`, [r`Is one column a multiple of the other?`]);
-    ex("det([1, 0, 0; 0, 2, 0; 0, 0, 3])", r`Compute the determinant of this diagonal matrix.`, [r`For a diagonal matrix it is the product of the diagonal.`]);
+    ex("det(2*[1, 2; 3, 4])", r`Invent it: $\det \begin{pmatrix} 1 & 2 \\ 3 & 4 \end{pmatrix} = -2$. Predict the determinant of twice that matrix, $\begin{pmatrix} 2 & 4 \\ 6 & 8 \end{pmatrix}$, before computing it.`, [
+      r`Doubling every entry doubles both columns: both sides of the parallelogram.`,
+      r`Not $2 \cdot (-2)$.`,
+    ], { hide: true });
+    ex("det([1, 0, 0; 0, 2, 0; 0, 0, 3])", r`By what factor does $\begin{pmatrix} 1 & 0 & 0 \\ 0 & 2 & 0 \\ 0 & 0 & 3 \end{pmatrix}$ scale volume?`, [r`It stretches the unit cube into a box, $1$ by $2$ by $3$.`]);
     md(r`
 > [!summary]
-> The determinant is a single number that measures how a matrix scales area; it multiplies across products, and it is zero exactly when the matrix cannot be undone.
+> The determinant is the factor by which a matrix scales area (volume, in space): the area of the parallelogram its columns span, $ad - bc$ for a $2 \times 2$ matrix. A negative sign means the plane is flipped over; $0$ means it is squashed flat, which is exactly when there is no inverse. One move after another multiplies the factors.
+>
+> A question this course leaves open: a matrix can knock a vector off the line it lies on, or only stretch it along that line. Which vectors does it only stretch, and by how much? $A v = \lambda v$ with $v \neq 0$ says that $A - \lambda I$ squashes $v$ to $0$, so these stretch factors $\lambda$ are where $\det(A - \lambda I) = 0$. They are called eigenvalues.
 `);
   });
 });
