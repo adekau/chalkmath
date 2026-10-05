@@ -381,6 +381,9 @@ interface Nb {
   assets: Record<string, Asset>;
   /** The serialized notebook at the last save or open; the tab shows `*` while the live state differs. */
   savedText: string;
+  /** Kept in this browser's library under its name (saved there, or opened from there). Until then an
+   *  untitled notebook's Save asks for a name, so it does not replace another untitled one. */
+  inLibrary?: boolean;
   /** The serialized notebook at the last stash, for the dirty mark of a document that is not current. */
   text: string;
   /** Whether the engine session has been rebuilt from the cells since the document was restored. */
@@ -1269,12 +1272,13 @@ function serializeNotebook(): string {
 
 /** Replace the notebook with a file's contents: saved outputs show at once, then every cell is
  *  re-run in order so the engine's session (and with it `explain`) matches what is shown. */
-async function loadNotebook(text: string, name?: string, project?: ProjectRef, prelude?: string) {
+async function loadNotebook(text: string, name?: string, project?: ProjectRef, prelude?: string, inLibrary = false) {
   let doc: ChalkFile;
   try { doc = JSON.parse(text) as ChalkFile; } catch { notify("err", "That file is not a ChalkMath notebook (it is not valid JSON)."); return; }
   if ((doc.chalk !== 1 && doc.lemma !== 1) || !Array.isArray(doc.cells)) { notify("err", "That file is not a ChalkMath notebook."); return; }
   const d = makeDoc(name ?? doc.name ?? "untitled.chalk", cellsFromFile(doc, S.foldWorkOnOpen), Array.isArray(doc.scenes) ? doc.scenes : [], assetsFromFile(doc));
   if (!d.cells.length) d.cells.push(freshCell());
+  if (inLibrary) d.inLibrary = true;
   const pr = project ?? projectRefOf(doc);
   if (pr) d.project = pr;
   const pre = prelude ?? (typeof doc.leanPrelude === "string" ? doc.leanPrelude : "");
@@ -1568,24 +1572,66 @@ function writeLibrary(lib: Library): boolean {
   catch { notify("err", "Could not save: this browser's storage is full or unavailable. File › Export to file keeps a copy."); return false; }
 }
 
-/** Save the current notebook in the browser under its name. */
+/** Save the current notebook in the browser under its name; an untitled one never saved asks for a name first. */
 function saveNotebook() {
-  if (!currentDoc()) return;
+  const cur = currentDoc(); if (!cur) return;
+  if (!cur.inLibrary && cur.name === "untitled.chalk") { saveNotebookAs(); return; }
   const text = serializeNotebook();
   const lib = readLibrary();
   lib[S.docName] = { file: JSON.parse(text) as ChalkFile, savedAt: new Date().toISOString() };
   if (!writeLibrary(lib)) return;
-  const d = currentDoc(); if (d) d.savedText = text;
+  const d = currentDoc(); if (d) { d.savedText = text; d.inLibrary = true; }
   renderTabs(); autosave();
   notify("ok", `Saved ${S.docName} in this browser`);
 }
+/** A typed name as a notebook's file name: trimmed, ending in .chalk. */
+function chalkName(name: string): string {
+  const n = name.trim();
+  return n.toLowerCase().endsWith(".chalk") ? n : `${n.replace(/\.lemma$/i, "")}.chalk`;
+}
+/** Ask for a name and save under it. A name already saved in this browser (other than this
+ *  notebook's own) is pointed out, and the button says it replaces that one. */
 function saveNotebookAs() {
-  if (!currentDoc()) return;
-  const name = window.prompt("Save notebook as", S.docName);
-  if (!name) return;
-  S.docName = name.endsWith(".chalk") ? name : `${name.replace(/\.lemma$/, "")}.chalk`;
-  const d = currentDoc(); if (d) d.name = S.docName;
-  renderChrome(); saveNotebook();
+  const cur = currentDoc(); if (!cur) return;
+  closeModal();
+  const lib = readLibrary();
+  const box = h("div", "modal");
+  const card = h("div", "modalcard");
+  card.setAttribute("role", "dialog"); card.setAttribute("aria-modal", "true"); card.setAttribute("aria-label", "Save notebook as");
+  const form = document.createElement("form"); form.className = "savename";
+  const input = document.createElement("input");
+  input.type = "text"; input.value = tabName(cur.name); input.spellcheck = false; input.setAttribute("aria-label", "Notebook name");
+  const warn = h("p", "savewarn");
+  const cancel = h("button", undefined, "Cancel"); cancel.setAttribute("type", "button"); cancel.addEventListener("click", closeModal);
+  const ok = h("button", "primary", "Save"); ok.setAttribute("type", "submit");
+  const check = () => {
+    const name = chalkName(input.value);
+    const taken = !!input.value.trim() && !!lib[name] && !(cur.inLibrary && name === cur.name);
+    warn.textContent = !input.value.trim() ? "Give the notebook a name." : taken ? `A notebook named ${name} is already saved in this browser. Saving replaces it.` : "";
+    warn.hidden = !warn.textContent;
+    ok.textContent = taken ? "Replace" : "Save";
+    ok.toggleAttribute("disabled", !input.value.trim());
+  };
+  input.addEventListener("input", check);
+  form.addEventListener("submit", (ev) => {
+    ev.preventDefault();
+    if (!input.value.trim()) return;
+    const name = chalkName(input.value);
+    closeModal();
+    // a different name is a different entry in the library: it is not there until saved
+    if (name !== cur.name) cur.inLibrary = false;
+    S.docName = name; cur.name = name;
+    renderChrome(); saveNotebook();
+  });
+  const foot = h("div", "modalfoot");
+  foot.append(h("div", "spacer"), cancel, ok);
+  form.append(h("p", "muted", "Kept in this browser's storage under this name; File › Open… lists the notebooks saved here."), input, warn, foot);
+  card.append(h("h3", undefined, "Save notebook as"), form);
+  box.append(card);
+  box.addEventListener("click", (ev) => { if (ev.target === box) closeModal(); });
+  mountModal(box);
+  check();
+  input.focus(); input.select();
 }
 
 /** Open a saved notebook: a small picker over the library, with a delete for each entry. */
@@ -1959,7 +2005,7 @@ function openFromLibrary(name: string) {
   const already = S.docs.findIndex((d) => d.name === name);
   if (already >= 0) { loadDoc(already); switchTab("notebook"); return; }
   const entry = readLibrary()[name]; if (!entry) return;
-  void loadNotebook(JSON.stringify(entry.file), name);
+  void loadNotebook(JSON.stringify(entry.file), name, undefined, undefined, true);
 }
 
 function download(name: string, text: string) {
@@ -2313,7 +2359,7 @@ function newNotebook() {
 
 /** What the browser keeps between reloads: every open notebook, which one is current, and whether
  *  each had unsaved changes. */
-interface Autosave { chalkmath: 1; active: number; docs: { file: ChalkFile; dirty: boolean }[] }
+interface Autosave { chalkmath: 1; active: number; docs: { file: ChalkFile; dirty: boolean; inLibrary?: boolean }[] }
 
 /** The notebooks survive a reload: autosaved to the browser after every run or edit — coalesced,
  *  since serializing every open notebook after each of a hundred cells is most of what makes a
@@ -2327,7 +2373,7 @@ function autosave() {
 function autosaveNow() {
   clearTimeout(autosaveTimer); autosaveTimer = 0;
   stashDoc();
-  const doc: Autosave = { chalkmath: 1, active: S.doc, docs: S.docs.map((d) => ({ file: JSON.parse(d.text) as ChalkFile, dirty: docDirty(d) })) };
+  const doc: Autosave = { chalkmath: 1, active: S.doc, docs: S.docs.map((d) => ({ file: JSON.parse(d.text) as ChalkFile, dirty: docDirty(d), ...(d.inLibrary ? { inLibrary: true } : {}) })) };
   try { localStorage.setItem("chalkmath.autosave", JSON.stringify(doc)); autosaveWarned = false; }
   catch {
     // storage full (big attachments) or unavailable (private mode): say so once, not after every run
@@ -7602,12 +7648,13 @@ if (saved) {
   // sources and outputs come back at once; each engine session is rebuilt by re-running when its tab is shown
   try {
     const parsed = JSON.parse(saved) as Autosave | ChalkFile;
-    const entries: { file: ChalkFile; dirty: boolean }[] = "chalkmath" in parsed && Array.isArray(parsed.docs)
+    const entries: Autosave["docs"] = "chalkmath" in parsed && Array.isArray(parsed.docs)
       ? parsed.docs
       : [{ file: parsed as ChalkFile, dirty: false }];
-    for (const { file, dirty } of entries) {
+    for (const { file, dirty, inLibrary } of entries) {
       const d = makeDoc(file.name ?? "untitled.chalk", cellsFromFile(file), Array.isArray(file.scenes) ? file.scenes : [], assetsFromFile(file));
       if (!d.cells.length) d.cells.push(freshCell());
+      if (inLibrary) d.inLibrary = true;
       d.hydrated = false;
       const pr = projectRefOf(file);
       if (pr) d.project = pr;

@@ -286,11 +286,51 @@ async function scenes() {
   console.log(`✓ scene: 2 beats, the point at (${x.toFixed(3)}, ${y.toFixed(3)}) as the engine samples it, the equation stepped to its answer, % untouched`);
 }
 
+/** The name dialog of File › Save as (and of the first save of an untitled notebook): a name typed and saved. */
+async function saveAs(name) {
+  const dlg = page.locator(".modalcard[aria-label='Save notebook as']");
+  await dlg.waitFor({ timeout: 5000 });
+  await dlg.locator("input").fill(name);
+  await dlg.locator("button.primary").click();
+  await dlg.waitFor({ state: "detached", timeout: 5000 });
+}
+
+/** Saving an untitled notebook: the first save asks for a name instead of writing untitled.chalk over
+ *  another, a later save does not ask, and a second untitled notebook given the same name is told it
+ *  would replace the first. */
+async function saving() {
+  const dlg = page.locator(".modalcard[aria-label='Save notebook as']");
+  const current = () => page.locator(".tabbar .tabstrip .tab.on").getAttribute("title");
+  await menu("File", "New notebook");
+  await run(0, "1 + 1"); await out(0);
+  await page.keyboard.press("Control+s");
+  await dlg.waitFor({ timeout: 5000 }).catch(() => assert.fail("saving an untitled notebook asked for no name"));
+  assert.equal(await dlg.locator("input").inputValue(), "untitled", "the name offered");
+  await saveAs("first");
+  assert.equal(await current(), "first.chalk", "the notebook did not take the name given");
+  await run(1, "2 + 2"); await out(1);
+  await page.keyboard.press("Control+s");
+  await page.waitForFunction(() => !document.querySelector(".tabbar .tabstrip .tab.on .label")?.textContent?.endsWith("*"), null, { timeout: 5000 });
+  assert.equal(await dlg.count(), 0, "a notebook saved once asked for a name again");
+  await menu("File", "New notebook");
+  await menu("File", "Save");
+  await dlg.waitFor({ timeout: 5000 }).catch(() => assert.fail("a second untitled notebook saved without a name"));
+  await dlg.locator("input").fill("first");
+  assert.match(await dlg.locator(".savewarn").textContent(), /already saved/, "a name already saved is not pointed out");
+  assert.equal(await dlg.locator("button.primary").textContent(), "Replace");
+  await dlg.locator("button", { hasText: "Cancel" }).click();
+  assert.equal(await current(), "untitled.chalk", "cancelling renamed the notebook");
+  const lib = await page.evaluate(() => Object.keys(JSON.parse(localStorage.getItem("chalkmath.library") ?? "{}")));
+  assert.ok(lib.includes("first.chalk") && !lib.includes("untitled.chalk"), `the library holds ${JSON.stringify(lib)}`);
+  await page.locator(".tabbar .tabstrip .tab.on .x").click();   // untouched: closes without asking
+  console.log("✓ saving: an untitled notebook asked for a name, kept it, and a second one was warned before replacing it");
+}
+
 async function tabs() {
   const long = "a-notebook-with-a-name-far-too-long-for-any-tab.chalk";
   await menu("File", "New notebook");
-  page.once("dialog", (d) => d.accept(long));
   await menu("File", "Save as");
+  await saveAs(long);
   const strip = page.locator(".tabbar .tabstrip .tab");
   let added = 0;
   while (!(await page.locator(".tabbar.overflow").count())) {
@@ -630,6 +670,7 @@ async function features() {
   console.log(`✓ replicas: ${repWant.lanes.length} lanes, ${repWant.events.length} events, ${repWant.messages.length} messages drawn`);
   await manipulate();
   await scenes();
+  await saving();
   await tabs();
   // a course: the Courses tab, a lesson opened, answered, and followed to the next
   const manifest = JSON.parse(readFileSync(path.join(root, "notebooks/courses.json"), "utf8"));

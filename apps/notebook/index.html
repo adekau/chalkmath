@@ -667,6 +667,10 @@ table.keys { border-collapse:collapse; font-size:12.5px; }
 table.keys td { padding:5px 14px 5px 0; vertical-align:top; color:var(--ink-2); }
 table.keys kbd { font:11.5px var(--mono); color:var(--ink); background:var(--panel-2); border:1px solid var(--border); border-bottom-width:2px; border-radius:4px; padding:1px 6px; white-space:nowrap; }
 .modalfoot { display:flex; align-items:center; gap:8px; margin-top:14px; }
+.savename input[type=text] { width:100%; box-sizing:border-box; font:13px var(--mono); padding:6px 8px; border-radius:5px; border:1px solid var(--border); background:var(--panel-2); color:var(--ink); }
+.savename .savewarn { margin:8px 0 0; font-size:12px; color:var(--warn); }
+.savename .savewarn[hidden] { display:none; }
+.modalfoot button[disabled] { opacity:0.6; cursor:default; }
 .modalfoot button { font:12px var(--font); padding:5px 12px; border-radius:5px; border:1px solid var(--btn-edge); background:var(--btn); color:var(--ink-2); cursor:pointer; }
 .modalfoot button.primary { background:var(--primary); color:var(--pri-ink); border-color:var(--pri-edge); }
 .cellmenu { position:fixed; z-index:60; min-width:200px; padding:5px; background:var(--panel-2); border:1px solid var(--border); border-radius:8px; box-shadow:var(--pop); font-family:var(--font); }
