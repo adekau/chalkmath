@@ -23,6 +23,7 @@ import { ASK_CELL, AskError, askSettings, setAskSettings, runLookup, askSource, 
 import { fileCellOf, resolveFiles, importsIn, partContext, partHelp, fileExprValue, svgPoints, kindOf, tableOf, jsonOf, jsonTable, numericColumns, fileText, fileSize, fmtSize, mimeLabel, mimeFor, dataUrl, fileFromBytes, helpersFor, type FileValue, type FileRef, type FileScope, type Table } from "./files.js";
 import { dataGrid, matrixEntries } from "./datagrid.js";
 import { plotYRange, framesWindow, blendable, blend, playPosition, workLine } from "./animate.js";
+import { manimOfScene } from "./scene-manim.js";
 import { parseScene, numberRequests as sceneNumberRequests, sampleRequests as sceneSampleRequests, numbersOf as sceneNumbersOf, vectorsOf as sceneVectorsOf, build as buildScene, frameAt as sceneFrameAt, SceneError, type SceneData, type Item as SceneItem, type XY } from "./scene.js";
 import { DOC_PAGES, type DocPage, type DocPart } from "./docs.js";
 import { FUNCTIONS, FN_BY_NAME, AREAS, fnPage, evaluable, type FnDoc, type ExampleSection } from "./reference.js";
@@ -1962,9 +1963,9 @@ function openFromLibrary(name: string) {
   void loadNotebook(JSON.stringify(entry.file), name);
 }
 
-function download(name: string, text: string) {
+function download(name: string, text: string, type = "application/json") {
   const a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+  a.href = URL.createObjectURL(new Blob([text], { type }));
   a.download = name; a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
@@ -5842,6 +5843,14 @@ function toggleCellMenu(cell: Cell, anchor: HTMLElement) {
     // the author's starting point: as many steps as show now, the rest left to the reader
     const k = cell.stepwise !== undefined ? revealedCount(cell) : 0;
     if (cell.stepwise !== undefined && k !== cell.stepwise && k < workCount(cell)) item(`Begin with ${k} step${k === 1 ? "" : "s"} shown`, () => setStepwise(cell, k));
+  }
+  if (cell.type === "scene") {
+    // the scene as a Manim script, its samples the engine's: rendered by Manim on the reader's computer
+    menu.append(h("div", "sep"));
+    const data = cell.scene;
+    const name = `${S.docName.replace(/\.chalk$/, "")}-${i}`;
+    item("Copy as Manim script", data ? copy(manimOfScene(data, name), "the Manim script") : null);
+    item("Save as Manim script (.py)", data ? () => { download(`${name}.py`, manimOfScene(data, name), "text/x-python"); notify("ok", `Saved ${name}.py: render it with manim -pqh ${name}.py`); } : null);
   }
   menu.append(h("div", "sep"));
   item("Duplicate cell", () => duplicateCell(cell));

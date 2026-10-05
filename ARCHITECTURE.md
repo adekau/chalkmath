@@ -454,6 +454,10 @@ a vector `v` is then sampled as `v[[1]] + i*v[[2]]`. A matrix is drawn as the gr
 plane's, `grid(M)`, sampled as its two columns, since a linear map is decided by where it sends the
 basis; the page draws the lines through the columns' whole-number combinations. A scene's `let` is
 written in where it is used, so the engine sees whole expressions and the script stays short.
+A scene can leave the browser as a Manim script (`scene-manim.ts`, the cell's ⋮ menu, or
+`drive.mjs --manim`): the Python carries the engine's samples as data and redraws each object from them
+at a `ValueTracker` clock, each beat an `AnimationGroup` as long as the beat is in the notebook. The
+division holds there too: Manim renders and interpolates, and every coordinate is still the engine's.
 
 **Courses** (File › Courses and examples) opens a tab that lists *projects*:
 notebooks that belong together, either a course (lessons read in order) or a collection. They are

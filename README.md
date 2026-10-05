@@ -51,6 +51,11 @@ bundle, with a stand-in model and synthetic pages. See ARCHITECTURE.md §4c.
 screenful at a time, in Chromium against the native engine (after `npm run bundle`): for looking at a lesson,
 not a test.
 
+`node scripts/notebooks/drive.mjs --manim <dir> <notebook.chalk>` — each scene cell of the notebook as a Manim
+script, `<dir>/<notebook>-<cell>.py`, its samples the native engine's; render one with
+`manim -pqh <dir>/<file>.py` ([Manim Community](https://www.manim.community), with LaTeX). The scene test runs
+the scripts it writes through Manim (a dry run) when `MANIM` names a `manim` executable.
+
 `cd proofs && lake exe cache get && lake build` — the theorems (Mathlib; the cache download is
 ~5 GB, and Mathlib never enters the engine — `npm run check:engine` enforces that).
 

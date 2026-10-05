@@ -392,6 +392,10 @@ Each line starting with ‹>› is a beat: actions separated by ‹;›, then �
 - ‹work E› steps an ‹eq› through the engine's derivation, each term morphing into the next.
 - ‹wait 2s› holds.
 
+## As a video
+
+A scene's ⋮ menu has **Copy as Manim script** and **Save as Manim script (.py)**: the scene as a script for [Manim](https://www.manim.community), to render as a video on your computer (‹manim -pqh name.py›; Manim needs LaTeX). The script carries the engine's samples, so the video shows exactly what the notebook does: the same objects, colours, captions at the foot of the frame, beats of the same length, and each equation's steps morphing one into the next. Python only interpolates between the samples, as the page does. From the command line, ‹node scripts/notebooks/drive.mjs --manim out notebook.chalk› writes every scene of a notebook.
+
 The calculus course's lesson *Circles, exponentials and rotation* is told mostly in scenes, and the linear algebra course uses them for the plane: vectors tip to tail, a matrix moving the grid, the product as one map after another, row operations turning lines about their crossing, the determinant as an area, and eigenvectors.
 `],
   },
@@ -406,7 +410,7 @@ The calculus course's lesson *Circles, exponentials and rotation* is told mostly
 3. **▶ Play** previews the scene in the page, matching glyphs between terms the way ‹TransformMatchingTex› does.
 4. The Python for the scene is beside it. Copy it into a file and render it with Manim on your computer, with the command shown (‹manim -pqh scene.py›).
 
-The page writes only the storyboard; rendering the video is Manim's job, outside the browser. Scenes are saved with the notebook: the studio shows the current notebook's, and none while no notebook is open.
+The page writes only the storyboard; rendering the video is Manim's job, outside the browser. A scene cell in a notebook can be saved as a Manim script too, from its ⋮ menu ([Scenes](#doc:scenes)). Scenes are saved with the notebook: the studio shows the current notebook's, and none while no notebook is open.
 `],
   },
   {

@@ -284,6 +284,20 @@ async function scenes() {
   const o = await out(last);
   assert.equal(flatTex(o.tex ?? ""), "3", `% after a scene: ${JSON.stringify(o)}`);
   console.log(`✓ scene: 2 beats, the point at (${x.toFixed(3)}, ${y.toFixed(3)}) as the engine samples it, the equation stepped to its answer, % untouched`);
+  // the scene as a Manim script, from its ⋮ menu: the engine's samples, the beats, the equation's steps
+  await sceneCell.hover();
+  await sceneCell.locator(".cellacts .more").click();
+  const [dl] = await Promise.all([page.waitForEvent("download"), page.locator(".cellmenu .item", { hasText: "Save as Manim script" }).click()]);
+  const pyText = readFileSync(await dl.path(), "utf8");
+  assert.match(dl.suggestedFilename(), /\.py$/);
+  assert.match(pyText, /^from manim import \*$/m);
+  assert.match(pyText, /^class \w+\(Scene\):$/m);
+  const ptRow = pyText.split("\n").find((l) => l.endsWith("# a*exp(i*t)"));
+  assert.ok(ptRow, "the point's samples are in the script");
+  assert.match(ptRow, new RegExp(`\\(${+wx.toFixed(5)}, ${+wy.toFixed(5)}\\)\\],`), "its last sample is the engine's");
+  assert.equal(pyText.match(/self\.play\(AnimationGroup/g)?.length, 2, "a group of animations per beat");
+  assert.ok(pyText.includes(JSON.stringify(eq.rendered.latex)), "the equation's last step is the engine's");
+  console.log(`✓ scene as Manim: ${dl.suggestedFilename()}, the point's samples and the equation's steps the engine's`);
   // a matrix moving the plane: a vector is a point, the grid is drawn, a value is read off
   await menu("Edit", "Add math cell");
   const la = (await cells().count()) - 1;
