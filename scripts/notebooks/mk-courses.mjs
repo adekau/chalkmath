@@ -2750,12 +2750,37 @@ example : msetUnion (MSet.ofList [1, 2]) (MSet.ofList [3])
 // ---------------------------------------------------------------------------------------------------
 // Course 3. Systems are written over several lines (Shift+Enter in a cell), as a specification is.
 const FENCE = "`".repeat(3);
+/** Two threads add one to a shared ‹x›: each reads it into a copy (‹a›, ‹b›), then writes the copy plus one. */
+const LOST = `let Inc = system(
+  var x in 0..2
+  var a in 0..2
+  var b in 0..2
+  var p in {read, write, done}
+  var q in {read, write, done}
+  init x = 0 ∧ a = 0 ∧ b = 0 ∧ p = read ∧ q = read
+  action pread when p = read do a := x, p := write
+  action pwrite when p = write do x := a + 1, p := done
+  action qread when q = read do b := x, q := write
+  action qwrite when q = write do x := b + 1, q := done
+)`;
 const COUNTER = `let C = system(
   var x in 0..3
   var y in 0..3
   init x = 0 ∧ y = 0
   action inc when x < 3 do x := x + 1
   action move when x > 0 ∧ y < 3 do x := x - 1, y := y + 1
+)`;
+const RACE = `let Race = system(
+  var p in {idle, checked, crit}
+  var q in {idle, checked, crit}
+  var lock in bool
+  init p = idle ∧ q = idle ∧ lock = false
+  action pcheck when p = idle ∧ lock = false do p := checked
+  action pset when p = checked do lock := true, p := crit
+  action pexit when p = crit do p := idle, lock := false
+  action qcheck when q = idle ∧ lock = false do q := checked
+  action qset when q = checked do lock := true, q := crit
+  action qexit when q = crit do q := idle, lock := false
 )`;
 const LOCKS = `let Fix = system(
   var p in {idle, crit}
@@ -2767,6 +2792,40 @@ const LOCKS = `let Fix = system(
   action qenter when q = idle ∧ lock = false do lock := true, q := crit
   action qexit when q = crit do q := idle, lock := false
 )`;
+/** Raise your flag, then wait until the other's is down. */
+const FLAGS = `let Flags = system(
+  var p in {idle, want, crit}
+  var q in {idle, want, crit}
+  var fp in bool
+  var fq in bool
+  init p = idle ∧ q = idle ∧ fp = false ∧ fq = false
+  action pwant when p = idle do fp := true, p := want
+  action penter when p = want ∧ fq = false do p := crit
+  action pexit when p = crit do fp := false, p := idle
+  action qwant when q = idle do fq := true, q := want
+  action qenter when q = want ∧ fp = false do q := crit
+  action qexit when q = crit do fq := false, q := idle
+)`;
+/** Peterson's algorithm: raise your flag, give the other the turn, and wait until its flag is down or the turn is yours.
+ *  `f` prefixes every action (‹fair ›); `swap` writes the turn before the flag, the order that fails. */
+const peterson = (name, f = "", swap = false) => `let ${name} = system(
+  var p in {idle, flag, wait, crit}
+  var q in {idle, flag, wait, crit}
+  var fp in bool
+  var fq in bool
+  var turn in {P, Q}
+  init p = idle ∧ q = idle ∧ fp = false ∧ fq = false ∧ turn = P
+${swap ? `  ${f}action pyield when p = idle do turn := Q, p := flag
+  ${f}action pflag when p = flag do fp := true, p := wait` : `  ${f}action pflag when p = idle do fp := true, p := flag
+  ${f}action pyield when p = flag do turn := Q, p := wait`}
+  ${f}action penter when p = wait ∧ (fq = false ∨ turn = P) do p := crit
+  ${f}action pexit when p = crit do fp := false, p := idle
+${swap ? `  ${f}action qyield when q = idle do turn := P, q := flag
+  ${f}action qflag when q = flag do fq := true, q := wait` : `  ${f}action qflag when q = idle do fq := true, q := flag
+  ${f}action qyield when q = flag do turn := P, q := wait`}
+  ${f}action qenter when q = wait ∧ (fp = false ∨ turn = Q) do q := crit
+  ${f}action qexit when q = crit do fq := false, q := idle
+)`;
 const waiter = (name, fairness) => `let ${name} = system(
   var p in {idle, crit}
   var q in {wait, crit}
@@ -2776,6 +2835,23 @@ const waiter = (name, fairness) => `let ${name} = system(
   action pexit when p = crit do p := idle, lock := false
   ${fairness}action qenter when q = wait ∧ lock = false do lock := true, q := crit
 )`;
+/** A client that tries a request at most twice over a network that loses requests and replies. With `dedup`, the
+ *  server remembers that it has applied the request and only replies to a repeat. */
+const client = (name, dedup) => `let ${name} = system(
+  var tries in 0..2
+  var req in bool
+  var applied in 0..2
+${dedup ? "  var seen in bool\n" : ""}  var reply in {none, flying, got}
+  init tries = 0 ∧ req = false ∧ applied = 0${dedup ? " ∧ seen = false" : ""} ∧ reply = none
+  action send when tries < 2 ∧ req = false ∧ reply ≠ got do tries := tries + 1, req := true
+  action lose when req = true do req := false
+${dedup ? `  action deliver when req = true ∧ seen = false do req := false, applied := applied + 1, seen := true, reply := flying
+  action again when req = true ∧ seen = true do req := false, reply := flying` : `  action deliver when req = true do req := false, applied := applied + 1, reply := flying`}
+  action loseReply when reply = flying do reply := none
+  action gotReply when reply = flying do reply := got
+)`;
+const TWO = "let Two = system(var a in 0..2; var b in 0..2; init a = 0 ∧ b = 0; action ta when a < 2 do a := a + 1; action tb when b < 2 do b := b + 1)";
+const SUM = "let Sum = system(var s in 0..4; init s = 0; action t when s < 4 do s := s + 1)";
 const TS_LEAN = r`/-- A transition system on states σ: which states are initial, and which steps are allowed. -/
 structure TS (σ : Type) where
   init : σ → Prop
@@ -2787,38 +2863,42 @@ inductive Reachable {σ : Type} (T : TS σ) : σ → Prop where
   | step {s t : σ} : Reachable T s → T.step s t → Reachable T t`;
 
 course("systems", "Transition systems, invariants and temporal logic",
-  "State machines and their reachable states; invariants with counterexample traces and inductive proofs; mutual exclusion, safety and liveness under fairness; temporal logic as fixed points; happens-before, effectively-once delivery, and refinement; rewriting systems, and retries under failure.",
+  "A lost update as a path in a graph of states; invariants with counterexample traces and inductive proofs; a lock that fails and Peterson's that does not; safety and liveness under fairness; temporal logic as fixed points; happens-before, effectively-once delivery and refinement; rewriting systems, and retries under failure.",
   "Distributed systems", (add) => {
 
-  add("01-state-machines.chalk", "State machines and executions", "Variables, an initial condition and guarded actions; executions as traces; the graph of reachable states.", ({ sec, md, m, ex, lean, lx }) => {
+  add("01-state-machines.chalk", "State machines and executions", "Two threads that lose an update: a system as variables, an initial state and guarded actions, and its graph of reachable states as every interleaving at once.", ({ sec, md, m, ex, lean, lx }) => {
     sec("State machines and executions");
     md(r`
 > [!goal]
-> Describe a system by its variables, its initial states and its actions; run it step by step; and draw every state it can reach.
+> Find the order of steps in which two threads lose an update, by drawing every order at once.
 `);
+    md(r`Two threads each add one to a shared counter ‹x›, which starts at 0. Each does it as a processor does: read ‹x› into a copy of its own, then write back the copy plus one. When both have finished, ‹x› is 2.`);
+    md(r`
+> [!try]
+> Is it? Each thread takes two steps, so there are six orders of the four steps. Before reading on, find one that leaves $x = 1$.
+`);
+    sec("A model");
+    md(r`Write down only what the question needs: the shared ‹x›; each thread's copy, ‹a› for thread ‹p› and ‹b› for ‹q›; and where each thread is (‹read›, ‹write›, ‹done›). Each step is an **action**: a **guard**, when it may happen, and **updates**, what it changes, all at once. (In a cell, Shift+Enter starts a new line; Enter runs it.)`);
+    m(LOST);
+    md(r`Run ‹p› to the end, then ‹q›:`);
+    m("trace(Inc; pread, pwrite, qread, qwrite)", { step: 0 });
+    md(r`Now let both read before either writes:`);
+    m("trace(Inc; pread, qread, pwrite, qwrite)", { step: 0 });
+    md(r`Both copied 0 and both wrote 1: ‹q›'s write erased ‹p›'s. This is a **lost update**. Running the program a thousand times may never show it: the scheduler has to switch threads between a read and the write after it.`);
+    md(r`A step whose guard fails cannot be taken: ‹q› cannot write before it has read.`);
+    m("trace(Inc; qwrite)");
+    sec("Every interleaving at once");
+    md(r`Rather than try the six orders one at a time, draw every state the threads can be in and every step between them. The graph is drawn in rows: the initial state on top, each row one step further.`);
+    m("states(Inc)");
+    md(r`Each path down from the top is one order. The six orders share most of their states, so 13 states and 14 steps hold all of them. Three states end the graph: two with $x = 2$, one with $x = 1$. With a large graph we would not look; we would ask:`);
+    m("reach(Inc, p = done ∧ q = done ∧ x = 1)", { step: 0 });
+    md(r`The search goes breadth-first, row by row, so the first path it finds is a shortest one: here four steps, the second order we ran.`);
     md(r`
 > [!definition] Transition system
-> A **state** gives each variable a value. A **transition system** says which states are **initial** and which **steps** from a state to the next are allowed. An **action** is a kind of step: a **guard** (when it may happen) and **updates** (what it changes, all at once). An **execution** is a sequence of states, each a step from the one before; a state is **reachable** when some execution from an initial state gets there.
+> A **state** gives each variable a value. A **transition system** says which states are **initial** and which **steps** from one state to the next are allowed; actions describe the steps. An **execution** is a sequence of states, each a step from the one before. A state is **reachable** when some execution from an initial state gets there.
 `);
-    md(r`A system cell lists its parts on separate lines (in a cell, Shift+Enter starts a new line and Enter runs it). A traffic light:`);
-    m(`let Light = system(
-  var c in {red, green, yellow}
-  init c = red
-  action go when c = red do c := green
-  action slow when c = green do c := yellow
-  action stop when c = yellow do c := red
-)`);
-    m("trace(Light; go, slow, stop, go)", { step: 0 });
-    md(r`An action whose guard fails cannot be taken; asking for it is an error that says which condition failed.`);
-    m("trace(Light; slow)");
-    sec("The reachable states");
-    md(r`Two variables: ‹inc› counts up, ‹move› moves one unit from ‹x› to ‹y›. The graph is drawn in rows, the initial state on top and each row one step further.`);
-    m(COUNTER);
-    m("states(C)");
-    m("reach(C, y = 3)", { step: 0 });
-    md(r`A shortest way to $y = 3$ takes six steps: the search is breadth-first, so the first trace it finds is a shortest one.`);
     sec("In Lean");
-    md(r`The same notions as definitions: a system is its initial predicate and its step relation, and reachability is the least set closed under steps.`);
+    md(r`The same notions as definitions: a system is its initial predicate and its step relation, and reachability is the least set that contains the initial states and is closed under steps.`);
     lean(TS_LEAN);
     lean(r`/-- A counter that counts up to 3. -/
 def counter : TS Nat where
@@ -2829,35 +2909,59 @@ def counter : TS Nat where
       r`Each step needs a proof of ‹s < 3 ∧ t = s + 1›: ‹⟨by decide, rfl⟩›.`,
     ]);
     sec("Exercises");
-    md(r`Answer with a number, ‹true› or ‹false›, or a state written as ‹x = 1 ∧ y = 2›.`);
-    ex("states(Light)", r`How many states can the traffic light reach?`, []);
-    ex("trace(C; inc, move, inc)", r`Run ‹inc›, ‹move›, ‹inc› from the initial state of ‹C›. Which state do you reach?`, [r`Updates in one action happen together: ‹move› takes one from ‹x› and gives it to ‹y›.`]);
-    ex("reach(C, x = 3 ∧ y = 3)", r`Can ‹C› reach $x = 3, y = 3$?`, [r`Count up to 3, move three times, count up again.`]);
+    md(r`Answer ‹true› or ‹false›.`);
+    ex("reach(Inc, p = done ∧ q = done ∧ x = 0)", r`Can both threads finish and leave $x = 0$?`, [r`Every write writes a copy plus one.`]);
+    md(r`Three threads, ‹p›, ‹q› and ‹r›, with copies ‹a›, ‹b› and ‹c›:`);
+    m(`let Inc3 = system(
+  var x in 0..3
+  var a in 0..3
+  var b in 0..3
+  var c in 0..3
+  var p in {read, write, done}
+  var q in {read, write, done}
+  var r in {read, write, done}
+  init x = 0 ∧ a = 0 ∧ b = 0 ∧ c = 0 ∧ p = read ∧ q = read ∧ r = read
+  action pread when p = read do a := x, p := write
+  action pwrite when p = write do x := a + 1, p := done
+  action qread when q = read do b := x, q := write
+  action qwrite when q = write do x := b + 1, q := done
+  action rread when r = read do c := x, r := write
+  action rwrite when r = write do x := c + 1, r := done
+)`);
+    ex("reach(Inc3, p = done ∧ q = done ∧ r = done ∧ x = 1)", r`Predict, then check: can all three finish with $x = 1$, two of the three increments lost?`, [r`One stale copy, written last, erases everything written since it was read.`], { hide: true });
     md(r`
 > [!summary]
-> A transition system is states, initial states and steps; actions describe steps by guards and updates. Its reachable states form a graph, and an execution is a path in it from an initial state.
+> A system is variables, initial states and guarded actions. Its graph of reachable states holds every interleaving of its steps at once, and a breadth-first search through it finds a shortest path to any state we ask for: here, the lost update.
 `);
+    md(r`$x = 2$ at the end is not guaranteed. What *is* guaranteed in every reachable state, and how can we know it when the graph is too large to draw? That is the next lesson.`);
   });
 
-  add("02-invariants.chalk", "Invariants and induction", "Properties of every reachable state: refuted by a shortest trace, proved by induction, and strengthened when induction fails.", ({ sec, md, m, ex, lean, lx }) => {
+  add("02-invariants.chalk", "Invariants and induction", "What holds in every reachable state: refuted by a shortest trace, proved by one step of induction, and strengthened when that step fails.", ({ sec, md, m, ex, lean, lx }) => {
     sec("Invariants and induction");
     md(r`
 > [!goal]
-> Decide whether a property holds in every reachable state, read the shortest counterexample when it does not, and prove it by induction, strengthening it when the induction fails.
+> Check that a property holds in every reachable state, then prove it by looking at one step instead of every state.
 `);
+    md(r`Lesson 1's threads can lose an update, so "when both are done, $x = 2$" is false. Something weaker should survive: whichever thread writes last writes a copy plus one.`);
+    md(r`
+> [!try]
+> Is "when both are done, $x \ge 1$" true in every reachable state?
+`);
+    m(LOST);
+    m("invariant(Inc, p = done ∧ q = done → x = 2)", { step: 0 });
+    m("invariant(Inc, p = done ∧ q = done → x ≥ 1)");
+    md(r`‹invariant› turns ‹reach› around: it searches for a state that breaks the formula, and gives a shortest path there when there is one (the lost update again).`);
     md(r`
 > [!definition] Invariant
-> A state formula is an **invariant** when it holds in every reachable state. A counterexample is an execution from an initial state to a state where it fails.
+> A state formula is an **invariant** when it holds in every reachable state. A **counterexample** is an execution from an initial state to a state where it fails.
 `);
-    m(COUNTER);
-    m("invariant(C, x + y ≤ 3)", { step: 0 });
-    m("invariant(C, y ≤ 3)");
-    sec("Inductive invariants");
+    sec("One step instead of every state");
+    md(r`The search visited all 13 reachable states. A real program has billions, and a program whose counter can grow without bound has infinitely many. Ask instead what one step can do. If the formula holds at the start, and no step from a state where it holds can break it, then it holds after one step, so after two, so after any number: in every reachable state.`);
     md(r`
 > [!theorem] Proof by induction
 > If $I$ holds in every initial state, and every step from a state where $I$ holds leads to one where $I$ holds, then $I$ holds in every reachable state. Such an $I$ is **inductive**.
 `);
-    md(r`Inductiveness is checked over *every* state, reachable or not, so it needs no search, and it is a proof. But an invariant need not be inductive. Two counters stepping together:`);
+    md(r`Checking that is local: take any state where $I$ holds, reachable or not, and try every action. Nothing needs to know which states are reachable. Two counters that step together:`);
     m(`let Pair = system(
   var x in 0..6
   var y in 0..6
@@ -2865,60 +2969,79 @@ def counter : TS Nat where
   action step when x < 5 do x := x + 1, y := y + 1
 )`);
     m("invariant(Pair, y ≤ 5)");
+    md(r`
+> [!try]
+> $y \le 5$ holds in all 6 reachable states. Is it inductive?
+`);
     m("inductive(Pair, y ≤ 5)", { work: true });
-    md(r`The counterexample to induction is a state that no execution reaches ($y = 5$ with $x < 5$): $y \le 5$ is true but too weak to prove itself. **Strengthen** it with what makes it true, that $x$ and $y$ move together:`);
+    md(r`No. The check found $x = 0, y = 5$: $y \le 5$ holds there, and a step makes $y = 6$. No execution reaches that state, but the check does not know that; that is the price of not searching. $y \le 5$ is true, yet too weak to carry itself through a step.`);
+    md(r`
+> [!mistake]
+> The natural repair is to bound $x$ as well. It changes nothing: $x = 0, y = 5$ still satisfies $x \le 5 \land y \le 5$.
+`);
+    m("inductive(Pair, x ≤ 5 ∧ y ≤ 5)");
+    md(r`What rules that state out is the reason $y \le 5$ is true at all: $y$ moves with $x$, and $x$ stops at 5. **Strengthen** the formula with that reason:`);
     m("inductive(Pair, x = y ∧ y ≤ 5)");
+    md(r`A stronger formula is easier to prove, because the step may assume more. It is the same move as strengthening the hypothesis of an induction in a proof.`);
     sec("In Lean");
+    md(r`The induction principle, proved once for every system:`);
     lx(`theorem invariant_of_inductive {σ : Type} (T : TS σ) (I : σ → Prop)
     (hinit : ∀ s, T.init s → I s) (hstep : ∀ s t, I s → T.step s t → I t) :
     ∀ s, Reachable T s → I s := by`, r`Prove the induction principle for invariants: by induction on reachability.`, `  intro s h
   induction h with
   | init hs => exact hinit _ hs
   | step _ hst ih => exact hstep _ _ ih hst`, [r`‹intro s h›, then ‹induction h› gives a case per constructor of ‹Reachable›.`, r`In the ‹step› case, the hypothesis says ‹I› holds before the step.`]);
+    md(r`Applied to lesson 1's counter, whose states are all of ‹Nat›: the proof never asks which of them are reachable.`);
     lean(r`theorem counter_le_three : ∀ s, Reachable counter s → s ≤ 3 := by
   apply invariant_of_inductive
   · intro s hs; simp [counter] at hs; omega
   · intro s t _ hst; simp [counter] at hst; omega`);
     sec("Exercises");
-    ex("inductive(Pair, y ≤ 5)", r`Is $y \le 5$ inductive for ‹Pair›?`, []);
-    ex("inductive(Pair, x = y ∧ x ≤ 5)", r`Is $x = y \land x \le 5$ inductive?`, [r`Initially both are 0; the only step adds one to each, and only when $x < 5$.`]);
-    ex("invariant(C, x ≤ 3)", r`Is $x \le 3$ an invariant of ‹C›?`, []);
+    md(r`A pair where $y$ goes up twice as fast:`);
+    m("let Dbl = system(var x in 0..6; var y in 0..12; init x = 0 ∧ y = 0; action step when x < 5 do x := x + 1, y := y + 2)");
+    ex("invariant(Dbl, y ≤ 10)", r`Is $y \le 10$ an invariant of ‹Dbl›?`, []);
+    ex("inductive(Dbl, y ≤ 10)", r`Is $y \le 10$ inductive?`, [r`Look for a state with $y \le 10$, not reachable, from which a step passes 10.`]);
+    ex("inductive(Dbl, y = 2x ∧ x ≤ 5)", r`Strengthen it with what makes it true: is $y = 2x \land x \le 5$ inductive?`, [r`Initially $0 = 2 \cdot 0$; a step adds 1 to $x$ and 2 to $y$, and only when $x < 5$.`]);
     md(r`
 > [!summary]
-> An invariant holds in every reachable state; a shortest trace refutes it. An inductive invariant proves itself in one step, over all states; when induction fails at an unreachable state, strengthen the invariant with the fact that rules that state out.
+> An invariant holds in every reachable state, and a shortest trace refutes it. An inductive invariant is proved by one step from any state where it holds, reachable or not, so it needs no search. When that step fails at an unreachable state, strengthen the formula with the reason it is true.
 `);
+    md(r`Lesson 1's bug came from two threads inside the same read-then-write at once. Next: build a lock that lets one in at a time, and let the checker say whether it works.`);
   });
 
-  add("03-mutual-exclusion.chalk", "Mutual exclusion", "A check-then-act race as a stepped trace, the fix, its inductive proof, and the same model in TLA+.", ({ sec, md, m, ex, lean, lx }) => {
+  add("03-mutual-exclusion.chalk", "Mutual exclusion", "A lock built from a check and a take, the race the checker finds, two fixes (an atomic step, and Peterson's flags and turn), and an inductive proof.", ({ sec, md, m, ex, lean, lx }) => {
     sec("Mutual exclusion");
     md(r`
 > [!goal]
-> Find a race by model checking, fix it, prove the fix by an inductive invariant, and see the model in TLA+.
+> Build a lock that lets at most one thread into its critical section, find what is wrong with the first attempts from the checker's traces, and prove the fix.
 `);
-    md(r`A service must run at most one job per customer at a time. Each worker checks that no job is running, then starts one: **check, then act**. Two workers, one lock:`);
-    m(`let Race = system(
-  var p in {idle, checked, crit}
-  var q in {idle, checked, crit}
-  var lock in bool
-  init p = idle ∧ q = idle ∧ lock = false
-  action pcheck when p = idle ∧ lock = false do p := checked
-  action pset when p = checked do lock := true, p := crit
-  action pexit when p = crit do p := idle, lock := false
-  action qcheck when q = idle ∧ lock = false do q := checked
-  action qset when q = checked do lock := true, q := crit
-  action qexit when q = crit do q := idle, lock := false
-)`);
-    md(r`Step through the counterexample: both workers check while the lock is free, then both take it.`);
+    md(r`The lost update needs both threads between a read and a write. Make that stretch a **critical section** that at most one thread may be in. The obvious lock: look at it, and if it is free, take it. Two threads, one lock:`);
+    m(RACE);
+    md(r`
+> [!try]
+> Can both threads get in? If so, in how few steps?
+`);
     m("invariant(Race, ¬(p = crit ∧ q = crit))", { step: 0 });
-    sec("The fix");
-    md(r`Make the check and the taking one action, as a compare-and-set or a database's conditional write does:`);
+    md(r`Both look while the lock is free, then both take it: **check, then act**, with a gap between. It is lesson 1's bug again, one level up: reading the lock and writing it are separate steps.`);
+    sec("Closing the gap");
+    md(r`Make the check and the take one action, as a compare-and-set instruction or a database's conditional write does:`);
     m(LOCKS);
     m("invariant(Fix, ¬(p = crit ∧ q = crit))");
-    md(r`The model checker has tried every reachable state. A proof covers every state at once: the property is not inductive by itself (from an unreachable state where one is inside without the lock, the other can enter), but it is once strengthened with "whoever is inside holds the lock":`);
+    md(r`The checker has tried all 3 reachable states. For a proof, lesson 2's induction: is "not both inside" inductive?`);
     m("inductive(Fix, ¬(p = crit ∧ q = crit))", { work: true });
+    md(r`Not by itself: from an unreachable state where ‹q› is inside without the lock, ‹p› can enter. What rules it out is why the lock works: whoever is inside holds the lock. Strengthened with that, it is inductive:`);
     m("inductive(Fix, (p = crit → lock = true) ∧ (q = crit → lock = true) ∧ ¬(p = crit ∧ q = crit))");
+    sec("Without an atomic step");
+    md(r`Can two threads exclude each other with nothing but ordinary reads and writes? Give each a flag. Raising it first, then looking, closes the gap: a thread only looks once its own flag is up.`);
+    m(FLAGS);
+    m("invariant(Flags, ¬(p = crit ∧ q = crit))");
+    m("deadlock(Flags)", { step: 0 });
+    md(r`Safe, but both can raise their flags and then wait for each other for ever: a **deadlock**. The trace says what is missing: a tie-breaker for when both want in. Add a shared ‹turn›. After raising its flag, each thread gives the turn to the other, and enters once the other's flag is down or the turn has come back to it. Whoever wrote ‹turn› last waits. This is **Peterson's algorithm**:`);
+    m(peterson("Peterson"));
+    m("invariant(Peterson, ¬(p = crit ∧ q = crit))");
+    m("deadlock(Peterson)");
     sec("In TLA+");
-    md(`The same model in TLA+, for the TLC model checker:
+    md(`The atomic lock in TLA+, for the TLC model checker:
 
 ${FENCE}
 VARIABLES p, q, lock
@@ -2931,8 +3054,9 @@ Next == PEnter \\/ PExit \\/ QEnter \\/ QExit
 MutualExclusion == ~(p = "crit" /\\ q = "crit")
 ${FENCE}
 
-The primed variables are the next state's; ‹UNCHANGED› says what an action leaves alone, which here is implicit.`);
+The primed variables are the next state's; ‹UNCHANGED› says what an action leaves alone, which a system cell leaves implicit.`);
     sec("In Lean");
+    md(r`The atomic lock again, and lesson 2's induction with the strengthened invariant:`);
     lean(r`/-- Two processes and a lock: each is in its critical section or not. -/
 structure Mutex where
   p : Bool
@@ -2965,26 +3089,90 @@ def MutexInv (s : Mutex) : Prop :=
         simp_all [MutexInv] <;> cases p <;> cases q <;> simp_all
   exact this.2.2`);
     sec("Exercises");
-    ex("reach(Fix, p = crit ∧ q = crit)", r`Can both workers be inside at once in ‹Fix›?`, []);
-    ex("reach(Race, p = crit ∧ q = crit)", r`And in ‹Race›?`, []);
+    md(r`Peterson's algorithm with its two writes the other way round: give away the turn first, then raise the flag.`);
+    m(peterson("Swapped", "", true));
+    ex("reach(Swapped, p = crit ∧ q = crit)", r`Can both threads be inside at once in ‹Swapped›? Answer ‹true› or ‹false›.`, [r`Let ‹p› give away the turn, then ‹q›: now the turn is ‹p›'s. Can ‹q› get in before ‹p›'s flag goes up?`], { hide: true });
+    md(r`Strict alternation: one shared ‹turn›, and each thread hands it over on the way out.`);
+    m(`let Turn = system(
+  var p in {idle, crit}
+  var q in {idle, crit}
+  var turn in {P, Q}
+  init p = idle ∧ q = idle ∧ turn = P
+  action penter when p = idle ∧ turn = P do p := crit
+  action pexit when p = crit do p := idle, turn := Q
+  action qenter when q = idle ∧ turn = Q do q := crit
+  action qexit when q = crit do q := idle, turn := P
+)`);
+    ex("invariant(Turn, ¬(p = crit ∧ q = crit))", r`Is ‹Turn› safe: never both inside?`, []);
+    ex("deadlock(Turn)", r`Can ‹Turn› deadlock?`, []);
     md(r`
 > [!summary]
-> Check-then-act is a race whenever the check and the act are separate steps: the model checker finds the interleaving and shows it step by step. The fix makes them one step, and an inductive invariant (strengthened with "inside means holding the lock") proves it for every state.
+> A lock that checks and then takes is a race, because the check and the take are separate steps; the checker finds the interleaving. One fix makes them one step, and an inductive invariant ("inside means holding the lock") proves it. Without an atomic step, flags alone deadlock, and Peterson's turn breaks the tie; the order of its two writes matters.
 `);
+    md(r`‹Turn› passes both checks, yet ‹p› cannot go in twice in a row: if ‹q› stops wanting in, ‹p› waits for ever. No state is bad; a good thing just never happens. Saying that needs a second kind of property, the next lesson's.`);
   });
 
-  add("04-safety-liveness.chalk", "Safety and liveness", "Nothing bad happens; something good eventually does. Deadlocks, lassos, and weak and strong fairness.", ({ sec, md, m, ex, lean, lx }) => {
+  add("04-safety-liveness.chalk", "Safety and liveness", "Nothing bad happens; something good eventually does. Finite counterexamples and infinite ones, deadlocks and lassos, and the fairness a scheduler must promise.", ({ sec, md, m, ex, lean, lx }) => {
     sec("Safety and liveness");
     md(r`
 > [!goal]
-> Tell safety properties from liveness properties, find deadlocks, and decide "eventually" under fairness, reading a lasso when it fails.
+> Tell "nothing bad happens" from "something good eventually happens" by the shape of their counterexamples, and see which promise from the scheduler makes "eventually" true.
 `);
+    md(r`A lock that never lets anyone in is perfectly safe: no state ever has both threads inside. Lesson 3's flags came close to that. So mutual exclusion is not all we want; we also want each thread that is waiting to get in, eventually.`);
+    md(r`The two claims fail differently. "Never both inside" fails at a moment: show the trace up to the bad state, and it is refuted, whatever comes after. "Eventually gets in" fails at no moment: after any trace that can go on, the thread might still get in later. A counterexample has to be a whole run that never gets there: one that stops, or one that goes on for ever.`);
     md(r`
 > [!definition] Safety and liveness
-> A **safety** property says nothing bad ever happens; it is refuted by a finite trace (invariants are safety properties). A **liveness** property says something good eventually happens; it is refuted by an infinite execution, which on a finite system is a **lasso**: a path to a loop that repeats forever.
+> A **safety** property says nothing bad ever happens; a finite trace refutes it (invariants are safety properties). A **liveness** property says something good eventually happens; no trace that can still go on refutes it, only a complete run that never gets there: one that stops in a **deadlock**, where no action is enabled, or, on a finite system, a **lasso**, a path into a loop that repeats for ever.
 `);
-    sec("Deadlock");
-    md(r`Two workers each need two forks, and take them in opposite orders:`);
+    md(r`Lesson 3's flags gave a run of the first kind: both flags up, both threads waiting, no action enabled. Runs of the second kind need a closer look.`);
+    sec("Runs that loop, and fairness");
+    md(r`Here nothing stops. Thread ‹q› waits to enter; thread ‹p› has work of its own, and alternates between working and resting.`);
+    m(`let Spin = system(
+  var p in {idle, busy}
+  var q in {wait, crit}
+  init p = idle ∧ q = wait
+  action pwork when p = idle do p := busy
+  action prest when p = busy do p := idle
+  action qenter when q = wait do q := crit
+)`);
+    md(r`
+> [!try]
+> Does ‹q› always get in eventually?
+`);
+    m("eventually(Spin, q = crit)", { step: 0 });
+    md(r`No: the lasso runs ‹p› for ever and never ‹q›, though ‹qenter› is enabled all along. That is not a bug in the threads; it is a scheduler that never runs ‹q›. Liveness in a concurrent system rests on a promise from the scheduler: a **fairness** assumption. **Weak fairness** for an action: if it stays enabled, it is eventually taken. A system marks such an action ‹fair›:`);
+    m(`let Spin2 = system(
+  var p in {idle, busy}
+  var q in {wait, crit}
+  init p = idle ∧ q = wait
+  action pwork when p = idle do p := busy
+  action prest when p = busy do p := idle
+  fair action qenter when q = wait do q := crit
+)`);
+    m("eventually(Spin2, q = crit)");
+    md(r`Weak fairness is not always enough. Put the lock back: ‹p› takes and releases it over and over, and ‹q› needs it free.`);
+    m(waiter("W", "fair "));
+    m("eventually(W, q = crit)", { step: 0 });
+    md(r`On this lasso ‹qenter› is enabled only while ‹p› is out, never continuously, so weak fairness owes ‹q› nothing. **Strong fairness**: if an action is enabled again and again, it is eventually taken.`);
+    m(waiter("S", "strong fair "));
+    m("eventually(S, q = crit)");
+    md(r`Peterson's algorithm needs only the weak promise, for every step. If ‹p› comes round again while ‹q› waits, its next move hands ‹q› the turn; from then on ‹q›'s way in stays open, and ‹p›'s is shut, until ‹q› has been through.`);
+    m(peterson("Peterson", "fair "));
+    m("eventually(Peterson, q = crit)");
+    sec("In Lean");
+    md(r`Termination is liveness too: every run reaches a final state. Its proof is a measure, a natural number that every step lowers, because such a number cannot go down for ever.`);
+    lx(`theorem no_infinite_descent (f : Nat → Nat) (h : ∀ n, f (n + 1) < f n) : False := by`, r`Prove that no sequence of natural numbers decreases forever.`, `  have key : ∀ n, f n + n ≤ f 0 := by
+    intro n
+    induction n with
+    | zero => simp
+    | succ k ih => have := h k; omega
+  have := key (f 0 + 1)
+  omega`, [
+      r`Show first that $f(n) + n \le f(0)$ for every $n$, by induction.`,
+      r`Then take $n = f(0) + 1$: impossible.`,
+    ]);
+    sec("Exercises");
+    md(r`Two workers each need two forks, and take them in opposite orders: ‹a› takes fork 1 first, ‹b› fork 2.`);
     m(`let Forks = system(
   var a in {idle, one, both}
   var b in {idle, one, both}
@@ -2998,56 +3186,47 @@ def MutexInv (s : Mutex) : Prop :=
   action b2 when b = one ∧ f1 = false do b := both, f1 := true
   action brel when b = both do b := idle, f1 := false, f2 := false
 )`);
-    m("deadlock(Forks)", { step: 0 });
-    sec("Fairness");
-    md(r`Will a waiting worker ever get in? Not if the scheduler never lets it. A **fair** action is one the scheduler may not starve: **weakly fair** if it stays enabled it is taken; **strongly fair** if it is enabled again and again it is taken.`);
-    m(waiter("W", "fair "));
-    m("eventually(W, q = crit)", { step: 0 });
-    md(r`Under weak fairness ‹q› can starve: ‹p› keeps taking the lock, so ‹qenter› is enabled only now and then, never continuously. Strong fairness rules that out:`);
-    m(waiter("S", "strong fair "));
-    m("eventually(S, q = crit)");
-    sec("In Lean");
-    md(r`Termination is liveness too, and its proof is a measure: a natural number that every step decreases cannot decrease forever.`);
-    lx(`theorem no_infinite_descent (f : Nat → Nat) (h : ∀ n, f (n + 1) < f n) : False := by`, r`Prove that no sequence of natural numbers decreases forever.`, `  have key : ∀ n, f n + n ≤ f 0 := by
-    intro n
-    induction n with
-    | zero => simp
-    | succ k ih => have := h k; omega
-  have := key (f 0 + 1)
-  omega`, [
-      r`Show first that $f(n) + n \le f(0)$ for every $n$, by induction.`,
-      r`Then take $n = f(0) + 1$: impossible.`,
-    ]);
-    sec("Exercises");
-    ex("deadlock(Forks)", r`Can the two workers deadlock?`, []);
-    ex("eventually(W, q = crit)", r`Under weak fairness, does ‹q› always get in eventually?`, [r`Is ‹qenter› ever continuously enabled while ‹p› keeps cycling?`]);
+    ex("deadlock(Forks)", r`Predict, then check: can ‹Forks› deadlock? Answer ‹true› or ‹false›.`, [r`Let each worker take its first fork.`, r`The usual cure is to take forks in one global order: with both taking fork 1 first, whoever holds it can always get fork 2.`], { hide: true });
+    ex("eventually(Peterson, p = crit)", r`With every step weakly fair, does ‹p› always get into ‹Peterson›'s critical section eventually?`, [r`The algorithm is symmetric.`]);
     md(r`
 > [!summary]
-> Safety fails on a finite trace, liveness on an infinite one: a lasso. Deadlocks are reachable states with nothing to do. Whether "eventually" holds depends on fairness: weak fairness only protects actions that stay enabled, strong fairness those that are enabled again and again.
+> Safety fails on a finite trace; liveness only on a complete run, one that stops (a deadlock) or one that loops (a lasso). Whether "eventually" holds depends on what the scheduler promises: weak fairness protects an action that stays enabled, strong fairness one that is enabled again and again.
 `);
+    md(r`Invariants, deadlocks, "eventually": three commands for three kinds of claim. The next lesson gives them one language, and one way to compute them all.`);
   });
 
-  add("05-temporal-logic.chalk", "Temporal logic as fixed points", "EF, AF, EG and AG on the lattice of state sets: least and greatest fixed points, computed by Kleene iteration.", ({ sec, md, m, ex, lean, lx }) => {
+  add("05-temporal-logic.chalk", "Temporal logic as fixed points", "Words for always and eventually, on some path and on every path; each one computed by repeating a step until nothing changes: least and greatest fixed points.", ({ sec, md, m, ex, lean, lx }) => {
     sec("Temporal logic as fixed points");
     md(r`
 > [!goal]
-> Read CTL formulas, and compute them as least and greatest fixed points on the lattice of sets of states, one Kleene round at a time.
+> Say "always", "eventually", "on some path" and "on every path" in one language, and compute each one by working backwards until nothing changes.
 `);
+    md(r`Two letters say where we look and two say when: **E**, on some path, and **A**, on every path; **F**, eventually (at some future state), and **G**, always (at every one); **X** is the next state. So $\mathsf{EF}\,\varphi$: some path reaches $\varphi$; $\mathsf{AG}\,\varphi$: $\varphi$ holds at every state of every path, an invariant; $\mathsf{AF}\,\varphi$: every path reaches $\varphi$; $\mathsf{EG}\,\varphi$: some path keeps $\varphi$ for ever. This is **CTL**.`);
+    md(r`A system with two counters: ‹inc› counts ‹x› up to 3, and ‹move› moves one unit from ‹x› to ‹y›.`);
+    m(COUNTER);
     md(r`
-> [!definition] CTL
-> **E** means "on some path" and **A** "on every path"; **F** means "eventually" and **G** "always"; **X** means "next". So $\mathsf{EF}\,\varphi$: some path reaches $\varphi$; $\mathsf{AG}\,\varphi$: $\varphi$ holds forever on every path; $\mathsf{AF}\,\varphi$: every path reaches $\varphi$; $\mathsf{EG}\,\varphi$: some path keeps $\varphi$ forever.
+> [!try]
+> How would you compute the set of states from which $y = 3$ can be reached? Start with the states where it holds.
 `);
+    md(r`Those states are in. So is every state with a step into them, and every state with a step into *those*, and so on, until a round adds nothing. Step through the rounds:`);
+    m("ctl(C, EF y = 3)", { step: 0 });
+    md(r`Each round applies one map to the set found so far: $Z \mapsto \varphi \cup \mathsf{EX}\,Z$, the goal together with the states that have a step into $Z$. The round that changes nothing has found a **fixed point**: $Z = \varphi \cup \mathsf{EX}\,Z$.`);
+    sec("Why the least fixed point");
+    md(r`That equation has more than one solution. Take three states: ‹a› steps to itself and to ‹b›, ‹b› steps back to ‹a›, and ‹c› has no steps in or out. Ask for $\mathsf{EF}\,c$: the map is $Z \mapsto \{c\} \cup \mathsf{EX}\,Z$, here on all eight sets of states.`);
+    m("let P3 = subsets({a, b, c})");
+    m("let f = map(P3; {}->{c}, {a}->{a,b,c}, {b}->{a,c}, {c}->{c}, {a,b}->{a,b,c}, {a,c}->{a,b,c}, {b,c}->{a,c}, {a,b,c}->{a,b,c})");
+    m("fixpoints(P3, f)");
+    md(r`$\{a, b, c\}$ is a fixed point too, and it claims that ‹a› can reach ‹c›, which is false. ‹a› and ‹b› hold each other up: each "can reach ‹c›" because the other can. The least solution holds only what is built up from the goal, one real step at a time, and Kleene iteration from $\varnothing$ finds it.`);
+    m("lfp(P3, f)", { step: 0 });
+    m("gfp(P3, f)");
+    md(r`"Always" goes the other way. Start from the states where $\varphi$ holds, and remove those with a step out of the set, until nothing changes: the **greatest** fixed point of $Z \mapsto \varphi \cap \mathsf{AX}\,Z$. Staying for ever is assumed until a step refutes it. In ‹C›, $x + y \le 3$ holds in 10 states, and the set shrinks round by round to nothing:`);
+    m("ctl(C, AG x + y ≤ 3)", { work: true });
     md(r`
 > [!theorem] As fixed points
-> On the lattice of sets of states, ordered by inclusion:
-> $\mathsf{EF}\,\varphi$ is the least $Z$ with $Z = \varphi \cup \mathsf{EX}\,Z$, and $\mathsf{AG}\,\varphi$ the greatest $Z$ with $Z = \varphi \cap \mathsf{AX}\,Z$. Both maps are monotone, so by Knaster–Tarski the fixed points exist, and on a finite lattice Kleene iteration reaches them: from $\varnothing$ for the least, from all states for the greatest.
+> On the lattice of sets of states, ordered by inclusion: $\mathsf{EF}\,\varphi$ is the least $Z$ with $Z = \varphi \cup \mathsf{EX}\,Z$, and $\mathsf{AG}\,\varphi$ the greatest $Z$ with $Z = \varphi \cap \mathsf{AX}\,Z$; likewise $\mathsf{AF}$ is a least fixed point and $\mathsf{EG}$ a greatest. The maps are monotone, so by Knaster–Tarski the fixed points exist, and on a finite lattice Kleene iteration reaches them: from $\varnothing$ for the least, from all states for the greatest.
 `);
-    m(COUNTER);
-    md(r`Step through the rounds: each adds the states one step further back from $y = 3$.`);
-    m("ctl(C, EF y = 3)", { step: 0 });
-    m("ctl(C, AG x + y ≤ 3)", { work: true });
     m("ctl(C, AF y = 3)");
-    md(r`This is *Order and lattices*' fixed-point lesson applied: the lattice is the powerset of the states, and the monotone map is a predicate transformer.`);
+    md(r`This is *Order and lattices*' fixed-point lesson applied: the lattice is the powerset of the states, and the monotone map is a predicate transformer. Model checking a finite system is computing these fixed points.`);
     sec("In Lean");
     lean(r`/-- EX P: some step leads to a state where P holds. -/
 def EX {σ : Type} (T : TS σ) (P : σ → Prop) (s : σ) : Prop := ∃ t, T.step s t ∧ P t
@@ -3070,40 +3249,73 @@ theorem EFk_mono {σ : Type} (T : TS σ) (P : σ → Prop) : ∀ k s, EFk T P k 
     · exact Or.inl h
     · exact Or.inr (EX_mono T _ _ ih s h)`);
     sec("Exercises");
-    ex("ctl(C, EF x = 3 ∧ y = 3)", r`Does $\mathsf{EF}(x = 3 \land y = 3)$ hold initially?`, []);
-    ex("ctl(C, AG y ≤ 3)", r`Does $\mathsf{AG}\,(y \le 3)$ hold?`, []);
+    ex("ctl(C, EF x = 3 ∧ y = 3)", r`Does $\mathsf{EF}(x = 3 \land y = 3)$ hold initially in ‹C›?`, []);
+    ex("ctl(C, EG y < 3)", r`Does $\mathsf{EG}\,(y < 3)$ hold: is there a path that keeps $y < 3$ for ever?`, [r`"For ever" needs an infinite path. Does ‹C› have a cycle, and where does every path end?`]);
+    ex("ctl(C, AF x = 3)", r`Does $\mathsf{AF}\,(x = 3)$ hold: does every path reach $x = 3$?`, [r`Can a path keep $x < 3$ all the way to its end?`]);
     md(r`
 > [!summary]
-> Temporal operators are fixed points of predicate transformers on sets of states: "eventually" a least one, "always" a greatest. Model checking a finite system is computing them by Kleene iteration.
+> Temporal operators are fixed points of maps on sets of states: "eventually" a least one, built up from the goal, "always" a greatest one, whittled down from everything. Model checking a finite system is computing them by Kleene iteration.
 `);
+    md(r`All of this assumed one global state, and one step at a time. Machines that talk over a network share neither a state nor a clock. Which of their events came first? That is the next lesson.`);
   });
 
-  add("06-happens-before.chalk", "Happens-before", "Events of several processes as a partial order, vector clocks that compute it, and concurrency as incomparability.", ({ sec, md, m, ex, lean, lx }) => {
+  add("06-happens-before.chalk", "Happens-before", "Without a shared clock, ask which event could have caused which: a partial order, a single counter that cannot capture it, and vector clocks that can.", ({ sec, md, m, ex, lean, lx, sc }) => {
     sec("Happens-before");
     md(r`
 > [!goal]
-> Order the events of a distributed computation by what could have influenced what, compute that order with vector clocks, and recognize concurrent events.
+> Order the events of machines that only talk by messages by what could have influenced what, and compute that order with vector clocks.
+`);
+    md(r`Machine ‹a› logs a debit at 10:00:02 by its clock; machine ‹b› logs a credit at 10:00:01 by its own. Which came first? Clocks drift, so the timestamps do not say. The question that matters is a different one: could the debit have caused the credit?`);
+    sc(r`
+clock t from 0 to 1
+view 0, 5, -0.6, 1.6
+noaxes
+LA = segment(0.6 + i, 4.6 + i) faint
+LB = segment(0.6, 4.6) faint
+NA = label(0.3 + i, "a")
+NB = label(0.3, "b")
+A1 = point(1 + i) color 1
+A2 = point(2.2 + i) color 1
+A3 = point(4 + i) color 1
+B1 = point(1.6) color 2
+B2 = point(3.2) color 2
+LA1 = label(A1, "a_1")
+LA2 = label(A2, "a_2")
+LA3 = label(A3, "a_3")
+LB1 = label(B1, "b_1")
+LB2 = label(B2, "b_2")
+M1 = arrow(1 + i, 3.2) color 3
+M2 = arrow(1.6, 4 + i) color 3
+S = point(1 + i + t*(2.2 - i)) thick color 3
+> show LA, LB, NA, NB | Two machines, $a$ and $b$; time runs to the right.
+> show A1, A2, A3, LA1, LA2, LA3, B1, B2, LB1, LB2 | Their events, each machine's in its own order.
+> show M1, M2 | Two messages: $a_1$ sends one that $b_2$ receives, and $b_1$ one that $a_3$ receives.
+> show S; play t to 1 in 2s | Information moves only forward along a machine's line, or along a message. What $a_1$ knew can reach $b_2$: $a_1$ could have caused $b_2$.
+> wait 1s | $a_2$ happens earlier than $b_2$, but no path leads from $a_2$ to $b_2$: nothing $a_2$ did can have reached $b_2$, and nothing of $b_2$ can have reached $a_2$.
 `);
     md(r`
 > [!definition] Happens-before (Lamport)
-> Event $e$ **happens before** $f$ when $e$ comes earlier on the same process, or $e$ sends a message that $f$ receives, or a chain of these leads from $e$ to $f$. Events neither of which happens before the other are **concurrent**. Happens-before is a partial order.
+> Event $e$ **happens before** $f$ when $e$ comes earlier on the same machine, or $e$ sends a message that $f$ receives, or a chain of these leads from $e$ to $f$. Events neither of which happens before the other are **concurrent**. Happens-before is a partial order.
 `);
-    md(r`Two processes; ‹a1› sends a message received at ‹b2›, and ‹b1› one received at ‹a3›:`);
     m("let E = events({a1, a2, a3}, {b1, b2}; a1->b2, b1->a3)");
     m("le(E, a1, b2)", { work: true });
     m("concurrent(E, a2, b2)");
-    sec("Vector clocks");
-    md(r`
-> [!definition] Vector clock
-> Each event gets a vector with an entry per process: how many of that process's events happen before it or are it. Then $e$ happens before $f$ exactly when $e$'s vector is below $f$'s in every entry.
-`);
-    m("clocks({a1, a2, a3}, {b1, b2}; a1->b2, b1->a3)");
-    md(r`$a_2 = (2, 0)$ and $b_2 = (1, 2)$: neither is below the other, so they are concurrent. A process computes its clocks without a global clock: tick its own entry at each event, attach the vector to messages, and on receipt take the entrywise maximum.`);
     md(r`
 > [!mistake]
 > Messages cannot travel back in time: a pattern where an event would happen before itself is not a computation.
 `);
     m("events({a1, a2}, {b1, b2}; a2->b1, b2->a1)");
+    sec("Computing it locally");
+    md(r`No machine sees the whole diagram. Can each event carry a tag, computed from what its machine has seen, such that comparing two tags says whether one event happens before the other?`);
+    md(r`The first idea is one number per event, Lamport's clock: count up by one at each event, and on receiving a message, first catch up with the number it carries. If $e$ happens before $f$, $e$'s number is smaller. Here $a_1, a_2, a_3$ get $1, 2, 3$ and $b_1, b_2$ get $1, 2$. But the converse fails: $b_1$'s 1 is below $a_2$'s 2, and yet`);
+    m("le(E, b1, a2)");
+    md(r`One number cannot record *whose* events it has heard of. So keep a number per machine: for each machine, how many of its events this event has heard of.`);
+    md(r`
+> [!definition] Vector clock
+> Each event gets a vector with an entry per machine: how many of that machine's events happen before it or are it. For two different events, $e$ happens before $f$ exactly when $e$'s vector is $\le$ $f$'s in every entry.
+`);
+    m("clocks({a1, a2, a3}, {b1, b2}; a1->b2, b1->a3)");
+    md(r`$a_2 = (2, 0)$ and $b_2 = (1, 2)$: neither is below the other, so they are concurrent. A machine computes its clocks with no global clock: count its own entry up at each event, attach the vector to every message, and on receipt take the entrywise maximum with the message's.`);
     sec("In Lean");
     lean(r`/-- A vector clock, one entry per process. -/
 abbrev VC := List Nat
@@ -3120,42 +3332,51 @@ def VC.merge (a b : VC) : VC := List.zipWith max a b
     sec("Exercises");
     ex("concurrent(E, a1, b1)", r`Are ‹a1› and ‹b1› concurrent?`, []);
     ex("le(E, b1, a3)", r`Does ‹b1› happen before ‹a3›?`, []);
+    ex("le(E, a2, b2)", r`$a_2$'s vector is $(2, 0)$ and $b_2$'s is $(1, 2)$. Does ‹a2› happen before ‹b2›?`, [r`Compare the vectors entry by entry.`]);
     md(r`
 > [!summary]
-> Happens-before is the partial order of possible influence; vector clocks compute it locally, and two events are concurrent exactly when their clocks are incomparable.
+> Without a shared clock, "earlier" is the wrong question; "could have influenced" is the right one, and it is a partial order. A single counter respects it but cannot detect concurrency; a vector of counters, one per machine, computes it exactly and locally.
 `);
+    md(r`Messages carry the influence. Networks lose messages, so senders send again, and then a message can arrive twice. What does that do to the receiver? That is the next lesson.`);
   });
 
-  add("07-effectively-once.chalk", "Effectively-once delivery", "A channel that duplicates; a handler that is idempotent keeps the effect exactly once, one that is not double-applies.", ({ sec, md, m, ex, lean, lx }) => {
+  add("07-effectively-once.chalk", "Effectively-once delivery", "A client that retries because it cannot tell a lost request from a lost reply; the duplicate that follows; and the idempotent handler that makes the effect happen once.", ({ sec, md, m, ex, lean, lx }) => {
     sec("Effectively-once delivery");
     md(r`
 > [!goal]
-> Model a channel that may deliver a message twice, and see that an idempotent handler gives each message its effect exactly once while a non-idempotent one does not.
+> See why retrying a request applies it twice, and make the effect happen once anyway.
 `);
-    md(r`A network that guarantees delivery retries, and retries duplicate. **Exactly-once delivery** is not something a network can promise; **effectively once** is: deliver at least once, and make applying a message twice the same as applying it once.`);
-    m(`let Dup = system(
-  var sent in 0..1
-  var copies in 0..2
-  var applied in 0..3
-  init sent = 0 ∧ copies = 0 ∧ applied = 0
-  action send when sent = 0 do sent := 1, copies := 1
-  action duplicate when copies = 1 ∧ applied = 0 do copies := 2
-  action deliver when copies > 0 do copies := copies - 1, applied := applied + 1
-)`);
-    m("invariant(Dup, applied ≤ sent)", { step: 0 });
-    md(r`The handler adds each delivery to a count, so a duplicate doubles the effect. An idempotent handler records that the message was seen:`);
-    m(`let Idem = system(
-  var sent in 0..1
-  var copies in 0..2
+    md(r`A client asks a server to add 5 to a balance, and hears nothing back. Either the request was lost, and the server did nothing, or the reply was lost, and the server has already added 5. The client cannot tell which. Sending again is the only way to be sure the request gets through.`);
+    md(r`A model: the client tries at most twice; the network may lose the request or the reply; the server adds one to ‹applied› for each request it receives.`);
+    m(client("Retry", false));
+    md(r`
+> [!try]
+> Can the request be applied twice? Does a message have to be lost for that?
+`);
+    m("invariant(Retry, applied ≤ 1)", { step: 0 });
+    md(r`No message was lost. The server applied the request, and while the reply was still on its way the client stopped waiting and sent again; the server applied that too. A lost reply does the same, one step later. Retries turn "at most once" into **at least once**: the client can make sure a request is applied, but not that it is applied only once. **Exactly-once delivery** is not something a network can promise.`);
+    sec("Making a duplicate harmless");
+    md(r`What can be promised is an effect that happens once. Make applying a request twice the same as applying it once: the handler is **idempotent**. Here the server remembers that it has applied the request (in practice, its id), and answers a repeat without applying it:`);
+    m(client("Dedup", true));
+    m("invariant(Dedup, applied ≤ 1)");
+    md(r`The same invariant, now true. **Effectively once** is at-least-once delivery plus an idempotent handler. Idempotence is a property of the handler, not of the network, so it can be proved once, about the handler alone.`);
+    md(r`With a cap of two tries, both can be lost, and the client gives up:`);
+    m("reach(Dedup, tries = 2 ∧ req = false ∧ reply = none ∧ applied = 0)", { step: 0 });
+    md(r`Without the cap the client retries for ever, and whether it eventually gets a reply is a liveness question. It holds when the network promises that a message sent again and again is eventually delivered: strong fairness, from lesson 4, on the steps that deliver.`);
+    m(`let Forever = system(
+  var req in bool
+  var applied in 0..2
   var seen in bool
-  init sent = 0 ∧ copies = 0 ∧ seen = false
-  action send when sent = 0 do sent := 1, copies := 1
-  action duplicate when copies = 1 do copies := 2
-  action deliver when copies > 0 do copies := copies - 1, seen := true
+  var reply in {none, flying, got}
+  init req = false ∧ applied = 0 ∧ seen = false ∧ reply = none
+  action send when req = false ∧ reply ≠ got do req := true
+  action lose when req = true do req := false
+  strong fair action deliver when req = true ∧ seen = false do req := false, applied := applied + 1, seen := true, reply := flying
+  strong fair action again when req = true ∧ seen = true do req := false, reply := flying
+  action loseReply when reply = flying do reply := none
+  strong fair action gotReply when reply = flying do reply := got
 )`);
-    m("invariant(Idem, seen = true → sent = 1)");
-    m("eventually(Idem, seen = true)");
-    md(r`Here every run delivers, because delivering is all the system can do once the message is sent. In a real system other work competes for the same machine, and it is fairness that guarantees delivery: a liveness question for the channel, separate from the handler's safety.`);
+    m("eventually(Forever, reply = got)");
     sec("In Lean");
     lean(r`/-- A handler that adds to a balance: a duplicate is applied twice. -/
 def credit (balance : Nat) (amount : Nat) : Nat := balance + amount
@@ -3167,33 +3388,59 @@ def record (seen : List Nat) (m : Nat) : List Nat := if m ∈ seen then seen els
     lx(`theorem record_idempotent (seen : List Nat) (m : Nat) : record (record seen m) m = record seen m := by`, r`Prove that recording a message twice is recording it once.`, `  unfold record
   by_cases h : m ∈ seen <;> simp [h]`, [r`Unfold ‹record› and split on whether ‹m› was already seen.`]);
     sec("Exercises");
-    ex("invariant(Dup, applied ≤ sent)", r`Does the counting handler apply each message at most once?`, []);
-    ex("invariant(Idem, seen = true → sent = 1)", r`Is the idempotent handler's effect always backed by a sent message?`, []);
+    md(r`Some requests are idempotent without any memory. "Set ‹x› to 1" in place of "add 1 to ‹x›":`);
+    m(`let Put = system(
+  var tries in 0..2
+  var req in bool
+  var x in 0..2
+  var reply in {none, flying, got}
+  init tries = 0 ∧ req = false ∧ x = 0 ∧ reply = none
+  action send when tries < 2 ∧ req = false ∧ reply ≠ got do tries := tries + 1, req := true
+  action lose when req = true do req := false
+  action deliver when req = true do req := false, x := 1, reply := flying
+  action loseReply when reply = flying do reply := none
+  action gotReply when reply = flying do reply := got
+)`);
+    ex("invariant(Put, x ≤ 1)", r`Retries and all, does $x \le 1$ hold in every reachable state of ‹Put›? Answer ‹true› or ‹false›.`, [r`Applying ‹x := 1› twice leaves ‹x = 1›.`], { hide: true });
+    ex("invariant(Retry, applied ≤ 1)", r`Does the counting handler, ‹Retry›, apply the request at most once?`, []);
     md(r`
 > [!summary]
-> Retrying networks duplicate. Effectively-once processing is at-least-once delivery plus an idempotent handler, and idempotence is a one-line theorem about the handler, not a property of the network.
+> A client that hears nothing cannot tell a lost request from a lost reply, so it retries, and retries duplicate. Effectively-once processing is at-least-once delivery plus an idempotent handler, and idempotence is a one-line theorem about the handler, not a property of the network.
 `);
+    md(r`‹Dedup› keeps "applied at most once" through every loss and retry. Is that all it does, or does it behave, step by step, like a server that applies each request exactly when asked? The next lesson makes "behaves like" precise.`);
   });
 
-  add("08-refinement.chalk", "Refinement", "An implementation's steps are the specification's steps or stutters; and a normalization of operations proved sound.", ({ sec, md, m, ex, lean, lx }) => {
+  add("08-refinement.chalk", "Refinement", "An implementation's steps are the specification's steps or invisible ones: checking that one system implements another, and an operation-rewriting optimization proved sound.", ({ sec, md, m, ex, lean, lx }) => {
     sec("Refinement");
     md(r`
 > [!goal]
-> Check that a detailed system implements an abstract one by mapping its states and matching its steps, and prove an operation-rewriting optimization sound against the semantics it preserves.
+> Check that a detailed system does only what an abstract one allows, by mapping its states and matching its steps.
 `);
+    md(r`A specification of lesson 7's server says only this: the request goes from not applied to applied, once. (‹applied› has room for a 2 that the specification never reaches, so that an implementation that goes there can be compared with it.)`);
+    m("let Once = system(var applied in 0..2; init applied = 0; action apply when applied = 0 do applied := 1)");
+    m(client("Dedup", true));
+    md(r`
+> [!try]
+> ‹Dedup› has six actions and ‹Once› one. In what sense could ‹Dedup› behave like ‹Once›?
+`);
+    md(r`Look at ‹Dedup› only through ‹applied›. ‹deliver› takes it from 0 to 1, a step of ‹Once›. Every other action (sending, losing, replying) leaves it alone: through this window, nothing happens. Such a step is a **stutter**, and allowing it is what lets an implementation have moving parts the specification never mentions.`);
+    m("refines(Dedup, Once; applied := applied)");
+    m(client("Retry", false));
+    m("refines(Retry, Once; applied := applied)", { step: 0 });
+    md(r`‹Retry›'s second delivery takes ‹applied› from 1 to 2: through the window, it does something ‹Once› never does.`);
     md(r`
 > [!definition] Refinement
-> A concrete system $C$ **refines** an abstract system $A$ under a mapping from $C$'s states to $A$'s when every initial state maps to an initial state, and every step of $C$ maps to a step of $A$ or to no change at all (a **stutter**). Then every behavior of $C$, seen through the mapping, is a behavior of $A$: properties proved of $A$ hold of $C$.
+> A concrete system $C$ **refines** an abstract system $A$ under a mapping from $C$'s states to $A$'s when every initial state maps to an initial state, and every step of $C$ maps to a step of $A$ or to no change at all (a stutter). Then every behaviour of $C$, seen through the mapping, is a behaviour of $A$, so every safety property proved of $A$ holds of $C$ seen the same way.
 `);
-    md(r`Two counters, abstracted to their sum:`);
-    m("let Two = system(var a in 0..2; var b in 0..2; init a = 0 ∧ b = 0; action ta when a < 2 do a := a + 1; action tb when b < 2 do b := b + 1)");
-    m("let Sum = system(var s in 0..4; init s = 0; action t when s < 4 do s := s + 1)");
+    md(r`The mapping can combine variables. Two counters, seen through their sum:`);
+    m(TWO);
+    m(SUM);
     m("refines(Two, Sum; s := a + b)", { work: true });
     md(r`An implementation that bumps both at once takes a step the specification does not have:`);
     m("let Jump = system(var a in 0..2; var b in 0..2; init a = 0 ∧ b = 0; action both when a < 2 ∧ b < 2 do a := a + 1, b := b + 1)");
     m("refines(Jump, Sum; s := a + b)", { step: 0 });
     sec("Normalizing operations, soundly");
-    md(r`A client queues operations on a key (create, update, delete) and sends them in a batch. An optimizer folds adjacent operations into one: $\mathsf{update}\,a;\ \mathsf{update}\,b$ becomes $\mathsf{update}\,b$. It must not change what the batch does to the store. That is refinement again, for a rewriting: every rewrite must leave the store's final state the same, from every starting state.`);
+    md(r`A client queues operations on a key (create, update, delete) and sends them in a batch. An optimizer folds adjacent operations into one: $\mathsf{update}\,a;\ \mathsf{update}\,b$ becomes $\mathsf{update}\,b$. The batch must still do the same to the store: the same idea as refinement, for a rewriting. Every fold must leave the store's final state the same, from every starting state.`);
     lean(r`/-- An operation on one key of a store: create (overwriting), update (only if present), delete. -/
 inductive Op where
   | create (v : Nat)
@@ -3218,6 +3465,7 @@ def combine : Op → Op → Option Op
   | _, _ => none`);
     lx(`theorem combine_sound (a b c : Op) (h : combine a b = some c) (s : Option Nat) :
     Op.apply (Op.apply s a) b = Op.apply s c := by`, r`Prove each combination sound: applying the two is applying the one, from any state.`, `  cases a <;> cases b <;> simp [combine] at h <;> subst h <;> cases s <;> rfl`, [r`Case on both operations; the impossible combinations fall away with ‹simp [combine] at h›.`, r`What is left: substitute ‹c› and try both starting states.`]);
+    md(r`One fold at a time is sound; so is folding a whole batch, by induction on it:`);
     lean(r`/-- Normalize a batch: fold each operation into the next one where they combine. -/
 def normalize : List Op → List Op
   | [] => []
@@ -3256,42 +3504,45 @@ theorem normalize_sound : ∀ (ops : List Op) (s : Option Nat), run s (normalize
 #eval normalize [.create 1, .update 2, .update 3, .delete, .create 4]`);
     md(r`
 > [!mistake]
-> "Create then delete cancels out" looks like a fine rewrite, and it is wrong: if the key already existed, the pair deletes it, and the empty batch would not. Lean finds the starting state:
+> "Create then delete cancels out" looks like a fine fold, and it is wrong: if the key already existed, the pair deletes it, and the empty batch would not. Lean finds the starting state:
 `);
     lean(r`example : run (some 7) [.create 1, .delete] ≠ run (some 7) [] := by decide`);
     sec("Exercises");
+    ex("refines(Two, Sum; s := a)", r`Look at ‹Two› through ‹a› alone: ‹s := a›. Does it still refine ‹Sum›?`, [r`What does ‹tb› look like through ‹a›?`]);
     ex("refines(Jump, Sum; s := a + b)", r`Does ‹Jump› refine ‹Sum› under the sum mapping?`, []);
-    ex("refines(Two, Sum; s := a + b)", r`Does ‹Two›?`, []);
     md(r`
 > [!summary]
-> Refinement checks that an implementation only does what the specification allows, up to stuttering. A rewriting of operations is sound when it refines the same way: same effect from every state, which a structural induction proves once for every batch.
+> Refinement checks that an implementation only does what the specification allows, with its internal steps as stutters. A rewriting of operations is sound in the same sense: same effect from every state, which a structural induction proves once for every batch.
 `);
+    md(r`‹normalize› folds a batch in one fixed order, from the right. An optimizer that may fold anywhere, in any order: does it always stop, and does the order change the answer? That is the next lesson.`);
   });
 
-  add("09-rewriting.chalk", "Rewriting systems", "The normalization of lesson 8 as rules on terms: rewriting to a normal form, termination by a measure, and confluence by critical pairs.", ({ sec, md, m, ex, lean, lx }) => {
+  add("09-rewriting.chalk", "Rewriting systems", "Lesson 8's folds as rules on terms: rewriting to a normal form, termination by a measure, and confluence by critical pairs.", ({ sec, md, m, ex, lean, lx }) => {
     sec("Rewriting systems");
     md(r`
 > [!goal]
-> Write an optimization as rewrite rules, show that rewriting always stops, and check that the order the rules are applied in cannot change the answer.
+> Write an optimization as rewrite rules, show that rewriting always stops, and check that the order the rules fire in cannot change the answer.
 `);
+    md(r`Lesson 8's ‹normalize› folded a batch from the right. Written as rules instead, a fold may fire anywhere in the batch, in any order. That is more freedom, and two questions: does it always stop, and does every order give the same batch?`);
     md(r`
 > [!definition] Term, rule, normal form
 > A **term** is a variable or a symbol applied to terms: ‹then(create(1), done)›. A **rule** $l \to r$ rewrites any instance of $l$, anywhere in a term, to the same instance of $r$. A **normal form** is a term no rule applies to.
 `);
-    md(r`Lesson 8's batch of operations is a term: ‹then(op, rest)› puts an operation before the rest, and ‹done› is the empty batch. Its combinations are four rules. The variables are ‹u›, ‹v›, ‹w›, ‹x›, ‹y› and ‹z›; anything else is a symbol or a constant.`);
+    md(r`A batch is a term: ‹then(op, rest)› puts an operation before the rest, and ‹done› is the empty batch. The combinations are four rules. The variables are ‹u›, ‹v›, ‹w›, ‹x›, ‹y› and ‹z›; anything else is a symbol or a constant.`);
     m("let N = rules(\n  cu: then(create(x), then(update(y), z)) -> then(create(y), z)\n  uu: then(update(x), then(update(y), z)) -> then(update(y), z)\n  xc: then(u, then(create(y), z)) -> then(create(y), z)\n  xd: then(u, then(delete, z)) -> then(delete, z)\n)");
     m("rewrite(N, then(create(1), then(update(2), then(update(3), then(delete, then(create(4), done))))))", { step: 0 });
-    md(r`Each step names its rule and marks where in the term it applied: the leftmost-outermost redex, the first instance of a left side from the root.`);
+    md(r`Each step names its rule and marks where it applied: the leftmost-outermost redex, the first instance of a left side from the root. The answer is the batch ‹normalize› gave in lesson 8, ‹[create 4]›.`);
     sec("Termination");
     md(r`
-> [!definition] Terminating
-> A system **terminates** when no term can be rewritten for ever. One way to show it: give every term a natural number that every step lowers. A natural number cannot go down for ever.
+> [!try]
+> Why must rewriting with ‹N› stop, whatever the term and whatever order the rules fire in?
 `);
-    md(r`Here every rule drops an operation, so the size (the number of symbols) goes down:`);
+    md(r`Every rule drops an operation, so the size (the number of symbols) goes down at each step, and a natural number cannot go down for ever: lesson 4's measure.`);
     m("terminates(N)", { work: true });
-    md(r`The size is not always enough. Addition on numerals ‹0›, ‹s(0)›, ‹s(s(0))›, … keeps the size in its second rule, but an **interpretation** that weighs ‹add›'s first argument double shows that it goes down:`);
+    md(r`Size is not always the right measure. Addition on numerals ‹0›, ‹s(0)›, ‹s(s(0))›, …:`);
     m("let A = rules(add(0, y) -> y; add(s(x), y) -> s(add(x, y)))");
     m("terminates(A)", { work: true });
+    md(r`The second rule keeps the size: it only moves an ‹s› outward. What does go down is how much work is left inside ‹add›. Weigh ‹add›'s first argument double, an **interpretation** of the symbols as functions on numbers, and every step lowers it:`);
     m("terminates(A; add(x, y) = 2x + y, s(x) = x + 1)", { work: true });
     md(r`
 > [!theorem] The check is sound
@@ -3302,17 +3553,17 @@ theorem normalize_sound : ∀ (ops : List Op) (s : Option Nat), run s (normalize
 > [!definition] Confluent
 > A system is **confluent** when any two ways of rewriting a term can be brought back together. A terminating, confluent system gives every term exactly one normal form: the optimizer's answer does not depend on which rule it tries first.
 `);
-    md(r`Two rules can only disagree where their left sides overlap. Each overlap gives a **critical pair**: the two results. If every pair rewrites to a common term (it is **joinable**), the system is locally confluent, and with termination, confluent (Newman's lemma).`);
+    md(r`Two rules can only disagree where their left sides overlap. Each overlap gives a **critical pair**: the two results. If every pair rewrites to a common term (it is **joinable**), the system is locally confluent, and with termination, confluent (Newman's lemma). So finitely many overlaps decide a question about every term.`);
     m("critical(N)", { work: true });
     md(r`
 > [!mistake]
-> Add lesson 8's tempting rule, "create then delete cancels out":
+> Add lesson 8's tempting fold, "create then delete cancels out":
 `);
     m("let M = rules(\n  cu: then(create(x), then(update(y), z)) -> then(create(y), z)\n  uu: then(update(x), then(update(y), z)) -> then(update(y), z)\n  xc: then(u, then(create(y), z)) -> then(create(y), z)\n  xd: then(u, then(delete, z)) -> then(delete, z)\n  cd: then(create(x), then(delete, z)) -> z\n)");
     m("critical(M)", { work: true });
     md(r`The pair $(\mathsf{then}(\mathsf{delete}, z),\ z)$ does not join: the same batch normalizes to "delete" or to nothing depending on which rule fires first. Lesson 8's Lean found the store state where the two differ (the key already existed). Here the rules themselves show that something is wrong, before any semantics.`);
     sec("Normalization never lengthens a batch");
-    md(r`Back in Lean, with lesson 8's ‹normalize›: it never makes a batch longer. (Its termination Lean checks itself: the recursion is structural.)`);
+    md(r`Back in Lean, with lesson 8's ‹normalize›: it never makes a batch longer. (Its termination Lean checks by itself: the recursion is structural.)`);
     lx(`theorem normalize_length : ∀ ops : List Op, (normalize ops).length ≤ ops.length := by`, r`Prove it by induction on the batch.`, `  intro ops
   induction ops with
   | nil => simp [normalize]
@@ -3326,31 +3577,34 @@ theorem normalize_sound : ∀ (ops : List Op) (s : Option Nat), run s (normalize
     sec("Exercises");
     ex("rewrite(N, then(update(1), then(update(2), then(update(3), done))))", r`Normalize ‹then(update(1), then(update(2), then(update(3), done)))› with ‹N›. Write the term.`, [r`‹uu› keeps the second update.`]);
     ex("rewrite(N, then(create(1), then(delete, then(update(2), done))))", r`And ‹then(create(1), then(delete, then(update(2), done)))›?`, [r`No rule folds an update into a delete before it: an update on a missing key does nothing, but the rules keep it.`]);
-    ex("terminates(A)", r`Does addition terminate by size alone?`, [r`Compare the sizes of ‹add(s(x), y)› and ‹s(add(x, y))›.`]);
+    ex("terminates(A; add(x, y) = x + y + 1, s(x) = x + 1)", r`Would a plainer weight do: does ‹A› pass with ‹add(x, y) = x + y + 1› and ‹s(x) = x + 1›? Answer ‹true› or ‹false›.`, [r`Work out both sides of the second rule: ‹add(s(x), y)› and ‹s(add(x, y))›.`], { hide: true });
     ex("rewrite(A, add(s(s(0)), s(s(0))))", r`What is ‹add(s(s(0)), s(s(0)))›, rewritten with ‹A›?`, []);
     md(r`
 > [!summary]
 > Rewrite rules are an optimization written as equations directed left to right. A measure every rule lowers shows termination; joinable critical pairs show local confluence; together they give each term one normal form. A pair that does not join points at a rule to fix, or one to add (Knuth–Bendix completion).
 `);
+    md(r`A measure says a loop of rewriting stops. Lesson 7's retry loop stops for a blunter reason: a cap on the tries. What does the cap cost, in failures and in load? The last lesson counts.`);
   });
 
   add("10-retries.chalk", "Retries and backoff", "Retrying a call that fails at random: the chance that every attempt fails, the expected number of attempts, and the load and wait that backoff trades.", ({ sec, md, m, ex }) => {
     sec("Retries and backoff");
     md(r`
 > [!goal]
-> Compute the chance that a retried call fails, the attempts it costs on average, and the time exponential backoff waits, as finite sums.
+> Work out how often a capped retry loop gives up, how many calls it makes on average, and how long backoff makes it wait.
 `);
-    md(r`A call fails with probability $q$, each attempt independently of the others, and the client tries at most $n$ times. Take $q = 1/10$:`);
+    md(r`Lesson 7's client tried twice and could still give up. More tries make giving up rarer, and cost calls. How much rarer, and how many calls?`);
+    md(r`Say each attempt fails with probability $q$, independently of the others, and the client tries at most $n$ times. Take $q = 1/10$:`);
     m("let q = 1/10");
     md(r`
-> [!definition] Independent attempts
-> The attempts all fail with probability $q \cdot q \cdots q = q^n$. The first success comes at attempt $k$ with probability $q^{k-1}(1 - q)$: $k - 1$ failures, then a success.
+> [!try]
+> What is the chance that three attempts all fail? That five do not all fail?
 `);
+    md(r`Independent failures multiply: all $n$ fail with probability $q^n$.`);
     m("q^3");
     m("1 - q^5");
-    md(r`Adding up the chance of succeeding first at each attempt gives the same number, as it must:`);
+    md(r`The same number comes from the other side. The first success is at attempt $k$ with probability $q^{k-1}(1 - q)$: $k - 1$ failures, then a success. Adding these up for $k = 1, \dots, 5$ gives the chance of some success:`);
     m("sum((1 - q)*q^(k - 1), k, 1, 5)", { work: true });
-    md(r`That is the geometric sum. With a symbol for $q$, multiplying by $1 - r$ telescopes:`);
+    md(r`That they agree is the geometric sum. With a symbol for $q$, multiplying by $1 - r$ telescopes:`);
     m("expand((1 - r)*sum(r^k, k, 0, 4))", { work: true });
     sec("Expected attempts");
     md(r`
@@ -3358,14 +3612,20 @@ theorem normalize_sound : ∀ (ops : List Op) (s : Option Nat), run s (normalize
 > The **expected** number of attempts is the sum of each count times its probability: $k$ attempts when the first success is at $k < n$, and $n$ when the first $n - 1$ fail.
 `);
     m("sum(k*(1 - q)*q^(k - 1), k, 1, 4) + 5*q^4", { work: true });
-    md(r`A shorter way: there is an attempt $k + 1$ exactly when the first $k$ failed, with probability $q^k$. Summing those chances counts the attempts:`);
+    md(r`
+> [!try]
+> There is a shorter way. When does the client make an attempt $k + 1$ at all?
+`);
+    md(r`Exactly when the first $k$ attempts failed, which has probability $q^k$. Each attempt counts one when it happens, so the expected count is the sum of those chances:`);
     m("sum(q^k, k, 0, 4)");
     md(r`
 > [!mistake]
-> Retries look free when failures are rare: $1.1111$ calls per request. But failures are rarely independent. When a server is overloaded, most calls fail, and the retries are more load on the server that is already failing:
+> Retries look free when failures are rare: $1.1111$ calls per request. But failures are rarely independent. When a server is overloaded most calls fail, and the retries are more load on the server that is already failing:
 `);
     m("sum((9/10)^k, k, 0, 4)");
-    md(r`At $q = 9/10$ every request costs four calls: the retries quadruple the load just when the server can take the least. Hence retry budgets, which cap retries at a fraction of the traffic, and backoff.`);
+    md(r`At $q = 9/10$ every request costs about four calls ($4.0951$): retries multiply the load just when the server can take the least. Hence retry budgets, which cap retries at a fraction of the traffic, and backoff.`);
+    md(r`The expected attempts as a function of the failure rate:`);
+    m("manipulate(sum(p^k, k, 0, 4), p, 0, 1)");
     sec("Exponential backoff");
     md(r`
 > [!definition] Exponential backoff
@@ -3375,8 +3635,6 @@ theorem normalize_sound : ∀ (ops : List Op) (s : Option Nat), run s (normalize
     m("sum(100*2^k, k, 0, 3)");
     md(r`On average far less: the wait before attempt $k + 2$ only happens when the first $k + 1$ attempts failed.`);
     m("sum(100*2^k*q^(k + 1), k, 0, 3)", { work: true });
-    md(r`The expected attempts as a function of the failure rate, with a slider:`);
-    m("manipulate(sum(p^k, k, 0, 4), p, 0, 1)");
     md(r`
 > [!note]
 > Retries repeat requests. A request that the server applied but whose reply was lost is sent again: lesson 7's idempotent handler is what makes retrying safe.
@@ -3388,7 +3646,7 @@ theorem normalize_sound : ∀ (ops : List Op) (s : Option Nat), run s (normalize
     ex("sum(50*2^k, k, 0, 4)", r`Backoff starts at $50$ ms and doubles, with six attempts. How long does the client wait in all, at most?`, [r`Five waits: $50, 100, 200, 400, 800$.`]);
     md(r`
 > [!summary]
-> Independent attempts multiply: $q^n$ fail, and the expected attempts are $\sum_{k<n} q^k$. Under overload $q$ is near one and retries multiply the load; backoff spaces them out, and on average costs little when failures are rare.
+> Independent attempts multiply: all $n$ fail with probability $q^n$, and the expected attempts are $\sum_{k<n} q^k$. Under overload $q$ is near one and retries multiply the load; backoff spaces them out, and costs little on average when failures are rare. Retrying is only safe with an idempotent handler.
 `);
   });
 }, { leanPrelude: true });

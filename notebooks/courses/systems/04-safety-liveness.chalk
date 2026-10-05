@@ -9,48 +9,82 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Tell safety properties from liveness properties, find deadlocks, and decide \"eventually\" under fairness, reading a lasso when it fails.",
+      "src": "> [!goal]\n> Tell \"nothing bad happens\" from \"something good eventually happens\" by the shape of their counterexamples, and see which promise from the scheduler makes \"eventually\" true.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!definition] Safety and liveness\n> A **safety** property says nothing bad ever happens; it is refuted by a finite trace (invariants are safety properties). A **liveness** property says something good eventually happens; it is refuted by an infinite execution, which on a finite system is a **lasso**: a path to a loop that repeats forever.",
+      "src": "A lock that never lets anyone in is perfectly safe: no state ever has both threads inside. Lesson 3's flags came close to that. So mutual exclusion is not all we want; we also want each thread that is waiting to get in, eventually.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "Deadlock",
+      "src": "The two claims fail differently. \"Never both inside\" fails at a moment: show the trace up to the bad state, and it is refuted, whatever comes after. \"Eventually gets in\" fails at no moment: after any trace that can go on, the thread might still get in later. A counterexample has to be a whole run that never gets there: one that stops, or one that goes on for ever.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Safety and liveness\n> A **safety** property says nothing bad ever happens; a finite trace refutes it (invariants are safety properties). A **liveness** property says something good eventually happens; no trace that can still go on refutes it, only a complete run that never gets there: one that stops in a **deadlock**, where no action is enabled, or, on a finite system, a **lasso**, a path into a loop that repeats for ever.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Lesson 3's flags gave a run of the first kind: both flags up, both threads waiting, no action enabled. Runs of the second kind need a closer look.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Runs that loop, and fairness",
       "type": "section",
       "showWork": false,
       "label": null
     },
     {
-      "src": "Two workers each need two forks, and take them in opposite orders:",
+      "src": "Here nothing stops. Thread `q` waits to enter; thread `p` has work of its own, and alternates between working and resting.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "let Forks = system(\n  var a in {idle, one, both}\n  var b in {idle, one, both}\n  var f1 in bool\n  var f2 in bool\n  init a = idle ∧ b = idle ∧ f1 = false ∧ f2 = false\n  action a1 when a = idle ∧ f1 = false do a := one, f1 := true\n  action a2 when a = one ∧ f2 = false do a := both, f2 := true\n  action arel when a = both do a := idle, f1 := false, f2 := false\n  action b1 when b = idle ∧ f2 = false do b := one, f2 := true\n  action b2 when b = one ∧ f1 = false do b := both, f1 := true\n  action brel when b = both do b := idle, f1 := false, f2 := false\n)",
+      "src": "let Spin = system(\n  var p in {idle, busy}\n  var q in {wait, crit}\n  init p = idle ∧ q = wait\n  action pwork when p = idle do p := busy\n  action prest when p = busy do p := idle\n  action qenter when q = wait do q := crit\n)",
       "showWork": false,
       "label": null
     },
     {
-      "src": "deadlock(Forks)",
+      "src": "> [!try]\n> Does `q` always get in eventually?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "eventually(Spin, q = crit)",
       "showWork": true,
       "label": null,
       "stepwise": 0
     },
     {
-      "src": "Fairness",
-      "type": "section",
+      "src": "No: the lasso runs `p` for ever and never `q`, though `qenter` is enabled all along. That is not a bug in the threads; it is a scheduler that never runs `q`. Liveness in a concurrent system rests on a promise from the scheduler: a **fairness** assumption. **Weak fairness** for an action: if it stays enabled, it is eventually taken. A system marks such an action `fair`:",
+      "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "Will a waiting worker ever get in? Not if the scheduler never lets it. A **fair** action is one the scheduler may not starve: **weakly fair** if it stays enabled it is taken; **strongly fair** if it is enabled again and again it is taken.",
+      "src": "let Spin2 = system(\n  var p in {idle, busy}\n  var q in {wait, crit}\n  init p = idle ∧ q = wait\n  action pwork when p = idle do p := busy\n  action prest when p = busy do p := idle\n  fair action qenter when q = wait do q := crit\n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "eventually(Spin2, q = crit)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Weak fairness is not always enough. Put the lock back: `p` takes and releases it over and over, and `q` needs it free.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -67,7 +101,7 @@
       "stepwise": 0
     },
     {
-      "src": "Under weak fairness `q` can starve: `p` keeps taking the lock, so `qenter` is enabled only now and then, never continuously. Strong fairness rules that out:",
+      "src": "On this lasso `qenter` is enabled only while `p` is out, never continuously, so weak fairness owes `q` nothing. **Strong fairness**: if an action is enabled again and again, it is eventually taken.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -83,13 +117,29 @@
       "label": null
     },
     {
+      "src": "Peterson's algorithm needs only the weak promise, for every step. If `p` comes round again while `q` waits, its next move hands `q` the turn; from then on `q`'s way in stays open, and `p`'s is shut, until `q` has been through.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let Peterson = system(\n  var p in {idle, flag, wait, crit}\n  var q in {idle, flag, wait, crit}\n  var fp in bool\n  var fq in bool\n  var turn in {P, Q}\n  init p = idle ∧ q = idle ∧ fp = false ∧ fq = false ∧ turn = P\n  fair action pflag when p = idle do fp := true, p := flag\n  fair action pyield when p = flag do turn := Q, p := wait\n  fair action penter when p = wait ∧ (fq = false ∨ turn = P) do p := crit\n  fair action pexit when p = crit do fp := false, p := idle\n  fair action qflag when q = idle do fq := true, q := flag\n  fair action qyield when q = flag do turn := P, q := wait\n  fair action qenter when q = wait ∧ (fp = false ∨ turn = Q) do q := crit\n  fair action qexit when q = crit do fq := false, q := idle\n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "eventually(Peterson, q = crit)",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "In Lean",
       "type": "section",
       "showWork": false,
       "label": null
     },
     {
-      "src": "Termination is liveness too, and its proof is a measure: a natural number that every step decreases cannot decrease forever.",
+      "src": "Termination is liveness too: every run reaches a final state. Its proof is a measure, a natural number that every step lowers, because such a number cannot go down for ever.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -114,24 +164,46 @@
       "label": null
     },
     {
-      "src": "deadlock(Forks)",
-      "type": "exercise",
-      "prompt": "Can the two workers deadlock?",
+      "src": "Two workers each need two forks, and take them in opposite orders: `a` takes fork 1 first, `b` fork 2.",
+      "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "eventually(W, q = crit)",
+      "src": "let Forks = system(\n  var a in {idle, one, both}\n  var b in {idle, one, both}\n  var f1 in bool\n  var f2 in bool\n  init a = idle ∧ b = idle ∧ f1 = false ∧ f2 = false\n  action a1 when a = idle ∧ f1 = false do a := one, f1 := true\n  action a2 when a = one ∧ f2 = false do a := both, f2 := true\n  action arel when a = both do a := idle, f1 := false, f2 := false\n  action b1 when b = idle ∧ f2 = false do b := one, f2 := true\n  action b2 when b = one ∧ f1 = false do b := both, f1 := true\n  action brel when b = both do b := idle, f1 := false, f2 := false\n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "deadlock(Forks)",
       "type": "exercise",
-      "prompt": "Under weak fairness, does `q` always get in eventually?",
+      "prompt": "Predict, then check: can `Forks` deadlock? Answer `true` or `false`.",
       "hints": [
-        "Is `qenter` ever continuously enabled while `p` keeps cycling?"
+        "Let each worker take its first fork.",
+        "The usual cure is to take forks in one global order: with both taking fork 1 first, whoever holds it can always get fork 2."
+      ],
+      "hideQuestion": true,
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "eventually(Peterson, p = crit)",
+      "type": "exercise",
+      "prompt": "With every step weakly fair, does `p` always get into `Peterson`'s critical section eventually?",
+      "hints": [
+        "The algorithm is symmetric."
       ],
       "showWork": false,
       "label": null
     },
     {
-      "src": "> [!summary]\n> Safety fails on a finite trace, liveness on an infinite one: a lasso. Deadlocks are reachable states with nothing to do. Whether \"eventually\" holds depends on fairness: weak fairness only protects actions that stay enabled, strong fairness those that are enabled again and again.",
+      "src": "> [!summary]\n> Safety fails on a finite trace; liveness only on a complete run, one that stops (a deadlock) or one that loops (a lasso). Whether \"eventually\" holds depends on what the scheduler promises: weak fairness protects an action that stays enabled, strong fairness one that is enabled again and again.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Invariants, deadlocks, \"eventually\": three commands for three kinds of claim. The next lesson gives them one language, and one way to compute them all.",
       "type": "markdown",
       "showWork": false,
       "label": null

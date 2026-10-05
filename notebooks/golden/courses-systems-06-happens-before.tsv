@@ -1,7 +1,10 @@
-4	let E = events({a1, a2, a3}, {b1, b2}; a1->b2, b1->a3)	= poset {a1, a2, a3, b1, b2}
-5	le(E, a1, b2)	= true
-6	concurrent(E, a2, b2)	= true
-9	clocks({a1, a2, a3}, {b1, b2}; a1->b2, b1->a3)	= {a1↦(1, 0), a2↦(2, 0), a3↦(3, 1), b1↦(0, 1), b2↦(1, 2)}
-12	events({a1, a2}, {b1, b2}; a2->b1, b2->a1)	✗ the messages make a cycle, so some event would happen before itself (not a partial order: not antisymmetric: a1 ≤ a2 and a2 ≤ a1 with a1 ≠ a2)
-17	concurrent(E, a1, b1)	= true
-18	le(E, b1, a3)	= true
+3	clock t from 0 to 1\nview 0, 5, -0.6, 1.6\nnoaxes\nLA = segment(0.6 + i, 4.6 + i) faint\nLB = segment(0.6, 4.6) faint\nNA = label(0.3 + i, "a")\nNB = label(0.3, "b")\nA1 = point(1 + i) color 1\nA2 = point(2.2 + i) color 1\nA3 = point(4 + i) color 1\nB1 = point(1.6) color 2\nB2 = point(3.2) color 2\nLA1 = label(A1, "a_1")\nLA2 = label(A2, "a_2")\nLA3 = label(A3, "a_3")\nLB1 = label(B1, "b_1")\nLB2 = label(B2, "b_2")\nM1 = arrow(1 + i, 3.2) color 3\nM2 = arrow(1.6, 4 + i) color 3\nS = point(1 + i + t*(2.2 - i)) thick color 3\n> show LA, LB, NA, NB | Two machines, $a$ and $b$; time runs to the right.\n> show A1, A2, A3, LA1, LA2, LA3, B1, B2, LB1, LB2 | Their events, each machine's in its own order.\n> show M1, M2 | Two messages: $a_1$ sends one that $b_2$ receives, and $b_1$ one that $a_3$ receives.\n> show S; play t to 1 in 2s | Information moves only forward along a machine's line, or along a message. What $a_1$ knew can reach $b_2$: $a_1$ could have caused $b_2$.\n> wait 1s | $a_2$ happens earlier than $b_2$, but no path leads from $a_2$ to $b_2$: nothing $a_2$ did can have reached $b_2$, and nothing of $b_2$ can have reached $a_2$.	scene: 17 objects, 5 beats, 34.4 s
+5	let E = events({a1, a2, a3}, {b1, b2}; a1->b2, b1->a3)	= poset {a1, a2, a3, b1, b2}
+6	le(E, a1, b2)	= true
+7	concurrent(E, a2, b2)	= true
+9	events({a1, a2}, {b1, b2}; a2->b1, b2->a1)	✗ the messages make a cycle, so some event would happen before itself (not a partial order: not antisymmetric: a1 ≤ a2 and a2 ≤ a1 with a1 ≠ a2)
+13	le(E, b1, a2)	= false
+16	clocks({a1, a2, a3}, {b1, b2}; a1->b2, b1->a3)	= {a1↦(1, 0), a2↦(2, 0), a3↦(3, 1), b1↦(0, 1), b2↦(1, 2)}
+22	concurrent(E, a1, b1)	= true
+23	le(E, b1, a3)	= true
+24	le(E, a2, b2)	= false

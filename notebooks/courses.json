@@ -216,7 +216,7 @@
     {
       "id": "systems",
       "title": "Transition systems, invariants and temporal logic",
-      "blurb": "State machines and their reachable states; invariants with counterexample traces and inductive proofs; mutual exclusion, safety and liveness under fairness; temporal logic as fixed points; happens-before, effectively-once delivery, and refinement; rewriting systems, and retries under failure.",
+      "blurb": "A lost update as a path in a graph of states; invariants with counterexample traces and inductive proofs; a lock that fails and Peterson's that does not; safety and liveness under fairness; temporal logic as fixed points; happens-before, effectively-once delivery and refinement; rewriting systems, and retries under failure.",
       "kind": "course",
       "level": "Distributed systems",
       "path": "courses/systems",
@@ -225,47 +225,47 @@
         {
           "file": "01-state-machines.chalk",
           "title": "State machines and executions",
-          "blurb": "Variables, an initial condition and guarded actions; executions as traces; the graph of reachable states."
+          "blurb": "Two threads that lose an update: a system as variables, an initial state and guarded actions, and its graph of reachable states as every interleaving at once."
         },
         {
           "file": "02-invariants.chalk",
           "title": "Invariants and induction",
-          "blurb": "Properties of every reachable state: refuted by a shortest trace, proved by induction, and strengthened when induction fails."
+          "blurb": "What holds in every reachable state: refuted by a shortest trace, proved by one step of induction, and strengthened when that step fails."
         },
         {
           "file": "03-mutual-exclusion.chalk",
           "title": "Mutual exclusion",
-          "blurb": "A check-then-act race as a stepped trace, the fix, its inductive proof, and the same model in TLA+."
+          "blurb": "A lock built from a check and a take, the race the checker finds, two fixes (an atomic step, and Peterson's flags and turn), and an inductive proof."
         },
         {
           "file": "04-safety-liveness.chalk",
           "title": "Safety and liveness",
-          "blurb": "Nothing bad happens; something good eventually does. Deadlocks, lassos, and weak and strong fairness."
+          "blurb": "Nothing bad happens; something good eventually does. Finite counterexamples and infinite ones, deadlocks and lassos, and the fairness a scheduler must promise."
         },
         {
           "file": "05-temporal-logic.chalk",
           "title": "Temporal logic as fixed points",
-          "blurb": "EF, AF, EG and AG on the lattice of state sets: least and greatest fixed points, computed by Kleene iteration."
+          "blurb": "Words for always and eventually, on some path and on every path; each one computed by repeating a step until nothing changes: least and greatest fixed points."
         },
         {
           "file": "06-happens-before.chalk",
           "title": "Happens-before",
-          "blurb": "Events of several processes as a partial order, vector clocks that compute it, and concurrency as incomparability."
+          "blurb": "Without a shared clock, ask which event could have caused which: a partial order, a single counter that cannot capture it, and vector clocks that can."
         },
         {
           "file": "07-effectively-once.chalk",
           "title": "Effectively-once delivery",
-          "blurb": "A channel that duplicates; a handler that is idempotent keeps the effect exactly once, one that is not double-applies."
+          "blurb": "A client that retries because it cannot tell a lost request from a lost reply; the duplicate that follows; and the idempotent handler that makes the effect happen once."
         },
         {
           "file": "08-refinement.chalk",
           "title": "Refinement",
-          "blurb": "An implementation's steps are the specification's steps or stutters; and a normalization of operations proved sound."
+          "blurb": "An implementation's steps are the specification's steps or invisible ones: checking that one system implements another, and an operation-rewriting optimization proved sound."
         },
         {
           "file": "09-rewriting.chalk",
           "title": "Rewriting systems",
-          "blurb": "The normalization of lesson 8 as rules on terms: rewriting to a normal form, termination by a measure, and confluence by critical pairs."
+          "blurb": "Lesson 8's folds as rules on terms: rewriting to a normal form, termination by a measure, and confluence by critical pairs."
         },
         {
           "file": "10-retries.chalk",

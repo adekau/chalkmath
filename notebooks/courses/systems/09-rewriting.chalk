@@ -9,7 +9,13 @@
       "label": null
     },
     {
-      "src": "> [!goal]\n> Write an optimization as rewrite rules, show that rewriting always stops, and check that the order the rules are applied in cannot change the answer.",
+      "src": "> [!goal]\n> Write an optimization as rewrite rules, show that rewriting always stops, and check that the order the rules fire in cannot change the answer.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Lesson 8's `normalize` folded a batch from the right. Written as rules instead, a fold may fire anywhere in the batch, in any order. That is more freedom, and two questions: does it always stop, and does every order give the same batch?",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -21,7 +27,7 @@
       "label": null
     },
     {
-      "src": "Lesson 8's batch of operations is a term: `then(op, rest)` puts an operation before the rest, and `done` is the empty batch. Its combinations are four rules. The variables are `u`, `v`, `w`, `x`, `y` and `z`; anything else is a symbol or a constant.",
+      "src": "A batch is a term: `then(op, rest)` puts an operation before the rest, and `done` is the empty batch. The combinations are four rules. The variables are `u`, `v`, `w`, `x`, `y` and `z`; anything else is a symbol or a constant.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -38,7 +44,7 @@
       "stepwise": 0
     },
     {
-      "src": "Each step names its rule and marks where in the term it applied: the leftmost-outermost redex, the first instance of a left side from the root.",
+      "src": "Each step names its rule and marks where it applied: the leftmost-outermost redex, the first instance of a left side from the root. The answer is the batch `normalize` gave in lesson 8, `[create 4]`.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -50,13 +56,13 @@
       "label": null
     },
     {
-      "src": "> [!definition] Terminating\n> A system **terminates** when no term can be rewritten for ever. One way to show it: give every term a natural number that every step lowers. A natural number cannot go down for ever.",
+      "src": "> [!try]\n> Why must rewriting with `N` stop, whatever the term and whatever order the rules fire in?",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
-      "src": "Here every rule drops an operation, so the size (the number of symbols) goes down:",
+      "src": "Every rule drops an operation, so the size (the number of symbols) goes down at each step, and a natural number cannot go down for ever: lesson 4's measure.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -67,7 +73,7 @@
       "label": null
     },
     {
-      "src": "The size is not always enough. Addition on numerals `0`, `s(0)`, `s(s(0))`, … keeps the size in its second rule, but an **interpretation** that weighs `add`'s first argument double shows that it goes down:",
+      "src": "Size is not always the right measure. Addition on numerals `0`, `s(0)`, `s(s(0))`, …:",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -80,6 +86,12 @@
     {
       "src": "terminates(A)",
       "showWork": true,
+      "label": null
+    },
+    {
+      "src": "The second rule keeps the size: it only moves an `s` outward. What does go down is how much work is left inside `add`. Weigh `add`'s first argument double, an **interpretation** of the symbols as functions on numbers, and every step lowers it:",
+      "type": "markdown",
+      "showWork": false,
       "label": null
     },
     {
@@ -106,7 +118,7 @@
       "label": null
     },
     {
-      "src": "Two rules can only disagree where their left sides overlap. Each overlap gives a **critical pair**: the two results. If every pair rewrites to a common term (it is **joinable**), the system is locally confluent, and with termination, confluent (Newman's lemma).",
+      "src": "Two rules can only disagree where their left sides overlap. Each overlap gives a **critical pair**: the two results. If every pair rewrites to a common term (it is **joinable**), the system is locally confluent, and with termination, confluent (Newman's lemma). So finitely many overlaps decide a question about every term.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -117,7 +129,7 @@
       "label": null
     },
     {
-      "src": "> [!mistake]\n> Add lesson 8's tempting rule, \"create then delete cancels out\":",
+      "src": "> [!mistake]\n> Add lesson 8's tempting fold, \"create then delete cancels out\":",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -145,7 +157,7 @@
       "label": null
     },
     {
-      "src": "Back in Lean, with lesson 8's `normalize`: it never makes a batch longer. (Its termination Lean checks itself: the recursion is structural.)",
+      "src": "Back in Lean, with lesson 8's `normalize`: it never makes a batch longer. (Its termination Lean checks by itself: the recursion is structural.)",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -190,12 +202,13 @@
       "label": null
     },
     {
-      "src": "terminates(A)",
+      "src": "terminates(A; add(x, y) = x + y + 1, s(x) = x + 1)",
       "type": "exercise",
-      "prompt": "Does addition terminate by size alone?",
+      "prompt": "Would a plainer weight do: does `A` pass with `add(x, y) = x + y + 1` and `s(x) = x + 1`? Answer `true` or `false`.",
       "hints": [
-        "Compare the sizes of `add(s(x), y)` and `s(add(x, y))`."
+        "Work out both sides of the second rule: `add(s(x), y)` and `s(add(x, y))`."
       ],
+      "hideQuestion": true,
       "showWork": false,
       "label": null
     },
@@ -208,6 +221,12 @@
     },
     {
       "src": "> [!summary]\n> Rewrite rules are an optimization written as equations directed left to right. A measure every rule lowers shows termination; joinable critical pairs show local confluence; together they give each term one normal form. A pair that does not join points at a rule to fix, or one to add (Knuth–Bendix completion).",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A measure says a loop of rewriting stops. Lesson 7's retry loop stops for a blunter reason: a cap on the tries. What does the cap cost, in failures and in load? The last lesson counts.",
       "type": "markdown",
       "showWork": false,
       "label": null

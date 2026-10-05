@@ -1,9 +1,9 @@
-4	let Light = system(\n  var c in {red, green, yellow}\n  init c = red\n  action go when c = red do c := green\n  action slow when c = green do c := yellow\n  action stop when c = yellow do c := red\n)	= system({c}, {go, slow, stop})   [3 reachable states]
-5	trace(Light; go, slow, stop, go)	= c = green
-7	trace(Light; slow)	✗ slow is not enabled in red (c = green fails)
-10	let C = system(\n  var x in 0..3\n  var y in 0..3\n  init x = 0 ∧ y = 0\n  action inc when x < 3 do x := x + 1\n  action move when x > 0 ∧ y < 3 do x := x - 1, y := y + 1\n)	= system({x, y}, {inc, move})   [16 reachable states]
-11	states(C)	= 16
-12	reach(C, y = 3)	= true
-21	states(Light)	= 3
-22	trace(C; inc, move, inc)	= x = 1 ∧ y = 1
-23	reach(C, x = 3 ∧ y = 3)	= true
+6	let Inc = system(\n  var x in 0..2\n  var a in 0..2\n  var b in 0..2\n  var p in {read, write, done}\n  var q in {read, write, done}\n  init x = 0 ∧ a = 0 ∧ b = 0 ∧ p = read ∧ q = read\n  action pread when p = read do a := x, p := write\n  action pwrite when p = write do x := a + 1, p := done\n  action qread when q = read do b := x, q := write\n  action qwrite when q = write do x := b + 1, q := done\n)	= system({x, a, b, p, q}, {pread, pwrite, qread, qwrite})   [13 reachable states]
+8	trace(Inc; pread, pwrite, qread, qwrite)	= x = 2 ∧ a = 0 ∧ b = 1 ∧ p = done ∧ q = done
+10	trace(Inc; pread, qread, pwrite, qwrite)	= x = 1 ∧ a = 0 ∧ b = 0 ∧ p = done ∧ q = done
+13	trace(Inc; qwrite)	✗ qwrite is not enabled in (0, 0, 0, read, read) (q = write fails)
+16	states(Inc)	= 13
+18	reach(Inc, p = done ∧ q = done ∧ x = 1)	= true
+28	reach(Inc, p = done ∧ q = done ∧ x = 0)	= false
+30	let Inc3 = system(\n  var x in 0..3\n  var a in 0..3\n  var b in 0..3\n  var c in 0..3\n  var p in {read, write, done}\n  var q in {read, write, done}\n  var r in {read, write, done}\n  init x = 0 ∧ a = 0 ∧ b = 0 ∧ c = 0 ∧ p = read ∧ q = read ∧ r = read\n  action pread when p = read do a := x, p := write\n  action pwrite when p = write do x := a + 1, p := done\n  action qread when q = read do b := x, q := write\n  action qwrite when q = write do x := b + 1, q := done\n  action rread when r = read do c := x, r := write\n  action rwrite when r = write do x := c + 1, r := done\n)	= system({x, a, b, c, p, q, r}, {pread, pwrite, qread, qwrite, rread, rwrite})   [84 reachable states]
+31	reach(Inc3, p = done ∧ q = done ∧ r = done ∧ x = 1)	= true
