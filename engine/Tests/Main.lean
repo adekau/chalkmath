@@ -873,6 +873,14 @@ def scaleTests : TestM Unit := do
       (ps.length > pathLabelDepth && ps.all fun p => p == "root" || (p.splitOn ".").length ≤ pathLabelDepth) s!"{ps.length} labels"
     check "deep term: every label names its subterm" (toString (badPaths e)) "[]"
   | .error _ => check "deep term: parses" "error" "ok"
+  -- a deep call prints into one buffer: the text is written once, and the labels stop at `pathLabelDepth`
+  let nested := String.join (List.replicate 2000 "sin(") ++ "x" ++ String.ofList (List.replicate 2000 ')')
+  match parse nested with
+  | .ok e =>
+    check "a deep call: the text" (toString (e.toText == nested)) "true"
+    check "a deep call: the LaTeX" (toString e.toLatex.length) (toString (2000 * "\\sin\\left(\\right)".length + 1))
+    checkTrue "a deep call: labelled to pathLabelDepth" ((latexPaths (e.toLatex true)).length == pathLabelDepth + 1) s!"{(latexPaths (e.toLatex true)).length} labels"
+  | .error _ => check "a deep call: parses" "error" "ok"
   -- time, generously: these were a minute or more (3000 like terms 53 s, 3000 distinct over 60 s,
   -- 10 000 minus signs over 60 s); the sizes are read at run time so none is computed ahead
   let t0 ← IO.monoMsNow
@@ -1090,6 +1098,13 @@ def intRootTests : TestM Unit := do
 `\u` escape, and has no infinity), and the escapes it reads are the standard's. -/
 def jsonTests : TestM Unit := do
   check "control characters escape to four hex digits" (Json.render (.str "a\x01\x1fb")) "\"a\\u0001\\u001fb\""
+  check "nested and empty containers" (Json.render (.arr #[.arr #[.num "1", .arr #[.num "2"]], .obj #[("a", .arr #[]), ("b", .obj #[])], .obj #[], .null, .bool true]))
+    "[[1,[2]],{\"a\":[],\"b\":{}},{},null,true]"
+  check "keys are escaped" (Json.render (.obj #[("q\"\\", .str "")])) "{\"q\\\"\\\\\":\"\"}"
+  -- a deep value renders in time linear in its text: a thousand nested arrays in well under a second
+  let deep := (List.range 1000).foldl (fun j _ => Json.arr #[j]) (Json.num "0")
+  check "a deep value renders" (toString (Json.render deep).length) "2001"
+  checkTrue "a deep value reads back" ((Json.parse (Json.render deep)).toOption.map (·.render) == some (Json.render deep)) "mismatch"
   check "escapes read back" (toString ((Json.parse "\"\\b\\f\\u00e9\\ud83d\\ude00\"").toOption.map (·.render)))
     s!"(some {Json.render (.str "\x08\x0cé😀")})"
   check "a control character typed in a cell comes back in a reply that parses"

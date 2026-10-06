@@ -1,4 +1,4 @@
-import { type Atom, type Block, type Stmt, isConst, isDigit, isIdChar, isIdStart, KEYWORDS } from "./model.js";
+import { type Atom, type Block, type Stmt, isConst, isDigit, isIdChar, isIdStart, KEYWORDS, lineIndent } from "./model.js";
 
 /**
  * The editor's tree → LaTeX for KaTeX. Anything with a well-known notation shows in it — d/dx, ∫,
@@ -176,8 +176,8 @@ class Notation {
       let from = 0;
       for (const j of [...breaks, b.length]) {
         const line = b.slice(from, j);
-        // an indented line keeps its indent
-        const indent = line[0]?.src?.gap ? "\\quad " : "";
+        // an indented line keeps its indent, also once something is typed at its start
+        const indent = (from ? lineIndent(b, from) : line[0]?.src?.gap) ? "\\quad " : "";
         lines.push(indent + (line.length ? this.row(line) : "") + (j < b.length ? this.wrap([b[j]!], "\\mathstrut") : ""));
         from = j + 1;
       }

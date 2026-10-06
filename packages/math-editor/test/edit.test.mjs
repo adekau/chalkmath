@@ -118,6 +118,17 @@ test("the other worlds' notation is typed as its text reads, and an edit keeps t
   const frac = "system(\nvar x in 0..2\ninit x = 1/2\nvar y in 0..1\n)", toNum = "{end}{←}{↑}{↑}" + "{→}".repeat(9);
   assert.equal(text(toNum + "{↓}Q", frac), "system(\nvar x in 0..2\ninit x = 1/(2Q)\nvar y in 0..1\n)");
   assert.equal(text(toNum + "{↓}{↓}Q", frac), "system(\nvar x in 0..2\ninit x = 1/2\nvar y iQn 0..1\n)");
+  // what is typed at the start of an indented line takes the line's indent over, in the text and drawn
+  const toAction = "{home}" + "{→}".repeat(15);
+  const q = typed(toAction + "Q", sys);
+  assert.equal(q.text, "system(\n  var x in 0..2\n  Qaction t when x = 0 do x := 1, y := 2\n)");
+  assert.match(toLatex(q.e.stmt), /\\\\ \\quad \{\\mathit\{Qaction\}\}/);
+  assert.equal(text(toAction + "Q{⌫}", sys), sys);
+  assert.equal(text(toAction + "fair ", sys), "system(\n  var x in 0..2\n  fair action t when x = 0 do x := 1, y := 2\n)");
+  // a line break typed there leaves the indent with the line it was on
+  assert.equal(text(toAction + "\n", sys), "system(\n  var x in 0..2\n\n  action t when x = 0 do x := 1, y := 2\n)");
+  // a line read without an indent keeps none
+  assert.equal(text(toAction + "Q", sys.replace(/\n {2}/g, "\n")), "system(\nvar x in 0..2\nQaction t when x = 0 do x := 1, y := 2\n)");
   // raw text takes its characters as typed
   const raw = new MathEdit(read("f(x").stmt);
   raw.end(); raw.left(); raw.left(); raw.type("+");

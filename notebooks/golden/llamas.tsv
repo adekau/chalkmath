@@ -36,21 +36,22 @@
 72	integrate(ℯ^(i*x), x)	= -i*exp(i*x)
 74	let c(k) = 1/(2pi)*(integrate(ℯ^(-i*k*t), t, 0, pi) - integrate(ℯ^(-i*k*t), t, -pi, 0))	= (-(i/k - i*exp(i*π*k)/k) - i/k + i*exp(-i*π*k)/k)/(2*π)
 76	factor(c(k))	= i*(-2 + exp(-i*π*k) + exp(i*π*k))/(2*π*k)
-78	c(0)	= 0
-80	c(-3)	= 2*i/(3*π)
-81	c(-1)	= 2*i/π
-82	c(1)	= -2*i/π
-83	c(2)	= 0
-84	c(3)	= -2*i/(3*π)
-86	sum(c(k)*ℯ^(i*k*t), k, -3, 3)	= 2*i*exp(-3*i*t)/(3*π) + 2*i*exp(-i*t)/π - 2*i*exp(3*i*t)/(3*π) - 2*i*exp(i*t)/π
-88	expand(exptotrig(ℯ^(-i*k*t) - ℯ^(i*k*t)))	= -2*i*sin(k*t)
-90	expand(exptotrig(sum(c(k)*ℯ^(i*k*t), k, -3, 3)))	= 4*sin(t)/π + 4*sin(3*t)/(3*π)
-92	plot([sign(sin(t)), 4/pi*sin(t) + 4/(3pi)*sin(3t)], t, -pi, pi)	= [sign(sin(t)), 4*sin(t)/π + 4*sin(3*t)/(3*π)]
-94	plot([sign(sin(t)), sum(4/((2j-1)*pi)*sin((2j-1)*t), j, 1, 7)], t, -pi, pi)	= [sign(sin(t)), 4*sin(t)/π + 4*sin(3*t)/(3*π) + 4*sin(5*t)/(5*π) + 4*sin(7*t)/(7*π) + 4*sin(9*t)/(9*π) + 4*sin(11*t)/(11*π) + 4*sin(13*t)/(13*π)]
-96	epicycles(sum(c(k)*ℯ^(i*k*t), k, -3, 3), t)	= 2*i*exp(-3*i*t)/(3*π) + 2*i*exp(-i*t)/π - 2*i*exp(3*i*t)/(3*π) - 2*i*exp(i*t)/π
-99	dft([1, i, -1, -i])	= dft([1, i, -1, -i])
-101	let llama = import("https://raw.githubusercontent.com/adekau/fourier/master/src/assets/llama.svg")	page
-103	let pts = samplePoints(llama)	page
-105	epicycles(pts, 10)	page
-107	epicycles(pts, 60)	page
-108	epicycles(pts)	page
+78	c(0)	✗ Division by zero: 0^-1 is undefined
+80	1/(2pi)*(integrate(ℯ^(-i*0*t), t, 0, pi) - integrate(ℯ^(-i*0*t), t, -pi, 0))	= 0
+82	c(-3)	= 2*i/(3*π)
+83	c(-1)	= 2*i/π
+84	c(1)	= -2*i/π
+85	c(2)	= 0
+86	c(3)	= -2*i/(3*π)
+88	sum(c(k)*ℯ^(i*k*t), k, -3, -1) + sum(c(k)*ℯ^(i*k*t), k, 1, 3)	= 2*i*exp(-3*i*t)/(3*π) + 2*i*exp(-i*t)/π - 2*i*exp(3*i*t)/(3*π) - 2*i*exp(i*t)/π
+90	expand(exptotrig(ℯ^(-i*k*t) - ℯ^(i*k*t)))	= -2*i*sin(k*t)
+92	expand(exptotrig(sum(c(k)*ℯ^(i*k*t), k, -3, -1) + sum(c(k)*ℯ^(i*k*t), k, 1, 3)))	= 4*sin(t)/π + 4*sin(3*t)/(3*π)
+94	plot([sign(sin(t)), 4/pi*sin(t) + 4/(3pi)*sin(3t)], t, -pi, pi)	= [sign(sin(t)), 4*sin(t)/π + 4*sin(3*t)/(3*π)]
+96	plot([sign(sin(t)), sum(4/((2j-1)*pi)*sin((2j-1)*t), j, 1, 7)], t, -pi, pi)	= [sign(sin(t)), 4*sin(t)/π + 4*sin(3*t)/(3*π) + 4*sin(5*t)/(5*π) + 4*sin(7*t)/(7*π) + 4*sin(9*t)/(9*π) + 4*sin(11*t)/(11*π) + 4*sin(13*t)/(13*π)]
+98	epicycles(sum(c(k)*ℯ^(i*k*t), k, -3, -1) + sum(c(k)*ℯ^(i*k*t), k, 1, 3), t)	= 2*i*exp(-3*i*t)/(3*π) + 2*i*exp(-i*t)/π - 2*i*exp(3*i*t)/(3*π) - 2*i*exp(i*t)/π
+101	dft([1, i, -1, -i])	= dft([1, i, -1, -i])
+103	let llama = import("https://raw.githubusercontent.com/adekau/fourier/master/src/assets/llama.svg")	page
+105	let pts = samplePoints(llama)	page
+107	epicycles(pts, 10)	page
+109	epicycles(pts, 60)	page
+110	epicycles(pts)	page
