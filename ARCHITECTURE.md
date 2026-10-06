@@ -140,16 +140,6 @@ differential test with zero mismatches.
   `N` with a `ln` in it take ten seconds. Newton's method for `ln` and `arctan` starts from a
   double-precision guess, which can only change how fast it converges: the candidates are still
   checked. `x^(1/2)`, which is how `sqrt` is written, is a square root, not `exp(½ ln x)`.
-- **Division by zero is zero, and says so.** Core `Rat` (and Mathlib's `ℚ`) make `0⁻¹ = 0`, so
-  `1/0`, `0^(-1)` and `1/(y − y)` evaluate to `0` by the numeric power rule (`powNumeric`), and the
-  theorems, stated over that arithmetic, hold. A closed form evaluated at a removable singularity
-  (the Fourier coefficient `c(k)` of `llamas.chalk` at `k = 0`, whose `1/k` terms all vanish) gets the
-  right value by it, and refusing instead broke those cells. So the rule answers, and the reply
-  carries a warning for every step that took a zero base to a negative power
-  (`derivationWarnings`, `Rpc.lean`), shown under the answer: the reader sees that a division by
-  zero was taken as zero, and the work shows where. Refusing in the rule, with its theorems
-  (`powNumeric_num`, the ℂ and domain soundness, the termination case) restated, is the stricter
-  option, left for when the lessons are written for it.
 - **An exact answer has a size.** `p^n` for numerals evaluates exactly, and the decimal of a number
   is quadratic in its length (the browser's runtime has no GMP), so a power whose exact value would
   pass `maxPowerBits` (65,536 bits, 19,728 digits) refuses the evaluation and says how many digits it
@@ -408,6 +398,16 @@ differential test with zero mismatches.
   `Congruence`, so the same fold applies. Every rule the pipeline runs without an assumption keeps the
   domain (`simpRulesSafe_soundD`, the parity, radical and square-root rules); `ln(b^p) = p ln b` for an
   even `p` did not, and is now `simp.function.assuming` ("Assuming $x > 0$").
+- **Division by zero is refused, not zero.** `Rat` (and `evalR`, `evalC`) make `0⁻¹ = 0`, so evaluating
+  `0^(-1)` by the arithmetic alone would answer `1/0 = 0`, `1/(y-y) = 0` and `N(1/0) = 0`, each with a
+  verified step. `simp.power` keeps the value the theorems are about (`powNumeric` still returns
+  `.num (p.zpow q)`, so `powerRules_soundR`, `powerRules_soundC` and `powNumeric_num` are untouched) and
+  sets the result's `error` when the base is zero and the exponent a negative integer; `normalizeT`
+  then refuses the cell ("Division by zero: 0^-1 is undefined"). It is the one verified rule that
+  refuses, and only on a term mathematics leaves undefined; `Def` already says `0^(-1)` is nowhere
+  defined, so the domain theorems have nothing to say about it. A notebook that needs a value at a
+  pole writes the case out (`llamas.chalk` defines its Fourier coefficient `c_0` separately and sums
+  over `k ≠ 0`); the earlier design, answering `0` with a warning under the answer, is gone.
 - **A cell is read over ℝ or over ℂ, and the rules know which.** A cell whose input mentions `i`, or
   whose real answer does (`sqrt(-1)`), is normalized over ℂ (`normCell`): the pipeline takes the
   reading as a parameter (`pipelineRulesWith norm real`) and turns off `simp.function.real`, the cases

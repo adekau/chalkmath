@@ -51,7 +51,9 @@ structure RuleResult where
   /-- Steps taken inside this rewrite (e.g. the row operations behind an `rref` command). -/
   sub : Option Derivation := none
   /-- A rule may refuse the whole evaluation (the reference throws, e.g. on a dimension mismatch).
-  The tiered rewriter (`normalizeT`) honours this; verified rule sets never set it. -/
+  The tiered rewriter (`normalizeT`) honours this. A verified rule sets it only where mathematics
+  leaves the term undefined and its semantics would answer anyway (`simp.power` on `0^(-1)`, which
+  `Rat` makes `0`); its value is still what the theorem says, so the proofs do not mention it. -/
   error : Option String := none
 
 -- ---------------------------------------------------------------------------
