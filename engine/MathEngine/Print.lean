@@ -128,8 +128,12 @@ def radicalParts (a q : Q) : Option (Nat × String) :=
   let d := q.val.den
   let i := p / d
   let f := p % d
+  -- the coefficient is at most `n^(i+1)`; past 65536 bits (`10^(10^9 + 1/2)`) the power prints as it
+  -- is, and an `m` of 1 is not raised to `p`, which is as long as the exponent's numerator
+  -- (`10^1.6020599913279623` has `p = 16020599913279623`, and Lean's runtime stops on such a `Nat.pow`)
+  if (i + 1) * (Nat.log2 n + 1) > 65536 then none else
   let (m, s) := qthPowerPart n d
-  let coef := m ^ p * s ^ i
+  let coef := (if m == 1 then 1 else m ^ p) * s ^ i
   let inner := if f == 1 then toString s else s!"{s}^\{{f}}"
   let rad := if s == 1 then "" else if d == 2 then s!"\\sqrt\{{inner}}" else s!"\\sqrt[{d}]\{{inner}}"
   some (coef, rad)

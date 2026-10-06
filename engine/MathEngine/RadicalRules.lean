@@ -56,6 +56,23 @@ def mergeRadicals (s t : Expr) : Option Expr :=
 /-- A numeral to a numeral power: the only factors `mulRadicalPair` merges. -/
 def isNumPow : Expr → Bool | .pow (.num _) (.num _) => true | _ => false
 
+/-- The most bits a numeral the radical rules build may have, as for an input's powers
+(`maxPowerBits`, Limits.lean). -/
+def maxRadicalBits : Nat := 65536
+
+/-- `b^(p/q)` is small enough for the radical rules to merge: `b^|p|` has at most `maxRadicalBits`
+bits. `mulRadicalPair` builds `b^p` and `mergeRadicals` builds `m^p` and `s^(p/q)` (each at most
+`b^|p|`); past this they would build an enormous numeral, and past an exponent of `2^32` Lean's
+runtime stops the whole process (`10^1.6020599913279623` is `10^(16020599913279623/10^16)`). A term
+that is not such a power has nothing to build. -/
+def radicalFits (b x : Q) : Bool :=
+  x.val.num.natAbs * (Nat.log2 b.val.num.natAbs + Nat.log2 b.val.den + 1) ≤ maxRadicalBits
+
+/-- Every radical in the list fits (`radicalFits`): the rules below ask it before searching for a
+pair, so a sum or product holding a radical too large to merge is left as it is. -/
+def radicalsFit (shape : Expr → Option (Q × Q)) (es : List Expr) : Bool :=
+  es.all fun t => match shape t with | some (b, x) => radicalFits b x | none => true
+
 /-- `a^(p/q) · b^(r/q) = (a^p · b^r)^(1/q)` for integer bases ≥ 2. -/
 def mulRadicalPair (s t : Expr) : Option Expr :=
   match s, t with
@@ -102,7 +119,8 @@ def findPairGo (f : Expr → Expr → Option Expr) (acc : List Expr) : List Expr
 
 /-- The first element with a partner under `f`, merged with its first partner, and the others.
 Trying every pair costs the square of the list's length, at every visit to the node, so a rule first
-asks `worth`, a cheap test that fails only where no pair can merge (fewer than two candidates). -/
+asks `worth`, a cheap test that fails where no pair can merge (fewer than two candidates) or where a
+merge would build a numeral too large to compute (`radicalsFit`). The proofs hold for any `worth`. -/
 def findPair (worth : List Expr → Bool) (f : Expr → Expr → Option Expr) (es : List Expr) :
     Option (Expr × List Expr) :=
   if worth es then findPairGo f [] es else none
@@ -251,7 +269,8 @@ def collectRadicals : PlainRule :=
   { name := "simp.collect-radicals", apply := fun e =>
       match e with
       | .add es =>
-        match findPair (twoOf fun t => (radicalTerm t).isSome) mergeRadicals es with
+        match findPair (fun es => twoOf (fun t => (radicalTerm t).isSome) es
+            && radicalsFit (fun t => (radicalTerm t).map fun (_, b, x) => (b, x)) es) mergeRadicals es with
         | some (m, others) =>
           let res := addN (m :: others)
           if M res < M e then
@@ -260,12 +279,15 @@ def collectRadicals : PlainRule :=
         | none => none
       | _ => none }
 
+/-- `(b, x)` for a numeral to a numeral power `b^x`. -/
+def numPowParts : Expr → Option (Q × Q) | .pow (.num b) (.num x) => some (b, x) | _ => none
+
 /-- Same-index radicals in a product multiply under one root. -/
 def mulRadicals : PlainRule :=
   { name := "simp.radical", apply := fun e =>
       match e with
       | .mul es =>
-        match findPair (twoOf isNumPow) mulRadicalPair es with
+        match findPair (fun es => twoOf isNumPow es && radicalsFit numPowParts es) mulRadicalPair es with
         | some (m, others) =>
           let res := mulN (m :: others)
           if M res < M e then

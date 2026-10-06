@@ -157,7 +157,14 @@ differential test with zero mismatches.
   cannot take. The check is a pass over the input before it is normalized (`powerTooLarge`,
   `Limits.lean`, called by `normCell`), sizing each power of closed numeral terms in floating point,
   so the rules and their proofs are untouched; a big power the rewriting assembles from small ones
-  is not caught, and Stop is the answer to it.
+  is not caught, and Stop is the answer to it. A *fractional* exponent is a different hazard: a
+  long decimal such as `1.6020599913279623` (what a scene gets back from `N(log(40)/log(10))`) is
+  `p/q` with `q = 10^16`, and Lean's runtime stops the whole process on any `Nat.pow` exponent of
+  `2^32` or more, even `1 ^ q`. So nothing raises a number to a numeral's numerator or denominator
+  unchecked: `checkedPart` runs as a `@[csimp]`-proven equal function that skips `1 ^ q`, the radical
+  rules ask `radicalsFit` (in `findPair`'s `worth`, so their proofs stand) and leave a radical
+  `b^(p/q)` with `b^|p|` past 65,536 bits as it is, and the printer's `m√s` form gives way to the
+  plain power when its coefficient would pass that size.
 - **A plain `e` is a variable.** `ℯ` (`\e`) is `exp(1)`, so `ℯ^x` is `exp(x)`, but the letter `e` is
   a variable like any other, even though `N` gives it Euler's value (`ieval` treats the name `e` as
   a constant, as `ieval_sound` assumes). A cell whose input has a free `e` says so under its answer:

@@ -1084,6 +1084,14 @@ def intRootTests : TestM Unit := do
   check "square part, a 29-bit prime squared" (toString (qthPowerPart ((2 ^ 29 - 3) ^ 2 * 7) 2)) s!"({2 ^ 29 - 3}, 7)"
   check "cube part" (toString (qthPowerPart (2 ^ 7 * 3 ^ 4 * 5) 3)) "(12, 30)"
   check "past maxRootBits nothing is searched" (toString (perfectPower (10 ^ 5000), qthPowerPart (10 ^ 5000) 2)) s!"(none, (1, {10 ^ 5000}))"
+  -- Lean's runtime stops the process on a `Nat.pow` exponent of 2^32 or more, even `1 ^ q`
+  check "a 10^16-th power part (the index of 10^1.6020599913279623)" (toString (qthPowerPart 10 (10 ^ 16))) "(1, 10)"
+  check "radical display, a 10^16-th root" ((Expr.pow (.num (Q.ofInt 10)) (.num (Q.ofRat (mkRat 16020599913279623 (10 ^ 16))))).toLatex) "10\\sqrt[10000000000000000]{10^{6020599913279623}}"
+  check "radical display, a coefficient past 65536 bits stays a power" ((Expr.pow (.num (Q.ofInt 10)) (.num (Q.ofRat (mkRat (2 * 10 ^ 10 + 1) 2)))).toLatex) "{10}^{\\frac{20000000001}{2}}"
+  -- a scene's clock bound comes back as a long decimal: the last frame is 10^(16020599913279623/10^16),
+  -- which once stopped the engine (a `Nat.pow` exponent past 2^32 in the radical display)
+  let manLong := rpc "engine.manipulate" "{\"source\":\"manipulate(plot(10^s*x, x, -1, 1), s, 0, 1.6020599913279623, 61)\"}"
+  checkTrue "rpc manipulate: a long decimal exponent renders every frame" ((manLong.splitOn "\"valueRendered\"").length == 62) manLong
   check "radical display, 1,333 bits" (match parseStmt "sqrt(10^401)" with | .ok st => (match (normalizeT pipelineRules pipelineOrdered st.value).run' #[] with | .ok e => e.toLatex | .error m => m) | .error _ => "parse") s!"{10 ^ 200}\\sqrt\{10}"
 
 /-- The wire format: JSON the engine writes is JSON every reader accepts (`JSON.parse` refuses a short
