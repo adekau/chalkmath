@@ -1,4 +1,4 @@
-import { type Atom, type Block, type Stmt, INFIX, isIdChar, isIdStart, isSep, KEYWORDS, merges, showAtom } from "./model.js";
+import { type Atom, type Block, type Stmt, INFIX, isIdChar, isIdStart, isSep, KEYWORDS, lineIndent, merges, showAtom } from "./model.js";
 
 /**
  * The editor's tree → source text, the text the engine is sent.
@@ -151,8 +151,10 @@ class Writer {
     b.forEach((a, j) => {
       const prev = b[j - 1], next = b[j + 1];
       const src = a.src;
-      // the space before an atom is its own while its left neighbour is the one it was read beside
-      let gap = src && src.prev === shape(prev) ? src.gap : this.gapBefore(b, j, firstGap);
+      // the space before an atom is its own while its left neighbour is the one it was read beside;
+      // the first on a line otherwise has the line's indent
+      let gap = src && src.prev === shape(prev) ? src.gap
+        : (isCh(prev, "\n") ? lineIndent(b, j) : undefined) ?? this.gapBefore(b, j, firstGap);
       // a space where the two sides would lex as one (`x sin(y)`, `x^n y`); characters of one run
       // are written as they are (`xy` is one name)
       if (!gap && j > 0 && !(isCh(a) && isCh(prev)) && merges(this.out, firstChar(a))) gap = " ";

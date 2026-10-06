@@ -119,6 +119,18 @@ export function merges(before: string, next: string): boolean {
   return last === "name" ? isIdChar(next) : isDigit(next) || next === ".";
 }
 
+/** The indent of the line that starts at `j` of `b`, just after a line break: the space before the
+ *  atom read first on that line, wherever typing at the line's start has since put it (whatever is
+ *  typed there takes the indent over). Undefined for a line no atom of which was read first on it. */
+export function lineIndent(b: Block, j: number): string | undefined {
+  for (let k = j; k < b.length; k++) {
+    const a = b[k]!;
+    if (a.k === "ch" && a.c === "\n") return undefined;
+    if (a.src?.prev === "\n") return a.src.gap;
+  }
+  return undefined;
+}
+
 /** Structural equality, for tests and for the editor's "did this edit change anything". */
 export function sameBlock(a: Block, b: Block): boolean {
   return a.length === b.length && a.every((x, i) => sameAtom(x, b[i]!));
