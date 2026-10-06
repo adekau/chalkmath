@@ -360,7 +360,8 @@ class Reader {
           this.trail(e);
           const close = this.expectOp(")");
           // a lone fraction is its own group; its parentheses come back only where they are needed
-          if (e.length === 1 && e[0]!.k === "frac" && !this.isOp(this.peek(), "^")) {
+          // (a power or a part `[[…]]` after it binds tighter than `/`, so there they are)
+          if (e.length === 1 && e[0]!.k === "frac" && !this.isOp(this.peek(), "^") && !(this.isOp(this.peek(), "[") && this.isOp(this.peek(1), "["))) {
             const f = e[0]!;
             f.src = { ...f.src!, start: t.start, end: close.stop, text: this.cs.slice(t.start, close.stop).join(""), gap: t.ws };
             return e;

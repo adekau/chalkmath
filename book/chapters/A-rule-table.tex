@@ -12,7 +12,7 @@ the engine omits is unverified.
 \rt{simp.identity}{verified}{The additive and multiplicative identities and the annihilator.}
 \rt{simp.fold-constants}{verified}{Exact rational arithmetic; $\mathbb{Q}$ embeds in $\mathbb{R}$.}
 \rt{simp.collect-like-terms}{verified}{Distributivity: $a t + b t + \dots = (a + b + \dots) t$, every term with the same rest in one step (\lc{mergeTerms_soundR}).}
-\rt{simp.power}{verified}{Includes exact roots; the root search returns only checked roots, and is bounded by bit length (none past 4096 bits).}
+\rt{simp.power}{verified}{Includes exact roots; the root search returns only checked roots, and is bounded by bit length (none past 4096 bits). $0^{-n}$ is refused (division by zero) rather than evaluated to $0$, as \texttt{Rat} would.}
 \rt{simp.collect-powers}{verified}{$b^m b^n \cdots = b^{m+n+\cdots}$, every factor with the same base in one step, for every real $b$: each merge has integer exponents of one sign ($x \cdot x = x^2$) or a positive numeral base (\lc{collectPowers_soundR}).}
 \rt{simp.collect-powers.assuming}{conditional}{The other merges, $x \cdot x^{-1} = x^0$ and $x^a x^b = x^{a+b}$: the step states its assumption, $b \neq 0$ where every merge has integer exponents and $b > 0$ otherwise (\lc{collectPowersAssuming_soundR_on}); at $x = 0$, $x \cdot x^{-1}$ turns $0$ into $1$ (\lc{not_collectPowersAssuming_soundR}).}
 \rt{simp.function}{verified}{$\sin/\cos = \tan$, $\sqrt a = a^{1/2}$, $\ln 1 = 0$, $e^0 = 1$, $\sin 0$, $\cos 0$, and $\lvert\cdot\rvert$ and sign of a numeral, for every real and every complex number (\lc{functionRules_soundR}, \lc{functionRules_soundC}).}

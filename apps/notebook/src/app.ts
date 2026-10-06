@@ -33,8 +33,20 @@ import { ensureLean, syncLean, mountLean, unmountLean, focusLean, setLeanDark, i
  *  come from a file someone else wrote (saved outputs render before any re-run), and a blanket
  *  `trust: true` would let it add `\href{javascript:…}`, arbitrary styles, or remote images. */
 const TRUST_PATHS = (ctx: { command: string }) => ctx.command === "\\htmlData";
-const tex = (s: string, paths = false) =>
-  katex.renderToString(s, { throwOnError: false, trust: paths ? TRUST_PATHS : false, strict: false, displayMode: false });
+/** KaTeX's HTML for a LaTeX string, kept: a cell's output and steps are typeset again whenever the
+ *  cells are rebuilt (a cell added, a section folded), and most of them have not changed. The memo
+ *  is bounded; past the bound it starts over. */
+const TEX_MEMO = new Map<string, string>();
+const TEX_MEMO_MAX = 4000;
+const tex = (s: string, paths = false) => {
+  const key = (paths ? "p" : "n") + s;
+  const hit = TEX_MEMO.get(key);
+  if (hit !== undefined) return hit;
+  const html = katex.renderToString(s, { throwOnError: false, trust: paths ? TRUST_PATHS : false, strict: false, displayMode: false });
+  if (TEX_MEMO.size >= TEX_MEMO_MAX) TEX_MEMO.clear();
+  TEX_MEMO.set(key, html);
+  return html;
+};
 
 // ---------------------------------------------------------------------------
 // Content: the notebook's own vocabulary, from the function reference (reference.ts)
@@ -769,6 +781,8 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
       // this output is a number: a file that had its label before a restart no longer does
       if (r.label) { LAST_LABEL.set(sessionId, r.label); FILE_OUTS.delete(`${sessionId}:${r.label}`); }
       delete cell.plot; delete cell.manip; delete cell.outDeBruijn; delete cell.reading; delete cell.kind; delete cell.hasse; delete cell.summary; delete cell.visuals;
+      // an output form chosen for an earlier output (a matrix's data table) that this one does not offer
+      if (cell.form && !formsFor(cell).some(([v]) => v === cell.form)) delete cell.form;
       if ("kind" in r && r.kind === "poset") { cell.kind = "order"; cell.hasse = r.hasse; cell.summary = r.summary; }
       if ("kind" in r && r.kind === "logic") { cell.kind = "logic"; cell.summary = r.summary; }
       if ("kind" in r && r.kind === "system") { cell.kind = "system"; cell.summary = r.summary; }
@@ -784,7 +798,7 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
       if ("kind" in r && r.kind === "lambda") { cell.outDeBruijn = r.renderedDeBruijn?.latex; cell.reading = r.reading; cell.kind = "λ-term"; }
       log("ok", `Out[${cell.label}] ${r.rendered.text}  (${cell.ms.toFixed(1)} ms, ${(cell.outline ?? cell.steps).length} steps)`);
       announce(`Out ${cell.label}: ${r.rendered.text}`);
-      recordRun(cell, sessionId, "bound" in r ? r.bound?.[0] : undefined, r.rendered.text);
+      recordRun(cell, sessionId, src, "bound" in r ? r.bound?.[0] : undefined, r.rendered.text);
       if ("bound" in r && r.bound?.length) {
         log("ok", `bound ${r.bound.join(", ")}`);
         const k = `${sessionId}:${r.bound[0]}`;
@@ -800,9 +814,9 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
     } else {
       cell.label = r.label ?? cell.label ?? nextLabel++;
       if (r.label) { LAST_LABEL.set(sessionId, r.label); FILE_OUTS.delete(`${sessionId}:${r.label}`); }
-      delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.plot; delete cell.manip; delete cell.file; cell.steps = []; delete cell.outline;
+      clearResult(cell, { keepLabel: true, keepAsk: true });
       cell.error = r.error;
-      recordRun(cell, sessionId);
+      recordRun(cell, sessionId, src);
       log("err", `${r.error.code}: ${r.error.message}`);
       announce(`Error: ${r.error.message}`);
     }
@@ -811,9 +825,9 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
     if (e instanceof AskError) {
       // the lookup found nothing: say why and how it searched; the engine was not asked
       cell.label = cell.label ?? nextLabel++;
+      clearResult(cell, { keepLabel: true, keepAsk: true });
       cell.error = { message: e.message === "Stopped." ? "Stopped." : `No answer: ${e.message}` };
       cell.askTrail = e.trail;
-      delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.plot; delete cell.manip; delete cell.file; cell.steps = []; delete cell.outline;
       log("err", `lookup: ${e.message}`);
       finishEvaluation(cell);
       return;
@@ -823,8 +837,10 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
       : S.kernel === "failed" ? "The engine stopped while evaluating this cell." : e instanceof Error ? e.message : String(e) };
     if (cell === stoppedCell) stoppedCell = null;
     // the output shown must be this run's: a stale one would also be replayed after a restart
-    delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.plot; delete cell.manip; delete cell.file; cell.steps = []; delete cell.outline;
-    log("err", cell.error.message);
+    const error = cell.error;
+    clearResult(cell, { keepLabel: true, keepAsk: true });
+    cell.error = error;
+    log("err", error.message);
   }
   finishEvaluation(cell);
 }
@@ -845,10 +861,10 @@ async function checkExercise(cell: Cell, client: EngineClient, sessionId: string
     const r = await client.call("engine.check", { sessionId, cellId: cell.id, source: cell.src, ...(answer !== undefined ? { answer } : {}), showWork: true, paths: true, outline: true });
     cell.ms = performance.now() - t0;
     queueMicrotask(autosave);
-    recordRun(cell, sessionId);
+    recordRun(cell, sessionId, cell.src);
     if (!r.ok) {
+      clearResult(cell, { keepLabel: true, keepAsk: true });
       cell.error = r.error;
-      delete cell.outLatex; delete cell.outText; delete cell.echoLatex; cell.steps = []; delete cell.outline;
       log("err", `${r.error.code}: ${r.error.message}`);
     } else {
       delete cell.error;
@@ -896,7 +912,7 @@ function manipDataOf(r: ManipulateResult): ManipData {
 /** After a cell's evaluation: the notebook is free, and the cell shows what it got. */
 function finishEvaluation(cell: Cell) {
   S.busy = false; S.running = null;
-  S.sel = null;
+  if (docOf(cell) === currentDoc()) S.sel = null;   // a notebook finishing in the background leaves the reader's selection
   renderCellBody(cell);
   refreshRelativeRefs();
   renderChrome();
@@ -916,15 +932,13 @@ async function evaluateFileCell(cell: Cell, fc: { bind?: string; file: FileValue
   cell.ms = performance.now() - t0;
   cell.label = r.label ?? cell.label ?? nextLabel++;
   if (r.label) { LAST_LABEL.set(sessionId, r.label); FILE_OUTS.set(`${sessionId}:${r.label}`, file); }
-  recordRun(cell, sessionId, bind, `${file.name} ${fileSize(file)} ${JSON.stringify(file.origin)}`);
+  recordRun(cell, sessionId, cell.src, bind, `${file.name} ${fileSize(file)} ${JSON.stringify(file.origin)}`);
   if (bind) {
     const k = `${sessionId}:${bind}`;
     FILE_VARS.set(k, file); USER_NAMES.add(k); USER_FNS.delete(k);
     renderHighlights();
   }
-  delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.plot; delete cell.manip; delete cell.error;
-  delete cell.outDeBruijn; delete cell.reading; delete cell.warnings; delete cell.kind; delete cell.hasse; delete cell.summary; delete cell.visuals;
-  cell.steps = []; delete cell.outline;
+  clearResult(cell, { keepLabel: true, keepAsk: true });
   cell.file = { name: file.name, mime: file.mime, size: fileSize(file), origin: file.origin };
   CELL_FILES.set(cell, file);
   if (cell.form && cell.form !== "text") delete cell.form;
@@ -1049,7 +1063,23 @@ const docOf = (cell: Cell) => S.docs.find((d) => (d === currentDoc() ? S.cells :
 function stashDoc() {
   const d = currentDoc(); if (!d) return;
   d.name = S.docName; d.cells = S.cells; d.scenes = ST.scenes; d.studioActive = ST.active; d.active = S.active; d.assets = S.assets;
-  d.nextLabel = nextLabel; d.sessionId = sessionId; d.text = serializeNotebook();
+  d.nextLabel = nextLabel; d.sessionId = sessionId; d.text = serializedNow();
+}
+
+/** The notebook shown, serialized, as of at most `maxAge` ms ago. Serializing it (steps and all)
+ *  is tens of milliseconds on a big notebook, and the tab bar asks whether it is unsaved on every
+ *  redraw of the chrome, twice per evaluation: a run of a hundred cells was a hundred serializations.
+ *  The chrome takes a recent one; what must be exact (a save, a close, the autosave) asks afresh. */
+let serialMemo: { doc: Nb; at: number; text: string } | null = null;
+/* A baseline (`savedText`) is always set through `serializedNow()`, so that the memo and the baseline
+ * agree and a notebook just saved, opened or made never shows as unsaved for a moment. */
+function serializedNow(maxAge = 0): string {
+  const d = currentDoc(); if (!d) return serializeNotebook();
+  const now = performance.now();
+  if (serialMemo && serialMemo.doc === d && now - serialMemo.at <= maxAge) return serialMemo.text;
+  const text = serializeNotebook();
+  serialMemo = { doc: d, at: now, text };
+  return text;
 }
 
 /** Make document `i` current: its cells, scenes and session become the live ones. A document whose
@@ -1081,7 +1111,7 @@ function unloadDocs() {
  *  cells, so a document that was clean stays clean: its saved baseline moves to the re-run state. */
 function hydrate(d: Nb) {
   const wasClean = !docDirty(d);
-  void runAll().then(() => { if (wasClean && d === currentDoc()) { d.savedText = serializeNotebook(); renderTabs(); autosave(); } });
+  void runAll().then(() => { if (wasClean && d === currentDoc()) { d.savedText = serializedNow(); renderTabs(); autosave(); } });
 }
 
 function makeDoc(name: string, cells: Cell[] = [], scenes: Scene[] = [], assets: Record<string, Asset> = {}): Nb {
@@ -1096,16 +1126,16 @@ function newDoc(name = "untitled.chalk", first = freshCell()): Nb {
   S.docs.push(d);
   loadDoc(S.docs.length - 1);
   S.cells.push(first);
-  d.savedText = serializeNotebook();   // an untouched new notebook is not "unsaved"
+  d.savedText = serializedNow();   // an untouched new notebook is not "unsaved"
   renderChrome(); renderCells(); renderSidebar();
   return d;
 }
 
 /** Whether a document differs from its last saved (or opened) state. A lesson never does: its work
  *  is kept as it goes (`keepLesson`), so there is nothing to save and nothing to lose by closing it. */
-function docDirty(d: Nb): boolean {
+function docDirty(d: Nb, recent = false): boolean {
   if (d.project) return false;
-  const live = d === currentDoc() ? serializeNotebook() : d.text;
+  const live = d === currentDoc() ? serializedNow(recent ? 400 : 0) : d.text;
   return live !== d.savedText;
 }
 
@@ -1123,6 +1153,8 @@ function closeDoc(i: number) {
   if (docDirty(d) && !window.confirm(`Close ${d.name} without saving?`)) return;
   keepLesson(d);
   if (client) void client.call("engine.resetSession", { sessionId: d.sessionId }).catch(() => undefined);
+  forgetSession(d.sessionId);
+  for (const c of d.cells) forgetScene(c);
   S.docs.splice(i, 1);
   if (!S.docs.length) unloadDocs();
   else if (i !== S.doc) {
@@ -1152,13 +1184,14 @@ let tabListOpen = false;
  *  go; the + and, while the strip overflows, a ⌄ listing every open notebook; then, at the right,
  *  the studio, the courses and the documentation while each is open (its × closes it). Long names
  *  end in an ellipsis and show whole on hover. */
-function renderTabs() {
+function renderTabs(exact = false) {
   const tabs = $(".tabbar");
   const scroll = tabs.querySelector<HTMLElement>(".tabstrip")?.scrollLeft ?? 0;
   tabs.innerHTML = "";
   const strip = h("div", "tabstrip");
-  // deciding it serializes the notebook shown: once per notebook, not once per mark
-  const dirtyOf = new Map(S.docs.map((d) => [d, docDirty(d)]));
+  // deciding it serializes the notebook shown: once per notebook, not once per mark, and from a
+  // moment ago unless asked to be exact (typing and the autosave are; the chrome's redraws are not)
+  const dirtyOf = new Map(S.docs.map((d) => [d, docDirty(d, !exact)]));
   S.docs.forEach((d, i) => {
     const dirty = dirtyOf.get(d)!;
     const on = S.tab === "notebook" && i === S.doc;
@@ -1277,9 +1310,14 @@ const cellSrc = (c: Cell) => c.input?.value ?? c.ta?.value ?? c.src;
  *  when it opens a file anyway — the steps come back then. The output itself is always kept, and so
  *  is the outline of work that was never opened (it has no terms, so it is small). */
 const STEPS_BUDGET = 256 * 1024;
+/** The size of a cell's steps as JSON, measured once per derivation (the array is replaced, never
+ *  edited): serializing the notebook asked it of every cell, which stringified every derivation twice. */
+const STEPS_SIZE = new WeakMap<Step[], number>();
 function stepsToSave(c: Cell): Step[] | undefined {
   if (!c.steps?.length) return c.steps;
-  return JSON.stringify(c.steps).length <= STEPS_BUDGET ? c.steps : undefined;
+  let size = STEPS_SIZE.get(c.steps);
+  if (size === undefined) { size = JSON.stringify(c.steps).length; STEPS_SIZE.set(c.steps, size); }
+  return size <= STEPS_BUDGET ? c.steps : undefined;
 }
 /** The outline a file keeps when it does not keep the steps, so the cell still offers its work. */
 function outlineToSave(c: Cell): StepOutline[] | undefined {
@@ -1308,7 +1346,7 @@ async function loadNotebook(text: string, name?: string, project?: ProjectRef, p
   let doc: ChalkFile;
   try { doc = JSON.parse(text) as ChalkFile; } catch { notify("err", "That file is not a ChalkMath notebook (it is not valid JSON)."); return; }
   if ((doc.chalk !== 1 && doc.lemma !== 1) || !Array.isArray(doc.cells)) { notify("err", "That file is not a ChalkMath notebook."); return; }
-  const d = makeDoc(name ?? doc.name ?? "untitled.chalk", cellsFromFile(doc, S.foldWorkOnOpen), Array.isArray(doc.scenes) ? doc.scenes : [], assetsFromFile(doc));
+  const d = makeDoc(name ?? (typeof doc.name === "string" && doc.name ? doc.name : "untitled.chalk"), cellsFromFile(doc, S.foldWorkOnOpen), Array.isArray(doc.scenes) ? doc.scenes : [], assetsFromFile(doc));
   if (!d.cells.length) d.cells.push(freshCell());
   if (inLibrary) d.inLibrary = true;
   const pr = project ?? projectRefOf(doc);
@@ -1324,7 +1362,7 @@ async function loadNotebook(text: string, name?: string, project?: ProjectRef, p
   log("ok", `opened ${d.name}: ${d.cells.length} cells, ${d.scenes.length} scenes`);
   if (S.runOnOpen && S.kernel !== "failed") await runAll();
   else { d.hydrated = false; renderChrome(); }
-  d.savedText = serializeNotebook();
+  d.savedText = serializedNow();
   renderTabs();
   autosave();
 }
@@ -1365,23 +1403,27 @@ function exerciseFromFile(cell: Cell, c: ChalkFile["cells"][number]) {
 
 /** Cells from a file's records (no DOM yet); `foldWork` folds every cell's work whatever was saved. */
 function cellsFromFile(doc: ChalkFile, foldWork = false): Cell[] {
-  return doc.cells.map((c) => {
+  // a record that is not one (a hand-edited file, a damaged autosave) makes an empty cell rather than
+  // an exception half-way through opening; a source that is not text is dropped, not thrown on later
+  return doc.cells.map((raw) => {
+    const c = (raw && typeof raw === "object" ? raw : {}) as ChalkFile["cells"][number];
+    if (typeof c.src !== "string") c.src = "";
     const cell = freshCell(c.src, c.type === "markdown" || c.type === "section" || c.type === "lean" || c.type === "exercise" || c.type === "scene" ? c.type : "math");
     if (cell.type === "exercise") exerciseFromFile(cell, c);
     // prose and scenes come back shown; an empty one opens for typing
     if (cell.type === "markdown" || cell.type === "scene") cell.editing = !c.src.trim();
     if (c.collapsed) cell.collapsed = true;
-    cell.showWork = !foldWork && (c.showWork ?? false); cell.label = c.label ?? null;
+    cell.showWork = !foldWork && c.showWork === true; cell.label = typeof c.label === "number" && c.label >= 0 ? Math.floor(c.label) : null;
     // a cell to step through shows its work whatever the reader folds: the steps are the exercise
     if (typeof c.stepwise === "number" && c.stepwise >= 0) { cell.stepwise = Math.floor(c.stepwise); cell.showWork = true; }
-    if (c.outLatex) cell.outLatex = c.outLatex;
-    if (c.outText) cell.outText = c.outText;
-    if (c.form) cell.form = c.form;
-    if (c.semantics) cell.semantics = c.semantics;
-    if (c.echoLatex) cell.echoLatex = c.echoLatex;
-    if (c.steps) cell.steps = c.steps;
-    if (c.outline && !c.steps?.length) cell.outline = c.outline;
-    if (c.error) cell.error = c.error;
+    if (typeof c.outLatex === "string" && c.outLatex) cell.outLatex = c.outLatex;
+    if (typeof c.outText === "string" && c.outText) cell.outText = c.outText;
+    if (typeof c.form === "string" && c.form) cell.form = c.form;
+    if (c.semantics === "real" || c.semantics === "complex") cell.semantics = c.semantics;
+    if (typeof c.echoLatex === "string" && c.echoLatex) cell.echoLatex = c.echoLatex;
+    if (Array.isArray(c.steps)) cell.steps = c.steps;
+    if (Array.isArray(c.outline) && !c.steps?.length) cell.outline = c.outline;
+    if (c.error && typeof c.error === "object" && typeof c.error.message === "string") cell.error = c.error;
     if (c.plot) cell.plot = migratePlot(c.plot);
     const vs = knownVisuals(c.visuals);
     if (vs.length) { cell.visuals = vs; if (typeof c.summary === "string") cell.summary = c.summary; }
@@ -1402,7 +1444,8 @@ function cellsFromFile(doc: ChalkFile, foldWork = false): Cell[] {
 }
 
 async function runAll() {
-  const d = currentDoc(); if (d) d.hydrated = true;   // every cell, in order: the session is the notebook's
+  // every cell, in order: the session is the notebook's (with no engine nothing runs, and the session stays to be rebuilt)
+  const d = currentDoc(); if (d && S.kernel === "ready") d.hydrated = true;
   const gen = runGen;
   // switching tabs meanwhile leaves this notebook running in its own session; closing it stops it
   for (const c of [...S.cells]) { if (gen !== runGen || (d && !S.docs.includes(d))) return; if (cellSrc(c).trim()) await runCell(c); }
@@ -1521,10 +1564,12 @@ async function runFrom(i: number) {
 const BIND_VER = new Map<string, { v: number; text: string }>();
 /** After a cell's evaluation: the names it read and their versions; and, when it bound a name to a
  *  new value, that name's next version (the cells that read it become out of date). */
-function recordRun(cell: Cell, sessionId: string, bound?: string, value?: string) {
-  const own = bound ?? /^\s*let\s+([A-Za-z_][A-Za-z0-9_]*)/.exec(cell.src)?.[1];
+/** Record what a run of `cell` read and bound, for the out-of-date marks. `src` is the source that
+ *  ran: the cell's text can have been edited while the engine was at work. */
+function recordRun(cell: Cell, sessionId: string, src: string, bound?: string, value?: string) {
+  const own = bound ?? /^\s*let\s+([A-Za-z_][A-Za-z0-9_]*)/.exec(src)?.[1];
   const read = new Map<string, number>();
-  for (const t of tokenize(cell.src)) {
+  for (const t of tokenize(src)) {
     const b = t.kind === "id" && t.text !== own ? BIND_VER.get(`${sessionId}:${t.text}`) : undefined;
     if (b) read.set(t.text, b.v);
   }
@@ -1578,17 +1623,25 @@ async function restartKernel() {
     // a busy engine would answer the reset only after the evaluation: start a fresh one instead
     stoppedCell = S.running; runGen++;
     await connect();
-    for (const d of S.docs) if (d !== currentDoc()) d.hydrated = false;
   } else if (S.kernel === "failed") await connect();
   else if (client) { try { await client.call("engine.resetSession", { sessionId }); } catch (e) { log("err", String(e)); } }
+  // a fresh engine holds nobody's sessions: the other notebooks are rebuilt when their tabs are shown
+  if (S.running || S.kernel !== "ready" || !client) for (const d of S.docs) if (d !== currentDoc()) d.hydrated = false;
   const d = currentDoc(); if (d) d.hydrated = true;   // an empty session matches a notebook with no outputs
   clearOutputs();
-  for (const k of [...USER_FNS.keys()]) if (k.startsWith(`${sessionId}:`)) USER_FNS.delete(k);
-  for (const k of [...USER_NAMES]) if (k.startsWith(`${sessionId}:`)) USER_NAMES.delete(k);
-  for (const k of [...BIND_VER.keys()]) if (k.startsWith(`${sessionId}:`)) BIND_VER.delete(k);
-  for (const m of [FILE_VARS, FILE_OUTS, MATRIX_SHAPES]) for (const k of [...m.keys()]) if (k.startsWith(`${sessionId}:`)) m.delete(k);
-  LAST_LABEL.delete(sessionId);
+  forgetSession(sessionId);
   log("ok", "kernel restarted: the session is empty");
+}
+/** Drop what the page remembers of a session's names (for completion, highlighting and the
+ *  out-of-date marks): after a restart, or once the notebook is closed. */
+function forgetSession(sid: string) {
+  const own = (k: string) => k.startsWith(`${sid}:`);
+  for (const k of [...USER_FNS.keys()]) if (own(k)) USER_FNS.delete(k);
+  for (const k of [...USER_NAMES]) if (own(k)) USER_NAMES.delete(k);
+  for (const k of [...LAMBDA_NAMES]) if (own(k)) LAMBDA_NAMES.delete(k);
+  for (const k of [...BIND_VER.keys()]) if (own(k)) BIND_VER.delete(k);
+  for (const m of [FILE_VARS, FILE_OUTS, MATRIX_SHAPES]) for (const k of [...m.keys()]) if (own(k)) m.delete(k);
+  LAST_LABEL.delete(sid);
 }
 
 // ---------------------------------------------------------------------------
@@ -1615,7 +1668,7 @@ function saveNotebook() {
     return;
   }
   if (!cur.inLibrary && cur.name === "untitled.chalk") { saveNotebookAs(); return; }
-  const text = serializeNotebook();
+  const text = serializedNow();
   const lib = readLibrary();
   lib[S.docName] = { file: JSON.parse(text) as ChalkFile, savedAt: new Date().toISOString() };
   if (!writeLibrary(lib)) return;
@@ -2510,9 +2563,10 @@ function autosave() {
 }
 function autosaveNow() {
   clearTimeout(autosaveTimer); autosaveTimer = 0;
-  if (typedTimer) { clearTimeout(typedTimer); typedTimer = 0; renderTabs(); }
-  if (!autosaveKey) return;
+  if (typedTimer) { clearTimeout(typedTimer); typedTimer = 0; }
   stashDoc();   // the notebook shown is serialized again here, so every `d.text` is current
+  renderTabs(true);   // the unsaved marks, from that serialization
+  if (!autosaveKey) return;
   for (const d of S.docs) keepLesson(d);
   // the files are JSON already: spliced in as they are, not parsed to be stringified again
   const docs = S.docs.filter((d) => d.text).map((d) => `{"file":${d.text},"dirty":${!d.project && d.text !== d.savedText}${d.inLibrary ? ',"inLibrary":true' : ""}}`);
@@ -2534,7 +2588,7 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
 let typedTimer = 0;
 function typed() {
   clearTimeout(typedTimer);
-  typedTimer = window.setTimeout(() => { typedTimer = 0; renderTabs(); autosave(); }, 300);
+  typedTimer = window.setTimeout(() => { typedTimer = 0; renderTabs(true); autosave(); }, 300);
 }
 
 /** Find this tab's id and gather what it should open (autosave-store.ts): its own autosave, after a
@@ -2601,8 +2655,23 @@ function freshCell(src = "", type: CellType = "math"): Cell {
 function addCell(src = "", type: CellType = "math"): Cell {
   const cell: Cell = freshCell(src, type);
   S.cells.push(cell);
-  renderCells();
+  appendCell(cell);
   return cell;
+}
+/** Put a cell just added at the end on the page without rebuilding every other (which typesets every
+ *  output again): the trailing insertion gap now stands before it, so it is followed by a new one. A
+ *  cell that would fold under a collapsed last section, or that Lean must know about, takes the full
+ *  rebuild, which handles both. */
+function appendCell(cell: Cell) {
+  const i = S.cells.length - 1;
+  const host = $(".cells");
+  const sec = sectionOf(i);
+  if (S.cells[i] !== cell || isLeanCell(cell) || cell.type === "exercise" || (sec >= 0 && S.cells[sec]?.collapsed) || !host.lastElementChild?.classList.contains("gap")) { renderCells(); return; }
+  hideHover(); hideSigHelp();
+  buildCell(host, cell, i);
+  insertGap(host, S.cells.length);
+  markActive();
+  cell.mi?.layout();
 }
 /** Insert a fresh cell at `at` and put the caret in it. */
 function insertCell(at: number, type: CellType = "math", lean = false) {
@@ -2620,7 +2689,7 @@ function convertCell(cell: Cell, type: CellType) {
   delete cell.editing; delete cell.collapsed;
   if (type === "markdown" || type === "scene") cell.editing = !cell.src.trim();
   if (type !== "scene") { delete cell.scene; delete cell.sceneErr; }
-  if (type !== "math") { delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.error; delete cell.plot; delete cell.manip; delete cell.hasse; delete cell.summary; delete cell.visuals; delete cell.ask; delete cell.askTrail; cell.steps = []; delete cell.outline; cell.label = null; }
+  if (type !== "math") clearResult(cell);
   if (type === "section") cell.src = cell.src.split("\n")[0]!.replace(/^#+\s*/, "");
   if (type !== "lean") delete cell.leanMessages;
   if (type === "exercise") cell.editing = true;
@@ -2642,10 +2711,20 @@ function moveCell(cell: Cell, by: -1 | 1) {
   renderCells(); renderSidebar(); focusCell(j); autosave();
 }
 const hasOutput = (cell: Cell) => !!(cell.outLatex || cell.file || cell.error);
+/** Forget what a cell's last run gave it: the output, the work, and everything the reply put beside
+ *  them (a kind, a summary, visuals, a reading, warnings), in one place, so that every path that
+ *  clears a cell clears the same things. `keepLabel` keeps its `In[n]` (an error has one too);
+ *  `keepAsk` keeps a `?` cell's saved answer, so it is not looked up again. */
+function clearResult(cell: Cell, opts: { keepLabel?: boolean; keepAsk?: boolean } = {}) {
+  delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.error; delete cell.plot; delete cell.manip; delete cell.manipAt; delete cell.file;
+  delete cell.hasse; delete cell.summary; delete cell.visuals; delete cell.kind; delete cell.outDeBruijn; delete cell.reading; delete cell.warnings;
+  cell.steps = []; delete cell.outline; delete cell.openEntries; WORK_FAILED.delete(cell);
+  CELL_FILES.delete(cell);
+  if (!opts.keepAsk) { delete cell.ask; delete cell.askTrail; }
+  if (!opts.keepLabel) cell.label = null;
+}
 function clearCellOutput(cell: Cell) {
-  delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.error; delete cell.plot; delete cell.manip; delete cell.hasse; delete cell.summary; delete cell.visuals; delete cell.file; delete cell.outDeBruijn; delete cell.reading; delete cell.warnings;
-  delete cell.ask; delete cell.askTrail;
-  cell.steps = []; delete cell.outline; cell.label = null;
+  clearResult(cell);
   renderCellBody(cell); renderChrome(); renderSidebar(); autosave();
 }
 function deleteCell(cell: Cell) {
@@ -2663,9 +2742,11 @@ function setAllWork(on: boolean) {
 
 function focusCell(i: number) {
   S.active = Math.max(0, Math.min(i, S.cells.length - 1));
-  renderCells(); renderSidebar(); renderChrome();
   const c = S.cells[S.active];
-  // after the render: it rebuilds the inputs, and focus on the old one is lost
+  // a cell on the page is marked active where it is; one that is not (folded away, or never built) needs the rebuild
+  if (c?.el?.isConnected) markActive(); else renderCells();
+  renderSidebar(); renderChrome();
+  // after a rebuild the inputs are new, and focus on the old one is lost
   if (c?.mi) c.mi.focus();
   else if (c?.type === "lean") focusLean(c.id);
   else if (c?.type === "exercise" && c.lean && !c.editing) focusLean(c.id);
@@ -2674,7 +2755,7 @@ function focusCell(i: number) {
 }
 
 function clearOutputs() {
-  for (const c of S.cells) { delete c.outLatex; delete c.outText; delete c.echoLatex; delete c.error; delete c.plot; delete c.manip; delete c.file; c.steps = []; delete c.outline; c.label = null; c.ms = undefined; }
+  for (const c of S.cells) { clearResult(c, { keepAsk: true }); c.ms = undefined; }
   nextLabel = 1; S.sel = null;
   renderCells(); renderSidebar(); renderPanel();
   log("ok", "outputs cleared");
@@ -2933,14 +3014,15 @@ function renderChrome() {
 
   // status bar
   const sb = $(".statusbar"); sb.innerHTML = "";
-  const rules = new Set(S.cells.flatMap((c): { rule: string }[] => c.steps?.length ? c.steps : c.outline ?? []).map((s) => s.rule));
+  // the rule count walks every step of every cell: only in developer mode, where it is shown
+  const rules = S.dev ? new Set(S.cells.flatMap((c): { rule: string }[] => c.steps?.length ? c.steps : c.outline ?? []).map((s) => s.rule)) : null;
   const done = S.cells.filter((c) => c.outLatex || c.file || c.error).length;
   sb.append(
     ...(S.dev ? [h("span", undefined, `Mode: ${S.tab}`), h("span", "pipe", "|")] : []),
     ...(open ? [h("span", undefined, `Cell ${S.active + 1}`), h("span", "pipe", "|"),
       h("span", undefined, `${S.cells.length} cells · ${done} evaluated`)] : [h("span", undefined, "No notebook open")]),
     h("div", "spacer"),
-    ...(S.dev ? [h("span", "rules", `${rules.size} rules applied`), h("span", "pipe", "|")] : []),
+    ...(rules ? [h("span", "rules", `${rules.size} rules applied`), h("span", "pipe", "|")] : []),
     h("span", undefined, "type \\ for symbols · Tab completes"),
   );
 }
@@ -3092,7 +3174,7 @@ function renderSidebar() {
         if (S.tab !== "notebook") switchTab("notebook");
         const c = S.cells[S.active];
         if (c?.input) { c.input.value = d.examples[0] ?? `${d.name}(`; c.src = c.input.value; c.input.focus(); syncHighlight(c); updateSigHelp(c); renderCellBody(c); renderSidebar(); }
-        else if (c?.mi) { c.src = d.examples[0] ?? `${d.name}(`; focusCell(S.active); }
+        else if (c?.mi) { c.src = d.examples[0] ?? `${d.name}(`; refreshInput(c); focusCell(S.active); }
       });
       row.addEventListener("mouseenter", (ev) => showHover(d, ev as MouseEvent));
       row.addEventListener("mouseleave", hideHover);
@@ -3596,8 +3678,8 @@ function cellVisuals(cell: Cell): HTMLElement[] {
 }
 
 /** Re-mark every state graph on the page for the current selection. */
-function remarkGraphs() {
-  for (const cell of S.cells) {
+function remarkGraphs(only?: Cell) {
+  for (const cell of only ? [only] : S.cells) {
     const box = cell.el?.querySelector<HTMLElement>(".visualbox[data-steps]");
     const v = cell.visuals?.find((x) => (x.kind === "relation.digraph" && !!x.data.steps) || x.kind === "replicas.spacetime");
     if (!box || !v) continue;
@@ -3837,7 +3919,8 @@ function visualBlocked(cell: Cell): string | null {
   if (cell.type) return "it is not a math cell";
   const src = cellSrc(cell);
   if (cell.tree && writeText(cell.tree) === src) return null;   // the visual input's own, holes and all
-  if ((cell.kind ?? cellKind(src)) === "lookup") return "questions are edited as text";
+  // a question, even one with no words yet (`?`, `let V = ?`, just typed): `cellKind` wants the words
+  if ((cell.kind ?? cellKind(src)) === "lookup" || /^\s*(?:let\s+[A-Za-z_][A-Za-z0-9_]*\s*=\s*)?\?/.test(src)) return "questions are edited as text";
   return null;
 }
 const cellMode = (cell: Cell) => cell.mode ?? S.inputMode;
@@ -4056,6 +4139,7 @@ function toggleMode(cell: Cell) {
   const blocked = visualBlocked(cell);
   if (!isVisual(cell) && blocked) { notify("err", `This cell stays as text: ${blocked}.`); return; }
   cell.mode = isVisual(cell) ? "raw" : "visual";
+  refreshInput(cell);   // the other view of the same text
   focusCell(S.cells.indexOf(cell));
   autosave();
 }
@@ -4125,6 +4209,7 @@ function fitRows(ta: HTMLTextAreaElement) { ta.rows = Math.max(1, ta.value.split
 function refreshInput(cell: Cell) {
   const i = S.cells.indexOf(cell), mid = cell.el?.querySelector(".mid");
   if (i < 0 || !mid) return;
+  cell.mi?.dispose();
   for (const el of mid.querySelectorAll(":scope > .mi, :scope > .hl, :scope > .cellin")) { promptLevel.unobserve(el); el.remove(); }
   delete cell.mi; delete cell.input; delete cell.hl;
   cell.el?.querySelector<HTMLElement>(":scope > .prompt")?.style.removeProperty("padding-top");
@@ -4178,6 +4263,7 @@ function renderCells() {
   hideHover(); hideSigHelp();
   const host = $(".cells");
   const spot = scrollSpot(host);
+  for (const c of S.cells) c.mi?.dispose();   // their popups and observers, before their elements go
   host.innerHTML = "";
   promptLevel.disconnect();
   // Lean cells: one document per notebook, whose views are rebuilt with the cells
@@ -4190,123 +4276,129 @@ function renderCells() {
   S.cells.forEach((cell, i) => {
     if (cell.type === "section") folded = !!cell.collapsed;
     else if (folded) { delete cell.el; delete cell.input; delete cell.ta; delete cell.hl; delete cell.mi; return; }
-    const el = h("div", `cell${i === S.active ? " active" : ""}${cell.label ? " done" : ""}${cell.type ? ` ${cell.type}` : ""}`);
-    cell.el = el;
-    delete cell.input; delete cell.ta; delete cell.hl; delete cell.mi;
-    if (cell.type === "markdown" || cell.type === "scene") {
-      el.append(h("div", "prompt", cell.type === "scene" ? "Scene" : ""));
-      const mid = h("div", "mid");
-      el.append(mid);
-      const acts = h("div", "cellacts");
-      el.append(acts, h("div", "brk"));
-      insertGap(host, i);
-      host.append(el);
-      renderCellBody(cell);
-      return;
-    }
-    if (cell.type === "lean") {
-      el.append(h("div", "prompt", "Lean"));
-      const mid = h("div", "mid");
-      const view = h("div", "leanview");
-      view.setAttribute("aria-label", `Cell ${i + 1}, Lean`);
-      view.addEventListener("focusin", () => { if (S.active !== i) { S.active = i; renderChrome(); renderSidebar(); markActive(); } });
-      mid.append(view, h("div", "cellbody"));
-      el.append(mid);
-      const acts = h("div", "cellacts");
-      el.append(acts, h("div", "brk"));
-      insertGap(host, i);
-      host.append(el);
-      mountLean(cell.id, view, cell.src);
-      renderCellBody(cell);
-      return;
-    }
-    if (cell.type === "exercise") {
-      el.append(h("div", "prompt", "Ex."));
-      const mid = h("div", "mid");
-      const box = h("div", "xc-box");
-      box.addEventListener("focusin", () => { if (S.active !== i) { S.active = i; renderChrome(); renderSidebar(); markActive(); } });
-      mid.append(box);
-      // a Lean exercise's proof is a view of the notebook's Lean file, made once: the parts around it are
-      // redrawn as Lean reports, the editor is not (it would lose its cursor)
-      if (isLeanCell(cell) && !cell.editing) {
-        const view = h("div", "leanview xc-leanproof");
-        view.setAttribute("aria-label", `Cell ${i + 1}, your proof in Lean`);
-        view.addEventListener("focusin", () => { if (S.active !== i) { S.active = i; renderChrome(); renderSidebar(); markActive(); } });
-        mid.append(view, h("div", "xc-below"));
-        mountLean(cell.id, view, cell.attempt ?? cell.leanStart ?? LEAN_START);
-      }
-      mid.append(h("div", "cellbody"));
-      el.append(mid);
-      const acts = h("div", "cellacts");
-      el.append(acts, h("div", "brk"));
-      insertGap(host, i);
-      host.append(el);
-      renderCellBody(cell);
-      return;
-    }
-    if (cell.type === "section") {
-      el.append(h("div", "prompt", "§"));
-      const mid = h("div", "mid");
-      const row = h("div", "sectrow");
-      const tog = asButton(h("span", "secttog", cell.collapsed ? "▸" : "▾"), cell.collapsed ? "Unfold section" : "Fold section");
-      tog.title = cell.collapsed ? "Show this section's cells" : "Fold this section's cells away";
-      tog.addEventListener("mousedown", (e) => e.preventDefault());
-      tog.addEventListener("click", () => { cell.collapsed = !cell.collapsed; S.active = i; renderCells(); renderSidebar(); autosave(); });
-      const input = document.createElement("input");
-      input.className = "sectin"; input.type = "text"; input.value = cell.src; input.placeholder = "Section title"; input.spellcheck = false;
-      cell.input = input;
-      input.addEventListener("focus", () => { S.active = i; renderChrome(); renderSidebar(); markActive(); });
-      input.addEventListener("input", () => { cell.src = input.value; renderSidebar(); typed(); });
-      input.addEventListener("keydown", (ev) => {
-        if (ev.key === "Enter") { ev.preventDefault(); cell.src = input.value; if (i === S.cells.length - 1) addCell(); focusCell(i + 1); autosave(); }
-        if (ev.key === "ArrowDown" && i < S.cells.length - 1) { ev.preventDefault(); focusCell(i + 1); }
-        if (ev.key === "ArrowUp" && i > 0) { ev.preventDefault(); focusCell(i - 1); }
-      });
-      row.append(tog, input);
-      const [a, b] = sectionRange(i);
-      if (cell.collapsed) row.append(h("span", "sectcount", `${b - a} cell${b - a === 1 ? "" : "s"} folded`));
-      mid.append(row);
-      el.append(mid);
-      const acts = h("div", "cellacts");
-      const run = asButton(h("span", undefined, "▶ Run section")); run.title = "Run every cell of this section, in order";
-      run.addEventListener("mousedown", (e) => e.preventDefault());
-      run.addEventListener("click", () => void runSection(i));
-      acts.append(run);
-      el.append(acts, h("div", "brk"));
-      insertGap(host, i);
-      host.append(el);
-      renderCellBody(cell);
-      return;
-    }
-    el.append(h("div", "prompt", `In[${cell.label ?? " "}]:=`));
+    buildCell(host, cell, i);
+  });
+  insertGap(host, S.cells.length);
+  markSelection();
+  // the typeset inputs are on the page now: their heights, before the page is put back
+  for (const c of S.cells) c.mi?.layout();
+  restoreScroll(host, spot);
+  holdScroll(host, spot);
+}
 
+/** Build cell `i`'s element at the end of `host`, after the insertion gap that stands before it, and
+ *  draw its body. The listeners capture `i`: a change of the cells' order rebuilds them all. */
+function buildCell(host: HTMLElement, cell: Cell, i: number) {
+  const el = h("div", `cell${i === S.active ? " active" : ""}${cell.label ? " done" : ""}${cell.type ? ` ${cell.type}` : ""}`);
+  cell.el = el;
+  delete cell.input; delete cell.ta; delete cell.hl; delete cell.mi;
+  if (cell.type === "markdown" || cell.type === "scene") {
+    el.append(h("div", "prompt", cell.type === "scene" ? "Scene" : ""));
     const mid = h("div", "mid");
-    mid.append(...inputEls(cell, i));
-    // a slider sits outside the body, which every evaluation redraws: a drag must survive the runs it starts
-    const slider = cell.slider && SLIDER_SRC.test(cellSrc(cell)) ? sliderRow(cell) : null;
-    if (slider) mid.append(slider);
-
-    const body = h("div", "cellbody");
-    mid.append(body);
     el.append(mid);
-
     const acts = h("div", "cellacts");
-    acts.append(modeToggle(cell));
-    const run = asButton(h("span", undefined, "▶ Run")); run.title = "Run this cell";
+    el.append(acts, h("div", "brk"));
+    insertGap(host, i);
+    host.append(el);
+    renderCellBody(cell);
+    return;
+  }
+  if (cell.type === "lean") {
+    el.append(h("div", "prompt", "Lean"));
+    const mid = h("div", "mid");
+    const view = h("div", "leanview");
+    view.setAttribute("aria-label", `Cell ${i + 1}, Lean`);
+    view.addEventListener("focusin", () => { if (S.active !== i) { S.active = i; renderChrome(); renderSidebar(); markActive(); } });
+    mid.append(view, h("div", "cellbody"));
+    el.append(mid);
+    const acts = h("div", "cellacts");
+    el.append(acts, h("div", "brk"));
+    insertGap(host, i);
+    host.append(el);
+    mountLean(cell.id, view, cell.src);
+    renderCellBody(cell);
+    return;
+  }
+  if (cell.type === "exercise") {
+    el.append(h("div", "prompt", "Ex."));
+    const mid = h("div", "mid");
+    const box = h("div", "xc-box");
+    box.addEventListener("focusin", () => { if (S.active !== i) { S.active = i; renderChrome(); renderSidebar(); markActive(); } });
+    mid.append(box);
+    // a Lean exercise's proof is a view of the notebook's Lean file, made once: the parts around it are
+    // redrawn as Lean reports, the editor is not (it would lose its cursor)
+    if (isLeanCell(cell) && !cell.editing) {
+      const view = h("div", "leanview xc-leanproof");
+      view.setAttribute("aria-label", `Cell ${i + 1}, your proof in Lean`);
+      view.addEventListener("focusin", () => { if (S.active !== i) { S.active = i; renderChrome(); renderSidebar(); markActive(); } });
+      mid.append(view, h("div", "xc-below"));
+      mountLean(cell.id, view, cell.attempt ?? cell.leanStart ?? LEAN_START);
+    }
+    mid.append(h("div", "cellbody"));
+    el.append(mid);
+    const acts = h("div", "cellacts");
+    el.append(acts, h("div", "brk"));
+    insertGap(host, i);
+    host.append(el);
+    renderCellBody(cell);
+    return;
+  }
+  if (cell.type === "section") {
+    el.append(h("div", "prompt", "§"));
+    const mid = h("div", "mid");
+    const row = h("div", "sectrow");
+    const tog = asButton(h("span", "secttog", cell.collapsed ? "▸" : "▾"), cell.collapsed ? "Unfold section" : "Fold section");
+    tog.title = cell.collapsed ? "Show this section's cells" : "Fold this section's cells away";
+    tog.addEventListener("mousedown", (e) => e.preventDefault());
+    tog.addEventListener("click", () => { cell.collapsed = !cell.collapsed; S.active = i; renderCells(); renderSidebar(); autosave(); });
+    const input = document.createElement("input");
+    input.className = "sectin"; input.type = "text"; input.value = cell.src; input.placeholder = "Section title"; input.spellcheck = false;
+    cell.input = input;
+    input.addEventListener("focus", () => { S.active = i; renderChrome(); renderSidebar(); markActive(); });
+    input.addEventListener("input", () => { cell.src = input.value; renderSidebar(); typed(); });
+    input.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") { ev.preventDefault(); cell.src = input.value; if (i === S.cells.length - 1) addCell(); focusCell(i + 1); autosave(); }
+      if (ev.key === "ArrowDown" && i < S.cells.length - 1) { ev.preventDefault(); focusCell(i + 1); }
+      if (ev.key === "ArrowUp" && i > 0) { ev.preventDefault(); focusCell(i - 1); }
+    });
+    row.append(tog, input);
+    const [a, b] = sectionRange(i);
+    if (cell.collapsed) row.append(h("span", "sectcount", `${b - a} cell${b - a === 1 ? "" : "s"} folded`));
+    mid.append(row);
+    el.append(mid);
+    const acts = h("div", "cellacts");
+    const run = asButton(h("span", undefined, "▶ Run section")); run.title = "Run every cell of this section, in order";
     run.addEventListener("mousedown", (e) => e.preventDefault());
-    run.addEventListener("click", () => void runCell(cell));
+    run.addEventListener("click", () => void runSection(i));
     acts.append(run);
     el.append(acts, h("div", "brk"));
     insertGap(host, i);
     host.append(el);
     renderCellBody(cell);
-  });
-  insertGap(host, S.cells.length);
-  markActive();
-  // the typeset inputs are on the page now: their heights, before the page is put back
-  for (const c of S.cells) c.mi?.layout();
-  restoreScroll(host, spot);
-  holdScroll(host, spot);
+    return;
+  }
+  el.append(h("div", "prompt", `In[${cell.label ?? " "}]:=`));
+
+  const mid = h("div", "mid");
+  mid.append(...inputEls(cell, i));
+  // a slider sits outside the body, which every evaluation redraws: a drag must survive the runs it starts
+  const slider = cell.slider && SLIDER_SRC.test(cellSrc(cell)) ? sliderRow(cell) : null;
+  if (slider) mid.append(slider);
+
+  const body = h("div", "cellbody");
+  mid.append(body);
+  el.append(mid);
+
+  const acts = h("div", "cellacts");
+  acts.append(modeToggle(cell));
+  const run = asButton(h("span", undefined, "▶ Run")); run.title = "Run this cell";
+  run.addEventListener("mousedown", (e) => e.preventDefault());
+  run.addEventListener("click", () => void runCell(cell));
+  acts.append(run);
+  el.append(acts, h("div", "brk"));
+  insertGap(host, i);
+  host.append(el);
+  renderCellBody(cell);
 }
 
 /** A thin strip between cells (and after the last): hovering shows a rule with a `+ cell` pill, a
@@ -4532,14 +4624,15 @@ function loadWork(cell: Cell): Promise<void> {
     try {
       if (!c) throw new Error("the engine is not running");
       log("rpc", `engine.steps ${cell.id}`);
-      const r = await c.call("engine.steps", { sessionId, cellId: cell.id, paths: true });
+      // the cell's own notebook's session: it need not be the one shown (a notebook running on in the background)
+      const r = await c.call("engine.steps", { sessionId: docOf(cell)?.sessionId ?? sessionId, cellId: cell.id, paths: true });
       if (cell.outline !== outline) return;
       cell.steps = r.derivation.steps; delete cell.outline;
       WORK_FAILED.delete(cell);
       queueMicrotask(autosave);
     } catch (e) {
       if (cell.outline !== outline) return;
-      const d = currentDoc();
+      const d = docOf(cell);
       WORK_FAILED.set(cell, d && !d.hydrated ? "Run the notebook first: the engine has the work of what it has evaluated since the notebook was opened."
         : `Could not fetch the work: ${e instanceof Error ? e.message : String(e)}`);
     } finally { WORK_LOADS.delete(cell); }
@@ -4646,7 +4739,7 @@ function leanHooks() {
       const c = S.cells.find((x) => x.id === id); if (!c) return;
       // a Lean exercise's view is its proof; its statement is not the reader's to change
       if (c.type === "exercise") c.attempt = src; else c.src = src;
-      renderSidebar(); renderTabs(); autosave();
+      renderSidebar(); typed();
     },
     onMessages: (id: string, ms: LeanMessage[]) => {
       if (id === PRELUDE_ID) { preludeMessages(ms); return; }
@@ -4747,7 +4840,9 @@ function renderLeanBody(cell: Cell) {
 }
 
 function renderCellBody(cell: Cell) {
-  const el = cell.el; if (!el) return;
+  // a cell of a notebook in the background keeps the element it had when its tab was shown: drawing
+  // into it would be work nobody sees (its cells are built again when the tab comes back)
+  const el = cell.el; if (!el || !el.isConnected) return;
   hideDiffTip();
   if (cell.type === "markdown") return renderMdCell(cell);
   if (cell.type === "scene") return renderSceneCell(cell);
@@ -4960,7 +5055,7 @@ function renderCellBody(cell: Cell) {
       val.innerHTML = tex(cell.outDeBruijn, true);
     } else if (cell.form === "input") {
       val.append(h("code", "outtext", cell.outText ?? ""));
-    } else if (formOf(cell) === "data") {
+    } else if (formOf(cell) === "data" && matrixEntries(cell.outLatex ?? "")) {
       // a matrix to read rather than typeset: rows and columns numbered, rows added as they scroll in
       const rows = matrixEntries(cell.outLatex!)!;
       val.dataset["term"] = termKey({ kind: "output" });
@@ -4993,7 +5088,7 @@ function renderCellBody(cell: Cell) {
     el.append(out);
     if (cell.ask && ASK_CELL.test(cell.src)) out.append(h("div"), askInfo(cell, !!ASK_CELL.exec(cell.src)?.[1]), h("div"));
   }
-  markSelection();
+  if (S.sel?.cellId === cell.id) markSelection(); else remarkGraphs(cell);
   renderStale(cell);
 
   // per-cell actions beyond Run exist only once there is output
@@ -5309,7 +5404,7 @@ function renderExercise(cell: Cell) {
     if (!inp.value.trim()) return;
     CHECK_NOW.add(cell); void runCell(cell);
   };
-  inp.addEventListener("input", () => { cell.attempt = inp.value; box.querySelector(".xc-verdict")?.classList.add("old"); });
+  inp.addEventListener("input", () => { cell.attempt = inp.value; box.querySelector(".xc-verdict")?.classList.add("old"); typed(); });
   inp.addEventListener("keydown", (ev) => {
     if (ev.key === "Enter") { ev.preventDefault(); check(); }
     if (ev.key === "ArrowDown" && i < S.cells.length - 1) { ev.preventDefault(); focusCell(i + 1); }
@@ -5565,6 +5660,12 @@ interface SceneView {
   beat: number; morphs: Map<string, Morph>; texEls: Map<string, HTMLElement>;
 }
 const SCENE_VIEWS = new WeakMap<Cell, SceneView>();
+/** Let go of a cell's scene player: the observer stops watching it, and nothing holds it. */
+function forgetScene(cell: Cell) {
+  const old = SCENE_VIEWS.get(cell); if (!old) return;
+  sceneObserver?.unobserve(old.box); SCENE_OF.delete(old.box); SCENE_VIEWS.delete(cell);
+  if (cell.scenePlaying) sceneStop(cell);
+}
 const SCENE_OF = new WeakMap<Element, Cell>();
 const scenePlaying = new Set<Cell>();
 let sceneRaf = 0, sceneLast = 0;
@@ -5721,6 +5822,7 @@ function scenePlayer(cell: Cell): HTMLElement {
     if (ev.key === "ArrowRight") { ev.preventDefault(); sceneStep(cell, 1); }
     if (ev.key === "ArrowLeft") { ev.preventDefault(); sceneStep(cell, -1); }
   });
+  forgetScene(cell);   // the player this one replaces: the observer would otherwise keep it, and everything in it
   SCENE_VIEWS.set(cell, { box, svg, labels, eqs, cap, scrub, play, where, dots, beat: -1, morphs: new Map(), texEls: new Map() });
   SCENE_OF.set(box, cell);
   sceneObserver?.observe(box);
@@ -7914,7 +8016,8 @@ function restoreDocs(saved: Autosave | null): number {
   for (const entry of saved.docs) {
     try {
       const { file, dirty, inLibrary } = entry;
-      const d = makeDoc(file.name ?? "untitled.chalk", cellsFromFile(file), Array.isArray(file.scenes) ? file.scenes : [], assetsFromFile(file));
+      if (!file || typeof file !== "object" || !Array.isArray(file.cells)) throw new Error("not a notebook");
+      const d = makeDoc(typeof file.name === "string" && file.name ? file.name : "untitled.chalk", cellsFromFile(file), Array.isArray(file.scenes) ? file.scenes : [], assetsFromFile(file));
       if (!d.cells.length) d.cells.push(freshCell());
       if (inLibrary) d.inLibrary = true;
       d.hydrated = false;

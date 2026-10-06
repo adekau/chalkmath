@@ -55,7 +55,13 @@ const files = (dir) => readdirSync(`${DIST}/${dir}`, { withFileTypes: true }).fl
 for (const f of files("examples")) version(f);
 await build({ ...out, define: withVersions(), entryPoints: ["apps/notebook/src/app.ts"], format: "esm", outfile: `${DIST}/app.js` });
 version("app.js"); version("style.css");
-writeFileSync(`${DIST}/index.html`, readFileSync("apps/notebook/index.html", "utf8")
-  .replace("script-src 'self'", `script-src 'self' 'nonce-${NONCE}'`).replace(/src="app\.js"/, `src="app.js?v=${versions["app.js"]}"`).replace(/href="style\.css"/, `href="style.css?v=${versions["style.css"]}"`));
+// each rewrite of the page must find its mark: a reworded CSP or script tag would otherwise ship
+// unversioned, or block the infoview's nonce'd script, and only show at runtime
+const rewrite = (text, from, to) => { const out = text.replace(from, to); if (out === text) throw new Error(`bundle: index.html has no ${from}`); return out; };
+let page = readFileSync("apps/notebook/index.html", "utf8");
+page = rewrite(page, "script-src 'self'", `script-src 'self' 'nonce-${NONCE}'`);
+page = rewrite(page, /src="app\.js"/, `src="app.js?v=${versions["app.js"]}"`);
+page = rewrite(page, /href="style\.css"/, `href="style.css?v=${versions["style.css"]}"`);
+writeFileSync(`${DIST}/index.html`, page);
 console.log(`build ${BUILD}: ${Object.keys(versions).length} files versioned`);
 console.log("→ serve apps/notebook/dist with any static server (e.g. `npx serve apps/notebook/dist`)");

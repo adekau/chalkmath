@@ -72,3 +72,42 @@ test("HTTP host: bodies that are not requests are answered, and the host stays u
   assert.ok((await c.call("ping", {})).pid > 0);
   server.close();
 });
+
+test("HTTP host: a request over the body limit is answered by id, so the call fails instead of pending", async () => {
+  const server = startServer(0, standIn, { maxBody: 1000 });
+  await new Promise((r) => server.once("listening", r));
+  const url = `http://localhost:${server.address().port}`;
+  const c = createClient(httpTransport(url));
+  await assert.rejects(c.call("ping", { pad: "x".repeat(2000) }), /larger than 1000 bytes/);
+  await assert.rejects(c.call("ping", { pad: "x".repeat(200_000) }), /larger than 1000 bytes/);
+  assert.ok((await c.call("ping", {})).pid > 0);   // the host is still up, the engine still serving
+  server.close();
+});
+
+test("HTTP host: only the origins named may call when some are", async () => {
+  const server = startServer(0, standIn, { origins: ["https://chalkmath.example"] });
+  await new Promise((r) => server.once("listening", r));
+  const url = `http://localhost:${server.address().port}`;
+  const body = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping", params: {} });
+  const ok = await fetch(url, { method: "POST", body, headers: { origin: "https://chalkmath.example" } });
+  assert.equal(ok.headers.get("access-control-allow-origin"), "https://chalkmath.example");
+  const no = await fetch(url, { method: "POST", body, headers: { origin: "https://other.example" } });
+  assert.equal(no.headers.get("access-control-allow-origin"), null);
+  server.close();
+});
+
+test("native host: calls made together are served one at a time, in order, and each is charged only its own time", async () => {
+  const c = leanNativeClient(standIn, { timeoutMs: 400 });
+  const { pid } = await c.call("ping", {});
+  // six slow calls of 150 ms each: queued behind one another they take ~900 ms in all, past the
+  // deadline measured from when they were asked for, but none past it on its own
+  const all = await Promise.all(Array.from({ length: 6 }, (_, i) => c.call("slow", { i })));
+  assert.deepEqual(all.map((r) => r.i), [0, 1, 2, 3, 4, 5]);
+  assert.ok(all.every((r) => r.pid === pid), "the same process served them all");
+  // a call that hangs is stopped at its own deadline, and the ones queued behind it get a new engine
+  const hung = c.call("hang", {});
+  const after = c.call("ping", {});
+  await assert.rejects(hung, /took longer than 0.4 s/);
+  assert.notEqual((await after).pid, pid);
+  c.close();
+});

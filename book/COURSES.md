@@ -82,35 +82,41 @@ Follows *From Zero to Propagators* (lean4learning), with a Lean prelude across i
 12–14. The propagator model; a propagator network in Lean; the interval lattice.
 15. Capstones: a Sudoku solver, and type inference by propagation.
 
-### 3 · Transition systems, invariants and temporal logic (10 lessons) — written
+### 3 · Transition systems, invariants and temporal logic (11 lessons) — written
 
-`notebooks/courses/systems/`, with a Lean prelude: 37 exercises, 28 checked by the engine and 9 by
+`notebooks/courses/systems/`, with a Lean prelude: 42 exercises, 32 checked by the engine and 10 by
 Lean. Systems are written over several lines (N6). "One task per tenant" is taught as one job per
-customer. Lesson 8's normalization keeps only the rewrites that are sound from every starting state;
+customer, in lesson 4. Lesson 9's normalization keeps only the rewrites that are sound from every starting state;
 "create; delete → ∅" is shown false when the key already existed.
 
 1. State machines and executions; reachable states, the state graph drawn. *E5, N3, N6*
 2. Invariants and inductive invariants: the shortest counterexample trace; a counterexample to
    induction; an invariant proved in Lean. *E5, N4*
-3. Mutual exclusion: one task per tenant. A check-then-act race as a stepped trace, then the fix.
-   The same model in TLA+ syntax, beside it, for TLC.
-4. Safety and liveness: lassos, fairness. *E5*
-5. Temporal logic as fixed points: EF as a least fixed point, AG as a greatest, on the lattice of state
+3. Mutual exclusion: a check-then-act race as a stepped trace, then the fix (an atomic step), and
+   Peterson's algorithm. The same model in TLA+ syntax, beside it, for TLC.
+4. Linearizability and per-key locks: one task per tenant, as one lock per customer in a table, made
+   on demand. Why a linearizable call may be one action and two calls may not; the run in which two
+   jobs hold two locks for one key, found by the checker; a new lock as a fresh name (the process
+   calculi's ν); the fix (check the table again after the take, remove before releasing) with an
+   inductive invariant, and the fix with the cleanup calls swapped refuted. Fresh names in Lean. *E5*
+5. Safety and liveness: lassos, fairness. *E5*
+6. Temporal logic as fixed points: EF as a least fixed point, AG as a greatest, on the lattice of state
    sets (course 2, applied). *E5*
-6. Happens-before: events as a poset, space-time diagrams, vector clocks, FIFO and causal order. *E5*
-7. Effectively-once delivery: a duplicating, reordering channel; an idempotent handler keeps
+7. Happens-before: events as a poset, space-time diagrams, vector clocks, FIFO and causal order. *E5*
+8. Effectively-once delivery: a duplicating, reordering channel; an idempotent handler keeps
    "applied = sent", a non-idempotent one gives a double-apply trace. *E5*
-8. Refinement and simulation; CRUD-intent normalization (`create; delete → ∅`, `update; update →
+9. Refinement and simulation; CRUD-intent normalization (`create; delete → ∅`, `update; update →
    update`) proved sound against a store semantics, and terminating. *E5; E7 optional*
-9. Rewriting systems: lesson 8's normalization as rules on terms, rewritten step by step; termination
+10. Rewriting systems: lesson 9's normalization as rules on terms, rewritten step by step; termination
    by size and by a linear interpretation; critical pairs, where "create; delete → ∅" fails to join.
    Normalization never lengthens a batch, in Lean. *E7*
-10. Retries and backoff: independent failures, the chance that every attempt fails, the expected
+11. Retries and backoff: independent failures, the chance that every attempt fails, the expected
     attempts as a finite sum, how retries multiply load under overload, and the wait exponential
     backoff costs, worst case and on average. *math world: `sum`, `manipulate`*
 
 *Process Calculi and Concurrency* (lean4learning: LTS, CCS, bisimulation, Hennessy–Milner logic) can
-replace lesson 8's simulation with bisimulation, or be a course of its own later.
+replace lesson 9's simulation with bisimulation, or be a course of its own later; lesson 4's fresh names
+are its one point of contact so far.
 
 ### 4 · λ-calculus I: untyped (8 lessons) — written
 
@@ -195,7 +201,7 @@ substitution and de Bruijn indices as commands. **Done.**
 4. **P3** — Course 6 (CRDTs): mostly Lean, little engine; needs only course 2. *Done* (without N8).
 5. **P4** — Course 3: E5, N4, N6. *Done.*
 6. **P5** — Courses 4 and 5: the λ world's additions, E6. *Done.*
-7. **P6** — E7, and probability for retries and backoff. *Done: systems lessons 9 and 10, with
+7. **P6** — E7, and probability for retries and backoff. *Done: systems lessons 10 and 11, with
    `critical`'s verdicts proved (unification complete, the critical pair lemma).*
 
 ## Open

@@ -1,0 +1,300 @@
+{
+  "chalk": 1,
+  "name": "04-per-key-locks.chalk",
+  "cells": [
+    {
+      "src": "Linearizability and per-key locks",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Model a table with one lock per key, made on demand; say why each call on the table or on a lock is one step and the pair of them is not; find the run in which two jobs hold two different locks for one key; and fix it, with a proof.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A service runs jobs for many customers. Two jobs for the same customer must not overlap; jobs for different customers may. Lesson 3's lock, one for everything, would make every customer wait for every other. So keep a **table**: one lock per customer, made the first time a job for that customer arrives, and removed when the job is done, so that the table does not grow with every customer ever seen. A job for customer `key`:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "```\nlock = table.getOrAdd(key, new Lock())    // the entry, made if there is none\nlock.wait()                               // blocks until the lock is free\n… the work for key …\nlock.release()\ntable.remove(key)\n```\n\nIn .NET this is a `ConcurrentDictionary` of `SemaphoreSlim`s; in Go a `sync.Map` of mutexes. The shape is the same everywhere, and so is the bug.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> Each line is a call that the library promises is atomic. Is the sequence? Before reading on, find an order of two jobs' steps that puts both into the work at once.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "When is a call one step?",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Linearizability\n> A call on a shared object is **linearizable** when it appears to take effect at one instant between its start and its return. An object is linearizable when every history of overlapping calls on it has the same effect as some sequence of those calls, one at a time, in an order that keeps each call before every call that started after it returned (Herlihy and Wing, 1990).",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "That is the licence for a model. A linearizable call is one action: its guard is when the instant can come (`wait`'s instant comes when the lock is free), its updates are what the instant does. The real call runs many instructions, and the promise says that no one can tell. Lesson 3 used it without saying so: a compare-and-set is linearizable, and `Fix` made it one action. A table's `getOrAdd` and `remove`, a lock's `wait` and `release`: each comes with the promise.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The promise ends at the call's return. Two calls in a row are two instants with a gap between them, and lesson 3's check-then-act lived in such a gap: two calls on the one lock. Here the calls are on two objects, the table and the lock, and the gap is between the table's answer and the lock's take.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A model",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Two jobs, `p` and `q`, for one customer (jobs for different customers never meet at an entry, so one key is enough). Each job is `idle`, has `got` a lock from the table, or is inside (`crit`). `lp` and `lq` name the lock each job got, 0 for none; `tab` names the lock the table's entry holds, 0 for no entry. A new lock is a name no one has: the lowest of 1 and 2 that the other job does not hold (`pnew`, `pnew2`). A lock is held when a job is inside with it, so `wait` is enabled when the other job is not inside with the same name. The model makes `release` and `remove` one step, `done`: joining two calls can only hide interleavings, so a bug the joined model finds, the program has too.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let Keyed = system(\n  var p in {idle, got, crit}\n  var q in {idle, got, crit}\n  var lp in 0..2\n  var lq in 0..2\n  var tab in 0..2\n  init p = idle ∧ q = idle ∧ lp = 0 ∧ lq = 0 ∧ tab = 0\n  action pget when p = idle ∧ tab ≠ 0 do lp := tab, p := got\n  action pnew when p = idle ∧ tab = 0 ∧ lq ≠ 1 do tab := 1, lp := 1, p := got\n  action pnew2 when p = idle ∧ tab = 0 ∧ lq = 1 do tab := 2, lp := 2, p := got\n  action pwait when p = got ∧ ¬(q = crit ∧ lq = lp) do p := crit\n  action pdone when p = crit do tab := 0, lp := 0, p := idle\n  action qget when q = idle ∧ tab ≠ 0 do lq := tab, q := got\n  action qnew when q = idle ∧ tab = 0 ∧ lp ≠ 1 do tab := 1, lq := 1, q := got\n  action qnew2 when q = idle ∧ tab = 0 ∧ lp = 1 do tab := 2, lq := 2, q := got\n  action qwait when q = got ∧ ¬(p = crit ∧ lp = lq) do q := crit\n  action qdone when q = crit do tab := 0, lq := 0, q := idle\n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`p` makes the lock and goes in; `q` looks it up, waits for `p`, and goes in after. The lock did its job:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "trace(Keyed; pnew, qget, pwait, pdone, qwait, qdone)",
+      "showWork": true,
+      "label": null,
+      "stepwise": 0
+    },
+    {
+      "src": "> [!try]\n> Now let `p` come back for another job for the same customer. Find a run in which both are inside.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "invariant(Keyed, ¬(p = crit ∧ q = crit))",
+      "showWork": true,
+      "label": null,
+      "stepwise": 0
+    },
+    {
+      "src": "`p` makes lock 1 and goes in; `q` looks up lock 1 and waits on it. `p` finishes and removes the entry. `p`'s next job finds no entry, makes lock 2, and goes in. `q`'s wait on lock 1 succeeds: both inside. Each job holds a lock. They hold different locks. The table was there to give both jobs one name for \"the lock for this key\", and in the gap between `q`'s lookup and its take, that name went stale.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "What should have held, and does not:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "invariant(Keyed, (p = crit → lp = tab) ∧ (q = crit → lq = tab))",
+      "showWork": true,
+      "label": null,
+      "stepwise": 0
+    },
+    {
+      "src": "Whoever is inside holds the lock the table names now. `q` is inside with lock 1 and the table names nothing: `p` removed the entry. From there, `p`'s next job makes lock 2. This is the property a per-key lock rests on: with it, two jobs inside hold the table's one name, and a lock has one holder.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Fresh names",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`new Lock()` gives a name no one else has, and that is all it gives: one lock is told from another only by being a different one. The model gives out 1 and 2 in turn, and two names are enough for two jobs, because a name nobody holds any more can be given out again: nothing can tell it from a new one. In the process calculi this is **restriction**, $\\nu x$: a name known to no one else, with the rule that a name no one knows is as good as new. In those words, the bug is two jobs holding different names for what the table was to make one name, the lock for this key.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Checking after the take",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The gap cannot be closed: the table and the lock are two objects, and no call takes from both at once. Lesson 3 closed its gap by making the check and the take one step. Here, keep the gap and check after the take instead: once a job holds its lock, it looks at the table again. If the entry still names its lock, it goes in; if not, someone removed the entry while it waited, so it releases and starts over. And on the way out it removes the entry first, then releases:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "```\nloop:\n  lock = table.getOrAdd(key, new Lock())\n  lock.wait()\n  if table.get(key) ≠ lock: lock.release(); continue\n  … the work for key …\n  table.remove(key)\n  lock.release()\n  break\n```\n\nA job is `idle`, has `got` a lock, has taken it (`took`), is inside (`crit`), or is on the way `out` with the entry removed and the lock still held. A lock is held from the take to the release.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let Checked = system(\n  var p in {idle, got, took, crit, out}\n  var q in {idle, got, took, crit, out}\n  var lp in 0..2\n  var lq in 0..2\n  var tab in 0..2\n  init p = idle ∧ q = idle ∧ lp = 0 ∧ lq = 0 ∧ tab = 0\n  action pget when p = idle ∧ tab ≠ 0 do lp := tab, p := got\n  action pnew when p = idle ∧ tab = 0 ∧ lq ≠ 1 do tab := 1, lp := 1, p := got\n  action pnew2 when p = idle ∧ tab = 0 ∧ lq = 1 do tab := 2, lp := 2, p := got\n  action pwait when p = got ∧ ¬((q = took ∨ q = crit ∨ q = out) ∧ lq = lp) do p := took\n  action pok when p = took ∧ tab = lp do p := crit\n  action pretry when p = took ∧ tab ≠ lp do lp := 0, p := idle\n  action premove when p = crit do tab := 0, p := out\n  action prelease when p = out do lp := 0, p := idle\n  action qget when q = idle ∧ tab ≠ 0 do lq := tab, q := got\n  action qnew when q = idle ∧ tab = 0 ∧ lp ≠ 1 do tab := 1, lq := 1, q := got\n  action qnew2 when q = idle ∧ tab = 0 ∧ lp = 1 do tab := 2, lq := 2, q := got\n  action qwait when q = got ∧ ¬((p = took ∨ p = crit ∨ p = out) ∧ lp = lq) do q := took\n  action qok when q = took ∧ tab = lq do q := crit\n  action qretry when q = took ∧ tab ≠ lq do lq := 0, q := idle\n  action qremove when q = crit do tab := 0, q := out\n  action qrelease when q = out do lq := 0, q := idle\n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "invariant(Checked, ¬(p = crit ∧ q = crit))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "For a proof, lesson 2's induction. \"Inside means holding the table's lock\" is not inductive by itself:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "inductive(Checked, (p = crit → lp = tab) ∧ (q = crit → lq = tab) ∧ ¬(p = crit ∧ q = crit))",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "The counterexample starts from a state no run reaches: `q` inside with no lock at all (`lq = 0`) and no entry in the table; then `p`'s new entry names a lock `q` does not hold. What rules such states out is why the check works: a job has a name exactly when it is not idle, and a lock has one holder, from the take to the release. With both, it is inductive:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "inductive(Checked, (p = crit → lp = tab) ∧ (q = crit → lq = tab) ∧ ¬((p = took ∨ p = crit ∨ p = out) ∧ (q = took ∨ q = crit ∨ q = out) ∧ lp = lq) ∧ (p = idle → lp = 0) ∧ (q = idle → lq = 0) ∧ (p ≠ idle → lp ≠ 0) ∧ (q ≠ idle → lq ≠ 0))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A fresh name, as a function: one more than the largest name in use. The lemma is the whole of what \"fresh\" means.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- A name no lock in use has: one more than the largest. -/\ndef freshName (used : List Nat) : Nat := used.foldr max 0 + 1\n\n/-- Every name in use is at most the largest. -/\ntheorem le_foldr_max (used : List Nat) : ∀ x ∈ used, x ≤ used.foldr max 0 := by\n  intro x hx\n  induction used with\n  | nil => simp at hx\n  | cons y ys ih =>\n    simp only [List.foldr]\n    rcases List.mem_cons.mp hx with rfl | h\n    · exact Nat.le_max_left _ _\n    · exact Nat.le_trans (ih h) (Nat.le_max_right _ _)",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem freshName_not_mem (used : List Nat) : freshName used ∉ used := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that the fresh name is not in use.",
+      "leanSolution": "  intro h\n  have := le_foldr_max used _ h\n  simp only [freshName] at this\n  omega",
+      "hints": [
+        "Suppose it is in use (`intro h`): then by `le_foldr_max` it is at most the largest name.",
+        "Unfold `freshName` in that fact (`simp only [freshName] at this`); `omega` finishes."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The same check, with the two calls on the way out the other way round: release, then remove.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let Swapped = system(\n  var p in {idle, got, took, crit, out}\n  var q in {idle, got, took, crit, out}\n  var lp in 0..2\n  var lq in 0..2\n  var tab in 0..2\n  init p = idle ∧ q = idle ∧ lp = 0 ∧ lq = 0 ∧ tab = 0\n  action pget when p = idle ∧ tab ≠ 0 do lp := tab, p := got\n  action pnew when p = idle ∧ tab = 0 ∧ lq ≠ 1 do tab := 1, lp := 1, p := got\n  action pnew2 when p = idle ∧ tab = 0 ∧ lq = 1 do tab := 2, lp := 2, p := got\n  action pwait when p = got ∧ ¬((q = took ∨ q = crit) ∧ lq = lp) do p := took\n  action pok when p = took ∧ tab = lp do p := crit\n  action pretry when p = took ∧ tab ≠ lp do lp := 0, p := idle\n  action prelease when p = crit do p := out\n  action premove when p = out do tab := 0, lp := 0, p := idle\n  action qget when q = idle ∧ tab ≠ 0 do lq := tab, q := got\n  action qnew when q = idle ∧ tab = 0 ∧ lp ≠ 1 do tab := 1, lq := 1, q := got\n  action qnew2 when q = idle ∧ tab = 0 ∧ lp = 1 do tab := 2, lq := 2, q := got\n  action qwait when q = got ∧ ¬((p = took ∨ p = crit) ∧ lp = lq) do q := took\n  action qok when q = took ∧ tab = lq do q := crit\n  action qretry when q = took ∧ tab ≠ lq do lq := 0, q := idle\n  action qrelease when q = crit do q := out\n  action qremove when q = out do tab := 0, lq := 0, q := idle\n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "invariant(Swapped, ¬(p = crit ∧ q = crit))",
+      "type": "exercise",
+      "prompt": "Is `Swapped` safe: never both inside? Answer `true` or `false`.",
+      "hints": [
+        "After `p` releases, `q` can take lock 1 and pass its check: the entry is still there.",
+        "Then `p` removes the entry, and `p`'s next job makes lock 2."
+      ],
+      "hideQuestion": true,
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "reach(Keyed, p = crit ∧ tab = 0)",
+      "type": "exercise",
+      "prompt": "In `Keyed`, can a job be inside while the table has no entry for the key? Answer `true` or `false`.",
+      "hints": [
+        "Let `q` look up `p`'s lock, go in and finish before `p` takes it."
+      ],
+      "hideQuestion": true,
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A different fix counts the jobs using the entry. The lookup raises the count in the same step, and the last job out removes the entry. The table has to offer that: an update of the entry, lock and count together, as one call.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let Counted = system(\n  var p in {idle, got, crit}\n  var q in {idle, got, crit}\n  var lp in 0..2\n  var lq in 0..2\n  var tab in 0..2\n  var n in 0..2\n  init p = idle ∧ q = idle ∧ lp = 0 ∧ lq = 0 ∧ tab = 0 ∧ n = 0\n  action pget when p = idle ∧ tab ≠ 0 do lp := tab, n := n + 1, p := got\n  action pnew when p = idle ∧ tab = 0 ∧ lq ≠ 1 do tab := 1, lp := 1, n := 1, p := got\n  action pnew2 when p = idle ∧ tab = 0 ∧ lq = 1 do tab := 2, lp := 2, n := 1, p := got\n  action pwait when p = got ∧ ¬(q = crit ∧ lq = lp) do p := crit\n  action pleave when p = crit ∧ n > 1 do n := n - 1, lp := 0, p := idle\n  action plast when p = crit ∧ n = 1 do n := 0, tab := 0, lp := 0, p := idle\n  action qget when q = idle ∧ tab ≠ 0 do lq := tab, n := n + 1, q := got\n  action qnew when q = idle ∧ tab = 0 ∧ lp ≠ 1 do tab := 1, lq := 1, n := 1, q := got\n  action qnew2 when q = idle ∧ tab = 0 ∧ lp = 1 do tab := 2, lq := 2, n := 1, q := got\n  action qwait when q = got ∧ ¬(p = crit ∧ lp = lq) do q := crit\n  action qleave when q = crit ∧ n > 1 do n := n - 1, lq := 0, q := idle\n  action qlast when q = crit ∧ n = 1 do n := 0, tab := 0, lq := 0, q := idle\n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "invariant(Counted, ¬(p = crit ∧ q = crit))",
+      "type": "exercise",
+      "prompt": "Is `Counted` safe: never both inside?",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "reach(Counted, tab = 2)",
+      "type": "exercise",
+      "prompt": "Does `Counted` ever make a second lock? Answer `true` or `false`.",
+      "hints": [
+        "The entry goes only when the count is 0, so no job holds the old name, and the lowest free name is 1 again."
+      ],
+      "hideQuestion": true,
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> A linearizable call takes effect at one instant, so a model may make it one action; the promise ends at the call's return. The gap between two calls, on the table and on the lock, is where a per-key lock fails: the entry is removed and made again between a lookup and a take, and two jobs hold two locks for one key. A new lock is only a fresh name. Checking the table again after the take, and removing before releasing, fixes it; an inductive invariant proves it.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`Checked` never lets two in. But a job can take its lock, find the entry gone, and start over, and nothing says it will not find it gone every time, while the other job goes round and round. No state is bad; a good thing just never happens. Saying that needs a second kind of property, the next lesson's.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

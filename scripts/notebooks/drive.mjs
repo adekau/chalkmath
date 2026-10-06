@@ -45,9 +45,22 @@ const goldenDir = new URL("../../notebooks/golden/", import.meta.url).pathname;
 const proc = spawn(new URL("../../engine/.lake/build/bin/mathengine", import.meta.url).pathname, [], { stdio: ["pipe", "pipe", "inherit"] });
 const rl = createInterface({ input: proc.stdout });
 const pending = [];
-rl.on("line", (l) => { const r = pending.shift(); if (r) r(JSON.parse(l)); });
+// a line that is not JSON (Lean aborting on a stack overflow) answers the oldest call with an error
+rl.on("line", (l) => {
+  const r = pending.shift(); if (!r) return;
+  let reply;
+  try { reply = JSON.parse(l); } catch { reply = { error: { message: `the engine answered with a line that is not JSON: ${l.slice(0, 80)}` } }; }
+  r(reply);
+});
+// an engine that stops (or never started) fails every call it owed, so the run ends with a reason, not a hang
+proc.on("exit", (code, signal) => { for (const r of pending.splice(0)) r({ error: { message: `the engine stopped (${signal ?? `exit code ${code}`})` } }); });
+proc.on("error", (e) => { for (const r of pending.splice(0)) r({ error: { message: `the engine could not run: ${e.message}` } }); });
+proc.stdin.on("error", () => {});
 let id = 0;
-const call = (method, params) => new Promise((res) => { pending.push(res); proc.stdin.write(JSON.stringify({ jsonrpc: "2.0", id: ++id, method, params }) + "\n"); });
+const call = (method, params) => new Promise((res) => {
+  if (proc.exitCode !== null) { res({ error: { message: `the engine stopped (exit code ${proc.exitCode})` } }); return; }
+  pending.push(res); proc.stdin.write(JSON.stringify({ jsonrpc: "2.0", id: ++id, method, params }) + "\n");
+});
 
 /** The identifiers of a source, roughly as the page's tokenizer reads them. */
 const names = (src) => src.match(/[A-Za-z_Ͱ-Ͽℯ][A-Za-z0-9_Ͱ-Ͽℯ']*/gu) ?? [];

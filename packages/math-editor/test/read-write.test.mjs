@@ -34,6 +34,8 @@ test("the tree is the engine's parse: precedence, implicit products, what the nu
     "x/2y": "[(frac [x] [2]) y]",
     "8/2/2": "[(frac [(frac [8] [2])] [2])]",
     "a/(b/c)": "[(frac [a] [(frac [b] [c])])]",
+    "(a/b)[[1]]": "[(paren [(frac [a] [b])]) (part [1])]",
+    "a/b[[1]]": "[(frac [a] [b (part [1])])]",
     "-2^2": "[- 2 (^ [2])]",
     "(-2)^2": "[(paren [- 2]) (^ [2])]",
     "2^3^2": "[2 (^ [3 (^ [2])])]",
@@ -127,6 +129,7 @@ test("writing puts back exactly the parentheses the engine needs", () => {
     "x sin(y)": "x sin(y)", "sin^2(y)": "sin(y)^2", "sin^-1(y)": "sin(y)^(-1)", "arcsin(x/2)": "arcsin(x/2)", "x^n y": "x^n y", "% 2": "% 2", "(a/b)(c/d)": "a/b(c/d)",
     "a*b/c": "a*b/c", "a*(b/c)": "a*(b/c)", "x/(2y)": "x/(2y)", "x/(y)": "x/y", "1/x^2": "1/x^2",
     "let f(x, y) = x/y": "let f(x, y) = x/y", "[1, 2; 3, 4]": "[1, 2; 3, 4]", "diff(x^2,x)": "diff(x^2, x)",
+    "([1,2]/2)[[1]]": "([1, 2]/2)[[1]]", "(M/2)[[1, 2]]": "(M/2)[[1, 2]]", "M/2[[1]]": "M/(2[[1]])",
   };
   // written afresh (as the editor writes what is typed), without the source's spelling
   for (const [src, want] of Object.entries(cases)) assert.equal(write(forget(tree(src))).text, want, src);

@@ -51,7 +51,9 @@ structure RuleResult where
   /-- Steps taken inside this rewrite (e.g. the row operations behind an `rref` command). -/
   sub : Option Derivation := none
   /-- A rule may refuse the whole evaluation (the reference throws, e.g. on a dimension mismatch).
-  The tiered rewriter (`normalizeT`) honours this; verified rule sets never set it. -/
+  The tiered rewriter (`normalizeT`) honours this. A verified rule sets it only where mathematics
+  leaves the term undefined and its semantics would answer anyway (`simp.power` on `0^(-1)`, which
+  `Rat` makes `0`); its value is still what the theorem says, so the proofs do not mention it. -/
   error : Option String := none
 
 -- ---------------------------------------------------------------------------
@@ -338,7 +340,11 @@ def entrywiseStep (cur : Expr) (raw : Array RawStep) (i j : Nat) (pre : Path) : 
   let m ← cur.at? pre
   let rows ← match m with | .matrix rows => some rows | _ => none
   let run := (raw.extract i j).toList
-  let touched := (run.filter (!·.silent)).filterMap (·.path[pre.length]?) |>.eraseDups
+  let total := (children m).length
+  -- marked, not `eraseDups`: a firing per entry of a 100 × 100 matrix made that a square of the entries
+  let marks := (run.filter (!·.silent)).foldl (init := Array.replicate total false) fun ms s =>
+    match s.path[pre.length]? with | some k => if k < total then ms.set! k true else ms | none => ms
+  let touched := (List.range total).filter (fun k => marks[k]!)
   if touched.length < 2 then none
   let (entries, subs) := run.foldl (init := ((children m).toArray, (#[] : Array Step))) fun (entries, subs) s =>
     match s.path[pre.length]? with
@@ -353,7 +359,6 @@ def entrywiseStep (cur : Expr) (raw : Array RawStep) (i j : Nat) (pre : Path) : 
       (entries, subs.push { rule := s.rule, explanation := s!"{why} ({entryName rows k}).", path := rel, before, after, sub := s.sub })
   let m' := withChildren m entries.toList
   let next := replaceAt cur pre m'
-  let total := (children m).length
   let what := if rows.length ≤ 1 || ((rows.head?.map List.length).getD 1) ≤ 1 then "list" else "matrix"
   let which := if touched.length == total then s!"every entry of the {what} is worked out on its own"
     else s!"{touched.length} of the {what}'s {total} entries are worked out, each on its own"

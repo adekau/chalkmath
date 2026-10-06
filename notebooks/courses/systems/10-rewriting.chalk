@@ -1,6 +1,6 @@
 {
   "chalk": 1,
-  "name": "09-rewriting.chalk",
+  "name": "10-rewriting.chalk",
   "cells": [
     {
       "src": "Rewriting systems",
@@ -15,7 +15,7 @@
       "label": null
     },
     {
-      "src": "Lesson 8's `normalize` folded a batch from the right. Written as rules instead, a fold may fire anywhere in the batch, in any order. That is more freedom, and two questions: does it always stop, and does every order give the same batch?",
+      "src": "Lesson 9's `normalize` folded a batch from the right. Written as rules instead, a fold may fire anywhere in the batch, in any order. That is more freedom, and two questions: does it always stop, and does every order give the same batch?",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -44,7 +44,7 @@
       "stepwise": 0
     },
     {
-      "src": "Each step names its rule and marks where it applied: the leftmost-outermost redex, the first instance of a left side from the root. The answer is the batch `normalize` gave in lesson 8, `[create 4]`.",
+      "src": "Each step names its rule and marks where it applied: the leftmost-outermost redex, the first instance of a left side from the root. The answer is the batch `normalize` gave in lesson 9, `[create 4]`.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -62,7 +62,7 @@
       "label": null
     },
     {
-      "src": "Every rule drops an operation, so the size (the number of symbols) goes down at each step, and a natural number cannot go down for ever: lesson 4's measure.",
+      "src": "Every rule drops an operation, so the size (the number of symbols) goes down at each step, and a natural number cannot go down for ever: lesson 5's measure.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -129,7 +129,7 @@
       "label": null
     },
     {
-      "src": "> [!mistake]\n> Add lesson 8's tempting fold, \"create then delete cancels out\":",
+      "src": "> [!mistake]\n> Add lesson 9's tempting fold, \"create then delete cancels out\":",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -145,7 +145,7 @@
       "label": null
     },
     {
-      "src": "The pair $(\\mathsf{then}(\\mathsf{delete}, z),\\ z)$ does not join: the same batch normalizes to \"delete\" or to nothing depending on which rule fires first. Lesson 8's Lean found the store state where the two differ (the key already existed). Here the rules themselves show that something is wrong, before any semantics.",
+      "src": "The pair $(\\mathsf{then}(\\mathsf{delete}, z),\\ z)$ does not join: the same batch normalizes to \"delete\" or to nothing depending on which rule fires first. Lesson 9's Lean found the store state where the two differ (the key already existed). Here the rules themselves show that something is wrong, before any semantics.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -157,7 +157,7 @@
       "label": null
     },
     {
-      "src": "Back in Lean, with lesson 8's `normalize`: it never makes a batch longer. (Its termination Lean checks by itself: the recursion is structural.)",
+      "src": "Back in Lean, with lesson 9's `normalize`: it never makes a batch longer. (Its termination Lean checks by itself: the recursion is structural.)",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -226,7 +226,7 @@
       "label": null
     },
     {
-      "src": "A measure says a loop of rewriting stops. Lesson 7's retry loop stops for a blunter reason: a cap on the tries. What does the cap cost, in failures and in load? The last lesson counts.",
+      "src": "A measure says a loop of rewriting stops. Lesson 8's retry loop stops for a blunter reason: a cap on the tries. What does the cap cost, in failures and in load? The last lesson counts.",
       "type": "markdown",
       "showWork": false,
       "label": null

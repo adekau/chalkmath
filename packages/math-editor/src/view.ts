@@ -188,6 +188,7 @@ export class MathInput {
   private get editing() { return this.el.classList.contains("focused"); }
   /** Whether the parens were last fitted with the input on screen. */
   private fitted = false;
+  private resizer: ResizeObserver | undefined;
   /** The `\\` suggestions under the caret: the names that start with what has been typed. */
   /** The completion list: `\` commands, or (`fn`) functions for the name being typed. */
   private comp: { items: { name: string; what: string; glyph: string; fn?: boolean; index?: boolean; call?: boolean }[]; index: number; box: HTMLElement; picked?: boolean } | null = null;
@@ -232,7 +233,8 @@ export class MathInput {
     });
     this.ta.addEventListener("keydown", (ev) => this.key(ev));
     // the parens are fitted by measuring, so again once the input is on screen and its fonts are in
-    new ResizeObserver(() => { if (!this.fitted) this.layout(); }).observe(this.math);
+    this.resizer = new ResizeObserver(() => { if (!this.fitted) this.layout(); });
+    this.resizer.observe(this.math);
     void document.fonts?.ready.then(() => this.layout());
     this.ta.addEventListener("compositionstart", () => { this.composing = true; });
     this.ta.addEventListener("compositionend", () => { this.composing = false; this.typed(); });
@@ -419,8 +421,10 @@ export class MathInput {
     return new DOMRect(r.left + w * e.k, r.top, w, r.height);
   }
 
-  /** Where the caret at `c` is drawn, in viewport coordinates. */
-  private box(c: Caret): Box | null {
+  /** Where the caret at `c` is drawn, in viewport coordinates. `rects` keeps a block's atoms' boxes
+   *  across the positions of one search (`caretAt` asks for every position: measured per position,
+   *  a block of n atoms was read n² times, on every move of a drag). */
+  private box(c: Caret, rects?: Map<Block, { rs: (DOMRect | null)[]; top: number; bottom: number } | null>): Box | null {
     const b = c.block;
     if (b.length === 0) {
       const h = this.holeEl.get(b);
@@ -428,10 +432,16 @@ export class MathInput {
       const r = h.getBoundingClientRect();
       return { x: r.left + r.width / 2, top: r.top, bottom: r.bottom };
     }
-    const rs = b.map((a) => this.rect(a));
+    let m = rects?.get(b);
+    if (m === undefined) {
+      const rs = b.map((a) => this.rect(a));
+      const known = rs.filter((r): r is DOMRect => !!r && r.height > 0);
+      m = known.length ? { rs, top: Math.min(...known.map((r) => r.top)), bottom: Math.max(...known.map((r) => r.bottom)) } : null;
+      rects?.set(b, m);
+    }
+    if (!m) return null;
+    const { rs, top, bottom } = m;
     const known = rs.filter((r): r is DOMRect => !!r && r.height > 0);
-    if (!known.length) return null;
-    const top = Math.min(...known.map((r) => r.top)), bottom = Math.max(...known.map((r) => r.bottom));
     const at = rs[c.i], before = rs[c.i - 1];
     const x = at ? at.left : before ? before.right : known[known.length - 1]!.right;
     return { x, top, bottom };
@@ -468,8 +478,9 @@ export class MathInput {
    *  among equals, the innermost (the smallest line). */
   caretAt(x: number, y: number): Caret | null {
     let best: { c: Caret; cost: number; h: number } | null = null;
+    const rects = new Map<Block, { rs: (DOMRect | null)[]; top: number; bottom: number } | null>();
     for (const c of this.positions()) {
-      const bx = this.box(c);
+      const bx = this.box(c, rects);
       if (!bx) continue;
       const dy = y < bx.top ? bx.top - y : y > bx.bottom ? y - bx.bottom : 0;
       const cost = Math.abs(x - bx.x) + 4 * dy;
@@ -588,6 +599,8 @@ export class MathInput {
   }
 
   private hideSuggestions() { this.comp?.box.remove(); this.comp = null; }
+  /** Let the input go: its completion popup (on the page's body, not in the input) and its observer. */
+  dispose() { this.hideSuggestions(); this.resizer?.disconnect(); }
 
   /** Replace the pending `\\name` with the chosen one and finish it. */
   private acceptSuggestion() {

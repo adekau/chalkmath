@@ -26,14 +26,19 @@ export function httpTransport(url: string, fetchImpl: typeof fetch = fetch): Tra
   let handler: (m: string) => void = () => {};
   return {
     send: (m) => {
-      const id = (JSON.parse(m) as { id?: number | string }).id ?? null;
-      const fail = (message: string) => handler(JSON.stringify({ jsonrpc: "2.0", id, error: { code: -32000, message } }));
+      // the id is at the front of what createClient writes; the whole request is not parsed to find it
+      const id = /^\{"jsonrpc":"2\.0","id":(\d+|"(?:[^"\\]|\\.)*")/.exec(m)?.[1] ?? null;
+      const fail = (message: string) => handler(`{"jsonrpc":"2.0","id":${id},"error":{"code":-32000,"message":${JSON.stringify(message)}}}`);
       void fetchImpl(url, { method: "POST", headers: { "content-type": "application/json" }, body: m }).then(async (r) => {
         const text = await r.text();
         let reply: unknown = null;
         try { reply = JSON.parse(text); } catch { /* not JSON: answered below */ }
-        if (reply && typeof reply === "object" && "jsonrpc" in reply) handler(text);
-        else fail(`the engine at ${url} answered HTTP ${r.status}${r.ok ? " with a reply that is not JSON-RPC" : ` ${r.statusText}`.trimEnd()}`);
+        if (reply && typeof reply === "object" && "jsonrpc" in reply) {
+          // one request, one reply: an error the host sent before it could read the request's id (a
+          // body it refused as too large) is this request's answer, so it is given its id
+          if ((reply as { id?: unknown }).id == null && id !== null) handler(JSON.stringify({ ...reply, id: JSON.parse(id) }));
+          else handler(text);
+        } else fail(`the engine at ${url} answered HTTP ${r.status}${r.ok ? " with a reply that is not JSON-RPC" : ` ${r.statusText}`.trimEnd()}`);
       }).catch((e: unknown) => fail(`the engine at ${url} is unreachable: ${e instanceof Error ? e.message : String(e)}`));
     },
     onMessage: (h) => { handler = h; },
