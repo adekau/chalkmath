@@ -93,16 +93,23 @@ differential test with zero mismatches.
   by consing, innermost index first, in the rewriter and the printer, and reversed only where a step
   or a label spells one out; a label is written only to depth 64 (`pathLabelDepth`), so the echo of a
   pathologically deep input stays linear, and the notebook finds a deeper subterm by its nearest
-  labelled ancestor. A sum or a product of ten thousand terms, or ten thousand `-` signs, answers in a
-  fraction of a second, outline and paths included. An outline says whether a step is quiet (prints
-  the same before and after) by printing the parent of the subterm the step rewrote, on both sides
-  (`Step.quiet`): `after` is `before` with that subterm replaced, so the two can differ only where
-  its parent prints, and printing both whole terms made an outline cost the steps times the term.
-  The rewriter asks after every node whether `canon` reordered it; `canon` rebuilds only a sum's or
-  product's list out of the same children, so `equal` is run as `beqFast`, structural equality with a
-  pointer-equality shortcut (`implemented_by`; the logical definition the proofs use is untouched),
-  and the answer is found at the root or one level down rather than by walking the subtree at every
-  node, which was quadratic on a deep term (`sin(sin(…))`, `x^x^…`).
+  labelled ancestor. Text is written into one buffer, passed down and never shared, in the printer
+  (`Print.lean`: a `Target` gives the pieces of each notation, and each case of `printRaw` settles
+  its precedence before it writes, so the parentheses its context needs come first) and in the JSON
+  writer (`Json.render`), where building each subterm's string and copying it into its parent's cost
+  a term `d` deep its size `d` times over — on the wire a term is a `Json` as deep as itself. The
+  rewriter asks after every node whether `canon` reordered it; `canon` rebuilds only a sum's or
+  product's list out of the same children, so `beq` asks `withPtrEq` first (`beqR`, a verified fast
+  path proved equal to `beq` and installed with `csimp`), and the answer is found at the root or one
+  level down rather than by walking the subtree at every node, which was quadratic on a deep term
+  (`sin(sin(…))`, `x^x^…`). `freeVars` consing onto an accumulator (`freeVarsAcc`, `csimp` likewise)
+  and `Origin.occurrences` building its representatives bottom up are the same change elsewhere. A
+  sum or a product of ten thousand terms, ten thousand `-` signs, or `sin` twenty thousand deep
+  answers in a fraction of a second, outline and paths included. An outline says whether a step is
+  quiet (prints the same before and after) by printing the parent of the subterm the step rewrote, on
+  both sides (`Step.quiet`): `after` is `before` with that subterm replaced, so the two can differ
+  only where its parent prints, and printing both whole terms made an outline cost the steps times
+  the term.
 - **Termination is a proof obligation, not a budget.** A rule bundles a proof that it strictly
   decreases a measure; `normalize` is well-founded on that measure and never `partial`. The
   verified `simplify` uses one additive measure (`Rewrite.lean`). The whole notebook pipeline —
