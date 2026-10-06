@@ -221,14 +221,27 @@ theorem measure_canon (W : Weights) (e : Expr) : measure W (canon e) = measure W
 -- ---------------------------------------------------------------------------
 
 /-- A firing as recorded during normalization: only the local result. Whole-term `before`/`after`
-are reconstructed afterwards by replaying the firings from the input (`buildSteps`). -/
+are reconstructed afterwards by replaying the rewriter's tape from the input (`buildSteps`). -/
 structure RawStep where
   rule : String
   silent : Bool
   explanation : String
-  path : Path
   after : Expr
   sub : Option Derivation
+
+/-- The rewriter's tape: its moves between nodes, and its firings at the node in focus. A firing is
+recorded without its path, and the replay follows the moves with a zipper, so a firing costs the
+rewriter and the replay the same at any depth; a path per firing, walked from the root at each,
+cost a chain of silent firings (`√(√(…√x))`) its depth squared. -/
+inductive Record where
+  /-- into the first child of the node in focus -/
+  | down
+  /-- to the next sibling -/
+  | next
+  /-- back to the parent -/
+  | up
+  /-- a firing at the node in focus, which it replaces -/
+  | fire (s : RawStep)
 
 /-- Lexicographic order on pairs of naturals, in the form the termination proofs need. -/
 theorem lex_of_le {a a' b b' : Nat} (h₁ : a ≤ a') (h₂ : a = a' → b < b') :
@@ -246,17 +259,17 @@ theorem lex3 {a a' b b' c c' : Nat} (h₁ : a ≤ a') (h₂ : a = a' → b ≤ b
   · subst h; exact Prod.Lex.right _ (lex_of_le (h₂ rfl) (h₃ rfl))
 
 mutual
-  /-- Normalize the subterm `e` sitting at `path`: children first, then rules at the node until
-  none applies, re-normalizing after each firing. Returns the result and the firings so far,
-  together with the fact that the result is no heavier than the input. -/
-  def normAt (rules : List (Rule W)) (e : Expr) (path : Path) (acc : Array RawStep) :
-      {r : Expr × Array RawStep // measure W r.1 ≤ measure W e} :=
-    match normChildren rules (children e) path 0 acc with
+  /-- Normalize the subterm `e` in focus: children first, then rules at the node until none
+  applies, re-normalizing after each firing. Returns the result and the tape so far, together with
+  the fact that the result is no heavier than the input. -/
+  def normAt (rules : List (Rule W)) (e : Expr) (acc : Array Record) :
+      {r : Expr × Array Record // measure W r.1 ≤ measure W e} :=
+    match normChildren rules (children e) 0 acc with
     | ⟨(cs, acc₀), hcs⟩ =>
       let e₀ := withChildren e cs
       let e₁ := canon e₀
-      -- canonical order is silent but must be replayed, or later paths would not line up
-      let acc₁ := if equal e₁ e₀ then acc₀ else acc₀.push ⟨"simp.sort", true, "commutativity", path, e₁, none⟩
+      -- canonical order is silent but must be replayed, or later snapshots would not line up
+      let acc₁ := if equal e₁ e₀ then acc₀ else acc₀.push (.fire ⟨"simp.sort", true, "commutativity", e₁, none⟩)
       have h₁ : measure W e₁ ≤ measure W e := by
         have hm : measureList W cs ≤ measureList W (children e) := hcs.2
         simp only [e₁, e₀]; rw [measure_canon, measure_withChildren W e cs hcs.1, measure_eq W e]; omega
@@ -264,22 +277,23 @@ mutual
       | none => ⟨(e₁, acc₁), h₁⟩
       | some ⟨(rule, res), hr⟩ =>
         have hdec : measure W res.result < measure W e := Nat.lt_of_lt_of_le (rule.decreasing e₁ res hr) h₁
-        let acc₂ := acc₁.push ⟨rule.name, rule.silent, res.explanation, path, res.result, res.sub⟩
-        match normAt rules res.result path acc₂ with
+        let acc₂ := acc₁.push (.fire ⟨rule.name, rule.silent, res.explanation, res.result, res.sub⟩)
+        match normAt rules res.result acc₂ with
         | ⟨r, hr'⟩ => ⟨r, Nat.le_of_lt (Nat.lt_of_le_of_lt hr' hdec)⟩
   termination_by (measure W e, size e, 0)
   decreasing_by
     · exact Prod.Lex.left _ _ (measureList_children_lt W e)
     · exact Prod.Lex.left _ _ hdec
 
-  def normChildren (rules : List (Rule W)) (cs : List Expr) (path : Path) (i : Nat) (acc : Array RawStep) :
-      {r : List Expr × Array RawStep // r.1.length = cs.length ∧ measureList W r.1 ≤ measureList W cs} :=
+  /-- The children from index `i` on: a move into the first, to each next one, and back out. -/
+  def normChildren (rules : List (Rule W)) (cs : List Expr) (i : Nat) (acc : Array Record) :
+      {r : List Expr × Array Record // r.1.length = cs.length ∧ measureList W r.1 ≤ measureList W cs} :=
     match cs with
-    | [] => ⟨([], acc), by simp [measureList]⟩
+    | [] => ⟨([], if i = 0 then acc else acc.push .up), by simp [measureList]⟩
     | c :: cs' =>
-      match normAt rules c (path ++ [i]) acc with
+      match normAt rules c (acc.push (if i = 0 then .down else .next)) with
       | ⟨(c', acc₁), hc⟩ =>
-        match normChildren rules cs' path (i + 1) acc₁ with
+        match normChildren rules cs' (i + 1) acc₁ with
         | ⟨(cs'', acc₂), hcs⟩ =>
           ⟨(c' :: cs'', acc₂), by
             have hc' : measure W c' ≤ measure W c := hc
@@ -303,105 +317,171 @@ def replaceAt (e : Expr) (path : Path) (new : Expr) : Expr :=
     | some c => withChildren e (cs.set i (replaceAt c rest new))
     | none => e
 
-/-- The innermost matrix literal a firing at `path` is strictly inside: the longest proper prefix of
-`path` at which `e` has a matrix. -/
-def enclosingMatrix (e : Expr) (path : Path) : Option Path :=
-  (go e path 0 none).map path.take
-where
-  -- the depth of the deepest matrix passed so far: building each prefix on the way down would
-  -- make a deep path cost its depth squared, at every step of a derivation
-  go (e : Expr) : Path → Nat → Option Nat → Option Nat
-    | [], _, best => best
-    | i :: rest, d, best =>
-      let best := if e.isMatrix then some d else best
-      match (children e)[i]? with
-      | some c => go c rest (d + 1) best
-      | none => best
-
 /-- Where entry `k` (row-major) of a matrix with these rows sits, in words. -/
 def entryName (rows : List (List Expr)) (k : Nat) : String :=
   let cols := (rows.head?.map List.length).getD 1
   if rows.length ≤ 1 || cols ≤ 1 then s!"entry {k + 1}"
   else s!"row {k / cols + 1}, column {k % cols + 1}"
 
-/-- Is `p` strictly below `pre`? -/
-def strictlyBelow (pre p : Path) : Bool := pre.length < p.length && p.take pre.length == pre
+/-! ## Replaying the tape
 
-/-- The firings `raw[i:j]` all sit strictly inside the matrix at `pre` in `cur` — the rewriter
-normalizes a node's children one after another, so a matrix's entries are rewritten in a run. When
+The replay keeps the term as a zipper: the subterm in focus and, innermost first, the nodes above
+it, each with the siblings on either side of the focus. A move costs what it moves (a node's
+children list is rebuilt once, on the way out), a silent firing replaces the focus, and only a
+visible firing, which needs its path and the whole term before and after, pays for its depth. -/
+
+namespace Replay
+
+/-- A node the replay is inside. Its own children are not read; the focus's siblings are kept on
+either side of it, nearest first on the left. `mat` is the depth of the innermost matrix literal at
+or above this node, for grouping the firings inside a matrix's entries. -/
+structure Frame where
+  node : Expr
+  left : List Expr
+  right : List Expr
+  idx : Nat
+  mat : Option Nat
+
+/-- The node a frame holds, with the focus back among its children. -/
+def Frame.close (f : Frame) (focus : Expr) : Expr := withChildren f.node (f.left.reverseAux (focus :: f.right))
+
+structure Zipper where
+  focus : Expr
+  frames : List Frame
+
+namespace Zipper
+
+def depth (z : Zipper) : Nat := z.frames.length
+
+/-- The path of the focus, root first. -/
+def path (z : Zipper) : Path := z.frames.foldl (fun acc f => f.idx :: acc) []
+
+/-- The innermost matrix literal the focus is strictly inside, by depth. -/
+def enclosingMatrix (z : Zipper) : Option Nat := z.frames.head?.bind (·.mat)
+
+def down (z : Zipper) : Zipper :=
+  match children z.focus with
+  | [] => z
+  | c :: cs =>
+    let mat := if z.focus.isMatrix then some z.depth else z.enclosingMatrix
+    { focus := c, frames := { node := z.focus, left := [], right := cs, idx := 0, mat } :: z.frames }
+
+def next (z : Zipper) : Zipper :=
+  match z.frames with
+  | f :: fs =>
+    match f.right with
+    | c :: cs => { focus := c, frames := { f with left := z.focus :: f.left, right := cs, idx := f.idx + 1 } :: fs }
+    | [] => z
+  | [] => z
+
+def up (z : Zipper) : Zipper :=
+  match z.frames with
+  | f :: fs => { focus := f.close z.focus, frames := fs }
+  | [] => z
+
+/-- The node `n` levels above the focus, rebuilt. -/
+def above (z : Zipper) (n : Nat) : Expr := (z.frames.take n).foldl (fun e f => f.close e) z.focus
+
+/-- The whole term. -/
+def whole (z : Zipper) : Expr := z.frames.foldl (fun e f => f.close e) z.focus
+
+end Zipper
+
+/-- A run of firings strictly inside one matrix's entries, gathered as they come. The rewriter
+normalizes a node's children one after another, so a matrix's entries are rewritten in a run; when
 the run rewrites two entries or more, it becomes one step, `la.entrywise`, whose nested derivation
 holds each entry's steps with the entry alone as the term (path relative to it), the matrix around
 it left out. That keeps the derivation of an entrywise computation linear in the matrix's size, where
 one step per entry with the whole matrix before and after would be quadratic, and it reads as a
-textbook writes it: `2A = [2·50, 2·1; …] = [100, 2; …]`, with the arithmetic of each entry below. -/
-def entrywiseStep (cur : Expr) (raw : Array RawStep) (i j : Nat) (pre : Path) : Option (Step × Expr) := do
-  let m ← cur.at? pre
-  let rows ← match m with | .matrix rows => some rows | _ => none
-  let run := (raw.extract i j).toList
-  let total := (children m).length
-  -- marked, not `eraseDups`: a firing per entry of a 100 × 100 matrix made that a square of the entries
-  let marks := (run.filter (!·.silent)).foldl (init := Array.replicate total false) fun ms s =>
-    match s.path[pre.length]? with | some k => if k < total then ms.set! k true else ms | none => ms
-  let touched := (List.range total).filter (fun k => marks[k]!)
-  if touched.length < 2 then none
-  let (entries, subs) := run.foldl (init := ((children m).toArray, (#[] : Array Step))) fun (entries, subs) s =>
-    match s.path[pre.length]? with
-    | none => (entries, subs)
-    | some k =>
-      let rel := s.path.drop (pre.length + 1)
-      let before := entries[k]?.getD default
-      let after := replaceAt before rel s.after
-      let entries := entries.set! k after
-      if s.silent then (entries, subs) else
-      let why := if s.explanation.endsWith "." then s.explanation.dropRight 1 else s.explanation
-      (entries, subs.push { rule := s.rule, explanation := s!"{why} ({entryName rows k}).", path := rel, before, after, sub := s.sub })
-  let m' := withChildren m entries.toList
-  let next := replaceAt cur pre m'
-  let what := if rows.length ≤ 1 || ((rows.head?.map List.length).getD 1) ≤ 1 then "list" else "matrix"
-  let which := if touched.length == total then s!"every entry of the {what} is worked out on its own"
-    else s!"{touched.length} of the {what}'s {total} entries are worked out, each on its own"
-  let n := subs.size
-  pure ({ rule := "la.entrywise", explanation := s!"Entry by entry: {which}; the {n} steps are nested below.",
-          path := pre, before := cur, after := next, sub := some ⟨m, subs, m'⟩ }, next)
+textbook writes it: `2A = [2·50, 2·1; …] = [100, 2; …]`, with the arithmetic of each entry below.
+A run that touches one entry only stays what it was: its steps, each with the whole term. -/
+structure Run where
+  /-- the matrix sits this many frames down -/
+  depth : Nat
+  /-- the whole term before the run -/
+  before : Expr
+  /-- the matrix before the run -/
+  m : Expr
+  /-- the entries a visible firing touched: marked, not `eraseDups`, which made a firing per entry of
+  a 100 × 100 matrix a square of the entries -/
+  marks : Array Bool
+  /-- the entries' visible steps, each with the entry alone as its term -/
+  subs : Array Step
+  /-- the same steps with the whole term, for a run that touches fewer than two entries -/
+  plain : Array Step
 
-/-- Replay the firings from `input`, producing steps with whole-term `before`/`after`. A run of
-firings inside one matrix's entries becomes one `la.entrywise` step (`entrywiseStep`). -/
-def buildSteps (input : Expr) (raw : Array RawStep) : Array Step × Expr :=
-  go 0 #[] input
-where
-  go (i : Nat) (out : Array Step) (cur : Expr) : Array Step × Expr :=
-    if h : i < raw.size then
-      let s := raw[i]
-      let grouped := do
-        let pre ← enclosingMatrix cur s.path
-        let j := run pre (i + 1)
-        let (st, next) ← entrywiseStep cur raw i j pre
-        pure (st, next, j)
-      match grouped with
-      -- `run` starts after `i`, so `i < j` always holds; the test is the termination argument
-      | some (st, next, j) => if i < j then go j (out.push st) next else (out, cur)
-      | none =>
-        let next := replaceAt cur s.path s.after
-        go (i + 1) (if s.silent then out else out.push { rule := s.rule, explanation := s.explanation, path := s.path, before := cur, after := next, sub := s.sub }) next
-    else (out, cur)
-  termination_by raw.size - i
-  /-- The end of the run of firings strictly inside `pre` that starts before `j`. -/
-  run (pre : Path) (j : Nat) : Nat :=
-    if h : j < raw.size then (if strictlyBelow pre raw[j].path then run pre (j + 1) else j) else j
-  termination_by raw.size - j
+/-- The run as steps, with the matrix now in focus. -/
+def Run.commit (out : Array Step) (r : Run) (z : Zipper) : Array Step :=
+  let touched := r.marks.foldl (fun n b => if b then n + 1 else n) 0
+  if touched < 2 then out ++ r.plain else
+  let total := r.marks.size
+  let rows := match r.m with | .matrix rows => rows | _ => []
+  let what := if rows.length ≤ 1 || ((rows.head?.map List.length).getD 1) ≤ 1 then "list" else "matrix"
+  let which := if touched == total then s!"every entry of the {what} is worked out on its own"
+    else s!"{touched} of the {what}'s {total} entries are worked out, each on its own"
+  let n := r.subs.size
+  out.push { rule := "la.entrywise", explanation := s!"Entry by entry: {which}; the {n} steps are nested below.",
+             path := z.path, before := r.before, after := z.whole, sub := some ⟨r.m, r.subs, z.focus⟩ }
+
+/-- The run, ended if the focus is its matrix: a move away from the matrix, or a firing at it, is
+where its steps are written. -/
+def leaving (out : Array Step) (z : Zipper) : Option Run → Array Step × Option Run
+  | some r => if z.depth ≤ r.depth then (r.commit out z, none) else (out, some r)
+  | none => (out, none)
+
+/-- One record of the tape: the steps so far, the term, and the run being gathered. -/
+def record : Array Step × Zipper × Option Run → Record → Array Step × Zipper × Option Run
+  | (out, z, run), .down => let (out, run) := leaving out z run; (out, z.down, run)
+  | (out, z, run), .next => let (out, run) := leaving out z run; (out, z.next, run)
+  | (out, z, run), .up => let (out, run) := leaving out z run; (out, z.up, run)
+  | (out, z, run), .fire s =>
+    -- a firing strictly inside a matrix starts a run
+    let (out, run) := leaving out z run
+    let run := run <|> z.enclosingMatrix.map fun d =>
+      let m := z.above (z.depth - d)
+      { depth := d, before := z.whole, m, marks := Array.replicate (children m).length false, subs := #[], plain := #[] }
+    let z' := { z with focus := s.after }
+    match run with
+    | some r =>
+      -- the frame holding the matrix, and the entry's own path below it
+      let inside := z.depth - r.depth - 1
+      let k := (z.frames[inside]?.map (·.idx)).getD 0
+      if s.silent then (out, z', some r) else
+      let rel := (z.frames.take inside).foldl (fun acc f => f.idx :: acc) []
+      let rows := match r.m with | .matrix rows => rows | _ => []
+      let why := if s.explanation.endsWith "." then s.explanation.dropRight 1 else s.explanation
+      let sub : Step := { rule := s.rule, explanation := s!"{why} ({entryName rows k}).", path := rel,
+                          before := z.above inside, after := z'.above inside, sub := s.sub }
+      let plain : Step := { rule := s.rule, explanation := s.explanation, path := z.path,
+                            before := z.whole, after := z'.whole, sub := s.sub }
+      let r := { r with marks := r.marks.set! k true, subs := r.subs.push sub, plain := r.plain.push plain }
+      (out, z', some r)
+    | none =>
+      if s.silent then (out, z', none) else
+      (out.push { rule := s.rule, explanation := s.explanation, path := z.path, before := z.whole, after := z'.whole, sub := s.sub }, z', none)
+
+end Replay
+
+/-- Replay the tape from `input`, producing steps with whole-term `before`/`after`. A run of
+firings inside one matrix's entries becomes one `la.entrywise` step (`Replay.Run`). -/
+def buildSteps (input : Expr) (tape : Array Record) : Array Step × Expr :=
+  let (out, z, run) := tape.foldl Replay.record (#[], ⟨input, []⟩, none)
+  -- a run still open at the end is the root's: the moves out of every other node closed theirs
+  let out := match run with | some r => r.commit out z | none => out
+  (out, z.whole)
 
 abbrev TraceM := StateM (Array Step)
 
 /-- Rewrite `e` to a normal form under `rules`, appending the steps to the trace. The result is the
 normalizer's own (the replay in `buildSteps` reconstructs the same term for the step snapshots). -/
 def normalize (rules : List (Rule W)) (e : Expr) : TraceM Expr := do
-  let ⟨(out, raw), _⟩ := normAt rules e [] #[]
-  let (steps, _) := buildSteps e raw
+  let ⟨(out, tape), _⟩ := normAt rules e #[]
+  let (steps, _) := buildSteps e tape
   modify (· ++ steps)
   pure out
 
 theorem normalize_run (rules : List (Rule W)) (e : Expr) (s : Array Step) :
-    ((normalize rules e).run' s) = (normAt rules e [] #[]).1.1 := by
+    ((normalize rules e).run' s) = (normAt rules e #[]).1.1 := by
   simp only [normalize, StateT.run', bind, StateT.bind, modify, pure, StateT.pure, MonadStateOf.modifyGet, StateT.modifyGet, Id.run]
   rfl
 

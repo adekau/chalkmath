@@ -873,16 +873,34 @@ def scaleTests : TestM Unit := do
       (ps.length > pathLabelDepth && ps.all fun p => p == "root" || (p.splitOn ".").length ≤ pathLabelDepth) s!"{ps.length} labels"
     check "deep term: every label names its subterm" (toString (badPaths e)) "[]"
   | .error _ => check "deep term: parses" "error" "ok"
+  -- a chain of radicals fires a silent `simp.sqrt` at every level: the result is worked with the
+  -- children it was built from known to be normal, and the replay follows the rewriter's moves
+  -- rather than a path per firing, so the chain costs its depth, not its square
+  let radicals := (List.replicate 6 "sqrt(").foldl (· ++ ·) "" ++ "x" ++ String.ofList (List.replicate 6 ')')
+  let (st, out) := sessionEval [] radicals ",\"showWork\":true"
+  check "a chain of radicals: the answer" out radicals
+  check "a chain of radicals: every firing is silent" (derivationRules st radicals).toString "[]"
+  let (st, out) := sessionEval [] "sqrt(sqrt(x)) + 1 + 1" ",\"showWork\":true"
+  check "after silent firings: the answer" out "sqrt(sqrt(x)) + 2"
+  check "after silent firings: one visible step" (derivationRules st "sqrt(sqrt(x)) + 1 + 1").toString "[simp.fold-constants]"
+  checkTrue "after silent firings: the step's before carries their result"
+    (match (st.get "t").cells.lookup "sqrt(sqrt(x)) + 1 + 1" >>= fun c => c.derivation.steps[0]? with
+     | some s => (match s.before with | .add (.pow (.pow (.var "x") _) _ :: _) => true | _ => false) && s.path == []
+     | none => false)
   -- time, generously: these were a minute or more (3000 like terms 53 s, 3000 distinct over 60 s,
-  -- 10 000 minus signs over 60 s); the sizes are read at run time so none is computed ahead
+  -- 10 000 minus signs over 60 s, 10 000 radicals 292 s); the sizes are read at run time so none is
+  -- computed ahead
   let t0 ← IO.monoMsNow
   let n := if t0 == 0 then 1 else 3000
   let sumLike := evalText ("+".intercalate (List.replicate n "x"))
   let sumDistinct := evalText ("+".intercalate ((List.range n).map fun i => s!"x{i}"))
   let minus := evalText (String.ofList (List.replicate (n * 10 / 3) '-') ++ "x")
+  let deepRadicals := (List.replicate (n * 10 / 3) "sqrt(").foldl (· ++ ·) "" ++ "x" ++ String.ofList (List.replicate (n * 10 / 3) ')')
+  let radicals := evalText deepRadicals
   check "3000 like terms" sumLike "3000*x"
   checkTrue "3000 distinct terms" (sumDistinct.startsWith "x0 + x1 + x10 + x100 + x1000") (sumDistinct.take 60).copy
   check "10 000 minus signs" minus "x"
+  check "10 000 radicals" radicals deepRadicals
   let ms := (← IO.monoMsNow) - t0
   checkTrue "long sums and chains answer in seconds, not minutes" (ms < 10000) s!"{ms} ms"
 
