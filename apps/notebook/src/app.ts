@@ -2587,6 +2587,8 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
  *  on a big one. Both follow the typing once it pauses. */
 let typedTimer = 0;
 function typed() {
+  // a serialization from before this edit no longer says whether the notebook is unsaved
+  serialMemo = null;
   clearTimeout(typedTimer);
   typedTimer = window.setTimeout(() => { typedTimer = 0; renderTabs(true); autosave(); }, 300);
 }

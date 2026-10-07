@@ -36,7 +36,7 @@ def ruleStatus : Json :=
     entryC "simp.identity" "verified" "The additive and multiplicative identities and the annihilator. It keeps the domain: wherever its input is defined, so is its output (identity_soundD)." "verified" "The identities and the annihilator, in any field (identity_soundC).",
     entryC "simp.fold-constants" "verified" "Exact rational arithmetic; ℚ embeds in ℝ. It keeps the domain: wherever its input is defined, so is its output (foldConstants_soundD)." "verified" "ℚ embeds in ℂ (foldConstants_soundC).",
     entryC "simp.collect-like-terms" "verified" "Distributivity: a·t + b·t + … = (a+b+…)·t, every term with the same rest t in one step, added one at a time (mergeTerms_soundR). It keeps the domain: wherever its input is defined, so is its output (collectTerms_soundD)." "verified" "Distributivity (collectTerms_soundC).",
-    entryC "simp.power" "verified" "Includes exact roots (the root search returns only checked roots; it is bounded by bit length and does not search numbers of 4096 bits or more, IntRoot.lean) and (b^m)^n = b^(mn) for integer exponents, or for an integer n over a positive numeral base — so sqrt(2)^2 = 2 (Real.rpow_mul needs 0 ≤ b, which sqrt(x)^2 cannot promise). It keeps the domain: wherever its input is defined, so is its output (powerRules_soundD, parityPowMul_def, parityPowPow_def)." "verified" "The principal branch agrees with the real power on the positive rational bases the exact roots and the radical powers use (powerRules_soundC).",
+    entryC "simp.power" "verified" "Includes exact roots (the root search returns only checked roots; it is bounded by bit length and does not search numbers of 4096 bits or more, IntRoot.lean) and (b^m)^n = b^(mn) for integer exponents, or for an integer n over a positive numeral base — so sqrt(2)^2 = 2 (Real.rpow_mul needs 0 ≤ b, which sqrt(x)^2 cannot promise). It keeps the domain: wherever its input is defined, so is its output (powerRules_soundD, parityPowMul_def, parityPowPow_def). 0^(-n) is refused (Division by zero) rather than evaluated to Rat's 0⁻¹ = 0, so 1/0 is an error, not 0; the refusal is the step's error, and the theorems are about the value." "verified" "The principal branch agrees with the real power on the positive rational bases the exact roots and the radical powers use (powerRules_soundC).",
     entry "simp.sort" "verified" "Commutativity: the arguments of + and · are put in a canonical order (SemEqR.canon). Silent: it reorders only.",
     entry "simp.collect-powers" "verified" "b^m·b^n·… = b^(m+n+…), every factor with the same base in one step, merged one at a time, for every real b: each merge has integer exponents of one sign (x·x = x², x⁻¹·x⁻² = x⁻³) or a positive numeral base (collectPowers_soundR, rpow_int_add_of_sameSign). It keeps the domain: wherever its input is defined, so is its output (collectPowers_soundD).",
     entry "simp.collect-powers.assuming" "conditional" "The other merges, x·x⁻¹ = x⁰ and x^a·x^b = x^(a+b): the step states its assumption, b ≠ 0 where every merge has integer exponents and b > 0 otherwise, and is proved under it (collectPowersAssuming_soundR_on). Without it, at x = 0, x·x⁻¹ turns 0 into 1 (not_collectPowersAssuming_soundR).",
@@ -75,9 +75,9 @@ def ruleStatus : Json :=
     entry "la.row-scale.symbolic" "conditional" "Dividing a row by the pivot keeps the solution set wherever the pivot is not zero (scaleRowExact_soundR), and the step says so. The entries are then simplified; where a cancellation assumed something (collectPowersAssuming_soundR_on, functionAssuming_soundR_on) the step says what.",
     entry "la.row-add.symbolic.assuming" "conditional" "As la.row-add.symbolic, but simplifying the entries used a cancellation that assumes its base nonzero or positive (collectPowersAssuming_soundR_on, functionAssuming_soundR_on); the step states the assumption.",
     entry "la.row-add.symbolic" "verified" "Subtracting a multiple of another row keeps the solution set at every value of the symbols (addRowExact_soundR), and the entries are simplified by the rules that assume nothing, checked by comparing with them, so they keep their value everywhere (normalizeSafe_sound).",
-    entry "simp.radical" "verified" "A perfect-power base is reduced (8^(1/2) = 2^(3/2)), same-index radicals multiply under one root, and sqrt(18) is written 18^(1/2), which shows as 3√2; the searches for perfect powers and square factors are bounded by bit length (sqrt(10^401) = 10^(401/2)), and leave a number of 4096 bits or more unsimplified; unconditional, the bases are positive integers and sqrt(a) = a^(1/2) for every real a (radicalBase_soundR, mulRadicals_soundR, sqrtRadical_soundR). It keeps the domain: wherever its input is defined, so is its output (radicalBase_def, mulRadicals_def, sqrtRadical_def).",
+    entry "simp.radical" "verified" "A perfect-power base is reduced (8^(1/2) = 2^(3/2)), same-index radicals multiply under one root, and sqrt(18) is written 18^(1/2), which shows as 3√2; the searches for perfect powers and square factors are bounded by bit length (sqrt(10^401) = 10^(401/2)), and leave a number of 4096 bits or more unsimplified; radicals b^(p/q) whose product would hold b^|p| past 65536 bits do not multiply (10^1.6020599913279623 is 10^(16020599913279623/10^16)); unconditional, the bases are positive integers and sqrt(a) = a^(1/2) for every real a (radicalBase_soundR, mulRadicals_soundR, sqrtRadical_soundR). It keeps the domain: wherever its input is defined, so is its output (radicalBase_def, mulRadicals_def, sqrtRadical_def).",
     entry "simp.sqrt" "verified" "sqrt(a) = a^(1/2) for every real a (sqrtPower_soundR). Silent: the two print alike. It keeps the domain: wherever its input is defined, so is its output (sqrtPower_def).",
-    entry "simp.collect-radicals" "verified" "Radicals with the same square-free part collect, √50 − √18 = 2√2; the square-free part is found by trial division, exact below 2^60 for square roots (a larger factor it misses only stops two radicals collecting); unconditional (collectRadicals_soundR). It keeps the domain: wherever its input is defined, so is its output (collectRadicals_def).",
+    entry "simp.collect-radicals" "verified" "Radicals with the same square-free part collect, √50 − √18 = 2√2; the square-free part is found by trial division, exact below 2^60 for square roots (a larger factor it misses only stops two radicals collecting); a sum holding a radical b^(p/q) with b^|p| past 65536 bits is left as it is; unconditional (collectRadicals_soundR). It keeps the domain: wherever its input is defined, so is its output (collectRadicals_def).",
     entry "cmd.factor" "conditional" "The common-denominator form is a guess the pipeline checks: it and the input, each times the denominator D, normalized and expanded, must be the same term, so it agrees with the input wherever D is not zero and the check's normalizations hold (factor_run_sound); the step says so, naming D. Without the condition it fails: factor(1/x + 1) is (x + 1)/x, 1 and 0 at x = 0 (not_factor_at_zero). Expanding the answer gives the input's value back under the same conditions, not its term (expand_factor_sound). When the check fails, the collected normal form is the answer.",
     entry "cmd.expand" "verified" "Distribution is a total function proved sound over ℝ (dist_sound, proofs/Proofs/Expand.lean); the collection afterwards is the pipeline's own steps with their statuses.",
     entry "expand.distribute" "verified" "Multiplying out a product of sums and collecting like monomials: dist_sound.",
@@ -452,18 +452,6 @@ def numbered (st0 st : Store) (params : Json) (sessionId cellId : String) (j : J
 def eWarning : String :=
   "e here is a variable, not Euler's number: e^x is not exp(x) and does not simplify like it (only N gives e Euler's value). For the constant, type \\e (it shows as ℯ), or write exp(x)."
 
-/-- The steps that evaluated a zero base to a negative power, `1/0` in some form, to `0`: core `Rat`
-(as Mathlib's `ℚ`) makes it so, the theorems are stated over that arithmetic, and the rule answers;
-the reader is told, under the answer, that a division by zero was taken as zero on the way. -/
-partial def zeroPowers (d : Derivation) : List String :=
-  d.steps.foldl (init := []) fun acc s =>
-    let here := match s.before.at? s.path with
-      | some (.pow (.num p) (.num q)) =>
-        if p.isZero && q.isInt && q.isNeg then [s!"Division by zero: {p.toText}^{q.toText} (1/0) is undefined; the engine takes it as 0, as ℚ does, and the work shows where."] else []
-      | _ => []
-    acc ++ here ++ (match s.sub with | some sd => zeroPowers sd | none => [])
-def derivationWarnings (d : Derivation) : List String := (zeroPowers d).eraseDups
-
 /-- Warnings about a cell's input (after the session's bindings are substituted), not counting the
 parameters a function definition binds. -/
 def inputWarnings (input : Expr) (params : List String) : List String :=
@@ -499,7 +487,7 @@ where
         let res := #[("ok", .bool true), ("value", out.toJson), ("rendered", Rendered.toJson out paths), ("semantics", .str sem)]
         let res := res ++ workFields params d
         let ps := match stmt with | .«let» _ ps _ => ps | _ => []
-        let warnings := inputWarnings d.input ps ++ derivationWarnings d
+        let warnings := inputWarnings d.input ps
         let res := if warnings.isEmpty then res else res.push ("warnings", .arr (warnings.map .str).toArray)
         let res := match stmt with
           | .«let» name [] _ => res.push ("bound", .arr #[.str name])

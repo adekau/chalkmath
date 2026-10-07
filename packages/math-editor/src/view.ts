@@ -1,6 +1,6 @@
 import katex from "katex";
 import { MathEdit, TEMPLATES, type Caret } from "./edit.js";
-import type { Atom, Block, Stmt } from "./model.js";
+import { isBreak, lineOf, type Atom, type Block, type Stmt } from "./model.js";
 import { outRefOf, slots, toLatex } from "./notation.js";
 import { read } from "./read.js";
 import { atomsInSpan, write } from "./write.js";
@@ -424,7 +424,7 @@ export class MathInput {
   /** Where the caret at `c` is drawn, in viewport coordinates. `rects` keeps a block's atoms' boxes
    *  across the positions of one search (`caretAt` asks for every position: measured per position,
    *  a block of n atoms was read n² times, on every move of a drag). */
-  private box(c: Caret, rects?: Map<Block, { rs: (DOMRect | null)[]; top: number; bottom: number } | null>): Box | null {
+  private box(c: Caret, rects?: Map<Block, (DOMRect | null)[]>): Box | null {
     const b = c.block;
     if (b.length === 0) {
       const h = this.holeEl.get(b);
@@ -432,17 +432,24 @@ export class MathInput {
       const r = h.getBoundingClientRect();
       return { x: r.left + r.width / 2, top: r.top, bottom: r.bottom };
     }
-    let m = rects?.get(b);
-    if (m === undefined) {
-      const rs = b.map((a) => this.rect(a));
-      const known = rs.filter((r): r is DOMRect => !!r && r.height > 0);
-      m = known.length ? { rs, top: Math.min(...known.map((r) => r.top)), bottom: Math.max(...known.map((r) => r.bottom)) } : null;
-      rects?.set(b, m);
+    let rs = rects?.get(b);
+    if (rs === undefined) {
+      rs = b.map((a) => this.rect(a));
+      rects?.set(b, rs);
     }
-    if (!m) return null;
-    const { rs, top, bottom } = m;
-    const known = rs.filter((r): r is DOMRect => !!r && r.height > 0);
-    const at = rs[c.i], before = rs[c.i - 1];
+    // a block of several lines (a system's declarations): the caret is as tall as its own line, and
+    // a click finds the line it is on. A line break ends its line: the position before it is that
+    // line's end, the one after it the next line's start
+    const { from, to } = lineOf(b, c.i);
+    const known = rs.slice(from, to + 1).filter((r): r is DOMRect => !!r && r.height > 0);
+    if (!known.length) {
+      // the empty last line, after a break: under the line before it, where its lines start
+      const above = from > 0 ? this.box({ block: b, i: from - 1 }, rects) : null;
+      const left = Math.min(...rs.filter((r): r is DOMRect => !!r && r.height > 0).map((r) => r.left));
+      return above && Number.isFinite(left) ? { x: left, top: above.bottom, bottom: 2 * above.bottom - above.top } : null;
+    }
+    const top = Math.min(...known.map((r) => r.top)), bottom = Math.max(...known.map((r) => r.bottom));
+    const at = rs[c.i], before = c.i > from ? rs[c.i - 1] : undefined;
     const x = at ? at.left : before ? before.right : known[known.length - 1]!.right;
     return { x, top, bottom };
   }
@@ -468,18 +475,29 @@ export class MathInput {
     if (this.el.classList.contains("focused")) this.opts.onCaret?.();
   }
 
-  /** Every caret position, for a click to choose among. */
-  private *positions(b: Block = this.edit.root): Generator<Caret> {
-    for (let i = 0; i <= b.length; i++) yield { block: b, i };
-    for (const a of b) for (const s of slots(a)) yield* this.positions(s);
+  /** Every caret position, for a click at height `y` to choose among. In a block of several lines
+   *  only the line nearest `y` takes part, with what is inside it: a click beyond a short line's end
+   *  is that line's, not the longer line's under it. */
+  private *positions(y: number, rects: Map<Block, (DOMRect | null)[]>, b: Block = this.edit.root): Generator<Caret> {
+    let from = 0, to = b.length;
+    if (b.some(isBreak)) {
+      let best = Infinity;
+      for (let i = 0; i <= b.length; i = lineOf(b, i).to + 1) {
+        const bx = this.box({ block: b, i }, rects);
+        const d = !bx ? Infinity : y < bx.top ? bx.top - y : y > bx.bottom ? y - bx.bottom : 0;
+        if (d < best) { best = d; ({ from, to } = lineOf(b, i)); }
+      }
+    }
+    for (let i = from; i <= to; i++) yield { block: b, i };
+    for (const a of b.slice(from, to)) for (const s of slots(a)) yield* this.positions(y, rects, s);
   }
 
   /** The caret position nearest a point: among those whose line the point is on, the nearest across;
    *  among equals, the innermost (the smallest line). */
   caretAt(x: number, y: number): Caret | null {
     let best: { c: Caret; cost: number; h: number } | null = null;
-    const rects = new Map<Block, { rs: (DOMRect | null)[]; top: number; bottom: number } | null>();
-    for (const c of this.positions()) {
+    const rects = new Map<Block, (DOMRect | null)[]>();
+    for (const c of this.positions(y, rects)) {
       const bx = this.box(c, rects);
       if (!bx) continue;
       const dy = y < bx.top ? bx.top - y : y > bx.bottom ? y - bx.bottom : 0;

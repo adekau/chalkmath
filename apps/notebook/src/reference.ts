@@ -66,6 +66,7 @@ export const FUNCTIONS: FnDoc[] = [
       "The normal form collects like terms, combines powers of the same base, cancels what cancels and keeps arithmetic exact: fractions stay fractions and roots stay roots.",
       "Each rewrite is a step, with its rule and the rule's proof status.",
       "A power of numbers is computed exactly up to 19,728 digits (65,536 bits); a bigger one, like `2^(10^9)`, is an error that says how many digits it would have. `N` cannot help there, since it computes the exact value first.",
+      "Division by zero is an error, not a value: `1/0`, `0^(-1)` and `1/(y - y)` are refused (\"Division by zero: 0^-1 is undefined\"), where many systems answer `0` or `∞`. A sum or a `let` that reaches a pole, like `1/k` at `k = 0`, has to leave that case out or define it separately.",
     ],
     examples: [
       basic("simplify(x + x)", "simplify(x^2 * x^3 / x)"),

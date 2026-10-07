@@ -172,43 +172,52 @@ theorem render_paren (b : Bool) (ts : List T) :
     render (paren b ts) = if b then '(' :: render ts ++ [')'] else render ts := by
   cases b <;> simp [paren]
 
-theorem intercalate_star (s : String) (l : List String) :
-    ("*".intercalate (s :: l)).toList = s.toList ++ l.flatMap ('*' :: ·.toList) := by
-  induction l generalizing s with
-  | nil => simp
-  | cons t l ih => simp [String.intercalate_cons_cons, ih]
+@[scoped simp] theorem text_openIf (b : Bool) (acc : String) : textTarget.openIf b acc = if b then acc ++ "(" else acc := rfl
+@[scoped simp] theorem text_closeIf (b : Bool) (acc : String) : textTarget.closeIf b acc = if b then acc ++ ")" else acc := rfl
+@[scoped simp] theorem text_wrapOpen (p : Path) (acc : String) : textTarget.wrapOpen p acc = acc := rfl
+@[scoped simp] theorem text_wrapClose (p : Path) (acc : String) : textTarget.wrapClose p acc = acc := rfl
+@[scoped simp] theorem text_leaf (p : Path) (s acc : String) : textTarget.leaf p s acc = acc ++ s := rfl
+@[scoped simp] theorem text_num (q : Q) : textTarget.num q = q.toText := rfl
+@[scoped simp] theorem text_var (x : String) : textTarget.var x = x := rfl
+@[scoped simp] theorem text_times : textTarget.times = "*" := rfl
+@[scoped simp] theorem text_sqrtOpen : textTarget.sqrtOpen = "sqrt(" := rfl
+@[scoped simp] theorem text_sqrtClose : textTarget.sqrtClose = ")" := rfl
+@[scoped simp] theorem text_fnOpen (n : String) : textTarget.fnOpen n = n ++ "(" := rfl
+@[scoped simp] theorem text_fnClose : textTarget.fnClose = ")" := rfl
+@[scoped simp] theorem text_argSep : textTarget.argSep = ", " := rfl
+@[scoped simp] theorem text_powOpen : textTarget.powOpen = "" := rfl
+@[scoped simp] theorem text_powMid : textTarget.powMid = "^" := rfl
+@[scoped simp] theorem text_powClose : textTarget.powClose = "" := rfl
+@[scoped simp] theorem text_fracOpen : textTarget.fracOpen = "" := rfl
+@[scoped simp] theorem text_fracMid : textTarget.fracMid = "/" := rfl
+@[scoped simp] theorem text_fracClose : textTarget.fracClose = "" := rfl
+@[scoped simp] theorem text_denomPrec : textTarget.denomPrec = P_POW := rfl
 
-theorem printRaw_num (n : Nat) (path : Path) :
-    printRaw (.num (Q.ofInt n)) path textTarget = (toString (n : Int), P_ATOM) := by
-  rw [printRaw]
-  have : ¬ ((n : Int) < 0) := by omega
-  simp [textTarget, Q.toText, Q.isSci, Q.sciExp, Q.ofInt, Q.isNeg, Q.isInt, this]
-
-theorem printRaw_var (x : String) (path : Path) : printRaw (.var x) path textTarget = (x, P_ATOM) := by
-  rw [printRaw]; rfl
-
-/-- What the printer does with a term of the fragment: its text is its tokens, and it says how
-tightly it binds. -/
+/-- What the printer does with a term of the fragment: after `acc`, its tokens, in parentheses
+exactly when it binds looser than its context. -/
 def PrintsAs (e : Expr) : Prop :=
-  ∀ path, (printRaw e path textTarget).1.toList = render (raw e) ∧ (printRaw e path textTarget).2 = precOf e
+  ∀ (path : Path) (ctx : Nat) (acc : String),
+    (printRaw e path textTarget ctx acc).toList = acc.toList ++ render (ptoks e ctx)
 
-theorem print_text (e : Expr) (path : Path) (ctx : Nat) :
-    print e path textTarget ctx =
-      if (printRaw e path textTarget).2 < ctx then "(" ++ (printRaw e path textTarget).1 ++ ")"
-      else (printRaw e path textTarget).1 := by
-  rw [print]; simp [textTarget]; rfl
-
-theorem PrintsAs.print {e : Expr} (h : PrintsAs e) (path : Path) (ctx : Nat) :
-    (print e path textTarget ctx).toList = render (ptoks e ctx) := by
-  rw [print_text, ptoks, render_paren]
-  obtain ⟨h1, h2⟩ := h path
-  rw [h2]
-  by_cases hc : precOf e < ctx <;> simp [hc, h1]
+theorem PrintsAs.print {e : Expr} (h : PrintsAs e) (path : Path) (ctx : Nat) (acc : String) :
+    (print e path textTarget ctx acc).toList = acc.toList ++ render (ptoks e ctx) := by
+  rw [MathEngine.print, text_wrapOpen, text_wrapClose]; exact h path ctx acc
 
 theorem ofInt_isNeg (n : Nat) : (Q.ofInt n).isNeg = false := by
   simp only [Q.isNeg, Q.ofInt]; exact decide_eq_false (by simp)
 
 theorem ofInt_isInt (n : Nat) : (Q.ofInt n).isInt = true := by simp [Q.isInt, Q.ofInt]
+
+theorem printRaw_num (n : Nat) : PrintsAs (.num (Q.ofInt n)) := by
+  intro path ctx acc
+  rw [printRaw]
+  have : ¬ ((n : Int) < 0) := by omega
+  by_cases hc : 4 < ctx <;> simp [hc, paren, ptoks, raw, P_ATOM, Q.toText, Q.isSci, Q.sciExp, Q.ofInt, Q.isInt, Q.isNeg, this]
+
+theorem printRaw_var (x : String) : PrintsAs (.var x) := by
+  intro path ctx acc
+  rw [printRaw]
+  by_cases hc : 4 < ctx <;> simp [hc, ptoks, raw, paren, P_ATOM]
 
 theorem splitCoeff_plain {a : Expr} (h : Plain a) : (splitCoeff a).1.isNeg = false := by
   cases h with
@@ -232,132 +241,152 @@ theorem addTerms_tail (path : Path) : ∀ (rest : List Expr), (∀ c ∈ rest, P
     have hp := ha.2.print (i :: path) 2
     simp [hi, hp, rawTail, ptoks, P_MUL]
 
-theorem mulFactor_plain {f : Expr} (h : Plain f) (hp : PrintsAs f) (i : Nat) (p : Path)
-    (sign : String) (numer denom : List String) :
-    ∃ s, mulFactor f i p textTarget sign numer denom = (sign, s :: numer, denom) ∧
-      s.toList = render (ptoks f 2) := by
+/-! A factor of the fragment goes above the line, whole. -/
+
+theorem factorInNumer_plain {f : Expr} (h : Plain f) (i : Nat) : factorInNumer f i = true := by
+  cases h with
+  | num n => simp [factorInNumer, ofInt_abs, ofInt_isInt, ofInt_isNeg]
+  | pow b x _ hx => cases hx <;> simp [factorInNumer, ofInt_isNeg]
+  | _ => simp [factorInNumer]
+
+theorem factorInDenom_plain {f : Expr} (h : Plain f) (i : Nat) : factorInDenom f i = false := by
+  cases h with
+  | num n => simp [factorInDenom, ofInt_abs, ofInt_isInt]
+  | pow b x _ hx => cases hx <;> simp [factorInDenom, ofInt_isNeg]
+  | _ => simp [factorInDenom]
+
+theorem countDenom_plain : ∀ (args : List Expr), (∀ c ∈ args, Plain c) → ∀ i, countFactors factorInDenom args i = 0
+  | [], _, _ => rfl
+  | a :: rest, h, i => by
+    rw [countFactors, factorInDenom_plain (h a (by simp)), countDenom_plain rest (fun c hc => h c (by simp [hc]))]
+    rfl
+
+theorem leadingNeg_plain {a : Expr} (h : Plain a) (rest : List Expr) : leadingNeg (a :: rest) = false := by
+  cases h <;> simp [leadingNeg, ofInt_isNeg]
+
+theorem numerPart_plain {f : Expr} (h : Plain f) (hp : PrintsAs f) (i : Nat) (p : Path) (acc : String) :
+    (numerPart f i p textTarget acc).toList = acc.toList ++ render (ptoks f 2) := by
   cases h with
   | num n =>
-    rw [mulFactor]
+    rw [numerPart]
     by_cases hi : i = 0
     · subst hi
-      simp [ofInt_isNeg, ofInt_abs, ofInt_isInt, textTarget, ofInt_text, ptoks, paren, raw, precOf, ofInt_num]
+      simp [ofInt_abs, ofInt_isInt, ofInt_text, ptoks, paren, raw, precOf, ofInt_num]
     · have := hp.print p 3
       simp [hi, this, ptoks, paren, precOf, P_MUL]
-  | pow b x hb hx =>
-    cases hx with
-    | num n =>
-      rw [mulFactor]
-      simp [ofInt_isNeg, hp.print p 2, P_MUL]
-    | _ => rw [mulFactor] <;> first | simp [hp.print p 2, P_MUL] | (intros; simp_all)
-  | _ => rw [mulFactor] <;> first | simp [hp.print p 2, P_MUL] | (intros; simp_all)
+  | _ => rw [numerPart] <;> first | simp [hp.print p 2, P_MUL] | (intros; simp_all)
 
-theorem mulFactors_plain (path : Path) (off : Nat) : ∀ (args : List Expr), (∀ c ∈ args, Plain c ∧ PrintsAs c) →
-    ∀ (i : Nat) (sign : String) (numer denom : List String),
-    ∃ strs : List String, mulFactors args i path off textTarget sign numer denom = (sign, strs.reverse ++ numer, denom) ∧
-      strs.map String.toList = args.map (fun c => render (ptoks c 2))
-  | [], _, i, sign, numer, denom => ⟨[], by rw [mulFactors]; simp, rfl⟩
-  | a :: rest, h, i, sign, numer, denom => by
+/-- The characters of a product's factors from the second on, `sep` before the first of them. -/
+def factorsText (sep : String) : List Expr → List Char
+  | [] => []
+  | c :: rest => sep.toList ++ render (ptoks c 2) ++ render (rawTail "*" rest)
+
+theorem factorsText_star (rest : List Expr) : factorsText "*" rest = render (rawTail "*" rest) := by
+  cases rest <;> simp [factorsText, rawTail, ptoks]
+
+theorem mulNumer_plain (path : Path) (off : Nat) : ∀ (args : List Expr), (∀ c ∈ args, Plain c ∧ PrintsAs c) →
+    ∀ (i : Nat) (sep acc : String),
+    (mulNumer args i path off textTarget sep acc).toList = acc.toList ++ factorsText sep args
+  | [], _, i, sep, acc => by rw [mulNumer]; simp [factorsText]
+  | a :: rest, h, i, sep, acc => by
     have ha := h a (by simp)
-    obtain ⟨s, hs, hs'⟩ := mulFactor_plain ha.1 ha.2 i ((i + off) :: path) sign numer denom
-    obtain ⟨strs, h1, h2⟩ := mulFactors_plain path off rest (fun c hc => h c (by simp [hc])) (i + 1) sign (s :: numer) denom
-    refine ⟨s :: strs, ?_, ?_⟩
-    · rw [mulFactors]; simp [hs, h1]
-    · simp [hs', h2]
+    rw [mulNumer, factorInNumer_plain ha.1]
+    simp only [↓reduceIte, text_times]
+    rw [mulNumer_plain path off rest (fun c hc => h c (by simp [hc])), numerPart_plain ha.1 ha.2, factorsText_star]
+    simp [factorsText]
 
-theorem render_rawTail (sep : String) (hsep : sep ≠ "+") (as : List Expr) :
-    render (rawTail sep as) = as.flatMap (fun c => sep.toList ++ render (ptoks c 2)) := by
-  induction as with
-  | nil => simp [rawTail, render]
-  | cons a as ih =>
-    simp only [rawTail, List.flatMap_cons]
-    rw [← ih]
-    have : renderTok (.op, sep) = sep.toList := by simp [renderTok, hsep]
-    simp [render, this, ptoks]
-
-theorem flatMap_star (l : List String) : l.flatMap ('*' :: ·.toList) = (l.map String.toList).flatMap ('*' :: ·) := by
-  induction l <;> simp_all
-
-theorem printRaw_fn (f : String) (a : Expr) (hf : f ∈ unaryNames) (path : Path) :
-    printRaw (.fn f [a]) path textTarget = fnRaw textTarget f [a] (printArgs [a] 0 path textTarget) := by
+theorem printRaw_fn (f : String) (a : Expr) (hf : f ∈ unaryNames) (path : Path) (ctx : Nat) (acc : String) :
+    printRaw (.fn f [a]) path textTarget ctx acc = fnRaw textTarget f [a] path ctx acc := by
   rw [printRaw]
   all_goals first | rfl | (intros; subst_vars; simp [unaryNames] at hf)
 
-theorem fnRaw_generic (f : String) (a : Expr) (s : String) (hf : f ∈ unaryNames) (h1 : f ≠ "sqrt")
-    (h2 : f ≠ "abs") : fnRaw textTarget f [a] [s] = (f ++ "(" ++ s ++ ")", P_ATOM) := by
+theorem fnRaw_generic (f : String) (a : Expr) (hf : f ∈ unaryNames) (h1 : f ≠ "sqrt") (h2 : f ≠ "abs")
+    (path : Path) (ctx : Nat) (acc : String) :
+    fnRaw textTarget f [a] path ctx acc = fnPlain textTarget f [a] path ctx acc := by
   rw [fnRaw]
-  all_goals first | (simp [textTarget]; rfl) | (intros; subst_vars; simp_all [unaryNames])
+  all_goals first | rfl | (intros; subst_vars; simp_all [unaryNames])
 
-theorem fnRaw_sqrt (a : Expr) (s : String) : fnRaw textTarget "sqrt" [a] [s] = ("sqrt" ++ "(" ++ s ++ ")", P_ATOM) := by
-  rw [fnRaw]; simp [textTarget]; rfl
+theorem fnPlain_one (f : String) (a : Expr) (path : Path) (ctx : Nat) (acc : String) :
+    fnPlain textTarget f [a] path ctx acc =
+      textTarget.closeIf (decide (4 < ctx))
+        (print a (0 :: path) textTarget 1 (textTarget.openIf (decide (4 < ctx)) acc ++ (f ++ "(")) ++ ")") := by
+  rw [fnPlain, printArgs, printArgs]; simp [P_ATOM, P_ADD]
 
-theorem fnRaw_abs (a : Expr) (s : String) : fnRaw textTarget "abs" [a] [s] = ("abs" ++ "(" ++ s ++ ")", P_ATOM) := by
-  rw [fnRaw]; simp [textTarget]; rfl
+theorem fnRaw_sqrt (a : Expr) (path : Path) (ctx : Nat) (acc : String) :
+    fnRaw textTarget "sqrt" [a] path ctx acc =
+      textTarget.closeIf (decide (4 < ctx))
+        (print a (0 :: path) textTarget 1 (textTarget.openIf (decide (4 < ctx)) acc ++ ("sqrt" ++ "(")) ++ ")") := by
+  rw [fnRaw]; simp [P_ATOM, P_ADD]
 
-theorem printRaw_pow {x : Expr} (hx : Plain x) (b : Expr) (path : Path) :
-    printRaw (.pow b x) path textTarget =
-      (print b (0 :: path) textTarget 4 ++ "^" ++ print x (1 :: path) textTarget 3, P_POW) := by
+theorem fnRaw_abs (a : Expr) (path : Path) (ctx : Nat) (acc : String) :
+    fnRaw textTarget "abs" [a] path ctx acc =
+      textTarget.closeIf (decide (4 < ctx))
+        (print a (0 :: path) textTarget 1 (textTarget.openIf (decide (4 < ctx)) acc ++ ("abs" ++ "(")) ++ ")") := by
+  rw [fnRaw]; simp [P_ATOM, P_ADD]
+
+theorem printRaw_pow {x : Expr} (hx : Plain x) (b : Expr) (path : Path) (ctx : Nat) (acc : String) :
+    printRaw (.pow b x) path textTarget ctx acc =
+      textTarget.closeIf (decide (3 < ctx))
+        (print x (1 :: path) textTarget 3 (print b (0 :: path) textTarget 4 (textTarget.openIf (decide (3 < ctx)) acc) ++ "^")) := by
   cases hx with
   | num n =>
     rw [printRaw, powRaw]
-    simp [textTarget, ofInt_not_half, ofInt_isNeg, ofInt_isInt, P_POW]; rfl
+    simp [ofInt_not_half, ofInt_isNeg, ofInt_isInt, P_POW]
   | _ =>
     rw [printRaw, powRaw]
-    all_goals first | (simp [textTarget, Expr.isNumEq, P_POW]; rfl) | (intros; simp_all)
+    all_goals first | (simp [Expr.isNumEq, P_POW]) | (intros; simp_all)
 
 theorem printRaw_plain {e : Expr} (h : Plain e) : PrintsAs e := by
   induction h with
-  | num n => intro path; simp [printRaw_num, raw, render, renderTok, ofInt_num, precOf, P_ATOM]
-  | var x _ _ => intro path; simp [printRaw_var, raw, render, renderTok, precOf, P_ATOM]
+  | num n => exact printRaw_num n
+  | var x _ _ => exact printRaw_var x
   | fn f a hf _ iha =>
-    intro path
+    intro path ctx acc
     have hp := iha.print (0 :: path) 1
-    have hargs : printArgs [a] 0 path textTarget = [print a (0 :: path) textTarget P_ADD] := by
-      rw [printArgs, printArgs]
-    rw [printRaw_fn f a hf, hargs]
-    have hfn : fnRaw textTarget f [a] [print a (0 :: path) textTarget P_ADD] =
-        (f ++ "(" ++ print a (0 :: path) textTarget P_ADD ++ ")", P_ATOM) := by
+    rw [printRaw_fn f a hf]
+    have hfn : fnRaw textTarget f [a] path ctx acc =
+        textTarget.closeIf (decide (4 < ctx))
+          (print a (0 :: path) textTarget 1 (textTarget.openIf (decide (4 < ctx)) acc ++ (f ++ "(")) ++ ")") := by
       by_cases h1 : f = "sqrt"
-      · subst h1; exact fnRaw_sqrt _ _
+      · subst h1; exact fnRaw_sqrt _ _ _ _
       by_cases h2 : f = "abs"
-      · subst h2; exact fnRaw_abs _ _
-      exact fnRaw_generic f a _ hf h1 h2
+      · subst h2; exact fnRaw_abs _ _ _ _
+      rw [fnRaw_generic f a hf h1 h2]; exact fnPlain_one _ _ _ _ _
     rw [hfn]
-    refine ⟨?_, rfl⟩
-    simp only [P_ADD]
-    simp [hp, raw, ptoks]
+    by_cases hc : 4 < ctx <;> simp [hc, hp, raw, ptoks, paren]
   | pow b x hb hx ihb ihx =>
-    intro path
+    intro path ctx acc
     rw [printRaw_pow hx]
-    simp [ihb.print, ihx.print, raw, ptoks, precOf, P_POW]
+    have kb := ihb.print (0 :: path) 4
+    have kx := ihx.print (1 :: path) 3
+    by_cases hc : 3 < ctx <;> simp [hc, kb, kx, raw, ptoks, paren]
   | add a b as ha hb has iha ihb ihas =>
-    intro path
+    intro path ctx acc
     have hall : ∀ c ∈ b :: as, Plain c ∧ PrintsAs c := by
       intro c hc; simp at hc; rcases hc with rfl | hc
       · exact ⟨hb, ihb⟩
       · exact ⟨has c hc, ihas c hc⟩
-    have ht := addTerms_tail path (b :: as) hall 1 (print a (0 :: path) textTarget P_ADD) (by omega)
-    rw [printRaw]
-    refine ⟨?_, rfl⟩
-    rw [addTerms]
-    simp only [splitCoeff_plain ha, P_ADD] at ht ⊢
-    simp [ht, iha.print, raw, ptoks]
+    rw [printRaw, addTerms]
+    have ht := addTerms_tail path (b :: as) hall 1
+    have hp := iha.print (0 :: path) 1
+    simp only [splitCoeff_plain ha, P_ADD, beq_self_eq_true, Bool.not_false, Bool.and_self, ↓reduceIte]
+    by_cases hc : 1 < ctx <;> simp [hc, ht _ (by omega), hp, raw, ptoks, paren]
   | mul a b as ha hb has iha ihb ihas =>
-    intro path
+    intro path ctx acc
     have hall : ∀ c ∈ a :: b :: as, Plain c ∧ PrintsAs c := by
       intro c hc; simp at hc; rcases hc with rfl | rfl | hc
       · exact ⟨ha, iha⟩
       · exact ⟨hb, ihb⟩
       · exact ⟨has c hc, ihas c hc⟩
-    obtain ⟨strs, h1, h2⟩ := mulFactors_plain path 0 (a :: b :: as) hall 0 "" [] []
-    rw [printRaw, mulRaw, h1]
-    match strs, h2 with
-    | s :: rest, h2 =>
-      simp only [List.map_cons, List.cons.injEq] at h2
-      have hs : ("*".intercalate (s :: rest)).toList = render (raw (.mul (a :: b :: as))) := by
-        rw [intercalate_star, flatMap_star, h2.1, h2.2, raw, render_append, render_rawTail "*" (by decide)]
-        simp [ptoks, List.flatMap_map]
-      simp [textTarget, hs, precOf, P_MUL]
+    rw [printRaw, mulRaw]
+    simp only [text_times, bne_self_eq_false, Bool.false_eq_true, ↓reduceIte, leadingNeg_plain ha,
+      countDenom_plain (a :: b :: as) (fun c hc => (hall c hc).1), Nat.lt_irrefl]
+    rw [countFactors, factorInNumer_plain ha]
+    simp only [↓reduceIte]
+    have hn : 0 < 1 + countFactors factorInNumer (b :: as) 1 := by omega
+    simp only [hn, ↓reduceIte]
+    have hm := mulNumer_plain path 0 (a :: b :: as) hall 0 ""
+    by_cases hc : 2 < ctx <;> simp [hc, hm, factorsText, raw, ptoks, paren]
 
 /-! ## The lexer reads the tokens back -/
 
@@ -1463,7 +1492,8 @@ end
 /-- **Round trip.** On the fragment, the printed text of a term parses back to a term that is the
 same up to how sums in sums and products in products are bracketed. -/
 theorem parse_toText {e : Expr} (h : Plain e) : ∃ e', parse e.toText = .ok e' ∧ flat e' = flat e := by
-  have hp : e.toText.toList = render (ptoks e 1) := (printRaw_plain h).print [] 1
+  have hp : e.toText.toList = render (ptoks e 1) := by
+    have := (printRaw_plain h).print [] 1 ""; simpa [Expr.toText] using this
   obtain ⟨arr, hlex, hstrip⟩ := lex_render (ptoks e 1) (lexable_plain h 1) 0 #[]
   have hl : lex e.toText = .ok arr := by unfold lex; rw [hp]; exact hlex
   simp only [List.map_nil, List.nil_append] at hstrip

@@ -75,6 +75,21 @@ export function letHead(stmt: Stmt): { name: string; params: string[] | null } |
 export const ch = (c: string): Atom => ({ k: "ch", c });
 export const chars = (s: string): Atom[] => Array.from(s, ch);
 
+/** The line of a block of several lines (a system's declarations) that the position `i` is on: its
+ *  atoms are `from` up to `to`, the line break that ends it (or the block's end). A position just
+ *  before a break is the end of its line, one just after it the start of the next. */
+export function lineOf(b: Block, i: number): { from: number; to: number } {
+  let from = i, to = i;
+  while (from > 0 && !isBreak(b[from - 1])) from--;
+  while (to < b.length && !isBreak(b[to])) to++;
+  return { from, to };
+}
+export const isBreak = (a: Atom | undefined) => a?.k === "ch" && a.c === "\n";
+
+/** Calls whose parentheses hold one body, not arguments: a system's declarations (`Systems.lean`),
+ *  where a `,` separates an action's updates (`do a := x, p := write`). */
+export const BODY_CALLS = new Set(["system"]);
+
 // --- the lexer's character classes, as the engine has them (`Parser.lean`, `lex`) ---------------
 
 /** Greek α … ω (and the capitals between) and the script ℯ are name characters. */
@@ -117,6 +132,18 @@ export function merges(before: string, next: string): boolean {
     else { last = "num"; j++; while (j < cs.length && (isDigit(cs[j]!) || cs[j] === ".")) j++; }
   }
   return last === "name" ? isIdChar(next) : isDigit(next) || next === ".";
+}
+
+/** The indent of the line that starts at `j` of `b`, just after a line break: the space before the
+ *  atom read first on that line, wherever typing at the line's start has since put it (whatever is
+ *  typed there takes the indent over). Undefined for a line no atom of which was read first on it. */
+export function lineIndent(b: Block, j: number): string | undefined {
+  for (let k = j; k < b.length; k++) {
+    const a = b[k]!;
+    if (a.k === "ch" && a.c === "\n") return undefined;
+    if (a.src?.prev === "\n") return a.src.gap;
+  }
+  return undefined;
 }
 
 /** Structural equality, for tests and for the editor's "did this edit change anything". */

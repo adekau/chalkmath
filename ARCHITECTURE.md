@@ -93,28 +93,35 @@ differential test with zero mismatches.
   by consing, innermost index first, in the rewriter and the printer, and reversed only where a step
   or a label spells one out; a label is written only to depth 64 (`pathLabelDepth`), so the echo of a
   pathologically deep input stays linear, and the notebook finds a deeper subterm by its nearest
-  labelled ancestor. A sum or a product of ten thousand terms, or ten thousand `-` signs, answers in a
-  fraction of a second, outline and paths included. An outline says whether a step is quiet (prints
-  the same before and after) by printing the parent of the subterm the step rewrote, on both sides
-  (`Step.quiet`): `after` is `before` with that subterm replaced, so the two can differ only where
-  its parent prints, and printing both whole terms made an outline cost the steps times the term.
-  The rewriter asks after every node whether `canon` reordered it; `canon` rebuilds only a sum's or
-  product's list out of the same children, so `equal` is run as `beqFast`, structural equality with a
-  pointer-equality shortcut (`implemented_by`; the logical definition the proofs use is untouched),
-  and the answer is found at the root or one level down rather than by walking the subtree at every
-  node, which was quadratic on a deep term (`sin(sin(…))`, `x^x^…`). A chain of radicals
-  (`√(√(…√x))`) fires a silent `simp.sqrt` at every level, and two more things were quadratic in
-  it. A rule's result is normalized again from the top, and a result is mostly the children of the
-  node the rule fired on, which the firing's own hypothesis says are normal: the recursive call
-  carries them as known-normal terms, with that proof, and a child of the result `equal` to one
-  (by its pointer, through `beqFast`) is left as it is, rather than walked again (`normAtT`,
-  `Terminate.lean`). And a firing is recorded without its path: the rewriter writes a tape of its
-  moves into, along and out of a node's children and of its firings (`Record`, `Rewrite.lean`),
-  and `buildSteps` replays the tape with a zipper, so a silent firing costs a record, and only a
-  visible step, which needs its path and the whole term before and after, pays for its depth; a
-  path per firing, reversed when recorded and walked from the root when replayed, cost the chain
-  its depth squared twice over. Ten thousand radicals answer in under a second, where they took
-  five minutes.
+  labelled ancestor. Text is written into one buffer, passed down and never shared, in the printer
+  (`Print.lean`: a `Target` gives the pieces of each notation, and each case of `printRaw` settles
+  its precedence before it writes, so the parentheses its context needs come first) and in the JSON
+  writer (`Json.render`), where building each subterm's string and copying it into its parent's cost
+  a term `d` deep its size `d` times over — on the wire a term is a `Json` as deep as itself. The
+  rewriter asks after every node whether `canon` reordered it; `canon` rebuilds only a sum's or
+  product's list out of the same children, so `beq` asks `withPtrEq` first (`beqR`, a verified fast
+  path proved equal to `beq` and installed with `csimp`), and the answer is found at the root or one
+  level down rather than by walking the subtree at every node, which was quadratic on a deep term
+  (`sin(sin(…))`, `x^x^…`). `freeVars` consing onto an accumulator (`freeVarsAcc`, `csimp` likewise)
+  and `Origin.occurrences` building its representatives bottom up are the same change elsewhere. A
+  sum or a product of ten thousand terms, ten thousand `-` signs, or `sin` twenty thousand deep
+  answers in a fraction of a second, outline and paths included. An outline says whether a step is
+  quiet (prints the same before and after) by printing the parent of the subterm the step rewrote, on
+  both sides (`Step.quiet`): `after` is `before` with that subterm replaced, so the two can differ
+  only where its parent prints, and printing both whole terms made an outline cost the steps times
+  the term.
+  A chain of radicals (`√(√(…√x))`) fires a silent `simp.sqrt` at every level, and two more things
+  were quadratic in it. A rule's result is normalized again from the top, and a result is mostly
+  the children of the node the rule fired on, which the firing's own hypothesis says are normal:
+  the recursive call carries them as known-normal terms, with that proof, and a child of the result
+  `equal` to one (by its pointer, through `beqR`) is left as it is, rather than walked again
+  (`normAtT`, `Terminate.lean`). And a firing is recorded without its path: the rewriter writes a
+  tape of its moves into, along and out of a node's children and of its firings (`Record`,
+  `Rewrite.lean`), and `buildSteps` replays the tape with a zipper, so a silent firing costs a
+  record, and only a visible step, which needs its path and the whole term before and after, pays
+  for its depth; a path per firing, reversed when recorded and walked from the root when replayed,
+  cost the chain its depth squared twice over. Ten thousand radicals answer in under a second,
+  where they took five minutes.
 - **Termination is a proof obligation, not a budget.** A rule bundles a proof that it strictly
   decreases a measure; `normalize` is well-founded on that measure and never `partial`. The
   verified `simplify` uses one additive measure (`Rewrite.lean`). The whole notebook pipeline —
@@ -152,16 +159,6 @@ differential test with zero mismatches.
   `N` with a `ln` in it take ten seconds. Newton's method for `ln` and `arctan` starts from a
   double-precision guess, which can only change how fast it converges: the candidates are still
   checked. `x^(1/2)`, which is how `sqrt` is written, is a square root, not `exp(½ ln x)`.
-- **Division by zero is zero, and says so.** Core `Rat` (and Mathlib's `ℚ`) make `0⁻¹ = 0`, so
-  `1/0`, `0^(-1)` and `1/(y − y)` evaluate to `0` by the numeric power rule (`powNumeric`), and the
-  theorems, stated over that arithmetic, hold. A closed form evaluated at a removable singularity
-  (the Fourier coefficient `c(k)` of `llamas.chalk` at `k = 0`, whose `1/k` terms all vanish) gets the
-  right value by it, and refusing instead broke those cells. So the rule answers, and the reply
-  carries a warning for every step that took a zero base to a negative power
-  (`derivationWarnings`, `Rpc.lean`), shown under the answer: the reader sees that a division by
-  zero was taken as zero, and the work shows where. Refusing in the rule, with its theorems
-  (`powNumeric_num`, the ℂ and domain soundness, the termination case) restated, is the stricter
-  option, left for when the lessons are written for it.
 - **An exact answer has a size.** `p^n` for numerals evaluates exactly, and the decimal of a number
   is quadratic in its length (the browser's runtime has no GMP), so a power whose exact value would
   pass `maxPowerBits` (65,536 bits, 19,728 digits) refuses the evaluation and says how many digits it
@@ -169,7 +166,14 @@ differential test with zero mismatches.
   cannot take. The check is a pass over the input before it is normalized (`powerTooLarge`,
   `Limits.lean`, called by `normCell`), sizing each power of closed numeral terms in floating point,
   so the rules and their proofs are untouched; a big power the rewriting assembles from small ones
-  is not caught, and Stop is the answer to it.
+  is not caught, and Stop is the answer to it. A *fractional* exponent is a different hazard: a
+  long decimal such as `1.6020599913279623` (what a scene gets back from `N(log(40)/log(10))`) is
+  `p/q` with `q = 10^16`, and Lean's runtime stops the whole process on any `Nat.pow` exponent of
+  `2^32` or more, even `1 ^ q`. So nothing raises a number to a numeral's numerator or denominator
+  unchecked: `checkedPart` runs as a `@[csimp]`-proven equal function that skips `1 ^ q`, the radical
+  rules ask `radicalsFit` (in `findPair`'s `worth`, so their proofs stand) and leave a radical
+  `b^(p/q)` with `b^|p|` past 65,536 bits as it is, and the printer's `m√s` form gives way to the
+  plain power when its coefficient would pass that size.
 - **A plain `e` is a variable.** `ℯ` (`\e`) is `exp(1)`, so `ℯ^x` is `exp(x)`, but the letter `e` is
   a variable like any other, even though `N` gives it Euler's value (`ieval` treats the name `e` as
   a constant, as `ieval_sound` assumes). A cell whose input has a free `e` says so under its answer:
@@ -420,6 +424,16 @@ differential test with zero mismatches.
   `Congruence`, so the same fold applies. Every rule the pipeline runs without an assumption keeps the
   domain (`simpRulesSafe_soundD`, the parity, radical and square-root rules); `ln(b^p) = p ln b` for an
   even `p` did not, and is now `simp.function.assuming` ("Assuming $x > 0$").
+- **Division by zero is refused, not zero.** `Rat` (and `evalR`, `evalC`) make `0⁻¹ = 0`, so evaluating
+  `0^(-1)` by the arithmetic alone would answer `1/0 = 0`, `1/(y-y) = 0` and `N(1/0) = 0`, each with a
+  verified step. `simp.power` keeps the value the theorems are about (`powNumeric` still returns
+  `.num (p.zpow q)`, so `powerRules_soundR`, `powerRules_soundC` and `powNumeric_num` are untouched) and
+  sets the result's `error` when the base is zero and the exponent a negative integer; `normalizeT`
+  then refuses the cell ("Division by zero: 0^-1 is undefined"). It is the one verified rule that
+  refuses, and only on a term mathematics leaves undefined; `Def` already says `0^(-1)` is nowhere
+  defined, so the domain theorems have nothing to say about it. A notebook that needs a value at a
+  pole writes the case out (`llamas.chalk` defines its Fourier coefficient `c_0` separately and sums
+  over `k ≠ 0`); the earlier design, answering `0` with a warning under the answer, is gone.
 - **A cell is read over ℝ or over ℂ, and the rules know which.** A cell whose input mentions `i`, or
   whose real answer does (`sqrt(-1)`), is normalized over ℂ (`normCell`): the pipeline takes the
   reading as a parameter (`pipelineRulesWith norm real`) and turns off `simp.function.real`, the cases
