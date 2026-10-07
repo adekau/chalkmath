@@ -1,4 +1,4 @@
-import { type Atom, type Block, type Stmt, ch, chars, isAsciiAlpha, isConst, isDigit, isIdChar, isSep, KEYWORDS, MULTI_OPS } from "./model.js";
+import { type Atom, type Block, type Stmt, BODY_CALLS, ch, chars, isAsciiAlpha, isBreak, isConst, isDigit, isIdChar, isSep, KEYWORDS, lineOf, MULTI_OPS } from "./model.js";
 import { notated, slots } from "./notation.js";
 import { BUILTIN_FUNCTIONS, lex, read, ungroup } from "./read.js";
 import { binaryMinus, write, writeText } from "./write.js";
@@ -292,8 +292,8 @@ export class MathEdit {
   }
 
   /** Up (−1) or down (1) between a fraction's parts, a matrix's rows, a bound's top and bottom, and
-   *  into or out of an exponent. False when there is nowhere to go (the notebook moves to the
-   *  neighbouring cell). */
+   *  into or out of an exponent, and otherwise between a system's lines. False when there is nowhere
+   *  to go (the notebook moves to the neighbouring cell). */
   vertical(dir: -1 | 1): boolean {
     this.run = null;
     for (const { block: b, w } of this.ancestors()) {
@@ -320,7 +320,25 @@ export class MathEdit {
       if (next?.k === "sup") { this.caret = { block: next.exp, i: 0 }; return true; }
       if (prev?.k === "sup") { this.caret = { block: prev.exp, i: prev.exp.length }; return true; }
     }
-    return false;
+    return this.line(dir);
+  }
+
+  /** Up or down a line of the innermost block of several lines around the caret (a system's
+   *  declarations), as far along the line as it is (or to its end). False on the first or last line. */
+  private line(dir: -1 | 1): boolean {
+    let b = this.caret.block, i = this.caret.i;
+    for (;;) {
+      if (b.some(isBreak)) {
+        const { from, to } = lineOf(b, i);
+        if (dir < 0 ? from === 0 : to === b.length) return false;
+        const next = lineOf(b, dir < 0 ? from - 1 : to + 1);
+        this.caret = { block: b, i: next.from + Math.min(i - from, next.to - next.from) };
+        return true;
+      }
+      const w = this.where(b);
+      if (!w) return false;
+      b = w.parent; i = w.index;
+    }
   }
 
   /** An empty slot, or the body of a `let` head that has none yet. */
@@ -672,6 +690,8 @@ export class MathEdit {
       if (a.k === "paren" && b === this.caret.block && this.groupToCall(w)) return this.comma();
       // in a group or a set a comma separates nothing structural: `{a, b}`
       if (a.k === "paren" || a.k === "brace") break;
+      // nor in a system's declarations: there it separates an action's updates
+      if (a.k === "call" && BODY_CALLS.has(a.name)) break;
       if (a.k === "call") {
         // in the middle of an argument, what follows the caret starts the next one, as in the text
         const k = a.args.indexOf(b);
@@ -701,7 +721,7 @@ export class MathEdit {
     while (k > 0 && p[k - 1]!.k === "ch" && isIdChar((p[k - 1] as { c: string }).c)) k--;
     const run = p.slice(k, w.index).map((a) => (a as { c: string }).c).join("");
     const last = run ? lex(run).filter((t) => t.kind !== "eof").pop() : undefined;
-    if (last?.kind !== "id" || last.stop !== Array.from(run).length) return false;
+    if (last?.kind !== "id" || last.stop !== Array.from(run).length || BODY_CALLS.has(last.s)) return false;
     const n = Array.from(last.s).length;
     const args: Block[] = [[]];
     let caret: Caret | null = null;

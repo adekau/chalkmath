@@ -1,4 +1,4 @@
-import { type Atom, type Block, type Src, type Stmt, ch, isConst, isDigit, isIdChar, isIdStart, isSep, KEYWORDS, merges, MULTI_OPS, showAtom } from "./model.js";
+import { type Atom, type Block, type Src, type Stmt, BODY_CALLS, ch, isConst, isDigit, isIdChar, isIdStart, isSep, KEYWORDS, merges, MULTI_OPS, showAtom } from "./model.js";
 
 /**
  * Source text → the editor's tree. Every text reads: what the grammar cannot structure becomes a
@@ -346,6 +346,13 @@ class Reader {
           const sup: Atom = { k: "sup", exp: [...(minus ? this.charsOf(minus) : []), ...this.charsOf(n)] };
           sup.src = { start: call.src!.end, end: call.src!.end, text: "", gap: "", shape: "", prev: "", next: "" };
           return [call, sup];
+        }
+        // a system's parentheses hold its declarations, one body: a `,` in it is an action's
+        if (this.loose && BODY_CALLS.has(t.s) && this.isOp(this.peek(), "(") && !this.peek().ws) {
+          this.next();
+          const args = this.isOp(this.peek(), ")") ? [] : [this.seq(new Set([")"]))];
+          if (args[0]) this.trail(args[0]);
+          return [this.at({ k: "call", name: t.s, args }, t, this.expectOp(")"))];
         }
         if (this.isOp(this.peek(), "(") && (this.isFn(t.s) || (this.loose && !this.peek().ws) || this.commaGroup())) {
           this.next();

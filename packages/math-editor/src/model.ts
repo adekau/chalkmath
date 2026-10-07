@@ -75,6 +75,21 @@ export function letHead(stmt: Stmt): { name: string; params: string[] | null } |
 export const ch = (c: string): Atom => ({ k: "ch", c });
 export const chars = (s: string): Atom[] => Array.from(s, ch);
 
+/** The line of a block of several lines (a system's declarations) that the position `i` is on: its
+ *  atoms are `from` up to `to`, the line break that ends it (or the block's end). A position just
+ *  before a break is the end of its line, one just after it the start of the next. */
+export function lineOf(b: Block, i: number): { from: number; to: number } {
+  let from = i, to = i;
+  while (from > 0 && !isBreak(b[from - 1])) from--;
+  while (to < b.length && !isBreak(b[to])) to++;
+  return { from, to };
+}
+export const isBreak = (a: Atom | undefined) => a?.k === "ch" && a.c === "\n";
+
+/** Calls whose parentheses hold one body, not arguments: a system's declarations (`Systems.lean`),
+ *  where a `,` separates an action's updates (`do a := x, p := write`). */
+export const BODY_CALLS = new Set(["system"]);
+
 // --- the lexer's character classes, as the engine has them (`Parser.lean`, `lex`) ---------------
 
 /** Greek α … ω (and the capitals between) and the script ℯ are name characters. */

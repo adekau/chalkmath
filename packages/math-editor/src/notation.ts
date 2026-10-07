@@ -168,7 +168,8 @@ class Notation {
 
   private blockInner(b: Block): string {
     // a block of several lines (a system's declarations) is drawn as its lines, left-aligned; each
-    // line break is an atom at the end of its line, for the caret
+    // line break is an atom at the end of its line, for the caret, as tall as a line (a strut) so an
+    // empty line has somewhere for it
     const breaks = b.flatMap((a, j) => (a.k === "ch" && a.c === "\n" ? [j] : []));
     if (breaks.length) {
       const lines: string[] = [];
@@ -177,7 +178,7 @@ class Notation {
         const line = b.slice(from, j);
         // an indented line keeps its indent, also once something is typed at its start
         const indent = (from ? lineIndent(b, from) : line[0]?.src?.gap) ? "\\quad " : "";
-        lines.push(indent + (line.length ? this.row(line) : "") + (j < b.length ? this.wrap([b[j]!], "") : ""));
+        lines.push(indent + (line.length ? this.row(line) : "") + (j < b.length ? this.wrap([b[j]!], "\\mathstrut") : ""));
         from = j + 1;
       }
       return `\\begin{array}{l}${lines.join(" \\\\ ")}\\end{array}`;
