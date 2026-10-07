@@ -70,6 +70,19 @@ def qthPowerGo (q : Nat) : (fuel d c m : Nat) → Nat
 def checkedPart (b q m : Nat) : Nat × Nat :=
   if m ≥ 1 && b % (m ^ q) == 0 then (m, b / (m ^ q)) else (1, b)
 
+/-- `checkedPart` as it runs: `m = 1` (no factor found, always so when `2^q > b`) answers `(1, b)`
+without computing `1 ^ q`. Lean's runtime stops the whole process on a `Nat.pow` exponent of `2^32` or
+more, whatever the base, and `q` is a numeral's denominator: `10^1.6020599913279623` has `q = 10^16`. -/
+def checkedPartImpl (b q m : Nat) : Nat × Nat :=
+  if m == 1 then (1, b) else if m ≥ 1 && b % (m ^ q) == 0 then (m, b / (m ^ q)) else (1, b)
+
+@[csimp] theorem checkedPart_eq_impl : @checkedPart = @checkedPartImpl := by
+  funext b q m
+  unfold checkedPart checkedPartImpl
+  by_cases h : m = 1
+  · subst h; simp
+  · simp [h]
+
 /-- `b = m^q · s` with `m` the largest such: the `q`-th-power part of a positive integer, exact for
 `b < 2^(20(q+1))` and otherwise as far as trial division up to `2^20` finds (the factors it finds
 are real; a larger one it misses leaves `s` with a `q`-th-power factor). -/
