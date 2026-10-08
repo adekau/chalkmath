@@ -63,6 +63,7 @@ export const MATH_INPUT_CSS = `
 .mi-caret { position:absolute; width:1.5px; background:var(--mi-caret, currentColor); pointer-events:none; display:none; }
 .mi.focused .mi-caret { display:block; animation:mi-blink 1.06s steps(1) infinite; }
 .mi.focused { box-shadow:0 0 0 1px var(--mi-focus, #6b8afd); border-radius:4px; }
+.mi.mi-reading { cursor:default; }
 .mi.focused .mi-math [data-h].mi-here { color:var(--mi-caret, currentColor); }
 .mi-cmd { color:var(--mi-cmd, #b0662c); }
 .mi-math .mi-err { background:var(--mi-err-bg, rgba(192,57,43,0.12)); box-shadow:0 2px 0 var(--mi-err, #c0392b); border-radius:2px 2px 0 0; }
@@ -175,6 +176,8 @@ export class MathInput {
   private caretEl: HTMLElement;
   private ta: HTMLTextAreaElement;
   private atomEl = new Map<Atom, { el: HTMLElement; k: number; n: number }>();
+  /** The atoms each `\\htmlData{a=…}` box draws, by its number. */
+  private tagged: Atom[][] = [];
   private holeEl = new Map<Block, HTMLElement>();
   private composing = false;
   /** The engine's error span on the last run, marked on the atoms it covers until the next edit. */
@@ -256,9 +259,10 @@ export class MathInput {
       ev.preventDefault();
       if (this.edit.paste(t)) this.changed();
     });
-    // a click puts the caret; a drag selects; Shift+click extends the selection
+    // a click puts the caret; a drag selects; Shift+click extends the selection (not while it is read)
     this.el.addEventListener("mousedown", (ev) => {
       ev.preventDefault();
+      if (this.reading) { this.el.focus({ preventScroll: true }); return; }
       const c = this.caretAt(ev.clientX, ev.clientY);
       if (c) {
         if (ev.shiftKey) this.edit.extend(); else this.edit.anchor = null;
@@ -287,7 +291,7 @@ export class MathInput {
   get holes(): number { return write(this.edit.stmt).holes; }
   /** Focus the input, scrolling it into view (a click on it passes `scroll: false`: it is in view). */
   focus(scroll = true) {
-    this.ta.focus({ preventScroll: true });
+    (this.reading ? this.el : this.ta).focus({ preventScroll: true });
     if (scroll) this.el.scrollIntoView({ block: "nearest" });
   }
 
@@ -305,6 +309,7 @@ export class MathInput {
     // display-size fractions and operators, as a textbook (and Symbolab) set an input, but left-aligned
     katex.render(`\\displaystyle ${latex}`, this.math, { throwOnError: false, trust: TRUST, strict: false, displayMode: false });
     this.fitParens();
+    this.tagged = tagged;
     this.atomEl.clear(); this.holeEl.clear();
     // a slot drawn twice (dⁿ/dxⁿ shows n twice) is found at its first place
     for (const el of this.math.querySelectorAll<HTMLElement>("[data-a]")) {
@@ -521,6 +526,44 @@ export class MathInput {
   /** An edit from outside the keyboard (a keypad button): run it on the editor and redraw. */
   apply(fn: (e: MathEdit) => boolean) {
     if (fn(this.edit)) this.changed(); else this.place();
+  }
+
+  /** Read only: drawn exactly as when it is edited, without a caret, and a click does not edit (the
+   *  host decides what a click does). The input itself takes the focus then, for the host's keys. */
+  get reading(): boolean { return this.el.classList.contains("mi-reading"); }
+  set reading(on: boolean) {
+    if (on === this.reading) return;
+    if (on && this.editing) this.ta.blur();
+    // what was selected while it was edited is not part of reading it
+    if (on && this.edit.anchor) { this.edit.anchor = null; this.place(); }
+    this.el.classList.toggle("mi-reading", on);
+    if (on) this.el.tabIndex = 0; else this.el.removeAttribute("tabindex");
+  }
+
+  /** The characters of the text drawn under the point: the atoms of the innermost box there. A box
+   *  inside a fraction or a power is found by where it is, since KaTeX lays the fraction's rows over
+   *  what they hold. */
+  spanAt(x: number, y: number): { start: number; end: number } | null {
+    const inside = (e: Element) => [...e.getClientRects()].some((r) => x >= r.left && x <= r.right && y >= r.top && y <= r.bottom);
+    let box: HTMLElement | null = null;
+    for (const el of this.math.querySelectorAll<HTMLElement>("[data-a]")) if (inside(el) && (!box || box.contains(el))) box = el;
+    if (!box) return null;
+    const { spans } = write(this.edit.stmt);
+    let start = Infinity, end = -Infinity;
+    for (const a of this.tagged[+box.dataset["a"]!] ?? []) {
+      const s = spans.get(a);
+      if (s) { start = Math.min(start, s.start); end = Math.max(end, s.end); }
+    }
+    return start < end ? { start, end } : null;
+  }
+
+  /** The box around what spells the characters `span` of the text, relative to the input. */
+  boxOf(span: { start: number; end: number }): { left: number; top: number; width: number; height: number } | null {
+    const rects = atomsInSpan(this.edit.stmt, span).map((a) => this.atomEl.get(a)?.el.getBoundingClientRect()).filter((r): r is DOMRect => !!r && r.width > 0);
+    if (!rects.length) return null;
+    const me = this.el.getBoundingClientRect();
+    const left = Math.min(...rects.map((r) => r.left)), top = Math.min(...rects.map((r) => r.top));
+    return { left: left - me.left, top: top - me.top, width: Math.max(...rects.map((r) => r.right)) - left, height: Math.max(...rects.map((r) => r.bottom)) - top };
   }
 
   /** Mark where the engine's error is (its span into the text), or clear the mark. */
