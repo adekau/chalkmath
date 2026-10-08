@@ -405,6 +405,8 @@ def evaluateSystem (st : Store) (params : Json) (sessionId cellId src : String) 
       | some (R, bad, added) =>
         let pairs (ps : List (String × String)) : Json := .arr (ps.map fun (a, b) => Json.arr #[.str a, .str b]).toArray
         let layers : Array (String × Json) := if res.layers.isEmpty then #[] else #[("layers", .arr (res.layers.map fun n => Json.num (toString n)).toArray)]
+        -- each arrow's actions, in the order of `edges`
+        let labels : Array (String × Json) := if res.edgeLabels.length != R.pairs.length then #[] else #[("labels", .arr (res.edgeLabels.map Json.str).toArray)]
         -- where each step of the work is on the graph: the transition it takes, or the state it is at
         let mark (st : Step) : Json :=
           match Sys.labelOfStateExpr st.before, Sys.labelOfStateExpr st.after with
@@ -417,7 +419,7 @@ def evaluateSystem (st : Store) (params : Json) (sessionId cellId src : String) 
         let marks := res.derivation.steps.map mark
         let stepsField : Array (String × Json) := if marks.all (fun | .null => true | _ => false) then #[] else #[("steps", .arr marks)]
         r.push ("visuals", .arr #[.obj #[("kind", .str "relation.digraph"), ("data", .obj (#[
-          ("nodes", .arr (R.elems.map Json.str).toArray), ("edges", pairs R.pairs), ("bad", pairs bad), ("added", pairs added)] ++ layers ++ stepsField))]])
+          ("nodes", .arr (R.elems.map Json.str).toArray), ("edges", pairs R.pairs), ("bad", pairs bad), ("added", pairs added)] ++ layers ++ labels ++ stepsField))]])
       | none => r
     let r := match res.spacetime with
       | some (D, evOf) =>

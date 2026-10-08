@@ -1,7 +1,7 @@
 import { createClient, type EngineClient, type Step, type StepOutline, type Path, type RuleStatus, type Derivation, type WireExpr, type PlotResult, type ManipulateResult, type HasseData, type KnownVisual, type TruthTableData, type DigraphData, type OpTableData, type ContextTableData, type TypingNode, type TypingTreeData, type SpacetimeData } from "@chalkmath/protocol";
 import { workerTransport, httpTransport } from "@chalkmath/engine-host";
 import { leanForPrelude } from "@chalkmath/lean-editor/prelude";
-import { read as readNotation, write as writeNotation, writeText, hasNotation, templateAt, templateInText, TEMPLATES, lex as lexNotation, type Stmt, type Caret, type MathEdit } from "@chalkmath/math-editor";
+import { read as readNotation, write as writeNotation, writeText, hasNotation, templateAt, templateInText, TEMPLATES, KEYWORDS, lex as lexNotation, type Stmt, type Caret, type MathEdit } from "@chalkmath/math-editor";
 import { MathInput, type MathInputOptions } from "@chalkmath/math-editor/view";
 
 /**
@@ -3587,7 +3587,7 @@ function knownVisuals(vs: unknown): KnownVisual[] {
  *  (its arrow, or its state when it takes none). A step's arrow shows its own mark class too, so a
  *  marked transition keeps its colour under the trail. */
 function markGraphSteps(box: HTMLElement, d: DigraphData, trail: number[], cur: number | undefined) {
-  box.querySelectorAll(".redge.trail, .redge.cur, .hnode.cur").forEach((x) => x.classList.remove("trail", "cur"));
+  box.querySelectorAll(".redge.trail, .redge.cur, .rlabel.trail, .rlabel.cur, .hnode.cur").forEach((x) => x.classList.remove("trail", "cur"));
   box.querySelectorAll<SVGPathElement>(".redge").forEach((p) => {
     const cls = p.classList.contains("bad") ? "-bad" : p.classList.contains("added") ? "-added" : "";
     p.setAttribute("marker-end", `url(#rel-arrow${cls})`);
@@ -3602,6 +3602,7 @@ function markGraphSteps(box: HTMLElement, d: DigraphData, trail: number[], cur: 
         p.classList.add(cls);
         if (cls === "cur") p.setAttribute("marker-end", "url(#rel-arrow-cur)");
       });
+      box.querySelectorAll(".rlabel").forEach((t) => { if (t.getAttribute("data-edge") === want) t.classList.add(cls); });
     }
     const at = m.node ?? (cls === "cur" ? m.edge?.[1] : undefined);
     if (at !== undefined) box.querySelectorAll(".hnode").forEach((c) => { if (c.getAttribute("data-node") === at) c.classList.add(cls); });
@@ -3847,12 +3848,17 @@ function truthTable(d: TruthTableData): HTMLElement {
 }
 
 /** A relation as a directed graph: elements on a circle, a pair as an arrow (a loop for `x R x`). The
- *  arrows that show a property failing are marked, and the ones a closure added are dashed. */
+ *  arrows that show a property failing are marked, and the ones a closure added are dashed. A state
+ *  graph is drawn in rows instead, each state a box with its name in it, the arrows ending at the
+ *  boxes' edges (a loop on a box's right side) and labelled with the actions that take them. */
 function digraphSvg(d: DigraphData): SVGSVGElement {
   const NS = "http://www.w3.org/2000/svg";
   const n = d.nodes.length;
   const longest = Math.max(1, ...d.nodes.map((x) => x.length));
   const layered = !!d.layers && d.layers.length === n;
+  const labels = d.labels?.length === d.edges.length ? d.labels : undefined;
+  // a state's box: half its width (the name's, at the label's 11px code font) and half its height
+  const half = (name: string): [number, number] => [name.length * 3.35 + 8, 10];
   const pos = new Map<string, [number, number]>();
   let w: number, hgt: number;
   if (layered) {
@@ -3860,8 +3866,12 @@ function digraphSvg(d: DigraphData): SVGSVGElement {
     const rows = new Map<number, string[]>();
     d.nodes.forEach((name, i) => { const l = d.layers![i]!; rows.set(l, [...(rows.get(l) ?? []), name]); });
     const widest = Math.max(1, ...[...rows.values()].map((r) => r.length));
-    const colW = Math.max(70, longest * 7 + 24), rowH = 74;
-    w = Math.max(240, widest * colW + 40); hgt = (Math.max(0, ...rows.keys()) + 1) * rowH + 30;
+    // a column holds a box, with room on its right for a loop and the loop's label, and labelled
+    // arrows want room beside them
+    const boxW = 2 * half("x".repeat(longest))[0];
+    const loopW = Math.max(0, ...d.edges.map(([a, b], k) => (a === b ? 2 * (26 + (labels?.[k]?.length ?? 0) * 6) : 0)));
+    const colW = Math.max(70, boxW + 28, boxW + loopW, labels ? Math.max(0, ...labels.map((x) => x.length)) * 6 + 40 : 0), rowH = labels ? 84 : 74;
+    w = Math.max(240, widest * colW + 40); hgt = Math.max(0, ...rows.keys()) * rowH + 48;
     for (const [l, names] of rows) names.forEach((name, k) => pos.set(name, [20 + (k + 0.5) * ((w - 40) / names.length), 24 + l * rowH]));
   } else {
     const r = n <= 1 ? 0 : Math.max(60, Math.min(150, 26 * n)), pad = Math.max(60, longest * 6.6 + 24);
@@ -3875,7 +3885,7 @@ function digraphSvg(d: DigraphData): SVGSVGElement {
   const bad = new Set(d.bad.map(key)), added = new Set(d.added.map(key)), all = new Set(d.edges.map(key));
   const svg = document.createElementNS(NS, "svg");
   svg.setAttribute("role", "img");
-  svg.setAttribute("aria-label", `A relation on ${n} element${n === 1 ? "" : "s"}${d.edges.length ? `; pairs: ${d.edges.map(([a, b]) => `${a} to ${b}`).join(", ")}` : ", no pairs"}`);
+  svg.setAttribute("aria-label", `A relation on ${n} element${n === 1 ? "" : "s"}${d.edges.length ? `; pairs: ${d.edges.map(([a, b], k) => `${a} to ${b}${labels?.[k] ? ` by ${labels[k]}` : ""}`).join("; ")}` : ", no pairs"}`);
   svg.setAttribute("viewBox", `0 0 ${w} ${hgt}`); svg.setAttribute("width", String(w)); svg.setAttribute("height", String(hgt));
   const defs = document.createElementNS(NS, "defs");
   for (const cls of ["", "bad", "added", "cur"]) {
@@ -3888,39 +3898,78 @@ function digraphSvg(d: DigraphData): SVGSVGElement {
     m.append(path); defs.append(m);
   }
   svg.append(defs);
-  for (const e of d.edges) {
+  // the labels go on top of every arrow, so one arrow does not cross out another's label
+  const texts: SVGTextElement[] = [];
+  d.edges.forEach((e, ei) => {
     const [a, b] = e;
-    const p = pos.get(a), q = pos.get(b); if (!p || !q) continue;
+    const p = pos.get(a), q = pos.get(b); if (!p || !q) return;
     const cls = bad.has(key(e)) ? "bad" : added.has(key(e)) ? "added" : "";
     const path = document.createElementNS(NS, "path");
-    if (a === b) {
+    // where the label goes, and which way it reads from there
+    let at: [number, number, "start" | "middle" | "end"];
+    if (layered && a === b) {
+      // a loop on the box's right side, its label past it
+      const rx = p[0] + half(a)[0], y = p[1];
+      path.setAttribute("d", `M${rx},${y - 5} C${rx + 26},${y - 20} ${rx + 26},${y + 20} ${rx + 2},${y + 5}`);
+      at = [rx + 24, y + 4, "start"];
+    } else if (layered) {
+      // from box edge to box edge; bend a pair drawn both ways apart, and edges within a row or back up it
+      const dx = q[0] - p[0], dy = q[1] - p[1], len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
+      const bend = all.has(key([b, a])) ? 14 : q[1] <= p[1] ? 26 : 0;
+      const mx = (p[0] + q[0]) / 2 - uy * bend, my = (p[1] + q[1]) / 2 + ux * bend;
+      // where the line from a box's centre toward the curve's control point leaves the box
+      const edge = (c: [number, number], name: string, gap: number): [number, number] => {
+        const [hw, hh] = half(name), ex = mx - c[0], ey = my - c[1], el = Math.hypot(ex, ey) || 1;
+        const t = Math.min(ex ? hw / Math.abs(ex / el) : Infinity, ey ? hh / Math.abs(ey / el) : Infinity) + gap;
+        return [c[0] + (ex / el) * t, c[1] + (ey / el) * t];
+      };
+      const [x1, y1] = edge(p, a, 1), [x2, y2] = edge(q, b, 2);
+      path.setAttribute("d", `M${x1},${y1} Q${mx},${my} ${x2},${y2}`);
+      // the curve's midpoint; a bent arrow's label is outside its bend, clear of the arrow beside it
+      const nx = -uy * Math.sign(bend), ny = ux * Math.sign(bend), cx = (x1 + 2 * mx + x2) / 4 + 5 * nx, cy = (y1 + 2 * my + y2) / 4 + 5 * ny;
+      at = [cx, cy + (ny > 0.3 ? 10 : ny < -0.3 ? -2 : 4), nx > 0.3 ? "start" : nx < -0.3 ? "end" : "middle"];
+    } else if (a === b) {
       // a loop, outward from the centre
       const ang = Math.atan2(p[1] - hgt / 2, p[0] - w / 2) || -Math.PI / 2;
       const cx = p[0] + 18 * Math.cos(ang), cy = p[1] + 18 * Math.sin(ang);
       const s1 = [p[0] + 7 * Math.cos(ang - 0.6), p[1] + 7 * Math.sin(ang - 0.6)], s2 = [p[0] + 7 * Math.cos(ang + 0.6), p[1] + 7 * Math.sin(ang + 0.6)];
       path.setAttribute("d", `M${s1[0]},${s1[1]} Q${cx + 14 * Math.cos(ang - 1.2)},${cy + 14 * Math.sin(ang - 1.2)} ${cx},${cy} Q${cx + 14 * Math.cos(ang + 1.2)},${cy + 14 * Math.sin(ang + 1.2)} ${s2[0]},${s2[1]}`);
+      // past the loop's far end
+      const c = Math.cos(ang);
+      at = [p[0] + 30 * c, p[1] + 30 * Math.sin(ang) + 4, c < -0.3 ? "end" : c > 0.3 ? "start" : "middle"];
     } else {
       // stop short of the nodes; bend when the reverse pair is drawn too, so the two do not overlap
       const dx = q[0] - p[0], dy = q[1] - p[1], len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
       const x1 = p[0] + ux * 8, y1 = p[1] + uy * 8, x2 = q[0] - ux * 9, y2 = q[1] - uy * 9;
-      // bend a pair drawn both ways apart; in a layered drawing, bend edges within a row or back up it
-      const bend = all.has(key([b, a])) ? 14 : layered && q[1] <= p[1] ? 26 : 0;
+      const bend = all.has(key([b, a])) ? 14 : 0;
       const mx = (x1 + x2) / 2 - uy * bend, my = (y1 + y2) / 2 + ux * bend;
       path.setAttribute("d", `M${x1},${y1} Q${mx},${my} ${x2},${y2}`);
+      at = [(x1 + 2 * mx + x2) / 4, (y1 + 2 * my + y2) / 4 + 4, "middle"];
     }
     path.setAttribute("class", `redge ${cls}`);
     path.setAttribute("marker-end", `url(#rel-arrow${cls ? `-${cls}` : ""})`);
     path.setAttribute("data-edge", JSON.stringify(e));
     svg.append(path);
-  }
+    const label = labels?.[ei];
+    if (label) {
+      const t = document.createElementNS(NS, "text");
+      t.setAttribute("x", String(at[0])); t.setAttribute("y", String(at[1])); t.setAttribute("text-anchor", at[2]);
+      t.setAttribute("class", `rlabel ${cls}`); t.setAttribute("data-edge", JSON.stringify(e)); t.textContent = label;
+      texts.push(t);
+    }
+  });
+  svg.append(...texts);
   for (const [name, [x, y]] of pos) {
-    const c = document.createElementNS(NS, "circle");
-    c.setAttribute("cx", String(x)); c.setAttribute("cy", String(y)); c.setAttribute("r", "5"); c.setAttribute("class", "hnode"); c.setAttribute("data-node", name); svg.append(c);
     const t = document.createElementNS(NS, "text");
     if (layered) {
-      // centred under the node
-      t.setAttribute("x", String(x)); t.setAttribute("y", String(y + 19)); t.setAttribute("text-anchor", "middle");
+      // a box with the name in it
+      const [hw, hh] = half(name), r = document.createElementNS(NS, "rect");
+      r.setAttribute("x", String(x - hw)); r.setAttribute("y", String(y - hh)); r.setAttribute("width", String(2 * hw)); r.setAttribute("height", String(2 * hh));
+      r.setAttribute("rx", "5"); r.setAttribute("class", "hnode"); r.setAttribute("data-node", name); svg.append(r);
+      t.setAttribute("x", String(x)); t.setAttribute("y", String(y + 4)); t.setAttribute("text-anchor", "middle");
     } else {
+      const c = document.createElementNS(NS, "circle");
+      c.setAttribute("cx", String(x)); c.setAttribute("cy", String(y)); c.setAttribute("r", "5"); c.setAttribute("class", "hnode"); c.setAttribute("data-node", name); svg.append(c);
       // outward from the centre, past the node's loop when it has one
       const out = Math.atan2(y - hgt / 2, x - w / 2) || -Math.PI / 2, dist = d.edges.some(([a, b]) => a === name && b === name) ? 40 : 14;
       t.setAttribute("x", String(x + dist * Math.cos(out) - (Math.cos(out) < -0.3 ? name.length * 6.6 : 4))); t.setAttribute("y", String(y + dist * Math.sin(out) + 4));
@@ -7709,12 +7758,15 @@ function highlightHtml(src: string): string {
   if (q) return `${q[1] ? highlightHtml(q[1]) : ""}<span class="hq">?</span><span class="hask">${esc(src.slice(q[0].length))}</span>`;
   const toks = tokenize(src);
   const bound = boundTokens(src, toks);
-  const lambdaCell = /[λ\\]|:=/.test(src) || LAMBDA_CMD.test(src.trim());
+  // a system's clauses (`var`, `init`, `action … when … do`) and the quantifiers, as the typeset view
+  // marks them; a system's `:=` is an update, not a λ-cell's definition
+  const keywords = SYSTEM_CELL.test(src.trim()) || isLogicCell(src.trim());
+  const lambdaCell = !keywords && (/[λ\\]|:=/.test(src) || LAMBDA_CMD.test(src.trim()));
   let out = "";
   toks.forEach((t, k) => {
     let cls = "";
     if (t.kind === "num") cls = "hnum";
-    else if (t.kind === "kw") cls = "hkw";
+    else if (t.kind === "kw" || (keywords && t.kind === "id" && KEYWORDS.has(t.text))) cls = "hkw";
     else if (t.kind === "asset") cls = S.assets[t.text.slice(1, -1)] ? "hasset" : "hasset missing";
     else if (t.kind === "str") cls = "hstr";
     else if (t.kind === "op") cls = /^[()\[\]{};,]$/.test(t.text) ? "hpun" : "hop";

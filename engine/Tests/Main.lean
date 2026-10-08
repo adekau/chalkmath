@@ -1018,6 +1018,8 @@ def algebraTests : TestM Unit := do
 /-- The systems world: a system written over several lines, its state graph, a counterexample's
 trace marked on it, and the Kleene iterations of a CTL formula as steps. -/
 def systemsTests : TestM Unit := do
+  let lab := rpc "engine.evaluate" "{\"sessionId\":\"lab\",\"cellId\":\"a\",\"source\":\"system(var x in 0..1; init x = 0; action up when x = 0 do x := 1; action jump when x = 0 do x := 1; action stay do x := x)\"}"
+  checkTrue "systems: a state graph labels each arrow, in the order of its pairs, with the actions that take it" (contains lab "\"edges\":[[\"0\",\"1\"],[\"0\",\"0\"],[\"1\",\"1\"]]" && contains lab "\"labels\":[\"up, jump\",\"stay\",\"stay\"]") lab
   let req (id src : String) := s!"\{\"jsonrpc\":\"2.0\",\"id\":{id},\"method\":\"engine.evaluate\",\"params\":\{\"sessionId\":\"s\",\"cellId\":\"c{id}\",\"source\":\"{src}\",\"showWork\":true}}"
   let (st, defRaw) := handleS [] (req "1" "let C = system(\\n  var x in 0..2\\n  init x = 0\\n  action inc when x < 2 do x := x + 1\\n)")
   checkTrue "systems: a system over several lines, its graph drawn" (contains defRaw "\"kind\":\"system\"" && contains defRaw "\"edges\":[[\"0\",\"1\"],[\"1\",\"2\"]]") defRaw
