@@ -526,6 +526,24 @@ export class MathInput {
   /** Mark where the engine's error is (its span into the text), or clear the mark. */
   markError(span: { start: number; end: number } | null) { this.errSpan = span; this.render(); }
 
+  /** Select the atoms that spell the characters `span` of the text (a piece the page picked out of
+   *  it to edit), the caret at its end. False when nothing there is an atom of the tree. */
+  selectSpan(span: { start: number; end: number }): boolean {
+    const atoms = atomsInSpan(this.edit.stmt, span);
+    const place = (a: Atom, b: Block = this.edit.root): Caret | null => {
+      const i = b.indexOf(a);
+      if (i >= 0) return { block: b, i };
+      for (const x of b) for (const s of slots(x)) { const c = place(a, s); if (c) return c; }
+      return null;
+    };
+    const first = atoms[0] && place(atoms[0]), last = atoms[atoms.length - 1] && place(atoms[atoms.length - 1]!);
+    if (!first || !last) return false;
+    this.edit.anchor = first;
+    this.edit.caret = { block: last.block, i: last.i + 1 };
+    this.render();
+    return true;
+  }
+
   private changed() {
     this.edit.restructure();
     this.errSpan = null;

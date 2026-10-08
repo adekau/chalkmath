@@ -3,6 +3,7 @@ import { workerTransport, httpTransport } from "@chalkmath/engine-host";
 import { leanForPrelude } from "@chalkmath/lean-editor/prelude";
 import { read as readNotation, write as writeNotation, writeText, hasNotation, templateAt, templateInText, TEMPLATES, KEYWORDS, lex as lexNotation, type Stmt, type Caret, type MathEdit } from "@chalkmath/math-editor";
 import { MathInput, type MathInputOptions } from "@chalkmath/math-editor/view";
+import { termSpans, deleteTerm, replaceTerm, type TermSpan } from "./term-spans.js";
 
 /**
  * The notebook shell. Structure, type and colour follow the second export of the
@@ -275,6 +276,11 @@ interface Cell {
   /** "complex" when the cell mentions `i`: its steps are judged by the rules' statuses over ℂ. */
   semantics?: "real" | "complex";
   echoLatex?: string | undefined;
+  /** The source `echoLatex` is the interpretation of (not saved: a file's echo is its source's). */
+  echoFor?: string;
+  /** A typeset cell being edited: it shows the visual input until it runs, then its interpretation
+   *  (View › Read typeset cells; not saved). */
+  typing?: boolean;
   /** The work: the evaluation's steps with their terms, once fetched (`loadWork`) or as a file saved them. */
   steps?: Step[];
   /** The work as the evaluation sent it: the steps without their terms (`engine.steps` sends those
@@ -471,6 +477,9 @@ const S = {
   showEcho: (() => { try { return localStorage.getItem("chalkmath.echo") !== "off"; } catch { return true; } })(),
   /** The suggestions bar under a file's output (View › Suggestions bar). */
   suggestions: prefOn("chalkmath.suggestions", true),
+  /** A typeset cell that has run shows the engine's reading of it, to hover and act on, until it is
+   *  double-clicked; running it shows the reading again (View › Read typeset cells). */
+  readView: prefOn("chalkmath.readview", true),
   /** How math cells take their input (View menu): typeset with holes to fill, as text, or Auto —
    *  typeset where there is notation to show (a fraction, a power, a matrix, d/dx, ∫, Σ, √),
    *  highlighted text where there is none (`epicycles(llama, 60)`). A cell's own choice wins. */
@@ -700,6 +709,7 @@ async function runCell(cell: Cell) {
     if (gen === runGen && client && d) await (cell.type === "exercise" ? checkExercise(cell, client, d.sessionId) : evaluateCell(cell, client, d.sessionId));
     else renderCellBody(cell);
   } finally { release(); }
+  if (!cell.type) stopTyping(cell);
 }
 
 async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string) {
@@ -760,6 +770,7 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
       cell.semantics = "semantics" in r && r.semantics === "complex" ? "complex" : "real";
       if ("warnings" in r && r.warnings?.length) cell.warnings = r.warnings;
       cell.echoLatex = r.inputRendered?.latex;
+      cell.echoFor = src;
       // a file's numbers can be hundreds of rows: then the interpretation names what made them instead
       // (a few numbers read better as themselves: mean([0.33; 4.87; …]))
       if (notes.length && sent.length - src.length > 400) cell.echoLatex = `\\text{${notes.map((n) => n.replace(/[\\{}$&#^_%~]/g, "")).join("; ")}}`;
@@ -1420,7 +1431,7 @@ function cellsFromFile(doc: ChalkFile, foldWork = false): Cell[] {
     if (typeof c.outText === "string" && c.outText) cell.outText = c.outText;
     if (typeof c.form === "string" && c.form) cell.form = c.form;
     if (c.semantics === "real" || c.semantics === "complex") cell.semantics = c.semantics;
-    if (typeof c.echoLatex === "string" && c.echoLatex) cell.echoLatex = c.echoLatex;
+    if (typeof c.echoLatex === "string" && c.echoLatex) { cell.echoLatex = c.echoLatex; cell.echoFor = cell.src; }
     if (Array.isArray(c.steps)) cell.steps = c.steps;
     if (Array.isArray(c.outline) && !c.steps?.length) cell.outline = c.outline;
     if (c.error && typeof c.error === "object" && typeof c.error.message === "string") cell.error = c.error;
@@ -2804,7 +2815,7 @@ function focusCell(i: number) {
   else if (c?.type === "lean") focusLean(c.id);
   else if (c?.type === "exercise" && c.lean && !c.editing) focusLean(c.id);
   else if (c?.type === "exercise") c.el?.querySelector<HTMLElement>(".xc-edit textarea, .xc-in")?.focus();
-  else (c?.input ?? c?.ta ?? c?.el?.querySelector<HTMLElement>(".mdout"))?.focus();
+  else (c?.input ?? c?.ta ?? c?.el?.querySelector<HTMLElement>(".mdout, .mread"))?.focus();
 }
 
 function clearOutputs() {
@@ -2946,6 +2957,7 @@ function renderChrome() {
       }]),
       [`${S.keypad ? "✓ " : ""}Math keypad`, () => { S.keypad = !S.keypad; setPref("chalkmath.keypad", S.keypad); renderChrome(); updateKeypad(); }],
       [`${S.suggestions ? "✓ " : ""}Suggestions bar`, () => { S.suggestions = !S.suggestions; setPref("chalkmath.suggestions", S.suggestions); renderChrome(); renderCells(); }],
+      [`${S.readView ? "✓ " : ""}Read typeset cells (double-click to edit)`, () => { S.readView = !S.readView; try { localStorage.setItem("chalkmath.readview", S.readView ? "on" : "off"); } catch { /* private mode */ } renderChrome(); renderCells(); }],
       [`${S.showEcho ? "✓ " : ""}Input interpretation`, () => { S.showEcho = !S.showEcho; try { localStorage.setItem("chalkmath.echo", S.showEcho ? "on" : "off"); } catch { /* private mode */ } renderChrome(); renderCells(); }],
       [`${S.highlight ? "✓ " : ""}Syntax highlighting`, () => { S.highlight = !S.highlight; try { localStorage.setItem("chalkmath.highlight", S.highlight ? "on" : "off"); } catch { /* private mode */ } document.documentElement.classList.toggle("nohl", !S.highlight); renderHighlights(); renderChrome(); }],
       [`${S.sigHelp ? "✓ " : ""}Signature help`, () => { S.sigHelp = !S.sigHelp; try { localStorage.setItem("chalkmath.sighelp", S.sigHelp ? "on" : "off"); } catch { /* private mode */ } if (!S.sigHelp) hideSigHelp(); renderChrome(); }],
@@ -4099,6 +4111,11 @@ function visualInput(cell: Cell, i: number): MathInput | null {
     onLeave: (dir) => { const j = i + dir; if (j >= 0 && j < S.cells.length) focusCell(j); },
     onKey: (ev) => {
       if (ev.key === "Escape" && S.sig) { ev.preventDefault(); dismissSigHelp(); return true; }
+      if (ev.key === "Escape" && cell.typing && S.readView) {
+        ev.preventDefault();
+        if (cell.src === cell.echoFor && cell.echoLatex && !cell.error) { stopTyping(cell); return true; }
+        runFromInput(cell); return true;
+      }
       // `?` is not notation: at the start of the cell it makes the cell a question, edited as text
       if (ev.key === "?" && !ev.ctrlKey && !ev.metaKey && !ev.altKey) {
         ev.preventDefault();
@@ -4277,6 +4294,7 @@ const promptLevel = new ResizeObserver((entries) => {
 });
 
 function inputEls(cell: Cell, i: number): HTMLElement[] {
+  if (inRead(cell)) { const r = readView(cell); promptLevel.observe(r); return [r]; }
   const mi = isVisual(cell) ? visualInput(cell, i) : null;
   if (mi) { cell.mi = mi; promptLevel.observe(mi.el); return [mi.el]; }
   // a source of several lines (a system, say) is a textarea; Shift+Enter starts a new line, Enter runs
@@ -4313,13 +4331,234 @@ function refreshInput(cell: Cell) {
   const i = S.cells.indexOf(cell), mid = cell.el?.querySelector(".mid");
   if (i < 0 || !mid) return;
   cell.mi?.dispose();
-  for (const el of mid.querySelectorAll(":scope > .mi, :scope > .hl, :scope > .cellin")) { promptLevel.unobserve(el); el.remove(); }
+  for (const el of mid.querySelectorAll(":scope > .mi, :scope > .mread, :scope > .hl, :scope > .cellin")) { promptLevel.unobserve(el); el.remove(); }
   delete cell.mi; delete cell.input; delete cell.hl;
   cell.el?.querySelector<HTMLElement>(":scope > .prompt")?.style.removeProperty("padding-top");
   mid.prepend(...inputEls(cell, i));
   cell.el?.querySelector(".modetog")?.replaceWith(modeToggle(cell));
+  cell.el?.querySelector(".readedit")?.replaceWith(editToggle(cell));
   renderCellBody(cell);
 }
+
+// --- Reading a typeset cell: the engine's interpretation, hovered, explained and edited in place ---
+//
+// A typeset cell that has run shows what the engine read, as the input interpretation does under a
+// text cell: hovering a piece outlines the subterm it belongs to, so how operators bind is on the
+// page (`p ∧ q → r` outlines `p ∧ q` at the ∧), and a click explains it. A toolbar over the piece
+// hovered edits, replaces or deletes it in the source (`term-spans.ts` finds it there). Double-click
+// or Enter opens the visual input, at the piece double-clicked; running the cell shows the reading
+// again, as a Markdown cell renders.
+
+/** Whether a cell shows its reading rather than its input: a typeset cell, not being typed in, whose
+ *  reading is of its source (or of the edit being run now) and has paths to hover. */
+function inRead(cell: Cell): boolean {
+  if (!S.readView || cell.type || cell.typing || cell.error || !cell.echoLatex?.includes("\\htmlData{path=")) return false;
+  if (cell.echoFor !== cellSrc(cell) && !cell.queued && S.running !== cell) return false;
+  return isVisual(cell);
+}
+
+function readView(cell: Cell): HTMLElement {
+  const el = h("div", "mread");
+  el.tabIndex = 0;
+  el.setAttribute("aria-label", `Cell ${S.cells.indexOf(cell) + 1}, math input as the engine reads it (Enter or double-click to edit)`);
+  el.classList.toggle("pending", cell.echoFor !== cellSrc(cell));
+  el.innerHTML = tex(cell.echoLatex!, true);
+  el.dataset["term"] = termKey({ kind: "input" });
+  // the deepest subterm under the pointer: KaTeX lays a fraction's rows over its numerator and
+  // denominator, so the event's target inside a fraction is the fraction itself
+  const pathAt = (ev: MouseEvent) => {
+    let span = (ev.target as Element | null)?.closest?.<HTMLElement>("[data-path]") ?? null;
+    if (!span || !el.contains(span)) return null;
+    const inside = (e: Element) => [...e.getClientRects()].some((r) => ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom);
+    for (let deeper = true; deeper;) {
+      deeper = false;
+      for (const d of span.querySelectorAll<HTMLElement>("[data-path]")) {
+        if (d.parentElement?.closest("[data-path]") !== span || !inside(d)) continue;
+        span = d; deeper = true; break;
+      }
+    }
+    return span;
+  };
+  // a click explains the piece (as the interpretation's does), once it is clear it is not a double click
+  let pending = 0;
+  el.addEventListener("click", (ev) => {
+    const span = pathAt(ev);
+    window.clearTimeout(pending);
+    if (!span || ev.detail > 1) return;
+    ev.stopPropagation();
+    const raw = span.dataset["path"]!;
+    pending = window.setTimeout(() => void explain(cell, { kind: "input" }, raw === "root" ? [] : raw.split(".").map(Number)), 260);
+  });
+  el.addEventListener("dblclick", (ev) => { window.clearTimeout(pending); ev.preventDefault(); startTyping(cell, pathAt(ev)?.dataset["path"]); });
+  el.addEventListener("focus", () => { const i = S.cells.indexOf(cell); if (S.active !== i) { S.active = i; renderChrome(); renderSidebar(); markActive(); } });
+  el.addEventListener("keydown", (ev) => {
+    const i = S.cells.indexOf(cell);
+    if (modeKey(ev, cell)) return;
+    if (ev.key === "Enter" && (ev.shiftKey || ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); void runCell(cell); }
+    else if (ev.key === "Enter") { ev.preventDefault(); startTyping(cell); }
+    else if (ev.key === "ArrowDown" && i < S.cells.length - 1) { ev.preventDefault(); focusCell(i + 1); }
+    else if (ev.key === "ArrowUp" && i > 0) { ev.preventDefault(); focusCell(i - 1); }
+  });
+  el.addEventListener("mousemove", (ev) => { const span = pathAt(ev); if (span && !TB.replacing) showTokbar(cell, span); });
+  el.addEventListener("mouseleave", () => hideTokbarSoon());
+  return el;
+}
+
+/** Open the visual input; with `path`, the piece of the source that subterm was written as is selected. */
+function startTyping(cell: Cell, path?: string) {
+  hideTokbar();
+  const span = path && path !== "root" ? spansOf(cell)?.get(path)?.inner : null;
+  cell.typing = true;
+  refreshInput(cell);
+  if (!cell.mi) return;
+  cell.mi.focus();
+  if (span) cell.mi.selectSpan(span);
+}
+
+/** A run is over: a typeset cell that was being typed in shows its reading again, if it has one. */
+function stopTyping(cell: Cell) {
+  if (!cell.el?.isConnected) { cell.typing = false; return; }
+  const had = !!cell.el?.contains(document.activeElement);
+  const was = !!cell.el?.querySelector(":scope .mid > .mread");
+  cell.typing = false;
+  if (inRead(cell) === was && !(was && cell.el?.querySelector(".mread.pending"))) return;
+  refreshInput(cell);
+  if (had) cell.el?.querySelector<HTMLElement>(".mread")?.focus({ preventScroll: true });
+}
+
+function editToggle(cell: Cell): HTMLElement {
+  const b = asButton(h("span", "readedit", "✎ Edit"), "Edit this cell");
+  b.title = "Edit the input (double-click it, or Enter)";
+  if (!inRead(cell)) b.style.display = "none";
+  b.addEventListener("mousedown", (e) => e.preventDefault());
+  b.addEventListener("click", () => startTyping(cell));
+  return b;
+}
+
+/** Where each subterm of the reading was written in the source, while the reading is the source's. */
+const SPANS = new WeakMap<Cell, { key: string; spans: Map<string, TermSpan> }>();
+function spansOf(cell: Cell): Map<string, TermSpan> | null {
+  if (cell.echoFor !== cell.src) return null;
+  const key = `${cell.src}\u0000${cell.echoLatex}`;
+  const kept = SPANS.get(cell);
+  if (kept?.key === key) return kept.spans;
+  const host = cell.el?.querySelector(".mread .katex-html");
+  if (!host) return null;
+  const nodes = [...host.querySelectorAll<HTMLElement>("[data-path]")].map((e) => ({ path: e.dataset["path"]!, text: e.textContent ?? "" }));
+  const spans = termSpans(cell.src, nodes, VISUAL_SYMBOLS);
+  SPANS.set(cell, { key, spans });
+  return spans;
+}
+
+/** The toolbar over the piece hovered: what it is in the source, and edit, replace, delete, and the
+ *  subterm around it (an operator's operands cover it: ⤴ reaches the sum a term is in). */
+const TB = { el: null as HTMLElement | null, cell: null as Cell | null, path: "", hide: 0, replacing: false };
+function tokbarEl(): HTMLElement {
+  if (TB.el) return TB.el;
+  const el = h("div", "tokbar");
+  el.setAttribute("role", "toolbar"); el.setAttribute("aria-label", "Subterm");
+  el.addEventListener("mouseenter", () => window.clearTimeout(TB.hide));
+  el.addEventListener("mouseleave", () => { if (!TB.replacing) hideTokbarSoon(); });
+  el.addEventListener("mousedown", (e) => { if (!(e.target as Element).closest("input")) e.preventDefault(); });
+  document.body.append(el);
+  TB.el = el;
+  return el;
+}
+function hideTokbarSoon() { window.clearTimeout(TB.hide); TB.hide = window.setTimeout(hideTokbar, 220); }
+function hideTokbar() {
+  window.clearTimeout(TB.hide);
+  TB.el?.remove(); TB.el = null; TB.replacing = false;
+  document.querySelectorAll(".mread [data-path].tokon").forEach((x) => x.classList.remove("tokon"));
+}
+
+function showTokbar(cell: Cell, span: HTMLElement) {
+  window.clearTimeout(TB.hide);
+  const path = span.dataset["path"]!;
+  if (TB.el && TB.cell === cell && TB.path === path) return;
+  document.querySelectorAll(".mread [data-path].tokon").forEach((x) => x.classList.remove("tokon"));
+  span.classList.add("tokon");
+  TB.cell = cell; TB.path = path; TB.replacing = false;
+  const spans = spansOf(cell), node = spans?.get(path);
+  const src = node?.inner ? Array.from(cell.src).slice(node.inner.start, node.inner.end).join("") : null;
+  const bar = tokbarEl();
+  bar.innerHTML = "";
+  bar.classList.remove("replacing");
+  const chip = h("code", "tbsrc", src ?? "—");
+  chip.title = src ? "This piece, as the source writes it" : "Not found in the source (the engine wrote it)";
+  bar.append(chip);
+  const btn = (label: string, title: string, on: () => void, off = false) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "tbbtn"; b.innerHTML = label; b.title = title; b.disabled = off;
+    b.addEventListener("click", (e) => { e.stopPropagation(); on(); });
+    bar.append(b);
+    return b;
+  };
+  const parent = node?.parent ? cell.el?.querySelector<HTMLElement>(`.mread [data-path="${node.parent}"]`) : null;
+  btn("⤴", "Select the subterm around this one", () => { if (parent) { TB.path = ""; showTokbar(cell, parent); } }, !parent);
+  bar.append(h("span", "tbsep"));
+  btn("✎ Edit", "Edit this piece in the visual input", () => startTyping(cell, path));
+  btn("⇄ Replace", "Replace this piece with something typed", () => replacePrompt(cell, path, src ?? ""), !node?.outer);
+  btn("✕ Delete", "Delete this piece (and the operator joining it to its neighbour)", () => {
+    const next = spans && deleteTerm(cell.src, spans, path);
+    if (next === null || next === undefined) return;
+    applySource(cell, next);
+  }, !node?.outer);
+  placeTokbar(span);
+}
+
+function placeTokbar(span: HTMLElement) {
+  const bar = TB.el; if (!bar) return;
+  const r = span.getBoundingClientRect(), w = bar.offsetWidth, hgt = bar.offsetHeight;
+  const left = Math.max(8, Math.min(window.innerWidth - w - 8, r.left + r.width / 2 - w / 2));
+  const top = r.top - hgt - 8 >= 4 ? r.top - hgt - 8 : r.bottom + 8;
+  bar.style.left = `${left}px`; bar.style.top = `${top}px`;
+}
+
+/** The toolbar becomes a field: what to put in the piece's place (Enter), or Esc to leave it be. */
+function replacePrompt(cell: Cell, path: string, was: string) {
+  const bar = TB.el; if (!bar) return;
+  const span = cell.el?.querySelector<HTMLElement>(`.mread [data-path="${path}"]`);
+  TB.replacing = true;
+  bar.innerHTML = "";
+  bar.classList.add("replacing");
+  bar.append(h("span", "tblabel", "Replace"));
+  const field = document.createElement("input");
+  field.className = "tbfield"; field.value = was; field.spellcheck = false;
+  field.setAttribute("aria-label", "Replace with");
+  field.size = Math.max(8, Array.from(was).length + 4);
+  const go = document.createElement("button");
+  go.type = "button"; go.className = "tbbtn primary"; go.textContent = "↵ Run";
+  const commit = () => {
+    const by = field.value.trim();
+    const spans = spansOf(cell);
+    const next = by && spans ? replaceTerm(cell.src, spans, path, by) : null;
+    hideTokbar();
+    if (next !== null) applySource(cell, next);
+  };
+  field.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") { ev.preventDefault(); commit(); }
+    if (ev.key === "Escape") { ev.preventDefault(); hideTokbar(); cell.el?.querySelector<HTMLElement>(".mread")?.focus(); }
+  });
+  field.addEventListener("input", () => { field.size = Math.max(8, Array.from(field.value).length + 4); if (span) placeTokbar(span); });
+  go.addEventListener("click", commit);
+  bar.append(field, go);
+  if (span) placeTokbar(span);
+  field.focus(); field.select();
+}
+
+/** A toolbar's edit: the cell's source becomes `next` and runs; it reads again once the engine has
+ *  read it (an empty cell, or one the engine cannot read, opens for typing instead). */
+function applySource(cell: Cell, next: string) {
+  hideTokbar();
+  cell.src = next;
+  delete cell.tree; delete cell.autoFor;
+  renderSidebar(); typed();
+  if (!next.trim()) { startTyping(cell); return; }
+  const run = runCell(cell);
+  refreshInput(cell);
+  void run.then(() => { if (cell.error) startTyping(cell); });
+}
+window.addEventListener("scroll", () => { if (TB.el && !TB.replacing) hideTokbar(); }, true);
 
 /** Where the notebook is scrolled to, as the first cell in view and how far down the view it is, so a
  *  rebuild can put the page back where it was even when the cells above it change height. */
@@ -4493,7 +4732,7 @@ function buildCell(host: HTMLElement, cell: Cell, i: number) {
   el.append(mid);
 
   const acts = h("div", "cellacts");
-  acts.append(modeToggle(cell));
+  acts.append(editToggle(cell), modeToggle(cell));
   const run = asButton(h("span", undefined, "▶ Run")); run.title = "Run this cell";
   run.addEventListener("mousedown", (e) => e.preventDefault());
   run.addEventListener("click", () => void runCell(cell));
