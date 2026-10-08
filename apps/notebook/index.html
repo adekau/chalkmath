@@ -339,9 +339,6 @@ textarea.cellin { display:block; resize:none; overflow:hidden; white-space:pre; 
 .tokbar .tbbtn { font:600 11.5px var(--font); color:var(--ink-2); background:transparent; border:0; border-radius:5px; padding:4px 8px; cursor:pointer; }
 .tokbar .tbbtn:hover:not(:disabled), .tokbar .tbbtn:focus-visible { color:var(--ink); background:var(--p-hov); outline:none; }
 .tokbar .tbbtn:disabled { opacity:0.4; cursor:default; }
-.tokbar .tbbtn.primary { color:var(--p-acc); }
-.tokbar .tblabel { font-weight:600; color:var(--ink-mut); padding:0 4px 0 6px; }
-.tokbar .tbfield { font:13px var(--mono); color:var(--ink); background:var(--bg); border:1px solid var(--p-acc-br); border-radius:5px; padding:3px 7px; outline:none; }
 /* the math keypad: templates and moves above a phone's keyboard while a math cell has the focus */
 .keypad { position:fixed; left:0; right:0; bottom:0; z-index:60; display:flex; gap:6px; overflow-x:auto; padding:7px 10px;
   background:var(--panel); border-top:1px solid var(--border); box-shadow:0 -2px 8px var(--sh-b); }
@@ -354,11 +351,11 @@ textarea.cellin { display:block; resize:none; overflow:hidden; white-space:pre; 
 .keypad.text .kvisual { display:none; }
 /* the text highlighter's colours on the visual input's tokens */
 html:not(.nohl) .mi-math [data-hl="hnum"] { color:var(--hl-num); }
-html:not(.nohl) .mi-math [data-hl="hkw"] { color:var(--hl-kw); font-weight:600; }
+html:not(.nohl) .mi-math [data-hl="hkw"], html:not(.nohl) .mread [data-hl="hkw"] { color:var(--hl-kw); font-weight:600; }
 html:not(.nohl) .mi-math [data-hl="hcmd"] { color:var(--hl-cmd); font-weight:600; }
 html:not(.nohl) .mi-math [data-hl="hfn"] { color:var(--hl-fn); }
 html:not(.nohl) .mi-math [data-hl="hbound"] { color:var(--hl-bound); }
-html:not(.nohl) .mi-math [data-hl="hdef"] { color:var(--hl-def); }
+html:not(.nohl) .mi-math [data-hl="hdef"], html:not(.nohl) .mread [data-hl="hdef"] { color:var(--hl-def); }
 html:not(.nohl) .mi-math [data-hl="hconst"] { color:var(--hl-const); }
 /* syntax highlighting: the input's text is transparent over an overlay with the same metrics; the caret stays the input's */
 html:not(.nohl) .cellin { color:transparent; caret-color:var(--p-ink); }

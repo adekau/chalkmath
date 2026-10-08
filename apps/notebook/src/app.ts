@@ -3,7 +3,7 @@ import { workerTransport, httpTransport } from "@chalkmath/engine-host";
 import { leanForPrelude } from "@chalkmath/lean-editor/prelude";
 import { read as readNotation, write as writeNotation, writeText, hasNotation, templateAt, templateInText, TEMPLATES, KEYWORDS, lex as lexNotation, type Stmt, type Caret, type MathEdit } from "@chalkmath/math-editor";
 import { MathInput, type MathInputOptions } from "@chalkmath/math-editor/view";
-import { termSpans, deleteTerm, replaceTerm, type TermSpan } from "./term-spans.js";
+import { termSpans, deleteTerm, type Reading, type TermSpan } from "./term-spans.js";
 
 /**
  * The notebook shell. Structure, type and colour follow the second export of the
@@ -4113,6 +4113,8 @@ function visualInput(cell: Cell, i: number): MathInput | null {
       if (ev.key === "Escape" && S.sig) { ev.preventDefault(); dismissSigHelp(); return true; }
       if (ev.key === "Escape" && cell.typing && S.readView) {
         ev.preventDefault();
+        // a slot left empty (a Replace not typed yet) cannot run: Esc puts the source back as it was read
+        if (cell.mi?.holes && cell.echoFor !== undefined && cell.echoLatex && !cell.error) { cell.src = cell.echoFor; delete cell.tree; typed(); }
         if (cell.src === cell.echoFor && cell.echoLatex && !cell.error) { stopTyping(cell); return true; }
         runFromInput(cell); return true;
       }
@@ -4350,11 +4352,22 @@ function refreshInput(cell: Cell) {
 // again, as a Markdown cell renders.
 
 /** Whether a cell shows its reading rather than its input: a typeset cell, not being typed in, whose
- *  reading is of its source (or of the edit being run now) and has paths to hover. */
+ *  reading is of its source (or of the edit being run now), has paths to hover, and is the input
+ *  itself rather than a summary of it (a `system` reads as its variables and actions). */
 function inRead(cell: Cell): boolean {
   if (!S.readView || cell.type || cell.typing || cell.error || !cell.echoLatex?.includes("\\htmlData{path=")) return false;
   if (cell.echoFor !== cellSrc(cell) && !cell.queued && S.running !== cell) return false;
-  return isVisual(cell);
+  return isVisual(cell) && !!readingOf(cell)?.faithful;
+}
+
+/** A `let` head as the visual input shows it: the reading is of what it binds, without the head. */
+const LET_HEAD = /^\s*let\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:\(([^)]*)\))?\s*(?::=|=)/;
+function letLatex(src: string): string {
+  const m = LET_HEAD.exec(src);
+  if (!m) return "";
+  const name = (n: string) => `\\htmlData{hl=hdef}{${n.length > 1 ? `\\mathit{${n}}` : n}}`;
+  const params = m[2] !== undefined ? `\\left(${m[2].split(",").map((x) => name(x.trim())).join(", ")}\\right)` : "";
+  return `\\htmlData{hl=hkw}{\\mathsf{let}}\\; ${name(m[1]!)}${params} \\;=\\; `;
 }
 
 function readView(cell: Cell): HTMLElement {
@@ -4362,7 +4375,7 @@ function readView(cell: Cell): HTMLElement {
   el.tabIndex = 0;
   el.setAttribute("aria-label", `Cell ${S.cells.indexOf(cell) + 1}, math input as the engine reads it (Enter or double-click to edit)`);
   el.classList.toggle("pending", cell.echoFor !== cellSrc(cell));
-  el.innerHTML = tex(cell.echoLatex!, true);
+  el.innerHTML = tex(letLatex(cell.echoFor ?? cell.src) + cell.echoLatex!, true);
   el.dataset["term"] = termKey({ kind: "input" });
   // the deepest subterm under the pointer: KaTeX lays a fraction's rows over its numerator and
   // denominator, so the event's target inside a fraction is the fraction itself
@@ -4399,20 +4412,22 @@ function readView(cell: Cell): HTMLElement {
     else if (ev.key === "ArrowDown" && i < S.cells.length - 1) { ev.preventDefault(); focusCell(i + 1); }
     else if (ev.key === "ArrowUp" && i > 0) { ev.preventDefault(); focusCell(i - 1); }
   });
-  el.addEventListener("mousemove", (ev) => { const span = pathAt(ev); if (span && !TB.replacing) showTokbar(cell, span); });
+  el.addEventListener("mousemove", (ev) => { const span = pathAt(ev); if (span) showTokbar(cell, span); });
   el.addEventListener("mouseleave", () => hideTokbarSoon());
   return el;
 }
 
-/** Open the visual input; with `path`, the piece of the source that subterm was written as is selected. */
-function startTyping(cell: Cell, path?: string) {
+/** Open the visual input; with `path`, the piece of the source that subterm was written as is
+ *  selected, or, to replace it, taken out and left as an empty slot with the caret in it. */
+function startTyping(cell: Cell, path?: string, hole = false) {
   hideTokbar();
-  const span = path && path !== "root" ? spansOf(cell)?.get(path)?.inner : null;
+  const node = path ? spansOf(cell)?.get(path) : null;
+  const span = hole ? node?.outer : path !== "root" ? node?.inner : null;
   cell.typing = true;
   refreshInput(cell);
   if (!cell.mi) return;
   cell.mi.focus();
-  if (span) cell.mi.selectSpan(span);
+  if (span && !(hole && cell.mi.holeSpan(span))) cell.mi.selectSpan(span);
 }
 
 /** A run is over: a typeset cell that was being typed in shows its reading again, if it has one. */
@@ -4435,31 +4450,35 @@ function editToggle(cell: Cell): HTMLElement {
   return b;
 }
 
-/** Where each subterm of the reading was written in the source, while the reading is the source's. */
-const SPANS = new WeakMap<Cell, { key: string; spans: Map<string, TermSpan> }>();
-function spansOf(cell: Cell): Map<string, TermSpan> | null {
-  if (cell.echoFor !== cell.src) return null;
-  const key = `${cell.src}\u0000${cell.echoLatex}`;
-  const kept = SPANS.get(cell);
-  if (kept?.key === key) return kept.spans;
-  const host = cell.el?.querySelector(".mread .katex-html");
-  if (!host) return null;
-  const nodes = [...host.querySelectorAll<HTMLElement>("[data-path]")].map((e) => ({ path: e.dataset["path"]!, text: e.textContent ?? "" }));
-  const spans = termSpans(cell.src, nodes, VISUAL_SYMBOLS);
-  SPANS.set(cell, { key, spans });
-  return spans;
+/** The cell's reading against the source it is of: where each subterm was written, and whether it
+ *  shows everything written. Kept until the source or the reading changes. */
+const READINGS = new WeakMap<Cell, { key: string; reading: Reading }>();
+function readingOf(cell: Cell): Reading | null {
+  const src = cell.echoFor, latex = cell.echoLatex;
+  if (src === undefined || !latex) return null;
+  const key = `${src}\u0000${latex}`;
+  const kept = READINGS.get(cell);
+  if (kept?.key === key) return kept.reading;
+  const host = document.createElement("div");
+  host.innerHTML = tex(latex, true);
+  const nodes = [...host.querySelectorAll<HTMLElement>(".katex-html [data-path]")].map((e) => ({ path: e.dataset["path"]!, text: e.textContent ?? "" }));
+  const reading = termSpans(src, nodes, VISUAL_SYMBOLS);
+  READINGS.set(cell, { key, reading });
+  return reading;
 }
+/** Where each subterm was written, while the reading is of the source as it is now. */
+const spansOf = (cell: Cell): Map<string, TermSpan> | null => (cell.echoFor === cell.src ? readingOf(cell)?.spans ?? null : null);
 
 /** The toolbar over the piece hovered: what it is in the source, and edit, replace, delete, and the
  *  subterm around it (an operator's operands cover it: ⤴ reaches the sum a term is in). */
-const TB = { el: null as HTMLElement | null, cell: null as Cell | null, path: "", hide: 0, replacing: false };
+const TB = { el: null as HTMLElement | null, cell: null as Cell | null, path: "", hide: 0 };
 function tokbarEl(): HTMLElement {
   if (TB.el) return TB.el;
   const el = h("div", "tokbar");
   el.setAttribute("role", "toolbar"); el.setAttribute("aria-label", "Subterm");
   el.addEventListener("mouseenter", () => window.clearTimeout(TB.hide));
-  el.addEventListener("mouseleave", () => { if (!TB.replacing) hideTokbarSoon(); });
-  el.addEventListener("mousedown", (e) => { if (!(e.target as Element).closest("input")) e.preventDefault(); });
+  el.addEventListener("mouseleave", hideTokbarSoon);
+  el.addEventListener("mousedown", (e) => e.preventDefault());
   document.body.append(el);
   TB.el = el;
   return el;
@@ -4467,7 +4486,7 @@ function tokbarEl(): HTMLElement {
 function hideTokbarSoon() { window.clearTimeout(TB.hide); TB.hide = window.setTimeout(hideTokbar, 220); }
 function hideTokbar() {
   window.clearTimeout(TB.hide);
-  TB.el?.remove(); TB.el = null; TB.replacing = false;
+  TB.el?.remove(); TB.el = null;
   document.querySelectorAll(".mread [data-path].tokon").forEach((x) => x.classList.remove("tokon"));
 }
 
@@ -4477,12 +4496,11 @@ function showTokbar(cell: Cell, span: HTMLElement) {
   if (TB.el && TB.cell === cell && TB.path === path) return;
   document.querySelectorAll(".mread [data-path].tokon").forEach((x) => x.classList.remove("tokon"));
   span.classList.add("tokon");
-  TB.cell = cell; TB.path = path; TB.replacing = false;
+  TB.cell = cell; TB.path = path;
   const spans = spansOf(cell), node = spans?.get(path);
   const src = node?.inner ? Array.from(cell.src).slice(node.inner.start, node.inner.end).join("") : null;
   const bar = tokbarEl();
   bar.innerHTML = "";
-  bar.classList.remove("replacing");
   const chip = h("code", "tbsrc", src ?? "—");
   chip.title = src ? "This piece, as the source writes it" : "Not found in the source (the engine wrote it)";
   bar.append(chip);
@@ -4497,7 +4515,7 @@ function showTokbar(cell: Cell, span: HTMLElement) {
   btn("⤴", "Select the subterm around this one", () => { if (parent) { TB.path = ""; showTokbar(cell, parent); } }, !parent);
   bar.append(h("span", "tbsep"));
   btn("✎ Edit", "Edit this piece in the visual input", () => startTyping(cell, path));
-  btn("⇄ Replace", "Replace this piece with something typed", () => replacePrompt(cell, path, src ?? ""), !node?.outer);
+  btn("⇄ Replace", "Take this piece out and type what goes in its place", () => startTyping(cell, path, true), !node?.outer);
   btn("✕ Delete", "Delete this piece (and the operator joining it to its neighbour)", () => {
     const next = spans && deleteTerm(cell.src, spans, path);
     if (next === null || next === undefined) return;
@@ -4514,38 +4532,6 @@ function placeTokbar(span: HTMLElement) {
   bar.style.left = `${left}px`; bar.style.top = `${top}px`;
 }
 
-/** The toolbar becomes a field: what to put in the piece's place (Enter), or Esc to leave it be. */
-function replacePrompt(cell: Cell, path: string, was: string) {
-  const bar = TB.el; if (!bar) return;
-  const span = cell.el?.querySelector<HTMLElement>(`.mread [data-path="${path}"]`);
-  TB.replacing = true;
-  bar.innerHTML = "";
-  bar.classList.add("replacing");
-  bar.append(h("span", "tblabel", "Replace"));
-  const field = document.createElement("input");
-  field.className = "tbfield"; field.value = was; field.spellcheck = false;
-  field.setAttribute("aria-label", "Replace with");
-  field.size = Math.max(8, Array.from(was).length + 4);
-  const go = document.createElement("button");
-  go.type = "button"; go.className = "tbbtn primary"; go.textContent = "↵ Run";
-  const commit = () => {
-    const by = field.value.trim();
-    const spans = spansOf(cell);
-    const next = by && spans ? replaceTerm(cell.src, spans, path, by) : null;
-    hideTokbar();
-    if (next !== null) applySource(cell, next);
-  };
-  field.addEventListener("keydown", (ev) => {
-    if (ev.key === "Enter") { ev.preventDefault(); commit(); }
-    if (ev.key === "Escape") { ev.preventDefault(); hideTokbar(); cell.el?.querySelector<HTMLElement>(".mread")?.focus(); }
-  });
-  field.addEventListener("input", () => { field.size = Math.max(8, Array.from(field.value).length + 4); if (span) placeTokbar(span); });
-  go.addEventListener("click", commit);
-  bar.append(field, go);
-  if (span) placeTokbar(span);
-  field.focus(); field.select();
-}
-
 /** A toolbar's edit: the cell's source becomes `next` and runs; it reads again once the engine has
  *  read it (an empty cell, or one the engine cannot read, opens for typing instead). */
 function applySource(cell: Cell, next: string) {
@@ -4558,7 +4544,7 @@ function applySource(cell: Cell, next: string) {
   refreshInput(cell);
   void run.then(() => { if (cell.error) startTyping(cell); });
 }
-window.addEventListener("scroll", () => { if (TB.el && !TB.replacing) hideTokbar(); }, true);
+window.addEventListener("scroll", () => { if (TB.el) hideTokbar(); }, true);
 
 /** Where the notebook is scrolled to, as the first cell in view and how far down the view it is, so a
  *  rebuild can put the page back where it was even when the cells above it change height. */

@@ -1,4 +1,4 @@
-import { lex } from "@chalkmath/math-editor";
+import { KEYWORDS, lex } from "@chalkmath/math-editor";
 
 /**
  * Where each subterm of a cell's input interpretation came from in its source text. The engine
@@ -13,6 +13,10 @@ import { lex } from "@chalkmath/math-editor";
  */
 
 export interface Span { start: number; end: number }
+/** Each subterm's place in the source, and whether the reading is the input itself: every name and
+ *  number written appears in it. A world's summary of its input is not (`system(…)` read as its
+ *  variables and actions, its declarations gone), and must not stand in for it. */
+export interface Reading { spans: Map<string, TermSpan>; faithful: boolean }
 export interface TermSpan {
   path: string;
   parent: string | null;
@@ -27,6 +31,12 @@ type Range = [number, number];   // token indices, inclusive
 const PREFIX = new Set(["-", "+", "not", "¬", "!", "~"]);
 const POSTFIX = new Set(["!", "'"]);
 const OPENERS: Record<string, string> = { "(": ")", "[": "]", "{": "}" };
+/** Words that are operators, not names: a reading shows them as symbols, never as leaves. */
+const WORD_OPS = new Set(["and", "or", "not", "implies", "iff", "xor", "forall", "exists", "in"]);
+/** The calls the reading draws as notation rather than by name: d/dx, ∫, √, |·|, Σ, eˣ, z̄. */
+const DRAWN = new Set(["diff", "integrate", "sqrt", "abs", "sum", "exp", "conj"]);
+/** Constants the reading shows as symbols. */
+const WORD_SYMS: Record<string, string> = { true: "⊤", false: "⊥" };
 
 const comps = (p: string) => (p === "root" ? [] : p.split(".").map(Number));
 function preorder(a: string, b: string) {
@@ -37,7 +47,7 @@ function preorder(a: string, b: string) {
 
 /** `nodes`: every tagged subterm of the rendering, with its text as shown. `symbols`: the `\name`
  *  spellings of symbols (`pi` → `π`), so a name typed as a word matches the symbol shown. */
-export function termSpans(src: string, nodes: { path: string; text: string }[], symbols: Record<string, string> = {}): Map<string, TermSpan> {
+export function termSpans(src: string, nodes: { path: string; text: string }[], symbols: Record<string, string> = {}): Reading {
   const toks = lex(src).filter((t) => t.kind !== "eof");
   const paths = new Set(nodes.map((n) => n.path));
   paths.add("root");
@@ -92,16 +102,31 @@ export function termSpans(src: string, nodes: { path: string; text: string }[], 
     return [a, b];
   };
 
-  // leaves to tokens, in path order
-  const same = (tok: string, shown: string) => tok === shown || symbols[tok] === shown;
+  // what the reading is of: the input after a `let name =` or `let f(x) =` head
+  let first = 0;
+  if (s(0) === "let") { const eq = toks.findIndex((t) => t.s === "=" || t.s === ":="); if (eq >= 0) first = eq + 1; }
+
+  // leaves to tokens, in path order (a reading of one number or name is a leaf itself)
+  // the reading shows Euler's number as a plain e, however it was typed
+  const same = (tok: string, shown: string) => tok === shown || symbols[tok] === shown || WORD_SYMS[tok] === shown || (tok === "ℯ" && shown === "e");
+  const matched = new Set<number>();
   const ranges = new Map<string, { inner: Range; outer: Range } | null>();
-  let next = 0;
+  let next = first;
   for (const p of [...paths].sort(preorder)) {
-    if (out.get(p)!.children.length || p === "root") continue;
+    if (out.get(p)!.children.length) continue;
     const shown = (text.get(p) ?? "").replace(/[\s​]/g, "").replace(/−/g, "-");
-    let k = next;
-    while (k < toks.length && !((toks[k]!.kind === "num" || toks[k]!.kind === "id" || toks[k]!.kind === "str") && same(toks[k]!.s, shown))) k++;
-    if (k < toks.length) { ranges.set(p, { inner: [k, k], outer: widen([k, k]) }); next = k + 1; }
+    // a leaf is one token, or a literal the reading shows whole: `7/10` (as a fraction), `-3`
+    const at = (k: number): number => {
+      const t = toks[k]!, u = toks[k + 1], v = toks[k + 2];
+      if ((t.kind === "num" || t.kind === "id" || t.kind === "str") && same(t.s, shown)) return k;
+      // KaTeX sets a fraction's denominator first in its text
+      if (t.kind === "num" && u?.s === "/" && v?.kind === "num" && (t.s + v.s === shown || v.s + t.s === shown)) return k + 2;
+      if (t.s === "-" && u?.kind === "num" && `-${u.s}` === shown && !operand(k - 1)) return k + 1;
+      return -1;
+    };
+    let k = next, end = -1;
+    while (k < toks.length && (end = at(k)) < 0) k++;
+    if (end >= 0) { ranges.set(p, { inner: [k, end], outer: widen([k, end]) }); for (let j = k; j <= end; j++) matched.add(j); next = end + 1; }
     else ranges.set(p, null);
   }
 
@@ -120,13 +145,19 @@ export function termSpans(src: string, nodes: { path: string; text: string }[], 
     ranges.set(p, { inner: r, outer: widen(r) });
   }
   // the root is the whole input, after a `let name =` head
-  let first = 0;
-  if (s(0) === "let") { const eq = toks.findIndex((t) => t.s === "=" || t.s === ":="); if (eq >= 0) first = eq + 1; }
   if (first < toks.length) ranges.set("root", { inner: [first, toks.length - 1], outer: [first, toks.length - 1] });
 
   const chars = (r: Range): Span => ({ start: toks[r[0]]!.start, end: toks[r[1]]!.stop });
   for (const [p, r] of ranges) if (r) { const n = out.get(p)!; n.inner = chars(r.inner); n.outer = chars(r.outer); }
-  return out;
+  // every number and name after the head is in the reading (the words that are operators or a
+  // world's keywords are shown as notation, not as leaves), every call by its name or its notation
+  // (`divisors(12)` read as `12` is not the input), and nothing else is: a `%` read as the output it
+  // names, say
+  const whole = (text.get("root") ?? "").replace(/\s/g, "");
+  const leaves = [...paths].filter((p) => !out.get(p)!.children.length);
+  const faithful = leaves.every((p) => ranges.get(p)) && toks.every((t, k) => k < first || matched.has(k) || t.kind === "op" || t.kind === "str" || t.kind === "asset"
+    || (t.kind === "id" && (WORD_OPS.has(t.s) || KEYWORDS.has(t.s) || (s(k + 1) === "(" && (DRAWN.has(t.s) || whole.includes(t.s))))));
+  return { spans: out, faithful };
 }
 
 const splice = (src: string, at: Span, by: string) => { const cs = Array.from(src); return cs.slice(0, at.start).join("") + by + cs.slice(at.end).join(""); };
@@ -147,20 +178,4 @@ export function deleteTerm(src: string, spans: Map<string, TermSpan>, path: stri
   const k = sibs.indexOf(n);
   const cut = k > 0 ? { start: sibs[k - 1]!.outer!.end, end: n.outer.end } : { start: n.outer.start, end: sibs[1]!.outer!.start };
   return tidy(splice(src, cut, ""));
-}
-
-/** The source with the subterm at `path` replaced by `by`, in parentheses unless it is one piece
- *  (a name, a number, a call, a group), so it stays one subterm: `q` → `a or b` in `p and q` is
- *  `p and (a or b)`. */
-export function replaceTerm(src: string, spans: Map<string, TermSpan>, path: string, by: string): string | null {
-  const n = spans.get(path);
-  if (!n?.outer) return null;
-  const t = by.trim();
-  const whole = (x: string) => { let d = 0; for (const [i, c] of Array.from(x).entries()) { if (c === "(") d++; if (c === ")") { d--; if (d === 0 && i < Array.from(x).length - 1) return false; } } return d === 0; };
-  const piece = /^[\p{L}\p{N}_.']+$/u.test(t) || (/^[\p{L}_][\p{L}\p{N}_]*\(.*\)$/u.test(t) && whole(t.slice(t.indexOf("(")))) || (t.startsWith("(") && t.endsWith(")") && whole(t));
-  // a whole argument needs no parentheses of its own: `sin(y + z)`, not `sin((y + z))`
-  const cs = Array.from(src);
-  const before = cs.slice(0, n.outer.start).join("").trimEnd().slice(-1), after = cs.slice(n.outer.end).join("").trimStart()[0] ?? "";
-  const alone = (before === "(" || before === ",") && (after === ")" || after === ",");
-  return splice(src, n.outer, path === "root" || piece || alone ? t : `(${t})`);
 }

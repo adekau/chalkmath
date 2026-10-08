@@ -529,6 +529,26 @@ export class MathInput {
   /** Select the atoms that spell the characters `span` of the text (a piece the page picked out of
    *  it to edit), the caret at its end. False when nothing there is an atom of the tree. */
   selectSpan(span: { start: number; end: number }): boolean {
+    const at = this.placeSpan(span);
+    if (!at) return false;
+    this.edit.anchor = at.first;
+    this.edit.caret = { block: at.last.block, i: at.last.i + 1 };
+    this.render();
+    return true;
+  }
+
+  /** Take out the atoms that spell the characters `span` and leave an empty slot to fill, the caret
+   *  in it (`MathEdit.holeAt`). False, and nothing changed, when the span is not a run of atoms of one
+   *  block. */
+  holeSpan(span: { start: number; end: number }): boolean {
+    const at = this.placeSpan(span);
+    if (!at || at.first.block !== at.last.block) return false;
+    this.apply((e) => e.holeAt(at.first.block, at.first.i, at.last.i + 1));
+    return true;
+  }
+
+  /** Where the first and the last atom spelling `span` are. */
+  private placeSpan(span: { start: number; end: number }): { first: Caret; last: Caret } | null {
     const atoms = atomsInSpan(this.edit.stmt, span);
     const place = (a: Atom, b: Block = this.edit.root): Caret | null => {
       const i = b.indexOf(a);
@@ -537,11 +557,7 @@ export class MathInput {
       return null;
     };
     const first = atoms[0] && place(atoms[0]), last = atoms[atoms.length - 1] && place(atoms[atoms.length - 1]!);
-    if (!first || !last) return false;
-    this.edit.anchor = first;
-    this.edit.caret = { block: last.block, i: last.i + 1 };
-    this.render();
-    return true;
+    return first && last ? { first, last } : null;
   }
 
   private changed() {

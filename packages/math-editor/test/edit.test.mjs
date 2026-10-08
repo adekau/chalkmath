@@ -85,6 +85,26 @@ test("holes, Tab, and the backslash templates", () => {
   assert.equal(text("\\nope "), "\\nope");
 });
 
+test("a piece taken out leaves a slot to type into: its own, or an empty group in a row", () => {
+  // all of a slot: the slot itself is the hole
+  const call = new MathEdit(read("sin(x) + 1").stmt);
+  const arg = call.root[0].args[0];
+  assert.ok(call.holeAt(arg, 0, arg.length));
+  assert.equal(write(call.stmt).holes, 1);
+  for (const c of "2t") call.type(c);
+  assert.equal(call.text, "sin(2t) + 1");
+  // part of a row: an empty group, so what is typed there stays one subterm
+  const row = new MathEdit(read("p and q implies r").stmt);
+  const q = row.root.findIndex((a) => a.k === "ch" && a.c === "q");
+  assert.ok(row.holeAt(row.root, q, q + 1));
+  assert.equal(write(row.stmt).holes, 1);
+  for (const c of "a or b") row.type(c);
+  assert.equal(row.text, "p and (a or b) implies r");
+  // undoing it all gives back the piece
+  while (row.undo());
+  assert.equal(row.text, "p and q implies r");
+});
+
 test("the other worlds' notation is typed as its text reads, and an edit keeps the rest of the text", () => {
   // what is typed writes text that reads back as the same tree
   for (const [keys, want] of [["p∧q→p", "p ∧ q → p"], ["p && q -> p", "p && q -> p"], ["{a,b,c}", "{a, b, c}"],
