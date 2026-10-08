@@ -3849,15 +3849,16 @@ function truthTable(d: TruthTableData): HTMLElement {
 
 /** A relation as a directed graph: elements on a circle, a pair as an arrow (a loop for `x R x`). The
  *  arrows that show a property failing are marked, and the ones a closure added are dashed. A state
- *  graph's arrows are labelled with the actions that take them. */
+ *  graph is drawn in rows instead, each state a box with its name in it, the arrows ending at the
+ *  boxes' edges (a loop on a box's right side) and labelled with the actions that take them. */
 function digraphSvg(d: DigraphData): SVGSVGElement {
   const NS = "http://www.w3.org/2000/svg";
   const n = d.nodes.length;
   const longest = Math.max(1, ...d.nodes.map((x) => x.length));
   const layered = !!d.layers && d.layers.length === n;
   const labels = d.labels?.length === d.edges.length ? d.labels : undefined;
-  // room above the top row for the labels of its loops
-  const top = labels && layered ? 16 : 0;
+  // a state's box: half its width (the name's, at the label's 11px code font) and half its height
+  const half = (name: string): [number, number] => [name.length * 3.35 + 8, 10];
   const pos = new Map<string, [number, number]>();
   let w: number, hgt: number;
   if (layered) {
@@ -3865,10 +3866,13 @@ function digraphSvg(d: DigraphData): SVGSVGElement {
     const rows = new Map<number, string[]>();
     d.nodes.forEach((name, i) => { const l = d.layers![i]!; rows.set(l, [...(rows.get(l) ?? []), name]); });
     const widest = Math.max(1, ...[...rows.values()].map((r) => r.length));
-    // labelled arrows want room beside them
-    const colW = Math.max(70, longest * 7 + 24, labels ? Math.max(0, ...labels.map((x) => x.length)) * 6 + 40 : 0), rowH = labels ? 84 : 74;
-    w = Math.max(240, widest * colW + 40); hgt = top + (Math.max(0, ...rows.keys()) + 1) * rowH + 30;
-    for (const [l, names] of rows) names.forEach((name, k) => pos.set(name, [20 + (k + 0.5) * ((w - 40) / names.length), top + 24 + l * rowH]));
+    // a column holds a box, with room on its right for a loop and the loop's label, and labelled
+    // arrows want room beside them
+    const boxW = 2 * half("x".repeat(longest))[0];
+    const loopW = Math.max(0, ...d.edges.map(([a, b], k) => (a === b ? 2 * (26 + (labels?.[k]?.length ?? 0) * 6) : 0)));
+    const colW = Math.max(70, boxW + 28, boxW + loopW, labels ? Math.max(0, ...labels.map((x) => x.length)) * 6 + 40 : 0), rowH = labels ? 84 : 74;
+    w = Math.max(240, widest * colW + 40); hgt = Math.max(0, ...rows.keys()) * rowH + 48;
+    for (const [l, names] of rows) names.forEach((name, k) => pos.set(name, [20 + (k + 0.5) * ((w - 40) / names.length), 24 + l * rowH]));
   } else {
     const r = n <= 1 ? 0 : Math.max(60, Math.min(150, 26 * n)), pad = Math.max(60, longest * 6.6 + 24);
     w = 2 * r + 2 * pad; hgt = 2 * r + 90;
@@ -3903,7 +3907,28 @@ function digraphSvg(d: DigraphData): SVGSVGElement {
     const path = document.createElementNS(NS, "path");
     // where the label goes, and which way it reads from there
     let at: [number, number, "start" | "middle" | "end"];
-    if (a === b) {
+    if (layered && a === b) {
+      // a loop on the box's right side, its label past it
+      const rx = p[0] + half(a)[0], y = p[1];
+      path.setAttribute("d", `M${rx},${y - 5} C${rx + 26},${y - 20} ${rx + 26},${y + 20} ${rx + 2},${y + 5}`);
+      at = [rx + 24, y + 4, "start"];
+    } else if (layered) {
+      // from box edge to box edge; bend a pair drawn both ways apart, and edges within a row or back up it
+      const dx = q[0] - p[0], dy = q[1] - p[1], len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
+      const bend = all.has(key([b, a])) ? 14 : q[1] <= p[1] ? 26 : 0;
+      const mx = (p[0] + q[0]) / 2 - uy * bend, my = (p[1] + q[1]) / 2 + ux * bend;
+      // where the line from a box's centre toward the curve's control point leaves the box
+      const edge = (c: [number, number], name: string, gap: number): [number, number] => {
+        const [hw, hh] = half(name), ex = mx - c[0], ey = my - c[1], el = Math.hypot(ex, ey) || 1;
+        const t = Math.min(ex ? hw / Math.abs(ex / el) : Infinity, ey ? hh / Math.abs(ey / el) : Infinity) + gap;
+        return [c[0] + (ex / el) * t, c[1] + (ey / el) * t];
+      };
+      const [x1, y1] = edge(p, a, 1), [x2, y2] = edge(q, b, 2);
+      path.setAttribute("d", `M${x1},${y1} Q${mx},${my} ${x2},${y2}`);
+      // the curve's midpoint; a bent arrow's label is outside its bend, clear of the arrow beside it
+      const nx = -uy * Math.sign(bend), ny = ux * Math.sign(bend), cx = (x1 + 2 * mx + x2) / 4 + 5 * nx, cy = (y1 + 2 * my + y2) / 4 + 5 * ny;
+      at = [cx, cy + (ny > 0.3 ? 10 : ny < -0.3 ? -2 : 4), nx > 0.3 ? "start" : nx < -0.3 ? "end" : "middle"];
+    } else if (a === b) {
       // a loop, outward from the centre
       const ang = Math.atan2(p[1] - hgt / 2, p[0] - w / 2) || -Math.PI / 2;
       const cx = p[0] + 18 * Math.cos(ang), cy = p[1] + 18 * Math.sin(ang);
@@ -3916,13 +3941,10 @@ function digraphSvg(d: DigraphData): SVGSVGElement {
       // stop short of the nodes; bend when the reverse pair is drawn too, so the two do not overlap
       const dx = q[0] - p[0], dy = q[1] - p[1], len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
       const x1 = p[0] + ux * 8, y1 = p[1] + uy * 8, x2 = q[0] - ux * 9, y2 = q[1] - uy * 9;
-      // bend a pair drawn both ways apart; in a layered drawing, bend edges within a row or back up it
-      const bend = all.has(key([b, a])) ? 14 : layered && q[1] <= p[1] ? 26 : 0;
+      const bend = all.has(key([b, a])) ? 14 : 0;
       const mx = (x1 + x2) / 2 - uy * bend, my = (y1 + y2) / 2 + ux * bend;
       path.setAttribute("d", `M${x1},${y1} Q${mx},${my} ${x2},${y2}`);
-      // the curve's midpoint; a bent arrow's label is outside its bend, clear of the arrow beside it
-      const nx = -uy * Math.sign(bend), ny = ux * Math.sign(bend), cx = (x1 + 2 * mx + x2) / 4 + 5 * nx, cy = (y1 + 2 * my + y2) / 4 + 5 * ny;
-      at = [cx, cy + (ny > 0.3 ? 10 : ny < -0.3 ? -2 : 4), nx > 0.3 ? "start" : nx < -0.3 ? "end" : "middle"];
+      at = [(x1 + 2 * mx + x2) / 4, (y1 + 2 * my + y2) / 4 + 4, "middle"];
     }
     path.setAttribute("class", `redge ${cls}`);
     path.setAttribute("marker-end", `url(#rel-arrow${cls ? `-${cls}` : ""})`);
@@ -3938,13 +3960,16 @@ function digraphSvg(d: DigraphData): SVGSVGElement {
   });
   svg.append(...texts);
   for (const [name, [x, y]] of pos) {
-    const c = document.createElementNS(NS, "circle");
-    c.setAttribute("cx", String(x)); c.setAttribute("cy", String(y)); c.setAttribute("r", "5"); c.setAttribute("class", "hnode"); c.setAttribute("data-node", name); svg.append(c);
     const t = document.createElementNS(NS, "text");
     if (layered) {
-      // centred under the node
-      t.setAttribute("x", String(x)); t.setAttribute("y", String(y + 19)); t.setAttribute("text-anchor", "middle");
+      // a box with the name in it
+      const [hw, hh] = half(name), r = document.createElementNS(NS, "rect");
+      r.setAttribute("x", String(x - hw)); r.setAttribute("y", String(y - hh)); r.setAttribute("width", String(2 * hw)); r.setAttribute("height", String(2 * hh));
+      r.setAttribute("rx", "5"); r.setAttribute("class", "hnode"); r.setAttribute("data-node", name); svg.append(r);
+      t.setAttribute("x", String(x)); t.setAttribute("y", String(y + 4)); t.setAttribute("text-anchor", "middle");
     } else {
+      const c = document.createElementNS(NS, "circle");
+      c.setAttribute("cx", String(x)); c.setAttribute("cy", String(y)); c.setAttribute("r", "5"); c.setAttribute("class", "hnode"); c.setAttribute("data-node", name); svg.append(c);
       // outward from the centre, past the node's loop when it has one
       const out = Math.atan2(y - hgt / 2, x - w / 2) || -Math.PI / 2, dist = d.edges.some(([a, b]) => a === name && b === name) ? 40 : 14;
       t.setAttribute("x", String(x + dist * Math.cos(out) - (Math.cos(out) < -0.3 ? name.length * 6.6 : 4))); t.setAttribute("y", String(y + dist * Math.sin(out) + 4));

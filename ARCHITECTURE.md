@@ -811,7 +811,8 @@ current transition (with the answer's marks held back until the answer shows); `
 failing law read (`marks`); `context.table`, a formal context's cross table; and `typing.tree`, a
 typing derivation as nested judgments, each with its rule and premises; and `replicas.spacetime`, a
 replica simulation's lanes, events and messages, with the events each step made. The notebook draws the tables
-and the proof tree as HTML and the graph as SVG, keeps them with the cell in a saved file, and ignores a kind it does not know. The frontend owns
+and the proof tree as HTML and the graph as SVG (a state graph in rows from its initial states, each state a box
+with its name in it so no arrow crosses a name), keeps them with the cell in a saved file, and ignores a kind it does not know. The frontend owns
 rendering (SVG/canvas/WebGL) and can offer several renderers for one spec. This keeps the engine
 pure and portable (wasm has no canvas), keeps proofs about what is *shown* possible (the spec is
 data the engine can reason about), and lets exports (§6) reuse the same specs.
