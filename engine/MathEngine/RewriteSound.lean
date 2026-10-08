@@ -32,21 +32,21 @@ def RuleSoundFor (C : Congruence) (r : Rule W) : Prop :=
 
 /-- **Soundness is a fold.** If every rule in the set is sound for `C`, normalization is. -/
 theorem normAt_sound_for (C : Congruence) (rules : List (Rule W)) (hs : ∀ r ∈ rules, RuleSoundFor C r) :
-    (∀ (e : Expr) (path : Path) (acc : Array RawStep), C.rel e (normAt rules e path acc).1.1) ∧
-    (∀ (cs : List Expr) (path : Path) (i : Nat) (acc : Array RawStep),
-      RelList C.rel cs (normChildren rules cs path i acc).1.1) := by
+    (∀ (e : Expr) (acc : Array Record), C.rel e (normAt rules e acc).1.1) ∧
+    (∀ (cs : List Expr) (i : Nat) (acc : Array Record),
+      RelList C.rel cs (normChildren rules cs i acc).1.1) := by
   apply normAt.mutual_induct rules
-    (motive1 := fun e path acc => C.rel e (normAt rules e path acc).1.1)
-    (motive2 := fun cs path i acc => RelList C.rel cs (normChildren rules cs path i acc).1.1)
+    (motive1 := fun e acc => C.rel e (normAt rules e acc).1.1)
+    (motive2 := fun cs i acc => RelList C.rel cs (normChildren rules cs i acc).1.1)
   · -- no rule fires: the result is `canon (withChildren e cs)`
-    intro e path acc cs acc₀ hcs hnc e₀ e₁ h₁ hf ih
+    intro e acc cs acc₀ hcs hnc e₀ e₁ h₁ hf ih
     simp only [e₁, e₀] at hf
     rw [normAt, hnc]; dsimp only
     rw [hf]; dsimp only
     rw [hnc] at ih
     exact C.trans (C.congr e cs ih) (C.canon _)
   · -- a rule fires, then we recurse on its result
-    intro e path acc cs acc₀ hcs hnc e₀ e₁ acc₁ h₁ rule res hr hf hdec acc₂ r hr' hn ih₁ ih₂
+    intro e acc cs acc₀ hcs hnc e₀ e₁ acc₁ h₁ rule res hr hf hdec acc₂ r hr' hn ih₁ ih₂
     simp only [e₁, e₀] at hf hr
     simp only [acc₂, acc₁, e₁, e₀, dite_eq_ite] at hn ih₂
     rw [normAt, hnc]; dsimp only
@@ -57,8 +57,9 @@ theorem normAt_sound_for (C : Congruence) (rules : List (Rule W)) (hs : ∀ r �
     have hmem := fire_mem rules _ _ hf
     have hrule : C.rel (canon (withChildren e cs)) res.result := hs _ hmem _ _ hr
     exact C.trans (C.trans (C.congr e cs ih₁) (C.canon _)) (C.trans hrule ih₂)
-  · intro path i acc; simp [normChildren, RelList]
-  · intro path i acc e es c' acc₁ hc hn cs'' acc₂ hcs hnc ih₁ ih₂
+  · intro i acc; simp [normChildren, RelList]
+  · intro i acc e es c' acc₁ hc hn cs'' acc₂ hcs hnc ih₁ ih₂
+    simp only [dite_eq_ite] at hn ih₁
     rw [normChildren, hn]; dsimp only
     rw [hnc]; dsimp only
     rw [hn] at ih₁; rw [hnc] at ih₂
@@ -66,7 +67,7 @@ theorem normAt_sound_for (C : Congruence) (rules : List (Rule W)) (hs : ∀ r �
 
 theorem normalize_sound_for (C : Congruence) (rules : List (Rule W)) (hs : ∀ r ∈ rules, RuleSoundFor C r)
     (e : Expr) (s : Array Step) : C.rel e ((normalize rules e).run' s) := by
-  rw [normalize_run]; exact (normAt_sound_for C rules hs).1 e [] #[]
+  rw [normalize_run]; exact (normAt_sound_for C rules hs).1 e #[]
 
 -- ---------------------------------------------------------------------------
 -- The integer fragment as a `Congruence`

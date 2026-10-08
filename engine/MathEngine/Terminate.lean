@@ -544,7 +544,7 @@ end chains
 -- ---------------------------------------------------------------------------
 
 structure TState where
-  steps : Array RawStep := #[]
+  tape : Array Record := #[]
   error : Option String := none
 
 /-- What `normAtT` promises about its result: no heavier than the input, and normal unless a rule
@@ -556,26 +556,37 @@ def PromiseList (rules : List PlainRule) (cs : List Expr) (st : TState) (r : Lis
   RelList (fun a b => MuLe (μ a) (μ b)) r.1 cs ∧ (r.2.error = none → ∀ c ∈ r.1, Normal rules c) ∧
     (r.2.error = none → st.error = none)
 
-/-! The path of the node being normalized is carried reversed (`rpath`, innermost index first):
-descending is then a cons, where `path ++ [i]` would cost every node its depth. A step records it
-the right way round. -/
+/-! The rewriter records a tape (`Record`, Rewrite.lean): its moves into, along and out of a node's
+children, and its firings; a firing carries no path, so no node costs its depth. `buildSteps`
+replays the tape from the input to give each visible step its path and whole-term snapshots.
+
+A rule's result is normalized again from the top, and a result is mostly made of the children of
+the node the rule fired on, which are already normal (`ChildrenNormal` is the hypothesis the firing
+needed). Walking them again would cost every firing the size of its node: `√(√(…√x))` fires a
+silent `simp.sqrt` at every level, so that was quadratic in the depth. So the recursive call after
+a firing carries those children as terms known to be normal (`known`, with the proof), and
+`normChildrenT` returns a child of a result that is `equal` to one of them as it is. `equal` runs
+as `beqFast` (Expr.lean), so a shared child is recognised by its pointer; the terms a rule builds
+share the children it was given, and a known term it does not share is told apart at the first
+difference. -/
 mutual
-  def normAtT (rules : List PlainRule) (ord : Ordered rules) (e : Expr) (rpath : Path) (st : TState) :
+  def normAtT (rules : List PlainRule) (ord : Ordered rules) (e : Expr) (known : List Expr)
+      (hkn : ∀ k ∈ known, Normal rules k) (st : TState) :
       {r : Expr × TState // Promise rules e st r} :=
     -- a chain is opened before its children are worked (`openChain`)
     match hoc : openChain e with
     | some e' =>
       have hlt : MuLt (μ e') (μ e) := openChain_lt hoc
-      let st' : TState := { st with steps := st.steps.push ⟨"simp.flatten", true, "associativity", rpath.reverse, e', none⟩ }
-      match normAtT rules ord e' rpath st' with
+      let st' : TState := { st with tape := st.tape.push (.fire ⟨"simp.flatten", true, "associativity", e', none⟩) }
+      match normAtT rules ord e' known hkn st' with
       | ⟨r, hr⟩ => ⟨r, hr.1.trans (Or.inl hlt), hr.2.1, hr.2.2⟩
     | none =>
-    match normChildrenT rules ord e (children e) (fun _ h => h) rpath 0 st with
+    match normChildrenT rules ord e (children e) (fun _ h => h) known hkn 0 st with
     | ⟨(cs, st₀), hcs⟩ =>
       have hlen : cs.length = (children e).length := RelList_length hcs.1
       let e₀ := withChildren e cs
       let e₁ := canon e₀
-      let st₁ := if equal e₁ e₀ then st₀ else { st₀ with steps := st₀.steps.push ⟨"simp.sort", true, "commutativity", rpath.reverse, e₁, none⟩ }
+      let st₁ := if equal e₁ e₀ then st₀ else { st₀ with tape := st₀.tape.push (.fire ⟨"simp.sort", true, "commutativity", e₁, none⟩) }
       have hst₁ : st₁.error = st₀.error := by simp only [st₁]; split <;> rfl
       have h₁ : MuLe (μ e₁) (μ e) := by
         have := μ_withChildren_le e (cs' := cs) (cs := children e) rfl hcs.1
@@ -600,9 +611,10 @@ mutual
         have hdec : MuLt (μ res.result) (μ e₁) :=
           ord.decreasing rule (fireP_spec rules e₁ hf).1 e₁ res (hnorm hnone) (fireP_spec rules e₁ hf).2
             (by cases h : res.error with | none => rfl | some => simp [h] at hres)
-        let st₂ : TState := { st₁ with steps := st₁.steps.push ⟨rule.name, rule.silent, res.explanation, rpath.reverse, res.result, res.sub⟩ }
+        let st₂ : TState := { st₁ with tape := st₁.tape.push (.fire ⟨rule.name, rule.silent, res.explanation, res.result, res.sub⟩) }
         have hst₂ : st₂.error = st₀.error := hst₁
-        match normAtT rules ord res.result rpath st₂ with
+        -- the result is worked with the children it was built from known to be normal
+        match normAtT rules ord res.result cs (hcs.2.1 hnone) st₂ with
         | ⟨r, hr⟩ => ⟨r, hr.1.trans (Or.inl (hdec.trans_le h₁)), hr.2.1, fun h => hcs.2.2 (hst₂ ▸ hr.2.2 h)⟩
   termination_by (μ e, 1, 0)
   decreasing_by
@@ -610,33 +622,53 @@ mutual
     · exact Prod.Lex.right _ (Prod.Lex.left _ _ Nat.zero_lt_one)
     · exact Prod.Lex.left _ _ (hdec.trans_le h₁)
 
+  /-- The children from index `i` on: a move into the first, to each next one, and back out. -/
   def normChildrenT (rules : List PlainRule) (ord : Ordered rules) (parent : Expr) (cs : List Expr)
-      (hsub : ∀ c ∈ cs, c ∈ children parent) (rpath : Path) (i : Nat) (st : TState) :
+      (hsub : ∀ c ∈ cs, c ∈ children parent) (known : List Expr) (hkn : ∀ k ∈ known, Normal rules k)
+      (i : Nat) (st : TState) :
       {r : List Expr × TState // PromiseList rules cs st r} :=
     match cs with
-    | [] => ⟨([], st), trivial, fun _ _ h => by simp at h, fun h => h⟩
+    | [] =>
+      let st' : TState := if i = 0 then st else { st with tape := st.tape.push .up }
+      have hst' : st'.error = st.error := by simp only [st']; split <;> rfl
+      ⟨([], st'), trivial, fun _ _ h => by simp at h, fun h => hst' ▸ h⟩
     | c :: cs' =>
-      match normAtT rules ord c (i :: rpath) st with
+      let st' : TState := { st with tape := st.tape.push (if i = 0 then .down else .next) }
+      have hst' : st'.error = st.error := rfl
+      match hk : known.find? (equal c) with
+      | some k =>
+        -- `c` is a known normal term: left as it is, no firings inside
+        have hck : c = k := beq_eq c k (by simpa [equal] using List.find?_some hk)
+        have hnc : Normal rules c := hck ▸ hkn k (List.mem_of_find?_eq_some hk)
+        match normChildrenT rules ord parent cs' (fun d hd => hsub d (List.mem_cons_of_mem _ hd)) known hkn (i + 1) st' with
+        | ⟨(cs'', st₂), hcs⟩ =>
+          ⟨(c :: cs'', st₂), ⟨Or.inr rfl, hcs.1⟩, fun herr d hd => by
+            rcases List.mem_cons.mp hd with rfl | hd
+            · exact hnc
+            · exact hcs.2.1 herr d hd, fun herr => hst' ▸ hcs.2.2 herr⟩
+      | none =>
+      match normAtT rules ord c known hkn st' with
       | ⟨(c', st₁), hc⟩ =>
-        match normChildrenT rules ord parent cs' (fun d hd => hsub d (List.mem_cons_of_mem _ hd)) rpath (i + 1) st₁ with
+        match normChildrenT rules ord parent cs' (fun d hd => hsub d (List.mem_cons_of_mem _ hd)) known hkn (i + 1) st₁ with
         | ⟨(cs'', st₂), hcs⟩ =>
           ⟨(c' :: cs'', st₂), ⟨hc.1, hcs.1⟩, fun herr d hd => by
             rcases List.mem_cons.mp hd with rfl | hd
             · exact hc.2.1 (hcs.2.2 herr)
-            · exact hcs.2.1 herr d hd, fun herr => hc.2.2 (hcs.2.2 herr)⟩
+            · exact hcs.2.1 herr d hd, fun herr => hst' ▸ hc.2.2 (hcs.2.2 herr)⟩
   termination_by (μ parent, 0, cs.length)
   decreasing_by
+    · exact Prod.Lex.right _ (Prod.Lex.right _ (Nat.lt_succ_self _))
     · exact Prod.Lex.left _ _ (μ_child_lt (hsub c List.mem_cons_self))
     · exact Prod.Lex.right _ (Prod.Lex.right _ (Nat.lt_succ_self _))
 end
 
 /-- Normalize under an ordered rule set. Fails only if a rule refused. -/
 def normalizeT (rules : List PlainRule) (ord : Ordered rules) (e : Expr) : TraceM (Except String Expr) := do
-  let ⟨(out, st), _⟩ := normAtT rules ord e [] {}
+  let ⟨(out, st), _⟩ := normAtT rules ord e [] (fun _ h => by simp at h) {}
   match st.error with
   | some msg => pure (.error msg)
   | none =>
-    let (steps, _) := buildSteps e st.steps
+    let (steps, _) := buildSteps e st.tape
     modify (· ++ steps)
     pure (.ok out)
 

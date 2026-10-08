@@ -61,9 +61,9 @@ differential test with zero mismatches.
   "approximate" flag. Mathlib's `ℚ` *is* that `Rat`, so the identification is `rfl`
   (`proofs/Proofs/Q.lean`). There is nothing to prove about the arithmetic; what must be proven is
   how the engine uses it, which is the per-rule soundness theorems.
-- **Show work is not reconstructed after the fact.** Rewriting records every rule firing as a
-  `Step` with the whole term before and after and the path where it fired. The derivation *is*
-  the computation, viewed as data.
+- **Show work is not reconstructed after the fact.** Rewriting records every rule firing, and
+  the replay of its tape (`buildSteps`) gives each a `Step` with the whole term before and after
+  and the path where it fired. The derivation *is* the computation, viewed as data.
 - **Work costs what is read.** Every step carries the whole term before and after it, so the
   derivation of a big term is quadratic in it: 200 steps on a 100-row table were 10 MB of reply.
   Two things keep it in proportion without capping it. A run of rewrites inside one matrix's entries
@@ -110,6 +110,18 @@ differential test with zero mismatches.
   both sides (`Step.quiet`): `after` is `before` with that subterm replaced, so the two can differ
   only where its parent prints, and printing both whole terms made an outline cost the steps times
   the term.
+  A chain of radicals (`√(√(…√x))`) fires a silent `simp.sqrt` at every level, and two more things
+  were quadratic in it. A rule's result is normalized again from the top, and a result is mostly
+  the children of the node the rule fired on, which the firing's own hypothesis says are normal:
+  the recursive call carries them as known-normal terms, with that proof, and a child of the result
+  `equal` to one (by its pointer, through `beqR`) is left as it is, rather than walked again
+  (`normAtT`, `Terminate.lean`). And a firing is recorded without its path: the rewriter writes a
+  tape of its moves into, along and out of a node's children and of its firings (`Record`,
+  `Rewrite.lean`), and `buildSteps` replays the tape with a zipper, so a silent firing costs a
+  record, and only a visible step, which needs its path and the whole term before and after, pays
+  for its depth; a path per firing, reversed when recorded and walked from the root when replayed,
+  cost the chain its depth squared twice over. Ten thousand radicals answer in under a second,
+  where they took five minutes.
 - **Termination is a proof obligation, not a budget.** A rule bundles a proof that it strictly
   decreases a measure; `normalize` is well-founded on that measure and never `partial`. The
   verified `simplify` uses one additive measure (`Rewrite.lean`). The whole notebook pipeline —
