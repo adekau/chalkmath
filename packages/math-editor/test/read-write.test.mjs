@@ -218,6 +218,13 @@ test("notation is what the text cannot show: fractions, powers, matrices, d/dx, 
   for (const src of ["epicycles(llama, 60)", "x + 1", "N(pi)", "rref(M)", "subst(f, x, 3)", "let f = g", "diff"]) assert.equal(has(src), false, src);
 });
 
+test("a block of several lines: each line as tall as a line, the last too, so a line just started takes room", () => {
+  const tex = (src) => toLatex(tree(src));
+  // KaTeX drops an empty last row: the strut keeps it
+  assert.ok(tex("system(var x in 0..2\n)").includes("2\\mathstrut \\\\ \\mathstrut\\end{array}"));
+  assert.ok(tex("system(var x in 0..2\ninit x = 0)").includes("=0\\mathstrut\\end{array}"));
+});
+
 test("fractions keep full size when nested, script size in exponents and bounds; Re, Im, sgn are words", () => {
   const tex = (src) => toLatex(tree(src));
   // N(80000/3 / (250/(300/7))): the first two levels full size, each padded so the bars nest

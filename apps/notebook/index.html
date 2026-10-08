@@ -543,6 +543,10 @@ svg .rhead { fill:var(--ink-mut); } svg .rhead.bad { fill:var(--danger); } svg .
 svg .redge.trail { stroke:var(--acc); stroke-width:2; opacity:.55; }
 svg .redge.cur { stroke:var(--acc); stroke-width:3; opacity:1; }
 svg .rhead.cur { fill:var(--acc); }
+/* a state graph's arrow labels (its actions), on a halo of the page so a crossing arrow does not hide them */
+svg .rlabel { font-family:var(--code); font-size:10px; fill:var(--ink-mut); stroke:var(--paper-bg); stroke-width:3px; stroke-linejoin:round; paint-order:stroke; }
+svg .rlabel.bad { fill:var(--danger); } svg .rlabel.added { fill:var(--ok); }
+svg .rlabel.trail, svg .rlabel.cur { fill:var(--acc); } svg .rlabel.cur { font-weight:700; }
 svg .hnode.trail { r:6; }
 svg .hnode.cur { r:8; stroke:var(--ink); stroke-width:1.5; }
 .visualbox svg.spacetime { max-width:none; }

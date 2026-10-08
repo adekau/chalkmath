@@ -1199,7 +1199,7 @@ export const FUNCTIONS: FnDoc[] = [
     details: [
       "Clauses are separated by `;` or by line breaks (Shift+Enter starts a new line in a cell): `var x in lo..hi`, `var p in {idle, crit}`, `var b in bool`; one `init` condition; and `action NAME when GUARD do x := e, y := e'`.",
       "Updates in one action happen together, reading the old values. The guard may be left out. `fair action` and `strong fair action` mark actions for `eventually`.",
-      "Bind it with `let`; the cell draws the reachable states (up to 40) as a graph.",
+      "Bind it with `let`; the cell draws the reachable states (up to 40) as a graph, each arrow labelled with the actions that take it.",
     ],
     examples: [basic("let C = system(var x in 0..3; var y in 0..3; init x = 0 ∧ y = 0; action inc when x < 3 do x := x + 1; action move when x > 0 ∧ y < 3 do x := x - 1, y := y + 1)", "states(C)")],
     see: ["states", "invariant", "trace"],

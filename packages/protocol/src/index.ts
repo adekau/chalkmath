@@ -146,6 +146,8 @@ export interface DigraphData {
   nodes: string[]; edges: [string, string][]; bad: [string, string][]; added: [string, string][];
   /** Each node's layer (a state's distance from an initial one), for a layered drawing. Optional. */
   layers?: number[];
+  /** Each arrow's label, in the order of `edges` (a state graph's: the actions that take it). Optional. */
+  labels?: string[];
   /** Where each step of the cell's derivation is on the graph, in step order: the transition it takes,
    *  or the state it is at; `null` for a step that is not on it. Optional (a state graph's). */
   steps?: ({ edge?: [string, string]; node?: string } | null)[];

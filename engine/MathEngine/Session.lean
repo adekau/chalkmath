@@ -1021,6 +1021,8 @@ structure SysResult where
   graph : Option (Ord.Rel × List (String × String) × List (String × String)) := none
   /-- Each drawn state's distance from an initial state, for a layered drawing. -/
   layers : List Nat := []
+  /-- Each drawn transition's label, in the order of the graph's pairs: the actions that take it. -/
+  edgeLabels : List String := []
   /-- A replica simulation's space-time diagram, and the diagram's events each step made. -/
   spacetime : Option (Rep.Diagram × Array (List Nat)) := none
 
@@ -1088,7 +1090,7 @@ def systemCell (s : Session) (cellId source : String) :
       let (a, rest) := Sys.splitFirst body
       .fn head ([.var a] ++ (if rest.isEmpty then [] else [match Logic.parseFormula rest with | .ok f => f.toExpr | .error _ => .var rest]))
   let done (value : Expr) (steps : Array Step) (summary : Option String := none) (bindS : Option Sys.System := none)
-      (graph : Option (Ord.Rel × List (String × String) × List (String × String) × List Nat) := none)
+      (graph : Option (Ord.Rel × List (String × String) × List (String × String) × List Nat × List String) := none)
       (spacetime : Option (Rep.Diagram × Array (List Nat)) := none) (bindT : Option TRS.System := none) :
       Session × Except (String × String × Option (Nat × Nat)) SysResult :=
     let input := if head == "system" then value else question
@@ -1100,7 +1102,7 @@ def systemCell (s : Session) (cellId source : String) :
     let s := match name, bindT with
       | some n, some T => { s with trss := (n, T) :: s.trss.filter (·.1 != n) }
       | _, _ => s
-    (s, .ok ⟨name, value, d, summary, graph.map (fun (R, b, a, _) => (R, b, a)), (graph.map (·.2.2.2)).getD [], spacetime⟩)
+    (s, .ok ⟨name, value, d, summary, graph.map (fun (R, b, a, _) => (R, b, a)), (graph.map (·.2.2.2.1)).getD [], (graph.map (·.2.2.2.2)).getD [], spacetime⟩)
   let getT (n : String) : Except String TRS.System :=
     match s.trss.lookup n.trimAscii.copy with
     | some T => .ok T
@@ -1112,10 +1114,15 @@ def systemCell (s : Session) (cellId source : String) :
   let result : Except String (Session × Except (String × String × Option (Nat × Nat)) SysResult) := do
     let body ← Sys.argsOf t head
     -- the graph to draw: small enough to read, with transitions marked
-    let draw (G : Sys.Graph) (bad added : List (Nat × Nat)) : Option (Ord.Rel × List (String × String) × List (String × String) × List Nat) :=
+    let draw (G : Sys.Graph) (bad added : List (Nat × Nat)) : Option (Ord.Rel × List (String × String) × List (String × String) × List Nat × List String) :=
       if G.states.size > 40 then none else
       let lbl (i : Nat) := Sys.stateLabel G.states[i]!
-      some (G.rel, bad.map (fun (i, j) => (lbl i, lbl j)), added.map (fun (i, j) => (lbl i, lbl j)), (List.range G.states.size).map fun i => (G.pathTo i).2.length)
+      let R := G.rel
+      -- each arrow's label: the actions that take it, in the order the system declares them
+      let names (a b : String) : String :=
+        ", ".intercalate (G.edges.filterMap (fun (i, act, j) => if lbl i == a && lbl j == b then some act else none)).eraseDups
+      some (R, bad.map (fun (i, j) => (lbl i, lbl j)), added.map (fun (i, j) => (lbl i, lbl j)), (List.range G.states.size).map (fun i => (G.pathTo i).2.length),
+        R.pairs.map fun (a, b) => names a b)
     -- a trace from an initial state to state `j` as steps, each re-checked against the system
     let traceSteps (S : Sys.System) (G : Sys.Graph) (j : Nat) : Except String (Array Step × List (Nat × Nat)) := do
       let (start, path) := G.pathTo j

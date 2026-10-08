@@ -768,6 +768,10 @@ async function features() {
     if (k < lines.length - 1) await page.keyboard.press("Shift+Enter");
   }
   assert.equal(await mcell.locator("textarea.cellin").inputValue(), lines.join("\n"), "Shift+Enter made a cell of several lines");
+  // highlighted as the typeset view would: a system's clauses as keywords, and `system` still a command
+  // though its actions have `:=` in them
+  assert.deepEqual([...new Set(await mcell.locator(".hl .hkw").allTextContents())].sort(), ["action", "do", "in", "init", "let", "var", "when"], "a system's keywords are not highlighted in text");
+  assert.deepEqual(await mcell.locator(".hl .hcmd").allTextContents(), ["system"], "system is not highlighted as a command in text");
   await page.keyboard.press("Enter");
   await page.waitForFunction((k) => { const c = document.querySelectorAll(".cell")[k]; return c && !c.classList.contains("running") && (c.querySelector(".outval") || c.querySelector(".cellerr")); }, mk, { timeout: 30000 });
   const mWant = await ref(lines.join("\n"), 14);
@@ -776,7 +780,10 @@ async function features() {
   const inv = await runLast("invariant(M, p = crit → lock = true)");
   const invWant = (await ref("invariant(M, p = crit → lock = true)", 15)).visuals.find((v) => v.kind === "relation.digraph").data;
   assert.equal(await inv.locator("svg path.redge.bad").count(), invWant.bad.length, "the counterexample's transitions are marked");
-  console.log(`✓ several lines: a system typed with Shift+Enter, ${invWant.nodes.length} states, a ${invWant.bad.length}-step counterexample marked`);
+  // each arrow labelled with the actions that take it, as the engine says
+  assert.equal(invWant.labels?.length, invWant.edges.length, "the engine labels each transition");
+  assert.deepEqual(await inv.locator("svg text.rlabel").allTextContents(), invWant.labels, "the arrows are labelled with their actions");
+  console.log(`✓ several lines: a system typed with Shift+Enter, ${invWant.nodes.length} states, a ${invWant.bad.length}-step counterexample marked, ${invWant.labels.length} arrows labelled`);
   // a step of the trace selected in the work: its transition is the current one on the graph
   if (await inv.locator(".work .step").count() === 0) await inv.locator(".cellacts [aria-expanded]").click();
   await inv.locator(".work:not(.pending) .step").first().waitFor({ timeout: 30000 });
@@ -787,6 +794,19 @@ async function features() {
     .catch(() => assert.fail(`selecting step ${stepK + 1} marked no transition on the graph`));
   assert.equal(await inv.locator("svg path.redge.cur").first().getAttribute("data-edge"), JSON.stringify(invWant.steps[stepK].edge), "the marked transition is the step's");
   console.log(`✓ trace on the graph: step ${stepK + 1} selected, its transition ${invWant.steps[stepK].edge.join(" → ")} marked`);
+  // in the typeset input, a new line takes room at once, before anything is typed on it
+  await menu("Edit", "Add math cell");
+  const tcell = all().nth(await all().count() - 1);
+  await tcell.locator(".cellin").click();
+  await page.keyboard.press("Control+Shift+M");
+  await tcell.locator(".mi").waitFor({ timeout: 5000 });
+  await page.keyboard.type("let T = system(var x in 0..1");
+  const oneLine = await tcell.locator(".mi").evaluate((el) => el.offsetHeight);
+  await page.keyboard.press("Shift+Enter");
+  await page.waitForFunction(([k, h]) => document.querySelectorAll(".cell")[k]?.querySelector(".mi").offsetHeight > h, [await all().count() - 1, oneLine], { timeout: 5000 })
+    .catch(() => assert.fail(`the typeset input did not grow for a new, empty line (${oneLine}px)`));
+  await page.locator('[title="Delete the cell"]').click();
+  console.log("✓ typeset input: a new line takes room before anything is typed on it");
   // a replica run drawn as a space-time diagram: a lane per replica, an arrow per message
   const repSrc = "replicas(gcounter; a, b, c; a: inc; m := a; b: inc; c <- m; a -> b; b -> c; c <- m)";
   const rep = await runLast(repSrc);

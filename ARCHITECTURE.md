@@ -804,7 +804,8 @@ The engine never draws. It emits **visual specs**: declarative JSON next to `ren
 (`EvaluateResult.visuals`): a Cayley table, a graph, a commutative diagram, sampled plot data, a
 matrix heat map. Six kinds exist (`KnownVisual` in the protocol): `logic.truthtable`, the rows of a
 formula's table; `relation.digraph`, a relation's pairs with the ones that break a property (`bad`)
-and the ones a closure added (`added`), and, for a state graph, where each step of the work is on it
+and the ones a closure added (`added`), and, for a state graph, each arrow's label (`labels`, in the
+order of `edges`: the actions that take that transition) and where each step of the work is on it
 (`steps`: the transition it takes or the state it is at), so stepping through a trace marks the
 current transition (with the answer's marks held back until the answer shows); `algebra.optable`, an operation's table with the cells a
 failing law read (`marks`); `context.table`, a formal context's cross table; and `typing.tree`, a

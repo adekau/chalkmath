@@ -1,7 +1,7 @@
 import { createClient, type EngineClient, type Step, type StepOutline, type Path, type RuleStatus, type Derivation, type WireExpr, type PlotResult, type ManipulateResult, type HasseData, type KnownVisual, type TruthTableData, type DigraphData, type OpTableData, type ContextTableData, type TypingNode, type TypingTreeData, type SpacetimeData } from "@chalkmath/protocol";
 import { workerTransport, httpTransport } from "@chalkmath/engine-host";
 import { leanForPrelude } from "@chalkmath/lean-editor/prelude";
-import { read as readNotation, write as writeNotation, writeText, hasNotation, templateAt, templateInText, TEMPLATES, lex as lexNotation, type Stmt, type Caret, type MathEdit } from "@chalkmath/math-editor";
+import { read as readNotation, write as writeNotation, writeText, hasNotation, templateAt, templateInText, TEMPLATES, KEYWORDS, lex as lexNotation, type Stmt, type Caret, type MathEdit } from "@chalkmath/math-editor";
 import { MathInput, type MathInputOptions } from "@chalkmath/math-editor/view";
 
 /**
@@ -3587,7 +3587,7 @@ function knownVisuals(vs: unknown): KnownVisual[] {
  *  (its arrow, or its state when it takes none). A step's arrow shows its own mark class too, so a
  *  marked transition keeps its colour under the trail. */
 function markGraphSteps(box: HTMLElement, d: DigraphData, trail: number[], cur: number | undefined) {
-  box.querySelectorAll(".redge.trail, .redge.cur, .hnode.cur").forEach((x) => x.classList.remove("trail", "cur"));
+  box.querySelectorAll(".redge.trail, .redge.cur, .rlabel.trail, .rlabel.cur, .hnode.cur").forEach((x) => x.classList.remove("trail", "cur"));
   box.querySelectorAll<SVGPathElement>(".redge").forEach((p) => {
     const cls = p.classList.contains("bad") ? "-bad" : p.classList.contains("added") ? "-added" : "";
     p.setAttribute("marker-end", `url(#rel-arrow${cls})`);
@@ -3602,6 +3602,7 @@ function markGraphSteps(box: HTMLElement, d: DigraphData, trail: number[], cur: 
         p.classList.add(cls);
         if (cls === "cur") p.setAttribute("marker-end", "url(#rel-arrow-cur)");
       });
+      box.querySelectorAll(".rlabel").forEach((t) => { if (t.getAttribute("data-edge") === want) t.classList.add(cls); });
     }
     const at = m.node ?? (cls === "cur" ? m.edge?.[1] : undefined);
     if (at !== undefined) box.querySelectorAll(".hnode").forEach((c) => { if (c.getAttribute("data-node") === at) c.classList.add(cls); });
@@ -3847,12 +3848,16 @@ function truthTable(d: TruthTableData): HTMLElement {
 }
 
 /** A relation as a directed graph: elements on a circle, a pair as an arrow (a loop for `x R x`). The
- *  arrows that show a property failing are marked, and the ones a closure added are dashed. */
+ *  arrows that show a property failing are marked, and the ones a closure added are dashed. A state
+ *  graph's arrows are labelled with the actions that take them. */
 function digraphSvg(d: DigraphData): SVGSVGElement {
   const NS = "http://www.w3.org/2000/svg";
   const n = d.nodes.length;
   const longest = Math.max(1, ...d.nodes.map((x) => x.length));
   const layered = !!d.layers && d.layers.length === n;
+  const labels = d.labels?.length === d.edges.length ? d.labels : undefined;
+  // room above the top row for the labels of its loops
+  const top = labels && layered ? 16 : 0;
   const pos = new Map<string, [number, number]>();
   let w: number, hgt: number;
   if (layered) {
@@ -3860,9 +3865,10 @@ function digraphSvg(d: DigraphData): SVGSVGElement {
     const rows = new Map<number, string[]>();
     d.nodes.forEach((name, i) => { const l = d.layers![i]!; rows.set(l, [...(rows.get(l) ?? []), name]); });
     const widest = Math.max(1, ...[...rows.values()].map((r) => r.length));
-    const colW = Math.max(70, longest * 7 + 24), rowH = 74;
-    w = Math.max(240, widest * colW + 40); hgt = (Math.max(0, ...rows.keys()) + 1) * rowH + 30;
-    for (const [l, names] of rows) names.forEach((name, k) => pos.set(name, [20 + (k + 0.5) * ((w - 40) / names.length), 24 + l * rowH]));
+    // labelled arrows want room beside them
+    const colW = Math.max(70, longest * 7 + 24, labels ? Math.max(0, ...labels.map((x) => x.length)) * 6 + 40 : 0), rowH = labels ? 84 : 74;
+    w = Math.max(240, widest * colW + 40); hgt = top + (Math.max(0, ...rows.keys()) + 1) * rowH + 30;
+    for (const [l, names] of rows) names.forEach((name, k) => pos.set(name, [20 + (k + 0.5) * ((w - 40) / names.length), top + 24 + l * rowH]));
   } else {
     const r = n <= 1 ? 0 : Math.max(60, Math.min(150, 26 * n)), pad = Math.max(60, longest * 6.6 + 24);
     w = 2 * r + 2 * pad; hgt = 2 * r + 90;
@@ -3875,7 +3881,7 @@ function digraphSvg(d: DigraphData): SVGSVGElement {
   const bad = new Set(d.bad.map(key)), added = new Set(d.added.map(key)), all = new Set(d.edges.map(key));
   const svg = document.createElementNS(NS, "svg");
   svg.setAttribute("role", "img");
-  svg.setAttribute("aria-label", `A relation on ${n} element${n === 1 ? "" : "s"}${d.edges.length ? `; pairs: ${d.edges.map(([a, b]) => `${a} to ${b}`).join(", ")}` : ", no pairs"}`);
+  svg.setAttribute("aria-label", `A relation on ${n} element${n === 1 ? "" : "s"}${d.edges.length ? `; pairs: ${d.edges.map(([a, b], k) => `${a} to ${b}${labels?.[k] ? ` by ${labels[k]}` : ""}`).join("; ")}` : ", no pairs"}`);
   svg.setAttribute("viewBox", `0 0 ${w} ${hgt}`); svg.setAttribute("width", String(w)); svg.setAttribute("height", String(hgt));
   const defs = document.createElementNS(NS, "defs");
   for (const cls of ["", "bad", "added", "cur"]) {
@@ -3888,17 +3894,24 @@ function digraphSvg(d: DigraphData): SVGSVGElement {
     m.append(path); defs.append(m);
   }
   svg.append(defs);
-  for (const e of d.edges) {
+  // the labels go on top of every arrow, so one arrow does not cross out another's label
+  const texts: SVGTextElement[] = [];
+  d.edges.forEach((e, ei) => {
     const [a, b] = e;
-    const p = pos.get(a), q = pos.get(b); if (!p || !q) continue;
+    const p = pos.get(a), q = pos.get(b); if (!p || !q) return;
     const cls = bad.has(key(e)) ? "bad" : added.has(key(e)) ? "added" : "";
     const path = document.createElementNS(NS, "path");
+    // where the label goes, and which way it reads from there
+    let at: [number, number, "start" | "middle" | "end"];
     if (a === b) {
       // a loop, outward from the centre
       const ang = Math.atan2(p[1] - hgt / 2, p[0] - w / 2) || -Math.PI / 2;
       const cx = p[0] + 18 * Math.cos(ang), cy = p[1] + 18 * Math.sin(ang);
       const s1 = [p[0] + 7 * Math.cos(ang - 0.6), p[1] + 7 * Math.sin(ang - 0.6)], s2 = [p[0] + 7 * Math.cos(ang + 0.6), p[1] + 7 * Math.sin(ang + 0.6)];
       path.setAttribute("d", `M${s1[0]},${s1[1]} Q${cx + 14 * Math.cos(ang - 1.2)},${cy + 14 * Math.sin(ang - 1.2)} ${cx},${cy} Q${cx + 14 * Math.cos(ang + 1.2)},${cy + 14 * Math.sin(ang + 1.2)} ${s2[0]},${s2[1]}`);
+      // past the loop's far end
+      const c = Math.cos(ang);
+      at = [p[0] + 30 * c, p[1] + 30 * Math.sin(ang) + 4, c < -0.3 ? "end" : c > 0.3 ? "start" : "middle"];
     } else {
       // stop short of the nodes; bend when the reverse pair is drawn too, so the two do not overlap
       const dx = q[0] - p[0], dy = q[1] - p[1], len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
@@ -3907,12 +3920,23 @@ function digraphSvg(d: DigraphData): SVGSVGElement {
       const bend = all.has(key([b, a])) ? 14 : layered && q[1] <= p[1] ? 26 : 0;
       const mx = (x1 + x2) / 2 - uy * bend, my = (y1 + y2) / 2 + ux * bend;
       path.setAttribute("d", `M${x1},${y1} Q${mx},${my} ${x2},${y2}`);
+      // the curve's midpoint; a bent arrow's label is outside its bend, clear of the arrow beside it
+      const nx = -uy * Math.sign(bend), ny = ux * Math.sign(bend), cx = (x1 + 2 * mx + x2) / 4 + 5 * nx, cy = (y1 + 2 * my + y2) / 4 + 5 * ny;
+      at = [cx, cy + (ny > 0.3 ? 10 : ny < -0.3 ? -2 : 4), nx > 0.3 ? "start" : nx < -0.3 ? "end" : "middle"];
     }
     path.setAttribute("class", `redge ${cls}`);
     path.setAttribute("marker-end", `url(#rel-arrow${cls ? `-${cls}` : ""})`);
     path.setAttribute("data-edge", JSON.stringify(e));
     svg.append(path);
-  }
+    const label = labels?.[ei];
+    if (label) {
+      const t = document.createElementNS(NS, "text");
+      t.setAttribute("x", String(at[0])); t.setAttribute("y", String(at[1])); t.setAttribute("text-anchor", at[2]);
+      t.setAttribute("class", `rlabel ${cls}`); t.setAttribute("data-edge", JSON.stringify(e)); t.textContent = label;
+      texts.push(t);
+    }
+  });
+  svg.append(...texts);
   for (const [name, [x, y]] of pos) {
     const c = document.createElementNS(NS, "circle");
     c.setAttribute("cx", String(x)); c.setAttribute("cy", String(y)); c.setAttribute("r", "5"); c.setAttribute("class", "hnode"); c.setAttribute("data-node", name); svg.append(c);
@@ -7709,12 +7733,15 @@ function highlightHtml(src: string): string {
   if (q) return `${q[1] ? highlightHtml(q[1]) : ""}<span class="hq">?</span><span class="hask">${esc(src.slice(q[0].length))}</span>`;
   const toks = tokenize(src);
   const bound = boundTokens(src, toks);
-  const lambdaCell = /[λ\\]|:=/.test(src) || LAMBDA_CMD.test(src.trim());
+  // a system's clauses (`var`, `init`, `action … when … do`) and the quantifiers, as the typeset view
+  // marks them; a system's `:=` is an update, not a λ-cell's definition
+  const keywords = SYSTEM_CELL.test(src.trim()) || isLogicCell(src.trim());
+  const lambdaCell = !keywords && (/[λ\\]|:=/.test(src) || LAMBDA_CMD.test(src.trim()));
   let out = "";
   toks.forEach((t, k) => {
     let cls = "";
     if (t.kind === "num") cls = "hnum";
-    else if (t.kind === "kw") cls = "hkw";
+    else if (t.kind === "kw" || (keywords && t.kind === "id" && KEYWORDS.has(t.text))) cls = "hkw";
     else if (t.kind === "asset") cls = S.assets[t.text.slice(1, -1)] ? "hasset" : "hasset missing";
     else if (t.kind === "str") cls = "hstr";
     else if (t.kind === "op") cls = /^[()\[\]{};,]$/.test(t.text) ? "hpun" : "hop";
