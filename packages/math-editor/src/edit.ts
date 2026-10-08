@@ -234,6 +234,21 @@ export class MathEdit {
     const s = this.selection();
     return s ? writeText({ body: s.block.slice(s.start, s.end) }) : "";
   }
+  /** An empty slot where atoms `start` to `end` of `b` are, the caret in it: the block itself when
+   *  they are all of it (an argument, a numerator, what a `let` names), else an empty group in their
+   *  place, so what is typed there stays one subterm. */
+  holeAt(b: Block, start: number, end: number): boolean {
+    return this.mutate("struct", () => {
+      this.anchor = null;
+      const whole = start === (b[0]?.k === "let" ? 1 : 0) && end === b.length;
+      if (whole) { b.splice(start, end - start); this.caret = { block: b, i: start }; return true; }
+      const body: Block = [];
+      b.splice(start, end - start, { k: "paren", body });
+      this.caret = { block: body, i: 0 };
+      return true;
+    });
+  }
+
   /** Remove the selected atoms; the caret goes where they were. */
   deleteSelection(): boolean {
     const s = this.selection();
