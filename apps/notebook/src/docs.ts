@@ -421,6 +421,8 @@ Notebooks that come with ChalkMath, grouped into **projects**: a **course** is a
 
 A lesson opens in its own tab with a bar above it: the course it belongs to, where it is in it, how many of its exercises you have answered, and **‹ Previous** and **Next ›**. The Courses tab remembers, in this browser, which lessons you have opened and finished.
 
+Every course has a link of its own, to send to someone: **Copy link** on the course's page copies it, and while a course or one of its lessons is on show the page's address is its link, ‹…#course=calculus› for a course and ‹…#course=calculus&lesson=3› for its third lesson. A link opens the course's page, or the lesson in its own tab; the person you send it to starts the course afresh, since your work in it stays in your browser.
+
 A lesson keeps your work in this browser as you go: your answers, the hints you have shown and anything you change come back when you open it again, from the Courses tab or with **‹ Previous** and **Next ›**, even after closing its tab. So a lesson's tab is never marked unsaved and there is nothing to save; File › Save says so, and **Save as…** makes a notebook of your own from it. **Start over**, in the bar once you have worked in a lesson, clears your work and opens it as it came. If a lesson has changed since you worked on it, it opens as it is now, with your answers to the exercises it still has carried over.
 
 In a course that builds one Lean development across its lessons, each lesson's Lean sees the Lean of the lessons before it: their Lean cells, and their Lean exercises with the author's proofs. So a definition from lesson 1, or a theorem proved there, can be used in lesson 3.

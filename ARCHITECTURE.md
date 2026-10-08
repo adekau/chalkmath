@@ -620,7 +620,11 @@ steps) is kept in local storage under its project and file as it changes, and op
 restores it. The work is stored with a fingerprint of the lesson file it was opened from; when the
 file has changed since, the lesson opens as it is now with the answers to exercises of the same source
 carried over, rather than an old copy hiding the author's changes. Save as… turns a lesson into the
-reader's own notebook; Start over clears the kept work. The lessons are built from
+reader's own notebook; Start over clears the kept work. A course has a link, `#course=<id>`, and a
+lesson `#course=<id>&lesson=<n>` (from 1): the page's address follows the course or lesson on show
+(`history.replaceState`, so moving about adds nothing to the back button), and the link opens it when
+the page loads with it or when it is entered into the address bar. Unlike `#nb=`, it names the
+course rather than carrying it, so it stays short and opens the course as it is now. The lessons are built from
 what the shell offers for teaching: exercise cells (checked by `engine.check`, §3), steps held back
 to be revealed one at a time, sliders on `let n = number` that re-run the cells out of date because of
 them, and Markdown callouts. Every lesson's answers are pinned in `notebooks/golden/` and checked in CI.
