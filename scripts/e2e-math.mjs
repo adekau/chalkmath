@@ -139,7 +139,8 @@ const flat = (tex) => tex.replace(/\\htmlData\{[^}]*\}/g, "").replace(/[{}\s]/g,
 
 const browser = await chromium.launch({ ...(process.env.CHROMIUM ? { executablePath: process.env.CHROMIUM } : {}), args: ["--no-sandbox"] });
 // a context of its own, so the autosave check can open more tabs beside this one (sharing its storage)
-const page = await (await browser.newContext({ viewport: { width: 1180, height: 1400 } })).newPage();
+// (the clipboard, to read the links the page copies)
+const page = await (await browser.newContext({ viewport: { width: 1180, height: 1400 }, permissions: ["clipboard-read", "clipboard-write"] })).newPage();
 // errors before the engine is switched to HTTP are the wasm worker missing from a bundle without it
 const pageErrors = [];
 let connected = false;
@@ -844,6 +845,36 @@ async function features() {
   await page.locator(".lessonbar .lbkept").waitFor({ timeout: 10000 });
   await page.locator(".lessonbar .lbbtn", { hasText: "Start over" }).waitFor({ timeout: 10000 });
   console.log("✓ lesson: never unsaved, closed without asking, reopened with its answer kept");
+  // course links: the address follows the lesson and the course on show, a course's page copies its link,
+  // and a link entered into the address bar, or one the page loads with, opens its course or lesson
+  const hashOf = () => page.evaluate(() => decodeURIComponent(location.hash));
+  assert.equal(await hashOf(), `#course=${course.id}&lesson=1`, "the address is the open lesson's link");
+  await page.evaluate((h) => { location.hash = h; }, `#course=${course.id}&lesson=3`);
+  await page.locator(".lessonbar .lbwhere", { hasText: `Lesson 3 of ${course.lessons.length}` }).waitFor({ timeout: 30000 });
+  assert.equal(await page.locator(".lessonbar .lbtitle").textContent(), course.lessons[2].title, "a lesson link opens its lesson");
+  const other = manifest.projects.find((p) => p.kind === "course" && p.id !== course.id);
+  await page.evaluate((h) => { location.hash = h; }, `#course=${other.id}`);
+  await page.locator(".courses h1", { hasText: other.title }).waitFor({ timeout: 10000 });
+  assert.equal(await hashOf(), `#course=${other.id}`, "the address is the course's link");
+  await page.locator(".crsnav .crsshare").click();
+  await page.locator(".toast.ok", { hasText: `Copied a link to ${other.title}` }).waitFor({ timeout: 10000 });
+  assert.equal(await page.evaluate(() => navigator.clipboard.readText()), `${base}/#course=${other.id}`, "Copy link copies the course's link");
+  await page.locator(".crsback").click();
+  assert.equal(await hashOf(), "", "the list of courses has no link: the address drops it");
+  await page.evaluate(() => { location.hash = "#course=no-such-course"; });
+  await page.locator(".toast.err", { hasText: "no-such-course" }).click({ timeout: 10000 });   // said, and dismissed
+  await page.waitForFunction(() => location.hash === "", null, { timeout: 10000 });
+  const linked = await browser.newContext();
+  try {
+    const p = await linked.newPage();
+    await p.goto(`${base}/#course=${other.id}`);
+    await p.locator(".courses h1", { hasText: other.title }).waitFor({ timeout: 30000 });
+    assert.equal(await p.locator(".crslesson").count(), other.lessons.length, "a page loaded with a course link shows the course's lessons");
+    assert.equal(await p.evaluate(() => location.hash), `#course=${other.id}`, "the link stays in the address");
+  } finally {
+    await linked.close();
+  }
+  console.log(`✓ course links: lesson 3 of ${course.title} and ${other.title} opened by link, copied, and loaded in a fresh page`);
   // Lean held: a page loaded after the browser stopped the one before it while Lean was starting (the mark
   // lean-cells.ts keeps until Lean has checked its first document) does not start Lean again by itself; a
   // Lean cell says why, and a button starts it (in a browser context of its own: the mark is read as the page loads)

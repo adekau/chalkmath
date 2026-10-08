@@ -1091,7 +1091,7 @@ function loadDoc(i: number) {
   S.docName = d.name; S.cells = d.cells; S.assets = d.assets; ST.scenes = d.scenes; ST.active = d.studioActive; ST.t = 0; stopPlayback();
   S.active = Math.min(d.active, Math.max(0, d.cells.length - 1)); nextLabel = d.nextLabel; sessionId = d.sessionId;
   S.sel = null; hideCompletions(); hideSigHelp(); hideHover();
-  renderChrome(); renderCells(); renderSidebar(); renderPanelHead(); renderPanel(); renderLessonBar();
+  renderChrome(); renderCells(); renderSidebar(); renderPanelHead(); renderPanel(); renderLessonBar(); syncCourseLink();
   if (S.tab === "studio") renderStudio();
   if (S.tab === "welcome") switchTab("notebook");
   if (!d.hydrated && S.kernel === "ready" && S.runOnOpen) hydrate(d);
@@ -1893,7 +1893,7 @@ async function loadProjects() {
       && Array.isArray(p.lessons) && p.lessons.every((l) => typeof l?.file === "string" && typeof l.title === "string")) : [];
     if (ok.length) PROJECTS = ok.map((p) => ({ ...p, kind: p.kind === "collection" ? "collection" : "course", path: typeof p.path === "string" ? p.path : "", blurb: String(p.blurb ?? "") }));
     if (S.tab === "courses") renderCourses();
-    renderLessonBar();
+    renderLessonBar(); syncCourseLink();
   } catch { /* the built-in list stands */ }
 }
 const lessonPath = (p: Project, k: number) => `${p.path ? `${p.path}/` : ""}${p.lessons[k]!.file}`;
@@ -2024,6 +2024,53 @@ function closeCourses() {
   S.courses.open = false;
   if (S.tab === "courses") switchTab("notebook"); else renderTabs();
 }
+
+// --- Course links: `…#course=<id>`, with `&lesson=<n>` (from 1) for one of its lessons --------------
+// The page's address follows the course shown in the Courses tab and the lesson open in a notebook
+// tab, so the address bar always holds a link to it; a course's page also copies its own. A link opens
+// its course or lesson when the page loads with it, or when it is entered into the address bar of a
+// page already open.
+
+/** What a course link names: a project, and one of its lessons (from 0), if it names one. */
+interface CourseLink { id: string; lesson?: number }
+function parseCourseLink(hash: string): CourseLink | undefined {
+  if (!hash.startsWith("#course=")) return undefined;
+  const q = new URLSearchParams(hash.slice(1));
+  const id = q.get("course"), n = Number(q.get("lesson"));
+  if (!id) return undefined;
+  return q.has("lesson") ? { id, lesson: Number.isInteger(n) && n >= 1 ? n - 1 : -1 } : { id };
+}
+const courseHash = (id: string, lesson?: number) => `#course=${encodeURIComponent(id)}${lesson !== undefined ? `&lesson=${lesson + 1}` : ""}`;
+/** A course link the page was loaded with and has not opened yet: the address keeps it until then. */
+let courseLinkPending = !!parseCourseLink(location.hash);
+/** Put the course or lesson on show in the page's address, or take a course link off it when neither
+ *  is. Only a course link is replaced: a notebook link (`#nb=`) takes itself off once it has opened. */
+function syncCourseLink() {
+  if (courseLinkPending) return;
+  const pr = currentDoc()?.project;
+  const want = S.tab === "courses" && S.courses.project ? courseHash(S.courses.project)
+    : S.tab === "notebook" && pr && projectById(pr.id)?.lessons[pr.lesson] ? courseHash(pr.id, pr.lesson) : "";
+  if (location.hash === want || (location.hash && !location.hash.startsWith("#course="))) return;
+  history.replaceState(null, "", location.pathname + location.search + want);
+}
+/** Open what a course link names: its course's page, or one of its lessons. */
+async function openCourseLink(link: CourseLink): Promise<boolean> {
+  courseLinkPending = false;
+  const p = projectById(link.id);
+  let ok = false;
+  if (!p) notify("err", `The link is to a course this page does not have: ${link.id}.`);
+  else if (link.lesson === undefined) { openCourses(p.id); ok = true; }
+  else if (!p.lessons[link.lesson]) { notify("err", `The link is to a lesson ${p.title} does not have; it has ${p.lessons.length}.`); openCourses(p.id); }
+  else ok = await openExample(lessonPath(p, link.lesson), { id: p.id, lesson: link.lesson });
+  syncCourseLink();
+  return ok;
+}
+async function copyCourseLink(p: Project) {
+  try {
+    await navigator.clipboard.writeText(`${location.origin}${location.pathname}${courseHash(p.id)}`);
+    notify("ok", `Copied a link to ${p.title}`);
+  } catch (e) { notify("err", `Could not copy the link: ${e instanceof Error ? e.message : String(e)}`); }
+}
 /** The welcome tab, shown while no notebook is open: ways to start one, the notebooks saved in this
  *  browser, and the other tabs. */
 function renderWelcome() {
@@ -2096,7 +2143,11 @@ function renderCourses() {
   } else {
     const back = asButton(h("span", "crsback", "‹ All courses"), "All courses");
     back.addEventListener("click", () => openCourses(null));
-    page.append(back, h("h1", undefined, p.title), h("p", "crslead", p.blurb));
+    const share = asButton(h("span", "crsshare", "Copy link"), `Copy a link to ${p.title}`);
+    share.title = `A link that opens ${p.title} here, to send to someone`;
+    share.addEventListener("click", () => void copyCourseLink(p));
+    const nav = h("div", "crsnav"); nav.append(back, share);
+    page.append(nav, h("h1", undefined, p.title), h("p", "crslead", p.blurb));
     const list = h("ol", `crslessons ${p.kind}`);
     const next = p.kind === "course" ? p.lessons.findIndex((_, k) => !["done", "seen"].includes(lessonState(p, k, prog).cls)) : -1;
     p.lessons.forEach((l, k) => {
@@ -3072,6 +3123,7 @@ function renderView() {
   if (S.tab === "docs") renderDocs();
   if (S.tab === "courses") renderCourses();
   if (S.tab === "studio") renderStudio();
+  syncCourseLink();
 }
 
 /** The outline lists every cell (`all`), or the sections with only the current one's cells. */
@@ -8001,6 +8053,8 @@ renderPanelHead();
 renderPanel();
 renderView();
 document.addEventListener("click", () => { if (S.menu) { S.menu = null; renderChrome(); } if (tabListOpen) { tabListOpen = false; renderTabs(); } closeCellMenu(); });
+// a course link entered into the address bar of the open page
+window.addEventListener("hashchange", () => { const link = parseCourseLink(location.hash); if (link) void openCourseLink(link); });
 document.querySelector(".cells")?.addEventListener("scroll", () => closeCellMenu(), { passive: true });   // a fixed menu must not float away from its cell
 trackViewSection();
 document.addEventListener("keydown", (ev) => {
@@ -8045,10 +8099,14 @@ void claimAutosave().then((saved) => {
   // nothing to restore (a first visit, or every tab closed last time): the welcome tab
   if (S.docs.length) { S.doc = -1; loadDoc(Math.max(0, Math.min(restoredActive, S.docs.length - 1))); }
   else unloadDocs();
-  void loadProjects();
+  const projects = loadProjects();
+  // a link to a course shows its page once the list of courses is in; a link to a lesson waits for the engine
+  const link = parseCourseLink(location.hash);
+  if (link && link.lesson === undefined) void projects.then(() => openCourseLink(link));
   void connect().then(async () => {
     // a link with a notebook in its fragment opens that notebook (in its own tab unless the current one is untouched)
     if (location.hash.startsWith("#nb") && await openNotebookLink(location.hash)) return;
+    if (link?.lesson !== undefined && await projects.then(() => openCourseLink(link))) return;
     const d = currentDoc(); if (d && !d.hydrated && S.kernel === "ready" && S.runOnOpen) hydrate(d);
   });
 });
