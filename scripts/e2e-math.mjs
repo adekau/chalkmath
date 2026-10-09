@@ -790,13 +790,20 @@ async function features() {
   const mWant = await ref(lines.join("\n"), 14);
   assert.equal(mWant.ok, true, `the system: ${mWant.error?.message}`);
   assert.equal(await mcell.locator(".cellerr").count(), 0, "the system cell shows an error");
+  // its input interpretation is the system as written, not its summary: the declarations, and each
+  // guard a subterm of its own (the first action's guard is `p = idle`, after `when`)
+  const written = (await reference.call("engine.evaluate", { sessionId: "e2e-as-written", cellId: "m", source: lines.join("\n"), paths: true, showWork: true, outline: true })).inputRendered;
+  assert.ok(written.text.includes("init p = idle ∧ lock = false"), `the engine reads the system as written: ${written.text}`);
+  const mEcho = mcell.locator(".echo");
+  assert.equal(flat(await mEcho.locator(".katex-mathml annotation").first().textContent()), flat(written.latex), "the input interpretation is the system as written");
+  assert.equal((await mEcho.locator('.katex-html [data-path="4.2"]').first().textContent()).replace(/\s/g, ""), "p=idle", "the first action's guard is a subterm of its own");
   const inv = await runLast("invariant(M, p = crit → lock = true)");
   const invWant = (await ref("invariant(M, p = crit → lock = true)", 15)).visuals.find((v) => v.kind === "relation.digraph").data;
   assert.equal(await inv.locator("svg path.redge.bad").count(), invWant.bad.length, "the counterexample's transitions are marked");
   // each arrow labelled with the actions that take it, as the engine says
   assert.equal(invWant.labels?.length, invWant.edges.length, "the engine labels each transition");
   assert.deepEqual(await inv.locator("svg text.rlabel").allTextContents(), invWant.labels, "the arrows are labelled with their actions");
-  console.log(`✓ several lines: a system typed with Shift+Enter, ${invWant.nodes.length} states, a ${invWant.bad.length}-step counterexample marked, ${invWant.labels.length} arrows labelled`);
+  console.log(`✓ several lines: a system typed with Shift+Enter, read as written, ${invWant.nodes.length} states, a ${invWant.bad.length}-step counterexample marked, ${invWant.labels.length} arrows labelled`);
   // a step of the trace selected in the work: its transition is the current one on the graph
   if (await inv.locator(".work .step").count() === 0) await inv.locator(".cellacts [aria-expanded]").click();
   await inv.locator(".work:not(.pending) .step").first().waitFor({ timeout: 30000 });

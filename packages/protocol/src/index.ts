@@ -213,7 +213,10 @@ export interface EvaluateResult {
   params?: string[];
   /** What to draw for this result, beside the value: `KnownVisual` lists the kinds the engine sends. Optional (rule 5). */
   visuals?: VisualSpec[];
-  /** The parsed input, rendered by the engine (the frontend owns no printer). Sent with `showWork`. */
+  /** The parsed input, rendered by the engine (the frontend owns no printer). Sent with `showWork`.
+   *  For the other worlds' cells (order, systems, a logic command) it is the input as written, its
+   *  pieces read by their grammars and its separators unlabelled, not the value the derivation
+   *  starts from; explain on `{ kind: "input" }` addresses that reading. */
   inputRendered?: Rendered;
   /** The evaluation's number in the session — Mathematica's `In[n]`/`Out[n]` — which `%`, `%%`
    *  and `%n` in later cells refer to. Every evaluation takes one, error or not. Optional (rule 5). */

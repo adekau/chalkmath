@@ -3,6 +3,7 @@ import MathEngine.Exercise
 import MathEngine.Json
 import MathEngine.Wire
 import MathEngine.Print
+import MathEngine.Surface
 /-!
 # Worlds
 
@@ -41,6 +42,9 @@ structure WorldResult where
   extras : Array (String × Json) := #[]
   /-- The derivation's steps carry their de Bruijn view (λ-cells). -/
   lambda : Bool := false
+  /-- The input as written (`Surface.lean`), where the derivation starts from the value the world
+  computes with: shown as the input, and what explain on the input addresses. -/
+  asWritten : Option Expr := none
 
 structure World where
   /-- The reply's `kind`. -/
@@ -86,11 +90,11 @@ def derivationJson (d : Derivation) (paths lambda : Bool) : Json :=
 /-- The work in a reply, with `showWork`: the derivation, or with `outline` only its outline —
 each step's rule, explanation and path, without the terms, which are what make the derivation of a
 big term large. `engine.steps` sends the derivation itself when it is wanted. -/
-def workFields (params : Json) (d : Derivation) (lambda := false) : Array (String × Json) :=
+def workFields (params : Json) (d : Derivation) (lambda := false) (input : Option Expr := none) : Array (String × Json) :=
   if !params.getBool "showWork" then #[] else
   let paths := params.getBool "paths"
   let work := if params.getBool "outline" then ("outline", d.outlineJson) else ("derivation", derivationJson d paths lambda)
-  #[work, ("inputRendered", Rendered.toJson d.input paths)]
+  #[work, ("inputRendered", Rendered.toJson (input.getD d.input) paths)]
 
 def errorJson (code msg : String) (span : Option (Nat × Nat) := none) : Json :=
   let err := #[("code", .str code), ("message", .str msg)]
@@ -114,7 +118,7 @@ def worldReply (w : World) (params : Json) (res : WorldResult) : Json :=
   let r := match res.summary with | some t => r.push ("summary", .str t) | none => r
   let r := if res.visuals.isEmpty then r else r.push ("visuals", .arr res.visuals)
   let r := r ++ res.extras
-  let r := r ++ workFields params res.derivation res.lambda
+  let r := r ++ workFields params res.derivation res.lambda res.asWritten
   let r := match res.name with
     | some n => let r := r.push ("bound", .arr #[.str n]); if res.params.isEmpty then r else r.push ("params", strs res.params)
     | none => r
@@ -229,7 +233,8 @@ def orderWorld : World where
           | none => #[])
       -- `hasse` stays on the reply for one release, for a notebook that predates the visual
       let extras := match res.poset with | some P => #[("hasse", Json.obj (hasseData P))] | none => #[]
-      { name := res.name, value := res.value, derivation := res.derivation, summary := res.summary, visuals, extras })
+      { name := res.name, value := res.value, derivation := res.derivation, summary := res.summary, visuals, extras,
+        asWritten := some (Surface.asWritten src) })
   check := checkOrder
 
 /-! ## Logic -/
@@ -249,7 +254,9 @@ def logicWorld : World where
   evaluate := fun s cellId src =>
     let (s, r) := logicCell s cellId src
     (s, r.map fun res =>
+      -- a command's input as written; a statement (`∀ n ∈ 1..10, …`) is read as the logic world reads it
       { name := res.name, value := res.value, derivation := res.derivation,
+        asWritten := if Surface.isCall src then some (Surface.asWritten src) else none,
         visuals := match res.table with
           | some (vs, rows) =>
             let formula := match res.derivation.input with | .fn "truthtable" [f] => f | e => e
@@ -299,7 +306,8 @@ def systemWorld : World where
             ("messages", .arr (D.messages.map fun (a, b) => Json.arr #[.num (toString a), .num (toString b)]).toArray),
             ("steps", .arr (evOf.map fun es => Json.arr (es.map fun i => Json.num (toString i)).toArray))]]
         | none => #[]
-      { name := res.name, value := res.value, derivation := res.derivation, summary := res.summary, visuals := graph ++ spacetime })
+      { name := res.name, value := res.value, derivation := res.derivation, summary := res.summary, visuals := graph ++ spacetime,
+        asWritten := some (Surface.asWritten src) })
   check := checkSystem
 
 /-! ## Algebra, the last word -/
@@ -383,7 +391,12 @@ where
       | some n => if worlds.any fun v => v.id != w.id && v.holds s n then s.unbind n else s
       | none => s
     match w.evaluate s' cellId src with
-    | (s'', .ok r) => (w, s'', .ok r)
+    | (s'', .ok r) =>
+      -- the input as written is kept with the cell, so explain on the input finds its pieces in it
+      let s'' := match r.asWritten with
+        | some e => { s'' with cells := s''.cells.map fun (id, c) => if id == cellId then (id, { c with asWritten := some e }) else (id, c) }
+        | none => s''
+      (w, s'', .ok r)
     | (_, .error e) => (w, s, .error e)
 
 /-- Check an exercise in the question's world. -/
