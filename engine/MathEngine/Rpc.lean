@@ -4,7 +4,7 @@ import MathEngine.Parser
 import MathEngine.Print
 import MathEngine.Session
 import MathEngine.Exercise
-import MathEngine.Surface
+import MathEngine.World
 /-!
 # JSON-RPC surface
 
@@ -238,213 +238,13 @@ def capabilities : Json :=
   .obj #[("engine", .str "engine-lean"), ("version", .str "0.1.0-m8"), ("verified", .bool true),
          ("features", .arr #[.str "simplify", .str "expand", .str "factor", .str "diff", .str "linalg", .str "numeric", .str "integrate", .str "plot", .str "manipulate", .str "lambda", .str "order", .str "sum", .str "exptotrig", .str "part", .str "statistics", .str "check", .str "logic", .str "systems"]),
          ("ruleStatus", ruleStatus),
+         ("worlds", worldsJson),
          ("termination", .obj #[("status", .str "proven"), ("theorem", .str "MathEngine.pipelineOrdered"),
            ("summary", .str "Cell evaluation has no step budget: every pipeline rule decreases a five-tier ordering (commands, higher-order diff, matrix literals, the weight M, size) on nodes whose children are normal.")])]
-
-def Rendered.toJson (e : Expr) (paths : Bool) : Json :=
-  .obj #[("text", .str e.toText), ("latex", .str (e.toLatex paths))]
-
-/-- A derivation on the wire; a λ-cell's steps also carry their de Bruijn view (`afterDeBruijn`). -/
-def derivationJson (d : Derivation) (paths lambda : Bool) : Json :=
-  if !lambda then d.toJson paths else
-  let steps := (d.steps.zip (lambdaDbSteps d)).map fun (stp, db) =>
-    match stp.toJson paths with
-    | .obj fields => Json.obj (fields.push ("afterDeBruijn", Rendered.toJson db false))
-    | j => j
-  .obj #[("input", d.input.toJson), ("steps", .arr steps), ("output", d.output.toJson)]
-
-/-- The work in a reply, with `showWork`: the derivation, or with `outline` only its outline —
-each step's rule, explanation and path, without the terms, which are what make the derivation of a
-big term large. `engine.steps` sends the derivation itself when it is wanted. -/
-def workFields (params : Json) (d : Derivation) (lambda := false) (input : Option Expr := none) : Array (String × Json) :=
-  if !params.getBool "showWork" then #[] else
-  let paths := params.getBool "paths"
-  let work := if params.getBool "outline" then ("outline", d.outlineJson) else ("derivation", derivationJson d paths lambda)
-  #[work, ("inputRendered", Rendered.toJson (input.getD d.input) paths)]
-
-/-- A world cell's input as written (`Surface.lean`), kept with the cell the session has just
-evaluated: the reply shows it as the input, and explain finds its pieces in it. -/
-def withAsWritten (st : Store) (sessionId cellId src : String) : Store × Option Expr :=
-  let e := Surface.asWritten src
-  let s := st.get sessionId
-  let cells := s.cells.map fun (id, c) => if id == cellId then (id, { c with asWritten := some e }) else (id, c)
-  (st.set sessionId { s with cells }, some e)
-
-private def errorJson (code msg : String) (span : Option (Nat × Nat) := none) : Json :=
-  let err := #[("code", .str code), ("message", .str msg)]
-  let err := match span with
-    | some (s, e) => err.push ("span", .obj #[("start", .num (toString s)), ("end", .num (toString e))])
-    | none => err
-  .obj #[("ok", .bool false), ("error", .obj err)]
 
 private def pathOfJson : Json → Option Path
   | .arr xs => xs.toList.mapM fun j => match j with | .num s => s.toNat? | _ => none
   | _ => none
-
-/-- A context as a judgment shows it: each variable once (the innermost binding), outermost first. -/
-def ctxShown (Γ : Lam.Ctx) : Lam.Ctx :=
-  (Γ.foldl (fun acc (x, T) => if acc.any (·.1 == x) then acc else acc ++ [(x, T)]) []).reverse
-
-/-- The contexts of a derivation's judgments, root first, each once. -/
-partial def typingCtxs : Lam.Deriv → List Lam.Ctx
-  | .node _ Γ _ _ ps => (ctxShown Γ :: (ps.map typingCtxs).flatten).eraseDups
-
-/-- A typing derivation as a tree for the notebook: each node its judgment `Γ ⊢ t : T`, its rule,
-and its premises. When writing the contexts out would make a judgment long, each context is named
-(Γ₁, Γ₂, …, each by the one it extends) and the names are explained in a legend. -/
-def typingTreeVisual (d : Lam.Deriv) : Json :=
-  let tex (e : Expr) := e.toLatex false
-  let entryL (x : String) (A : Lam.Ty) := s!"{tex (.var x)} : {tex A.toExpr}"
-  let entryT (x : String) (A : Lam.Ty) := s!"{x} : {A.text}"
-  let full (Γ : Lam.Ctx) (f : String → Lam.Ty → String) := ", ".intercalate (Γ.map fun (x, A) => f x A)
-  let ctxs := (typingCtxs d).filter (!·.isEmpty)
-  let long := ctxs.any fun Γ => (full Γ entryT).length > 28
-  let named : List (Lam.Ctx × Nat) := if long then ctxs.zip (List.range' 1 ctxs.length) else []
-  let ctxL (Γ : Lam.Ctx) := match named.lookup Γ with
-    | some k => s!"\\Gamma_\{{k}}"
-    | none => full Γ entryL
-  -- a context named by the longest named one it extends
-  let legend := named.map fun (Γ, k) =>
-    let base := (named.filter fun (Δ, j) => j < k && Δ.length < Γ.length && Γ.take Δ.length == Δ).foldl
-      (fun best (Δ, j) => match best with | some (B, _) => if Δ.length > B.length then some (Δ, j) else best | none => some (Δ, j)) none
-    let (rest, prefL, prefT) := match base with
-      | some (Δ, j) => (Γ.drop Δ.length, s!"\\Gamma_\{{j}}, ", s!"Γ{j}, ")
-      | none => (Γ, "", "")
-    Json.obj #[("latex", .str (s!"\\Gamma_\{{k}} = " ++ prefL ++ full rest entryL)), ("text", .str (s!"Γ{k} = " ++ prefT ++ full rest entryT))]
-  let rec node : Lam.Deriv → Json
-    | .node rule Γ t T ps =>
-      let Γ := ctxShown Γ
-      let latex := (if Γ.isEmpty then "" else ctxL Γ ++ " ") ++ "\\vdash " ++ tex t.toExpr ++ " : " ++ tex T.toExpr
-      let text := (if Γ.isEmpty then "" else full Γ entryT ++ " ") ++ "⊢ " ++ t.text ++ " : " ++ T.text
-      let label := match rule with | "var" => "Var" | "abs" => "→I" | "app" => "→E" | r => r
-      .obj #[("rule", .str label), ("latex", .str latex), ("text", .str text), ("premises", .arr (ps.attach.map fun ⟨p, _⟩ => node p).toArray)]
-  .obj #[("root", node d), ("legend", .arr legend.toArray)]
-
-/-- A λ-cell's reply: like an ordinary one, plus the de Bruijn renderings and the reading. -/
-def evaluateLambda (st : Store) (params : Json) (sessionId cellId src : String) : Store × Json :=
-  let (s, r) := lambdaCell (st.get sessionId) cellId src
-  let st := st.set sessionId s
-  match r with
-  | .error (code, msg, span) => (st, errorJson code msg span)
-  | .ok res =>
-    let paths := params.getBool "paths"
-    let out := res.value
-    let db := match res.term with | some t => Lam.dbToExpr (Lam.toDB [] t) | none => res.value
-    let r := #[("ok", .bool true), ("kind", .str "lambda"), ("value", out.toJson), ("rendered", Rendered.toJson out paths),
-      ("renderedDeBruijn", Rendered.toJson db false)]
-    let r := match res.reading with | some t => r.push ("reading", .str t) | none => r
-    let r := match res.tree with
-      | some d => r.push ("visuals", .arr #[.obj #[("kind", .str "typing.tree"), ("data", typingTreeVisual d)]])
-      | none => r
-    let r := r ++ workFields params res.derivation (lambda := true)
-    let r := match res.name with | some n => r.push ("bound", .arr #[.str n]) | none => r
-    (st, .obj r)
-
-/-- An order-world cell's reply: the value, the derivation, and the poset to draw. -/
-def evaluateOrder (st : Store) (params : Json) (sessionId cellId src : String) : Store × Json :=
-  let (s, r) := orderCellN (st.get sessionId) cellId src
-  let st := st.set sessionId s
-  match r with
-  | .error (code, msg, span) => (st, errorJson code msg span)
-  | .ok res =>
-    let (st, aw) := withAsWritten st sessionId cellId src
-    let paths := params.getBool "paths"
-    let r := #[("ok", .bool true), ("kind", .str "poset"), ("value", res.value.toJson), ("rendered", Rendered.toJson res.value paths)]
-    let r := match res.summary with | some t => r.push ("summary", .str t) | none => r
-    let r := match res.poset with
-      | some P =>
-        let hs := Ord.heights P
-        r.push ("hasse", .obj #[
-          ("nodes", .arr (P.elems.map fun x => Json.obj #[("name", .str x), ("height", .num (toString (hs.getD x 0)))]).toArray),
-          ("covers", .arr ((Ord.hasse P).map fun (a, b) => Json.arr #[.str a, .str b]).toArray)])
-      | none => r
-    let pairs (ps : List (String × String)) : Json := .arr (ps.map fun (a, b) => Json.arr #[.str a, .str b]).toArray
-    let strs (xs : List String) : Json := .arr (xs.map Json.str).toArray
-    let visuals : Array Json :=
-      (match res.graph with
-        | some (R, bad, added) => #[.obj #[("kind", .str "relation.digraph"), ("data", .obj #[
-            ("nodes", strs R.elems), ("edges", pairs R.pairs), ("bad", pairs bad), ("added", pairs added)])]]
-        | none => #[]) ++
-      (match res.table with
-        | some (o, marks) => #[.obj #[("kind", .str "algebra.optable"), ("data", .obj #[
-            ("elems", strs o.elems), ("rows", .arr (o.rows.map strs).toArray), ("marks", pairs marks)])]]
-        | none => #[]) ++
-      (match res.context with
-        | some C => #[.obj #[("kind", .str "context.table"), ("data", .obj #[
-            ("objects", strs C.objs), ("attributes", strs C.attrs),
-            ("has", .arr (C.objs.map fun o => Json.arr (C.attrs.map fun a => Json.bool (C.has o a)).toArray).toArray)])]]
-        | none => #[])
-    let r := if visuals.isEmpty then r else r.push ("visuals", .arr visuals)
-    let r := r ++ workFields params res.derivation (input := aw)
-    let r := match res.name with | some n => r.push ("bound", .arr #[.str n]) | none => r
-    (st, .obj r)
-
-/-- A logic cell's reply: the value, the derivation, and for `truthtable` the table to draw
-(`visuals`, kind `logic.truthtable`). -/
-def evaluateLogic (st : Store) (params : Json) (sessionId cellId src : String) : Store × Json :=
-  let (s, r) := logicCell (st.get sessionId) cellId src
-  let st := st.set sessionId s
-  match r with
-  | .error (code, msg, span) => (st, errorJson code msg span)
-  | .ok res =>
-    -- a command's input as written; a statement (`∀ n ∈ 1..10, …`) is read as the logic world reads it
-    let (st, aw) := if Surface.isCall src then withAsWritten st sessionId cellId src else (st, none)
-    let paths := params.getBool "paths"
-    let r := #[("ok", .bool true), ("kind", .str "logic"), ("value", res.value.toJson), ("rendered", Rendered.toJson res.value paths)]
-    let r := match res.table with
-      | some (vs, rows) =>
-        let formula := match res.derivation.input with | .fn "truthtable" [f] => f | e => e
-        r.push ("visuals", .arr #[.obj #[("kind", .str "logic.truthtable"), ("data", .obj #[
-          ("vars", .arr (vs.map Json.str).toArray), ("formula", Rendered.toJson formula false),
-          ("rows", .arr (rows.map fun row => Json.arr (row.map Json.bool).toArray).toArray)])]])
-      | none => r
-    let r := r ++ workFields params res.derivation (input := aw)
-    let r := match res.name with | some n => r.push ("bound", .arr #[.str n]) | none => r
-    (st, .obj r)
-
-/-- A systems cell's reply: the value, the derivation (a trace is a step per action), a note, and
-the state graph (`visuals`, kind `relation.digraph`) with a counterexample's transitions marked. -/
-def evaluateSystem (st : Store) (params : Json) (sessionId cellId src : String) : Store × Json :=
-  let (s, r) := systemCellN (st.get sessionId) cellId src
-  let st := st.set sessionId s
-  match r with
-  | .error (code, msg, span) => (st, errorJson code msg span)
-  | .ok res =>
-    let (st, aw) := withAsWritten st sessionId cellId src
-    let paths := params.getBool "paths"
-    let r := #[("ok", .bool true), ("kind", .str "system"), ("value", res.value.toJson), ("rendered", Rendered.toJson res.value paths)]
-    let r := match res.summary with | some t => r.push ("summary", .str t) | none => r
-    let r := match res.graph with
-      | some (R, bad, added) =>
-        let pairs (ps : List (String × String)) : Json := .arr (ps.map fun (a, b) => Json.arr #[.str a, .str b]).toArray
-        let layers : Array (String × Json) := if res.layers.isEmpty then #[] else #[("layers", .arr (res.layers.map fun n => Json.num (toString n)).toArray)]
-        -- each arrow's actions, in the order of `edges`
-        let labels : Array (String × Json) := if res.edgeLabels.length != R.pairs.length then #[] else #[("labels", .arr (res.edgeLabels.map Json.str).toArray)]
-        -- where each step of the work is on the graph: the transition it takes, or the state it is at
-        let mark (st : Step) : Json :=
-          match Sys.labelOfStateExpr st.before, Sys.labelOfStateExpr st.after with
-          | some b, some a =>
-            if R.pairs.contains (b, a) then .obj #[("edge", .arr #[.str b, .str a])]
-            else if R.elems.contains a then .obj #[("node", .str a)] else .null
-          | _, some a => if R.elems.contains a then .obj #[("node", .str a)] else .null
-          | some b, _ => if R.elems.contains b then .obj #[("node", .str b)] else .null
-          | none, none => .null
-        let marks := res.derivation.steps.map mark
-        let stepsField : Array (String × Json) := if marks.all (fun | .null => true | _ => false) then #[] else #[("steps", .arr marks)]
-        r.push ("visuals", .arr #[.obj #[("kind", .str "relation.digraph"), ("data", .obj (#[
-          ("nodes", .arr (R.elems.map Json.str).toArray), ("edges", pairs R.pairs), ("bad", pairs bad), ("added", pairs added)] ++ layers ++ labels ++ stepsField))]])
-      | none => r
-    let r := match res.spacetime with
-      | some (D, evOf) =>
-        let ev (e : Rep.DEvent) : Json := .obj #[("lane", .str e.lane), ("label", .str e.label), ("state", .str e.state)]
-        r.push ("visuals", .arr #[.obj #[("kind", .str "replicas.spacetime"), ("data", .obj #[
-          ("lanes", .arr (D.lanes.map Json.str).toArray), ("events", .arr (D.events.map ev)),
-          ("messages", .arr (D.messages.map fun (a, b) => Json.arr #[.num (toString a), .num (toString b)]).toArray),
-          ("steps", .arr (evOf.map fun es => Json.arr (es.map fun i => Json.num (toString i)).toArray))])]])
-      | none => r
-    let r := r ++ workFields params res.derivation (input := aw)
-    let r := match res.name with | some n => r.push ("bound", .arr #[.str n]) | none => r
-    (st, .obj r)
 
 /-- Number the evaluation (`In[n]`), remember its output for `%`, and put the label in the reply. -/
 def withLabel (st : Store) (sessionId cellId : String) (j : Json) : Store × Json :=
@@ -463,52 +263,19 @@ with no `In[n]` taken and `%` untouched. -/
 def numbered (st0 st : Store) (params : Json) (sessionId cellId : String) (j : Json) : Store × Json :=
   if params.getBool "quiet" then (st0, j) else withLabel st sessionId cellId j
 
-/-- The warning for a free `e`: the letter is a variable, not Euler's number `ℯ`. -/
-def eWarning : String :=
-  "e here is a variable, not Euler's number: e^x is not exp(x) and does not simplify like it (only N gives e Euler's value). For the constant, type \\e (it shows as ℯ), or write exp(x)."
-
-/-- Warnings about a cell's input (after the session's bindings are substituted), not counting the
-parameters a function definition binds. -/
-def inputWarnings (input : Expr) (params : List String) : List String :=
-  let fv := Expr.freeVars input
-  let eW := if fv.contains "e" && !params.contains "e" then [eWarning] else []
-  -- `1.5e3` lexes as `1.5` then the name `e3`, an implicit product: the engine has no exponent notation
-  let sci := fv.filter fun v => v.length ≥ 2 && v.front == 'e' && (v.drop 1).all Char.isDigit && !params.contains v
-  eW ++ sci.map fun v => s!"`{v}` is a variable here, so `1.5{v}` is `1.5 · {v}`: for scientific notation write `*10^{v.drop 1}`."
-
+/-- Evaluate a cell in whichever world claims it (`World.lean`) and build its reply. -/
 def evaluate (st : Store) (params : Json) : Store × Json :=
   match params.getStr? "source" with
   | none => (st, errorJson "params" "missing source")
   | some src =>
     let sessionId := (params.getStr? "sessionId").getD ""
     let cellId := (params.getStr? "cellId").getD ""
-    let (st, j) := evaluateCore st params sessionId cellId src
+    let (w, s, r) := evaluateIn (st.get sessionId) cellId src
+    let st := st.set sessionId s
+    let j := match r with
+      | .error (code, msg, span) => errorJson code msg span
+      | .ok res => worldReply w params res
     withLabel st sessionId cellId j
-where
-  evaluateCore (st : Store) (params : Json) (sessionId cellId src : String) : Store × Json :=
-    -- a λ-command (`type: f : A → B ⊢ f`) may hold a connective or a call; it is the λ-world's
-    let lamCmd := (Lam.commandHead src).isSome
-    if !lamCmd && Sys.isSystemSource src then evaluateSystem st params sessionId cellId src else
-    if !lamCmd && Ord.isOrderSource src then evaluateOrder st params sessionId cellId src else
-      if !lamCmd && Logic.isLogicSource src then evaluateLogic st params sessionId cellId src else
-      if isLambdaCell (st.get sessionId) src then evaluateLambda st params sessionId cellId src else
-      let (s, r) := evaluateCell (st.get sessionId) cellId src
-      let st := st.set sessionId s
-      match r with
-      | .error (code, msg, span) => (st, errorJson code msg span)
-      | .ok (stmt, out, d) =>
-        let paths := params.getBool "paths"
-        let sem := if mentionsI d.input || mentionsI out then "complex" else "real"
-        let res := #[("ok", .bool true), ("value", out.toJson), ("rendered", Rendered.toJson out paths), ("semantics", .str sem)]
-        let res := res ++ workFields params d
-        let ps := match stmt with | .«let» _ ps _ => ps | _ => []
-        let warnings := inputWarnings d.input ps
-        let res := if warnings.isEmpty then res else res.push ("warnings", .arr (warnings.map .str).toArray)
-        let res := match stmt with
-          | .«let» name [] _ => res.push ("bound", .arr #[.str name])
-          | .«let» name ps _ => (res.push ("bound", .arr #[.str name])).push ("params", .arr (ps.map .str).toArray)
-          | _ => res
-        (st, .obj res)
 
 /-- A float on the wire; JSON has no infinity or NaN, so those are `null`. -/
 private def floatJson (x : Float) : Json := if x.isFinite then .num (toString x) else .null

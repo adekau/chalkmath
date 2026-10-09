@@ -1173,8 +1173,31 @@ def surfaceTests : TestM Unit := do
   let ex := (handleS st "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"engine.explain\",\"params\":{\"sessionId\":\"t\",\"cellId\":\"sys\",\"path\":[4,2],\"term\":{\"kind\":\"input\"}}}").2
   checkTrue "explain finds a guard in a system as written" (contains ex "\"text\":\"p = read\"") ex
 
+/-- The worlds (`World.lean`): the lexicon is published, a name means one thing across worlds, a
+world may rebind its own name with reference to the old value, and a function cannot take a
+command's name. -/
+def worldTests : TestM Unit := do
+  let ev (st : Store) (id : String) (src : String) : Store × String :=
+    handleS st s!"\{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"engine.evaluate\",\"params\":\{\"sessionId\":\"w\",\"cellId\":\"{id}\",\"source\":\"{src}\"}}"
+  let capsJ := rpc "engine.capabilities" "{}"
+  checkTrue "rpc capabilities worlds" (contains capsJ "\"worlds\":[{\"id\":\"system\"" && contains capsJ "\"id\":\"poset\",\"label\":\"Order theory\",\"commands\":[\"poset\"" && contains capsJ "\"id\":\"lambda\"" && contains capsJ "\"keywords\":[\"var\",\"in\"") capsJ
+  let (stw, _) := ev [] "a" "let F = p ∧ q"
+  let (stw, r1) := ev stw "b" "taut(F → p)"
+  checkTrue "worlds: a formula bound" (contains r1 "\"text\":\"⊤\"") r1
+  let (stw, r2) := ev stw "c" "let F = system(var x in 0..1; init x = 0; action t when x < 1 do x := x + 1)"
+  checkTrue "worlds: the name rebound in another world" (contains r2 "\"kind\":\"system\"") r2
+  let (stw, r3) := ev stw "d" "taut(F → p)"
+  checkTrue "worlds: the formula is gone, F is a variable" (contains r3 "\"text\":\"⊥\"") r3
+  let (stw, _) := ev stw "e" "let C = chain(2)"
+  let (_, r4) := ev stw "f" "let C = product(C, C)"
+  checkTrue "worlds: a world rebinds its own name with reference to the old value" (contains r4 "poset {(0, 0), (0, 1), (1, 0), (1, 1)}") r4
+  let (_, r5) := ev [] "g" "let set(x) = x + 1"
+  checkTrue "worlds: a function cannot take a wire value's name" (contains r5 "a function cannot be called that") r5
+  let (_, r6) := ev [] "h" "let reach = 3"
+  checkTrue "worlds: a value may take a command's name" (contains r6 "\"bound\":[\"reach\"]") r6
+
 def main : IO UInt32 := do
-  let ((), failures) ← (do tests; surfaceTests; sessionTests; integrateTests; trigTests; quietTests; partStatTests; workTests; scaleTests; checkTests; logicRelTests; algebraTests; systemsTests; complexNTests; intervalTests; intRootTests; jsonTests; goldenTests).run #[]
+  let ((), failures) ← (do tests; surfaceTests; sessionTests; integrateTests; trigTests; quietTests; partStatTests; workTests; scaleTests; checkTests; logicRelTests; algebraTests; systemsTests; complexNTests; intervalTests; intRootTests; jsonTests; worldTests; goldenTests).run #[]
   for f in failures do
     IO.println s!"FAIL {f.name}\n  expected: {f.expected}\n  actual:   {f.actual}"
   IO.println s!"{failures.size} failures"

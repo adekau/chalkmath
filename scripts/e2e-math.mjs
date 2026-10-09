@@ -11,7 +11,7 @@
 // read changes, a slider driving the cells below it, work stepped through with the answer held back,
 // an exercise written in its editor and answered (wrong, right, and with the work), a Markdown
 // callout, a function's usage on hover, a truth table and a relation's graph, an operation table, a
-// typing tree, a logic exercise, a system typed over several lines, manipulate (a plot played, a
+// typing tree, a Hasse diagram and a context's cross table, a logic exercise, a system typed over several lines, manipulate (a plot played, a
 // derivative and a column of a plot and a calculation dragged, against the engine's own frames), a
 // scene (sampled by the engine, scrubbed to its end, its equation stepped, % untouched), the tab
 // bar with more notebooks open than fit, and a course's lesson opened from the Courses tab, answered,
@@ -692,6 +692,19 @@ async function features() {
   assert.deepEqual(await ty.locator(".typingtree .ptrule").allTextContents(), nodesOf(tyWant.root).map((n) => n.rule), "a rule per judgment, as the engine derived it");
   assert.deepEqual(await ty.locator(".typingtree .ptconc").evaluateAll((els) => els.map((e) => e.title)), nodesOf(tyWant.root).map((n) => n.text), "the judgments are the engine's");
   console.log(`✓ typing tree: ${nodesOf(tyWant.root).length} judgments, rules ${nodesOf(tyWant.root).map((n) => n.rule).join(" ")}`);
+  // a poset's Hasse diagram stands in for its value: a node per element, an edge per cover, no LaTeX
+  const hs = await runLast("let D = divisors(12)");
+  const hsWant = (await ref("let D = divisors(12)", 17)).visuals.find((v) => v.kind === "order.hasse").data;
+  assert.equal(await hs.locator(".visualbox[data-kind='order.hasse'] svg .hnode").count(), hsWant.nodes.length, "a node per element");
+  assert.equal(await hs.locator(".visualbox[data-kind='order.hasse'] svg .hedge").count(), hsWant.covers.length, "an edge per cover");
+  assert.deepEqual((await hs.locator(".visualbox[data-kind='order.hasse'] svg .hlabel").allTextContents()).sort(), hsWant.nodes.map((n) => n.name).sort(), "the elements are the engine's");
+  assert.equal(await hs.locator(".outval .katex").count(), 0, "the diagram stands in for the value");
+  // a formal context's cross table: a row per object, a column per attribute, × where it has it
+  const ctxSrc = "let A = context({duck, dog}, {flies, mammal}; duck->flies, dog->mammal)";
+  const ct = await runLast(ctxSrc);
+  const ctWant = (await ref(ctxSrc, 18)).visuals.find((v) => v.kind === "context.table").data;
+  assert.deepEqual(await ct.locator("table.ctxtable tbody tr").evaluateAll((trs) => trs.map((tr) => [...tr.querySelectorAll("td")].map((td) => td.textContent === "×"))), ctWant.has, "the crosses are the engine's");
+  console.log(`✓ Hasse diagram of ${hsWant.nodes.length} elements, ${hsWant.covers.length} covers; a context of ${ctWant.objects.length}×${ctWant.attributes.length}`);
   // a logic exercise: an equivalent answer not in CNF is refused, one in CNF is right
   const lq = "cnf(p → (q ∧ r))";
   await menu("Edit", "Add exercise");
@@ -958,7 +971,8 @@ try {
     assert.equal(got.err, null, `${c.src}: the page shows an error`);
     assert.equal(flat(got.tex ?? ""), flat(want.rendered.latex), `${c.src}: the page shows something other than the engine's answer`);
     // a note beside the answer only when the engine sends one
-    const note = [want.reading ? `≡ ${want.reading}` : null, want.hasse ? null : want.summary].filter(Boolean).join(" ") || null;
+    const standsIn = want.visuals?.some((v) => v.kind === "order.hasse");
+    const note = [want.reading ? `≡ ${want.reading}` : null, standsIn ? null : want.summary].filter(Boolean).join(" ") || null;
     assert.equal(got.note, note, `${c.src}: the note beside the answer`);
     if (c.step) {
       const steps = await work(i);

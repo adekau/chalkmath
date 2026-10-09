@@ -101,8 +101,10 @@ export const isIdStart = (c: string) => isAsciiAlpha(c) || c === "_" || isGreek(
 export const isIdChar = (c: string) => isAsciiAlpha(c) || isDigit(c) || c === "_" || c === "'" || isGreek(c);
 
 /** The other worlds' operators of more than one character, longest first: each is one atom, as the
- *  entrywise `./` and `.*` are. */
-export const MULTI_OPS = ["<->", ":=", "->", "<-", "=>", "&&", "||", "/\\", "\\/", "<=", ">=", "!=", "==", "|-", ".."];
+ *  entrywise `./` and `.*` are. The engine publishes each world's glyphs (`capabilities.worlds`) and
+ *  the host adds them with `configureLexicon`; this is the list as of this build, which the test
+ *  `lexicon.test.mjs` holds equal to the engine's. */
+export const MULTI_OPS: string[] = ["<->", ":=", "->", "<-", "=>", "&&", "||", "/\\", "\\/", "<=", ">=", "!=", "==", "|-", ".."];
 /** Operators that stand between two things with a space either side when written afresh: comparisons,
  *  connectives, arrows, definitions. (`+`, a subtraction and the entrywise operators are spaced too.) */
 export const INFIX = new Set(["=", "<", ">", "@", "≤", "≥", "≠", "∣", "|", "∈", "∉", "⊆", "⊂", "∪", "∩", "∧", "∨", "→", "↔", "⇒", "⊢", "←", "↦", "×",
@@ -110,8 +112,22 @@ export const INFIX = new Set(["=", "<", ">", "@", "≤", "≥", "≠", "∣", "|
 /** Constants the logic world writes as glyphs: values, not operators. */
 export const isConst = (c: string) => c === "⊤" || c === "⊥";
 /** Words the other worlds use as keywords. In a cell of those worlds they end a product: in
- *  `when a/2 < 1 do`, `a` alone is the numerator. */
-export const KEYWORDS = new Set(["var", "in", "init", "action", "when", "do", "fair", "strong", "weak", "forall", "exists"]);
+ *  `when a/2 < 1 do`, `a` alone is the numerator. As of this build (see `MULTI_OPS`); the engine's
+ *  published keywords are added by `configureLexicon`. */
+export const KEYWORDS = new Set(["var", "in", "init", "action", "when", "do", "fair", "strong", "forall", "exists",
+  "and", "or", "not", "implies", "iff"]);
+
+/** Take the worlds' lexicon from the engine (`capabilities.worlds`): their keywords end a product as
+ *  the built-in ones do, and their operators of several characters are one atom each. The built-in
+ *  lists stay, so a reader without an engine behaves as this build was tested; how an operator is
+ *  spaced when written afresh (`INFIX`) is the editor's choice, not the engine's. */
+export function configureLexicon(worlds: readonly { keywords?: readonly string[]; glyphs?: readonly string[] }[]): void {
+  for (const w of worlds) {
+    for (const k of w.keywords ?? []) if (/^[A-Za-z_][A-Za-z0-9_']*$/.test(k)) KEYWORDS.add(k);
+    for (const g of w.glyphs ?? []) if (Array.from(g).length > 1 && !/\s/.test(g) && !MULTI_OPS.includes(g)) MULTI_OPS.push(g);
+  }
+  MULTI_OPS.sort((a, b) => b.length - a.length);
+}
 /** A character atom that separates rather than computes: anything but a name's or numeral's
  *  character, `%`, a constant, `+ - *` and the entrywise operators. */
 export const isSep = (c: string) => !(isIdChar(c) || c === "." || c === "%" || c === " " || isConst(c) || "+-*".includes(c) || c === "./" || c === ".*");

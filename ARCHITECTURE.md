@@ -490,21 +490,49 @@ differential test with zero mismatches.
   (Std/Batteries allowed) and never Mathlib. `proofs/` is theorems only, may be `noncomputable`,
   requires `engine/` and (from M3) Mathlib. `scripts/check-engine-deps.sh` enforces the split.
 
-## 4. Adding a math area (group theory, category theory, ...)
+## 4. Worlds: adding a math area
 
-The rewriter, derivations, paths and the protocol are module-agnostic: they work on any tree
-with `children`/`withChildren`. What a module brings is:
+A *world* is a language the notebook speaks beside algebra. Five exist: algebra, the λ-calculus,
+finite order theory (with relations and algebra), logic, and transition systems (with replicas and
+rewriting). Each has its own grammar and evaluator (§3), and all of them are registered in one place,
+`engine/MathEngine/World.lean`, as a list of `World` records. A record says:
+
+| Field | What it is |
+|---|---|
+| `id`, `label` | the `kind` its replies carry, and how the notebook names it |
+| `commands`, `keywords`, `glyphs`, `names`, `markers` | its lexicon: the names written `name(…)`, the words its grammar reserves, the operators algebra's grammar lacks, the other names it gives a cell (the λ library, the logic predicates), and what claims a source for it beyond its commands |
+| `precedes`, `claims` | which sources are its: `claims`, asked in the list's order; `precedes` takes a source before any other world looks (a λ-command, which may hold a connective) |
+| `binds`, `holds` | the name a source would bind, and whether the world holds a binding of a name |
+| `evaluate`, `check` | a cell's evaluation (a `WorldResult`: value, derivation, the name bound, a note, visual specs, the world's own fields) and an exercise's check |
+
+Algebra is the last record and claims every source the others do not. Routing is `worldFor`, the
+reply is `worldReply`, one function for all of them; a world's own fields on the wire (a λ-cell's
+de Bruijn view, algebra's `semantics` and `warnings`) are its `extras`. A name means one thing: a
+cell that binds a name another world holds unbinds it first (`Session.unbind`), while a world
+rebinding its own name still sees the old value (`let C = product(C, C)`). A function may not take
+a command's name or a wire value's (`set`, `pair`, `λ`), since `f(…)` would be read as that.
+
+`engine.capabilities.worlds` publishes each world's id, label and lexicon (protocol rule 5: an
+optional field). The notebook reads from it which names are calls, which words are keywords and
+which cells belong where (`apps/notebook/src/worlds.ts`, whose fallback list is held equal to the
+engine's by test), and the visual editor adds the published keywords and operators to its own
+(`configureLexicon`). Neither keeps a list of its own that could drift.
+
+What a new world brings, and where:
 
 | Concern | Where it plugs in |
 |---|---|
-| Syntax (literals like a cycle `(1 2 3)`, new commands) | parser extension + reserved `fn` names |
-| Node kinds | today: `fn name args` with a module-reserved name; when a second module lands, `Expr` gains typed node kinds per module rather than growing the closed inductive ad hoc |
-| Rules with explanations | a `RuleSet` with its own measure and obligations |
-| Semantics and proofs | a module in `proofs/` (the engine computes; `proofs/` interprets) |
-| Rendering | printer cases (text/LaTeX) plus *visual specs* (§5) |
+| Syntax and evaluation | its own module, as `Logic.lean` or `Systems.lean`; values encoded into `Expr` as `fn` nodes with reserved names (`reservedFnNames`) |
+| Registration | one `World` record in `World.lean`, in the list |
+| Rules with explanations | its rule names in `ruleStatus` (`Rpc.lean`), with their proof status; the notebook's step labels (`RULE_NAMES`, `app.ts`) |
+| Semantics and proofs | a `*Proofs.lean` module in `engine/` (decisions over lists) or a module in `proofs/` (Mathlib) |
+| Rendering | printer cases (text/LaTeX) for its `fn` heads, plus *visual specs* (§5), each a registry entry in the notebook |
+| Documentation | an `Area` and its pages in `reference.ts` |
+| Tests | its sources in `golden.tsv`; a case in `CASES` and a `features()` check per visual in `scripts/e2e-math.mjs` |
 
-Explanations are Markdown with `$latex$`, carried on every step. A module that cannot explain a
-rule in one sentence has the rule at the wrong granularity.
+The rewriter, derivations, paths and the protocol are world-agnostic: they work on any tree with
+`children`/`withChildren`. Explanations are Markdown with `$latex$`, carried on every step. A world
+that cannot explain a rule in one sentence has the rule at the wrong granularity.
 
 ## 4a. The notebook shell
 
@@ -514,6 +542,13 @@ rule in one sentence has the rule at the wrong granularity.
 `index.html`; the toggle in the title bar persists the choice in `localStorage`. The cells sit on a
 "paper" whose grain and mottle are inline SVG turbulence filters, and are set in Literata; the
 chrome around them stays in the system sans. Re-skinning is a change to the token blocks.
+
+The shell is `app.ts` and the modules beside it, each one concern with no DOM state of its own:
+`worlds.ts` (which cells are which world's, from the engine's list), `visuals.ts` (the visual specs
+drawn), `dom.ts` (an element, KaTeX's HTML), `term-spans.ts` (where a reading's subterms were
+written), `scene.ts`, `files.ts`, `ask-cells.ts`, `lean-cells.ts`, `animate.ts`, `datagrid.ts`,
+`autosave-store.ts`. A cell's saved fields are one table, `CELL_FIELDS` in `app.ts`: how each is read
+from a file's record (checked, so a damaged record makes an empty cell) and written to one.
 
 The page owns no mathematics. It does not parse, print, or simplify: every expression on screen is
 LaTeX the engine produced, every rule name and explanation is the engine's, and the proof status
@@ -834,7 +869,9 @@ settings, the cell) is `apps/notebook/src/ask-cells.ts`.
 
 The engine never draws. It emits **visual specs**: declarative JSON next to `rendered`
 (`EvaluateResult.visuals`): a Cayley table, a graph, a commutative diagram, sampled plot data, a
-matrix heat map. Six kinds exist (`KnownVisual` in the protocol): `logic.truthtable`, the rows of a
+matrix heat map. Seven kinds exist (`KnownVisual` in the protocol): `order.hasse`, a poset's elements
+with their heights and its covers, which stands in for the poset's value in the cell (the `hasse`
+field beside it is the earlier form, kept one release); `logic.truthtable`, the rows of a
 formula's table; `relation.digraph`, a relation's pairs with the ones that break a property (`bad`)
 and the ones a closure added (`added`), and, for a state graph, each arrow's label (`labels`, in the
 order of `edges`: the actions that take that transition) and where each step of the work is on it
@@ -844,7 +881,11 @@ failing law read (`marks`); `context.table`, a formal context's cross table; and
 typing derivation as nested judgments, each with its rule and premises; and `replicas.spacetime`, a
 replica simulation's lanes, events and messages, with the events each step made. The notebook draws the tables
 and the proof tree as HTML and the graph as SVG (a state graph in rows from its initial states, each state a box
-with its name in it so no arrow crosses a name), keeps them with the cell in a saved file, and ignores a kind it does not know. The frontend owns
+with its name in it so no arrow crosses a name), keeps them with the cell in a saved file, and ignores a kind it does not know. In the
+notebook the kinds are one registry (`VISUALS`, `apps/notebook/src/visuals.ts`): each entry checks a
+reply's or a file's data, draws it, says whether it stands in for the value, and, for a visual that
+places the work's steps on itself (a state graph, a space-time diagram), marks the steps as they are
+revealed. A new kind is one entry. The frontend owns
 rendering (SVG/canvas/WebGL) and can offer several renderers for one spec. This keeps the engine
 pure and portable (wasm has no canvas), keeps proofs about what is *shown* possible (the spec is
 data the engine can reason about), and lets exports (§6) reuse the same specs.
