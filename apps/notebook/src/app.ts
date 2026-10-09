@@ -5,6 +5,8 @@ import { read as readNotation, write as writeNotation, writeText, hasNotation, t
 import { setWorlds, worldOf, worldFns, hasKeywords, lambdaCommand } from "./worlds.js";
 import { MathInput, type MathInputOptions } from "@chalkmath/math-editor/view";
 import { termSpans, deleteTerm, type Reading, type Span, type TermSpan } from "./term-spans.js";
+import { h, tex, TRUST_PATHS } from "./dom.js";
+import { rendererOf, visualPlaced, knownVisuals, visualBox } from "./visuals.js";
 
 /**
  * The notebook shell. Structure, type and colour follow the second export of the
@@ -31,24 +33,6 @@ import { parseScene, numberRequests as sceneNumberRequests, sampleRequests as sc
 import { DOC_PAGES, type DocPage, type DocPart } from "./docs.js";
 import { FUNCTIONS, FN_BY_NAME, AREAS, fnPage, evaluable, type FnDoc, type ExampleSection } from "./reference.js";
 import { ensureLean, syncLean, mountLean, unmountLean, focusLean, setLeanDark, infoview as leanInfoview, leanState, leanFailure, leanStoppedAt, leanProgress, leanChecked, initLeanIsolation, startLeanAnyway, type LeanMessage } from "./lean-cells.js";
-/** The one trusted KaTeX command is `\htmlData`, which carries the engine's subterm paths. LaTeX can
- *  come from a file someone else wrote (saved outputs render before any re-run), and a blanket
- *  `trust: true` would let it add `\href{javascript:…}`, arbitrary styles, or remote images. */
-const TRUST_PATHS = (ctx: { command: string }) => ctx.command === "\\htmlData";
-/** KaTeX's HTML for a LaTeX string, kept: a cell's output and steps are typeset again whenever the
- *  cells are rebuilt (a cell added, a section folded), and most of them have not changed. The memo
- *  is bounded; past the bound it starts over. */
-const TEX_MEMO = new Map<string, string>();
-const TEX_MEMO_MAX = 4000;
-const tex = (s: string, paths = false) => {
-  const key = (paths ? "p" : "n") + s;
-  const hit = TEX_MEMO.get(key);
-  if (hit !== undefined) return hit;
-  const html = katex.renderToString(s, { throwOnError: false, trust: paths ? TRUST_PATHS : false, strict: false, displayMode: false });
-  if (TEX_MEMO.size >= TEX_MEMO_MAX) TEX_MEMO.clear();
-  TEX_MEMO.set(key, html);
-  return html;
-};
 
 // ---------------------------------------------------------------------------
 // Content: the notebook's own vocabulary, from the function reference (reference.ts)
@@ -1282,10 +1266,23 @@ window.addEventListener("resize", () => { const s = document.querySelector<HTMLE
 // Notebook files (.chalk): sources, outputs and studio scenes as JSON
 // ---------------------------------------------------------------------------
 
+/** A cell as a `.chalk` file records it: its source and kind, then one field per row of
+ *  `CELL_FIELDS`, which says how each is read from a record and written to one. */
+interface CellRecord {
+  src: string; type?: Cell["type"] | undefined;
+  collapsed?: boolean | undefined; showWork: boolean; stepwise?: number | undefined; slider?: { min: number; max: number; step: number } | undefined;
+  /** Exercise cells. */
+  prompt?: string | undefined; hints?: string[] | undefined; hideQuestion?: boolean | undefined; attempt?: string | undefined; hintsShown?: number | undefined; verdict?: Verdict | undefined; solution?: boolean | undefined;
+  lean?: boolean | undefined; leanStart?: string | undefined; leanSolution?: string | undefined;
+  /** The last run's result. */
+  label: number | null; outLatex?: string | undefined; outText?: string | undefined; form?: string | undefined; semantics?: "real" | "complex" | undefined; echoLatex?: string | undefined;
+  steps?: Step[] | undefined; outline?: StepOutline[] | undefined; error?: Cell["error"] | undefined; plot?: PlotData | undefined; visuals?: KnownVisual[] | undefined; summary?: string | undefined;
+  mode?: Cell["mode"] | undefined; ask?: AskResult | undefined; file?: FileMeta | undefined; noSuggest?: true | undefined;
+}
 interface ChalkFile {
   /** Format version. Files written as `.lemma` before the rename carry `lemma: 1` instead and still open. */
   chalk?: 1; lemma?: 1; name: string;
-  cells: { src: string; type?: Cell["type"] | undefined; collapsed?: boolean | undefined; showWork: boolean; stepwise?: number | undefined; prompt?: string | undefined; hints?: string[] | undefined; hideQuestion?: boolean | undefined; attempt?: string | undefined; hintsShown?: number | undefined; verdict?: Verdict | undefined; solution?: boolean | undefined; lean?: boolean | undefined; leanStart?: string | undefined; leanSolution?: string | undefined; slider?: { min: number; max: number; step: number } | undefined; label: number | null; outLatex?: string | undefined; outText?: string | undefined; form?: string | undefined; semantics?: "real" | "complex" | undefined; echoLatex?: string | undefined; steps?: Step[] | undefined; outline?: StepOutline[] | undefined; error?: Cell["error"] | undefined; plot?: PlotData | undefined; visuals?: KnownVisual[] | undefined; summary?: string | undefined; mode?: Cell["mode"] | undefined; ask?: AskResult | undefined; file?: FileMeta | undefined; noSuggest?: true | undefined }[];
+  cells: CellRecord[];
   scenes: Scene[];
   /** Images attached to the notebook, by name. */
   assets?: Record<string, Asset>;
@@ -1324,7 +1321,7 @@ const outlineOf = (steps: Step[]): StepOutline[] => steps.map((st) => ({ rule: s
 function serializeNotebook(): string {
   const doc: ChalkFile = {
     chalk: 1, name: S.docName,
-    cells: S.cells.map((c) => ({ src: cellSrc(c), type: c.type, collapsed: c.collapsed || undefined, showWork: c.showWork, stepwise: c.stepwise, slider: c.slider, ...exerciseToSave(c), label: c.label, outLatex: c.outLatex, outText: c.outText, form: c.form, semantics: c.semantics, echoLatex: c.echoLatex, steps: stepsToSave(c), outline: outlineToSave(c), error: c.error, plot: c.plot, visuals: c.visuals, summary: c.visuals ? c.summary : undefined, mode: c.mode, ask: c.ask, file: c.file, noSuggest: c.noSuggest || undefined })),
+    cells: S.cells.map(cellToRecord),
     scenes: ST.scenes,
     ...(Object.keys(S.assets).length ? { assets: S.assets } : {}),
     ...(currentDoc()?.project ? { project: currentDoc()!.project } : {}),
@@ -1371,67 +1368,83 @@ function assetsFromFile(doc: ChalkFile): Record<string, Asset> {
 }
 
 /** An exercise's own fields, as a file keeps them. */
-function exerciseToSave(c: Cell): Partial<ChalkFile["cells"][number]> {
-  if (c.type !== "exercise") return {};
-  return { prompt: c.prompt || undefined, hints: c.hints?.length ? c.hints : undefined, hideQuestion: c.hideQuestion || undefined,
-    attempt: c.attempt || undefined, hintsShown: c.hintsShown || undefined, verdict: c.verdict, solution: c.solution || undefined,
-    lean: c.lean || undefined, leanStart: c.lean ? c.leanStart : undefined, leanSolution: c.lean ? c.leanSolution : undefined };
+/** How a cell's fields are saved and read back: one row per field of `CellRecord` after `src` and
+ *  `type`, in the order a file writes them. `load` checks what a record holds before it is the
+ *  cell's, so a hand-edited file or a damaged autosave makes an empty cell rather than an exception
+ *  half-way through opening; `save` says what goes in the file (`undefined` leaves the field out).
+ *  A new saved field is one row here and one line in `CellRecord`. */
+interface LoadOpts { foldWork: boolean }
+interface FieldRow<K extends keyof CellRecord> { key: K; load(v: unknown, cell: Cell, rec: CellRecord, o: LoadOpts): void; save(c: Cell): CellRecord[K] }
+type AnyField = { [K in keyof CellRecord]-?: FieldRow<K> }[keyof CellRecord];
+const field = <K extends keyof CellRecord>(r: FieldRow<K>): AnyField => r as unknown as AnyField;
+const isStr = (v: unknown): v is string => typeof v === "string";
+const isNum = (v: unknown): v is number => typeof v === "number" && isFinite(v);
+/** Exercise fields are a cell's only when it is an exercise; `on` makes a row of that kind. */
+const exerciseField = <K extends keyof CellRecord>(key: K, load: (v: unknown, cell: Cell) => void, save: (c: Cell) => CellRecord[K]): AnyField =>
+  field<K>({ key, load: (v, cell) => { if (cell.type === "exercise") load(v, cell); }, save: (c) => (c.type === "exercise" ? save(c) : undefined) as CellRecord[K] });
+const CELL_FIELDS: AnyField[] = [
+  field({ key: "collapsed", load: (v, cell) => { if (v) cell.collapsed = true; }, save: (c) => c.collapsed || undefined }),
+  field({ key: "showWork", load: (v, cell, _rec, o) => { cell.showWork = !o.foldWork && v === true; }, save: (c) => c.showWork }),
+  // a cell to step through shows its work whatever the reader folds: the steps are the exercise
+  field({ key: "stepwise", load: (v, cell) => { if (isNum(v) && v >= 0) { cell.stepwise = Math.floor(v); cell.showWork = true; } }, save: (c) => c.stepwise }),
+  field({ key: "slider", load: (v, cell) => {
+    const sl = v as { min?: unknown; max?: unknown; step?: unknown } | null;
+    if (sl && isNum(sl.min) && isNum(sl.max) && isNum(sl.step) && sl.max > sl.min && sl.step > 0) cell.slider = { min: sl.min, max: sl.max, step: sl.step };
+  }, save: (c) => c.slider }),
+  exerciseField("prompt", (v, cell) => { if (isStr(v)) cell.prompt = v; }, (c) => c.prompt || undefined),
+  exerciseField("hints", (v, cell) => { if (Array.isArray(v)) cell.hints = v.filter(isStr); }, (c) => c.hints?.length ? c.hints : undefined),
+  exerciseField("hideQuestion", (v, cell) => { if (v) cell.hideQuestion = true; }, (c) => c.hideQuestion || undefined),
+  exerciseField("attempt", (v, cell) => { if (isStr(v)) cell.attempt = v; }, (c) => c.attempt || undefined),
+  exerciseField("hintsShown", (v, cell) => { if (isNum(v)) cell.hintsShown = v; }, (c) => c.hintsShown || undefined),
+  exerciseField("verdict", (v, cell) => { if (v && typeof (v as Verdict).equivalent === "boolean") cell.verdict = v as Verdict; }, (c) => c.verdict),
+  exerciseField("solution", (v, cell) => { if (v) cell.solution = true; }, (c) => c.solution || undefined),
+  exerciseField("lean", (v, cell) => { if (v) cell.lean = true; }, (c) => c.lean || undefined),
+  exerciseField("leanStart", (v, cell, ) => { if (cell.lean && isStr(v)) cell.leanStart = v; }, (c) => c.lean ? c.leanStart : undefined),
+  exerciseField("leanSolution", (v, cell) => { if (cell.lean && isStr(v)) cell.leanSolution = v; }, (c) => c.lean ? c.leanSolution : undefined),
+  field({ key: "label", load: (v, cell) => { cell.label = isNum(v) && v >= 0 ? Math.floor(v) : null; }, save: (c) => c.label }),
+  field({ key: "outLatex", load: (v, cell) => { if (isStr(v) && v) cell.outLatex = v; }, save: (c) => c.outLatex }),
+  field({ key: "outText", load: (v, cell) => { if (isStr(v) && v) cell.outText = v; }, save: (c) => c.outText }),
+  field({ key: "form", load: (v, cell) => { if (isStr(v) && v) cell.form = v; }, save: (c) => c.form }),
+  field({ key: "semantics", load: (v, cell) => { if (v === "real" || v === "complex") cell.semantics = v; }, save: (c) => c.semantics }),
+  field({ key: "echoLatex", load: (v, cell) => { if (isStr(v) && v) { cell.echoLatex = v; cell.echoFor = cell.src; } }, save: (c) => c.echoLatex }),
+  field({ key: "steps", load: (v, cell) => { if (Array.isArray(v)) cell.steps = v as Step[]; }, save: stepsToSave }),
+  field({ key: "outline", load: (v, cell, rec) => { if (Array.isArray(v) && !rec.steps?.length) cell.outline = v as StepOutline[]; }, save: outlineToSave }),
+  field({ key: "error", load: (v, cell) => { const e = v as Cell["error"] | null; if (e && typeof e === "object" && isStr(e.message)) cell.error = e; }, save: (c) => c.error }),
+  field({ key: "plot", load: (v, cell) => { if (v) cell.plot = migratePlot(v as PlotData); }, save: (c) => c.plot }),
+  field({ key: "visuals", load: (v, cell) => { const vs = knownVisuals(v); if (vs.length) cell.visuals = vs; }, save: (c) => c.visuals }),
+  // a note is kept with the visuals it came with (a reading or a world's note alone is the engine's to send again)
+  field({ key: "summary", load: (v, cell) => { if (cell.visuals && isStr(v)) cell.summary = v; }, save: (c) => c.visuals ? c.summary : undefined }),
+  field({ key: "mode", load: (v, cell) => { if (v === "raw" || v === "visual") cell.mode = v; }, save: (c) => c.mode }),
+  field({ key: "ask", load: (v, cell) => { const ask = savedAsk(v); if (ask) cell.ask = ask; }, save: (c) => c.ask }),
+  field({ key: "file", load: (v, cell) => {
+    const f = v as { name?: unknown; mime?: unknown; size?: unknown; origin?: unknown } | null;
+    const o = f?.origin as { url?: unknown; asset?: unknown; derived?: unknown } | undefined;
+    if (f && isStr(f.name) && isStr(f.mime) && o) {
+      const origin = isStr(o.url) ? { url: o.url } : isStr(o.asset) ? { asset: o.asset } : isStr(o.derived) ? { derived: o.derived } : null;
+      if (origin) cell.file = { name: f.name, mime: f.mime, size: Number(f.size) || 0, origin };
+    }
+  }, save: (c) => c.file }),
+  field({ key: "noSuggest", load: (v, cell) => { if (v) cell.noSuggest = true; }, save: (c) => c.noSuggest || undefined }),
+];
+/** A cell as a file records it. */
+function cellToRecord(c: Cell): CellRecord {
+  const rec = { src: cellSrc(c), type: c.type } as CellRecord;
+  for (const r of CELL_FIELDS) (rec as unknown as Record<string, unknown>)[r.key] = r.save(c);
+  return rec;
 }
-/** An exercise's fields from a file's record; only well-formed ones are kept. */
-function exerciseFromFile(cell: Cell, c: ChalkFile["cells"][number]) {
-  cell.editing = !c.src.trim();
-  if (typeof c.prompt === "string") cell.prompt = c.prompt;
-  if (Array.isArray(c.hints)) cell.hints = c.hints.filter((x) => typeof x === "string");
-  if (c.hideQuestion) cell.hideQuestion = true;
-  if (typeof c.attempt === "string") cell.attempt = c.attempt;
-  if (typeof c.hintsShown === "number") cell.hintsShown = c.hintsShown;
-  if (c.verdict && typeof c.verdict.equivalent === "boolean") cell.verdict = c.verdict;
-  if (c.solution) cell.solution = true;
-  if (c.lean) {
-    cell.lean = true;
-    if (typeof c.leanStart === "string") cell.leanStart = c.leanStart;
-    if (typeof c.leanSolution === "string") cell.leanSolution = c.leanSolution;
-  }
-}
+const isCellType = (t: unknown): t is CellType => t === "markdown" || t === "section" || t === "lean" || t === "exercise" || t === "scene" || t === "math";
 
 /** Cells from a file's records (no DOM yet); `foldWork` folds every cell's work whatever was saved. */
 function cellsFromFile(doc: ChalkFile, foldWork = false): Cell[] {
   // a record that is not one (a hand-edited file, a damaged autosave) makes an empty cell rather than
   // an exception half-way through opening; a source that is not text is dropped, not thrown on later
   return doc.cells.map((raw) => {
-    const c = (raw && typeof raw === "object" ? raw : {}) as ChalkFile["cells"][number];
-    if (typeof c.src !== "string") c.src = "";
-    const cell = freshCell(c.src, c.type === "markdown" || c.type === "section" || c.type === "lean" || c.type === "exercise" || c.type === "scene" ? c.type : "math");
-    if (cell.type === "exercise") exerciseFromFile(cell, c);
-    // prose and scenes come back shown; an empty one opens for typing
-    if (cell.type === "markdown" || cell.type === "scene") cell.editing = !c.src.trim();
-    if (c.collapsed) cell.collapsed = true;
-    cell.showWork = !foldWork && c.showWork === true; cell.label = typeof c.label === "number" && c.label >= 0 ? Math.floor(c.label) : null;
-    // a cell to step through shows its work whatever the reader folds: the steps are the exercise
-    if (typeof c.stepwise === "number" && c.stepwise >= 0) { cell.stepwise = Math.floor(c.stepwise); cell.showWork = true; }
-    if (typeof c.outLatex === "string" && c.outLatex) cell.outLatex = c.outLatex;
-    if (typeof c.outText === "string" && c.outText) cell.outText = c.outText;
-    if (typeof c.form === "string" && c.form) cell.form = c.form;
-    if (c.semantics === "real" || c.semantics === "complex") cell.semantics = c.semantics;
-    if (typeof c.echoLatex === "string" && c.echoLatex) { cell.echoLatex = c.echoLatex; cell.echoFor = cell.src; }
-    if (Array.isArray(c.steps)) cell.steps = c.steps;
-    if (Array.isArray(c.outline) && !c.steps?.length) cell.outline = c.outline;
-    if (c.error && typeof c.error === "object" && typeof c.error.message === "string") cell.error = c.error;
-    if (c.plot) cell.plot = migratePlot(c.plot);
-    const vs = knownVisuals(c.visuals);
-    if (vs.length) { cell.visuals = vs; if (typeof c.summary === "string") cell.summary = c.summary; }
-    const f = c.file;
-    const o = f?.origin as { url?: unknown; asset?: unknown; derived?: unknown } | undefined;
-    if (f && typeof f.name === "string" && typeof f.mime === "string" && o) {
-      const origin = typeof o.url === "string" ? { url: o.url } : typeof o.asset === "string" ? { asset: o.asset } : typeof o.derived === "string" ? { derived: o.derived } : null;
-      if (origin) cell.file = { name: f.name, mime: f.mime, size: Number(f.size) || 0, origin };
-    }
-    if (c.mode === "raw" || c.mode === "visual") cell.mode = c.mode;
-    if (c.noSuggest) cell.noSuggest = true;
-    const sl = c.slider;
-    if (sl && [sl.min, sl.max, sl.step].every((x) => typeof x === "number" && isFinite(x)) && sl.max > sl.min && sl.step > 0) cell.slider = { min: sl.min, max: sl.max, step: sl.step };
-    const ask = savedAsk(c.ask);
-    if (ask) cell.ask = ask;
+    const rec = (raw && typeof raw === "object" ? raw : {}) as CellRecord;
+    if (typeof rec.src !== "string") rec.src = "";
+    const cell = freshCell(rec.src, isCellType(rec.type) ? rec.type : "math");
+    // prose, scenes and exercises come back shown; an empty one opens for typing
+    if (cell.type === "markdown" || cell.type === "scene" || cell.type === "exercise") cell.editing = !rec.src.trim();
+    for (const r of CELL_FIELDS) r.load((rec as unknown as Record<string, unknown>)[r.key], cell, rec, { foldWork });
     return cell;
   });
 }
@@ -2824,12 +2837,6 @@ function switchTab(t: Tab) {
 // Rendering
 // ---------------------------------------------------------------------------
 
-const h = (tag: string, cls?: string, text?: string) => {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (text !== undefined) e.textContent = text;
-  return e;
-};
 const app = () => document.getElementById("app")!;
 
 /** Make a clickable element a keyboard-operable button: focusable, announced as a button, and
@@ -3534,215 +3541,8 @@ function epicycleBox(p: PlotData, w: number, hgt: number): HTMLElement {
   return box;
 }
 
-/** A Hasse diagram: elements in layers by height, covers as edges, nothing else. */
-function hasseSvg(d: { nodes: { name: string; height: number }[]; covers: [string, string][] }): SVGSVGElement {
-  const NS = "http://www.w3.org/2000/svg";
-  const layers = new Map<number, string[]>();
-  for (const n of d.nodes) layers.set(n.height, [...(layers.get(n.height) ?? []), n.name]);
-  const H = Math.max(0, ...d.nodes.map((n) => n.height));
-  const widest = Math.max(1, ...[...layers.values()].map((l) => l.length));
-  const cw = Math.max(70, Math.min(120, 520 / widest)), w = Math.max(240, widest * cw + 40), rowH = 64, h = (H + 1) * rowH + 24;
-  const pos = new Map<string, [number, number]>();
-  for (const [ht, names] of layers) names.forEach((name, i) => pos.set(name, [20 + (i + 0.5) * ((w - 40) / names.length), h - 12 - (ht + 0.5) * rowH]));
-  const svg = document.createElementNS(NS, "svg");
-  svg.setAttribute("role", "img");
-  svg.setAttribute("aria-label", `Hasse diagram of ${d.nodes.length} elements${d.covers.length ? `; covers: ${d.covers.map(([a, b]) => `${a} below ${b}`).join(", ")}` : ""}`);
-  svg.setAttribute("viewBox", `0 0 ${w} ${h}`); svg.setAttribute("width", String(w)); svg.setAttribute("height", String(h));
-  for (const [a, b] of d.covers) {
-    const p = pos.get(a), q = pos.get(b); if (!p || !q) continue;
-    const l = document.createElementNS(NS, "line");
-    l.setAttribute("x1", String(p[0])); l.setAttribute("y1", String(p[1])); l.setAttribute("x2", String(q[0])); l.setAttribute("y2", String(q[1]));
-    l.setAttribute("class", "hedge"); svg.append(l);
-  }
-  for (const [name, [x, y]] of pos) {
-    const c = document.createElementNS(NS, "circle");
-    c.setAttribute("cx", String(x)); c.setAttribute("cy", String(y)); c.setAttribute("r", "5"); c.setAttribute("class", "hnode"); svg.append(c);
-    const t = document.createElementNS(NS, "text");
-    t.setAttribute("x", String(x + 9)); t.setAttribute("y", String(y - 7)); t.setAttribute("class", "hlabel"); t.textContent = name; svg.append(t);
-  }
-  return svg;
-}
-
-/** The visuals this notebook draws (ARCHITECTURE.md §5), one entry per kind: how a reply's or a
- *  file's data is checked before it is a cell's, how it is drawn, and, for a visual that places the
- *  work's steps on itself, how the steps are marked. A kind the engine sends that is not here is left
- *  out; a new kind is one entry. */
-type VisualOf<K extends KnownVisual["kind"]> = Extract<KnownVisual, { kind: K }>;
-interface VisualRenderer<K extends KnownVisual["kind"]> {
-  check(d: Record<string, unknown>): boolean;
-  render(data: VisualOf<K>["data"]): Node[];
-  /** The visual stands in for the value: the answer is the picture (a poset's Hasse diagram). */
-  replacesValue?: boolean;
-  /** The visual places the work's steps on itself: it shows while the answer is held, with the
-   *  answer's own marks taken out (`held`), and is marked as the steps are revealed (`mark`). */
-  placed?(data: VisualOf<K>["data"]): boolean;
-  held?(data: VisualOf<K>["data"]): VisualOf<K>["data"];
-  mark?(box: HTMLElement, data: VisualOf<K>["data"], trail: number[], cur: number | undefined, held: boolean): void;
-}
-const VISUALS: { [K in KnownVisual["kind"]]: VisualRenderer<K> } = {
-  "order.hasse": {
-    check: (d) => Array.isArray(d["nodes"]) && Array.isArray(d["covers"]),
-    render: (d) => [hasseSvg(d)], replacesValue: true,
-  },
-  "logic.truthtable": {
-    check: (d) => Array.isArray(d["vars"]) && Array.isArray(d["rows"]) && typeof (d["formula"] as { latex?: unknown } | undefined)?.latex === "string",
-    render: (d) => [truthTable(d)],
-  },
-  "relation.digraph": {
-    check: (d) => Array.isArray(d["nodes"]) && Array.isArray(d["edges"]) && Array.isArray(d["bad"]) && Array.isArray(d["added"]),
-    render: (d) => [digraphSvg(d), digraphLegend(d)],
-    placed: (d) => !!d.steps,
-    held: (d) => ({ ...d, bad: [], added: [] }),
-    mark: (box, d, trail, cur) => markGraphSteps(box, d, trail, cur),
-  },
-  "algebra.optable": {
-    check: (d) => Array.isArray(d["elems"]) && Array.isArray(d["rows"]) && Array.isArray(d["marks"]),
-    render: (d) => [opTable(d)],
-  },
-  "context.table": {
-    check: (d) => Array.isArray(d["objects"]) && Array.isArray(d["attributes"]) && Array.isArray(d["has"]),
-    render: (d) => [contextTable(d)],
-  },
-  "typing.tree": {
-    check: (d) => typeof (d["root"] as { latex?: unknown } | undefined)?.latex === "string",
-    render: (d) => [typingTree(d)],
-  },
-  "replicas.spacetime": {
-    check: (d) => Array.isArray(d["lanes"]) && Array.isArray(d["events"]) && Array.isArray(d["messages"]) && Array.isArray(d["steps"]),
-    render: (d) => [spacetimeSvg(d)],
-    placed: () => true,
-    mark: (box, d, trail, cur, held) => markSpacetime(box, d, held ? trail : [], cur, held),
-  },
-};
-/** A visual's renderer, its kind's. The data is the kind's own (`KnownVisual` pairs them). */
-const rendererOf = (v: KnownVisual) => VISUALS[v.kind] as unknown as VisualRenderer<KnownVisual["kind"]>;
-const visualPlaced = (v: KnownVisual) => !!rendererOf(v).placed?.(v.data);
-
-/** The visuals this notebook knows how to draw, from a reply or a file: others are left out. */
-function knownVisuals(vs: unknown): KnownVisual[] {
-  if (!Array.isArray(vs)) return [];
-  return vs.filter((v): v is KnownVisual => {
-    const d = (v as { data?: Record<string, unknown> } | null)?.data;
-    if (!d) return false;
-    const kind = (v as { kind?: unknown }).kind;
-    const r = typeof kind === "string" && Object.hasOwn(VISUALS, kind) ? (VISUALS[kind as KnownVisual["kind"]] as VisualRenderer<KnownVisual["kind"]>) : null;
-    return !!r && r.check(d);
-  });
-}
 /** A visual of the cell's stands in for its value (a poset's diagram): the answer is the picture. */
 const valueReplaced = (cell: Cell) => !!cell.visuals?.some((v) => rendererOf(v).replacesValue);
-
-/** Mark where steps of the work are on a state graph: the trail of steps so far, and the current one
- *  (its arrow, or its state when it takes none). A step's arrow shows its own mark class too, so a
- *  marked transition keeps its colour under the trail. */
-function markGraphSteps(box: HTMLElement, d: DigraphData, trail: number[], cur: number | undefined) {
-  box.querySelectorAll(".redge.trail, .redge.cur, .rlabel.trail, .rlabel.cur, .hnode.cur").forEach((x) => x.classList.remove("trail", "cur"));
-  box.querySelectorAll<SVGPathElement>(".redge").forEach((p) => {
-    const cls = p.classList.contains("bad") ? "-bad" : p.classList.contains("added") ? "-added" : "";
-    p.setAttribute("marker-end", `url(#rel-arrow${cls})`);
-  });
-  const mark = (k: number, cls: "trail" | "cur") => {
-    const m = d.steps?.[k];
-    if (!m) return;
-    if (m.edge) {
-      const want = JSON.stringify(m.edge);
-      box.querySelectorAll<SVGPathElement>(".redge").forEach((p) => {
-        if (p.getAttribute("data-edge") !== want) return;
-        p.classList.add(cls);
-        if (cls === "cur") p.setAttribute("marker-end", "url(#rel-arrow-cur)");
-      });
-      box.querySelectorAll(".rlabel").forEach((t) => { if (t.getAttribute("data-edge") === want) t.classList.add(cls); });
-    }
-    const at = m.node ?? (cls === "cur" ? m.edge?.[1] : undefined);
-    if (at !== undefined) box.querySelectorAll(".hnode").forEach((c) => { if (c.getAttribute("data-node") === at) c.classList.add(cls); });
-  };
-  for (const k of trail) mark(k, "trail");
-  if (cur !== undefined) mark(cur, "cur");
-}
-
-/** A replica simulation as a space-time diagram: a lane per replica, left to right in the order of
- *  events, a dot per event (its label above, the replica's state in its tooltip and, when short,
- *  below), an arrow per message from the event that sent it to the one that delivered it. */
-function spacetimeSvg(d: SpacetimeData): SVGSVGElement {
-  const NS = "http://www.w3.org/2000/svg";
-  const longest = Math.max(1, ...d.lanes.map((x) => x.length));
-  // a column is as wide as the longest label or state shown under a dot (a long state goes in the tooltip only)
-  const shownLen = Math.max(1, ...d.events.map((e) => Math.max(e.label.length, e.state.length <= 18 ? e.state.length : 0)));
-  const left = longest * 8 + 24, colW = Math.max(64, Math.min(140, shownLen * 6.4 + 16)), laneH = 62, top = 30;
-  const w = left + Math.max(1, d.events.length) * colW + 24, hgt = top + d.lanes.length * laneH;
-  const laneY = (l: string) => top + Math.max(0, d.lanes.indexOf(l)) * laneH + 14;
-  const ex = (i: number) => left + 20 + i * colW;
-  const svg = document.createElementNS(NS, "svg");
-  svg.setAttribute("role", "img");
-  svg.setAttribute("aria-label", `${d.lanes.length} replicas, ${d.events.length} events, ${d.messages.length} messages`);
-  svg.setAttribute("viewBox", `0 0 ${w} ${hgt}`); svg.setAttribute("width", String(w)); svg.setAttribute("height", String(hgt));
-  svg.classList.add("spacetime");
-  const defs = document.createElementNS(NS, "defs");
-  const m = document.createElementNS(NS, "marker");
-  m.setAttribute("id", "st-arrow"); m.setAttribute("viewBox", "0 0 10 10"); m.setAttribute("refX", "9"); m.setAttribute("refY", "5");
-  m.setAttribute("markerWidth", "6"); m.setAttribute("markerHeight", "6"); m.setAttribute("orient", "auto-start-reverse");
-  const head = document.createElementNS(NS, "path"); head.setAttribute("d", "M0,0 L10,5 L0,10 z"); head.setAttribute("class", "sthead");
-  m.append(head); defs.append(m); svg.append(defs);
-  for (const l of d.lanes) {
-    const y = laneY(l);
-    const t = document.createElementNS(NS, "text");
-    t.setAttribute("x", "8"); t.setAttribute("y", String(y + 4)); t.setAttribute("class", "stlane"); t.textContent = l; svg.append(t);
-    const ln = document.createElementNS(NS, "line");
-    ln.setAttribute("x1", String(left)); ln.setAttribute("x2", String(w - 12)); ln.setAttribute("y1", String(y)); ln.setAttribute("y2", String(y));
-    ln.setAttribute("class", "stline"); svg.append(ln);
-  }
-  d.messages.forEach(([a, b], k) => {
-    const ea = d.events[a], eb = d.events[b]; if (!ea || !eb) return;
-    const x1 = ex(a), y1 = laneY(ea.lane), x2 = ex(b), y2 = laneY(eb.lane);
-    const len = Math.hypot(x2 - x1, y2 - y1) || 1;
-    const p = document.createElementNS(NS, "line");
-    p.setAttribute("x1", String(x1 + (x2 - x1) * 6 / len)); p.setAttribute("y1", String(y1 + (y2 - y1) * 6 / len));
-    p.setAttribute("x2", String(x2 - (x2 - x1) * 7 / len)); p.setAttribute("y2", String(y2 - (y2 - y1) * 7 / len));
-    p.setAttribute("class", "stmsg"); p.setAttribute("marker-end", "url(#st-arrow)");
-    p.setAttribute("data-from", String(a)); p.setAttribute("data-to", String(b)); p.setAttribute("data-msg", String(k));
-    svg.append(p);
-  });
-  d.events.forEach((e, i) => {
-    const g = document.createElementNS(NS, "g");
-    g.setAttribute("data-event", String(i)); g.setAttribute("class", "stev");
-    const x = ex(i), y = laneY(e.lane);
-    const c = document.createElementNS(NS, "circle");
-    c.setAttribute("cx", String(x)); c.setAttribute("cy", String(y)); c.setAttribute("r", "5"); c.setAttribute("class", "stdot");
-    const title = document.createElementNS(NS, "title"); title.textContent = `${e.lane}: ${e.label} → ${e.state}`; c.append(title);
-    const lab = document.createElementNS(NS, "text");
-    lab.setAttribute("x", String(x)); lab.setAttribute("y", String(y - 10)); lab.setAttribute("text-anchor", "middle"); lab.setAttribute("class", "stlabel");
-    lab.textContent = e.label;
-    g.append(c, lab);
-    if (e.state.length <= 18) {
-      const st = document.createElementNS(NS, "text");
-      st.setAttribute("x", String(x)); st.setAttribute("y", String(y + 19)); st.setAttribute("text-anchor", "middle"); st.setAttribute("class", "ststate");
-      st.textContent = e.state; g.append(st);
-    }
-    svg.append(g);
-  });
-  return svg;
-}
-
-/** Mark a space-time diagram's events for the steps of the work: the steps so far as a trail, the
- *  current one's events; while the answer is held back, the events of later steps are hidden. */
-function markSpacetime(box: HTMLElement, d: SpacetimeData, trail: number[], cur: number | undefined, held: boolean) {
-  const evs = (ks: number[]) => new Set(ks.flatMap((k) => d.steps[k] ?? []));
-  // every step up to the current one has happened, a folded one (a delivery that changed nothing) too
-  const upTo = cur === undefined ? -1 : cur;
-  const shown = held ? evs(d.steps.map((_, k) => k).filter((k) => k <= upTo)) : evs(trail);
-  const now = evs(cur === undefined ? [] : [cur]);
-  box.querySelectorAll<SVGGElement>("[data-event]").forEach((g) => {
-    const i = Number(g.getAttribute("data-event"));
-    g.classList.toggle("trail", shown.has(i) && !now.has(i));
-    g.classList.toggle("cur", now.has(i));
-    g.style.display = held && !shown.has(i) ? "none" : "";
-  });
-  box.querySelectorAll<SVGLineElement>("[data-msg]").forEach((l) => {
-    const to = Number(l.getAttribute("data-to"));
-    l.classList.toggle("cur", now.has(to));
-    l.style.display = held && !shown.has(to) ? "none" : "";
-  });
-}
 
 /** The indices of a cell's shown steps (those the work lists), in order. */
 function shownStepIndices(cell: Cell): number[] {
@@ -3790,246 +3590,6 @@ function remarkGraphs(only?: Cell) {
     const { trail, cur } = graphStepMarks(cell);
     rendererOf(v).mark?.(box, v.data, trail, cur, answerHeld(cell));
   }
-}
-
-/** A visual, boxed and captioned as a plot is. */
-function visualBox(v: KnownVisual): HTMLElement {
-  const box = h("div", "visualbox");
-  box.dataset["kind"] = v.kind;
-  box.append(...rendererOf(v).render(v.data));
-  return box;
-}
-
-/** A typing derivation as a proof tree: each judgment under a bar, its premises above, the rule to the
- *  bar's right. Var has no premises, so its bar stands alone. */
-function typingTree(d: TypingTreeData): HTMLElement {
-  const wrap = h("div", "typingtree");
-  wrap.setAttribute("role", "img");
-  wrap.setAttribute("aria-label", `Typing derivation of ${d.root.text}`);
-  const node = (n: TypingNode, depth: number): HTMLElement => {
-    const el = h("div", "ptnode");
-    if (n.premises.length) {
-      const prem = h("div", "ptprem");
-      // a deep tree is cut off rather than drawn past any width
-      if (depth < 12) for (const p of n.premises) prem.append(node(p, depth + 1));
-      else prem.append(h("span", "ptmore", "⋮"));
-      el.append(prem);
-    }
-    const concl = h("div", "ptconc");
-    concl.title = n.text;
-    concl.innerHTML = tex(n.latex);
-    concl.append(h("span", "ptrule", n.rule));
-    el.append(concl);
-    return el;
-  };
-  const tree = h("div", "pttree");
-  tree.append(node(d.root, 0));
-  wrap.append(tree);
-  if (d.legend?.length) {
-    const lg = h("div", "ptlegend");
-    for (const l of d.legend) { const row = h("div"); row.title = l.text; row.innerHTML = tex(l.latex); lg.append(row); }
-    wrap.append(lg);
-  }
-  return wrap;
-}
-
-/** An operation's table: the row's element times the column's, the marked cells (a law failing) shaded. */
-function opTable(d: OpTableData): HTMLElement {
-  const t = h("table", "truthtable optable");
-  t.setAttribute("aria-label", `Operation table on ${d.elems.length} elements${d.marks.length ? `; marked: ${d.marks.map(([a, b]) => `${a} · ${b}`).join(", ")}` : ""}`);
-  const marked = new Set(d.marks.map(([a, b]) => `${a}\u0000${b}`));
-  const head = h("tr");
-  head.append(h("th", "optcorner", "·"));
-  for (const y of d.elems) head.append(h("th", undefined, y));
-  const thead = h("thead"); thead.append(head); t.append(thead);
-  const body = h("tbody");
-  d.rows.forEach((row, i) => {
-    const x = d.elems[i] ?? "";
-    const tr = h("tr");
-    tr.append(h("th", "oprow", x));
-    row.forEach((v, j) => tr.append(h("td", marked.has(`${x}\u0000${d.elems[j] ?? ""}`) ? "opmark" : "", v)));
-    body.append(tr);
-  });
-  t.append(body);
-  return t;
-}
-
-/** A formal context: a row per object, a column per attribute, × where the object has it. */
-function contextTable(d: ContextTableData): HTMLElement {
-  const t = h("table", "truthtable ctxtable");
-  t.setAttribute("aria-label", `A context of ${d.objects.length} objects and ${d.attributes.length} attributes`);
-  const head = h("tr");
-  head.append(h("th"));
-  for (const a of d.attributes) head.append(h("th", undefined, a));
-  const thead = h("thead"); thead.append(head); t.append(thead);
-  const body = h("tbody");
-  d.objects.forEach((o, i) => {
-    const tr = h("tr");
-    tr.append(h("th", "oprow", o));
-    (d.has[i] ?? []).forEach((b) => tr.append(h("td", undefined, b ? "×" : "")));
-    body.append(tr);
-  });
-  t.append(body);
-  return t;
-}
-
-/** A truth table: a column per variable, then the formula; T and F, the formula's false rows marked. */
-function truthTable(d: TruthTableData): HTMLElement {
-  const t = h("table", "truthtable");
-  t.setAttribute("aria-label", `Truth table of ${d.formula.text}: ${d.rows.length} rows`);
-  const head = h("tr");
-  for (const v of d.vars) { const th = h("th"); th.innerHTML = tex(v); head.append(th); }
-  const fth = h("th", "ttf"); fth.innerHTML = tex(d.formula.latex); head.append(fth);
-  const thead = h("thead"); thead.append(head); t.append(thead);
-  const body = h("tbody");
-  for (const row of d.rows) {
-    const tr = h("tr", row[row.length - 1] ? "" : "ttfalse");
-    row.forEach((b, i) => tr.append(h("td", i === row.length - 1 ? "ttf" : "", b ? "T" : "F")));
-    body.append(tr);
-  }
-  t.append(body);
-  return t;
-}
-
-/** A relation as a directed graph: elements on a circle, a pair as an arrow (a loop for `x R x`). The
- *  arrows that show a property failing are marked, and the ones a closure added are dashed. A state
- *  graph is drawn in rows instead, each state a box with its name in it, the arrows ending at the
- *  boxes' edges (a loop on a box's right side) and labelled with the actions that take them. */
-function digraphSvg(d: DigraphData): SVGSVGElement {
-  const NS = "http://www.w3.org/2000/svg";
-  const n = d.nodes.length;
-  const longest = Math.max(1, ...d.nodes.map((x) => x.length));
-  const layered = !!d.layers && d.layers.length === n;
-  const labels = d.labels?.length === d.edges.length ? d.labels : undefined;
-  // a state's box: half its width (the name's, at the label's 11px code font) and half its height
-  const half = (name: string): [number, number] => [name.length * 3.35 + 8, 10];
-  const pos = new Map<string, [number, number]>();
-  let w: number, hgt: number;
-  if (layered) {
-    // a state graph: the initial states on top, each row one step further on
-    const rows = new Map<number, string[]>();
-    d.nodes.forEach((name, i) => { const l = d.layers![i]!; rows.set(l, [...(rows.get(l) ?? []), name]); });
-    const widest = Math.max(1, ...[...rows.values()].map((r) => r.length));
-    // a column holds a box, with room on its right for a loop and the loop's label, and labelled
-    // arrows want room beside them
-    const boxW = 2 * half("x".repeat(longest))[0];
-    const loopW = Math.max(0, ...d.edges.map(([a, b], k) => (a === b ? 2 * (26 + (labels?.[k]?.length ?? 0) * 6) : 0)));
-    const colW = Math.max(70, boxW + 28, boxW + loopW, labels ? Math.max(0, ...labels.map((x) => x.length)) * 6 + 40 : 0), rowH = labels ? 84 : 74;
-    w = Math.max(240, widest * colW + 40); hgt = Math.max(0, ...rows.keys()) * rowH + 48;
-    for (const [l, names] of rows) names.forEach((name, k) => pos.set(name, [20 + (k + 0.5) * ((w - 40) / names.length), 24 + l * rowH]));
-  } else {
-    const r = n <= 1 ? 0 : Math.max(60, Math.min(150, 26 * n)), pad = Math.max(60, longest * 6.6 + 24);
-    w = 2 * r + 2 * pad; hgt = 2 * r + 90;
-    d.nodes.forEach((name, i) => {
-      const a = -Math.PI / 2 + (2 * Math.PI * i) / Math.max(1, n);
-      pos.set(name, [w / 2 + r * Math.cos(a), hgt / 2 + r * Math.sin(a)]);
-    });
-  }
-  const key = ([a, b]: [string, string]) => `${a}\u0000${b}`;
-  const bad = new Set(d.bad.map(key)), added = new Set(d.added.map(key)), all = new Set(d.edges.map(key));
-  const svg = document.createElementNS(NS, "svg");
-  svg.setAttribute("role", "img");
-  svg.setAttribute("aria-label", `A relation on ${n} element${n === 1 ? "" : "s"}${d.edges.length ? `; pairs: ${d.edges.map(([a, b], k) => `${a} to ${b}${labels?.[k] ? ` by ${labels[k]}` : ""}`).join("; ")}` : ", no pairs"}`);
-  svg.setAttribute("viewBox", `0 0 ${w} ${hgt}`); svg.setAttribute("width", String(w)); svg.setAttribute("height", String(hgt));
-  const defs = document.createElementNS(NS, "defs");
-  for (const cls of ["", "bad", "added", "cur"]) {
-    const m = document.createElementNS(NS, "marker");
-    m.setAttribute("id", `rel-arrow${cls ? `-${cls}` : ""}`); m.setAttribute("viewBox", "0 0 10 10"); m.setAttribute("refX", "9"); m.setAttribute("refY", "5");
-    // a marker scales with its arrow's stroke: the current arrow is drawn thicker, so its head is set smaller
-    const mw = cls === "cur" ? "4.5" : "7";
-    m.setAttribute("markerWidth", mw); m.setAttribute("markerHeight", mw); m.setAttribute("orient", "auto-start-reverse");
-    const path = document.createElementNS(NS, "path"); path.setAttribute("d", "M0,0 L10,5 L0,10 z"); path.setAttribute("class", `rhead ${cls}`);
-    m.append(path); defs.append(m);
-  }
-  svg.append(defs);
-  // the labels go on top of every arrow, so one arrow does not cross out another's label
-  const texts: SVGTextElement[] = [];
-  d.edges.forEach((e, ei) => {
-    const [a, b] = e;
-    const p = pos.get(a), q = pos.get(b); if (!p || !q) return;
-    const cls = bad.has(key(e)) ? "bad" : added.has(key(e)) ? "added" : "";
-    const path = document.createElementNS(NS, "path");
-    // where the label goes, and which way it reads from there
-    let at: [number, number, "start" | "middle" | "end"];
-    if (layered && a === b) {
-      // a loop on the box's right side, its label past it
-      const rx = p[0] + half(a)[0], y = p[1];
-      path.setAttribute("d", `M${rx},${y - 5} C${rx + 26},${y - 20} ${rx + 26},${y + 20} ${rx + 2},${y + 5}`);
-      at = [rx + 24, y + 4, "start"];
-    } else if (layered) {
-      // from box edge to box edge; bend a pair drawn both ways apart, and edges within a row or back up it
-      const dx = q[0] - p[0], dy = q[1] - p[1], len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
-      const bend = all.has(key([b, a])) ? 14 : q[1] <= p[1] ? 26 : 0;
-      const mx = (p[0] + q[0]) / 2 - uy * bend, my = (p[1] + q[1]) / 2 + ux * bend;
-      // where the line from a box's centre toward the curve's control point leaves the box
-      const edge = (c: [number, number], name: string, gap: number): [number, number] => {
-        const [hw, hh] = half(name), ex = mx - c[0], ey = my - c[1], el = Math.hypot(ex, ey) || 1;
-        const t = Math.min(ex ? hw / Math.abs(ex / el) : Infinity, ey ? hh / Math.abs(ey / el) : Infinity) + gap;
-        return [c[0] + (ex / el) * t, c[1] + (ey / el) * t];
-      };
-      const [x1, y1] = edge(p, a, 1), [x2, y2] = edge(q, b, 2);
-      path.setAttribute("d", `M${x1},${y1} Q${mx},${my} ${x2},${y2}`);
-      // the curve's midpoint; a bent arrow's label is outside its bend, clear of the arrow beside it
-      const nx = -uy * Math.sign(bend), ny = ux * Math.sign(bend), cx = (x1 + 2 * mx + x2) / 4 + 5 * nx, cy = (y1 + 2 * my + y2) / 4 + 5 * ny;
-      at = [cx, cy + (ny > 0.3 ? 10 : ny < -0.3 ? -2 : 4), nx > 0.3 ? "start" : nx < -0.3 ? "end" : "middle"];
-    } else if (a === b) {
-      // a loop, outward from the centre
-      const ang = Math.atan2(p[1] - hgt / 2, p[0] - w / 2) || -Math.PI / 2;
-      const cx = p[0] + 18 * Math.cos(ang), cy = p[1] + 18 * Math.sin(ang);
-      const s1 = [p[0] + 7 * Math.cos(ang - 0.6), p[1] + 7 * Math.sin(ang - 0.6)], s2 = [p[0] + 7 * Math.cos(ang + 0.6), p[1] + 7 * Math.sin(ang + 0.6)];
-      path.setAttribute("d", `M${s1[0]},${s1[1]} Q${cx + 14 * Math.cos(ang - 1.2)},${cy + 14 * Math.sin(ang - 1.2)} ${cx},${cy} Q${cx + 14 * Math.cos(ang + 1.2)},${cy + 14 * Math.sin(ang + 1.2)} ${s2[0]},${s2[1]}`);
-      // past the loop's far end
-      const c = Math.cos(ang);
-      at = [p[0] + 30 * c, p[1] + 30 * Math.sin(ang) + 4, c < -0.3 ? "end" : c > 0.3 ? "start" : "middle"];
-    } else {
-      // stop short of the nodes; bend when the reverse pair is drawn too, so the two do not overlap
-      const dx = q[0] - p[0], dy = q[1] - p[1], len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
-      const x1 = p[0] + ux * 8, y1 = p[1] + uy * 8, x2 = q[0] - ux * 9, y2 = q[1] - uy * 9;
-      const bend = all.has(key([b, a])) ? 14 : 0;
-      const mx = (x1 + x2) / 2 - uy * bend, my = (y1 + y2) / 2 + ux * bend;
-      path.setAttribute("d", `M${x1},${y1} Q${mx},${my} ${x2},${y2}`);
-      at = [(x1 + 2 * mx + x2) / 4, (y1 + 2 * my + y2) / 4 + 4, "middle"];
-    }
-    path.setAttribute("class", `redge ${cls}`);
-    path.setAttribute("marker-end", `url(#rel-arrow${cls ? `-${cls}` : ""})`);
-    path.setAttribute("data-edge", JSON.stringify(e));
-    svg.append(path);
-    const label = labels?.[ei];
-    if (label) {
-      const t = document.createElementNS(NS, "text");
-      t.setAttribute("x", String(at[0])); t.setAttribute("y", String(at[1])); t.setAttribute("text-anchor", at[2]);
-      t.setAttribute("class", `rlabel ${cls}`); t.setAttribute("data-edge", JSON.stringify(e)); t.textContent = label;
-      texts.push(t);
-    }
-  });
-  svg.append(...texts);
-  for (const [name, [x, y]] of pos) {
-    const t = document.createElementNS(NS, "text");
-    if (layered) {
-      // a box with the name in it
-      const [hw, hh] = half(name), r = document.createElementNS(NS, "rect");
-      r.setAttribute("x", String(x - hw)); r.setAttribute("y", String(y - hh)); r.setAttribute("width", String(2 * hw)); r.setAttribute("height", String(2 * hh));
-      r.setAttribute("rx", "5"); r.setAttribute("class", "hnode"); r.setAttribute("data-node", name); svg.append(r);
-      t.setAttribute("x", String(x)); t.setAttribute("y", String(y + 4)); t.setAttribute("text-anchor", "middle");
-    } else {
-      const c = document.createElementNS(NS, "circle");
-      c.setAttribute("cx", String(x)); c.setAttribute("cy", String(y)); c.setAttribute("r", "5"); c.setAttribute("class", "hnode"); c.setAttribute("data-node", name); svg.append(c);
-      // outward from the centre, past the node's loop when it has one
-      const out = Math.atan2(y - hgt / 2, x - w / 2) || -Math.PI / 2, dist = d.edges.some(([a, b]) => a === name && b === name) ? 40 : 14;
-      t.setAttribute("x", String(x + dist * Math.cos(out) - (Math.cos(out) < -0.3 ? name.length * 6.6 : 4))); t.setAttribute("y", String(y + dist * Math.sin(out) + 4));
-    }
-    t.setAttribute("class", "hlabel"); t.textContent = name; svg.append(t);
-  }
-  return svg;
-}
-
-/** What the marked arrows mean, when there are any. */
-function digraphLegend(d: DigraphData): HTMLElement {
-  const cap = h("div", "plotcap");
-  const pairs = (ps: [string, string][]) => ps.map(([a, b]) => `${a}→${b}`).join(", ");
-  if (d.bad.length) cap.append(h("span", "legend relbad", `marked: ${pairs(d.bad)}`), " ");
-  if (d.added.length) cap.append(h("span", "legend reladded", `added: ${pairs(d.added)}`));
-  return cap;
 }
 
 /** A complex number as LaTeX, to a few digits. */
@@ -5242,7 +4802,6 @@ function renderCellBody(cell: Cell) {
     wireTerm(echo, cell, { kind: "input" });
     body.append(echo);
   }
-
 
   if (cell.error) {
     const err = h("div", "cellerr", cell.error.message);

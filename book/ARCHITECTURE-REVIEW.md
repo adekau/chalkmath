@@ -1,8 +1,8 @@
 # Architecture review, October 2026
 
 A review of how the design in `ARCHITECTURE.md` has held up as the scope grew: the visual editor and
-its read view, the typeset input cells, and the five worlds beside algebra. Read-only; nothing here
-is changed, and every claim names the file it was read from.
+its read view, the typeset input cells, and the five worlds beside algebra. Every claim names the
+file it was read from. The findings were written first; **what was done about them** is at the end.
 
 ## Verdict
 
@@ -239,3 +239,41 @@ the test that guards §3.
 | 4 | §4.1–4.2 `cell.result`; `CellRecord` with a table loader | medium | hand-kept clear/save/load lists |
 | 5 | §6 `inputSpans` from the parser | medium | the read view's heuristics; worlds without a toolbar |
 | 6 | §4.3 split `app.ts` at its seams | as sections are touched | the one-file integration point |
+
+## What was done
+
+Acted on in the same branch, in the review's order:
+
+1. **§2, done.** `engine.capabilities.worlds` publishes each world's id, label, commands, keywords,
+   glyphs, names and markers (`World.lean`, `worldsJson`). The notebook's `worlds.ts` is generated from
+   the engine's output and held equal to it by `apps/notebook/test/worlds.test.mjs`; the regexes in
+   `app.ts` are gone, and `cellKind`, the typeset input's call names, the highlighter and the exercise
+   verdict read `worlds.ts`. The editor adds the engine's keywords and operators to its own
+   (`configureLexicon`); `lexicon.test.mjs` holds its lists equal to the engine's, and found the
+   editor's `weak` keyword had no engine behind it. The reference test's hand copy went too.
+2. **§3, done.** `VISUALS` in `apps/notebook/src/visuals.ts` is the one registry (check, render,
+   `replacesValue`, `placed`, `held`, `mark`). The Hasse diagram is the `order.hasse` visual, drawn
+   through the registry and standing in for the value as before; the `hasse` field stays on the wire
+   for one release and `Cell.hasse` is gone. `features()` in the e2e script checks it and the context
+   table, so every kind is now checked in the browser.
+3. **§1, done.** `World.lean`: the five records, `worldFor`, one `worldReply`, `evaluateIn`;
+   `checkAnswer` routes the same way. `Session.unbind` clears a name from every world when another
+   world rebinds it; a world rebinding its own name still sees the old value. A function may not take
+   a command's or a wire value's name (`reservedFnNames`); a value may (`let reach = …` is in a
+   lesson). `engine/Tests/Main.lean` has `worldTests` for each of these. No proof changed.
+4. **§4.2, done; §4.1 not.** `CellRecord` is a named type and `CELL_FIELDS` one table of rows (load
+   with its check, save), driving `cellsFromFile` and `cellToRecord`; the exercise helpers folded into
+   it. The file format is unchanged, field order included. Grouping the reply's fields under
+   `cell.result` was not done: it is a rename across a hundred sites with no behaviour behind it, and
+   `clearResult` already is the one place.
+5. **§6, not done.** The round-trip proofs (`RoundTrip.lean`) are stated against the parser's
+   functions as they are, so a parser that records each node's span is a design of its own (a
+   span-annotated return type, or a separate annotated parser kept equal to this one by test), not a
+   change to make alongside the rest. `term-spans.ts` stays as it is, prototype note included.
+6. **§4.3, begun.** Two seams taken: `visuals.ts` (the renderers and the registry, 500 lines) and
+   `dom.ts` (`h`, `tex`), both without DOM state of their own; `app.ts` is 7,900 lines. The typeset
+   input and read view (about a thousand lines) are the next seam; they reach into `S`, `Cell` and
+   the cell lifecycle, so they want an explicit interface first.
+7. **§8, done.** `ARCHITECTURE.md` §4 now describes a world as the record it is and lists what a new
+   one touches; §5 lists `order.hasse` and the registry; §4a names the modules beside `app.ts` and
+   the field table. `CLAUDE.md`'s definition of done gains a world, a visual kind and a saved field.

@@ -16,6 +16,13 @@ all four of the following, in the same change:
      same row in `book/chapters/A-rule-table.tex`. Keep the status honest: `verified` only when a
      theorem (or a definition) backs it;
    - a design decision or a new kind of thing: `ARCHITECTURE.md`.
+   A **world** (a language beside algebra) is one `World` record in `engine/MathEngine/World.lean`,
+   with its lexicon (commands, keywords, glyphs, markers), which `engine.capabilities` publishes; the
+   notebook's fallback list in `apps/notebook/src/worlds.ts` is regenerated from the engine's output
+   and held equal to it by `apps/notebook/test/worlds.test.mjs`. A **visual kind** is one type in
+   `KnownVisual` (`packages/protocol`), one entry in `VISUALS` (`apps/notebook/src/visuals.ts`), and
+   a `features()` check in `scripts/e2e-math.mjs`. A **saved field** of a cell is one line in
+   `CellRecord` and one row in `CELL_FIELDS` (`apps/notebook/src/app.ts`). See `ARCHITECTURE.md` §4, §5.
 2. **Proofs, where relevant.** Every rule added to the notebook pipeline must have its termination
    obligation in `engine/MathEngine/PipelineOrder.lean`: a `dec_*` theorem, the rule in
    `mem_pipeline_iff`, and its case in `pipelineOrderedWith` (the `rcases` count changes too). A rule
