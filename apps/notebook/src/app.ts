@@ -4,6 +4,7 @@ import { leanForPrelude } from "@chalkmath/lean-editor/prelude";
 import { read as readNotation, write as writeNotation, writeText, hasNotation, templateAt, templateInText, TEMPLATES, KEYWORDS, lex as lexNotation, type Stmt, type Caret, type MathEdit } from "@chalkmath/math-editor";
 import { MathInput, type MathInputOptions } from "@chalkmath/math-editor/view";
 import { termSpans, deleteTerm, type Reading, type Span, type TermSpan } from "./term-spans.js";
+import { leavesSorry } from "./lean-sorry.js";
 
 /**
  * The notebook shell. Structure, type and colour follow the second export of the
@@ -5059,14 +5060,15 @@ function preludeMessages(ms: LeanMessage[]) {
   lastPreludeErrors = errs;
 }
 /** Settle a Lean exercise's verdict from what Lean says, once Lean has checked the file as it is: proved
- *  when neither the statement nor the proof has an error and nothing was left as `sorry`. Returns whether
+ *  when neither the statement nor the proof has an error and nothing was left as `sorry` (a commented-out
+ *  one is not left). Returns whether
  *  the verdict changed. */
 function leanVerdict(c: Cell): boolean {
   if (!leanChecked()) return false;
   const proof = c.attempt ?? c.leanStart ?? LEAN_START;
   const ms = [...(c.leanStmtMessages ?? []), ...(c.leanMessages ?? [])];
   const err = ms.find((m) => m.severity === "error");
-  const sorry = ms.some((m) => m.severity === "warning" && /sorry/.test(m.message)) || /\b(sorry|admit)\b/.test(proof);
+  const sorry = ms.some((m) => m.severity === "warning" && /sorry/.test(m.message)) || leavesSorry(proof);
   const v: Verdict = !proof.trim() || sorry
     ? { equivalent: false, error: { message: !proof.trim() ? "write a proof" : "the proof still has a sorry" } }
     : err ? { equivalent: false, error: { message: "Lean reports an error, above" } } : { equivalent: true };
