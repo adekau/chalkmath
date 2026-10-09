@@ -86,7 +86,8 @@ A cell that binds a name to a number, ‹let n = 3›, can be a slider: its ⋮ 
 
 ## What a cell shows
 
-- **The input interpretation**: under the input, the engine's own reading of what you typed (with ‹%› and named values filled in), so you can see it read what you meant. View › Input interpretation hides it.
+- **The input interpretation**: under the input, the engine's own reading of what you typed (with ‹%› and named values filled in), so you can see it read what you meant; a ‹system›, a ‹poset› or another world's command is read as written, its guards and relations each read as a formula. View › Input interpretation hides it.
+- **A typeset cell, read**: once a typeset cell has run it is read rather than edited, as a Markdown cell is. Point at a piece to outline what it belongs to (at ‹and› in ‹p and q implies r›, the ‹p and q›), click it for its explanation, or use the bar over it to edit it, replace it with an empty slot, or delete it. Double-click (or Enter) to edit; running reads it again. View › Read typeset cells turns this off.
 - **The kind** of cell (derivative, integral, matrix, …) as a small badge beside the input.
 - **Output forms**: a matrix or a list can be shown as a bracketed or parenthesised matrix, a grid, a table or the input form (the text you would type), chosen from the small menu beside ‹Out[n]›, like Mathematica's ‹//MatrixForm›.
 - **Plots and drawings**: ‹plot› and ‹epicycles› draw beside the answer; a file shows as what it is: an image, a table, text ([Saving, sharing and files](#doc:files)).

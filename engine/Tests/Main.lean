@@ -1140,8 +1140,41 @@ def jsonTests : TestM Unit := do
   checkTrue "a plot range past a double is refused, not sent as inf"
     (contains (rpc "engine.plot" "{\"sessionId\":\"j\",\"cellId\":\"p\",\"source\":\"plot(x, x, 0, 10^400)\"}") "the range must be finite")
 
+-- --- a world cell's input as written (`Surface.lean`) ---------------------------------------
+def surfaceTests : TestM Unit := do
+  let sys := "let Inc = system(\n  var x in 0..2\n  var p in {read, done}\n  init x = 0 ∧ p = read\n  action go when p = read do x := x + 1, p := done\n)"
+  -- the declarations as written, each formula read by its grammar (`init` is a keyword, not a factor)
+  check "surface: a system's declarations" (Surface.asWritten sys).toText
+    "system(var x in 0..2\nvar p in {read, done}\ninit x = 0 ∧ p = read\naction go when p = read do x := x + 1, p := done)"
+  check "surface: a poset as written" (Surface.asWritten "let C = poset({a, b, c}; a < b, b < c)").toText "poset({a, b, c}; a < b, b < c)"
+  check "surface: a query names its poset" (Surface.asWritten "le(C, a, c)").toText "le(C, a, c)"
+  check "surface: a map's arrows" (Surface.asWritten "map(D; 1 -> 2, 2 -> 4)").toText "map(D; 1 -> 2, 2 -> 4)"
+  check "surface: a message's arrow, not a comparison" (Surface.asWritten "replicas(g; a, b; a: inc; m := a; b <- m)").toText
+    "replicas(g; a, b; a: inc; m := a; b <- m)"
+  check "surface: x<-1 compares with -1" (Surface.asWritten "f(x<-1)").toText "f(x < -1)"
+  check "surface: a normal form keeps its command" (Surface.asWritten "cnf(p ∨ (q ∧ r))").toText "cnf(p ∨ q ∧ r)"
+  check "surface: a rule's sides" (Surface.asWritten "terminates(A; add(x, y) = 2x + y)").toText "terminates(A; add(x, y) = 2*x + y)"
+  check "surface: a table of sets" (Surface.asWritten "op({{}, {a}}; [{}, {a}; {a}, {a}])").toText "op({{}, {a}}; [{}, {a}; {a}, {a}])"
+  -- every labelled piece is a subterm, and the separators and keywords are not labelled
+  for src in [sys, "let C = poset({a, b, c}; a < b, b < c)", "map(D; 1 -> 2)", "replicas(g; a, b; a: inc; b <- m)"] do
+    let e := Surface.asWritten src
+    check s!"surface paths reach subterms: {src.take 20}" (toString (badPaths e)) "[]"
+    checkTrue s!"surface separators are not labelled: {src.take 20}"
+      (["var", "in", "init", "action", "when", "do"].all (fun k => !contains (e.toLatex true) ("{\\mathsf{" ++ k ++ "}}")) &&
+        !contains (e.toLatex true) "{\\to}") (e.toLatex true)
+  -- the reply's input is the cell as written; explain finds a guard's formula in it
+  let st : Store := []
+  let (st, _) := sessionEval st sys
+  let esc := sys.replace "\n" "\\n"
+  let raw := (handleS st s!"\{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"engine.evaluate\",\"params\":\{\"sessionId\":\"t\",\"cellId\":\"sys\",\"source\":\"{esc}\",\"showWork\":true,\"paths\":true}}").2
+  checkTrue "a system's input reading is its declarations" (contains raw "init x = 0 ∧ p = read") raw
+  let st := (handleS st s!"\{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"engine.evaluate\",\"params\":\{\"sessionId\":\"t\",\"cellId\":\"sys\",\"source\":\"{esc}\",\"showWork\":true}}").1
+  -- the guard of `go`: argument 4 of the call (pieces are argument 0), the piece after `when`
+  let ex := (handleS st "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"engine.explain\",\"params\":{\"sessionId\":\"t\",\"cellId\":\"sys\",\"path\":[4,2],\"term\":{\"kind\":\"input\"}}}").2
+  checkTrue "explain finds a guard in a system as written" (contains ex "\"text\":\"p = read\"") ex
+
 def main : IO UInt32 := do
-  let ((), failures) ← (do tests; sessionTests; integrateTests; trigTests; quietTests; partStatTests; workTests; scaleTests; checkTests; logicRelTests; algebraTests; systemsTests; complexNTests; intervalTests; intRootTests; jsonTests; goldenTests).run #[]
+  let ((), failures) ← (do tests; surfaceTests; sessionTests; integrateTests; trigTests; quietTests; partStatTests; workTests; scaleTests; checkTests; logicRelTests; algebraTests; systemsTests; complexNTests; intervalTests; intRootTests; jsonTests; goldenTests).run #[]
   for f in failures do
     IO.println s!"FAIL {f.name}\n  expected: {f.expected}\n  actual:   {f.actual}"
   IO.println s!"{failures.size} failures"

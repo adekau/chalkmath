@@ -26,6 +26,9 @@ structure Cell where
   derivation : Derivation
   /-- A λ-cell: its steps carry the de Bruijn view too (`lambdaDbSteps`). -/
   lambda : Bool := false
+  /-- A world cell's input as written (`Surface.lean`): what the notebook shows as its input and
+  explains a piece of, where the derivation starts from the value the world computes with. -/
+  asWritten : Option Expr := none
 
 structure Session where
   env : List (String × Expr) := []
@@ -320,7 +323,7 @@ normal form after `Lam.maxSteps` steps, or grown past `Lam.maxSize` symbols, is 
 budget in the engine, since the question is undecidable — but a definition is bound unreduced. -/
 def lambdaCell (s : Session) (cellId source : String) : Session × Except LamErr LamResult :=
   let record (s : Session) (res : LamResult) :=
-    { s with cells := (cellId, ⟨res.value, res.derivation, true⟩) :: s.cells.filter (·.1 != cellId) }
+    { s with cells := (cellId, { output := res.value, derivation := res.derivation, lambda := true }) :: s.cells.filter (·.1 != cellId) }
   match Lam.parseCmd source with
   | some (.error msg) => (s, .error ("syntax", msg, none))
   | some (.ok cmd) =>
@@ -1730,7 +1733,7 @@ def explainCell (s : Session) (cellId : String) (path : Path) (ref : TermRef := 
   | some cell =>
     let d := cell.derivation
     let (term, k) : Expr × Nat := match ref with
-      | .input => (d.input, 0)
+      | .input => (cell.asWritten.getD d.input, 0)
       | .output => (cell.output, d.steps.size)
       | .step n => ((d.steps[n]?.map (·.after)).getD cell.output, n)
     match term.at? path with
