@@ -113,6 +113,28 @@ export interface EngineCapabilities {
   ruleStatus?: RuleStatus[];
   /** M5: how the engine knows evaluation terminates. */
   termination?: { status: 'proven' | 'fuel'; theorem?: string; summary: string };
+  /** The worlds the engine reads cells in, each with its lexicon, so a frontend and an editor need
+   *  no list of their own of which names are commands, keywords or glyphs. Optional (rule 5): a
+   *  frontend keeps a fallback for an engine that predates it. */
+  worlds?: WorldInfo[];
+}
+
+/** A world (`engine/MathEngine/World.lean`): the `kind` its replies carry, a label, and its lexicon. */
+export interface WorldInfo {
+  /** The reply's `kind`: "math", "lambda", "poset", "logic", "system". */
+  id: string;
+  label: string;
+  /** Commands written `name(…)` that this world reads (algebra's are its builtin functions). */
+  commands: string[];
+  /** Words its grammar reserves (`when`, `do`, `forall`); an editor ends a product at them. */
+  keywords: string[];
+  /** Operators and constants its grammar reads that algebra's does not (`∧`, `->`, `:=`). */
+  glyphs: string[];
+  /** Other names it gives a cell: the λ library, the logic predicates. */
+  names: string[];
+  /** What claims a source for the world beyond its commands: a glyph anywhere in it (`∧`, `:=`), or a
+   *  word at its head (`forall`). A frontend labels a cell by these before the engine has read it. */
+  markers: string[];
 }
 
 export interface EvaluateParams {
@@ -170,6 +192,7 @@ export interface SpacetimeData {
   steps: number[][];
 }
 export type KnownVisual =
+  | { kind: "order.hasse"; title?: string; data: HasseData }
   | { kind: "logic.truthtable"; title?: string; data: TruthTableData }
   | { kind: "relation.digraph"; title?: string; data: DigraphData }
   | { kind: "algebra.optable"; title?: string; data: OpTableData }
@@ -289,6 +312,8 @@ export interface ManipulateResult {
 
 /** M-λ: a λ-cell's reply carries the de Bruijn view of the result and of every step
  *  (`Step.afterDeBruijn`), and a reading when the normal form is a Church numeral or boolean. */
+/** A poset's Hasse diagram: each element with its height, and the covers. Sent as the `order.hasse`
+ *  visual; the `hasse` field beside it is the earlier form, kept for a frontend that reads it. */
 export interface HasseData { nodes: { name: string; height: number }[]; covers: [string, string][] }
 /** The other worlds' extras on an evaluate reply. λ-cells (`kind: "lambda"`): the de Bruijn view of
  *  the result and of every step (`Step.afterDeBruijn`), and a reading when the normal form is a
@@ -302,7 +327,7 @@ export interface HasseData { nodes: { name: string; height: number }[]; covers: 
  *  it says something neither the answer nor the work does (a system's reachable states, a rewriting
  *  system's rule names, `critical`'s verdict). */
 export interface WorldExtras {
-  kind?: "lambda" | "poset" | "logic" | "system";
+  kind?: "math" | "lambda" | "poset" | "logic" | "system";
   renderedDeBruijn?: Rendered; reading?: string;
   hasse?: HasseData; summary?: string;
 }

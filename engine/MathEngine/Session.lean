@@ -53,6 +53,16 @@ structure Session where
   outs : List (Nat × Expr) := []
   nextOut : Nat := 1
 
+/-- Forget a name in every world: the `let` bindings and functions, the λ-definitions, the posets,
+maps, relations, operations and contexts, the systems and rewriting systems, the formulas. A cell
+that binds a name another world holds calls this first (`evaluateIn`, `World.lean`), so one name
+means one thing. -/
+def Session.unbind (s : Session) (n : String) : Session :=
+  { s with env := s.env.filter (·.1 != n), fns := s.fns.filter (·.1 != n), lambdas := s.lambdas.filter (·.1 != n),
+           posets := s.posets.filter (·.1 != n), pmaps := s.pmaps.filter (·.1 != n), rels := s.rels.filter (·.1 != n),
+           ops := s.ops.filter (·.1 != n), ctxs := s.ctxs.filter (·.1 != n), systems := s.systems.filter (·.1 != n),
+           trss := s.trss.filter (·.1 != n), formulas := s.formulas.filter (·.1 != n) }
+
 /-- Number an evaluation and remember its output, if it had one. Returns the label. -/
 def Session.tick (s : Session) (out : Option Expr) : Session × Nat :=
   let n := s.nextOut

@@ -311,54 +311,53 @@ def checkLamCmd (s : Session) (cmd : Lam.Cmd) (res : LamResult) (answer : String
       pure (T.toExpr, ok)
   | .db _ => throw ("params", "a de Bruijn form is shown, not checked: ask for a reduction, fv, alpha or a type instead", none)
 
-/-- Check an exercise: evaluate the question (recorded as `cellId`, so its work can be fetched and
-explained, but neither bound nor numbered), and compare the answer, if one is given. -/
-def checkAnswer (s : Session) (cellId question : String) (answer : Option String) :
+/-- A λ exercise: a command's answer compared as written (`checkLamCmd`), a term's by its normal
+form's de Bruijn term. A definition has no value to compare. -/
+def checkLambda (s : Session) (cellId question : String) (answer : Option String) :
     Session × Except Err CheckResult :=
-  -- a λ-command (`type: f : A → B ⊢ f`) may hold a connective or a call; it is the λ-world's
-  let lamCmd := (Lam.commandHead question).isSome
-  if !lamCmd && Sys.isSystemSource question then checkSystem s cellId question answer else
-  if !lamCmd && Ord.isOrderSource question then checkOrder s cellId question answer else
-  if !lamCmd && Logic.isLogicSource question then checkLogic s cellId question answer else
-  if isLambdaCell s question then
-    match Lam.parseCmd question, Lam.parseStmt question with
-    | none, .ok (some _, _) => (s, .error ("params", "an exercise compares λ-terms; a definition has no value to compare", none))
-    | _, _ =>
-    match lambdaCell s cellId question with
-    | (s, .error e) => (s, .error e)
-    | (s, .ok res) =>
-      match res.command with
-      | some cmd =>
-        let given : Option (Except Err Compared) := answer.map fun a =>
-          (checkLamCmd s cmd res a).map fun (v, _) => ⟨v, v⟩
-        let eq := match answer with
-          | some a => match checkLamCmd s cmd res a with | .ok (_, b) => b | .error _ => false
-          | none => false
-        (s, .ok ⟨res.value, res.derivation, true, res.value, given, eq⟩)
-      | none =>
-      let out := res.term.getD (.var "?")
-      let expCanon := Lam.dbToExpr (Lam.toDB [] out)
+  match Lam.parseCmd question, Lam.parseStmt question with
+  | none, .ok (some _, _) => (s, .error ("params", "an exercise compares λ-terms; a definition has no value to compare", none))
+  | _, _ =>
+  match lambdaCell s cellId question with
+  | (s, .error e) => (s, .error e)
+  | (s, .ok res) =>
+    match res.command with
+    | some cmd =>
       let given : Option (Except Err Compared) := answer.map fun a =>
-        match reduceLam s a with
-        | .error e => .error e
-        | .ok (_, aout, atrace) =>
-          if !atrace.isEmpty then .error ("answer", "the answer still has a redex: reduce it to normal form", none)
-          else .ok ⟨Lam.toExpr aout, Lam.dbToExpr (Lam.toDB [] aout)⟩
-      let eq := match given with | some (.ok c) => equal c.canon expCanon | _ => false
-      (s, .ok ⟨res.value, res.derivation, true, expCanon, given, eq⟩)
-  else
-    match prepare s question with
-    | .error e => (s, .error e)
-    | .ok (parsed, _) =>
-      match evaluateCell s cellId question with
-      | (s, .error e) => (s, .error e)
-      | (s, .ok (_, output, d)) =>
-        match canonical output with
-        | .error msg => (s, .error ("eval", msg, none))
-        | .ok expCanon =>
-          let forbidden := (fnNames parsed).filter (!answerFns.contains ·)
-          let given := answer.map (compareExpr s parsed forbidden)
-          let eq := match given with | some (.ok c) => equal c.canon expCanon | _ => false
-          (s, .ok ⟨output, d, false, expCanon, given, eq⟩)
+        (checkLamCmd s cmd res a).map fun (v, _) => ⟨v, v⟩
+      let eq := match answer with
+        | some a => match checkLamCmd s cmd res a with | .ok (_, b) => b | .error _ => false
+        | none => false
+      (s, .ok ⟨res.value, res.derivation, true, res.value, given, eq⟩)
+    | none =>
+    let out := res.term.getD (.var "?")
+    let expCanon := Lam.dbToExpr (Lam.toDB [] out)
+    let given : Option (Except Err Compared) := answer.map fun a =>
+      match reduceLam s a with
+      | .error e => .error e
+      | .ok (_, aout, atrace) =>
+        if !atrace.isEmpty then .error ("answer", "the answer still has a redex: reduce it to normal form", none)
+        else .ok ⟨Lam.toExpr aout, Lam.dbToExpr (Lam.toDB [] aout)⟩
+    let eq := match given with | some (.ok c) => equal c.canon expCanon | _ => false
+    (s, .ok ⟨res.value, res.derivation, true, expCanon, given, eq⟩)
+
+/-- An algebra exercise: the question evaluated as a cell (recorded as `cellId`, so its work can be
+fetched and explained, but neither bound nor numbered), and the answer, if one is given, compared
+by canonical form. An answer that does the question's work (its commands) is refused. -/
+def checkMath (s : Session) (cellId question : String) (answer : Option String) :
+    Session × Except Err CheckResult :=
+  match prepare s question with
+  | .error e => (s, .error e)
+  | .ok (parsed, _) =>
+    match evaluateCell s cellId question with
+    | (s, .error e) => (s, .error e)
+    | (s, .ok (_, output, d)) =>
+      match canonical output with
+      | .error msg => (s, .error ("eval", msg, none))
+      | .ok expCanon =>
+        let forbidden := (fnNames parsed).filter (!answerFns.contains ·)
+        let given := answer.map (compareExpr s parsed forbidden)
+        let eq := match given with | some (.ok c) => equal c.canon expCanon | _ => false
+        (s, .ok ⟨output, d, false, expCanon, given, eq⟩)
 
 end MathEngine

@@ -20,17 +20,13 @@ async function load(entry, name) {
 const R = await load(new URL("../src/reference.ts", import.meta.url).pathname, "reference.mjs");
 const M = await load(new URL("../../../packages/math-editor/src/index.ts", import.meta.url).pathname, "math-editor.mjs");
 
-// the engine's own lists (Parser.lean's builtins, mirrored by the math editor; Poset.lean's heads)
-const ORDER = ["poset", "divisors", "subsets", "chain", "map", "hasse", "join", "meet", "upper", "lower",
-  "lattice", "top", "bottom", "le", "maximal", "minimal", "monotone", "lfp", "gfp", "fixpoints",
-  "rel", "kernel", "reflexive", "symmetric", "antisymmetric", "transitive", "equivalence", "preorder", "closure", "classes", "finer", "wellfounded", "measure",
-  "op", "joinop", "meetop", "table", "associative", "commutative", "idempotent", "semilattice", "identity", "fold", "order",
-  "distributive", "complement", "complemented", "boolean", "product", "galois", "closureop", "context", "concepts", "secure",
-  "events", "clocks", "concurrent"];
-// Systems.lean's commands
-const SYSTEMS = ["system", "states", "invariant", "inductive", "reach", "deadlock", "trace", "ctl", "eventually", "refines", "replicas", "rules", "rewrite", "terminates", "critical"];
-// Logic.lean's commands
-const LOGIC = ["truthtable", "taut", "sat", "falsify", "equiv", "nnf", "cnf", "dnf"];
+// the engine's own lists: Parser.lean's builtins (mirrored by the math editor) and the worlds' commands
+// (src/worlds.ts, held equal to the engine's by worlds.test.mjs)
+const Wd = await load(new URL("../src/worlds.ts", import.meta.url).pathname, "worlds.mjs");
+const cmds = (id) => Wd.FALLBACK_WORLDS.find((w) => w.id === id).commands;
+const ORDER = cmds("poset").filter((n) => !["sup", "inf"].includes(n));   // sup and inf are join and meet's other names
+const SYSTEMS = cmds("system");
+const LOGIC = cmds("logic");
 // Lambda.lean's commands (`subst:` has its own page, lambda-subst, since `subst` is the math one's)
 const LAMBDA = ["normal", "cbn", "cbv", "applicative", "eta", "fv", "db", "alpha", "type", "infer", "lambda-subst"];
 // not documented: `log` is only numeric (N), and `solve` is a reserved name with nothing behind it yet

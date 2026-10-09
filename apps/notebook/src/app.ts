@@ -1,7 +1,8 @@
 import { createClient, type EngineClient, type Step, type StepOutline, type Path, type RuleStatus, type Derivation, type WireExpr, type PlotResult, type ManipulateResult, type HasseData, type KnownVisual, type TruthTableData, type DigraphData, type OpTableData, type ContextTableData, type TypingNode, type TypingTreeData, type SpacetimeData } from "@chalkmath/protocol";
 import { workerTransport, httpTransport } from "@chalkmath/engine-host";
 import { leanForPrelude } from "@chalkmath/lean-editor/prelude";
-import { read as readNotation, write as writeNotation, writeText, hasNotation, templateAt, templateInText, TEMPLATES, KEYWORDS, lex as lexNotation, type Stmt, type Caret, type MathEdit } from "@chalkmath/math-editor";
+import { read as readNotation, write as writeNotation, writeText, hasNotation, templateAt, templateInText, TEMPLATES, KEYWORDS, configureLexicon, lex as lexNotation, type Stmt, type Caret, type MathEdit } from "@chalkmath/math-editor";
+import { setWorlds, worldOf, worldFns, hasKeywords, lambdaCommand } from "./worlds.js";
 import { MathInput, type MathInputOptions } from "@chalkmath/math-editor/view";
 import { termSpans, deleteTerm, type Reading, type Span, type TermSpan } from "./term-spans.js";
 
@@ -129,32 +130,14 @@ type CompItem = { kind: "doc"; doc: Doc }
   /** Inside `x[[…]]`: a column name, an object key or `All`, replacing what was typed from `start`. */
   | { kind: "part"; insert: string; label: string; hint: string; start: number };
 
-/** An order-theory cell, or a `let` binding one: the engine reads these in their own world. */
-const ORDER_CELL = /^(let\s+\w+\s*=\s*)?(poset|divisors|subsets|chain|map|hasse|join|meet|sup|inf|upper|lower|lattice|top|bottom|le|maximal|minimal|monotone|lfp|gfp|fixpoints|rel|kernel|reflexive|symmetric|antisymmetric|transitive|equivalence|preorder|closure|classes|finer|wellfounded|measure|op|joinop|meetop|table|associative|commutative|idempotent|semilattice|identity|fold|order|distributive|complement|complemented|boolean|product|galois|closureop|context|concepts|secure|events|clocks|concurrent)\s*\(/;
-/** A logic cell: a logic command, or a formula with a connective or a quantifier (the engine's
- *  `Logic.isLogicSource`; a λ-term is not one). */
-const LOGIC_CELL = /^(let\s+\w+\s*=\s*)?(truthtable|taut|sat|falsify|equiv|nnf|cnf|dnf)\s*\(/;
-/** A systems-world cell: a system, or a question about one. */
-const SYSTEM_CELL = /^(let\s+\w+\s*=\s*)?(system|states|invariant|inductive|reach|deadlock|trace|ctl|eventually|refines|replicas|rules|rewrite|terminates|critical)\s*\(/;
-/** A λ-command: a strategy, `eta`, `fv`, `db`, `alpha`, `subst`, `type` or `infer`, then a colon (the
- *  engine's `Lam.commandHead`; `type := …` is a definition). It may hold a connective, `type: f : A → B ⊢ f`. */
-const LAMBDA_CMD = /^(normal|cbn|cbv|applicative|eta|fv|db|alpha|subst|type|infer)\s*(\d+\s*)?:(?!=)/;
-/** The Church library's names (the engine's `Lam.churchDefs`). */
-const CHURCH = ["true", "false", "and", "or", "not", "if", "zero", "succ", "add", "mul", "pow", "iszero", "pair", "fst", "snd", "id", "const", "K", "S", "I", "omega", "Y"];
 /** Names bound by λ-cells (`pred := …`), keyed `session:name`. */
 const LAMBDA_NAMES = new Set<string>();
-/** The engine's `Lam.lex` succeeds: identifiers (Greek letters too), numerals, λ or backslash, `.`,
- *  parentheses, `:` and arrows. Each token is taken whole, as the lexer does. */
-const LAMBDA_LEXES = /^(?:[ \t\r\n.():λ\\→]|->|[0-9]+(?![0-9])|[A-Za-z_\u0391-\u03A9\u03B1-\u03C9][A-Za-z0-9_'\u0391-\u03A9\u03B1-\u03C9]*(?![A-Za-z0-9_'\u0391-\u03A9\u03B1-\u03C9]))*$/;
-/** A λ-cell without a λ (the engine's `Lam.isLambdaSource`): its first word is a λ-definition, the
- *  session's or the Church library's, it has no parenthesis or goes on after a space — `fst (pair a b)` —
- *  and it lexes as a λ-term (`S + 1` is arithmetic). */
-function lambdaHeaded(s: string): boolean {
-  const w = s.trim().split(" ")[0] ?? "";
-  if (w === "let" || !(CHURCH.includes(w) || LAMBDA_NAMES.has(`${sessionId}:${w}`))) return false;
-  return (!s.includes("(") || s.includes(" ")) && LAMBDA_LEXES.test(s);
-}
-const isLogicCell = (s: string) => !/[λ\\]/.test(s) && !LAMBDA_CMD.test(s) && (LOGIC_CELL.test(s) || /[∧∨¬→↔⊤⊥∀∃]|<->|->|&&|\|\|/.test(s) || /^(let\s+\w+\s*=\s*)?(forall|exists)\b/.test(s));
+const lambdaDefs = (w: string) => LAMBDA_NAMES.has(`${sessionId}:${w}`);
+/** The world a source belongs to (worlds.ts: the engine's own list of commands, keywords and glyphs),
+ *  or null for algebra, as far as the page can tell before the engine answers. */
+const cellWorld = (src: string) => worldOf(src, lambdaDefs);
+/** How a world's cells are labelled: the badge in the cell and the outline. */
+const WORLD_BADGE: Record<string, string> = { lambda: "λ-term", system: "system", poset: "order", logic: "logic" };
 
 /** Label for a cell, from its source. Presentation only — the engine decides what it means. */
 function cellKind(src: string): string | null {
@@ -174,10 +157,8 @@ function cellKind(src: string): string | null {
     case "sum": return "sum";
     case "exptotrig": return "Euler";
   }
-  if (/[λ\\]|:=/.test(s) || LAMBDA_CMD.test(s) || lambdaHeaded(s)) return "λ-term";
-  if (SYSTEM_CELL.test(s)) return "system";
-  if (ORDER_CELL.test(s)) return "order";
-  if (isLogicCell(s)) return "logic";
+  const world = cellWorld(s);
+  if (world) return WORLD_BADGE[world] ?? world;
   switch (head) {
     case "rref": return "row reduce";
     case "det": return "determinant";
@@ -261,8 +242,7 @@ interface Cell {
   warnings?: string[] | undefined;
   /** What the engine said the cell was, once it has answered; the badge guesses from the source until then. */
   kind?: string;
-  /** Order-world cells: the Hasse diagram to draw, and the one-line summary. */
-  hasse?: { nodes: { name: string; height: number }[]; covers: [string, string][] } | undefined;
+  /** A world's one-line note beside the answer (a system's reachable states, why a reduction stopped). */
   summary?: string | undefined;
   /** What the engine sent to draw beside the value: a truth table, a relation's graph. */
   visuals?: KnownVisual[] | undefined;
@@ -609,6 +589,8 @@ async function connect() {
     if (gen !== connGen) return;
     S.caps = caps; S.kernel = "ready";
     S.ruleStatus = new Map((caps.ruleStatus ?? []).map((r) => [r.rule, r]));
+    // the worlds' lexicon is the engine's: which names are commands, which words keywords, which glyphs operators
+    setWorlds(caps.worlds); configureLexicon(caps.worlds ?? []);
     log("ok", `${caps.engine} v${caps.version} ready in ${Math.round(performance.now() - t0)} ms`);
   } catch (e) {
     // kernelFailed drops the client: when it is gone, the failure has been reported already
@@ -791,12 +773,12 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
       delete cell.error;
       // this output is a number: a file that had its label before a restart no longer does
       if (r.label) { LAST_LABEL.set(sessionId, r.label); FILE_OUTS.delete(`${sessionId}:${r.label}`); }
-      delete cell.plot; delete cell.manip; delete cell.outDeBruijn; delete cell.reading; delete cell.kind; delete cell.hasse; delete cell.summary; delete cell.visuals;
+      delete cell.plot; delete cell.manip; delete cell.outDeBruijn; delete cell.reading; delete cell.kind; delete cell.summary; delete cell.visuals;
       // an output form chosen for an earlier output (a matrix's data table) that this one does not offer
       if (cell.form && !formsFor(cell).some(([v]) => v === cell.form)) delete cell.form;
-      if ("kind" in r && r.kind === "poset") { cell.kind = "order"; cell.hasse = r.hasse; cell.summary = r.summary; }
-      if ("kind" in r && r.kind === "logic") { cell.kind = "logic"; cell.summary = r.summary; }
-      if ("kind" in r && r.kind === "system") { cell.kind = "system"; cell.summary = r.summary; }
+      // another world's cell: the badge is the world's, and its note stands beside the answer
+      if ("kind" in r && r.kind && r.kind !== "math" && r.kind !== "plot" && r.kind !== "manipulate") cell.kind = WORLD_BADGE[r.kind] ?? r.kind;
+      if ("summary" in r && r.summary) cell.summary = r.summary;
       const vs = knownVisuals("visuals" in r ? r.visuals : undefined);
       if (vs.length) cell.visuals = vs;
       if ("kind" in r && r.kind === "plot") cell.plot = plotDataOf(r);
@@ -806,7 +788,7 @@ async function evaluateCell(cell: Cell, client: EngineClient, sessionId: string)
         cell.manip = manipDataOf(r);
         cell.manipAt = Math.min(Math.round(before), cell.manip.frames.length - 1);
       } else { delete cell.manip; delete cell.manipAt; }
-      if ("kind" in r && r.kind === "lambda") { cell.outDeBruijn = r.renderedDeBruijn?.latex; cell.reading = r.reading; cell.kind = "λ-term"; }
+      if ("kind" in r && r.kind === "lambda") { cell.outDeBruijn = r.renderedDeBruijn?.latex; cell.reading = r.reading; }
       log("ok", `Out[${cell.label}] ${r.rendered.text}  (${cell.ms.toFixed(1)} ms, ${(cell.outline ?? cell.steps).length} steps)`);
       announce(`Out ${cell.label}: ${r.rendered.text}`);
       recordRun(cell, sessionId, src, "bound" in r ? r.bound?.[0] : undefined, r.rendered.text);
@@ -2784,7 +2766,7 @@ const hasOutput = (cell: Cell) => !!(cell.outLatex || cell.file || cell.error);
  *  `keepAsk` keeps a `?` cell's saved answer, so it is not looked up again. */
 function clearResult(cell: Cell, opts: { keepLabel?: boolean; keepAsk?: boolean } = {}) {
   delete cell.outLatex; delete cell.outText; delete cell.echoLatex; delete cell.error; delete cell.plot; delete cell.manip; delete cell.manipAt; delete cell.file;
-  delete cell.hasse; delete cell.summary; delete cell.visuals; delete cell.kind; delete cell.outDeBruijn; delete cell.reading; delete cell.warnings;
+  delete cell.summary; delete cell.visuals; delete cell.kind; delete cell.outDeBruijn; delete cell.reading; delete cell.warnings;
   cell.steps = []; delete cell.outline; delete cell.openEntries; WORK_FAILED.delete(cell);
   CELL_FILES.delete(cell);
   if (!opts.keepAsk) { delete cell.ask; delete cell.askTrail; }
@@ -3581,6 +3563,61 @@ function hasseSvg(d: { nodes: { name: string; height: number }[]; covers: [strin
   return svg;
 }
 
+/** The visuals this notebook draws (ARCHITECTURE.md §5), one entry per kind: how a reply's or a
+ *  file's data is checked before it is a cell's, how it is drawn, and, for a visual that places the
+ *  work's steps on itself, how the steps are marked. A kind the engine sends that is not here is left
+ *  out; a new kind is one entry. */
+type VisualOf<K extends KnownVisual["kind"]> = Extract<KnownVisual, { kind: K }>;
+interface VisualRenderer<K extends KnownVisual["kind"]> {
+  check(d: Record<string, unknown>): boolean;
+  render(data: VisualOf<K>["data"]): Node[];
+  /** The visual stands in for the value: the answer is the picture (a poset's Hasse diagram). */
+  replacesValue?: boolean;
+  /** The visual places the work's steps on itself: it shows while the answer is held, with the
+   *  answer's own marks taken out (`held`), and is marked as the steps are revealed (`mark`). */
+  placed?(data: VisualOf<K>["data"]): boolean;
+  held?(data: VisualOf<K>["data"]): VisualOf<K>["data"];
+  mark?(box: HTMLElement, data: VisualOf<K>["data"], trail: number[], cur: number | undefined, held: boolean): void;
+}
+const VISUALS: { [K in KnownVisual["kind"]]: VisualRenderer<K> } = {
+  "order.hasse": {
+    check: (d) => Array.isArray(d["nodes"]) && Array.isArray(d["covers"]),
+    render: (d) => [hasseSvg(d)], replacesValue: true,
+  },
+  "logic.truthtable": {
+    check: (d) => Array.isArray(d["vars"]) && Array.isArray(d["rows"]) && typeof (d["formula"] as { latex?: unknown } | undefined)?.latex === "string",
+    render: (d) => [truthTable(d)],
+  },
+  "relation.digraph": {
+    check: (d) => Array.isArray(d["nodes"]) && Array.isArray(d["edges"]) && Array.isArray(d["bad"]) && Array.isArray(d["added"]),
+    render: (d) => [digraphSvg(d), digraphLegend(d)],
+    placed: (d) => !!d.steps,
+    held: (d) => ({ ...d, bad: [], added: [] }),
+    mark: (box, d, trail, cur) => markGraphSteps(box, d, trail, cur),
+  },
+  "algebra.optable": {
+    check: (d) => Array.isArray(d["elems"]) && Array.isArray(d["rows"]) && Array.isArray(d["marks"]),
+    render: (d) => [opTable(d)],
+  },
+  "context.table": {
+    check: (d) => Array.isArray(d["objects"]) && Array.isArray(d["attributes"]) && Array.isArray(d["has"]),
+    render: (d) => [contextTable(d)],
+  },
+  "typing.tree": {
+    check: (d) => typeof (d["root"] as { latex?: unknown } | undefined)?.latex === "string",
+    render: (d) => [typingTree(d)],
+  },
+  "replicas.spacetime": {
+    check: (d) => Array.isArray(d["lanes"]) && Array.isArray(d["events"]) && Array.isArray(d["messages"]) && Array.isArray(d["steps"]),
+    render: (d) => [spacetimeSvg(d)],
+    placed: () => true,
+    mark: (box, d, trail, cur, held) => markSpacetime(box, d, held ? trail : [], cur, held),
+  },
+};
+/** A visual's renderer, its kind's. The data is the kind's own (`KnownVisual` pairs them). */
+const rendererOf = (v: KnownVisual) => VISUALS[v.kind] as unknown as VisualRenderer<KnownVisual["kind"]>;
+const visualPlaced = (v: KnownVisual) => !!rendererOf(v).placed?.(v.data);
+
 /** The visuals this notebook knows how to draw, from a reply or a file: others are left out. */
 function knownVisuals(vs: unknown): KnownVisual[] {
   if (!Array.isArray(vs)) return [];
@@ -3588,15 +3625,12 @@ function knownVisuals(vs: unknown): KnownVisual[] {
     const d = (v as { data?: Record<string, unknown> } | null)?.data;
     if (!d) return false;
     const kind = (v as { kind?: unknown }).kind;
-    if (kind === "logic.truthtable") return Array.isArray(d["vars"]) && Array.isArray(d["rows"]) && typeof (d["formula"] as { latex?: unknown } | undefined)?.latex === "string";
-    if (kind === "relation.digraph") return Array.isArray(d["nodes"]) && Array.isArray(d["edges"]) && Array.isArray(d["bad"]) && Array.isArray(d["added"]);
-    if (kind === "algebra.optable") return Array.isArray(d["elems"]) && Array.isArray(d["rows"]) && Array.isArray(d["marks"]);
-    if (kind === "context.table") return Array.isArray(d["objects"]) && Array.isArray(d["attributes"]) && Array.isArray(d["has"]);
-    if (kind === "typing.tree") return typeof (d["root"] as { latex?: unknown } | undefined)?.latex === "string";
-    if (kind === "replicas.spacetime") return Array.isArray(d["lanes"]) && Array.isArray(d["events"]) && Array.isArray(d["messages"]) && Array.isArray(d["steps"]);
-    return false;
+    const r = typeof kind === "string" && Object.hasOwn(VISUALS, kind) ? (VISUALS[kind as KnownVisual["kind"]] as VisualRenderer<KnownVisual["kind"]>) : null;
+    return !!r && r.check(d);
   });
 }
+/** A visual of the cell's stands in for its value (a poset's diagram): the answer is the picture. */
+const valueReplaced = (cell: Cell) => !!cell.visuals?.some((v) => rendererOf(v).replacesValue);
 
 /** Mark where steps of the work are on a state graph: the trail of steps so far, and the current one
  *  (its arrow, or its state when it takes none). A step's arrow shows its own mark class too, so a
@@ -3727,47 +3761,42 @@ function graphStepMarks(cell: Cell): { trail: number[]; cur: number | undefined 
   return { trail: [], cur: sel && sel.cellId === cell.id && sel.term.kind === "step" && !sel.sub ? sel.term.index : undefined };
 }
 
-/** A cell's visuals as its output shows them. Stepping through, only a state graph that places the
+/** A cell's visuals as its output shows them. Stepping through, only a visual that places the
  *  steps shows, without the answer's marks, so it does not give the answer away. */
 function cellVisuals(cell: Cell): HTMLElement[] {
   const held = answerHeld(cell);
   const out: HTMLElement[] = [];
   for (const v of cell.visuals ?? []) {
-    const placed = (v.kind === "relation.digraph" && !!v.data.steps) || v.kind === "replicas.spacetime";
+    const r = rendererOf(v);
+    const placed = visualPlaced(v);
     if (held && !placed) continue;
-    const box = visualBox(held && v.kind === "relation.digraph" ? { ...v, data: { ...v.data, bad: [], added: [] } } : v);
+    const box = visualBox(held && r.held ? { ...v, data: r.held(v.data) } as KnownVisual : v);
     if (placed) {
       box.dataset["steps"] = "1";
       const { trail, cur } = graphStepMarks(cell);
-      if (v.kind === "relation.digraph") markGraphSteps(box, v.data, trail, cur);
-      else if (v.kind === "replicas.spacetime") markSpacetime(box, v.data, held ? trail : [], cur, held);
+      r.mark?.(box, v.data, trail, cur, held);
     }
     out.push(box);
   }
   return out;
 }
 
-/** Re-mark every state graph on the page for the current selection. */
+/** Re-mark every visual on the page that places the steps, for the current selection. */
 function remarkGraphs(only?: Cell) {
   for (const cell of only ? [only] : S.cells) {
     const box = cell.el?.querySelector<HTMLElement>(".visualbox[data-steps]");
-    const v = cell.visuals?.find((x) => (x.kind === "relation.digraph" && !!x.data.steps) || x.kind === "replicas.spacetime");
+    const v = cell.visuals?.find(visualPlaced);
     if (!box || !v) continue;
     const { trail, cur } = graphStepMarks(cell);
-    if (v.kind === "relation.digraph") markGraphSteps(box, v.data, trail, cur);
-    else if (v.kind === "replicas.spacetime") markSpacetime(box, v.data, answerHeld(cell) ? trail : [], cur, answerHeld(cell));
+    rendererOf(v).mark?.(box, v.data, trail, cur, answerHeld(cell));
   }
 }
 
 /** A visual, boxed and captioned as a plot is. */
 function visualBox(v: KnownVisual): HTMLElement {
   const box = h("div", "visualbox");
-  if (v.kind === "logic.truthtable") box.append(truthTable(v.data));
-  else if (v.kind === "relation.digraph") box.append(digraphSvg(v.data), digraphLegend(v.data));
-  else if (v.kind === "algebra.optable") box.append(opTable(v.data));
-  else if (v.kind === "typing.tree") box.append(typingTree(v.data));
-  else if (v.kind === "replicas.spacetime") box.append(spacetimeSvg(v.data));
-  else box.append(contextTable(v.data));
+  box.dataset["kind"] = v.kind;
+  box.append(...rendererOf(v).render(v.data));
   return box;
 }
 
@@ -4025,10 +4054,9 @@ function pyExpr(text: string): string {
 /** The notebook's own functions, which act on files before the engine sees a cell (files.ts): calls
  *  in the visual input as the engine's builtins are. */
 const NOTEBOOK_FNS = ["import", "samplePoints", "matrix", "dimensions"];
-/** The other worlds' commands (`taut`, `poset`, `system`, …) and the logic predicates: names the
- *  typeset input makes calls of when `(` follows, as those worlds read them. */
-const WORLD_FNS = [...[ORDER_CELL, LOGIC_CELL, SYSTEM_CELL].flatMap((r) => /\(((?:\w+\|)+\w+)\)\\s\*\\\(/.exec(r.source)?.[1]?.split("|") ?? []), "prime", "even", "odd"];
-const sessionFns = () => [...NOTEBOOK_FNS, ...WORLD_FNS, ...[...USER_FNS.keys()].filter((k) => k.startsWith(`${sessionId}:`)).map((k) => k.slice(sessionId.length + 1))];
+/** The notebook's functions, the other worlds' commands and predicates (worlds.ts: `taut`, `poset`,
+ *  `system`, `prime`, …) and the session's own: names the typeset input makes calls of when `(` follows. */
+const sessionFns = () => [...NOTEBOOK_FNS, ...worldFns(), ...[...USER_FNS.keys()].filter((k) => k.startsWith(`${sessionId}:`)).map((k) => k.slice(sessionId.length + 1))];
 
 /** Why a cell cannot be shown visually, or null when it can. Any math cell can: its text and its
  *  typeset tree are one source (a text that does not read as structure shows as raw text), so the
@@ -4152,7 +4180,7 @@ function visualInput(cell: Cell, i: number): MathInput | null {
       if (as === "bound") return "hbound";
       if (USER_NAMES.has(`${sessionId}:${text}`)) return "hdef";
       if (CONSTANTS.has(text)) return "hconst";
-      return as === "call" ? (COMMANDS.has(text) ? "hcmd" : BUILTIN_FN.has(text) ? "hfn" : null) : null;
+      return as === "call" ? (COMMANDS().has(text) ? "hcmd" : BUILTIN_FN.has(text) ? "hfn" : null) : null;
     },
     // `%` is the output before this cell's own (or, not yet run, the latest); `%n` is Out[n]
     outRef: (ref, editing) => {
@@ -5334,11 +5362,9 @@ function renderCellBody(cell: Cell) {
       held.title = "The answer shows after the last step. Click to reveal every step and the answer.";
       held.addEventListener("click", () => { revealSteps(cell, Infinity); });
       val.append(held);
-    } else if (cell.hasse) {
-      const box = h("div", "plotbox");
-      box.append(hasseSvg(cell.hasse));
+    } else if (valueReplaced(cell)) {
+      // the answer is the picture (a poset's Hasse diagram): drawn below, with the note as its caption
       val.classList.add("isplot");
-      val.append(box);
       if (cell.summary) val.append(h("div", "plotcap", cell.summary));
     } else if (cell.file) {
       const f = fileOf(cell);
@@ -5418,7 +5444,7 @@ function renderCellBody(cell: Cell) {
       wireTerm(val, cell, { kind: "output" });
     }
     // the output form: a per-cell choice of typesetting, like Mathematica's //MatrixForm
-    if (!cell.hasse && !cell.plot && (!cell.file || tabularCell(cell)) && !answerHeld(cell)) {
+    if (!valueReplaced(cell) && !cell.plot && (!cell.file || tabularCell(cell)) && !answerHeld(cell)) {
       const forms = formsFor(cell);
       const fs = document.createElement("select"); fs.className = "formsel"; fs.title = "Output form"; fs.setAttribute("aria-label", "Output form");
       for (const [v, label] of forms) { const o = document.createElement("option"); o.value = v; o.textContent = label; o.selected = formOf(cell) === v; fs.append(o); }
@@ -5428,8 +5454,10 @@ function renderCellBody(cell: Cell) {
     }
     // a reading or a summary says the answer, so it waits with it
     if (cell.reading && !answerHeld(cell)) { const rd = h("span", "reading", `≡ ${cell.reading}`); rd.title = "What the normal form encodes"; val.append(rd); }
-    if (cell.summary && !cell.hasse && !answerHeld(cell)) { const rd = h("span", "reading", cell.summary); val.append(rd); }
-    for (const box of cellVisuals(cell)) val.append(box);
+    if (cell.summary && !valueReplaced(cell) && !answerHeld(cell)) { const rd = h("span", "reading", cell.summary); val.append(rd); }
+    // a visual that stands in for the value goes before the caption that was put first
+    const boxes = cellVisuals(cell);
+    if (valueReplaced(cell)) val.prepend(...boxes); else val.append(...boxes);
     if (!answerHeld(cell)) for (const w of cell.warnings ?? []) { const wn = h("div", "outwarn", `⚠ ${w}`); wn.setAttribute("role", "note"); val.append(wn); }
     out.append(val, h("div", "brk"));
     el.append(out);
@@ -5767,7 +5795,8 @@ function renderExercise(cell: Cell) {
       if (v.error.span && cell.attempt) out.append(h("span", "caret", `${cell.attempt}\n${" ".repeat(v.error.span.start)}${"^".repeat(Math.max(1, v.error.span.end - v.error.span.start))}`));
     } else {
       // how the answer was compared: by truth table, as a set, or by normal form
-      const world = ORDER_CELL.test(cell.src.trim()) || SYSTEM_CELL.test(cell.src.trim()) || LAMBDA_CMD.test(cell.src.trim()) ? "order" : isLogicCell(cell.src.trim()) ? "logic" : "math";
+      const wid = cellWorld(cell.src);
+      const world = wid === "logic" ? "logic" : wid ? "order" : "math";
       const m = h("span", "xc-math"); m.innerHTML = tex((v.equivalent || world !== "math" ? v.answerLatex : v.normalLatex) ?? "");
       const [before, after] = v.equivalent
         ? world === "logic" ? [" Correct: ", " agrees with the answer on every row of the truth table."]
@@ -6824,7 +6853,7 @@ function exampleSection(f: FnDoc, sec: ExampleSection, k: number): HTMLElement {
 }
 
 /** The outputs of a section's inputs, evaluated once per page view in a session of their own. */
-interface ExOut { label?: number; latex?: string; plot?: PlotData; hasse?: HasseData; summary?: string; visuals?: KnownVisual[]; error?: string }
+interface ExOut { label?: number; latex?: string; plot?: PlotData; summary?: string; visuals?: KnownVisual[]; error?: string }
 const EXAMPLE_OUTS = new Map<string, Promise<ExOut[]>>();
 async function fillOutputs(key: string, sec: ExampleSection, rows: HTMLElement[]) {
   const val = (r: HTMLElement) => r.querySelector(".exval") as HTMLElement;
@@ -6853,9 +6882,7 @@ async function fillOutputs(key: string, sec: ExampleSection, rows: HTMLElement[]
       const pb = epi ? epicycleBox(o.plot, 420, 260) : h("div", "plotbox");
       if (!epi) pb.append(plotSvg(o.plot, 420, o.plot.series.some((s) => s.parametric) ? 300 : 210));
       v.append(pb);
-    } else if (o.hasse) {
-      const pb = h("div", "plotbox"); pb.append(hasseSvg(o.hasse)); v.append(pb);
-    } else v.innerHTML = tex(o.latex ?? "");
+    } else if (!o.visuals?.some((vis) => rendererOf(vis).replacesValue)) v.innerHTML = tex(o.latex ?? "");
     if (o.summary) v.append(h("span", "exsummary", o.summary));
     for (const vis of o.visuals ?? []) v.append(visualBox(vis));
   });
@@ -6879,9 +6906,8 @@ async function evaluateExamples(c: EngineClient, inputs: string[]): Promise<ExOu
         if (pl) o.plot = plotDataOf(pl);
         o.summary = `the first of ${r.frames.length} frames, ${r.param} = ${f?.valueRendered.text ?? ""}: open it in a notebook to move ${r.param}`;
       }
-      if ("kind" in r && r.kind === "poset" && r.hasse) { o.hasse = r.hasse; if (r.summary) o.summary = r.summary; }
       if ("kind" in r && r.kind === "lambda" && r.reading) o.summary = r.reading;
-      if ("kind" in r && (r.kind === "logic" || r.kind === "system") && r.summary) o.summary = r.summary;
+      else if ("summary" in r && r.summary) o.summary = r.summary;
       const vs = knownVisuals("visuals" in r ? r.visuals : undefined);
       if (vs.length) o.visuals = vs;
       outs.push(o);
@@ -7929,10 +7955,18 @@ const BUILTIN_FN = new Set(["sin", "cos", "tan", "sec", "csc", "cot", "arcsin", 
   "total", "mean", "variance", "stdev", "min", "max", "median", "prime", "even", "odd"]);
 /** Every command a cell can call: each reference page's (`reference.ts`), so a new command is
  *  highlighted with nothing more to list, and the other worlds' (`taut`, `system`, …). */
-const COMMANDS = new Set([
-  ...FUNCTIONS.filter((f) => !f.notation && /^[A-Za-z]\w*$/.test(f.name) && !BUILTIN_FN.has(f.name)).map((f) => f.name),
-  ...WORLD_FNS.filter((n) => !BUILTIN_FN.has(n)), "sup", "inf",
-]);
+let COMMANDS_FOR: string | null = null, COMMANDS_SET = new Set<string>();
+const COMMANDS = (): Set<string> => {
+  const key = worldFns().join(" ");
+  if (key !== COMMANDS_FOR) {
+    COMMANDS_FOR = key;
+    COMMANDS_SET = new Set([
+      ...FUNCTIONS.filter((f) => !f.notation && /^[A-Za-z]\w*$/.test(f.name) && !BUILTIN_FN.has(f.name)).map((f) => f.name),
+      ...worldFns().filter((n) => !BUILTIN_FN.has(n)), "sup", "inf",
+    ]);
+  }
+  return COMMANDS_SET;
+};
 const CONSTANTS = new Set(["pi", "π", "e", "ℯ", "i", "phi", "φ", "All"]);
 
 type Tok = { kind: "id" | "num" | "op" | "ws" | "kw" | "asset" | "str"; text: string; start: number };
@@ -8004,8 +8038,8 @@ function highlightHtml(src: string): string {
   const bound = boundTokens(src, toks);
   // a system's clauses (`var`, `init`, `action … when … do`) and the quantifiers, as the typeset view
   // marks them; a system's `:=` is an update, not a λ-cell's definition
-  const keywords = SYSTEM_CELL.test(src.trim()) || isLogicCell(src.trim());
-  const lambdaCell = !keywords && (/[λ\\]|:=/.test(src) || LAMBDA_CMD.test(src.trim()));
+  const keywords = hasKeywords(src);
+  const lambdaCell = !keywords && (/[λ\\]|:=/.test(src) || lambdaCommand(src));
   let out = "";
   toks.forEach((t, k) => {
     let cls = "";
@@ -8017,10 +8051,10 @@ function highlightHtml(src: string): string {
     else if (bound.has(k)) cls = "hbound";
     else if (USER_NAMES.has(`${sessionId}:${t.text}`)) cls = "hdef";
     else if (CONSTANTS.has(t.text)) cls = "hconst";
-    else if (!lambdaCell && (COMMANDS.has(t.text) || BUILTIN_FN.has(t.text))) {
+    else if (!lambdaCell && (COMMANDS().has(t.text) || BUILTIN_FN.has(t.text))) {
       // a name is a call only when a parenthesis follows
       let j = k + 1; while (j < toks.length && toks[j]!.kind === "ws") j++;
-      cls = toks[j]?.text === "(" ? (COMMANDS.has(t.text) ? "hcmd" : "hfn") : "hvar";
+      cls = toks[j]?.text === "(" ? (COMMANDS().has(t.text) ? "hcmd" : "hfn") : "hvar";
     } else cls = "hvar";
     out += cls ? `<span class="${cls}">${esc(t.text)}</span>` : esc(t.text);
   });
