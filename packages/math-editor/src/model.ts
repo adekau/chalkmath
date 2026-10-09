@@ -115,7 +115,7 @@ export const isConst = (c: string) => c === "⊤" || c === "⊥";
  *  `when a/2 < 1 do`, `a` alone is the numerator. As of this build (see `MULTI_OPS`); the engine's
  *  published keywords are added by `configureLexicon`. */
 export const KEYWORDS = new Set(["var", "in", "init", "action", "when", "do", "fair", "strong", "forall", "exists",
-  "and", "or", "not", "implies", "iff", "true", "false"]);
+  "and", "or", "not", "implies", "iff"]);
 
 /** Take the worlds' lexicon from the engine (`capabilities.worlds`): their keywords end a product as
  *  the built-in ones do, and their operators of several characters are one atom each. The built-in

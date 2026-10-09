@@ -55,7 +55,8 @@ test("the lexicon the page reads: calls, keywords", () => {
   for (const n of ["taut", "poset", "system", "prime", "closure"]) assert.ok(fns.includes(n), n);
   assert.ok(!fns.includes("type"), "a λ-command is not a call");
   assert.ok(W.worldKeywords().has("when") && W.worldKeywords().has("forall"));
-  assert.equal(W.hasKeywords("let S = system(var x in 0..1)"), true);
-  assert.equal(W.hasKeywords("x^2"), false);
-  assert.equal(W.hasKeywords("λx. x"), false);
+  assert.ok(W.keywordsOf("let S = system(var x in 0..1)").has("when"));
+  assert.ok(!W.keywordsOf("let S = system(var x in 0..1)").has("forall"), "a system cell has its own world's keywords only");
+  assert.equal(W.keywordsOf("x^2").size, 0);
+  assert.equal(W.keywordsOf("λx. x").size, 0);
 });

@@ -238,8 +238,9 @@ def logicWorld : World where
   id := "logic"
   label := "Logic"
   commands := Logic.commands
-  keywords := Logic.wordGlyph.map (·.1)
-  names := ["prime", "even", "odd"]
+  -- `true` and `false` are values (⊤, ⊥), not keywords
+  keywords := (Logic.wordGlyph.map (·.1)).filter (fun w => w != "true" && w != "false")
+  names := ["prime", "even", "odd", "true", "false"]
   glyphs := ["∧", "∨", "¬", "→", "↔", "⊤", "⊥", "∀", "∃", "∈", "≤", "≥", "≠", "<->", "->", "=>", "&&", "/\\", "||", "\\/", "<=", ">=", "!=", "==", "!", "~", "..", ","]
   markers := ["¬", "∧", "∨", "→", "↔", "⊤", "⊥", "∀", "∃", "<->", "->", "&&", "||", "forall", "exists"]
   claims := fun _ src => Logic.isLogicSource src

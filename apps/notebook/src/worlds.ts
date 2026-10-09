@@ -26,9 +26,9 @@ export const FALLBACK_WORLDS: WorldInfo[] = [
     markers: [] },
   { id: "logic", label: "Logic",
     commands: ["truthtable", "taut", "sat", "falsify", "equiv", "nnf", "cnf", "dnf"],
-    keywords: ["and", "or", "not", "implies", "iff", "forall", "exists", "in", "true", "false"],
+    keywords: ["and", "or", "not", "implies", "iff", "forall", "exists", "in"],
     glyphs: ["∧", "∨", "¬", "→", "↔", "⊤", "⊥", "∀", "∃", "∈", "≤", "≥", "≠", "<->", "->", "=>", "&&", "/\\", "||", "\\/", "<=", ">=", "!=", "==", "!", "~", "..", ","],
-    names: ["prime", "even", "odd"],
+    names: ["prime", "even", "odd", "true", "false"],
     markers: ["¬", "∧", "∨", "→", "↔", "⊤", "⊥", "∀", "∃", "<->", "->", "&&", "||", "forall", "exists"] },
   { id: "lambda", label: "λ-calculus",
     commands: ["normal", "cbn", "cbv", "applicative", "eta", "fv", "db", "alpha", "subst", "type", "infer"],
@@ -127,9 +127,9 @@ export function worldKeywords(): Set<string> {
   return new Set(WORLDS.flatMap((w) => w.keywords));
 }
 
-/** The worlds a cell's source has keywords in (a system's clauses, a quantifier's words): the
- *  highlighter marks them only in such a cell. */
-export function hasKeywords(src: string): boolean {
+/** The keywords of the world a cell's source is in (a system's clauses, a quantifier's words), for the
+ *  highlighter to mark; none for algebra and the λ-calculus. */
+export function keywordsOf(src: string): Set<string> {
   const w = worldOf(src);
-  return w !== null && w !== "lambda" && (worldById(w)?.keywords.length ?? 0) > 0;
+  return new Set(w && w !== "lambda" ? worldById(w)?.keywords ?? [] : []);
 }

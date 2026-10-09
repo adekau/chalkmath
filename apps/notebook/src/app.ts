@@ -1,8 +1,8 @@
 import { createClient, type EngineClient, type Step, type StepOutline, type Path, type RuleStatus, type Derivation, type WireExpr, type PlotResult, type ManipulateResult, type HasseData, type KnownVisual, type TruthTableData, type DigraphData, type OpTableData, type ContextTableData, type TypingNode, type TypingTreeData, type SpacetimeData } from "@chalkmath/protocol";
 import { workerTransport, httpTransport } from "@chalkmath/engine-host";
 import { leanForPrelude } from "@chalkmath/lean-editor/prelude";
-import { read as readNotation, write as writeNotation, writeText, hasNotation, templateAt, templateInText, TEMPLATES, KEYWORDS, configureLexicon, lex as lexNotation, type Stmt, type Caret, type MathEdit } from "@chalkmath/math-editor";
-import { setWorlds, worldOf, worldFns, hasKeywords, lambdaCommand } from "./worlds.js";
+import { read as readNotation, write as writeNotation, writeText, hasNotation, templateAt, templateInText, TEMPLATES, configureLexicon, lex as lexNotation, type Stmt, type Caret, type MathEdit } from "@chalkmath/math-editor";
+import { setWorlds, worldOf, worldFns, keywordsOf, lambdaCommand } from "./worlds.js";
 import { MathInput, type MathInputOptions } from "@chalkmath/math-editor/view";
 import { termSpans, deleteTerm, type Reading, type Span, type TermSpan } from "./term-spans.js";
 import { h, tex, TRUST_PATHS } from "./dom.js";
@@ -7597,13 +7597,13 @@ function highlightHtml(src: string): string {
   const bound = boundTokens(src, toks);
   // a system's clauses (`var`, `init`, `action … when … do`) and the quantifiers, as the typeset view
   // marks them; a system's `:=` is an update, not a λ-cell's definition
-  const keywords = hasKeywords(src);
-  const lambdaCell = !keywords && (/[λ\\]|:=/.test(src) || lambdaCommand(src));
+  const keywords = keywordsOf(src);
+  const lambdaCell = !keywords.size && (/[λ\\]|:=/.test(src) || lambdaCommand(src));
   let out = "";
   toks.forEach((t, k) => {
     let cls = "";
     if (t.kind === "num") cls = "hnum";
-    else if (t.kind === "kw" || (keywords && t.kind === "id" && KEYWORDS.has(t.text))) cls = "hkw";
+    else if (t.kind === "kw" || (t.kind === "id" && keywords.has(t.text))) cls = "hkw";
     else if (t.kind === "asset") cls = S.assets[t.text.slice(1, -1)] ? "hasset" : "hasset missing";
     else if (t.kind === "str") cls = "hstr";
     else if (t.kind === "op") cls = /^[()\[\]{};,]$/.test(t.text) ? "hpun" : "hop";
