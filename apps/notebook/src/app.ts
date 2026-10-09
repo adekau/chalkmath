@@ -2067,13 +2067,16 @@ function syncCourseLink() {
 /** Open what a course link names: its course's page, or one of its lessons. */
 async function openCourseLink(link: CourseLink): Promise<boolean> {
   courseLinkPending = false;
+  const asked = location.hash;
   const p = projectById(link.id);
   let ok = false;
   if (!p) notify("err", `The link is to a course this page does not have: ${link.id}.`);
   else if (link.lesson === undefined) { openCourses(p.id); ok = true; }
   else if (!p.lessons[link.lesson]) { notify("err", `The link is to a lesson ${p.title} does not have; it has ${p.lessons.length}.`); openCourses(p.id); }
   else ok = await openExample(lessonPath(p, link.lesson), { id: p.id, lesson: link.lesson });
-  syncCourseLink();
+  // a lesson runs its cells as it opens: a link entered meanwhile is in the address, its hashchange
+  // still to come, and putting this one back would open this lesson again in its place
+  if (location.hash === asked) syncCourseLink();
   return ok;
 }
 async function copyCourseLink(p: Project) {
