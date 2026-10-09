@@ -4,6 +4,7 @@ import MathEngine.Parser
 import MathEngine.Print
 import MathEngine.Session
 import MathEngine.Exercise
+import MathEngine.Surface
 /-!
 # JSON-RPC surface
 
@@ -255,11 +256,19 @@ def derivationJson (d : Derivation) (paths lambda : Bool) : Json :=
 /-- The work in a reply, with `showWork`: the derivation, or with `outline` only its outline —
 each step's rule, explanation and path, without the terms, which are what make the derivation of a
 big term large. `engine.steps` sends the derivation itself when it is wanted. -/
-def workFields (params : Json) (d : Derivation) (lambda := false) : Array (String × Json) :=
+def workFields (params : Json) (d : Derivation) (lambda := false) (input : Option Expr := none) : Array (String × Json) :=
   if !params.getBool "showWork" then #[] else
   let paths := params.getBool "paths"
   let work := if params.getBool "outline" then ("outline", d.outlineJson) else ("derivation", derivationJson d paths lambda)
-  #[work, ("inputRendered", Rendered.toJson d.input paths)]
+  #[work, ("inputRendered", Rendered.toJson (input.getD d.input) paths)]
+
+/-- A world cell's input as written (`Surface.lean`), kept with the cell the session has just
+evaluated: the reply shows it as the input, and explain finds its pieces in it. -/
+def withAsWritten (st : Store) (sessionId cellId src : String) : Store × Option Expr :=
+  let e := Surface.asWritten src
+  let s := st.get sessionId
+  let cells := s.cells.map fun (id, c) => if id == cellId then (id, { c with asWritten := some e }) else (id, c)
+  (st.set sessionId { s with cells }, some e)
 
 private def errorJson (code msg : String) (span : Option (Nat × Nat) := none) : Json :=
   let err := #[("code", .str code), ("message", .str msg)]
@@ -338,6 +347,7 @@ def evaluateOrder (st : Store) (params : Json) (sessionId cellId src : String) :
   match r with
   | .error (code, msg, span) => (st, errorJson code msg span)
   | .ok res =>
+    let (st, aw) := withAsWritten st sessionId cellId src
     let paths := params.getBool "paths"
     let r := #[("ok", .bool true), ("kind", .str "poset"), ("value", res.value.toJson), ("rendered", Rendered.toJson res.value paths)]
     let r := match res.summary with | some t => r.push ("summary", .str t) | none => r
@@ -365,7 +375,7 @@ def evaluateOrder (st : Store) (params : Json) (sessionId cellId src : String) :
             ("has", .arr (C.objs.map fun o => Json.arr (C.attrs.map fun a => Json.bool (C.has o a)).toArray).toArray)])]]
         | none => #[])
     let r := if visuals.isEmpty then r else r.push ("visuals", .arr visuals)
-    let r := r ++ workFields params res.derivation
+    let r := r ++ workFields params res.derivation (input := aw)
     let r := match res.name with | some n => r.push ("bound", .arr #[.str n]) | none => r
     (st, .obj r)
 
@@ -377,6 +387,8 @@ def evaluateLogic (st : Store) (params : Json) (sessionId cellId src : String) :
   match r with
   | .error (code, msg, span) => (st, errorJson code msg span)
   | .ok res =>
+    -- a command's input as written; a statement (`∀ n ∈ 1..10, …`) is read as the logic world reads it
+    let (st, aw) := if Surface.isCall src then withAsWritten st sessionId cellId src else (st, none)
     let paths := params.getBool "paths"
     let r := #[("ok", .bool true), ("kind", .str "logic"), ("value", res.value.toJson), ("rendered", Rendered.toJson res.value paths)]
     let r := match res.table with
@@ -386,7 +398,7 @@ def evaluateLogic (st : Store) (params : Json) (sessionId cellId src : String) :
           ("vars", .arr (vs.map Json.str).toArray), ("formula", Rendered.toJson formula false),
           ("rows", .arr (rows.map fun row => Json.arr (row.map Json.bool).toArray).toArray)])]])
       | none => r
-    let r := r ++ workFields params res.derivation
+    let r := r ++ workFields params res.derivation (input := aw)
     let r := match res.name with | some n => r.push ("bound", .arr #[.str n]) | none => r
     (st, .obj r)
 
@@ -398,6 +410,7 @@ def evaluateSystem (st : Store) (params : Json) (sessionId cellId src : String) 
   match r with
   | .error (code, msg, span) => (st, errorJson code msg span)
   | .ok res =>
+    let (st, aw) := withAsWritten st sessionId cellId src
     let paths := params.getBool "paths"
     let r := #[("ok", .bool true), ("kind", .str "system"), ("value", res.value.toJson), ("rendered", Rendered.toJson res.value paths)]
     let r := match res.summary with | some t => r.push ("summary", .str t) | none => r
@@ -429,7 +442,7 @@ def evaluateSystem (st : Store) (params : Json) (sessionId cellId src : String) 
           ("messages", .arr (D.messages.map fun (a, b) => Json.arr #[.num (toString a), .num (toString b)]).toArray),
           ("steps", .arr (evOf.map fun es => Json.arr (es.map fun i => Json.num (toString i)).toArray))])]])
       | none => r
-    let r := r ++ workFields params res.derivation
+    let r := r ++ workFields params res.derivation (input := aw)
     let r := match res.name with | some n => r.push ("bound", .arr #[.str n]) | none => r
     (st, .obj r)
 

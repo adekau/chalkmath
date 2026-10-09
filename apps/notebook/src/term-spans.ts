@@ -48,7 +48,10 @@ function preorder(a: string, b: string) {
 /** `nodes`: every tagged subterm of the rendering, with its text as shown. `symbols`: the `\name`
  *  spellings of symbols (`pi` → `π`), so a name typed as a word matches the symbol shown. */
 export function termSpans(src: string, nodes: { path: string; text: string }[], symbols: Record<string, string> = {}): Reading {
-  const toks = lex(src).filter((t) => t.kind !== "eof");
+  // a λ's binder is lexed with it (`λx` is one name to the editor's lexer): the reading has the
+  // binder on its own
+  const toks = lex(src).filter((t) => t.kind !== "eof").flatMap((t) => t.kind === "id" && t.s.length > 1 && t.s.startsWith("λ")
+    ? [{ ...t, kind: "op" as const, s: "λ", stop: t.start + 1 }, { ...t, s: t.s.slice(1), start: t.start + 1 }] : [t]);
   const paths = new Set(nodes.map((n) => n.path));
   paths.add("root");
   const text = new Map(nodes.map((n) => [n.path, n.text]));
@@ -102,9 +105,13 @@ export function termSpans(src: string, nodes: { path: string; text: string }[], 
     return [a, b];
   };
 
-  // what the reading is of: the input after a `let name =` or `let f(x) =` head
+  // what the reading is of: the input after a `let name =` or `let f(x) =` head, a λ definition's
+  // `name :=`, or a λ cell's directive (`fv:`, `normal 2:`), which its reading leaves out
   let first = 0;
   if (s(0) === "let") { const eq = toks.findIndex((t) => t.s === "=" || t.s === ":="); if (eq >= 0) first = eq + 1; }
+  else if (isId(0) && s(1) === ":=") first = 2;
+  else if (isId(0) && s(1) === ":") first = 2;
+  else if (isId(0) && toks[1]?.kind === "num" && s(2) === ":") first = 3;
 
   // leaves to tokens, in path order (a reading of one number or name is a leaf itself)
   // the reading shows Euler's number as a plain e, however it was typed
@@ -154,7 +161,10 @@ export function termSpans(src: string, nodes: { path: string; text: string }[], 
   // (`divisors(12)` read as `12` is not the input), and nothing else is: a `%` read as the output it
   // names, say
   const whole = (text.get("root") ?? "").replace(/\s/g, "");
-  const leaves = [...paths].filter((p) => !out.get(p)!.children.length);
+  // a leaf of no name and no number is notation the reading writes as it is (`{}`, `@`): the source
+  // has no token of its own for it, and it is not one the engine made up
+  const named = (p: string) => /[\p{L}\p{N}]/u.test(text.get(p) ?? "");
+  const leaves = [...paths].filter((p) => !out.get(p)!.children.length && named(p));
   const faithful = leaves.every((p) => ranges.get(p)) && toks.every((t, k) => k < first || matched.has(k) || t.kind === "op" || t.kind === "str" || t.kind === "asset"
     || (t.kind === "id" && (WORD_OPS.has(t.s) || KEYWORDS.has(t.s) || (s(k + 1) === "(" && (DRAWN.has(t.s) || whole.includes(t.s))))));
   return { spans: out, faithful };

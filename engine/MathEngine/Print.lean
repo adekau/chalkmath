@@ -511,6 +511,11 @@ mutual
     | "All" => match args with
       | [] => T.closeIf g (T.openIf g acc ++ (if T.times != "*" then "\\mathrm{All}" else "All"))
       | as => fnPlain T name as path ctx acc
+    -- a world's input as written (`Surface.lean`): its literal pieces (the first argument, never
+    -- printed) around its children
+    | "§" => match args with
+      | .var ps :: kids => printPieces kids (ps.splitOn "␟") 1 path T acc
+      | as => fnPlain T name as path ctx acc
     | _ => fnPlain T name args path ctx acc
   termination_by 8 * Expr.sizeList args + 7
   decreasing_by all_goals print_decreasing
@@ -555,6 +560,21 @@ mutual
     match args with
     | [] => acc
     | a :: rest => printArgs rest (i + 1) path T T.argSep (print a (i :: path) T P_ADD (acc ++ sep))
+  termination_by 8 * Expr.sizeList args + 5
+  decreasing_by all_goals (have := Expr.size_pos a; print_decreasing)
+
+  /-- A node as its source has it (`Surface.tpl`): each literal piece, unlabelled, then the next
+  child, labelled with its path (from 1: the pieces are argument 0). A piece is its LaTeX and its
+  text, separated by `␞`. -/
+  def printPieces (args : List Expr) (pieces : List String) (i : Nat) (path : Path) (T : Target) (acc : String) : String :=
+    let piece := match pieces.head? with
+      | some p => match p.splitOn "␞" with
+        | [l, t] => if T.times != "*" then l else t
+        | _ => p
+      | none => ""
+    match args with
+    | [] => acc ++ piece
+    | a :: rest => printPieces rest pieces.tail (i + 1) path T (print a (i :: path) T P_ADD (acc ++ piece))
   termination_by 8 * Expr.sizeList args + 5
   decreasing_by all_goals (have := Expr.size_pos a; print_decreasing)
 

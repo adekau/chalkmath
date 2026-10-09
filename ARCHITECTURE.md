@@ -576,6 +576,38 @@ The reader has to agree with `Parser.lean` exactly on math, or the input would s
 the engine reads a product, and its tests hold it to that: every golden source and notebook cell
 writes back exactly, and, written afresh and sent to the native engine, has to mean the same thing.
 
+**Reading a typeset cell.** A typeset cell that has run is read, not edited, as a rendered Markdown
+cell is: the visual input exactly as it is (`MathInput.reading`), without a caret, so nothing moves
+or changes colour between the two. Double-click or Enter edits, at the piece double-clicked;
+running reads it again (View › Read typeset cells turns it off). While it is read, hovering a piece
+outlines the subterm of the engine's reading that piece belongs to, so how operators bind is on the
+page: `p and q implies r` outlines `p and q` at the `and`. A click explains that subterm, and a
+toolbar over it edits it, replaces it with an empty slot to type into, or deletes it with the
+operator that joined it to its neighbour.
+
+The engine's reading carries paths, not places in the text, so the page finds each subterm in the
+source itself (`term-spans.ts`): the reading's leaves — names and numbers — are the source's, in the
+same order when taken in path order, so each is matched to its token, and a subterm spans its
+leaves' tokens, widened to whole brackets and to a call's name. A reading is used only when it is
+the input (`faithful`): every name and number written appears in it, every call by its name or its
+notation, and nothing else does. A reading that substitutes a bound name (`dot(u, w)` read with the
+vectors in) is not, and its cell is read without the subterms.
+
+**A world's input as written.** A math cell's input reading is the parse the pipeline starts from.
+The other worlds compute with values — a `system` with its state space, `le(C, a, c)` with the
+elements of `C` — and their derivations start from those, so their readings were summaries
+(`system({x, p}, {go})`) or answers (`a`). The engine now reads such a cell's input as written
+(`Surface.lean`) and replies with that as `inputRendered`; the derivation is unchanged. It is read
+without the worlds' semantics: a world's notation is math between separators — calls whose
+arguments are separated by `,`, `;` and line breaks, keywords (`var … in`, `init`, `action … when …
+do`), arrows and assignments, ranges and sets — and each piece between them is read by the grammar
+it is written in, a formula by `Logic.parseFormula`, an expression by `Parser.parse`. So binding is
+decided where it happens, inside a guard or a relation, by the grammars that decide it, and the
+separators are literal pieces of a node (`Surface.tpl`, printed by `printPieces`), not subterms:
+every labelled subterm is something the reader wrote. The cell keeps the reading
+(`Cell.asWritten`), and explain on the input finds its pieces there. A logic statement (`∀ n ∈ 1..10,
+…`) keeps the logic world's own reading, which is already the input.
+
 **Tabs.** One tab per open notebook, then the studio, the courses and the documentation, each
 present only while open and closed by its ×. With no notebook open — a first visit, or the last tab
 closed — the *welcome* tab stands in for one (`S.tab === "welcome"`, the live cells empty, `S.doc ===

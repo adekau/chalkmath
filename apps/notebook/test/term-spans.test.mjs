@@ -79,3 +79,21 @@ test("a reading that is not the input does not stand in for it", () => {
   // functions drawn as notation are not missing
   assert.equal(T.termSpans("sqrt(x)", reading({ "0": "x" }, ["root"])).faithful, true);
 });
+
+test("a λ's binder, a λ cell's directive and a definition's name", () => {
+  // `λx` is one name to the editor's lexer; the reading has the binder on its own
+  const lam = "(λx. x) y";
+  const r = T.termSpans(lam, reading({ "0.0": "x", "0.1": "x", "1": "y" }, ["root", "0"]));
+  assert.equal(r.faithful, true);
+  assert.equal(text(lam, r.spans.get("0.0").inner), "x");
+  // the reading leaves out `fv:` and `normal 2:`, as it leaves out `let name =`
+  assert.equal(T.termSpans("fv: λx. x y", reading({ "0": "x", "1.0": "x", "1.1": "y" }, ["root", "1"])).faithful, true);
+  assert.equal(T.termSpans("normal 2: omega omega", reading({ "0": "omega", "1": "omega" }, ["root"])).faithful, true);
+  assert.equal(T.termSpans("twice := λf. λx. f (f x)", reading({ "0": "f", "1.0": "x", "1.1.0": "f", "1.1.1.0": "f", "1.1.1.1": "x" }, ["root", "1", "1.1", "1.1.1"])).faithful, true);
+});
+
+test("notation the reading writes as it is is not a name the source lacks", () => {
+  // a world's input as written: `{}` and `@` are pieces of notation, not names or numbers
+  const src = "join(S, {}, {x})";
+  assert.equal(T.termSpans(src, [{ path: "root", text: "join(S, {}, {x})" }, ...reading({ "1": "S", "2": "{}", "3.0": "x" }, ["3"])]).faithful, true);
+});
