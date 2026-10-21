@@ -188,6 +188,7 @@
       "hints": [
         "An antiderivative is $\\frac{x^2}{2}$; evaluate at $2$ and at $0$."
       ],
+      "practice": "calculus.definite",
       "showWork": false,
       "label": null
     },
@@ -198,6 +199,7 @@
       "hints": [
         "$F(x) = \\frac{x^3}{3}$; the answer is $F(3) - F(1)$."
       ],
+      "practice": "calculus.definite",
       "showWork": false,
       "label": null
     },

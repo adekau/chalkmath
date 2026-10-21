@@ -190,6 +190,7 @@
         "Scale the first row by $\\frac12$ first."
       ],
       "hideQuestion": true,
+      "practice": "linear-algebra.rref",
       "showWork": false,
       "label": null
     },
@@ -201,6 +202,7 @@
         "The columns are $(3, 1)$, $(1, 2)$ and the target $(5, 5)$: `[3, 1, 5; 1, 2, 5]`."
       ],
       "hideQuestion": true,
+      "practice": "linear-algebra.rref",
       "showWork": false,
       "label": null
     },

@@ -553,8 +553,10 @@ from a file's record (checked, so a damaged record makes an empty cell) and writ
 The page owns no mathematics. It does not parse, print, or simplify: every expression on screen is
 LaTeX the engine produced, every rule name and explanation is the engine's, and the proof status
 beside each step comes from `engine.capabilities.ruleStatus` rather than a list in the frontend
-that could drift from `proofs/`. The one thing the page derives from source text is a cell's *kind*
-label, which is presentation only.
+that could drift from `proofs/`. What the page derives from source text is presentation only: a
+cell's *kind* label, and the line under an exercise's answer box saying what kind of answer its
+question wants (`sat` an assignment, `taut` true or false; `answerForm`), which the engine's check
+decides, not the line.
 
 **What the browser keeps.** Every open notebook is autosaved to `localStorage` after a run or an
 edit, coalesced, and flushed when the page is hidden (a phone closes a page without `beforeunload`).
@@ -613,12 +615,17 @@ writes back exactly, and, written afresh and sent to the native engine, has to m
 
 **Reading a typeset cell.** A typeset cell that has run is read, not edited, as a rendered Markdown
 cell is: the visual input exactly as it is (`MathInput.reading`), without a caret, so nothing moves
-or changes colour between the two. Double-click or Enter edits, at the piece double-clicked;
-running reads it again (View › Read typeset cells turns it off). While it is read, hovering a piece
-outlines the subterm of the engine's reading that piece belongs to, so how operators bind is on the
-page: `p and q implies r` outlines `p and q` at the `and`. A click explains that subterm, and a
-toolbar over it edits it, replaces it with an empty slot to type into, or deletes it with the
-operator that joined it to its neighbour.
+or changes colour between the two. A click edits it as a text box would, the caret where it was
+clicked (`MathInput.caretToPoint`), and so does Enter; running reads it again (View › Read typeset
+cells turns it off). While it is read, resting the pointer on a piece outlines, faintly, the
+subterm of the engine's reading that piece belongs to, so how operators bind is on the page: `p and
+q implies r` outlines `p and q` at the `and`. A toolbar over it edits it (the caret after it),
+replaces it with an empty slot to type into, or deletes it with the operator that joined it to its
+neighbour. The toolbar waits for the pointer to rest, as signature help does, and moves to another
+piece only once the pointer rests there, so the pointer can cross the pieces between on its way up
+to it. The whole input is not a piece: a keyword of a `system` belongs to no smaller subterm, and
+hovering it outlines nothing. (A click used to explain the subterm in the panel; editing in place
+proved the more useful of the two.)
 
 The engine's reading carries paths, not places in the text, so the page finds each subterm in the
 source itself (`term-spans.ts`): the reading's leaves — names and numbers — are the source's, in the
@@ -704,9 +711,21 @@ lesson `#course=<id>&lesson=<n>` (from 1): the page's address follows the course
 (`history.replaceState`, so moving about adds nothing to the back button), and the link opens it when
 the page loads with it or when it is entered into the address bar. Unlike `#nb=`, it names the
 course rather than carrying it, so it stays short and opens the course as it is now. The lessons are built from
-what the shell offers for teaching: exercise cells (checked by `engine.check`, §3), steps held back
+what the shell offers for teaching: exercise cells (checked by `engine.check`, §3; one with a practice
+topic offers another question of its kind, below), steps held back
 to be revealed one at a time, sliders on `let n = number` that re-run the cells out of date because of
 them, and Markdown callouts. Every lesson's answers are pinned in `notebooks/golden/` and checked in CI.
+
+**Practice.** An exercise can name a topic (`practice`, `src/practice.ts`), and then offers ↻ Another one:
+a new question of its kind in place of the author's, which is kept (`original`) and put back by ↺ Original.
+Each topic is a generator of its own, seeded: it writes the source an author would have typed, with a prompt
+and hints, and never an answer, which is the engine's as for any exercise. A generator may work backwards
+from the question it wants (a system of equations from the solution it should have, a knights-and-knaves
+puzzle kept only when one assignment solves it), but what the reader is told is right is `engine.check`'s.
+`test/practice.test.mjs` sends every topic's questions for many seeds to the native engine: each must have
+an answer, and that answer typed back must be checked right. The courses name a topic for their exercises
+in `PRACTICE` (`mk-courses.mjs`). Only the areas whose questions stand alone have topics; an exercise on a
+system or an order defined earlier in its lesson has none.
 
 **Help › Documentation** opens a tab: a guide to the notebook (cells, input,
 reading the work, files, lookups and their set-up, Lean cells, the studio) and the reference pages.

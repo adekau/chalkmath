@@ -200,6 +200,7 @@
       "hints": [
         "$3$ times the first column minus the second: $3\\,(2, 1) - (-1, 1)$."
       ],
+      "practice": "linear-algebra.matvec",
       "showWork": false,
       "label": null
     },
@@ -222,6 +223,7 @@
         "A half turn sends $\\hat{\\imath}$ to $(-1, 0)$."
       ],
       "hideQuestion": true,
+      "practice": "linear-algebra.matmul",
       "showWork": false,
       "label": null
     },
@@ -233,6 +235,7 @@
         "Column $1$ of the product is $\\begin{pmatrix} 1 & 2 \\\\ 3 & 4 \\end{pmatrix}$ times $(0, 1)$: its second column.",
         "The answer is a matrix: type it as `[p, q; r, s]`."
       ],
+      "practice": "linear-algebra.matmul",
       "showWork": false,
       "label": null
     },

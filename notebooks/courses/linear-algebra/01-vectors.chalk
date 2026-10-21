@@ -271,6 +271,7 @@
       "hints": [
         "Multiply entry by entry and add: $1 \\cdot 4 + 2 \\cdot 5 + 3 \\cdot 6$."
       ],
+      "practice": "linear-algebra.dot",
       "showWork": false,
       "label": null
     },

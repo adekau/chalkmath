@@ -215,6 +215,7 @@
         "De Morgan: $\\lnot(a \\lor b) \\equiv \\lnot a \\land \\lnot b$.",
         "Then $\\lnot\\lnot q \\equiv q$."
       ],
+      "practice": "logic.nnf",
       "showWork": false,
       "label": null
     },
@@ -225,6 +226,7 @@
       "hints": [
         "$p \\to q$ fails only when $p$ is true and $q$ false."
       ],
+      "practice": "logic.nnf",
       "showWork": false,
       "label": null
     },
@@ -235,6 +237,7 @@
       "hints": [
         "Distribute $\\lor r$ over the $\\land$: each conjunct gets its own $\\lor r$."
       ],
+      "practice": "logic.cnf",
       "showWork": false,
       "label": null
     },
@@ -245,6 +248,7 @@
       "hints": [
         "Distribute $p \\land$ over the $\\lor$."
       ],
+      "practice": "logic.dnf",
       "showWork": false,
       "label": null
     },
@@ -255,6 +259,7 @@
       "hints": [
         "Only the first part needs work: De Morgan."
       ],
+      "practice": "logic.cnf",
       "showWork": false,
       "label": null
     },
@@ -267,6 +272,7 @@
         "Or shorter: any two being true is enough, and a term need not mention the third variable."
       ],
       "hideQuestion": true,
+      "practice": "logic.dnf",
       "showWork": false,
       "label": null
     },

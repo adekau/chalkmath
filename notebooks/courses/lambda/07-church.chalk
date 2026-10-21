@@ -351,6 +351,7 @@
       "hints": [
         "$\\mathsf{not}\\ \\mathsf{false}$ is $\\mathsf{true}$."
       ],
+      "practice": "lambda.church",
       "showWork": false,
       "label": null
     },

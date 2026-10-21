@@ -208,6 +208,7 @@
       "hints": [
         "Two arguments of unrelated types; it returns the second."
       ],
+      "practice": "lambda.infer",
       "showWork": false,
       "label": null
     },
@@ -218,6 +219,7 @@
       "hints": [
         "$x : \\alpha$, $f : \\alpha \\to \\beta$, $g : \\beta \\to \\gamma$."
       ],
+      "practice": "lambda.infer",
       "showWork": false,
       "label": null
     },
@@ -228,6 +230,7 @@
       "hints": [
         "$f$ is applied to $x$."
       ],
+      "practice": "lambda.infer",
       "showWork": false,
       "label": null
     },

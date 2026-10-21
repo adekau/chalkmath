@@ -160,6 +160,7 @@
         "The slabs are on the three faces that do not touch the fixed corner.",
         "Three slabs of $x^2\\,dx$: divide the new volume by $dx$ and let $dx$ shrink."
       ],
+      "practice": "calculus.power",
       "showWork": false,
       "label": null
     },
@@ -217,6 +218,7 @@
         "Differentiate term by term: the sum rule.",
         "Each term: $\\frac{d}{dx}\\, a x^n = a n x^{n-1}$, and the constant $2$ has derivative $0$."
       ],
+      "practice": "calculus.power",
       "showWork": false,
       "label": null
     },
@@ -281,6 +283,7 @@
         "It is a product: $f = x^3$ and $g = \\cos x$.",
         "$f' = 3x^2$ and $g' = -\\sin x$; now $f'g + fg'$."
       ],
+      "practice": "calculus.product",
       "showWork": false,
       "label": null
     },
@@ -292,6 +295,7 @@
         "$(e^x)' = e^x$: the exponential is its own derivative.",
         "Any correct form is accepted: $e^x \\cos x - e^x \\sin x$ and $e^x(\\cos x - \\sin x)$ reduce to the same normal form."
       ],
+      "practice": "calculus.product",
       "showWork": false,
       "label": null
     },

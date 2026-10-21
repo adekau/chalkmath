@@ -8,6 +8,7 @@ import { termSpans, deleteTerm, type Reading, type Span, type TermSpan } from ".
 import { h, tex, TRUST_PATHS } from "./dom.js";
 import { rendererOf, visualPlaced, knownVisuals, visualBox } from "./visuals.js";
 import { leavesSorry } from "./lean-sorry.js";
+import { TOPICS, topicOf, generate as generatePractice } from "./practice.js";
 
 /**
  * The notebook shell. Structure, type and colour follow the second export of the
@@ -93,6 +94,7 @@ const SYMBOLS: Sym[] = [
   { abbr: "not", aliases: ["neg", "lnot"], sym: "¬", what: "not" },
   { abbr: "to", aliases: ["r", "imp", "implies"], sym: "→", what: "implies; a function type" },
   { abbr: "iff", aliases: ["lr"], sym: "↔", what: "if and only if" },
+  { abbr: "mapsto", aliases: [], sym: "↦", what: "maps to (an assignment: {p ↦ true})" },
   { abbr: "top", aliases: [], sym: "⊤", what: "true (top)" },
   { abbr: "bot", aliases: [], sym: "⊥", what: "false (bottom)" },
   { abbr: "forall", aliases: ["all"], sym: "∀", what: "for all" },
@@ -107,6 +109,9 @@ const SYMBOLS: Sym[] = [
 /** `\abbr` at the end of the text before the caret → the symbol; longest abbreviations first so `\eps` beats `\e`. */
 const SYMBOL_RE = new RegExp("\\\\(" + SYMBOLS.flatMap((s) => [s.abbr, ...s.aliases]).sort((a, b) => b.length - a.length).join("|") + ")$");
 const symbolFor = (name: string) => SYMBOLS.find((s) => s.abbr === name || s.aliases.includes(name))?.sym ?? "";
+/** Every `\abbr` in a text that is a whole abbreviation (not followed by a letter) → its symbol. */
+const SYMBOLS_IN = new RegExp("\\\\(" + SYMBOLS.flatMap((s) => [s.abbr, ...s.aliases]).sort((a, b) => b.length - a.length).join("|") + ")(?![A-Za-z])", "g");
+const expandSymbols = (text: string) => text.replace(SYMBOLS_IN, (_, name: string) => symbolFor(name));
 /** The same table for the visual input, whose `\\` also inserts templates (`\\frac`, `\\int`, …). */
 const VISUAL_SYMBOLS: Record<string, string> = Object.fromEntries(SYMBOLS.flatMap((s) => [s.abbr, ...s.aliases].map((a) => [a, s.sym])));
 type CompItem = { kind: "doc"; doc: Doc }
@@ -185,6 +190,8 @@ function migratePlot(p: PlotData | { var: string; from: number; to: number; poin
 /** What a cell is: mathematics for the engine (the default), Markdown prose with `$…$` and code, or a
  *  section heading that groups the cells below it (run together, collapsible). */
 type CellType = "math" | "markdown" | "section" | "lean" | "exercise" | "scene";
+/** The author's question, kept while a practice question stands in for it. */
+interface PracticeOriginal { src: string; prompt?: string; hints?: string[]; hideQuestion?: boolean }
 /** What the engine said of an exercise's answer: equivalent or not, with the answer as it reads it
  *  and the normal form it compared; or why it could not compare it. */
 interface Verdict { equivalent: boolean; answerLatex?: string; normalLatex?: string; error?: { message: string; span?: { start: number; end: number } } }
@@ -270,6 +277,11 @@ interface Cell {
   hintsShown?: number;
   verdict?: Verdict;
   solution?: boolean;
+  /** An exercise's practice topic (practice.ts): it offers another question of its kind, as many as
+   *  the reader wants. While the reader has one, `original` is the author's question, put back by
+   *  ↺ Original. */
+  practice?: string;
+  original?: PracticeOriginal;
   /** How many steps the reader has revealed (not saved), and the source that count belongs to: the
    *  cell run with another source starts again from `stepwise`. */
   revealed?: number;
@@ -1275,6 +1287,7 @@ interface CellRecord {
   /** Exercise cells. */
   prompt?: string | undefined; hints?: string[] | undefined; hideQuestion?: boolean | undefined; attempt?: string | undefined; hintsShown?: number | undefined; verdict?: Verdict | undefined; solution?: boolean | undefined;
   lean?: boolean | undefined; leanStart?: string | undefined; leanSolution?: string | undefined;
+  practice?: string | undefined; original?: PracticeOriginal | undefined;
   /** The last run's result. */
   label: number | null; outLatex?: string | undefined; outText?: string | undefined; form?: string | undefined; semantics?: "real" | "complex" | undefined; echoLatex?: string | undefined;
   steps?: Step[] | undefined; outline?: StepOutline[] | undefined; error?: Cell["error"] | undefined; plot?: PlotData | undefined; visuals?: KnownVisual[] | undefined; summary?: string | undefined;
@@ -1402,6 +1415,11 @@ const CELL_FIELDS: AnyField[] = [
   exerciseField("lean", (v, cell) => { if (v) cell.lean = true; }, (c) => c.lean || undefined),
   exerciseField("leanStart", (v, cell, ) => { if (cell.lean && isStr(v)) cell.leanStart = v; }, (c) => c.lean ? c.leanStart : undefined),
   exerciseField("leanSolution", (v, cell) => { if (cell.lean && isStr(v)) cell.leanSolution = v; }, (c) => c.lean ? c.leanSolution : undefined),
+  exerciseField("practice", (v, cell) => { if (isStr(v) && topicOf(v) && !cell.lean) cell.practice = v; }, (c) => c.practice),
+  exerciseField("original", (v, cell) => {
+    const o = v as Partial<PracticeOriginal> | null;
+    if (o && isStr(o.src)) cell.original = { src: o.src, ...(isStr(o.prompt) ? { prompt: o.prompt } : {}), ...(Array.isArray(o.hints) ? { hints: o.hints.filter(isStr) } : {}), ...(o.hideQuestion ? { hideQuestion: true } : {}) };
+  }, (c) => c.original),
   field({ key: "label", load: (v, cell) => { cell.label = isNum(v) && v >= 0 ? Math.floor(v) : null; }, save: (c) => c.label }),
   field({ key: "outLatex", load: (v, cell) => { if (isStr(v) && v) cell.outLatex = v; }, save: (c) => c.outLatex }),
   field({ key: "outText", load: (v, cell) => { if (isStr(v) && v) cell.outText = v; }, save: (c) => c.outText }),
@@ -2279,7 +2297,7 @@ function importNotebook() {
 
 /** What a link carries: the name and every cell's text and kind. Outputs are not included: the
  *  engine recomputes them when the link opens, which is the point of a verified notebook. */
-interface LinkDoc { v: 1; n: string; c: { s: string; t?: "markdown" | "section" | "lean" | "exercise" | "scene"; w?: 1; f?: 1; r?: number; p?: string; hs?: string[]; hq?: 1; sl?: [number, number, number]; ln?: 1; lst?: string; lso?: string }[]; a?: Record<string, { m: string; d: string; b?: 1 }> }
+interface LinkDoc { v: 1; n: string; c: { s: string; t?: "markdown" | "section" | "lean" | "exercise" | "scene"; w?: 1; f?: 1; r?: number; p?: string; hs?: string[]; hq?: 1; sl?: [number, number, number]; ln?: 1; lst?: string; lso?: string; pr?: string }[]; a?: Record<string, { m: string; d: string; b?: 1 }> }
 
 async function deflate(text: string): Promise<Uint8Array> {
   const cs = new CompressionStream("deflate-raw");
@@ -2305,8 +2323,9 @@ function unb64url(s: string): Uint8Array {
 async function notebookLink(): Promise<string> {
   const doc: LinkDoc = {
     v: 1, n: S.docName,
-    c: S.cells.filter((c) => cellSrc(c).trim()).map((c) => ({ s: cellSrc(c), ...(c.type ? { t: c.type } : {}), ...(c.showWork ? { w: 1 as const } : {}), ...(c.collapsed ? { f: 1 as const } : {}), ...(c.stepwise !== undefined ? { r: c.stepwise } : {}),
-      ...(c.prompt ? { p: c.prompt } : {}), ...(c.hints?.length ? { hs: c.hints } : {}), ...(c.hideQuestion ? { hq: 1 as const } : {}),
+    // an exercise the reader is practising on is shared as its author wrote it
+    c: S.cells.filter((c) => cellSrc(c).trim()).map((c) => ({ ...c, ...c.original, src: c.original?.src ?? cellSrc(c) })).map((c) => ({ s: c.src, ...(c.type ? { t: c.type } : {}), ...(c.showWork ? { w: 1 as const } : {}), ...(c.collapsed ? { f: 1 as const } : {}), ...(c.stepwise !== undefined ? { r: c.stepwise } : {}),
+      ...(c.prompt ? { p: c.prompt } : {}), ...(c.hints?.length ? { hs: c.hints } : {}), ...(c.hideQuestion ? { hq: 1 as const } : {}), ...(c.practice ? { pr: c.practice } : {}),
       ...(c.slider ? { sl: [c.slider.min, c.slider.max, c.slider.step] as [number, number, number] } : {}),
       ...(c.lean ? { ln: 1 as const, ...(c.leanStart ? { lst: c.leanStart } : {}), ...(c.leanSolution ? { lso: c.leanSolution } : {}) } : {}) })),
     ...(Object.keys(S.assets).length ? { a: Object.fromEntries(Object.values(S.assets).map((a) => [a.name, { m: a.mime, d: a.data, ...(a.binary ? { b: 1 as const } : {}) }])) } : {}),
@@ -2339,7 +2358,8 @@ async function openNotebookLink(hash: string): Promise<boolean> {
       cells: doc.c.map((c) => ({ src: String(c.s ?? ""), type: c.t === "markdown" || c.t === "section" || c.t === "lean" || c.t === "exercise" || c.t === "scene" ? c.t : undefined, collapsed: c.f ? true : undefined, showWork: !!c.w, stepwise: typeof c.r === "number" ? c.r : undefined,
         prompt: typeof c.p === "string" ? c.p : undefined, hints: Array.isArray(c.hs) ? c.hs.map(String) : undefined, hideQuestion: c.hq ? true : undefined,
         slider: Array.isArray(c.sl) && c.sl.length === 3 ? { min: Number(c.sl[0]), max: Number(c.sl[1]), step: Number(c.sl[2]) } : undefined,
-        lean: c.ln ? true : undefined, leanStart: typeof c.lst === "string" ? c.lst : undefined, leanSolution: typeof c.lso === "string" ? c.lso : undefined, label: null })),
+        lean: c.ln ? true : undefined, leanStart: typeof c.lst === "string" ? c.lst : undefined, leanSolution: typeof c.lso === "string" ? c.lso : undefined,
+        practice: typeof c.pr === "string" ? c.pr : undefined, label: null })),
       scenes: [],
       ...(doc.a ? { assets: Object.fromEntries(Object.entries(doc.a).map(([name, a]) => [name, { name, mime: String(a.m), data: String(a.d), ...(a.b ? { binary: true } : {}) }])) } : {}),
     };
@@ -2756,7 +2776,7 @@ function convertCell(cell: Cell, type: CellType) {
   if (type === "section") cell.src = cell.src.split("\n")[0]!.replace(/^#+\s*/, "");
   if (type !== "lean") delete cell.leanMessages;
   if (type === "exercise") cell.editing = true;
-  else { delete cell.prompt; delete cell.hints; delete cell.hideQuestion; delete cell.attempt; delete cell.hintsShown; delete cell.verdict; delete cell.solution; }
+  else { delete cell.prompt; delete cell.hints; delete cell.hideQuestion; delete cell.attempt; delete cell.hintsShown; delete cell.verdict; delete cell.solution; delete cell.practice; delete cell.original; }
   if (cur === "exercise" && type === "math") { delete cell.stepwise; cell.showWork = false; }
   renderCells(); renderSidebar(); renderChrome(); autosave();
 }
@@ -3871,6 +3891,7 @@ function modeKey(ev: KeyboardEvent, cell: Cell): boolean {
 function modeToggle(cell: Cell): HTMLElement {
   const on = isVisual(cell), blocked = visualBlocked(cell);
   const b = asButton(h("span", "modetog", on ? "Text" : "Visual"), on ? "Edit as text" : "Edit as typeset math");
+  b.dataset["fixed"] = "";
   b.title = on ? "Edit this cell as text (Ctrl+Shift+M)" : blocked ? `Visual input is not available: ${blocked}` : "Edit this cell as typeset math, with holes to fill (Ctrl+Shift+M)";
   if (!on && blocked) b.setAttribute("aria-disabled", "true");
   b.addEventListener("mousedown", (e) => e.preventDefault());
@@ -3937,16 +3958,16 @@ function refreshInput(cell: Cell) {
   renderCellBody(cell);
 }
 
-// --- Reading a typeset cell: once it has run it is read, and a double-click edits it ---------------
+// --- Reading a typeset cell: once it has run it is read, and a click edits it ----------------------
 //
 // A typeset cell that has run is read rather than edited, as a Markdown cell is rendered: the visual
-// input exactly as it is, without a caret, so nothing moves or changes colour between the two. Hovering
-// a piece outlines the subterm of the engine's reading it belongs to, so how operators bind is on the
-// page (`p ∧ q → r` outlines `p ∧ q` at the ∧), a click explains it, and a toolbar over it edits,
-// replaces or deletes it in the source (`term-spans.ts` finds each subterm there). Double-click or
-// Enter edits, at the piece double-clicked; running the cell reads it again. A cell whose reading is
-// not its input (a `system`, read as its variables and actions) is read and edited the same way,
-// without the subterms.
+// input exactly as it is, without a caret, so nothing moves or changes colour between the two. Resting
+// the pointer on a piece outlines, faintly, the subterm of the engine's reading it belongs to, so how
+// operators bind is on the page (`p ∧ q → r` outlines `p ∧ q` at the ∧), with a toolbar over it that
+// edits, replaces or deletes it in the source (`term-spans.ts` finds each subterm there). A click
+// edits, the caret where it was clicked, as in a text box; so does Enter; running the cell reads it
+// again. A cell whose reading is not its input (a `system`, read as its variables and actions) is read
+// and edited the same way, without the subterms.
 
 /** Whether a typeset cell is read rather than edited: it has run as it is (or is running an edit
  *  made from the toolbar), and is not being typed in. */
@@ -3976,45 +3997,33 @@ function pieceAt(cell: Cell, mi: MathInput, x: number, y: number): { span: Span;
   return best ? { span, path: best.path } : { span };
 }
 
-/** A subterm outlined over the input: the one hovered, or (`pick`) the one being explained. */
-function outline(mi: MathInput, span: Span, pick = false): HTMLElement | null {
-  mi.el.querySelector(`:scope > .mi-hov${pick ? ".pick" : ":not(.pick)"}`)?.remove();
+/** The subterm the toolbar is over, outlined faintly over the input (one at a time, in any cell). */
+function outline(mi: MathInput, span: Span): HTMLElement | null {
+  document.querySelectorAll(".mi-hov").forEach((o) => o.remove());
   const box = mi.boxOf(span);
   if (!box) return null;
-  const o = h("div", pick ? "mi-hov pick" : "mi-hov");
+  const o = h("div", "mi-hov");
   Object.assign(o.style, { left: `${box.left - 2}px`, top: `${box.top - 1}px`, width: `${box.width + 4}px`, height: `${box.height + 2}px` });
   mi.el.append(o);
   return o;
 }
 
-/** The reader's handling of a visual input while it is read; while it is edited, the input's own. */
+/** The reader's handling of a visual input while it is read; while it is edited, the input's own. A
+ *  click edits it there, the caret where it was clicked, as in a text box; resting on a piece
+ *  outlines its subterm and opens the toolbar over it. */
 function wireReading(cell: Cell, mi: MathInput) {
   const el = mi.el;
-  // a click explains the piece, once it is clear it is not a double click
-  let pending = 0;
   el.addEventListener("mousemove", (ev) => {
     if (!mi.reading) return;
     const hit = pieceAt(cell, mi, ev.clientX, ev.clientY);
-    if (hit?.path) showTokbar(cell, hit.path); else hideTokbarSoon();
+    // the whole input is not a piece of it: a click edits all of it, and the keywords of a `system`
+    // belong to nothing smaller
+    hoverPiece(cell, hit?.path && hit.path !== "root" ? hit.path : null);
   });
-  el.addEventListener("mouseleave", () => { if (mi.reading) hideTokbarSoon(); });
-  el.addEventListener("click", (ev) => {
-    if (!mi.reading) return;
-    window.clearTimeout(pending);
-    const hit = ev.detail > 1 ? null : pieceAt(cell, mi, ev.clientX, ev.clientY);
-    const node = hit?.path ? spansOf(cell)?.get(hit.path) : null;
-    if (!node?.inner) return;
-    pending = window.setTimeout(() => {
-      document.querySelectorAll(".mi-hov.pick").forEach((o) => o.remove());
-      outline(mi, node.inner!, true);
-      void explain(cell, { kind: "input" }, node.path === "root" ? [] : node.path.split(".").map(Number));
-    }, 260);
-  });
-  el.addEventListener("dblclick", (ev) => {
-    if (!mi.reading) return;
-    window.clearTimeout(pending);
-    const hit = pieceAt(cell, mi, ev.clientX, ev.clientY);
-    startTyping(cell, hit?.path ? { path: hit.path } : hit ? { span: hit.span } : {});
+  el.addEventListener("mouseleave", () => { if (mi.reading) hoverPiece(cell, null); });
+  el.addEventListener("mousedown", (ev) => {
+    if (!mi.reading || ev.button !== 0) return;
+    startTyping(cell, { point: { x: ev.clientX, y: ev.clientY } });
   });
   el.addEventListener("focus", () => { const i = S.cells.indexOf(cell); if (mi.reading && S.active !== i) { S.active = i; renderChrome(); renderSidebar(); markActive(); } });
   el.addEventListener("keydown", (ev) => {
@@ -4028,20 +4037,21 @@ function wireReading(cell: Cell, mi: MathInput) {
   });
 }
 
-/** Edit a read cell: with `path`, the piece of the source that subterm was written as is selected,
- *  or, to replace it (`hole`), taken out and left as an empty slot with the caret in it; with `span`,
- *  those characters are selected. */
-function startTyping(cell: Cell, at: { path?: string; span?: Span; hole?: boolean } = {}) {
-  document.querySelectorAll(".mi-hov.pick").forEach((o) => o.remove());
+/** Edit a read cell: at `point`, the caret where a click there puts it; with `path`, the caret just
+ *  after the piece of the source that subterm was written as, or, to replace it (`hole`), the piece
+ *  taken out and left as an empty slot with the caret in it. */
+function startTyping(cell: Cell, at: { path?: string; hole?: boolean; point?: { x: number; y: number } } = {}) {
   const node = at.path ? spansOf(cell)?.get(at.path) : null;
-  const span = at.hole ? node?.outer : at.path === "root" ? null : node?.inner ?? at.span;
+  const span = at.hole ? node?.outer : at.path === "root" ? null : node?.inner;
   cell.typing = true;
   if (!cell.mi) refreshInput(cell);
   syncReading(cell);
   const mi = cell.mi;
   if (!mi) return;
-  mi.focus();
-  if (span && !(at.hole && mi.holeSpan(span))) mi.selectSpan(span);
+  mi.focus(!at.point);
+  if (at.point) mi.caretToPoint(at.point.x, at.point.y);
+  else if (span && at.hole) { if (!mi.holeSpan(span)) mi.selectSpan(span); }
+  else if (span) mi.caretAfterSpan(span);
 }
 
 /** A run is over: a typeset cell that was being typed in is read again, if it ran as it is. */
@@ -4055,7 +4065,8 @@ function stopTyping(cell: Cell) {
 
 function editToggle(cell: Cell): HTMLElement {
   const b = asButton(h("span", "readedit", "✎ Edit"), "Edit this cell");
-  b.title = "Edit the input (double-click it, or Enter)";
+  b.dataset["fixed"] = "";
+  b.title = "Edit the input (click it, or Enter)";
   if (!cell.mi?.reading) b.style.display = "none";
   b.addEventListener("mousedown", (e) => e.preventDefault());
   b.addEventListener("click", () => startTyping(cell));
@@ -4085,31 +4096,52 @@ function spansOf(cell: Cell): Map<string, TermSpan> | null {
 }
 
 /** The toolbar over the piece hovered: what it is in the source, and edit, replace, delete, and the
- *  subterm around it (an operator's operands cover it: ⤴ reaches the sum a term is in). */
-const TB = { el: null as HTMLElement | null, cell: null as Cell | null, path: "", hide: 0 };
+ *  subterm around it (an operator's operands cover it: ⤴ reaches the sum a term is in). It opens once
+ *  the pointer rests on a piece, as signature help does, and moves to another piece only once the
+ *  pointer rests there: on its way to the toolbar it crosses the pieces between without moving it.
+ *  `want` is the piece it is waiting to open over. */
+const TB = { el: null as HTMLElement | null, cell: null as Cell | null, path: "", hide: 0, show: 0, want: null as { cell: Cell; path: string } | null };
+const TOKBAR_DELAY = 450, TOKBAR_LINGER = 300;
 function tokbarEl(): HTMLElement {
   if (TB.el) return TB.el;
   const el = h("div", "tokbar");
   el.setAttribute("role", "toolbar"); el.setAttribute("aria-label", "Subterm");
-  el.addEventListener("mouseenter", () => window.clearTimeout(TB.hide));
+  el.addEventListener("mouseenter", () => { window.clearTimeout(TB.hide); window.clearTimeout(TB.show); TB.want = null; });
   el.addEventListener("mouseleave", hideTokbarSoon);
   el.addEventListener("mousedown", (e) => e.preventDefault());
   document.body.append(el);
   TB.el = el;
   return el;
 }
-function hideTokbarSoon() { window.clearTimeout(TB.hide); TB.hide = window.setTimeout(hideTokbar, 220); }
-function hideTokbar() {
+/** The pointer is over `path` of a read cell (null: over no piece of one). */
+function hoverPiece(cell: Cell, path: string | null) {
+  if (path && TB.el && TB.cell === cell && TB.path === path) { window.clearTimeout(TB.hide); window.clearTimeout(TB.show); TB.want = null; return; }
+  if (path && TB.want?.cell === cell && TB.want.path === path) return;
+  window.clearTimeout(TB.show); TB.want = null;
+  if (!path) { if (TB.el) hideTokbarSoon(); return; }
+  // a toolbar already open stays until the pointer rests here (it may be on its way up to it)
+  window.clearTimeout(TB.hide);
+  TB.want = { cell, path };
+  TB.show = window.setTimeout(() => { TB.want = null; showTokbar(cell, path); }, TOKBAR_DELAY);
+}
+/** Take the toolbar away in a moment, unless the pointer comes back to it or its piece. */
+function hideTokbarSoon() { window.clearTimeout(TB.hide); TB.hide = window.setTimeout(dropTokbar, TOKBAR_LINGER); }
+function dropTokbar() {
   window.clearTimeout(TB.hide);
   TB.el?.remove(); TB.el = null; TB.cell = null; TB.path = "";
-  document.querySelectorAll(".mi-hov:not(.pick)").forEach((o) => o.remove());
+  document.querySelectorAll(".mi-hov").forEach((o) => o.remove());
+}
+/** No toolbar, and none on its way. */
+function hideTokbar() {
+  window.clearTimeout(TB.show); TB.want = null;
+  dropTokbar();
 }
 
 function showTokbar(cell: Cell, path: string) {
-  window.clearTimeout(TB.hide);
+  window.clearTimeout(TB.hide); window.clearTimeout(TB.show); TB.want = null;
   if (TB.el && TB.cell === cell && TB.path === path) return;
   const spans = spansOf(cell), node = spans?.get(path), mi = cell.mi;
-  if (!node?.inner || !mi) return;
+  if (!node?.inner || !mi?.reading) return;
   const box = outline(mi, node.inner);
   if (!box) return;
   TB.cell = cell; TB.path = path;
@@ -4127,9 +4159,9 @@ function showTokbar(cell: Cell, path: string) {
     return b;
   };
   const parent = node.parent ? spans!.get(node.parent) : null;
-  btn("⤴", "Select the subterm around this one", () => { if (parent) showTokbar(cell, parent.path); }, !parent?.inner);
+  btn("⤴", "Select the subterm around this one", () => { if (parent) showTokbar(cell, parent.path); }, !parent?.inner || parent.path === "root");
   bar.append(h("span", "tbsep"));
-  btn("✎ Edit", "Edit this piece in the visual input", () => startTyping(cell, { path }));
+  btn("✎ Edit", "Edit the input, the caret after this piece", () => startTyping(cell, { path }));
   btn("⇄ Replace", "Take this piece out and type what goes in its place", () => startTyping(cell, { path, hole: true }), !node.outer);
   btn("✕ Delete", "Delete this piece (and the operator joining it to its neighbour)", () => {
     const next = deleteTerm(cell.src, spans!, path);
@@ -4328,6 +4360,7 @@ function buildCell(host: HTMLElement, cell: Cell, i: number) {
   const acts = h("div", "cellacts");
   acts.append(editToggle(cell), modeToggle(cell));
   const run = asButton(h("span", undefined, "▶ Run")); run.title = "Run this cell";
+  run.dataset["fixed"] = "";
   run.addEventListener("mousedown", (e) => e.preventDefault());
   run.addEventListener("click", () => void runCell(cell));
   acts.append(run);
@@ -5027,10 +5060,10 @@ function renderCellBody(cell: Cell) {
   if (S.sel?.cellId === cell.id) markSelection(); else remarkGraphs(cell);
   renderStale(cell);
 
-  // per-cell actions beyond Run exist only once there is output
+  // per-cell actions beyond Edit, Visual/Text and Run (the row's fixed buttons) exist only once there is output
   const acts = el.querySelector(".cellacts")!;
   if (exercise) { exerciseActs(cell, acts); return; }
-  while (acts.childElementCount > 1) acts.lastElementChild!.remove();
+  for (const b of [...acts.children]) if (!("fixed" in (b as HTMLElement).dataset)) b.remove();
   if (workCount(cell) && cell.stepwise === undefined) {
     const tw = asButton(h("span", undefined, cell.showWork ? "▾ Hide work" : `▸ Work (${workCount(cell)})`));
     tw.setAttribute("aria-expanded", String(cell.showWork));
@@ -5326,28 +5359,44 @@ function renderExercise(cell: Cell) {
   if (cell.prompt?.trim()) box.append(mdRender(cell.prompt));
   if (!cell.hideQuestion || !cell.prompt?.trim()) {
     const q = h("div", "xc-q");
+    q.dataset["src"] = cell.src;
     if (cell.echoLatex) q.innerHTML = tex(cell.echoLatex, true);
     else q.append(h("code", "xc-src", cell.src || "No question yet: ⋮ › Edit exercise"));
     box.append(q);
   }
   const row = h("div", "xc-row");
+  const form = answerForm(cell);
   const inp = document.createElement("input");
   inp.className = "xc-in"; inp.type = "text"; inp.spellcheck = false; inp.autocomplete = "off";
-  inp.value = cell.attempt ?? ""; inp.placeholder = "Your answer, typed as in a cell";
+  inp.value = cell.attempt ?? ""; inp.placeholder = form.placeholder;
   inp.setAttribute("aria-label", "Your answer");
   const check = () => {
+    // a `\or` typed last, with no space after it, is the symbol too
+    if (expandSymbols(inp.value) !== inp.value) inp.value = expandSymbols(inp.value);
     cell.attempt = inp.value;
     if (!inp.value.trim()) return;
     CHECK_NOW.add(cell); void runCell(cell);
   };
   inp.addEventListener("input", () => { cell.attempt = inp.value; box.querySelector(".xc-verdict")?.classList.add("old"); typed(); });
   inp.addEventListener("keydown", (ev) => {
+    // `\or`, `\not`, `\to` … then a space (or Tab) becomes the symbol, as in a cell
+    if (ev.key === " " || ev.key === "Tab") {
+      const caret = inp.selectionStart ?? inp.value.length, before = inp.value.slice(0, caret), m = SYMBOL_RE.exec(before);
+      if (m) {
+        ev.preventDefault();
+        const sym = symbolFor(m[1]!), at = caret - m[0].length + sym.length + (ev.key === " " ? 1 : 0);
+        inp.value = before.slice(0, caret - m[0].length) + sym + (ev.key === " " ? " " : "") + inp.value.slice(caret);
+        inp.setSelectionRange(at, at);
+        cell.attempt = inp.value; typed();
+        return;
+      }
+    }
     if (ev.key === "Enter") { ev.preventDefault(); check(); }
     if (ev.key === "ArrowDown" && i < S.cells.length - 1) { ev.preventDefault(); focusCell(i + 1); }
     if (ev.key === "ArrowUp" && i > 0) { ev.preventDefault(); focusCell(i - 1); }
   });
   row.append(inp, exBtn("Check", "Check the answer (Enter)", check, "xc-btn primary"));
-  box.append(row);
+  box.append(row, howTo(form.note));
   const v = cell.verdict;
   if (v) {
     const out = h("div", `xc-verdict ${v.equivalent ? "right" : "wrong"}`);
@@ -5359,7 +5408,11 @@ function renderExercise(cell: Cell) {
       const wid = cellWorld(cell.src);
       const world = wid === "logic" ? "logic" : wid ? "order" : "math";
       const m = h("span", "xc-math"); m.innerHTML = tex((v.equivalent || world !== "math" ? v.answerLatex : v.normalLatex) ?? "");
-      const [before, after] = v.equivalent
+      // sat and falsify take any assignment that works, so the answer is held to the formula, not to one row
+      const head = /^\s*(sat|falsify)\s*\(/.exec(cell.src)?.[1];
+      const [before, after] = world === "logic" && head
+        ? v.equivalent ? [" Correct: ", ` makes the formula ${head === "sat" ? "true" : "false"}.`] : [" Not yet: ", ` does not make the formula ${head === "sat" ? "true" : "false"}.`]
+        : v.equivalent
         ? world === "logic" ? [" Correct: ", " agrees with the answer on every row of the truth table."]
         : world === "order" ? [" Correct: ", " is the answer."]
         : [" Correct: ", " reduces to the answer's normal form."]
@@ -5368,17 +5421,86 @@ function renderExercise(cell: Cell) {
         : [" Not yet: your answer reduces to ", ", which is not the answer's normal form."];
       out.append(h("span", "xc-mark", v.equivalent ? "✓" : "✗"), document.createTextNode(before), m, document.createTextNode(after));
     }
+    // a wrong answer is where a hint helps: the next one is offered there
+    const hints = cell.hints ?? [], shown = Math.min(cell.hintsShown ?? 0, hints.length);
+    if (!v.equivalent && shown < hints.length) {
+      out.append(document.createTextNode(" "), exBtn(shown ? "Another hint" : "Take a hint", "Open the next hint", () => { cell.hintsShown = shown + 1; renderCellBody(cell); autosave(); }, "xc-btn xc-inline"));
+    }
     box.append(out);
   }
   appendHints(cell, box);
   const tools = h("div", "xc-tools");
   appendHintButton(cell, tools);
+  const topic = topicOf(cell.practice);
+  if (topic) tools.append(exBtn("↻ Another one", `A new question of the same kind (${topic.title})`, () => void practiseAgain(cell)));
+  if (cell.original) tools.append(exBtn("↺ Original", "Back to the exercise as it was written", () => restoreOriginal(cell)));
   tools.append(exBtn(cell.solution ? "Hide the solution" : "Show the solution", cell.solution ? "Hide the worked solution" : "Step through the worked solution: the engine's own work on the question", () => {
     cell.solution = !cell.solution;
     if (cell.solution) { cell.showWork = true; if (cell.stepwise === undefined) cell.stepwise = 0; if (!cell.outLatex && !cell.error) void runCell(cell); }
     renderCellBody(cell); renderSidebar(); autosave();
   }));
   box.append(tools);
+}
+/** Forget what the reader did with an exercise's question: their answer, the hints open, the verdict,
+ *  the solution and the question's value. */
+function freshQuestion(cell: Cell) {
+  clearResult(cell);
+  delete cell.attempt; delete cell.hintsShown; delete cell.verdict; delete cell.solution; delete cell.stepwise;
+}
+/** Put a new question of the exercise's topic in place of the one there (the author's is kept in
+ *  `original`): a seed not tried yet, and another if the engine cannot answer it. */
+async function practiseAgain(cell: Cell) {
+  const topic = topicOf(cell.practice); if (!topic) return;
+  cell.original ??= { src: cell.src, ...(cell.prompt ? { prompt: cell.prompt } : {}), ...(cell.hints?.length ? { hints: cell.hints } : {}), ...(cell.hideQuestion ? { hideQuestion: true } : {}) };
+  for (let tries = 0; tries < 4; tries++) {
+    let q = generatePractice(topic.id, Math.floor(Math.random() * 2 ** 31))!;
+    for (let k = 0; k < 8 && q.src === cell.src; k++) q = generatePractice(topic.id, Math.floor(Math.random() * 2 ** 31))!;
+    freshQuestion(cell);
+    cell.src = q.src; cell.prompt = q.prompt;
+    if (q.hints?.length) cell.hints = q.hints; else delete cell.hints;
+    if (q.hideQuestion) cell.hideQuestion = true; else delete cell.hideQuestion;
+    renderCellBody(cell); renderSidebar(); autosave();
+    await runCell(cell);
+    if (!cell.error) break;
+  }
+  cell.el?.querySelector<HTMLElement>(".xc-in")?.focus();
+}
+/** Put the author's question back. */
+function restoreOriginal(cell: Cell) {
+  const o = cell.original; if (!o) return;
+  freshQuestion(cell);
+  cell.src = o.src;
+  if (o.prompt) cell.prompt = o.prompt; else delete cell.prompt;
+  if (o.hints?.length) cell.hints = o.hints; else delete cell.hints;
+  if (o.hideQuestion) cell.hideQuestion = true; else delete cell.hideQuestion;
+  delete cell.original;
+  renderCellBody(cell); renderSidebar(); autosave();
+  void runCell(cell);
+}
+/** How an exercise's answer is typed, from the head of its question: the placeholder of its box and
+ *  a line under it. Presentation only, as a cell's kind label is: the engine decides what is right. */
+function answerForm(cell: Cell): { placeholder: string; note: string } {
+  const head = /^\s*([A-Za-z]+)\s*\(/.exec(cell.src)?.[1] ?? "";
+  const glyphs = "Type ∧ ∨ ¬ → ↔ as `\\and` `\\or` `\\not` `\\to` `\\iff` and a space, or as `&&` `||` `!` `->` `<->`.";
+  const wid = cellWorld(cell.src);
+  if (wid === "logic") {
+    if (head === "sat" || head === "falsify") return { placeholder: "an assignment: {p = true, q = false}, or p && !q",
+      note: `An assignment that ${head === "sat" ? "makes the formula true" : "makes the formula false"}: a map such as \`{p = true, q = false}\` or a conjunction of literals such as \`p && !q\`, or \`false\` if there is none. ${glyphs}` };
+    if (head === "taut" || head === "equiv") return { placeholder: "true or false", note: "`true` or `false` (or ⊤, ⊥)." };
+    if (head === "nnf" || head === "cnf" || head === "dnf") return { placeholder: `a formula in ${head.toUpperCase()}`,
+      note: `A formula with the same truth table, written in ${head === "nnf" ? "negation normal form" : head === "cnf" ? "conjunctive normal form" : "disjunctive normal form"}. ${glyphs}` };
+    return { placeholder: "a formula, such as p && !q", note: `A formula; any formula with the right truth table is right. ${glyphs}` };
+  }
+  if (/^\s*(infer|type)\s*:/.test(cell.src)) return { placeholder: "a type, such as a -> b -> a", note: "A type: `a -> b -> a`, or with glyphs α → β → α (`\\to` and a space types →). Any names for the type variables will do." };
+  if (wid === "lambda" || cell.kind === "λ-term") return { placeholder: "a λ-term, such as \\x. x", note: "A λ-term in normal form, written as in a cell: `\\x. x` or `λx. x` (`\\lam` and a space types λ). The names of bound variables do not matter." };
+  if (wid) return { placeholder: "your answer, typed as in a cell", note: "Typed as in a cell of this kind. `\\` then a name and a space types a symbol (`\\le` ≤, `\\in` ∈)." };
+  return { placeholder: "your answer, such as 2*x*cos(x)", note: "An expression, typed as in a math cell: `2*x*cos(x)`, `x^2/2`, `sqrt(x)`; it is right when it simplifies to the same normal form as the answer. `\\` then a name and a space types a symbol (`\\pi` π, `\\theta` θ)." };
+}
+/** A line of how-to under an answer box: `code` spans as code. */
+function howTo(note: string): HTMLElement {
+  const el = h("div", "xc-howto");
+  note.split("`").forEach((part, k) => { if (part) el.append(k % 2 ? h("code", undefined, part) : document.createTextNode(part)); });
+  return el;
 }
 /** A Lean exercise: the prompt and the statement above the reader's proof (an editor of the notebook's
  *  Lean file), and below it what Lean says, the verdict, the hints and the author's proof. */
@@ -5460,6 +5582,29 @@ function exerciseEditor(cell: Cell): HTMLElement {
   hints.rows = 2; hints.value = (cell.hints ?? []).join("\n\n"); hints.placeholder = "Which rule applies to a product?\n\nThe product rule: (fg)′ = f′g + fg′.";
   hints.addEventListener("input", () => { cell.hints = hints.value.split(/\n\s*\n/).map((x) => x.trim()).filter(Boolean); grow(hints); });
   field("Hints", hints, "Opened one at a time, in order; a blank line between two hints.");
+  // a practice topic: the reader can ask for another question of its kind; Generate writes one here
+  const topicSel = document.createElement("select");
+  topicSel.className = "xc-topic";
+  topicSel.append(new Option("None", ""));
+  for (const area of [...new Set(TOPICS.map((t) => t.area))]) {
+    const g = document.createElement("optgroup"); g.label = area;
+    for (const t of TOPICS.filter((x) => x.area === area)) g.append(new Option(t.title, t.id, false, t.id === cell.practice));
+    topicSel.append(g);
+  }
+  const gen = exBtn("Generate a question", "Write a question of this topic into the exercise: its prompt, question and hints", () => {
+    const t = topicOf(topicSel.value); if (!t) return;
+    const g = generatePractice(t.id, Math.floor(Math.random() * 2 ** 31))!;
+    q.value = cell.src = g.src; prompt.value = cell.prompt = g.prompt; hints.value = (cell.hints = g.hints ?? []).join("\n\n");
+    show.checked = !g.hideQuestion; if (g.hideQuestion) cell.hideQuestion = true; else delete cell.hideQuestion;
+    grow(prompt); grow(hints); renderSidebar();
+  });
+  gen.style.display = cell.practice ? "" : "none";
+  topicSel.addEventListener("change", () => { if (topicSel.value) cell.practice = topicSel.value; else delete cell.practice; gen.style.display = cell.practice ? "" : "none"; });
+  // a row of its own, not a label: a click on Generate is not a click on the list
+  const pick = h("div", "xc-field"), row = h("div", "xc-topicrow");
+  row.append(topicSel, gen);
+  pick.append(h("span", "xc-flabel", "Practice"), row, h("span", "xc-fhint", "A topic gives the reader ↻ Another one: a new question of its kind, written by the topic's generator and answered by the engine."));
+  f.append(pick);
   const show = document.createElement("input");
   show.type = "checkbox"; show.checked = !cell.hideQuestion;
   show.addEventListener("change", () => { if (show.checked) delete cell.hideQuestion; else cell.hideQuestion = true; });
@@ -5507,6 +5652,8 @@ function finishExerciseEdit(cell: Cell) {
   cell.src = cellSrc(cell);
   cell.editing = false;
   if (cell.src !== was || !cell.echoLatex) { delete cell.verdict; delete cell.solution; }
+  // what the editor shows is the question now: the author's own, whatever it was generated from
+  delete cell.original;
   renderCellBody(cell); renderSidebar(); autosave();
   if (cell.src.trim()) void runCell(cell);
 }
