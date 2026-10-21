@@ -711,9 +711,21 @@ lesson `#course=<id>&lesson=<n>` (from 1): the page's address follows the course
 (`history.replaceState`, so moving about adds nothing to the back button), and the link opens it when
 the page loads with it or when it is entered into the address bar. Unlike `#nb=`, it names the
 course rather than carrying it, so it stays short and opens the course as it is now. The lessons are built from
-what the shell offers for teaching: exercise cells (checked by `engine.check`, §3), steps held back
+what the shell offers for teaching: exercise cells (checked by `engine.check`, §3; one with a practice
+topic offers another question of its kind, below), steps held back
 to be revealed one at a time, sliders on `let n = number` that re-run the cells out of date because of
 them, and Markdown callouts. Every lesson's answers are pinned in `notebooks/golden/` and checked in CI.
+
+**Practice.** An exercise can name a topic (`practice`, `src/practice.ts`), and then offers ↻ Another one:
+a new question of its kind in place of the author's, which is kept (`original`) and put back by ↺ Original.
+Each topic is a generator of its own, seeded: it writes the source an author would have typed, with a prompt
+and hints, and never an answer, which is the engine's as for any exercise. A generator may work backwards
+from the question it wants (a system of equations from the solution it should have, a knights-and-knaves
+puzzle kept only when one assignment solves it), but what the reader is told is right is `engine.check`'s.
+`test/practice.test.mjs` sends every topic's questions for many seeds to the native engine: each must have
+an answer, and that answer typed back must be checked right. The courses name a topic for their exercises
+in `PRACTICE` (`mk-courses.mjs`). Only the areas whose questions stand alone have topics; an exercise on a
+system or an order defined earlier in its lesson has none.
 
 **Help › Documentation** opens a tab: a guide to the notebook (cells, input,
 reading the work, files, lookups and their set-up, Lean cells, the studio) and the reference pages.

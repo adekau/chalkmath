@@ -180,6 +180,7 @@
       "hints": [
         "Application groups left: first $(\\lambda x.\\, \\lambda y.\\, y)\\ a$, which throws $a$ away."
       ],
+      "practice": "lambda.beta",
       "showWork": false,
       "label": null
     },
@@ -190,6 +191,7 @@
       "hints": [
         "Put $\\lambda x.\\, x$ for $f$, then reduce again."
       ],
+      "practice": "lambda.beta",
       "showWork": false,
       "label": null
     },
@@ -200,6 +202,7 @@
       "hints": [
         "$x$ is replaced by $\\lambda y.\\, y$ twice: $(\\lambda y.\\, y)\\ (\\lambda y.\\, y)$."
       ],
+      "practice": "lambda.beta",
       "showWork": false,
       "label": null
     },

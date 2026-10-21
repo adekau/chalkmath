@@ -10,6 +10,29 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 const r = String.raw;
 const code = (text) => text.replace(/‹([^‹›\n]*)›/g, "`$1`").trim();
 
+/** Exercises that offer more of their kind (↻ Another one): question → practice topic
+ *  (apps/notebook/src/practice.ts; `practice.test.mjs` holds every topic named here to one there). */
+const PRACTICE = {
+  "taut(p → (q → p))": "logic.taut", "taut((p → q) → (¬p → ¬q))": "logic.taut",
+  "falsify((p → q) → p)": "logic.falsify", "equiv(¬(p → q), p ∧ ¬q)": "logic.equiv",
+  "sat((a ↔ ¬b) ∧ (b ↔ (a ↔ b)))": "logic.knights", "sat(a ↔ (¬a ∧ ¬b))": "logic.knights",
+  "nnf(¬(p ∨ ¬q))": "logic.nnf", "nnf(p → q)": "logic.nnf", "cnf((p ∧ q) ∨ r)": "logic.cnf", "cnf(¬(p ∧ q) ∧ (p ∨ q))": "logic.cnf",
+  "dnf(p ∧ (q ∨ r))": "logic.dnf", "dnf((p ∧ q) ∨ (q ∧ r) ∨ (p ∧ r))": "logic.dnf",
+  "diff(x^3, x)": "calculus.power", "diff(x^4 - 5x^2 + 2, x)": "calculus.power",
+  "diff(x^3 * cos(x), x)": "calculus.product", "diff(exp(x) * cos(x), x)": "calculus.product",
+  "diff(cos(x^3), x)": "calculus.chain", "diff(exp(x^2), x)": "calculus.chain", "diff((x^2 + 1)^3, x)": "calculus.chain",
+  "subst(diff(x^2, x), x, 3)": "calculus.slope",
+  "integrate(4x^3, x)": "calculus.antiderivative", "integrate(cos(3x), x)": "calculus.antiderivative",
+  "integrate(x, x, 0, 2)": "calculus.definite", "integrate(x^2, x, 1, 3)": "calculus.definite",
+  "dot([1, 2, 3], [4, 5, 6])": "linear-algebra.dot", "[2, -1; 1, 1]*[3; -1]": "linear-algebra.matvec",
+  "[0, -1; 1, 0]*[0, -1; 1, 0]": "linear-algebra.matmul", "[1, 2; 3, 4]*[0, 1; 1, 0]": "linear-algebra.matmul",
+  "rref([2, 4, 6; 1, 3, 4])": "linear-algebra.rref", "rref([3, 1, 5; 1, 2, 5])": "linear-algebra.rref",
+  "det([2, 1; 5, 3])": "linear-algebra.det2", "det([3, 6; 1, 2])": "linear-algebra.det2", "det([1, 0, 0; 0, 2, 0; 0, 0, 3])": "linear-algebra.det3",
+  "(λx. λy. y) a b": "lambda.beta", "(λf. f a) (λx. x)": "lambda.beta", "(λx. x x) (λy. y)": "lambda.beta",
+  "or false (not false)": "lambda.church",
+  "infer: λx. λy. y": "lambda.infer", "infer: λf. λg. λx. g (f x)": "lambda.infer", "infer: λx. λf. f x": "lambda.infer",
+};
+
 /** A lesson being written: its cells, added in order. */
 function lesson() {
   const cells = [];
@@ -26,7 +49,7 @@ function lesson() {
     /** An exercise: the question (its value is the answer), the prompt, the hints. */
     ex: (question, prompt, hints = [], o = {}) => cells.push({
       src: question, type: "exercise", prompt: code(prompt), ...(hints.length ? { hints: hints.map(code) } : {}),
-      ...(o.hide ? { hideQuestion: true } : {}), showWork: false, label: null,
+      ...(o.hide ? { hideQuestion: true } : {}), ...(PRACTICE[question] ? { practice: PRACTICE[question] } : {}), showWork: false, label: null,
     }),
     /** A Lean cell. */
     lean: (src) => cells.push({ src, type: "lean", showWork: false, label: null }),
@@ -6724,6 +6747,10 @@ const manifest = {
       ] },
   ],
 };
+// a practice topic for a question no lesson asks is a table out of date
+const asked = new Set(courses.flatMap((c) => c.lessons.flatMap((l) => l.cells.filter((x) => x.type === "exercise").map((x) => x.src))));
+const unused = Object.keys(PRACTICE).filter((q) => !asked.has(q));
+if (unused.length) throw new Error(`PRACTICE names questions no lesson asks: ${unused.join(" | ")}`);
 for (const c of courses) {
   const dir = new URL(`../../notebooks/courses/${c.id}/`, import.meta.url);
   mkdirSync(dir, { recursive: true });

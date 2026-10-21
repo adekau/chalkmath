@@ -746,6 +746,32 @@ async function features() {
   }, [lxI, xtyped], { timeout: 30000 }).catch(() => assert.fail("the answer typed with backslash names was not checked right"));
   assert.equal((await reference.call("engine.check", { sessionId: "e2e-features", cellId: "lq", source: lq, answer: xtyped })).equivalent, true);
   console.log(`✓ exercise answer: what is wanted said under the box; ${xtyped} typed with backslash names, and right`);
+  // practice: an exercise with a topic has its question written by the topic's generator, offers
+  // another, answered with the engine's value, and puts the author's back
+  await menu("Edit", "Add exercise");
+  const pxI = await all().count() - 1;
+  const px = all().nth(pxI);
+  await px.locator("select.xc-topic").selectOption("linear-algebra.det2");
+  await px.locator(".xc-btn", { hasText: "Generate a question" }).click();
+  const authored = await px.locator(".xc-qin").inputValue();
+  assert.match(authored, /^det\(\[-?\d+, -?\d+; -?\d+, -?\d+\]\)$/, `Generate wrote ${authored}`);
+  await px.locator(".xc-qin").press("Enter");
+  await px.locator(`.xc-q[data-src="${authored}"] .katex`).waitFor({ timeout: 30000 });
+  await px.locator(".xc-btn", { hasText: "Another one" }).click();
+  await page.waitForFunction(([k, a]) => {
+    const c = document.querySelectorAll(".cell")[k], q = c?.querySelector(".xc-q");
+    return !c.classList.contains("running") && q?.querySelector(".katex") && q.dataset.src !== a;
+  }, [pxI, authored], { timeout: 30000 }).catch(() => assert.fail("Another one did not put another question"));
+  const practised = await px.locator(".xc-q").getAttribute("data-src");
+  const pwant = await reference.call("engine.check", { sessionId: "e2e-features", cellId: "px", source: practised });
+  assert.ok(pwant.ok, `the engine cannot answer ${practised}`);
+  assert.equal(flat(await px.locator(".xc-q .katex-mathml annotation").textContent()), flat(pwant.inputRendered.latex), "the practice question is not shown as the engine reads it");
+  await px.locator(".xc-in").fill(pwant.rendered.text); await px.locator(".xc-in").press("Enter");
+  await px.locator(".xc-verdict.right:not(.old)").waitFor({ timeout: 30000 }).catch(() => assert.fail(`the engine's value ${pwant.rendered.text} was not right for ${practised}`));
+  await px.locator(".xc-btn", { hasText: "Original" }).click();
+  await px.locator(`.xc-q[data-src="${authored}"] .katex`).waitFor({ timeout: 30000 }).catch(() => assert.fail("↺ Original did not put the authored question back"));
+  assert.equal(await px.locator(".xc-in").inputValue(), "", "the answer to the practice question stayed");
+  console.log(`✓ practice: ${authored} generated, ${practised} next and answered ${pwant.rendered.text}, the original back`);
   // the connectives typed as backslash names: each becomes its glyph at the space after it
   await menu("Edit", "Add math cell");
   const bk = await all().count() - 1;

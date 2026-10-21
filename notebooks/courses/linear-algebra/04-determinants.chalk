@@ -228,6 +228,7 @@
       "hints": [
         "$ad - bc$ with $a = 2,\\ b = 1,\\ c = 5,\\ d = 3$."
       ],
+      "practice": "linear-algebra.det2",
       "showWork": false,
       "label": null
     },
@@ -238,6 +239,7 @@
       "hints": [
         "Is one column a multiple of the other?"
       ],
+      "practice": "linear-algebra.det2",
       "showWork": false,
       "label": null
     },
@@ -260,6 +262,7 @@
       "hints": [
         "It stretches the unit cube into a box, $1$ by $2$ by $3$."
       ],
+      "practice": "linear-algebra.det3",
       "showWork": false,
       "label": null
     },

@@ -189,9 +189,13 @@ Type an answer in the box as you would in a cell (‹2x sin(x) + x^2 cos(x)›) 
 
 **Hint** opens the author's hints one at a time. **Show the solution** steps through the engine's own work on the question, one step at a time, with the answer last ([Stepping through](#doc:work)).
 
+## Practice
+
+Many of the courses' exercises have a **topic**, and offer **↻ Another one**: a new question of the same kind, with its own prompt and hints, as many as you like. A topic's questions are written by a generator, the engine answers and checks them as it does every exercise, and **↺ Original** puts the author's question back. The topics are logic (tautologies, equivalence, satisfying assignments and counterexamples, the normal forms, knights and knaves), calculus (the power, product and chain rules, slopes, antiderivatives, definite integrals, complex products), linear algebra (dot products, matrix products, determinants, 2×2 systems) and the λ-calculus (β-reduction, Church numerals and booleans, type inference).
+
 ## Writing one
 
-Add an exercise from Edit › Add exercise or the ‹▾› between cells. Its editor has a **prompt** (Markdown, what the reader is asked to do), the **question**, and **hints** (a blank line between two). The question is shown typeset under the prompt unless you untick that, for a prompt that says it in words ("the slope of $x^3$ at $x = 2$" for ‹subst(diff(x^3, x), x, 2)›). **✎ Edit** opens the editor again; **✓ Done** (or Shift+Enter) closes it.
+Add an exercise from Edit › Add exercise or the ‹▾› between cells. Its editor has a **prompt** (Markdown, what the reader is asked to do), the **question**, and **hints** (a blank line between two). The question is shown typeset under the prompt unless you untick that, for a prompt that says it in words ("the slope of $x^3$ at $x = 2$" for ‹subst(diff(x^3, x), x, 2)›). **Practice** gives the exercise a topic, and so ↻ Another one; **Generate a question** fills in a question of that topic, with its prompt and hints, to keep or change. **✎ Edit** opens the editor again; **✓ Done** (or Shift+Enter) closes it.
 
 An exercise is not an evaluation: it takes no ‹In[n]› and ‹%› still means the cell before it. It sees the names defined above it, so a question can use them.
 

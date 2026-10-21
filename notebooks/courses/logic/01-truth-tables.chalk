@@ -246,6 +246,7 @@
       "hints": [
         "The only way an implication fails is a true premise and a false conclusion. Can $q \\to p$ be false while $p$ is true?"
       ],
+      "practice": "logic.taut",
       "showWork": false,
       "label": null
     },
@@ -256,6 +257,7 @@
       "hints": [
         "Look for $p$ false and $q$ true."
       ],
+      "practice": "logic.taut",
       "showWork": false,
       "label": null
     },
@@ -266,6 +268,7 @@
       "hints": [
         "The conclusion $p$ has to be false. What does that make $p \\to q$?"
       ],
+      "practice": "logic.falsify",
       "showWork": false,
       "label": null
     },
@@ -276,6 +279,7 @@
       "hints": [
         "$p \\to q$ is false in exactly one row."
       ],
+      "practice": "logic.equiv",
       "showWork": false,
       "label": null
     },
@@ -330,6 +334,7 @@
         "So Bob is a knave: $b$ is false. Then what he says is false, so $a \\leftrightarrow b$ is false, and $a$ is not $b$."
       ],
       "hideQuestion": true,
+      "practice": "logic.knights",
       "showWork": false,
       "label": null
     },
@@ -342,6 +347,7 @@
         "Could Ann be a knight? Then \"we are both knaves\" would be true, and she would be a knave."
       ],
       "hideQuestion": true,
+      "practice": "logic.knights",
       "showWork": false,
       "label": null
     },

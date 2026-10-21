@@ -184,6 +184,7 @@
         "The slope is the derivative, $2x$, at $x = 3$."
       ],
       "hideQuestion": true,
+      "practice": "calculus.slope",
       "showWork": false,
       "label": null
     },

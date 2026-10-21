@@ -148,6 +148,7 @@
         "The outer function is $\\cos u$, the inner $u = x^3$.",
         "$(\\cos u)' = -\\sin u$ and $(x^3)' = 3x^2$."
       ],
+      "practice": "calculus.chain",
       "showWork": false,
       "label": null
     },
@@ -158,6 +159,7 @@
       "hints": [
         "The outer function is $e^u$, whose derivative is itself."
       ],
+      "practice": "calculus.chain",
       "showWork": false,
       "label": null
     },
@@ -169,6 +171,7 @@
         "The outer function is $u^3$, the inner $u = x^2 + 1$.",
         "Factored or multiplied out, either form is right: the check compares normal forms."
       ],
+      "practice": "calculus.chain",
       "showWork": false,
       "label": null
     },
