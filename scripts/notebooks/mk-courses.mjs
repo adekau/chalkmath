@@ -182,11 +182,21 @@ course("logic", "Logic and proof technique",
     sec("Knights and knaves");
     md(r`
 > [!example] A puzzle as a satisfiability question
-> On an island, knights always tell the truth and knaves always lie. $A$ says "$B$ is a knave". $B$ says "$A$ and I are of the same kind". Let $a$ mean "$A$ is a knight" and $b$ mean "$B$ is a knight". What a knight says is true and what a knave says is false, so each statement is equivalent to its speaker being a knight: $a \leftrightarrow \lnot b$ and $b \leftrightarrow (a \leftrightarrow b)$.
+> On an island, every person is either a **knight**, who always tells the truth, or a **knave**, who always lies. Each person is one or the other on their own: two people can both be knights, both be knaves, or one of each. You meet Ann and Bob. Ann says "Bob is a knave". Bob says "Ann and I are of the same kind".
 `);
-    ex("sat((a ↔ ¬b) ∧ (b ↔ (a ↔ b)))", r`Who is a knight and who is a knave? Answer with an assignment to $a$ and $b$, such as ‹{a ↦ true, b ↦ false}›.`, [
-      r`Try $b$ true: then $a \leftrightarrow b$ must be true, so $a$ is true. Does $a \leftrightarrow \lnot b$ hold?`,
-      r`So $b$ is false. Then $a \leftrightarrow b$ must be false.`,
+    md(r`To put the puzzle to ‹sat›, give each person a variable: $a$ means "Ann is a knight" and $b$ means "Bob is a knight", so $\lnot a$ means "Ann is a knave". Then each statement becomes a formula in two steps.`);
+    md(r`
+1. **What is said, as a formula.** "Bob is a knave" is $\lnot b$. "Ann and I are of the same kind" says that both are knights or both are knaves, which is $a \leftrightarrow b$.
+2. **Tied to the speaker.** If Ann is a knight, what she says is true; if she is a knave, it is false. Either way, what she says is true exactly when she is a knight: $a \leftrightarrow \lnot b$. In the same way, Bob's statement gives $b \leftrightarrow (a \leftrightarrow b)$.
+`);
+    md(r`Every assignment that makes both formulas true is a way the island could be, so ‹sat› of their conjunction finds who is who (and ⊥ would mean the story is impossible).`);
+    ex("sat((a ↔ ¬b) ∧ (b ↔ (a ↔ b)))", r`Who is a knight and who is a knave? Give the assignment to $a$ and $b$ that makes both statements true: a map such as ‹{a = false, b = false}› (both knaves), or the same as ‹!a && !b›.`, [
+      r`Try $b$ true (Bob a knight). Then what Bob says is true, so $a \leftrightarrow b$ holds and $a$ is true too. Does Ann's statement $a \leftrightarrow \lnot b$ hold then?`,
+      r`So Bob is a knave: $b$ is false. Then what he says is false, so $a \leftrightarrow b$ is false, and $a$ is not $b$.`,
+    ], { hide: true });
+    ex("sat(a ↔ (¬a ∧ ¬b))", r`Now Ann says "We are both knaves", and Bob says nothing. Write what she says as a formula, tie it to her as above, and find who is who.`, [
+      r`What she says is $\lnot a \land \lnot b$, so her statement is $a \leftrightarrow (\lnot a \land \lnot b)$.`,
+      r`Could Ann be a knight? Then "we are both knaves" would be true, and she would be a knave.`,
     ], { hide: true });
     md(r`
 > [!summary]

@@ -18,4 +18,5 @@
 44	falsify((p → q) → p)	= {p↦false, q↦true}
 45	equiv(¬(p → q), p ∧ ¬q)	= ⊤
 46	¬(p ↔ q)	= ¬(p ↔ q)
-49	sat((a ↔ ¬b) ∧ (b ↔ (a ↔ b)))	= {a↦true, b↦false}
+52	sat((a ↔ ¬b) ∧ (b ↔ (a ↔ b)))	= {a↦true, b↦false}
+53	sat(a ↔ (¬a ∧ ¬b))	= {a↦false, b↦true}

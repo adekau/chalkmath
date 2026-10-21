@@ -63,7 +63,7 @@ export const MATH_INPUT_CSS = `
 .mi-caret { position:absolute; width:1.5px; background:var(--mi-caret, currentColor); pointer-events:none; display:none; }
 .mi.focused .mi-caret { display:block; animation:mi-blink 1.06s steps(1) infinite; }
 .mi.focused { box-shadow:0 0 0 1px var(--mi-focus, #6b8afd); border-radius:4px; }
-.mi.mi-reading { cursor:default; }
+.mi.mi-reading { cursor:text; }
 .mi.focused .mi-math [data-h].mi-here { color:var(--mi-caret, currentColor); }
 .mi-cmd { color:var(--mi-cmd, #b0662c); }
 .mi-math .mi-err { background:var(--mi-err-bg, rgba(192,57,43,0.12)); box-shadow:0 2px 0 var(--mi-err, #c0392b); border-radius:2px 2px 0 0; }
@@ -557,9 +557,10 @@ export class MathInput {
     return start < end ? { start, end } : null;
   }
 
-  /** The box around what spells the characters `span` of the text, relative to the input. */
+  /** The box around what spells the characters `span` of the text, relative to the input (a call
+   *  with fitted parens reaches as far as they do). */
   boxOf(span: { start: number; end: number }): { left: number; top: number; width: number; height: number } | null {
-    const rects = atomsInSpan(this.edit.stmt, span).map((a) => this.atomEl.get(a)?.el.getBoundingClientRect()).filter((r): r is DOMRect => !!r && r.width > 0);
+    const rects = atomsInSpan(this.edit.stmt, span).map((a) => this.rect(a)).filter((r): r is DOMRect => !!r && r.width > 0);
     if (!rects.length) return null;
     const me = this.el.getBoundingClientRect();
     const left = Math.min(...rects.map((r) => r.left)), top = Math.min(...rects.map((r) => r.top));
@@ -577,6 +578,30 @@ export class MathInput {
     this.edit.anchor = at.first;
     this.edit.caret = { block: at.last.block, i: at.last.i + 1 };
     this.render();
+    return true;
+  }
+
+  /** Put the caret just after the atoms that spell the characters `span`, nothing selected. False
+   *  when nothing there is an atom of the tree. */
+  caretAfterSpan(span: { start: number; end: number }): boolean {
+    const at = this.placeSpan(span);
+    if (!at) return false;
+    this.edit.anchor = null;
+    this.edit.caret = { block: at.last.block, i: at.last.i + 1 };
+    this.edit.moved();
+    this.render();
+    return true;
+  }
+
+  /** Put the caret where a click at the point would, nothing selected. False when there is no
+   *  position near it. */
+  caretToPoint(x: number, y: number): boolean {
+    const c = this.caretAt(x, y);
+    if (!c) return false;
+    this.edit.anchor = null;
+    this.edit.caret = c;
+    this.edit.moved();
+    this.place();
     return true;
   }
 

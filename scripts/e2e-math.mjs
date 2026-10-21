@@ -584,14 +584,16 @@ async function features() {
   v = await answer(question);
   assert.match(v.shown, /wrong/, "the question itself was accepted as its answer");
   assert.ok(v.text.toLowerCase().includes(v.engine.answer.error.message.toLowerCase()), `the page shows ${JSON.stringify(v.text)}, not the engine's refusal`);
-  await ex.locator(".xc-btn", { hasText: "Hint" }).click();
+  // a wrong answer offers the next hint beside the verdict
+  await ex.locator(".xc-verdict .xc-btn", { hasText: "Take a hint" }).click();
   assert.equal(await ex.locator(".xc-hint").count(), 1, "one hint opened");
+  assert.equal(await ex.locator(".xc-tools .xc-btn", { hasText: "Another hint" }).count(), 1, "the next hint is not offered");
   await ex.locator(".xc-btn", { hasText: "Show the solution" }).click();
   await ex.locator(".stepnext [data-next]").waitFor({ timeout: 30000 });
   await ex.locator(".stepnext .stepbtn", { hasText: "Show all" }).click();
   const solution = await reference.call("engine.check", { sessionId: "e2e-features", cellId: "q", source: question, paths: true });
   await outIs(exI, solution.rendered.latex, "the exercise's solution");
-  console.log("✓ exercise: wrong, right in another form, the question refused, a hint, the solution stepped through");
+  console.log("✓ exercise: wrong, right in another form, the question refused, a hint offered by the verdict, the solution stepped through");
   // a Markdown callout
   await menu("Edit", "Add Markdown cell");
   const md = all().nth(await all().count() - 1);
@@ -730,6 +732,20 @@ async function features() {
   assert.match(lv.shown, /right/, `the page did not mark the right answer: ${lv.text}`);
   assert.match(lv.text, /truth table/, "the verdict does not say how it was decided");
   console.log("✓ logic exercise: not CNF refused, a CNF in another order accepted by truth table");
+  // the answer box says what kind of answer the question wants, and takes backslash names as a cell does
+  assert.match(await lx.locator(".xc-howto").textContent(), /conjunctive normal form/, "the answer box does not say what the question wants");
+  await lx.locator(".xc-in").fill("");
+  await lx.locator(".xc-in").click();
+  await page.keyboard.type("(\\not p \\or q) \\and (\\not p \\or r)");
+  const xtyped = "(¬ p ∨ q) ∧ (¬ p ∨ r)";
+  assert.equal(await lx.locator(".xc-in").inputValue(), xtyped, "the backslash names in the answer box did not become their glyphs");
+  await page.keyboard.press("Enter");
+  await page.waitForFunction(([k, a]) => {
+    const c = document.querySelectorAll(".cell")[k];
+    return !c.classList.contains("running") && c.querySelector(".xc-verdict.right:not(.old)") && c.querySelector(".xc-in")?.value === a;
+  }, [lxI, xtyped], { timeout: 30000 }).catch(() => assert.fail("the answer typed with backslash names was not checked right"));
+  assert.equal((await reference.call("engine.check", { sessionId: "e2e-features", cellId: "lq", source: lq, answer: xtyped })).equivalent, true);
+  console.log(`✓ exercise answer: what is wanted said under the box; ${xtyped} typed with backslash names, and right`);
   // the connectives typed as backslash names: each becomes its glyph at the space after it
   await menu("Edit", "Add math cell");
   const bk = await all().count() - 1;
@@ -770,6 +786,38 @@ async function features() {
   await page.keyboard.press("Control+Shift+M");
   assert.equal(await all().nth(vk).locator("input.cellin").inputValue(), odd, "the text changed on its way through the typeset view");
   console.log(`✓ one source: ${vtyped} typed typeset; ${odd} through the typeset view and back unchanged`);
+  // a typeset cell, read: its row keeps Visual/Text and Run after it has run; resting on a piece opens the
+  // toolbar over that piece; its ✎ Edit puts the caret after the piece; a click edits where it is clicked
+  await menu("Edit", "Add math cell");
+  const rk = await all().count() - 1;
+  await all().nth(rk).locator(".cellin").click();
+  await page.keyboard.press("Control+Shift+M");
+  await all().nth(rk).locator(".mi").waitFor({ timeout: 5000 });
+  await page.keyboard.type("p \\and q \\to r");
+  await page.keyboard.press("Enter");
+  const reading = () => page.waitForFunction((k) => document.querySelectorAll(".cell")[k]?.querySelector(".mi.mi-reading"), rk, { timeout: 30000 });
+  await reading().catch(() => assert.fail("the typeset cell is not read once it has run"));
+  const rowActs = await all().nth(rk).locator(".cellacts > span").allTextContents();
+  assert.ok(rowActs.includes("Text") && rowActs.includes("▶ Run"), `the read cell's row lost Visual/Text or Run: ${JSON.stringify(rowActs)}`);
+  const atomBox = async (t) => all().nth(rk).locator(".mi [data-a]").filter({ hasText: new RegExp(`^${t}$`) }).first().boundingBox();
+  const qb = await atomBox("q");
+  await page.mouse.move(qb.x + qb.width / 2, qb.y + qb.height / 2);
+  await page.locator(".tokbar").waitFor({ timeout: 5000 }).catch(() => assert.fail("resting on a piece opened no toolbar"));
+  assert.equal(await page.locator(".tokbar .tbsrc").textContent(), "q", "the toolbar is over another piece");
+  await page.locator(".tokbar .tbbtn", { hasText: "Edit" }).click();
+  assert.equal(await all().nth(rk).locator(".mi.focused:not(.mi-reading)").count(), 1, "✎ Edit did not edit the cell");
+  await page.keyboard.type("x");
+  await page.keyboard.press("Enter");
+  await reading();
+  const rb = await atomBox("r");
+  await page.mouse.click(rb.x + rb.width - 1, rb.y + rb.height / 2);
+  assert.equal(await all().nth(rk).locator(".mi.focused:not(.mi-reading)").count(), 1, "a click did not edit the read cell");
+  await page.keyboard.type("s");
+  await page.keyboard.press("Control+Shift+M");
+  const rtext = await all().nth(rk).locator("input.cellin").inputValue();
+  assert.match(rtext, /qx\b/, `✎ Edit did not put the caret after q: ${rtext}`);
+  assert.match(rtext, /rs$/, `the click did not put the caret after r: ${rtext}`);
+  console.log(`✓ read typeset cell: Visual/Text and Run kept; toolbar on resting; ✎ Edit and a click put the caret (${rtext})`);
   // a cell of several lines: Shift+Enter starts a new line, Enter runs it; the counterexample's steps are marked on the graph
   const lines = ["let M = system(", "var p in {idle, crit}", "var lock in bool", "init p = idle ∧ lock = false", "action enter when p = idle do p := crit", "action leave when p = crit do p := idle, lock := false", ")"];
   await menu("Edit", "Add math cell");

@@ -87,7 +87,7 @@ A cell that binds a name to a number, ‹let n = 3›, can be a slider: its ⋮ 
 ## What a cell shows
 
 - **The input interpretation**: under the input, the engine's own reading of what you typed (with ‹%› and named values filled in), so you can see it read what you meant; a ‹system›, a ‹poset› or another world's command is read as written, its guards and relations each read as a formula. View › Input interpretation hides it.
-- **A typeset cell, read**: once a typeset cell has run it is read rather than edited, as a Markdown cell is. Point at a piece to outline what it belongs to (at ‹and› in ‹p and q implies r›, the ‹p and q›), click it for its explanation, or use the bar over it to edit it, replace it with an empty slot, or delete it. Double-click (or Enter) to edit; running reads it again. View › Read typeset cells turns this off.
+- **A typeset cell, read**: once a typeset cell has run it is read rather than edited, as a Markdown cell is. Rest the pointer on a piece to outline what it belongs to (at ‹and› in ‹p and q implies r›, the ‹p and q›), with a bar over it to edit it (the caret after it), replace it with an empty slot, or delete it. Click anywhere in it (or press Enter) to edit, the caret where you clicked; running reads it again. View › Read typeset cells turns this off.
 - **The kind** of cell (derivative, integral, matrix, …) as a small badge beside the input.
 - **Output forms**: a matrix or a list can be shown as a bracketed or parenthesised matrix, a grid, a table or the input form (the text you would type), chosen from the small menu beside ‹Out[n]›, like Mathematica's ‹//MatrixForm›.
 - **Plots and drawings**: ‹plot› and ‹epicycles› draw beside the answer; a file shows as what it is: an image, a table, text ([Saving, sharing and files](#doc:files)).
@@ -179,7 +179,10 @@ An exercise asks a question and checks the reader's answer. Its **question** is 
 
 Type an answer in the box as you would in a cell (‹2x sin(x) + x^2 cos(x)›) and press **Enter** or **Check**. The engine reduces your answer and the question's value to a **normal form** and compares the two, the way two λ-terms are equal when they reduce to the same normal form. So ‹x(2 sin(x) + x cos(x))› is right too: written differently, it reduces to the same thing.
 
-- A wrong answer shows what it reduces to, so you can see where it parts from the answer.
+- The line under the box says what kind of answer the question wants: an expression, ‹true› or ‹false›, an assignment, a formula.
+- Symbols are typed as in a cell: ‹\or›, ‹\and›, ‹\not›, ‹\to›, ‹\iff› (or any [symbol](#doc:symbols)) and a space becomes ∨, ∧, ¬, →, ↔. The ASCII spellings work too: ‹||›, ‹&&›, ‹!›, ‹->›, ‹<->›.
+- For ‹sat› and ‹falsify›, any assignment that works is right, written as a map (‹{p = true, q = false}›) or as a conjunction of literals (‹p && !q›).
+- A wrong answer shows what it reduces to, so you can see where it parts from the answer, and offers the next hint.
 - An answer may not do the question's work: for a ‹diff› question, ‹diff(…)› is not an answer. The elementary functions (‹sin›, ‹exp›, ‹sqrt›, …) are always allowed.
 - For a λ-calculus question, the answer must be a normal form already; it is compared up to the names of its bound variables (α-equivalence).
 - "Not yet" means the engine could not show the two equal. The normal form decides the identities it applies (distributing products, $\cos^2 = 1 - \sin^2$, $(e^u)^k = e^{ku}$), not every identity there is.
