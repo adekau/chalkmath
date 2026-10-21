@@ -72,6 +72,9 @@ structure World where
   holds : Session → String → Bool
   evaluate : Session → String → String → Session × Except WorldErr WorldResult
   check : Session → String → String → Option String → Session × Except WorldErr CheckResult
+  /-- The source as written, parsed and nothing more (`engine.read`): no evaluation, the session's
+  names left as names. By default a world cell's input as written (`Surface.lean`). -/
+  read : Session → String → Except WorldErr Expr := fun _ src => .ok (Surface.asWritten src)
 
 /-! ## The wire -/
 
@@ -194,6 +197,16 @@ def lambdaWorld : World where
           | some d => #[.obj #[("kind", .str "typing.tree"), ("data", typingTreeVisual d)]]
           | none => #[] })
   check := checkLambda
+  -- a term, or the term a command works on (`alpha:` and `subst:`, of two terms, have no one reading)
+  read := fun _ src =>
+    match Lam.parseCmd src with
+    | some (.error msg) => .error ("syntax", msg, none)
+    | some (.ok (.reduce _ _ t)) | some (.ok (.eta _ t)) | some (.ok (.fv t)) | some (.ok (.db t))
+    | some (.ok (.type _ t)) | some (.ok (.infer _ t)) => .ok (Lam.toExpr t.erase)
+    | some (.ok _) => .error ("params", "this command works on more than one term", none)
+    | none => match Lam.parseStmt src with
+      | .ok (_, t) => .ok (Lam.toExpr t)
+      | .error msg => .error ("syntax", msg, none)
 
 /-! ## Finite order theory, relations and algebra -/
 
@@ -265,6 +278,13 @@ def logicWorld : World where
               ("rows", .arr (rows.map fun row => Json.arr (row.map Json.bool).toArray).toArray)]]
           | none => #[] })
   check := checkLogic
+  -- a command as written; a statement as the logic world reads it, its names not expanded
+  read := fun _ src =>
+    if Surface.isCall src then .ok (Surface.asWritten src) else
+    match Logic.parseStmt src with
+    | .ok (.fm _ f) => .ok f.toExpr
+    | .ok _ => .ok (Surface.asWritten src)
+    | .error msg => .error ("syntax", msg, none)
 
 /-! ## Transition systems, replicas and rewriting -/
 
@@ -352,6 +372,11 @@ def mathWorld : World where
       let extras := if warnings.isEmpty then extras else extras.push ("warnings", .arr (warnings.map .str).toArray)
       { name, params := ps, value := out, derivation := d, extras })
   check := checkMath
+  -- the value written, after `let name =`: `%` and the session's names stay as they were written
+  read := fun s src =>
+    match parseStmt src (s.fns.map (·.1)) with
+    | .ok stmt => .ok stmt.value
+    | .error e => .error ("syntax", e.message, some (e.start, e.stop))
 
 /-! ## The list -/
 
@@ -398,6 +423,11 @@ where
         | none => s''
       (w, s'', .ok r)
     | (_, .error e) => (w, s, .error e)
+
+/-- Read a source in the world that claims it, without evaluating it (`engine.read`). -/
+def readIn (s : Session) (src : String) : World × Except WorldErr Expr :=
+  let w := worldFor s src
+  (w, w.read s src)
 
 /-- Check an exercise in the question's world. -/
 def checkAnswer (s : Session) (cellId question : String) (answer : Option String) : Session × Except WorldErr CheckResult :=

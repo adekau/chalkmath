@@ -812,8 +812,9 @@ async function features() {
   await page.keyboard.press("Control+Shift+M");
   assert.equal(await all().nth(vk).locator("input.cellin").inputValue(), odd, "the text changed on its way through the typeset view");
   console.log(`✓ one source: ${vtyped} typed typeset; ${odd} through the typeset view and back unchanged`);
-  // a typeset cell, read: its row keeps Visual/Text and Run after it has run; resting on a piece opens the
-  // toolbar over that piece; its ✎ Edit puts the caret after the piece; a click edits where it is clicked
+  // a typeset cell is edited as it is, run or not: its row keeps Visual/Text and Run; resting on a piece
+  // opens the toolbar over it, from the run's reading and, once it is edited, from engine.read; the
+  // toolbar's edits and Esc run nothing
   await menu("Edit", "Add math cell");
   const rk = await all().count() - 1;
   await all().nth(rk).locator(".cellin").click();
@@ -821,29 +822,40 @@ async function features() {
   await all().nth(rk).locator(".mi").waitFor({ timeout: 5000 });
   await page.keyboard.type("p \\and q \\to r");
   await page.keyboard.press("Enter");
-  const reading = () => page.waitForFunction((k) => document.querySelectorAll(".cell")[k]?.querySelector(".mi.mi-reading"), rk, { timeout: 30000 });
-  await reading().catch(() => assert.fail("the typeset cell is not read once it has run"));
+  await page.waitForFunction((k) => /^In\[\d+\]:=$/.test(document.querySelectorAll(".cell")[k]?.querySelector(":scope > .prompt")?.textContent ?? ""), rk, { timeout: 30000 });
+  const label = () => all().nth(rk).locator(":scope > .prompt").textContent();
+  const ran = await label();
   const rowActs = await all().nth(rk).locator(".cellacts > span").allTextContents();
-  assert.ok(rowActs.includes("Text") && rowActs.includes("▶ Run"), `the read cell's row lost Visual/Text or Run: ${JSON.stringify(rowActs)}`);
+  assert.ok(rowActs.includes("Text") && rowActs.includes("▶ Run") && !rowActs.some((t) => t.includes("Edit")), `the typeset cell's row: ${JSON.stringify(rowActs)}`);
   const atomBox = async (t) => all().nth(rk).locator(".mi [data-a]").filter({ hasText: new RegExp(`^${t}$`) }).first().boundingBox();
-  const qb = await atomBox("q");
-  await page.mouse.move(qb.x + qb.width / 2, qb.y + qb.height / 2);
-  await page.locator(".tokbar").waitFor({ timeout: 5000 }).catch(() => assert.fail("resting on a piece opened no toolbar"));
-  assert.equal(await page.locator(".tokbar .tbsrc").textContent(), "q", "the toolbar is over another piece");
+  const restOn = async (t) => {
+    await page.mouse.move(0, 0);
+    await page.locator(".tokbar").waitFor({ state: "detached", timeout: 5000 });
+    const b = await atomBox(t);
+    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+    await page.locator(".tokbar").waitFor({ timeout: 5000 }).catch(() => assert.fail(`resting on ${t} opened no toolbar`));
+    return page.locator(".tokbar .tbsrc").textContent();
+  };
+  assert.equal(await restOn("q"), "q", "the toolbar is over another piece");
   await page.locator(".tokbar .tbbtn", { hasText: "Edit" }).click();
-  assert.equal(await all().nth(rk).locator(".mi.focused:not(.mi-reading)").count(), 1, "✎ Edit did not edit the cell");
+  assert.equal(await all().nth(rk).locator(".mi.focused").count(), 1, "✎ Edit did not put the caret in the cell");
   await page.keyboard.type("x");
-  await page.keyboard.press("Enter");
-  await reading();
-  const rb = await atomBox("r");
-  await page.mouse.click(rb.x + rb.width - 1, rb.y + rb.height / 2);
-  assert.equal(await all().nth(rk).locator(".mi.focused:not(.mi-reading)").count(), 1, "a click did not edit the read cell");
-  await page.keyboard.type("s");
+  // the source has changed and has not run: the toolbar works from the engine's reading of it now
+  assert.equal(await restOn("r"), "r", "after an edit, the toolbar is over another piece");
+  await page.locator(".tokbar .tbbtn", { hasText: "Delete" }).click();
+  // Delete is an edit of the input like any other: one step to undo, and to redo
+  const rs = () => all().nth(rk).locator(".mi [data-a]").filter({ hasText: /^r$/ }).count();
+  assert.equal(await rs(), 0, "Delete left r");
+  await page.keyboard.press("Control+z");
+  assert.equal(await rs(), 1, "Undo did not bring r back");
+  await page.keyboard.press("Control+y");
+  assert.equal(await rs(), 0, "Redo did not delete r again");
+  await page.keyboard.press("Escape");
+  assert.equal(await label(), ran, "the toolbar's edits or Esc ran the cell");
   await page.keyboard.press("Control+Shift+M");
   const rtext = await all().nth(rk).locator("input.cellin").inputValue();
-  assert.match(rtext, /qx\b/, `✎ Edit did not put the caret after q: ${rtext}`);
-  assert.match(rtext, /rs$/, `the click did not put the caret after r: ${rtext}`);
-  console.log(`✓ read typeset cell: Visual/Text and Run kept; toolbar on resting; ✎ Edit and a click put the caret (${rtext})`);
+  assert.match(rtext, /^p ∧ qx$/, `✎ Edit then Delete: ${rtext}`);
+  console.log(`✓ typeset cell: Visual/Text and Run kept; toolbar after a run and while edited; ✎ Edit, Delete (undone, redone) and Esc ran nothing (${rtext})`);
   // a cell of several lines: Shift+Enter starts a new line, Enter runs it; the counterexample's steps are marked on the graph
   const lines = ["let M = system(", "var p in {idle, crit}", "var lock in bool", "init p = idle ∧ lock = false", "action enter when p = idle do p := crit", "action leave when p = crit do p := idle, lock := false", ")"];
   await menu("Edit", "Add math cell");

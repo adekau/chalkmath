@@ -63,7 +63,6 @@ export const MATH_INPUT_CSS = `
 .mi-caret { position:absolute; width:1.5px; background:var(--mi-caret, currentColor); pointer-events:none; display:none; }
 .mi.focused .mi-caret { display:block; animation:mi-blink 1.06s steps(1) infinite; }
 .mi.focused { box-shadow:0 0 0 1px var(--mi-focus, #6b8afd); border-radius:4px; }
-.mi.mi-reading { cursor:text; }
 .mi.focused .mi-math [data-h].mi-here { color:var(--mi-caret, currentColor); }
 .mi-cmd { color:var(--mi-cmd, #b0662c); }
 .mi-math .mi-err { background:var(--mi-err-bg, rgba(192,57,43,0.12)); box-shadow:0 2px 0 var(--mi-err, #c0392b); border-radius:2px 2px 0 0; }
@@ -259,10 +258,9 @@ export class MathInput {
       ev.preventDefault();
       if (this.edit.paste(t)) this.changed();
     });
-    // a click puts the caret; a drag selects; Shift+click extends the selection (not while it is read)
+    // a click puts the caret; a drag selects; Shift+click extends the selection
     this.el.addEventListener("mousedown", (ev) => {
       ev.preventDefault();
-      if (this.reading) { this.el.focus({ preventScroll: true }); return; }
       const c = this.caretAt(ev.clientX, ev.clientY);
       if (c) {
         if (ev.shiftKey) this.edit.extend(); else this.edit.anchor = null;
@@ -291,7 +289,7 @@ export class MathInput {
   get holes(): number { return write(this.edit.stmt).holes; }
   /** Focus the input, scrolling it into view (a click on it passes `scroll: false`: it is in view). */
   focus(scroll = true) {
-    (this.reading ? this.el : this.ta).focus({ preventScroll: true });
+    this.ta.focus({ preventScroll: true });
     if (scroll) this.el.scrollIntoView({ block: "nearest" });
   }
 
@@ -528,18 +526,6 @@ export class MathInput {
     if (fn(this.edit)) this.changed(); else this.place();
   }
 
-  /** Read only: drawn exactly as when it is edited, without a caret, and a click does not edit (the
-   *  host decides what a click does). The input itself takes the focus then, for the host's keys. */
-  get reading(): boolean { return this.el.classList.contains("mi-reading"); }
-  set reading(on: boolean) {
-    if (on === this.reading) return;
-    if (on && this.editing) this.ta.blur();
-    // what was selected while it was edited is not part of reading it
-    if (on && this.edit.anchor) { this.edit.anchor = null; this.place(); }
-    this.el.classList.toggle("mi-reading", on);
-    if (on) this.el.tabIndex = 0; else this.el.removeAttribute("tabindex");
-  }
-
   /** The characters of the text drawn under the point: the atoms of the innermost box there. A box
    *  inside a fraction or a power is found by where it is, since KaTeX lays the fraction's rows over
    *  what they hold. */
@@ -593,18 +579,6 @@ export class MathInput {
     return true;
   }
 
-  /** Put the caret where a click at the point would, nothing selected. False when there is no
-   *  position near it. */
-  caretToPoint(x: number, y: number): boolean {
-    const c = this.caretAt(x, y);
-    if (!c) return false;
-    this.edit.anchor = null;
-    this.edit.caret = c;
-    this.edit.moved();
-    this.place();
-    return true;
-  }
-
   /** Take out the atoms that spell the characters `span` and leave an empty slot to fill, the caret
    *  in it (`MathEdit.holeAt`). False, and nothing changed, when the span is not a run of atoms of one
    *  block. */
@@ -612,6 +586,15 @@ export class MathInput {
     const at = this.placeSpan(span);
     if (!at || at.first.block !== at.last.block) return false;
     this.apply((e) => e.holeAt(at.first.block, at.first.i, at.last.i + 1));
+    return true;
+  }
+
+  /** Delete the atoms that spell the characters `span`, as one step to undo, the caret where they
+   *  were. False, and nothing changed, when the span is not a run of atoms of one block. */
+  deleteSpan(span: { start: number; end: number }): boolean {
+    const at = this.placeSpan(span);
+    if (!at || at.first.block !== at.last.block) return false;
+    this.apply((e) => { e.anchor = at.first; e.caret = { block: at.last.block, i: at.last.i + 1 }; return e.deleteSelection(); });
     return true;
   }
 

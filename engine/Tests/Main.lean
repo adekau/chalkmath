@@ -1196,8 +1196,24 @@ def worldTests : TestM Unit := do
   let (_, r6) := ev [] "h" "let reach = 3"
   checkTrue "worlds: a value may take a command's name" (contains r6 "\"bound\":[\"reach\"]") r6
 
+/-- `engine.read`: the source as written, in its world, with paths; nothing evaluated, the session
+untouched. -/
+def readTests : TestM Unit := do
+  -- engine.read: the source as written, in its world, with paths; nothing evaluated, the session untouched
+  checkTrue "read: math, as written, with paths" (contains (rpc "engine.read" "{\"source\":\"diff(x^2, x)\"}") "\"kind\":\"math\",\"rendered\":{\"text\":\"diff(x^2, x)\",\"latex\":\"\\\\htmlData{path=root}")
+  checkTrue "read: a let's value" (contains (rpc "engine.read" "{\"source\":\"let f(x) = x^2 + 1\"}") "\"text\":\"x^2 + 1\"")
+  checkTrue "read: logic" (contains (rpc "engine.read" "{\"source\":\"sat(a ∧ ¬b)\"}") "\"kind\":\"logic\",\"rendered\":{\"text\":\"sat(a ∧ ¬b)\"")
+  checkTrue "read: a λ command's term" (contains (rpc "engine.read" "{\"source\":\"infer: λf. λx. f x\"}") "\"kind\":\"lambda\",\"rendered\":{\"text\":\"λf. λx. f x\"")
+  checkTrue "read: a system as written" (contains (rpc "engine.read" "{\"source\":\"system(var x in 0..2; init x = 0)\"}") "\"kind\":\"system\"")
+  checkTrue "read: a syntax error" (contains (rpc "engine.read" "{\"source\":\"2 +\"}") "\"ok\":false")
+  let (stR, _) := sessionEval [] "let rr = 5"
+  let (stR', rd) := handleS stR "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"engine.read\",\"params\":{\"sessionId\":\"t\",\"source\":\"rr + 1\"}}"
+  checkTrue "read: a session's name stays a name" (contains rd "\"text\":\"rr + 1\"") rd
+  checkTrue "read: the session is left as it was" ((stR'.get "t").cells.length == (stR.get "t").cells.length)
+  checkTrue "read: no label taken" (!contains rd "\"label\"") rd
+
 def main : IO UInt32 := do
-  let ((), failures) ← (do tests; surfaceTests; sessionTests; integrateTests; trigTests; quietTests; partStatTests; workTests; scaleTests; checkTests; logicRelTests; algebraTests; systemsTests; complexNTests; intervalTests; intRootTests; jsonTests; worldTests; goldenTests).run #[]
+  let ((), failures) ← (do tests; surfaceTests; sessionTests; integrateTests; trigTests; quietTests; partStatTests; workTests; scaleTests; checkTests; readTests; logicRelTests; algebraTests; systemsTests; complexNTests; intervalTests; intRootTests; jsonTests; worldTests; goldenTests).run #[]
   for f in failures do
     IO.println s!"FAIL {f.name}\n  expected: {f.expected}\n  actual:   {f.actual}"
   IO.println s!"{failures.size} failures"
