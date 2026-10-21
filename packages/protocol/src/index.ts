@@ -368,6 +368,14 @@ export interface CheckResult {
   equivalent?: boolean;
 }
 
+/** `engine.read`: a source parsed in the world that claims it and not evaluated, its subterms
+ *  tagged with their paths (`\htmlData{path=…}`), as an evaluation's `inputRendered` is. The
+ *  session's names stay names and `%` stays `%`: it is the source as written, so a frontend can
+ *  find each subterm in it while the cell is being edited. The session is left as it was, and
+ *  nothing is numbered. Optional method (rule 5): an older engine answers `-32601`. */
+export interface ReadParams { sessionId: string; source: string }
+export interface ReadResult { ok: true; kind: string; rendered: Rendered }
+
 export interface Methods {
   "engine.capabilities": { params: Record<string, never>; result: EngineCapabilities };
   "engine.evaluate":     { params: EvaluateParams; result: (EvaluateResult & WorldExtras) | EvaluateError };
@@ -377,6 +385,7 @@ export interface Methods {
   "engine.plot":         { params: PlotParams; result: PlotResult | EvaluateError };
   "engine.manipulate":   { params: PlotParams; result: ManipulateResult | EvaluateError };
   "engine.check":        { params: CheckParams; result: CheckResult | EvaluateError };
+  "engine.read":         { params: ReadParams; result: ReadResult | EvaluateError };
 }
 export type MethodName = keyof Methods;
 

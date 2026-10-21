@@ -504,6 +504,7 @@ rewriting). Each has its own grammar and evaluator (§3), and all of them are re
 | `precedes`, `claims` | which sources are its: `claims`, asked in the list's order; `precedes` takes a source before any other world looks (a λ-command, which may hold a connective) |
 | `binds`, `holds` | the name a source would bind, and whether the world holds a binding of a name |
 | `evaluate`, `check` | a cell's evaluation (a `WorldResult`: value, derivation, the name bound, a note, visual specs, the world's own fields) and an exercise's check |
+| `read` | the source parsed and not evaluated, the session's names left as names (`engine.read`, for the hover toolbar while a cell is edited); by default the input as written (`Surface.lean`) |
 
 Algebra is the last record and claims every source the others do not. Routing is `worldFor`, the
 reply is `worldReply`, one function for all of them; a world's own fields on the wire (a λ-cell's
@@ -613,19 +614,20 @@ The reader has to agree with `Parser.lean` exactly on math, or the input would s
 the engine reads a product, and its tests hold it to that: every golden source and notebook cell
 writes back exactly, and, written afresh and sent to the native engine, has to mean the same thing.
 
-**Reading a typeset cell.** A typeset cell that has run is read, not edited, as a rendered Markdown
-cell is: the visual input exactly as it is (`MathInput.reading`), without a caret, so nothing moves
-or changes colour between the two. A click edits it as a text box would, the caret where it was
-clicked (`MathInput.caretToPoint`), and so does Enter; running reads it again (View › Read typeset
-cells turns it off). While it is read, resting the pointer on a piece outlines, faintly, the
-subterm of the engine's reading that piece belongs to, so how operators bind is on the page: `p and
-q implies r` outlines `p and q` at the `and`. A toolbar over it edits it (the caret after it),
-replaces it with an empty slot to type into, or deletes it with the operator that joined it to its
-neighbour. The toolbar waits for the pointer to rest, as signature help does, and moves to another
-piece only once the pointer rests there, so the pointer can cross the pieces between on its way up
-to it. The whole input is not a piece: a keyword of a `system` belongs to no smaller subterm, and
-hovering it outlines nothing. (A click used to explain the subterm in the panel; editing in place
-proved the more useful of the two.)
+**Hovering a typeset cell.** A typeset cell is the visual input, edited as it is, before and after
+it runs; running it does not change how it is edited, and Esc does not run it. Resting the pointer
+on a piece outlines, faintly, the subterm of the engine's reading that piece belongs to, so how
+operators bind is on the page: `p ∧ q → r` outlines `p ∧ q` at the `∧`. A toolbar over it puts the
+caret after it, replaces it with an empty slot to type into, or deletes it with the operator that
+joined it to its neighbour (in the editor, one step to undo); none of them runs the cell. The
+toolbar waits for the pointer to rest, as signature help does, and moves to another piece only once
+the pointer rests there, so the pointer can cross the pieces between on its way up to it. The whole
+input is not a piece: a keyword of a `system` belongs to no smaller subterm, and hovering it outlines
+nothing. The reading is the last run's while the source is as it ran; once the source changes, the
+page asks for `engine.read` when the typing pauses: the source parsed in its world and not
+evaluated, the session's names left as names, so the toolbar follows the editing without a cell
+running for it. (Earlier, a cell that had run was *read*, a click or Enter edited it, and Esc ran
+it to read it again: two states for one input, and a run the reader had not asked for.)
 
 The engine's reading carries paths, not places in the text, so the page finds each subterm in the
 source itself (`term-spans.ts`): the reading's leaves — names and numbers — are the source's, in the

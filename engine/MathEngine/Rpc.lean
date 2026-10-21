@@ -277,6 +277,17 @@ def evaluate (st : Store) (params : Json) : Store × Json :=
       | .ok res => worldReply w params res
     withLabel st sessionId cellId j
 
+/-- `engine.read`: a source's reading, parsed in its world and not evaluated, with its subterms'
+paths, so a frontend can tell where each subterm was written while the cell is being edited. The
+session is read (its function names, its worlds' bindings) and left as it was. -/
+def read (st : Store) (params : Json) : Json :=
+  match params.getStr? "source" with
+  | none => errorJson "params" "missing source"
+  | some src =>
+    match readIn (st.get ((params.getStr? "sessionId").getD "")) src with
+    | (w, .ok e) => .obj #[("ok", .bool true), ("kind", .str w.id), ("rendered", Rendered.toJson e true)]
+    | (_, .error (code, msg, span)) => errorJson code msg span
+
 /-- A float on the wire; JSON has no infinity or NaN, so those are `null`. -/
 private def floatJson (x : Float) : Json := if x.isFinite then .num (toString x) else .null
 
@@ -409,6 +420,7 @@ def dispatch (st : Store) (req : Json) : Store × Json :=
   | some "engine.plot" => let (st, r) := plot st params; (st, reply r)
   | some "engine.manipulate" => let (st, r) := manipulate st params; (st, reply r)
   | some "engine.check" => let (st, r) := check st params; (st, reply r)
+  | some "engine.read" => (st, reply (read st params))
   | some "engine.explain" =>
     match explain st params with
     | .ok r => (st, reply r)
