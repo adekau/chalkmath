@@ -1,0 +1,166 @@
+{
+  "chalk": 1,
+  "name": "02-functions.chalk",
+  "cells": [
+    {
+      "src": "Functions",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Define functions of one or more inputs, apply them, read their types, and choose between results with `if`.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A definition can take inputs. Each is written in parentheses with its type, and the result's type comes after the colon:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "def square (n : Nat) : Nat := n * n\n\n#eval square 7\n#eval square (3 + 4)",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A function is applied by writing the input after it, with a space: `square 7`, not `square(7)`. Parentheses only group: `square (3 + 4)` squares 7, while `square 3 + 4` would square 3 and then add 4.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A function of two inputs takes them one after the other:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "def area (w h : Nat) : Nat := w * h\n\n#eval area 3 4\n#check (area)\n#check (square)",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`square` has the type `Nat → Nat`: it takes a `Nat` to a `Nat`. `area` has `Nat → Nat → Nat`: give it a `Nat`, then another, and you get a `Nat`.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Functions without names",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`fun x => …` is a function with no name, handy where a function is needed only once, such as for `List.map`, which applies a function to every element of a list:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "#eval (fun x => x + 1) 5\n#eval [1, 2, 3].map square\n#eval [1, 2, 3].map (fun x => 10 * x)",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Choosing with if",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`if … then … else …` chooses between two results. Both must have the same type, and the `else` is not optional: a function must give a result for every input.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "def absDiff (a b : Nat) : Nat := if a < b then b - a else a - b\n\n#eval absDiff 3 10\n#eval absDiff 10 3",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "As before: write the definition, and the check below the statement computes the cases it lists.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem cube_ok : cube 2 = 8 ∧ cube 3 = 27 ∧ cube 10 = 1000 := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Define `cube`, which takes `n` to $n^3$.",
+      "leanSolution": "  decide",
+      "leanStart": "  decide",
+      "hints": [
+        "Look at `square` and multiply once more."
+      ],
+      "leanDef": "def cube (n : Nat) : Nat := sorry",
+      "leanDefSolution": "def cube (n : Nat) : Nat := n * n * n",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem max3_ok : max3 1 5 3 = 5 ∧ max3 9 2 4 = 9 ∧ max3 2 2 7 = 7 ∧ max3 4 4 4 = 4 := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Define `max3`, the largest of three numbers, with `if`. (Lean's `max` is ruled out.)",
+      "leanSolution": "  decide",
+      "leanStart": "  decide",
+      "hints": [
+        "One `if` can be inside another: `if a < b then (if b < c then c else b) else …`.",
+        "When `a` is not less than `b`, compare `a` with `c`."
+      ],
+      "leanDef": "def max3 (a b c : Nat) : Nat := sorry",
+      "leanDefSolution": "def max3 (a b c : Nat) : Nat := if a < b then (if b < c then c else b) else (if a < c then c else a)",
+      "leanForbid": [
+        "max",
+        "Max.max"
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem isEven_ok : isEven 4 = true ∧ isEven 7 = false ∧ isEven 0 = true := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Define `isEven`, which says whether a number is even, as a `Bool`.",
+      "leanSolution": "  decide",
+      "leanStart": "  decide",
+      "hints": [
+        "`n % 2` is the remainder on dividing by 2.",
+        "`==` compares and gives a `Bool`."
+      ],
+      "leanDef": "def isEven (n : Nat) : Bool := sorry",
+      "leanDefSolution": "def isEven (n : Nat) : Bool := n % 2 == 0",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> `def f (x : A) : B := …` is a function from `A` to `B`, applied as `f x`; its type is `A → B`, and a function of two inputs has `A → B → C`. `fun x => …` is one without a name. `if … then … else …` chooses, and must give a result either way.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Every function so far does a fixed amount of work. The next lesson's functions call themselves, which is how a function handles a number or a list of any size.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

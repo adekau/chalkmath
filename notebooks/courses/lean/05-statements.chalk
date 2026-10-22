@@ -1,0 +1,161 @@
+{
+  "chalk": 1,
+  "name": "05-statements.chalk",
+  "cells": [
+    {
+      "src": "Statements and first proofs",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> State facts about values and functions, and prove them with Lean's first tactics.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Every exercise so far was a **statement** with a **proof**: `theorem name : statement := by decide`. A statement is something that is true or false; a proof is what convinces Lean. `example` is a theorem without a name.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "example : 2 + 2 = 4 := by rfl\nexample : 2 + 2 = 4 := by decide\nexample : 3 < 5 ∧ 10 ≠ 11 := by decide",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "After `by` come **tactics**, steps that build the proof. `rfl` says both sides compute to the same value. `decide` computes whether the statement is true, when it can be checked that way. `∧` is \"and\" and `≠` is \"not equal\".",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Statements about every input",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Most statements are about every input: `(n : Nat)` before the colon means \"for every natural number `n`\". Lean cannot try them all, so `decide` will not do. Some still hold by computing, others need a tactic that reasons:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem add_zero' (n : Nat) : n + 0 = n := by rfl\nexample (n : Nat) : 0 + n = n := by omega\nexample (xs : List Nat) : xs ++ [] = xs := by simp",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`n + 0` computes to `n` from how `+` is defined, so `rfl` works; `0 + n` does not, and `omega`, which knows the arithmetic of `+`, `-`, `<` and multiplying by a number, proves it. `simp` rewrites with facts Lean already knows, here that appending `[]` changes nothing.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Over a type with finitely many values, Lean can check every one. `decide` does it for `Bool`; for a type of your own, `cases` splits the goal into one case per value, and `<;> rfl` finishes each:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem not_not' : ∀ b : Bool, (!!b) = b := by decide\n\ntheorem next_not_same : ∀ d : Weekday, d.next ≠ d := by\n  intro d\n  cases d <;> decide",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`∀ b : Bool, …` is \"for every `b`\". `intro d` takes \"for every `d`\" off the statement, leaving it for one `d` you know nothing about, and `cases d` splits that into seven goals, one per day. With the cursor in a proof, the panel's **Lean goals** tab shows what is left to prove, step by step: it is the best way to see what a tactic did.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Now you write the proofs. The statements are fixed; replace each `sorry`.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem fact_five : fact 5 = 120 := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that `fact 5` is 120 (`fact` is from lesson 3).",
+      "leanSolution": "  decide",
+      "hints": [
+        "A statement about one value, which Lean can compute."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem twice (n : Nat) : n + n = 2 * n := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that adding a number to itself doubles it, for every `n`.",
+      "leanSolution": "  omega",
+      "hints": [
+        "It is about every `n`, so not `decide`. Which tactic knows the arithmetic of `+` and multiplying by a number?"
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem week_round : ∀ d : Weekday, d.next.next.next.next.next.next.next = d := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that seven days after any day is the same day (`Weekday.next` is from lesson 4).",
+      "leanSolution": "  intro d\n  cases d <;> rfl",
+      "hints": [
+        "`intro d` takes \"for every `d`\" off the statement: prove it for a `d` you know nothing about.",
+        "Then `cases d` gives one goal per day, and `<;> rfl` computes each."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem xor_ok : ∀ a b, xor' a b = (a != b) := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Define `xor'`, true when exactly one of `a` and `b` is, with `if` (`!=` and Lean's `xor` are ruled out). The statement covers every input: `Bool` has only four pairs, and `decide` tries them all.",
+      "leanSolution": "  decide",
+      "leanStart": "  decide",
+      "hints": [
+        "If `a` is true, the answer is `!b`; otherwise it is `b`."
+      ],
+      "leanDef": "def xor' (a b : Bool) : Bool := sorry",
+      "leanDefSolution": "def xor' (a b : Bool) : Bool := if a then !b else b",
+      "leanForbid": [
+        "!=",
+        "bne",
+        "xor",
+        "^^"
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> A theorem is a statement and a proof. `rfl` and `decide` prove what computing settles; `omega` the arithmetic of `+` and `<`; `simp` by rewriting with known facts; `intro` and `cases` take a statement about every value apart into cases. A statement about every `Nat` cannot be checked by trying values: it needs a proof that covers them all.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The next lesson proves statements about every number and every list for the functions you wrote, by induction.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

@@ -15,6 +15,12 @@
       "label": null
     },
     {
+      "src": "> [!note] New to Lean?\n> This lesson starts using Lean. If you have never written any, [Lean from zero](#course=lean) teaches what these lessons assume, from `#eval` to proofs by induction, in six short lessons.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "A truth table checks a formula by trying every row. That stops working for \"every natural number $n$ satisfies $n + 0 = n$\": the rows never end. A **proof** derives a statement by rules instead, each a small step that is obviously valid, and Lean checks every step. What should the rules be?",
       "type": "markdown",
       "showWork": false,

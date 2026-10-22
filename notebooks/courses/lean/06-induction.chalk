@@ -1,0 +1,128 @@
+{
+  "chalk": 1,
+  "name": "06-induction.chalk",
+  "cells": [
+    {
+      "src": "Proofs about your functions",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Prove that a recursive function meets its specification for every input, by induction.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Lesson 3 checked `sumTo` on a few inputs, and a table of answers would have passed. Here is a statement about every `n`: $2 \\cdot (0 + 1 + \\cdots + n) = n(n+1)$. Trying values cannot prove it; **induction** can.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem sumTo_formula (n : Nat) : 2 * sumTo n = n * (n + 1) := by\n  induction n with\n  | zero => rfl\n  | succ k ih =>\n    simp only [sumTo, Nat.mul_add, ih]\n    grind",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`induction n` splits the proof along the cases `sumTo` was defined by. The `zero` case is the statement for 0, which computes. The `succ k ih` case is the statement for `k + 1`, and it may use the statement for `k`, named `ih` (the induction hypothesis). That is the recursion run backwards: the definition builds `sumTo (k + 1)` from `sumTo k`, and the proof builds the fact for `k + 1` from the fact for `k`. `simp only [sumTo, …, ih]` unfolds one step of `sumTo` and uses `ih`, and `grind` finishes the algebra. Put the cursor on each line and watch the goal in the panel.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A table of answers cannot pass this: whatever it does after its last entry, the statement is about those numbers too.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Induction on lists",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A list is either `[]` or `x :: xs`, so induction on a list has those two cases, and the second may use the statement for `xs`:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem total_append (xs ys : List Nat) : total (xs ++ ys) = total xs + total ys := by\n  induction xs with\n  | nil => simp [total]\n  | cons x xs ih => simp [total, ih]; omega",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem fact_pos (n : Nat) : 0 < fact n := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that `fact n` is never 0.",
+      "leanSolution": "  induction n with\n  | zero => decide\n  | succ k ih =>\n    simp only [fact]\n    exact Nat.mul_pos (Nat.succ_pos k) ih",
+      "leanStart": "  induction n with\n  | zero => sorry\n  | succ k ih => sorry",
+      "hints": [
+        "By induction: `fact 0` computes; for `k + 1`, `simp only [fact]` leaves `0 < (k + 1) * fact k`.",
+        "`Nat.mul_pos` says a product of two positive numbers is positive: `exact Nat.mul_pos (Nat.succ_pos k) ih`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem len_append (xs ys : List Nat) : len (xs ++ ys) = len xs + len ys := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Define `len`, the length of a list, by recursion (Lean's `length` is ruled out); then prove that the length of two lists joined is the sum of their lengths.",
+      "leanSolution": "  induction xs with\n  | nil => simp [len]\n  | cons x xs ih => simp [len, ih]; omega",
+      "leanStart": "  induction xs with\n  | nil => sorry\n  | cons x xs ih => sorry",
+      "hints": [
+        "The definition: `[]` has length 0, and `_ :: xs` one more than `xs`.",
+        "The proof goes like `total_append`'s, with `len` in place of `total`."
+      ],
+      "leanDef": "def len : List Nat → Nat\n  | [] => sorry\n  | _ :: xs => sorry",
+      "leanDefSolution": "def len : List Nat → Nat\n  | [] => 0\n  | _ :: xs => len xs + 1",
+      "leanForbid": [
+        "length"
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem mirror_count (t : Tree) : t.mirror.count = t.count := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Define `Tree.mirror`, which swaps the left and right of every node, then prove that mirroring keeps the number of nodes (`Tree.count` is from lesson 4).",
+      "leanSolution": "  induction t with\n  | leaf => rfl\n  | node l v r ihl ihr => simp [Tree.mirror, Tree.count, ihl, ihr]; omega",
+      "leanStart": "  induction t with\n  | leaf => sorry\n  | node l v r ihl ihr => sorry",
+      "hints": [
+        "The definition: a leaf stays a leaf; `.node l v r` becomes `.node r.mirror v l.mirror`.",
+        "A tree has two smaller trees in a node, so the `node` case has two hypotheses, one for each."
+      ],
+      "leanDef": "def Tree.mirror : Tree → Tree\n  | .leaf => sorry\n  | .node l v r => sorry",
+      "leanDefSolution": "def Tree.mirror : Tree → Tree\n  | .leaf => .leaf\n  | .node l v r => .node r.mirror v l.mirror",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Induction proves a statement for every number, or every list or tree, by following the cases the type is built from: a proof for the smallest case, and one for each bigger case that may use the statement for the parts inside it. A theorem about every input is a **specification**, and a function that meets it is correct on all of them, which no number of checks can show.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "That is everything the next course assumes. [Logic and proof technique](#course=logic) uses Lean from its third lesson on, for proofs about logic, numbers and the functions you define there.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

@@ -930,7 +930,10 @@ async function features() {
   await tabs();
   // a course: the Courses tab, a lesson opened, answered, and followed to the next
   const manifest = JSON.parse(readFileSync(path.join(root, "notebooks/courses.json"), "utf8"));
-  const course = manifest.projects.find((p) => p.kind === "course");
+  // the first course whose first lesson begins with an exercise the engine checks (a Lean exercise needs
+  // Lean, which the bundle tested here does not have)
+  const firstExercise = (p) => JSON.parse(readFileSync(path.join(root, "notebooks", p.path, p.lessons[0].file), "utf8")).cells.find((c) => c.type === "exercise");
+  const course = manifest.projects.find((p) => p.kind === "course" && firstExercise(p) && !firstExercise(p).lean);
   await menu("File", "Courses and examples");
   await page.locator(".crscard").first().waitFor({ timeout: 10000 });
   assert.equal(await page.locator(".crscard").count(), manifest.projects.length, "one card per project");

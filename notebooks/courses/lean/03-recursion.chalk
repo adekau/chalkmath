@@ -1,0 +1,146 @@
+{
+  "chalk": 1,
+  "name": "03-recursion.chalk",
+  "cells": [
+    {
+      "src": "Pattern matching and recursion",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Define functions case by case, on numbers and on lists, including functions that call themselves.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A function can be defined by cases on the shape of its input. Every natural number is either `0` or `n + 1` for a smaller `n`, so those are the two cases, each after a `|`:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "def fact : Nat → Nat\n  | 0 => 1\n  | n + 1 => (n + 1) * fact n\n\n#eval fact 5",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`fact (n + 1)` uses `fact n`: the function calls itself on a smaller number. That is **recursion**, and it ends because the numbers get smaller until they reach `0`, which needs no call. `fact 3` is `3 * fact 2`, which is `3 * (2 * fact 1)`, then `3 * (2 * (1 * fact 0))`, which is 6.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> Lean checks that every recursive function stops. One that calls itself on a *bigger* input is refused:\n\n```lean\ndef loop (n : Nat) : Nat := loop (n + 1)\n-- error: fail to show termination for loop\n```\n\nThat is a feature: a function that never stopped would not give a value, and the proofs of later lessons depend on every function giving one.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Lists",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A list is written `[3, 1, 4]`. Like a number, every list has one of two shapes: empty, `[]`, or a first element in front of the rest, `x :: xs` (read \"x then xs\"). A function on lists has those two cases:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "def total : List Nat → Nat\n  | [] => 0\n  | x :: xs => x + total xs\n\n#eval total [3, 1, 4, 1, 5]",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`total [3, 1, 4]` is `3 + total [1, 4]`, then `3 + (1 + total [4])`, then `3 + (1 + (4 + total []))`, and `total []` is 0.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem sumTo_ok : sumTo 4 = 10 ∧ sumTo 10 = 55 ∧ sumTo 0 = 0 := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Define `sumTo`, where `sumTo n` is $0 + 1 + \\cdots + n$, by recursion. (Division is ruled out, so not by a formula.)",
+      "leanSolution": "  decide",
+      "leanStart": "  decide",
+      "hints": [
+        "Two cases, `0` and `n + 1`. What is the sum up to `n + 1`, given the sum up to `n`?",
+        "`| n + 1 => sumTo n + (n + 1)`"
+      ],
+      "leanDef": "def sumTo : Nat → Nat\n  | 0 => sorry\n  | n + 1 => sorry",
+      "leanDefSolution": "def sumTo : Nat → Nat\n  | 0 => 0\n  | n + 1 => sumTo n + (n + 1)",
+      "leanForbid": [
+        "/"
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem count_ok : count 1 [3, 1, 4, 1, 5] = 2 ∧ count 9 [3, 1] = 0 ∧ count 2 [] = 0 := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Define `count x xs`, how many times `x` occurs in the list `xs`.",
+      "leanSolution": "  decide",
+      "leanStart": "  decide",
+      "hints": [
+        "Two cases: the empty list, and `y :: ys`.",
+        "For `y :: ys`: add 1 if `y = x`, else 0, to the count in `ys`: `(if y = x then 1 else 0) + count x ys`."
+      ],
+      "leanDef": "def count (x : Nat) : List Nat → Nat\n  | [] => sorry\n  | y :: ys => sorry",
+      "leanDefSolution": "def count (x : Nat) : List Nat → Nat\n  | [] => 0\n  | y :: ys => (if y = x then 1 else 0) + count x ys",
+      "leanForbid": [
+        "List.count",
+        "countP"
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem fib_ok : fib 10 = 55 ∧ fib 1 = 1 ∧ fib 0 = 0 := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Define the Fibonacci numbers: `fib 0 = 0`, `fib 1 = 1`, and each after that is the sum of the two before it.",
+      "leanSolution": "  decide",
+      "leanStart": "  decide",
+      "hints": [
+        "Three cases: `0`, `1` and `n + 2`.",
+        "`| n + 2 => fib n + fib (n + 1)`: both calls are on smaller numbers."
+      ],
+      "leanDef": "def fib : Nat → Nat\n  | 0 => sorry\n  | 1 => sorry\n  | n + 2 => sorry",
+      "leanDefSolution": "def fib : Nat → Nat\n  | 0 => 0\n  | 1 => 1\n  | n + 2 => fib n + fib (n + 1)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!note] A table would pass these\n> The checks try a few inputs. A \"definition\" that lists those answers, `| 4 => 10 | 10 => 55 | _ => 0`, passes them too. Lesson 6 replaces checks like these with statements about *every* input, which no table can meet.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> A function can be defined by cases on its input's shape: `0` or `n + 1` for a number, `[]` or `x :: xs` for a list. A case may call the function on something smaller, and Lean checks that it does, so every function stops.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Numbers and lists are types Lean provides. The next lesson defines types of your own.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

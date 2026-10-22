@@ -1,0 +1,170 @@
+{
+  "chalk": 1,
+  "name": "01-calculator.chalk",
+  "cells": [
+    {
+      "src": "Lean as a calculator",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Ask Lean for a value and for its type, and give a value a name.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Lean is a programming language and a proof checker in one. These lessons start with the programming: by the end you will write functions and have Lean check statements about them, for every input. Nothing to install: the Lean cells below run Lean in this page. The first time, it downloads Lean (a few hundred MB, kept by your browser).",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A Lean cell is Lean code. Lean checks it as you type, and what a line says appears beside it. `#eval` asks for a value:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "#eval 2 + 3 * 4\n#eval 7 / 2\n#eval 7 % 2",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`*` comes before `+`, as in arithmetic. `7 / 2` is `3`: these are whole numbers, and division drops the remainder, which `%` gives. Change a number and watch the answers change.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Every value has a type",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`#check` asks for a value's **type**: what kind of thing it is.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "#check 3\n#check (3 : Int)\n#check \"hello\"\n#check true",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`Nat` is the natural numbers, $0, 1, 2, \\ldots$, and a number is a `Nat` unless you say otherwise; `(3 : Int)` says otherwise, and `Int` has the negative numbers too. `String` is text, and `Bool` is `true` or `false`. The type matters:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "#eval 2 - 5\n#eval (2 : Int) - 5",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> A `Nat` cannot go below zero, so `2 - 5` is `0`, not `-3`. It is a common surprise. When you need negative numbers, use `Int`.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Text and truth values have operations of their own: `++` joins strings, `.length` counts characters, comparisons give a `Bool`, and `&&` and `||` are \"and\" and \"or\".",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "#eval \"Hello, \" ++ \"Lean\"\n#eval \"Lean\".length\n#eval 3 < 5\n#eval 3 == 4\n#eval true && false",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Names for values",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`def` gives a value a name, and its type after a colon. The name can then be used anywhere after it, in this cell or the ones below:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "def answer : Nat := 42\n\n#eval answer + 1",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Each exercise has three parts. You write the **definition** at the top, replacing `sorry` (Lean's word for \"not written yet\"). Under it is a **statement** about your definition, which you cannot change, and under that, the **check**, already written: `decide` computes both sides and compares them. When the check passes, the exercise is done. Until your definition is written, the check fails (\"`decide` failed\"): Lean cannot compute with `sorry`. Some exercises rule out a shortcut, such as typing the answer itself; the exercise says which.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem minutes_ok : minutesInWeek = 10080 := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Define `minutesInWeek`, the number of minutes in a week, as a calculation: days times hours times minutes. (Typing `10080` is ruled out.)",
+      "leanSolution": "  decide",
+      "leanStart": "  decide",
+      "hints": [
+        "A week has 7 days, a day 24 hours, an hour 60 minutes.",
+        "`def minutesInWeek : Nat := 7 * 24 * 60`"
+      ],
+      "leanDef": "def minutesInWeek : Nat := sorry",
+      "leanDefSolution": "def minutesInWeek : Nat := 7 * 24 * 60",
+      "leanForbid": [
+        "10080"
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem balance_ok : balance = -15 := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "You have 20 and spend 35. Define `balance` as that calculation. (Typing `-15` is ruled out.)",
+      "leanSolution": "  decide",
+      "leanStart": "  decide",
+      "hints": [
+        "`20 - 35`. Its type is `Int`: as a `Nat`, `20 - 35` would be `0`."
+      ],
+      "leanDef": "def balance : Int := sorry",
+      "leanDefSolution": "def balance : Int := 20 - 35",
+      "leanForbid": [
+        "-15"
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> `#eval` computes a value and `#check` names its type. `Nat` stops at zero, `Int` does not; `String` is text and `Bool` is true or false. `def name : Type := value` names a value.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A name for one value is a start. The next lesson gives names to calculations that take inputs: functions.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}
