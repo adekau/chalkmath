@@ -7,7 +7,7 @@ import { MathInput, type MathInputOptions } from "@chalkmath/math-editor/view";
 import { termSpans, deleteTerm, type Reading, type Span, type TermSpan } from "./term-spans.js";
 import { h, tex, TRUST_PATHS } from "./dom.js";
 import { rendererOf, visualPlaced, knownVisuals, visualBox } from "./visuals.js";
-import { leavesSorry } from "./lean-sorry.js";
+import { leavesSorry, escapesIn, forbiddenIn } from "./lean-sorry.js";
 import { TOPICS, topicOf, generate as generatePractice } from "./practice.js";
 
 /**
@@ -315,8 +315,18 @@ interface Cell {
   lean?: boolean;
   leanStart?: string;
   leanSolution?: string;
+  /** A definition exercise (a Lean exercise with `leanDef`): the reader also writes a definition the
+   *  statement is about, in a part of the Lean file of its own before the statement. `leanDef` is
+   *  what it starts as, `defAttempt` the reader's, `leanDefSolution` the author's, and `leanForbid`
+   *  what the definition may not use (its form, which no statement about its values can say). */
+  leanDef?: string;
+  defAttempt?: string;
+  leanDefSolution?: string;
+  leanForbid?: string[];
   /** What Lean reports on the statement's lines (an unproved goal is reported at its `by`; not saved). */
   leanStmtMessages?: LeanMessage[];
+  /** What Lean reports on the reader's definition (not saved). */
+  leanDefMessages?: LeanMessage[];
   /** Math input Auto: whether the cell is typeset, decided for this source (re-decided when the
    *  cell is left with a different source, never while it is being typed in). */
   autoVisual?: boolean;
@@ -1286,6 +1296,7 @@ interface CellRecord {
   /** Exercise cells. */
   prompt?: string | undefined; hints?: string[] | undefined; hideQuestion?: boolean | undefined; attempt?: string | undefined; hintsShown?: number | undefined; verdict?: Verdict | undefined; solution?: boolean | undefined;
   lean?: boolean | undefined; leanStart?: string | undefined; leanSolution?: string | undefined;
+  leanDef?: string | undefined; defAttempt?: string | undefined; leanDefSolution?: string | undefined; leanForbid?: string[] | undefined;
   practice?: string | undefined; original?: PracticeOriginal | undefined; optional?: boolean | undefined;
   /** The last run's result. */
   label: number | null; outLatex?: string | undefined; outText?: string | undefined; form?: string | undefined; semantics?: "real" | "complex" | undefined; echoLatex?: string | undefined;
@@ -1414,6 +1425,10 @@ const CELL_FIELDS: AnyField[] = [
   exerciseField("lean", (v, cell) => { if (v) cell.lean = true; }, (c) => c.lean || undefined),
   exerciseField("leanStart", (v, cell, ) => { if (cell.lean && isStr(v)) cell.leanStart = v; }, (c) => c.lean ? c.leanStart : undefined),
   exerciseField("leanSolution", (v, cell) => { if (cell.lean && isStr(v)) cell.leanSolution = v; }, (c) => c.lean ? c.leanSolution : undefined),
+  exerciseField("leanDef", (v, cell) => { if (cell.lean && isStr(v)) cell.leanDef = v; }, (c) => c.lean ? c.leanDef : undefined),
+  exerciseField("defAttempt", (v, cell) => { if (cell.lean && isStr(v)) cell.defAttempt = v; }, (c) => c.lean && c.leanDef !== undefined ? c.defAttempt : undefined),
+  exerciseField("leanDefSolution", (v, cell) => { if (cell.lean && isStr(v)) cell.leanDefSolution = v; }, (c) => c.lean ? c.leanDefSolution : undefined),
+  exerciseField("leanForbid", (v, cell) => { if (cell.lean && Array.isArray(v)) cell.leanForbid = v.filter(isStr); }, (c) => c.lean && c.leanForbid?.length ? c.leanForbid : undefined),
   exerciseField("optional", (v, cell) => { if (v) cell.optional = true; }, (c) => c.optional || undefined),
   exerciseField("practice", (v, cell) => { if (isStr(v) && topicOf(v) && !cell.lean) cell.practice = v; }, (c) => c.practice),
   exerciseField("original", (v, cell) => {
@@ -1853,7 +1868,7 @@ async function leanPreludeOf(p: Project, k: number): Promise<string> {
     try {
       const doc = JSON.parse(await fetchExample(lessonPath(p, j))) as ChalkFile;
       const lean = doc.cells.flatMap((c) => c.type === "lean" ? [c.src]
-        : c.type === "exercise" && c.lean && c.src.trim() ? [`${c.src}\n${c.leanSolution ?? LEAN_START}`] : []);
+        : c.type === "exercise" && c.lean && c.src.trim() ? [`${c.leanDefSolution ? `${c.leanDefSolution}\n\n` : ""}${c.src}\n${c.leanSolution ?? LEAN_START}`] : []);
       if (lean.length) parts.push(`-- ${p.lessons[j]!.title}\n${leanForPrelude(lean.join("\n\n"))}`);
     } catch (e) { log("err", `Lean prelude: ${lessonPath(p, j)}: ${e instanceof Error ? e.message : String(e)}`); }
   }
@@ -2331,7 +2346,7 @@ function importNotebook() {
 
 /** What a link carries: the name and every cell's text and kind. Outputs are not included: the
  *  engine recomputes them when the link opens, which is the point of a verified notebook. */
-interface LinkDoc { v: 1; n: string; c: { s: string; t?: "markdown" | "section" | "lean" | "exercise" | "scene"; w?: 1; f?: 1; r?: number; p?: string; hs?: string[]; hq?: 1; sl?: [number, number, number]; ln?: 1; lst?: string; lso?: string; pr?: string; op?: 1 }[]; a?: Record<string, { m: string; d: string; b?: 1 }> }
+interface LinkDoc { v: 1; n: string; c: { s: string; t?: "markdown" | "section" | "lean" | "exercise" | "scene"; w?: 1; f?: 1; r?: number; p?: string; hs?: string[]; hq?: 1; sl?: [number, number, number]; ln?: 1; lst?: string; lso?: string; pr?: string; op?: 1; ld?: string; lds?: string; lf?: string[] }[]; a?: Record<string, { m: string; d: string; b?: 1 }> }
 
 async function deflate(text: string): Promise<Uint8Array> {
   const cs = new CompressionStream("deflate-raw");
@@ -2361,7 +2376,8 @@ async function notebookLink(): Promise<string> {
     c: S.cells.filter((c) => cellSrc(c).trim()).map((c) => ({ ...c, ...c.original, src: c.original?.src ?? cellSrc(c) })).map((c) => ({ s: c.src, ...(c.type ? { t: c.type } : {}), ...(c.showWork ? { w: 1 as const } : {}), ...(c.collapsed ? { f: 1 as const } : {}), ...(c.stepwise !== undefined ? { r: c.stepwise } : {}),
       ...(c.prompt ? { p: c.prompt } : {}), ...(c.hints?.length ? { hs: c.hints } : {}), ...(c.hideQuestion ? { hq: 1 as const } : {}), ...(c.practice ? { pr: c.practice } : {}), ...(c.optional ? { op: 1 as const } : {}),
       ...(c.slider ? { sl: [c.slider.min, c.slider.max, c.slider.step] as [number, number, number] } : {}),
-      ...(c.lean ? { ln: 1 as const, ...(c.leanStart ? { lst: c.leanStart } : {}), ...(c.leanSolution ? { lso: c.leanSolution } : {}) } : {}) })),
+      ...(c.lean ? { ln: 1 as const, ...(c.leanStart ? { lst: c.leanStart } : {}), ...(c.leanSolution ? { lso: c.leanSolution } : {}),
+        ...(c.leanDef !== undefined ? { ld: c.leanDef } : {}), ...(c.leanDefSolution ? { lds: c.leanDefSolution } : {}), ...(c.leanForbid?.length ? { lf: c.leanForbid } : {}) } : {}) })),
     ...(Object.keys(S.assets).length ? { a: Object.fromEntries(Object.values(S.assets).map((a) => [a.name, { m: a.mime, d: a.data, ...(a.binary ? { b: 1 as const } : {}) }])) } : {}),
   };
   const json = JSON.stringify(doc);
@@ -2393,7 +2409,9 @@ async function openNotebookLink(hash: string): Promise<boolean> {
         prompt: typeof c.p === "string" ? c.p : undefined, hints: Array.isArray(c.hs) ? c.hs.map(String) : undefined, hideQuestion: c.hq ? true : undefined,
         slider: Array.isArray(c.sl) && c.sl.length === 3 ? { min: Number(c.sl[0]), max: Number(c.sl[1]), step: Number(c.sl[2]) } : undefined,
         lean: c.ln ? true : undefined, leanStart: typeof c.lst === "string" ? c.lst : undefined, leanSolution: typeof c.lso === "string" ? c.lso : undefined,
-        practice: typeof c.pr === "string" ? c.pr : undefined, optional: c.op ? true : undefined, label: null })),
+        practice: typeof c.pr === "string" ? c.pr : undefined, optional: c.op ? true : undefined,
+        leanDef: typeof c.ld === "string" ? c.ld : undefined, leanDefSolution: typeof c.lds === "string" ? c.lds : undefined,
+        leanForbid: Array.isArray(c.lf) ? c.lf.map(String) : undefined, label: null })),
       scenes: [],
       ...(doc.a ? { assets: Object.fromEntries(Object.entries(doc.a).map(([name, a]) => [name, { name, mime: String(a.m), data: String(a.d), ...(a.b ? { binary: true } : {}) }])) } : {}),
     };
@@ -4300,7 +4318,18 @@ function buildCell(host: HTMLElement, cell: Cell, i: number) {
     el.append(h("div", "prompt", "Ex."));
     const mid = h("div", "mid");
     const box = h("div", "xc-box");
-    box.addEventListener("focusin", () => { if (S.active !== i) { S.active = i; renderChrome(); renderSidebar(); markActive(); } });
+    const focus = () => { if (S.active !== i) { S.active = i; renderChrome(); renderSidebar(); markActive(); } };
+    box.addEventListener("focusin", focus);
+    // a definition exercise: the prompt, then the reader's definition (a view of the Lean file, made
+    // once as the proof's is), then the statement about it
+    if (isLeanCell(cell) && !cell.editing && cell.leanDef !== undefined) {
+      const top = h("div", "xc-box xc-top");
+      const dv = h("div", "leanview xc-leandef");
+      dv.setAttribute("aria-label", `Cell ${i + 1}, your definition in Lean`);
+      dv.addEventListener("focusin", focus);
+      mid.append(top, dv);
+      mountLean(`${cell.id}${DEF_SUFFIX}`, dv, cell.defAttempt ?? cell.leanDef);
+    }
     mid.append(box);
     // a Lean exercise's proof is a view of the notebook's Lean file, made once: the parts around it are
     // redrawn as Lean reports, the editor is not (it would lose its cursor)
@@ -4666,8 +4695,9 @@ function hideDiffTip() { document.querySelector(".difftip")?.remove(); }
 const isLeanCell = (c: Cell) => c.type === "lean" || (c.type === "exercise" && !!c.lean && !!c.src.trim());
 /** The proof a Lean exercise starts with when the author gives none. */
 const LEAN_START = "  sorry";
-/** The ids of the parts of the Lean file no view edits: a course's prelude, an exercise's statement. */
-const PRELUDE_ID = "~prelude", STMT_SUFFIX = "~stmt";
+/** The ids of the parts of the Lean file no view edits: a course's prelude, an exercise's statement;
+ *  and of a definition exercise's definition, which the reader edits in a view of its own. */
+const PRELUDE_ID = "~prelude", STMT_SUFFIX = "~stmt", DEF_SUFFIX = "~def";
 /** The notebook's Lean file, cell by cell: the course's earlier lessons first (a project with a Lean
  *  prelude), then the Lean cells and the Lean exercises in order, each exercise its statement then the
  *  reader's proof. An exercise's statement ends `:= by`, so the proof below it is the declaration's own. */
@@ -4675,7 +4705,11 @@ function leanDocCells(): { id: string; src: string; fixed?: boolean }[] {
   const out: { id: string; src: string; fixed?: boolean }[] = [];
   for (const c of S.cells) {
     if (c.type === "lean") out.push({ id: c.id, src: c.src });
-    else if (isLeanCell(c)) out.push({ id: `${c.id}${STMT_SUFFIX}`, src: c.src, fixed: true }, { id: c.id, src: c.attempt ?? c.leanStart ?? LEAN_START });
+    else if (isLeanCell(c)) {
+      // a definition exercise: the reader's definition, before the statement that is about it
+      if (c.leanDef !== undefined) out.push({ id: `${c.id}${DEF_SUFFIX}`, src: c.defAttempt ?? c.leanDef });
+      out.push({ id: `${c.id}${STMT_SUFFIX}`, src: c.src, fixed: true }, { id: c.id, src: c.attempt ?? c.leanStart ?? LEAN_START });
+    }
   }
   const pre = currentDoc()?.leanPrelude;
   if (pre && out.length) out.unshift({ id: PRELUDE_ID, src: pre, fixed: true });
@@ -4697,11 +4731,17 @@ function preludeMessages(ms: LeanMessage[]) {
 function leanVerdict(c: Cell): boolean {
   if (!leanChecked()) return false;
   const proof = c.attempt ?? c.leanStart ?? LEAN_START;
-  const ms = [...(c.leanStmtMessages ?? []), ...(c.leanMessages ?? [])];
+  const def = c.leanDef !== undefined ? c.defAttempt ?? c.leanDef : "";
+  const ms = [...(c.leanDefMessages ?? []), ...(c.leanStmtMessages ?? []), ...(c.leanMessages ?? [])];
   const err = ms.find((m) => m.severity === "error");
-  const sorry = ms.some((m) => m.severity === "warning" && /sorry/.test(m.message)) || leavesSorry(proof);
+  const sorry = ms.some((m) => m.severity === "warning" && /sorry/.test(m.message)) || leavesSorry(proof) || leavesSorry(def);
+  // a definition exercise: the definition's form, and no way out of proving, in either part
+  const escapes = c.leanDef !== undefined ? escapesIn(`${def}\n${proof}`) : [];
+  const forbidden = c.leanDef !== undefined ? forbiddenIn(def, c.leanForbid ?? []) : [];
   const v: Verdict = !proof.trim() || sorry
-    ? { equivalent: false, error: { message: !proof.trim() ? "write a proof" : "the proof still has a sorry" } }
+    ? { equivalent: false, error: { message: !proof.trim() ? "write a proof" : leavesSorry(def) ? "the definition still has a sorry" : "the proof still has a sorry" } }
+    : escapes.length ? { equivalent: false, error: { message: `${escapes.map((e) => `\`${e}\``).join(", ")} ${escapes.length === 1 ? "is" : "are"} not allowed here: the exercise is to prove it` } }
+    : forbidden.length ? { equivalent: false, error: { message: `your definition uses ${forbidden.map((e) => `\`${e}\``).join(", ")}, which this exercise rules out` } }
     : err ? { equivalent: false, error: { message: "Lean reports an error, above" } } : { equivalent: true };
   if (JSON.stringify(v) === JSON.stringify(c.verdict)) return false;
   c.verdict = v;
@@ -4716,16 +4756,17 @@ function leanHooks() {
   return {
     dark: S.theme !== "light",
     onSource: (id: string, src: string) => {
+      // a Lean exercise's views are its proof and (a definition exercise) its definition; its statement is not the reader's to change
+      if (id.endsWith(DEF_SUFFIX)) { const e = S.cells.find((x) => `${x.id}${DEF_SUFFIX}` === id); if (e) e.defAttempt = src; renderSidebar(); typed(); return; }
       const c = S.cells.find((x) => x.id === id); if (!c) return;
-      // a Lean exercise's view is its proof; its statement is not the reader's to change
       if (c.type === "exercise") c.attempt = src; else c.src = src;
       renderSidebar(); typed();
     },
     onMessages: (id: string, ms: LeanMessage[]) => {
       if (id === PRELUDE_ID) { preludeMessages(ms); return; }
-      const stmt = id.endsWith(STMT_SUFFIX);
-      const c = S.cells.find((x) => x.id === (stmt ? id.slice(0, -STMT_SUFFIX.length) : id)); if (!c) return;
-      if (stmt) c.leanStmtMessages = ms; else c.leanMessages = ms;
+      const stmt = id.endsWith(STMT_SUFFIX), def = id.endsWith(DEF_SUFFIX);
+      const c = S.cells.find((x) => x.id === (stmt ? id.slice(0, -STMT_SUFFIX.length) : def ? id.slice(0, -DEF_SUFFIX.length) : id)); if (!c) return;
+      if (stmt) c.leanStmtMessages = ms; else if (def) c.leanDefMessages = ms; else c.leanMessages = ms;
       if (c.type === "exercise") leanVerdict(c);
       renderCellBody(c);
     },
@@ -5360,13 +5401,16 @@ function exBtn(label: string, title: string, act: () => void, cls = "xc-btn"): H
 }
 /** An exercise's question, answer box, verdict, hints and solution switch; its editor while editing. */
 function renderExercise(cell: Cell) {
-  const box = cell.el?.querySelector<HTMLElement>(".xc-box"); if (!box) return;
+  const box = cell.el?.querySelector<HTMLElement>(".xc-box:not(.xc-top)"); if (!box) return;
   const i = S.cells.indexOf(cell);
   box.innerHTML = "";
   delete cell.input;
   if (cell.editing) { box.append(exerciseEditor(cell)); return; }
-  if (cell.optional) box.append(h("div", "xc-opt", "Optional: not counted in the lesson's progress"));
-  if (cell.lean) return renderLeanExercise(cell, box);
+  // a definition exercise draws its prompt above the reader's definition, in a part of its own
+  const top = cell.lean && cell.leanDef !== undefined ? cell.el?.querySelector<HTMLElement>(".xc-top") : null;
+  if (top) top.innerHTML = "";
+  if (cell.optional) (top ?? box).append(h("div", "xc-opt", "Optional: not counted in the lesson's progress"));
+  if (cell.lean) return renderLeanExercise(cell, box, top ?? box);
   if (cell.prompt?.trim()) box.append(mdRender(cell.prompt));
   if (!cell.hideQuestion || !cell.prompt?.trim()) {
     const q = h("div", "xc-q");
@@ -5517,8 +5561,8 @@ function howTo(note: string): HTMLElement {
 }
 /** A Lean exercise: the prompt and the statement above the reader's proof (an editor of the notebook's
  *  Lean file), and below it what Lean says, the verdict, the hints and the author's proof. */
-function renderLeanExercise(cell: Cell, box: HTMLElement) {
-  if (cell.prompt?.trim()) box.append(mdRender(cell.prompt));
+function renderLeanExercise(cell: Cell, box: HTMLElement, head: HTMLElement = box) {
+  if (cell.prompt?.trim()) head.append(mdRender(cell.prompt));
   if (!cell.src.trim()) { box.append(h("div", "xc-src", "No statement yet: ✎ Edit")); return; }
   const stmt = h("pre", "xc-leanstmt");
   stmt.append(h("code", undefined, cell.src));
@@ -5530,7 +5574,8 @@ function renderLeanExercise(cell: Cell, box: HTMLElement) {
   const note = leanStateNote(cell);
   if (note) below.append(note);
   // what Lean says about the proof (its lines), and the statement's own errors (an unproved goal is reported at `by`)
-  const ms = [...(cell.leanStmtMessages ?? []).filter((m) => m.severity === "error").map((m) => ({ ...m, where: "statement" })),
+  const ms = [...(cell.leanDefMessages ?? []).map((m) => ({ ...m, where: `definition ${m.line}:${m.column}` })),
+    ...(cell.leanStmtMessages ?? []).filter((m) => m.severity === "error").map((m) => ({ ...m, where: "statement" })),
     ...(cell.leanMessages ?? []).map((m) => ({ ...m, where: `${m.line}:${m.column}` }))];
   for (const m of ms) {
     const row = h("div", `leanmsg ${m.severity}`);
@@ -5541,7 +5586,9 @@ function renderLeanExercise(cell: Cell, box: HTMLElement) {
   const verdict = h("div", "xc-verdict");
   if (state !== "ready") verdict.append(h("span", "xc-pending", state === "failed" || state === "held" ? "" : "Waiting for Lean…"));
   else if (!leanChecked()) { verdict.classList.add("old"); verdict.append(h("span", "xc-pending", "Lean is checking…")); }
-  else if (v?.equivalent) { verdict.classList.add("right"); verdict.append(h("span", "xc-mark", "✓"), document.createTextNode(" Proved: Lean accepts the proof, and nothing is left as sorry.")); }
+  else if (v?.equivalent) { verdict.classList.add("right"); verdict.append(h("span", "xc-mark", "✓"), document.createTextNode(cell.leanDef !== undefined
+    ? " Proved: Lean accepts your definition and the proof, the definition keeps to the exercise's rules, and nothing is left as sorry."
+    : " Proved: Lean accepts the proof, and nothing is left as sorry.")); }
   else if (v) { verdict.classList.add("wrong"); verdict.append(h("span", "xc-mark", "✗"), document.createTextNode(` Not yet: ${v.error?.message ?? "Lean does not accept the proof"}.`)); }
   below.append(verdict);
   appendHints(cell, below);
@@ -5553,7 +5600,7 @@ function renderLeanExercise(cell: Cell, box: HTMLElement) {
   below.append(tools);
   if (cell.solution && cell.leanSolution?.trim()) {
     const sol = h("pre", "xc-leanstmt xc-leansol");
-    sol.append(h("code", undefined, `${cell.src}\n${cell.leanSolution}`));
+    sol.append(h("code", undefined, `${cell.leanDefSolution ? `${cell.leanDefSolution}\n\n` : ""}${cell.src}\n${cell.leanSolution}`));
     below.append(sol);
   }
 }
@@ -5651,9 +5698,18 @@ function leanExerciseEditor(cell: Cell, f: HTMLElement, field: (label: string, i
   field("Starting proof", start, "What the reader's proof starts as (indented): by default sorry, which Lean shows the goal of.");
   const sol = area(cell.leanSolution ?? "", "  obtain ⟨hp, hq⟩ := h\n  exact ⟨hq, hp⟩", (v) => { if (v.trim()) cell.leanSolution = v; else delete cell.leanSolution; });
   field("A proof", sol, "Yours, shown when the reader asks, and checked when the notebook is (scripts/notebooks/check-lean.mjs).");
+  // a definition exercise: the reader writes the definition the statement is about, as well as the proof
+  const def = area(cell.leanDef ?? "", "def double : Nat → Nat\n  | 0 => sorry\n  | n + 1 => sorry", (v) => { if (v.trim()) cell.leanDef = v; else delete cell.leanDef; });
+  field("Starting definition", def, "For an exercise in writing a function as well as proving something about it: the definition the reader starts from (with sorry for what they fill in). It goes before the statement, which is about it. Leave it empty for a proof exercise.");
+  const defSol = area(cell.leanDefSolution ?? "", "def double : Nat → Nat\n  | 0 => 0\n  | n + 1 => double n + 2", (v) => { if (v.trim()) cell.leanDefSolution = v; else delete cell.leanDefSolution; });
+  field("A definition", defSol, "Yours, shown with your proof when the reader asks, and what later lessons see.");
+  const forbid = document.createElement("input");
+  forbid.type = "text"; forbid.className = "xc-qin"; forbid.spellcheck = false; forbid.value = (cell.leanForbid ?? []).join(", "); forbid.placeholder = "*, Nat.mul, mul";
+  forbid.addEventListener("input", () => { const xs = forbid.value.split(",").map((x) => x.trim()).filter(Boolean); if (xs.length) cell.leanForbid = xs; else delete cell.leanForbid; });
+  field("Not allowed in the definition", forbid, "Names (Nat.mul; mul also finds Nat.mul) or symbols (*), separated by commas: the form the exercise asks for, which no statement about the values can say. Comments and strings do not count.");
   const hints = area((cell.hints ?? []).join("\n\n"), "Take the conjunction apart first.\n\nobtain ⟨hp, hq⟩ := h", (v) => { cell.hints = v.split(/\n\s*\n/).map((x) => x.trim()).filter(Boolean); }, false);
   field("Hints", hints, "Opened one at a time, in order; a blank line between two hints.");
-  queueMicrotask(() => { for (const ta of [prompt, stmt, start, sol, hints]) grow(ta); });
+  queueMicrotask(() => { for (const ta of [prompt, stmt, start, sol, def, defSol, hints]) grow(ta); });
   prompt.addEventListener("keydown", (ev) => { if (ev.key === "Enter" && (ev.shiftKey || ev.metaKey || ev.ctrlKey)) { ev.preventDefault(); finishExerciseEdit(cell); } });
   return f;
 }

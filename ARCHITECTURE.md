@@ -784,6 +784,15 @@ language server answers LSP for Lean cells.
   two have no error and no `sorry`, read once Lean's `$/lean/fileProgress` says it has finished
   checking the file's current version, so a verdict is never about text Lean has not seen. CI checks
   every shipped Lean exercise with the author's proof (`scripts/notebooks/check-lean.mjs`).
+  A **definition exercise** (`leanDef`) has the reader write the definition the statement is about
+  too: a part of the Lean file of its own before the statement (`~def`, a second view), so the
+  statement is a specification and Lean's acceptance the grade, over every input. What it asks of the
+  definition's form (`leanForbid`: no `*`, say), no statement about values can express; the page checks
+  it in the definition's code (`lean-sorry.ts`, comments and strings aside), with the ways out of
+  proving (`axiom`, `native_decide`, `implemented_by`, `extern`, `unsafe`) in the definition and the
+  proof. That is a check of the form written down, not a proof of it. The browser's Lean has only
+  `Init`, so the check cannot be a Lean command reading the elaborated term (`import Lean`); and a
+  recursive definition's body is in a helper Lean makes (`double._f`), which `#print` does not show.
 - **A course's Lean prelude.** A project with `leanPrelude` gives each lesson the Lean of the lessons
   before it (their Lean cells, and their Lean exercises with the author's proofs) as a first cell no view
   shows, so a course builds one development across its lessons. It is saved with the lesson, and CI

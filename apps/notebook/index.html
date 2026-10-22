@@ -412,9 +412,11 @@ html[data-outsize="l"] { --sz-out:28px; --sz-echo:22px; --sz-work:19px; --sz-sub
 .kindbadge .i { display:inline-flex; align-items:center; justify-content:center; width:12px; height:12px; border-radius:50%; background:var(--p-acc-chip); font-size:8px; font-style:italic; }
 .timing { font-family:var(--code); font-size:10px; color:var(--p-mut2); }
 /* Lean cells: the VS Code editor (lean4monaco) as the input, Lean's messages as the output */
-.cell.lean .leanview, .cell.exercise .xc-leanproof { min-height:24px; border:1px solid var(--p-input-br); border-radius:6px; overflow:hidden; background:var(--p-input-bg); }
+.cell.lean .leanview, .cell.exercise .xc-leanproof, .cell.exercise .xc-leandef { min-height:24px; border:1px solid var(--p-input-br); border-radius:6px; overflow:hidden; background:var(--p-input-bg); }
 .cell.exercise .xc-leanproof { margin:6px 0 0 11px; }
-.cell.lean .leanview.pending, .cell.exercise .xc-leanproof.pending { font-family:var(--code); font-size:13px; line-height:19px; white-space:pre-wrap; padding:5px 8px; color:var(--p-mut); }
+.cell.exercise .xc-leandef { margin:6px 0 10px 11px; }
+.cell.exercise .xc-top:empty { display:none; }
+.cell.lean .leanview.pending, .cell.exercise .xc-leanproof.pending, .cell.exercise .xc-leandef.pending { font-family:var(--code); font-size:13px; line-height:19px; white-space:pre-wrap; padding:5px 8px; color:var(--p-mut); }
 .leanstate { margin:8px 0 0 8px; font-size:12.5px; color:var(--p-mut); }
 .leanstate.failed { color:var(--p-err); }
 .leanstate .smallbtn { margin-left:4px; vertical-align:middle; }

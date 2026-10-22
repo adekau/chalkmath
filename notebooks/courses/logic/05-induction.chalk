@@ -213,6 +213,36 @@
       "label": null
     },
     {
+      "src": "Until now the definitions were given and you proved things about them. In the next exercise you write the definition too, and the theorem is its specification: Lean accepts your work when the definition meets it, for every $n$. A table of answers cannot: it would have to stop somewhere, and the theorem is about every $n$ after that too.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem double_spec (n : Nat) : double n = 2 * n := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Define `double` by recursion, adding as you go, without multiplying (no `*`); then prove that it doubles every number.",
+      "leanSolution": "  induction n with\n  | zero => rfl\n  | succ k ih =>\n    simp only [double, ih]\n    omega",
+      "leanStart": "  induction n with\n  | zero => sorry\n  | succ k ih => sorry",
+      "hints": [
+        "The definition: `double 0` is `0`, and each step up adds 2: `double (n + 1)` is `double n + 2`.",
+        "The proof is by induction, like `oddSum_eq`: `simp only [double, ih]` unfolds one step and uses the hypothesis, and `omega` finishes the arithmetic."
+      ],
+      "leanDef": "def double : Nat → Nat\n  | 0 => sorry\n  | n + 1 => sorry",
+      "leanDefSolution": "def double : Nat → Nat\n  | 0 => 0\n  | n + 1 => double n + 2",
+      "leanForbid": [
+        "*",
+        "Nat.mul",
+        "HMul.hMul",
+        "mul",
+        "<<<",
+        "shiftLeft"
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "> [!summary]\n> Induction proves $P(n)$ for every $n$ from a base case and a step: a recipe that builds the proof for any $n$ you name. Checking cases finds mistakes; the step is the proof. In Lean, `induction` splits the goal into those two cases and hands the step its hypothesis.",
       "type": "markdown",
       "showWork": false,

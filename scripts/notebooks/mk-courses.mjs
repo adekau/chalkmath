@@ -58,10 +58,14 @@ function lesson() {
     sc: (script) => cells.push({ src: script.trim(), type: "scene", showWork: false, label: null }),
     /** A Lean exercise: the statement (ending `:= by`), the prompt, the author's proof (required: CI checks
      *  it), the hints, and `o.start`, the proof the reader starts from (`sorry` if absent). `o.optional`
-     *  (for `ex` too): beyond the lesson, and not counted in its progress. */
+     *  (for `ex` too): beyond the lesson, and not counted in its progress. `o.def`: a definition exercise,
+     *  where the reader writes the definition the statement is about as well as the proof: `start` (what
+     *  their definition starts as), `solution` (the author's: required, CI checks it) and `forbid` (what
+     *  the definition may not use). */
     lx: (statement, prompt, proof, hints = [], o = {}) => cells.push({
       src: statement, type: "exercise", lean: true, prompt: code(prompt), leanSolution: proof,
-      ...(o.start ? { leanStart: o.start } : {}), ...(hints.length ? { hints: hints.map(code) } : {}), ...(o.optional ? { optional: true } : {}), showWork: false, label: null,
+      ...(o.start ? { leanStart: o.start } : {}), ...(hints.length ? { hints: hints.map(code) } : {}), ...(o.optional ? { optional: true } : {}),
+      ...(o.def ? { leanDef: o.def.start, leanDefSolution: o.def.solution, ...(o.def.forbid?.length ? { leanForbid: o.def.forbid } : {}) } : {}), showWork: false, label: null,
     }),
   };
 }
@@ -769,6 +773,24 @@ theorem oddSum_eq (n : Nat) : oddSum n = n * n := by`, r`Prove that the sum of t
   | succ k ih =>
     rw [Nat.pow_succ]
     omega`, [r`The step: from $k + 1 \le 2^k$, show $k + 2 \le 2^k \cdot 2$.`, r`‹rw [Nat.pow_succ]› turns ‹2 ^ (k + 1)› into ‹2 ^ k * 2›; then ‹omega› treats ‹2 ^ k› as a number.`]);
+    md(r`Until now the definitions were given and you proved things about them. In the next exercise you write the definition too, and the theorem is its specification: Lean accepts your work when the definition meets it, for every $n$. A table of answers cannot: it would have to stop somewhere, and the theorem is about every $n$ after that too.`);
+    lx(r`theorem double_spec (n : Nat) : double n = 2 * n := by`, r`Define ‹double› by recursion, adding as you go, without multiplying (no ‹*›); then prove that it doubles every number.`, r`  induction n with
+  | zero => rfl
+  | succ k ih =>
+    simp only [double, ih]
+    omega`, [
+      r`The definition: ‹double 0› is ‹0›, and each step up adds 2: ‹double (n + 1)› is ‹double n + 2›.`,
+      r`The proof is by induction, like ‹oddSum_eq›: ‹simp only [double, ih]› unfolds one step and uses the hypothesis, and ‹omega› finishes the arithmetic.`,
+    ], {
+      start: `  induction n with
+  | zero => sorry
+  | succ k ih => sorry`,
+      def: { start: `def double : Nat → Nat
+  | 0 => sorry
+  | n + 1 => sorry`, solution: `def double : Nat → Nat
+  | 0 => 0
+  | n + 1 => double n + 2`, forbid: ["*", "Nat.mul", "HMul.hMul", "mul", "<<<", "shiftLeft"] },
+    });
     md(r`
 > [!summary]
 > Induction proves $P(n)$ for every $n$ from a base case and a step: a recipe that builds the proof for any $n$ you name. Checking cases finds mistakes; the step is the proof. In Lean, ‹induction› splits the goal into those two cases and hands the step its hypothesis.

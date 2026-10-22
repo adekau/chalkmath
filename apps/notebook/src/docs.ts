@@ -208,6 +208,8 @@ A **Lean exercise** asks for a proof. Its statement is Lean, such as ‹theorem 
 - **✓ Proved** means Lean accepts the declaration, statement and proof, with nothing left as ‹sorry›.
 - **Show a proof** shows the author's, to compare with yours.
 
+A **definition exercise** asks you to write a function as well: its statement is about a definition you write, in a Lean editor of its own above the statement. The statement is the specification, so Lean accepts your work when your definition meets it for every input; a table of answers cannot, since the statement covers the inputs past its end too. What the exercise asks of the definition's *form* (no multiplication, say), which no statement about its values can say, it checks in your definition's code: using it says so, and the verdict waits. A way out of proving (‹axiom›, ‹native_decide›, ‹implemented_by›, ‹extern›, ‹unsafe›) is refused in the definition and the proof alike.
+
 Add one from Edit › Add Lean exercise or the ‹▾› between cells. Its editor has the prompt, the **statement** (ending with ‹:= by›), the **starting proof** (indented; ‹sorry› if empty), **a proof** of your own, and the hints. Your proof is required for a notebook that ships with ChalkMath: CI checks it (‹scripts/notebooks/check-lean.mjs›).
 `],
   },

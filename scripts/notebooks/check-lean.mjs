@@ -14,7 +14,8 @@ const engine = new URL("../../engine/", import.meta.url).pathname;   // elan pic
 const dir = mkdtempSync(path.join(tmpdir(), "chalk-lean-"));
 let bad = 0;
 /** A notebook's Lean, as the page assembles it: Lean cells, and Lean exercises with the author's proofs. */
-const leanOf = (cells) => cells.flatMap((c) => c.type === "lean" ? [c.src] : c.type === "exercise" && c.lean && c.src.trim() ? [`${c.src}\n${c.leanSolution ?? "  sorry"}`] : []);
+// a definition exercise's statement is about the definition before it: the author's, here
+const leanOf = (cells) => cells.flatMap((c) => c.type === "lean" ? [c.src] : c.type === "exercise" && c.lean && c.src.trim() ? [`${c.leanDefSolution ? `${c.leanDefSolution}\n\n` : ""}${c.src}\n${c.leanSolution ?? "  sorry"}`] : []);
 // A lesson of a course with a Lean prelude sees the Lean of the lessons before it (notebooks/courses.json),
 // as the page gives it (without the commands that only show something, leanForPrelude): it is checked
 // with them in front.
@@ -38,8 +39,8 @@ for (const file of process.argv.slice(2)) {
   // a Lean exercise is its statement and the author's proof, which must be there: it is what the reader's is
   // measured against, and what a course's later lessons see of it (their Lean prelude)
   const all = JSON.parse(readFileSync(file, "utf8")).cells;
-  const unproved = all.filter((c) => c.type === "exercise" && c.lean && c.src.trim() && !c.leanSolution?.trim());
-  if (unproved.length) { bad++; console.log(`${file}: FAILED, ${unproved.length} Lean exercise${unproved.length === 1 ? " has" : "s have"} no proof of the author's: ${unproved.map((c) => c.src.split("\n")[0]).join("; ")}`); continue; }
+  const unproved = all.filter((c) => c.type === "exercise" && c.lean && c.src.trim() && (!c.leanSolution?.trim() || (c.leanDef !== undefined && !c.leanDefSolution?.trim())));
+  if (unproved.length) { bad++; console.log(`${file}: FAILED, ${unproved.length} Lean exercise${unproved.length === 1 ? " has" : "s have"} no proof (or, asking for a definition, no definition) of the author's: ${unproved.map((c) => c.src.split("\n")[0]).join("; ")}`); continue; }
   const prelude = preludes.get(path.resolve(file));
   const cells = [...(prelude ? [prelude] : []), ...leanOf(all)];
   if (!cells.length) { console.log(`${file}: no Lean cells`); continue; }
