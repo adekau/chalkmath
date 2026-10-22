@@ -714,7 +714,8 @@ lesson `#course=<id>&lesson=<n>` (from 1): the page's address follows the course
 the page loads with it or when it is entered into the address bar. Unlike `#nb=`, it names the
 course rather than carrying it, so it stays short and opens the course as it is now. The lessons are built from
 what the shell offers for teaching: exercise cells (checked by `engine.check`, §3; one with a practice
-topic offers another question of its kind, below), steps held back
+topic offers another question of its kind, below; an optional one is beyond the lesson and not counted in
+its progress), steps held back
 to be revealed one at a time, sliders on `let n = number` that re-run the cells out of date because of
 them, and Markdown callouts. Every lesson's answers are pinned in `notebooks/golden/` and checked in CI.
 

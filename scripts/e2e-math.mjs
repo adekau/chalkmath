@@ -944,7 +944,8 @@ async function features() {
   const expected = await reference.call("engine.check", { sessionId: "e2e-lesson", cellId: "l", source: first.src });
   await lex.locator(".xc-in").fill(expected.rendered.text); await lex.locator(".xc-in").press("Enter");
   await lex.locator(".xc-verdict.right").waitFor({ timeout: 30000 });
-  const total = lesson.cells.filter((c) => c.type === "exercise").length;
+  // an optional exercise is not counted in a lesson's progress
+  const total = lesson.cells.filter((c) => c.type === "exercise" && !c.optional).length;
   await page.locator(".lessonbar .lbstate", { hasText: `1 of ${total} exercises` }).waitFor({ timeout: 10000 });
   await page.locator(".lessonbar .lbbtn", { hasText: "Next" }).click();
   await page.locator(".lessonbar .lbwhere", { hasText: `Lesson 2 of ${course.lessons.length}` }).waitFor({ timeout: 30000 });
@@ -978,6 +979,14 @@ async function features() {
   await page.evaluate((h) => { location.hash = h; }, `#course=${course.id}&lesson=3`);
   await page.locator(".lessonbar .lbwhere", { hasText: `Lesson 3 of ${course.lessons.length}` }).waitFor({ timeout: 30000 });
   assert.equal(await page.locator(".lessonbar .lbtitle").textContent(), course.lessons[2].title, "a lesson link opens its lesson");
+  // its optional exercises say so, and its progress counts the others alone
+  const lesson3 = JSON.parse(readFileSync(path.join(root, "notebooks", course.path, course.lessons[2].file), "utf8")).cells.filter((c) => c.type === "exercise");
+  const optional = lesson3.filter((c) => c.optional).length;
+  if (optional) {
+    await page.locator(".lessonbar .lbstate", { hasText: `0 of ${lesson3.length - optional} exercises` }).waitFor({ timeout: 10000 })
+      .catch(async () => assert.fail(`lesson 3's progress counts its optional exercises: ${await page.locator(".lessonbar .lbstate").textContent()}`));
+    assert.equal(await page.locator(".cell.exercise .xc-opt").count(), optional, "an optional exercise is not marked as one");
+  }
   const other = manifest.projects.find((p) => p.kind === "course" && p.id !== course.id);
   await page.evaluate((h) => { location.hash = h; }, `#course=${other.id}`);
   await page.locator(".courses h1", { hasText: other.title }).waitFor({ timeout: 10000 });

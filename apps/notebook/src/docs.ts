@@ -195,7 +195,7 @@ Many of the courses' exercises have a **topic**, and offer **↻ Another one**: 
 
 ## Writing one
 
-Add an exercise from Edit › Add exercise or the ‹▾› between cells. Its editor has a **prompt** (Markdown, what the reader is asked to do), the **question**, and **hints** (a blank line between two). The question is shown typeset under the prompt unless you untick that, for a prompt that says it in words ("the slope of $x^3$ at $x = 2$" for ‹subst(diff(x^3, x), x, 2)›). **Practice** gives the exercise a topic, and so ↻ Another one; **Generate a question** fills in a question of that topic, with its prompt and hints, to keep or change. **✎ Edit** opens the editor again; **✓ Done** (or Shift+Enter) closes it.
+Add an exercise from Edit › Add exercise or the ‹▾› between cells. Its editor has a **prompt** (Markdown, what the reader is asked to do), the **question**, and **hints** (a blank line between two). The question is shown typeset under the prompt unless you untick that, for a prompt that says it in words ("the slope of $x^3$ at $x = 2$" for ‹subst(diff(x^3, x), x, 2)›). **Optional** marks an exercise as beyond the lesson: it says so, and a lesson's progress does not count it. **Practice** gives the exercise a topic, and so ↻ Another one; **Generate a question** fills in a question of that topic, with its prompt and hints, to keep or change. **✎ Edit** opens the editor again; **✓ Done** (or Shift+Enter) closes it.
 
 An exercise is not an evaluation: it takes no ‹In[n]› and ‹%› still means the cell before it. It sees the names defined above it, so a question can use them.
 

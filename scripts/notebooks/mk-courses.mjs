@@ -49,17 +49,18 @@ function lesson() {
     /** An exercise: the question (its value is the answer), the prompt, the hints. */
     ex: (question, prompt, hints = [], o = {}) => cells.push({
       src: question, type: "exercise", prompt: code(prompt), ...(hints.length ? { hints: hints.map(code) } : {}),
-      ...(o.hide ? { hideQuestion: true } : {}), ...(PRACTICE[question] ? { practice: PRACTICE[question] } : {}), showWork: false, label: null,
+      ...(o.hide ? { hideQuestion: true } : {}), ...(PRACTICE[question] ? { practice: PRACTICE[question] } : {}), ...(o.optional ? { optional: true } : {}), showWork: false, label: null,
     }),
     /** A Lean cell. */
     lean: (src) => cells.push({ src, type: "lean", showWork: false, label: null }),
     /** A scene: a picture told in beats (apps/notebook/src/scene.ts), its script as the cell's source. */
     sc: (script) => cells.push({ src: script.trim(), type: "scene", showWork: false, label: null }),
     /** A Lean exercise: the statement (ending `:= by`), the prompt, the author's proof (required: CI checks
-     *  it), the hints, and `o.start`, the proof the reader starts from (`sorry` if absent). */
+     *  it), the hints, and `o.start`, the proof the reader starts from (`sorry` if absent). `o.optional`
+     *  (for `ex` too): beyond the lesson, and not counted in its progress. */
     lx: (statement, prompt, proof, hints = [], o = {}) => cells.push({
       src: statement, type: "exercise", lean: true, prompt: code(prompt), leanSolution: proof,
-      ...(o.start ? { leanStart: o.start } : {}), ...(hints.length ? { hints: hints.map(code) } : {}), showWork: false, label: null,
+      ...(o.start ? { leanStart: o.start } : {}), ...(hints.length ? { hints: hints.map(code) } : {}), ...(o.optional ? { optional: true } : {}), showWork: false, label: null,
     }),
   };
 }
@@ -383,6 +384,116 @@ example (p q : Prop) : p → p ∨ q := by
     md(r`
 > [!summary]
 > Each connective's rules say what it takes to prove it and what you can do with it, and Lean's tactics are those rules. A proof of an implication is a function; a proof of a conjunction is a pair. Excluded middle is the one extra principle classical logic adds.
+`);
+    sec("Going further: De Morgan without excluded middle");
+    md(r`
+> [!note] Optional
+> This section goes past the lesson: where the rules above stop, and what excluded middle adds. Its exercises are optional and do not count toward the lesson's progress.
+`);
+    md(r`De Morgan's laws are two equivalences, so four implications. Classically all four hold, and the truth tables agree:`);
+    m("equiv(¬(p ∨ q), ¬p ∧ ¬q)");
+    m("equiv(¬(p ∧ q), ¬p ∨ ¬q)");
+    md(r`
+1. $\lnot(p \lor q) \to \lnot p \land \lnot q$, which you proved above (‹not_or_split›);
+2. $\lnot p \land \lnot q \to \lnot(p \lor q)$;
+3. $\lnot p \lor \lnot q \to \lnot(p \land q)$;
+4. $\lnot(p \land q) \to \lnot p \lor \lnot q$.
+`);
+    md(r`
+> [!try]
+> The rules of this lesson prove three of the four. Before reading on, find the odd one out: in which of them must you *build* an $\lor$, and from what?
+`);
+    lx(r`theorem not_or_of_both (p q : Prop) : ¬p ∧ ¬q → ¬(p ∨ q) := by`, r`Prove law 2: if not $p$ and not $q$, then not $p \lor q$.`, r`  intro ⟨hnp, hnq⟩ h
+  cases h with
+  | inl hp => exact hnp hp
+  | inr hq => exact hnq hq`, [
+      r`‹¬(p ∨ q)› is ‹p ∨ q → False›: after the pair, introduce a proof of ‹p ∨ q› too.`,
+      r`‹cases› on it: in each case one half of the pair refutes what you have.`,
+    ], { optional: true });
+    lx(r`theorem not_and_of_either (p q : Prop) : ¬p ∨ ¬q → ¬(p ∧ q) := by`, r`Prove law 3: if not $p$ or not $q$, then not both.`, r`  intro h ⟨hp, hq⟩
+  cases h with
+  | inl hnp => exact hnp hp
+  | inr hnq => exact hnq hq`, [
+      r`Introduce the ‹∨› and the pair, then ‹cases› on the ‹∨›.`,
+      r`Whichever side you get refutes one half of the pair.`,
+    ], { optional: true });
+    sec("Why the fourth needs more");
+    md(r`In 1, 2 and 3 you take apart what you are given and build a pair or a function. In 4 you must build $\lnot p \lor \lnot q$, and a proof of an $\lor$ says which side holds: ‹left› or ‹right›, chosen by you. All you have is $h : \lnot(p \land q)$, a function that turns a proof of $p \land q$ into a contradiction, and you can only use it once you have both $p$ and $q$. Every attempt stalls at that point:`);
+    md(r`
+‹‹‹lean
+example (p q : Prop) : ¬(p ∧ q) → ¬p ∨ ¬q := by
+  intro h
+  left           -- commit: it is p that fails
+  intro hp       -- now prove False from h : ¬(p ∧ q) and hp : p
+  exact h ⟨hp, _⟩  -- h needs a proof of q as well, and nothing gives one
+‹‹‹
+`.replace(/‹‹‹/g, "```"));
+    md(r`‹right› stalls the same way, for want of a proof of $p$. No cleverer proof exists either. Take for $p$ a statement nobody has settled, Goldbach's conjecture $G$, and for $q$ its negation $\lnot G$. Then $\lnot(G \land \lnot G)$ has a one-line proof, ‹fun ⟨g, ng⟩ => ng g›, and law 4 would turn it into $\lnot G \lor \lnot\lnot G$: a proof that says which side, so a proof that settles whether Goldbach's conjecture can be refuted, for free. The rules of this lesson never decide anything for free; that is what makes them **constructive**.`);
+    md(r`What they can prove is weaker: you cannot say *which* of $p$ and $q$ fails, but you can show that *neither* failing is impossible. That is the double negation of law 4, and it needs no excluded middle.`);
+    lx(r`theorem not_not_either (p q : Prop) : ¬(p ∧ q) → ¬¬(¬p ∨ ¬q) := by`, r`Prove that law 4's conclusion cannot be refuted: from $\lnot(p \land q)$, derive $\lnot\lnot(\lnot p \lor \lnot q)$.`, r`  intro h k
+  apply k
+  left
+  intro hp
+  apply k
+  right
+  intro hq
+  exact h ⟨hp, hq⟩`, [
+      r`After ‹intro h k›, ‹k : ¬(¬p ∨ ¬q)› refutes whichever side you give it, and you may use it more than once.`,
+      r`Give it ‹¬p›: to prove that, assume ‹hp : p›. Now use ‹k› again, with ‹¬q›.`,
+      r`With both ‹hp› and ‹hq› in hand, ‹h ⟨hp, hq⟩› is the contradiction.`,
+    ], { optional: true });
+    md(r`The trick is that ‹k› can be asked twice. The first time you claim $\lnot p$; inside that claim you have $p$, so you take it back and claim $\lnot q$; now you hold $p$ and $q$ together, and $h$ refutes them. A classical proof of law 4 decides which side; this one only shows that refusing both sides is contradictory.`);
+    lx(r`theorem not_and_split (p q : Prop) : ¬(p ∧ q) → ¬p ∨ ¬q := by`, r`Now prove law 4 itself, with excluded middle: ‹Classical.em p : p ∨ ¬p›.`, r`  intro h
+  cases Classical.em p with
+  | inl hp => exact Or.inr (fun hq => h ⟨hp, hq⟩)
+  | inr hnp => exact Or.inl hnp`, [
+      r`‹cases Classical.em p› gives two cases: ‹hp : p› and ‹hnp : ¬p›.`,
+      r`If ‹¬p›, that is the left side. If ‹p›, then ‹q› would make ‹h› a contradiction: the right side.`,
+    ], { optional: true });
+    sec("Where excluded middle comes from: choice");
+    md(r`In Lean, excluded middle is not an axiom. ‹Classical.em› is a theorem, proved from the **axiom of choice**, ‹Classical.choice : Nonempty α → α›: given only a proof that a type has an element, it hands you an element. A proof that something exists need not say which, and choice produces one anyway, with no recipe for finding it. That is exactly what a constructive proof cannot do, and it is enough to decide every proposition (Diaconescu's theorem).`);
+    md(r`
+> [!theorem] Diaconescu's argument
+> Take two predicates on the booleans: $U(x)$ is "$x = \mathsf{true}$ or $p$", and $V(x)$ is "$x = \mathsf{false}$ or $p$". Each holds of some boolean, so choice picks $u$ with $U(u)$ and $v$ with $V(v)$. Two booleans can always be compared, and the comparison decides $p$:
+> - If $p$ holds, $U$ and $V$ hold of every boolean: they are the same predicate, and choice, asked the same question, gives the same answer. So $u = v$.
+> - So if $u \neq v$, $p$ is false.
+> - If $u = v$, then $u = \mathsf{true}$ and $v = \mathsf{false}$ cannot both be why they were picked, so $p$ was: $p$ is true.
+`);
+    md(r`Choice committed to a side, $u$ and $v$, without saying how; comparing them reads off the side. Two smaller axioms make "the same predicate" literal: **propositional extensionality** (‹propext›: equivalent propositions are equal) and **function extensionality** (from ‹Quot.sound›: functions that agree everywhere are equal). In Lean:`);
+    lean(r`theorem em_by_choice (p : Prop) : p ∨ ¬p := by
+  let U : Bool → Prop := fun x => x = true ∨ p
+  let V : Bool → Prop := fun x => x = false ∨ p
+  have hU : ∃ x, U x := ⟨true, Or.inl rfl⟩
+  have hV : ∃ x, V x := ⟨false, Or.inl rfl⟩
+  have hu : U (Classical.choose hU) := Classical.choose_spec hU
+  have hv : V (Classical.choose hV) := Classical.choose_spec hV
+  -- the two picks are booleans, and booleans can be compared
+  have differ_or_p : Classical.choose hU ≠ Classical.choose hV ∨ p := by
+    cases hu with
+    | inr h => exact Or.inr h
+    | inl hu =>
+      cases hv with
+      | inr h => exact Or.inr h
+      | inl hv => exact Or.inl (by rw [hu, hv]; decide)
+  -- if p holds, U and V are the same predicate, and choice picks the same from the same
+  have same_if_p : p → Classical.choose hU = Classical.choose hV := by
+    intro hp
+    have hUV : U = V := funext fun x => propext ⟨fun _ => Or.inr hp, fun _ => Or.inr hp⟩
+    have : ∀ (eU : ∃ x, U x) (eV : ∃ x, V x), Classical.choose eU = Classical.choose eV := by
+      rw [hUV]; intro _ _; rfl
+    exact this hU hV
+  cases differ_or_p with
+  | inl hne => exact Or.inr (fun hp => hne (same_if_p hp))
+  | inr hp => exact Or.inl hp`);
+    md(r`‹#print axioms› lists what a proof rests on. The proofs that took things apart and built pairs and functions rest on nothing; anything through excluded middle rests on choice. (An exercise you have not finished shows ‹sorryAx›, Lean's placeholder for the missing proof.)`);
+    lean(r`#print axioms not_or_split
+#print axioms not_and_of_either
+#print axioms not_not_either
+#print axioms not_and_split
+#print axioms em_by_choice`);
+    md(r`
+> [!summary]
+> Constructively, a proof of $p \lor q$ says which side holds. Three of De Morgan's four implications never need to decide one; the fourth does, and gets it from excluded middle, which Lean derives from the axiom of choice. Choice is why classical proofs can exist without saying how to compute what they promise, and Lean marks a definition that uses it ‹noncomputable›: there is nothing to run.
 `);
     md(r`So far every statement was about $p$ and $q$. Most statements in mathematics are about every number, or some number. The next lesson adds $\forall$ and $\exists$.`);
   });

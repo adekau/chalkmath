@@ -283,6 +283,8 @@ interface Cell {
    *  ↺ Original. */
   practice?: string;
   original?: PracticeOriginal;
+  /** An exercise beyond the lesson: shown as optional, and not counted in its progress. */
+  optional?: boolean;
   /** How many steps the reader has revealed (not saved), and the source that count belongs to: the
    *  cell run with another source starts again from `stepwise`. */
   revealed?: number;
@@ -1284,7 +1286,7 @@ interface CellRecord {
   /** Exercise cells. */
   prompt?: string | undefined; hints?: string[] | undefined; hideQuestion?: boolean | undefined; attempt?: string | undefined; hintsShown?: number | undefined; verdict?: Verdict | undefined; solution?: boolean | undefined;
   lean?: boolean | undefined; leanStart?: string | undefined; leanSolution?: string | undefined;
-  practice?: string | undefined; original?: PracticeOriginal | undefined;
+  practice?: string | undefined; original?: PracticeOriginal | undefined; optional?: boolean | undefined;
   /** The last run's result. */
   label: number | null; outLatex?: string | undefined; outText?: string | undefined; form?: string | undefined; semantics?: "real" | "complex" | undefined; echoLatex?: string | undefined;
   steps?: Step[] | undefined; outline?: StepOutline[] | undefined; error?: Cell["error"] | undefined; plot?: PlotData | undefined; visuals?: KnownVisual[] | undefined; summary?: string | undefined;
@@ -1412,6 +1414,7 @@ const CELL_FIELDS: AnyField[] = [
   exerciseField("lean", (v, cell) => { if (v) cell.lean = true; }, (c) => c.lean || undefined),
   exerciseField("leanStart", (v, cell, ) => { if (cell.lean && isStr(v)) cell.leanStart = v; }, (c) => c.lean ? c.leanStart : undefined),
   exerciseField("leanSolution", (v, cell) => { if (cell.lean && isStr(v)) cell.leanSolution = v; }, (c) => c.lean ? c.leanSolution : undefined),
+  exerciseField("optional", (v, cell) => { if (v) cell.optional = true; }, (c) => c.optional || undefined),
   exerciseField("practice", (v, cell) => { if (isStr(v) && topicOf(v) && !cell.lean) cell.practice = v; }, (c) => c.practice),
   exerciseField("original", (v, cell) => {
     const o = v as Partial<PracticeOriginal> | null;
@@ -1930,7 +1933,8 @@ function readProgress(): Progress {
 function recordProgress() {
   const d = currentDoc(), pr = d?.project, p = pr && projectById(pr.id), l = p?.lessons[pr!.lesson];
   if (!d || !pr || !l) return;
-  const ex = d.cells.filter((c) => c.type === "exercise");
+  // an optional exercise is beyond the lesson: finishing the lesson does not need it
+  const ex = d.cells.filter((c) => c.type === "exercise" && !c.optional);
   const all = readProgress();
   const was = all[pr.id]?.[l.file];
   const now = { done: ex.filter((c) => c.verdict?.equivalent).length, total: ex.length };
@@ -2294,7 +2298,7 @@ function importNotebook() {
 
 /** What a link carries: the name and every cell's text and kind. Outputs are not included: the
  *  engine recomputes them when the link opens, which is the point of a verified notebook. */
-interface LinkDoc { v: 1; n: string; c: { s: string; t?: "markdown" | "section" | "lean" | "exercise" | "scene"; w?: 1; f?: 1; r?: number; p?: string; hs?: string[]; hq?: 1; sl?: [number, number, number]; ln?: 1; lst?: string; lso?: string; pr?: string }[]; a?: Record<string, { m: string; d: string; b?: 1 }> }
+interface LinkDoc { v: 1; n: string; c: { s: string; t?: "markdown" | "section" | "lean" | "exercise" | "scene"; w?: 1; f?: 1; r?: number; p?: string; hs?: string[]; hq?: 1; sl?: [number, number, number]; ln?: 1; lst?: string; lso?: string; pr?: string; op?: 1 }[]; a?: Record<string, { m: string; d: string; b?: 1 }> }
 
 async function deflate(text: string): Promise<Uint8Array> {
   const cs = new CompressionStream("deflate-raw");
@@ -2322,7 +2326,7 @@ async function notebookLink(): Promise<string> {
     v: 1, n: S.docName,
     // an exercise the reader is practising on is shared as its author wrote it
     c: S.cells.filter((c) => cellSrc(c).trim()).map((c) => ({ ...c, ...c.original, src: c.original?.src ?? cellSrc(c) })).map((c) => ({ s: c.src, ...(c.type ? { t: c.type } : {}), ...(c.showWork ? { w: 1 as const } : {}), ...(c.collapsed ? { f: 1 as const } : {}), ...(c.stepwise !== undefined ? { r: c.stepwise } : {}),
-      ...(c.prompt ? { p: c.prompt } : {}), ...(c.hints?.length ? { hs: c.hints } : {}), ...(c.hideQuestion ? { hq: 1 as const } : {}), ...(c.practice ? { pr: c.practice } : {}),
+      ...(c.prompt ? { p: c.prompt } : {}), ...(c.hints?.length ? { hs: c.hints } : {}), ...(c.hideQuestion ? { hq: 1 as const } : {}), ...(c.practice ? { pr: c.practice } : {}), ...(c.optional ? { op: 1 as const } : {}),
       ...(c.slider ? { sl: [c.slider.min, c.slider.max, c.slider.step] as [number, number, number] } : {}),
       ...(c.lean ? { ln: 1 as const, ...(c.leanStart ? { lst: c.leanStart } : {}), ...(c.leanSolution ? { lso: c.leanSolution } : {}) } : {}) })),
     ...(Object.keys(S.assets).length ? { a: Object.fromEntries(Object.values(S.assets).map((a) => [a.name, { m: a.mime, d: a.data, ...(a.binary ? { b: 1 as const } : {}) }])) } : {}),
@@ -2356,7 +2360,7 @@ async function openNotebookLink(hash: string): Promise<boolean> {
         prompt: typeof c.p === "string" ? c.p : undefined, hints: Array.isArray(c.hs) ? c.hs.map(String) : undefined, hideQuestion: c.hq ? true : undefined,
         slider: Array.isArray(c.sl) && c.sl.length === 3 ? { min: Number(c.sl[0]), max: Number(c.sl[1]), step: Number(c.sl[2]) } : undefined,
         lean: c.ln ? true : undefined, leanStart: typeof c.lst === "string" ? c.lst : undefined, leanSolution: typeof c.lso === "string" ? c.lso : undefined,
-        practice: typeof c.pr === "string" ? c.pr : undefined, label: null })),
+        practice: typeof c.pr === "string" ? c.pr : undefined, optional: c.op ? true : undefined, label: null })),
       scenes: [],
       ...(doc.a ? { assets: Object.fromEntries(Object.entries(doc.a).map(([name, a]) => [name, { name, mime: String(a.m), data: String(a.d), ...(a.b ? { binary: true } : {}) }])) } : {}),
     };
@@ -2773,7 +2777,7 @@ function convertCell(cell: Cell, type: CellType) {
   if (type === "section") cell.src = cell.src.split("\n")[0]!.replace(/^#+\s*/, "");
   if (type !== "lean") delete cell.leanMessages;
   if (type === "exercise") cell.editing = true;
-  else { delete cell.prompt; delete cell.hints; delete cell.hideQuestion; delete cell.attempt; delete cell.hintsShown; delete cell.verdict; delete cell.solution; delete cell.practice; delete cell.original; }
+  else { delete cell.prompt; delete cell.hints; delete cell.hideQuestion; delete cell.attempt; delete cell.hintsShown; delete cell.verdict; delete cell.solution; delete cell.practice; delete cell.original; delete cell.optional; }
   if (cur === "exercise" && type === "math") { delete cell.stepwise; cell.showWork = false; }
   renderCells(); renderSidebar(); renderChrome(); autosave();
 }
@@ -3170,7 +3174,7 @@ function trackViewSection() {
 /** A section's exercises: how many there are and how many the reader has answered right. */
 function sectionProgress(i: number): { done: number; total: number } {
   const [a, b] = sectionRange(i);
-  const ex = S.cells.slice(a, b).filter((c) => c.type === "exercise");
+  const ex = S.cells.slice(a, b).filter((c) => c.type === "exercise" && !c.optional);
   return { done: ex.filter((c) => c.verdict?.equivalent).length, total: ex.length };
 }
 
@@ -3217,7 +3221,7 @@ function renderSidebar() {
       } else if (c.type === "exercise") {
         row.append(h("span", "num", c.verdict?.equivalent ? "✓" : "?"));
         const wrap = h("span");
-        wrap.append(h("span", "kind", "exercise"), h("span", "src", c.prompt?.split("\n").find((l) => l.trim())?.replace(/^#+\s*/, "") || c.src || "…"));
+        wrap.append(h("span", "kind", c.optional ? "optional exercise" : "exercise"), h("span", "src", c.prompt?.split("\n").find((l) => l.trim())?.replace(/^#+\s*/, "") || c.src || "…"));
         row.append(wrap);
       } else if (c.type === "scene") {
         row.append(h("span", "num", "▷"));
@@ -5327,6 +5331,7 @@ function renderExercise(cell: Cell) {
   box.innerHTML = "";
   delete cell.input;
   if (cell.editing) { box.append(exerciseEditor(cell)); return; }
+  if (cell.optional) box.append(h("div", "xc-opt", "Optional: not counted in the lesson's progress"));
   if (cell.lean) return renderLeanExercise(cell, box);
   if (cell.prompt?.trim()) box.append(mdRender(cell.prompt));
   if (!cell.hideQuestion || !cell.prompt?.trim()) {
@@ -5544,6 +5549,11 @@ function exerciseEditor(cell: Cell): HTMLElement {
   prompt.rows = 2; prompt.value = cell.prompt ?? ""; prompt.placeholder = cell.lean ? "Prove that conjunction commutes." : "Differentiate, then simplify.";
   prompt.addEventListener("input", () => { cell.prompt = prompt.value; grow(prompt); });
   field("Prompt", prompt, "Markdown, with $math$: what the reader is asked to do.");
+  const opt = document.createElement("input");
+  opt.type = "checkbox"; opt.checked = !!cell.optional;
+  opt.addEventListener("change", () => { if (opt.checked) cell.optional = true; else delete cell.optional; });
+  const ol = h("label", "xc-check"); ol.append(opt, document.createTextNode(" Optional: beyond the lesson, and not counted in its progress"));
+  f.append(ol);
   if (cell.lean) return leanExerciseEditor(cell, f, field, grow, prompt);
   const q = document.createElement("input");
   q.type = "text"; q.className = "xc-qin"; q.spellcheck = false; q.value = cell.src; q.placeholder = "diff(x^2 * sin(x), x)";
