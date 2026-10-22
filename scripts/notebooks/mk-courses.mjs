@@ -13,6 +13,7 @@ const code = (text) => text.replace(/‹([^‹›\n]*)›/g, "`$1`").trim();
 /** Exercises that offer more of their kind (↻ Another one): question → practice topic
  *  (apps/notebook/src/practice.ts; `practice.test.mjs` holds every topic named here to one there). */
 const PRACTICE = {
+  "minimize((b ∧ ¬t) ∨ (b ∧ t ∧ s) ∨ (¬b ∧ s ∧ t))": "logic.minimize", "equiv((p ∧ ¬q) ∨ (p ∧ q) ∨ (¬p ∧ q), p ∨ q)": "logic.equiv",
   "taut(p → (q → p))": "logic.taut", "taut((p → q) → (¬p → ¬q))": "logic.taut",
   "falsify((p → q) → p)": "logic.falsify", "equiv(¬(p → q), p ∧ ¬q)": "logic.equiv",
   "sat((a ↔ ¬b) ∧ (b ↔ (a ↔ b)))": "logic.knights", "sat(a ↔ (¬a ∧ ¬b))": "logic.knights",
@@ -67,14 +68,15 @@ function lesson() {
 
 const courses = [];
 /** A course: its lessons are written by `build`, one call of `add(file, title, blurb, write)` each.
- *  `o.leanPrelude`: each lesson's Lean sees the Lean of the lessons before it. */
+ *  `app(file, title, blurb, write)` writes an application of the lesson added last: an optional
+ *  notebook beside it, outside the course's order and progress, linked from it and leading back to it.
+ *  `o.leanPrelude`: each lesson's Lean sees the Lean of the lessons before it (an application's, its
+ *  own lesson's too). */
 function course(id, title, blurb, level, build, o = {}) {
   const lessons = [];
-  build((file, ltitle, lblurb, write) => {
-    const L = lesson();
-    write(L);
-    lessons.push({ file, title: ltitle, blurb: lblurb, cells: L.cells });
-  });
+  const write = (file, ltitle, lblurb, w) => { const L = lesson(); w(L); return { file, title: ltitle, blurb: lblurb, cells: L.cells }; };
+  build((file, ltitle, lblurb, w) => { lessons.push(write(file, ltitle, lblurb, w)); },
+    (file, atitle, ablurb, w) => { (lessons[lessons.length - 1].apps ??= []).push(write(file, atitle, ablurb, w)); });
   courses.push({ id, title, blurb, level, lessons, ...(o.leanPrelude ? { leanPrelude: true } : {}) });
 }
 
@@ -115,7 +117,7 @@ const oddSquareScene = (() => {
 
 course("logic", "Logic and proof technique",
   "Propositions and truth tables, normal forms, proofs as Lean tactics, quantifiers, three kinds of induction, relations and well-founded termination: the toolkit every later course uses.",
-  "Discrete mathematics", (add) => {
+  "Discrete mathematics", (add, app) => {
 
   add("01-truth-tables.chalk", "Propositions and truth tables", "Why “if … then” is defined the way it is, truth tables, tautologies, and satisfying assignments as witnesses.", ({ sec, md, m, ex }) => {
     sec("Propositions and truth tables");
@@ -313,7 +315,136 @@ $$\begin{array}{ccc|c} p & q & r & \ ? \\ \hline T & T & T & F \\ T & T & F & T 
 > [!summary]
 > Every truth table has a formula: the $\lor$ of its true rows (a DNF), or the $\land$ of clauses that rule out its false rows (a CNF). The laws of logic reach the same forms from a formula without its table: NNF pushes negations onto the variables, and distributing gives CNF or DNF.
 `);
+    md(r`
+> [!note] Application: conditions in code
+> The true rows of a table are also the branches of an ‹if›. [Simplifying conditions in code](#course=logic&lesson=2&app=1), an optional notebook beside this lesson, finds the smallest DNF of a condition and checks a rewrite of an ‹if› chain against the old one.
+`);
     md(r`Tables and laws decide formulas about $p$ and $q$. Neither can check a statement about every number, which has infinitely many rows. The next lesson builds proofs instead, step by step, and has Lean check them.`);
+  });
+
+  app("02a-conditions-in-code.chalk", "Simplifying conditions in code", "The true rows of a condition are the branches of an if: the smallest DNF by Quine–McCluskey, branches that can never run, and a rewrite checked by truth table, in the engine and in Lean.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Simplifying conditions in code");
+    md(r`
+> [!goal]
+> Read an ‹if› chain as a formula, find its smallest form, find the branches that can never run, and check that a rewrite changed the code's shape and not what it does.
+`);
+    md(r`An application of lesson 2, outside the course's order: nothing later depends on it. The last section uses Lean, which lesson 3 introduces.`);
+    md(r`
+‹‹‹ts
+function canEdit(isAdmin: boolean, isOwner: boolean, locked: boolean): boolean {
+  if (isAdmin) return true;
+  else if (isOwner && !locked) return true;
+  else if (isOwner && locked && isAdmin) return true;
+  return false;
+}
+‹‹‹
+`.replace(/‹‹‹/g, "```"));
+    md(r`Name the conditions $a$ (‹isAdmin›), $o$ (‹isOwner›) and $l$ (‹locked›). A later branch runs only when the earlier ones failed, but every branch returns ‹true›, and $A \lor (\lnot A \land B) \equiv A \lor B$: so the function is true exactly when one of the branches' conditions is.`);
+    m("truthtable(a ∨ (o ∧ ¬l) ∨ (o ∧ l ∧ a))");
+    sec("The smallest DNF");
+    md(r`Five true rows, so the DNF read off the table has five terms. ‹minimize› finds the smallest DNF with the same table, by the **Quine–McCluskey** method: two terms that differ in one variable merge, $(x \land y) \lor (x \land \lnot y) \equiv x$, round by round, until no two do. The terms left are the **prime implicants**; then it keeps the fewest of them that are true in every true row.`);
+    m("minimize(a ∨ (o ∧ ¬l) ∨ (o ∧ l ∧ a))", { work: true });
+    md(r`Two terms, $a$ and $o \land \lnot l$, and both are needed: each is the only one true in some row. The third branch was **dead code**: whenever $o \land l \land a$ holds, $a$ already returned. The function is
+
+‹‹‹ts
+const canEdit = (isAdmin: boolean, isOwner: boolean, locked: boolean) => isAdmin || (isOwner && !locked);
+‹‹‹
+
+and ‹equiv› checks the rewrite against the original, every row of it:`.replace(/‹‹‹/g, "```"));
+    m("equiv(a ∨ (o ∧ ¬l) ∨ (o ∧ l ∧ a), a ∨ (o ∧ ¬l))");
+    md(r`A rewrite that goes one step too far is caught with the row that shows it:`);
+    m("equiv(a ∨ (o ∧ ¬l) ∨ (o ∧ l ∧ a), a ∨ o)", { work: true });
+    md(r`
+> [!mistake]
+> The smallest formula is not always the clearest code. Simplifying shows what the condition *is*; whether to write it that way is a question of what the next reader needs. The check is worth having either way: it says the two are the same, or exactly where they are not.
+`);
+    sec("Branches that never run");
+    md(r`
+‹‹‹ts
+function shipping(express: boolean, member: boolean, heavy: boolean): string {
+  if (express && !heavy) return "air";
+  if (heavy) return "freight";
+  if (member || !express) return "ground";
+  return "standard";
+}
+‹‹‹
+`.replace(/‹‹‹/g, "```"));
+    md(r`Each ‹return› runs when its condition holds *and every earlier one failed*. With $e$, $m$, $h$ for the three flags, ‹"ground"› runs when $\lnot(e \land \lnot h) \land \lnot h \land (m \lor \lnot e)$. Its smallest form:`);
+    m("minimize(¬(e ∧ ¬h) ∧ ¬h ∧ (m ∨ ¬e))", { work: true });
+    md(r`$\lnot e \land \lnot h$: ‹member› does not matter at all. And ‹"standard"› runs when all three conditions fail. If that has no satisfying assignment, the line never runs:`);
+    m("sat(¬(e ∧ ¬h) ∧ ¬h ∧ ¬(m ∨ ¬e))");
+    md(r`
+> [!definition] Don't-cares
+> Conditions in code are often not independent. With $g_5$ for ‹x > 5› and $g_3$ for ‹x > 3›, the row $g_5 \land \lnot g_3$ cannot happen. ‹minimize(φ, d)› takes $d$ as the rows that cannot happen: the result may be true or false there, whichever makes it smaller.
+`);
+    m("minimize((g5 ∧ s) ∨ (g3 ∧ ¬g5 ∧ s), g5 ∧ ¬g3)", { work: true });
+    md(r`Read back: ‹(x > 5 && s) || (x > 3 && x <= 5 && s)› is ‹x > 3 && s›.`);
+    sec("Exercises");
+    md(r`Answer with a formula, typing ‹&&›, ‹||› and ‹!› or the glyphs. For ‹minimize›, the answer must be a DNF with the same truth table and no bigger than the smallest; ↻ Another one gives another.`);
+    ex("minimize((b ∧ ¬t) ∨ (b ∧ t ∧ s) ∨ (¬b ∧ s ∧ t))", r`A feature is on when ‹(beta && !trial) || (beta && trial && signedIn) || (!beta && signedIn && trial)›. With $b$, $t$, $s$, find the smallest DNF.`, [
+      r`Two of the terms share $t \land s$ and differ only in $b$.`,
+      r`$b \land \lnot t$ is the only term true when $b$ holds and $t$ does not.`,
+    ], { hide: true });
+    ex("equiv((p ∧ ¬q) ∨ (p ∧ q) ∨ (¬p ∧ q), p ∨ q)", r`Someone rewrote ‹(p && !q) || (p && q) || (!p && q)› as ‹p || q›. Is the rewrite right? Answer true or false.`, [
+      r`The three terms are three of the four rows. Which row is missing, and what does ‹p || q› say there?`,
+    ]);
+    ex("sat(¬(a ∧ b) ∧ ¬a ∧ ¬(¬b))", r`In ‹if (a && b) return 1; if (a) return 2; if (!b) return 3; return 4;› can ‹return 4› run? Give an assignment that reaches it, or ‹false› if none does.`, [
+      r`It runs when all three conditions fail: $\lnot(a \land b) \land \lnot a \land \lnot\lnot b$.`,
+      r`$\lnot a$ and $b$: then $a \land b$ fails too.`,
+    ], { hide: true });
+    sec("Checking it in Lean");
+    md(r`With the conditions as ‹Bool›s, a function is a truth table Lean can run, and ‹decide› checks a statement about every row by running it. Lesson 3 introduces Lean; here it needs only one tactic.`);
+    lean(r`def canEdit (isAdmin isOwner locked : Bool) : Bool :=
+  if isAdmin then true
+  else if isOwner && !locked then true
+  else if isOwner && locked && isAdmin then true
+  else false
+
+def canEdit' (isAdmin isOwner locked : Bool) : Bool :=
+  isAdmin || (isOwner && !locked)`);
+    lx(r`theorem canEdit_simpler : ∀ a o l, canEdit a o l = canEdit' a o l := by`, r`Prove that the rewrite does what the original does, for every input.`, r`  decide`, [
+      r`Three ‹Bool›s are 8 rows: ‹decide› evaluates both sides in each.`,
+    ]);
+    md(r`A wrong rewrite does not get a proof. ‹decide› says the statement is false instead:
+
+‹‹‹
+theorem wrong : ∀ a o l, canEdit a o l = (a || o) := by decide
+-- error: Tactic decide proved that the proposition
+--   ∀ (a o l : Bool), canEdit a o l = (a || o)
+-- is false
+‹‹‹`.replace(/‹‹‹/g, "```"));
+    lean(r`inductive Ship where
+  | air | freight | ground | standard
+  deriving DecidableEq, Repr
+
+def shipping (express member heavy : Bool) : Ship :=
+  if express && !heavy then .air
+  else if heavy then .freight
+  else if member || !express then .ground
+  else .standard`);
+    lx(r`theorem shipping_never_standard : ∀ e m h, shipping e m h ≠ .standard := by`, r`Prove that ‹shipping› never answers ‹standard›: the last branch is dead.`, r`  decide`, [
+      r`The same tactic: a statement about finitely many inputs, each checked.`,
+    ]);
+    lx(r`theorem shipping_ignores_member : ∀ e m h, shipping e m h = shipping e false h := by`, r`Prove that ‹member› makes no difference.`, r`  decide`, [
+      r`Compare each input with the same one where ‹member› is ‹false›.`,
+    ]);
+    md(r`Lean goes further for a ‹match›: an arm that can never be reached is an error, not a warning.
+
+‹‹‹
+def route (admin owner : Bool) : String :=
+  match admin, owner with
+  | true, _      => "full"
+  | false, true  => "own"
+  | false, false => "none"
+  | true, true   => "never"
+-- error: Redundant alternative: Any expression matching
+--   true, true
+-- will match one of the preceding alternatives
+‹‹‹`.replace(/‹‹‹/g, "```"));
+    md(r`
+> [!summary]
+> An ‹if› chain whose branches return the same thing is the $\lor$ of their conditions; a later branch also has the earlier ones fail. ‹minimize› finds the smallest DNF (with don't-cares for rows that cannot happen), ‹sat› finds whether a branch can run at all, and ‹equiv› checks a rewrite, naming the row where it goes wrong. In Lean, ‹decide› proves the same things about ‹Bool› functions by running them on every input.
+`);
   });
 
   add("03-natural-deduction.chalk", "Proofs as Lean tactics", "Natural deduction in Lean: what it takes to prove each connective and what you can do with one, and proofs as programs.", ({ sec, md, m, lean, lx }) => {
@@ -6848,7 +6979,8 @@ const manifest = {
   projects: [
     ...courses.map((c) => ({ id: c.id, title: c.title, blurb: c.blurb, kind: "course", level: c.level, path: `courses/${c.id}`,
       ...(c.leanPrelude ? { leanPrelude: true } : {}),
-      lessons: c.lessons.map((l) => ({ file: l.file, title: l.title, blurb: l.blurb })) })),
+      lessons: c.lessons.map((l) => ({ file: l.file, title: l.title, blurb: l.blurb,
+        ...(l.apps ? { apps: l.apps.map((a) => ({ file: a.file, title: a.title, blurb: a.blurb })) } : {}) })) })),
     { id: "explorations", title: "Explorations", kind: "collection", path: "",
       blurb: "Notebooks that show what ChalkMath does: a tour, Fourier series drawing a llama, and order theory with its proofs in Lean.",
       lessons: [
@@ -6859,16 +6991,18 @@ const manifest = {
   ],
 };
 // a practice topic for a question no lesson asks is a table out of date
-const asked = new Set(courses.flatMap((c) => c.lessons.flatMap((l) => l.cells.filter((x) => x.type === "exercise").map((x) => x.src))));
+const notebooksOf = (c) => c.lessons.flatMap((l) => [l, ...(l.apps ?? [])]);
+const asked = new Set(courses.flatMap((c) => notebooksOf(c).flatMap((l) => l.cells.filter((x) => x.type === "exercise").map((x) => x.src))));
 const unused = Object.keys(PRACTICE).filter((q) => !asked.has(q));
 if (unused.length) throw new Error(`PRACTICE names questions no lesson asks: ${unused.join(" | ")}`);
 for (const c of courses) {
   const dir = new URL(`../../notebooks/courses/${c.id}/`, import.meta.url);
   mkdirSync(dir, { recursive: true });
-  for (const l of c.lessons) {
+  for (const l of notebooksOf(c)) {
     writeFileSync(new URL(l.file, dir), JSON.stringify({ chalk: 1, name: l.file, cells: l.cells, scenes: [] }, null, 2) + "\n");
   }
-  console.log(`notebooks/courses/${c.id}: ${c.lessons.length} lessons, ${c.lessons.reduce((n, l) => n + l.cells.filter((x) => x.type === "exercise").length, 0)} exercises`);
+  const apps = c.lessons.reduce((n, l) => n + (l.apps?.length ?? 0), 0);
+  console.log(`notebooks/courses/${c.id}: ${c.lessons.length} lessons${apps ? ` (and ${apps} application${apps === 1 ? "" : "s"})` : ""}, ${notebooksOf(c).reduce((n, l) => n + l.cells.filter((x) => x.type === "exercise").length, 0)} exercises`);
 }
 writeFileSync(new URL("../../notebooks/courses.json", import.meta.url), JSON.stringify(manifest, null, 2) + "\n");
 console.log(`notebooks/courses.json: ${manifest.projects.length} projects`);

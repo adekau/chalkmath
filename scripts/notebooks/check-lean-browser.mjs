@@ -42,6 +42,8 @@ for (const p of JSON.parse(readFileSync(path.join(root, "notebooks/courses.json"
     preludes.set(file, parts.join("\n\n"));
     const lean = leanOf(JSON.parse(readFileSync(file, "utf8")).cells);
     if (lean.length) parts.push(`-- ${l.title}\n${leanForPrelude(lean.join("\n\n"))}`);
+    // a lesson's applications see its Lean too; later lessons do not see theirs
+    for (const ap of l.apps ?? []) preludes.set(path.join(root, "notebooks", p.path, ap.file), parts.join("\n\n"));
   }
 }
 /** The document the page gives Lean for a notebook (app.ts `leanDocCells`), or null when it has no Lean. */

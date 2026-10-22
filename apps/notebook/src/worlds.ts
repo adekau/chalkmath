@@ -25,7 +25,7 @@ export const FALLBACK_WORLDS: WorldInfo[] = [
     names: [],
     markers: [] },
   { id: "logic", label: "Logic",
-    commands: ["truthtable", "taut", "sat", "falsify", "equiv", "nnf", "cnf", "dnf"],
+    commands: ["truthtable", "taut", "sat", "falsify", "equiv", "nnf", "cnf", "dnf", "minimize"],
     keywords: ["and", "or", "not", "implies", "iff", "forall", "exists", "in"],
     glyphs: ["∧", "∨", "¬", "→", "↔", "⊤", "⊥", "∀", "∃", "∈", "≤", "≥", "≠", "<->", "->", "=>", "&&", "/\\", "||", "\\/", "<=", ">=", "!=", "==", "!", "~", "..", ","],
     names: ["prime", "even", "odd", "true", "false"],

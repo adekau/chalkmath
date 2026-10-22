@@ -83,6 +83,8 @@ const CASES = [
   { src: "taut(p → q)", text: "⊥", step: "False when p = true, q = false" },
   { src: "falsify(p → q)", text: "{p↦true, q↦false}", step: "Truth table" },
   { src: "∀ n ∈ 1..10, n^2 ≥ 2n", text: "⊥", step: "Check every element" },
+  { src: "minimize(a ∨ (o ∧ ¬l) ∨ (o ∧ l ∧ a))", text: "a ∨ o ∧ ¬l", step: "Round 1" },
+  { src: "minimize((g5 ∧ s) ∨ (g3 ∧ ¬g5 ∧ s), g5 ∧ ¬g3)", text: "s ∧ g3", step: "Smallest cover" },
   { src: "let R = rel({a, b, c}; a->b, b->c)", text: "{(a, b), (b, c)}" },
   { src: "closure(R, transitive)", text: "{(a, b), (b, c), (a, c)}", step: "Transitive closure" },
   { src: "cnf(p ∨)", error: "expected a formula" },
@@ -933,8 +935,10 @@ async function features() {
   await page.locator(".crscard").first().waitFor({ timeout: 10000 });
   assert.equal(await page.locator(".crscard").count(), manifest.projects.length, "one card per project");
   await page.locator(".crscard", { has: page.locator(".crstitle", { hasText: course.title }) }).click();
-  assert.equal(await page.locator(".crslesson").count(), course.lessons.length, "one row per lesson");
-  await page.locator(".crslesson").first().locator(".crsgo").click();
+  const appRows = course.lessons.reduce((n, l) => n + (l.apps?.length ?? 0), 0);
+  assert.equal(await page.locator(".crslesson:not(.crsapp)").count(), course.lessons.length, "one row per lesson");
+  assert.equal(await page.locator(".crslesson.crsapp").count(), appRows, "one row per application, under its lesson");
+  await page.locator(".crslesson:not(.crsapp)").first().locator(".crsgo").click();
   await page.locator(".lessonbar .lbwhere", { hasText: `Lesson 1 of ${course.lessons.length}` }).waitFor({ timeout: 30000 });
   const lesson = JSON.parse(readFileSync(path.join(root, "notebooks", course.path, course.lessons[0].file), "utf8"));
   assert.equal(await page.locator(".sidebar .olrow.section").count(), lesson.cells.filter((c) => c.type === "section").length, "the outline lists the lesson's sections");
@@ -986,6 +990,21 @@ async function features() {
     await page.locator(".lessonbar .lbstate", { hasText: `0 of ${lesson3.length - optional} exercises` }).waitFor({ timeout: 10000 })
       .catch(async () => assert.fail(`lesson 3's progress counts its optional exercises: ${await page.locator(".lessonbar .lbstate").textContent()}`));
     assert.equal(await page.locator(".cell.exercise .xc-opt").count(), optional, "an optional exercise is not marked as one");
+  }
+  // a lesson's application: opened by its link, it says whose it is and leads back; the lesson leads to it
+  const withApp = course.lessons.findIndex((l) => l.apps?.length);
+  if (withApp >= 0) {
+    const ap = course.lessons[withApp].apps[0];
+    await page.evaluate((h) => { location.hash = h; }, `#course=${course.id}&lesson=${withApp + 1}&app=1`);
+    await page.locator(".lessonbar .lbwhere", { hasText: `Application of lesson ${withApp + 1}` }).waitFor({ timeout: 30000 })
+      .catch(() => assert.fail("an application's link did not open it"));
+    assert.equal(await page.locator(".lessonbar .lbtitle").textContent(), ap.title, "the application's link opens the application");
+    assert.equal(await page.locator(".lessonbar .lbbtn", { hasText: "Next" }).count(), 0, "an application is outside the course's order");
+    await page.locator(".lessonbar .lbbtn", { hasText: `‹ Lesson ${withApp + 1}` }).click();
+    await page.locator(".lessonbar .lbwhere", { hasText: `Lesson ${withApp + 1} of ${course.lessons.length}` }).waitFor({ timeout: 30000 });
+    assert.equal(await hashOf(), `#course=${course.id}&lesson=${withApp + 1}`, "back on the lesson, the address is the lesson's");
+    await page.locator(".lessonbar .lbbtn", { hasText: `Application: ${ap.title}` }).waitFor({ timeout: 10000 })
+      .catch(() => assert.fail("the lesson does not lead to its application"));
   }
   const other = manifest.projects.find((p) => p.kind === "course" && p.id !== course.id);
   await page.evaluate((h) => { location.hash = h; }, `#course=${other.id}`);

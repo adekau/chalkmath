@@ -122,7 +122,10 @@ def checkLogic (s : Session) (cellId question : String) (answer : Option String)
   | (s, .ok res) =>
     let prep (f : Logic.Fm) := Logic.expand s.formulas f
     -- what the answer is held to
+    -- `minimize(f, d)`: the rows where `d` holds cannot happen, and an answer may do anything there
+    let dontCare : Logic.Fm := match stmt with | .cmd _ "minimize" [_, d] => prep d | _ => .ff
     let mode : String × Option Logic.Fm := match stmt with
+      | .cmd _ "minimize" (f :: _) => ("minimize", some (prep f))
       | .cmd _ h [f] => if ["nnf", "cnf", "dnf"].contains h then (h, some (prep f)) else if h == "sat" || h == "falsify" then (h, some (prep f)) else ("bool", none)
       | .cmd _ _ _ => ("bool", none)
       | .fm _ f => let f := prep f; if f.isProp && !f.vars.isEmpty then ("formula", some f) else ("bool", none)
@@ -138,6 +141,18 @@ def checkLogic (s : Session) (cellId question : String) (answer : Option String)
       | ("bool", _) =>
         if !a.vars.isEmpty then throw ("answer", "the answer is ⊤ or ⊥ (true or false)", none)
         return (shown, a.eval (fun _ => false) == expectedBool)
+      | ("minimize", some f) =>
+        -- in DNF, agreeing with `f` wherever `d` does not hold, and no bigger than the engine's
+        if !Logic.isDNF a then throw ("answer", "the answer must be in DNF: a disjunction of terms, each a conjunction of literals", none)
+        let vs := ((Logic.Fm.and a f).and dontCare).vars
+        if vs.length > 8 then throw ("answer", "more than 8 variables", none)
+        if (Logic.findRow vs fun σ => !dontCare.eval σ && a.eval σ != f.eval σ).isSome then return (shown, false)
+        let best := Logic.minimize vs f dontCare
+        let (bt, bl) := Logic.costOf best.cover
+        let (at_, al) := Logic.dnfCost a
+        if Logic.costLt (bt, bl) (at_, al) then
+          throw ("answer", s!"equivalent, but not as small as it can be: the smallest has {bt} term{if bt == 1 then "" else "s"} and {bl} literal{if bl == 1 then "" else "s"}, yours {at_} and {al}", none)
+        return (shown, true)
       | ("sat", some f) | ("falsify", some f) =>
         let target := if mode.1 == "sat" then f else .not f
         let vs := (Logic.Fm.and a target).vars

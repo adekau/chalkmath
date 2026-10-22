@@ -926,6 +926,12 @@ def checkTests : TestM Unit := do
   checkTrue "check: elementary functions are allowed" (eqv "diff(sin(x^2), x)" "2x cos(x^2)")
   checkTrue "check: i is a value, not work" (eqv "i*(1 + 2i)" "-2 + i")
   checkTrue "check: so is π" (eqv "exptotrig(exp(i*pi/2))" "i")
+  -- minimize: a DNF that agrees with the formula and is as small as the engine's
+  checkTrue "check minimize: the smallest DNF" (eqv "minimize(a ∨ (o ∧ ¬l) ∨ (o ∧ l ∧ a))" "o ∧ ¬l ∨ a")
+  checkTrue "check minimize: equivalent but bigger, and said so" (contains (ask "minimize(a ∨ (o ∧ ¬l) ∨ (o ∧ l ∧ a))" "a ∨ (o ∧ ¬l ∧ ¬a)") "the smallest has 2 terms and 3 literals")
+  checkTrue "check minimize: a wrong answer" (!eqv "minimize(a ∨ (o ∧ ¬l) ∨ (o ∧ l ∧ a))" "a ∨ o")
+  checkTrue "check minimize: not a DNF" (contains (ask "minimize(p ∧ (q ∨ r))" "p ∧ (q ∨ r)") "must be in DNF")
+  checkTrue "check minimize: a don't-care row may go either way" (eqv "minimize((g5 ∧ s) ∨ (g3 ∧ ¬g5 ∧ s), g5 ∧ ¬g3)" "g3 ∧ s")
   checkTrue "check: a syntax error in the answer" (contains (ask "diff(x^2, x)" "2x +") "\"answer\":{\"ok\":false,\"error\":{\"code\":\"syntax\"")
   checkTrue "check: λ normal forms up to α" (eqv "add 2 1" "λg. λy. g (g (g y))")
   checkTrue "check: a different λ normal form" (!eqv "add 2 1" "λf. λx. f (f x)")

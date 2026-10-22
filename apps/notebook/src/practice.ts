@@ -247,6 +247,9 @@ export const TOPICS: Topic[] = [
       hints: ["First remove → and ↔: $p \\to q \\equiv \\lnot p \\lor q$.", "Push negations in with De Morgan's laws, then distribute."] }),
   })),
   { id: "logic.knights", area: "Logic", title: "Knights and knaves", make: knights },
+  { id: "logic.minimize", area: "Logic", title: "The smallest DNF", make: (r) => ({
+    src: `minimize(${show(formula(r, 2))})`, prompt: "Find the smallest DNF with the same truth table: the fewest terms, then the fewest literals.",
+    hints: ["Read off the true rows, then merge two terms that differ in one variable: $(x \\land y) \\lor (x \\land \\lnot y) \\equiv x$.", "Keep only the terms some true row needs."] }) },
 
   { id: "calculus.power", area: "Calculus", title: "Derivatives of polynomials", make: (r) => ({
     src: `diff(${poly(randPoly(r, 5, 3))}, x)`, prompt: "Differentiate.", hints: ["Term by term: the derivative of $x^n$ is $n x^{n-1}$, and of a constant $0$."] }) },

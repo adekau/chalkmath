@@ -17,7 +17,14 @@
         {
           "file": "02-normal-forms.chalk",
           "title": "Equivalence and normal forms",
-          "blurb": "A formula for any truth table, read off its rows; then the laws of logic as rewrites: negation normal form, CNF and DNF, one law a step."
+          "blurb": "A formula for any truth table, read off its rows; then the laws of logic as rewrites: negation normal form, CNF and DNF, one law a step.",
+          "apps": [
+            {
+              "file": "02a-conditions-in-code.chalk",
+              "title": "Simplifying conditions in code",
+              "blurb": "The true rows of a condition are the branches of an if: the smallest DNF by Quine–McCluskey, branches that can never run, and a rewrite checked by truth table, in the engine and in Lean."
+            }
+          ]
         },
         {
           "file": "03-natural-deduction.chalk",

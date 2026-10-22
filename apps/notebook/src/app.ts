@@ -1847,6 +1847,7 @@ async function fetchExample(file: string): Promise<string> {
  *  that only show something (`leanForPrelude`: Lean elaborates the prelude each time a lesson opens).
  *  Lessons that are not there are left out; what a lesson needs from them then shows as an error in its Lean. */
 async function leanPreludeOf(p: Project, k: number): Promise<string> {
+  // (an application of lesson k sees lesson k's Lean too: its caller passes k + 1)
   const parts: string[] = [];
   for (let j = 0; j < k; j++) {
     try {
@@ -1863,14 +1864,15 @@ async function leanPreludeOf(p: Project, k: number): Promise<string> {
  *  examples/; a lesson opens with its place in its project. */
 async function openExample(file: string, project?: ProjectRef): Promise<boolean> {
   const name = file.split("/").pop()!;
-  const open = S.docs.findIndex((d) => d.name === name && (!project || (d.project?.id === project.id && d.project.lesson === project.lesson)));
+  const open = S.docs.findIndex((d) => d.name === name && (!project || (d.project?.id === project.id && d.project.lesson === project.lesson && d.project.app === project.app)));
   if (open >= 0) { loadDoc(open); switchTab("notebook"); return true; }
   try {
     const text = await fetchExample(file);
     const p = project && projectById(project.id);
-    const prelude = p?.leanPrelude ? await leanPreludeOf(p, project!.lesson) : undefined;
+    // an application sees the Lean of its lesson and the lessons before it
+    const prelude = p?.leanPrelude ? await leanPreludeOf(p, project!.lesson + (project!.app !== undefined ? 1 : 0)) : undefined;
     // a lesson worked on before opens as it was left
-    const kept = p ? keptLesson(p, project!.lesson, text) : undefined;
+    const kept = p ? keptLesson(p, project!, text) : undefined;
     await loadNotebook(kept ?? text, name, project, prelude, false, p ? fingerprint(text) : undefined);
     if (project) recordProgress();
     return true;
@@ -1886,7 +1888,9 @@ async function openExample(file: string, project?: ProjectRef): Promise<boolean>
 // Courses tab lists them, a lesson opens with a bar that leads to the one before and after, and each
 // lesson's exercises answered are remembered in this browser.
 
-interface ProjectRef { id: string; lesson: number }
+/** Where a notebook is in its project: a lesson, or (`app`) one of that lesson's applications. */
+interface ProjectRef { id: string; lesson: number; app?: number }
+interface LessonEntry { file: string; title: string; blurb: string }
 interface Project {
   id: string; title: string; blurb: string;
   /** A course is read in order (lessons numbered, previous and next); a collection is not. */
@@ -1897,8 +1901,13 @@ interface Project {
   /** Each lesson's Lean sees the Lean of the lessons before it (their cells, and their exercises proved
    *  with the author's proofs), so a course builds one development across its lessons. */
   leanPrelude?: boolean;
-  lessons: { file: string; title: string; blurb: string }[];
+  /** A lesson's applications are optional notebooks of their own beside it, outside the course's order
+   *  and progress: linked from the lesson, listed under it, and leading back to it. */
+  lessons: (LessonEntry & { apps?: LessonEntry[] })[];
 }
+/** The notebook a project reference names: a lesson, or one of its applications. */
+const entryOf = (p: Project | undefined, pr: { lesson: number; app?: number | undefined } | undefined): LessonEntry | undefined =>
+  !p || !pr ? undefined : pr.app === undefined ? p.lessons[pr.lesson] : p.lessons[pr.lesson]?.apps?.[pr.app];
 /** What the page knows before courses.json arrives (or when it cannot): the example notebooks. */
 let PROJECTS: Project[] = [{ id: "explorations", title: "Explorations", kind: "collection", path: "",
   blurb: "Notebooks that show what ChalkMath does: a tour, Fourier series drawing a llama, and order theory with its proofs in Lean.",
@@ -1906,8 +1915,9 @@ let PROJECTS: Project[] = [{ id: "explorations", title: "Explorations", kind: "c
 const projectById = (id: string) => PROJECTS.find((p) => p.id === id);
 /** A project reference from a file, if it is well formed. */
 function projectRefOf(file: { project?: unknown }): ProjectRef | undefined {
-  const p = file.project as { id?: unknown; lesson?: unknown } | undefined;
-  return p && typeof p.id === "string" && typeof p.lesson === "number" && p.lesson >= 0 ? { id: p.id, lesson: Math.floor(p.lesson) } : undefined;
+  const p = file.project as { id?: unknown; lesson?: unknown; app?: unknown } | undefined;
+  if (!p || typeof p.id !== "string" || typeof p.lesson !== "number" || p.lesson < 0) return undefined;
+  return { id: p.id, lesson: Math.floor(p.lesson), ...(typeof p.app === "number" && p.app >= 0 ? { app: Math.floor(p.app) } : {}) };
 }
 async function loadProjects() {
   try {
@@ -1921,8 +1931,10 @@ async function loadProjects() {
     renderLessonBar(); syncCourseLink();
   } catch { /* the built-in list stands */ }
 }
-const lessonPath = (p: Project, k: number) => `${p.path ? `${p.path}/` : ""}${p.lessons[k]!.file}`;
-function openLesson(p: Project, k: number) { if (p.lessons[k]) void openExample(lessonPath(p, k), { id: p.id, lesson: k }); }
+const lessonPath = (p: Project, k: number, app?: number) => `${p.path ? `${p.path}/` : ""}${entryOf(p, { lesson: k, app })!.file}`;
+function openLesson(p: Project, k: number, app?: number) {
+  if (entryOf(p, { lesson: k, app })) void openExample(lessonPath(p, k, app), { id: p.id, lesson: k, ...(app !== undefined ? { app } : {}) });
+}
 
 /** Exercises answered, by project and lesson file: `{ done, total }`, and that it was opened. */
 type Progress = Record<string, Record<string, { done: number; total: number }>>;
@@ -1931,7 +1943,7 @@ function readProgress(): Progress {
 }
 /** Remember the current lesson's exercises answered (and that it was opened). */
 function recordProgress() {
-  const d = currentDoc(), pr = d?.project, p = pr && projectById(pr.id), l = p?.lessons[pr!.lesson];
+  const d = currentDoc(), pr = d?.project, p = pr && projectById(pr.id), l = entryOf(p, pr);
   if (!d || !pr || !l) return;
   // an optional exercise is beyond the lesson: finishing the lesson does not need it
   const ex = d.cells.filter((c) => c.type === "exercise" && !c.optional);
@@ -1944,8 +1956,8 @@ function recordProgress() {
   renderLessonBar();
 }
 /** A lesson's state for the list: not opened, opened, partly done, or every exercise answered. */
-function lessonState(p: Project, k: number, prog = readProgress()): { label: string; cls: string; frac: number } {
-  const r = prog[p.id]?.[p.lessons[k]!.file];
+function lessonState(p: Project, k: number, prog = readProgress(), app?: number): { label: string; cls: string; frac: number } {
+  const r = prog[p.id]?.[entryOf(p, { lesson: k, app })!.file];
   if (!r) return { label: "", cls: "new", frac: 0 };
   if (!r.total) return { label: "Read", cls: "seen", frac: 1 };
   if (r.done >= r.total) return { label: `✓ ${r.total} of ${r.total}`, cls: "done", frac: 1 };
@@ -1978,7 +1990,7 @@ function fingerprint(text: string): string {
 }
 /** The lesson file a project reference names, if the project is known. */
 function lessonFile(pr: ProjectRef | undefined): { p: Project; file: string } | undefined {
-  const p = pr && projectById(pr.id), l = p?.lessons[pr!.lesson];
+  const p = pr && projectById(pr.id), l = entryOf(p, pr);
   return p && l ? { p, file: l.file } : undefined;
 }
 /** Keep a lesson's work, if it has changed since it was opened. Its steps are left out (the cells run
@@ -1997,8 +2009,8 @@ function keepLesson(d: Nb) {
 }
 /** The work kept for lesson `k`, as the text to open, given the lesson's file as it is now. Kept for an
  *  older version of the file, it is the new file with the answers to the same exercises carried over. */
-function keptLesson(p: Project, k: number, shipped: string): string | undefined {
-  const l = p.lessons[k]; if (!l) return undefined;
+function keptLesson(p: Project, pr: ProjectRef, shipped: string): string | undefined {
+  const l = entryOf(p, pr); if (!l) return undefined;
   const kept = readKept()[p.id]?.[l.file];
   if (!kept || !Array.isArray(kept.file?.cells)) return undefined;
   const base = fingerprint(shipped);
@@ -2022,19 +2034,19 @@ function keptLesson(p: Project, k: number, shipped: string): string | undefined 
   notify("ok", `${l.title} has changed since you worked on it: your answers to its exercises were carried over.`);
   return JSON.stringify(doc);
 }
-/** Whether lesson `k` has work kept for it. */
-const hasKept = (p: Project, k: number) => !!p.lessons[k] && !!readKept()[p.id]?.[p.lessons[k]!.file];
+/** Whether a lesson (or application) has work kept for it. */
+const hasKept = (p: Project, pr: ProjectRef) => { const l = entryOf(p, pr); return !!l && !!readKept()[p.id]?.[l.file]; };
 /** Put the current lesson back as it came: its kept work is cleared and it opens afresh, in the same tab. */
 async function startLessonOver() {
   const d = currentDoc(), at = lessonFile(d?.project);
   if (!d || !at) return;
-  const k = d.project!.lesson, l = at.p.lessons[k]!;
+  const pr = d.project!, l = entryOf(at.p, pr)!;
   if (!window.confirm(`Start “${l.title}” over? Your answers and changes in it are cleared.`)) return;
   const i = S.doc;
   closeDoc(i);
   const all = readKept();
   if (all[at.p.id]) { delete all[at.p.id]![at.file]; writeKept(all); }
-  if (!await openExample(lessonPath(at.p, k), { id: at.p.id, lesson: k })) return;
+  if (!await openExample(lessonPath(at.p, pr.lesson, pr.app), pr)) return;
   // back where its tab was
   const fresh = currentDoc(), j = fresh ? S.docs.indexOf(fresh) : -1;
   if (fresh && j >= 0 && j !== i && i <= S.docs.length - 1) { S.docs.splice(j, 1); S.docs.splice(i, 0, fresh); S.doc = i; renderTabs(); autosave(); }
@@ -2057,16 +2069,20 @@ function closeCourses() {
 // its course or lesson when the page loads with it, or when it is entered into the address bar of a
 // page already open.
 
-/** What a course link names: a project, and one of its lessons (from 0), if it names one. */
-interface CourseLink { id: string; lesson?: number }
+/** What a course link names: a project, one of its lessons (from 0), and one of that lesson's
+ *  applications (`&app=<n>`, from 1 in the link), if it names them. */
+interface CourseLink { id: string; lesson?: number; app?: number }
 function parseCourseLink(hash: string): CourseLink | undefined {
   if (!hash.startsWith("#course=")) return undefined;
   const q = new URLSearchParams(hash.slice(1));
-  const id = q.get("course"), n = Number(q.get("lesson"));
+  const id = q.get("course"), n = Number(q.get("lesson")), a = Number(q.get("app"));
   if (!id) return undefined;
-  return q.has("lesson") ? { id, lesson: Number.isInteger(n) && n >= 1 ? n - 1 : -1 } : { id };
+  if (!q.has("lesson")) return { id };
+  const lesson = Number.isInteger(n) && n >= 1 ? n - 1 : -1;
+  return q.has("app") ? { id, lesson, app: Number.isInteger(a) && a >= 1 ? a - 1 : -1 } : { id, lesson };
 }
-const courseHash = (id: string, lesson?: number) => `#course=${encodeURIComponent(id)}${lesson !== undefined ? `&lesson=${lesson + 1}` : ""}`;
+const courseHash = (id: string, lesson?: number, app?: number) =>
+  `#course=${encodeURIComponent(id)}${lesson !== undefined ? `&lesson=${lesson + 1}` : ""}${lesson !== undefined && app !== undefined ? `&app=${app + 1}` : ""}`;
 /** A course link the page was loaded with and has not opened yet: the address keeps it until then. */
 let courseLinkPending = !!parseCourseLink(location.hash);
 /** Put the course or lesson on show in the page's address, or take a course link off it when neither
@@ -2075,7 +2091,7 @@ function syncCourseLink() {
   if (courseLinkPending) return;
   const pr = currentDoc()?.project;
   const want = S.tab === "courses" && S.courses.project ? courseHash(S.courses.project)
-    : S.tab === "notebook" && pr && projectById(pr.id)?.lessons[pr.lesson] ? courseHash(pr.id, pr.lesson) : "";
+    : S.tab === "notebook" && pr && entryOf(projectById(pr.id), pr) ? courseHash(pr.id, pr.lesson, pr.app) : "";
   if (location.hash === want || (location.hash && !location.hash.startsWith("#course="))) return;
   history.replaceState(null, "", location.pathname + location.search + want);
 }
@@ -2088,7 +2104,8 @@ async function openCourseLink(link: CourseLink): Promise<boolean> {
   if (!p) notify("err", `The link is to a course this page does not have: ${link.id}.`);
   else if (link.lesson === undefined) { openCourses(p.id); ok = true; }
   else if (!p.lessons[link.lesson]) { notify("err", `The link is to a lesson ${p.title} does not have; it has ${p.lessons.length}.`); openCourses(p.id); }
-  else ok = await openExample(lessonPath(p, link.lesson), { id: p.id, lesson: link.lesson });
+  else if (!entryOf(p, { lesson: link.lesson, app: link.app })) { notify("err", `The link is to an application lesson ${link.lesson + 1} of ${p.title} does not have.`); openCourses(p.id); }
+  else ok = await openExample(lessonPath(p, link.lesson, link.app), { id: p.id, lesson: link.lesson, ...(link.app !== undefined ? { app: link.app } : {}) });
   // a lesson runs its cells as it opens: a link entered meanwhile is in the address, its hashchange
   // still to come, and putting this one back would open this lesson again in its place
   if (location.hash === asked) syncCourseLink();
@@ -2191,6 +2208,19 @@ function renderCourses() {
       li.append(num, main, go);
       li.addEventListener("dblclick", () => openLesson(p, k));
       list.append(li);
+      // its applications, under it: optional, and outside the course's order and progress
+      (l.apps ?? []).forEach((a, j) => {
+        const ast = lessonState(p, k, prog, j);
+        const ali = h("li", `crslesson crsapp ${ast.cls}`);
+        const amain = h("div", "crsmain");
+        amain.append(h("div", "crskind", "Application · optional"), h("div", "crsltitle", a.title), h("div", "crsblurb", a.blurb));
+        if (ast.label) amain.append(h("div", "crsstate", ast.label));
+        const ago = asButton(h("span", "crsgo", ast.cls === "new" ? "Open" : ast.cls === "done" ? "Review" : "Continue"), `Open ${a.title}`);
+        ago.addEventListener("click", () => openLesson(p, k, j));
+        ali.append(h("span", "crsnum", "↳"), amain, ago);
+        ali.addEventListener("dblclick", () => openLesson(p, k, j));
+        list.append(ali);
+      });
     });
     page.append(list);
   }
@@ -2200,11 +2230,11 @@ function renderCourses() {
 /** Above a lesson's cells: its course, where it is in it, its exercises, and the way on. */
 function renderLessonBar() {
   const bar = document.querySelector<HTMLElement>(".lessonbar"); if (!bar) return;
-  const pr = currentDoc()?.project, p = pr && projectById(pr.id), l = p?.lessons[pr!.lesson];
+  const pr = currentDoc()?.project, p = pr && projectById(pr.id), l = entryOf(p, pr);
   bar.hidden = S.tab !== "notebook" || !p || !l;
   bar.innerHTML = "";
-  if (!p || !l || bar.hidden) return;
-  const k = pr!.lesson;
+  if (!p || !l || !pr || bar.hidden) return;
+  const k = pr.lesson, app = pr.app;
   const btn = (label: string, title: string, act: (() => void) | null) => {
     const b = asButton(h("span", `lbbtn${act ? "" : " off"}`, label), title); b.title = title;
     if (act) b.addEventListener("click", act); else b.setAttribute("aria-disabled", "true");
@@ -2213,14 +2243,17 @@ function renderLessonBar() {
   const where = h("span", "lbwhere");
   const crs = asButton(h("span", "lbcourse", p.title), `${p.title}: all lessons`);
   crs.addEventListener("click", () => openCourses(p.id));
-  where.append(crs, document.createTextNode(p.kind === "course" ? ` · Lesson ${k + 1} of ${p.lessons.length}` : ""));
-  const st = lessonState(p, k);
+  where.append(crs, document.createTextNode(app !== undefined ? ` · Application of lesson ${k + 1} · optional` : p.kind === "course" ? ` · Lesson ${k + 1} of ${p.lessons.length}` : ""));
+  const st = lessonState(p, k, undefined, app);
   const kept = h("span", "lbkept", "Kept as you go");
   kept.title = "Your answers and changes in this lesson are kept in this browser as you work: there is nothing to save, and closing the tab loses nothing.";
   bar.append(where, h("span", "lbtitle", l.title), h("span", `lbstate ${st.cls}`, st.label && st.cls !== "seen" ? st.label : ""), kept, h("span", "spacer"),
-    ...(hasKept(p, k) ? [btn("Start over", "Clear your answers and changes, and open the lesson as it came", () => void startLessonOver())] : []),
-    btn("‹ Previous", k > 0 ? p.lessons[k - 1]!.title : "", k > 0 ? () => openLesson(p, k - 1) : null),
-    btn("Next ›", k < p.lessons.length - 1 ? p.lessons[k + 1]!.title : "", k < p.lessons.length - 1 ? () => openLesson(p, k + 1) : null));
+    ...(hasKept(p, pr) ? [btn("Start over", "Clear your answers and changes, and open the lesson as it came", () => void startLessonOver())] : []),
+    // an application leads back to its lesson; a lesson to its applications, then on through the course
+    ...(app !== undefined ? [btn(`‹ Lesson ${k + 1}`, p.lessons[k]!.title, () => openLesson(p, k))] : [
+      ...(p.lessons[k]!.apps ?? []).map((a, j) => btn(`Application: ${a.title}`, `${a.blurb} (optional)`, () => openLesson(p, k, j))),
+      btn("‹ Previous", k > 0 ? p.lessons[k - 1]!.title : "", k > 0 ? () => openLesson(p, k - 1) : null),
+      btn("Next ›", k < p.lessons.length - 1 ? p.lessons[k + 1]!.title : "", k < p.lessons.length - 1 ? () => openLesson(p, k + 1) : null)]));
 }
 
 const SHORTCUTS: [string, string][] = [
@@ -4448,6 +4481,7 @@ const RULE_NAMES: Record<string, string> = {
   "rel.transitive-closure": "Transitive closure", "rel.kernel": "Kernel", "rel.classes": "Equivalence classes", "rel.finer": "Finer", "rel.wellfounded": "Well-founded", "rel.measure": "Measure",
   "logic.implication": "Eliminate →", "logic.biconditional": "Eliminate ↔", "logic.de-morgan": "De Morgan's law", "logic.double-negation": "Double negation",
   "logic.negate-constant": "Negate a constant", "logic.constants": "Simplify constants", "logic.distribute": "Distribute", "logic.complement": "Complementary literals", "logic.truthtable": "Truth table",
+  "logic.minterms": "True rows as terms", "logic.merge": "Merge terms", "logic.cover": "Smallest cover",
   "logic.evaluate": "Evaluate", "logic.bounded": "Check every element",
   "alg.from-order": "Table from the order", "alg.associative": "Associative", "alg.commutative": "Commutative", "alg.idempotent": "Idempotent",
   "alg.identity": "Identity element", "alg.fold": "Combine", "alg.order": "Order of a semilattice", "order.distributive": "Distributive",
@@ -5464,6 +5498,8 @@ function answerForm(cell: Cell): { placeholder: string; note: string } {
     if (head === "sat" || head === "falsify") return { placeholder: "an assignment: {p = true, q = false}, or p && !q",
       note: `An assignment that ${head === "sat" ? "makes the formula true" : "makes the formula false"}: a map such as \`{p = true, q = false}\` or a conjunction of literals such as \`p && !q\`, or \`false\` if there is none. ${glyphs}` };
     if (head === "taut" || head === "equiv") return { placeholder: "true or false", note: "`true` or `false` (or ⊤, ⊥)." };
+    if (head === "minimize") return { placeholder: "the smallest DNF, such as a || o && !l",
+      note: `A formula in DNF that agrees with the formula (anything goes in rows the second formula rules out) and is as small as it can be: the fewest terms, then the fewest literals. ${glyphs}` };
     if (head === "nnf" || head === "cnf" || head === "dnf") return { placeholder: `a formula in ${head.toUpperCase()}`,
       note: `A formula with the same truth table, written in ${head === "nnf" ? "negation normal form" : head === "cnf" ? "conjunctive normal form" : "disjunctive normal form"}. ${glyphs}` };
     return { placeholder: "a formula, such as p && !q", note: `A formula; any formula with the right truth table is right. ${glyphs}` };
@@ -6118,7 +6154,13 @@ function mdInline(host: HTMLElement, text: string) {
     }
     if (c === "[") {
       const m = MD_LINK.exec(text.slice(i));
-      if (m) { flush(); const a = document.createElement("a"); a.href = mdUrl(m[2]!); a.target = "_blank"; a.rel = "noopener"; mdInline(a, m[1]!); host.append(a); i += m[0].length; continue; }
+      if (m) {
+        flush();
+        const a = document.createElement("a"); a.href = mdUrl(m[2]!);
+        // a link within the page (a course or lesson, `#course=…`) opens here; any other in a new tab
+        if (!m[2]!.trim().startsWith("#")) { a.target = "_blank"; a.rel = "noopener"; }
+        mdInline(a, m[1]!); host.append(a); i += m[0].length; continue;
+      }
     }
     if ((c === "*" || c === "_") && !(c === "_" && i > 0 && /\w/.test(text[i - 1]!))) {
       const mark = next === c ? c + c : c;

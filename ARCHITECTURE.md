@@ -392,8 +392,10 @@ differential test with zero mismatches.
   equivalent". An answer that calls the question's own commands (`diff` for a `diff` question) is
   refused, and a check is not an evaluation: no `In[n]`, no binding, `%` untouched. In the logic
   world the comparison is decided rather than canonical: two formulas are equivalent exactly when
-  their truth tables agree, a `cnf`/`dnf`/`nnf` answer must also have that shape, and a `sat` answer
-  may be any satisfiable formula that implies the question's (an assignment is one). In the order
+  their truth tables agree, a `cnf`/`dnf`/`nnf` answer must also have that shape, a `sat` answer
+  may be any satisfiable formula that implies the question's (an assignment is one), and a
+  `minimize` answer must be a DNF that agrees off the don't-care rows and is no bigger than the
+  engine's (the fewest terms, then literals; a bigger one is told the size to reach). In the order
   world an answer is the value itself (`a->b, b->c`, classes `{a, b}, {c}`, `true`), compared as a
   set, so order does not matter.
 - **Soundness is a fold, over whichever semantics you bring.** `RewriteSound.normalize_sound_for`
@@ -712,7 +714,13 @@ reader's own notebook; Start over clears the kept work. A course has a link, `#c
 lesson `#course=<id>&lesson=<n>` (from 1): the page's address follows the course or lesson on show
 (`history.replaceState`, so moving about adds nothing to the back button), and the link opens it when
 the page loads with it or when it is entered into the address bar. Unlike `#nb=`, it names the
-course rather than carrying it, so it stays short and opens the course as it is now. The lessons are built from
+course rather than carrying it, so it stays short and opens the course as it is now. A lesson may have **applications** (`lessons[k].apps` in `courses.json`, written by `app(…)` in
+`mk-courses.mjs`): optional notebooks of their own beside it, addressed as `{ lesson: k, app: j }`
+(`#course=<id>&lesson=<n>&app=<m>`), listed under the lesson, linked from it and its bar, and leading
+back to it. They are outside the course's order and progress (Next skips them; a course is done
+without them), and their Lean sees their lesson's as well as the lessons' before it, while later
+lessons do not see theirs. A detour, such as the logic course's conditions in code, goes there
+rather than into the lesson, so the course stays on its line. The lessons are built from
 what the shell offers for teaching: exercise cells (checked by `engine.check`, §3; one with a practice
 topic offers another question of its kind, below; an optional one is beyond the lesson and not counted in
 its progress), steps held back

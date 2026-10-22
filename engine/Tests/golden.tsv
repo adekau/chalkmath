@@ -265,6 +265,15 @@ dnf((p ∨ q) ∧ r)	p ∧ r ∨ q ∧ r
 dnf(p ↔ q)	¬p ∧ ¬q ∨ q ∧ p
 cnf((p ∧ ¬p) ∨ q)	(p ∨ q) ∧ (¬p ∨ q)
 dnf(p ∧ ¬p)	⊥
+minimize(a ∨ (o ∧ ¬l) ∨ (o ∧ l ∧ a))	a ∨ o ∧ ¬l
+minimize((p ∧ q) ∨ (q ∧ r) ∨ (p ∧ r))	p ∧ q ∨ p ∧ r ∨ q ∧ r
+minimize(p ∨ ¬p)	⊤
+minimize(p ∧ ¬p)	⊥
+minimize(¬(p ↔ q))	p ∧ ¬q ∨ ¬p ∧ q
+minimize((g5 ∧ s) ∨ (g3 ∧ ¬g5 ∧ s), g5 ∧ ¬g3)	s ∧ g3
+minimize(p → q)	q ∨ ¬p
+minimize(n > 2)	<error: minimize is for propositional formulas; n > 2 has arithmetic or quantifiers in it (write it on its own to evaluate it)>
+minimize(a ∧ b ∧ c ∧ d ∧ e ∧ f ∧ g ∧ h ∧ i)	<error: minimize: 9 variables, more than 8>
 cnf(p ∧ ⊤)	p
 ⊤ ∧ ¬⊥	⊤
 let phi = p → q	p → q

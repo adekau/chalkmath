@@ -29,6 +29,8 @@ try {
       preludes.set(path.resolve(file), parts.join("\n\n"));
       const lean = leanOf(JSON.parse(readFileSync(file, "utf8")).cells);
       if (lean.length) parts.push(`-- ${l.title}\n${leanForPrelude(lean.join("\n\n"))}`);
+      // a lesson's applications see its Lean too; later lessons do not see theirs
+      for (const ap of l.apps ?? []) preludes.set(path.resolve(path.join(notebooks, p.path, ap.file)), parts.join("\n\n"));
     });
   }
 } catch { /* no courses */ }

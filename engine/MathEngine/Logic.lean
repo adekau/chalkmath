@@ -2,6 +2,7 @@ import MathEngine.Parser
 import MathEngine.Rewrite
 import MathEngine.Numeric
 import MathEngine.Print
+import Std.Data.HashSet
 /-!
 # The logic world
 
@@ -17,6 +18,8 @@ the heads.
   eliminated, negations pushed in (De Morgan, double negation), constants simplified, then `∨`
   distributed over `∧` (CNF) or `∧` over `∨` (DNF). Each pass is a total function, structural or on a
   size measure, so there is no budget; `LogicProofs.lean` proves each pass keeps the meaning.
+- **The smallest DNF**, `minimize` (Quine–McCluskey, with optional don't-care rows), is a search, not
+  a proof: each stage is checked against the formula row by row before it is shown (`agree_sound`).
 - **Bounded quantifiers** `∀ n ∈ D, φ` and `∃ n ∈ D, φ` range over a finite set of numbers (`{1, 2, 3}`
   or `1..10`); their atoms are comparisons of expressions (`n^2 ≥ n`, `d ∣ n`) and a few predicates
   (`prime`, `even`, `odd`), evaluated by the pipeline. The work names the element that decided it.
@@ -326,7 +329,7 @@ def parseAssignment (src : String) : Option Fm := do
 
 /-! ## Commands and statements -/
 
-def commands : List String := ["truthtable", "taut", "sat", "falsify", "equiv", "nnf", "cnf", "dnf"]
+def commands : List String := ["truthtable", "taut", "sat", "falsify", "equiv", "nnf", "cnf", "dnf", "minimize"]
 
 /-- A logic cell: `[let name =] command(formula, …)` or `[let name =] formula`. -/
 inductive Stmt where
@@ -614,6 +617,143 @@ def isDNF : Fm → Bool
 
 def hasShape (target : String) (f : Fm) : Bool :=
   match target with | "nnf" => isNNF f | "cnf" => isCNF f | "dnf" => isDNF f | _ => true
+
+/-! ## The smallest DNF (Quine–McCluskey)
+
+`minimize(f)` reads the true rows off `f`'s truth table, one term each, merges terms that differ in one
+variable (`(x ∧ y) ∨ (x ∧ ¬y) = x`) round by round until none merge (the terms left are the **prime
+implicants**), and keeps the fewest of them that cover every true row: first the essential ones (the
+only term covering some row), then the smallest cover of the rest, found by search. `minimize(f, d)`
+takes `d` as the rows that cannot happen (don't-cares): they may be merged into terms, and need not be
+covered. Nothing here is proved: each stage is checked against `f` on every row `d` leaves, and the
+check is what `agree_sound` (`LogicProofs.lean`) is about. -/
+
+/-- A term over `vs`, one position per variable: `some b` its literal, `none` absent. -/
+abbrev Cube := List (Option Bool)
+
+/-- The term is true in the row. -/
+def Cube.covers (c : Cube) (r : List Bool) : Bool := (c.zip r).all fun (x, b) => x.all (· == b)
+/-- How many literals the term has. -/
+def Cube.lits (c : Cube) : Nat := c.countP Option.isSome
+/-- Two terms that differ in one variable, present in both, merge into one without it. -/
+def Cube.merge? (a b : Cube) : Option Cube :=
+  match (a.zip b).filter (fun (x, y) => x != y) with
+  | [(some _, some _)] => some ((a.zip b).map fun (x, y) => if x == y then x else none)
+  | _ => none
+def Cube.toFm (vs : List String) (c : Cube) : Fm :=
+  match (vs.zip c).filterMap (fun (x, o) => o.map fun b => if b then Fm.var x else .not (.var x)) with
+  | [] => .tt
+  | l :: ls => ls.foldl .and l
+/-- The disjunction of the terms (`⊥` for none). -/
+def sumOf (vs : List String) (cs : List Cube) : Fm :=
+  match cs.map (Cube.toFm vs) with
+  | [] => .ff
+  | t :: ts => ts.foldl .or t
+
+/-- One round: the terms the pairs merge into (each once, in order), and the terms that merged with none. -/
+def mergeRound (cs : List Cube) : List Cube × List Cube := Id.run do
+  let arr := cs.toArray
+  let mut seen : Std.HashSet Cube := {}
+  let mut merged : Array Cube := #[]
+  let mut used : Array Bool := Array.replicate arr.size false
+  for i in [0:arr.size] do
+    for j in [i+1:arr.size] do
+      if let some m := arr[i]!.merge? arr[j]! then
+        used := (used.set! i true).set! j true
+        if !seen.contains m then
+          seen := seen.insert m
+          merged := merged.push m
+  return (merged.toList, (arr.toList.zip used.toList).filterMap fun (c, u) => if u then none else some c)
+
+/-- The size of a sum of terms: how many terms, then how many literals. -/
+def costOf (cs : List Cube) : Nat × Nat := (cs.length, cs.foldl (· + ·.lits) 0)
+def costLt (a b : Nat × Nat) : Bool := a.1 < b.1 || (a.1 == b.1 && a.2 < b.2)
+
+/-- The smallest cover of the rows `ms` by the terms `ps`, by search: the first row not covered is
+covered by each term that covers it in turn, smallest first, and a branch that cannot beat the best so
+far is cut. `none` when `fuel` runs out first. -/
+partial def coverSearch (ps : List Cube) (ms : List (List Bool)) (chosen : List Cube)
+    (best : Option (List Cube)) (fuel : Nat) : Option (List Cube) × Nat :=
+  if fuel == 0 then (best, 0) else
+  match ms with
+  | [] =>
+    let better := match best with | none => true | some b => costLt (costOf chosen) (costOf b)
+    (if better then some chosen else best, fuel - 1)
+  | m :: _ =>
+    if (best.map fun b => decide (chosen.length + 1 > b.length)).getD false then (best, fuel - 1) else
+    let cands := ((ps.filter (·.covers m)).toArray.qsort (fun a b => a.lits < b.lits)).toList
+    cands.foldl (fun (acc : Option (List Cube) × Nat) p =>
+      if acc.2 == 0 then acc else
+      coverSearch ps (ms.filter fun r => !p.covers r) (chosen ++ [p]) acc.1 (acc.2 - 1)) (best, fuel - 1)
+
+/-- A cover by the greedy rule, when the search is too large: the term covering the most rows left. -/
+partial def coverGreedy (ps : List Cube) (ms : List (List Bool)) : List Cube :=
+  match ms with
+  | [] => []
+  | _ =>
+    let score (p : Cube) := (ms.filter p.covers).length
+    match ps.foldl (fun (b : Option Cube) p => match b with
+        | none => if score p > 0 then some p else none
+        | some q => if score p > score q || (score p == score q && p.lits < q.lits) then some p else b) none with
+    | none => []
+    | some p => p :: coverGreedy (ps.filter (· != p)) (ms.filter fun r => !p.covers r)
+
+/-- What `minimize` found: each round's terms, the prime implicants, the essential ones, the cover,
+and whether the cover is the smallest (by search) or a greedy one. -/
+structure Minimized where
+  vars : List String
+  /-- The true rows (and the don't-care rows), as terms. -/
+  start : List Cube
+  rows : Nat
+  dontCares : Nat
+  /-- After each round: the terms merged so far and the primes found in the rounds before. -/
+  rounds : List (List Cube × Nat)
+  primes : List Cube
+  essential : List Cube
+  cover : List Cube
+  exact : Bool
+
+def minimize (vs : List String) (f d : Fm) : Minimized := Id.run do
+  let rs := rows vs
+  let true_ := rs.filter fun r => !d.eval (assignment vs r) && f.eval (assignment vs r)
+  let dc := rs.filter fun r => d.eval (assignment vs r)
+  let start : List Cube := (rs.filter fun r => f.eval (assignment vs r) || d.eval (assignment vs r)).map (·.map some)
+  let mut cur := start
+  let mut primes : List Cube := []
+  let mut rounds : List (List Cube × Nat) := []
+  for _ in [0:vs.length + 1] do
+    if cur.isEmpty then break
+    let (next, left) := mergeRound cur
+    primes := primes ++ left
+    if next.isEmpty then break
+    rounds := rounds ++ [(primes ++ next, (cur.length - left.length))]
+    cur := next
+  -- a term over don't-cares alone covers nothing that matters
+  let useful := primes.filter fun p => true_.any p.covers
+  let essential := useful.filter fun p => true_.any fun m => p.covers m && (useful.filter (·.covers m)).length == 1
+  let rest := true_.filter fun m => !essential.any (·.covers m)
+  let others := useful.filter fun p => !essential.contains p
+  let (found, fuel) := coverSearch others rest [] none 200000
+  let (more, exact) := match found with
+    | some c => if fuel > 0 then (c, true) else (coverGreedy others rest, false)
+    | none => (coverGreedy others rest, false)
+  let chosen := essential ++ more
+  -- the terms in the order the primes were found, so a cover reads the same every time
+  let cover := (useful.filter chosen.contains).mergeSort fun a b => a.lits ≤ b.lits
+  return { vars := vs, start, rows := true_.length, dontCares := dc.length, rounds, primes := useful, essential, cover, exact }
+
+/-- How big a DNF is, in the terms `minimize` counts: how many terms, then how many literals. -/
+def dnfCost (f : Fm) : Nat × Nat :=
+  let rec terms : Fm → List Fm
+    | .or a b => terms a ++ terms b
+    | .ff => []
+    | t => [t]
+  let rec lits : Fm → Nat
+    | .and a b => lits a + lits b
+    | .tt => 0
+    | _ => 1
+  let ts := terms f
+  (ts.length, ts.foldl (· + lits ·) 0)
 
 /-! ## First-order formulas over finite sets of numbers -/
 
