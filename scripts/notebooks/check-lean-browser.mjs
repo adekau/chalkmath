@@ -32,7 +32,7 @@ if (!existsSync(path.join(dist, "lean/lean-server.wasm.gz"))) {
 }
 
 /** A lesson's Lean as a later lesson sees it (app.ts `leanPreludeOf`): exercises with the author's proofs. */
-const leanOf = (cells) => cells.flatMap((c) => c.type === "lean" ? [c.src] : c.type === "exercise" && c.lean && c.src.trim() ? [`${c.src}\n${c.leanSolution ?? LEAN_START}`] : []);
+const leanOf = (cells) => cells.flatMap((c) => c.type === "lean" ? [c.src] : c.type === "exercise" && c.lean && c.src.trim() ? [`${c.leanDefSolution ? `${c.leanDefSolution}\n\n` : ""}${c.src}\n${c.leanSolution ?? LEAN_START}`] : []);
 const preludes = new Map();
 for (const p of JSON.parse(readFileSync(path.join(root, "notebooks/courses.json"), "utf8")).projects) {
   if (!p.leanPrelude) continue;
@@ -42,6 +42,8 @@ for (const p of JSON.parse(readFileSync(path.join(root, "notebooks/courses.json"
     preludes.set(file, parts.join("\n\n"));
     const lean = leanOf(JSON.parse(readFileSync(file, "utf8")).cells);
     if (lean.length) parts.push(`-- ${l.title}\n${leanForPrelude(lean.join("\n\n"))}`);
+    // a lesson's applications see its Lean too; later lessons do not see theirs
+    for (const ap of l.apps ?? []) preludes.set(path.join(root, "notebooks", p.path, ap.file), parts.join("\n\n"));
   }
 }
 /** The document the page gives Lean for a notebook (app.ts `leanDocCells`), or null when it has no Lean. */
@@ -49,7 +51,8 @@ function documentOf(file) {
   const out = [];
   for (const c of JSON.parse(readFileSync(file, "utf8")).cells) {
     if (c.type === "lean") out.push(c.src);
-    else if (c.type === "exercise" && c.lean && c.src.trim()) out.push(c.src, c.leanStart ?? LEAN_START);
+    // a definition exercise: the reader's definition as it starts, before the statement
+    else if (c.type === "exercise" && c.lean && c.src.trim()) out.push(...(c.leanDef !== undefined ? [c.leanDef] : []), c.src, c.leanStart ?? LEAN_START);
   }
   const prelude = preludes.get(file);
   if (prelude && out.length) out.unshift(prelude);

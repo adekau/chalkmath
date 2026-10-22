@@ -1,6 +1,47 @@
 {
   "projects": [
     {
+      "id": "lean",
+      "title": "Lean from zero",
+      "blurb": "Lean before any course uses it: values and their types, functions, recursion, your own types, and then statements about your functions that Lean checks, for every input.",
+      "kind": "course",
+      "level": "Start here",
+      "path": "courses/lean",
+      "leanPrelude": true,
+      "lessons": [
+        {
+          "file": "01-calculator.chalk",
+          "title": "Lean as a calculator",
+          "blurb": "Ask Lean for values with #eval and for types with #check; numbers that stop at zero and numbers that do not; names for values."
+        },
+        {
+          "file": "02-functions.chalk",
+          "title": "Functions",
+          "blurb": "Definitions that take inputs, applying a function without parentheses, functions of several inputs and their types, and choosing with if."
+        },
+        {
+          "file": "03-recursion.chalk",
+          "title": "Pattern matching and recursion",
+          "blurb": "Defining a function case by case, functions that call themselves on something smaller, lists, and why Lean insists a recursive function stops."
+        },
+        {
+          "file": "04-types.chalk",
+          "title": "Your own types",
+          "blurb": "inductive types, from a list of choices to trees, structures that bundle values, and functions on them by cases."
+        },
+        {
+          "file": "05-statements.chalk",
+          "title": "Statements and first proofs",
+          "blurb": "theorem and example, rfl and decide, statements about every input, and the tactics omega, simp and cases."
+        },
+        {
+          "file": "06-induction.chalk",
+          "title": "Proofs about your functions",
+          "blurb": "Induction on numbers and lists: a statement about every input, proved for the functions of lessons 3 and 4, so that a function meets its specification."
+        }
+      ]
+    },
+    {
       "id": "logic",
       "title": "Logic and proof technique",
       "blurb": "Propositions and truth tables, normal forms, proofs as Lean tactics, quantifiers, three kinds of induction, relations and well-founded termination: the toolkit every later course uses.",
@@ -17,7 +58,14 @@
         {
           "file": "02-normal-forms.chalk",
           "title": "Equivalence and normal forms",
-          "blurb": "A formula for any truth table, read off its rows; then the laws of logic as rewrites: negation normal form, CNF and DNF, one law a step."
+          "blurb": "A formula for any truth table, read off its rows; then the laws of logic as rewrites: negation normal form, CNF and DNF, one law a step.",
+          "apps": [
+            {
+              "file": "02a-conditions-in-code.chalk",
+              "title": "Simplifying conditions in code",
+              "blurb": "The true rows of a condition are the branches of an if: the smallest DNF by Quine–McCluskey, branches that can never run, and a rewrite checked by truth table, in the engine and in Lean."
+            }
+          ]
         },
         {
           "file": "03-natural-deduction.chalk",

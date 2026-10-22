@@ -984,6 +984,28 @@ def logicCell (s : Session) (cellId source : String) :
           done name f.toExpr (tv b) #[step "logic.bounded" why f.toExpr (tv b).toExpr]
     | .cmd name head args =>
       let args := args.map prep
+      -- the smallest DNF; each stage checked against `f` on every row `d` leaves (agree_sound)
+      let minimizeCell (f : Logic.Fm) (dc : Option Logic.Fm) : Session × Except (String × String × Option (Nat × Nat)) LogicResult :=
+        let d := dc.getD .ff
+        match propOnly (match dc with | some d => .and f d | none => f) "minimize" 8 with
+        | .error m => err m
+        | .ok vs =>
+          let call : Expr := .fn "minimize" (f.toExpr :: dc.toList.map (·.toExpr))
+          let r := Logic.minimize vs f d
+          let sum := Logic.sumOf vs
+          let agrees (g : Logic.Fm) := (Logic.findRow vs fun σ => !d.eval σ && f.eval σ != g.eval σ).isNone
+          let caring := if dc.isNone then "" else s!", and a term for each of the {r.dontCares} rows where the second formula holds, which cannot happen and so may count either way"
+          let first := step "logic.minterms" s!"Read off the truth table: a term for each of the {r.rows} rows where it is true{caring}." call (sum r.start).toExpr
+          let (_, merges) := r.rounds.foldl (fun (acc : Logic.Fm × Array Step × Nat) (cs, n) =>
+            let (prev, out, k) := acc
+            (sum cs, out.push (step "logic.merge" s!"Round {k}: merge terms that differ in one variable only, $(x \\land y) \\lor (x \\land \\lnot y) = x$. {n} terms merged, each into terms with one variable fewer; a term that merges with nothing stays as it is." prev.toExpr (sum cs).toExpr), k + 1)) (sum r.start, #[], 1) |> fun (a, b, _) => (a, b)
+          let primesF := sum r.primes
+          let others := r.primes.length - r.cover.length
+          let how := if r.exact then "the fewest others that cover the rest (by search: no smaller cover exists)" else "others chosen greedily to cover the rest (the search for the smallest cover was too large to finish, so a smaller one may exist)"
+          let coverStep := step "logic.cover" s!"The {r.primes.length} terms that merge no further are the prime implicants. Keep the essential ones, each the only term true in some row ({r.essential.length}), then {how}{if others > 0 then s!"; the other {others} are not needed" else ""}." primesF.toExpr (sum r.cover).toExpr
+          let stages := [sum r.start] ++ r.rounds.map (fun (cs, _) => sum cs) ++ [primesF, sum r.cover]
+          if !stages.all agrees then err "minimize: a stage disagrees with the formula (please report this)" else
+          done name call (sum r.cover) ((#[first] ++ merges).push coverStep)
       match head, args with
       | "truthtable", [f] =>
         match propOnly f "truthtable" 8 with
@@ -1016,6 +1038,8 @@ def logicCell (s : Session) (cellId source : String) :
           match Logic.findRow vs (fun σ => f.eval σ != g.eval σ) with
           | none => done name (.fn "equiv" [f.toExpr, g.toExpr]) .tt #[step "logic.truthtable" s!"The same value in each of the {(Logic.rows vs).length} rows: equivalent." (.fn "equiv" [f.toExpr, g.toExpr]) Logic.Fm.tt.toExpr]
           | some r => done name (.fn "equiv" [f.toExpr, g.toExpr]) .ff #[step "logic.truthtable" s!"They differ when {Logic.rowText vs r}: the first is {f.eval (Logic.assignment vs r)}, the second {g.eval (Logic.assignment vs r)}." (.fn "equiv" [f.toExpr, g.toExpr]) Logic.Fm.ff.toExpr]
+      | "minimize", [f] => minimizeCell f none
+      | "minimize", [f, d] => minimizeCell f (some d)
       | "nnf", [f] | "cnf", [f] | "dnf", [f] =>
         if !f.isProp then err s!"{head} is for propositional formulas; {f.toText} has arithmetic or quantifiers in it" else
         let (r, steps) := Logic.toNormal head f

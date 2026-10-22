@@ -392,8 +392,10 @@ differential test with zero mismatches.
   equivalent". An answer that calls the question's own commands (`diff` for a `diff` question) is
   refused, and a check is not an evaluation: no `In[n]`, no binding, `%` untouched. In the logic
   world the comparison is decided rather than canonical: two formulas are equivalent exactly when
-  their truth tables agree, a `cnf`/`dnf`/`nnf` answer must also have that shape, and a `sat` answer
-  may be any satisfiable formula that implies the question's (an assignment is one). In the order
+  their truth tables agree, a `cnf`/`dnf`/`nnf` answer must also have that shape, a `sat` answer
+  may be any satisfiable formula that implies the question's (an assignment is one), and a
+  `minimize` answer must be a DNF that agrees off the don't-care rows and is no bigger than the
+  engine's (the fewest terms, then literals; a bigger one is told the size to reach). In the order
   world an answer is the value itself (`a->b, b->c`, classes `{a, b}, {c}`, `true`), compared as a
   set, so order does not matter.
 - **Soundness is a fold, over whichever semantics you bring.** `RewriteSound.normalize_sound_for`
@@ -712,9 +714,16 @@ reader's own notebook; Start over clears the kept work. A course has a link, `#c
 lesson `#course=<id>&lesson=<n>` (from 1): the page's address follows the course or lesson on show
 (`history.replaceState`, so moving about adds nothing to the back button), and the link opens it when
 the page loads with it or when it is entered into the address bar. Unlike `#nb=`, it names the
-course rather than carrying it, so it stays short and opens the course as it is now. The lessons are built from
+course rather than carrying it, so it stays short and opens the course as it is now. A lesson may have **applications** (`lessons[k].apps` in `courses.json`, written by `app(…)` in
+`mk-courses.mjs`): optional notebooks of their own beside it, addressed as `{ lesson: k, app: j }`
+(`#course=<id>&lesson=<n>&app=<m>`), listed under the lesson, linked from it and its bar, and leading
+back to it. They are outside the course's order and progress (Next skips them; a course is done
+without them), and their Lean sees their lesson's as well as the lessons' before it, while later
+lessons do not see theirs. A detour, such as the logic course's conditions in code, goes there
+rather than into the lesson, so the course stays on its line. The lessons are built from
 what the shell offers for teaching: exercise cells (checked by `engine.check`, §3; one with a practice
-topic offers another question of its kind, below), steps held back
+topic offers another question of its kind, below; an optional one is beyond the lesson and not counted in
+its progress), steps held back
 to be revealed one at a time, sliders on `let n = number` that re-run the cells out of date because of
 them, and Markdown callouts. Every lesson's answers are pinned in `notebooks/golden/` and checked in CI.
 
@@ -775,6 +784,15 @@ language server answers LSP for Lean cells.
   two have no error and no `sorry`, read once Lean's `$/lean/fileProgress` says it has finished
   checking the file's current version, so a verdict is never about text Lean has not seen. CI checks
   every shipped Lean exercise with the author's proof (`scripts/notebooks/check-lean.mjs`).
+  A **definition exercise** (`leanDef`) has the reader write the definition the statement is about
+  too: a part of the Lean file of its own before the statement (`~def`, a second view), so the
+  statement is a specification and Lean's acceptance the grade, over every input. What it asks of the
+  definition's form (`leanForbid`: no `*`, say), no statement about values can express; the page checks
+  it in the definition's code (`lean-sorry.ts`, comments and strings aside), with the ways out of
+  proving (`axiom`, `native_decide`, `implemented_by`, `extern`, `unsafe`) in the definition and the
+  proof. That is a check of the form written down, not a proof of it. The browser's Lean has only
+  `Init`, so the check cannot be a Lean command reading the elaborated term (`import Lean`); and a
+  recursive definition's body is in a helper Lean makes (`double._f`), which `#print` does not show.
 - **A course's Lean prelude.** A project with `leanPrelude` gives each lesson the Lean of the lessons
   before it (their Lean cells, and their Lean exercises with the author's proofs) as a first cell no view
   shows, so a course builds one development across its lessons. It is saved with the lesson, and CI

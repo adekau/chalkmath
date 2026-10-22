@@ -13,6 +13,7 @@ const code = (text) => text.replace(/‹([^‹›\n]*)›/g, "`$1`").trim();
 /** Exercises that offer more of their kind (↻ Another one): question → practice topic
  *  (apps/notebook/src/practice.ts; `practice.test.mjs` holds every topic named here to one there). */
 const PRACTICE = {
+  "minimize((b ∧ ¬t) ∨ (b ∧ t ∧ s) ∨ (¬b ∧ s ∧ t))": "logic.minimize", "equiv((p ∧ ¬q) ∨ (p ∧ q) ∨ (¬p ∧ q), p ∨ q)": "logic.equiv",
   "taut(p → (q → p))": "logic.taut", "taut((p → q) → (¬p → ¬q))": "logic.taut",
   "falsify((p → q) → p)": "logic.falsify", "equiv(¬(p → q), p ∧ ¬q)": "logic.equiv",
   "sat((a ↔ ¬b) ∧ (b ↔ (a ↔ b)))": "logic.knights", "sat(a ↔ (¬a ∧ ¬b))": "logic.knights",
@@ -49,31 +50,37 @@ function lesson() {
     /** An exercise: the question (its value is the answer), the prompt, the hints. */
     ex: (question, prompt, hints = [], o = {}) => cells.push({
       src: question, type: "exercise", prompt: code(prompt), ...(hints.length ? { hints: hints.map(code) } : {}),
-      ...(o.hide ? { hideQuestion: true } : {}), ...(PRACTICE[question] ? { practice: PRACTICE[question] } : {}), showWork: false, label: null,
+      ...(o.hide ? { hideQuestion: true } : {}), ...(PRACTICE[question] ? { practice: PRACTICE[question] } : {}), ...(o.optional ? { optional: true } : {}), showWork: false, label: null,
     }),
     /** A Lean cell. */
     lean: (src) => cells.push({ src, type: "lean", showWork: false, label: null }),
     /** A scene: a picture told in beats (apps/notebook/src/scene.ts), its script as the cell's source. */
     sc: (script) => cells.push({ src: script.trim(), type: "scene", showWork: false, label: null }),
     /** A Lean exercise: the statement (ending `:= by`), the prompt, the author's proof (required: CI checks
-     *  it), the hints, and `o.start`, the proof the reader starts from (`sorry` if absent). */
+     *  it), the hints, and `o.start`, the proof the reader starts from (`sorry` if absent). `o.optional`
+     *  (for `ex` too): beyond the lesson, and not counted in its progress. `o.def`: a definition exercise,
+     *  where the reader writes the definition the statement is about as well as the proof: `start` (what
+     *  their definition starts as), `solution` (the author's: required, CI checks it) and `forbid` (what
+     *  the definition may not use). */
     lx: (statement, prompt, proof, hints = [], o = {}) => cells.push({
       src: statement, type: "exercise", lean: true, prompt: code(prompt), leanSolution: proof,
-      ...(o.start ? { leanStart: o.start } : {}), ...(hints.length ? { hints: hints.map(code) } : {}), showWork: false, label: null,
+      ...(o.start ? { leanStart: o.start } : {}), ...(hints.length ? { hints: hints.map(code) } : {}), ...(o.optional ? { optional: true } : {}),
+      ...(o.def ? { leanDef: o.def.start, leanDefSolution: o.def.solution, ...(o.def.forbid?.length ? { leanForbid: o.def.forbid } : {}) } : {}), showWork: false, label: null,
     }),
   };
 }
 
 const courses = [];
 /** A course: its lessons are written by `build`, one call of `add(file, title, blurb, write)` each.
- *  `o.leanPrelude`: each lesson's Lean sees the Lean of the lessons before it. */
+ *  `app(file, title, blurb, write)` writes an application of the lesson added last: an optional
+ *  notebook beside it, outside the course's order and progress, linked from it and leading back to it.
+ *  `o.leanPrelude`: each lesson's Lean sees the Lean of the lessons before it (an application's, its
+ *  own lesson's too). */
 function course(id, title, blurb, level, build, o = {}) {
   const lessons = [];
-  build((file, ltitle, lblurb, write) => {
-    const L = lesson();
-    write(L);
-    lessons.push({ file, title: ltitle, blurb: lblurb, cells: L.cells });
-  });
+  const write = (file, ltitle, lblurb, w) => { const L = lesson(); w(L); return { file, title: ltitle, blurb: lblurb, cells: L.cells }; };
+  build((file, ltitle, lblurb, w) => { lessons.push(write(file, ltitle, lblurb, w)); },
+    (file, atitle, ablurb, w) => { (lessons[lessons.length - 1].apps ??= []).push(write(file, atitle, ablurb, w)); });
   courses.push({ id, title, blurb, level, lessons, ...(o.leanPrelude ? { leanPrelude: true } : {}) });
 }
 
@@ -112,9 +119,324 @@ const oddSquareScene = (() => {
   ].join("\n");
 })();
 
+// ---------------------------------------------------------------------------------------------------
+course("lean", "Lean from zero",
+  "Lean before any course uses it: values and their types, functions, recursion, your own types, and then statements about your functions that Lean checks, for every input.",
+  "Start here", (add) => {
+
+  add("01-calculator.chalk", "Lean as a calculator", "Ask Lean for values with #eval and for types with #check; numbers that stop at zero and numbers that do not; names for values.", ({ sec, md, lean, lx }) => {
+    sec("Lean as a calculator");
+    md(r`
+> [!goal]
+> Ask Lean for a value and for its type, and give a value a name.
+`);
+    md(r`Lean is a programming language and a proof checker in one. These lessons start with the programming: by the end you will write functions and have Lean check statements about them, for every input. Nothing to install: the Lean cells below run Lean in this page. The first time, it downloads Lean (a few hundred MB, kept by your browser).`);
+    md(r`A Lean cell is Lean code. Lean checks it as you type, and what a line says appears beside it. ‹#eval› asks for a value:`);
+    lean(r`#eval 2 + 3 * 4
+#eval 7 / 2
+#eval 7 % 2`);
+    md(r`‹*› comes before ‹+›, as in arithmetic. ‹7 / 2› is ‹3›: these are whole numbers, and division drops the remainder, which ‹%› gives. Change a number and watch the answers change.`);
+    sec("Every value has a type");
+    md(r`‹#check› asks for a value's **type**: what kind of thing it is.`);
+    lean(r`#check 3
+#check (3 : Int)
+#check "hello"
+#check true`);
+    md(r`‹Nat› is the natural numbers, $0, 1, 2, \ldots$, and a number is a ‹Nat› unless you say otherwise; ‹(3 : Int)› says otherwise, and ‹Int› has the negative numbers too. ‹String› is text, and ‹Bool› is ‹true› or ‹false›. The type matters:`);
+    lean(r`#eval 2 - 5
+#eval (2 : Int) - 5`);
+    md(r`
+> [!mistake]
+> A ‹Nat› cannot go below zero, so ‹2 - 5› is ‹0›, not ‹-3›. It is a common surprise. When you need negative numbers, use ‹Int›.
+`);
+    md(r`Text and truth values have operations of their own: ‹++› joins strings, ‹.length› counts characters, comparisons give a ‹Bool›, and ‹&&› and ‹||› are "and" and "or".`);
+    lean(r`#eval "Hello, " ++ "Lean"
+#eval "Lean".length
+#eval 3 < 5
+#eval 3 == 4
+#eval true && false`);
+    sec("Names for values");
+    md(r`‹def› gives a value a name, and its type after a colon. The name can then be used anywhere after it, in this cell or the ones below:`);
+    lean(r`def answer : Nat := 42
+
+#eval answer + 1`);
+    sec("Exercises");
+    md(r`Each exercise has three parts. You write the **definition** at the top, replacing ‹sorry› (Lean's word for "not written yet"). Under it is a **statement** about your definition, which you cannot change, and under that, the **check**, already written: ‹decide› computes both sides and compares them. When the check passes, the exercise is done. Until your definition is written, the check fails ("‹decide› failed"): Lean cannot compute with ‹sorry›. Some exercises rule out a shortcut, such as typing the answer itself; the exercise says which.`);
+    lx(r`theorem minutes_ok : minutesInWeek = 10080 := by`, r`Define ‹minutesInWeek›, the number of minutes in a week, as a calculation: days times hours times minutes. (Typing ‹10080› is ruled out.)`, r`  decide`, [
+      r`A week has 7 days, a day 24 hours, an hour 60 minutes.`,
+      r`‹def minutesInWeek : Nat := 7 * 24 * 60›`,
+    ], { start: "  decide", def: { start: "def minutesInWeek : Nat := sorry", solution: "def minutesInWeek : Nat := 7 * 24 * 60", forbid: ["10080"] } });
+    lx(r`theorem balance_ok : balance = -15 := by`, r`You have 20 and spend 35. Define ‹balance› as that calculation. (Typing ‹-15› is ruled out.)`, r`  decide`, [
+      r`‹20 - 35›. Its type is ‹Int›: as a ‹Nat›, ‹20 - 35› would be ‹0›.`,
+    ], { start: "  decide", def: { start: "def balance : Int := sorry", solution: "def balance : Int := 20 - 35", forbid: ["-15"] } });
+    md(r`
+> [!summary]
+> ‹#eval› computes a value and ‹#check› names its type. ‹Nat› stops at zero, ‹Int› does not; ‹String› is text and ‹Bool› is true or false. ‹def name : Type := value› names a value.
+`);
+    md(r`A name for one value is a start. The next lesson gives names to calculations that take inputs: functions.`);
+  });
+
+  add("02-functions.chalk", "Functions", "Definitions that take inputs, applying a function without parentheses, functions of several inputs and their types, and choosing with if.", ({ sec, md, lean, lx }) => {
+    sec("Functions");
+    md(r`
+> [!goal]
+> Define functions of one or more inputs, apply them, read their types, and choose between results with ‹if›.
+`);
+    md(r`A definition can take inputs. Each is written in parentheses with its type, and the result's type comes after the colon:`);
+    lean(r`def square (n : Nat) : Nat := n * n
+
+#eval square 7
+#eval square (3 + 4)`);
+    md(r`A function is applied by writing the input after it, with a space: ‹square 7›, not ‹square(7)›. Parentheses only group: ‹square (3 + 4)› squares 7, while ‹square 3 + 4› would square 3 and then add 4.`);
+    md(r`A function of two inputs takes them one after the other:`);
+    lean(r`def area (w h : Nat) : Nat := w * h
+
+#eval area 3 4
+#check (area)
+#check (square)`);
+    md(r`‹square› has the type ‹Nat → Nat›: it takes a ‹Nat› to a ‹Nat›. ‹area› has ‹Nat → Nat → Nat›: give it a ‹Nat›, then another, and you get a ‹Nat›.`);
+    sec("Functions without names");
+    md(r`‹fun x => …› is a function with no name, handy where a function is needed only once, such as for ‹List.map›, which applies a function to every element of a list:`);
+    lean(r`#eval (fun x => x + 1) 5
+#eval [1, 2, 3].map square
+#eval [1, 2, 3].map (fun x => 10 * x)`);
+    sec("Choosing with if");
+    md(r`‹if … then … else …› chooses between two results. Both must have the same type, and the ‹else› is not optional: a function must give a result for every input.`);
+    lean(r`def absDiff (a b : Nat) : Nat := if a < b then b - a else a - b
+
+#eval absDiff 3 10
+#eval absDiff 10 3`);
+    sec("Exercises");
+    md(r`As before: write the definition, and the check below the statement computes the cases it lists.`);
+    lx(r`theorem cube_ok : cube 2 = 8 ∧ cube 3 = 27 ∧ cube 10 = 1000 := by`, r`Define ‹cube›, which takes ‹n› to $n^3$.`, r`  decide`, [
+      r`Look at ‹square› and multiply once more.`,
+    ], { start: "  decide", def: { start: "def cube (n : Nat) : Nat := sorry", solution: "def cube (n : Nat) : Nat := n * n * n", forbid: [] } });
+    lx(r`theorem max3_ok : max3 1 5 3 = 5 ∧ max3 9 2 4 = 9 ∧ max3 2 2 7 = 7 ∧ max3 4 4 4 = 4 := by`, r`Define ‹max3›, the largest of three numbers, with ‹if›. (Lean's ‹max› is ruled out.)`, r`  decide`, [
+      r`One ‹if› can be inside another: ‹if a < b then (if b < c then c else b) else …›.`,
+      r`When ‹a› is not less than ‹b›, compare ‹a› with ‹c›.`,
+    ], { start: "  decide", def: { start: "def max3 (a b c : Nat) : Nat := sorry", solution: "def max3 (a b c : Nat) : Nat := if a < b then (if b < c then c else b) else (if a < c then c else a)", forbid: ["max", "Max.max"] } });
+    lx(r`theorem isEven_ok : isEven 4 = true ∧ isEven 7 = false ∧ isEven 0 = true := by`, r`Define ‹isEven›, which says whether a number is even, as a ‹Bool›.`, r`  decide`, [
+      r`‹n % 2› is the remainder on dividing by 2.`,
+      r`‹==› compares and gives a ‹Bool›.`,
+    ], { start: "  decide", def: { start: "def isEven (n : Nat) : Bool := sorry", solution: "def isEven (n : Nat) : Bool := n % 2 == 0", forbid: [] } });
+    md(r`
+> [!summary]
+> ‹def f (x : A) : B := …› is a function from ‹A› to ‹B›, applied as ‹f x›; its type is ‹A → B›, and a function of two inputs has ‹A → B → C›. ‹fun x => …› is one without a name. ‹if … then … else …› chooses, and must give a result either way.
+`);
+    md(r`Every function so far does a fixed amount of work. The next lesson's functions call themselves, which is how a function handles a number or a list of any size.`);
+  });
+
+  add("03-recursion.chalk", "Pattern matching and recursion", "Defining a function case by case, functions that call themselves on something smaller, lists, and why Lean insists a recursive function stops.", ({ sec, md, lean, lx }) => {
+    sec("Pattern matching and recursion");
+    md(r`
+> [!goal]
+> Define functions case by case, on numbers and on lists, including functions that call themselves.
+`);
+    md(r`A function can be defined by cases on the shape of its input. Every natural number is either ‹0› or ‹n + 1› for a smaller ‹n›, so those are the two cases, each after a ‹|›:`);
+    lean(r`def fact : Nat → Nat
+  | 0 => 1
+  | n + 1 => (n + 1) * fact n
+
+#eval fact 5`);
+    md(r`‹fact (n + 1)› uses ‹fact n›: the function calls itself on a smaller number. That is **recursion**, and it ends because the numbers get smaller until they reach ‹0›, which needs no call. ‹fact 3› is ‹3 * fact 2›, which is ‹3 * (2 * fact 1)›, then ‹3 * (2 * (1 * fact 0))›, which is 6.`);
+    md(r`
+> [!mistake]
+> Lean checks that every recursive function stops. One that calls itself on a *bigger* input is refused:
+
+‹‹‹lean
+def loop (n : Nat) : Nat := loop (n + 1)
+-- error: fail to show termination for loop
+‹‹‹
+
+That is a feature: a function that never stopped would not give a value, and the proofs of later lessons depend on every function giving one.
+`.replace(/‹‹‹/g, "```"));
+    sec("Lists");
+    md(r`A list is written ‹[3, 1, 4]›. Like a number, every list has one of two shapes: empty, ‹[]›, or a first element in front of the rest, ‹x :: xs› (read "x then xs"). A function on lists has those two cases:`);
+    lean(r`def total : List Nat → Nat
+  | [] => 0
+  | x :: xs => x + total xs
+
+#eval total [3, 1, 4, 1, 5]`);
+    md(r`‹total [3, 1, 4]› is ‹3 + total [1, 4]›, then ‹3 + (1 + total [4])›, then ‹3 + (1 + (4 + total []))›, and ‹total []› is 0.`);
+    sec("Exercises");
+    lx(r`theorem sumTo_ok : sumTo 4 = 10 ∧ sumTo 10 = 55 ∧ sumTo 0 = 0 := by`, r`Define ‹sumTo›, where ‹sumTo n› is $0 + 1 + \cdots + n$, by recursion. (Division is ruled out, so not by a formula.)`, r`  decide`, [
+      r`Two cases, ‹0› and ‹n + 1›. What is the sum up to ‹n + 1›, given the sum up to ‹n›?`,
+      r`‹| n + 1 => sumTo n + (n + 1)›`,
+    ], { start: "  decide", def: { start: "def sumTo : Nat → Nat\n  | 0 => sorry\n  | n + 1 => sorry", solution: "def sumTo : Nat → Nat\n  | 0 => 0\n  | n + 1 => sumTo n + (n + 1)", forbid: ["/"] } });
+    lx(r`theorem count_ok : count 1 [3, 1, 4, 1, 5] = 2 ∧ count 9 [3, 1] = 0 ∧ count 2 [] = 0 := by`, r`Define ‹count x xs›, how many times ‹x› occurs in the list ‹xs›.`, r`  decide`, [
+      r`Two cases: the empty list, and ‹y :: ys›.`,
+      r`For ‹y :: ys›: add 1 if ‹y = x›, else 0, to the count in ‹ys›: ‹(if y = x then 1 else 0) + count x ys›.`,
+    ], { start: "  decide", def: { start: "def count (x : Nat) : List Nat → Nat\n  | [] => sorry\n  | y :: ys => sorry", solution: "def count (x : Nat) : List Nat → Nat\n  | [] => 0\n  | y :: ys => (if y = x then 1 else 0) + count x ys", forbid: ["List.count", "countP"] } });
+    lx(r`theorem fib_ok : fib 10 = 55 ∧ fib 1 = 1 ∧ fib 0 = 0 := by`, r`Define the Fibonacci numbers: ‹fib 0 = 0›, ‹fib 1 = 1›, and each after that is the sum of the two before it.`, r`  decide`, [
+      r`Three cases: ‹0›, ‹1› and ‹n + 2›.`,
+      r`‹| n + 2 => fib n + fib (n + 1)›: both calls are on smaller numbers.`,
+    ], { start: "  decide", def: { start: "def fib : Nat → Nat\n  | 0 => sorry\n  | 1 => sorry\n  | n + 2 => sorry", solution: "def fib : Nat → Nat\n  | 0 => 0\n  | 1 => 1\n  | n + 2 => fib n + fib (n + 1)", forbid: [] } });
+    md(r`
+> [!note] A table would pass these
+> The checks try a few inputs. A "definition" that lists those answers, ‹| 4 => 10 | 10 => 55 | _ => 0›, passes them too. Lesson 6 replaces checks like these with statements about *every* input, which no table can meet.
+`);
+    md(r`
+> [!summary]
+> A function can be defined by cases on its input's shape: ‹0› or ‹n + 1› for a number, ‹[]› or ‹x :: xs› for a list. A case may call the function on something smaller, and Lean checks that it does, so every function stops.
+`);
+    md(r`Numbers and lists are types Lean provides. The next lesson defines types of your own.`);
+  });
+
+  add("04-types.chalk", "Your own types", "inductive types, from a list of choices to trees, structures that bundle values, and functions on them by cases.", ({ sec, md, lean, lx }) => {
+    sec("Your own types");
+    md(r`
+> [!goal]
+> Define a type of your own, by its choices or by its parts, and write functions on it by cases.
+`);
+    md(r`‹inductive› defines a type by listing the ways to build one. The simplest lists a fixed set of choices:`);
+    lean(r`inductive Weekday where
+  | mon | tue | wed | thu | fri | sat | sun
+  deriving Repr, DecidableEq
+
+def Weekday.isWeekend : Weekday → Bool
+  | .sat | .sun => true
+  | _ => false
+
+#eval Weekday.isWeekend .sat
+#eval Weekday.wed.isWeekend`);
+    md(r`‹deriving Repr› lets ‹#eval› show a ‹Weekday›, and ‹DecidableEq› lets Lean compare two. A function on it is a case per choice; ‹_› matches whatever the cases before did not. Naming it ‹Weekday.isWeekend› puts it with the type, so ‹Weekday.wed.isWeekend› works too.`);
+    sec("Structures");
+    md(r`‹structure› bundles values under names, as a point has two coordinates:`);
+    lean(r`structure Point where
+  x : Int
+  y : Int
+  deriving Repr
+
+def Point.add (p q : Point) : Point := { x := p.x + q.x, y := p.y + q.y }
+
+#eval Point.add { x := 1, y := 2 } { x := 10, y := -5 }`);
+    sec("Trees");
+    md(r`A choice can carry values, including values of the type being defined. A binary tree is either a ‹leaf› or a ‹node› with a left tree, a number and a right tree:`);
+    lean(r`inductive Tree where
+  | leaf
+  | node (l : Tree) (v : Nat) (r : Tree)
+  deriving Repr
+
+def Tree.sum : Tree → Nat
+  | .leaf => 0
+  | .node l v r => l.sum + v + r.sum
+
+def sample : Tree := .node (.node .leaf 1 .leaf) 2 (.node .leaf 3 .leaf)
+
+#eval sample.sum`);
+    md(r`‹Tree.sum› calls itself on the two smaller trees inside a node, as ‹total› did on the rest of a list.`);
+    sec("Exercises");
+    lx(r`theorem next_ok : Weekday.next .sun = .mon ∧ Weekday.next .fri = .sat ∧ Weekday.next .mon = .tue := by`, r`Define ‹Weekday.next›, the day after a day (Sunday's is Monday).`, r`  decide`, [
+      r`A case for each of the seven days.`,
+      r`Several cases fit on a line: ‹| .mon => .tue | .tue => .wed›.`,
+    ], { start: "  decide", def: { start: "def Weekday.next : Weekday → Weekday\n  | d => sorry", solution: "def Weekday.next : Weekday → Weekday\n  | .mon => .tue | .tue => .wed | .wed => .thu | .thu => .fri\n  | .fri => .sat | .sat => .sun | .sun => .mon", forbid: [] } });
+    lx(r`theorem count_ok' : sample.count = 3 ∧ Tree.leaf.count = 0 := by`, r`Define ‹Tree.count›, how many nodes a tree has.`, r`  decide`, [
+      r`Like ‹Tree.sum›, but a node counts 1 whatever its number.`,
+      r`‹| .node l _ r => l.count + 1 + r.count›`,
+    ], { start: "  decide", def: { start: "def Tree.count : Tree → Nat\n  | .leaf => sorry\n  | .node l _ r => sorry", solution: "def Tree.count : Tree → Nat\n  | .leaf => 0\n  | .node l _ r => l.count + 1 + r.count", forbid: [] } });
+    md(r`
+> [!summary]
+> ‹inductive› defines a type by the ways to build it: a list of choices, or choices that carry values, even of the same type (a tree). ‹structure› bundles named values. Functions on them go by cases, and call themselves on the smaller parts.
+`);
+    md(r`You can now write functions on numbers, lists and types of your own. The next lesson writes statements about them and has Lean check them.`);
+  });
+
+  add("05-statements.chalk", "Statements and first proofs", "theorem and example, rfl and decide, statements about every input, and the tactics omega, simp and cases.", ({ sec, md, lean, lx }) => {
+    sec("Statements and first proofs");
+    md(r`
+> [!goal]
+> State facts about values and functions, and prove them with Lean's first tactics.
+`);
+    md(r`Every exercise so far was a **statement** with a **proof**: ‹theorem name : statement := by decide›. A statement is something that is true or false; a proof is what convinces Lean. ‹example› is a theorem without a name.`);
+    lean(r`example : 2 + 2 = 4 := by rfl
+example : 2 + 2 = 4 := by decide
+example : 3 < 5 ∧ 10 ≠ 11 := by decide`);
+    md(r`After ‹by› come **tactics**, steps that build the proof. ‹rfl› says both sides compute to the same value. ‹decide› computes whether the statement is true, when it can be checked that way. ‹∧› is "and" and ‹≠› is "not equal".`);
+    sec("Statements about every input");
+    md(r`Most statements are about every input: ‹(n : Nat)› before the colon means "for every natural number ‹n›". Lean cannot try them all, so ‹decide› will not do. Some still hold by computing, others need a tactic that reasons:`);
+    lean(r`theorem add_zero' (n : Nat) : n + 0 = n := by rfl
+example (n : Nat) : 0 + n = n := by omega
+example (xs : List Nat) : xs ++ [] = xs := by simp`);
+    md(r`‹n + 0› computes to ‹n› from how ‹+› is defined, so ‹rfl› works; ‹0 + n› does not, and ‹omega›, which knows the arithmetic of ‹+›, ‹-›, ‹<› and multiplying by a number, proves it. ‹simp› rewrites with facts Lean already knows, here that appending ‹[]› changes nothing.`);
+    md(r`Over a type with finitely many values, Lean can check every one. ‹decide› does it for ‹Bool›; for a type of your own, ‹cases› splits the goal into one case per value, and ‹<;> rfl› finishes each:`);
+    lean(r`theorem not_not' : ∀ b : Bool, (!!b) = b := by decide
+
+theorem next_not_same : ∀ d : Weekday, d.next ≠ d := by
+  intro d
+  cases d <;> decide`);
+    md(r`‹∀ b : Bool, …› is "for every ‹b›". ‹intro d› takes "for every ‹d›" off the statement, leaving it for one ‹d› you know nothing about, and ‹cases d› splits that into seven goals, one per day. With the cursor in a proof, the panel's **Lean goals** tab shows what is left to prove, step by step: it is the best way to see what a tactic did.`);
+    sec("Exercises");
+    md(r`Now you write the proofs. The statements are fixed; replace each ‹sorry›.`);
+    lx(r`theorem fact_five : fact 5 = 120 := by`, r`Prove that ‹fact 5› is 120 (‹fact› is from lesson 3).`, r`  decide`, [r`A statement about one value, which Lean can compute.`]);
+    lx(r`theorem twice (n : Nat) : n + n = 2 * n := by`, r`Prove that adding a number to itself doubles it, for every ‹n›.`, r`  omega`, [r`It is about every ‹n›, so not ‹decide›. Which tactic knows the arithmetic of ‹+› and multiplying by a number?`]);
+    lx(r`theorem week_round : ∀ d : Weekday, d.next.next.next.next.next.next.next = d := by`, r`Prove that seven days after any day is the same day (‹Weekday.next› is from lesson 4).`, r`  intro d
+  cases d <;> rfl`, [
+      r`‹intro d› takes "for every ‹d›" off the statement: prove it for a ‹d› you know nothing about.`,
+      r`Then ‹cases d› gives one goal per day, and ‹<;> rfl› computes each.`,
+    ]);
+    lx(r`theorem xor_ok : ∀ a b, xor' a b = (a != b) := by`, r`Define ‹xor'›, true when exactly one of ‹a› and ‹b› is, with ‹if› (‹!=› and Lean's ‹xor› are ruled out). The statement covers every input: ‹Bool› has only four pairs, and ‹decide› tries them all.`, r`  decide`, [
+      r`If ‹a› is true, the answer is ‹!b›; otherwise it is ‹b›.`,
+    ], { start: "  decide", def: { start: "def xor' (a b : Bool) : Bool := sorry", solution: "def xor' (a b : Bool) : Bool := if a then !b else b", forbid: ["!=", "bne", "xor", "^^"] } });
+    md(r`
+> [!summary]
+> A theorem is a statement and a proof. ‹rfl› and ‹decide› prove what computing settles; ‹omega› the arithmetic of ‹+› and ‹<›; ‹simp› by rewriting with known facts; ‹intro› and ‹cases› take a statement about every value apart into cases. A statement about every ‹Nat› cannot be checked by trying values: it needs a proof that covers them all.
+`);
+    md(r`The next lesson proves statements about every number and every list for the functions you wrote, by induction.`);
+  });
+
+  add("06-induction.chalk", "Proofs about your functions", "Induction on numbers and lists: a statement about every input, proved for the functions of lessons 3 and 4, so that a function meets its specification.", ({ sec, md, lean, lx }) => {
+    sec("Proofs about your functions");
+    md(r`
+> [!goal]
+> Prove that a recursive function meets its specification for every input, by induction.
+`);
+    md(r`Lesson 3 checked ‹sumTo› on a few inputs, and a table of answers would have passed. Here is a statement about every ‹n›: $2 \cdot (0 + 1 + \cdots + n) = n(n+1)$. Trying values cannot prove it; **induction** can.`);
+    lean(r`theorem sumTo_formula (n : Nat) : 2 * sumTo n = n * (n + 1) := by
+  induction n with
+  | zero => rfl
+  | succ k ih =>
+    simp only [sumTo, Nat.mul_add, ih]
+    grind`);
+    md(r`‹induction n› splits the proof along the cases ‹sumTo› was defined by. The ‹zero› case is the statement for 0, which computes. The ‹succ k ih› case is the statement for ‹k + 1›, and it may use the statement for ‹k›, named ‹ih› (the induction hypothesis). That is the recursion run backwards: the definition builds ‹sumTo (k + 1)› from ‹sumTo k›, and the proof builds the fact for ‹k + 1› from the fact for ‹k›. ‹simp only [sumTo, …, ih]› unfolds one step of ‹sumTo› and uses ‹ih›, and ‹grind› finishes the algebra. Put the cursor on each line and watch the goal in the panel.`);
+    md(r`A table of answers cannot pass this: whatever it does after its last entry, the statement is about those numbers too.`);
+    sec("Induction on lists");
+    md(r`A list is either ‹[]› or ‹x :: xs›, so induction on a list has those two cases, and the second may use the statement for ‹xs›:`);
+    lean(r`theorem total_append (xs ys : List Nat) : total (xs ++ ys) = total xs + total ys := by
+  induction xs with
+  | nil => simp [total]
+  | cons x xs ih => simp [total, ih]; omega`);
+    sec("Exercises");
+    lx(r`theorem fact_pos (n : Nat) : 0 < fact n := by`, r`Prove that ‹fact n› is never 0.`, r`  induction n with
+  | zero => decide
+  | succ k ih =>
+    simp only [fact]
+    exact Nat.mul_pos (Nat.succ_pos k) ih`, [
+      r`By induction: ‹fact 0› computes; for ‹k + 1›, ‹simp only [fact]› leaves ‹0 < (k + 1) * fact k›.`,
+      r`‹Nat.mul_pos› says a product of two positive numbers is positive: ‹exact Nat.mul_pos (Nat.succ_pos k) ih›.`,
+    ], { start: "  induction n with\n  | zero => sorry\n  | succ k ih => sorry" });
+    lx(r`theorem len_append (xs ys : List Nat) : len (xs ++ ys) = len xs + len ys := by`, r`Define ‹len›, the length of a list, by recursion (Lean's ‹length› is ruled out); then prove that the length of two lists joined is the sum of their lengths.`, r`  induction xs with
+  | nil => simp [len]
+  | cons x xs ih => simp [len, ih]; omega`, [
+      r`The definition: ‹[]› has length 0, and ‹_ :: xs› one more than ‹xs›.`,
+      r`The proof goes like ‹total_append›'s, with ‹len› in place of ‹total›.`,
+    ], { start: "  induction xs with\n  | nil => sorry\n  | cons x xs ih => sorry", def: { start: "def len : List Nat → Nat\n  | [] => sorry\n  | _ :: xs => sorry", solution: "def len : List Nat → Nat\n  | [] => 0\n  | _ :: xs => len xs + 1", forbid: ["length"] } });
+    lx(r`theorem mirror_count (t : Tree) : t.mirror.count = t.count := by`, r`Define ‹Tree.mirror›, which swaps the left and right of every node, then prove that mirroring keeps the number of nodes (‹Tree.count› is from lesson 4).`, r`  induction t with
+  | leaf => rfl
+  | node l v r ihl ihr => simp [Tree.mirror, Tree.count, ihl, ihr]; omega`, [
+      r`The definition: a leaf stays a leaf; ‹.node l v r› becomes ‹.node r.mirror v l.mirror›.`,
+      r`A tree has two smaller trees in a node, so the ‹node› case has two hypotheses, one for each.`,
+    ], { start: "  induction t with\n  | leaf => sorry\n  | node l v r ihl ihr => sorry", def: { start: "def Tree.mirror : Tree → Tree\n  | .leaf => sorry\n  | .node l v r => sorry", solution: "def Tree.mirror : Tree → Tree\n  | .leaf => .leaf\n  | .node l v r => .node r.mirror v l.mirror", forbid: [] } });
+    md(r`
+> [!summary]
+> Induction proves a statement for every number, or every list or tree, by following the cases the type is built from: a proof for the smallest case, and one for each bigger case that may use the statement for the parts inside it. A theorem about every input is a **specification**, and a function that meets it is correct on all of them, which no number of checks can show.
+`);
+    md(r`That is everything the next course assumes. [Logic and proof technique](#course=logic) uses Lean from its third lesson on, for proofs about logic, numbers and the functions you define there.`);
+  });
+}, { leanPrelude: true });
+
 course("logic", "Logic and proof technique",
   "Propositions and truth tables, normal forms, proofs as Lean tactics, quantifiers, three kinds of induction, relations and well-founded termination: the toolkit every later course uses.",
-  "Discrete mathematics", (add) => {
+  "Discrete mathematics", (add, app) => {
 
   add("01-truth-tables.chalk", "Propositions and truth tables", "Why “if … then” is defined the way it is, truth tables, tautologies, and satisfying assignments as witnesses.", ({ sec, md, m, ex }) => {
     sec("Propositions and truth tables");
@@ -312,7 +634,136 @@ $$\begin{array}{ccc|c} p & q & r & \ ? \\ \hline T & T & T & F \\ T & T & F & T 
 > [!summary]
 > Every truth table has a formula: the $\lor$ of its true rows (a DNF), or the $\land$ of clauses that rule out its false rows (a CNF). The laws of logic reach the same forms from a formula without its table: NNF pushes negations onto the variables, and distributing gives CNF or DNF.
 `);
+    md(r`
+> [!note] Application: conditions in code
+> The true rows of a table are also the branches of an ‹if›. [Simplifying conditions in code](#course=logic&lesson=2&app=1), an optional notebook beside this lesson, finds the smallest DNF of a condition and checks a rewrite of an ‹if› chain against the old one.
+`);
     md(r`Tables and laws decide formulas about $p$ and $q$. Neither can check a statement about every number, which has infinitely many rows. The next lesson builds proofs instead, step by step, and has Lean check them.`);
+  });
+
+  app("02a-conditions-in-code.chalk", "Simplifying conditions in code", "The true rows of a condition are the branches of an if: the smallest DNF by Quine–McCluskey, branches that can never run, and a rewrite checked by truth table, in the engine and in Lean.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Simplifying conditions in code");
+    md(r`
+> [!goal]
+> Read an ‹if› chain as a formula, find its smallest form, find the branches that can never run, and check that a rewrite changed the code's shape and not what it does.
+`);
+    md(r`An application of lesson 2, outside the course's order: nothing later depends on it. The last section uses Lean, which lesson 3 introduces.`);
+    md(r`
+‹‹‹ts
+function canEdit(isAdmin: boolean, isOwner: boolean, locked: boolean): boolean {
+  if (isAdmin) return true;
+  else if (isOwner && !locked) return true;
+  else if (isOwner && locked && isAdmin) return true;
+  return false;
+}
+‹‹‹
+`.replace(/‹‹‹/g, "```"));
+    md(r`Name the conditions $a$ (‹isAdmin›), $o$ (‹isOwner›) and $l$ (‹locked›). A later branch runs only when the earlier ones failed, but every branch returns ‹true›, and $A \lor (\lnot A \land B) \equiv A \lor B$: so the function is true exactly when one of the branches' conditions is.`);
+    m("truthtable(a ∨ (o ∧ ¬l) ∨ (o ∧ l ∧ a))");
+    sec("The smallest DNF");
+    md(r`Five true rows, so the DNF read off the table has five terms. ‹minimize› finds the smallest DNF with the same table, by the **Quine–McCluskey** method: two terms that differ in one variable merge, $(x \land y) \lor (x \land \lnot y) \equiv x$, round by round, until no two do. The terms left are the **prime implicants**; then it keeps the fewest of them that are true in every true row.`);
+    m("minimize(a ∨ (o ∧ ¬l) ∨ (o ∧ l ∧ a))", { work: true });
+    md(r`Two terms, $a$ and $o \land \lnot l$, and both are needed: each is the only one true in some row. The third branch was **dead code**: whenever $o \land l \land a$ holds, $a$ already returned. The function is
+
+‹‹‹ts
+const canEdit = (isAdmin: boolean, isOwner: boolean, locked: boolean) => isAdmin || (isOwner && !locked);
+‹‹‹
+
+and ‹equiv› checks the rewrite against the original, every row of it:`.replace(/‹‹‹/g, "```"));
+    m("equiv(a ∨ (o ∧ ¬l) ∨ (o ∧ l ∧ a), a ∨ (o ∧ ¬l))");
+    md(r`A rewrite that goes one step too far is caught with the row that shows it:`);
+    m("equiv(a ∨ (o ∧ ¬l) ∨ (o ∧ l ∧ a), a ∨ o)", { work: true });
+    md(r`
+> [!mistake]
+> The smallest formula is not always the clearest code. Simplifying shows what the condition *is*; whether to write it that way is a question of what the next reader needs. The check is worth having either way: it says the two are the same, or exactly where they are not.
+`);
+    sec("Branches that never run");
+    md(r`
+‹‹‹ts
+function shipping(express: boolean, member: boolean, heavy: boolean): string {
+  if (express && !heavy) return "air";
+  if (heavy) return "freight";
+  if (member || !express) return "ground";
+  return "standard";
+}
+‹‹‹
+`.replace(/‹‹‹/g, "```"));
+    md(r`Each ‹return› runs when its condition holds *and every earlier one failed*. With $e$, $m$, $h$ for the three flags, ‹"ground"› runs when $\lnot(e \land \lnot h) \land \lnot h \land (m \lor \lnot e)$. Its smallest form:`);
+    m("minimize(¬(e ∧ ¬h) ∧ ¬h ∧ (m ∨ ¬e))", { work: true });
+    md(r`$\lnot e \land \lnot h$: ‹member› does not matter at all. And ‹"standard"› runs when all three conditions fail. If that has no satisfying assignment, the line never runs:`);
+    m("sat(¬(e ∧ ¬h) ∧ ¬h ∧ ¬(m ∨ ¬e))");
+    md(r`
+> [!definition] Don't-cares
+> Conditions in code are often not independent. With $g_5$ for ‹x > 5› and $g_3$ for ‹x > 3›, the row $g_5 \land \lnot g_3$ cannot happen. ‹minimize(φ, d)› takes $d$ as the rows that cannot happen: the result may be true or false there, whichever makes it smaller.
+`);
+    m("minimize((g5 ∧ s) ∨ (g3 ∧ ¬g5 ∧ s), g5 ∧ ¬g3)", { work: true });
+    md(r`Read back: ‹(x > 5 && s) || (x > 3 && x <= 5 && s)› is ‹x > 3 && s›.`);
+    sec("Exercises");
+    md(r`Answer with a formula, typing ‹&&›, ‹||› and ‹!› or the glyphs. For ‹minimize›, the answer must be a DNF with the same truth table and no bigger than the smallest; ↻ Another one gives another.`);
+    ex("minimize((b ∧ ¬t) ∨ (b ∧ t ∧ s) ∨ (¬b ∧ s ∧ t))", r`A feature is on when ‹(beta && !trial) || (beta && trial && signedIn) || (!beta && signedIn && trial)›. With $b$, $t$, $s$, find the smallest DNF.`, [
+      r`Two of the terms share $t \land s$ and differ only in $b$.`,
+      r`$b \land \lnot t$ is the only term true when $b$ holds and $t$ does not.`,
+    ], { hide: true });
+    ex("equiv((p ∧ ¬q) ∨ (p ∧ q) ∨ (¬p ∧ q), p ∨ q)", r`Someone rewrote ‹(p && !q) || (p && q) || (!p && q)› as ‹p || q›. Is the rewrite right? Answer true or false.`, [
+      r`The three terms are three of the four rows. Which row is missing, and what does ‹p || q› say there?`,
+    ]);
+    ex("sat(¬(a ∧ b) ∧ ¬a ∧ ¬(¬b))", r`In ‹if (a && b) return 1; if (a) return 2; if (!b) return 3; return 4;› can ‹return 4› run? Give an assignment that reaches it, or ‹false› if none does.`, [
+      r`It runs when all three conditions fail: $\lnot(a \land b) \land \lnot a \land \lnot\lnot b$.`,
+      r`$\lnot a$ and $b$: then $a \land b$ fails too.`,
+    ], { hide: true });
+    sec("Checking it in Lean");
+    md(r`With the conditions as ‹Bool›s, a function is a truth table Lean can run, and ‹decide› checks a statement about every row by running it. Lesson 3 introduces Lean; here it needs only one tactic.`);
+    lean(r`def canEdit (isAdmin isOwner locked : Bool) : Bool :=
+  if isAdmin then true
+  else if isOwner && !locked then true
+  else if isOwner && locked && isAdmin then true
+  else false
+
+def canEdit' (isAdmin isOwner locked : Bool) : Bool :=
+  isAdmin || (isOwner && !locked)`);
+    lx(r`theorem canEdit_simpler : ∀ a o l, canEdit a o l = canEdit' a o l := by`, r`Prove that the rewrite does what the original does, for every input.`, r`  decide`, [
+      r`Three ‹Bool›s are 8 rows: ‹decide› evaluates both sides in each.`,
+    ]);
+    md(r`A wrong rewrite does not get a proof. ‹decide› says the statement is false instead:
+
+‹‹‹
+theorem wrong : ∀ a o l, canEdit a o l = (a || o) := by decide
+-- error: Tactic decide proved that the proposition
+--   ∀ (a o l : Bool), canEdit a o l = (a || o)
+-- is false
+‹‹‹`.replace(/‹‹‹/g, "```"));
+    lean(r`inductive Ship where
+  | air | freight | ground | standard
+  deriving DecidableEq, Repr
+
+def shipping (express member heavy : Bool) : Ship :=
+  if express && !heavy then .air
+  else if heavy then .freight
+  else if member || !express then .ground
+  else .standard`);
+    lx(r`theorem shipping_never_standard : ∀ e m h, shipping e m h ≠ .standard := by`, r`Prove that ‹shipping› never answers ‹standard›: the last branch is dead.`, r`  decide`, [
+      r`The same tactic: a statement about finitely many inputs, each checked.`,
+    ]);
+    lx(r`theorem shipping_ignores_member : ∀ e m h, shipping e m h = shipping e false h := by`, r`Prove that ‹member› makes no difference.`, r`  decide`, [
+      r`Compare each input with the same one where ‹member› is ‹false›.`,
+    ]);
+    md(r`Lean goes further for a ‹match›: an arm that can never be reached is an error, not a warning.
+
+‹‹‹
+def route (admin owner : Bool) : String :=
+  match admin, owner with
+  | true, _      => "full"
+  | false, true  => "own"
+  | false, false => "none"
+  | true, true   => "never"
+-- error: Redundant alternative: Any expression matching
+--   true, true
+-- will match one of the preceding alternatives
+‹‹‹`.replace(/‹‹‹/g, "```"));
+    md(r`
+> [!summary]
+> An ‹if› chain whose branches return the same thing is the $\lor$ of their conditions; a later branch also has the earlier ones fail. ‹minimize› finds the smallest DNF (with don't-cares for rows that cannot happen), ‹sat› finds whether a branch can run at all, and ‹equiv› checks a rewrite, naming the row where it goes wrong. In Lean, ‹decide› proves the same things about ‹Bool› functions by running them on every input.
+`);
   });
 
   add("03-natural-deduction.chalk", "Proofs as Lean tactics", "Natural deduction in Lean: what it takes to prove each connective and what you can do with one, and proofs as programs.", ({ sec, md, m, lean, lx }) => {
@@ -320,6 +771,10 @@ $$\begin{array}{ccc|c} p & q & r & \ ? \\ \hline T & T & T & F \\ T & T & F & T 
     md(r`
 > [!goal]
 > Prove propositional statements in Lean by asking, for each connective, what it takes to prove one and what you can do with one.
+`);
+    md(r`
+> [!note] New to Lean?
+> This lesson starts using Lean. If you have never written any, [Lean from zero](#course=lean) teaches what these lessons assume, from ‹#eval› to proofs by induction, in six short lessons.
 `);
     md(r`A truth table checks a formula by trying every row. That stops working for "every natural number $n$ satisfies $n + 0 = n$": the rows never end. A **proof** derives a statement by rules instead, each a small step that is obviously valid, and Lean checks every step. What should the rules be?`);
     sec("What each connective needs");
@@ -383,6 +838,116 @@ example (p q : Prop) : p → p ∨ q := by
     md(r`
 > [!summary]
 > Each connective's rules say what it takes to prove it and what you can do with it, and Lean's tactics are those rules. A proof of an implication is a function; a proof of a conjunction is a pair. Excluded middle is the one extra principle classical logic adds.
+`);
+    sec("Going further: De Morgan without excluded middle");
+    md(r`
+> [!note] Optional
+> This section goes past the lesson: where the rules above stop, and what excluded middle adds. Its exercises are optional and do not count toward the lesson's progress.
+`);
+    md(r`De Morgan's laws are two equivalences, so four implications. Classically all four hold, and the truth tables agree:`);
+    m("equiv(¬(p ∨ q), ¬p ∧ ¬q)");
+    m("equiv(¬(p ∧ q), ¬p ∨ ¬q)");
+    md(r`
+1. $\lnot(p \lor q) \to \lnot p \land \lnot q$, which you proved above (‹not_or_split›);
+2. $\lnot p \land \lnot q \to \lnot(p \lor q)$;
+3. $\lnot p \lor \lnot q \to \lnot(p \land q)$;
+4. $\lnot(p \land q) \to \lnot p \lor \lnot q$.
+`);
+    md(r`
+> [!try]
+> The rules of this lesson prove three of the four. Before reading on, find the odd one out: in which of them must you *build* an $\lor$, and from what?
+`);
+    lx(r`theorem not_or_of_both (p q : Prop) : ¬p ∧ ¬q → ¬(p ∨ q) := by`, r`Prove law 2: if not $p$ and not $q$, then not $p \lor q$.`, r`  intro ⟨hnp, hnq⟩ h
+  cases h with
+  | inl hp => exact hnp hp
+  | inr hq => exact hnq hq`, [
+      r`‹¬(p ∨ q)› is ‹p ∨ q → False›: after the pair, introduce a proof of ‹p ∨ q› too.`,
+      r`‹cases› on it: in each case one half of the pair refutes what you have.`,
+    ], { optional: true });
+    lx(r`theorem not_and_of_either (p q : Prop) : ¬p ∨ ¬q → ¬(p ∧ q) := by`, r`Prove law 3: if not $p$ or not $q$, then not both.`, r`  intro h ⟨hp, hq⟩
+  cases h with
+  | inl hnp => exact hnp hp
+  | inr hnq => exact hnq hq`, [
+      r`Introduce the ‹∨› and the pair, then ‹cases› on the ‹∨›.`,
+      r`Whichever side you get refutes one half of the pair.`,
+    ], { optional: true });
+    sec("Why the fourth needs more");
+    md(r`In 1, 2 and 3 you take apart what you are given and build a pair or a function. In 4 you must build $\lnot p \lor \lnot q$, and a proof of an $\lor$ says which side holds: ‹left› or ‹right›, chosen by you. All you have is $h : \lnot(p \land q)$, a function that turns a proof of $p \land q$ into a contradiction, and you can only use it once you have both $p$ and $q$. Every attempt stalls at that point:`);
+    md(r`
+‹‹‹lean
+example (p q : Prop) : ¬(p ∧ q) → ¬p ∨ ¬q := by
+  intro h
+  left           -- commit: it is p that fails
+  intro hp       -- now prove False from h : ¬(p ∧ q) and hp : p
+  exact h ⟨hp, _⟩  -- h needs a proof of q as well, and nothing gives one
+‹‹‹
+`.replace(/‹‹‹/g, "```"));
+    md(r`‹right› stalls the same way, for want of a proof of $p$. No cleverer proof exists either. Take for $p$ a statement nobody has settled, Goldbach's conjecture $G$, and for $q$ its negation $\lnot G$. Then $\lnot(G \land \lnot G)$ has a one-line proof, ‹fun ⟨g, ng⟩ => ng g›, and law 4 would turn it into $\lnot G \lor \lnot\lnot G$: a proof that says which side, so a proof that settles whether Goldbach's conjecture can be refuted, for free. The rules of this lesson never decide anything for free; that is what makes them **constructive**.`);
+    md(r`What they can prove is weaker: you cannot say *which* of $p$ and $q$ fails, but you can show that *neither* failing is impossible. That is the double negation of law 4, and it needs no excluded middle.`);
+    lx(r`theorem not_not_either (p q : Prop) : ¬(p ∧ q) → ¬¬(¬p ∨ ¬q) := by`, r`Prove that law 4's conclusion cannot be refuted: from $\lnot(p \land q)$, derive $\lnot\lnot(\lnot p \lor \lnot q)$.`, r`  intro h k
+  apply k
+  left
+  intro hp
+  apply k
+  right
+  intro hq
+  exact h ⟨hp, hq⟩`, [
+      r`After ‹intro h k›, ‹k : ¬(¬p ∨ ¬q)› refutes whichever side you give it, and you may use it more than once.`,
+      r`Give it ‹¬p›: to prove that, assume ‹hp : p›. Now use ‹k› again, with ‹¬q›.`,
+      r`With both ‹hp› and ‹hq› in hand, ‹h ⟨hp, hq⟩› is the contradiction.`,
+    ], { optional: true });
+    md(r`The trick is that ‹k› can be asked twice. The first time you claim $\lnot p$; inside that claim you have $p$, so you take it back and claim $\lnot q$; now you hold $p$ and $q$ together, and $h$ refutes them. A classical proof of law 4 decides which side; this one only shows that refusing both sides is contradictory.`);
+    lx(r`theorem not_and_split (p q : Prop) : ¬(p ∧ q) → ¬p ∨ ¬q := by`, r`Now prove law 4 itself, with excluded middle: ‹Classical.em p : p ∨ ¬p›.`, r`  intro h
+  cases Classical.em p with
+  | inl hp => exact Or.inr (fun hq => h ⟨hp, hq⟩)
+  | inr hnp => exact Or.inl hnp`, [
+      r`‹cases Classical.em p› gives two cases: ‹hp : p› and ‹hnp : ¬p›.`,
+      r`If ‹¬p›, that is the left side. If ‹p›, then ‹q› would make ‹h› a contradiction: the right side.`,
+    ], { optional: true });
+    sec("Where excluded middle comes from: choice");
+    md(r`In Lean, excluded middle is not an axiom. ‹Classical.em› is a theorem, proved from the **axiom of choice**, ‹Classical.choice : Nonempty α → α›: given only a proof that a type has an element, it hands you an element. A proof that something exists need not say which, and choice produces one anyway, with no recipe for finding it. That is exactly what a constructive proof cannot do, and it is enough to decide every proposition (Diaconescu's theorem).`);
+    md(r`
+> [!theorem] Diaconescu's argument
+> Take two predicates on the booleans: $U(x)$ is "$x = \mathsf{true}$ or $p$", and $V(x)$ is "$x = \mathsf{false}$ or $p$". Each holds of some boolean, so choice picks $u$ with $U(u)$ and $v$ with $V(v)$. Two booleans can always be compared, and the comparison decides $p$:
+> - If $p$ holds, $U$ and $V$ hold of every boolean: they are the same predicate, and choice, asked the same question, gives the same answer. So $u = v$.
+> - So if $u \neq v$, $p$ is false.
+> - If $u = v$, then $u = \mathsf{true}$ and $v = \mathsf{false}$ cannot both be why they were picked, so $p$ was: $p$ is true.
+`);
+    md(r`Choice committed to a side, $u$ and $v$, without saying how; comparing them reads off the side. Two smaller axioms make "the same predicate" literal: **propositional extensionality** (‹propext›: equivalent propositions are equal) and **function extensionality** (from ‹Quot.sound›: functions that agree everywhere are equal). In Lean:`);
+    lean(r`theorem em_by_choice (p : Prop) : p ∨ ¬p := by
+  let U : Bool → Prop := fun x => x = true ∨ p
+  let V : Bool → Prop := fun x => x = false ∨ p
+  have hU : ∃ x, U x := ⟨true, Or.inl rfl⟩
+  have hV : ∃ x, V x := ⟨false, Or.inl rfl⟩
+  have hu : U (Classical.choose hU) := Classical.choose_spec hU
+  have hv : V (Classical.choose hV) := Classical.choose_spec hV
+  -- the two picks are booleans, and booleans can be compared
+  have differ_or_p : Classical.choose hU ≠ Classical.choose hV ∨ p := by
+    cases hu with
+    | inr h => exact Or.inr h
+    | inl hu =>
+      cases hv with
+      | inr h => exact Or.inr h
+      | inl hv => exact Or.inl (by rw [hu, hv]; decide)
+  -- if p holds, U and V are the same predicate, and choice picks the same from the same
+  have same_if_p : p → Classical.choose hU = Classical.choose hV := by
+    intro hp
+    have hUV : U = V := funext fun x => propext ⟨fun _ => Or.inr hp, fun _ => Or.inr hp⟩
+    have : ∀ (eU : ∃ x, U x) (eV : ∃ x, V x), Classical.choose eU = Classical.choose eV := by
+      rw [hUV]; intro _ _; rfl
+    exact this hU hV
+  cases differ_or_p with
+  | inl hne => exact Or.inr (fun hp => hne (same_if_p hp))
+  | inr hp => exact Or.inl hp`);
+    md(r`‹#print axioms› lists what a proof rests on. The proofs that took things apart and built pairs and functions rest on nothing; anything through excluded middle rests on choice. (An exercise you have not finished shows ‹sorryAx›, Lean's placeholder for the missing proof.)`);
+    lean(r`#print axioms not_or_split
+#print axioms not_and_of_either
+#print axioms not_not_either
+#print axioms not_and_split
+#print axioms em_by_choice`);
+    md(r`
+> [!summary]
+> Constructively, a proof of $p \lor q$ says which side holds. Three of De Morgan's four implications never need to decide one; the fourth does, and gets it from excluded middle, which Lean derives from the axiom of choice. Choice is why classical proofs can exist without saying how to compute what they promise, and Lean marks a definition that uses it ‹noncomputable›: there is nothing to run.
 `);
     md(r`So far every statement was about $p$ and $q$. Most statements in mathematics are about every number, or some number. The next lesson adds $\forall$ and $\exists$.`);
   });
@@ -527,6 +1092,24 @@ theorem oddSum_eq (n : Nat) : oddSum n = n * n := by`, r`Prove that the sum of t
   | succ k ih =>
     rw [Nat.pow_succ]
     omega`, [r`The step: from $k + 1 \le 2^k$, show $k + 2 \le 2^k \cdot 2$.`, r`‹rw [Nat.pow_succ]› turns ‹2 ^ (k + 1)› into ‹2 ^ k * 2›; then ‹omega› treats ‹2 ^ k› as a number.`]);
+    md(r`Until now the definitions were given and you proved things about them. In the next exercise you write the definition too, and the theorem is its specification: Lean accepts your work when the definition meets it, for every $n$. A table of answers cannot: it would have to stop somewhere, and the theorem is about every $n$ after that too.`);
+    lx(r`theorem double_spec (n : Nat) : double n = 2 * n := by`, r`Define ‹double› by recursion, adding as you go, without multiplying (no ‹*›); then prove that it doubles every number.`, r`  induction n with
+  | zero => rfl
+  | succ k ih =>
+    simp only [double, ih]
+    omega`, [
+      r`The definition: ‹double 0› is ‹0›, and each step up adds 2: ‹double (n + 1)› is ‹double n + 2›.`,
+      r`The proof is by induction, like ‹oddSum_eq›: ‹simp only [double, ih]› unfolds one step and uses the hypothesis, and ‹omega› finishes the arithmetic.`,
+    ], {
+      start: `  induction n with
+  | zero => sorry
+  | succ k ih => sorry`,
+      def: { start: `def double : Nat → Nat
+  | 0 => sorry
+  | n + 1 => sorry`, solution: `def double : Nat → Nat
+  | 0 => 0
+  | n + 1 => double n + 2`, forbid: ["*", "Nat.mul", "HMul.hMul", "mul", "<<<", "shiftLeft"] },
+    });
     md(r`
 > [!summary]
 > Induction proves $P(n)$ for every $n$ from a base case and a step: a recipe that builds the proof for any $n$ you name. Checking cases finds mistakes; the step is the proof. In Lean, ‹induction› splits the goal into those two cases and hands the step its hypothesis.
@@ -6737,7 +7320,8 @@ const manifest = {
   projects: [
     ...courses.map((c) => ({ id: c.id, title: c.title, blurb: c.blurb, kind: "course", level: c.level, path: `courses/${c.id}`,
       ...(c.leanPrelude ? { leanPrelude: true } : {}),
-      lessons: c.lessons.map((l) => ({ file: l.file, title: l.title, blurb: l.blurb })) })),
+      lessons: c.lessons.map((l) => ({ file: l.file, title: l.title, blurb: l.blurb,
+        ...(l.apps ? { apps: l.apps.map((a) => ({ file: a.file, title: a.title, blurb: a.blurb })) } : {}) })) })),
     { id: "explorations", title: "Explorations", kind: "collection", path: "",
       blurb: "Notebooks that show what ChalkMath does: a tour, Fourier series drawing a llama, and order theory with its proofs in Lean.",
       lessons: [
@@ -6748,16 +7332,18 @@ const manifest = {
   ],
 };
 // a practice topic for a question no lesson asks is a table out of date
-const asked = new Set(courses.flatMap((c) => c.lessons.flatMap((l) => l.cells.filter((x) => x.type === "exercise").map((x) => x.src))));
+const notebooksOf = (c) => c.lessons.flatMap((l) => [l, ...(l.apps ?? [])]);
+const asked = new Set(courses.flatMap((c) => notebooksOf(c).flatMap((l) => l.cells.filter((x) => x.type === "exercise").map((x) => x.src))));
 const unused = Object.keys(PRACTICE).filter((q) => !asked.has(q));
 if (unused.length) throw new Error(`PRACTICE names questions no lesson asks: ${unused.join(" | ")}`);
 for (const c of courses) {
   const dir = new URL(`../../notebooks/courses/${c.id}/`, import.meta.url);
   mkdirSync(dir, { recursive: true });
-  for (const l of c.lessons) {
+  for (const l of notebooksOf(c)) {
     writeFileSync(new URL(l.file, dir), JSON.stringify({ chalk: 1, name: l.file, cells: l.cells, scenes: [] }, null, 2) + "\n");
   }
-  console.log(`notebooks/courses/${c.id}: ${c.lessons.length} lessons, ${c.lessons.reduce((n, l) => n + l.cells.filter((x) => x.type === "exercise").length, 0)} exercises`);
+  const apps = c.lessons.reduce((n, l) => n + (l.apps?.length ?? 0), 0);
+  console.log(`notebooks/courses/${c.id}: ${c.lessons.length} lessons${apps ? ` (and ${apps} application${apps === 1 ? "" : "s"})` : ""}, ${notebooksOf(c).reduce((n, l) => n + l.cells.filter((x) => x.type === "exercise").length, 0)} exercises`);
 }
 writeFileSync(new URL("../../notebooks/courses.json", import.meta.url), JSON.stringify(manifest, null, 2) + "\n");
 console.log(`notebooks/courses.json: ${manifest.projects.length} projects`);

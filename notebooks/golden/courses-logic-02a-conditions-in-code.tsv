@@ -1,0 +1,10 @@
+5	truthtable(a ∨ (o ∧ ¬l) ∨ (o ∧ l ∧ a))	= a ∨ o ∧ ¬l ∨ o ∧ l ∧ a
+8	minimize(a ∨ (o ∧ ¬l) ∨ (o ∧ l ∧ a))	= a ∨ o ∧ ¬l
+10	equiv(a ∨ (o ∧ ¬l) ∨ (o ∧ l ∧ a), a ∨ (o ∧ ¬l))	= ⊤
+12	equiv(a ∨ (o ∧ ¬l) ∨ (o ∧ l ∧ a), a ∨ o)	= ⊥
+17	minimize(¬(e ∧ ¬h) ∧ ¬h ∧ (m ∨ ¬e))	= ¬e ∧ ¬h
+19	sat(¬(e ∧ ¬h) ∧ ¬h ∧ ¬(m ∨ ¬e))	= ⊥
+21	minimize((g5 ∧ s) ∨ (g3 ∧ ¬g5 ∧ s), g5 ∧ ¬g3)	= s ∧ g3
+25	minimize((b ∧ ¬t) ∨ (b ∧ t ∧ s) ∨ (¬b ∧ s ∧ t))	= t ∧ s ∨ b ∧ ¬t
+26	equiv((p ∧ ¬q) ∨ (p ∧ q) ∨ (¬p ∧ q), p ∨ q)	= ⊤
+27	sat(¬(a ∧ b) ∧ ¬a ∧ ¬(¬b))	= {a↦false, b↦true}

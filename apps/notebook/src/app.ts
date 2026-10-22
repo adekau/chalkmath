@@ -7,7 +7,7 @@ import { MathInput, type MathInputOptions } from "@chalkmath/math-editor/view";
 import { termSpans, deleteTerm, type Reading, type Span, type TermSpan } from "./term-spans.js";
 import { h, tex, TRUST_PATHS } from "./dom.js";
 import { rendererOf, visualPlaced, knownVisuals, visualBox } from "./visuals.js";
-import { leavesSorry } from "./lean-sorry.js";
+import { leavesSorry, escapesIn, forbiddenIn } from "./lean-sorry.js";
 import { TOPICS, topicOf, generate as generatePractice } from "./practice.js";
 
 /**
@@ -283,6 +283,8 @@ interface Cell {
    *  ↺ Original. */
   practice?: string;
   original?: PracticeOriginal;
+  /** An exercise beyond the lesson: shown as optional, and not counted in its progress. */
+  optional?: boolean;
   /** How many steps the reader has revealed (not saved), and the source that count belongs to: the
    *  cell run with another source starts again from `stepwise`. */
   revealed?: number;
@@ -313,8 +315,18 @@ interface Cell {
   lean?: boolean;
   leanStart?: string;
   leanSolution?: string;
+  /** A definition exercise (a Lean exercise with `leanDef`): the reader also writes a definition the
+   *  statement is about, in a part of the Lean file of its own before the statement. `leanDef` is
+   *  what it starts as, `defAttempt` the reader's, `leanDefSolution` the author's, and `leanForbid`
+   *  what the definition may not use (its form, which no statement about its values can say). */
+  leanDef?: string;
+  defAttempt?: string;
+  leanDefSolution?: string;
+  leanForbid?: string[];
   /** What Lean reports on the statement's lines (an unproved goal is reported at its `by`; not saved). */
   leanStmtMessages?: LeanMessage[];
+  /** What Lean reports on the reader's definition (not saved). */
+  leanDefMessages?: LeanMessage[];
   /** Math input Auto: whether the cell is typeset, decided for this source (re-decided when the
    *  cell is left with a different source, never while it is being typed in). */
   autoVisual?: boolean;
@@ -1284,7 +1296,8 @@ interface CellRecord {
   /** Exercise cells. */
   prompt?: string | undefined; hints?: string[] | undefined; hideQuestion?: boolean | undefined; attempt?: string | undefined; hintsShown?: number | undefined; verdict?: Verdict | undefined; solution?: boolean | undefined;
   lean?: boolean | undefined; leanStart?: string | undefined; leanSolution?: string | undefined;
-  practice?: string | undefined; original?: PracticeOriginal | undefined;
+  leanDef?: string | undefined; defAttempt?: string | undefined; leanDefSolution?: string | undefined; leanForbid?: string[] | undefined;
+  practice?: string | undefined; original?: PracticeOriginal | undefined; optional?: boolean | undefined;
   /** The last run's result. */
   label: number | null; outLatex?: string | undefined; outText?: string | undefined; form?: string | undefined; semantics?: "real" | "complex" | undefined; echoLatex?: string | undefined;
   steps?: Step[] | undefined; outline?: StepOutline[] | undefined; error?: Cell["error"] | undefined; plot?: PlotData | undefined; visuals?: KnownVisual[] | undefined; summary?: string | undefined;
@@ -1412,6 +1425,11 @@ const CELL_FIELDS: AnyField[] = [
   exerciseField("lean", (v, cell) => { if (v) cell.lean = true; }, (c) => c.lean || undefined),
   exerciseField("leanStart", (v, cell, ) => { if (cell.lean && isStr(v)) cell.leanStart = v; }, (c) => c.lean ? c.leanStart : undefined),
   exerciseField("leanSolution", (v, cell) => { if (cell.lean && isStr(v)) cell.leanSolution = v; }, (c) => c.lean ? c.leanSolution : undefined),
+  exerciseField("leanDef", (v, cell) => { if (cell.lean && isStr(v)) cell.leanDef = v; }, (c) => c.lean ? c.leanDef : undefined),
+  exerciseField("defAttempt", (v, cell) => { if (cell.lean && isStr(v)) cell.defAttempt = v; }, (c) => c.lean && c.leanDef !== undefined ? c.defAttempt : undefined),
+  exerciseField("leanDefSolution", (v, cell) => { if (cell.lean && isStr(v)) cell.leanDefSolution = v; }, (c) => c.lean ? c.leanDefSolution : undefined),
+  exerciseField("leanForbid", (v, cell) => { if (cell.lean && Array.isArray(v)) cell.leanForbid = v.filter(isStr); }, (c) => c.lean && c.leanForbid?.length ? c.leanForbid : undefined),
+  exerciseField("optional", (v, cell) => { if (v) cell.optional = true; }, (c) => c.optional || undefined),
   exerciseField("practice", (v, cell) => { if (isStr(v) && topicOf(v) && !cell.lean) cell.practice = v; }, (c) => c.practice),
   exerciseField("original", (v, cell) => {
     const o = v as Partial<PracticeOriginal> | null;
@@ -1844,12 +1862,13 @@ async function fetchExample(file: string): Promise<string> {
  *  that only show something (`leanForPrelude`: Lean elaborates the prelude each time a lesson opens).
  *  Lessons that are not there are left out; what a lesson needs from them then shows as an error in its Lean. */
 async function leanPreludeOf(p: Project, k: number): Promise<string> {
+  // (an application of lesson k sees lesson k's Lean too: its caller passes k + 1)
   const parts: string[] = [];
   for (let j = 0; j < k; j++) {
     try {
       const doc = JSON.parse(await fetchExample(lessonPath(p, j))) as ChalkFile;
       const lean = doc.cells.flatMap((c) => c.type === "lean" ? [c.src]
-        : c.type === "exercise" && c.lean && c.src.trim() ? [`${c.src}\n${c.leanSolution ?? LEAN_START}`] : []);
+        : c.type === "exercise" && c.lean && c.src.trim() ? [`${c.leanDefSolution ? `${c.leanDefSolution}\n\n` : ""}${c.src}\n${c.leanSolution ?? LEAN_START}`] : []);
       if (lean.length) parts.push(`-- ${p.lessons[j]!.title}\n${leanForPrelude(lean.join("\n\n"))}`);
     } catch (e) { log("err", `Lean prelude: ${lessonPath(p, j)}: ${e instanceof Error ? e.message : String(e)}`); }
   }
@@ -1860,14 +1879,15 @@ async function leanPreludeOf(p: Project, k: number): Promise<string> {
  *  examples/; a lesson opens with its place in its project. */
 async function openExample(file: string, project?: ProjectRef): Promise<boolean> {
   const name = file.split("/").pop()!;
-  const open = S.docs.findIndex((d) => d.name === name && (!project || (d.project?.id === project.id && d.project.lesson === project.lesson)));
+  const open = S.docs.findIndex((d) => d.name === name && (!project || (d.project?.id === project.id && d.project.lesson === project.lesson && d.project.app === project.app)));
   if (open >= 0) { loadDoc(open); switchTab("notebook"); return true; }
   try {
     const text = await fetchExample(file);
     const p = project && projectById(project.id);
-    const prelude = p?.leanPrelude ? await leanPreludeOf(p, project!.lesson) : undefined;
+    // an application sees the Lean of its lesson and the lessons before it
+    const prelude = p?.leanPrelude ? await leanPreludeOf(p, project!.lesson + (project!.app !== undefined ? 1 : 0)) : undefined;
     // a lesson worked on before opens as it was left
-    const kept = p ? keptLesson(p, project!.lesson, text) : undefined;
+    const kept = p ? keptLesson(p, project!, text) : undefined;
     await loadNotebook(kept ?? text, name, project, prelude, false, p ? fingerprint(text) : undefined);
     if (project) recordProgress();
     return true;
@@ -1883,7 +1903,9 @@ async function openExample(file: string, project?: ProjectRef): Promise<boolean>
 // Courses tab lists them, a lesson opens with a bar that leads to the one before and after, and each
 // lesson's exercises answered are remembered in this browser.
 
-interface ProjectRef { id: string; lesson: number }
+/** Where a notebook is in its project: a lesson, or (`app`) one of that lesson's applications. */
+interface ProjectRef { id: string; lesson: number; app?: number }
+interface LessonEntry { file: string; title: string; blurb: string }
 interface Project {
   id: string; title: string; blurb: string;
   /** A course is read in order (lessons numbered, previous and next); a collection is not. */
@@ -1894,8 +1916,13 @@ interface Project {
   /** Each lesson's Lean sees the Lean of the lessons before it (their cells, and their exercises proved
    *  with the author's proofs), so a course builds one development across its lessons. */
   leanPrelude?: boolean;
-  lessons: { file: string; title: string; blurb: string }[];
+  /** A lesson's applications are optional notebooks of their own beside it, outside the course's order
+   *  and progress: linked from the lesson, listed under it, and leading back to it. */
+  lessons: (LessonEntry & { apps?: LessonEntry[] })[];
 }
+/** The notebook a project reference names: a lesson, or one of its applications. */
+const entryOf = (p: Project | undefined, pr: { lesson: number; app?: number | undefined } | undefined): LessonEntry | undefined =>
+  !p || !pr ? undefined : pr.app === undefined ? p.lessons[pr.lesson] : p.lessons[pr.lesson]?.apps?.[pr.app];
 /** What the page knows before courses.json arrives (or when it cannot): the example notebooks. */
 let PROJECTS: Project[] = [{ id: "explorations", title: "Explorations", kind: "collection", path: "",
   blurb: "Notebooks that show what ChalkMath does: a tour, Fourier series drawing a llama, and order theory with its proofs in Lean.",
@@ -1903,8 +1930,9 @@ let PROJECTS: Project[] = [{ id: "explorations", title: "Explorations", kind: "c
 const projectById = (id: string) => PROJECTS.find((p) => p.id === id);
 /** A project reference from a file, if it is well formed. */
 function projectRefOf(file: { project?: unknown }): ProjectRef | undefined {
-  const p = file.project as { id?: unknown; lesson?: unknown } | undefined;
-  return p && typeof p.id === "string" && typeof p.lesson === "number" && p.lesson >= 0 ? { id: p.id, lesson: Math.floor(p.lesson) } : undefined;
+  const p = file.project as { id?: unknown; lesson?: unknown; app?: unknown } | undefined;
+  if (!p || typeof p.id !== "string" || typeof p.lesson !== "number" || p.lesson < 0) return undefined;
+  return { id: p.id, lesson: Math.floor(p.lesson), ...(typeof p.app === "number" && p.app >= 0 ? { app: Math.floor(p.app) } : {}) };
 }
 async function loadProjects() {
   try {
@@ -1918,8 +1946,10 @@ async function loadProjects() {
     renderLessonBar(); syncCourseLink();
   } catch { /* the built-in list stands */ }
 }
-const lessonPath = (p: Project, k: number) => `${p.path ? `${p.path}/` : ""}${p.lessons[k]!.file}`;
-function openLesson(p: Project, k: number) { if (p.lessons[k]) void openExample(lessonPath(p, k), { id: p.id, lesson: k }); }
+const lessonPath = (p: Project, k: number, app?: number) => `${p.path ? `${p.path}/` : ""}${entryOf(p, { lesson: k, app })!.file}`;
+function openLesson(p: Project, k: number, app?: number) {
+  if (entryOf(p, { lesson: k, app })) void openExample(lessonPath(p, k, app), { id: p.id, lesson: k, ...(app !== undefined ? { app } : {}) });
+}
 
 /** Exercises answered, by project and lesson file: `{ done, total }`, and that it was opened. */
 type Progress = Record<string, Record<string, { done: number; total: number }>>;
@@ -1928,9 +1958,10 @@ function readProgress(): Progress {
 }
 /** Remember the current lesson's exercises answered (and that it was opened). */
 function recordProgress() {
-  const d = currentDoc(), pr = d?.project, p = pr && projectById(pr.id), l = p?.lessons[pr!.lesson];
+  const d = currentDoc(), pr = d?.project, p = pr && projectById(pr.id), l = entryOf(p, pr);
   if (!d || !pr || !l) return;
-  const ex = d.cells.filter((c) => c.type === "exercise");
+  // an optional exercise is beyond the lesson: finishing the lesson does not need it
+  const ex = d.cells.filter((c) => c.type === "exercise" && !c.optional);
   const all = readProgress();
   const was = all[pr.id]?.[l.file];
   const now = { done: ex.filter((c) => c.verdict?.equivalent).length, total: ex.length };
@@ -1940,8 +1971,8 @@ function recordProgress() {
   renderLessonBar();
 }
 /** A lesson's state for the list: not opened, opened, partly done, or every exercise answered. */
-function lessonState(p: Project, k: number, prog = readProgress()): { label: string; cls: string; frac: number } {
-  const r = prog[p.id]?.[p.lessons[k]!.file];
+function lessonState(p: Project, k: number, prog = readProgress(), app?: number): { label: string; cls: string; frac: number } {
+  const r = prog[p.id]?.[entryOf(p, { lesson: k, app })!.file];
   if (!r) return { label: "", cls: "new", frac: 0 };
   if (!r.total) return { label: "Read", cls: "seen", frac: 1 };
   if (r.done >= r.total) return { label: `✓ ${r.total} of ${r.total}`, cls: "done", frac: 1 };
@@ -1974,7 +2005,7 @@ function fingerprint(text: string): string {
 }
 /** The lesson file a project reference names, if the project is known. */
 function lessonFile(pr: ProjectRef | undefined): { p: Project; file: string } | undefined {
-  const p = pr && projectById(pr.id), l = p?.lessons[pr!.lesson];
+  const p = pr && projectById(pr.id), l = entryOf(p, pr);
   return p && l ? { p, file: l.file } : undefined;
 }
 /** Keep a lesson's work, if it has changed since it was opened. Its steps are left out (the cells run
@@ -1993,8 +2024,8 @@ function keepLesson(d: Nb) {
 }
 /** The work kept for lesson `k`, as the text to open, given the lesson's file as it is now. Kept for an
  *  older version of the file, it is the new file with the answers to the same exercises carried over. */
-function keptLesson(p: Project, k: number, shipped: string): string | undefined {
-  const l = p.lessons[k]; if (!l) return undefined;
+function keptLesson(p: Project, pr: ProjectRef, shipped: string): string | undefined {
+  const l = entryOf(p, pr); if (!l) return undefined;
   const kept = readKept()[p.id]?.[l.file];
   if (!kept || !Array.isArray(kept.file?.cells)) return undefined;
   const base = fingerprint(shipped);
@@ -2018,19 +2049,19 @@ function keptLesson(p: Project, k: number, shipped: string): string | undefined 
   notify("ok", `${l.title} has changed since you worked on it: your answers to its exercises were carried over.`);
   return JSON.stringify(doc);
 }
-/** Whether lesson `k` has work kept for it. */
-const hasKept = (p: Project, k: number) => !!p.lessons[k] && !!readKept()[p.id]?.[p.lessons[k]!.file];
+/** Whether a lesson (or application) has work kept for it. */
+const hasKept = (p: Project, pr: ProjectRef) => { const l = entryOf(p, pr); return !!l && !!readKept()[p.id]?.[l.file]; };
 /** Put the current lesson back as it came: its kept work is cleared and it opens afresh, in the same tab. */
 async function startLessonOver() {
   const d = currentDoc(), at = lessonFile(d?.project);
   if (!d || !at) return;
-  const k = d.project!.lesson, l = at.p.lessons[k]!;
+  const pr = d.project!, l = entryOf(at.p, pr)!;
   if (!window.confirm(`Start “${l.title}” over? Your answers and changes in it are cleared.`)) return;
   const i = S.doc;
   closeDoc(i);
   const all = readKept();
   if (all[at.p.id]) { delete all[at.p.id]![at.file]; writeKept(all); }
-  if (!await openExample(lessonPath(at.p, k), { id: at.p.id, lesson: k })) return;
+  if (!await openExample(lessonPath(at.p, pr.lesson, pr.app), pr)) return;
   // back where its tab was
   const fresh = currentDoc(), j = fresh ? S.docs.indexOf(fresh) : -1;
   if (fresh && j >= 0 && j !== i && i <= S.docs.length - 1) { S.docs.splice(j, 1); S.docs.splice(i, 0, fresh); S.doc = i; renderTabs(); autosave(); }
@@ -2053,16 +2084,20 @@ function closeCourses() {
 // its course or lesson when the page loads with it, or when it is entered into the address bar of a
 // page already open.
 
-/** What a course link names: a project, and one of its lessons (from 0), if it names one. */
-interface CourseLink { id: string; lesson?: number }
+/** What a course link names: a project, one of its lessons (from 0), and one of that lesson's
+ *  applications (`&app=<n>`, from 1 in the link), if it names them. */
+interface CourseLink { id: string; lesson?: number; app?: number }
 function parseCourseLink(hash: string): CourseLink | undefined {
   if (!hash.startsWith("#course=")) return undefined;
   const q = new URLSearchParams(hash.slice(1));
-  const id = q.get("course"), n = Number(q.get("lesson"));
+  const id = q.get("course"), n = Number(q.get("lesson")), a = Number(q.get("app"));
   if (!id) return undefined;
-  return q.has("lesson") ? { id, lesson: Number.isInteger(n) && n >= 1 ? n - 1 : -1 } : { id };
+  if (!q.has("lesson")) return { id };
+  const lesson = Number.isInteger(n) && n >= 1 ? n - 1 : -1;
+  return q.has("app") ? { id, lesson, app: Number.isInteger(a) && a >= 1 ? a - 1 : -1 } : { id, lesson };
 }
-const courseHash = (id: string, lesson?: number) => `#course=${encodeURIComponent(id)}${lesson !== undefined ? `&lesson=${lesson + 1}` : ""}`;
+const courseHash = (id: string, lesson?: number, app?: number) =>
+  `#course=${encodeURIComponent(id)}${lesson !== undefined ? `&lesson=${lesson + 1}` : ""}${lesson !== undefined && app !== undefined ? `&app=${app + 1}` : ""}`;
 /** A course link the page was loaded with and has not opened yet: the address keeps it until then. */
 let courseLinkPending = !!parseCourseLink(location.hash);
 /** Put the course or lesson on show in the page's address, or take a course link off it when neither
@@ -2071,7 +2106,7 @@ function syncCourseLink() {
   if (courseLinkPending) return;
   const pr = currentDoc()?.project;
   const want = S.tab === "courses" && S.courses.project ? courseHash(S.courses.project)
-    : S.tab === "notebook" && pr && projectById(pr.id)?.lessons[pr.lesson] ? courseHash(pr.id, pr.lesson) : "";
+    : S.tab === "notebook" && pr && entryOf(projectById(pr.id), pr) ? courseHash(pr.id, pr.lesson, pr.app) : "";
   if (location.hash === want || (location.hash && !location.hash.startsWith("#course="))) return;
   history.replaceState(null, "", location.pathname + location.search + want);
 }
@@ -2084,7 +2119,8 @@ async function openCourseLink(link: CourseLink): Promise<boolean> {
   if (!p) notify("err", `The link is to a course this page does not have: ${link.id}.`);
   else if (link.lesson === undefined) { openCourses(p.id); ok = true; }
   else if (!p.lessons[link.lesson]) { notify("err", `The link is to a lesson ${p.title} does not have; it has ${p.lessons.length}.`); openCourses(p.id); }
-  else ok = await openExample(lessonPath(p, link.lesson), { id: p.id, lesson: link.lesson });
+  else if (!entryOf(p, { lesson: link.lesson, app: link.app })) { notify("err", `The link is to an application lesson ${link.lesson + 1} of ${p.title} does not have.`); openCourses(p.id); }
+  else ok = await openExample(lessonPath(p, link.lesson, link.app), { id: p.id, lesson: link.lesson, ...(link.app !== undefined ? { app: link.app } : {}) });
   // a lesson runs its cells as it opens: a link entered meanwhile is in the address, its hashchange
   // still to come, and putting this one back would open this lesson again in its place
   if (location.hash === asked) syncCourseLink();
@@ -2187,6 +2223,19 @@ function renderCourses() {
       li.append(num, main, go);
       li.addEventListener("dblclick", () => openLesson(p, k));
       list.append(li);
+      // its applications, under it: optional, and outside the course's order and progress
+      (l.apps ?? []).forEach((a, j) => {
+        const ast = lessonState(p, k, prog, j);
+        const ali = h("li", `crslesson crsapp ${ast.cls}`);
+        const amain = h("div", "crsmain");
+        amain.append(h("div", "crskind", "Application · optional"), h("div", "crsltitle", a.title), h("div", "crsblurb", a.blurb));
+        if (ast.label) amain.append(h("div", "crsstate", ast.label));
+        const ago = asButton(h("span", "crsgo", ast.cls === "new" ? "Open" : ast.cls === "done" ? "Review" : "Continue"), `Open ${a.title}`);
+        ago.addEventListener("click", () => openLesson(p, k, j));
+        ali.append(h("span", "crsnum", "↳"), amain, ago);
+        ali.addEventListener("dblclick", () => openLesson(p, k, j));
+        list.append(ali);
+      });
     });
     page.append(list);
   }
@@ -2196,11 +2245,11 @@ function renderCourses() {
 /** Above a lesson's cells: its course, where it is in it, its exercises, and the way on. */
 function renderLessonBar() {
   const bar = document.querySelector<HTMLElement>(".lessonbar"); if (!bar) return;
-  const pr = currentDoc()?.project, p = pr && projectById(pr.id), l = p?.lessons[pr!.lesson];
+  const pr = currentDoc()?.project, p = pr && projectById(pr.id), l = entryOf(p, pr);
   bar.hidden = S.tab !== "notebook" || !p || !l;
   bar.innerHTML = "";
-  if (!p || !l || bar.hidden) return;
-  const k = pr!.lesson;
+  if (!p || !l || !pr || bar.hidden) return;
+  const k = pr.lesson, app = pr.app;
   const btn = (label: string, title: string, act: (() => void) | null) => {
     const b = asButton(h("span", `lbbtn${act ? "" : " off"}`, label), title); b.title = title;
     if (act) b.addEventListener("click", act); else b.setAttribute("aria-disabled", "true");
@@ -2209,14 +2258,17 @@ function renderLessonBar() {
   const where = h("span", "lbwhere");
   const crs = asButton(h("span", "lbcourse", p.title), `${p.title}: all lessons`);
   crs.addEventListener("click", () => openCourses(p.id));
-  where.append(crs, document.createTextNode(p.kind === "course" ? ` · Lesson ${k + 1} of ${p.lessons.length}` : ""));
-  const st = lessonState(p, k);
+  where.append(crs, document.createTextNode(app !== undefined ? ` · Application of lesson ${k + 1} · optional` : p.kind === "course" ? ` · Lesson ${k + 1} of ${p.lessons.length}` : ""));
+  const st = lessonState(p, k, undefined, app);
   const kept = h("span", "lbkept", "Kept as you go");
   kept.title = "Your answers and changes in this lesson are kept in this browser as you work: there is nothing to save, and closing the tab loses nothing.";
   bar.append(where, h("span", "lbtitle", l.title), h("span", `lbstate ${st.cls}`, st.label && st.cls !== "seen" ? st.label : ""), kept, h("span", "spacer"),
-    ...(hasKept(p, k) ? [btn("Start over", "Clear your answers and changes, and open the lesson as it came", () => void startLessonOver())] : []),
-    btn("‹ Previous", k > 0 ? p.lessons[k - 1]!.title : "", k > 0 ? () => openLesson(p, k - 1) : null),
-    btn("Next ›", k < p.lessons.length - 1 ? p.lessons[k + 1]!.title : "", k < p.lessons.length - 1 ? () => openLesson(p, k + 1) : null));
+    ...(hasKept(p, pr) ? [btn("Start over", "Clear your answers and changes, and open the lesson as it came", () => void startLessonOver())] : []),
+    // an application leads back to its lesson; a lesson to its applications, then on through the course
+    ...(app !== undefined ? [btn(`‹ Lesson ${k + 1}`, p.lessons[k]!.title, () => openLesson(p, k))] : [
+      ...(p.lessons[k]!.apps ?? []).map((a, j) => btn(`Application: ${a.title}`, `${a.blurb} (optional)`, () => openLesson(p, k, j))),
+      btn("‹ Previous", k > 0 ? p.lessons[k - 1]!.title : "", k > 0 ? () => openLesson(p, k - 1) : null),
+      btn("Next ›", k < p.lessons.length - 1 ? p.lessons[k + 1]!.title : "", k < p.lessons.length - 1 ? () => openLesson(p, k + 1) : null)]));
 }
 
 const SHORTCUTS: [string, string][] = [
@@ -2294,7 +2346,7 @@ function importNotebook() {
 
 /** What a link carries: the name and every cell's text and kind. Outputs are not included: the
  *  engine recomputes them when the link opens, which is the point of a verified notebook. */
-interface LinkDoc { v: 1; n: string; c: { s: string; t?: "markdown" | "section" | "lean" | "exercise" | "scene"; w?: 1; f?: 1; r?: number; p?: string; hs?: string[]; hq?: 1; sl?: [number, number, number]; ln?: 1; lst?: string; lso?: string; pr?: string }[]; a?: Record<string, { m: string; d: string; b?: 1 }> }
+interface LinkDoc { v: 1; n: string; c: { s: string; t?: "markdown" | "section" | "lean" | "exercise" | "scene"; w?: 1; f?: 1; r?: number; p?: string; hs?: string[]; hq?: 1; sl?: [number, number, number]; ln?: 1; lst?: string; lso?: string; pr?: string; op?: 1; ld?: string; lds?: string; lf?: string[] }[]; a?: Record<string, { m: string; d: string; b?: 1 }> }
 
 async function deflate(text: string): Promise<Uint8Array> {
   const cs = new CompressionStream("deflate-raw");
@@ -2322,9 +2374,10 @@ async function notebookLink(): Promise<string> {
     v: 1, n: S.docName,
     // an exercise the reader is practising on is shared as its author wrote it
     c: S.cells.filter((c) => cellSrc(c).trim()).map((c) => ({ ...c, ...c.original, src: c.original?.src ?? cellSrc(c) })).map((c) => ({ s: c.src, ...(c.type ? { t: c.type } : {}), ...(c.showWork ? { w: 1 as const } : {}), ...(c.collapsed ? { f: 1 as const } : {}), ...(c.stepwise !== undefined ? { r: c.stepwise } : {}),
-      ...(c.prompt ? { p: c.prompt } : {}), ...(c.hints?.length ? { hs: c.hints } : {}), ...(c.hideQuestion ? { hq: 1 as const } : {}), ...(c.practice ? { pr: c.practice } : {}),
+      ...(c.prompt ? { p: c.prompt } : {}), ...(c.hints?.length ? { hs: c.hints } : {}), ...(c.hideQuestion ? { hq: 1 as const } : {}), ...(c.practice ? { pr: c.practice } : {}), ...(c.optional ? { op: 1 as const } : {}),
       ...(c.slider ? { sl: [c.slider.min, c.slider.max, c.slider.step] as [number, number, number] } : {}),
-      ...(c.lean ? { ln: 1 as const, ...(c.leanStart ? { lst: c.leanStart } : {}), ...(c.leanSolution ? { lso: c.leanSolution } : {}) } : {}) })),
+      ...(c.lean ? { ln: 1 as const, ...(c.leanStart ? { lst: c.leanStart } : {}), ...(c.leanSolution ? { lso: c.leanSolution } : {}),
+        ...(c.leanDef !== undefined ? { ld: c.leanDef } : {}), ...(c.leanDefSolution ? { lds: c.leanDefSolution } : {}), ...(c.leanForbid?.length ? { lf: c.leanForbid } : {}) } : {}) })),
     ...(Object.keys(S.assets).length ? { a: Object.fromEntries(Object.values(S.assets).map((a) => [a.name, { m: a.mime, d: a.data, ...(a.binary ? { b: 1 as const } : {}) }])) } : {}),
   };
   const json = JSON.stringify(doc);
@@ -2356,7 +2409,9 @@ async function openNotebookLink(hash: string): Promise<boolean> {
         prompt: typeof c.p === "string" ? c.p : undefined, hints: Array.isArray(c.hs) ? c.hs.map(String) : undefined, hideQuestion: c.hq ? true : undefined,
         slider: Array.isArray(c.sl) && c.sl.length === 3 ? { min: Number(c.sl[0]), max: Number(c.sl[1]), step: Number(c.sl[2]) } : undefined,
         lean: c.ln ? true : undefined, leanStart: typeof c.lst === "string" ? c.lst : undefined, leanSolution: typeof c.lso === "string" ? c.lso : undefined,
-        practice: typeof c.pr === "string" ? c.pr : undefined, label: null })),
+        practice: typeof c.pr === "string" ? c.pr : undefined, optional: c.op ? true : undefined,
+        leanDef: typeof c.ld === "string" ? c.ld : undefined, leanDefSolution: typeof c.lds === "string" ? c.lds : undefined,
+        leanForbid: Array.isArray(c.lf) ? c.lf.map(String) : undefined, label: null })),
       scenes: [],
       ...(doc.a ? { assets: Object.fromEntries(Object.entries(doc.a).map(([name, a]) => [name, { name, mime: String(a.m), data: String(a.d), ...(a.b ? { binary: true } : {}) }])) } : {}),
     };
@@ -2773,7 +2828,7 @@ function convertCell(cell: Cell, type: CellType) {
   if (type === "section") cell.src = cell.src.split("\n")[0]!.replace(/^#+\s*/, "");
   if (type !== "lean") delete cell.leanMessages;
   if (type === "exercise") cell.editing = true;
-  else { delete cell.prompt; delete cell.hints; delete cell.hideQuestion; delete cell.attempt; delete cell.hintsShown; delete cell.verdict; delete cell.solution; delete cell.practice; delete cell.original; }
+  else { delete cell.prompt; delete cell.hints; delete cell.hideQuestion; delete cell.attempt; delete cell.hintsShown; delete cell.verdict; delete cell.solution; delete cell.practice; delete cell.original; delete cell.optional; }
   if (cur === "exercise" && type === "math") { delete cell.stepwise; cell.showWork = false; }
   renderCells(); renderSidebar(); renderChrome(); autosave();
 }
@@ -3170,7 +3225,7 @@ function trackViewSection() {
 /** A section's exercises: how many there are and how many the reader has answered right. */
 function sectionProgress(i: number): { done: number; total: number } {
   const [a, b] = sectionRange(i);
-  const ex = S.cells.slice(a, b).filter((c) => c.type === "exercise");
+  const ex = S.cells.slice(a, b).filter((c) => c.type === "exercise" && !c.optional);
   return { done: ex.filter((c) => c.verdict?.equivalent).length, total: ex.length };
 }
 
@@ -3217,7 +3272,7 @@ function renderSidebar() {
       } else if (c.type === "exercise") {
         row.append(h("span", "num", c.verdict?.equivalent ? "✓" : "?"));
         const wrap = h("span");
-        wrap.append(h("span", "kind", "exercise"), h("span", "src", c.prompt?.split("\n").find((l) => l.trim())?.replace(/^#+\s*/, "") || c.src || "…"));
+        wrap.append(h("span", "kind", c.optional ? "optional exercise" : "exercise"), h("span", "src", c.prompt?.split("\n").find((l) => l.trim())?.replace(/^#+\s*/, "") || c.src || "…"));
         row.append(wrap);
       } else if (c.type === "scene") {
         row.append(h("span", "num", "▷"));
@@ -4263,7 +4318,18 @@ function buildCell(host: HTMLElement, cell: Cell, i: number) {
     el.append(h("div", "prompt", "Ex."));
     const mid = h("div", "mid");
     const box = h("div", "xc-box");
-    box.addEventListener("focusin", () => { if (S.active !== i) { S.active = i; renderChrome(); renderSidebar(); markActive(); } });
+    const focus = () => { if (S.active !== i) { S.active = i; renderChrome(); renderSidebar(); markActive(); } };
+    box.addEventListener("focusin", focus);
+    // a definition exercise: the prompt, then the reader's definition (a view of the Lean file, made
+    // once as the proof's is), then the statement about it
+    if (isLeanCell(cell) && !cell.editing && cell.leanDef !== undefined) {
+      const top = h("div", "xc-box xc-top");
+      const dv = h("div", "leanview xc-leandef");
+      dv.setAttribute("aria-label", `Cell ${i + 1}, your definition in Lean`);
+      dv.addEventListener("focusin", focus);
+      mid.append(top, dv);
+      mountLean(`${cell.id}${DEF_SUFFIX}`, dv, cell.defAttempt ?? cell.leanDef);
+    }
     mid.append(box);
     // a Lean exercise's proof is a view of the notebook's Lean file, made once: the parts around it are
     // redrawn as Lean reports, the editor is not (it would lose its cursor)
@@ -4444,6 +4510,7 @@ const RULE_NAMES: Record<string, string> = {
   "rel.transitive-closure": "Transitive closure", "rel.kernel": "Kernel", "rel.classes": "Equivalence classes", "rel.finer": "Finer", "rel.wellfounded": "Well-founded", "rel.measure": "Measure",
   "logic.implication": "Eliminate →", "logic.biconditional": "Eliminate ↔", "logic.de-morgan": "De Morgan's law", "logic.double-negation": "Double negation",
   "logic.negate-constant": "Negate a constant", "logic.constants": "Simplify constants", "logic.distribute": "Distribute", "logic.complement": "Complementary literals", "logic.truthtable": "Truth table",
+  "logic.minterms": "True rows as terms", "logic.merge": "Merge terms", "logic.cover": "Smallest cover",
   "logic.evaluate": "Evaluate", "logic.bounded": "Check every element",
   "alg.from-order": "Table from the order", "alg.associative": "Associative", "alg.commutative": "Commutative", "alg.idempotent": "Idempotent",
   "alg.identity": "Identity element", "alg.fold": "Combine", "alg.order": "Order of a semilattice", "order.distributive": "Distributive",
@@ -4628,8 +4695,9 @@ function hideDiffTip() { document.querySelector(".difftip")?.remove(); }
 const isLeanCell = (c: Cell) => c.type === "lean" || (c.type === "exercise" && !!c.lean && !!c.src.trim());
 /** The proof a Lean exercise starts with when the author gives none. */
 const LEAN_START = "  sorry";
-/** The ids of the parts of the Lean file no view edits: a course's prelude, an exercise's statement. */
-const PRELUDE_ID = "~prelude", STMT_SUFFIX = "~stmt";
+/** The ids of the parts of the Lean file no view edits: a course's prelude, an exercise's statement;
+ *  and of a definition exercise's definition, which the reader edits in a view of its own. */
+const PRELUDE_ID = "~prelude", STMT_SUFFIX = "~stmt", DEF_SUFFIX = "~def";
 /** The notebook's Lean file, cell by cell: the course's earlier lessons first (a project with a Lean
  *  prelude), then the Lean cells and the Lean exercises in order, each exercise its statement then the
  *  reader's proof. An exercise's statement ends `:= by`, so the proof below it is the declaration's own. */
@@ -4637,7 +4705,11 @@ function leanDocCells(): { id: string; src: string; fixed?: boolean }[] {
   const out: { id: string; src: string; fixed?: boolean }[] = [];
   for (const c of S.cells) {
     if (c.type === "lean") out.push({ id: c.id, src: c.src });
-    else if (isLeanCell(c)) out.push({ id: `${c.id}${STMT_SUFFIX}`, src: c.src, fixed: true }, { id: c.id, src: c.attempt ?? c.leanStart ?? LEAN_START });
+    else if (isLeanCell(c)) {
+      // a definition exercise: the reader's definition, before the statement that is about it
+      if (c.leanDef !== undefined) out.push({ id: `${c.id}${DEF_SUFFIX}`, src: c.defAttempt ?? c.leanDef });
+      out.push({ id: `${c.id}${STMT_SUFFIX}`, src: c.src, fixed: true }, { id: c.id, src: c.attempt ?? c.leanStart ?? LEAN_START });
+    }
   }
   const pre = currentDoc()?.leanPrelude;
   if (pre && out.length) out.unshift({ id: PRELUDE_ID, src: pre, fixed: true });
@@ -4659,11 +4731,17 @@ function preludeMessages(ms: LeanMessage[]) {
 function leanVerdict(c: Cell): boolean {
   if (!leanChecked()) return false;
   const proof = c.attempt ?? c.leanStart ?? LEAN_START;
-  const ms = [...(c.leanStmtMessages ?? []), ...(c.leanMessages ?? [])];
+  const def = c.leanDef !== undefined ? c.defAttempt ?? c.leanDef : "";
+  const ms = [...(c.leanDefMessages ?? []), ...(c.leanStmtMessages ?? []), ...(c.leanMessages ?? [])];
   const err = ms.find((m) => m.severity === "error");
-  const sorry = ms.some((m) => m.severity === "warning" && /sorry/.test(m.message)) || leavesSorry(proof);
+  const sorry = ms.some((m) => m.severity === "warning" && /sorry/.test(m.message)) || leavesSorry(proof) || leavesSorry(def);
+  // a definition exercise: the definition's form, and no way out of proving, in either part
+  const escapes = c.leanDef !== undefined ? escapesIn(`${def}\n${proof}`) : [];
+  const forbidden = c.leanDef !== undefined ? forbiddenIn(def, c.leanForbid ?? []) : [];
   const v: Verdict = !proof.trim() || sorry
-    ? { equivalent: false, error: { message: !proof.trim() ? "write a proof" : "the proof still has a sorry" } }
+    ? { equivalent: false, error: { message: !proof.trim() ? "write a proof" : leavesSorry(def) ? "the definition still has a sorry" : "the proof still has a sorry" } }
+    : escapes.length ? { equivalent: false, error: { message: `${escapes.map((e) => `\`${e}\``).join(", ")} ${escapes.length === 1 ? "is" : "are"} not allowed here: the exercise is to prove it` } }
+    : forbidden.length ? { equivalent: false, error: { message: `your definition uses ${forbidden.map((e) => `\`${e}\``).join(", ")}, which this exercise rules out` } }
     : err ? { equivalent: false, error: { message: "Lean reports an error, above" } } : { equivalent: true };
   if (JSON.stringify(v) === JSON.stringify(c.verdict)) return false;
   c.verdict = v;
@@ -4678,16 +4756,17 @@ function leanHooks() {
   return {
     dark: S.theme !== "light",
     onSource: (id: string, src: string) => {
+      // a Lean exercise's views are its proof and (a definition exercise) its definition; its statement is not the reader's to change
+      if (id.endsWith(DEF_SUFFIX)) { const e = S.cells.find((x) => `${x.id}${DEF_SUFFIX}` === id); if (e) e.defAttempt = src; renderSidebar(); typed(); return; }
       const c = S.cells.find((x) => x.id === id); if (!c) return;
-      // a Lean exercise's view is its proof; its statement is not the reader's to change
       if (c.type === "exercise") c.attempt = src; else c.src = src;
       renderSidebar(); typed();
     },
     onMessages: (id: string, ms: LeanMessage[]) => {
       if (id === PRELUDE_ID) { preludeMessages(ms); return; }
-      const stmt = id.endsWith(STMT_SUFFIX);
-      const c = S.cells.find((x) => x.id === (stmt ? id.slice(0, -STMT_SUFFIX.length) : id)); if (!c) return;
-      if (stmt) c.leanStmtMessages = ms; else c.leanMessages = ms;
+      const stmt = id.endsWith(STMT_SUFFIX), def = id.endsWith(DEF_SUFFIX);
+      const c = S.cells.find((x) => x.id === (stmt ? id.slice(0, -STMT_SUFFIX.length) : def ? id.slice(0, -DEF_SUFFIX.length) : id)); if (!c) return;
+      if (stmt) c.leanStmtMessages = ms; else if (def) c.leanDefMessages = ms; else c.leanMessages = ms;
       if (c.type === "exercise") leanVerdict(c);
       renderCellBody(c);
     },
@@ -5322,12 +5401,16 @@ function exBtn(label: string, title: string, act: () => void, cls = "xc-btn"): H
 }
 /** An exercise's question, answer box, verdict, hints and solution switch; its editor while editing. */
 function renderExercise(cell: Cell) {
-  const box = cell.el?.querySelector<HTMLElement>(".xc-box"); if (!box) return;
+  const box = cell.el?.querySelector<HTMLElement>(".xc-box:not(.xc-top)"); if (!box) return;
   const i = S.cells.indexOf(cell);
   box.innerHTML = "";
   delete cell.input;
   if (cell.editing) { box.append(exerciseEditor(cell)); return; }
-  if (cell.lean) return renderLeanExercise(cell, box);
+  // a definition exercise draws its prompt above the reader's definition, in a part of its own
+  const top = cell.lean && cell.leanDef !== undefined ? cell.el?.querySelector<HTMLElement>(".xc-top") : null;
+  if (top) top.innerHTML = "";
+  if (cell.optional) (top ?? box).append(h("div", "xc-opt", "Optional: not counted in the lesson's progress"));
+  if (cell.lean) return renderLeanExercise(cell, box, top ?? box);
   if (cell.prompt?.trim()) box.append(mdRender(cell.prompt));
   if (!cell.hideQuestion || !cell.prompt?.trim()) {
     const q = h("div", "xc-q");
@@ -5459,6 +5542,8 @@ function answerForm(cell: Cell): { placeholder: string; note: string } {
     if (head === "sat" || head === "falsify") return { placeholder: "an assignment: {p = true, q = false}, or p && !q",
       note: `An assignment that ${head === "sat" ? "makes the formula true" : "makes the formula false"}: a map such as \`{p = true, q = false}\` or a conjunction of literals such as \`p && !q\`, or \`false\` if there is none. ${glyphs}` };
     if (head === "taut" || head === "equiv") return { placeholder: "true or false", note: "`true` or `false` (or ⊤, ⊥)." };
+    if (head === "minimize") return { placeholder: "the smallest DNF, such as a || o && !l",
+      note: `A formula in DNF that agrees with the formula (anything goes in rows the second formula rules out) and is as small as it can be: the fewest terms, then the fewest literals. ${glyphs}` };
     if (head === "nnf" || head === "cnf" || head === "dnf") return { placeholder: `a formula in ${head.toUpperCase()}`,
       note: `A formula with the same truth table, written in ${head === "nnf" ? "negation normal form" : head === "cnf" ? "conjunctive normal form" : "disjunctive normal form"}. ${glyphs}` };
     return { placeholder: "a formula, such as p && !q", note: `A formula; any formula with the right truth table is right. ${glyphs}` };
@@ -5476,8 +5561,8 @@ function howTo(note: string): HTMLElement {
 }
 /** A Lean exercise: the prompt and the statement above the reader's proof (an editor of the notebook's
  *  Lean file), and below it what Lean says, the verdict, the hints and the author's proof. */
-function renderLeanExercise(cell: Cell, box: HTMLElement) {
-  if (cell.prompt?.trim()) box.append(mdRender(cell.prompt));
+function renderLeanExercise(cell: Cell, box: HTMLElement, head: HTMLElement = box) {
+  if (cell.prompt?.trim()) head.append(mdRender(cell.prompt));
   if (!cell.src.trim()) { box.append(h("div", "xc-src", "No statement yet: ✎ Edit")); return; }
   const stmt = h("pre", "xc-leanstmt");
   stmt.append(h("code", undefined, cell.src));
@@ -5489,7 +5574,8 @@ function renderLeanExercise(cell: Cell, box: HTMLElement) {
   const note = leanStateNote(cell);
   if (note) below.append(note);
   // what Lean says about the proof (its lines), and the statement's own errors (an unproved goal is reported at `by`)
-  const ms = [...(cell.leanStmtMessages ?? []).filter((m) => m.severity === "error").map((m) => ({ ...m, where: "statement" })),
+  const ms = [...(cell.leanDefMessages ?? []).map((m) => ({ ...m, where: `definition ${m.line}:${m.column}` })),
+    ...(cell.leanStmtMessages ?? []).filter((m) => m.severity === "error").map((m) => ({ ...m, where: "statement" })),
     ...(cell.leanMessages ?? []).map((m) => ({ ...m, where: `${m.line}:${m.column}` }))];
   for (const m of ms) {
     const row = h("div", `leanmsg ${m.severity}`);
@@ -5500,7 +5586,9 @@ function renderLeanExercise(cell: Cell, box: HTMLElement) {
   const verdict = h("div", "xc-verdict");
   if (state !== "ready") verdict.append(h("span", "xc-pending", state === "failed" || state === "held" ? "" : "Waiting for Lean…"));
   else if (!leanChecked()) { verdict.classList.add("old"); verdict.append(h("span", "xc-pending", "Lean is checking…")); }
-  else if (v?.equivalent) { verdict.classList.add("right"); verdict.append(h("span", "xc-mark", "✓"), document.createTextNode(" Proved: Lean accepts the proof, and nothing is left as sorry.")); }
+  else if (v?.equivalent) { verdict.classList.add("right"); verdict.append(h("span", "xc-mark", "✓"), document.createTextNode(cell.leanDef !== undefined
+    ? " Proved: Lean accepts your definition and the proof, the definition keeps to the exercise's rules, and nothing is left as sorry."
+    : " Proved: Lean accepts the proof, and nothing is left as sorry.")); }
   else if (v) { verdict.classList.add("wrong"); verdict.append(h("span", "xc-mark", "✗"), document.createTextNode(` Not yet: ${v.error?.message ?? "Lean does not accept the proof"}.`)); }
   below.append(verdict);
   appendHints(cell, below);
@@ -5512,7 +5600,7 @@ function renderLeanExercise(cell: Cell, box: HTMLElement) {
   below.append(tools);
   if (cell.solution && cell.leanSolution?.trim()) {
     const sol = h("pre", "xc-leanstmt xc-leansol");
-    sol.append(h("code", undefined, `${cell.src}\n${cell.leanSolution}`));
+    sol.append(h("code", undefined, `${cell.leanDefSolution ? `${cell.leanDefSolution}\n\n` : ""}${cell.src}\n${cell.leanSolution}`));
     below.append(sol);
   }
 }
@@ -5544,6 +5632,11 @@ function exerciseEditor(cell: Cell): HTMLElement {
   prompt.rows = 2; prompt.value = cell.prompt ?? ""; prompt.placeholder = cell.lean ? "Prove that conjunction commutes." : "Differentiate, then simplify.";
   prompt.addEventListener("input", () => { cell.prompt = prompt.value; grow(prompt); });
   field("Prompt", prompt, "Markdown, with $math$: what the reader is asked to do.");
+  const opt = document.createElement("input");
+  opt.type = "checkbox"; opt.checked = !!cell.optional;
+  opt.addEventListener("change", () => { if (opt.checked) cell.optional = true; else delete cell.optional; });
+  const ol = h("label", "xc-check"); ol.append(opt, document.createTextNode(" Optional: beyond the lesson, and not counted in its progress"));
+  f.append(ol);
   if (cell.lean) return leanExerciseEditor(cell, f, field, grow, prompt);
   const q = document.createElement("input");
   q.type = "text"; q.className = "xc-qin"; q.spellcheck = false; q.value = cell.src; q.placeholder = "diff(x^2 * sin(x), x)";
@@ -5605,9 +5698,18 @@ function leanExerciseEditor(cell: Cell, f: HTMLElement, field: (label: string, i
   field("Starting proof", start, "What the reader's proof starts as (indented): by default sorry, which Lean shows the goal of.");
   const sol = area(cell.leanSolution ?? "", "  obtain ⟨hp, hq⟩ := h\n  exact ⟨hq, hp⟩", (v) => { if (v.trim()) cell.leanSolution = v; else delete cell.leanSolution; });
   field("A proof", sol, "Yours, shown when the reader asks, and checked when the notebook is (scripts/notebooks/check-lean.mjs).");
+  // a definition exercise: the reader writes the definition the statement is about, as well as the proof
+  const def = area(cell.leanDef ?? "", "def double : Nat → Nat\n  | 0 => sorry\n  | n + 1 => sorry", (v) => { if (v.trim()) cell.leanDef = v; else delete cell.leanDef; });
+  field("Starting definition", def, "For an exercise in writing a function as well as proving something about it: the definition the reader starts from (with sorry for what they fill in). It goes before the statement, which is about it. Leave it empty for a proof exercise.");
+  const defSol = area(cell.leanDefSolution ?? "", "def double : Nat → Nat\n  | 0 => 0\n  | n + 1 => double n + 2", (v) => { if (v.trim()) cell.leanDefSolution = v; else delete cell.leanDefSolution; });
+  field("A definition", defSol, "Yours, shown with your proof when the reader asks, and what later lessons see.");
+  const forbid = document.createElement("input");
+  forbid.type = "text"; forbid.className = "xc-qin"; forbid.spellcheck = false; forbid.value = (cell.leanForbid ?? []).join(", "); forbid.placeholder = "*, Nat.mul, mul";
+  forbid.addEventListener("input", () => { const xs = forbid.value.split(",").map((x) => x.trim()).filter(Boolean); if (xs.length) cell.leanForbid = xs; else delete cell.leanForbid; });
+  field("Not allowed in the definition", forbid, "Names (Nat.mul; mul also finds Nat.mul) or symbols (*), separated by commas: the form the exercise asks for, which no statement about the values can say. Comments and strings do not count.");
   const hints = area((cell.hints ?? []).join("\n\n"), "Take the conjunction apart first.\n\nobtain ⟨hp, hq⟩ := h", (v) => { cell.hints = v.split(/\n\s*\n/).map((x) => x.trim()).filter(Boolean); }, false);
   field("Hints", hints, "Opened one at a time, in order; a blank line between two hints.");
-  queueMicrotask(() => { for (const ta of [prompt, stmt, start, sol, hints]) grow(ta); });
+  queueMicrotask(() => { for (const ta of [prompt, stmt, start, sol, def, defSol, hints]) grow(ta); });
   prompt.addEventListener("keydown", (ev) => { if (ev.key === "Enter" && (ev.shiftKey || ev.metaKey || ev.ctrlKey)) { ev.preventDefault(); finishExerciseEdit(cell); } });
   return f;
 }
@@ -6108,7 +6210,13 @@ function mdInline(host: HTMLElement, text: string) {
     }
     if (c === "[") {
       const m = MD_LINK.exec(text.slice(i));
-      if (m) { flush(); const a = document.createElement("a"); a.href = mdUrl(m[2]!); a.target = "_blank"; a.rel = "noopener"; mdInline(a, m[1]!); host.append(a); i += m[0].length; continue; }
+      if (m) {
+        flush();
+        const a = document.createElement("a"); a.href = mdUrl(m[2]!);
+        // a link within the page (a course or lesson, `#course=…`) opens here; any other in a new tab
+        if (!m[2]!.trim().startsWith("#")) { a.target = "_blank"; a.rel = "noopener"; }
+        mdInline(a, m[1]!); host.append(a); i += m[0].length; continue;
+      }
     }
     if ((c === "*" || c === "_") && !(c === "_" && i > 0 && /\w/.test(text[i - 1]!))) {
       const mark = next === c ? c + c : c;

@@ -1,0 +1,129 @@
+{
+  "chalk": 1,
+  "name": "04-types.chalk",
+  "cells": [
+    {
+      "src": "Your own types",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Define a type of your own, by its choices or by its parts, and write functions on it by cases.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`inductive` defines a type by listing the ways to build one. The simplest lists a fixed set of choices:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "inductive Weekday where\n  | mon | tue | wed | thu | fri | sat | sun\n  deriving Repr, DecidableEq\n\ndef Weekday.isWeekend : Weekday → Bool\n  | .sat | .sun => true\n  | _ => false\n\n#eval Weekday.isWeekend .sat\n#eval Weekday.wed.isWeekend",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`deriving Repr` lets `#eval` show a `Weekday`, and `DecidableEq` lets Lean compare two. A function on it is a case per choice; `_` matches whatever the cases before did not. Naming it `Weekday.isWeekend` puts it with the type, so `Weekday.wed.isWeekend` works too.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Structures",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`structure` bundles values under names, as a point has two coordinates:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "structure Point where\n  x : Int\n  y : Int\n  deriving Repr\n\ndef Point.add (p q : Point) : Point := { x := p.x + q.x, y := p.y + q.y }\n\n#eval Point.add { x := 1, y := 2 } { x := 10, y := -5 }",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Trees",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A choice can carry values, including values of the type being defined. A binary tree is either a `leaf` or a `node` with a left tree, a number and a right tree:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "inductive Tree where\n  | leaf\n  | node (l : Tree) (v : Nat) (r : Tree)\n  deriving Repr\n\ndef Tree.sum : Tree → Nat\n  | .leaf => 0\n  | .node l v r => l.sum + v + r.sum\n\ndef sample : Tree := .node (.node .leaf 1 .leaf) 2 (.node .leaf 3 .leaf)\n\n#eval sample.sum",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`Tree.sum` calls itself on the two smaller trees inside a node, as `total` did on the rest of a list.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem next_ok : Weekday.next .sun = .mon ∧ Weekday.next .fri = .sat ∧ Weekday.next .mon = .tue := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Define `Weekday.next`, the day after a day (Sunday's is Monday).",
+      "leanSolution": "  decide",
+      "leanStart": "  decide",
+      "hints": [
+        "A case for each of the seven days.",
+        "Several cases fit on a line: `| .mon => .tue | .tue => .wed`."
+      ],
+      "leanDef": "def Weekday.next : Weekday → Weekday\n  | d => sorry",
+      "leanDefSolution": "def Weekday.next : Weekday → Weekday\n  | .mon => .tue | .tue => .wed | .wed => .thu | .thu => .fri\n  | .fri => .sat | .sat => .sun | .sun => .mon",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem count_ok' : sample.count = 3 ∧ Tree.leaf.count = 0 := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Define `Tree.count`, how many nodes a tree has.",
+      "leanSolution": "  decide",
+      "leanStart": "  decide",
+      "hints": [
+        "Like `Tree.sum`, but a node counts 1 whatever its number.",
+        "`| .node l _ r => l.count + 1 + r.count`"
+      ],
+      "leanDef": "def Tree.count : Tree → Nat\n  | .leaf => sorry\n  | .node l _ r => sorry",
+      "leanDefSolution": "def Tree.count : Tree → Nat\n  | .leaf => 0\n  | .node l _ r => l.count + 1 + r.count",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> `inductive` defines a type by the ways to build it: a list of choices, or choices that carry values, even of the same type (a tree). `structure` bundles named values. Functions on them go by cases, and call themselves on the smaller parts.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "You can now write functions on numbers, lists and types of your own. The next lesson writes statements about them and has Lean check them.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

@@ -283,6 +283,12 @@
       "label": null
     },
     {
+      "src": "> [!note] Application: conditions in code\n> The true rows of a table are also the branches of an `if`. [Simplifying conditions in code](#course=logic&lesson=2&app=1), an optional notebook beside this lesson, finds the smallest DNF of a condition and checks a rewrite of an `if` chain against the old one.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "Tables and laws decide formulas about $p$ and $q$. Neither can check a statement about every number, which has infinitely many rows. The next lesson builds proofs instead, step by step, and has Lean check them.",
       "type": "markdown",
       "showWork": false,

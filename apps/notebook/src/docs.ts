@@ -195,7 +195,7 @@ Many of the courses' exercises have a **topic**, and offer **↻ Another one**: 
 
 ## Writing one
 
-Add an exercise from Edit › Add exercise or the ‹▾› between cells. Its editor has a **prompt** (Markdown, what the reader is asked to do), the **question**, and **hints** (a blank line between two). The question is shown typeset under the prompt unless you untick that, for a prompt that says it in words ("the slope of $x^3$ at $x = 2$" for ‹subst(diff(x^3, x), x, 2)›). **Practice** gives the exercise a topic, and so ↻ Another one; **Generate a question** fills in a question of that topic, with its prompt and hints, to keep or change. **✎ Edit** opens the editor again; **✓ Done** (or Shift+Enter) closes it.
+Add an exercise from Edit › Add exercise or the ‹▾› between cells. Its editor has a **prompt** (Markdown, what the reader is asked to do), the **question**, and **hints** (a blank line between two). The question is shown typeset under the prompt unless you untick that, for a prompt that says it in words ("the slope of $x^3$ at $x = 2$" for ‹subst(diff(x^3, x), x, 2)›). **Optional** marks an exercise as beyond the lesson: it says so, and a lesson's progress does not count it. **Practice** gives the exercise a topic, and so ↻ Another one; **Generate a question** fills in a question of that topic, with its prompt and hints, to keep or change. **✎ Edit** opens the editor again; **✓ Done** (or Shift+Enter) closes it.
 
 An exercise is not an evaluation: it takes no ‹In[n]› and ‹%› still means the cell before it. It sees the names defined above it, so a question can use them.
 
@@ -207,6 +207,8 @@ A **Lean exercise** asks for a proof. Its statement is Lean, such as ‹theorem 
 - When Lean rejects the proof, its message shows under the editor.
 - **✓ Proved** means Lean accepts the declaration, statement and proof, with nothing left as ‹sorry›.
 - **Show a proof** shows the author's, to compare with yours.
+
+A **definition exercise** asks you to write a function as well: its statement is about a definition you write, in a Lean editor of its own above the statement. The statement is the specification, so Lean accepts your work when your definition meets it for every input; a table of answers cannot, since the statement covers the inputs past its end too. What the exercise asks of the definition's *form* (no multiplication, say), which no statement about its values can say, it checks in your definition's code: using it says so, and the verdict waits. A way out of proving (‹axiom›, ‹native_decide›, ‹implemented_by›, ‹extern›, ‹unsafe›) is refused in the definition and the proof alike.
 
 Add one from Edit › Add Lean exercise or the ‹▾› between cells. Its editor has the prompt, the **statement** (ending with ‹:= by›), the **starting proof** (indented; ‹sorry› if empty), **a proof** of your own, and the hints. Your proof is required for a notebook that ships with ChalkMath: CI checks it (‹scripts/notebooks/check-lean.mjs›).
 `],
@@ -428,6 +430,8 @@ The page writes only the storyboard; rendering the video is Manim's job, outside
 Notebooks that come with ChalkMath, grouped into **projects**: a **course** is a sequence of lessons that build on each other, with exercises the engine checks; a **collection** is notebooks to explore in any order. File › Courses and examples opens the **Courses** tab, which lists them all.
 
 A lesson opens in its own tab with a bar above it: the course it belongs to, where it is in it, how many of its exercises you have answered, and **‹ Previous** and **Next ›**. The Courses tab remembers, in this browser, which lessons you have opened and finished.
+
+Some lessons have **applications**: optional notebooks beside the lesson that take its ideas somewhere else (the logic course's normal forms, applied to the conditions in code). They are listed under their lesson, linked from it and from its bar, and lead back to it with **‹ Lesson n**. They are outside the course's order: **Next ›** skips them, and finishing the course does not need them.
 
 Every course has a link of its own, to send to someone: **Copy link** on the course's page copies it, and while a course or one of its lessons is on show the page's address is its link, ‹…#course=calculus› for a course and ‹…#course=calculus&lesson=3› for its third lesson. A link opens the course's page, or the lesson in its own tab; the person you send it to starts the course afresh, since your work in it stays in your browser.
 

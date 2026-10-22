@@ -261,6 +261,24 @@ theorem unsat_sound (f : Fm) (h : findRow f.vars (fun σ => f.eval σ == true) =
   rw [eval_congr σ (assignment f.vars r) f (fun x hx => (hagree x hx).symm)]
   simpa using hr'
 
+/-- `minimize`'s check: no row of `vs` (which holds every variable of `f`, `g` and `d`) has `d` false
+and `f`, `g` apart. Then they agree under every assignment where `d` is false. Each stage of
+`minimize` is checked this way before it is shown, so what it answers agrees with the formula wherever
+the don't-care condition does not hold (everywhere, with none). -/
+theorem agree_sound (vs : List String) (f g d : Fm)
+    (hf : ∀ x ∈ f.vars, x ∈ vs) (hg : ∀ x ∈ g.vars, x ∈ vs) (hd : ∀ x ∈ d.vars, x ∈ vs)
+    (h : findRow vs (fun σ => !d.eval σ && f.eval σ != g.eval σ) = none)
+    (σ : String → Bool) (hσ : d.eval σ = false) : f.eval σ = g.eval σ := by
+  obtain ⟨r, hr, hagree⟩ := rows_complete vs σ
+  have hr' := (List.find?_eq_none.mp h) r hr
+  have ef := eval_congr σ (assignment vs r) f (fun x hx => (hagree x (hf x hx)).symm)
+  have eg := eval_congr σ (assignment vs r) g (fun x hx => (hagree x (hg x hx)).symm)
+  have ed := eval_congr σ (assignment vs r) d (fun x hx => (hagree x (hd x hx)).symm)
+  rw [ef, eg]
+  rw [ed] at hσ
+  simp only [hσ, Bool.not_false, Bool.true_and, bne_iff_ne, ne_eq, decide_eq_true_eq, Decidable.not_not] at hr'
+  exact hr'
+
 /-- A row the engine returns as a witness is one. -/
 theorem findRow_spec (vs : List String) (p : (String → Bool) → Bool) (r : List Bool)
     (h : findRow vs p = some r) : p (assignment vs r) = true := by

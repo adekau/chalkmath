@@ -1,0 +1,264 @@
+{
+  "chalk": 1,
+  "name": "02a-conditions-in-code.chalk",
+  "cells": [
+    {
+      "src": "Simplifying conditions in code",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Read an `if` chain as a formula, find its smallest form, find the branches that can never run, and check that a rewrite changed the code's shape and not what it does.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "An application of lesson 2, outside the course's order: nothing later depends on it. The last section uses Lean, which lesson 3 introduces.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "```ts\nfunction canEdit(isAdmin: boolean, isOwner: boolean, locked: boolean): boolean {\n  if (isAdmin) return true;\n  else if (isOwner && !locked) return true;\n  else if (isOwner && locked && isAdmin) return true;\n  return false;\n}\n```",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Name the conditions $a$ (`isAdmin`), $o$ (`isOwner`) and $l$ (`locked`). A later branch runs only when the earlier ones failed, but every branch returns `true`, and $A \\lor (\\lnot A \\land B) \\equiv A \\lor B$: so the function is true exactly when one of the branches' conditions is.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "truthtable(a ∨ (o ∧ ¬l) ∨ (o ∧ l ∧ a))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The smallest DNF",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Five true rows, so the DNF read off the table has five terms. `minimize` finds the smallest DNF with the same table, by the **Quine–McCluskey** method: two terms that differ in one variable merge, $(x \\land y) \\lor (x \\land \\lnot y) \\equiv x$, round by round, until no two do. The terms left are the **prime implicants**; then it keeps the fewest of them that are true in every true row.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "minimize(a ∨ (o ∧ ¬l) ∨ (o ∧ l ∧ a))",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "Two terms, $a$ and $o \\land \\lnot l$, and both are needed: each is the only one true in some row. The third branch was **dead code**: whenever $o \\land l \\land a$ holds, $a$ already returned. The function is\n\n```ts\nconst canEdit = (isAdmin: boolean, isOwner: boolean, locked: boolean) => isAdmin || (isOwner && !locked);\n```\n\nand `equiv` checks the rewrite against the original, every row of it:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "equiv(a ∨ (o ∧ ¬l) ∨ (o ∧ l ∧ a), a ∨ (o ∧ ¬l))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A rewrite that goes one step too far is caught with the row that shows it:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "equiv(a ∨ (o ∧ ¬l) ∨ (o ∧ l ∧ a), a ∨ o)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> The smallest formula is not always the clearest code. Simplifying shows what the condition *is*; whether to write it that way is a question of what the next reader needs. The check is worth having either way: it says the two are the same, or exactly where they are not.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Branches that never run",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "```ts\nfunction shipping(express: boolean, member: boolean, heavy: boolean): string {\n  if (express && !heavy) return \"air\";\n  if (heavy) return \"freight\";\n  if (member || !express) return \"ground\";\n  return \"standard\";\n}\n```",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Each `return` runs when its condition holds *and every earlier one failed*. With $e$, $m$, $h$ for the three flags, `\"ground\"` runs when $\\lnot(e \\land \\lnot h) \\land \\lnot h \\land (m \\lor \\lnot e)$. Its smallest form:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "minimize(¬(e ∧ ¬h) ∧ ¬h ∧ (m ∨ ¬e))",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "$\\lnot e \\land \\lnot h$: `member` does not matter at all. And `\"standard\"` runs when all three conditions fail. If that has no satisfying assignment, the line never runs:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "sat(¬(e ∧ ¬h) ∧ ¬h ∧ ¬(m ∨ ¬e))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Don't-cares\n> Conditions in code are often not independent. With $g_5$ for `x > 5` and $g_3$ for `x > 3`, the row $g_5 \\land \\lnot g_3$ cannot happen. `minimize(φ, d)` takes $d$ as the rows that cannot happen: the result may be true or false there, whichever makes it smaller.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "minimize((g5 ∧ s) ∨ (g3 ∧ ¬g5 ∧ s), g5 ∧ ¬g3)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "Read back: `(x > 5 && s) || (x > 3 && x <= 5 && s)` is `x > 3 && s`.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Answer with a formula, typing `&&`, `||` and `!` or the glyphs. For `minimize`, the answer must be a DNF with the same truth table and no bigger than the smallest; ↻ Another one gives another.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "minimize((b ∧ ¬t) ∨ (b ∧ t ∧ s) ∨ (¬b ∧ s ∧ t))",
+      "type": "exercise",
+      "prompt": "A feature is on when `(beta && !trial) || (beta && trial && signedIn) || (!beta && signedIn && trial)`. With $b$, $t$, $s$, find the smallest DNF.",
+      "hints": [
+        "Two of the terms share $t \\land s$ and differ only in $b$.",
+        "$b \\land \\lnot t$ is the only term true when $b$ holds and $t$ does not."
+      ],
+      "hideQuestion": true,
+      "practice": "logic.minimize",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "equiv((p ∧ ¬q) ∨ (p ∧ q) ∨ (¬p ∧ q), p ∨ q)",
+      "type": "exercise",
+      "prompt": "Someone rewrote `(p && !q) || (p && q) || (!p && q)` as `p || q`. Is the rewrite right? Answer true or false.",
+      "hints": [
+        "The three terms are three of the four rows. Which row is missing, and what does `p || q` say there?"
+      ],
+      "practice": "logic.equiv",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "sat(¬(a ∧ b) ∧ ¬a ∧ ¬(¬b))",
+      "type": "exercise",
+      "prompt": "In `if (a && b) return 1; if (a) return 2; if (!b) return 3; return 4;` can `return 4` run? Give an assignment that reaches it, or `false` if none does.",
+      "hints": [
+        "It runs when all three conditions fail: $\\lnot(a \\land b) \\land \\lnot a \\land \\lnot\\lnot b$.",
+        "$\\lnot a$ and $b$: then $a \\land b$ fails too."
+      ],
+      "hideQuestion": true,
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Checking it in Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "With the conditions as `Bool`s, a function is a truth table Lean can run, and `decide` checks a statement about every row by running it. Lesson 3 introduces Lean; here it needs only one tactic.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "def canEdit (isAdmin isOwner locked : Bool) : Bool :=\n  if isAdmin then true\n  else if isOwner && !locked then true\n  else if isOwner && locked && isAdmin then true\n  else false\n\ndef canEdit' (isAdmin isOwner locked : Bool) : Bool :=\n  isAdmin || (isOwner && !locked)",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem canEdit_simpler : ∀ a o l, canEdit a o l = canEdit' a o l := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that the rewrite does what the original does, for every input.",
+      "leanSolution": "  decide",
+      "hints": [
+        "Three `Bool`s are 8 rows: `decide` evaluates both sides in each."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A wrong rewrite does not get a proof. `decide` says the statement is false instead:\n\n```\ntheorem wrong : ∀ a o l, canEdit a o l = (a || o) := by decide\n-- error: Tactic decide proved that the proposition\n--   ∀ (a o l : Bool), canEdit a o l = (a || o)\n-- is false\n```",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "inductive Ship where\n  | air | freight | ground | standard\n  deriving DecidableEq, Repr\n\ndef shipping (express member heavy : Bool) : Ship :=\n  if express && !heavy then .air\n  else if heavy then .freight\n  else if member || !express then .ground\n  else .standard",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem shipping_never_standard : ∀ e m h, shipping e m h ≠ .standard := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that `shipping` never answers `standard`: the last branch is dead.",
+      "leanSolution": "  decide",
+      "hints": [
+        "The same tactic: a statement about finitely many inputs, each checked."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem shipping_ignores_member : ∀ e m h, shipping e m h = shipping e false h := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that `member` makes no difference.",
+      "leanSolution": "  decide",
+      "hints": [
+        "Compare each input with the same one where `member` is `false`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Lean goes further for a `match`: an arm that can never be reached is an error, not a warning.\n\n```\ndef route (admin owner : Bool) : String :=\n  match admin, owner with\n  | true, _      => \"full\"\n  | false, true  => \"own\"\n  | false, false => \"none\"\n  | true, true   => \"never\"\n-- error: Redundant alternative: Any expression matching\n--   true, true\n-- will match one of the preceding alternatives\n```",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> An `if` chain whose branches return the same thing is the $\\lor$ of their conditions; a later branch also has the earlier ones fail. `minimize` finds the smallest DNF (with don't-cares for rows that cannot happen), `sat` finds whether a branch can run at all, and `equiv` checks a rewrite, naming the row where it goes wrong. In Lean, `decide` proves the same things about `Bool` functions by running them on every input.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

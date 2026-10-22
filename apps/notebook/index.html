@@ -412,9 +412,11 @@ html[data-outsize="l"] { --sz-out:28px; --sz-echo:22px; --sz-work:19px; --sz-sub
 .kindbadge .i { display:inline-flex; align-items:center; justify-content:center; width:12px; height:12px; border-radius:50%; background:var(--p-acc-chip); font-size:8px; font-style:italic; }
 .timing { font-family:var(--code); font-size:10px; color:var(--p-mut2); }
 /* Lean cells: the VS Code editor (lean4monaco) as the input, Lean's messages as the output */
-.cell.lean .leanview, .cell.exercise .xc-leanproof { min-height:24px; border:1px solid var(--p-input-br); border-radius:6px; overflow:hidden; background:var(--p-input-bg); }
+.cell.lean .leanview, .cell.exercise .xc-leanproof, .cell.exercise .xc-leandef { min-height:24px; border:1px solid var(--p-input-br); border-radius:6px; overflow:hidden; background:var(--p-input-bg); }
 .cell.exercise .xc-leanproof { margin:6px 0 0 11px; }
-.cell.lean .leanview.pending, .cell.exercise .xc-leanproof.pending { font-family:var(--code); font-size:13px; line-height:19px; white-space:pre-wrap; padding:5px 8px; color:var(--p-mut); }
+.cell.exercise .xc-leandef { margin:6px 0 10px 11px; }
+.cell.exercise .xc-top:empty { display:none; }
+.cell.lean .leanview.pending, .cell.exercise .xc-leanproof.pending, .cell.exercise .xc-leandef.pending { font-family:var(--code); font-size:13px; line-height:19px; white-space:pre-wrap; padding:5px 8px; color:var(--p-mut); }
 .leanstate { margin:8px 0 0 8px; font-size:12.5px; color:var(--p-mut); }
 .leanstate.failed { color:var(--p-err); }
 .leanstate .smallbtn { margin-left:4px; vertical-align:middle; }
@@ -480,6 +482,7 @@ html[data-outsize="l"] { --sz-out:28px; --sz-echo:22px; --sz-work:19px; --sz-sub
 .xc-btn { display:inline-flex; align-items:center; padding:5px 12px; border-radius:6px; border:1px solid var(--p-btn-br); background:linear-gradient(var(--p-btn-a), var(--p-btn-b)); color:var(--p-btn-ink); font:12px var(--font); cursor:pointer; }
 .xc-btn:hover { filter:brightness(1.1); }
 .xc-btn.primary { border-color:var(--p-acc-br); background:var(--p-acc-bg); color:var(--p-acc); font-weight:600; }
+.xc-opt { align-self:flex-start; font:600 10.5px var(--font); text-transform:uppercase; letter-spacing:0.04em; color:var(--p-mut); border:1px dashed var(--p-btn-br); border-radius:4px; padding:1px 7px; }
 .xc-howto { font:12px/1.55 var(--font); color:var(--p-mut); margin-top:-4px; }
 .xc-howto code { font:11.5px var(--code); color:var(--p-ink-2); background:var(--p-row-bg); border-radius:3px; padding:0 4px; }
 .xc-btn.xc-inline { padding:1px 9px; margin-left:4px; vertical-align:baseline; }
@@ -768,6 +771,9 @@ table.keys kbd { font:11.5px var(--mono); color:var(--ink); background:var(--pan
 .crslessons { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px; }
 .crslesson { display:grid; grid-template-columns:36px minmax(0,1fr) auto; gap:14px; align-items:center; padding:12px 16px; border-radius:9px; border:1px solid var(--p-br-idle); background:var(--p-row-bg); }
 .crslesson.next { border-color:var(--p-acc-br); background:var(--p-acc-bg); }
+.crslesson.crsapp { margin-left:36px; padding:9px 14px; border-style:dashed; background:transparent; }
+.crslesson.crsapp .crsnum { background:transparent; }
+.crslesson.crsapp .crskind { color:var(--p-mut); }
 .crsnum { width:28px; height:28px; border-radius:50%; display:grid; place-items:center; font:700 12.5px var(--font); color:var(--p-mut); background:var(--p-no-bg); }
 .crslesson.done .crsnum, .crslesson.seen .crsnum { color:var(--on-acc); background:var(--ok); }
 .crslesson.next .crsnum { color:var(--on-acc); background:var(--p-acc-2); }

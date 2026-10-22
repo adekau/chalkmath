@@ -173,6 +173,9 @@ the engine omits is unverified.
 \rt{logic.complement}{verified}{A term with $p$ and $\lnot p$ is false, a clause with them true, under every assignment (\lc{complement_sound}).}
 \rt{logic.truthtable}{verified}{Every assignment to the formula's variables is a row (\lc{rows_complete}), and a formula's value depends only on its variables (\lc{eval_congr}): what holds in every row holds everywhere (\lc{taut_sound}, \lc{unsat_sound}), and a row returned as a witness is one (\lc{findRow_spec}).}
 \rt{logic.evaluate}{verified}{A formula without variables: its value by definition of the connectives.}
+\rt{logic.minterms}{checked}{The true rows of the truth table, a term each (with the don't-care rows): the DNF the table reads as. Checked against the formula row by row before it is shown; \lc{agree_sound} proves the check enough.}
+\rt{logic.merge}{checked}{A round of merging terms that differ in one variable, $(x \land y) \lor (x \land \lnot y) = x$; the terms left are kept. Each round's sum is checked against the formula row by row on the rows the don't-care condition leaves (\lc{agree_sound}).}
+\rt{logic.cover}{checked}{The essential prime implicants, then the fewest others covering the remaining true rows, by search (or greedily, when the step says so). The cover is checked against the formula row by row on the rows the don't-care condition leaves (\lc{agree_sound}); that it is the smallest is the search's claim, not a theorem.}
 \rt{logic.bounded}{verified}{A quantifier over a finite set is checked element by element, by definition; the atoms are evaluated by the pipeline, whose steps' statuses apply.}
 \midrule \multicolumn{3}{l}{\textbf{$\lambda$-calculus}} \\
 \rt{lambda.delta}{verified}{Unfolding a definition replaces a free name by its term; nothing to prove beyond that.}

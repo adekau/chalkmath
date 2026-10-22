@@ -1430,9 +1430,30 @@ export const FUNCTIONS: FnDoc[] = [
   {
     name: "dnf", area: "Logic",
     usage: [["dnf(φ)", "gives φ in disjunctive normal form: an ∨ of terms, each an ∧ of literals."]],
+    details: ["*A* DNF, by the laws of logic, not the smallest one: `minimize` finds that."],
     examples: [basic("dnf((p ∨ q) ∧ r)", "dnf(p ↔ q)")],
-    see: ["cnf", "nnf"],
+    see: ["minimize", "cnf", "nnf"],
     ref: "https://mathworld.wolfram.com/DisjunctiveNormalForm.html",
+  },
+  {
+    name: "minimize", area: "Logic",
+    usage: [
+      ["minimize(φ)", "gives the smallest DNF with φ's truth table: the fewest terms, then the fewest literals."],
+      ["minimize(φ, d)", "treats the rows where `d` holds as rows that cannot happen (don't-cares): the result may be true or false there, whichever makes it smaller."],
+    ],
+    details: [
+      "The Quine–McCluskey method, a step each: the true rows read off as terms; terms that differ in one variable merged, round by round, by $(x \\land y) \\lor (x \\land \\lnot y) = x$, until the **prime implicants** are left; then the essential ones (the only term true in some row) and the fewest others that cover the rest.",
+      "The cover is the smallest by search; when the search would be too large, the step says it chose greedily instead.",
+      "Each stage is checked against φ row by row before it is shown (`agree_sound`), so the steps are marked *checked*.",
+      "Don't-cares are for conditions that are not independent: with `g5` for x > 5 and `g3` for x > 3, the row `g5 ∧ ¬g3` cannot happen.",
+      "At most 8 variables. As an exercise, an answer must be a DNF that agrees with φ (off the don't-care rows) and is no bigger than the smallest.",
+    ],
+    examples: [
+      basic("minimize(a ∨ (o ∧ ¬l) ∨ (o ∧ l ∧ a))", "minimize((p ∧ q) ∨ (q ∧ r) ∨ (p ∧ r))"),
+      section("Don't-cares", note("With g5 for x > 5 and g3 for x > 3, the row g5 ∧ ¬g3 cannot happen."), "minimize((g5 ∧ s) ∨ (g3 ∧ ¬g5 ∧ s), g5 ∧ ¬g3)"),
+    ],
+    see: ["dnf", "equiv", "truthtable"],
+    ref: "https://en.wikipedia.org/wiki/Quine%E2%80%93McCluskey_algorithm",
   },
 
   // --- λ-calculus ------------------------------------------------------------------------------
