@@ -152,6 +152,7 @@ function cellKind(src: string): string | null {
   if (world) return WORLD_BADGE[world] ?? world;
   switch (head) {
     case "rref": return "row reduce";
+    case "nullspace": return "null space";
     case "det": return "determinant";
     case "transpose": return "transpose";
     case "expand": return "expand";
@@ -4495,7 +4496,7 @@ const RULE_NAMES: Record<string, string> = {
   "simp.radical": "Radical", "simp.exp-product": "Exponentials multiply", "expand.distribute": "Distribute", "expand.power": "Expand the power",
   "cx.euler": "Euler's formula", "cx.euler-power": "Euler's formula", "cx.arithmetic": "Complex arithmetic", "cx.i-power": "Power of i", "cx.re-im": "Real and imaginary parts",
   "cx.conjugate": "Conjugate", "cx.abs": "Modulus", "cx.exact-trig": "Exact value", "cx.power": "Complex power",
-  "la.row-swap": "Swap rows", "la.row-scale": "Scale a row", "la.row-add": "Add a multiple of a row", "la.row-swap.symbolic": "Swap rows", "la.row-scale.symbolic": "Scale a row, assuming the pivot nonzero", "la.row-add.symbolic": "Add a multiple of a row", "la.row-add.symbolic.assuming": "Add a multiple of a row, assuming", "la.det": "Determinant", "la.mul": "Matrix product", "la.add": "Matrix sum",
+  "la.row-swap": "Swap rows", "la.row-scale": "Scale a row", "la.row-add": "Add a multiple of a row", "la.row-swap.symbolic": "Swap rows", "la.row-scale.symbolic": "Scale a row, assuming the pivot nonzero", "la.row-add.symbolic": "Add a multiple of a row", "la.row-add.symbolic.assuming": "Add a multiple of a row, assuming", "la.det": "Determinant", "la.nullspace": "Null space", "la.mul": "Matrix product", "la.add": "Matrix sum",
   "la.scalar-mul": "Scalar multiple", "la.transpose": "Transpose", "la.pow": "Matrix power", "la.dot": "Dot product", "la.norm": "Norm", "la.conj": "Conjugate", "la.ediv": "Entrywise division", "la.emul": "Entrywise product", "la.part": "Part", "stat.total": "Total", "stat.mean": "Mean", "stat.variance": "Sample variance", "stat.stdev": "Standard deviation", "stat.min": "Minimum", "stat.max": "Maximum", "stat.median": "Median", "la.context": "Matrix context",
   "int.check": "Check by differentiating", "int.compare": "Compare with the integrand", "int.bounds": "Evaluate at the bounds", "int.table": "Table integral", "int.power": "Power rule for integrals",
   "int.variable": "Integral of the variable", "int.constant": "Integral of a constant", "int.constant-multiple": "Constant multiple", "int.sum": "Sum rule for integrals",
@@ -5558,6 +5559,8 @@ function answerForm(cell: Cell): { placeholder: string; note: string } {
   }
   if (/^\s*(infer|type)\s*:/.test(cell.src)) return { placeholder: "a type, such as a -> b -> a", note: "A type: `a -> b -> a`, or with glyphs α → β → α (`\\to` and a space types →). Any names for the type variables will do." };
   if (wid === "lambda" || cell.kind === "λ-term") return { placeholder: "a λ-term, such as \\x. x", note: "A λ-term in normal form, written as in a cell: `\\x. x` or `λx. x` (`\\lam` and a space types λ). The names of bound variables do not matter." };
+  if (head === "nullspace") return { placeholder: "a column, such as [1; 2; 1; 2]",
+    note: "A basis of the null space: one solution as a column, its entries separated by `;` as in `[1; 2; 1; 2]`, or several as the columns of a matrix, `[1, 0; 0, 1; 2, 3]`. Any basis is right: for one vector, any nonzero multiple of it." };
   if (wid) return { placeholder: "your answer, typed as in a cell", note: "Typed as in a cell of this kind. `\\` then a name and a space types a symbol (`\\le` ≤, `\\in` ∈)." };
   return { placeholder: "your answer, such as 2*x*cos(x)", note: "An expression, typed as in a math cell: `2*x*cos(x)`, `x^2/2`, `sqrt(x)`; it is right when it simplifies to the same normal form as the answer. `\\` then a name and a space types a symbol (`\\pi` π, `\\theta` θ)." };
 }
@@ -7751,7 +7754,7 @@ const USER_NAMES = new Set<string>();
 
 /** Commands whose argument at `arg` is a variable bound over the call: `diff(f, x)`, `plot(f, x, …)`. */
 const BINDERS: Record<string, number> = { diff: 1, integrate: 1, plot: 1, epicycles: 1, sum: 1, subst: 1, manipulate: 1 };
-const BUILTIN_FN = new Set(["sin", "cos", "tan", "sec", "csc", "cot", "arcsin", "arccos", "arctan", "sinh", "cosh", "tanh", "exp", "ln", "log", "sqrt", "abs", "conj", "re", "im", "arg", "sign", "det", "rref", "transpose", "dot", "norm", "solve",
+const BUILTIN_FN = new Set(["sin", "cos", "tan", "sec", "csc", "cot", "arcsin", "arccos", "arctan", "sinh", "cosh", "tanh", "exp", "ln", "log", "sqrt", "abs", "conj", "re", "im", "arg", "sign", "det", "rref", "nullspace", "transpose", "dot", "norm", "solve",
   "total", "mean", "variance", "stdev", "min", "max", "median", "prime", "even", "odd"]);
 /** Every command a cell can call: each reference page's (`reference.ts`), so a new command is
  *  highlighted with nothing more to list, and the other worlds' (`taut`, `system`, …). */

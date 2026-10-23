@@ -30,7 +30,7 @@ theorem mem_pipeline_iff (r : PlainRule) : r ∈ (pipelineRulesWith norm real) �
     r = diffHigherOrder ∨ r = diffConstant ∨ r = diffVariable ∨ r = diffSum ∨ r = diffSumAssuming ∨ r = diffConstMul ∨
     r = diffProduct ∨ r = diffProductAssuming ∨ r = diffPower ∨ r = diffPowerAssuming ∨ r = diffChain ∨
     r = diffChainAssuming ∨ r = diffMatrix ∨
-    r = laAdd ∨ r = laScalarMul ∨ r = laMul ∨ r = laTranspose ∨ r = laDet ∨ r = laPow ∨ r = laDot ∨ r = laNorm ∨ r = laConj ∨
+    r = laAdd ∨ r = laScalarMul ∨ r = laMul ∨ r = laTranspose ∨ r = laDet ∨ r = laNullspace ∨ r = laPow ∨ r = laDot ∨ r = laNorm ∨ r = laConj ∨
     r = laEdiv ∨ r = laEmul ∨
     r = laPart ∨ (∃ st ∈ stats, statRule st = r) ∨
     r = scalarOnly iPower ∨ r = scalarOnly cxArith ∨ r = scalarOnly cxPow ∨ r = scalarOnly cxConj ∨ r = scalarOnly cxReIm ∨
@@ -541,6 +541,15 @@ theorem dec_laDet : Dec norm real laDet := dec_lit
     · exact ⟨by simp [cmdOwn, cmdNames], by simp [d3Own]⟩
     · simp at h)
   (fun e res h => by unfold laDet at h; obtain ⟨r₀, _, rfl⟩ := lit_apply h; exact ⟨r₀, rfl⟩)
+
+theorem dec_laNullspace : Dec norm real laNullspace := dec_lit
+  (fun e res h => by
+    unfold laNullspace at h; obtain ⟨r₀, h, _⟩ := lit_apply h
+    split at h
+    · exact ⟨by simp [cmdOwn, cmdNames], by simp [d3Own]⟩
+    · exact ⟨by simp [cmdOwn, cmdNames], by simp [d3Own]⟩
+    · simp at h)
+  (fun e res h => by unfold laNullspace at h; obtain ⟨r₀, _, rfl⟩ := lit_apply h; exact ⟨r₀, rfl⟩)
 
 theorem dec_laPow : Dec norm real laPow := dec_lit
   (fun e res h => by
@@ -2911,9 +2920,9 @@ theorem dec_diffChainAssuming : Dec norm real diffChainAssuming := dec_assumingH
 With `normalizeT`'s innermost strategy this is exactly what makes cell evaluation terminate. -/
 theorem pipelineOrderedWith (norm : Norm) (real : Bool) : Ordered (pipelineRulesWith norm real) := ⟨fun r hr => by
   rw [mem_pipeline_iff] at hr
-  -- 34 commands, diff and la rules; la.part; the statistics; 28 scalar rules and la.context
+  -- 35 commands, diff and la rules; la.part; the statistics; 28 scalar rules and la.context
   rcases hr with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
-    rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
+    rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
     rfl | rfl | rfl | rfl | rfl | rfl | ⟨st, hst, rfl⟩ |
     rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
     rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
@@ -2945,6 +2954,7 @@ theorem pipelineOrderedWith (norm : Norm) (real : Bool) : Ordered (pipelineRules
   · exact dec_laMul
   · exact dec_laTranspose
   · exact dec_laDet
+  · exact dec_laNullspace
   · exact dec_laPow
   · exact dec_laDot
   · exact dec_laNorm

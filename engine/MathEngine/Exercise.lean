@@ -356,6 +356,31 @@ def checkLambda (s : Session) (cellId question : String) (answer : Option String
     let eq := match given with | some (.ok c) => equal c.canon expCanon | _ => false
     (s, .ok ⟨res.value, res.derivation, true, expCanon, given, eq⟩)
 
+/-- A `nullspace(A)` exercise takes any basis of the null space, not only the engine's (a balancing
+in whole numbers, say, for the engine's fractions): a matrix with as many columns as the null space
+has dimensions (`dim`), each column solving `A x = 0` (`LinQ.solves_sound`), the columns independent.
+For a null space of `0` alone, the zero vector. -/
+private def checkNullspace (rs : List (List Rat)) (dim : Nat) (ans : Expr) : Except Err Bool := do
+  let n := (rs.head?.map List.length).getD 0
+  let shape := "the answer is a matrix of numbers whose columns are the basis vectors: [a; b; c] for one vector"
+  let some rows := (match ans with | .matrix rows => some rows | _ => none) | throw ("answer", shape, none)
+  let some (qs, approx) := asRatRows rows | throw ("answer", shape, none)
+  if approx then throw ("answer", "write the entries exactly, as whole numbers or fractions", none)
+  if qs.length == 1 && n > 1 && (qs.head?.map List.length) == some n then
+    throw ("answer", "write the vector as a column, its entries separated by semicolons: [a; b; c]", none)
+  if qs.length != n then
+    throw ("answer", s!"a solution has {n} entries, one for each column of the matrix; the answer's columns have {qs.length}", none)
+  let k := (qs.head?.map List.length).getD 0
+  let cols := (List.range k).map fun j => qs.map (·.getD j 0)
+  if dim == 0 then return cols.all (·.all (· == 0))
+  if cols.any (·.all (· == 0)) then throw ("answer", "the zero vector solves every such system, so it is in no basis: give nonzero solutions", none)
+  if !cols.all (LinQ.solves rs) then return false
+  let rank := ((LinQ.rref cols).filter (·.any (· != 0))).length
+  if rank < k then throw ("answer", "the columns each solve the system, but they are not independent: one is a combination of the others", none)
+  if k < dim then throw ("answer", s!"{if k == 1 then "that solves" else "those solve"} the system, but the null space has {dim} dimensions: give {dim} independent solutions, one column each", none)
+  if k > dim then throw ("answer", s!"the null space has only {dim} dimension{if dim == 1 then "" else "s"}: give {dim} column{if dim == 1 then "" else "s"}", none)
+  return true
+
 /-- An algebra exercise: the question evaluated as a cell (recorded as `cellId`, so its work can be
 fetched and explained, but neither bound nor numbered), and the answer, if one is given, compared
 by canonical form. An answer that does the question's work (its commands) is refused. -/
@@ -363,7 +388,7 @@ def checkMath (s : Session) (cellId question : String) (answer : Option String) 
     Session × Except Err CheckResult :=
   match prepare s question with
   | .error e => (s, .error e)
-  | .ok (parsed, _) =>
+  | .ok (parsed, input) =>
     match evaluateCell s cellId question with
     | (s, .error e) => (s, .error e)
     | (s, .ok (_, output, d)) =>
@@ -373,6 +398,19 @@ def checkMath (s : Session) (cellId question : String) (answer : Option String) 
         let forbidden := (fnNames parsed).filter (!answerFns.contains ·)
         let given := answer.map (compareExpr s parsed forbidden)
         let eq := match given with | some (.ok c) => equal c.canon expCanon | _ => false
+        -- a null space: any basis of it
+        let nullOf : Option (List (List Rat) × Nat) := match input with
+          | .fn "nullspace" [a] => match norm a, output with
+            | .ok (.matrix rows, _), .matrix out =>
+              (asRatRows rows).map fun (rs, _) => (rs, if out.all (·.all Expr.isZero) then 0 else (out.head?.map List.length).getD 0)
+            | _, _ => none
+          | _ => none
+        let (given, eq) := match nullOf, given with
+          | some (rs, dim), some (.ok c) =>
+            match checkNullspace rs dim c.value with
+            | .ok b => (given, b)
+            | .error e => (some (.error e), false)
+          | _, _ => (given, eq)
         (s, .ok ⟨output, d, false, expCanon, given, eq⟩)
 
 end MathEngine

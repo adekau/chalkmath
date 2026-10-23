@@ -215,6 +215,35 @@ const TYPED: string[] = [
 
 const vec = (r: Rand, n: number, lo = -5, hi = 5) => `[${Array.from({ length: n }, () => r.int(lo, hi)).join(", ")}]`;
 const mat = (rows: number[][]) => `[${rows.map((row) => row.join(", ")).join("; ")}]`;
+
+// --- chemistry: reactions with one balancing each, the reactants then the products --------------
+
+const REACTIONS: [string[], string[]][] = [
+  [["CH4", "O2"], ["CO2", "H2O"]], [["C3H8", "O2"], ["CO2", "H2O"]], [["C2H6", "O2"], ["CO2", "H2O"]],
+  [["C4H10", "O2"], ["CO2", "H2O"]], [["C6H12O6", "O2"], ["CO2", "H2O"]], [["H2", "O2"], ["H2O"]],
+  [["Fe", "O2"], ["Fe2O3"]], [["Al", "O2"], ["Al2O3"]], [["N2", "H2"], ["NH3"]], [["KClO3"], ["KCl", "O2"]],
+  [["Na", "H2O"], ["NaOH", "H2"]], [["Ca(OH)2", "HCl"], ["CaCl2", "H2O"]], [["Al", "HCl"], ["AlCl3", "H2"]],
+  [["Fe2O3", "CO"], ["Fe", "CO2"]], [["NH3", "O2"], ["NO", "H2O"]],
+];
+/** The atoms in one molecule of a formula: `Ca(OH)2` is Ca 1, O 2, H 2. */
+function atoms(f: string): Map<string, number> {
+  const out = new Map<string, number>();
+  let i = 0;
+  const num = () => { const m = /^\d+/.exec(f.slice(i)); if (!m) return 1; i += m[0].length; return Number(m[0]); };
+  const group = (): Map<string, number> => {
+    const g = new Map<string, number>();
+    while (i < f.length && f[i] !== ")") {
+      let part: Map<string, number>;
+      if (f[i] === "(") { i++; part = group(); i++; }
+      else { const m = /^[A-Z][a-z]?/.exec(f.slice(i))!; i += m[0].length; part = new Map([[m[0], 1]]); }
+      const k = num();
+      for (const [e, n] of part) g.set(e, (g.get(e) ?? 0) + n * k);
+    }
+    return g;
+  };
+  for (const [e, n] of group()) out.set(e, n);
+  return out;
+}
 const grid = (r: Rand, n: number, m: number, lo: number, hi: number) => Array.from({ length: n }, () => Array.from({ length: m }, () => r.int(lo, hi)));
 /** `2x - y = 3` in LaTeX, from its coefficients. */
 const lin = (a: number, b: number, e: number) => `${mono(a, 1, true)}${mono(b, 1, false).replace("x", "y")} = ${e}`;
@@ -300,6 +329,18 @@ export const TOPICS: Topic[] = [
     const row = (p: number, q: number, s: number) => (p === 0 ? `${mono(q, 1, true).replace("x", "y")} = ${s}` : q === 0 ? `${mono(p, 1, true)} = ${s}` : lin(p, q, s));
     return { src: `rref(${mat([[a, b, e], [c, d, f]])})`, prompt: `Solve $${row(a, b, e)},\\ ${row(c, d, f)}$ by reducing the augmented matrix. Give the reduced matrix.`,
       hints: [`The augmented matrix is \`${mat([[a, b, e], [c, d, f]])}\`.`, "Make a leading 1 in the first row, clear the column below it, then work up."], hideQuestion: true };
+  } },
+
+  { id: "linear-algebra.balance", area: "Linear algebra", title: "Balancing chemical equations", make: (r) => {
+    const [left, right] = r.pick(REACTIONS);
+    // the reactants in another order sometimes: the same reaction, another matrix
+    const ls = r.chance(0.5) ? r.shuffle(left) : left, all = [...ls, ...right];
+    const counts = all.map(atoms), elements = [...new Set(counts.flatMap((c) => [...c.keys()]))];
+    const m = elements.map((e) => all.map((f, j) => (counts[j]!.get(e) ?? 0) * (j < ls.length ? 1 : -1)));
+    const chem = (fs: string[]) => fs.map((f) => `\\mathrm{${f.replace(/(\d+)/g, "_{$1}")}}`).join(" + ");
+    return { src: `nullspace(${mat(m)})`, prompt: `Balance $${chem(ls)} \\to ${chem(right)}$: give the coefficients, in the order written and in the smallest whole numbers, as a column $[a; b; \\ldots]$.`,
+      hints: [`One row per element (${elements.join(", ")}), one column per compound: the atoms of the element in it, negative for the products. The coefficients are the null space.`,
+        "Reduce the matrix, set the free variable to 1, and multiply by the smallest number that clears the fractions."], hideQuestion: true };
   } },
 
   { id: "lambda.beta", area: "λ-calculus", title: "β-reduction", make: (r) => {

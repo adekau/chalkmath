@@ -1,0 +1,280 @@
+{
+  "chalk": 1,
+  "name": "03a-balancing.chalk",
+  "cells": [
+    {
+      "src": "Balancing chemical equations",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Turn a chemical reaction into a system of equations, one per element; find its coefficients by elimination as the null space of a matrix; and read off what it means when there are two independent balancings, or none.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "An application of lesson 3, outside the course's order: nothing later depends on it. No chemistry is assumed beyond what a formula says: $\\mathrm{H_2O}$ is a molecule of two hydrogen atoms and one oxygen atom.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Methane burns in oxygen to give carbon dioxide and water:\n$$\\mathrm{CH_4} + \\mathrm{O_2} \\to \\mathrm{CO_2} + \\mathrm{H_2O}.$$\nAs written it is not right. The left has four hydrogen atoms and the right two, and atoms are neither made nor destroyed in a reaction. **Balancing** it means finding how many molecules of each take part, whole numbers $a, b, c, d$ with\n$$a\\,\\mathrm{CH_4} + b\\,\\mathrm{O_2} \\to c\\,\\mathrm{CO_2} + d\\,\\mathrm{H_2O}$$\nand as many atoms of each element on the left as on the right.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "One equation per element",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Count each element on both sides:\n\n- **carbon:** $a$ on the left (one in each $\\mathrm{CH_4}$), $c$ on the right: $a = c$;\n- **hydrogen:** $4a$ on the left, $2d$ on the right: $4a = 2d$;\n- **oxygen:** $2b$ on the left, $2c + d$ on the right: $2b = 2c + d$.\n\nMove everything to the left: $a - c = 0$, $4a - 2d = 0$, $2b - 2c - d = 0$. Three equations in four unknowns, and every right-hand side is $0$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] The element matrix\n> One row per element, one column per compound, each entry the number of atoms of that element in one molecule of that compound, with a minus sign for the products. The coefficients are a vector $x$ with $M x = 0$. A system with every right-hand side $0$ is **homogeneous**, and its solutions are the **null space** of $M$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The columns here are $\\mathrm{CH_4}$, $\\mathrm{O_2}$, $\\mathrm{CO_2}$, $\\mathrm{H_2O}$, and the rows carbon, hydrogen, oxygen:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let M = [1, 0, -1, 0; 4, 0, 0, -2; 0, 2, -2, -1]",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> Three equations and four unknowns. How many unknowns will be left free after elimination, if no equation is a combination of the others? And can $a = b = c = d = 0$ be the answer the chemist wants?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "$x = 0$ always solves a homogeneous system (no molecules, no atoms), and is no use. Eliminate to see what else does. No augmented column is needed: it would be all zeros, and the row moves keep it so.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "rref(M)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "Columns 1 to 3 have pivots and column 4 does not, so $d$ is free. Each row gives a pivot variable from it: $a - \\tfrac12 d = 0$, $b - d = 0$, $c - \\tfrac12 d = 0$. So $a = \\tfrac12 d$, $b = d$, $c = \\tfrac12 d$, for any $d$. Every balancing is a multiple of one: twice as much methane burns with twice as much oxygen.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] A basis of the null space\n> `nullspace(M)` does this reading for you. Each free variable in turn is set to $1$ and the others to $0$, and the pivot rows give the rest. The vectors it finds are the columns of its answer; every solution is a combination of them. The engine checks each one against every equation of $M$ before showing it.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "nullspace(M)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "Molecules come whole. Multiply by $2$, the smallest number that clears the fractions:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "2*nullspace(M)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "So $\\mathrm{CH_4} + 2\\,\\mathrm{O_2} \\to \\mathrm{CO_2} + 2\\,\\mathrm{H_2O}$ (a coefficient of $1$ is not written). Check it the way lesson 2 runs a matrix forwards: every element's count comes out $0$, as many atoms on the right as on the left.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "M*[1; 2; 1; 2]",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A harder one",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Potassium permanganate and hydrochloric acid give potassium chloride, manganese chloride, water and chlorine:\n$$\\mathrm{KMnO_4} + \\mathrm{HCl} \\to \\mathrm{KCl} + \\mathrm{MnCl_2} + \\mathrm{H_2O} + \\mathrm{Cl_2}.$$\nGuessing is slow here. The method is the same: rows for potassium, manganese, oxygen, hydrogen and chlorine, columns for the six compounds in order.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "nullspace([1, 0, -1, 0, 0, 0; 1, 0, 0, -1, 0, 0; 4, 0, 0, 0, -1, 0; 0, 1, 0, 0, -2, 0; 0, 1, -1, -2, 0, -2])",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "One free variable, so one balancing up to a multiple. The denominators are fifths: multiply by $5$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "5*nullspace([1, 0, -1, 0, 0, 0; 1, 0, 0, -1, 0, 0; 4, 0, 0, 0, -1, 0; 0, 1, 0, 0, -2, 0; 0, 1, -1, -2, 0, -2])",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "$2\\,\\mathrm{KMnO_4} + 16\\,\\mathrm{HCl} \\to 2\\,\\mathrm{KCl} + 2\\,\\mathrm{MnCl_2} + 8\\,\\mathrm{H_2O} + 5\\,\\mathrm{Cl_2}$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Two balancings at once",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Carbon burning in too little oxygen gives a mixture of carbon monoxide and carbon dioxide: $\\mathrm{C} + \\mathrm{O_2} \\to \\mathrm{CO} + \\mathrm{CO_2}$. Two elements, four compounds:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "nullspace([1, 0, -1, -1; 0, 2, -1, -2])",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "Two free variables, so the null space has two dimensions, and the answer has two columns. The first, doubled to whole numbers, is $2\\,\\mathrm{C} + \\mathrm{O_2} \\to 2\\,\\mathrm{CO}$, with no $\\mathrm{CO_2}$; the second is $\\mathrm{C} + \\mathrm{O_2} \\to \\mathrm{CO_2}$, with no $\\mathrm{CO}$. Every balancing of the equation is a combination of the two: it describes two reactions happening side by side, and counting atoms cannot say how much of each. That depends on how much oxygen there is, which is chemistry, not algebra.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> A negative coefficient in a combination means that compound is on the other side of the reaction: a combination of the two columns with a negative amount of $\\mathrm{CO}$ makes it a reactant instead. A balancing of the reaction as written needs every coefficient positive.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "One that cannot be balanced",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Can carbon monoxide turn into carbon dioxide on its own, $\\mathrm{CO} \\to \\mathrm{CO_2}$?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "nullspace([1, -1; 1, -2])",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "Both columns have pivots, so nothing is free and the only solution is $0$: no balancing. The extra oxygen atom has to come from somewhere. With oxygen as a reactant, $\\mathrm{CO} + \\mathrm{O_2} \\to \\mathrm{CO_2}$, there is one:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "nullspace([1, 0, -1; 1, 2, -2])",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "$2\\,\\mathrm{CO} + \\mathrm{O_2} \\to 2\\,\\mathrm{CO_2}$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Build each matrix yourself: one row per element, one column per compound in the order written, products negative. Give the coefficients as a column, `[1; 2; 1; 2]`, in the smallest whole numbers (any multiple of the right one is counted right). ↻ Another one gives another reaction.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "nullspace([3, 0, -1, 0; 8, 0, 0, -2; 0, 2, -2, -1])",
+      "type": "exercise",
+      "prompt": "Balance the burning of propane, $\\mathrm{C_3H_8} + \\mathrm{O_2} \\to \\mathrm{CO_2} + \\mathrm{H_2O}$.",
+      "hints": [
+        "The rows are carbon, hydrogen and oxygen; the $\\mathrm{C_3H_8}$ column is $3, 8, 0$.",
+        "The null space is the multiples of $(\\tfrac14, \\tfrac54, \\tfrac34, 1)$."
+      ],
+      "hideQuestion": true,
+      "practice": "linear-algebra.balance",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "nullspace([1, 0, -2; 0, 2, -3])",
+      "type": "exercise",
+      "prompt": "Iron rusts: balance $\\mathrm{Fe} + \\mathrm{O_2} \\to \\mathrm{Fe_2O_3}$.",
+      "hints": [
+        "Two elements, iron and oxygen, and three compounds: `[1, 0, -2; 0, 2, -3]`.",
+        "Set the $\\mathrm{Fe_2O_3}$ coefficient to $1$ and clear the fractions."
+      ],
+      "hideQuestion": true,
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "nullspace([1, 0, -1, 0; 2, 0, 0, -1; 2, 1, 0, -2; 0, 1, -2, 0])",
+      "type": "exercise",
+      "prompt": "Balance $\\mathrm{Ca(OH)_2} + \\mathrm{HCl} \\to \\mathrm{CaCl_2} + \\mathrm{H_2O}$. The $2$ after the parentheses doubles what is inside: one $\\mathrm{Ca(OH)_2}$ has two oxygen atoms and two hydrogen atoms.",
+      "hints": [
+        "The rows are calcium, oxygen, hydrogen and chlorine; the $\\mathrm{Ca(OH)_2}$ column is $1, 2, 2, 0$."
+      ],
+      "hideQuestion": true,
+      "practice": "linear-algebra.balance",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "nullspace([2, 0, -2, -2; 0, 2, -1, -2])",
+      "type": "exercise",
+      "prompt": "Hydrogen and oxygen can give water or hydrogen peroxide: $\\mathrm{H_2} + \\mathrm{O_2} \\to \\mathrm{H_2O} + \\mathrm{H_2O_2}$. Give a basis of the balancings: two independent ones, as the two columns of a matrix `[a, e; b, f; c, g; d, h]`.",
+      "hints": [
+        "Two elements and four compounds: two free variables.",
+        "One balancing makes only water, the other only hydrogen peroxide."
+      ],
+      "hideQuestion": true,
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> A reaction balances when every element has as many atoms on each side: one homogeneous equation per element, in the coefficients. Its solutions are the null space of the element matrix, found by elimination: each free variable gives one basis vector, scaled to whole numbers. One free variable is one reaction; two are two reactions mixed, in proportions the atoms do not decide; none means the equation is missing a compound.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}
