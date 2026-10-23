@@ -550,7 +550,10 @@ The shell is `app.ts` and the modules beside it, each one concern with no DOM st
 `worlds.ts` (which cells are which world's, from the engine's list), `visuals.ts` (the visual specs
 drawn), `dom.ts` (an element, KaTeX's HTML), `term-spans.ts` (where a reading's subterms were
 written), `scene.ts`, `files.ts`, `ask-cells.ts`, `lean-cells.ts`, `animate.ts`, `datagrid.ts`,
-`autosave-store.ts`. A cell's saved fields are one table, `CELL_FIELDS` in `app.ts`: how each is read
+`autosave-store.ts`, `code-highlight.ts` (the colours of a Markdown cell's fenced code: a small
+lexer per language, `ts`, `lean`, `python`, `json`, and `chalk`, which `app.ts` registers as
+its math cells' own highlighter; tokens, not HTML, so the renderer still builds every node itself).
+A cell's saved fields are one table, `CELL_FIELDS` in `app.ts`: how each is read
 from a file's record (checked, so a damaged record makes an empty cell) and written to one.
 
 The page owns no mathematics. It does not parse, print, or simplify: every expression on screen is
