@@ -1,0 +1,360 @@
+{
+  "chalk": 1,
+  "name": "01a-tcp.chalk",
+  "cells": [
+    {
+      "src": "TCP as a state machine",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Model the handshake that opens a TCP connection as a system: read off its executions, find what each end can and cannot know about the other, and find what a lost segment does to it.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "An application of lesson 1, outside the course's order: nothing later depends on it. It uses lesson 1's `system`, `trace`, `states` and `reach`, and one command from lesson 5, `deadlock`, which is explained where it is used. The last section uses Lean as lesson 1 does.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Before two programs exchange data over TCP, they agree that a connection exists, with three messages, called **segments**. The client sends a **SYN** (\"I would like to talk\"). The server answers with a **SYN-ACK** (\"I got that, and I would like to talk too\"). The client answers with an **ACK** (\"I got yours\"). Each end has a state, and moves on when a segment reaches it:\n\n- the client: `CLOSED`, then `SYN-SENT` once it has sent its SYN, then `ESTABLISHED` once the SYN-ACK arrives;\n- the server: `LISTEN`, waiting for anyone, then `SYN-RECEIVED` once a SYN arrives and it has answered, then `ESTABLISHED` once the ACK arrives.\n\nThese are the state names of the TCP standard (RFC 9293), which also has states for closing a connection; the opening is enough to see the ideas.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A model",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The variables: `c`, where the client is; `s`, where the server is; and a flag per kind of segment, true while one is in flight. Each action is one end acting on what has reached it:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let Hs = system(\n  var c in {closed, synsent, estab}\n  var s in {listen, synrcvd, estab}\n  var syn in bool\n  var synack in bool\n  var ack in bool\n  init c = closed ∧ s = listen ∧ syn = false ∧ synack = false ∧ ack = false\n  action connect when c = closed do syn := true, c := synsent\n  action accept when s = listen ∧ syn = true do syn := false, synack := true, s := synrcvd\n  action confirm when c = synsent ∧ synack = true do synack := false, ack := true, c := estab\n  action finish when s = synrcvd ∧ ack = true do ack := false, s := estab\n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The handshake, in order:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "trace(Hs; connect, accept, confirm, finish)",
+      "showWork": true,
+      "label": null,
+      "stepwise": 0
+    },
+    {
+      "src": "states(Hs)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Five states in a row: on a network that delivers every segment, the handshake can happen in only one order, since each end waits for the other's segment before it acts.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "What each end knows",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> The client becomes established when the SYN-ACK arrives. Can the server be established while the client is not? Can the client be established while the server is not?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "reach(Hs, s = estab ∧ c ≠ estab)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "reach(Hs, c = estab ∧ s ≠ estab)",
+      "showWork": true,
+      "label": null,
+      "stepwise": 0
+    },
+    {
+      "src": "The server is never ahead: it becomes established only on the ACK, which the client sends as it becomes established. The client is ahead for a while, with its ACK in flight. Neither end sees the other's state; each knows only the segments that reached it, so a handshake can make the two agree only *eventually*, and the one that learns last is the server. Real TCP lets the client send data at once, and a server in `SYN-RECEIVED` accepts data that arrives with or after the ACK.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A network that loses segments",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A real network drops packets. Add an action per kind of segment that loses the one in flight:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let Lossy = system(\n  var c in {closed, synsent, estab}\n  var s in {listen, synrcvd, estab}\n  var syn in bool\n  var synack in bool\n  var ack in bool\n  init c = closed ∧ s = listen ∧ syn = false ∧ synack = false ∧ ack = false\n  action connect when c = closed do syn := true, c := synsent\n  action accept when s = listen ∧ syn = true do syn := false, synack := true, s := synrcvd\n  action confirm when c = synsent ∧ synack = true do synack := false, ack := true, c := estab\n  action finish when s = synrcvd ∧ ack = true do ack := false, s := estab\n  action loseSyn when syn = true do syn := false\n  action loseSynack when synack = true do synack := false\n  action loseAck when ack = true do ack := false\n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "states(Lossy)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> The server's SYN-ACK is lost. What does each end do next?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "reach(Lossy, c = synsent ∧ s = synrcvd ∧ syn = false ∧ synack = false ∧ ack = false)",
+      "showWork": true,
+      "label": null,
+      "stepwise": 0
+    },
+    {
+      "src": "Nothing. The client waits for a SYN-ACK, the server waits for an ACK, and neither segment exists. Lesson 5's `deadlock(S)` asks for a reachable state in which no action is enabled at all; the shortest is a lost SYN:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "deadlock(Lossy)",
+      "showWork": true,
+      "label": null,
+      "stepwise": 0
+    },
+    {
+      "src": "> [!mistake]\n> The state where both ends are established has no step either: a model of something that finishes ends in a deadlock, the one you meant. A deadlock is a bug only when it is not where you meant to end, so the model below gives the open connection a step of its own, its traffic.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Timers",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "TCP's fix is a **timer**: an end waiting for an answer sends its segment again when the timer runs out. Sending again makes duplicates, and each end needs a rule for a segment it has seen before: a server in `SYN-RECEIVED` that gets a SYN again answers with a SYN-ACK again; an established client that gets a SYN-ACK again answers with an ACK again; an established server ignores a late SYN. Once both are established the connection carries data, modelled by `talk`, a step that changes nothing.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let Retry = system(\n  var c in {closed, synsent, estab}\n  var s in {listen, synrcvd, estab}\n  var syn in bool\n  var synack in bool\n  var ack in bool\n  init c = closed ∧ s = listen ∧ syn = false ∧ synack = false ∧ ack = false\n  action connect when c = closed do syn := true, c := synsent\n  action accept when s = listen ∧ syn = true do syn := false, synack := true, s := synrcvd\n  action confirm when c = synsent ∧ synack = true do synack := false, ack := true, c := estab\n  action finish when s = synrcvd ∧ ack = true do ack := false, s := estab\n  action loseSyn when syn = true do syn := false\n  action loseSynack when synack = true do synack := false\n  action loseAck when ack = true do ack := false\n  action resendSyn when c = synsent do syn := true\n  action resendSynack when s = synrcvd do synack := true\n  action reaccept when s = synrcvd ∧ syn = true do syn := false, synack := true\n  action reconfirm when c = estab ∧ synack = true do synack := false, ack := true\n  action stale when s = estab ∧ syn = true do syn := false\n  action talk when c = estab ∧ s = estab ∧ synack = false do c := estab\n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "states(Retry)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "deadlock(Retry)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "No reachable state is a dead end any more, and the server is still never ahead of the client, duplicates and all:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "reach(Retry, s = estab ∧ c ≠ estab)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> \"No dead end\" is not \"the handshake finishes\". The network may lose every SYN the client sends, for ever: an execution that never stops and never connects. To say that the connection *eventually* opens, the model has to assume that a segment sent again and again is eventually delivered. That is a fairness assumption, lesson 5's subject.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The same handshake with lesson 1's `TS`. One segment is in flight at a time, so the wire is one value. The steps from a state are a list, and a step is a member of it, which `decide` can check.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- Where the client is. -/\ninductive Cli where\n  | closed | synSent | estab\n  deriving DecidableEq, Repr\n\n/-- Where the server is. -/\ninductive Srv where\n  | listen | synRcvd | estab\n  deriving DecidableEq, Repr\n\n/-- The segment in flight, if any. -/\ninductive Seg where\n  | none | syn | synAck | ack\n  deriving DecidableEq, Repr\n\n/-- A state of the connection: each end, and the wire. -/\nstructure Conn where\n  c : Cli\n  s : Srv\n  wire : Seg\n  deriving DecidableEq, Repr\n\n/-- The steps from a state: the client starts, and each end answers the segment that reaches it. -/\ndef Conn.next : Conn → List Conn\n  | ⟨.closed, s, .none⟩ => [⟨.synSent, s, .syn⟩]\n  | ⟨c, .listen, .syn⟩ => [⟨c, .synRcvd, .synAck⟩]\n  | ⟨.synSent, s, .synAck⟩ => [⟨.estab, s, .ack⟩]\n  | ⟨c, .synRcvd, .ack⟩ => [⟨c, .estab, .none⟩]\n  | _ => []\n\ndef Conn.start : Conn := ⟨.closed, .listen, .none⟩\n\n/-- The handshake as a transition system. -/\ndef handshake : TS Conn where\n  init t := t = Conn.start\n  step t u := u ∈ t.next\n\n#eval Conn.start.next",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "That the handshake can complete is a reachability proof, built backwards from the end as in lesson 1: each `.step` names the state before it, and `decide` checks that the step is one of `next`'s.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem handshake_completes : Reachable handshake ⟨.estab, .estab, .none⟩ := by\n  refine .step (s := ⟨.estab, .synRcvd, .ack⟩) ?_ (show _ ∈ Conn.next _ by decide)\n  refine .step (s := ⟨.synSent, .synRcvd, .synAck⟩) ?_ (show _ ∈ Conn.next _ by decide)\n  refine .step (s := ⟨.synSent, .listen, .syn⟩) ?_ (show _ ∈ Conn.next _ by decide)\n  refine .step (s := Conn.start) ?_ (show _ ∈ Conn.next _ by decide)\n  exact .init rfl",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "An execution can also be written down as a list of states and checked by running a function, which is how a test of a protocol works:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- ts is an execution of the steps next: it begins at the start, and each state is a step from the one before. -/\ndef isExecution (next : Conn → List Conn) : List Conn → Bool\n  | [] => false\n  | t :: ts => t == Conn.start && go t ts\nwhere\n  go : Conn → List Conn → Bool\n    | _, [] => true\n    | t, u :: us => (next t).contains u && go u us",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem handshakeRun_ok : isExecution Conn.next handshakeRun = true ∧ handshakeRun.getLast? = some ⟨.estab, .estab, .none⟩ := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Define `handshakeRun`, the list of the five states of a complete handshake, from `Conn.start` to both ends established. The proof is given: `decide` runs `isExecution`.",
+      "leanSolution": "  decide",
+      "leanStart": "  decide",
+      "hints": [
+        "Each state is one step from the one before: the wire carries `.syn`, then `.synAck`, then `.ack`.",
+        "`[⟨.closed, .listen, .none⟩, ⟨.synSent, .listen, .syn⟩, ⟨.synSent, .synRcvd, .synAck⟩, ⟨.estab, .synRcvd, .ack⟩, ⟨.estab, .estab, .none⟩]`"
+      ],
+      "leanDef": "def handshakeRun : List Conn := sorry",
+      "leanDefSolution": "def handshakeRun : List Conn :=\n  [⟨.closed, .listen, .none⟩, ⟨.synSent, .listen, .syn⟩, ⟨.synSent, .synRcvd, .synAck⟩, ⟨.estab, .synRcvd, .ack⟩, ⟨.estab, .estab, .none⟩]",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A network that may lose the segment in flight adds one step from every state with something on the wire:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "def Conn.nextLossy (t : Conn) : List Conn :=\n  t.next ++ (if t.wire = .none then [] else [{ t with wire := .none }])",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem lostRun_ok : isExecution Conn.nextLossy lostRun = true ∧ lostRun.getLast? = some ⟨.synSent, .synRcvd, .none⟩ := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Define `lostRun`, an execution on the lossy network that ends with the SYN-ACK lost: the client in `SYN-SENT`, the server in `SYN-RECEIVED`, nothing on the wire.",
+      "leanSolution": "  decide",
+      "leanStart": "  decide",
+      "hints": [
+        "Three steps of the handshake's, then the loss: the wire goes from `.synAck` to `.none`."
+      ],
+      "leanDef": "def lostRun : List Conn := sorry",
+      "leanDefSolution": "def lostRun : List Conn :=\n  [⟨.closed, .listen, .none⟩, ⟨.synSent, .listen, .syn⟩, ⟨.synSent, .synRcvd, .synAck⟩, ⟨.synSent, .synRcvd, .none⟩]",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem lost_synack_dead : Conn.nextLossy ⟨.synSent, .synRcvd, .none⟩ = [] := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that the state a lost SYN-ACK leaves has no step out of it.",
+      "leanSolution": "  decide",
+      "hints": [
+        "A statement about one concrete list: `decide` computes it."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Answer `true` or `false`.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "reach(Hs, c = estab ∧ s = listen)",
+      "type": "exercise",
+      "prompt": "On the network that delivers everything, can the client be established while the server is still in `LISTEN`?",
+      "hints": [
+        "Before the client can be established, the server must have answered its SYN."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "reach(Lossy, c = estab ∧ s = synrcvd ∧ ack = false)",
+      "type": "exercise",
+      "prompt": "On the lossy network without timers, can the client be established while the server waits in `SYN-RECEIVED` for an ACK that no longer exists?",
+      "hints": [
+        "Which segment would have to be lost?"
+      ],
+      "hideQuestion": true,
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A busy server may give up on a handshake that has gone quiet, to free the memory it holds (a defence against floods of SYNs). It goes back to `LISTEN` and forgets the client:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let GiveUp = system(\n  var c in {closed, synsent, estab}\n  var s in {listen, synrcvd, estab}\n  var syn in bool\n  var synack in bool\n  var ack in bool\n  init c = closed ∧ s = listen ∧ syn = false ∧ synack = false ∧ ack = false\n  action connect when c = closed do syn := true, c := synsent\n  action accept when s = listen ∧ syn = true do syn := false, synack := true, s := synrcvd\n  action confirm when c = synsent ∧ synack = true do synack := false, ack := true, c := estab\n  action finish when s = synrcvd ∧ ack = true do ack := false, s := estab\n  action loseSyn when syn = true do syn := false\n  action loseSynack when synack = true do synack := false\n  action loseAck when ack = true do ack := false\n  action resendSyn when c = synsent do syn := true\n  action resendSynack when s = synrcvd do synack := true\n  action reaccept when s = synrcvd ∧ syn = true do syn := false, synack := true\n  action reconfirm when c = estab ∧ synack = true do synack := false, ack := true\n  action giveUp when s = synrcvd do s := listen, synack := false\n  action stale when s = estab ∧ syn = true do syn := false\n  action talk when c = estab ∧ s = estab ∧ synack = false do c := estab\n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "reach(GiveUp, c = estab ∧ s = listen)",
+      "type": "exercise",
+      "prompt": "Can the client end up established on a connection the server has forgotten?",
+      "hints": [
+        "The client is established as soon as the SYN-ACK arrives. What if the server gives up just then?"
+      ],
+      "hideQuestion": true,
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "That state is a **half-open connection**. Real TCP repairs it when the client's next segment reaches a server that knows nothing of the connection: the server answers with a reset, and the client learns the connection is gone.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> A protocol is a transition system: each end's state, the messages in flight, and an action per thing that can happen to them, losses included. Reachability questions say what the two ends can disagree about (the client is ahead, never the server), and a reachable state with no step finds a handshake that waits for ever. Timers remove those states; that the handshake then finishes needs a fairness assumption on the network.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

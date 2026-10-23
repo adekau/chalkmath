@@ -844,6 +844,12 @@ def orderCell (s : Session) (cellId source : String) :
         let R := Ord.product P Q
         withPoset R #[step "order.product" "Pairs, ordered componentwise: $(a, c) \\le (b, d)$ when $a \\le b$ and $c \\le d$." (.fn "pair" [Ord.setExpr P.elems, Ord.setExpr Q.elems]) (Ord.posetExpr R)]
       | .error m, _ | _, .error m => err m
+    | "lex", [p, q] =>
+      match getP p, getP q with
+      | .ok P, .ok Q =>
+        let R := Ord.lexOrder P Q
+        withPoset R #[step "order.lex" "Lexicographic order: $(a, c) \\le (b, d)$ when $a < b$, or $a = b$ and $c \\le d$. The first coordinate decides; the second only breaks a tie." (.fn "pair" [Ord.setExpr P.elems, Ord.setExpr Q.elems]) (Ord.posetExpr R)]
+      | .error m, _ | _, .error m => err m
     | "map", [.elem pn, .elem qn, .maps ps] =>
       match getP (.elem pn), getP (.elem qn) with
       | .ok P, .ok Q =>

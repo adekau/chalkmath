@@ -1863,7 +1863,7 @@ function chapter(L, k, goal, opening = () => {}) {
 
 course("order-lattices", "Order and lattices",
   "From Zero to Propagators: partial orders, lattices and fixed points; semilattices as merges, access decisions and information flow; Galois connections; and propagator networks in Lean, ending with a Sudoku solver.",
-  "Discrete mathematics", (add) => {
+  "Discrete mathematics", (add, app) => {
 
   /** The permissions on a file: the first picture of an order in which two things need not compare. */
   const perm = "let Perm = poset({none, read, write, rw}; none < read, none < write, read < rw, write < rw)";
@@ -2842,6 +2842,189 @@ def ivalContradiction : IO Unit := do
 > Intervals are partial information about numbers; merging is intersection, and an empty one is a contradiction. Interval arithmetic gives monotone propagators, so a network of them narrows every bound as far as the constraints force. When the constraints are consistent it stops; a contradiction stops only once every empty interval is the same element.
 
 A Sudoku square is not a number to bound but a choice among a few digits, and what we know of it is the set of digits still possible. Next, and last: two capstones.
+`);
+    md(r`
+> [!note] Application: version ranges
+> A package manager's version constraints are intervals too, of versions. [Version ranges](#course=order-lattices&lesson=14&app=1), an optional notebook beside this lesson, merges constraints, finds conflicts, and builds a small resolver in Lean.
+`);
+  });
+
+  app("14a-version-ranges.chalk", "Version ranges", "A package manager's version constraints as intervals of versions: versions in lexicographic order, constraints merged by intersecting them, a conflict as an empty merge, and a resolver in Lean.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Version ranges");
+    md(r`
+> [!goal]
+> Read a package manager's version constraints as intervals of versions, combine several by merging them, recognise a conflict as an empty merge, and pick a version as a resolver does.
+`);
+    md(r`An application of lesson 14, outside the course's order: nothing later depends on it. It uses the lesson's intervals and lesson 5's ‹Semilattice› in Lean, and one new engine command, ‹lex›.`);
+    md(r`A library is published in versions written ‹major.minor.patch›, such as ‹1.4.2›. By convention (semantic versioning) a new major version may break the programs that use the library, a new minor one adds features, and a new patch only fixes bugs. So a project does not name one version of each library it needs; it states a **constraint**, a set of versions it will accept:
+
+- ‹^1.2.0›: any version from ‹1.2.0› on with the same major version, so ‹1.9.3› but not ‹2.0.0›;
+- ‹~1.4.2›: any version from ‹1.4.2› on with the same minor version, so ‹1.4.9› but not ‹1.5.0›;
+- ‹>=1.3.0 <1.6.0›: the versions between, written out.
+
+The project's dependencies need libraries too, each with constraints of its own, and the package manager must install one version of the library that meets them all. That is lesson 14's question about a number known only by its bounds, asked of versions.`);
+    sec("How versions compare");
+    md(r`
+> [!try]
+> Is ‹1.9.0› older than ‹2.0.0›? Its minor part, 9, is larger than 0. Compare the two parts the way the engine's ‹product› does, both at once, and see what you get.
+`);
+    md(r`Versions with two parts, the major and the minor each from 0 to 2, compared part by part:`);
+    m("let W = product(chain(3), chain(3))");
+    m("le(W, (1, 2), (2, 0))");
+    md(r`In the product order ‹1.2› and ‹2.0› are **incomparable**: neither is below the other, since one is ahead in each part. A resolver cannot work with that; it must be able to say which of two versions is newer. Versions compare as words in a dictionary do: the major part decides, and the minor part counts only when the majors are equal. That is the **lexicographic order**, ‹lex›:`);
+    m("let V = lex(chain(3), chain(3))");
+    m("le(V, (1, 2), (2, 0))");
+    md(r`The same nine versions, now in a single chain: any two compare. With three parts, nest it, and the elements are pairs of a pair and a number:`);
+    m("le(lex(lex(chain(2), chain(2)), chain(2)), ((0, 1), 1), ((1, 0), 0))");
+    md(r`
+> [!definition] Lexicographic order
+> $(a, c) \le (b, d)$ when $a < b$, or $a = b$ and $c \le d$. The first coordinate decides, and the second only breaks a tie. Of two chains it makes a chain, so every two versions compare, and a set of versions has a newest.
+`);
+    sec("Constraints are intervals");
+    md(r`On a chain every constraint above is an **interval**, with the lower end included and the upper one left out: ‹^1.2.0› is $[1.2.0,\ 2.0.0)$, ‹~1.4.2› is $[1.4.2,\ 1.5.0)$. (Versions before ‹1.0.0› count as unstable, so ‹^0.2.3› keeps the minor part too: $[0.2.3,\ 0.3.0)$.) Each constraint is partial information about the version that will be installed, and as in lesson 14 two of them merge into their **intersection**: the larger lower end and the smaller upper end. An empty intersection is a **conflict**: no version meets both.`);
+    md(r`
+> [!mistake]
+> Lesson 14 orders intervals by information, so the merge is a join there, and a smaller interval is higher. Ordered by inclusion instead, as sets of versions, the same intersection is a meet. It is one operation either way; only the picture is upside down.
+`);
+    md(r`In Lean, versions compare lexicographically, and a range is its two ends:`);
+    lean(r`/-- A version, major.minor.patch. -/
+structure Ver where
+  major : Nat
+  minor : Nat
+  patch : Nat
+  deriving Repr, DecidableEq
+
+instance : ToString Ver := ⟨fun v => s!"{v.major}.{v.minor}.{v.patch}"⟩
+
+/-- Versions compare as words in a dictionary do: by major, then minor, then patch. -/
+def Ver.le (a b : Ver) : Prop :=
+  a.major < b.major ∨ (a.major = b.major ∧ (a.minor < b.minor ∨ (a.minor = b.minor ∧ a.patch ≤ b.patch)))
+
+instance (a b : Ver) : Decidable (a.le b) := by unfold Ver.le; infer_instance
+
+/-- a comes strictly before b. -/
+def Ver.lt (a b : Ver) : Prop := ¬ b.le a
+
+instance (a b : Ver) : Decidable (a.lt b) := by unfold Ver.lt; infer_instance
+
+def Ver.max (a b : Ver) : Ver := if a.le b then b else a
+def Ver.min (a b : Ver) : Ver := if a.le b then a else b
+
+/-- The versions from lo, included, up to hi, left out. -/
+structure VRange where
+  lo : Ver
+  hi : Ver
+  deriving Repr, DecidableEq
+
+def VRange.has (r : VRange) (v : Ver) : Prop := r.lo.le v ∧ v.lt r.hi
+instance (r : VRange) (v : Ver) : Decidable (r.has v) := by unfold VRange.has; infer_instance
+
+/-- No version is in it. -/
+def VRange.empty (r : VRange) : Prop := ¬ r.lo.lt r.hi
+instance (r : VRange) : Decidable r.empty := by unfold VRange.empty; infer_instance
+
+instance : ToString VRange := ⟨fun r => if r.empty then "no version" else s!">={r.lo} <{r.hi}"⟩
+
+/-- ^v: from v on, the same major version (for 0.x, the same minor; for 0.0.x, only that patch). -/
+def caret (v : Ver) : VRange :=
+  if v.major > 0 then ⟨v, ⟨v.major + 1, 0, 0⟩⟩
+  else if v.minor > 0 then ⟨v, ⟨0, v.minor + 1, 0⟩⟩
+  else ⟨v, ⟨0, 0, v.patch + 1⟩⟩
+
+/-- ~v: from v on, the same minor version. -/
+def tilde (v : Ver) : VRange := ⟨v, ⟨v.major, v.minor + 1, 0⟩⟩
+
+/-- Both constraints at once: the larger lower end and the smaller upper end. -/
+def VRange.merge (r s : VRange) : VRange := ⟨r.lo.max s.lo, r.hi.min s.hi⟩
+
+#eval toString ((caret ⟨1, 2, 0⟩).merge (tilde ⟨1, 4, 2⟩))
+#eval toString ((caret ⟨1, 2, 0⟩).merge (caret ⟨2, 0, 0⟩))`);
+    md(r`That the merge is the right operation is a theorem: a version is in the merged range exactly when it meets both constraints. And an empty range has no version in it, so a conflict found by merging is a real one.`);
+    lean(r`theorem Ver.max_le_iff (a b v : Ver) : (a.max b).le v ↔ a.le v ∧ b.le v := by
+  unfold Ver.max; split <;> (simp only [Ver.le] at *; omega)
+
+theorem Ver.lt_min_iff (v a b : Ver) : v.lt (a.min b) ↔ v.lt a ∧ v.lt b := by
+  unfold Ver.min; split <;> (simp only [Ver.lt, Ver.le] at *; omega)
+
+theorem VRange.has_merge (r s : VRange) (v : Ver) : (r.merge s).has v ↔ r.has v ∧ s.has v := by
+  simp only [VRange.has, VRange.merge, Ver.max_le_iff, Ver.lt_min_iff]
+  exact ⟨fun ⟨⟨a, b⟩, c, d⟩ => ⟨⟨a, c⟩, b, d⟩, fun ⟨⟨a, c⟩, b, d⟩ => ⟨⟨a, b⟩, c, d⟩⟩
+
+theorem VRange.empty_has (r : VRange) (v : Ver) (h : r.empty) : ¬ r.has v := by
+  simp only [VRange.empty, VRange.has, Ver.lt, Ver.le] at *
+  omega`);
+    md(r`And the merge is a merge in lesson 5's sense: commutative, associative and idempotent. So the constraints can be merged in any order, as the resolver happens to find them while it walks through the dependencies, and seeing the same one twice changes nothing.`);
+    lean(r`theorem Ver.max_comm (a b : Ver) : a.max b = b.max a := by
+  unfold Ver.max
+  by_cases h1 : a.le b <;> by_cases h2 : b.le a <;> simp only [h1, h2, ↓reduceIte] <;>
+    (cases a; cases b; simp only [Ver.le] at h1 h2; simp only [Ver.mk.injEq]; omega)
+
+theorem Ver.min_comm (a b : Ver) : a.min b = b.min a := by
+  unfold Ver.min
+  by_cases h1 : a.le b <;> by_cases h2 : b.le a <;> simp only [h1, h2, ↓reduceIte] <;>
+    (cases a; cases b; simp only [Ver.le] at h1 h2; simp only [Ver.mk.injEq]; omega)
+
+theorem Ver.max_assoc (a b c : Ver) : (a.max b).max c = a.max (b.max c) := by
+  unfold Ver.max
+  by_cases ab : a.le b <;> by_cases bc : b.le c <;> by_cases ac : a.le c <;> simp only [ab, bc, ac, ↓reduceIte] <;>
+    (cases a; cases b; cases c; simp only [Ver.le] at ab bc ac; simp only [Ver.mk.injEq]; omega)
+
+theorem Ver.min_assoc (a b c : Ver) : (a.min b).min c = a.min (b.min c) := by
+  unfold Ver.min
+  by_cases ab : a.le b <;> by_cases bc : b.le c <;> by_cases ac : a.le c <;> simp only [ab, bc, ac, ↓reduceIte] <;>
+    (cases a; cases b; cases c; simp only [Ver.le] at ab bc ac; simp only [Ver.mk.injEq]; omega)
+
+instance : Semilattice VRange where
+  merge := VRange.merge
+  merge_comm r s := by simp only [VRange.merge, Ver.max_comm, Ver.min_comm]
+  merge_assoc r s t := by simp only [VRange.merge, Ver.max_assoc, Ver.min_assoc]
+  merge_idem r := by cases r; simp [VRange.merge, Ver.max, Ver.min]`);
+    sec("A resolver");
+    md(r`A resolver merges every constraint on a library, then installs the newest published version left; since versions form a chain, "newest" always makes sense. Your project asks for ‹^1.2.0›, one dependency for ‹~1.4.2›, another for ‹>=1.3.0 <1.6.0›:`);
+    lean(r`/-- The newest of the published versions a range allows, if any. -/
+def newest (published : List Ver) (r : VRange) : Option Ver :=
+  published.foldl (fun best v =>
+    if r.has v then (match best with
+      | some b => if b.le v then some v else best
+      | none => some v)
+    else best) none
+
+/-- Merge every constraint, then take the newest version left. -/
+def resolve (published : List Ver) : List VRange → Option Ver
+  | [] => none
+  | r :: rs => newest published (rs.foldl VRange.merge r)
+
+def say : Option Ver → String
+  | some v => s!"install {v}"
+  | none => "conflict: no published version meets every constraint"
+
+/-- The library's published versions. -/
+def lib : List Ver := [⟨1, 2, 0⟩, ⟨1, 3, 5⟩, ⟨1, 4, 1⟩, ⟨1, 4, 3⟩, ⟨1, 4, 7⟩, ⟨1, 5, 0⟩, ⟨1, 6, 2⟩, ⟨2, 0, 0⟩, ⟨2, 1, 0⟩]
+
+#eval say (resolve lib [caret ⟨1, 2, 0⟩, tilde ⟨1, 4, 2⟩, ⟨⟨1, 3, 0⟩, ⟨1, 6, 0⟩⟩])
+#eval say (resolve lib [caret ⟨1, 2, 0⟩, tilde ⟨1, 4, 2⟩, caret ⟨2, 0, 0⟩])`);
+    md(r`A third dependency that needs ‹^2.0.0› makes the merge empty. A real resolver does not stop there: it backtracks, and tries an older version of the dependency that imposed the constraint, which may ask for less; that search is where resolving gets hard (in general, as hard as satisfiability). npm sidesteps it by installing two copies of the library, one for each side.`);
+    lx(r`theorem ab_conflict : ((caret ⟨1, 2, 0⟩).merge (caret ⟨2, 0, 0⟩)).empty := by`, r`Prove that ‹^1.2.0› and ‹^2.0.0› conflict.`, r`  decide`, [
+      r`A statement about two concrete ranges: ‹decide› computes it.`,
+    ]);
+    lx(r`theorem merge_left (r s : VRange) (v : Ver) (h : (r.merge s).has v) : r.has v := by`, r`Prove that a version in a merged range meets the first constraint, for every range and version.`, r`  exact ((VRange.has_merge r s v).mp h).1`, [
+      r`‹VRange.has_merge r s v› is an ‹↔›; its ‹.mp› turns ‹h› into a pair.`,
+      r`The first half of the pair is ‹r.has v›.`,
+    ]);
+    md(r`The other way round, the smallest range that covers two ranges keeps the smaller lower end and the larger upper end. A lockfile updater uses it to describe "every version either side accepts" in one range, and it can be too generous: ‹~1.4.2› and ‹~1.6.0› are covered by $[1.4.2,\ 1.7.0)$, which also holds ‹1.5.0›, a version neither accepts. Ranges, like intervals, are not closed under union.`);
+    lx(r`theorem hull_ok : (tilde ⟨1, 4, 2⟩).hull (tilde ⟨1, 6, 0⟩) = ⟨⟨1, 4, 2⟩, ⟨1, 7, 0⟩⟩ ∧
+    (caret ⟨2, 0, 0⟩).hull (caret ⟨1, 3, 0⟩) = ⟨⟨1, 3, 0⟩, ⟨3, 0, 0⟩⟩ := by`, r`Define ‹VRange.hull›, the smallest range that covers both of two ranges. The proof is given: ‹decide› checks two examples.`, r`  decide`, [
+      r`It is the merge with ‹max› and ‹min› swapped.`,
+      r`‹def VRange.hull (r s : VRange) : VRange := ⟨r.lo.min s.lo, r.hi.max s.hi⟩›`,
+    ], { start: "  decide", def: { start: "def VRange.hull (r s : VRange) : VRange := sorry", solution: "def VRange.hull (r s : VRange) : VRange := ⟨r.lo.min s.lo, r.hi.max s.hi⟩", forbid: [] } });
+    sec("Exercises");
+    md(r`Versions with two parts, in the engine. Answer ‹true› or ‹false›, or with a version as a pair.`);
+    ex("le(lex(chain(3), chain(3)), (2, 0), (1, 2))", r`In the lexicographic order, is ‹2.0› at most ‹1.2›?`, [r`The major part decides.`]);
+    ex("join(lex(chain(3), chain(3)), (1, 2), (2, 1))", r`The join of two versions in the lexicographic order is the newer one. What is the join of ‹1.2› and ‹2.1›?`, [r`In a chain the join of two elements is the larger.`]);
+    ex("join(product(chain(3), chain(3)), (1, 2), (2, 1))", r`In the product order, what is the join of ‹1.2› and ‹2.1›? Is it either of them?`, [r`The least pair at least as large in each part.`], { hide: true });
+    md(r`
+> [!summary]
+> Versions compare lexicographically, so they form a chain and any set of them has a newest. A constraint is an interval of that chain; constraints merge by intersecting, the merge is a semilattice, so the order the resolver meets them in does not matter, and an empty merge is a conflict that no choice of version can avoid. The smallest range covering two is the other operation, and it may cover versions neither side accepts.
 `);
   });
 
@@ -3908,7 +4091,7 @@ ${countedJob("q", "p")}
 
 course("systems", "Transition systems, invariants and temporal logic",
   "A lost update as a path in a graph of states; invariants with counterexample traces and inductive proofs; a lock that fails and Peterson's that does not; one lock per key, and the gap between two atomic calls; safety and liveness under fairness; temporal logic as fixed points; happens-before, effectively-once delivery and refinement; rewriting systems, and retries under failure.",
-  "Distributed systems", (add) => {
+  "Distributed systems", (add, app) => {
 
   add("01-state-machines.chalk", "State machines and executions", "Two threads that lose an update: a system as variables, an initial state and guarded actions, and its graph of reachable states as every interleaving at once.", ({ sec, md, m, ex, lean, lx }) => {
     sec("State machines and executions");
@@ -3977,7 +4160,176 @@ def counter : TS Nat where
 > [!summary]
 > A system is variables, initial states and guarded actions. Its graph of reachable states holds every interleaving of its steps at once, and a breadth-first search through it finds a shortest path to any state we ask for: here, the lost update.
 `);
+    md(r`
+> [!note] Application: TCP's handshake
+> A network protocol is a state machine too. [TCP as a state machine](#course=systems&lesson=1&app=1), an optional notebook beside this lesson, models the handshake that opens a TCP connection, and finds what a lost segment does to it.
+`);
     md(r`$x = 2$ at the end is not guaranteed. What *is* guaranteed in every reachable state, and how can we know it when the graph is too large to draw? That is the next lesson.`);
+  });
+
+  app("01a-tcp.chalk", "TCP as a state machine", "The handshake that opens a TCP connection as a system: its executions, what each end can know, the deadlocks a lost segment causes, and the timers that remove them, in the engine and in Lean.", ({ sec, md, m, ex, lean, lx }) => {
+    /** The handshake on a network that delivers everything: a state per end, and a flag per segment in flight. */
+    const tcp = (name, extra = "") => `let ${name} = system(
+  var c in {closed, synsent, estab}
+  var s in {listen, synrcvd, estab}
+  var syn in bool
+  var synack in bool
+  var ack in bool
+  init c = closed ∧ s = listen ∧ syn = false ∧ synack = false ∧ ack = false
+  action connect when c = closed do syn := true, c := synsent
+  action accept when s = listen ∧ syn = true do syn := false, synack := true, s := synrcvd
+  action confirm when c = synsent ∧ synack = true do synack := false, ack := true, c := estab
+  action finish when s = synrcvd ∧ ack = true do ack := false, s := estab${extra}
+)`;
+    const LOSS = `
+  action loseSyn when syn = true do syn := false
+  action loseSynack when synack = true do synack := false
+  action loseAck when ack = true do ack := false`;
+    const TIMERS = `
+  action resendSyn when c = synsent do syn := true
+  action resendSynack when s = synrcvd do synack := true
+  action reaccept when s = synrcvd ∧ syn = true do syn := false, synack := true
+  action reconfirm when c = estab ∧ synack = true do synack := false, ack := true`;
+    const OPEN = `
+  action stale when s = estab ∧ syn = true do syn := false
+  action talk when c = estab ∧ s = estab ∧ synack = false do c := estab`;
+    sec("TCP as a state machine");
+    md(r`
+> [!goal]
+> Model the handshake that opens a TCP connection as a system: read off its executions, find what each end can and cannot know about the other, and find what a lost segment does to it.
+`);
+    md(r`An application of lesson 1, outside the course's order: nothing later depends on it. It uses lesson 1's ‹system›, ‹trace›, ‹states› and ‹reach›, and one command from lesson 5, ‹deadlock›, which is explained where it is used. The last section uses Lean as lesson 1 does.`);
+    md(r`Before two programs exchange data over TCP, they agree that a connection exists, with three messages, called **segments**. The client sends a **SYN** ("I would like to talk"). The server answers with a **SYN-ACK** ("I got that, and I would like to talk too"). The client answers with an **ACK** ("I got yours"). Each end has a state, and moves on when a segment reaches it:
+
+- the client: ‹CLOSED›, then ‹SYN-SENT› once it has sent its SYN, then ‹ESTABLISHED› once the SYN-ACK arrives;
+- the server: ‹LISTEN›, waiting for anyone, then ‹SYN-RECEIVED› once a SYN arrives and it has answered, then ‹ESTABLISHED› once the ACK arrives.
+
+These are the state names of the TCP standard (RFC 9293), which also has states for closing a connection; the opening is enough to see the ideas.`);
+    sec("A model");
+    md(r`The variables: ‹c›, where the client is; ‹s›, where the server is; and a flag per kind of segment, true while one is in flight. Each action is one end acting on what has reached it:`);
+    m(tcp("Hs"));
+    md(r`The handshake, in order:`);
+    m("trace(Hs; connect, accept, confirm, finish)", { step: 0 });
+    m("states(Hs)");
+    md(r`Five states in a row: on a network that delivers every segment, the handshake can happen in only one order, since each end waits for the other's segment before it acts.`);
+    sec("What each end knows");
+    md(r`
+> [!try]
+> The client becomes established when the SYN-ACK arrives. Can the server be established while the client is not? Can the client be established while the server is not?
+`);
+    m("reach(Hs, s = estab ∧ c ≠ estab)");
+    m("reach(Hs, c = estab ∧ s ≠ estab)", { step: 0 });
+    md(r`The server is never ahead: it becomes established only on the ACK, which the client sends as it becomes established. The client is ahead for a while, with its ACK in flight. Neither end sees the other's state; each knows only the segments that reached it, so a handshake can make the two agree only *eventually*, and the one that learns last is the server. Real TCP lets the client send data at once, and a server in ‹SYN-RECEIVED› accepts data that arrives with or after the ACK.`);
+    sec("A network that loses segments");
+    md(r`A real network drops packets. Add an action per kind of segment that loses the one in flight:`);
+    m(tcp("Lossy", LOSS));
+    m("states(Lossy)");
+    md(r`
+> [!try]
+> The server's SYN-ACK is lost. What does each end do next?
+`);
+    m("reach(Lossy, c = synsent ∧ s = synrcvd ∧ syn = false ∧ synack = false ∧ ack = false)", { step: 0 });
+    md(r`Nothing. The client waits for a SYN-ACK, the server waits for an ACK, and neither segment exists. Lesson 5's ‹deadlock(S)› asks for a reachable state in which no action is enabled at all; the shortest is a lost SYN:`);
+    m("deadlock(Lossy)", { step: 0 });
+    md(r`
+> [!mistake]
+> The state where both ends are established has no step either: a model of something that finishes ends in a deadlock, the one you meant. A deadlock is a bug only when it is not where you meant to end, so the model below gives the open connection a step of its own, its traffic.
+`);
+    sec("Timers");
+    md(r`TCP's fix is a **timer**: an end waiting for an answer sends its segment again when the timer runs out. Sending again makes duplicates, and each end needs a rule for a segment it has seen before: a server in ‹SYN-RECEIVED› that gets a SYN again answers with a SYN-ACK again; an established client that gets a SYN-ACK again answers with an ACK again; an established server ignores a late SYN. Once both are established the connection carries data, modelled by ‹talk›, a step that changes nothing.`);
+    m(tcp("Retry", LOSS + TIMERS + OPEN));
+    m("states(Retry)");
+    m("deadlock(Retry)");
+    md(r`No reachable state is a dead end any more, and the server is still never ahead of the client, duplicates and all:`);
+    m("reach(Retry, s = estab ∧ c ≠ estab)");
+    md(r`
+> [!mistake]
+> "No dead end" is not "the handshake finishes". The network may lose every SYN the client sends, for ever: an execution that never stops and never connects. To say that the connection *eventually* opens, the model has to assume that a segment sent again and again is eventually delivered. That is a fairness assumption, lesson 5's subject.
+`);
+    sec("In Lean");
+    md(r`The same handshake with lesson 1's ‹TS›. One segment is in flight at a time, so the wire is one value. The steps from a state are a list, and a step is a member of it, which ‹decide› can check.`);
+    lean(r`/-- Where the client is. -/
+inductive Cli where
+  | closed | synSent | estab
+  deriving DecidableEq, Repr
+
+/-- Where the server is. -/
+inductive Srv where
+  | listen | synRcvd | estab
+  deriving DecidableEq, Repr
+
+/-- The segment in flight, if any. -/
+inductive Seg where
+  | none | syn | synAck | ack
+  deriving DecidableEq, Repr
+
+/-- A state of the connection: each end, and the wire. -/
+structure Conn where
+  c : Cli
+  s : Srv
+  wire : Seg
+  deriving DecidableEq, Repr
+
+/-- The steps from a state: the client starts, and each end answers the segment that reaches it. -/
+def Conn.next : Conn → List Conn
+  | ⟨.closed, s, .none⟩ => [⟨.synSent, s, .syn⟩]
+  | ⟨c, .listen, .syn⟩ => [⟨c, .synRcvd, .synAck⟩]
+  | ⟨.synSent, s, .synAck⟩ => [⟨.estab, s, .ack⟩]
+  | ⟨c, .synRcvd, .ack⟩ => [⟨c, .estab, .none⟩]
+  | _ => []
+
+def Conn.start : Conn := ⟨.closed, .listen, .none⟩
+
+/-- The handshake as a transition system. -/
+def handshake : TS Conn where
+  init t := t = Conn.start
+  step t u := u ∈ t.next
+
+#eval Conn.start.next`);
+    md(r`That the handshake can complete is a reachability proof, built backwards from the end as in lesson 1: each ‹.step› names the state before it, and ‹decide› checks that the step is one of ‹next›'s.`);
+    lean(r`theorem handshake_completes : Reachable handshake ⟨.estab, .estab, .none⟩ := by
+  refine .step (s := ⟨.estab, .synRcvd, .ack⟩) ?_ (show _ ∈ Conn.next _ by decide)
+  refine .step (s := ⟨.synSent, .synRcvd, .synAck⟩) ?_ (show _ ∈ Conn.next _ by decide)
+  refine .step (s := ⟨.synSent, .listen, .syn⟩) ?_ (show _ ∈ Conn.next _ by decide)
+  refine .step (s := Conn.start) ?_ (show _ ∈ Conn.next _ by decide)
+  exact .init rfl`);
+    md(r`An execution can also be written down as a list of states and checked by running a function, which is how a test of a protocol works:`);
+    lean(r`/-- ts is an execution of the steps next: it begins at the start, and each state is a step from the one before. -/
+def isExecution (next : Conn → List Conn) : List Conn → Bool
+  | [] => false
+  | t :: ts => t == Conn.start && go t ts
+where
+  go : Conn → List Conn → Bool
+    | _, [] => true
+    | t, u :: us => (next t).contains u && go u us`);
+    lx(r`theorem handshakeRun_ok : isExecution Conn.next handshakeRun = true ∧ handshakeRun.getLast? = some ⟨.estab, .estab, .none⟩ := by`, r`Define ‹handshakeRun›, the list of the five states of a complete handshake, from ‹Conn.start› to both ends established. The proof is given: ‹decide› runs ‹isExecution›.`, r`  decide`, [
+      r`Each state is one step from the one before: the wire carries ‹.syn›, then ‹.synAck›, then ‹.ack›.`,
+      r`‹[⟨.closed, .listen, .none⟩, ⟨.synSent, .listen, .syn⟩, ⟨.synSent, .synRcvd, .synAck⟩, ⟨.estab, .synRcvd, .ack⟩, ⟨.estab, .estab, .none⟩]›`,
+    ], { start: "  decide", def: { start: "def handshakeRun : List Conn := sorry", solution: "def handshakeRun : List Conn :=\n  [⟨.closed, .listen, .none⟩, ⟨.synSent, .listen, .syn⟩, ⟨.synSent, .synRcvd, .synAck⟩, ⟨.estab, .synRcvd, .ack⟩, ⟨.estab, .estab, .none⟩]", forbid: [] } });
+    md(r`A network that may lose the segment in flight adds one step from every state with something on the wire:`);
+    lean(r`def Conn.nextLossy (t : Conn) : List Conn :=
+  t.next ++ (if t.wire = .none then [] else [{ t with wire := .none }])`);
+    lx(r`theorem lostRun_ok : isExecution Conn.nextLossy lostRun = true ∧ lostRun.getLast? = some ⟨.synSent, .synRcvd, .none⟩ := by`, r`Define ‹lostRun›, an execution on the lossy network that ends with the SYN-ACK lost: the client in ‹SYN-SENT›, the server in ‹SYN-RECEIVED›, nothing on the wire.`, r`  decide`, [
+      r`Three steps of the handshake's, then the loss: the wire goes from ‹.synAck› to ‹.none›.`,
+    ], { start: "  decide", def: { start: "def lostRun : List Conn := sorry", solution: "def lostRun : List Conn :=\n  [⟨.closed, .listen, .none⟩, ⟨.synSent, .listen, .syn⟩, ⟨.synSent, .synRcvd, .synAck⟩, ⟨.synSent, .synRcvd, .none⟩]", forbid: [] } });
+    lx(r`theorem lost_synack_dead : Conn.nextLossy ⟨.synSent, .synRcvd, .none⟩ = [] := by`, r`Prove that the state a lost SYN-ACK leaves has no step out of it.`, r`  decide`, [
+      r`A statement about one concrete list: ‹decide› computes it.`,
+    ]);
+    sec("Exercises");
+    md(r`Answer ‹true› or ‹false›.`);
+    ex("reach(Hs, c = estab ∧ s = listen)", r`On the network that delivers everything, can the client be established while the server is still in ‹LISTEN›?`, [r`Before the client can be established, the server must have answered its SYN.`]);
+    ex("reach(Lossy, c = estab ∧ s = synrcvd ∧ ack = false)", r`On the lossy network without timers, can the client be established while the server waits in ‹SYN-RECEIVED› for an ACK that no longer exists?`, [r`Which segment would have to be lost?`], { hide: true });
+    md(r`A busy server may give up on a handshake that has gone quiet, to free the memory it holds (a defence against floods of SYNs). It goes back to ‹LISTEN› and forgets the client:`);
+    m(tcp("GiveUp", LOSS + TIMERS + `
+  action giveUp when s = synrcvd do s := listen, synack := false` + OPEN));
+    ex("reach(GiveUp, c = estab ∧ s = listen)", r`Can the client end up established on a connection the server has forgotten?`, [
+      r`The client is established as soon as the SYN-ACK arrives. What if the server gives up just then?`,
+    ], { hide: true });
+    md(r`That state is a **half-open connection**. Real TCP repairs it when the client's next segment reaches a server that knows nothing of the connection: the server answers with a reset, and the client learns the connection is gone.`);
+    md(r`
+> [!summary]
+> A protocol is a transition system: each end's state, the messages in flight, and an action per thing that can happen to them, losses included. Reachability questions say what the two ends can disagree about (the client is ahead, never the server), and a reachable state with no step finds a handshake that waits for ever. Timers remove those states; that the handshake then finishes needs a fairness assumption on the network.
+`);
   });
 
   add("02-invariants.chalk", "Invariants and induction", "What holds in every reachable state: refuted by a shortest trace, proved by one step of induction, and strengthened when that step fails.", ({ sec, md, m, ex, lean, lx }) => {

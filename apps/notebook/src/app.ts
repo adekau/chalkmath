@@ -4515,7 +4515,7 @@ const RULE_NAMES: Record<string, string> = {
   "logic.evaluate": "Evaluate", "logic.bounded": "Check every element",
   "alg.from-order": "Table from the order", "alg.associative": "Associative", "alg.commutative": "Commutative", "alg.idempotent": "Idempotent",
   "alg.identity": "Identity element", "alg.fold": "Combine", "alg.order": "Order of a semilattice", "order.distributive": "Distributive",
-  "order.complement": "Complement", "order.boolean": "Boolean lattice", "order.product": "Product order", "order.galois": "Galois connection",
+  "order.complement": "Complement", "order.boolean": "Boolean lattice", "order.product": "Product order", "order.lex": "Lexicographic order", "order.galois": "Galois connection",
   "order.closure-operator": "Closure operator", "order.concepts": "Concept lattice", "order.flow": "Information flow",
   "order.happens-before": "Happens-before", "order.clocks": "Vector clocks", "order.concurrent": "Concurrent",
   "sys.init": "Start", "sys.step": "Step", "sys.found": "Found", "sys.violated": "Violated", "sys.deadlock": "Deadlock", "sys.reach": "Reachable states",

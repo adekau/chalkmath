@@ -1150,8 +1150,21 @@ export const FUNCTIONS: FnDoc[] = [
       basic("let Lv = poset({low, high}; low < high)", "let Cat = subsets({a, b})", "let SC = product(Lv, Cat)", "join(SC, (low, {a}), (high, {}))"),
       section("Calls inside calls", "lattice(product(chain(2), chain(3)))"),
     ],
-    see: ["secure", "subsets"],
+    see: ["lex", "secure", "subsets"],
     ref: "https://mathworld.wolfram.com/ProductOrder.html",
+  },
+  {
+    name: "lex", area: "Order theory",
+    usage: [["lex(P, Q)", "gives the pairs (x, y) ordered lexicographically: (a, c) ≤ (b, d) when a < b, or a = b and c ≤ d."]],
+    details: [
+      "The first coordinate decides, and the second only breaks a tie, as a dictionary orders words and as version numbers compare: 1.9 comes before 2.0 although 9 > 0. `product` compares both coordinates at once, so there (1, 9) and (2, 0) are incomparable.",
+      "Lexicographic pairs of two chains form a chain. Nest it for triples: `lex(lex(chain(2), chain(3)), chain(4))`, whose elements are written `((a, b), c)`.",
+    ],
+    examples: [
+      basic("let V = lex(chain(3), chain(3))", "le(V, (0, 2), (1, 0))", "join(V, (0, 2), (1, 0))"),
+      section("Against the product order", "let W = product(chain(3), chain(3))", "le(W, (0, 2), (1, 0))"),
+    ],
+    see: ["product", "chain", "poset"],
   },
   {
     name: "galois", area: "Order theory",

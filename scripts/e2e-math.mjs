@@ -95,6 +95,8 @@ const CASES = [
   { src: "let RPS = op({r, p, s}; [r, p, r; p, p, s; r, s, s])", text: "[r, p, r; p, p, s; r, s, s]" },
   { src: "associative(RPS)", text: "false", step: "Not associative" },
   { src: "lattice(product(chain(2), chain(3)))", text: "true", step: "Inner call" },
+  { src: "le(lex(chain(3), chain(3)), (0, 2), (1, 0))", text: "true", step: "Inner call" },
+  { src: "lattice(lex(chain(2), chain(3)))", text: "true", step: "Lexicographic order" },
   { src: "replicas(gcounter; a, b; a: inc; m := a; a: inc; b <- m; a -> b)", text: "{a↦2, b↦2}", step: "b merges the message m" },
   // term rewriting, in the systems world
   { src: "let Add = rules(add(0, y) -> y; add(s(x), y) -> s(add(x, y)))", text: "{add(0, y) → y, add(s(x), y) → s(add(x, y))}" },

@@ -425,6 +425,11 @@ infer: λx:A. λy:B. x y	<error: cannot unify A with B → τ1, so the term has 
 infer: λf:A→B. λx. f x	(A → B) → A → B
 (λx:A. x) y	y
 lattice(product(chain(2), chain(3)))	true
+le(lex(chain(3), chain(3)), (0, 2), (1, 0))	true
+le(product(chain(3), chain(3)), (0, 2), (1, 0))	false
+lattice(lex(chain(2), chain(3)))	true
+lattice(lex(poset({a, b}), chain(2)))	false
+le(lex(lex(chain(2), chain(2)), chain(2)), ((0, 1), 1), ((1, 0), 0))	true
 let NR = rel({a, b, c}; a->b, b->c)	{(a, b), (b, c)}
 transitive(closure(NR, transitive))	true
 classes(closure(rel({a, b, c}; a->b), equivalence))	{{a, b}, {c}}

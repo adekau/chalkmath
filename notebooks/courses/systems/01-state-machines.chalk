@@ -213,6 +213,12 @@
       "label": null
     },
     {
+      "src": "> [!note] Application: TCP's handshake\n> A network protocol is a state machine too. [TCP as a state machine](#course=systems&lesson=1&app=1), an optional notebook beside this lesson, models the handshake that opens a TCP connection, and finds what a lost segment does to it.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "$x = 2$ at the end is not guaranteed. What *is* guaranteed in every reachable state, and how can we know it when the graph is too large to draw? That is the next lesson.",
       "type": "markdown",
       "showWork": false,
