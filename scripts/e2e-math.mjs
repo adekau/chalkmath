@@ -1042,7 +1042,7 @@ async function features() {
     const p = await linked.newPage();
     await p.goto(`${base}/#course=${other.id}`);
     await p.locator(".courses h1", { hasText: other.title }).waitFor({ timeout: 30000 });
-    assert.equal(await p.locator(".crslesson").count(), other.lessons.length, "a page loaded with a course link shows the course's lessons");
+    assert.equal(await p.locator(".crslesson:not(.crsapp)").count(), other.lessons.length, "a page loaded with a course link shows the course's lessons");
     assert.equal(await p.evaluate(() => location.hash), `#course=${other.id}`, "the link stays in the address");
   } finally {
     await linked.close();

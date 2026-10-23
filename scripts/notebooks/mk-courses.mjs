@@ -122,7 +122,7 @@ const oddSquareScene = (() => {
 // ---------------------------------------------------------------------------------------------------
 course("lean", "Lean from zero",
   "Lean before any course uses it: values and their types, functions, recursion, your own types, and then statements about your functions that Lean checks, for every input.",
-  "Start here", (add) => {
+  "Start here", (add, app) => {
 
   add("01-calculator.chalk", "Lean as a calculator", "Ask Lean for values with #eval and for types with #check; numbers that stop at zero and numbers that do not; names for values.", ({ sec, md, lean, lx }) => {
     sec("Lean as a calculator");
@@ -338,7 +338,100 @@ def sample : Tree := .node (.node .leaf 1 .leaf) 2 (.node .leaf 3 .leaf)
 > [!summary]
 > ‹inductive› defines a type by the ways to build it: a list of choices, or choices that carry values, even of the same type (a tree). ‹structure› bundles named values. Functions on them go by cases, and call themselves on the smaller parts.
 `);
+    md(r`
+> [!note] Application: a card game
+> [Model a card game](#course=lean&lesson=4&app=1), an optional notebook beside this lesson, uses these types for something bigger: suits and ranks as choices, a card as a structure, a hand as a list, and the rules of a game as functions on them.
+`);
     md(r`You can now write functions on numbers, lists and types of your own. The next lesson writes statements about them and has Lean check them.`);
+  });
+
+  app("04a-card-game.chalk", "Model a card game", "Suits and ranks as inductive types, a card as a structure, a hand as a list of cards, and the rules of a game as functions on them, checked with #eval and decide.", ({ sec, md, lean, lx }) => {
+    sec("Model a card game");
+    md(r`
+> [!goal]
+> Turn a familiar thing, a deck of cards, into Lean types, and its rules into functions on them.
+`);
+    md(r`An application of lesson 4, outside the course's order: nothing later depends on it. It uses what lessons 1 to 4 teach: ‹def›, ‹if›, recursion on lists, ‹inductive› and ‹structure›.`);
+    sec("Suits and ranks");
+    md(r`A suit is one of four choices, and a rank one of thirteen, so each is an ‹inductive› type that lists them, as ‹Weekday› listed the days:`);
+    lean(r`inductive Suit where
+  | clubs | diamonds | hearts | spades
+  deriving Repr, DecidableEq
+
+inductive Rank where
+  | two | three | four | five | six | seven | eight | nine | ten
+  | jack | queen | king | ace
+  deriving Repr, DecidableEq`);
+    md(r`Choices like these are better than numbers or strings for the same job. A suit stored as a ‹String› could be ‹"hearts"›, ‹"Hearts"› or ‹"hearst"›; a ‹Suit› can only be one of the four, and a function on it must say what it does for each.`);
+    sec("A card");
+    md(r`A card is a rank *and* a suit, so it is a ‹structure› with two fields:`);
+    lean(r`structure Card where
+  rank : Rank
+  suit : Suit
+  deriving Repr, DecidableEq
+
+def aceOfSpades : Card := { rank := .ace, suit := .spades }
+
+#eval aceOfSpades
+#eval aceOfSpades.suit`);
+    md(r`‹{ rank := .ace, suit := .spades }› builds a card, and ‹aceOfSpades.suit› reads one of its fields. ‹.ace› is short for ‹Rank.ace›: Lean knows from the field's type which one is meant.`);
+    sec("Rules as functions");
+    md(r`A rule of the game is a function. Which suits are red goes by cases on the suit; how high a rank is, by cases on the rank:`);
+    lean(r`def Suit.isRed : Suit → Bool
+  | .hearts | .diamonds => true
+  | _ => false
+
+def Rank.toNat : Rank → Nat
+  | .two => 2 | .three => 3 | .four => 4 | .five => 5 | .six => 6
+  | .seven => 7 | .eight => 8 | .nine => 9 | .ten => 10
+  | .jack => 11 | .queen => 12 | .king => 13 | .ace => 14
+
+def Card.beats (a b : Card) : Bool := a.rank.toNat > b.rank.toNat
+
+#eval aceOfSpades.suit.isRed
+#eval aceOfSpades.beats { rank := .king, suit := .hearts }`);
+    md(r`‹Card.beats› compares two cards by rank, using ‹Rank.toNat›: one function built on another, as programs are.`);
+    sec("A hand");
+    md(r`A hand is a list of cards, so a function on a hand is a recursion on the list, as ‹total› was in lesson 3:`);
+    lean(r`def hand : List Card :=
+  [{ rank := .ace, suit := .spades }, { rank := .king, suit := .spades }, { rank := .five, suit := .hearts }]
+
+def countSuit (s : Suit) : List Card → Nat
+  | [] => 0
+  | c :: cs => (if c.suit = s then 1 else 0) + countSuit s cs
+
+#eval countSuit .spades hand`);
+    md(r`‹c.suit = s› compares two suits; ‹deriving DecidableEq› is what lets ‹if› ask it. The same comparison as a ‹Bool› is ‹c.suit == s›, and ‹&&› is "and" on ‹Bool›s. Together they say whether every card of a hand has one suit:`);
+    lean(r`def allSuit (s : Suit) : List Card → Bool
+  | [] => true
+  | c :: cs => c.suit == s && allSuit s cs
+
+#eval allSuit .spades hand
+#eval allSuit .spades [aceOfSpades]`);
+    md(r`An empty hand has every card of any suit, since it has no card that is not: ‹allSuit s []› is ‹true›.`);
+    sec("Exercises");
+    md(r`Each exercise asks for a function; the statement below it checks it on examples, with ‹decide›. Until the function is written the check fails, and the panel says so.`);
+    lx(r`theorem sameColor_ok : Card.sameColor aceOfSpades { rank := .two, suit := .clubs } = true ∧ Card.sameColor aceOfSpades { rank := .two, suit := .hearts } = false := by`, r`Define ‹Card.sameColor›: two cards have the same colour when both are red or both are not.`, r`  decide`, [
+      r`Compare ‹a.suit.isRed› with ‹b.suit.isRed›.`,
+      r`‹==› compares two ‹Bool›s too: ‹a.suit.isRed == b.suit.isRed›.`,
+    ], { start: "  decide", def: { start: "def Card.sameColor (a b : Card) : Bool := sorry", solution: "def Card.sameColor (a b : Card) : Bool := a.suit.isRed == b.suit.isRed", forbid: [] } });
+    lx(r`theorem points_ok : Rank.points .seven = 7 ∧ Rank.points .queen = 10 ∧ Rank.points .ace = 11 ∧ Rank.points .ten = 10 := by`, r`In blackjack, a number card counts its number, a jack, queen or king counts 10, and an ace 11. Define ‹Rank.points›.`, r`  decide`, [
+      r`Three cases share 10: ‹| .jack | .queen | .king => 10›.`,
+      r`For the number ranks, ‹Rank.toNat› already has the answer: a last case ‹| r => r.toNat› covers them all.`,
+    ], { start: "  decide", def: { start: "def Rank.points : Rank → Nat\n  | r => sorry", solution: "def Rank.points : Rank → Nat\n  | .jack | .queen | .king => 10\n  | .ace => 11\n  | r => r.toNat", forbid: [] } });
+    lx(r`theorem handPoints_ok : handPoints hand = 26 ∧ handPoints [] = 0 := by`, r`Define ‹handPoints›, the points of a whole hand: the sum of its cards' ‹Rank.points›, by recursion on the list. (Lean's ‹List.sum›, ‹map› and ‹foldl› are ruled out.)`, r`  decide`, [
+      r`An empty hand has 0 points.`,
+      r`‹c :: cs› has ‹c›'s points plus the points of ‹cs›: ‹c.rank.points + handPoints cs›.`,
+    ], { start: "  decide", def: { start: "def handPoints : List Card → Nat\n  | [] => sorry\n  | c :: cs => sorry", solution: "def handPoints : List Card → Nat\n  | [] => 0\n  | c :: cs => c.rank.points + handPoints cs", forbid: ["sum", "map", "foldl", "foldr"] } });
+    lx(r`theorem flush_ok : isFlush hand = false ∧ isFlush [aceOfSpades, { rank := .two, suit := .spades }] = true ∧ isFlush [] = true := by`, r`A hand is a **flush** when all its cards have one suit. Define ‹isFlush›, using ‹allSuit›. (Lean's ‹List.all› is ruled out.)`, r`  decide`, [
+      r`Which suit should every card have? The first card's.`,
+      r`‹| c :: cs => allSuit c.suit cs›, and an empty hand is a flush.`,
+    ], { start: "  decide", def: { start: "def isFlush : List Card → Bool\n  | [] => sorry\n  | c :: cs => sorry", solution: "def isFlush : List Card → Bool\n  | [] => true\n  | c :: cs => allSuit c.suit cs", forbid: ["all"] } });
+    md(r`
+> [!summary]
+> A thing with a fixed set of kinds is an ‹inductive› type of choices; a thing made of parts is a ‹structure›; a collection is a ‹List›. The rules are functions on them, by cases on the choices and by recursion on the lists, and ‹#eval› and ‹decide› check them on examples.
+`);
+    md(r`The checks here try a few hands. Lesson 5 proves statements about *every* value, such as that no rank is worth more than 11 points: ‹∀ r : Rank, r.points ≤ 11›, by ‹cases› on the rank.`);
   });
 
   add("05-statements.chalk", "Statements and first proofs", "theorem and example, rfl and decide, statements about every input, and the tactics omega, simp and cases.", ({ sec, md, lean, lx }) => {
@@ -430,7 +523,137 @@ theorem next_not_same : ∀ d : Weekday, d.next ≠ d := by
 > [!summary]
 > Induction proves a statement for every number, or every list or tree, by following the cases the type is built from: a proof for the smallest case, and one for each bigger case that may use the statement for the parts inside it. A theorem about every input is a **specification**, and a function that meets it is correct on all of them, which no number of checks can show.
 `);
+    md(r`
+> [!note] Application: a verified sort
+> [A verified sort check](#course=lean&lesson=6&app=1), an optional notebook beside this lesson, proves that reversing a list twice gives it back, and that insertion sort is correct: its output is sorted and has the same numbers as its input, for every list.
+`);
     md(r`That is everything the next course assumes. [Logic and proof technique](#course=logic) uses Lean from its third lesson on, for proofs about logic, numbers and the functions you define there.`);
+  });
+
+  app("06a-verified-sort.chalk", "A verified sort check", "Reversing twice gives the list back, with a lemma; then insertion sort, and the three theorems that make it correct for every list: the same length, the same count of every number, and a sorted result.", ({ sec, md, lean, lx }) => {
+    sec("A verified sort check");
+    md(r`
+> [!goal]
+> Say what it means for a sorting function to be correct, and prove that insertion sort is, for every list.
+`);
+    md(r`An application of lesson 6, outside the course's order: nothing later depends on it. It uses induction on lists, ‹simp› and ‹omega› from lessons 5 and 6, and ‹len› and ‹count› from lessons 6 and 3; two new steps, a **lemma** and the tactic ‹split›, are explained where they come up.`);
+    sec("Reversing twice");
+    md(r`A warm-up. ‹rev› reverses a list: the reverse of ‹x :: xs› is the reverse of ‹xs› with ‹x› put at the end.`);
+    lean(r`def rev : List Nat → List Nat
+  | [] => []
+  | x :: xs => rev xs ++ [x]
+
+#eval rev [1, 2, 3]
+#eval rev (rev [1, 2, 3])`);
+    md(r`Reversing twice should give the list back, for every list. Try induction on ‹xs›: in the ‹cons x xs› case the goal is ‹rev (rev xs ++ [x]) = x :: xs›, and the hypothesis ‹ih : rev (rev xs) = xs› does not apply, because ‹rev› is applied to ‹rev xs ++ [x]›, not to ‹rev xs›. The proof needs a fact about reversing a list with something at its end. A fact proved on the way to another is a **lemma**:`);
+    lean(r`theorem rev_snoc (xs : List Nat) (x : Nat) : rev (xs ++ [x]) = x :: rev xs := by
+  induction xs with
+  | nil => rfl
+  | cons y ys ih => simp [rev, ih]`);
+    md(r`With the lemma, ‹simp› can turn ‹rev (rev xs ++ [x])› into ‹x :: rev (rev xs)›, and then ‹ih› finishes it. That is the first exercise.`);
+    sec("Insertion sort");
+    md(r`Insertion sort sorts a list the way many people sort a hand of cards: take the cards one at a time and put each into its place among the ones already sorted. ‹ins x ys› puts ‹x› into a sorted list ‹ys›, before the first number at least as big; ‹isort› does that for each number in turn.`);
+    lean(r`def ins (x : Nat) : List Nat → List Nat
+  | [] => [x]
+  | y :: ys => if x ≤ y then x :: y :: ys else y :: ins x ys
+
+def isort : List Nat → List Nat
+  | [] => []
+  | x :: xs => ins x (isort xs)
+
+#eval ins 4 [1, 3, 5, 7]
+#eval isort [5, 2, 9, 1, 5, 6]`);
+    sec("What correct means");
+    md(r`A sort is correct when its output is in order. That alone is not enough:`);
+    lean(r`def sorted : List Nat → Bool
+  | [] => true
+  | [_] => true
+  | x :: y :: ys => x ≤ y && sorted (y :: ys)
+
+def lazySort (_ : List Nat) : List Nat := []
+
+#eval sorted (isort [3, 1, 2])
+#eval sorted (lazySort [3, 1, 2])`);
+    md(r`‹lazySort› throws the list away, and its empty output is sorted. A correct sort must also keep the numbers it was given: the output has the same length as the input, and each number occurs in it as many times as in the input (‹count› from lesson 3). Three theorems, each about every list, make the specification:
+
+1. ‹len (isort xs) = len xs›
+2. ‹count a (isort xs) = count a xs›, for every number ‹a›
+3. ‹sorted (isort xs) = true›
+
+The first two say ‹isort› rearranges its input without losing or adding a number; the third that the rearrangement is in order. No number of examples shows them; induction does.`);
+    sec("Each theorem through a lemma");
+    md(r`‹isort› is built from ‹ins›, so each theorem about ‹isort› goes through a lemma about ‹ins›. ‹ins› has an ‹if› in it, and a proof about it needs both branches. The tactic ‹split› does that: on a goal with an ‹if›, it gives one goal where the condition holds and one where it does not.`);
+    md(r`The count lemma, as an example of ‹split›:`);
+    lean(r`theorem count_ins (a x : Nat) (ys : List Nat) : count a (ins x ys) = count a (x :: ys) := by
+  induction ys with
+  | nil => rfl
+  | cons y ys ih =>
+    simp only [ins]
+    split
+    · rfl
+    · simp only [count] at *
+      rw [ih]
+      omega`);
+    md(r`‹simp only [ins]› unfolds one step of ‹ins›, leaving its ‹if›; ‹split› makes the two cases. When ‹x ≤ y›, ‹ins› gave ‹x :: y :: ys›, which is ‹x :: (y :: ys)›, and ‹rfl› closes it. Otherwise it gave ‹y :: ins x ys›; ‹simp only [count] at *› unfolds ‹count› in the goal and in ‹ih› (‹at *› means everywhere), ‹rw [ih]› replaces the left side of ‹ih› with its right, and ‹omega› finishes the sums. The bullets ‹·› mark the two cases.`);
+    md(r`The sorted lemma has more cases: inserting into a sorted list, the new number may land in front of the first or further along, and the list may be short. Here it is in full; you do not need to follow every line to use it.`);
+    lean(r`theorem sorted_ins (x : Nat) (ys : List Nat) (h : sorted ys = true) : sorted (ins x ys) = true := by
+  induction ys with
+  | nil => rfl
+  | cons y ys ih =>
+    cases ys with
+    | nil => simp only [ins]; split <;> simp [sorted] <;> omega
+    | cons z zs =>
+      simp only [ins]
+      split
+      · simp_all [sorted]
+      · simp only [sorted, Bool.and_eq_true, decide_eq_true_eq] at h
+        have ih' := ih h.2
+        simp only [ins] at ih' ⊢
+        split
+        · simp_all [sorted]; omega
+        · simp_all [sorted]`);
+    md(r`The hypothesis ‹(h : sorted ys = true)› before the colon makes this a statement *if ‹ys› is sorted*: inserting keeps a sorted list sorted. ‹have ih' := ih h.2› uses the induction hypothesis on the rest of the list, which ‹h› says is sorted too.`);
+    sec("Exercises");
+    md(r`Each statement is fixed; replace the ‹sorry›s. The **Lean goals** tab shows what is left at the cursor.`);
+    lx(r`theorem rev_rev (xs : List Nat) : rev (rev xs) = xs := by`, r`Prove that reversing a list twice gives it back, using the lemma ‹rev_snoc›.`, r`  induction xs with
+  | nil => rfl
+  | cons x xs ih => simp [rev, rev_snoc, ih]`, [
+      r`The ‹nil› case computes.`,
+      r`In the ‹cons› case, give ‹simp› the definition, the lemma and the hypothesis: ‹simp [rev, rev_snoc, ih]›.`,
+    ], { start: "  induction xs with\n  | nil => sorry\n  | cons x xs ih => sorry" });
+    lx(r`theorem len_ins (x : Nat) (ys : List Nat) : len (ins x ys) = len ys + 1 := by`, r`Prove that ‹ins› makes a list one longer.`, r`  induction ys with
+  | nil => rfl
+  | cons y ys ih =>
+    simp only [ins]
+    split
+    · rfl
+    · simp [len, ih]`, [
+      r`The ‹nil› case computes: ‹len [x]› is ‹0 + 1›.`,
+      r`When ‹x ≤ y›, ‹ins› gave ‹x :: y :: ys›, and both sides compute to the same number: ‹rfl›.`,
+      r`Otherwise it gave ‹y :: ins x ys›: unfold ‹len› and use ‹ih›, with ‹simp [len, ih]›.`,
+    ], { start: "  induction ys with\n  | nil => sorry\n  | cons y ys ih =>\n    simp only [ins]\n    split\n    · sorry\n    · sorry" });
+    lx(r`theorem len_isort (xs : List Nat) : len (isort xs) = len xs := by`, r`Prove the first theorem of the specification: sorting keeps the length.`, r`  induction xs with
+  | nil => rfl
+  | cons x xs ih => simp [isort, len_ins, len, ih]`, [
+      r`‹isort (x :: xs)› is ‹ins x (isort xs)›, and ‹len_ins› says how long that is.`,
+      r`‹simp [isort, len_ins, len, ih]›.`,
+    ], { start: "  induction xs with\n  | nil => sorry\n  | cons x xs ih => sorry" });
+    lx(r`theorem count_isort (a : Nat) (xs : List Nat) : count a (isort xs) = count a xs := by`, r`Prove the second: sorting keeps how many times each number occurs, using ‹count_ins›.`, r`  induction xs with
+  | nil => rfl
+  | cons x xs ih => simp only [isort, count_ins, count, ih]`, [
+      r`The same shape as ‹len_isort›, with ‹count_ins› in place of ‹len_ins›.`,
+      r`‹simp only [isort, count_ins, count, ih]›.`,
+    ], { start: "  induction xs with\n  | nil => sorry\n  | cons x xs ih => sorry" });
+    lx(r`theorem sorted_isort (xs : List Nat) : sorted (isort xs) = true := by`, r`Prove the third: the output of ‹isort› is sorted, using ‹sorted_ins›.`, r`  induction xs with
+  | nil => rfl
+  | cons x xs ih => exact sorted_ins x (isort xs) ih`, [
+      r`‹isort (x :: xs)› is ‹ins x (isort xs)›, and ‹ih› says ‹isort xs› is sorted.`,
+      r`‹sorted_ins x (isort xs) ih› is exactly the proof: ‹exact sorted_ins x (isort xs) ih›.`,
+    ], { start: "  induction xs with\n  | nil => sorry\n  | cons x xs ih => sorry" });
+    md(r`
+> [!summary]
+> A specification says what a function must do for every input: for a sort, an output in order with the same numbers as the input. Each theorem about ‹isort› went through a lemma about ‹ins›, the function it is built from, and ‹split› took ‹ins›'s ‹if› apart. With the three proved, ‹isort› is correct on every list, which no test suite can show; ‹lazySort› passes the third theorem and fails the first two.
+`);
   });
 }, { leanPrelude: true });
 
