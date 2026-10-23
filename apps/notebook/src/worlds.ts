@@ -96,13 +96,16 @@ function marked(w: WorldInfo, src: string): boolean {
 }
 
 /** The world a source belongs to, by its id, or null for algebra: the engine's `worldFor`, as far as
- *  the page can tell before the engine answers. A λ-command is the λ-world's whatever else it holds;
- *  otherwise the worlds are asked in the engine's order, each by its commands and markers, the λ-world
- *  last and also by a known definition at the head (`defs`, the session's λ-names). */
+ *  the page can tell before the engine answers. A λ-command is the λ-world's whatever else it holds,
+ *  and so is a λ-term headed by one of the session's λ-names (`defs`), which shadows another world's
+ *  command of that name (`map (add 1) l`); otherwise the worlds are asked in the engine's order, each
+ *  by its commands and markers, the λ-world last and also by a known definition at the head. */
 export function worldOf(src: string, defs: (name: string) => boolean = () => false): string | null {
   const s = src.trim();
   if (!s) return null;
   if (lambdaCommand(s)) return "lambda";
+  const head = s.split(" ")[0] ?? "";
+  if (head !== "let" && defs(head) && lambdaHeaded(s, defs)) return "lambda";
   const hasLambda = /[λ\\]/.test(s);
   for (const w of others()) {
     if (w.id === "lambda") {

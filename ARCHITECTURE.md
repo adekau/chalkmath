@@ -503,7 +503,7 @@ rewriting). Each has its own grammar and evaluator (§3), and all of them are re
 |---|---|
 | `id`, `label` | the `kind` its replies carry, and how the notebook names it |
 | `commands`, `keywords`, `glyphs`, `names`, `markers` | its lexicon: the names written `name(…)`, the words its grammar reserves, the operators algebra's grammar lacks, the other names it gives a cell (the λ library, the logic predicates), and what claims a source for it beyond its commands |
-| `precedes`, `claims` | which sources are its: `claims`, asked in the list's order; `precedes` takes a source before any other world looks (a λ-command, which may hold a connective) |
+| `precedes`, `claims` | which sources are its: `claims`, asked in the list's order; `precedes` takes a source before any other world looks (a λ-command, which may hold a connective; a λ-term headed by a λ-name the session defined, which shadows another world's command of that name) |
 | `binds`, `holds` | the name a source would bind, and whether the world holds a binding of a name |
 | `evaluate`, `check` | a cell's evaluation (a `WorldResult`: value, derivation, the name bound, a note, visual specs, the world's own fields) and an exercise's check |
 | `read` | the source parsed and not evaluated, the session's names left as names (`engine.read`, for the hover toolbar while a cell is edited); by default the input as written (`Surface.lean`) |

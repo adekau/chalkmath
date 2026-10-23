@@ -1489,7 +1489,7 @@ export const FUNCTIONS: FnDoc[] = [
       ["id const K S I omega Y", "are the classic combinators."],
     ],
     details: [
-      "A cell that starts with one of these names (or a λ-definition of your own) is a λ-term when it reads as one: names, numerals and parentheses only. `S + 1` is arithmetic on a variable `S`.",
+      "A cell that starts with one of these names (or a λ-definition of your own) is a λ-term when it reads as one: names, numerals and parentheses only. `S + 1` is arithmetic on a variable `S`. A name you define shadows another world's command of that name: after `map := …`, `map (add 1) l` applies your `map`, while `map(P; …)` is still the order command.",
     ],
     examples: [basic("if (iszero 0) a b", "fst (pair 1 2)", "mul 2 3")],
     see: ["lambda"],

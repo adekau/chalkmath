@@ -46,6 +46,11 @@ test("a cell's world is read from its source as the engine routes it", () => {
   assert.equal(W.worldOf("pred zero", defs), "lambda");
   assert.equal(W.worldOf("pred zero"), null);
   assert.equal(W.worldOf("S + 1"), null);
+  // a session's λ-name shadows another world's command of that name; the command, written as one, is not shadowed
+  const mapDef = (w) => w === "map";
+  assert.equal(W.worldOf("map (add 1) nil", mapDef), "lambda");
+  assert.equal(W.worldOf("map (add 1) nil"), "poset");
+  assert.equal(W.worldOf("let g = map(D; 1->2, 2->2)", mapDef), "poset");
   assert.equal(W.lambdaCommand("type: x"), true);
   assert.equal(W.lambdaCommand("type := x"), false);
 });

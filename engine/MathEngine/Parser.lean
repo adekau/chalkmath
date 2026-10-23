@@ -48,7 +48,8 @@ Cells in the other worlds never reach this parser: a transition system or a ques
 (`Ord.isOrderSource`, grammar in `Poset.lean`), a logic command or a formula with a connective or a
 quantifier (`Logic.isLogicSource`, grammar in `Logic.lean`), and a λ-term or λ-command
 (`Lam.isLambdaSource`, grammar in `Lambda.lean`) each have their own. A λ-command is routed first,
-since one such as `type: f : A → B ⊢ f` holds a connective.
+since one such as `type: f : A → B ⊢ f` holds a connective, and so is a λ-term headed by a λ-name the
+session defined, which shadows another world's command of that name (`map (add 1) l`).
 -/
 namespace MathEngine
 

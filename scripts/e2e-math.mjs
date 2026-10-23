@@ -116,6 +116,9 @@ const CASES = [
   { src: "type: λx:A. x x", error: "not a function type" },
   // a Church name at the head is a λ-term only when the cell reads as one
   { src: "fst (pair a b)", text: "a" },
+  // a λ-name of the session shadows another world's command (`map` is the order world's)
+  { src: "map := λf x. f (f x)", text: "λf. λx. f (f x)" },
+  { src: "map (add 1) 0", text: "λf. λx. f (f x)" },
   { src: "S + 1", text: "S + 1" },
 ];
 

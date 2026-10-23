@@ -489,15 +489,18 @@ def parseCmd (src : String) : Option (Except String Cmd) :=
       pure (if w == "type" then .type Γ t else .infer Γ t)
     | _ => throw s!"unknown λ-command {w}"
 
+/-- A source's first word, the name a λ-definition at its head is looked up by (none after `let`). -/
+def headWord (src : String) : String :=
+  let w := (src.trimAscii.copy.splitOn " ").headD ""
+  if w == "let" then "" else w
+
 /-- Is this cell a λ-cell? A command, a λ or backslash anywhere, a `:=` definition, or a first word
 that is a λ-definition of the session or the Church library, in a source that lexes as a λ-term:
 `fst (pair a b)` is one, `S + 1` is arithmetic on a variable named `S`. -/
 def isLambdaSource (src : String) (defs : List String) : Bool :=
   (commandHead src).isSome ||
   src.any (fun c => c == 'λ' || c == '\\') || (src.splitOn ":=").length == 2 ||
-  (let w := (src.trimAscii.copy.splitOn " ").headD ""
-   let w := if w == "let" then "" else w
-   defs.contains w && (!src.contains '(' || src.contains ' ') && (lex src).toBool)
+  (defs.contains (headWord src) && (!src.contains '(' || src.contains ' ') && (lex src).toBool)
 
 /-! ## Reduction strategies and η -/
 
