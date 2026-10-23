@@ -1255,7 +1255,8 @@ export const FUNCTIONS: FnDoc[] = [
       ["replicas(type; a, b, …; events…)", "runs a state-based CRDT on the replicas `a`, `b`, … through the events, and gives each replica's reading; its work says whether they converged."],
     ],
     details: [
-      "The types: `gcounter` (`inc`), `pncounter` (`inc`, `dec`), `gset` (`add x`), `twopset` and `orset` (`add x`, `remove x`), and `lww` (`write v`, or `write v @ t` with a timestamp; by default the event's number).",
+      "The types: `gcounter` (`inc`), `pncounter` (`inc`, `dec`), `gset` (`add x`), `twopset` and `orset` (`add x`, `remove x`), `lww` (`write v`, or `write v @ t` with a timestamp; by default the event's number), and `escrow N` (`use`, `free`, `give r`).",
+      "`escrow N` is a bounded counter: a capacity of `N` split evenly into per-replica quotas (the first replicas take the remainder). A replica refuses, by itself, a `use` or a `give` that its quota left does not cover, and `give r` moves one unit of its quota to `r`, which can spend it once the state reaches it. It reads the units in use, and stays within `N` in every merge, without coordination.",
       "Events, one per line or separated by `;`: `a: inc` updates `a`; `a -> b` has `b` merge `a`'s state now; `m := a` sends a message holding `a`'s state now, and `b <- m` delivers it, later, again, or after newer ones.",
       "Every type is a vector of numbers merged by the entrywise maximum, which is proved a join (commutative, associative, idempotent), and every update only raises entries. So replicas that have received the same updates are in the same state, whatever the order, delays and duplicates.",
       "The drawing is a space-time diagram: a lane per replica, an arrow per message. Stepping through the work builds it event by event.",
@@ -1265,6 +1266,7 @@ export const FUNCTIONS: FnDoc[] = [
       section("Delayed and duplicated messages", "replicas(gcounter; a, b; a: inc; m := a; a: inc; b <- m; b <- m)", "replicas(gcounter; a, b; a: inc; m := a; a: inc; b <- m; a -> b)"),
       section("Add and remove", "replicas(twopset; a, b; a: add x; a -> b; b: remove x; a: add x; b -> a)", "replicas(orset; a, b; a: add x; a -> b; b: remove x; a: add x; b -> a; a -> b)"),
       section("Last writer wins", "replicas(lww; a, b; a: write red @ 5; b: write blue @ 3; a -> b; b -> a)"),
+      section("Escrow: a bound kept without coordination", "replicas(escrow 2; a, b; a: use; b: use; a: use; a -> b; b -> a)", "replicas(escrow 2; a, b; b: give a; b -> a; a: use; a: use)"),
     ],
     see: ["clocks", "system"],
   },

@@ -306,7 +306,14 @@
         {
           "file": "12-limits.chalk",
           "title": "What CRDTs cannot do",
-          "blurb": "Agreement is not correctness: a balance that converges below zero, invariants that need coordination, and the axiom audit."
+          "blurb": "Agreement is not correctness: a balance that converges below zero, invariants that need coordination, and the axiom audit.",
+          "apps": [
+            {
+              "file": "12a-scheduling.chalk",
+              "title": "Scheduling without a lock",
+              "blurb": "Many schedulers, one cluster: what can be decided without asking anyone (CALM), Omega's optimistic transactions and their one atomic step, and an escrow of quotas that keeps a machine from being overcommitted with no coordination at all."
+            }
+          ]
         }
       ]
     },

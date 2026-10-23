@@ -246,7 +246,10 @@ differential test with zero mismatches.
 - **Replicas are simulated in the systems world.** `replicas(type; a, b; events…)` (`Replicas.lean`)
   runs a state-based CRDT through a schedule of local updates, syncs and delayed or duplicated
   messages. Every type there is a vector of naturals merged by the entrywise maximum, so one merge
-  serves them all, proved a join with every update an inflation (`ReplicasProofs.lean`).
+  serves them all, proved a join with every update an inflation (`ReplicasProofs.lean`). The escrow
+  (bounded) counter keeps its invariant the same way: quotas are entries too, a replica refuses
+  locally what its own quota does not cover, and the units in use are checked against the capacity
+  after every event.
 - **Term rewriting is in the systems world too.** `let R = rules(l -> r; …)` binds a first-order
   rewriting system (`Rewriting.lean`, its terms a nested inductive with the recursion written as
   mutual definitions so that it can be proved about). `rewrite` takes leftmost-outermost steps,

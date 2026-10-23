@@ -1057,6 +1057,21 @@ def systemsTests : TestM Unit := do
   checkTrue "systems: each step of the trace names its action" (contains invRaw "\"explanation\":\"inc (x < 2 holds): x := x + 1.\"") invRaw
   let (_, ctlRaw) := handleS st (req "3" "ctl(C, EF x = 2)")
   checkTrue "systems: a CTL formula's fixed point, a round a step" (contains ctlRaw "\"rule\":\"sys.iterate\"" && contains ctlRaw "\"rule\":\"sys.fixed\"") ctlRaw
+  -- an escrow counter: a use its quota does not cover is refused locally, and the state is shown whole
+  let (_, escRaw) := handleS [] (req "4" "replicas(escrow 2; a, b; a: use; a: use; a: give b)")
+  checkTrue "escrow: a use beyond the quota is refused, by the replica alone" (contains escRaw "\"rule\":\"crdt.refuse\"" && contains escRaw "a refuses the use: its quota is spent") escRaw
+  checkTrue "escrow: an update says the quota left" (contains escRaw "Its quota left, as far as it knows: 0.") escRaw
+  checkTrue "escrow: the state is uses, frees and gifts" (contains escRaw "({a↦1, b↦0}, {a↦0, b↦0}, {a→b↦0, b→a↦0})") escRaw
+  checkTrue "escrow: a gift with nothing left is refused too" (contains escRaw "a refuses the gift") escRaw
+  checkTrue "escrow: a refusal shows the quota left, so the work does not fold it away" (contains escRaw "\"afterRendered\":{\"text\":\"quota(a) = 0\"") escRaw
+  match Rep.parse "escrow 2; a, b; b: give a; a: use; a: use; b -> a; a: use" with
+  | .ok (kind, rs, evs) => match Rep.run kind rs evs with
+    | .ok r =>
+      let a := (r.states.lookup "a").getD []
+      check "escrow: a gift is spent once it has arrived" (toString (Rep.quotaLeft r.layout a 0, Rep.inUse r.layout a)) "(0, 2)"
+      check "escrow: an even split, the first replica taking the remainder" (toString ((List.range 3).map (Rep.share 5 3 ·))) "[2, 2, 1]"
+    | .error e => checkTrue "escrow: the run" false e
+  | .error e => checkTrue "escrow: the parse" false e
 
 /-- Inverse trigonometric functions, and `sec`, `csc`, `cot` and `f^-1(x)` as reciprocals. -/
 def trigTests : TestM Unit := do
