@@ -33,6 +33,7 @@ import { BUILD, versioned } from "./version.js";
 import { gather, keyOf, KEY as AUTOSAVE_KEY, LEGACY_KEYS, parseAutosave, type Autosave as AutosaveOf } from "./autosave-store.js";
 import { parseScene, numberRequests as sceneNumberRequests, sampleRequests as sceneSampleRequests, numbersOf as sceneNumbersOf, vectorsOf as sceneVectorsOf, build as buildScene, frameAt as sceneFrameAt, SceneError, type SceneData, type Item as SceneItem, type XY } from "./scene.js";
 import { DOC_PAGES, type DocPage, type DocPart } from "./docs.js";
+import { highlightCode, registerLanguage, type CodeTok } from "./code-highlight.js";
 import { FUNCTIONS, FN_BY_NAME, AREAS, fnPage, evaluable, type FnDoc, type ExampleSection } from "./reference.js";
 import { ensureLean, syncLean, mountLean, unmountLean, focusLean, setLeanDark, infoview as leanInfoview, leanState, leanFailure, leanStoppedAt, leanProgress, leanChecked, initLeanIsolation, startLeanAnyway, type LeanMessage } from "./lean-cells.js";
 
@@ -6267,7 +6268,11 @@ function mdRender(src: string): HTMLElement {
       flush(); const buf: string[] = []; i++;
       while (i < lines.length && !/^\s*```\s*$/.test(lines[i]!)) buf.push(lines[i++]!);
       i++;
-      const pre = h("pre", "mdpre"); pre.append(h("code", fence[1] ? `lang-${fence[1]}` : undefined, buf.join("\n"))); out.append(pre); continue;
+      const pre = h("pre", "mdpre"), code = h("code", fence[1] ? `lang-${fence[1]}` : undefined), text = buf.join("\n");
+      const toks = fence[1] ? highlightCode(fence[1], text) : null;   // a language the notebook knows is highlighted
+      if (toks) code.append(...toks.map((t) => t.cls ? h("span", t.cls, t.text) : document.createTextNode(t.text)));
+      else code.textContent = text;
+      pre.append(code); out.append(pre); continue;
     }
     if (/^\s*\$\$/.test(line)) {   // display math on its own lines; the closing $$ may carry a trailing label
       flush();
@@ -7817,19 +7822,18 @@ function boundTokens(src: string, toks: Tok[]): Set<number> {
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-/** The overlay's HTML for a source line. */
-function highlightHtml(src: string): string {
+/** A source line's tokens, each with its highlight class: the overlay's, and a ```chalk block's. */
+function highlightToks(src: string): CodeTok[] {
   // a question: the binding (if any) as code, the `?`, then the words as they are
   const q = /^(\s*(?:let\s+[A-Za-z_][A-Za-z0-9_]*\s*=\s*)?)\?/.exec(src);
-  if (q) return `${q[1] ? highlightHtml(q[1]) : ""}<span class="hq">?</span><span class="hask">${esc(src.slice(q[0].length))}</span>`;
+  if (q) return [...(q[1] ? highlightToks(q[1]) : []), { cls: "hq", text: "?" }, { cls: "hask", text: src.slice(q[0].length) }];
   const toks = tokenize(src);
   const bound = boundTokens(src, toks);
   // a system's clauses (`var`, `init`, `action … when … do`) and the quantifiers, as the typeset view
   // marks them; a system's `:=` is an update, not a λ-cell's definition
   const keywords = keywordsOf(src);
   const lambdaCell = !keywords.size && (/[λ\\]|:=/.test(src) || lambdaCommand(src));
-  let out = "";
-  toks.forEach((t, k) => {
+  return toks.map((t, k) => {
     let cls = "";
     if (t.kind === "num") cls = "hnum";
     else if (t.kind === "kw" || (t.kind === "id" && keywords.has(t.text))) cls = "hkw";
@@ -7844,10 +7848,16 @@ function highlightHtml(src: string): string {
       let j = k + 1; while (j < toks.length && toks[j]!.kind === "ws") j++;
       cls = toks[j]?.text === "(" ? (COMMANDS().has(t.text) ? "hcmd" : "hfn") : "hvar";
     } else cls = "hvar";
-    out += cls ? `<span class="${cls}">${esc(t.text)}</span>` : esc(t.text);
+    return { cls, text: t.text };
   });
-  return out || "&nbsp;";
 }
+
+/** The overlay's HTML for a source line. */
+function highlightHtml(src: string): string {
+  return highlightToks(src).map((t) => t.cls ? `<span class="${t.cls}">${esc(t.text)}</span>` : esc(t.text)).join("") || "&nbsp;";
+}
+// a ```chalk (or ```math) block in Markdown: its lines highlighted as a math cell's input
+registerLanguage(["chalk", "chalkmath", "math"], (src) => src.split("\n").flatMap((l, k) => [...(k ? [{ cls: "", text: "\n" }] : []), ...highlightToks(l)]));
 
 function syncHighlight(cell: Cell) {
   const hl = cell.hl, input = cell.input;

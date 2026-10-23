@@ -599,10 +599,25 @@ async function features() {
   // a Markdown callout
   await menu("Edit", "Add Markdown cell");
   const md = all().nth(await all().count() - 1);
-  await md.locator("textarea.mdin").fill("> [!theorem] Product rule\n> $(fg)' = f'g + fg'$");
+  const tsBlock = "// a comment\nfunction area(r: number): number {\n  return Math.PI * r ** 2;\n}";
+  await md.locator("textarea.mdin").fill(`> [!theorem] Product rule\n> $(fg)' = f'g + fg'$\n\n\`\`\`ts\n${tsBlock}\n\`\`\`\n\n\`\`\`chalk\ndiff(sin(x), x)\n\`\`\``);
   await md.locator("textarea.mdin").press("Shift+Enter");
   await md.locator("aside.callout.theorem .calltitle", { hasText: "Product rule" }).waitFor({ timeout: 10000 });
   console.log("✓ callout: a theorem with its title");
+  // fenced code in a language the notebook knows is coloured, and is still exactly its text
+  const ts = md.locator("pre.mdpre code.lang-ts");
+  assert.equal(await ts.textContent(), tsBlock, "the highlighted block is not its source");
+  assert.deepEqual(await ts.locator(".hkw").allTextContents(), ["function", "return"], "the ts block's keywords");
+  assert.deepEqual(await ts.locator(".hcom").allTextContents(), ["// a comment"], "the ts block's comment");
+  assert.deepEqual(await md.locator("pre.mdpre code.lang-chalk .hcmd").allTextContents(), ["diff"], "a chalk block is not coloured as a math cell's input");
+  const colours = () => ts.evaluate((c) => [getComputedStyle(c.querySelector(".hkw")).color, getComputedStyle(c).color]);
+  const [kwOn, plainOn] = await colours();
+  assert.notEqual(kwOn, plainOn, "a keyword is not coloured");
+  await menu("View", "Syntax highlighting");
+  const [kwOff, plainOff] = await colours();
+  assert.equal(kwOff, plainOff, "a keyword is still coloured with highlighting off");
+  await menu("View", "Syntax highlighting");
+  console.log("✓ code blocks: ts and chalk coloured, and plain with highlighting off");
   // usage on hover: the name of a command in a cell, after a pause
   const last = await all().count() - 1;
   await all().nth(last).locator("input.cellin").fill("subst(x^2, x, 3)");
