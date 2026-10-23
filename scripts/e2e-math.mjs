@@ -52,6 +52,8 @@ const CASES = [
   { src: "ln(x^2)", text: "2*ln(x)", step: "Function value, assuming a positive argument" },
   // inverse trigonometric functions, and sec, csc, cot as reciprocals
   { src: "diff(arctan(x), x)", text: "1/(x^2 + 1)", step: "Chain rule" },
+  { src: "backprop(x^2*y, [x, y], [3, 2])", text: "[12, 9]", step: "Backward pass" },
+  { src: "backprop(abs(t), [t], [3])", error: "no local derivative for abs" },
   { src: "integrate(1/(4+x^2), x)", text: "arctan(x/2)/2", step: "Arctangent integral" },
   { src: "integrate(1/sqrt(1-x^2), x)", text: "arcsin(x)", step: "Arcsine integral" },
   // cosh, sinh and tanh, read as their definitions in exp
@@ -712,6 +714,15 @@ async function features() {
   assert.deepEqual(await ty.locator(".typingtree .ptrule").allTextContents(), nodesOf(tyWant.root).map((n) => n.rule), "a rule per judgment, as the engine derived it");
   assert.deepEqual(await ty.locator(".typingtree .ptconc").evaluateAll((els) => els.map((e) => e.title)), nodesOf(tyWant.root).map((n) => n.text), "the judgments are the engine's");
   console.log(`✓ typing tree: ${nodesOf(tyWant.root).length} judgments, rules ${nodesOf(tyWant.root).map((n) => n.rule).join(" ")}`);
+  // a computation graph (backprop): a box per node with its value and gradient, an arrow per local derivative
+  const bpSrc = "backprop(x^2*y, [x, y], [3, 2])";
+  const bp = await runLast(bpSrc);
+  const bpWant = (await ref(bpSrc, "bp")).visuals.find((v) => v.kind === "calculus.graph").data;
+  assert.equal(await bp.locator(".adgraph .adnode").count(), bpWant.nodes.length, "a box per node");
+  assert.equal(await bp.locator(".adgraph path.adedge").count(), bpWant.edges.length, "an arrow per local derivative");
+  assert.deepEqual(await bp.locator(".adgraph .adgrad").allTextContents(), bpWant.nodes.map((n) => `∂ ${n.grad}`), "the gradients are the engine's");
+  assert.deepEqual(await bp.locator(".adgraph .adlocal").allTextContents(), bpWant.edges.map((e) => e[2]), "the local derivatives are the engine's");
+  console.log(`✓ computation graph: ${bpWant.nodes.length} nodes, ${bpWant.edges.length} arrows, gradients ${bpWant.nodes.map((n) => n.grad).join(" ")}`);
   // a poset's Hasse diagram stands in for its value: a node per element, an edge per cover, no LaTeX
   const hs = await runLast("let D = divisors(12)");
   const hsWant = (await ref("let D = divisors(12)", 17)).visuals.find((v) => v.kind === "order.hasse").data;

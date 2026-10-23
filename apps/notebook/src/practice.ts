@@ -260,6 +260,14 @@ export const TOPICS: Topic[] = [
     const src = r.pick([() => `sin(${inner(r)})`, () => `cos(${inner(r)})`, () => `exp(${inner(r)})`, () => `(${inner(r, true)})^${r.int(2, 4)}`])();
     return { src: `diff(${src}, x)`, prompt: "Differentiate.", hints: ["The chain rule: the outer function's derivative at the inside, times the inside's derivative."] };
   } },
+  { id: "calculus.backprop", area: "Calculus", title: "The gradient of a neuron's loss", make: (r) => {
+    // a neuron without activation, z = k·w + b, its squared error against t: an exact gradient
+    const k = r.int(2, 4), t = nz(r, -5, 5), w = nz(r, -2, 2), b = r.int(-2, 2);
+    const off = t < 0 ? `+ ${-t}` : `- ${t}`;
+    return { src: `backprop((${k}w + b ${off})^2, [w, b], [${w}, ${b}])`,
+      prompt: `A neuron computes $z = ${k}w + b$ and its loss is $(z ${off})^2$. Find the gradient $[\\partial L/\\partial w, \\partial L/\\partial b]$ at $w = ${w}$, $b = ${b}$.`,
+      hints: ["Forward: compute $z$, then $z - t$. Backward: the loss's derivative with respect to $z$ is $2(z - t)$.", `Multiply it by each local derivative: $${k}$ for $w$, $1$ for $b$.`], hideQuestion: true };
+  } },
   { id: "calculus.slope", area: "Calculus", title: "Slopes of tangent lines", make: (r) => {
     const p = randPoly(r, 3, 3, -5, 5), a = r.int(-3, 3);
     return { src: `subst(diff(${poly(p)}, x), x, ${a})`, prompt: `What is the slope of $y = ${polyTex(p)}$ at $x = ${a}$?`,

@@ -187,6 +187,12 @@
       "label": null
     },
     {
+      "src": "> [!note] Where this goes\n> A neural network is a chain of simple functions, and training one needs the derivative of its error with respect to every weight: the chain rule, many times over. [Backpropagation](#course=calculus&lesson=2&app=1), an optional notebook beside this lesson, works it through for one neuron and shows why doing it from the output backwards is what makes it cheap.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "> [!summary]\n> Follow a nudge: the inside stretches it by $g'(x)$, then the outside by $f'(g)$. The derivative of the inside comes out in front because the inside moves at its own rate. One chain is worth a lesson of its own: $e^{it}$, where the inside is multiplied by $i$. What does a point do whose velocity is its position times $i$?",
       "type": "markdown",
       "showWork": false,

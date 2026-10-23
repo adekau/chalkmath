@@ -845,6 +845,27 @@ def workTests : TestM Unit := do
     ((derivationExplanations stm mzd).getLast?.map (contains · "true only in rows that cannot happen") |>.getD false)
   let (st3, _) := sessionEval st3 "[x+x, 1]" ",\"showWork\":true"
   check "entrywise: one entry rewritten stays as it was" (derivationRules st3 "[x+x, 1]").toString "[simp.collect-like-terms, simp.identity]"
+  -- backprop: the forward pass, the backward pass and the check, a nested step per node, and the graph
+  let bp := "backprop((1/(1 + exp(-(w*x + b))) - y)^2, [w, b], [0.5, 0])"
+  let (stb, _) := sessionEval [] "let x = 2"
+  let (stb, _) := sessionEval stb "let y = 1"
+  let (stb, bpOut) := sessionEval stb bp ",\"showWork\":true"
+  check "backprop: the gradient of a neuron's squared error" bpOut "[-0.211508371137067, -0.105754185568533]"
+  check "backprop: forward, backward, checked" (derivationRules stb bp).toString "[ad.forward, ad.backward, ad.check]"
+  let bpSubs (k : Nat) : List String := (((stb.get "t").cells.lookup bp >>= fun c => c.derivation.steps[k]? >>= (·.sub)).map
+    fun d => d.steps.toList.map fun s => s.explanation).getD []
+  checkTrue "backprop: the forward pass computes each node from what it reads"
+    ((bpSubs 0).contains "$w \\cdot 2$ from the values it reads: $0.5 \\cdot 2 = 1$.") (toString (bpSubs 0))
+  checkTrue "backprop: the backward pass multiplies along the path"
+    ((bpSubs 1).getLast?.map (contains · "= (-0.1058) \\cdot 2 = -0.2115$") |>.getD false) (toString (bpSubs 1))
+  check "backprop: the inputs and every operation, once each" (toString (bpSubs 0).length) "10"
+  let (_, bpExact) := sessionEval [] "backprop((w*2 + b - 1)^2, [w, b], [1/2, 1])"
+  check "backprop: exact where diff's derivative is a rational number" bpExact "[4, 2]"
+  let bpRaw := rpc "engine.evaluate" "{\"sessionId\":\"bp\",\"cellId\":\"g\",\"source\":\"backprop(x^2*y, [x, y], [3, 2])\"}"
+  checkTrue "backprop: draws the computation graph" (contains bpRaw "\"kind\":\"calculus.graph\"" && contains bpRaw "\"grad\":\"12\"" && contains bpRaw "\"input\":true") bpRaw
+  let (stl, _) := sessionEval [] "let w = 7"
+  let (_, bpOwn) := sessionEval stl "backprop(w^2, [w], [3])"
+  check "backprop: a listed variable is its own, not the session's" bpOwn "[6]"
   let (_, exew) := handleS st3 "{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"engine.explain\",\"params\":{\"sessionId\":\"t\",\"cellId\":\"[1,2;3,4]*2\",\"path\":[2]}}"
   checkTrue "entrywise: explain an entry: created by the entrywise step" (contains exew "\"text\":\"6\"" && contains exew "{\"index\":1,\"relation\":\"created\"}") exew
   -- outline: the steps without their terms; engine.steps sends the derivation an eager reply would have

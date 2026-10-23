@@ -31,6 +31,7 @@ export type ReadResult = { ok: true; stmt: Stmt } | { ok: false; error: ReadErro
 export const BUILTIN_FUNCTIONS = ["sin", "cos", "tan", "sec", "csc", "cot", "arcsin", "arccos", "arctan", "sinh", "cosh", "tanh", "exp", "ln", "log", "sqrt", "abs", "conj", "re", "im", "arg",
   "diff", "simplify", "expand", "factor", "N", "det", "rref", "transpose", "solve", "subst", "integrate", "plot",
   "sign", "dot", "norm", "sum", "exptotrig", "epicycles", "dft", "manipulate", "column",
+  "backprop",
   "total", "mean", "variance", "stdev", "min", "max", "median"];
 
 /** `powerFunctions`: `sin^2(y)` is `sin(y)^2` for these, and `sin^-1(y)` is `sin(y)^-1`. */

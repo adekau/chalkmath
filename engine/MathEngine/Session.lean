@@ -1,4 +1,5 @@
 import MathEngine.Integrate
+import MathEngine.Backprop
 import MathEngine.Origin
 import MathEngine.Parser
 import MathEngine.Stlc
@@ -105,8 +106,17 @@ def evaluateCell (s : Session) (cellId source : String) :
     match s.resolveOuts stmt.value with
     | .error msg => (s, .error ("eval", msg, none))
     | .ok value =>
+    -- `backprop(f, [x, …], [a, …])`: the listed variables are its own, not the session's
+    let env := match value with
+      | .fn "backprop" [_, vs, _] => env.filter fun (x, _) => !(AD.listArg vs).any (equal · (.var x))
+      | _ => env
     let input := substitute env (substituteFns s.fns value)
-    match normCell input with
+    let result : Except String Expr × Array Step := match input with
+      | .fn "backprop" _ => match AD.evaluate input with
+        | .ok (_, output, d) => (.ok output, d.steps)
+        | .error msg => (.error msg, #[])
+      | _ => normCell input
+    match result with
     | (.error msg, _) => (s, .error ("eval", msg, none))
     | (.ok output, steps) =>
       let d : Derivation := ⟨input, steps, output⟩

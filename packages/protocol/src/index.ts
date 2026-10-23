@@ -161,6 +161,12 @@ export interface VisualSpec { kind: string; title?: string; data: unknown }
 /** `logic.truthtable` (a `truthtable(φ)` cell): the variables, the formula, and one row per
  *  assignment — the variables' values in order, then the formula's. */
 export interface TruthTableData { vars: string[]; formula: Rendered; rows: boolean[][] }
+/** `calculus.graph` (a `backprop(f, [x, …], [a, …])` cell): the computation graph of `f`, its nodes in an
+ *  order where each comes after the nodes it reads, each with what it does (`label`, LaTeX), its term,
+ *  its value at the point and its gradient `∂f/∂node` (as decimal text); the arrows `[from, to, local]`
+ *  from a node read to the node reading it, with the local derivative. */
+export interface GraphNode { label: string; text: string; latex: string; value: string; grad: string; input: boolean; output: boolean }
+export interface ComputationGraphData { nodes: GraphNode[]; edges: [number, number, string][] }
 /** `relation.digraph` (a relation cell): the elements, the pairs as arrows, and the arrows to mark —
  *  `bad`, those that show a property failing (a pair whose reverse is missing, two that chain without
  *  their composite, …), and `added`, those a closure added. */
@@ -194,6 +200,7 @@ export interface SpacetimeData {
 export type KnownVisual =
   | { kind: "order.hasse"; title?: string; data: HasseData }
   | { kind: "logic.truthtable"; title?: string; data: TruthTableData }
+  | { kind: "calculus.graph"; title?: string; data: ComputationGraphData }
   | { kind: "relation.digraph"; title?: string; data: DigraphData }
   | { kind: "algebra.optable"; title?: string; data: OpTableData }
   | { kind: "context.table"; title?: string; data: ContextTableData }
