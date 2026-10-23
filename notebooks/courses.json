@@ -75,12 +75,26 @@
         {
           "file": "04-quantifiers.chalk",
           "title": "Predicates and quantifiers",
-          "blurb": "∀ as a long ∧ and ∃ as a long ∨: counterexamples and witnesses, negation by De Morgan, the order of quantifiers, and quantifiers in Lean."
+          "blurb": "∀ as a long ∧ and ∃ as a long ∨: counterexamples and witnesses, negation by De Morgan, the order of quantifiers, and quantifiers in Lean.",
+          "apps": [
+            {
+              "file": "04a-sql-for-all.chalk",
+              "title": "“For every” in SQL",
+              "blurb": "SQL can say “there exists” and not “for every”: the double NOT EXISTS that De Morgan's law gives, checked on a small shop's tables, the query that answers another question, and the empty table."
+            }
+          ]
         },
         {
           "file": "05-induction.chalk",
           "title": "Induction on the natural numbers",
-          "blurb": "Why checking is not enough, and induction as a recipe that produces a proof for any n: dominoes, sums, and proofs in Lean."
+          "blurb": "Why checking is not enough, and induction as a recipe that produces a proof for any n: dominoes, sums, and proofs in Lean.",
+          "apps": [
+            {
+              "file": "05a-loop-invariants.chalk",
+              "title": "Loop invariants",
+              "blurb": "A loop proved correct the way induction proves a formula: a statement true before the loop and kept by every pass, then the same loop in Lean, its invariant proved by induction, and a running maximum."
+            }
+          ]
         },
         {
           "file": "06-strong-induction.chalk",

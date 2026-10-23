@@ -1,0 +1,237 @@
+{
+  "chalk": 1,
+  "name": "05a-loop-invariants.chalk",
+  "cells": [
+    {
+      "src": "Loop invariants",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Prove that a loop computes what it should, by a statement that is true when the loop starts and stays true after every pass: induction, on the number of passes.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "An application of lesson 5, outside the course's order: nothing later depends on it. Its Lean uses `sumTo` and `sumTo_formula` from the lesson.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "```ts\nfunction sumTo(n: number): number {\n  let i = n, total = 0;\n  while (i > 0) {\n    total = total + i;\n    i = i - 1;\n  }\n  return total;\n}\n```",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Running it for $n = 4$ adds $4$, then $3$, $2$ and $1$: `total` is 0, 4, 7, 9, 10. Testing a few $n$ is lesson 5's \"checking is not proving\" again. What stays the same from pass to pass? After each pass, what is already in `total`, plus what the loop will still add, $1 + 2 + \\cdots + i$, is the whole answer:\n$$\\mathit{total} + (1 + 2 + \\cdots + i) = 1 + 2 + \\cdots + n.$$\nAt the start $\\mathit{total} = 0$ and $i = n$, so it holds. When the loop stops, $i = 0$, nothing is left to add, and it says $\\mathit{total} = 1 + 2 + \\cdots + n$: the answer.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Does a pass keep it? A pass turns `total` into $\\mathit{total} + i$ and $i$ into $i - 1$. With $1 + \\cdots + i = \\frac{i(i+1)}{2}$, the left side after a pass minus the left side before is zero:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "expand((t + i) + (i - 1)i/2 - (t + i(i + 1)/2))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Loop invariant\n> A **loop invariant** is a statement about the loop's variables that\n> 1. holds when the loop starts;\n> 2. is kept by every pass: if it holds before a pass (and the loop's condition does, since the pass runs), it holds after;\n> 3. when the condition fails and the loop stops, says what the function promises.\n>\n> The first two are induction on the number of passes, a base case and a step, so the invariant holds after any number of them. The third uses it at the end.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> \"`total` is the sum so far\" is true but not enough: it never mentions $n$, so when the loop stops it says nothing about the answer. A good invariant ties what is done to what is left.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The loop in Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Lean has no `while`. A loop is a function that calls itself with the variables' new values, `i` first: `sumLoop (i + 1) total` is one pass, then the rest of the loop from `i` and `total + (i + 1)`.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "def sumLoop : Nat → Nat → Nat\n  | 0, total => total\n  | i + 1, total => sumLoop i (total + (i + 1))\n\n#eval sumLoop 4 0\n#eval (List.range 8).map (fun n => sumLoop n 0)",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The invariant, with lesson 5's `sumTo` for $1 + \\cdots + i$: what the loop returns from here is what it has, plus what is left.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem sumLoop_inv (i total : Nat) : sumLoop i total = total + sumTo i := by\n  induction i generalizing total with\n  | zero => rfl\n  | succ k ih =>\n    simp only [sumLoop, sumTo, ih]\n    omega",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A pass changes `total` as well as `i`: `sumLoop (k + 1) total` is `sumLoop k (total + (k + 1))`. So the step needs the induction hypothesis at a *different* total, and `induction i generalizing total` gives it for every total: `ih : ∀ total, sumLoop k total = total + sumTo k`. In the TypeScript, it is the invariant being about whatever `total` holds at that pass.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> Without `generalizing total`, the hypothesis is about the starting total only, and the step is stuck:\n\n```\ntheorem sumLoop_inv (i total : Nat) : sumLoop i total = total + sumTo i := by\n  induction i with\n  | zero => rfl\n  | succ k ih =>\n    simp only [sumLoop, sumTo]\n    omega\n-- ih : sumLoop k total = total + sumTo k\n-- ⊢ sumLoop k (total + (k + 1)) = total + (sumTo k + (k + 1))\n-- error: omega could not prove the goal\n```\n\nThe goal is about `sumLoop k (total + (k + 1))`, and `ih` only about `sumLoop k total`.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The function's promise is the invariant at the start, `total = 0`:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem sumLoop_correct (n : Nat) : 2 * sumLoop n 0 = n * (n + 1) := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that the loop, started at `0`, adds $1 + \\cdots + n$: twice it is $n(n+1)$.",
+      "leanSolution": "  rw [sumLoop_inv, Nat.zero_add]\n  exact sumTo_formula n",
+      "hints": [
+        "`rw [sumLoop_inv]` turns `sumLoop n 0` into `0 + sumTo n`, and `Nat.zero_add` drops the `0 +`.",
+        "What is left is lesson 5's `sumTo_formula n`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A running maximum",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "```ts\nfunction maxOf(xs: number[]): number {\n  let best = 0;\n  for (const x of xs) {\n    best = Math.max(best, x);\n  }\n  return best;\n}\n```\n\nThe invariant: `best` is at least every element seen so far. In Lean the loop walks down the list, and its invariant is two statements about what it returns from any `best`: at least `best`, and at least every element left.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "def maxLoop : List Nat → Nat → Nat\n  | [], best => best\n  | x :: xs, best => maxLoop xs (max best x)\n\n#eval maxLoop [3, 9, 2, 7] 0",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem best_le (xs : List Nat) (best : Nat) : best ≤ maxLoop xs best := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that the loop never returns less than the `best` it starts with.",
+      "leanSolution": "  induction xs generalizing best with\n  | nil => exact Nat.le_refl best\n  | cons x xs ih =>\n    have h := ih (max best x)\n    simp only [maxLoop]\n    omega",
+      "leanStart": "  induction xs generalizing best with\n  | nil => sorry\n  | cons x xs ih => sorry",
+      "hints": [
+        "Induction on the list, generalizing `best`, since a pass changes it: `induction xs generalizing best with`, cases `nil` and `cons x xs ih`.",
+        "For `nil`, `maxLoop [] best` is `best`: `exact Nat.le_refl best`.",
+        "For `cons`, `ih (max best x)` says `max best x ≤ maxLoop xs (max best x)`. Name it with `have h := …`, unfold one pass with `simp only [maxLoop]`, and `omega`, which knows `max`, finishes."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The second half follows, and uses the first for the element just passed:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem elem_le (xs : List Nat) (best : Nat) : ∀ y ∈ xs, y ≤ maxLoop xs best := by\n  induction xs generalizing best with\n  | nil => intro y hy; cases hy\n  | cons x xs ih =>\n    intro y hy\n    simp only [maxLoop]\n    cases hy with\n    | head => have h := best_le xs (max best x); omega\n    | tail _ hy => exact ih (max best x) y hy",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!note] What the invariant does not say\n> These two prove that `maxLoop xs 0` is at least every element, not that it is one of them: for the empty list it returns 0, which is in no list. A promise needs an invariant that mentions it. \"The answer is an element\" would need a second one: `best` is the start or one of the elements passed.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "expand((t + (2i - 1)) + (i - 1)^2 - (t + i^2))",
+      "type": "exercise",
+      "prompt": "A loop adds the first $n$ odd numbers: `while (i > 0) { total = total + (2*i - 1); i = i - 1; }`, from `total = 0`, `i = n`. Its invariant is $\\mathit{total} + i^2 = n^2$. Simplify the invariant's left side after a pass minus before it, $(\\mathit{total} + (2i - 1)) + (i - 1)^2 - (\\mathit{total} + i^2)$, with `t` for `total`. The pass keeps the invariant when it is 0.",
+      "hints": [
+        "Expand $(i - 1)^2 = i^2 - 2i + 1$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In the next exercise you write the loop too, and the theorem, its invariant, is the specification.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem powLoop_inv (k acc : Nat) : powLoop k acc = acc * 2 ^ k := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Define `powLoop k acc`, a loop that doubles `acc`, `k` times, without `^`; then prove its invariant: it returns `acc` times $2^k$.",
+      "leanSolution": "  induction k generalizing acc with\n  | zero => simp [powLoop]\n  | succ k ih =>\n    simp only [powLoop, ih, Nat.pow_succ]\n    grind",
+      "leanStart": "  induction k generalizing acc with\n  | zero => sorry\n  | succ k ih => sorry",
+      "hints": [
+        "The loop: with 0 passes left it returns `acc`; with `k + 1`, it runs the rest from `acc * 2`: `powLoop (k + 1) acc = powLoop k (acc * 2)`.",
+        "A pass changes `acc`, so the induction generalizes it: `induction k generalizing acc with`.",
+        "`zero`: `simp [powLoop]`. `succ`: `simp only [powLoop, ih, Nat.pow_succ]` leaves `acc * 2 * 2 ^ k = acc * (2 ^ k * 2)`, and `grind` finishes."
+      ],
+      "leanDef": "def powLoop : Nat → Nat → Nat\n  | 0, acc => sorry\n  | k + 1, acc => sorry",
+      "leanDefSolution": "def powLoop : Nat → Nat → Nat\n  | 0, acc => acc\n  | k + 1, acc => powLoop k (acc * 2)",
+      "leanForbid": [
+        "^",
+        "pow",
+        "Nat.pow",
+        "HPow",
+        "<<<",
+        "shiftLeft"
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem powLoop_correct (k : Nat) : powLoop k 1 = 2 ^ k := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that started from 1, the loop computes $2^k$.",
+      "leanSolution": "  rw [powLoop_inv, Nat.one_mul]",
+      "hints": [
+        "The invariant at `acc = 1`: `rw [powLoop_inv]`, then `Nat.one_mul` drops the `1 *`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> A loop invariant is a statement true before the loop and kept by every pass, so by induction it holds when the loop stops; it should tie what is done to what is left, so that at the end it says the answer. In Lean a loop is a function that calls itself with its new values, and its invariant is proved by induction generalizing every variable a pass changes.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

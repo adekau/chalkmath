@@ -249,6 +249,12 @@
       "label": null
     },
     {
+      "src": "> [!note] Application: loop invariants\n> A loop is proved correct the same way, by a statement that holds before it and is kept by every pass. [Loop invariants](#course=logic&lesson=5&app=1), an optional notebook beside this lesson, proves a summing loop and a running maximum, in Lean.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "The step here only ever used the case just before. To show 12 has a prime factor, 11 is no help; 12's factors 2, 3, 4 and 6 are. The next lesson lets the step use any smaller case.",
       "type": "markdown",
       "showWork": false,

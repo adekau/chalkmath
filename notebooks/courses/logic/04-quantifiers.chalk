@@ -271,6 +271,12 @@
       "label": null
     },
     {
+      "src": "> [!note] Application: “for every” in SQL\n> A database query has no word for \"every\", only `EXISTS` and `NOT`. [“For every” in SQL](#course=logic&lesson=4&app=1), an optional notebook beside this lesson, builds it with this lesson's law for negating a quantifier, and tests a query that asks the wrong question.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "Euler's polynomial passed 39 checks and still failed. How can a finite argument cover every natural number? The next lesson's answer is induction.",
       "type": "markdown",
       "showWork": false,
