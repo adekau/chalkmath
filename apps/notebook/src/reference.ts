@@ -341,8 +341,26 @@ export const FUNCTIONS: FnDoc[] = [
       section("Scope", "diff(sin(x^2), x)", "diff(1/(x+1), x)", "diff(x^x, x)", "diff(2^x, x)", "diff(x*y, x)", "diff([x, x^2], x)"),
       section("Properties and relations", note("Differentiation undoes integration:"), "diff(integrate(x^3, x), x)"),
     ],
-    see: ["integrate", "sum", "plot"],
+    see: ["integrate", "sum", "plot", "backprop"],
     ref: "https://mathworld.wolfram.com/Derivative.html",
+  },
+  {
+    name: "backprop", area: "Calculus",
+    usage: [["backprop(f, [x, y, …], [a, b, …])", "gives the gradient of `f` at the point `x = a`, `y = b`, …: its partial derivatives there, as a row, by **backpropagation** (reverse-mode differentiation)."]],
+    details: [
+      "`f` is read as a **computation graph**: a node for each variable and each operation, pointing at the nodes it reads; a subterm written twice is one node, read twice. The work is the two passes over it, with the graph drawn beside the answer.",
+      "The **forward pass** gives each node its value, from the inputs up. The **backward pass** gives each node its gradient $\\partial f/\\partial n$, from the output down: the output's is $1$, and a node's is the sum, over the nodes that read it, of their gradient times the local derivative. That is the chain rule, with each product formed once and shared by every node below it, so all the partial derivatives cost about one pass.",
+      "The passes are in double precision and are not proved. The answer is **checked**: `diff` differentiates `f` by its rules, and its derivatives at the point must agree with the backward pass to within $10^{-9}$, or `backprop` refuses. Where `diff`'s derivative at the point is a rational number, that exact number is the answer.",
+      "Every other variable of `f` must have a value: listed, or bound with `let` (a listed variable is `backprop`'s own, whatever the session binds it to). The graph reads $+$, $\\cdot$, powers, `exp`, `ln`, `sin`, `cos`, `tan`, `sqrt` and `arctan`.",
+      "The answer is a row vector: `let g = backprop(…)` binds it, and `[a, b] - r*g` is a step of gradient descent with rate `r`.",
+    ],
+    examples: [
+      basic("backprop(x^2 * y, [x, y], [3, 2])", "backprop(sin(x*y), [x, y], [1, 2])"),
+      section("A neuron", note("A weight, a bias, a sigmoid, and the squared error against the target 1, for the input 2:"), "let x = 2", "backprop((1/(1 + exp(-(w*x + b))) - 1)^2, [w, b], [0.5, 0])"),
+      section("Properties and relations", note("The same numbers as `diff`, put in at the point:"), "subst(subst(diff(x^2 * y, x), x, 3), y, 2)"),
+    ],
+    see: ["diff", "subst", "N"],
+    ref: "https://en.wikipedia.org/wiki/Backpropagation",
   },
   {
     name: "integrate", area: "Calculus",

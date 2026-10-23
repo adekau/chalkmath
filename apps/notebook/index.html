@@ -585,6 +585,18 @@ svg .hnode.cur { r:8; stroke:var(--ink); stroke-width:1.5; }
 svg rect.hnode { fill:var(--paper-bg); stroke:var(--acc); stroke-width:1.3; }
 svg rect.hnode.trail { stroke-width:2; }
 svg rect.hnode.cur { fill:var(--p-acc-chip); stroke:var(--acc); stroke-width:2.5; }
+/* a computation graph (backprop): boxes over the arrows, the inputs on the left */
+.adgraph { position:relative; }
+.adgraph svg { position:absolute; left:0; top:0; max-width:none; }
+.adgraph .adedge { fill:none; stroke:var(--ink-mut); stroke-width:1.3; }
+.adgraph .adlocal { font:10px var(--mono, monospace); fill:var(--ink-mut); stroke:var(--paper-bg); stroke-width:3px; stroke-linejoin:round; paint-order:stroke; }
+.adgraph .adnode { position:absolute; box-sizing:border-box; border:1.3px solid var(--border); border-radius:7px; background:var(--paper-bg); padding:3px 6px; display:flex; flex-direction:column; justify-content:center; align-items:center; gap:1px; overflow:hidden; }
+.adgraph .adnode.input { border-color:var(--curve1); }
+.adgraph .adnode.output { border-color:var(--acc); border-width:2px; }
+.adgraph .adop { font-size:12px; line-height:1.2; white-space:nowrap; }
+.adgraph .advalue { font:11px var(--mono, monospace); color:var(--curve1); }
+.adgraph .adgrad { font:11px var(--mono, monospace); color:var(--acc); }
+.adwrap .adlegend { font-size:11px; color:var(--ink-mut); margin-top:6px; max-width:640px; }
 .visualbox svg.spacetime { max-width:none; }
 svg.spacetime .stline { stroke:var(--border); stroke-width:1.5; }
 svg.spacetime .stlane { fill:var(--ink); font:600 12px var(--mono, monospace); }

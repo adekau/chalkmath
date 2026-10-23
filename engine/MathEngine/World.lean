@@ -370,7 +370,7 @@ def mathWorld : World where
       let warnings := inputWarnings d.input ps
       let extras := #[("semantics", Json.str sem)]
       let extras := if warnings.isEmpty then extras else extras.push ("warnings", .arr (warnings.map .str).toArray)
-      { name, params := ps, value := out, derivation := d, extras })
+      { name, params := ps, value := out, derivation := d, extras, visuals := AD.visuals d.input })
   check := checkMath
   -- the value written, after `let name =`: `%` and the session's names stay as they were written
   read := fun s src =>

@@ -343,7 +343,14 @@
         {
           "file": "02-chain-rule.chalk",
           "title": "The chain rule",
-          "blurb": "Functions of functions: follow a nudge through the inner function and then the outer one, and see why the inner derivative comes out in front."
+          "blurb": "Functions of functions: follow a nudge through the inner function and then the outer one, and see why the inner derivative comes out in front.",
+          "apps": [
+            {
+              "file": "02a-backpropagation.chalk",
+              "title": "Backpropagation",
+              "blurb": "A neuron's error as a chain of functions: the forward pass as numbers, the backward pass as the chain rule link by link, backprop's computation graph checked against diff, why backwards is cheap, and one step of gradient descent."
+            }
+          ]
         },
         {
           "file": "03-circles.chalk",

@@ -23,6 +23,7 @@ const PRACTICE = {
   "diff(x^3 * cos(x), x)": "calculus.product", "diff(exp(x) * cos(x), x)": "calculus.product",
   "diff(cos(x^3), x)": "calculus.chain", "diff(exp(x^2), x)": "calculus.chain", "diff((x^2 + 1)^3, x)": "calculus.chain",
   "subst(diff(x^2, x), x, 3)": "calculus.slope",
+  "backprop((3w + b - 5)^2, [w, b], [1, 0])": "calculus.backprop",
   "integrate(4x^3, x)": "calculus.antiderivative", "integrate(cos(3x), x)": "calculus.antiderivative",
   "integrate(x, x, 0, 2)": "calculus.definite", "integrate(x^2, x, 1, 3)": "calculus.definite",
   "dot([1, 2, 3], [4, 5, 6])": "linear-algebra.dot", "[2, -1; 1, 1]*[3; -1]": "linear-algebra.matvec",
@@ -4502,7 +4503,7 @@ theorem normalize_sound : ∀ (ops : List Op) (s : Option Nat), run s (normalize
 // ---------------------------------------------------------------------------------------------------
 course("calculus", "Calculus: derivatives and integrals",
   "The slope at a point, found by zooming in; the power, product and chain rules read off pictures; the circle behind cos, sin and e^(it), and the hyperbola behind cosh and sinh; tangent lines and bending; then antiderivatives the engine checks by differentiating, and area as slope run backwards.",
-  "Calculus I–II", (add) => {
+  "Calculus I–II", (add, app) => {
 
   add("01-rules.chalk", "The rules of differentiation", "The slope at a point, as what secants settle on; the power rule from a growing square, the product rule from a growing rectangle.", ({ sec, md, m, ex, sc }) => {
     sec("The rules of differentiation");
@@ -4713,8 +4714,109 @@ M2 = segment(a^2 + i, sin(a^2)) dashed color 6
       r`The right side's derivative is $1$.`,
     ]);
     md(r`
+> [!note] Where this goes
+> A neural network is a chain of simple functions, and training one needs the derivative of its error with respect to every weight: the chain rule, many times over. [Backpropagation](#course=calculus&lesson=2&app=1), an optional notebook beside this lesson, works it through for one neuron and shows why doing it from the output backwards is what makes it cheap.
+`);
+    md(r`
 > [!summary]
 > Follow a nudge: the inside stretches it by $g'(x)$, then the outside by $f'(g)$. The derivative of the inside comes out in front because the inside moves at its own rate. One chain is worth a lesson of its own: $e^{it}$, where the inside is multiplied by $i$. What does a point do whose velocity is its position times $i$?
+`);
+  });
+  app("02a-backpropagation.chalk", "Backpropagation", "A neuron's error as a chain of functions: the forward pass as numbers, the backward pass as the chain rule link by link, backprop's computation graph checked against diff, why backwards is cheap, and one step of gradient descent.", ({ sec, md, m, ex }) => {
+    sec("Backpropagation");
+    md(r`
+> [!goal]
+> Find how a neuron's error changes with each of its weights, by the chain rule applied link by link, and see why doing it from the output backwards gives every weight's derivative for the price of one pass.
+`);
+    md(r`An application of lesson 2, outside the course's order: nothing later depends on it. It uses partial derivatives, which are ordinary derivatives with the other variables held fixed: ‹diff(x*y, x)› is ‹y›.`);
+    sec("One neuron");
+    md(r`
+> [!definition] A neuron
+> A **neuron** takes an input $x$, multiplies it by a **weight** $w$, adds a **bias** $b$, and passes the result through an **activation**, here the **sigmoid** $\sigma(z) = \dfrac{1}{1 + e^{-z}}$, a smooth step from $0$ to $1$. Its output is $a = \sigma(wx + b)$.
+`);
+    m("plot(1/(1 + exp(-u)), u, -6, 6)");
+    md(r`**Training** chooses $w$ and $b$ so that, for an input $x$, the output is close to the answer we want, the **target** $y$. How far off it is, is measured by the **loss** $L = (a - y)^2$: zero when the output is right, larger the further off it is. One training example: the input $2$, the target $1$.`);
+    m("let x = 2");
+    m("let y = 1");
+    m("let L = (1/(1 + exp(-(w*x + b))) - y)^2");
+    md(r`The **forward pass** computes the loss the way the neuron does, a piece at a time. Start from $w = 0.5$ and $b = 0$:`);
+    m("let z1 = 0.5*x + 0");
+    m("let a1 = N(1/(1 + exp(-z1)))");
+    m("N((a1 - y)^2)");
+    md(r`The output is $0.731$ where it should be $1$, and the loss is $0.0723$. To lower it, nudge $w$ and $b$ the way that makes $L$ smaller: that needs the slope of $L$ in each direction, the **partial derivatives** $\partial L / \partial w$ and $\partial L / \partial b$. Together they are the **gradient**.`);
+    sec("The chain rule, link by link");
+    md(r`The loss is a chain: $w$ makes $z = wx + b$, $z$ makes $a = \sigma(z)$, and $a$ makes $L = (a - y)^2$. By the chain rule, a nudge to $w$ is stretched by each link in turn:
+$$\frac{\partial L}{\partial w} = \frac{\partial L}{\partial a} \cdot \frac{\partial a}{\partial z} \cdot \frac{\partial z}{\partial w}.$$
+Each link on its own is easy. The loss, as a function of the output $u$, is $2(u - y)$ (here with $y = 1$ put in):`);
+    m("diff((u - y)^2, u)");
+    md(r`The sigmoid, which comes out as $\sigma(u)\,(1 - \sigma(u))$ once you look twice (try it: $\sigma = \frac{1}{1 + e^{-u}}$ and $1 - \sigma = \frac{e^{-u}}{1 + e^{-u}}$):`);
+    m("diff(1/(1 + exp(-u)), u)");
+    md(r`And $z = wx + b$, whose derivative is $x$ with respect to $w$ (here $2$, since ‹x› is bound to $2$) and $1$ with respect to $b$:`);
+    m("diff(w*x + b, w)");
+    md(r`
+Now at the point. With $a = 0.7311$:
+
+- $\partial L / \partial a = 2(a - y) = 2(0.7311 - 1) = -0.5379$;
+- $\partial a / \partial z = a(1 - a) = 0.7311 \cdot 0.2689 = 0.1966$;
+- so $\partial L / \partial z = -0.5379 \cdot 0.1966 = -0.1058$;
+- and $\partial L / \partial w = -0.1058 \cdot x = -0.2115$, while $\partial L / \partial b = -0.1058 \cdot 1 = -0.1058$.
+`);
+    m("N(2*(a1 - y) * a1*(1 - a1) * x)");
+    md(r`The same number as differentiating the whole loss at once and putting the point in:`);
+    m("N(subst(subst(diff(L, w), w, 0.5), b, 0))");
+    md(r`
+> [!try]
+> Before reading on: which factor did $\partial L / \partial w$ and $\partial L / \partial b$ have in common? How much of the work for one could the other reuse?
+`);
+    sec("The computation graph");
+    md(r`
+> [!definition] Backpropagation
+> Draw the loss as a **computation graph**: a node for each input and each operation, with an arrow from each node to the ones that read it. **Backpropagation** makes two passes over it. The **forward pass** gives every node its value, from the inputs up. The **backward pass** gives every node its **gradient**, how much the loss changes per unit change of that node: the loss's own is $1$, and a node's is the gradient of the node that reads it times the local derivative on the arrow (summed, if several nodes read it).
+`);
+    md(r`‹backprop(f, [w, b], [0.5, 0])› does both passes at the point $w = 0.5$, $b = 0$, and draws the graph: each box shows its value (=) and its gradient (∂), each arrow its local derivative. Open the work to see each node computed, forwards and then backwards. The last step checks the answer against ‹diff›.`);
+    m("backprop(L, [w, b], [0.5, 0])", { work: true });
+    md(r`The node $w \cdot 2 + b$ is $z$. Its gradient, $-0.1058$, is computed once, in the backward pass, and then used twice: times $2$ for $w$, and times $1$ for $b$. That shared factor is the answer to the question above.`);
+    sec("Why backwards");
+    md(r`
+Lesson 2 followed a nudge *forwards*, from $x$ to the output. Done that way, every weight needs its own pass: nudge $w$ and follow it to the loss, then nudge $b$ and follow that. With $n$ weights, that is $n$ passes through the network.
+
+Going *backwards*, one pass from the loss gives the gradient of every node at once, because a node's gradient depends only on the nodes above it, each computed once and then shared by everything below. Every weight's derivative costs about as much as one more evaluation of the network. A network with a million weights needs one backward pass, not a million forward ones; that is why neural networks can be trained at all.
+`);
+    md(r`Two neurons in a row: a hidden neuron $h = \sigma(w x)$ feeds an output $v h$. Both gradients come out of the one backward pass, and both pass through the node $v h - y$:`);
+    m("backprop((v/(1 + exp(-(w*x))) - y)^2, [w, v], [1, 0.5])", { work: true });
+    md(r`
+> [!mistake]
+> Backpropagation is not an approximation of the derivative. It is the chain rule, exactly, done in a good order. The only rounding is the computer's arithmetic, which the check against ‹diff› bounds.
+`);
+    sec("One step downhill");
+    md(r`
+> [!definition] Gradient descent
+> The gradient points the way the loss increases fastest, so step the other way: $(w, b) \leftarrow (w, b) - r \cdot \nabla L$, for a small **learning rate** $r$.
+`);
+    md(r`Bind the gradient, step with $r = 2$, and evaluate the loss at the new weights:`);
+    m("let g = backprop(L, [w, b], [0.5, 0])");
+    m("let p = [0.5, 0] - 2*g");
+    m("N(subst(subst(L, w, p[[1]]), b, p[[2]]))");
+    md(r`The loss fell from $0.0723$ to $0.0128$. Training repeats this step over many examples, many times; each step needs the gradient, and backpropagation is how it is found.`);
+    sec("Exercises");
+    md(r`A neuron without the sigmoid, $z = 3w + b$, for the input $3$ and the target $5$, has loss $(3w + b - 5)^2$. Answer a gradient as a row, ‹[∂L/∂w, ∂L/∂b]›.`);
+    ex("diff((3w + b - 5)^2, w)", r`Differentiate the loss $(3w + b - 5)^2$ with respect to $w$, holding $b$ fixed.`, [
+      r`The outer function is $u^2$, the inner $u = 3w + b - 5$, whose derivative with respect to $w$ is $3$.`,
+    ]);
+    ex("backprop((3w + b - 5)^2, [w, b], [1, 0])", r`Find the gradient of $(3w + b - 5)^2$ at $w = 1$, $b = 0$, as ‹[∂L/∂w, ∂L/∂b]›.`, [
+      r`Forward: $z = 3$, so $z - 5 = -2$. Backward: the loss's derivative with respect to $z$ is $2(z - 5) = -4$.`,
+      r`Then multiply by each local derivative: $3$ for $w$, $1$ for $b$.`,
+    ], { hide: true });
+    ex("[1, 0] - 0.1*[-12, -4]", r`The gradient at $w = 1$, $b = 0$ is $[-12, -4]$. Take one step of gradient descent with learning rate $0.1$: what are the new $[w, b]$?`, [
+      r`Subtract $0.1$ times the gradient: $1 - 0.1 \cdot (-12)$ for $w$.`,
+    ], { hide: true });
+    ex("diff(1/(1 + exp(-u)), u)", r`Differentiate the sigmoid $\dfrac{1}{1 + e^{-u}}$. Write it with ‹exp›.`, [
+      r`It is $(1 + e^{-u})^{-1}$: the outer function is $t^{-1}$, the inner $1 + e^{-u}$.`,
+      r`The inner derivative is $-e^{-u}$, and $(t^{-1})' = -t^{-2}$.`,
+    ]);
+    md(r`
+> [!summary]
+> A network's loss is a chain of simple functions, so its derivative with respect to a weight is a product of local derivatives, one per link. Backpropagation computes every node's value going forwards and every node's gradient going backwards, sharing each product with everything below it, so all the weights' derivatives cost about one pass. Gradient descent then steps the weights against the gradient.
 `);
   });
   add("03-circles.chalk", "Circles, exponentials and rotation", "Why e^(it) walks round the unit circle: cosine and sine as shadows, multiplying by i as a quarter turn, Euler's formula, angles that add, and arctan as an angle.", ({ sec, md, m, ex, sc }) => {
