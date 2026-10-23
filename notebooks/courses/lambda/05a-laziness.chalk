@@ -1,0 +1,297 @@
+{
+  "chalk": 1,
+  "name": "05a-laziness.chalk",
+  "cells": [
+    {
+      "src": "Laziness in real languages",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Find lesson 5's strategies in languages you may use: call by value in JavaScript, the few places where it calls by name, thunks that delay an argument by hand, and Haskell's call by need.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "An application of lesson 5, outside the course's order: nothing later depends on it. It uses lesson 5's strategies (`cbv:`, `cbn:`, `normal:`, `applicative:`) and, in its last section, the Lean of lessons 1 to 5. The code is JavaScript and Haskell; you need only read it.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Arguments first",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "JavaScript, Python, Java, C and most other languages call by value: in `f(g(x))`, `g(x)` is computed before `f` starts. So a function that ignores an argument still waits for it:\n\n```js\nconst K = (x) => (y) => x;        // λx. λy. x\nfunction spin() { return spin(); } // never returns: Ω\n\nK(1)(spin());                      // never returns: spin() runs before K sees it\n```\n\nThis is lesson 5's $K\\ I\\ \\Omega$. Call by value goes round $\\Omega$ for as many steps as you give it; call by name never looks at it:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "cbv 6: K I (omega omega)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "cbn: K I (omega omega)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Where a strict language calls by name",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Every call-by-value language still has a few constructs that do *not* evaluate everything first: `&&`, `||`, `? :` and `if`. Their right-hand side, or their other branch, is evaluated only when it is needed:\n\n```js\nuser !== null && user.isAdmin        // fine when user is null: the right side is never evaluated\nconst and = (a, b) => (a ? b : false);\nand(user !== null, user.isAdmin)     // a TypeError when user is null: both arguments come first\n```\n\nThat is why `&&` cannot be written as an ordinary function in JavaScript. Lesson 7's `and` is an ordinary function, and shows the same thing: by value, the argument nobody needs runs first, and never finishes; by name, the answer comes at once.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "cbv 6: and false (omega omega)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "cbn: and false (omega omega)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "The same goes for `if`: as a function, it evaluates both branches before choosing one.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "cbv 6: if true a (omega omega)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "cbn: if true a (omega omega)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Thunks: call by name by hand",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Thunk\n> A **thunk** is an argument wrapped in a function of nothing: `() => spin()` in JavaScript, $\\lambda d.\\, \\Omega$ here (the $d$ is never used). A λ is already a value, so call by value passes it on untouched; the code that wants the argument calls the thunk, and only then is it evaluated.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Wrapped in a thunk, $\\Omega$ no longer stops call by value:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "cbv: K I (λd. omega omega)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "A lazy `if` takes its branches as thunks and calls only the one it chooses. Here the chosen branch is forced by applying it to $I$, any argument would do:\n\n```js\nconst lazyIf = (b, t, e) => (b ? t : e)();\nlazyIf(true, () => \"a\", () => spin());   // \"a\": the other thunk is never called\n```",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "cbv: if true (λd. a) (λd. omega omega) I",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "Thunks are everywhere once you look: a logger that takes `() => describe(state)` so that the description is built only when the message is printed, a default value computed only if it is missing, and lesson 8's $Z$, which is $Y$ with the self-application put inside a λ so that call by value does not unfold it forever.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Call by need: sharing",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Call by name never evaluates an argument nobody uses, but it evaluates one that is used three times three times. Call by value is the other way round. Count the β-steps of each strategy's work on an argument used three times:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "normal: (λx. f x x x) ((λy. y) ((λy. y) v))",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "applicative: (λx. f x x x) ((λy. y) ((λy. y) v))",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "Seven steps by name (the argument's two steps, once per copy, and the call), three by value. Now an argument nobody uses:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "normal: (λx. f) ((λy. y) ((λy. y) v))",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "applicative: (λx. f) ((λy. y) ((λy. y) v))",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "One step by name, three by value. Neither is best in both.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Call by need\n> **Call by need** passes the argument unevaluated, like call by name, and evaluates it the first time it is used; then it *remembers* the value, so that every other use gets it at no cost. An argument is evaluated at most once, and never if it is unused: three steps in the first example, one in the second. Haskell calls by need.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "```haskell\nsquare x = x * x\nsquare (expensive 10)    -- expensive 10 is computed once, when * first needs x\nconst 1 (expensive 10)   -- never computed\ntake 3 (repeat 7)        -- [7,7,7]: an infinite list, of which only three cells are ever built\n```\n\nIn JavaScript, call by need is a thunk that remembers:\n\n```js\nfunction lazy(f) {\n  let done = false, value;\n  return () => { if (!done) { value = f(); done = true; } return value; };\n}\nconst x = lazy(() => expensive(10));\nx() * x();               // expensive runs once\n```",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> The strategies in this course copy terms when they substitute, so none of them shares: sharing needs a place where the value is kept, and a λ-term has none. Implementations of Haskell reduce *graphs* instead, in which the three copies of $x$ are three pointers to one node, and evaluating that node once updates it for all three.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Lean evaluates by value too. Its `&&`, `||` and `if` are the short-circuiting exceptions, and an ordinary function can take a thunk, of type `Unit → Bool`, to get the same behaviour. Lean must know that a function stops before it lets you use it in a proof; `partial` gives a function it cannot check, such as one that never stops, and promises nothing about it. It is never run below.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- \"and\" with its second argument as a thunk: forced only when the first is true. -/\ndef andLazy (a : Bool) (b : Unit → Bool) : Bool :=\n  match a with\n  | false => false\n  | true => b ()\n\n/-- A function that never returns: Ω in Lean. -/\npartial def spin (u : Unit) : Bool := spin u\n\n#eval andLazy false (fun _ => spin ())   -- false: the thunk is never forced\n\ntheorem andLazy_false (b : Unit → Bool) : andLazy false b = false := rfl\n\n/-- Lesson 5's interpreter: by value, K I applied to a thunk of Ω finishes. -/\ndef KIthunk : Term := app (app K I) (lam \"d\" (app ω ω))\n#eval (run cbvStep 10 KIthunk).pretty",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`Thunk` is Lean's built-in remembering thunk: the first `get` computes the value, and later ones return it.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "def bigSum : Thunk Nat := Thunk.mk fun _ => (List.range 1001).foldl (· + ·) 0\n\n#eval bigSum.get + bigSum.get   -- the sum is computed once",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem orLazy_spec (b : Unit → Bool) : orLazy true b = true ∧ orLazy false b = b () := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Define `orLazy`, an \"or\" whose second argument is a thunk: when the first is `true`, the answer is `true` without forcing the thunk. The check below it fails until your definition is written.",
+      "leanSolution": "  constructor <;> rfl",
+      "leanStart": "  constructor <;> rfl",
+      "hints": [
+        "Match on `a`, as `andLazy` does: `true` gives `true`, `false` gives whatever the thunk gives, `b ()`.",
+        "With that definition both sides of each equation compute to the same thing: `constructor` splits the ∧, and `rfl` closes each half."
+      ],
+      "leanDef": "def orLazy (a : Bool) (b : Unit → Bool) : Bool := sorry",
+      "leanDefSolution": "def orLazy (a : Bool) (b : Unit → Bool) : Bool :=\n  match a with\n  | true => true\n  | false => b ()",
+      "leanForbid": [
+        "||",
+        "or"
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem andLazy_true (b : Unit → Bool) : andLazy true b = b () := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that `andLazy true b` is whatever the thunk gives.",
+      "leanSolution": "  rfl",
+      "hints": [
+        "Unfold `andLazy` on `true`: it is `b ()`, by definition."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Write the term the strategy stops at; it is compared up to bound names, not reduced further.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "cbv: K a (λd. omega omega)",
+      "type": "exercise",
+      "prompt": "Call by value, with $\\Omega$ in a thunk: reduce $K\\ a\\ (\\lambda d.\\, \\Omega)$ by value.",
+      "hints": [
+        "$\\lambda d.\\, \\Omega$ is a λ, so it is a value already: the call can go ahead."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "cbn: or true (omega omega)",
+      "type": "exercise",
+      "prompt": "Reduce $\\mathsf{or}\\ \\mathsf{true}\\ \\Omega$ by name. Does $\\Omega$ run?",
+      "hints": [
+        "$\\mathsf{or}\\ p\\ q$ is $p\\ p\\ q$: with $p$ true, it keeps the first of $p$ and $q$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "cbv: if false (λd. omega omega) (λd. b) I",
+      "type": "exercise",
+      "prompt": "A lazy `if` by value: reduce $\\mathsf{if}\\ \\mathsf{false}\\ (\\lambda d.\\, \\Omega)\\ (\\lambda d.\\, b)\\ I$.",
+      "hints": [
+        "$\\mathsf{if}$ chooses the second thunk without calling either; applying the chosen one to $I$ calls it."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Most languages call by value, with `&&`, `||`, `? :` and `if` as the places where they call by name. A thunk, an argument wrapped in a function of nothing, is call by name by hand: a λ is a value, so it waits. Call by need is call by name that remembers: an argument evaluated at most once, and never if unused. Haskell calls by need, sharing values in a graph that a λ-term cannot express.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

@@ -215,6 +215,12 @@
       "label": null
     },
     {
+      "src": "> [!note] Application: laziness in real languages\n> JavaScript calls by value, except in `&&`, `||` and `if`; Haskell calls by need. [Laziness in real languages](#course=lambda&lesson=5&app=1), an optional notebook beside this lesson, finds these strategies in real code, with thunks and sharing.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "> [!summary]\n> A strategy answers \"which redex first?\". Normal order finds every normal form there is. Call by name and call by value stop at functions; call by value evaluates arguments first, once, and can loop on an argument nobody needs.\n\nEvery strategy here renames bound variables to substitute, and lesson 2 had to compare terms up to renaming. Names are a nuisance: can we do without them? Lesson 6.",
       "type": "markdown",
       "showWork": false,
