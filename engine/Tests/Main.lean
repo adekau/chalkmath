@@ -1224,6 +1224,15 @@ def worldTests : TestM Unit := do
   checkTrue "worlds: a function cannot take a wire value's name" (contains r5 "a function cannot be called that") r5
   let (_, r6) := ev [] "h" "let reach = 3"
   checkTrue "worlds: a value may take a command's name" (contains r6 "\"bound\":[\"reach\"]") r6
+  -- a λ-name the session defined shadows another world's command of that name (`map` is the order world's)
+  let (stl, _) := ev [] "i" "map := λf x. f (f x)"
+  let (stl, r7) := ev stl "j" "map (add 1) 0"
+  checkTrue "worlds: a session's λ-name shadows an order command" (contains r7 "\"kind\":\"lambda\"" && contains r7 "\"text\":\"λf. λx. f (f x)\"") r7
+  let (stl, _) := ev stl "k" "let D = divisors(4)"
+  let (_, r8) := ev stl "l" "let g = map(D; 1->2, 2->4, 4->4)"
+  checkTrue "worlds: the command, written as one, is not shadowed" (contains r8 "\"kind\":\"poset\"") r8
+  let (_, r9) := ev [] "m" "map (add 1) 0"
+  checkTrue "worlds: with no λ-name, the command is the order world's" (contains r9 "\"ok\":false") r9
 
 /-- `engine.read`: the source as written, in its world, with paths; nothing evaluated, the session
 untouched. -/

@@ -467,6 +467,8 @@ S + 1	S + 1
 id + 1	id + 1
 K * 2	2*K
 fst (pair a b)	a
+map := λf x. f (f x)	λf. λx. f (f x)
+map (add 1) 0	λf. λx. f (f x)
 N(exp(i*pi/4))	0.707106781186548 + 0.707106781186548*i
 N(1/(1+i))	0.5 - 0.5*i
 N(sqrt(-4))	2*i

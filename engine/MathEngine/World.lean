@@ -14,7 +14,8 @@ one reply builder turns what any of them produced into the wire's JSON.
 
 A record says what the world is called, which cell sources are its (`claims`, in the order of
 `worlds`; `precedes` lets a world take a source before the others look, as a λ-command does when it
-holds a connective), what it binds (`binds`, `holds`), how it evaluates a cell and checks an
+holds a connective, and a λ-term headed by one of the session's own λ-definitions does when that name
+is also another world's command), what it binds (`binds`, `holds`), how it evaluates a cell and checks an
 exercise, and its lexicon — the command names, keywords and glyphs its grammar reads — which
 `engine.capabilities` publishes so the notebook and the visual editor need no copy of their own.
 
@@ -63,7 +64,7 @@ structure World where
   its head (`forall`). The notebook labels a cell by these before the engine has read it. -/
   markers : List String := []
   /-- This source is the world's before any other is asked. -/
-  precedes : String → Bool := fun _ => false
+  precedes : Session → String → Bool := fun _ _ => false
   /-- This source is the world's. -/
   claims : Session → String → Bool
   /-- The name a source would bind, by its syntax (`let n =`, a λ-cell's `n :=`). -/
@@ -181,8 +182,11 @@ def lambdaWorld : World where
   names := Lam.churchDefs.map (·.1)
   glyphs := ["λ", "\\", ".", ":=", "->", "→", "⊢", "|-", ":"]
   markers := ["λ", "\\", ":="]
-  -- a λ-command (`type: f : A → B ⊢ f`) may hold a connective or a call; it is the λ-world's first
-  precedes := fun src => (Lam.commandHead src).isSome
+  -- a λ-command (`type: f : A → B ⊢ f`) may hold a connective or a call; it is the λ-world's first.
+  -- So is a λ-term headed by a name the session defined: a user's `map` shadows the order world's
+  -- `map(…)`, so `map (add 1) l` applies it (the Church library has no command's name to shadow)
+  precedes := fun s src => (Lam.commandHead src).isSome ||
+    (s.lambdas.any (·.1 == Lam.headWord src) && isLambdaCell s src)
   claims := isLambdaCell
   binds := lambdaBinds
   holds := fun s n => s.lambdas.any (·.1 == n)
@@ -387,7 +391,7 @@ def worlds : List World := [systemWorld, orderWorld, logicWorld, lambdaWorld, ma
 /-- The world a source belongs to: the one that takes it before the others, else the first that
 claims it. Always some, since algebra claims everything. -/
 def worldFor (s : Session) (src : String) : World :=
-  match worlds.find? (·.precedes src) with
+  match worlds.find? (·.precedes s src) with
   | some w => w
   | none => (worlds.find? (·.claims s src)).getD mathWorld
 
