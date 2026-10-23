@@ -650,20 +650,33 @@ def sumOf (vs : List String) (cs : List Cube) : Fm :=
   | [] => .ff
   | t :: ts => ts.foldl .or t
 
-/-- One round: the terms the pairs merge into (each once, in order), and the terms that merged with none. -/
-def mergeRound (cs : List Cube) : List Cube × List Cube := Id.run do
+/-- One round of merging: each pair of terms that merged (in order: the two terms, the position of
+the variable they differ in, the term they merge into, and whether that term is new this round), and
+the terms that merged with none. -/
+structure MergeRound where
+  pairs : List (Cube × Cube × Nat × Cube × Bool)
+  stays : List Cube
+  /-- The terms after the round: the ones that stopped merging so far, then the merged ones. -/
+  terms : List Cube
+
+/-- One round: the terms the pairs merge into (each once, in order), the terms that merged with none,
+and the pairs. -/
+def mergeRound (cs : List Cube) : List Cube × List Cube × List (Cube × Cube × Nat × Cube × Bool) := Id.run do
   let arr := cs.toArray
   let mut seen : Std.HashSet Cube := {}
   let mut merged : Array Cube := #[]
+  let mut pairs : Array (Cube × Cube × Nat × Cube × Bool) := #[]
   let mut used : Array Bool := Array.replicate arr.size false
   for i in [0:arr.size] do
     for j in [i+1:arr.size] do
       if let some m := arr[i]!.merge? arr[j]! then
         used := (used.set! i true).set! j true
-        if !seen.contains m then
+        let fresh := !seen.contains m
+        pairs := pairs.push (arr[i]!, arr[j]!, (arr[i]!.zip arr[j]!).findIdx (fun (x, y) => x != y), m, fresh)
+        if fresh then
           seen := seen.insert m
           merged := merged.push m
-  return (merged.toList, (arr.toList.zip used.toList).filterMap fun (c, u) => if u then none else some c)
+  return (merged.toList, (arr.toList.zip used.toList).filterMap (fun (c, u) => if u then none else some c), pairs.toList)
 
 /-- The size of a sum of terms: how many terms, then how many literals. -/
 def costOf (cs : List Cube) : Nat × Nat := (cs.length, cs.foldl (· + ·.lits) 0)
@@ -706,10 +719,14 @@ structure Minimized where
   start : List Cube
   rows : Nat
   dontCares : Nat
-  /-- After each round: the terms merged so far and the primes found in the rounds before. -/
-  rounds : List (List Cube × Nat)
+  rounds : List MergeRound
   primes : List Cube
-  essential : List Cube
+  /-- The essential prime implicants, each with a true row it is the only prime true in. -/
+  essential : List (Cube × List Bool)
+  /-- The true rows the essential ones leave, which the rest of the cover covers. -/
+  rest : List (List Bool)
+  /-- The prime implicants true in don't-care rows only, which a cover never needs. -/
+  idle : List Cube
   cover : List Cube
   exact : Bool
 
@@ -720,27 +737,28 @@ def minimize (vs : List String) (f d : Fm) : Minimized := Id.run do
   let start : List Cube := (rs.filter fun r => f.eval (assignment vs r) || d.eval (assignment vs r)).map (·.map some)
   let mut cur := start
   let mut primes : List Cube := []
-  let mut rounds : List (List Cube × Nat) := []
+  let mut rounds : List MergeRound := []
   for _ in [0:vs.length + 1] do
     if cur.isEmpty then break
-    let (next, left) := mergeRound cur
+    let (next, left, pairs) := mergeRound cur
     primes := primes ++ left
     if next.isEmpty then break
-    rounds := rounds ++ [(primes ++ next, (cur.length - left.length))]
+    rounds := rounds ++ [{ pairs, stays := left, terms := primes ++ next }]
     cur := next
   -- a term over don't-cares alone covers nothing that matters
   let useful := primes.filter fun p => true_.any p.covers
-  let essential := useful.filter fun p => true_.any fun m => p.covers m && (useful.filter (·.covers m)).length == 1
-  let rest := true_.filter fun m => !essential.any (·.covers m)
-  let others := useful.filter fun p => !essential.contains p
+  let alone (p : Cube) := true_.find? fun m => p.covers m && (useful.filter (·.covers m)).length == 1
+  let essential := useful.filterMap fun p => (alone p).map (p, ·)
+  let rest := true_.filter fun m => !essential.any (·.1.covers m)
+  let others := useful.filter fun p => !essential.any (·.1 == p)
   let (found, fuel) := coverSearch others rest [] none 200000
   let (more, exact) := match found with
     | some c => if fuel > 0 then (c, true) else (coverGreedy others rest, false)
     | none => (coverGreedy others rest, false)
-  let chosen := essential ++ more
+  let chosen := essential.map (·.1) ++ more
   -- the terms in the order the primes were found, so a cover reads the same every time
   let cover := (useful.filter chosen.contains).mergeSort fun a b => a.lits ≤ b.lits
-  return { vars := vs, start, rows := true_.length, dontCares := dc.length, rounds, primes := useful, essential, cover, exact }
+  return { vars := vs, start, rows := true_.length, dontCares := dc.length, rounds, primes := useful, essential, rest, idle := primes.filter (!useful.contains ·), cover, exact }
 
 /-- How big a DNF is, in the terms `minimize` counts: how many terms, then how many literals. -/
 def dnfCost (f : Fm) : Nat × Nat :=

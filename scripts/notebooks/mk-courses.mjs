@@ -661,9 +661,57 @@ function canEdit(isAdmin: boolean, isOwner: boolean, locked: boolean): boolean {
     md(r`Name the conditions $a$ (‹isAdmin›), $o$ (‹isOwner›) and $l$ (‹locked›). A later branch runs only when the earlier ones failed, but every branch returns ‹true›, and $A \lor (\lnot A \land B) \equiv A \lor B$: so the function is true exactly when one of the branches' conditions is.`);
     m("truthtable(a ∨ (o ∧ ¬l) ∨ (o ∧ l ∧ a))");
     sec("The smallest DNF");
-    md(r`Five true rows, so the DNF read off the table has five terms. ‹minimize› finds the smallest DNF with the same table, by the **Quine–McCluskey** method: two terms that differ in one variable merge, $(x \land y) \lor (x \land \lnot y) \equiv x$, round by round, until no two do. The terms left are the **prime implicants**; then it keeps the fewest of them that are true in every true row.`);
+    md(r`Five true rows, so the DNF read off the table has five terms. ‹minimize› finds the *smallest* DNF with the same table, by the **Quine–McCluskey** method. It has one idea, used over and over, and then a choice at the end. Here it is by hand first.`);
+    md(r`
+**The true rows, a term each.** A row is a term that is true in that row only: $a$, $o$, $l$ true is $a \land o \land l$; $a$, $o$ true and $l$ false is $a \land o \land \lnot l$. The five true rows:
+
+1. $a \land o \land l$
+2. $a \land o \land \lnot l$
+3. $a \land \lnot o \land l$
+4. $a \land \lnot o \land \lnot l$
+5. $\lnot a \land o \land \lnot l$
+`);
+    md(r`
+> [!definition] Merging two terms
+> Two terms **merge** when they have the same variables and differ in one of them only, plain in one and negated in the other: $a \land o \land l$ and $a \land o \land \lnot l$. Together they say "$a \land o$, and $l$ either way", which is $a \land o$:
+> $$(x \land l) \lor (x \land \lnot l) = x \land (l \lor \lnot l) = x.$$
+> So the pair can be replaced by the shorter term, without the variable they differ in.
+`);
+    md(r`
+**Round 1** tries every pair of the five. Five pairs differ in one variable only:
+
+- 1 and 2 differ only in $l$: they merge into $a \land o$.
+- 1 and 3 differ only in $o$: $a \land l$.
+- 2 and 4 differ only in $o$: $a \land \lnot l$.
+- 2 and 5 differ only in $a$: $o \land \lnot l$.
+- 3 and 4 differ only in $l$: $a \land \lnot o$.
+
+The other pairs differ in two variables or more (1 and 4 differ in $o$ and in $l$) and do not merge. Every one of the five merged with something, and a term that merged is not needed any more: $a \land o \land l$ is true only where $a \land o$ is, so the shorter term says all it said. What is left is five shorter terms: $a \land o$, $a \land l$, $a \land \lnot l$, $o \land \lnot l$, $a \land \lnot o$.
+`);
+    md(r`
+**Round 2** does the same with those five. Only terms with the same variables can merge, so $a \land o$ can merge with $a \land \lnot o$, and $a \land l$ with $a \land \lnot l$:
+
+- $a \land o$ and $a \land \lnot o$ differ only in $o$: they merge into $a$.
+- $a \land l$ and $a \land \lnot l$ differ only in $l$: they merge into $a$ too, the same term, kept once.
+- $o \land \lnot l$ has nothing to merge with: $a \land \lnot l$ has the variable $a$, which it has not. It stays as it is.
+
+**Round 3** has $a$ and $o \land \lnot l$, which do not merge. The method stops.
+`);
+    md(r`
+> [!definition] Prime implicants
+> The terms that merge no further, here $a$ and $o \land \lnot l$, are the **prime implicants**. Each is true only in true rows (it came from them), and none can lose a variable and stay so. Every smallest DNF is made of prime implicants.
+`);
+    md(r`
+**The cover.** The DNF must still be true in each of the five true rows, so the last part picks prime implicants until every true row has one that is true in it. A prime implicant that is the *only* one true in some row is **essential**: no DNF can leave it out. Here both are essential:
+
+- $a$ is the only one true in row 1, $a \land o \land l$ (there $l$ is true, so $o \land \lnot l$ is false);
+- $o \land \lnot l$ is the only one true in row 5, $\lnot a \land o \land \lnot l$ (there $a$ is false).
+
+So the smallest DNF is $a \lor (o \land \lnot l)$. When there are more prime implicants than needed, some are left out; the feature-flag exercise below has one that is.
+`);
+    md(r`The engine shows the same work. Each round's merges are steps under it, a pair each (click a step for its explanation in full), and the cover's terms are steps under it, each with the row it is kept for:`);
     m("minimize(a ∨ (o ∧ ¬l) ∨ (o ∧ l ∧ a))", { work: true });
-    md(r`Two terms, $a$ and $o \land \lnot l$, and both are needed: each is the only one true in some row. The third branch was **dead code**: whenever $o \land l \land a$ holds, $a$ already returned. The function is
+    md(r`The third branch was **dead code**: whenever $o \land l \land a$ holds, $a$ already returned. The function is
 
 ‹‹‹ts
 const canEdit = (isAdmin: boolean, isOwner: boolean, locked: boolean) => isAdmin || (isOwner && !locked);
@@ -692,12 +740,35 @@ function shipping(express: boolean, member: boolean, heavy: boolean): string {
     m("minimize(¬(e ∧ ¬h) ∧ ¬h ∧ (m ∨ ¬e))", { work: true });
     md(r`$\lnot e \land \lnot h$: ‹member› does not matter at all. And ‹"standard"› runs when all three conditions fail. If that has no satisfying assignment, the line never runs:`);
     m("sat(¬(e ∧ ¬h) ∧ ¬h ∧ ¬(m ∨ ¬e))");
+    sec("Conditions that depend on each other");
+    md(r`So far each condition was a flag of its own: ‹isAdmin›, ‹isOwner› and ‹locked› can be true or false in any combination, so every row of the table can happen. Conditions in code are often about the same value, and then some rows cannot happen. ‹minimize› can use that, if it is told.`);
+    md(r`
+‹‹‹ts
+function freeShipping(items: number, member: boolean): boolean {
+  if (items > 5 && member) return true;               // a big order
+  if (items > 3 && items <= 5 && member) return true; // a medium one
+  return false;
+}
+‹‹‹
+`.replace(/‹‹‹/g, "```"));
+    md(r`Name the conditions: $\mathit{g5}$ for ‹items > 5›, $\mathit{g3}$ for ‹items > 3›, and $m$ for ‹member› (typed ‹g5›, ‹g3› and ‹m›). ‹items <= 5› is the opposite of ‹items > 5›, so it is $\lnot \mathit{g5}$. The function returns ‹true› when $(\mathit{g5} \land m) \lor (\mathit{g3} \land \lnot \mathit{g5} \land m)$. To the formula, $\mathit{g5}$ and $\mathit{g3}$ are two unrelated variables, so it has all 8 rows, and the smallest DNF over all 8 still has two terms:`);
+    m("minimize((g5 ∧ m) ∨ (g3 ∧ ¬g5 ∧ m))");
+    md(r`But a number above 5 is above 3. A row where $\mathit{g5}$ is true and $\mathit{g3}$ false, ‹items > 5› but not ‹items > 3›, is a row of the table that no value of ‹items› reaches.`);
     md(r`
 > [!definition] Don't-cares
-> Conditions in code are often not independent. With $g_5$ for ‹x > 5› and $g_3$ for ‹x > 3›, the row $g_5 \land \lnot g_3$ cannot happen. ‹minimize(φ, d)› takes $d$ as the rows that cannot happen: the result may be true or false there, whichever makes it smaller.
+> A row that cannot happen is a **don't-care**: the code never meets it, so a simpler condition may be true or false there, whichever makes it smaller. ‹minimize(φ, d)› takes a second formula $d$, true exactly in the rows that cannot happen. Here $d$ is $\mathit{g5} \land \lnot \mathit{g3}$.
 `);
-    m("minimize((g5 ∧ s) ∨ (g3 ∧ ¬g5 ∧ s), g5 ∧ ¬g3)", { work: true });
-    md(r`Read back: ‹(x > 5 && s) || (x > 3 && x <= 5 && s)› is ‹x > 3 && s›.`);
+    m("minimize((g5 ∧ m) ∨ (g3 ∧ ¬g5 ∧ m), g5 ∧ ¬g3)", { work: true });
+    md(r`The don't-care rows join the true rows as terms, so they can merge; one of them, $\mathit{g5} \land \lnot \mathit{g3} \land m$, lets $\mathit{g3} \land m$ cover what $\mathit{g5} \land m$ covered, and $\mathit{g5} \land m$ is not needed. Read back, the two branches were one:
+
+‹‹‹ts
+const freeShipping = (items: number, member: boolean) => items > 3 && member;
+‹‹‹
+
+This rewrite is right only because of what the don't-care says, which the formula alone does not know. ‹equiv› compares all 8 rows, and finds the two differ in the row that cannot happen:`.replace(/‹‹‹/g, "```"));
+    m("equiv((g5 ∧ m) ∨ (g3 ∧ ¬g5 ∧ m), g3 ∧ m)", { work: true });
+    md(r`On the rows that can happen, those where $d$ is false, they agree:`);
+    m("taut(¬(g5 ∧ ¬g3) → (((g5 ∧ m) ∨ (g3 ∧ ¬g5 ∧ m)) ↔ (g3 ∧ m)))");
     sec("Exercises");
     md(r`Answer with a formula, typing ‹&&›, ‹||› and ‹!› or the glyphs. For ‹minimize›, the answer must be a DNF with the same truth table and no bigger than the smallest; ↻ Another one gives another.`);
     ex("minimize((b ∧ ¬t) ∨ (b ∧ t ∧ s) ∨ (¬b ∧ s ∧ t))", r`A feature is on when ‹(beta && !trial) || (beta && trial && signedIn) || (!beta && signedIn && trial)›. With $b$, $t$, $s$, find the smallest DNF.`, [

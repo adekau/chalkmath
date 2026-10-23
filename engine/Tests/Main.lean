@@ -826,6 +826,23 @@ def workTests : TestM Unit := do
     ((ew >>= (·.sub)).map (fun d => d.steps.toList.map fun s => s!"{s.before.toText} -> {s.after.toText}") |>.getD []).toString
     "[1*2 -> 2, 2*2 -> 4, 2*3 -> 6, 2*4 -> 8]"
   checkTrue "entrywise: a nested step says which entry" ((ew >>= (·.sub) >>= (·.steps[2]?)).map (fun s => contains s.explanation "(row 2, column 1).") |>.getD false)
+  -- minimize: a round's nested steps are its merged pairs, the cover's the terms it keeps and why
+  let mz := "minimize(a ∨ (o ∧ ¬l) ∨ (o ∧ l ∧ a))"
+  let (stm, _) := sessionEval [] mz ",\"showWork\":true"
+  check "minimize: true rows, two rounds, the cover" (derivationRules stm mz).toString "[logic.minterms, logic.merge, logic.merge, logic.cover]"
+  let subsOf (k : Nat) : List String := (((stm.get "t").cells.lookup mz >>= fun c => c.derivation.steps[k]? >>= (·.sub)).map
+    fun d => d.steps.toList.map fun s => s!"{s.before.toText} -> {s.after.toText}").getD []
+  check "minimize: round 1, a step per merged pair" (subsOf 1).toString
+    "[a ∧ o ∧ l ∨ a ∧ o ∧ ¬l -> a ∧ o, a ∧ o ∧ l ∨ a ∧ ¬o ∧ l -> a ∧ l, a ∧ o ∧ ¬l ∨ a ∧ ¬o ∧ ¬l -> a ∧ ¬l, a ∧ o ∧ ¬l ∨ ¬a ∧ o ∧ ¬l -> o ∧ ¬l, a ∧ ¬o ∧ l ∨ a ∧ ¬o ∧ ¬l -> a ∧ ¬o]"
+  check "minimize: round 2, a term two pairs merge into" (subsOf 2).toString "[a ∧ o ∨ a ∧ ¬o -> a, a ∧ l ∨ a ∧ ¬l -> a]"
+  checkTrue "minimize: round 2 names the term that stays" ((derivationExplanations stm mz)[2]?.map (contains · "$o \\land \\lnot l$ merges with no other term") |>.getD false)
+  check "minimize: the cover, a term at a time" (subsOf 3).toString "[⊥ -> a, a -> a ∨ o ∧ ¬l]"
+  checkTrue "minimize: a kept term names its row"
+    ((((stm.get "t").cells.lookup mz >>= fun c => c.derivation.steps[3]? >>= (·.sub) >>= (·.steps[1]?)).map fun s => contains s.explanation "Keep: $o \\land \\lnot l$, as the only prime implicant true in the row $\\lnot a \\land o \\land \\lnot l$") |>.getD false)
+  let mzd := "minimize((g5 ∧ m) ∨ (g3 ∧ ¬g5 ∧ m), g5 ∧ ¬g3)"
+  let (stm, _) := sessionEval stm mzd ",\"showWork\":true"
+  checkTrue "minimize: a prime true only where nothing can happen is said to be left out"
+    ((derivationExplanations stm mzd).getLast?.map (contains · "true only in rows that cannot happen") |>.getD false)
   let (st3, _) := sessionEval st3 "[x+x, 1]" ",\"showWork\":true"
   check "entrywise: one entry rewritten stays as it was" (derivationRules st3 "[x+x, 1]").toString "[simp.collect-like-terms, simp.identity]"
   let (_, exew) := handleS st3 "{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"engine.explain\",\"params\":{\"sessionId\":\"t\",\"cellId\":\"[1,2;3,4]*2\",\"path\":[2]}}"

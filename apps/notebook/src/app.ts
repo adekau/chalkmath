@@ -4654,8 +4654,13 @@ function loadWork(cell: Cell): Promise<void> {
  *  tinted in its row, and hovering one shows `old → new`, cut from the step's own renderings of
  *  `before` and `after` (the row above is not always `before`: the pipeline flattens and reorders
  *  silently between recorded steps). A change at the root is the whole line: no tint. */
+/** Steps that list their terms anew rather than rewrite one in place (a round of `minimize` and its
+ *  cover): a position before and the same position after hold unrelated terms, so they are not tinted.
+ *  A round's nested steps, one per merged pair, are. */
+const RELISTS = (st: Step) => st.rule === "logic.cover" || (st.rule === "logic.merge" && !!st.sub);
 function markChanges(rows: HTMLElement[], d: Derivation) {
   d.steps.forEach((st, n) => {
+    if (RELISTS(st)) return;
     const el = rows[n]?.querySelector<HTMLElement>(".el"); if (!el) return;
     const beforeLatex = st.beforeRendered?.latex ?? (n === 0 ? d.inputRendered?.latex : undefined);
     const tinted = new Set<string>();
@@ -4954,10 +4959,12 @@ function renderCellBody(cell: Cell) {
     // Nested derivations (rref's row operations, integrate's finder and its check) render below
     // their step, indented one level per depth and numbered 1.2, 1.2.3, …
     const renderSub = (st: Step, label: string, top: number, depth: number) => {
-      // an entrywise step's nested work is one step per entry of a matrix, often hundreds: it opens on request
-      if (st.rule === "la.entrywise" && st.sub && !cell.openEntries?.has(label)) {
+      // an entrywise step's nested work is one step per entry of a matrix, often hundreds, and a merging
+      // round of `minimize` one per pair: such a list opens on request
+      const many = st.rule === "la.entrywise" || (st.rule === "logic.merge" && (st.sub?.steps.length ?? 0) > 12);
+      if (many && st.sub && !cell.openEntries?.has(label)) {
         const n = st.sub.steps.length;
-        const more = asButton(h("div", "step sub more", `▸ ${n} step${n === 1 ? "" : "s"}, entry by entry`), "Show each entry's steps");
+        const more = asButton(h("div", "step sub more", st.rule === "la.entrywise" ? `▸ ${n} step${n === 1 ? "" : "s"}, entry by entry` : `▸ ${n} merges, pair by pair`), "Show each step");
         more.style.marginLeft = `${26 * depth}px`;
         more.addEventListener("click", (ev) => { ev.stopPropagation(); (cell.openEntries ??= new Set()).add(label); renderCellBody(cell); });
         work.append(more);
