@@ -1089,7 +1089,147 @@ example : ∀ n : Nat, n + 0 = n := fun _ => rfl`);
 > [!summary]
 > $\forall$ is a long $\land$ and $\exists$ a long $\lor$: one counterexample refutes a $\forall$, one witness proves an $\exists$, and negation swaps them by De Morgan's law. Their order changes the meaning. Over a finite set both can be checked; over all numbers they must be proved.
 `);
+    md(r`
+> [!note] Application: “for every” in SQL
+> A database query has no word for "every", only ‹EXISTS› and ‹NOT›. [“For every” in SQL](#course=logic&lesson=4&app=1), an optional notebook beside this lesson, builds it with this lesson's law for negating a quantifier, and tests a query that asks the wrong question.
+`);
     md(r`Euler's polynomial passed 39 checks and still failed. How can a finite argument cover every natural number? The next lesson's answer is induction.`);
+  });
+
+  app("04a-sql-for-all.chalk", "“For every” in SQL", "SQL can say “there exists” and not “for every”: the double NOT EXISTS that De Morgan's law gives, checked on a small shop's tables, the query that answers another question, and the empty table.", ({ sec, md, m, ex, lean, lx }) => {
+    const O = "{11, 12, 13, 21, 23, 32}", P = "{1, 2, 3}", C = "{1, 2, 3}";
+    sec("“For every” in SQL");
+    md(r`
+> [!goal]
+> Write "for every" in a language that only has "there exists", check on a small table that the two say the same, and catch the query that answers a different question.
+`);
+    md(r`An application of lesson 4, outside the course's order: nothing later depends on it. It uses the lesson's quantifiers and the law for negating them, and only as much SQL as it shows. The last section uses Lean, as lesson 4 does.`);
+    md(r`A shop keeps three tables:
+
+- **customers**: 1 Ada, 2 Bo, 3 Cy;
+- **products**: 1 pen, 2 ink, 3 pad;
+- **orders**, a row for each purchase, with its customer and its product: Ada bought all three products, Bo a pen and a pad, Cy only ink.
+
+Which customers bought every product? By eye, only Ada. The question is how to ask a database, whose language turns out to have no word for "every".`);
+    sec("A table as a formula");
+    md(r`The engine's quantifiers range over sets of numbers, so write each order as one number, the customer in the tens digit and the product in the units: Ada's ink is 12, Bo's pad is 23, and the orders table is $\{11, 12, 13, 21, 23, 32\}$. Then "customer $c$ bought product $p$" says that some row of the table is that pair:
+$$\exists o \in \mathit{orders},\ o = 10c + p.$$
+SQL asks it the same way, as a search through the rows:
+
+‹‹‹sql
+EXISTS (SELECT * FROM orders o WHERE o.customer = c AND o.product = p)
+‹‹‹
+
+Did Bo (customer 2) buy a pad (product 3)? Did he buy ink (product 2)?`.replace(/‹‹‹/g, "```"));
+    m(`∃ o ∈ ${O}, o = 10*2 + 3`, { work: true });
+    m(`∃ o ∈ ${O}, o = 10*2 + 2`, { work: true });
+    sec("SQL has no “for every”");
+    md(r`A SQL condition can say ‹EXISTS› and ‹NOT EXISTS›, and has nothing for "for every". Lesson 4's law for negating a quantifier gives it anyway:
+$$\forall p,\ \varphi(p) \;\equiv\; \lnot \exists p,\ \lnot \varphi(p).$$
+"Customer $c$ bought every product" is "there is no product that $c$ did not buy": two ‹NOT EXISTS›, one inside the other.
+
+‹‹‹sql
+SELECT name FROM customers c
+WHERE NOT EXISTS (              -- there is no product p
+  SELECT * FROM products p
+  WHERE NOT EXISTS (            -- that c did not buy
+    SELECT * FROM orders o
+    WHERE o.customer = c.id AND o.product = p.id));
+‹‹‹
+
+Read each ‹NOT EXISTS› as $\lnot\exists$. For Ada, customer 1, the "for every" form holds:`.replace(/‹‹‹/g, "```"));
+    m(`∀ p ∈ ${P}, ∃ o ∈ ${O}, o = 10*1 + p`, { work: true });
+    md(r`For Bo the query's condition is false. Without its outer $\lnot$ it is an $\exists$, and its witness is the product Bo did not buy, product 2, the ink:`);
+    m(`¬∃ p ∈ ${P}, ¬∃ o ∈ ${O}, o = 10*2 + p`);
+    m(`∃ p ∈ ${P}, ¬∃ o ∈ ${O}, o = 10*2 + p`, { work: true });
+    md(r`For every customer, the two forms agree. That is the law, checked on this table:`);
+    m(`∀ c ∈ ${C}, ((¬∃ p ∈ ${P}, ¬∃ o ∈ ${O}, o = 10c + p) ↔ (∀ p ∈ ${P}, ∃ o ∈ ${O}, o = 10c + p))`, { work: true });
+    md(r`
+> [!mistake]
+> Both negations matter. Drop the inner ‹NOT› and the query asks for customers with no product they *did* buy, those with no orders at all. Drop the outer one and it asks for customers who missed *some* product: Bo and Cy.
+`);
+    sec("The query that answers another question");
+    md(r`A shorter query looks as if it asks the same thing:
+
+‹‹‹sql
+SELECT DISTINCT name FROM customers c
+JOIN orders o ON o.customer = c.id
+WHERE o.product IN (SELECT id FROM products);
+‹‹‹
+
+It keeps a customer who has some order of some product: $\exists p\, \exists o$, "bought something", where the question was $\forall p\, \exists o$. On this table it returns Ada, Bo and Cy. The engine finds a customer for whom the two questions have different answers:`.replace(/‹‹‹/g, "```"));
+    m(`∃ c ∈ ${C}, ((∃ p ∈ ${P}, ∃ o ∈ ${O}, o = 10c + p) ∧ ¬(∀ p ∈ ${P}, ∃ o ∈ ${O}, o = 10c + p))`, { work: true });
+    md(r`
+> [!mistake]
+> A test table where Ada is the only customer passes both queries: she bought something, and she bought everything. A query is tested on a table where the questions differ, here a customer like Bo, who bought some products and not others. The formula above is a search for one.
+`);
+    sec("No products at all");
+    md(r`Before the shop lists anything, the products table is empty. Who has bought every product? The ‹NOT EXISTS› query returns every customer, Cy too: there is no product they did not buy. That is how $\forall$ over the empty set behaves in logic as well. It is a long $\land$ of no conditions at all, so there is no counterexample, and it is true:`);
+    m(`∀ p ∈ {}, ∃ o ∈ ${O}, o = 10*3 + p`);
+    md(r`
+> [!note] A query by counting
+> Another common query counts: group the orders by customer and keep the groups with as many products as the products table has (‹GROUP BY customer HAVING COUNT(DISTINCT product) = (SELECT COUNT(*) FROM products)›). On this shop it gives the same answer, Ada. With no products it gives none: the count to reach is 0, a customer with orders has more, and a customer without orders has no group at all. The two queries were never the same formula; the empty table is where that shows.
+`);
+    sec("Exercises");
+    md(r`Each question is about the shop above. Write it as a formula in a cell of your own, with the orders as ‹${O}›, and answer ‹true› or ‹false›.`);
+    ex(`∃ p ∈ ${P}, ∀ c ∈ ${C}, ∃ o ∈ ${O}, o = 10c + p`, r`Is there a product that every customer bought?`, [
+      r`"There is a product $p$ such that every customer $c$ bought $p$": $\exists p\, \forall c$, then "bought" as before.`,
+      r`Cy bought only ink. Did Bo buy ink?`,
+    ], { hide: true });
+    ex(`∀ p ∈ ${P}, ∃ c ∈ ${C}, ∃ o ∈ ${O}, o = 10c + p`, r`Was every product bought by at least one customer?`, [
+      r`$\forall p\, \exists c$: the same two quantifiers as the last question, in the other order.`,
+    ], { hide: true });
+    ex(`∃ c ∈ ${C}, ¬∃ o ∈ ${O}, o = 10c + 3`, r`Is there a customer who never bought a pad (product 3)?`, [
+      r`In SQL: ‹EXISTS› a customer for whom ‹NOT EXISTS› an order of product 3: $\exists c\, \lnot \exists o$.`,
+    ], { hide: true });
+    ex(`∀ c ∈ ${C}, ((¬∃ o ∈ ${O}, o = 10c + 1) ↔ c = 3)`, r`This query returns the customers who never bought a pen:
+
+‹‹‹sql
+SELECT name FROM customers c
+WHERE NOT EXISTS (SELECT * FROM orders o WHERE o.customer = c.id AND o.product = 1);
+‹‹‹
+
+Is Cy the only customer it returns?`.replace(/‹‹‹/g, "```"), [
+      r`"Cy is the only one" says: for every customer $c$, the condition holds exactly when $c$ is Cy, customer 3.`,
+      r`$\forall c,\ (\lnot \exists o,\ o = 10c + 1) \leftrightarrow c = 3$.`,
+    ], { hide: true });
+    sec("In Lean");
+    md(r`In Lean the table is a list of pairs, and "$c$ bought $p$" is a pair being in the list. Over a list, ‹∀ p ∈ products› and ‹∃ p ∈ products› are finite checks, and ‹decide› makes them element by element, as the engine did.`);
+    lean(r`def orders : List (Nat × Nat) := [(1, 1), (1, 2), (1, 3), (2, 1), (2, 3), (3, 2)]
+def customers : List Nat := [1, 2, 3]
+def products : List Nat := [1, 2, 3]
+
+/-- Customer c bought product p: the pair is a row of the table. -/
+abbrev bought (c p : Nat) : Prop := (c, p) ∈ orders
+
+theorem ada_bought_all : ∀ p ∈ products, bought 1 p := by decide`);
+    lx(r`theorem bo_missed_one : ∃ p ∈ products, ¬ bought 2 p := by`, r`Prove that Bo missed some product.`, r`  decide`, [
+      r`A statement over the lists ‹products› and ‹orders›: ‹decide› checks it.`,
+      r`Or by hand: the witness is product 2, ‹exact ⟨2, by decide, by decide⟩›.`,
+    ]);
+    lx(r`theorem no_product_for_all : ¬ ∃ p ∈ products, ∀ c ∈ customers, bought c p := by`, r`Prove that no product was bought by every customer.`, r`  decide`, [
+      r`The same tactic: ‹decide› tries each product and each customer.`,
+    ]);
+    md(r`The law that turned "for every" into ‹NOT EXISTS NOT EXISTS› is one theorem, for any predicate. One direction is lesson 3's kind of proof:`);
+    lx(r`theorem not_exists_not_of_forall (α : Type) (B : α → Prop) : (∀ x, B x) → ¬ ∃ x, ¬ B x := by`, r`Prove that if every $x$ has $B$, there is no $x$ without it.`, r`  intro h ⟨x, hx⟩
+  exact hx (h x)`, [
+      r`‹¬ ∃ x, ¬ B x› is a function from a proof of the ‹∃› to ‹False›: introduce ‹h›, then the pair ‹⟨x, hx⟩›.`,
+      r`‹hx : ¬ B x› and ‹h x : B x› contradict each other: ‹exact hx (h x)›.`,
+    ]);
+    md(r`The other direction, from "no product they did not buy" to "every product", is the kind lesson 3 could not prove without excluded middle: to produce ‹B x› you must know whether ‹B x› holds. For a table you do. Whether a pair is in a list is **decidable**, settled by looking, and for a decidable statement excluded middle is a theorem, ‹Decidable.em›, not an axiom:`);
+    lean(r`theorem forall_of_not_exists_not (α : Type) (B : α → Prop) [DecidablePred B] :
+    (¬ ∃ x, ¬ B x) → ∀ x, B x := by
+  intro h x
+  cases Decidable.em (B x) with
+  | inl hb => exact hb
+  | inr hn => exact absurd ⟨x, hn⟩ h
+
+#print axioms forall_of_not_exists_not`);
+    md(r`So the double ‹NOT EXISTS› is the "for every" it stands for, with no appeal to choice, because a table can be looked through, row by row.`);
+    md(r`
+> [!summary]
+> SQL has $\exists$ (‹EXISTS›) and $\lnot$ (‹NOT›), and De Morgan's law for quantifiers builds $\forall$ from them: $\forall p\ \varphi \equiv \lnot\exists p\ \lnot\varphi$, a ‹NOT EXISTS› inside a ‹NOT EXISTS›. A shorter query that joins and filters asks $\exists$ instead, and a table where the two differ shows it. Over the empty table $\forall$ is true. In Lean, ‹decide› checks such statements over lists, and on a decidable predicate the law needs no excluded middle.
+`);
   });
 
   add("05-induction.chalk", "Induction on the natural numbers", "Why checking is not enough, and induction as a recipe that produces a proof for any n: dominoes, sums, and proofs in Lean.", ({ sec, md, m, ex, lean, lx, sc }) => {
@@ -1185,7 +1325,164 @@ theorem oddSum_eq (n : Nat) : oddSum n = n * n := by`, r`Prove that the sum of t
 > [!summary]
 > Induction proves $P(n)$ for every $n$ from a base case and a step: a recipe that builds the proof for any $n$ you name. Checking cases finds mistakes; the step is the proof. In Lean, ‹induction› splits the goal into those two cases and hands the step its hypothesis.
 `);
+    md(r`
+> [!note] Application: loop invariants
+> A loop is proved correct the same way, by a statement that holds before it and is kept by every pass. [Loop invariants](#course=logic&lesson=5&app=1), an optional notebook beside this lesson, proves a summing loop and a running maximum, in Lean.
+`);
     md(r`The step here only ever used the case just before. To show 12 has a prime factor, 11 is no help; 12's factors 2, 3, 4 and 6 are. The next lesson lets the step use any smaller case.`);
+  });
+
+  app("05a-loop-invariants.chalk", "Loop invariants", "A loop proved correct the way induction proves a formula: a statement true before the loop and kept by every pass, then the same loop in Lean, its invariant proved by induction, and a running maximum.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Loop invariants");
+    md(r`
+> [!goal]
+> Prove that a loop computes what it should, by a statement that is true when the loop starts and stays true after every pass: induction, on the number of passes.
+`);
+    md(r`An application of lesson 5, outside the course's order: nothing later depends on it. Its Lean uses ‹sumTo› and ‹sumTo_formula› from the lesson.`);
+    md(r`
+‹‹‹ts
+function sumTo(n: number): number {
+  let i = n, total = 0;
+  while (i > 0) {
+    total = total + i;
+    i = i - 1;
+  }
+  return total;
+}
+‹‹‹
+`.replace(/‹‹‹/g, "```"));
+    md(r`Running it for $n = 4$ adds $4$, then $3$, $2$ and $1$: ‹total› is 0, 4, 7, 9, 10. Testing a few $n$ is lesson 5's "checking is not proving" again. What stays the same from pass to pass? After each pass, what is already in ‹total›, plus what the loop will still add, $1 + 2 + \cdots + i$, is the whole answer:
+$$\mathit{total} + (1 + 2 + \cdots + i) = 1 + 2 + \cdots + n.$$
+At the start $\mathit{total} = 0$ and $i = n$, so it holds. When the loop stops, $i = 0$, nothing is left to add, and it says $\mathit{total} = 1 + 2 + \cdots + n$: the answer.`);
+    md(r`Does a pass keep it? A pass turns ‹total› into $\mathit{total} + i$ and $i$ into $i - 1$. With $1 + \cdots + i = \frac{i(i+1)}{2}$, the left side after a pass minus the left side before is zero:`);
+    m("expand((t + i) + (i - 1)i/2 - (t + i(i + 1)/2))");
+    md(r`
+> [!definition] Loop invariant
+> A **loop invariant** is a statement about the loop's variables that
+> 1. holds when the loop starts;
+> 2. is kept by every pass: if it holds before a pass (and the loop's condition does, since the pass runs), it holds after;
+> 3. when the condition fails and the loop stops, says what the function promises.
+>
+> The first two are induction on the number of passes, a base case and a step, so the invariant holds after any number of them. The third uses it at the end.
+`);
+    md(r`
+> [!mistake]
+> "‹total› is the sum so far" is true but not enough: it never mentions $n$, so when the loop stops it says nothing about the answer. A good invariant ties what is done to what is left.
+`);
+    sec("The loop in Lean");
+    md(r`Lean has no ‹while›. A loop is a function that calls itself with the variables' new values, ‹i› first: ‹sumLoop (i + 1) total› is one pass, then the rest of the loop from ‹i› and ‹total + (i + 1)›.`);
+    lean(r`def sumLoop : Nat → Nat → Nat
+  | 0, total => total
+  | i + 1, total => sumLoop i (total + (i + 1))
+
+#eval sumLoop 4 0
+#eval (List.range 8).map (fun n => sumLoop n 0)`);
+    md(r`The invariant, with lesson 5's ‹sumTo› for $1 + \cdots + i$: what the loop returns from here is what it has, plus what is left.`);
+    lean(r`theorem sumLoop_inv (i total : Nat) : sumLoop i total = total + sumTo i := by
+  induction i generalizing total with
+  | zero => rfl
+  | succ k ih =>
+    simp only [sumLoop, sumTo, ih]
+    omega`);
+    md(r`A pass changes ‹total› as well as ‹i›: ‹sumLoop (k + 1) total› is ‹sumLoop k (total + (k + 1))›. So the step needs the induction hypothesis at a *different* total, and ‹induction i generalizing total› gives it for every total: ‹ih : ∀ total, sumLoop k total = total + sumTo k›. In the TypeScript, it is the invariant being about whatever ‹total› holds at that pass.`);
+    md(r`
+> [!mistake]
+> Without ‹generalizing total›, the hypothesis is about the starting total only, and the step is stuck:
+
+‹‹‹
+theorem sumLoop_inv (i total : Nat) : sumLoop i total = total + sumTo i := by
+  induction i with
+  | zero => rfl
+  | succ k ih =>
+    simp only [sumLoop, sumTo]
+    omega
+-- ih : sumLoop k total = total + sumTo k
+-- ⊢ sumLoop k (total + (k + 1)) = total + (sumTo k + (k + 1))
+-- error: omega could not prove the goal
+‹‹‹
+
+The goal is about ‹sumLoop k (total + (k + 1))›, and ‹ih› only about ‹sumLoop k total›.
+`.replace(/‹‹‹/g, "```"));
+    md(r`The function's promise is the invariant at the start, ‹total = 0›:`);
+    lx(r`theorem sumLoop_correct (n : Nat) : 2 * sumLoop n 0 = n * (n + 1) := by`, r`Prove that the loop, started at ‹0›, adds $1 + \cdots + n$: twice it is $n(n+1)$.`, r`  rw [sumLoop_inv, Nat.zero_add]
+  exact sumTo_formula n`, [
+      r`‹rw [sumLoop_inv]› turns ‹sumLoop n 0› into ‹0 + sumTo n›, and ‹Nat.zero_add› drops the ‹0 +›.`,
+      r`What is left is lesson 5's ‹sumTo_formula n›.`,
+    ]);
+    sec("A running maximum");
+    md(r`
+‹‹‹ts
+function maxOf(xs: number[]): number {
+  let best = 0;
+  for (const x of xs) {
+    best = Math.max(best, x);
+  }
+  return best;
+}
+‹‹‹
+
+The invariant: ‹best› is at least every element seen so far. In Lean the loop walks down the list, and its invariant is two statements about what it returns from any ‹best›: at least ‹best›, and at least every element left.`.replace(/‹‹‹/g, "```"));
+    lean(r`def maxLoop : List Nat → Nat → Nat
+  | [], best => best
+  | x :: xs, best => maxLoop xs (max best x)
+
+#eval maxLoop [3, 9, 2, 7] 0`);
+    lx(r`theorem best_le (xs : List Nat) (best : Nat) : best ≤ maxLoop xs best := by`, r`Prove that the loop never returns less than the ‹best› it starts with.`, r`  induction xs generalizing best with
+  | nil => exact Nat.le_refl best
+  | cons x xs ih =>
+    have h := ih (max best x)
+    simp only [maxLoop]
+    omega`, [
+      r`Induction on the list, generalizing ‹best›, since a pass changes it: ‹induction xs generalizing best with›, cases ‹nil› and ‹cons x xs ih›.`,
+      r`For ‹nil›, ‹maxLoop [] best› is ‹best›: ‹exact Nat.le_refl best›.`,
+      r`For ‹cons›, ‹ih (max best x)› says ‹max best x ≤ maxLoop xs (max best x)›. Name it with ‹have h := …›, unfold one pass with ‹simp only [maxLoop]›, and ‹omega›, which knows ‹max›, finishes.`,
+    ], { start: `  induction xs generalizing best with
+  | nil => sorry
+  | cons x xs ih => sorry` });
+    md(r`The second half follows, and uses the first for the element just passed:`);
+    lean(r`theorem elem_le (xs : List Nat) (best : Nat) : ∀ y ∈ xs, y ≤ maxLoop xs best := by
+  induction xs generalizing best with
+  | nil => intro y hy; cases hy
+  | cons x xs ih =>
+    intro y hy
+    simp only [maxLoop]
+    cases hy with
+    | head => have h := best_le xs (max best x); omega
+    | tail _ hy => exact ih (max best x) y hy`);
+    md(r`
+> [!note] What the invariant does not say
+> These two prove that ‹maxLoop xs 0› is at least every element, not that it is one of them: for the empty list it returns 0, which is in no list. A promise needs an invariant that mentions it. "The answer is an element" would need a second one: ‹best› is the start or one of the elements passed.
+`);
+    sec("Exercises");
+    ex("expand((t + (2i - 1)) + (i - 1)^2 - (t + i^2))", r`A loop adds the first $n$ odd numbers: ‹while (i > 0) { total = total + (2*i - 1); i = i - 1; }›, from ‹total = 0›, ‹i = n›. Its invariant is $\mathit{total} + i^2 = n^2$. Simplify the invariant's left side after a pass minus before it, $(\mathit{total} + (2i - 1)) + (i - 1)^2 - (\mathit{total} + i^2)$, with ‹t› for ‹total›. The pass keeps the invariant when it is 0.`, [
+      r`Expand $(i - 1)^2 = i^2 - 2i + 1$.`,
+    ]);
+    md(r`In the next exercise you write the loop too, and the theorem, its invariant, is the specification.`);
+    lx(r`theorem powLoop_inv (k acc : Nat) : powLoop k acc = acc * 2 ^ k := by`, r`Define ‹powLoop k acc›, a loop that doubles ‹acc›, ‹k› times, without ‹^›; then prove its invariant: it returns ‹acc› times $2^k$.`, r`  induction k generalizing acc with
+  | zero => simp [powLoop]
+  | succ k ih =>
+    simp only [powLoop, ih, Nat.pow_succ]
+    grind`, [
+      r`The loop: with 0 passes left it returns ‹acc›; with ‹k + 1›, it runs the rest from ‹acc * 2›: ‹powLoop (k + 1) acc = powLoop k (acc * 2)›.`,
+      r`A pass changes ‹acc›, so the induction generalizes it: ‹induction k generalizing acc with›.`,
+      r`‹zero›: ‹simp [powLoop]›. ‹succ›: ‹simp only [powLoop, ih, Nat.pow_succ]› leaves ‹acc * 2 * 2 ^ k = acc * (2 ^ k * 2)›, and ‹grind› finishes.`,
+    ], {
+      start: `  induction k generalizing acc with
+  | zero => sorry
+  | succ k ih => sorry`,
+      def: { start: `def powLoop : Nat → Nat → Nat
+  | 0, acc => sorry
+  | k + 1, acc => sorry`, solution: `def powLoop : Nat → Nat → Nat
+  | 0, acc => acc
+  | k + 1, acc => powLoop k (acc * 2)`, forbid: ["^", "pow", "Nat.pow", "HPow", "<<<", "shiftLeft"] },
+    });
+    lx(r`theorem powLoop_correct (k : Nat) : powLoop k 1 = 2 ^ k := by`, r`Prove that started from 1, the loop computes $2^k$.`, r`  rw [powLoop_inv, Nat.one_mul]`, [
+      r`The invariant at ‹acc = 1›: ‹rw [powLoop_inv]›, then ‹Nat.one_mul› drops the ‹1 *›.`,
+    ]);
+    md(r`
+> [!summary]
+> A loop invariant is a statement true before the loop and kept by every pass, so by induction it holds when the loop stops; it should tie what is done to what is left, so that at the end it says the answer. In Lean a loop is a function that calls itself with its new values, and its invariant is proved by induction generalizing every variable a pass changes.
+`);
   });
 
   add("06-strong-induction.chalk", "Strong induction", "When the step needs more than the case before: prime factors, making change, and why strong induction, weak induction and well-ordering are one principle.", ({ sec, md, m, ex, lean, lx }) => {
