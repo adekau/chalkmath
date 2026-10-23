@@ -996,14 +996,44 @@ def logicCell (s : Session) (cellId source : String) :
           let agrees (g : Logic.Fm) := (Logic.findRow vs fun σ => !d.eval σ && f.eval σ != g.eval σ).isNone
           let caring := if dc.isNone then "" else s!", and a term for each of the {r.dontCares} rows where the second formula holds, which cannot happen and so may count either way"
           let first := step "logic.minterms" s!"Read off the truth table: a term for each of the {r.rows} rows where it is true{caring}." call (sum r.start).toExpr
-          let (_, merges) := r.rounds.foldl (fun (acc : Logic.Fm × Array Step × Nat) (cs, n) =>
+          let tx (c : Logic.Cube) := s!"${(Logic.Cube.toFm vs c).toExpr.toLatex}$"
+          let andList (xs : List String) : String := match xs.reverse with
+            | [] => "" | [x] => x | x :: ys => s!"{", ".intercalate ys.reverse} and {x}"
+          let plural (n : Nat) (one many : String) := if n == 1 then one else many
+          -- each pair a round merges is a step of its own, nested under the round
+          let mergeStep (pr : Logic.Cube × Logic.Cube × Nat × Logic.Cube × Bool) : Step :=
+            let (a, b, i, m, fresh) := pr
+            let v := (Logic.Fm.var (vs.getD i "")).toExpr.toLatex
+            let again := if fresh then "" else ": the term another pair merged into already, listed once"
+            step "logic.merge" s!"{tx a} and {tx b} differ only in ${v}${again}."
+              (Logic.Fm.or (Logic.Cube.toFm vs a) (Logic.Cube.toFm vs b)).toExpr (Logic.Cube.toFm vs m).toExpr
+          let (_, merges) := r.rounds.foldl (fun (acc : Logic.Fm × Array Step × Nat) rd =>
             let (prev, out, k) := acc
-            (sum cs, out.push (step "logic.merge" s!"Round {k}: merge terms that differ in one variable only, $(x \\land y) \\lor (x \\land \\lnot y) = x$. {n} terms merged, each into terms with one variable fewer; a term that merges with nothing stays as it is." prev.toExpr (sum cs).toExpr), k + 1)) (sum r.start, #[], 1) |> fun (a, b, _) => (a, b)
+            let n := rd.pairs.length
+            let stays := if rd.stays.isEmpty then "" else
+              s!" {andList (rd.stays.map tx)} {plural rd.stays.length "merges" "merge"} with no other term, so {plural rd.stays.length "it stays as it is: a prime implicant" "they stay as they are: prime implicants"}."
+            let subs := rd.pairs.toArray.map mergeStep
+            let st : Step := { step "logic.merge" s!"Round {k}: compare the terms two at a time. Two that differ in one variable only merge into one term without it, by $(x \\land y) \\lor (x \\land \\lnot y) = x$; {n} {plural n "pair merges" "pairs merge"}, each a step below.{stays} A term that merged is true only where the term it merged into is, so it is not needed any more." prev.toExpr (sum rd.terms).toExpr with
+              sub := some ⟨prev.toExpr, subs, (sum rd.terms).toExpr⟩ }
+            (sum rd.terms, out.push st, k + 1)) (sum r.start, #[], 1) |> fun (a, b, _) => (a, b)
           let primesF := sum r.primes
-          let others := r.primes.length - r.cover.length
+          let dropped := r.primes.filter fun p => !r.cover.contains p
           let how := if r.exact then "the fewest others that cover the rest (by search: no smaller cover exists)" else "others chosen greedily to cover the rest (the search for the smallest cover was too large to finish, so a smaller one may exist)"
-          let coverStep := step "logic.cover" s!"The {r.primes.length} terms that merge no further are the prime implicants. Keep the essential ones, each the only term true in some row ({r.essential.length}), then {how}{if others > 0 then s!"; the other {others} are not needed" else ""}." primesF.toExpr (sum r.cover).toExpr
-          let stages := [sum r.start] ++ r.rounds.map (fun (cs, _) => sum cs) ++ [primesF, sum r.cover]
+          let notNeeded := if dropped.isEmpty then "" else s!"; {andList (dropped.map tx)} {plural dropped.length "is" "are"} not needed"
+          -- the cover built term by term, each with the reason it is kept
+          let (_, keeps) := r.cover.foldl (fun (acc : List Logic.Cube × Array Step) p =>
+            let (kept, out) := acc
+            let why := match r.essential.find? (·.1 == p) with
+              | some (_, row) => s!"as the only prime implicant true in the row {tx (row.map some)}: every cover needs it"
+              | none =>
+                let rows := r.rest.filter fun m => p.covers m && !kept.any (·.covers m)
+                s!"for the {plural rows.length "row" "rows"} {andList (rows.map fun (m : List Bool) => tx (m.map some))}, where no term kept so far is true"
+            (kept ++ [p], out.push (step "logic.cover" s!"Keep: {tx p}, {why}." (sum kept).toExpr (sum (kept ++ [p])).toExpr))) ([], #[])
+          let idle := if r.idle.isEmpty then "" else
+            s!" ({andList (r.idle.map tx)} {plural r.idle.length "is" "are"} true only in rows that cannot happen, so {plural r.idle.length "it is" "they are"} left out.)"
+          let coverStep : Step := { step "logic.cover" s!"The {r.primes.length + r.idle.length} terms that merge no further are the prime implicants.{idle} Keep the essential ones, each the only one true in some row ({r.essential.length}), then {how}{notNeeded}." primesF.toExpr (sum r.cover).toExpr with
+            sub := some ⟨(sum []).toExpr, keeps, (sum r.cover).toExpr⟩ }
+          let stages := [sum r.start] ++ r.rounds.map (fun rd => sum rd.terms) ++ [primesF, sum r.cover]
           if !stages.all agrees then err "minimize: a stage disagrees with the formula (please report this)" else
           done name call (sum r.cover) ((#[first] ++ merges).push coverStep)
       match head, args with

@@ -85,6 +85,7 @@ const CASES = [
   { src: "∀ n ∈ 1..10, n^2 ≥ 2n", text: "⊥", step: "Check every element" },
   { src: "minimize(a ∨ (o ∧ ¬l) ∨ (o ∧ l ∧ a))", text: "a ∨ o ∧ ¬l", step: "Round 1" },
   { src: "minimize((g5 ∧ s) ∨ (g3 ∧ ¬g5 ∧ s), g5 ∧ ¬g3)", text: "s ∧ g3", step: "Smallest cover" },
+  { src: "minimize((b ∧ ¬t) ∨ (b ∧ t ∧ s) ∨ (¬b ∧ s ∧ t))", text: "t ∧ s ∨ b ∧ ¬t", step: "Merge terms" },
   { src: "let R = rel({a, b, c}; a->b, b->c)", text: "{(a, b), (b, c)}" },
   { src: "closure(R, transitive)", text: "{(a, b), (b, c), (a, c)}", step: "Transitive closure" },
   { src: "cnf(p ∨)", error: "expected a formula" },
