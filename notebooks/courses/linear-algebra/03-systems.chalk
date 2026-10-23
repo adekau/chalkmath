@@ -219,6 +219,12 @@
       "label": null
     },
     {
+      "src": "> [!note] Application: balancing chemical equations\n> A system whose right-hand sides are all $0$ has $x = 0$ as a solution, and the question is which others it has. [Balancing chemical equations](#course=linear-algebra&lesson=3&app=1), an optional notebook beside this lesson, finds the coefficients of a reaction that way: one equation per element, solved by elimination.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "> [!summary]\n> Solving $A\\,x = b$ asks which input $A$ sends to $b$. Elimination answers it with three moves on the augmented matrix, each of which can be undone and so keeps the solutions, until each variable stands alone. A matrix that squashes the plane onto a line cannot be run backwards: a target on the line has infinitely many inputs, one off it has none.\n>\n> How can you tell from the matrix alone, before solving anything, whether it squashes the plane? Lesson 4 measures what it does to area.",
       "type": "markdown",
       "showWork": false,

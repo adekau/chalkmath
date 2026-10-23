@@ -186,5 +186,14 @@ def rref (m : Mat) : Mat := run (rrefOps m) m
 /-- **Elimination preserves the solution set.** -/
 theorem sol_rref (m : Mat) (x : List Rat) : Sol (rref m) x ↔ Sol m x := sol_run _ _ _
 
+/-- `x` solves every equation of `m`, decided by exact arithmetic. -/
+def solves (m : Mat) (x : List Rat) : Bool := m.all fun r => dot r x == 0
+
+/-- **The check is enough:** a vector `solves` passes is a solution, `A x = 0`. `nullspace` checks
+each basis vector it reads off the reduced matrix this way before it is shown. -/
+theorem solves_sound {m : Mat} {x : List Rat} (h : solves m x = true) : Sol m x := by
+  intro r hr
+  simpa using List.all_eq_true.mp h r hr
+
 end LinQ
 end MathEngine

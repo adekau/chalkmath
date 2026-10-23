@@ -70,6 +70,8 @@ const CASES = [
   { src: "N(arg(-1-i))", text: "-2.35619449019234", step: "Floating-point value" },
   { src: "rref([1,2;2,4])", text: "[1, 2; 0, 0]", step: "Add a multiple of a row" },
   { src: "rref([x, y; x^2, 1])", text: "[1, 0; 0, 1]", step: "Add a multiple of a row, assuming" },
+  { src: "nullspace([1, 0, -1, 0; 4, 0, 0, -2; 0, 2, -2, -1])", text: "[1/2; 1; 1/2; 1]", step: "Null space" },
+  { src: "nullspace(x)", error: "nullspace takes one matrix" },
   { src: "[1,2] * [1,2]", error: "inner dimensions must match" },
   { src: "2^(10^9)", error: "too large to compute exactly" },
   // 0^(-1) is refused, not Rat's 0 (simp.power sets the step's error; normalizeT refuses the cell);
