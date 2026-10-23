@@ -4524,7 +4524,7 @@ const RULE_NAMES: Record<string, string> = {
   "sys.eventually": "Eventually", "sys.refines": "Refinement",
   "order.inner": "Inner call", "sys.inner": "Inner call",
   "trs.step": "Rewrite", "trs.decrease": "Decreases", "trs.critical": "Critical pair",
-  "crdt.update": "Update", "crdt.merge": "Merge", "crdt.send": "Send", "crdt.converged": "Converged", "crdt.diverged": "Not converged",
+  "crdt.update": "Update", "crdt.refuse": "Refused", "crdt.merge": "Merge", "crdt.send": "Send", "crdt.converged": "Converged", "crdt.diverged": "Not converged",
   "lambda.eta": "η-reduction", "lambda.elided": "Steps not shown", "lambda.alpha": "Rename bound variables", "lambda.alpha-eq": "Compare", "lambda.subst": "Substitute",
   "lambda.fv": "Free variables", "lambda.db": "De Bruijn indices",
   "stlc.var": "Var", "stlc.abs": "→I (abstraction)", "stlc.app": "→E (application)", "stlc.constraints": "Type equations",

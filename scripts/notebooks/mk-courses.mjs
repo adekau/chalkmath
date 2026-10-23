@@ -2668,7 +2668,7 @@ const OPEN = "open Order.PartialOrder Order.BoundedJoinSemilattice in\n";
 
 course("crdt", "CRDTs: replicated data that converges",
   "From Propagators to Replicas: counters, sets and registers that replicas update without coordinating and merge as joins, each design the fix for the last one's bug; the main theorem that they converge; gossip, version vectors, op-based CRDTs, a replicated store, and the limits.",
-  "Distributed systems", (add) => {
+  "Distributed systems", (add, app) => {
 
   add("01-replicas.chalk", "Replicas and the merge discipline", "Two replicas lose an update; the three laws a merge needs so that the network cannot make it lose one: states in a semilattice, merge as join.", ({ sec, md, m, ex, lean }) => {
     sec("Replicas and the merge discipline");
@@ -3420,6 +3420,10 @@ example : msetUnion (MSet.ofList [1, 2]) (MSet.ofList [3])
     md(r`Both read $-1$. They have converged, and the rule is broken. No cleverer merge fixes it: in the Lean, ‹no_bank_merge› shows that no idempotent merge can honour both of two withdrawals of 80 from 100. Idempotence forces the merge of $20$ with $20$ to be $20$, while honouring both withdrawals needs $-60$. Each replica was right about its own state and neither could know about the other's withdrawal without asking it first.`);
     md(r`The same boundary showed up earlier. LWW converges by discarding one of two concurrent writes. Tombstones pile up for ever, and throwing one away safely needs to know that every replica has seen its remove: agreement about the state of everyone, which is coordination again.`);
     md(r`Invariants that span replicas (no overdraft, unique usernames, at most ten seats sold) need coordination somewhere: a lock, consensus, or an escrow that hands each replica a share it may spend alone. CRDTs are for the state that does not need it.`);
+    md(r`
+> [!note] Where the coordination goes, in a real system
+> [Scheduling without a lock](#course=crdt&lesson=12&app=1), an optional notebook beside this lesson, follows that sentence through a cluster scheduler: which of its questions are monotone and need no coordination (the CALM theorem), how Google's Omega puts the rest into one atomic step, and how an escrow of quotas removes even that.
+`);
     sec("In Lean");
     for (const c of crdtLesson(11)) lean(c);
     md(r`
@@ -3430,6 +3434,278 @@ example : msetUnion (MSet.ofList [1, 2]) (MSet.ofList [3])
     md(r`
 > [!summary]
 > CRDTs buy availability and convergence without coordination, and they cannot buy invariants that relate replicas. Knowing which state needs which is the design decision this course leaves you with.
+`);
+  });
+  app("12a-scheduling.chalk", "Scheduling without a lock", "Many schedulers, one cluster: what can be decided without asking anyone (CALM), Omega's optimistic transactions and their one atomic step, and an escrow of quotas that keeps a machine from being overcommitted with no coordination at all.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Scheduling without a lock");
+    md(r`
+> [!goal]
+> Take a cluster scheduler apart into what grows and what is tested for absence; see why only the second needs coordination; follow Omega's answer, which keeps the coordination to one atomic step; and remove even that for capacity, with an escrow of quotas.
+`);
+    md(r`An application of lesson 12, outside the course's order: nothing later depends on it. It uses the PN-Counter (lesson 3), the main theorem (lesson 7), and the transition systems of *Transition systems, invariants and temporal logic* (its lessons 1–4: ‹system›, ‹invariant›, ‹reach›), each explained again where it is used.`);
+    sec("Many schedulers, one cluster");
+    md(r`A cluster is thousands of machines, each with so much CPU and memory, and a stream of tasks to place on them: long-running services, which want careful placement, and short batch jobs, which want to start now. One scheduler for everything is simple, and it is a queue every task waits in. Google's paper on Omega (Schwarzkopf, Konwinski, Abd-El-Malek and Wilkes, *Omega: flexible, scalable schedulers for large compute clusters*, EuroSys 2013) sorts the ways out into three designs:
+
+- **Monolithic**: one scheduler places every task, Google's Borg among them. One view of the cluster and no conflicts, but every kind of task goes through the same code, one decision at a time.
+- **Two-level**: a resource manager *offers* resources to several schedulers in turn, as Mesos does. An offered resource is locked away from the others while the offer is out: pessimistic, and a scheduler sees only what it is offered.
+- **Shared state**, Omega's: every scheduler has a full copy of the cluster's state, decides on its own copy, and commits its claims to the shared state as a **transaction**, optimistically. Two schedulers can claim the same resources; then one commit fails, and that scheduler tries again.
+
+The third gives every scheduler the whole view and no locks while it thinks. What it gives up, and what has to stay coordinated, is what this course can say precisely.`);
+    sec("What can be decided without asking");
+    md(r`
+> [!theorem] CALM (Consistency As Logical Monotonicity)
+> A program has a consistent implementation that needs no coordination exactly when it is **monotone**: when learning more facts can only add to its output, never take something back. (Hellerstein's conjecture; proved by Ameloot, Neven and Van den Bussche; see Hellerstein and Alvaro, *Keeping CALM*, 2020.)
+`);
+    md(r`This is the course's main theorem seen from the other side. A CRDT's state only grows, and a reading that is monotone in it, like a G-Counter's value, can be read anywhere, any time: later it can only be larger. A reading that is not monotone, like lesson 3's PN-Counter value or lesson 12's "is the balance at least 1?", can be overturned by a merge.
+
+Sort a scheduler's questions that way:
+
+- **The tasks submitted, the machines, the claims made**: each a set that only grows. Merging two schedulers' knowledge is union, and "has task 7 been placed?" asks whether a claim is *there*. Once true, it stays true.
+- **"Does machine 4 have room for this task?"** asks whether enough claims are *not* there. One more claim, learned later, can turn yes into no. It is not monotone, so by CALM no coordination-free implementation answers it consistently.`);
+    md(r`Two schedulers, ‹a› and ‹b›, and one machine with room for one more task. Each looks at its copy of the machine's PN-Counter of units in use, sees 0, places its task, and counts it:`);
+    m(`replicas(pncounter; a, b
+  a: inc
+  b: inc
+  a -> b
+  b -> a
+)`, { work: true });
+    md(r`Both copies converge, to 2, on a machine with room for 1: overcommitted. It is lesson 12's overdraft in other words. Each scheduler's decision was right on what it knew; the question it answered, "is there room?", was about what it did *not* know.`);
+    sec("Omega: one atomic step");
+    md(r`Omega does not try to make "is there room?" monotone. It confines it. A scheduler plans on its copy, with no lock, as long as it likes; then it commits, and the commit is checked against the shared state *at that instant*: are the machines it claims still as it saw them? That check and the write are one atomic step, a compare-and-set, and it is the only coordination in the design.
+
+As a transition system (the systems course's notation: variables, an initial state, and actions, each a guard and its updates, taken one at a time), two schedulers placing one task each on a machine with room for one. Without the check, planning and committing are two steps with a gap between them:`);
+    m(`let Naive = system(
+  var used in 0..2
+  var a in {idle, planned, placed}
+  var b in {idle, planned, placed}
+  init used = 0 ∧ a = idle ∧ b = idle
+  action aplan when a = idle ∧ used < 1 do a := planned
+  action acommit when a = planned do used := used + 1, a := placed
+  action bplan when b = idle ∧ used < 1 do b := planned
+  action bcommit when b = planned do used := used + 1, b := placed
+)`);
+    m("invariant(Naive, used ≤ 1)", { step: 0 });
+    md(r`The shortest run that breaks it: both plan while the machine is empty, then both commit. It is the lost update of the systems course's lesson 1, and the check-then-act of its lesson 3.
+
+Omega's fix gives the machine a **sequence number**, raised by every commit to it. A scheduler records the number when it plans (‹sa›, ‹sb›); its commit succeeds only if the number is still the same, and otherwise the scheduler drops its plan and plans again:`);
+    m(`let Cas = system(
+  var used in 0..2
+  var seq in 0..2
+  var sa in 0..2
+  var sb in 0..2
+  var a in {idle, planned, placed}
+  var b in {idle, planned, placed}
+  init used = 0 ∧ seq = 0 ∧ sa = 0 ∧ sb = 0 ∧ a = idle ∧ b = idle
+  action aplan when a = idle ∧ used < 1 do sa := seq, a := planned
+  action acommit when a = planned ∧ seq = sa do used := used + 1, seq := seq + 1, a := placed
+  action aabort when a = planned ∧ seq ≠ sa do a := idle
+  action bplan when b = idle ∧ used < 1 do sb := seq, b := planned
+  action bcommit when b = planned ∧ seq = sb do used := used + 1, seq := seq + 1, b := placed
+  action babort when b = planned ∧ seq ≠ sb do b := idle
+)`);
+    m("invariant(Cas, used ≤ 1)");
+    md(r`The run that broke ‹Naive› now ends differently: ‹a› commits first, the number moves on, and ‹b›'s commit finds it changed and aborts.`);
+    m("trace(Cas; aplan, bplan, acommit, babort)", { step: 0 });
+    md(r`
+> [!note] A sequence number is a per-key lock, held for one instant
+> The systems course's lesson 4 kept one lock per key and held it across the work. Omega keeps one number per machine and "holds" it only for the commit's instant: the scheduler thinks without a lock, and pays for a conflict with a retry instead of a wait. Kubernetes objects carry a ‹resourceVersion› that is used the same way.
+`);
+    sec("How much to compare");
+    md(r`A commit checks the machines it claims. It could instead check the whole cell: one sequence number for everything, raised by every commit. That is simpler, and it aborts commits that did not conflict at all. Two machines with room for one task each; ‹a› places on the first and ‹b› on the second:`);
+    m(`let Coarse = system(
+  var u1 in 0..1
+  var u2 in 0..1
+  var seq in 0..2
+  var sa in 0..2
+  var sb in 0..2
+  var a in {idle, planned, retry, placed}
+  var b in {idle, planned, retry, placed}
+  init u1 = 0 ∧ u2 = 0 ∧ seq = 0 ∧ sa = 0 ∧ sb = 0 ∧ a = idle ∧ b = idle
+  action aplan when a = idle ∧ u1 = 0 do sa := seq, a := planned
+  action acommit when a = planned ∧ seq = sa do u1 := 1, seq := seq + 1, a := placed
+  action aabort when a = planned ∧ seq ≠ sa do a := retry
+  action aretry when a = retry do a := idle
+  action bplan when b = idle ∧ u2 = 0 do sb := seq, b := planned
+  action bcommit when b = planned ∧ seq = sb do u2 := 1, seq := seq + 1, b := placed
+  action babort when b = planned ∧ seq ≠ sb do b := retry
+  action bretry when b = retry do b := idle
+)`);
+    m("reach(Coarse, b = retry)", { step: 0 });
+    md(r`‹b› retried though nothing it claimed had changed. With a number per machine (‹Fine›, the same system with ‹seq1› and ‹seq2›), the two commits never meet:`);
+    m(`let Fine = system(
+  var u1 in 0..1
+  var u2 in 0..1
+  var seq1 in 0..1
+  var seq2 in 0..1
+  var sa in 0..1
+  var sb in 0..1
+  var a in {idle, planned, retry, placed}
+  var b in {idle, planned, retry, placed}
+  init u1 = 0 ∧ u2 = 0 ∧ seq1 = 0 ∧ seq2 = 0 ∧ sa = 0 ∧ sb = 0 ∧ a = idle ∧ b = idle
+  action aplan when a = idle ∧ u1 = 0 do sa := seq1, a := planned
+  action acommit when a = planned ∧ seq1 = sa do u1 := 1, seq1 := seq1 + 1, a := placed
+  action aabort when a = planned ∧ seq1 ≠ sa do a := retry
+  action aretry when a = retry do a := idle
+  action bplan when b = idle ∧ u2 = 0 do sb := seq2, b := planned
+  action bcommit when b = planned ∧ seq2 = sb do u2 := 1, seq2 := seq2 + 1, b := placed
+  action babort when b = planned ∧ seq2 ≠ sb do b := retry
+  action bretry when b = retry do b := idle
+)`);
+    m("reach(Fine, a = retry ∨ b = retry)");
+    md(r`The Omega paper makes this a design choice and measures it: **fine-grained** conflict detection (per machine) against **coarse-grained** (any change since the plan). Coarse is cheaper to check and wastes work in retries; fine retries only on real conflicts. Both keep the invariant: the difference is how much a scheduler's work is thrown away, not whether the machine is overcommitted.`);
+    sec("All or nothing");
+    md(r`Some jobs are only useful whole: a job of two tasks that must run together (a **gang**). A transaction can be **incremental**, committing the claims that succeed and keeping them, or **all-or-nothing**, committing every claim or none. Two such jobs, ‹A› and ‹B›, each needing both of two machines; incrementally, each takes one machine and then waits for the other:`);
+    m(`let Incremental = system(
+  var m1 in {free, A, B}
+  var m2 in {free, A, B}
+  var a in {idle, half, running}
+  var b in {idle, half, running}
+  init m1 = free ∧ m2 = free ∧ a = idle ∧ b = idle
+  action a1 when a = idle ∧ m1 = free do m1 := A, a := half
+  action a2 when a = half ∧ m2 = free do m2 := A, a := running
+  action adone when a = running do m1 := free, m2 := free, a := idle
+  action b1 when b = idle ∧ m2 = free do m2 := B, b := half
+  action b2 when b = half ∧ m1 = free do m1 := B, b := running
+  action bdone when b = running do m1 := free, m2 := free, b := idle
+)`);
+    m("deadlock(Incremental)", { step: 0 });
+    md(r`‹deadlock› finds a reachable state with no action enabled (the systems course's lesson 5): each job holds half of what it needs, and neither will let go. Claiming both machines in one commit, or neither, removes the state where a job holds half:`);
+    m(`let Gang = system(
+  var m1 in {free, A, B}
+  var m2 in {free, A, B}
+  var a in {idle, running}
+  var b in {idle, running}
+  init m1 = free ∧ m2 = free ∧ a = idle ∧ b = idle
+  action aclaim when a = idle ∧ m1 = free ∧ m2 = free do m1 := A, m2 := A, a := running
+  action adone when a = running do m1 := free, m2 := free, a := idle
+  action bclaim when b = idle ∧ m1 = free ∧ m2 = free do m1 := B, m2 := B, b := running
+  action bdone when b = running do m1 := free, m2 := free, b := idle
+)`);
+    m("deadlock(Gang)");
+    md(r`All-or-nothing makes a bigger atomic step, so it conflicts more often: a commit that needs ten machines fails if any one of them changed. Incremental commits conflict less and can strand half a job. Omega offers both, per transaction, and leaves the choice to the scheduler that knows what its job needs.`);
+    sec("An escrow of quotas");
+    md(r`Omega keeps "is there room?" correct by checking it at one instant. The escrow method goes further: it changes the question into one that needs no instant at all. Split the machine's capacity into **quotas**, one per scheduler, each a share that scheduler may spend alone. "Is there room?" becomes "is there room *in my quota*?", and a scheduler's own quota is something only it spends, so it always knows the answer exactly, or errs on the safe side.
+
+‹replicas(escrow N; …)› is that design as a CRDT, a **bounded counter**: a capacity of ‹N› split evenly between the replicas; ‹use› takes a unit of the replica's quota, ‹free› returns one, and ‹give r› hands a unit of quota to ‹r›. A replica refuses, by itself, a use its quota does not cover. The same schedule as before, with room for two, and ‹a› trying a second task:`);
+    m(`replicas(escrow 2; a, b
+  a: use
+  b: use
+  a: use
+  a -> b
+  b -> a
+)`, { work: true });
+    md(r`Two in use, on a machine with room for two, and ‹a›'s second use was refused without asking anyone. The state is three G-Counters (uses, frees, and gifts between each pair), merged by the entrywise maximum as every type here is, so the main theorem applies as it is: replicas that have seen the same updates agree. A gift has to travel before it can be spent:`);
+    m(`replicas(escrow 2; a, b
+  b: give a
+  a: use
+  a: use
+  b -> a
+  a: use
+)`, { work: true });
+    md(r`‹a›'s second use came before ‹b›'s gift reached it, so ‹a› refused it: it can only spend what it knows it has. After the merge, it spends ‹b›'s unit.`);
+    md(r`
+> [!definition] Invariant confluence
+> An invariant is **I-confluent** when any two states that satisfy it, reached from a common state that satisfies it, merge into a state that satisfies it (Bailis, Fekete, Franklin, Ghodsi, Hellerstein and Stoica, *Coordination Avoidance in Database Systems*, 2015). Exactly the I-confluent invariants can be kept without coordination. "In use ≤ capacity" over a shared count is not: the overcommitted merge above. "Each scheduler within its quota", with the quotas adding up to at most the capacity, is.
+`);
+    md(r`The price is **stranded capacity**: a unit in an idle scheduler's quota is a unit a busy one cannot use until quota is moved, and moving quota is the one thing that needs agreement between two schedulers. Escrow wins when the bound is far from being reached, or quotas can be moved ahead of demand; checking at commit time, as Omega does, wins when the cluster runs close to full and any scheduler may need any machine.`);
+    sec("In Lean");
+    md(r`The two kinds of question, in Lean: "is the task placed?" looks for a claim, and stays true as claims arrive; "is the machine free?" looks for the absence of one, and does not.`);
+    lean(r`namespace Sched
+
+/-- A claim: a task placed on a machine. -/
+structure Claim where
+  task : Nat
+  machine : Nat
+  deriving DecidableEq, Repr
+
+/-- Has the task been placed? A question about what is there. -/
+def placed (log : List Claim) (t : Nat) : Bool := log.any (·.task == t)
+
+/-- Is the machine free? A question about what is not there. -/
+def free (log : List Claim) (m : Nat) : Bool := log.all (·.machine != m)
+
+/-- Learning more claims never turns "placed" from true to false. -/
+theorem placed_mono (log more : List Claim) (t : Nat) (h : placed log t = true) :
+    placed (log ++ more) t = true := by
+  unfold placed at h ⊢
+  rw [List.any_append, h, Bool.true_or]
+
+/-- "Free" can: one more claim, and the answer goes from yes to no. -/
+example : free [] 1 = true ∧ free [⟨7, 1⟩] 1 = false := by decide
+
+end Sched`);
+    md(r`Two schedulers' counts of units on one machine, a G-Counter with a slot each, merged slot by slot. The invariant is that the machine is not overcommitted:`);
+    lean(r`namespace Sched
+
+structure Used where
+  a : Nat
+  b : Nat
+  deriving DecidableEq, Repr
+
+def Used.merge (s t : Used) : Used := ⟨max s.a t.a, max s.b t.b⟩
+def Used.total (s : Used) : Nat := s.a + s.b
+
+/-- The machine is not overcommitted. -/
+def fits (cap : Nat) (s : Used) : Prop := s.total ≤ cap
+
+instance (cap : Nat) (s : Used) : Decidable (fits cap s) := inferInstanceAs (Decidable (_ ≤ _))
+
+/-- Escrow: each scheduler keeps within its own quota. -/
+def withinQuota (qa qb : Nat) (s : Used) : Prop := s.a ≤ qa ∧ s.b ≤ qb
+
+end Sched`);
+    lx(r`theorem Sched.overcommit : Sched.fits 1 ⟨1, 0⟩ ∧ Sched.fits 1 ⟨0, 1⟩ ∧ ¬ Sched.fits 1 (Sched.Used.merge ⟨1, 0⟩ ⟨0, 1⟩) := by`, r`Prove that "not overcommitted" is not I-confluent: two states that fit a machine with room for one merge into one that does not.`, r`  decide`, [
+      r`Every part is a statement about small numbers: ‹decide› computes it.`,
+    ]);
+    lx(r`theorem Sched.escrow_fits (cap qa qb : Nat) (hq : qa + qb ≤ cap) (s : Sched.Used) (h : Sched.withinQuota qa qb s) :
+    Sched.fits cap s := by`, r`Prove the escrow's promise: if each scheduler is within its quota and the quotas add up to at most the capacity, the machine is not overcommitted.`, r`  unfold Sched.fits Sched.Used.total
+  unfold Sched.withinQuota at h
+  omega`, [
+      r`Unfold ‹fits› and ‹Used.total› in the goal, and ‹withinQuota› in ‹h›: what is left is arithmetic.`,
+      r`‹omega› adds the two quota bounds for you.`,
+    ]);
+    lx(r`theorem Sched.merge_within (qa qb : Nat) (s t : Sched.Used) (hs : Sched.withinQuota qa qb s) (ht : Sched.withinQuota qa qb t) :
+    Sched.withinQuota qa qb (s.merge t) := by`, r`Prove that "within quota" is I-confluent: two states within the quotas merge into one within them.`, r`  unfold Sched.withinQuota Sched.Used.merge at *
+  simp only
+  omega`, [
+      r`Unfold ‹withinQuota› and ‹Used.merge› everywhere (‹at *›), then ‹simp only› to read the fields of the merged state.`,
+      r`The maximum of two numbers below a bound is below it: ‹omega› knows ‹max›.`,
+    ]);
+    lx(r`theorem Sched.useA_within (qa qb : Nat) (s : Sched.Used) (h : Sched.withinQuota qa qb s) (hc : Sched.canUseA qa s = true) :
+    Sched.withinQuota qa qb { s with a := s.a + 1 } := by`, r`Write the local test ‹canUseA›: may scheduler ‹a› place one more unit, looking only at its own slot and its quota? The statement says that a use the test allows keeps ‹a› within its quota; the proof is written for you.`, r`  unfold Sched.canUseA at hc
+  unfold Sched.withinQuota at *
+  simp only [decide_eq_true_eq] at hc
+  exact ⟨show s.a + 1 ≤ qa by omega, h.2⟩`, [
+      r`One more unit keeps ‹a› within its quota when what it has used so far is below the quota.`,
+      r`‹def Sched.canUseA (qa : Nat) (s : Sched.Used) : Bool := s.a < qa›`,
+    ], { start: r`  unfold Sched.canUseA at hc
+  unfold Sched.withinQuota at *
+  simp only [decide_eq_true_eq] at hc
+  exact ⟨show s.a + 1 ≤ qa by omega, h.2⟩`, def: { start: "def Sched.canUseA (qa : Nat) (s : Sched.Used) : Bool := sorry", solution: "def Sched.canUseA (qa : Nat) (s : Sched.Used) : Bool := s.a < qa", forbid: ["true"] } });
+    sec("Exercises");
+    ex(`replicas(escrow 3; a, b
+  a: use
+  a: use
+  a: use
+  b: use
+  a -> b
+  b -> a
+)`, r`A capacity of 3 between two schedulers, so ‹a›'s quota is 2 and ‹b›'s is 1. ‹a› tries three tasks and ‹b› one, then they sync. How many units are in use, as each reads it?`, [
+      r`‹a›'s third use is refused: its quota is 2.`,
+      r`After the syncs both know of ‹a›'s 2 and ‹b›'s 1.`,
+    ]);
+    ex("invariant(Naive, ¬(a = placed ∧ b = placed))", r`In ‹Naive›, can both schedulers end up placed on the machine with room for one? Answer ‹true› if never, ‹false› if they can.`, [
+      r`The invariant run above ends with ‹used = 2›: who placed?`,
+    ], { hide: true });
+    ex("reach(Cas, a = placed ∧ b = placed)", r`In ‹Cas›, can both schedulers end up placed? Answer ‹true› or ‹false›.`, [
+      r`The machine has room for one, and every commit checks the sequence number.`,
+    ], { hide: true });
+    ex("deadlock(Gang)", r`Can two all-or-nothing jobs leave each other waiting forever? Answer ‹true› or ‹false›.`, [
+      r`A job claims both machines or neither, so no state has a job holding one of them.`,
+    ], { hide: true });
+    md(r`
+> [!summary]
+> By CALM, the monotone part of a scheduler (tasks submitted, claims made, "has it been placed?") needs no coordination; "is there room?" asks about the absence of claims, and does. Omega keeps the scheduling itself coordination-free and puts that question into one atomic step, a commit checked against per-machine sequence numbers, retried on conflict; fine- or coarse-grained checks and incremental or all-or-nothing commits trade retries against guarantees. An escrow of quotas turns the question into an I-confluent one, each scheduler within its own share, and needs coordination only to move quota.
 `);
   });
 }, { leanPrelude: true });
@@ -3958,6 +4234,10 @@ theorem le_foldr_max (used : List Nat) : ∀ x ∈ used, x ≤ used.foldr max 0 
 > A linearizable call takes effect at one instant, so a model may make it one action; the promise ends at the call's return. The gap between two calls, on the table and on the lock, is where a per-key lock fails: the entry is removed and made again between a lookup and a take, and two jobs hold two locks for one key. A new lock is only a fresh name. Checking the table again after the take, and removing before releasing, fixes it; an inductive invariant proves it.
 `);
     md(r`‹Checked› never lets two in. But a job can take its lock, find the entry gone, and start over, and nothing says it will not find it gone every time, while the other job goes round and round. No state is bad; a good thing just never happens. Saying that needs a second kind of property, the next lesson's.`);
+    md(r`
+> [!note] A lock per key, held for one instant
+> Google's Omega scheduler keeps a sequence number per machine and checks it only at the instant a scheduler commits, with no lock while it plans: a per-key lock held for one step, paid for in retries. [Scheduling without a lock](#course=crdt&lesson=12&app=1), an optional notebook in the CRDT course, models it with this course's tools.
+`);
   });
 
   add("05-safety-liveness.chalk", "Safety and liveness", "Nothing bad happens; something good eventually does. Finite counterexamples and infinite ones, deadlocks and lassos, and the fairness a scheduler must promise.", ({ sec, md, m, ex, lean, lx }) => {

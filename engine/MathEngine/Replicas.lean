@@ -18,6 +18,12 @@ Every type here is one data structure: a vector of naturals, merged by the point
   removed: a concurrent add survives a remove.
 - LWW-register: one entry, the key of the latest write, `timestamp · R + replica` (the replica breaks
   ties). Reads the value written with that key.
+- Escrow counter (`escrow N`, a bounded counter): a capacity of `N` split into per-replica quotas. An
+  entry per replica for its uses, one for its frees, and one per pair for the quota one gave the
+  other. A replica's quota left is its share plus what it was given, less what it gave, used and did
+  not free; it refuses a use (or a gift) its quota does not cover, by itself, asking no one. Only it
+  writes its own entries, so it knows its quota exactly, or less (a gift may not have reached it), and
+  the units in use never exceed `N`, in any merge of any states (checked after every event).
 
 So `merge` is one function, and `ReplicasProofs` proves it a join (commutative, associative,
 idempotent) and every update an inflation: what makes the replicas converge, whatever the order,
@@ -40,6 +46,8 @@ def raise (v : Vec) (i k : Nat) : Vec := v.modify i (max · k)
 
 inductive Kind where
   | gcounter | pncounter | gset | twopset | orset | lww
+  /-- A bounded counter of the given capacity. -/
+  | escrow (cap : Nat)
   deriving BEq, Repr, Inhabited
 
 def Kind.ofName : String → Option Kind
@@ -49,16 +57,19 @@ def Kind.ofName : String → Option Kind
   | "twopset" => some .twopset
   | "orset" => some .orset
   | "lww" => some .lww
-  | _ => none
+  | t => match (t.splitOn " ").filter (· != "") with
+    | ["escrow", n] => n.toNat?.map .escrow
+    | _ => none
 
 def Kind.title : Kind → String
   | .gcounter => "G-counter" | .pncounter => "PN-counter" | .gset => "G-set"
-  | .twopset => "2P-set" | .orset => "OR-set" | .lww => "LWW-register"
+  | .twopset => "2P-set" | .orset => "OR-set" | .lww => "LWW-register" | .escrow _ => "bounded counter"
 
 /-- The operations a type has, for an error that says which. -/
 def Kind.ops : Kind → List String
   | .gcounter => ["inc"] | .pncounter => ["inc", "dec"] | .gset => ["add x"]
   | .twopset | .orset => ["add x", "remove x"] | .lww => ["write v", "write v @ t"]
+  | .escrow _ => ["use", "free", "give r"]
 
 /-- An event of the schedule. -/
 inductive Ev where
@@ -120,6 +131,7 @@ def Layout.width (L : Layout) : Nat :=
   | .twopset => 2 * L.elems.length
   | .orset => 2 * L.tags.length
   | .lww => 1
+  | .escrow _ => 2 * L.replicas.length + L.replicas.length * L.replicas.length
 
 def idx (l : List String) (x : String) : Nat := (l.idxOf? x).getD 0
 
@@ -171,7 +183,41 @@ def update (L : Layout) (v : Vec) (r name : String) (arg : Option String) (ts : 
     let key := (ts.getD k) * R + ri + 1
     let _ := x
     pure (raise v 0 key)
+  | .escrow _, "use", none => pure (bump v ri)
+  | .escrow _, "free", none => pure (bump v (R + ri))
+  | .escrow _, "give", some s =>
+    if !L.replicas.contains s || s == r then throw s!"{r} can give quota to another replica ({", ".intercalate (L.replicas.filter (· != r))}), not '{s}'" else
+    pure (bump v (2 * R + ri * R + idx L.replicas s))
   | _, _, _ => throw bad
+
+/-- An escrow counter's share of the capacity for replica `i`: an even split, the first replicas
+taking the remainder. -/
+def share (cap R i : Nat) : Nat := cap / R + (if i < cap % R then 1 else 0)
+
+/-- What an escrow counter's state says replica `i` may still use: its share, plus what it was given,
+less what it gave away, less what it uses and has not freed. -/
+def quotaLeft (L : Layout) (v : Vec) (i : Nat) : Int :=
+  let R := L.replicas.length
+  let cap := match L.kind with | .escrow c => c | _ => 0
+  let given := (List.range R).foldl (fun n j => n + v.getD (2 * R + j * R + i) 0) 0
+  let gave := (List.range R).foldl (fun n j => n + v.getD (2 * R + i * R + j) 0) 0
+  Int.ofNat (share cap R i + given) - Int.ofNat gave - Int.ofNat (v.getD i 0) + Int.ofNat (v.getD (R + i) 0)
+
+/-- The units in use, by everyone, as far as the state knows. -/
+def inUse (L : Layout) (v : Vec) : Int :=
+  let R := L.replicas.length
+  (List.range R).foldl (fun n i => n + Int.ofNat (v.getD i 0) - Int.ofNat (v.getD (R + i) 0)) 0
+
+/-- Why replica `r` refuses an escrow update with the state `v` it has, if it does: a use or a gift
+its quota does not cover, or a free with nothing of its own in use. -/
+def refusal (L : Layout) (v : Vec) (r name : String) : Option String :=
+  let ri := idx L.replicas r
+  let R := L.replicas.length
+  match L.kind, name with
+  | .escrow _, "use" => if quotaLeft L v ri < 1 then some s!"{r} refuses the use: its quota is spent, as far as it knows. It decides alone, asking no one." else none
+  | .escrow _, "give" => if quotaLeft L v ri < 1 then some s!"{r} refuses the gift: it has no quota left to give." else none
+  | .escrow _, "free" => if v.getD ri 0 ≤ v.getD (R + ri) 0 then some s!"{r} has nothing of its own in use to free." else none
+  | _, _ => none
 
 /-- What a state reads as. -/
 def read (L : Layout) (v : Vec) : Expr :=
@@ -191,6 +237,7 @@ def read (L : Layout) (v : Vec) : Expr :=
   | .lww => match L.writes.lookup (v.getD 0 0) with
     | some x => .var x
     | none => .var "⊥"
+  | .escrow _ => .num (Q.ofInt (inUse L v))
 
 /-- A state as the work shows it. -/
 def stateExpr (L : Layout) (v : Vec) : Expr :=
@@ -211,6 +258,10 @@ def stateExpr (L : Layout) (v : Vec) : Expr :=
     match L.writes.lookup key with
     | some x => .var s!"{x}@{(key - 1) / R}"
     | none => .var "?"
+  | .escrow _ =>
+    let gifts := (L.replicas.zipIdx.flatMap fun (a, i) => L.replicas.zipIdx.filterMap fun (b, j) =>
+      if i == j then none else some s!"{a}→{b}↦{v.getD (2 * R + i * R + j) 0}")
+    .fn "pair" [Ord.setExpr (entries 0), Ord.setExpr (entries R), Ord.setExpr gifts]
 
 /-- An event of the space-time diagram: its lane, a label, and the state after it. -/
 structure DEvent where
@@ -253,11 +304,24 @@ def run (kind : Kind) (replicas : List String) (evs : List Ev) : Except String R
     match e with
     | .op r name arg ts =>
       let v ← get states r
+      if let some why := refusal L v r name then
+        let what := s!"{name}{(arg.map (" " ++ ·)).getD ""}"
+        -- the state is left as it is; the step shows why, as what the replica knows it has left
+        let ri := idx replicas r
+        let R := replicas.length
+        let shown : Expr := if name == "free" then .fn "=" [.fn "inuse" [.var r], .num (Q.ofInt (Int.ofNat (v.getD ri 0) - Int.ofNat (v.getD (R + ri) 0)))]
+          else .fn "=" [.fn "quota" [.var r], .num (Q.ofInt (quotaLeft L v ri))]
+        steps := steps.push ("crdt.refuse", why, stateExpr L v, shown, [events.size])
+        events := events.push ⟨r, s!"{what} ✗", txt v⟩
+        continue
       let v' ← update L v r name arg ts tagNo k
       if kind == .orset && name == "add" then tagNo := tagNo + 1
       states := states.map fun (q, w) => if q == r then (q, v') else (q, w)
       let what := s!"{name}{(arg.map (" " ++ ·)).getD ""}{(ts.map (s!" @ {·}")).getD ""}"
-      steps := steps.push ("crdt.update", s!"{r}: {what}, a local update. It only raises entries of {r}'s state.", stateExpr L v, stateExpr L v', [events.size])
+      let left := match kind with
+        | .escrow _ => s!" Its quota left, as far as it knows: {quotaLeft L v' (idx replicas r)}."
+        | _ => ""
+      steps := steps.push ("crdt.update", s!"{r}: {what}, a local update. It only raises entries of {r}'s state.{left}", stateExpr L v, stateExpr L v', [events.size])
       events := events.push ⟨r, what, txt v'⟩
     | .sync r s =>
       let v ← get states r
@@ -283,6 +347,10 @@ def run (kind : Kind) (replicas : List String) (evs : List Ev) : Except String R
       steps := steps.push ("crdt.merge", s!"{s} merges the message {m}: the entrywise maximum, a join. Delivering it again, or after a newer state, changes nothing more.", stateExpr L w, stateExpr L w', [events.size])
       events := events.push ⟨s, s!"← {m}", txt w'⟩
       arrows := (src, events.size - 1) :: arrows
+    -- an escrow counter's promise, checked: everything any replica knows of, merged, is within the capacity
+    if let .escrow cap := kind then
+      let all := states.foldl (fun acc (_, v) => merge acc v) zero
+      if inUse L all > Int.ofNat cap then throw s!"escrow: {inUse L all} units in use, more than the capacity {cap} (please report this)"
   return ⟨L, steps, states, ⟨replicas, events, arrows.reverse⟩⟩
 
 /-- Parse a `replicas(…)` body: the type, the replicas, then the events. -/
@@ -291,7 +359,7 @@ def parse (body : String) : Except String (Kind × List String × List Ev) := do
   | ty :: rs :: evs =>
     let kind ← match Kind.ofName ty with
       | some k => pure k
-      | none => throw s!"'{ty}' is not a CRDT here: gcounter, pncounter, gset, twopset, orset or lww"
+      | none => throw s!"'{ty}' is not a CRDT here: gcounter, pncounter, gset, twopset, orset, lww or escrow N (a capacity of N)"
     let replicas := (rs.splitOn ",").map (·.trimAscii.copy) |>.filter (· != "")
     if replicas.isEmpty || !replicas.all isName then throw "name the replicas after the type: replicas(gcounter; a, b; …)"
     if replicas.eraseDups.length != replicas.length then throw "a replica is named twice"

@@ -464,6 +464,11 @@ mutual
       | [a, b] =>
         let acc := print a (0 :: path) T P_ADD (T.openIf g acc ++ "(") ++ ", "
         T.closeIf g (print b (1 :: path) T P_ADD acc ++ ")")
+      -- a triple (an escrow counter's state: uses, frees, gifts)
+      | [a, b, c] =>
+        let acc := print a (0 :: path) T P_ADD (T.openIf g acc ++ "(") ++ ", "
+        let acc := print b (1 :: path) T P_ADD acc ++ ", "
+        T.closeIf g (print c (2 :: path) T P_ADD acc ++ ")")
       | as => fnPlain T name as path ctx acc
     | "rel" => match args with
       | [_, ps] => T.closeIf g (print ps (1 :: path) T P_ADD (T.openIf g acc))

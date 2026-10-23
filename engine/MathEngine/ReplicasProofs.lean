@@ -69,6 +69,10 @@ theorem update_inflation (L : Layout) (v : Vec) (r name : String) (arg : Option 
     | cons i rest ih =>
       simp only [List.foldl_cons]
       exact merge_trans (merge_raise v _ 1) (ih _)
+  · -- an escrow gift: to another replica, then bumped
+    split at h
+    · cases h
+    · simp only [pure, Except.pure, Except.ok.injEq] at h; subst h; exact merge_bump _ _
   · cases h
 
 end Rep
