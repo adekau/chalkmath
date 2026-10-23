@@ -276,6 +276,12 @@
       "label": null
     },
     {
+      "src": "> [!note] Application: illegal states\n> A product is $\\land$ and a sum is $\\lor$, in programs too. [Make illegal states unrepresentable](#course=lambda-types&lesson=5&app=1), an optional notebook beside this lesson, replaces a record of flags that allows nonsense states with a tagged union that does not.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "> [!summary]\n> The typing rules are natural deduction's rules for implication: a type is a proposition and a closed term a proof of it; Var is an assumption, →I assuming, →E modus ponens, and a β-step removes a detour from a proof. Every type with a term is a tautology, but not every tautology has a term: Peirce's law and $\\lnot\\lnot A \\to A$ need classical logic's excluded middle, which no program proves.",
       "type": "markdown",
       "showWork": false,

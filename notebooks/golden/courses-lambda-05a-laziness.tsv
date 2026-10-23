@@ -1,0 +1,15 @@
+5	cbv 6: K I (omega omega)	= (λy. λx. x) ((λx. x x) (λx. x x))   (stopped after 6 steps: not yet a value)
+6	cbn: K I (omega omega)	= λx. x
+9	cbv 6: and false (omega omega)	= (λq. (λt. λf. f) q (λt. λf. f)) ((λx. x x) (λx. x x))   (stopped after 6 steps: not yet a value)
+10	cbn: and false (omega omega)	= λt. λf. f   (the Church numeral 0)
+12	cbv 6: if true a (omega omega)	= (λb. (λt. λf. t) a b) ((λx. x x) (λx. x x))   (stopped after 6 steps: not yet a value)
+13	cbn: if true a (omega omega)	= a
+17	cbv: K I (λd. omega omega)	= λx. x
+19	cbv: if true (λd. a) (λd. omega omega) I	= a
+23	normal: (λx. f x x x) ((λy. y) ((λy. y) v))	= f v v v
+24	applicative: (λx. f x x x) ((λy. y) ((λy. y) v))	= f v v v
+26	normal: (λx. f) ((λy. y) ((λy. y) v))	= f
+27	applicative: (λx. f) ((λy. y) ((λy. y) v))	= f
+41	cbv: K a (λd. omega omega)	= a
+42	cbn: or true (omega omega)	= λt. λf. t
+43	cbv: if false (λd. omega omega) (λd. b) I	= b

@@ -439,7 +439,14 @@
         {
           "file": "05-strategies.chalk",
           "title": "Evaluation strategies",
-          "blurb": "Which redex first: normal order, call by name, call by value, applicative order, and a term where the choice decides whether you finish."
+          "blurb": "Which redex first: normal order, call by name, call by value, applicative order, and a term where the choice decides whether you finish.",
+          "apps": [
+            {
+              "file": "05a-laziness.chalk",
+              "title": "Laziness in real languages",
+              "blurb": "Every language picks a strategy: arguments first in JavaScript, &&, || and if as the exceptions that run by name, thunks to delay by hand, and Haskell's call by need, which shares what it evaluates."
+            }
+          ]
         },
         {
           "file": "06-de-bruijn.chalk",
@@ -449,7 +456,14 @@
         {
           "file": "07-church.chalk",
           "title": "Church encodings",
-          "blurb": "A thing is what you can do with it: booleans that choose, numerals that iterate, pairs, the predecessor puzzle, and lists."
+          "blurb": "A thing is what you can do with it: booleans that choose, numerals that iterate, pairs, the predecessor puzzle, and lists.",
+          "apps": [
+            {
+              "file": "07a-callbacks-currying.chalk",
+              "title": "Callbacks and currying",
+              "blurb": "JavaScript's arrow functions as λ-terms: curried functions and partial application, functions that take functions (map, compose), and callbacks and continuation passing, which Church encodings were all along."
+            }
+          ]
         },
         {
           "file": "08-recursion.chalk",
@@ -490,7 +504,14 @@
         {
           "file": "05-curry-howard.chalk",
           "title": "Propositions as types",
-          "blurb": "The typing rules turn out to be the rules of logic: a type is a proposition, a term a proof of it, β-reduction simplifies proofs, and Peirce's law, true by truth table, has no term."
+          "blurb": "The typing rules turn out to be the rules of logic: a type is a proposition, a term a proof of it, β-reduction simplifies proofs, and Peirce's law, true by truth table, has no term.",
+          "apps": [
+            {
+              "file": "05a-illegal-states.chalk",
+              "title": "Make illegal states unrepresentable",
+              "blurb": "A record of flags whose type allows states that mean nothing, and a tagged union whose every value means something: counting a type's values, sums and products as ∨ and ∧, and a function's type as a promise to handle every case."
+            }
+          ]
         },
         {
           "file": "06-safety.chalk",

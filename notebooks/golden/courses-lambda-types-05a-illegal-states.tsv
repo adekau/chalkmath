@@ -1,0 +1,9 @@
+6	2^3	= 8
+8	truthtable((¬l ∧ ¬e ∧ ¬d) ∨ (l ∧ ¬e ∧ ¬d) ∨ (¬l ∧ e ∧ ¬d) ∨ (¬l ∧ ¬e ∧ d))	= ¬l ∧ ¬e ∧ ¬d ∨ l ∧ ¬e ∧ ¬d ∨ ¬l ∧ e ∧ ¬d ∨ ¬l ∧ ¬e ∧ d
+9	sat(l ∧ e)	= {l↦true, e↦true}
+17	type: λd:D. λk:D→R. λh:E→R. k d	= D → (D → R) → (E → R) → R
+19	type: show : D → R, fail : E → R, r : (D→R)→(E→R)→R ⊢ r show fail	= R
+21	type: show : D → R, r : (D→R)→(E→R)→R ⊢ r show	= (E → R) → R
+33	2^2	= 4
+34	1 + 2	= 3
+35	type: λe:E. λk:D→R. λh:E→R. h e	= E → (D → R) → (E → R) → R

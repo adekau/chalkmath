@@ -393,6 +393,12 @@
       "label": null
     },
     {
+      "src": "> [!note] Application: callbacks and currying\n> JavaScript's `x => y => x + y` is a λ-term. [Callbacks and currying](#course=lambda&lesson=7&app=1), an optional notebook beside this lesson, reads currying, partial application, `map`, `compose` and callbacks as λ-terms, and finds Church encodings to be callbacks.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "> [!summary]\n> A thing is what you can do with it: booleans choose, numerals iterate, pairs wait for a selector, lists are their own folds. Arithmetic is iteration of iterations, and the predecessor is a counter carried in a pair.\n\nEvery loop here is a numeral, which knows in advance how many times to run. A loop that runs until it is done needs a function that calls itself. With no names, how can a function refer to itself? Lesson 8.",
       "type": "markdown",
       "showWork": false,

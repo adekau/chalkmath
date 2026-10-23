@@ -5896,7 +5896,7 @@ KX = line(0, [1, 0]) dashed color 1
 // safety proof. After "A Programmer's Guide to Lambda Calculus", whose Lean the first course follows.
 course("lambda", "λ-calculus I: computing with functions",
   "What if functions were the only thing? Terms, free and bound variables, substitution without capture, β-reduction and normal forms, evaluation strategies, de Bruijn indices, Church encodings and recursion by fixed points; an interpreter built in Lean alongside.",
-  "Logic and computation", (add) => {
+  "Logic and computation", (add, app) => {
 
   add("01-terms.chalk", "Terms and notation", "A language with nothing but functions: variables, functions and applications, how they are written, and a first β-step.", ({ sec, md, m, ex, lean, lx }) => {
     sec("Terms and notation");
@@ -6341,10 +6341,136 @@ def KIΩ : Term := app (app K I) (app ω ω)
     ex("cbn: (λx. x x) ((λy. y) z)", r`Reduce $(\lambda x.\, x\ x)\ ((\lambda y.\, y)\ z)$ by name. Where does it stop?`, [r`The argument goes in unevaluated, twice. Then the head is reduced, and only the head.`]);
     ex("cbn: λx. (λy. y) x", r`Reduce $\lambda x.\, (\lambda y.\, y)\ x$ by name.`, [r`Call by name does not reduce under a λ.`]);
     md(r`
+> [!note] Application: laziness in real languages
+> JavaScript calls by value, except in ‹&&›, ‹||› and ‹if›; Haskell calls by need. [Laziness in real languages](#course=lambda&lesson=5&app=1), an optional notebook beside this lesson, finds these strategies in real code, with thunks and sharing.
+`);
+    md(r`
 > [!summary]
 > A strategy answers "which redex first?". Normal order finds every normal form there is. Call by name and call by value stop at functions; call by value evaluates arguments first, once, and can loop on an argument nobody needs.
 
 Every strategy here renames bound variables to substitute, and lesson 2 had to compare terms up to renaming. Names are a nuisance: can we do without them? Lesson 6.
+`);
+  });
+
+  app("05a-laziness.chalk", "Laziness in real languages", "Every language picks a strategy: arguments first in JavaScript, &&, || and if as the exceptions that run by name, thunks to delay by hand, and Haskell's call by need, which shares what it evaluates.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Laziness in real languages");
+    md(r`
+> [!goal]
+> Find lesson 5's strategies in languages you may use: call by value in JavaScript, the few places where it calls by name, thunks that delay an argument by hand, and Haskell's call by need.
+`);
+    md(r`An application of lesson 5, outside the course's order: nothing later depends on it. It uses lesson 5's strategies (‹cbv:›, ‹cbn:›, ‹normal:›, ‹applicative:›) and, in its last section, the Lean of lessons 1 to 5. The code is JavaScript and Haskell; you need only read it.`);
+    sec("Arguments first");
+    md(r`JavaScript, Python, Java, C and most other languages call by value: in ‹f(g(x))›, ‹g(x)› is computed before ‹f› starts. So a function that ignores an argument still waits for it:
+
+‹‹‹js
+const K = (x) => (y) => x;        // λx. λy. x
+function spin() { return spin(); } // never returns: Ω
+
+K(1)(spin());                      // never returns: spin() runs before K sees it
+‹‹‹
+
+This is lesson 5's $K\ I\ \Omega$. Call by value goes round $\Omega$ for as many steps as you give it; call by name never looks at it:`.replace(/‹‹‹/g, "```"));
+    m("cbv 6: K I (omega omega)");
+    m("cbn: K I (omega omega)");
+    sec("Where a strict language calls by name");
+    md(r`Every call-by-value language still has a few constructs that do *not* evaluate everything first: ‹&&›, ‹||›, ‹? :› and ‹if›. Their right-hand side, or their other branch, is evaluated only when it is needed:
+
+‹‹‹js
+user !== null && user.isAdmin        // fine when user is null: the right side is never evaluated
+const and = (a, b) => (a ? b : false);
+and(user !== null, user.isAdmin)     // a TypeError when user is null: both arguments come first
+‹‹‹
+
+That is why ‹&&› cannot be written as an ordinary function in JavaScript. Lesson 7's ‹and› is an ordinary function, and shows the same thing: by value, the argument nobody needs runs first, and never finishes; by name, the answer comes at once.`.replace(/‹‹‹/g, "```"));
+    m("cbv 6: and false (omega omega)");
+    m("cbn: and false (omega omega)", { work: true });
+    md(r`The same goes for ‹if›: as a function, it evaluates both branches before choosing one.`);
+    m("cbv 6: if true a (omega omega)");
+    m("cbn: if true a (omega omega)");
+    sec("Thunks: call by name by hand");
+    md(r`
+> [!definition] Thunk
+> A **thunk** is an argument wrapped in a function of nothing: ‹() => spin()› in JavaScript, $\lambda d.\, \Omega$ here (the $d$ is never used). A λ is already a value, so call by value passes it on untouched; the code that wants the argument calls the thunk, and only then is it evaluated.
+`);
+    md(r`Wrapped in a thunk, $\Omega$ no longer stops call by value:`);
+    m("cbv: K I (λd. omega omega)", { work: true });
+    md(r`A lazy ‹if› takes its branches as thunks and calls only the one it chooses. Here the chosen branch is forced by applying it to $I$, any argument would do:
+
+‹‹‹js
+const lazyIf = (b, t, e) => (b ? t : e)();
+lazyIf(true, () => "a", () => spin());   // "a": the other thunk is never called
+‹‹‹`.replace(/‹‹‹/g, "```"));
+    m("cbv: if true (λd. a) (λd. omega omega) I", { work: true });
+    md(r`Thunks are everywhere once you look: a logger that takes ‹() => describe(state)› so that the description is built only when the message is printed, a default value computed only if it is missing, and lesson 8's $Z$, which is $Y$ with the self-application put inside a λ so that call by value does not unfold it forever.`);
+    sec("Call by need: sharing");
+    md(r`Call by name never evaluates an argument nobody uses, but it evaluates one that is used three times three times. Call by value is the other way round. Count the β-steps of each strategy's work on an argument used three times:`);
+    m("normal: (λx. f x x x) ((λy. y) ((λy. y) v))", { work: true });
+    m("applicative: (λx. f x x x) ((λy. y) ((λy. y) v))", { work: true });
+    md(r`Seven steps by name (the argument's two steps, once per copy, and the call), three by value. Now an argument nobody uses:`);
+    m("normal: (λx. f) ((λy. y) ((λy. y) v))", { work: true });
+    m("applicative: (λx. f) ((λy. y) ((λy. y) v))", { work: true });
+    md(r`One step by name, three by value. Neither is best in both.`);
+    md(r`
+> [!definition] Call by need
+> **Call by need** passes the argument unevaluated, like call by name, and evaluates it the first time it is used; then it *remembers* the value, so that every other use gets it at no cost. An argument is evaluated at most once, and never if it is unused: three steps in the first example, one in the second. Haskell calls by need.
+`);
+    md(r`
+‹‹‹haskell
+square x = x * x
+square (expensive 10)    -- expensive 10 is computed once, when * first needs x
+const 1 (expensive 10)   -- never computed
+take 3 (repeat 7)        -- [7,7,7]: an infinite list, of which only three cells are ever built
+‹‹‹
+
+In JavaScript, call by need is a thunk that remembers:
+
+‹‹‹js
+function lazy(f) {
+  let done = false, value;
+  return () => { if (!done) { value = f(); done = true; } return value; };
+}
+const x = lazy(() => expensive(10));
+x() * x();               // expensive runs once
+‹‹‹`.replace(/‹‹‹/g, "```"));
+    md(r`
+> [!mistake]
+> The strategies in this course copy terms when they substitute, so none of them shares: sharing needs a place where the value is kept, and a λ-term has none. Implementations of Haskell reduce *graphs* instead, in which the three copies of $x$ are three pointers to one node, and evaluating that node once updates it for all three.
+`);
+    sec("In Lean");
+    md(r`Lean evaluates by value too. Its ‹&&›, ‹||› and ‹if› are the short-circuiting exceptions, and an ordinary function can take a thunk, of type ‹Unit → Bool›, to get the same behaviour. Lean must know that a function stops before it lets you use it in a proof; ‹partial› gives a function it cannot check, such as one that never stops, and promises nothing about it. It is never run below.`);
+    lean(r`/-- "and" with its second argument as a thunk: forced only when the first is true. -/
+def andLazy (a : Bool) (b : Unit → Bool) : Bool :=
+  match a with
+  | false => false
+  | true => b ()
+
+/-- A function that never returns: Ω in Lean. -/
+partial def spin (u : Unit) : Bool := spin u
+
+#eval andLazy false (fun _ => spin ())   -- false: the thunk is never forced
+
+theorem andLazy_false (b : Unit → Bool) : andLazy false b = false := rfl
+
+/-- Lesson 5's interpreter: by value, K I applied to a thunk of Ω finishes. -/
+def KIthunk : Term := app (app K I) (lam "d" (app ω ω))
+#eval (run cbvStep 10 KIthunk).pretty`);
+    md(r`‹Thunk› is Lean's built-in remembering thunk: the first ‹get› computes the value, and later ones return it.`);
+    lean(r`def bigSum : Thunk Nat := Thunk.mk fun _ => (List.range 1001).foldl (· + ·) 0
+
+#eval bigSum.get + bigSum.get   -- the sum is computed once`);
+    lx(r`theorem orLazy_spec (b : Unit → Bool) : orLazy true b = true ∧ orLazy false b = b () := by`, r`Define ‹orLazy›, an "or" whose second argument is a thunk: when the first is ‹true›, the answer is ‹true› without forcing the thunk. The check below it fails until your definition is written.`, r`  constructor <;> rfl`, [
+      r`Match on ‹a›, as ‹andLazy› does: ‹true› gives ‹true›, ‹false› gives whatever the thunk gives, ‹b ()›.`,
+      r`With that definition both sides of each equation compute to the same thing: ‹constructor› splits the ∧, and ‹rfl› closes each half.`,
+    ], { start: "  constructor <;> rfl", def: { start: "def orLazy (a : Bool) (b : Unit → Bool) : Bool := sorry", solution: "def orLazy (a : Bool) (b : Unit → Bool) : Bool :=\n  match a with\n  | true => true\n  | false => b ()", forbid: ["||", "or"] } });
+    lx(r`theorem andLazy_true (b : Unit → Bool) : andLazy true b = b () := by`, r`Prove that ‹andLazy true b› is whatever the thunk gives.`, r`  rfl`, [r`Unfold ‹andLazy› on ‹true›: it is ‹b ()›, by definition.`]);
+    sec("Exercises");
+    md(r`Write the term the strategy stops at; it is compared up to bound names, not reduced further.`);
+    ex("cbv: K a (λd. omega omega)", r`Call by value, with $\Omega$ in a thunk: reduce $K\ a\ (\lambda d.\, \Omega)$ by value.`, [r`$\lambda d.\, \Omega$ is a λ, so it is a value already: the call can go ahead.`]);
+    ex("cbn: or true (omega omega)", r`Reduce $\mathsf{or}\ \mathsf{true}\ \Omega$ by name. Does $\Omega$ run?`, [r`$\mathsf{or}\ p\ q$ is $p\ p\ q$: with $p$ true, it keeps the first of $p$ and $q$.`]);
+    ex("cbv: if false (λd. omega omega) (λd. b) I", r`A lazy ‹if› by value: reduce $\mathsf{if}\ \mathsf{false}\ (\lambda d.\, \Omega)\ (\lambda d.\, b)\ I$.`, [r`$\mathsf{if}$ chooses the second thunk without calling either; applying the chosen one to $I$ calls it.`]);
+    md(r`
+> [!summary]
+> Most languages call by value, with ‹&&›, ‹||›, ‹? :› and ‹if› as the places where they call by name. A thunk, an argument wrapped in a function of nothing, is call by name by hand: a λ is a value, so it waits. Call by need is call by name that remembers: an argument evaluated at most once, and never if unused. Haskell calls by need, sharing values in a graph that a λ-term cannot express.
 `);
   });
 
@@ -6540,10 +6666,129 @@ def church {α : Type} : Nat → (α → α) → α → α
     ex("normal: 3 not true", r`A numeral is a loop. Reduce $3\ \mathsf{not}\ \mathsf{true}$.`, [r`It applies $\mathsf{not}$ to $\mathsf{true}$ three times.`]);
     ex("normal: 2 (add 3) 0", r`Reduce $2\ (\mathsf{add}\ 3)\ 0$. Which operation on 2 and 3 have you invented?`, [r`It applies "add 3" to 0, twice.`]);
     md(r`
+> [!note] Application: callbacks and currying
+> JavaScript's ‹x => y => x + y› is a λ-term. [Callbacks and currying](#course=lambda&lesson=7&app=1), an optional notebook beside this lesson, reads currying, partial application, ‹map›, ‹compose› and callbacks as λ-terms, and finds Church encodings to be callbacks.
+`);
+    md(r`
 > [!summary]
 > A thing is what you can do with it: booleans choose, numerals iterate, pairs wait for a selector, lists are their own folds. Arithmetic is iteration of iterations, and the predecessor is a counter carried in a pair.
 
 Every loop here is a numeral, which knows in advance how many times to run. A loop that runs until it is done needs a function that calls itself. With no names, how can a function refer to itself? Lesson 8.
+`);
+  });
+
+  app("07a-callbacks-currying.chalk", "Callbacks and currying", "JavaScript's arrow functions as λ-terms: curried functions and partial application, functions that take functions (map, compose), and callbacks and continuation passing, which Church encodings were all along.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Callbacks and currying");
+    md(r`
+> [!goal]
+> Read JavaScript's functions as λ-terms: curry and partially apply them, pass functions to functions, and see callbacks and continuation passing in lesson 7's encodings.
+`);
+    md(r`An application of lesson 7, outside the course's order: nothing later depends on it. It uses lesson 7's library (numerals, ‹add›, ‹mul›, ‹succ›, ‹pair›, ‹fst›, ‹snd›) and, in its last section, a little Lean. The code is JavaScript; you need only read it.`);
+    sec("Arrow functions are λs");
+    md(r`JavaScript's ‹x => x + 1› is $\lambda x.\, x + 1$, written with an arrow. A function of two arguments can be written two ways:
+
+‹‹‹js
+const add2 = (x, y) => x + y;      // takes both at once
+const add = (x) => (y) => x + y;   // takes x, and returns a function waiting for y
+add(2)(3);                         // 5
+‹‹‹
+
+The second is how every function of two arguments looks in the λ-calculus: $\lambda x.\, \lambda y.\, \ldots$, a function returning a function. Turning the first form into the second is **currying**, after Haskell Curry (Moses Schönfinkel found it first).`.replace(/‹‹‹/g, "```"));
+    sec("Partial application");
+    md(r`A curried function can be given one argument now and the other later. ‹add(1)› is not an error and not a number: it is a function, waiting for ‹y›.
+
+‹‹‹js
+const inc = add(1);        // a function
+inc(2);                    // 3
+[1, 2, 3].map(add(10));    // [11, 12, 13]
+‹‹‹
+
+The library's ‹add› is curried, so $\mathsf{add}\ 1$ reduces to a function waiting for $n$:`.replace(/‹‹‹/g, "```"));
+    m("normal: add 1", { work: true });
+    m("inc := add 1");
+    m("inc 2");
+    md(r`A function on pairs and a curried function carry the same information, and each turns into the other. With lesson 7's pairs:
+
+‹‹‹js
+const curry = (f) => (a) => (b) => f([a, b]);
+const uncurry = (f) => ([a, b]) => f(a)(b);
+‹‹‹`.replace(/‹‹‹/g, "```"));
+    m("curry := λf. λa. λb. f (pair a b)");
+    m("uncurry := λf. λp. f (fst p) (snd p)");
+    m("uncurry add (pair 2 3)");
+    m("curry (uncurry add) 2 3");
+    sec("Functions that take functions");
+    md(r`A function that takes a function, or returns one, is called **higher-order**. In the λ-calculus there is nothing else: every argument is a function. Three that every language has:
+
+‹‹‹js
+const compose = (f) => (g) => (x) => f(g(x));   // g, then f
+const flip = (f) => (a) => (b) => f(b)(a);       // the arguments swapped
+xs.map(f);                                      // f on every element
+‹‹‹`.replace(/‹‹‹/g, "```"));
+    m("compose := λf. λg. λx. f (g x)");
+    m("double := mul 2");
+    m("compose succ double 3", { work: true });
+    m("flip := λf. λa. λb. f b a");
+    m("fst (flip pair a b)");
+    md(r`A Church list is its own fold (lesson 7), so $\mathsf{map}$ hands the fold a combining step that applies $f$ to each head first. This notebook has its own names, so the list is defined again:`);
+    m("nil := λc. λn. n");
+    m("cons := λh. λt. λc. λn. c h (t c n)");
+    m("map := λf. λl. λc. λn. l (λh. λr. c (f h) r) n");
+    md(r`Double every element of $[1, 2, 3]$, then sum, by folding with $\mathsf{add}$ from $0$:`);
+    m("map double (cons 1 (cons 2 (cons 3 nil))) add 0");
+    sec("Callbacks and continuations");
+    md(r`A **callback** is a function you hand over, to be called later with a result. Node's ‹readFile(path, (err, data) => …)› does not return the file: it calls you back with it.`);
+    md(r`
+> [!definition] Continuation-passing style
+> In **continuation-passing style** a function does not return its result; it takes one more argument $k$, the **continuation**, "what to do next", and calls it with the result. Returning $3$ becomes $\lambda k.\, k\ 3$.
+`);
+    m("withThree := λk. k 3");
+    m("withThree succ");
+    md(r`Adding, in that style, takes its two numbers and a continuation. Doing two additions in a row nests the second inside the first's continuation:
+
+‹‹‹js
+const addk = (a, b, k) => k(a + b);
+addk(1, 2, (s) => addk(s, 3, (t) => t));   // 6
+‹‹‹
+
+The nesting, a step deeper for every step taken, is "callback hell"; promises and ‹async›/‹await› are ways of writing the same continuations flat.`.replace(/‹‹‹/g, "```"));
+    m("addk := λa. λb. λk. k (add a b)");
+    m("addk 1 2 (λs. addk s 3 (λt. t))", { work: true });
+    md(r`
+> [!note] Church encodings are callbacks
+> Lesson 7's "a thing is what you can do with it" is continuation passing. A Church boolean takes two continuations, what to do if it is true and what to do if it is false, and calls one. A pair, $\lambda s.\, s\ a\ b$, calls its callback with both parts. A list calls its callback once per element. None of them returns anything: each calls you back.
+`);
+    sec("In Lean");
+    md(r`Lean's functions are curried too: ‹Nat → Nat → Nat› is ‹Nat → (Nat → Nat)›, and ‹addC 1› is a function.`);
+    lean(r`def addC : Nat → Nat → Nat := fun x => fun y => x + y
+
+#eval addC 1 2
+#eval [1, 2, 3].map (addC 10)
+
+def curry2 {α β γ : Type} (f : α × β → γ) : α → β → γ := fun a b => f (a, b)
+def uncurry2 {α β γ : Type} (f : α → β → γ) : α × β → γ := fun p => f p.1 p.2
+
+/-- Uncurrying and then currying gives the function back, by definition. -/
+theorem curry_uncurry {α β γ : Type} (f : α → β → γ) : curry2 (uncurry2 f) = f := rfl`);
+    lx(r`theorem compose2_apply {α β γ : Type} (f : β → γ) (g : α → β) (x : α) : compose2 f g x = f (g x) := by`, r`Define ‹compose2 f g›: the function that does ‹g›, then ‹f›. (Lean's own ‹∘› is ruled out.) The check, ‹rfl›, fails until your definition is written.`, r`  rfl`, [
+      r`It takes ‹f› and ‹g› and returns a function: ‹fun x => …›.`,
+      r`‹def compose2 {α β γ : Type} (f : β → γ) (g : α → β) : α → γ := fun x => f (g x)›`,
+    ], { start: "  rfl", def: { start: "def compose2 {α β γ : Type} (f : β → γ) (g : α → β) : α → γ := sorry", solution: "def compose2 {α β γ : Type} (f : β → γ) (g : α → β) : α → γ := fun x => f (g x)", forbid: ["∘", "Function.comp"] } });
+    lx(r`theorem map_map' (f g : Nat → Nat) (l : List Nat) : (l.map g).map f = l.map (compose2 f g) := by`, r`Mapping ‹g› and then ‹f› is mapping their composition once. Prove it by induction on the list.`, r`  induction l with
+  | nil => rfl
+  | cons h t ih => simp [List.map, compose2_apply, ih]`, [
+      r`‹induction l with›: the empty list, then a head ‹h› on a tail ‹t›, with ‹ih› for the tail.`,
+      r`In the second case, ‹simp [List.map, compose2_apply, ih]› unfolds one step of ‹map› on each side and uses the last exercise and ‹ih›.`,
+    ]);
+    sec("Exercises");
+    md(r`Answer with a numeral or a boolean by name, or with the λ-term. The definitions above are in this notebook's session.`);
+    ex("inc (inc 1)", r`Reduce $\mathsf{inc}\ (\mathsf{inc}\ 1)$, with $\mathsf{inc} = \mathsf{add}\ 1$.`, [r`Each $\mathsf{inc}$ adds one.`]);
+    ex("compose double inc 2", r`Reduce $\mathsf{compose}\ \mathsf{double}\ \mathsf{inc}\ 2$. Which runs first?`, [r`$\mathsf{compose}\ f\ g\ x = f\ (g\ x)$: $g$ first.`]);
+    ex("withThree (λn. addk n 4 (λt. t))", r`In continuation-passing style: reduce $\mathsf{withThree}\ (\lambda n.\, \mathsf{addk}\ n\ 4\ (\lambda t.\, t))$.`, [r`$\mathsf{withThree}$ calls its continuation with $3$; then $3 + 4$ is passed to $\lambda t.\, t$.`]);
+    ex("map inc (cons 1 (cons 2 nil)) add 0", r`Add one to every element of $[1, 2]$, then sum: reduce $\mathsf{map}\ \mathsf{inc}\ (\mathsf{cons}\ 1\ (\mathsf{cons}\ 2\ \mathsf{nil}))\ \mathsf{add}\ 0$.`, [r`The list becomes $[2, 3]$, and its sum is $2 + 3$.`]);
+    md(r`
+> [!summary]
+> JavaScript's arrow functions are λs. A curried function takes its arguments one at a time, so giving it some of them (partial application) makes a new function. Higher-order functions such as ‹map›, ‹compose› and ‹flip› are the λ-calculus's ordinary case. A callback, and continuation-passing style generally, hands a function "what to do next" instead of returning: Church encodings were callbacks all along.
 `);
   });
 
@@ -6644,7 +6889,7 @@ theorem fact_fixed : ∀ n, F fact n = fact n := by
 
 course("lambda-types", "λ-calculus II: types and proofs",
   "The simply typed λ-calculus: typing rules and derivation trees, type inference by unification, what types rule out, propositions as types, type safety, polymorphism and dependent types, with the theory proved in Lean.",
-  "Logic and computation", (add) => {
+  "Logic and computation", (add, app) => {
 
   add("01-simple-types.chalk", "Simple types", "What goes wrong without types, what a type has to record to prevent it, and the three typing rules that follow.", ({ sec, md, m, ex, lean, lx }) => {
     sec("Simple types");
@@ -7080,10 +7325,147 @@ theorem peirce (P Q : Prop) : ((P → Q) → P) → P := by
     ], { hide: true });
     ex("taut(¬¬p → p)", r`Is $\lnot\lnot A \to A$ a tautology? Answer ‹⊤› or ‹⊥›.`, []);
     md(r`
+> [!note] Application: illegal states
+> A product is $\land$ and a sum is $\lor$, in programs too. [Make illegal states unrepresentable](#course=lambda-types&lesson=5&app=1), an optional notebook beside this lesson, replaces a record of flags that allows nonsense states with a tagged union that does not.
+`);
+    md(r`
 > [!summary]
 > The typing rules are natural deduction's rules for implication: a type is a proposition and a closed term a proof of it; Var is an assumption, →I assuming, →E modus ponens, and a β-step removes a detour from a proof. Every type with a term is a tautology, but not every tautology has a term: Peirce's law and $\lnot\lnot A \to A$ need classical logic's excluded middle, which no program proves.
 `);
     md(r`A proof is a program, and lesson 1 promised that a typed program cannot compute nonsense. What exactly does a type promise about a program while it runs?`);
+  });
+
+  app("05a-illegal-states.chalk", "Make illegal states unrepresentable", "A record of flags whose type allows states that mean nothing, and a tagged union whose every value means something: counting a type's values, sums and products as ∨ and ∧, and a function's type as a promise to handle every case.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Make illegal states unrepresentable");
+    md(r`
+> [!goal]
+> Count the values of a type, spot the values that mean nothing, and replace the type with one whose every value means something, so that the type checker rules the nonsense out.
+`);
+    md(r`An application of lesson 5, outside the course's order: nothing later depends on it. It reads a product as $\land$ and a sum as $\lor$, as lesson 5's Lean does, uses ‹type:› from lessons 1 and 2, and some Lean. The code is TypeScript; you need only read it.`);
+    sec("A type with too many values");
+    md(r`A screen fetches some data. Written with flags, its state is:
+
+‹‹‹ts
+type Fetch = {
+  loading: boolean;
+  error?: string;     // present when the fetch failed
+  data?: Item[];      // present when it succeeded
+};
+‹‹‹
+
+Four states mean something: nothing asked yet, loading, failed with a message, loaded with data. But the type also allows ‹{ loading: true, error: "timeout", data: [] }›: loading, failed and loaded at once. Nothing stops code from building it, so every reader of the state has to guess, and the order of its ‹if›s decides what the screen shows.`.replace(/‹‹‹/g, "```"));
+    md(r`Forget the message and the items for a moment, and count: with $l$ for loading, $e$ for an error being there and $d$ for data being there, three yes-or-no fields allow $2 \cdot 2 \cdot 2$ combinations:`);
+    m("2^3");
+    md(r`The meaningful ones have at most one of the three. Their truth table has 4 true rows of 8, and ‹sat› finds a state that is loading and failed at once:`);
+    m("truthtable((¬l ∧ ¬e ∧ ¬d) ∨ (l ∧ ¬e ∧ ¬d) ∨ (¬l ∧ e ∧ ¬d) ∨ (¬l ∧ ¬e ∧ d))");
+    m("sat(l ∧ e)");
+    sec("A tagged union");
+    md(r`Say instead which state it is, and give each state only the fields it has:
+
+‹‹‹ts
+type Fetch =
+  | { tag: "idle" }
+  | { tag: "loading" }
+  | { tag: "failed"; error: string }
+  | { tag: "loaded"; data: Item[] };
+‹‹‹
+
+Every value of this type is one of the four states. A loading state with an error is not a value of the type at all: the compiler refuses to build it, before the program runs. And code that reads the state can ask the compiler to check that it handles every tag:
+
+‹‹‹ts
+function message(s: Fetch): string {
+  switch (s.tag) {
+    case "idle":    return "Nothing yet";
+    case "loading": return "Loading…";
+    case "failed":  return "Failed: " + s.error;   // s.error exists here, and only here
+    case "loaded":  return s.data.length + " items";
+  }
+}
+‹‹‹`.replace(/‹‹‹/g, "```"));
+    sec("Products, sums and counting");
+    md(r`
+> [!definition] Products and sums
+> A record of an $A$ and a $B$ is a **product**, $A \times B$: one of each, so $|A| \cdot |B|$ values. A tagged union of $A$ and $B$ is a **sum**, $A + B$: one or the other, tagged with which, so $|A| + |B|$ values. A function from $A$ to $B$ picks a $B$ for each $A$: $|B|^{|A|}$ of them.
+`);
+    md(r`The flags type is a product of three two-valued fields, $2 \cdot 2 \cdot 2 = 8$; the union is a sum of four one-valued cases, $1 + 1 + 1 + 1 = 4$ (leaving out the message and the items, as before). Lesson 5 reads the same types as propositions: a pair holds a proof of each part, so a product is $\land$; a sum holds one of them, saying which, so it is $\lor$. The flags type says "loading, and maybe an error, and maybe data"; the union says "idle, or loading, or failed, or loaded", exactly one.`);
+    sec("A sum as what you can do with it");
+    md(r`Simple types have only arrows, but lesson I.7's trick gives sums anyway: a thing is what you can do with it. What do you do with "data or an error"? Handle it: given what to do with data, $k : D \to R$, and what to do with an error, $h : E \to R$, produce an $R$. So the sum is the type $(D \to R) \to (E \to R) \to R$, and "it succeeded with $d$" is the term that calls the first handler:`);
+    m("type: λd:D. λk:D→R. λh:E→R. k d");
+    md(r`A function's type is a promise it keeps. To get an $R$ out of a result $r$, you must hand it both handlers:`);
+    m("type: show : D → R, fail : E → R, r : (D→R)→(E→R)→R ⊢ r show fail");
+    md(r`Hand it only the data handler, and what you get is not an $R$ but a function still waiting for the error handler: the type will not let you forget the error case.`);
+    m("type: show : D → R, r : (D→R)→(E→R)→R ⊢ r show");
+    sec("In Lean");
+    md(r`In Lean a product is a ‹structure› and a sum an ‹inductive› type with several constructors. The structure builds the nonsense state without complaint:`);
+    lean(r`structure FetchFlags where
+  loading : Bool
+  error : Option String
+  data : Option (List Nat)
+
+def nonsense : FetchFlags := { loading := true, error := some "timeout", data := some [1, 2] }`);
+    md(r`The inductive type has one constructor per state, and each takes only what its state has:`);
+    lean(r`inductive Fetch where
+  | idle
+  | loading
+  | failed (error : String)
+  | loaded (data : List Nat)
+
+def Fetch.isLoading : Fetch → Bool
+  | .loading => true
+  | _ => false
+
+def Fetch.error? : Fetch → Option String
+  | .failed e => some e
+  | _ => none
+
+/-- No state is loading and failed at once: checked for every state, case by case. -/
+theorem not_loading_and_failed (s : Fetch) : ¬ (s.isLoading = true ∧ s.error?.isSome = true) := by
+  cases s <;> simp [Fetch.isLoading, Fetch.error?]
+
+def Fetch.message : Fetch → String
+  | .idle => "Nothing yet"
+  | .loading => "Loading…"
+  | .failed e => s!"Failed: {e}"
+  | .loaded d => s!"{d.length} items"
+
+#eval (Fetch.loaded [1, 2, 3]).message`);
+    md(r`Leave a case out of ‹message›, and Lean refuses the definition, naming the case:
+
+‹‹‹
+def Fetch.message' : Fetch → String
+  | .idle => "Nothing yet"
+  | .loading => "Loading…"
+  | .failed e => s!"Failed: {e}"
+-- error: Missing cases:
+-- (loaded _)
+‹‹‹`.replace(/‹‹‹/g, "```"));
+    md(r`A state changes by events. Each event is a constructor too, and the step function says what each one does to each state. A ‹loaded› state can only come from ‹loading›, or be one already:`);
+    lean(r`inductive Event where
+  | start
+  | fail (error : String)
+  | succeed (data : List Nat)
+
+def Fetch.step : Fetch → Event → Fetch
+  | _, .start => .loading
+  | .loading, .fail e => .failed e
+  | .loading, .succeed d => .loaded d
+  | s, _ => s`);
+    lx(r`theorem hasData_iff (s : Fetch) : hasData s = true ↔ ∃ d, s = .loaded d := by`, r`Define ‹hasData›: ‹true› exactly for a loaded state. Then the statement, that it is true exactly when the state is ‹loaded› with some data, is checked case by case, and fails until your definition is written.`, r`  cases s <;> simp [hasData]`, [
+      r`Match on the state, as ‹Fetch.isLoading› does: ‹.loaded _› gives ‹true›, anything else ‹false›.`,
+      r`‹def hasData : Fetch → Bool | .loaded _ => true | _ => false›, on three lines.`,
+    ], { start: "  cases s <;> simp [hasData]", def: { start: "def hasData (s : Fetch) : Bool := sorry", solution: "def hasData : Fetch → Bool\n  | .loaded _ => true\n  | _ => false", forbid: [] } });
+    lx(r`theorem loaded_from (s : Fetch) (e : Event) (d : List Nat) : s.step e = .loaded d → s = .loading ∨ s = .loaded d := by`, r`Prove that a step lands on ‹.loaded d› only from ‹.loading›, or from ‹.loaded d› itself.`, r`  cases s <;> cases e <;> simp [Fetch.step]`, [
+      r`Split on the state and on the event: ‹cases s <;> cases e›, sixteen cases.`,
+      r`In each, ‹simp [Fetch.step]› computes the step; the cases that cannot land on ‹.loaded d› have a false hypothesis.`,
+    ]);
+    sec("Exercises");
+    ex("2^2", r`How many functions are there from ‹boolean› to ‹boolean›? Answer with a number.`, [r`A function from $A$ to $B$ has $|B|^{|A|}$ choices: a ‹boolean› for each of the two inputs.`]);
+    ex("1 + 2", r`How many values has ‹{ tag: "off" } | { tag: "on"; bright: boolean }›? Answer with a number.`, [r`A sum adds: one value for ‹off›, and one ‹on› for each ‹boolean›.`]);
+    ex("type: λe:E. λk:D→R. λh:E→R. h e", r`"It failed with $e$" calls the error handler. Write it as a term, in a cell of your own, and give its type.`, [r`It takes $e : E$, then the two handlers, and calls the second with $e$: $\lambda e{:}E.\, \lambda k{:}D \to R.\, \lambda h{:}E \to R.\, h\ e$.`], { hide: true });
+    md(r`
+> [!summary]
+> A type with more values than meanings forces every reader to guess. A product (a record) multiplies the counts of its parts and reads as $\land$; a sum (a tagged union) adds them and reads as $\lor$. Give each state its own case, with only the fields it has, and the nonsense states are not values at all; a sum's type, as its handlers, promises that every case is handled.
+`);
   });
 
   add("06-safety.chalk", "Type safety", "A program stuck with no rule to apply, the two promises a type must make about every step (progress and preservation), a looser rule that breaks one, and safety proved in Lean.", ({ sec, md, m, ex, lean, lx }) => {
