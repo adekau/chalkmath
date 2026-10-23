@@ -181,7 +181,14 @@
         {
           "file": "14-intervals.chalk",
           "title": "The interval lattice",
-          "blurb": "Bounds on a number as partial information: intersection as the merge, interval arithmetic propagators, and what a contradiction does to termination."
+          "blurb": "Bounds on a number as partial information: intersection as the merge, interval arithmetic propagators, and what a contradiction does to termination.",
+          "apps": [
+            {
+              "file": "14a-version-ranges.chalk",
+              "title": "Version ranges",
+              "blurb": "A package manager's version constraints as intervals of versions: versions in lexicographic order, constraints merged by intersecting them, a conflict as an empty merge, and a resolver in Lean."
+            }
+          ]
         },
         {
           "file": "15-capstones.chalk",
@@ -273,7 +280,14 @@
         {
           "file": "01-state-machines.chalk",
           "title": "State machines and executions",
-          "blurb": "Two threads that lose an update: a system as variables, an initial state and guarded actions, and its graph of reachable states as every interleaving at once."
+          "blurb": "Two threads that lose an update: a system as variables, an initial state and guarded actions, and its graph of reachable states as every interleaving at once.",
+          "apps": [
+            {
+              "file": "01a-tcp.chalk",
+              "title": "TCP as a state machine",
+              "blurb": "The handshake that opens a TCP connection as a system: its executions, what each end can know, the deadlocks a lost segment causes, and the timers that remove them, in the engine and in Lean."
+            }
+          ]
         },
         {
           "file": "02-invariants.chalk",

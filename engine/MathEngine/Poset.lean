@@ -332,7 +332,7 @@ def commands : List String :=
    "closure", "classes", "finer", "wellfounded", "measure",
    -- finite algebra (Algebra.lean)
    "op", "joinop", "meetop", "table", "associative", "commutative", "idempotent", "semilattice", "identity", "fold", "order",
-   "distributive", "complement", "complemented", "boolean", "product", "galois", "closureop", "context", "concepts", "secure",
+   "distributive", "complement", "complemented", "boolean", "product", "lex", "galois", "closureop", "context", "concepts", "secure",
    -- happens-before
    "events", "clocks", "concurrent"]
 

@@ -1,0 +1,266 @@
+{
+  "chalk": 1,
+  "name": "14a-version-ranges.chalk",
+  "cells": [
+    {
+      "src": "Version ranges",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Read a package manager's version constraints as intervals of versions, combine several by merging them, recognise a conflict as an empty merge, and pick a version as a resolver does.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "An application of lesson 14, outside the course's order: nothing later depends on it. It uses the lesson's intervals and lesson 5's `Semilattice` in Lean, and one new engine command, `lex`.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A library is published in versions written `major.minor.patch`, such as `1.4.2`. By convention (semantic versioning) a new major version may break the programs that use the library, a new minor one adds features, and a new patch only fixes bugs. So a project does not name one version of each library it needs; it states a **constraint**, a set of versions it will accept:\n\n- `^1.2.0`: any version from `1.2.0` on with the same major version, so `1.9.3` but not `2.0.0`;\n- `~1.4.2`: any version from `1.4.2` on with the same minor version, so `1.4.9` but not `1.5.0`;\n- `>=1.3.0 <1.6.0`: the versions between, written out.\n\nThe project's dependencies need libraries too, each with constraints of its own, and the package manager must install one version of the library that meets them all. That is lesson 14's question about a number known only by its bounds, asked of versions.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "How versions compare",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> Is `1.9.0` older than `2.0.0`? Its minor part, 9, is larger than 0. Compare the two parts the way the engine's `product` does, both at once, and see what you get.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Versions with two parts, the major and the minor each from 0 to 2, compared part by part:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let W = product(chain(3), chain(3))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "le(W, (1, 2), (2, 0))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In the product order `1.2` and `2.0` are **incomparable**: neither is below the other, since one is ahead in each part. A resolver cannot work with that; it must be able to say which of two versions is newer. Versions compare as words in a dictionary do: the major part decides, and the minor part counts only when the majors are equal. That is the **lexicographic order**, `lex`:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let V = lex(chain(3), chain(3))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "le(V, (1, 2), (2, 0))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The same nine versions, now in a single chain: any two compare. With three parts, nest it, and the elements are pairs of a pair and a number:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "le(lex(lex(chain(2), chain(2)), chain(2)), ((0, 1), 1), ((1, 0), 0))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Lexicographic order\n> $(a, c) \\le (b, d)$ when $a < b$, or $a = b$ and $c \\le d$. The first coordinate decides, and the second only breaks a tie. Of two chains it makes a chain, so every two versions compare, and a set of versions has a newest.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Constraints are intervals",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "On a chain every constraint above is an **interval**, with the lower end included and the upper one left out: `^1.2.0` is $[1.2.0,\\ 2.0.0)$, `~1.4.2` is $[1.4.2,\\ 1.5.0)$. (Versions before `1.0.0` count as unstable, so `^0.2.3` keeps the minor part too: $[0.2.3,\\ 0.3.0)$.) Each constraint is partial information about the version that will be installed, and as in lesson 14 two of them merge into their **intersection**: the larger lower end and the smaller upper end. An empty intersection is a **conflict**: no version meets both.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> Lesson 14 orders intervals by information, so the merge is a join there, and a smaller interval is higher. Ordered by inclusion instead, as sets of versions, the same intersection is a meet. It is one operation either way; only the picture is upside down.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean, versions compare lexicographically, and a range is its two ends:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- A version, major.minor.patch. -/\nstructure Ver where\n  major : Nat\n  minor : Nat\n  patch : Nat\n  deriving Repr, DecidableEq\n\ninstance : ToString Ver := ⟨fun v => s!\"{v.major}.{v.minor}.{v.patch}\"⟩\n\n/-- Versions compare as words in a dictionary do: by major, then minor, then patch. -/\ndef Ver.le (a b : Ver) : Prop :=\n  a.major < b.major ∨ (a.major = b.major ∧ (a.minor < b.minor ∨ (a.minor = b.minor ∧ a.patch ≤ b.patch)))\n\ninstance (a b : Ver) : Decidable (a.le b) := by unfold Ver.le; infer_instance\n\n/-- a comes strictly before b. -/\ndef Ver.lt (a b : Ver) : Prop := ¬ b.le a\n\ninstance (a b : Ver) : Decidable (a.lt b) := by unfold Ver.lt; infer_instance\n\ndef Ver.max (a b : Ver) : Ver := if a.le b then b else a\ndef Ver.min (a b : Ver) : Ver := if a.le b then a else b\n\n/-- The versions from lo, included, up to hi, left out. -/\nstructure VRange where\n  lo : Ver\n  hi : Ver\n  deriving Repr, DecidableEq\n\ndef VRange.has (r : VRange) (v : Ver) : Prop := r.lo.le v ∧ v.lt r.hi\ninstance (r : VRange) (v : Ver) : Decidable (r.has v) := by unfold VRange.has; infer_instance\n\n/-- No version is in it. -/\ndef VRange.empty (r : VRange) : Prop := ¬ r.lo.lt r.hi\ninstance (r : VRange) : Decidable r.empty := by unfold VRange.empty; infer_instance\n\ninstance : ToString VRange := ⟨fun r => if r.empty then \"no version\" else s!\">={r.lo} <{r.hi}\"⟩\n\n/-- ^v: from v on, the same major version (for 0.x, the same minor; for 0.0.x, only that patch). -/\ndef caret (v : Ver) : VRange :=\n  if v.major > 0 then ⟨v, ⟨v.major + 1, 0, 0⟩⟩\n  else if v.minor > 0 then ⟨v, ⟨0, v.minor + 1, 0⟩⟩\n  else ⟨v, ⟨0, 0, v.patch + 1⟩⟩\n\n/-- ~v: from v on, the same minor version. -/\ndef tilde (v : Ver) : VRange := ⟨v, ⟨v.major, v.minor + 1, 0⟩⟩\n\n/-- Both constraints at once: the larger lower end and the smaller upper end. -/\ndef VRange.merge (r s : VRange) : VRange := ⟨r.lo.max s.lo, r.hi.min s.hi⟩\n\n#eval toString ((caret ⟨1, 2, 0⟩).merge (tilde ⟨1, 4, 2⟩))\n#eval toString ((caret ⟨1, 2, 0⟩).merge (caret ⟨2, 0, 0⟩))",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "That the merge is the right operation is a theorem: a version is in the merged range exactly when it meets both constraints. And an empty range has no version in it, so a conflict found by merging is a real one.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem Ver.max_le_iff (a b v : Ver) : (a.max b).le v ↔ a.le v ∧ b.le v := by\n  unfold Ver.max; split <;> (simp only [Ver.le] at *; omega)\n\ntheorem Ver.lt_min_iff (v a b : Ver) : v.lt (a.min b) ↔ v.lt a ∧ v.lt b := by\n  unfold Ver.min; split <;> (simp only [Ver.lt, Ver.le] at *; omega)\n\ntheorem VRange.has_merge (r s : VRange) (v : Ver) : (r.merge s).has v ↔ r.has v ∧ s.has v := by\n  simp only [VRange.has, VRange.merge, Ver.max_le_iff, Ver.lt_min_iff]\n  exact ⟨fun ⟨⟨a, b⟩, c, d⟩ => ⟨⟨a, c⟩, b, d⟩, fun ⟨⟨a, c⟩, b, d⟩ => ⟨⟨a, b⟩, c, d⟩⟩\n\ntheorem VRange.empty_has (r : VRange) (v : Ver) (h : r.empty) : ¬ r.has v := by\n  simp only [VRange.empty, VRange.has, Ver.lt, Ver.le] at *\n  omega",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "And the merge is a merge in lesson 5's sense: commutative, associative and idempotent. So the constraints can be merged in any order, as the resolver happens to find them while it walks through the dependencies, and seeing the same one twice changes nothing.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem Ver.max_comm (a b : Ver) : a.max b = b.max a := by\n  unfold Ver.max\n  by_cases h1 : a.le b <;> by_cases h2 : b.le a <;> simp only [h1, h2, ↓reduceIte] <;>\n    (cases a; cases b; simp only [Ver.le] at h1 h2; simp only [Ver.mk.injEq]; omega)\n\ntheorem Ver.min_comm (a b : Ver) : a.min b = b.min a := by\n  unfold Ver.min\n  by_cases h1 : a.le b <;> by_cases h2 : b.le a <;> simp only [h1, h2, ↓reduceIte] <;>\n    (cases a; cases b; simp only [Ver.le] at h1 h2; simp only [Ver.mk.injEq]; omega)\n\ntheorem Ver.max_assoc (a b c : Ver) : (a.max b).max c = a.max (b.max c) := by\n  unfold Ver.max\n  by_cases ab : a.le b <;> by_cases bc : b.le c <;> by_cases ac : a.le c <;> simp only [ab, bc, ac, ↓reduceIte] <;>\n    (cases a; cases b; cases c; simp only [Ver.le] at ab bc ac; simp only [Ver.mk.injEq]; omega)\n\ntheorem Ver.min_assoc (a b c : Ver) : (a.min b).min c = a.min (b.min c) := by\n  unfold Ver.min\n  by_cases ab : a.le b <;> by_cases bc : b.le c <;> by_cases ac : a.le c <;> simp only [ab, bc, ac, ↓reduceIte] <;>\n    (cases a; cases b; cases c; simp only [Ver.le] at ab bc ac; simp only [Ver.mk.injEq]; omega)\n\ninstance : Semilattice VRange where\n  merge := VRange.merge\n  merge_comm r s := by simp only [VRange.merge, Ver.max_comm, Ver.min_comm]\n  merge_assoc r s t := by simp only [VRange.merge, Ver.max_assoc, Ver.min_assoc]\n  merge_idem r := by cases r; simp [VRange.merge, Ver.max, Ver.min]",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A resolver",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A resolver merges every constraint on a library, then installs the newest published version left; since versions form a chain, \"newest\" always makes sense. Your project asks for `^1.2.0`, one dependency for `~1.4.2`, another for `>=1.3.0 <1.6.0`:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- The newest of the published versions a range allows, if any. -/\ndef newest (published : List Ver) (r : VRange) : Option Ver :=\n  published.foldl (fun best v =>\n    if r.has v then (match best with\n      | some b => if b.le v then some v else best\n      | none => some v)\n    else best) none\n\n/-- Merge every constraint, then take the newest version left. -/\ndef resolve (published : List Ver) : List VRange → Option Ver\n  | [] => none\n  | r :: rs => newest published (rs.foldl VRange.merge r)\n\ndef say : Option Ver → String\n  | some v => s!\"install {v}\"\n  | none => \"conflict: no published version meets every constraint\"\n\n/-- The library's published versions. -/\ndef lib : List Ver := [⟨1, 2, 0⟩, ⟨1, 3, 5⟩, ⟨1, 4, 1⟩, ⟨1, 4, 3⟩, ⟨1, 4, 7⟩, ⟨1, 5, 0⟩, ⟨1, 6, 2⟩, ⟨2, 0, 0⟩, ⟨2, 1, 0⟩]\n\n#eval say (resolve lib [caret ⟨1, 2, 0⟩, tilde ⟨1, 4, 2⟩, ⟨⟨1, 3, 0⟩, ⟨1, 6, 0⟩⟩])\n#eval say (resolve lib [caret ⟨1, 2, 0⟩, tilde ⟨1, 4, 2⟩, caret ⟨2, 0, 0⟩])",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A third dependency that needs `^2.0.0` makes the merge empty. A real resolver does not stop there: it backtracks, and tries an older version of the dependency that imposed the constraint, which may ask for less; that search is where resolving gets hard (in general, as hard as satisfiability). npm sidesteps it by installing two copies of the library, one for each side.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem ab_conflict : ((caret ⟨1, 2, 0⟩).merge (caret ⟨2, 0, 0⟩)).empty := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that `^1.2.0` and `^2.0.0` conflict.",
+      "leanSolution": "  decide",
+      "hints": [
+        "A statement about two concrete ranges: `decide` computes it."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem merge_left (r s : VRange) (v : Ver) (h : (r.merge s).has v) : r.has v := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that a version in a merged range meets the first constraint, for every range and version.",
+      "leanSolution": "  exact ((VRange.has_merge r s v).mp h).1",
+      "hints": [
+        "`VRange.has_merge r s v` is an `↔`; its `.mp` turns `h` into a pair.",
+        "The first half of the pair is `r.has v`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The other way round, the smallest range that covers two ranges keeps the smaller lower end and the larger upper end. A lockfile updater uses it to describe \"every version either side accepts\" in one range, and it can be too generous: `~1.4.2` and `~1.6.0` are covered by $[1.4.2,\\ 1.7.0)$, which also holds `1.5.0`, a version neither accepts. Ranges, like intervals, are not closed under union.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem hull_ok : (tilde ⟨1, 4, 2⟩).hull (tilde ⟨1, 6, 0⟩) = ⟨⟨1, 4, 2⟩, ⟨1, 7, 0⟩⟩ ∧\n    (caret ⟨2, 0, 0⟩).hull (caret ⟨1, 3, 0⟩) = ⟨⟨1, 3, 0⟩, ⟨3, 0, 0⟩⟩ := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Define `VRange.hull`, the smallest range that covers both of two ranges. The proof is given: `decide` checks two examples.",
+      "leanSolution": "  decide",
+      "leanStart": "  decide",
+      "hints": [
+        "It is the merge with `max` and `min` swapped.",
+        "`def VRange.hull (r s : VRange) : VRange := ⟨r.lo.min s.lo, r.hi.max s.hi⟩`"
+      ],
+      "leanDef": "def VRange.hull (r s : VRange) : VRange := sorry",
+      "leanDefSolution": "def VRange.hull (r s : VRange) : VRange := ⟨r.lo.min s.lo, r.hi.max s.hi⟩",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Versions with two parts, in the engine. Answer `true` or `false`, or with a version as a pair.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "le(lex(chain(3), chain(3)), (2, 0), (1, 2))",
+      "type": "exercise",
+      "prompt": "In the lexicographic order, is `2.0` at most `1.2`?",
+      "hints": [
+        "The major part decides."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "join(lex(chain(3), chain(3)), (1, 2), (2, 1))",
+      "type": "exercise",
+      "prompt": "The join of two versions in the lexicographic order is the newer one. What is the join of `1.2` and `2.1`?",
+      "hints": [
+        "In a chain the join of two elements is the larger."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "join(product(chain(3), chain(3)), (1, 2), (2, 1))",
+      "type": "exercise",
+      "prompt": "In the product order, what is the join of `1.2` and `2.1`? Is it either of them?",
+      "hints": [
+        "The least pair at least as large in each part."
+      ],
+      "hideQuestion": true,
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Versions compare lexicographically, so they form a chain and any set of them has a newest. A constraint is an interval of that chain; constraints merge by intersecting, the merge is a semilattice, so the order the resolver meets them in does not matter, and an empty merge is a conflict that no choice of version can avoid. The smallest range covering two is the other operation, and it may cover versions neither side accepts.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

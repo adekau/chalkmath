@@ -1035,6 +1035,12 @@ def algebraTests : TestM Unit := do
   let (st, _) := handleS st (req "6" "let SC = product(Lv, Cat)")
   let (st, jRaw) := handleS st (req "7" "join(SC, (low, {hr, fin}), ( high , {} ))")
   checkTrue "algebra: pair elements, written with any spacing and set order" (contains jRaw "\"text\":\"(high, {fin,hr})\"") jRaw
+  -- the lexicographic order: the first coordinate decides, the second breaks a tie; a chain of chains is a chain
+  let lexT (src : String) := (sessionEval [] src).2
+  check "lex: the first coordinate decides" (lexT "le(lex(chain(3), chain(3)), (0, 2), (1, 0))") "true"
+  check "lex: whatever the second says" (lexT "le(lex(chain(3), chain(3)), (1, 0), (0, 2))") "false"
+  check "lex: a tie goes to the second" (lexT "le(lex(chain(3), chain(3)), (1, 0), (1, 2))") "true"
+  check "lex: a chain, so a join is the larger" (lexT "join(lex(chain(3), chain(3)), (0, 2), (1, 0))") "(1, 0)"
   let (_, xRaw) := handleS st (req "8" "let X = context({duck, dog}, {flies, mammal}; duck->flies, dog->mammal)")
   checkTrue "algebra: a context is drawn as its cross table" (contains xRaw "\"kind\":\"context.table\"" && contains xRaw "\"has\":[[true,false],[false,true]]") xRaw
 

@@ -19,7 +19,7 @@ export const FALLBACK_WORLDS: WorldInfo[] = [
     names: [],
     markers: [] },
   { id: "poset", label: "Order theory",
-    commands: ["poset", "divisors", "subsets", "chain", "map", "hasse", "join", "meet", "sup", "inf", "upper", "lower", "lattice", "top", "bottom", "le", "maximal", "minimal", "monotone", "lfp", "gfp", "fixpoints", "rel", "kernel", "reflexive", "symmetric", "antisymmetric", "transitive", "equivalence", "preorder", "closure", "classes", "finer", "wellfounded", "measure", "op", "joinop", "meetop", "table", "associative", "commutative", "idempotent", "semilattice", "identity", "fold", "order", "distributive", "complement", "complemented", "boolean", "product", "galois", "closureop", "context", "concepts", "secure", "events", "clocks", "concurrent"],
+    commands: ["poset", "divisors", "subsets", "chain", "map", "hasse", "join", "meet", "sup", "inf", "upper", "lower", "lattice", "top", "bottom", "le", "maximal", "minimal", "monotone", "lfp", "gfp", "fixpoints", "rel", "kernel", "reflexive", "symmetric", "antisymmetric", "transitive", "equivalence", "preorder", "closure", "classes", "finer", "wellfounded", "measure", "op", "joinop", "meetop", "table", "associative", "commutative", "idempotent", "semilattice", "identity", "fold", "order", "distributive", "complement", "complemented", "boolean", "product", "lex", "galois", "closureop", "context", "concepts", "secure", "events", "clocks", "concurrent"],
     keywords: [],
     glyphs: ["<", "->", "=", "|", "..", "{", "}"],
     names: [],

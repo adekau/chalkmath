@@ -1,0 +1,8 @@
+7	let W = product(chain(3), chain(3))	= poset {(0, 0), (0, 1), (0, 2), (1, 0), (1, 1), (1, 2), (2, 0), (2, 1), (2, 2)}
+8	le(W, (1, 2), (2, 0))	= false
+10	let V = lex(chain(3), chain(3))	= poset {(0, 0), (0, 1), (0, 2), (1, 0), (1, 1), (1, 2), (2, 0), (2, 1), (2, 2)}
+11	le(V, (1, 2), (2, 0))	= true
+13	le(lex(lex(chain(2), chain(2)), chain(2)), ((0, 1), 1), ((1, 0), 0))	= true
+34	le(lex(chain(3), chain(3)), (2, 0), (1, 2))	= false
+35	join(lex(chain(3), chain(3)), (1, 2), (2, 1))	= (2, 1)
+36	join(product(chain(3), chain(3)), (1, 2), (2, 1))	= (2, 2)

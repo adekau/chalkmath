@@ -154,6 +154,12 @@
       "type": "markdown",
       "showWork": false,
       "label": null
+    },
+    {
+      "src": "> [!note] Application: version ranges\n> A package manager's version constraints are intervals too, of versions. [Version ranges](#course=order-lattices&lesson=14&app=1), an optional notebook beside this lesson, merges constraints, finds conflicts, and builds a small resolver in Lean.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
     }
   ],
   "scenes": []
