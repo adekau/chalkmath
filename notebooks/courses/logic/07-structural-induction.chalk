@@ -144,6 +144,12 @@
       "label": null
     },
     {
+      "src": "> [!note] Application: a compiler, proved correct\n> `Ex.simp` is a small optimizer. [A tiny compiler, proved correct](#course=logic&lesson=7&app=1), an optional notebook beside this lesson, adds variables and constant folding, compiles expressions to a stack machine, and proves both never change what an expression computes, by the same structural induction.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "Every induction so far ran along a relation: \"is one less than\", \"is less than\", \"is a part of\". Which relations can induction run along? First, relations themselves, and what it means to close one up.",
       "type": "markdown",
       "showWork": false,

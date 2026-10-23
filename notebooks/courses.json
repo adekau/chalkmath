@@ -90,7 +90,14 @@
         {
           "file": "07-structural-induction.chalk",
           "title": "Structural induction",
-          "blurb": "The same idea for anything defined by constructors: lists, trees, expressions, and a small simplifier proved sound."
+          "blurb": "The same idea for anything defined by constructors: lists, trees, expressions, and a small simplifier proved sound.",
+          "apps": [
+            {
+              "file": "07a-tiny-compiler.chalk",
+              "title": "A tiny compiler, proved correct",
+              "blurb": "Expressions with variables, constant folding, and a compiler to a stack machine, each proved to keep the value of every expression by structural induction, the way verified compilers are built."
+            }
+          ]
         },
         {
           "file": "08-relations.chalk",
@@ -100,7 +107,14 @@
         {
           "file": "09-well-founded.chalk",
           "title": "Well-founded relations and termination",
-          "blurb": "No infinite descent: why a loop stops, cycles as counterexamples, measures as proofs, and termination in Lean."
+          "blurb": "No infinite descent: why a loop stops, cycles as counterexamples, measures as proofs, and termination in Lean.",
+          "apps": [
+            {
+              "file": "09a-why-recursion-stops.chalk",
+              "title": "Why your recursion stops",
+              "blurb": "The measure behind binary search, quicksort and a loop with two phases; an off-by-one that Lean refuses; and Collatz, for which nobody knows one."
+            }
+          ]
         }
       ]
     },

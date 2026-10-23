@@ -1362,7 +1362,162 @@ def Ex.simp : Ex → Ex
 > [!summary]
 > Every inductive type comes with its own induction: a case per constructor and a hypothesis per recursive part. Lists, trees and syntax trees are proved about the same way as numbers, and "a transformation keeps the meaning" is a structural induction.
 `);
+    md(r`
+> [!note] Application: a compiler, proved correct
+> ‹Ex.simp› is a small optimizer. [A tiny compiler, proved correct](#course=logic&lesson=7&app=1), an optional notebook beside this lesson, adds variables and constant folding, compiles expressions to a stack machine, and proves both never change what an expression computes, by the same structural induction.
+`);
     md(r`Every induction so far ran along a relation: "is one less than", "is less than", "is a part of". Which relations can induction run along? First, relations themselves, and what it means to close one up.`);
+  });
+
+  app("07a-tiny-compiler.chalk", "A tiny compiler, proved correct", "Expressions with variables, constant folding, and a compiler to a stack machine, each proved to keep the value of every expression by structural induction, the way verified compilers are built.", ({ sec, md, lean, lx }) => {
+    sec("A tiny compiler, proved correct");
+    md(r`
+> [!goal]
+> Build a constant-folding optimizer and a compiler to a stack machine for a small language of expressions, and prove in Lean that neither changes what any expression computes.
+`);
+    md(r`An application of lesson 7, outside the course's order: nothing later depends on it. It assumes lesson 7's structural induction and its simplifier ‹Ex.simp›, and goes two steps further: an optimizer that computes what it can ahead of time, and a compiler.`);
+    md(r`
+> [!note] Why prove a compiler
+> A compiler that is wrong in a rare case turns a correct program into a wrong one, and testing the program cannot catch it: the bug is in a tool the tests trust. CompCert, a C compiler used in aircraft software, is proved correct in the proof assistant Rocq with exactly the method below, a structural induction per pass. When researchers generated millions of random C programs to find compiler bugs, they found hundreds in GCC and LLVM and none in CompCert's proved passes.
+`);
+    sec("Expressions and what they mean");
+    md(r`An expression is a number, a variable, a sum or a product. What it means depends on the values of its variables, so the evaluator takes an **environment** ‹env›, a function from variable names to numbers:`);
+    lean(r`inductive Arith where
+  | num (n : Nat)
+  | var (x : String)
+  | add (a b : Arith)
+  | mul (a b : Arith)
+  deriving Repr, DecidableEq
+
+def Arith.eval (env : String → Nat) : Arith → Nat
+  | .num n => n
+  | .var x => env x
+  | .add a b => a.eval env + b.eval env
+  | .mul a b => a.eval env * b.eval env
+
+/-- x is 5, every other variable 0 -/
+def env5 : String → Nat := fun x => if x = "x" then 5 else 0
+
+#eval (Arith.add (.var "x") (.mul (.num 2) (.num 3))).eval env5`);
+    sec("Constant folding");
+    md(r`**Constant folding** does at compile time what does not depend on the variables: ‹2 * 3› becomes ‹6›, ‹0 + e› and ‹1 * e› become ‹e›. Write it as two **smart constructors**, which build a sum or a product but simplify when they can, and a pass that rebuilds the expression with them from the leaves up:`);
+    lean(r`def Arith.addOpt : Arith → Arith → Arith
+  | .num a, .num b => .num (a + b)
+  | .num 0, e => e
+  | e, .num 0 => e
+  | a, b => .add a b
+
+theorem Arith.addOpt_eval (env : String → Nat) (a b : Arith) :
+    (Arith.addOpt a b).eval env = a.eval env + b.eval env := by
+  unfold Arith.addOpt
+  split <;> simp_all [Arith.eval]`);
+    md(r`The theorem is the whole of ‹addOpt›'s correctness: whichever case fires, the result means the sum of what ‹a› and ‹b› mean. ‹split› makes a goal per case of the ‹match›, and in each ‹simp_all› knows which case it is in (that ‹a› is ‹.num 0›, say) and finishes with arithmetic.`);
+    lx(r`theorem Arith.mulOpt_spec : (∀ env a b, (Arith.mulOpt a b).eval env = a.eval env * b.eval env) ∧
+    Arith.mulOpt (.num 2) (.num 3) = .num 6 ∧ Arith.mulOpt (.num 1) (.var "x") = .var "x" ∧
+    Arith.mulOpt (.var "x") (.num 1) = .var "x" := by`, r`Define ‹Arith.mulOpt›, the smart constructor for products: multiply two numbers, and drop a factor ‹1› on either side. The statement asks for both halves of the job: it keeps the value of every product, and it does fold these three.`, r`  refine ⟨fun env a b => ?_, rfl, rfl, rfl⟩
+  unfold Arith.mulOpt
+  split <;> simp_all [Arith.eval]`, [
+      r`Copy ‹addOpt›'s shape: a ‹match› on both arguments, the case of two numbers first.`,
+      r`‹| .num a, .num b => .num (a * b)›, then ‹| .num 1, e => e›, ‹| e, .num 1 => e› and ‹| a, b => .mul a b›.`,
+      r`The proof is ‹addOpt_eval›'s, after ‹refine› splits off the three examples, which ‹rfl› computes.`,
+    ], { start: "  refine ⟨fun env a b => ?_, rfl, rfl, rfl⟩\n  unfold Arith.mulOpt\n  split <;> simp_all [Arith.eval]", def: { start: "def Arith.mulOpt (a b : Arith) : Arith := sorry", solution: "def Arith.mulOpt : Arith → Arith → Arith\n  | .num a, .num b => .num (a * b)\n  | .num 1, e => e\n  | e, .num 1 => e\n  | a, b => .mul a b", forbid: [] } });
+    md(r`
+> [!try]
+> Why not also fold $0 \cdot e$ to $0$? It is right for these expressions. In a language where evaluating $e$ can fail or print, would it still be?
+`);
+    md(r`With both smart constructors, the pass itself is a structural recursion: fold the parts, then rebuild. It turns ‹x + 2 * 3› into ‹x + 6›, and ‹0 + 1 * x› into ‹x›; the last section runs it, once your ‹mulOpt› is written.`);
+    lean(r`def Arith.fold : Arith → Arith
+  | .add a b => Arith.addOpt a.fold b.fold
+  | .mul a b => Arith.mulOpt a.fold b.fold
+  | e => e`);
+    lx(r`theorem Arith.fold_eval (env : String → Nat) (e : Arith) : e.fold.eval env = e.eval env := by`, r`Prove constant folding sound: it keeps the value of every expression, in every environment.`, r`  induction e with
+  | num n => rfl
+  | var x => rfl
+  | add a b iha ihb => simp [Arith.fold, Arith.addOpt_eval, Arith.eval, iha, ihb]
+  | mul a b iha ihb => simp [Arith.fold, Arith.mulOpt_spec.1, Arith.eval, iha, ihb]`, [
+      r`Induction on ‹e›, a case per constructor. For a number or a variable, ‹fold› does nothing: ‹rfl›.`,
+      r`In the ‹add› case, unfold ‹Arith.fold›; ‹Arith.addOpt_eval› turns the smart constructor into a sum, and the hypotheses say the folded parts mean what the parts do.`,
+      r`‹simp [Arith.fold, Arith.addOpt_eval, Arith.eval, iha, ihb]›; for ‹mul›, the first half of ‹Arith.mulOpt_spec›, which is ‹Arith.mulOpt_spec.1›.`,
+    ]);
+    md(r`This is how a verified compiler is organized: each local rewrite gets a lemma of its own, and one structural induction stitches them into the pass. Adding a rewrite adds a case to a smart constructor and nothing to the induction.`);
+    sec("Compiling to a stack machine");
+    md(r`A **stack machine** runs a list of instructions against a stack of numbers. ‹push n› puts ‹n› on top; ‹load x› puts the value of ‹x›; ‹add› and ‹mul› take the top two and put back their sum or product. The JVM, WebAssembly and many pocket calculators work this way. A sum compiles to the code for its left part, then its right part, then ‹add›:`);
+    lean(r`inductive Instr where
+  | push (n : Nat)
+  | load (x : String)
+  | add
+  | mul
+  deriving Repr
+
+def exec (env : String → Nat) : List Instr → List Nat → List Nat
+  | [], st => st
+  | .push n :: is, st => exec env is (n :: st)
+  | .load x :: is, st => exec env is (env x :: st)
+  | .add :: is, b :: a :: st => exec env is ((a + b) :: st)
+  | .mul :: is, b :: a :: st => exec env is ((a * b) :: st)
+  | _ :: is, st => exec env is st
+
+def Arith.compile : Arith → List Instr
+  | .num n => [.push n]
+  | .var x => [.load x]
+  | .add a b => a.compile ++ b.compile ++ [.add]
+  | .mul a b => a.compile ++ b.compile ++ [.mul]
+
+#eval (Arith.add (.var "x") (.mul (.num 2) (.num 3))).compile
+#eval exec env5 (Arith.add (.var "x") (.mul (.num 2) (.num 3))).compile []`);
+    md(r`The last case of ‹exec› skips an ‹add› or ‹mul› that finds fewer than two numbers. Compiled code never meets it, and the proof below shows why without having to say so.`);
+    md(r`The compiler is correct when the code for ‹e›, run on an empty stack, leaves exactly the value of ‹e›. The obvious proof gets stuck:
+
+‹‹‹lean
+theorem compile_ok (env : String → Nat) (e : Arith) :
+    exec env e.compile [] = [e.eval env] := by
+  induction e with
+  | num n => rfl
+  | var x => rfl
+  | add a b iha ihb => simp [Arith.compile, Arith.eval]
+  | mul a b iha ihb => simp [Arith.compile, Arith.eval]
+-- error: unsolved goals
+-- case add
+-- iha : exec env a.compile [] = [Arith.eval env a]
+-- ihb : exec env b.compile [] = [Arith.eval env b]
+-- ⊢ exec env (a.compile ++ (b.compile ++ [Instr.add])) [] = [Arith.eval env a + Arith.eval env b]
+‹‹‹
+
+The hypothesis is about ‹a.compile› run alone on an empty stack. In the goal it runs with more code after it, and ‹b.compile› runs on a stack that already holds ‹a›'s value. The hypothesis is too weak to be used where it is needed.`.replace(/‹‹‹/g, "```"));
+    md(r`
+> [!definition] Strengthening the statement
+> When the induction hypothesis is too weak, prove *more*: a statement general enough that the parts' cases are instances of it. Here, say what ‹e.compile› does in any context: followed by any code ‹is›, on any stack ‹st›, it pushes ‹e›'s value and carries on with ‹is›. ‹induction e generalizing is st› then gives hypotheses for every ‹is› and ‹st›, and the ‹add› case uses ‹a›'s with ‹b.compile ++ [.add] ++ is› as the code after it.
+`);
+    lx(r`theorem Arith.compile_exec (env : String → Nat) (e : Arith) (is : List Instr) (st : List Nat) :
+    exec env (e.compile ++ is) st = exec env is (e.eval env :: st) := by`, r`Prove the strengthened statement: the code for ‹e›, followed by any code, on any stack, pushes the value of ‹e› and runs the rest.`, r`  induction e generalizing is st with
+  | num n => rfl
+  | var x => rfl
+  | add a b iha ihb => simp [Arith.compile, List.append_assoc, iha, ihb, exec, Arith.eval]
+  | mul a b iha ihb => simp [Arith.compile, List.append_assoc, iha, ihb, exec, Arith.eval]`, [
+      r`‹induction e generalizing is st with›: the hypotheses then hold for every ‹is› and ‹st›.`,
+      r`A number or a variable is one instruction, and ‹exec› runs it: ‹rfl›.`,
+      r`For ‹add›: reassociate the code with ‹List.append_assoc› so it reads ‹a.compile ++ (b.compile ++ ([.add] ++ is))›; then ‹iha›, then ‹ihb›, then one step of ‹exec›. ‹simp [Arith.compile, List.append_assoc, iha, ihb, exec, Arith.eval]› does all of it.`,
+    ]);
+    lx(r`theorem Arith.compile_correct (env : String → Nat) (e : Arith) :
+    exec env e.compile [] = [e.eval env] := by`, r`Now the statement that got stuck follows from the strong one: no code after, an empty stack.`, r`  simpa [exec] using Arith.compile_exec env e [] []`, [
+      r`‹Arith.compile_exec env e [] []› is ‹exec env (e.compile ++ []) [] = exec env [] [e.eval env]›.`,
+      r`‹simpa [exec] using …› removes the ‹++ []› and runs the empty program.`,
+    ]);
+    sec("The whole pipeline");
+    md(r`An optimizing compiler folds, then compiles. With your ‹mulOpt› written, here is both, on ‹x + 2 * 3› and on ‹0 + 1 * x›:`);
+    lean(r`#eval (Arith.add (.var "x") (.mul (.num 2) (.num 3))).fold
+#eval (Arith.add (.var "x") (.mul (.num 2) (.num 3))).fold.compile
+#eval (Arith.add (.num 0) (.mul (.num 1) (.var "x"))).fold.compile`);
+    md(r`Its correctness is the two theorems chained: no new induction.`);
+    lx(r`theorem Arith.pipeline_correct (env : String → Nat) (e : Arith) :
+    exec env e.fold.compile [] = [e.eval env] := by`, r`Prove that folding and then compiling keeps the value.`, r`  rw [Arith.compile_correct, Arith.fold_eval]`, [
+      r`The compiler is correct for every expression, ‹e.fold› among them: ‹rw [Arith.compile_correct]›.`,
+      r`That leaves ‹[e.fold.eval env] = [e.eval env]›, which is ‹Arith.fold_eval›.`,
+    ]);
+    md(r`
+> [!summary]
+> A pass of a compiler is a structural recursion, and its correctness a structural induction: a lemma per local rewrite, one induction to stitch them. When the hypothesis is too weak, as for the compiler, strengthen the statement to cover every context the parts appear in. Passes compose: the correctness of the pipeline is the theorems of its passes, chained.
+`);
   });
 
   add("08-relations.chalk", "Relations", "When do two things count as the same? Properties with counterexamples, closures as what you are forced to add, equivalence classes, and a deduplication bug.", ({ sec, md, m, ex }) => {
@@ -1513,6 +1668,126 @@ termination_by m n => (m, n)
     md(r`
 > [!summary]
 > Well-founded means no infinite descent; on a finite set, no cycle. A measure into the naturals proves it, a cycle refutes it, and Lean's ‹termination_by› is a measure written down. Every induction in this course ran along a well-founded relation.
+`);
+    md(r`
+> [!note] Application: why your recursion stops
+> [Why your recursion stops](#course=logic&lesson=9&app=1), an optional notebook beside this lesson, finds the measures behind binary search, quicksort and a two-phase loop, shows the binary search bug Lean refuses to accept, and meets a function nobody knows a measure for.
+`);
+  });
+
+  app("09a-why-recursion-stops.chalk", "Why your recursion stops", "The measure behind binary search, quicksort and a loop with two phases; an off-by-one that Lean refuses; and Collatz, for which nobody knows one.", ({ sec, md, m, lean, lx }) => {
+    sec("Why your recursion stops");
+    md(r`
+> [!goal]
+> Find the measure that makes a real recursive function stop, give it to Lean when Lean cannot find it, and read Lean's refusal as a bug report.
+`);
+    md(r`An application of lesson 9, outside the course's order: nothing later depends on it. It assumes lesson 9's measures and ‹termination_by›, and lesson 7's lists.`);
+    sec("Lean looks for a measure first");
+    md(r`Lean tries to find a measure itself before it asks for one. Counting from ‹i› up to ‹n› calls itself with a *bigger* argument, and Lean still accepts it: it tries ‹n - i›, which goes down at every call, and proves that it does.`);
+    lean(r`def countUp (i n : Nat) : Nat := if i < n then countUp (i + 1) n + 1 else 0
+
+#eval countUp 3 10`);
+    md(r`Binary search looks for ‹x› in the part ‹lo ≤ i < hi› of a sorted array: it checks the middle, then searches the half that can contain ‹x›. The part gets shorter at every call, so its length, ‹hi - lo›, is the measure. Lean would find it too; ‹termination_by› writes it down for the reader.`);
+    lean(r`def bsearch (a : Array Nat) (x : Nat) (lo hi : Nat) : Option Nat :=
+  if lo < hi then
+    let mid := (lo + hi) / 2
+    if a[mid]! = x then some mid
+    else if a[mid]! < x then bsearch a x (mid + 1) hi
+    else bsearch a x lo mid
+  else none
+termination_by hi - lo
+
+#eval bsearch #[1, 3, 4, 7, 9, 12] 9 0 6
+#eval bsearch #[1, 3, 4, 7, 9, 12] 5 0 6`);
+    sec("A bug Lean refuses");
+    md(r`Here is the same search with a one-character slip, ‹mid› where it should be ‹mid + 1›. Most languages run it, and it works on most inputs. Lean does not accept it:
+
+‹‹‹lean
+def bsearch (a : Array Nat) (x : Nat) (lo hi : Nat) : Option Nat :=
+  if lo < hi then
+    let mid := (lo + hi) / 2
+    if a[mid]! = x then some mid
+    else if a[mid]! < x then bsearch a x mid hi
+    else bsearch a x lo mid
+  else none
+-- error: fail to show termination for
+--   bsearch
+-- …
+-- Could not find a decreasing measure.
+-- The basic measures relate at each recursive call as follows:
+-- (<, ≤, =: relation proved, ? all proofs failed, _: no proof attempted)
+--            lo hi #1
+-- 1) 5:29-47  ?  =  ≤
+-- 2) 6:9-27   _  <  _
+--
+-- #1: hi - lo
+‹‹‹
+
+The table is Lean's search for a measure, a row per recursive call and a column per candidate: ‹lo›, ‹hi›, and ‹#1›, which is ‹hi - lo›. In call 2, ‹hi› goes down (‹<›). In call 1, ‹hi - lo› only stays the same or goes down (‹≤›), and that is the bug: when ‹hi = lo + 1›, ‹mid› is ‹lo›, so the call is the one already running. Searching ‹#[1, 3]› for ‹5› would loop forever.`.replace(/‹‹‹/g, "```"));
+    md(r`
+> [!mistake]
+> "It terminated on every test" is not termination. The looping input needs the part to be down to two elements with ‹x› past both, which a test suite can easily miss. A termination proof covers every input, and the place where it fails points at the line to fix.
+`);
+    sec("When no argument goes down");
+    md(r`A worker has ‹n› jobs and two phases. When ready, it takes a job and then cools down; when cooling down, it becomes ready again; it stops when it is ready with no jobs left. The result counts its steps.`);
+    md(r`Neither argument works as a measure. Taking a job lowers ‹n›; cooling down leaves ‹n› the same and changes the phase, and a ‹Bool› has no order Lean can use. What goes down at every step is the pair: ‹n› first, and the phase, cooling down counted above ready, when ‹n› stays the same. Lesson 9's states and measures check it on the steps from 2 jobs:`);
+    m("let W = rel({r2, c1, r1, c0, r0}; r2->c1, c1->r1, r1->c0, c0->r0)");
+    m("measure(W; r2->4, c1->3, r1->2, c0->1, r0->0)", { work: true });
+    md(r`Here ‹r2› is "ready, 2 jobs" and ‹c1› "cooling down, 1 job", and the measure is $2n$ when ready and $2n + 1$ when cooling down: the pair, flattened into one number.`);
+    lx(r`theorem worker_ok : worker true 3 = 6 ∧ worker false 2 = 5 := by`, r`Lean cannot find this function's measure on its own: without ‹termination_by› its error lists what it tried. Replace the ‹sorry› with a measure that works. (‹partial› is ruled out: it gives up on termination, and then nothing can be proved about the function.)`, r`  simp [worker]`, [
+      r`Lean's table says the two calls change the arguments as (=, <) and (=, =): in the second call neither argument goes down.`,
+      r`A pair is compared first component first, as in lesson 9's Ackermann. Put ‹n› first and a number for the phase second.`,
+      r`‹termination_by ready n => (n, if ready then 0 else 1)›: when ‹n› stays the same, the phase goes from cooling down (1) to ready (0).`,
+    ], { start: "  simp [worker]", def: { start: "def worker : Bool → Nat → Nat\n  | true, 0 => 0\n  | true, n + 1 => worker false n + 1\n  | false, n => worker true n + 1\ntermination_by ready n => (sorry : Nat)", solution: "def worker : Bool → Nat → Nat\n  | true, 0 => 0\n  | true, n + 1 => worker false n + 1\n  | false, n => worker true n + 1\ntermination_by ready n => (n, if ready then 0 else 1)", forbid: ["partial"] } });
+    sec("When the measure needs a proof");
+    md(r`Quicksort takes the first element, sorts the smaller ones and the rest separately, and puts the first element between them. The lists it recurses on are not parts of the input, so structural recursion does not apply; their *length* is the measure. Lean can be told the measure but cannot see why it goes down:
+
+‹‹‹lean
+def qsort : List Nat → List Nat
+  | [] => []
+  | x :: xs => qsort (lows x xs) ++ [x] ++ qsort (highs x xs)
+termination_by xs => xs.length
+-- error: failed to prove termination, possible solutions:
+-- …
+-- x : Nat
+-- xs : List Nat
+-- ⊢ (lows x xs).length < xs.length + 1
+‹‹‹
+
+The error is a goal: what is left to prove. A filtered list is no longer than the list, ‹List.length_filter_le›, and so it is shorter than ‹x :: xs›. ‹decreasing_by› proves it, for each of the two calls:`.replace(/‹‹‹/g, "```"));
+    lean(r`def lows (x : Nat) (xs : List Nat) : List Nat := xs.filter (· < x)
+def highs (x : Nat) (xs : List Nat) : List Nat := xs.filter (· ≥ x)
+
+def qsort : List Nat → List Nat
+  | [] => []
+  | x :: xs => qsort (lows x xs) ++ [x] ++ qsort (highs x xs)
+termination_by xs => xs.length
+decreasing_by
+  all_goals simp only [List.length_cons]
+  all_goals exact Nat.lt_succ_of_le (List.length_filter_le _ _)
+
+#eval qsort [3, 1, 4, 1, 5, 9, 2, 6]`);
+    lean(r`def without (x : Nat) (xs : List Nat) : List Nat := xs.filter (· ≠ x)`);
+    lx(r`theorem dedup_ok : dedup [1, 2, 1, 3, 2] = [1, 2, 3] ∧ dedup [] = [] := by`, r`‹dedup› keeps the first of each value and removes its repeats from the rest, by recursion on ‹without x xs›. Without the two ‹sorry›s Lean rejects it: replace them with the measure and the proof that the measure goes down. (‹partial› is ruled out.)`, r`  simp [dedup, without]`, [
+      r`The measure is the list's length, as for ‹qsort›: ‹termination_by xs => xs.length›.`,
+      r`Lean is then left with ‹(without x xs).length < xs.length + 1›. ‹without› is a ‹filter›, so ‹qsort›'s proof works for the one call.`,
+      r`‹decreasing_by› then ‹simp only [List.length_cons]› and ‹exact Nat.lt_succ_of_le (List.length_filter_le _ _)›.`,
+    ], { start: "  simp [dedup, without]", def: { start: "def dedup : List Nat → List Nat\n  | [] => []\n  | x :: xs => x :: dedup (without x xs)\ntermination_by xs => (sorry : Nat)\ndecreasing_by sorry", solution: "def dedup : List Nat → List Nat\n  | [] => []\n  | x :: xs => x :: dedup (without x xs)\ntermination_by xs => xs.length\ndecreasing_by\n  simp only [List.length_cons]\n  exact Nat.lt_succ_of_le (List.length_filter_le _ _)", forbid: ["partial"] } });
+    lx(r`theorem bsearch_shrinks (lo hi : Nat) (h : lo < hi) :
+    (lo + hi) / 2 - lo < hi - lo ∧ hi - ((lo + hi) / 2 + 1) < hi - lo := by`, r`Prove what Lean proved for ‹bsearch›: both recursive calls make ‹hi - lo› smaller, whenever ‹lo < hi›.`, r`  constructor <;> omega`, [
+      r`Two inequalities: ‹constructor› splits the ‹∧›.`,
+      r`Each is arithmetic with division by a numeral, which ‹omega› handles: ‹constructor <;> omega›.`,
+    ]);
+    sec("A function nobody can measure");
+    md(r`Take a number; halve it if it is even, otherwise triple it and add one; repeat until it reaches 1. From 27 it takes 111 steps, climbing as high as 9232 on the way. Every number anyone has tried reaches 1, but whether every number does is the **Collatz conjecture**, open since 1937. A measure for this function would prove it.`);
+    lean(r`partial def collatz (n : Nat) : Nat :=
+  if n ≤ 1 then 0 else if n % 2 = 0 then collatz (n / 2) + 1 else collatz (3 * n + 1) + 1
+
+#eval collatz 27`);
+    md(r`‹partial› tells Lean not to look for a measure. It accepts the definition and runs it, but treats the function as a black box: there is no equation to unfold, so nothing about its values can be proved. That is the price, and why the exercises rule it out. A server's main loop, meant never to stop, is the honest use of it.`);
+    md(r`
+> [!summary]
+> Lean looks for a measure itself: an argument, or a difference like ‹hi - lo›. When it fails, its table shows which calls it could not prove smaller, often the bug. A loop whose arguments take turns needs a pair, compared first component first; a measure that is not obviously smaller needs ‹decreasing_by› and a lemma. And some functions, Collatz's among them, nobody can measure: ‹partial› runs them and proves nothing.
 `);
   });
 }, { leanPrelude: true });

@@ -1,0 +1,234 @@
+{
+  "chalk": 1,
+  "name": "07a-tiny-compiler.chalk",
+  "cells": [
+    {
+      "src": "A tiny compiler, proved correct",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Build a constant-folding optimizer and a compiler to a stack machine for a small language of expressions, and prove in Lean that neither changes what any expression computes.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "An application of lesson 7, outside the course's order: nothing later depends on it. It assumes lesson 7's structural induction and its simplifier `Ex.simp`, and goes two steps further: an optimizer that computes what it can ahead of time, and a compiler.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!note] Why prove a compiler\n> A compiler that is wrong in a rare case turns a correct program into a wrong one, and testing the program cannot catch it: the bug is in a tool the tests trust. CompCert, a C compiler used in aircraft software, is proved correct in the proof assistant Rocq with exactly the method below, a structural induction per pass. When researchers generated millions of random C programs to find compiler bugs, they found hundreds in GCC and LLVM and none in CompCert's proved passes.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Expressions and what they mean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "An expression is a number, a variable, a sum or a product. What it means depends on the values of its variables, so the evaluator takes an **environment** `env`, a function from variable names to numbers:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "inductive Arith where\n  | num (n : Nat)\n  | var (x : String)\n  | add (a b : Arith)\n  | mul (a b : Arith)\n  deriving Repr, DecidableEq\n\ndef Arith.eval (env : String → Nat) : Arith → Nat\n  | .num n => n\n  | .var x => env x\n  | .add a b => a.eval env + b.eval env\n  | .mul a b => a.eval env * b.eval env\n\n/-- x is 5, every other variable 0 -/\ndef env5 : String → Nat := fun x => if x = \"x\" then 5 else 0\n\n#eval (Arith.add (.var \"x\") (.mul (.num 2) (.num 3))).eval env5",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Constant folding",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "**Constant folding** does at compile time what does not depend on the variables: `2 * 3` becomes `6`, `0 + e` and `1 * e` become `e`. Write it as two **smart constructors**, which build a sum or a product but simplify when they can, and a pass that rebuilds the expression with them from the leaves up:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "def Arith.addOpt : Arith → Arith → Arith\n  | .num a, .num b => .num (a + b)\n  | .num 0, e => e\n  | e, .num 0 => e\n  | a, b => .add a b\n\ntheorem Arith.addOpt_eval (env : String → Nat) (a b : Arith) :\n    (Arith.addOpt a b).eval env = a.eval env + b.eval env := by\n  unfold Arith.addOpt\n  split <;> simp_all [Arith.eval]",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The theorem is the whole of `addOpt`'s correctness: whichever case fires, the result means the sum of what `a` and `b` mean. `split` makes a goal per case of the `match`, and in each `simp_all` knows which case it is in (that `a` is `.num 0`, say) and finishes with arithmetic.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem Arith.mulOpt_spec : (∀ env a b, (Arith.mulOpt a b).eval env = a.eval env * b.eval env) ∧\n    Arith.mulOpt (.num 2) (.num 3) = .num 6 ∧ Arith.mulOpt (.num 1) (.var \"x\") = .var \"x\" ∧\n    Arith.mulOpt (.var \"x\") (.num 1) = .var \"x\" := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Define `Arith.mulOpt`, the smart constructor for products: multiply two numbers, and drop a factor `1` on either side. The statement asks for both halves of the job: it keeps the value of every product, and it does fold these three.",
+      "leanSolution": "  refine ⟨fun env a b => ?_, rfl, rfl, rfl⟩\n  unfold Arith.mulOpt\n  split <;> simp_all [Arith.eval]",
+      "leanStart": "  refine ⟨fun env a b => ?_, rfl, rfl, rfl⟩\n  unfold Arith.mulOpt\n  split <;> simp_all [Arith.eval]",
+      "hints": [
+        "Copy `addOpt`'s shape: a `match` on both arguments, the case of two numbers first.",
+        "`| .num a, .num b => .num (a * b)`, then `| .num 1, e => e`, `| e, .num 1 => e` and `| a, b => .mul a b`.",
+        "The proof is `addOpt_eval`'s, after `refine` splits off the three examples, which `rfl` computes."
+      ],
+      "leanDef": "def Arith.mulOpt (a b : Arith) : Arith := sorry",
+      "leanDefSolution": "def Arith.mulOpt : Arith → Arith → Arith\n  | .num a, .num b => .num (a * b)\n  | .num 1, e => e\n  | e, .num 1 => e\n  | a, b => .mul a b",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> Why not also fold $0 \\cdot e$ to $0$? It is right for these expressions. In a language where evaluating $e$ can fail or print, would it still be?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "With both smart constructors, the pass itself is a structural recursion: fold the parts, then rebuild. It turns `x + 2 * 3` into `x + 6`, and `0 + 1 * x` into `x`; the last section runs it, once your `mulOpt` is written.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "def Arith.fold : Arith → Arith\n  | .add a b => Arith.addOpt a.fold b.fold\n  | .mul a b => Arith.mulOpt a.fold b.fold\n  | e => e",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem Arith.fold_eval (env : String → Nat) (e : Arith) : e.fold.eval env = e.eval env := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove constant folding sound: it keeps the value of every expression, in every environment.",
+      "leanSolution": "  induction e with\n  | num n => rfl\n  | var x => rfl\n  | add a b iha ihb => simp [Arith.fold, Arith.addOpt_eval, Arith.eval, iha, ihb]\n  | mul a b iha ihb => simp [Arith.fold, Arith.mulOpt_spec.1, Arith.eval, iha, ihb]",
+      "hints": [
+        "Induction on `e`, a case per constructor. For a number or a variable, `fold` does nothing: `rfl`.",
+        "In the `add` case, unfold `Arith.fold`; `Arith.addOpt_eval` turns the smart constructor into a sum, and the hypotheses say the folded parts mean what the parts do.",
+        "`simp [Arith.fold, Arith.addOpt_eval, Arith.eval, iha, ihb]`; for `mul`, the first half of `Arith.mulOpt_spec`, which is `Arith.mulOpt_spec.1`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "This is how a verified compiler is organized: each local rewrite gets a lemma of its own, and one structural induction stitches them into the pass. Adding a rewrite adds a case to a smart constructor and nothing to the induction.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Compiling to a stack machine",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A **stack machine** runs a list of instructions against a stack of numbers. `push n` puts `n` on top; `load x` puts the value of `x`; `add` and `mul` take the top two and put back their sum or product. The JVM, WebAssembly and many pocket calculators work this way. A sum compiles to the code for its left part, then its right part, then `add`:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "inductive Instr where\n  | push (n : Nat)\n  | load (x : String)\n  | add\n  | mul\n  deriving Repr\n\ndef exec (env : String → Nat) : List Instr → List Nat → List Nat\n  | [], st => st\n  | .push n :: is, st => exec env is (n :: st)\n  | .load x :: is, st => exec env is (env x :: st)\n  | .add :: is, b :: a :: st => exec env is ((a + b) :: st)\n  | .mul :: is, b :: a :: st => exec env is ((a * b) :: st)\n  | _ :: is, st => exec env is st\n\ndef Arith.compile : Arith → List Instr\n  | .num n => [.push n]\n  | .var x => [.load x]\n  | .add a b => a.compile ++ b.compile ++ [.add]\n  | .mul a b => a.compile ++ b.compile ++ [.mul]\n\n#eval (Arith.add (.var \"x\") (.mul (.num 2) (.num 3))).compile\n#eval exec env5 (Arith.add (.var \"x\") (.mul (.num 2) (.num 3))).compile []",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The last case of `exec` skips an `add` or `mul` that finds fewer than two numbers. Compiled code never meets it, and the proof below shows why without having to say so.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The compiler is correct when the code for `e`, run on an empty stack, leaves exactly the value of `e`. The obvious proof gets stuck:\n\n```lean\ntheorem compile_ok (env : String → Nat) (e : Arith) :\n    exec env e.compile [] = [e.eval env] := by\n  induction e with\n  | num n => rfl\n  | var x => rfl\n  | add a b iha ihb => simp [Arith.compile, Arith.eval]\n  | mul a b iha ihb => simp [Arith.compile, Arith.eval]\n-- error: unsolved goals\n-- case add\n-- iha : exec env a.compile [] = [Arith.eval env a]\n-- ihb : exec env b.compile [] = [Arith.eval env b]\n-- ⊢ exec env (a.compile ++ (b.compile ++ [Instr.add])) [] = [Arith.eval env a + Arith.eval env b]\n```\n\nThe hypothesis is about `a.compile` run alone on an empty stack. In the goal it runs with more code after it, and `b.compile` runs on a stack that already holds `a`'s value. The hypothesis is too weak to be used where it is needed.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Strengthening the statement\n> When the induction hypothesis is too weak, prove *more*: a statement general enough that the parts' cases are instances of it. Here, say what `e.compile` does in any context: followed by any code `is`, on any stack `st`, it pushes `e`'s value and carries on with `is`. `induction e generalizing is st` then gives hypotheses for every `is` and `st`, and the `add` case uses `a`'s with `b.compile ++ [.add] ++ is` as the code after it.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem Arith.compile_exec (env : String → Nat) (e : Arith) (is : List Instr) (st : List Nat) :\n    exec env (e.compile ++ is) st = exec env is (e.eval env :: st) := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove the strengthened statement: the code for `e`, followed by any code, on any stack, pushes the value of `e` and runs the rest.",
+      "leanSolution": "  induction e generalizing is st with\n  | num n => rfl\n  | var x => rfl\n  | add a b iha ihb => simp [Arith.compile, List.append_assoc, iha, ihb, exec, Arith.eval]\n  | mul a b iha ihb => simp [Arith.compile, List.append_assoc, iha, ihb, exec, Arith.eval]",
+      "hints": [
+        "`induction e generalizing is st with`: the hypotheses then hold for every `is` and `st`.",
+        "A number or a variable is one instruction, and `exec` runs it: `rfl`.",
+        "For `add`: reassociate the code with `List.append_assoc` so it reads `a.compile ++ (b.compile ++ ([.add] ++ is))`; then `iha`, then `ihb`, then one step of `exec`. `simp [Arith.compile, List.append_assoc, iha, ihb, exec, Arith.eval]` does all of it."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem Arith.compile_correct (env : String → Nat) (e : Arith) :\n    exec env e.compile [] = [e.eval env] := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Now the statement that got stuck follows from the strong one: no code after, an empty stack.",
+      "leanSolution": "  simpa [exec] using Arith.compile_exec env e [] []",
+      "hints": [
+        "`Arith.compile_exec env e [] []` is `exec env (e.compile ++ []) [] = exec env [] [e.eval env]`.",
+        "`simpa [exec] using …` removes the `++ []` and runs the empty program."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The whole pipeline",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "An optimizing compiler folds, then compiles. With your `mulOpt` written, here is both, on `x + 2 * 3` and on `0 + 1 * x`:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "#eval (Arith.add (.var \"x\") (.mul (.num 2) (.num 3))).fold\n#eval (Arith.add (.var \"x\") (.mul (.num 2) (.num 3))).fold.compile\n#eval (Arith.add (.num 0) (.mul (.num 1) (.var \"x\"))).fold.compile",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Its correctness is the two theorems chained: no new induction.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem Arith.pipeline_correct (env : String → Nat) (e : Arith) :\n    exec env e.fold.compile [] = [e.eval env] := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that folding and then compiling keeps the value.",
+      "leanSolution": "  rw [Arith.compile_correct, Arith.fold_eval]",
+      "hints": [
+        "The compiler is correct for every expression, `e.fold` among them: `rw [Arith.compile_correct]`.",
+        "That leaves `[e.fold.eval env] = [e.eval env]`, which is `Arith.fold_eval`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> A pass of a compiler is a structural recursion, and its correctness a structural induction: a lemma per local rewrite, one induction to stitch them. When the hypothesis is too weak, as for the compiler, strengthen the statement to cover every context the parts appear in. Passes compose: the correctness of the pipeline is the theorems of its passes, chained.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

@@ -198,6 +198,12 @@
       "type": "markdown",
       "showWork": false,
       "label": null
+    },
+    {
+      "src": "> [!note] Application: why your recursion stops\n> [Why your recursion stops](#course=logic&lesson=9&app=1), an optional notebook beside this lesson, finds the measures behind binary search, quicksort and a two-phase loop, shows the binary search bug Lean refuses to accept, and meets a function nobody knows a measure for.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
     }
   ],
   "scenes": []
