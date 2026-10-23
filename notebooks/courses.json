@@ -27,7 +27,14 @@
         {
           "file": "04-types.chalk",
           "title": "Your own types",
-          "blurb": "inductive types, from a list of choices to trees, structures that bundle values, and functions on them by cases."
+          "blurb": "inductive types, from a list of choices to trees, structures that bundle values, and functions on them by cases.",
+          "apps": [
+            {
+              "file": "04a-card-game.chalk",
+              "title": "Model a card game",
+              "blurb": "Suits and ranks as inductive types, a card as a structure, a hand as a list of cards, and the rules of a game as functions on them, checked with #eval and decide."
+            }
+          ]
         },
         {
           "file": "05-statements.chalk",
@@ -37,7 +44,14 @@
         {
           "file": "06-induction.chalk",
           "title": "Proofs about your functions",
-          "blurb": "Induction on numbers and lists: a statement about every input, proved for the functions of lessons 3 and 4, so that a function meets its specification."
+          "blurb": "Induction on numbers and lists: a statement about every input, proved for the functions of lessons 3 and 4, so that a function meets its specification.",
+          "apps": [
+            {
+              "file": "06a-verified-sort.chalk",
+              "title": "A verified sort check",
+              "blurb": "Reversing twice gives the list back, with a lemma; then insertion sort, and the three theorems that make it correct for every list: the same length, the same count of every number, and a sorted result."
+            }
+          ]
         }
       ]
     },

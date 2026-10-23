@@ -1,0 +1,230 @@
+{
+  "chalk": 1,
+  "name": "04a-card-game.chalk",
+  "cells": [
+    {
+      "src": "Model a card game",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Turn a familiar thing, a deck of cards, into Lean types, and its rules into functions on them.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "An application of lesson 4, outside the course's order: nothing later depends on it. It uses what lessons 1 to 4 teach: `def`, `if`, recursion on lists, `inductive` and `structure`.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Suits and ranks",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A suit is one of four choices, and a rank one of thirteen, so each is an `inductive` type that lists them, as `Weekday` listed the days:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "inductive Suit where\n  | clubs | diamonds | hearts | spades\n  deriving Repr, DecidableEq\n\ninductive Rank where\n  | two | three | four | five | six | seven | eight | nine | ten\n  | jack | queen | king | ace\n  deriving Repr, DecidableEq",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Choices like these are better than numbers or strings for the same job. A suit stored as a `String` could be `\"hearts\"`, `\"Hearts\"` or `\"hearst\"`; a `Suit` can only be one of the four, and a function on it must say what it does for each.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A card",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A card is a rank *and* a suit, so it is a `structure` with two fields:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "structure Card where\n  rank : Rank\n  suit : Suit\n  deriving Repr, DecidableEq\n\ndef aceOfSpades : Card := { rank := .ace, suit := .spades }\n\n#eval aceOfSpades\n#eval aceOfSpades.suit",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`{ rank := .ace, suit := .spades }` builds a card, and `aceOfSpades.suit` reads one of its fields. `.ace` is short for `Rank.ace`: Lean knows from the field's type which one is meant.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Rules as functions",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A rule of the game is a function. Which suits are red goes by cases on the suit; how high a rank is, by cases on the rank:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "def Suit.isRed : Suit → Bool\n  | .hearts | .diamonds => true\n  | _ => false\n\ndef Rank.toNat : Rank → Nat\n  | .two => 2 | .three => 3 | .four => 4 | .five => 5 | .six => 6\n  | .seven => 7 | .eight => 8 | .nine => 9 | .ten => 10\n  | .jack => 11 | .queen => 12 | .king => 13 | .ace => 14\n\ndef Card.beats (a b : Card) : Bool := a.rank.toNat > b.rank.toNat\n\n#eval aceOfSpades.suit.isRed\n#eval aceOfSpades.beats { rank := .king, suit := .hearts }",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`Card.beats` compares two cards by rank, using `Rank.toNat`: one function built on another, as programs are.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A hand",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A hand is a list of cards, so a function on a hand is a recursion on the list, as `total` was in lesson 3:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "def hand : List Card :=\n  [{ rank := .ace, suit := .spades }, { rank := .king, suit := .spades }, { rank := .five, suit := .hearts }]\n\ndef countSuit (s : Suit) : List Card → Nat\n  | [] => 0\n  | c :: cs => (if c.suit = s then 1 else 0) + countSuit s cs\n\n#eval countSuit .spades hand",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`c.suit = s` compares two suits; `deriving DecidableEq` is what lets `if` ask it. The same comparison as a `Bool` is `c.suit == s`, and `&&` is \"and\" on `Bool`s. Together they say whether every card of a hand has one suit:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "def allSuit (s : Suit) : List Card → Bool\n  | [] => true\n  | c :: cs => c.suit == s && allSuit s cs\n\n#eval allSuit .spades hand\n#eval allSuit .spades [aceOfSpades]",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "An empty hand has every card of any suit, since it has no card that is not: `allSuit s []` is `true`.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Each exercise asks for a function; the statement below it checks it on examples, with `decide`. Until the function is written the check fails, and the panel says so.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem sameColor_ok : Card.sameColor aceOfSpades { rank := .two, suit := .clubs } = true ∧ Card.sameColor aceOfSpades { rank := .two, suit := .hearts } = false := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Define `Card.sameColor`: two cards have the same colour when both are red or both are not.",
+      "leanSolution": "  decide",
+      "leanStart": "  decide",
+      "hints": [
+        "Compare `a.suit.isRed` with `b.suit.isRed`.",
+        "`==` compares two `Bool`s too: `a.suit.isRed == b.suit.isRed`."
+      ],
+      "leanDef": "def Card.sameColor (a b : Card) : Bool := sorry",
+      "leanDefSolution": "def Card.sameColor (a b : Card) : Bool := a.suit.isRed == b.suit.isRed",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem points_ok : Rank.points .seven = 7 ∧ Rank.points .queen = 10 ∧ Rank.points .ace = 11 ∧ Rank.points .ten = 10 := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "In blackjack, a number card counts its number, a jack, queen or king counts 10, and an ace 11. Define `Rank.points`.",
+      "leanSolution": "  decide",
+      "leanStart": "  decide",
+      "hints": [
+        "Three cases share 10: `| .jack | .queen | .king => 10`.",
+        "For the number ranks, `Rank.toNat` already has the answer: a last case `| r => r.toNat` covers them all."
+      ],
+      "leanDef": "def Rank.points : Rank → Nat\n  | r => sorry",
+      "leanDefSolution": "def Rank.points : Rank → Nat\n  | .jack | .queen | .king => 10\n  | .ace => 11\n  | r => r.toNat",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem handPoints_ok : handPoints hand = 26 ∧ handPoints [] = 0 := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Define `handPoints`, the points of a whole hand: the sum of its cards' `Rank.points`, by recursion on the list. (Lean's `List.sum`, `map` and `foldl` are ruled out.)",
+      "leanSolution": "  decide",
+      "leanStart": "  decide",
+      "hints": [
+        "An empty hand has 0 points.",
+        "`c :: cs` has `c`'s points plus the points of `cs`: `c.rank.points + handPoints cs`."
+      ],
+      "leanDef": "def handPoints : List Card → Nat\n  | [] => sorry\n  | c :: cs => sorry",
+      "leanDefSolution": "def handPoints : List Card → Nat\n  | [] => 0\n  | c :: cs => c.rank.points + handPoints cs",
+      "leanForbid": [
+        "sum",
+        "map",
+        "foldl",
+        "foldr"
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem flush_ok : isFlush hand = false ∧ isFlush [aceOfSpades, { rank := .two, suit := .spades }] = true ∧ isFlush [] = true := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "A hand is a **flush** when all its cards have one suit. Define `isFlush`, using `allSuit`. (Lean's `List.all` is ruled out.)",
+      "leanSolution": "  decide",
+      "leanStart": "  decide",
+      "hints": [
+        "Which suit should every card have? The first card's.",
+        "`| c :: cs => allSuit c.suit cs`, and an empty hand is a flush."
+      ],
+      "leanDef": "def isFlush : List Card → Bool\n  | [] => sorry\n  | c :: cs => sorry",
+      "leanDefSolution": "def isFlush : List Card → Bool\n  | [] => true\n  | c :: cs => allSuit c.suit cs",
+      "leanForbid": [
+        "all"
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> A thing with a fixed set of kinds is an `inductive` type of choices; a thing made of parts is a `structure`; a collection is a `List`. The rules are functions on them, by cases on the choices and by recursion on the lists, and `#eval` and `decide` check them on examples.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The checks here try a few hands. Lesson 5 proves statements about *every* value, such as that no rank is worth more than 11 points: `∀ r : Rank, r.points ≤ 11`, by `cases` on the rank.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}
