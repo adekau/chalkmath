@@ -249,7 +249,10 @@ differential test with zero mismatches.
   serves them all, proved a join with every update an inflation (`ReplicasProofs.lean`). The escrow
   (bounded) counter keeps its invariant the same way: quotas are entries too, a replica refuses
   locally what its own quota does not cover, and the units in use are checked against the capacity
-  after every event.
+  after every event. The RGA (text) fits too: a node per insert, its parent and Lamport timestamp
+  entries written once by its creator and a tombstone bit, so a merge is still the maximum; the text is
+  read off as the preorder of the insertion tree, newest child first. Its updates take positions, as a
+  cursor does, and turn them into the node they follow when they happen.
 - **Term rewriting is in the systems world too.** `let R = rules(l -> r; …)` binds a first-order
   rewriting system (`Rewriting.lean`, its terms a nested inductive with the recursion written as
   mutual definitions so that it can be proved about). `rewrite` takes leftmost-outermost steps,

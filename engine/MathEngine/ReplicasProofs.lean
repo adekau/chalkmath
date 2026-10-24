@@ -2,7 +2,8 @@ import MathEngine.Replicas
 /-!
 # The replicas' merge is a join, and their updates inflations
 
-Every CRDT of `Replicas.lean` is a vector of naturals merged by the entrywise maximum. `merge` is
+Every CRDT of `Replicas.lean` is a vector of naturals merged by the entrywise maximum, the RGA's
+text included (its inserts and deletes each raise entries: `rgaIns_inflation`, `rgaDel_inflation`). `merge` is
 commutative, associative and idempotent (a join of the entrywise order), and every update only
 raises entries (`update_inflation`: merging the old state into the new one changes nothing). So the
 state a replica reaches is the join of the updates it has received, in whatever order, with whatever
@@ -47,6 +48,26 @@ theorem merge_raise (v : Vec) (i k : Nat) : merge v (raise v i k) = raise v i k 
 theorem merge_trans {u v w : Vec} (h1 : merge u v = v) (h2 : merge v w = w) : merge u w = w := by
   rw [← h2, ← merge_assoc, h1]
 
+/-- An RGA insert raises its node's parent and timestamp, nothing else: an inflation. -/
+theorem rgaIns_inflation {L : Layout} {v v' : Vec} {r : String} {n : Nat} {arg : String}
+    (h : rgaIns L v r n arg = .ok v') : merge v v' = v' := by
+  unfold rgaIns at h
+  split at h
+  · cases h
+  · split at h
+    · cases h; exact merge_trans (merge_raise _ _ _) (merge_raise _ _ _)
+    · cases h
+
+/-- An RGA delete sets one tombstone: an inflation. -/
+theorem rgaDel_inflation {L : Layout} {v v' : Vec} {r arg : String}
+    (h : rgaDel L v r arg = .ok v') : merge v v' = v' := by
+  unfold rgaDel at h
+  split at h
+  · cases h
+  · split at h
+    · cases h; exact merge_raise _ _ _
+    · cases h
+
 -- the same simp set closes every case, each using part of it
 set_option linter.unusedSimpArgs false in
 /-- Every update only raises entries: merging the old state into the new one changes nothing. -/
@@ -73,6 +94,10 @@ theorem update_inflation (L : Layout) (v : Vec) (r name : String) (arg : Option 
     split at h
     · cases h
     · simp only [pure, Except.pure, Except.ok.injEq] at h; subst h; exact merge_bump _ _
+  · -- an RGA insert
+    exact rgaIns_inflation h
+  · -- an RGA delete
+    exact rgaDel_inflation h
   · cases h
 
 end Rep

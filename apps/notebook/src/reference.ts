@@ -1255,8 +1255,9 @@ export const FUNCTIONS: FnDoc[] = [
       ["replicas(type; a, b, …; events…)", "runs a state-based CRDT on the replicas `a`, `b`, … through the events, and gives each replica's reading; its work says whether they converged."],
     ],
     details: [
-      "The types: `gcounter` (`inc`), `pncounter` (`inc`, `dec`), `gset` (`add x`), `twopset` and `orset` (`add x`, `remove x`), `lww` (`write v`, or `write v @ t` with a timestamp; by default the event's number), and `escrow N` (`use`, `free`, `give r`).",
+      "The types: `gcounter` (`inc`), `pncounter` (`inc`, `dec`), `gset` (`add x`), `twopset` and `orset` (`add x`, `remove x`), `lww` (`write v`, or `write v @ t` with a timestamp; by default the event's number), `escrow N` (`use`, `free`, `give r`), and `rga` (`ins c at p`, `del p`).",
       "`escrow N` is a bounded counter: a capacity of `N` split evenly into per-replica quotas (the first replicas take the remainder). A replica refuses, by itself, a `use` or a `give` that its quota left does not cover, and `give r` moves one unit of its quota to `r`, which can spend it once the state reaches it. It reads the units in use, and stays within `N` in every merge, without coordination.",
+      "`rga` is text, a replicated growable array (RGA). `ins c at p` inserts `c` after the character the replica sees at `p − 1` (at the start for `p = 0`) and `del p` tombstones the one at `p`: positions are the replica's own view, as a cursor is, but what is stored is a node with an id (a Lamport timestamp and the replica) and the node it follows, so concurrent edits commute. Two inserts after the same node go newest first; on a tie, the replica listed first goes first. It reads the text, `ε` when it is empty; the work names each node by its character and id (`x@4a`) and the node it follows.",
       "Events, one per line or separated by `;`: `a: inc` updates `a`; `a -> b` has `b` merge `a`'s state now; `m := a` sends a message holding `a`'s state now, and `b <- m` delivers it, later, again, or after newer ones.",
       "Every type is a vector of numbers merged by the entrywise maximum, which is proved a join (commutative, associative, idempotent), and every update only raises entries. So replicas that have received the same updates are in the same state, whatever the order, delays and duplicates.",
       "The drawing is a space-time diagram: a lane per replica, an arrow per message. Stepping through the work builds it event by event.",
@@ -1267,6 +1268,7 @@ export const FUNCTIONS: FnDoc[] = [
       section("Add and remove", "replicas(twopset; a, b; a: add x; a -> b; b: remove x; a: add x; b -> a)", "replicas(orset; a, b; a: add x; a -> b; b: remove x; a: add x; b -> a; a -> b)"),
       section("Last writer wins", "replicas(lww; a, b; a: write red @ 5; b: write blue @ 3; a -> b; b -> a)"),
       section("Escrow: a bound kept without coordination", "replicas(escrow 2; a, b; a: use; b: use; a: use; a -> b; b -> a)", "replicas(escrow 2; a, b; b: give a; b -> a; a: use; a: use)"),
+      section("Text: an insert and a concurrent delete", "replicas(rga; a, b; a: ins c at 0; a: ins a at 1; a: ins t at 2; a -> b; a: ins x at 1; b: del 2; a -> b; b -> a)", "replicas(rga; a, b; a: ins x at 0; b: ins y at 0; a -> b; b -> a)"),
     ],
     see: ["clocks", "system"],
   },

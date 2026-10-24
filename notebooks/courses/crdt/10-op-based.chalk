@@ -98,6 +98,12 @@
       "label": null
     },
     {
+      "src": "> [!note] Collaborative text\n> Text is where operations meet positions: an insert at 3 means something else once a concurrent insert has moved the text. [Collaborative text](#course=crdt&lesson=10&app=1), an optional notebook beside this lesson, compares Google Docs' answer, operational transformation, with a sequence CRDT whose operations commute.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "> [!summary]\n> State-based CRDTs tolerate any network that eventually delivers; op-based CRDTs need commuting operations and exactly-once delivery, in exchange for small messages. For inflationary operations the Lean proves the two readings of a history agree. Every part is now built: can they be put together into one store without new proofs?",
       "type": "markdown",
       "showWork": false,

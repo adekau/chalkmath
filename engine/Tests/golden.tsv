@@ -443,6 +443,12 @@ replicas(escrow 2; a, b; b: give a; a: use; a: use; b -> a; a: use)	{a↦2, b↦
 replicas(escrow 3; a, b; a: use; a: use; a: free; a: use; a -> b)	{a↦2, b↦2}
 replicas(escrow 2; a, b; a: give a)	<error: a can give quota to another replica (b), not 'a'>
 replicas(escrow 2; a, b; a: dec)	<error: a bounded counter has use, free, give r, not 'dec'>
+replicas(rga; a, b; a: ins c at 0; a: ins a at 1; a: ins t at 2; a -> b; a: ins x at 1; b: del 2; a -> b; b -> a)	{a↦cxa, b↦cxa}
+replicas(rga; a, b; a: ins x at 0; b: ins y at 0; a -> b; b -> a)	{a↦xy, b↦xy}
+replicas(rga; a, b; a: ins o at 0; a: ins k at 1; a -> b; b: del 1; a: ins s at 2; a -> b; b -> a)	{a↦os, b↦os}
+replicas(rga; a, b; a: ins x at 1)	<error: a cannot insert at 1: the text it sees has 0 characters>
+replicas(rga; a, b; a: del 0)	<error: a cannot delete at 0: the text it sees has 0 characters>
+replicas(rga; a, b; a: inc)	<error: a replicated growable array (RGA) has ins c at p, del p, not 'inc'>
 replicas(gset; a, b; a: add x; b: add y; a -> b; b -> a)	{a↦{x, y}, b↦{x, y}}
 replicas(twopset; a, b; a: add x; a -> b; b: remove x; a: add x; b -> a)	{a↦{}, b↦{}}
 replicas(orset; a, b; a: add x; a -> b; b: remove x; a: add x; b -> a; a -> b)	{a↦{x}, b↦{x}}
