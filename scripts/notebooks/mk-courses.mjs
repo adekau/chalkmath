@@ -4324,8 +4324,257 @@ example : msetUnion (MSet.ofList [1, 2]) (MSet.ofList [3])
     · rw [increment_comm]
     · rw [increment_comm]`);
     md(r`
+> [!note] Collaborative text
+> Text is where operations meet positions: an insert at 3 means something else once a concurrent insert has moved the text. [Collaborative text](#course=crdt&lesson=10&app=1), an optional notebook beside this lesson, compares Google Docs' answer, operational transformation, with a sequence CRDT whose operations commute.
+`);
+    md(r`
 > [!summary]
 > State-based CRDTs tolerate any network that eventually delivers; op-based CRDTs need commuting operations and exactly-once delivery, in exchange for small messages. For inflationary operations the Lean proves the two readings of a history agree. Every part is now built: can they be put together into one store without new proofs?
+`);
+  });
+
+  app("10a-collaborative-text.chalk", "Collaborative text", "Two people typing into one document, as Google Docs lets them: operational transformation, which rewrites an edit's position past a concurrent one (TP1, the TP2 it needs without a server, and Jupiter's server that avoids it), against a sequence CRDT, the RGA, whose edits name a character instead and commute.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Collaborative text");
+    md(r`
+> [!goal]
+> See why two people's edits to one text diverge when they are replayed by position; fix it twice: by transforming an edit past a concurrent one (operational transformation, as in Jupiter and Google Docs), and by naming characters instead of positions (a sequence CRDT, the RGA); and compare what each fix costs.
+`);
+    md(r`An application of lesson 10, outside the course's order: nothing later depends on it. It uses tombstones (lesson 4), causal delivery (lesson 9), and op-based CRDTs (lesson 10). The Lean is in a namespace of its own, ‹Collab›, and uses nothing from the course's library.`);
+    sec("Two people, one document");
+    md(r`Alice and Bob share the text "cat". Alice inserts an x at position 1, after the c; at the same time Bob deletes position 2, the t. Positions count from 0. Each applies their own edit at once and sends it to the other, who applies it on arrival, as lesson 10's operations are applied.`);
+    lean(r`namespace Collab
+
+/-- An edit at a position: insert a character (typed at a site), delete one, or nothing at all. -/
+inductive Op where
+  | ins (p : Nat) (c : Char) (site : Nat)
+  | del (p : Nat)
+  | nop
+  deriving Repr, DecidableEq
+
+/-- Apply an edit to a text, as a list of characters. -/
+def Op.apply : Op → List Char → List Char
+  | .ins p c _, s => s.take p ++ c :: s.drop p
+  | .del p, s => s.take p ++ s.drop (p + 1)
+  | .nop, s => s
+
+/-- The same, on a ‹String›, to read the results. -/
+def edit (o : Op) (t : String) : String := String.ofList (o.apply t.toList)
+
+end Collab`);
+    lean(r`#eval Collab.edit (.del 2) (Collab.edit (.ins 1 'x' 1) "cat")   -- Alice: her insert, then Bob's delete
+#eval Collab.edit (.ins 1 'x' 1) (Collab.edit (.del 2) "cat")   -- Bob: his delete, then Alice's insert`);
+    md(r`Alice reads "cxt" and Bob reads "cxa". Bob meant the t; in Alice's text, after her insert, position 2 is the a. A position names a character only in the text it was counted in, and the two texts have moved apart.`);
+    md(r`
+> [!try]
+> The edits are fine; the positions are stale. Two ways out: rewrite a remote edit's position for what has happened locally since, or stop using positions at all. Which would you build?
+`);
+    sec("Operational transformation");
+    md(r`
+> [!definition] Transformation
+> **Operational transformation** (OT) keeps positional edits and, before applying a concurrent remote edit $a$ after a local one $b$, rewrites it as $T(a, b)$: $a$ as it must read once $b$ has happened. An insert or delete before $a$'s position shifts it by one; a delete of the character $a$ deletes too makes $a$ do nothing; and two inserts at the same place need a **tie-break**, here the site number, so that both sites put the two characters in the same order.
+`);
+    lean(r`namespace Collab
+
+/-- ‹T a b›: the edit ‹a›, rewritten to apply after a concurrent edit ‹b› has been applied. -/
+def T : Op → Op → Op
+  | .ins p c i, .ins q _ j => if q < p || (q == p && j < i) then .ins (p + 1) c i else .ins p c i
+  | .ins p c i, .del q => if q < p then .ins (p - 1) c i else .ins p c i
+  | .del p, .ins q _ _ => if q ≤ p then .del (p + 1) else .del p
+  | .del p, .del q => if q < p then .del (p - 1) else if q == p then .nop else .del p
+  | a, .nop => a
+  | .nop, _ => .nop
+
+end Collab`.replace(/‹|›/g, "`"));
+    lean(r`#eval Collab.edit (Collab.T (.del 2) (.ins 1 'x' 1)) (Collab.edit (.ins 1 'x' 1) "cat")   -- Alice
+#eval Collab.edit (Collab.T (.ins 1 'x' 1) (.del 2)) (Collab.edit (.del 2) "cat")   -- Bob`);
+    md(r`Both read "cxa": Alice applied Bob's delete as ‹del 3›, past her x.`);
+    md(r`
+> [!definition] TP1
+> A transformation is correct for two sites when, for any two concurrent edits $a$ and $b$, applying $a$ then $T(b, a)$ gives the same text as applying $b$ then $T(a, b)$. This is **TP1** (transformation property 1).
+`);
+    md(r`
+> [!note] TP1 is a diamond
+> From one text, $a$ and $b$ lead two ways, and $T(b, a)$ and $T(a, b)$ bring the two back to one text. That is the shape of local confluence in the systems course's [Rewriting systems](#course=systems&lesson=10): two rewrites of one term must join. There a critical pair joins when the rules already rewrite both results to a common term; here $T$ is written to supply the two edits that close the diamond.
+`);
+    lean(r`namespace Collab
+
+/-- TP1 for two concurrent edits on a text: ‹a› then ‹b› rewritten, against ‹b› then ‹a› rewritten. -/
+def tp1 (a b : Op) (s : List Char) : Bool := (T b a).apply (a.apply s) == (T a b).apply (b.apply s)
+
+/-- Every edit a site can make on a text of length ‹n›: an insert at each of the ‹n + 1› places, a delete
+at each of the ‹n› characters. -/
+def edits (n site : Nat) (c : Char) : List Op :=
+  (List.range (n + 1)).map (fun p => .ins p c site) ++ (List.range n).map .del
+
+/-- TP1 for every pair of edits two sites can make on "abc". -/
+theorem tp1_abc : (edits 3 1 'x').all (fun a => (edits 3 2 'y').all fun b => tp1 a b "abc".toList) = true := by
+  decide
+
+/-- ‹T› without the tie-break: of two inserts at one place, neither moves. -/
+def Tnaive : Op → Op → Op
+  | .ins p c i, .ins q _ _ => if q < p then .ins (p + 1) c i else .ins p c i
+  | a, b => T a b
+
+end Collab`.replace(/‹|›/g, "`"));
+    md(r`That is a check, not a proof for every text: 49 pairs on one text of three letters. It covers every way two positions can compare (before, the same, after, at either end), which is all ‹T› looks at; the proof for every text is the same case split, with lemmas about ‹take› and ‹drop›.`);
+    lx(r`example : (Collab.Tnaive (.ins 1 'y' 2) (.ins 1 'x' 1)).apply ((Collab.Op.ins 1 'x' 1).apply "abc".toList)
+    ≠ (Collab.Tnaive (.ins 1 'x' 1) (.ins 1 'y' 2)).apply ((Collab.Op.ins 1 'y' 2).apply "abc".toList) := by`, r`‹Tnaive›, defined in the cell above, leaves out the tie-break: of two inserts at the same place, neither moves. Prove that it breaks TP1 when Alice (site 1) and Bob (site 2) both insert at position 1 of "abc".`, r`  decide`, [
+      r`Both sides are computations on a fixed text: ‹decide› runs them and compares.`,
+      r`Alice ends with "ayxbc", Bob with "axybc" (try ‹#eval› on each side).`,
+    ]);
+    md(r`
+> [!mistake]
+> Without a tie-break, two inserts at the same place each stay where they were, and the two sites put the characters in opposite orders. The site number is arbitrary, but it is the same at every site, and that is all a tie-break needs.
+`);
+    sec("Three sites, and Jupiter's server");
+    md(r`With three sites, an edit can arrive after two concurrent ones, in either order, and is rewritten past different histories. TP1 is no longer enough: transforming $c$ past $a$ and then past $b$ rewritten, and past $b$ and then $a$ rewritten, must give the same edit. That is **TP2**. This ‹T› satisfies TP1 and fails TP2. On "ab", Alice inserts x at 1, Bob deletes position 0, and Carol inserts z at 0; a fourth site that receives them in two orders reads two texts:`);
+    lean(r`namespace Collab
+
+/-- Three concurrent edits applied in the order ‹a›, ‹b›, ‹c›, each rewritten past what came before it. -/
+def inOrder (a b c : Op) (s : List Char) : List Char :=
+  (T (T c a) (T b a)).apply ((T b a).apply (a.apply s))
+
+end Collab
+
+#eval String.ofList (Collab.inOrder (.ins 1 'x' 1) (.del 0) (.ins 0 'z' 3) "ab".toList)
+#eval String.ofList (Collab.inOrder (.del 0) (.ins 1 'x' 1) (.ins 0 'z' 3) "ab".toList)
+
+theorem Collab.not_tp2 : Collab.inOrder (.ins 1 'x' 1) (.del 0) (.ins 0 'z' 3) "ab".toList
+    ≠ Collab.inOrder (.del 0) (.ins 1 'x' 1) (.ins 0 'z' 3) "ab".toList := by
+  decide`.replace(/‹|›/g, "`"));
+    md(r`"zxb" and "xzb". After Bob's delete, Alice's x and Carol's z both sit at position 0, a tie that was not a tie when they were typed, and the site numbers order them one way in one history and the other way in the other. Transformation functions that satisfy TP2 are hard to get right: dOPT, the algorithm of Ellis and Gibbs's GROVE editor (1989), diverges in cases like this one, and later work that checked published transformation functions with a theorem prover found TP2 counterexamples in several of them.`);
+    md(r`
+> [!definition] Jupiter: a server orders everything
+> The Jupiter system (Nichols, Curtis, Dixon and Lamping, Xerox PARC, 1995) avoids TP2 altogether. Every client talks only to a central server, which puts all edits in one order; a client and the server are then two sites, and two sites need only TP1. A client applies its own edits at once, keeps those the server has not acknowledged, and transforms each edit from the server past them. Google Wave's operational transformation was built on Jupiter's design, and Google Docs also edits through a server with client–server operational transformation.
+`);
+    md(r`The price is the server: every edit goes through it, and two clients cut off from it cannot merge with each other. TP1 for two inserts is the exercise below, with the shift of an insert past a concurrent one as a function of its own:`);
+    lean(r`namespace Collab
+
+/-- TP1 for two concurrent inserts, x at ‹p› from site ‹i› and y at ‹q› from site ‹j›, each moved past the
+other by ‹shift›: ‹shift p i q j› is where the insert at ‹p› goes once the one at ‹q› has happened. -/
+def tp1Ins (shift : Nat → Nat → Nat → Nat → Nat) (p i q j : Nat) (s : List Char) : Bool :=
+  (Op.ins (shift q j p i) 'y' j).apply ((Op.ins p 'x' i).apply s)
+    == (Op.ins (shift p i q j) 'x' i).apply ((Op.ins q 'y' j).apply s)
+
+end Collab`.replace(/‹|›/g, "`"));
+    lx(r`theorem Collab.shiftIns_tp1 : ∀ p q : Fin 4,
+    Collab.tp1Ins Collab.shiftIns p 1 q 2 "abc".toList = true ∧ Collab.tp1Ins Collab.shiftIns p 2 q 1 "abc".toList = true := by`, r`Write ‹shiftIns p i q j›: the new position of an insert at ‹p›, from site ‹i›, once a concurrent insert at ‹q›, from site ‹j›, has been applied. The statement is TP1 for every pair of inserts on "abc", from sites 1 and 2 in either role; the proof is given.`, r`  decide`, [
+      r`An insert before yours pushes yours one place right; one after it does not.`,
+      r`At the same place, one of the two must move, and both sites must agree which: compare the sites.`,
+      r`‹def Collab.shiftIns (p i q j : Nat) : Nat := if q < p || (q == p && j < i) then p + 1 else p›`,
+    ], { start: "  decide", def: { start: "def Collab.shiftIns (p i q j : Nat) : Nat := sorry", solution: "def Collab.shiftIns (p i q j : Nat) : Nat := if q < p || (q == p && j < i) then p + 1 else p", forbid: ["Collab.T", "Collab.Tnaive"] } });
+    sec("Name the character, not the position");
+    md(r`
+> [!definition] A sequence CRDT: the RGA
+> Give every character a unique **id**: a timestamp and the site that typed it, the timestamp a Lamport clock (one more than any the site has seen). An insert says which character it goes **after**, by id, not where. Two inserts after the same character go newest id first. A delete sets a **tombstone** on the character it names; the character stays, so inserts after it still have a place (lesson 4's tombstones). This is the **RGA**, the replicated growable array of Roh, Jeon, Kim and Lee (2011). Edits now name things that never move, and concurrent ones commute without being rewritten.
+`);
+    md(r`The course's ‹replicas› command runs it, as ‹rga›. Its updates are positional, as a cursor is: ‹ins x at 1› inserts after the character the replica sees at position 0, and ‹del 2› tombstones the one at 2. The work names each node by its character and id (‹x@4a›: x, timestamp 4, typed at ‹a›) and the node it follows:`);
+    m(`replicas(rga; a, b
+  a: ins c at 0
+  a: ins a at 1
+  a: ins t at 2
+  a -> b
+  a: ins x at 1
+  b: del 2
+  a -> b
+  b -> a
+)`, { work: true });
+    md(r`Alice's x became the node x@4a, after c@1a; Bob's delete tombstoned t@3a. Neither depends on where the other's edit falls, and both read "cxa", with no transformation. The state is a set of nodes and a set of tombstones, merged by union, so the replicas converge by the course's main theorem; here it runs state-based, and an op-based RGA ships one node per insert, with causal delivery (lesson 9), since an insert after a node the receiver has not seen has nowhere to go yet.`);
+    md(r`Two inserts after the same character, typed at once:`);
+    m(`replicas(rga; a, b
+  a: ins h at 0
+  a: ins i at 1
+  a -> b
+  a: ins a at 2
+  b: ins o at 2
+  a -> b
+  b -> a
+)`, { work: true });
+    md(r`Both follow i@2a, and both have timestamp 3: the tie goes to the replica listed first, ‹a›, at both replicas. The same in Lean, on a list of characters with their ids:`);
+    lean(r`namespace Collab
+
+/-- A character with its id, the timestamp and the site that typed it, and whether it is still there. -/
+structure Atom where
+  ts : Nat
+  site : Nat
+  c : Char
+  live : Bool := true
+  deriving Repr, DecidableEq
+
+/-- ‹a› goes before ‹b›: the larger timestamp, then the larger site. -/
+def Atom.newer (a b : Atom) : Bool := a.ts > b.ts || (a.ts == b.ts && a.site > b.site)
+
+/-- Place ‹n› in the part of the text after its anchor: past every newer atom (a newer insert after the
+same anchor, and everything inserted after that, which is newer still), before the first older one. -/
+def skipIns (n : Atom) : List Atom → List Atom
+  | [] => [n]
+  | x :: xs => if x.newer n then x :: skipIns n xs else n :: x :: xs
+
+/-- Insert ‹n› after the atom with id ‹(ts, site)›, found even if it is a tombstone. -/
+def insAfter (ts site : Nat) (n : Atom) : List Atom → List Atom
+  | [] => []
+  | x :: xs => if x.ts == ts && x.site == site then x :: skipIns n xs else x :: insAfter ts site n xs
+
+/-- Insert after an id; ‹ts = 0› is the start of the text. -/
+def insert (ts site : Nat) (n : Atom) (doc : List Atom) : List Atom :=
+  if ts == 0 then skipIns n doc else insAfter ts site n doc
+
+/-- Delete by id: the atom stays, as a tombstone. -/
+def delete (ts site : Nat) : List Atom → List Atom
+  | [] => []
+  | x :: xs => if x.ts == ts && x.site == site then { x with live := false } :: xs else x :: delete ts site xs
+
+def text (doc : List Atom) : String := String.ofList ((doc.filter (·.live)).map (·.c))
+
+def cat : List Atom := [⟨1, 1, 'c', true⟩, ⟨2, 1, 'a', true⟩, ⟨3, 1, 't', true⟩]
+
+end Collab`.replace(/‹|›/g, "`"));
+    lean(r`-- Alice's x after c (id 1 at site 1), and Bob's delete of t (id 3 at site 1), in both orders
+#eval Collab.text (Collab.delete 3 1 (Collab.insert 1 1 ⟨4, 1, 'x', true⟩ Collab.cat))
+#eval Collab.text (Collab.insert 1 1 ⟨4, 1, 'x', true⟩ (Collab.delete 3 1 Collab.cat))
+
+theorem Collab.ins_del_comm : Collab.delete 3 1 (Collab.insert 1 1 ⟨4, 1, 'x', true⟩ Collab.cat)
+    = Collab.insert 1 1 ⟨4, 1, 'x', true⟩ (Collab.delete 3 1 Collab.cat) := by
+  decide`);
+    lx(r`theorem Collab.ins_ins_comm :
+    Collab.insert 1 1 ⟨4, 2, 'y', true⟩ (Collab.insert 1 1 ⟨4, 1, 'x', true⟩ Collab.cat)
+      = Collab.insert 1 1 ⟨4, 1, 'x', true⟩ (Collab.insert 1 1 ⟨4, 2, 'y', true⟩ Collab.cat) := by`, r`Alice (site 1) inserts x and Bob (site 2) inserts y after the c, concurrently, both with timestamp 4. Prove that the two inserts commute: the text is the same whichever arrives first.`, r`  decide`, [
+      r`Both sides are lists computed from ‹cat›: ‹decide› compares them.`,
+      r`Bob's y has the larger site, so it is the newer id and goes first: both sides are c, y, x, a, t.`,
+    ]);
+    sec("What each costs");
+    md(r`
+- **Operational transformation** keeps edits small (a position and a character) and the text plain. The agreement lives in ‹T›: one rule per pair of edit kinds, TP1 always, and TP2 without a server. Jupiter's server makes TP1 enough, at the price of the server and of the client's queue of edits awaiting acknowledgement.
+- **A sequence CRDT** needs no server and no transformation: any two replicas that have seen the same edits read the same text, the course's main theorem. The agreement lives in the ids. The costs: an id on every character, tombstones that stay (removing one safely needs every replica to have seen the delete, which is coordination again, lesson 12), and the ordering of concurrent runs of text. When two people type whole words at one place at once, a sequence CRDT can interleave them character by character; RGA keeps each person's forward-typed run together, and Kleppmann and others (2019) studied when such interleaving happens and how to avoid it.
+`);
+    md(r`Yjs and Automerge, libraries behind many collaborative editors, are sequence CRDTs of this family, which compress the ids of characters typed in a run.`);
+    sec("Exercises");
+    ex(`replicas(rga; a, b
+  a: ins o at 0
+  a: ins k at 1
+  a -> b
+  b: del 1
+  a: ins s at 2
+  a -> b
+  b -> a
+)`, r`Alice types "ok" and shares it; then Bob deletes the k while Alice adds an s after it. What does each replica read? Answer as the cell would, ‹{a↦…, b↦…}›.`, [
+      r`Bob's delete tombstones the k; the node stays.`,
+      r`Alice's s goes after the k, by id, so it survives the delete: the text is o, then s.`,
+    ], { hide: true });
+    ex(`replicas(rga; a, b
+  a: ins a at 0
+  b: ins x at 0
+  a: ins b at 1
+  b: ins y at 1
+  a -> b
+  b -> a
+)`, r`Alice types "ab" and Bob types "xy", both into an empty document, at once. What does each read: interleaved, or each run whole?`, [
+      r`a@1a and x@1b both follow the start, with the same timestamp: the replica listed first goes first.`,
+      r`b@2a follows a@1a and y@2b follows x@1b: each run stays whole.`,
+    ], { hide: true });
+    md(r`
+> [!summary]
+> Replaying an edit by position breaks as soon as a concurrent edit moves the text under it. Operational transformation rewrites the edit's position past the concurrent ones: TP1 makes two sites agree, TP2 is what three need, and Jupiter's server, which orders everything, makes TP1 enough; Google Docs edits this way, through a server. A sequence CRDT such as the RGA names characters by unique ids instead, so edits commute and the replicas converge without a server, at the cost of an id per character and tombstones. One moves the agreement into the transformation and a server, the other into the ids.
 `);
   });
 

@@ -1072,6 +1072,20 @@ def systemsTests : TestM Unit := do
       check "escrow: an even split, the first replica taking the remainder" (toString ((List.range 3).map (Rep.share 5 3 ·))) "[2, 2, 1]"
     | .error e => checkTrue "escrow: the run" false e
   | .error e => checkTrue "escrow: the parse" false e
+  -- an RGA: inserts name the character they follow, so concurrent edits commute without transformation
+  let (_, rgaRaw) := handleS [] (req "5" "replicas(rga; a, b; a: ins c at 0; a: ins a at 1; a: ins t at 2; a -> b; a: ins x at 1; b: del 2; a -> b; b -> a)")
+  checkTrue "rga: an insert and a concurrent delete converge on the text both meant" (contains rgaRaw "\"text\":\"{a↦cxa, b↦cxa}\"") rgaRaw
+  checkTrue "rga: an insert names the node it follows" (contains rgaRaw "The new character is the node x@4a, inserted after c@1a") rgaRaw
+  checkTrue "rga: a delete leaves a tombstone" (contains rgaRaw "It tombstones t@3a") rgaRaw
+  checkTrue "rga: the state is the nodes after their parents, then the tombstones" (contains rgaRaw "({c@1a↦start, x@4a↦c@1a, a@2a↦c@1a, t@3a↦a@2a}, {t@3a})") rgaRaw
+  match Rep.parse "rga; a, b; a: ins h at 0; a: ins i at 1; a -> b; a: ins a at 2; b: ins o at 2; b -> a" with
+  | .ok (kind, rs, evs) => match Rep.run kind rs evs with
+    | .ok r =>
+      let a := (r.states.lookup "a").getD []
+      check "rga: concurrent inserts after one node, the tie to the replica listed first" (Rep.read r.layout a).toText "hiao"
+      check "rga: the document order, tombstones included" (toString (Rep.rgaOrder r.layout a)) "[0, 1, 2, 3]"
+    | .error e => checkTrue "rga: the run" false e
+  | .error e => checkTrue "rga: the parse" false e
 
 /-- Inverse trigonometric functions, and `sec`, `csc`, `cot` and `f^-1(x)` as reciprocals. -/
 def trigTests : TestM Unit := do

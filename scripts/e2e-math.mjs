@@ -99,6 +99,7 @@ const CASES = [
   { src: "lattice(lex(chain(2), chain(3)))", text: "true", step: "Lexicographic order" },
   { src: "replicas(gcounter; a, b; a: inc; m := a; a: inc; b <- m; a -> b)", text: "{a↦2, b↦2}", step: "b merges the message m" },
   { src: "replicas(escrow 2; a, b; a: use; b: use; a: use; a -> b; b -> a)", text: "{a↦2, b↦2}", step: "a refuses the use" },
+  { src: "replicas(rga; a, b; a: ins c at 0; a: ins a at 1; a: ins t at 2; a -> b; a: ins x at 1; b: del 2; a -> b; b -> a)", text: "{a↦cxa, b↦cxa}", step: "Converged" },
   // term rewriting, in the systems world
   { src: "let Add = rules(add(0, y) -> y; add(s(x), y) -> s(add(x, y)))", text: "{add(0, y) → y, add(s(x), y) → s(add(x, y))}" },
   { src: "rewrite(Add, add(s(0), s(0)))", text: "s(s(0))", step: "Rewrite" },
