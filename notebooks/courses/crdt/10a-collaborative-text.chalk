@@ -93,6 +93,12 @@
       "label": null
     },
     {
+      "src": "> [!note] TP1 is a diamond\n> From one text, $a$ and $b$ lead two ways, and $T(b, a)$ and $T(a, b)$ bring the two back to one text. That is the shape of local confluence in the systems course's [Rewriting systems](#course=systems&lesson=10): two rewrites of one term must join. There a critical pair joins when the rules already rewrite both results to a common term; here $T$ is written to supply the two edits that close the diamond.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "namespace Collab\n\n/-- TP1 for two concurrent edits on a text: `a` then `b` rewritten, against `b` then `a` rewritten. -/\ndef tp1 (a b : Op) (s : List Char) : Bool := (T b a).apply (a.apply s) == (T a b).apply (b.apply s)\n\n/-- Every edit a site can make on a text of length `n`: an insert at each of the `n + 1` places, a delete\nat each of the `n` characters. -/\ndef edits (n site : Nat) (c : Char) : List Op :=\n  (List.range (n + 1)).map (fun p => .ins p c site) ++ (List.range n).map .del\n\n/-- TP1 for every pair of edits two sites can make on \"abc\". -/\ntheorem tp1_abc : (edits 3 1 'x').all (fun a => (edits 3 2 'y').all fun b => tp1 a b \"abc\".toList) = true := by\n  decide\n\n/-- `T` without the tie-break: of two inserts at one place, neither moves. -/\ndef Tnaive : Op → Op → Op\n  | .ins p c i, .ins q _ _ => if q < p then .ins (p + 1) c i else .ins p c i\n  | a, b => T a b\n\nend Collab",
       "type": "lean",
       "showWork": false,

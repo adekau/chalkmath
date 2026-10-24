@@ -4392,6 +4392,10 @@ end Collab`.replace(/‹|›/g, "`"));
 > [!definition] TP1
 > A transformation is correct for two sites when, for any two concurrent edits $a$ and $b$, applying $a$ then $T(b, a)$ gives the same text as applying $b$ then $T(a, b)$. This is **TP1** (transformation property 1).
 `);
+    md(r`
+> [!note] TP1 is a diamond
+> From one text, $a$ and $b$ lead two ways, and $T(b, a)$ and $T(a, b)$ bring the two back to one text. That is the shape of local confluence in the systems course's [Rewriting systems](#course=systems&lesson=10): two rewrites of one term must join. There a critical pair joins when the rules already rewrite both results to a common term; here $T$ is written to supply the two edits that close the diamond.
+`);
     lean(r`namespace Collab
 
 /-- TP1 for two concurrent edits on a text: ‹a› then ‹b› rewritten, against ‹b› then ‹a› rewritten. -/
