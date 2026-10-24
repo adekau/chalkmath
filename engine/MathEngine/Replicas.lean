@@ -24,6 +24,13 @@ Every type here is one data structure: a vector of naturals, merged by the point
   not free; it refuses a use (or a gift) its quota does not cover, by itself, asking no one. Only it
   writes its own entries, so it knows its quota exactly, or less (a gift may not have reached it), and
   the units in use never exceed `N`, in any merge of any states (checked after every event).
+- RGA (`rga`, a replicated growable array: text). A node per insert, with three entries: its parent
+  (the node it was inserted after, written once, by its creator: 0 unknown, 1 the start, `j + 2` node
+  `j`), its Lamport timestamp (one more than any the creator had seen, also written once), and a
+  tombstone bit. `ins c at p` inserts after the character the replica sees at `p − 1`; `del p` sets the
+  tombstone of the one at `p`. Reads the text: the nodes in preorder from the start, a node's children
+  newest first (the larger timestamp, then the replica listed first), less the tombstoned ones.
+  Concurrent inserts commute because they name a node, not a position.
 
 So `merge` is one function, and `ReplicasProofs` proves it a join (commutative, associative,
 idempotent) and every update an inflation: what makes the replicas converge, whatever the order,
@@ -48,6 +55,8 @@ inductive Kind where
   | gcounter | pncounter | gset | twopset | orset | lww
   /-- A bounded counter of the given capacity. -/
   | escrow (cap : Nat)
+  /-- A replicated growable array: text that replicas insert into and delete from. -/
+  | rga
   deriving BEq, Repr, Inhabited
 
 def Kind.ofName : String → Option Kind
@@ -57,6 +66,7 @@ def Kind.ofName : String → Option Kind
   | "twopset" => some .twopset
   | "orset" => some .orset
   | "lww" => some .lww
+  | "rga" => some .rga
   | t => match (t.splitOn " ").filter (· != "") with
     | ["escrow", n] => n.toNat?.map .escrow
     | _ => none
@@ -64,12 +74,14 @@ def Kind.ofName : String → Option Kind
 def Kind.title : Kind → String
   | .gcounter => "G-counter" | .pncounter => "PN-counter" | .gset => "G-set"
   | .twopset => "2P-set" | .orset => "OR-set" | .lww => "LWW-register" | .escrow _ => "bounded counter"
+  | .rga => "replicated growable array (RGA)"
 
 /-- The operations a type has, for an error that says which. -/
 def Kind.ops : Kind → List String
   | .gcounter => ["inc"] | .pncounter => ["inc", "dec"] | .gset => ["add x"]
   | .twopset | .orset => ["add x", "remove x"] | .lww => ["write v", "write v @ t"]
   | .escrow _ => ["use", "free", "give r"]
+  | .rga => ["ins c at p", "del p"]
 
 /-- An event of the schedule. -/
 inductive Ev where
@@ -109,6 +121,8 @@ def parseEv (c : String) : Except String Ev := do
     match (rest.splitOn " ").filter (· != "") with
     | [name] => return .op r name none ts
     | [name, arg] => return .op r name (some arg) ts
+    -- an RGA insert, `ins c at p`: the character and the position, kept together as the argument
+    | [name, arg, "at", pos] => return .op r name (some s!"{arg} at {pos}") ts
     | _ => throw s!"write an update as replica: op, or replica: op argument, not '{c}'"
   | none => throw s!"'{c}' is not an event: write a: inc, a -> b, m := a, or b <- m"
 
@@ -122,6 +136,8 @@ structure Layout where
   tags : List (String × String) := []
   /-- LWW writes: the key (timestamp · R + replica + 1) and the value. -/
   writes : List (Nat × String) := []
+  /-- RGA nodes, one per insert in order: the character and the replica that inserts it. -/
+  nodes : List (String × String) := []
 
 def Layout.width (L : Layout) : Nat :=
   match L.kind with
@@ -132,6 +148,7 @@ def Layout.width (L : Layout) : Nat :=
   | .orset => 2 * L.tags.length
   | .lww => 1
   | .escrow _ => 2 * L.replicas.length + L.replicas.length * L.replicas.length
+  | .rga => 3 * L.nodes.length
 
 def idx (l : List String) (x : String) : Nat := (l.idxOf? x).getD 0
 
@@ -153,8 +170,60 @@ def layout (kind : Kind) (replicas : List String) (evs : List Ev) : Layout := Id
       if name == "write" then
         let t := ts.getD k
         L := { L with writes := L.writes ++ [(t * replicas.length + idx replicas r + 1, x)] }
+      if name == "ins" && kind == .rga then
+        L := { L with nodes := L.nodes ++ [((x.splitOn " ").headD "", r)] }
     | _ => pure ()
   return L
+
+/-! ### The RGA: text as a tree of inserts -/
+
+/-- The RGA nodes a state knows, in document order, tombstoned ones included: preorder from the start,
+a node's children newest first (the larger timestamp; on a tie, the replica listed first). The depth
+is at most the number of nodes, so that many rounds of `go` reach every node. -/
+def rgaOrder (L : Layout) (v : Vec) : List Nat :=
+  let N := L.nodes.length
+  let rep (n : Nat) : Nat := idx L.replicas (L.nodes.getD n ("", "")).2
+  let first (a b : Nat) : Bool := v.getD (N + a) 0 > v.getD (N + b) 0 || (v.getD (N + a) 0 == v.getD (N + b) 0 && rep a ≤ rep b)
+  let kids (e : Nat) : List Nat := ((List.range N).filter (v.getD · 0 == e)).mergeSort first
+  let rec go : Nat → Nat → List Nat
+    | 0, _ => []
+    | f + 1, e => (kids e).flatMap fun n => n :: go f (n + 2)
+  go (N + 1) 1
+
+/-- The characters a replica sees, in order: the known nodes less the tombstoned. -/
+def rgaVisible (L : Layout) (v : Vec) : List Nat :=
+  (rgaOrder L v).filter fun n => v.getD (2 * L.nodes.length + n) 0 == 0
+
+/-- The largest timestamp a state knows. -/
+def rgaClock (L : Layout) (v : Vec) : Nat :=
+  ((List.range L.nodes.length).map fun n => v.getD (L.nodes.length + n) 0).foldl max 0
+
+/-- Node `n` inserted after the character seen at `p − 1` (the start for `p = 0`): its parent and its
+timestamp, one more than the replica has seen, written once. -/
+def rgaInsAt (L : Layout) (v : Vec) (n p : Nat) : Vec :=
+  let parent := if p == 0 then 1 else (rgaVisible L v).getD (p - 1) 0 + 2
+  raise (raise v n parent) (L.nodes.length + n) (rgaClock L v + 1)
+
+/-- `ins c at p`, node `n`: refused when `p` is past the end of the text the replica sees. -/
+def rgaIns (L : Layout) (v : Vec) (r : String) (n : Nat) (arg : String) : Except String Vec :=
+  match (arg.splitOn " at ").getD 1 "" |>.trimAscii.copy.toNat? with
+  | none => .error s!"write an RGA insert as {r}: ins c at p, with p a position, not '{arg}'"
+  | some p =>
+    if p ≤ (rgaVisible L v).length then .ok (rgaInsAt L v n p)
+    else .error s!"{r} cannot insert at {p}: the text it sees has {(rgaVisible L v).length} characters"
+
+/-- `del p`: the tombstone of the character seen at `p` set; refused past the end. -/
+def rgaDel (L : Layout) (v : Vec) (r : String) (arg : String) : Except String Vec :=
+  match arg.toNat? with
+  | none => .error s!"write an RGA delete as {r}: del p, with p a position, not '{arg}'"
+  | some p =>
+    if p < (rgaVisible L v).length then .ok (raise v (2 * L.nodes.length + (rgaVisible L v).getD p 0) 1)
+    else .error s!"{r} cannot delete at {p}: the text it sees has {(rgaVisible L v).length} characters"
+
+/-- An RGA node as the work names it: its character and its id, the timestamp and the replica. -/
+def rgaName (L : Layout) (v : Vec) (n : Nat) : String :=
+  let (c, r) := L.nodes.getD n ("", "")
+  s!"{c}@{v.getD (L.nodes.length + n) 0}{r}"
 
 /-- Apply a local update. `tagNo` counts the OR-set adds so far (to find this add's tag), `k` is the
 event's number (an LWW write's default timestamp). -/
@@ -188,6 +257,8 @@ def update (L : Layout) (v : Vec) (r name : String) (arg : Option String) (ts : 
   | .escrow _, "give", some s =>
     if !L.replicas.contains s || s == r then throw s!"{r} can give quota to another replica ({", ".intercalate (L.replicas.filter (· != r))}), not '{s}'" else
     pure (bump v (2 * R + ri * R + idx L.replicas s))
+  | .rga, "ins", some a => rgaIns L v r tagNo a
+  | .rga, "del", some a => rgaDel L v r a
   | _, _, _ => throw bad
 
 /-- An escrow counter's share of the capacity for replica `i`: an even split, the first replicas
@@ -238,6 +309,9 @@ def read (L : Layout) (v : Vec) : Expr :=
     | some x => .var x
     | none => .var "⊥"
   | .escrow _ => .num (Q.ofInt (inUse L v))
+  | .rga => match String.join ((rgaVisible L v).map fun n => (L.nodes.getD n ("", "")).1) with
+    | "" => .var "ε"
+    | t => .var t
 
 /-- A state as the work shows it. -/
 def stateExpr (L : Layout) (v : Vec) : Expr :=
@@ -262,6 +336,14 @@ def stateExpr (L : Layout) (v : Vec) : Expr :=
     let gifts := (L.replicas.zipIdx.flatMap fun (a, i) => L.replicas.zipIdx.filterMap fun (b, j) =>
       if i == j then none else some s!"{a}→{b}↦{v.getD (2 * R + i * R + j) 0}")
     .fn "pair" [Ord.setExpr (entries 0), Ord.setExpr (entries R), Ord.setExpr gifts]
+  | .rga =>
+    -- each known node after its parent, in document order; then the tombstoned
+    let N := L.nodes.length
+    let ord := rgaOrder L v
+    let after (n : Nat) : String := match v.getD n 0 with
+      | 1 => "start" | e => rgaName L v (e - 2)
+    .fn "pair" [Ord.setExpr (ord.map fun n => s!"{rgaName L v n}↦{after n}"),
+      Ord.setExpr ((ord.filter fun n => v.getD (2 * N + n) 0 == 1).map (rgaName L v))]
 
 /-- An event of the space-time diagram: its lane, a label, and the state after it. -/
 structure DEvent where
@@ -314,12 +396,19 @@ def run (kind : Kind) (replicas : List String) (evs : List Ev) : Except String R
         steps := steps.push ("crdt.refuse", why, stateExpr L v, shown, [events.size])
         events := events.push ⟨r, s!"{what} ✗", txt v⟩
         continue
+      let node := tagNo
       let v' ← update L v r name arg ts tagNo k
-      if kind == .orset && name == "add" then tagNo := tagNo + 1
+      if (kind == .orset && name == "add") || (kind == .rga && name == "ins") then tagNo := tagNo + 1
       states := states.map fun (q, w) => if q == r then (q, v') else (q, w)
       let what := s!"{name}{(arg.map (" " ++ ·)).getD ""}{(ts.map (s!" @ {·}")).getD ""}"
       let left := match kind with
         | .escrow _ => s!" Its quota left, as far as it knows: {quotaLeft L v' (idx replicas r)}."
+        | .rga => if name == "ins" then
+            let after := match v'.getD node 0 with | 1 => "the start" | e => rgaName L v' (e - 2)
+            s!" The new character is the node {rgaName L v' node}, inserted after {after}: it names that node, not a position."
+          else match (rgaOrder L v').find? fun n => v'.getD (2 * L.nodes.length + n) 0 == 1 && v.getD (2 * L.nodes.length + n) 0 == 0 with
+            | some n => s!" It tombstones {rgaName L v' n}: the node stays, so what was inserted after it keeps its place."
+            | none => ""
         | _ => ""
       steps := steps.push ("crdt.update", s!"{r}: {what}, a local update. It only raises entries of {r}'s state.{left}", stateExpr L v, stateExpr L v', [events.size])
       events := events.push ⟨r, what, txt v'⟩
@@ -359,7 +448,7 @@ def parse (body : String) : Except String (Kind × List String × List Ev) := do
   | ty :: rs :: evs =>
     let kind ← match Kind.ofName ty with
       | some k => pure k
-      | none => throw s!"'{ty}' is not a CRDT here: gcounter, pncounter, gset, twopset, orset, lww or escrow N (a capacity of N)"
+      | none => throw s!"'{ty}' is not a CRDT here: gcounter, pncounter, gset, twopset, orset, lww, escrow N (a capacity of N) or rga"
     let replicas := (rs.splitOn ",").map (·.trimAscii.copy) |>.filter (· != "")
     if replicas.isEmpty || !replicas.all isName then throw "name the replicas after the type: replicas(gcounter; a, b; …)"
     if replicas.eraseDups.length != replicas.length then throw "a replica is named twice"

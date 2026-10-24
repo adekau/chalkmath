@@ -296,7 +296,14 @@
         {
           "file": "10-op-based.chalk",
           "title": "Op-based CRDTs",
-          "blurb": "Shipping operations instead of states: what the join used to absorb becomes the network's job, commuting operations and exactly-once delivery."
+          "blurb": "Shipping operations instead of states: what the join used to absorb becomes the network's job, commuting operations and exactly-once delivery.",
+          "apps": [
+            {
+              "file": "10a-collaborative-text.chalk",
+              "title": "Collaborative text",
+              "blurb": "Two people typing into one document, as Google Docs lets them: operational transformation, which rewrites an edit's position past a concurrent one (TP1, the TP2 it needs without a server, and Jupiter's server that avoids it), against a sequence CRDT, the RGA, whose edits name a character instead and commute."
+            }
+          ]
         },
         {
           "file": "11-capstone.chalk",

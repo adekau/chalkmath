@@ -1,0 +1,4 @@
+30	replicas(rga; a, b\n  a: ins c at 0\n  a: ins a at 1\n  a: ins t at 2\n  a -> b\n  a: ins x at 1\n  b: del 2\n  a -> b\n  b -> a\n)	= {a↦cxa, b↦cxa}
+33	replicas(rga; a, b\n  a: ins h at 0\n  a: ins i at 1\n  a -> b\n  a: ins a at 2\n  b: ins o at 2\n  a -> b\n  b -> a\n)	= {a↦hiao, b↦hiao}
+42	replicas(rga; a, b\n  a: ins o at 0\n  a: ins k at 1\n  a -> b\n  b: del 1\n  a: ins s at 2\n  a -> b\n  b -> a\n)	= {a↦os, b↦os}
+43	replicas(rga; a, b\n  a: ins a at 0\n  b: ins x at 0\n  a: ins b at 1\n  b: ins y at 1\n  a -> b\n  b -> a\n)	= {a↦abxy, b↦abxy}
