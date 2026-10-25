@@ -1,0 +1,73 @@
+{
+  "chalk": 1,
+  "name": "06a-selective-undo.chalk",
+  "cells": [
+    {
+      "src": "Selective undo",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Undo one person's edit while later edits stay, and find out which properties of the transform that needs and which this course's transform has.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "An application of lesson 6, outside the course's order. In a shared document, \"undo\" should undo *my* last edit, even if others have edited since. That edit $a$ is somewhere back in the log, followed by edits $b_1, \\ldots, b_n$. Its inverse $\\bar a$ was made for the text just after $a$; to apply it now, rewrite it past $b_1, \\ldots, b_n$, as a late batch is rebased.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] The inverse properties\n> Three properties of a transform are known in the literature on undo in operational transformation as **IP1**, **IP2** and **IP3**:\n> - **IP1**: an edit followed by its inverse changes nothing: $\\bar a(a(s)) = s$.\n> - **IP2**: rewriting $c$ past $a$ and then past $\\bar a$ gives $c$ back: $T(T(c, a), \\bar a) = c$.\n> - **IP3**: the inverse of $a$, rewritten past $T(b, a)$, is the inverse of $T(a, b)$: $T(\\bar a, T(b, a)) = \\overline{T(a, b)}$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "IP1 says the inverse is an inverse. IP2 says an edit and its undo, both in the history, cancel for anything rewritten past them. IP3 says that undoing $a$ after $b$ is the same as undoing the form of $a$ that $b$'s site saw.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "namespace Undo\n\n/-- Insert `x` at position `p`. -/\ndef insAt : Nat → Char → List Char → List Char\n  | 0, x, s => x :: s\n  | _ + 1, x, [] => [x]\n  | p + 1, x, y :: s => y :: insAt p x s\n\n/-- Delete the character at position `p`. -/\ndef delAt : Nat → List Char → List Char\n  | _, [] => []\n  | 0, _ :: s => s\n  | p + 1, y :: s => y :: delAt p s\n\n/-- An edit as the log keeps it. A delete records the character it removed, so that it can be undone. -/\ninductive Op where\n  | ins (p : Nat) (x : Char) (site : Nat)\n  | del (p : Nat) (x : Char)\n  | nop\n  deriving Repr, DecidableEq\n\ndef Op.apply : Op → List Char → List Char\n  | .ins p x _, s => insAt p x s\n  | .del p _, s => delAt p s\n  | .nop, s => s\n\n/-- The course's transform, for these edits. -/\ndef T : Op → Op → Op\n  | .ins p x i, .ins q _ j => if q < p ∨ (q = p ∧ j < i) then .ins (p + 1) x i else .ins p x i\n  | .ins p x i, .del q _ => if q < p then .ins (p - 1) x i else .ins p x i\n  | .del p x, .ins q _ _ => if q ≤ p then .del (p + 1) x else .del p x\n  | .del p x, .del q _ => if q < p then .del (p - 1) x else if q = p then .nop else .del p x\n  | a, .nop => a\n  | .nop, _ => .nop\n\n/-- The inverse of an edit: an insert undone by deleting its character, a delete by putting the character back. -/\ndef Op.inv : Op → Op\n  | .ins p x _ => .del p x\n  | .del p x => .ins p x 0\n  | .nop => .nop\n\ntheorem delAt_insAt (x : Char) : ∀ (p : Nat) (s : List Char), p ≤ s.length → delAt p (insAt p x s) = s\n  | 0, s, _ => rfl\n  | _ + 1, [], h => by simp at h\n  | p + 1, y :: s, h => by simp only [insAt, delAt]; rw [delAt_insAt x p s (by simp at h; omega)]\n\ntheorem insAt_delAt (x : Char) : ∀ (p : Nat) (s : List Char), s[p]? = some x → insAt p x (delAt p s) = s\n  | _, [], h => by simp at h\n  | 0, y :: s, h => by simp at h; subst h; rfl\n  | p + 1, y :: s, h => by simp only [delAt, insAt]; rw [insAt_delAt x p s (by simpa using h)]\n\n/-- What makes an edit undoable: an insert within the text, a delete that names the character it removes. -/\ndef Op.fits : Op → List Char → Prop\n  | .ins p _ _, s => p ≤ s.length\n  | .del p x, s => s[p]? = some x\n  | .nop, _ => True\n\ntheorem inv_apply (o : Op) (s : List Char) (h : o.fits s) : o.inv.apply (o.apply s) = s := by\n  cases o with\n  | ins p x _ => exact delAt_insAt x p s h\n  | del p x => exact insAt_delAt x p s h\n  | nop => rfl\n\n/-- IP2 for two edits. -/\ndef ip2 (c a : Op) : Bool := T (T c a) a.inv == c\n\n/-- IP3 for two edits. -/\ndef ip3 (a b : Op) : Bool := T a.inv (T b a) == (T a b).inv\n\n/-- Every edit a site can make on `s`: an insert at each place, a delete of each character. -/\ndef edits (s : List Char) (c : Char) (site : Nat) : List Op :=\n  (List.range (s.length + 1)).map (fun p => .ins p c site) ++ (List.range s.length).map (fun p => .del p (s.getD p ' '))\n\ndef abc : List Char := \"abc\".toList\n\n/-- The pairs on \"abc\" for which a property fails. -/\ndef failures (prop : Op → Op → Bool) : List (Op × Op) :=\n  (edits abc 'x' 1).flatMap fun c => (edits abc 'y' 2).filterMap fun a => if prop c a then none else some (c, a)\n\n#eval failures ip2\n#eval failures ip3\n#eval ((failures ip2).length, (failures ip3).length)\n\nend Undo",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "IP1 is proved (`inv_apply`). IP2 and IP3 each fail on 6 of the 49 pairs, and the failures have two causes:\n\n- **A delete met a delete of the same character.** $T(c, a)$ is `nop`, and `nop` remembers nothing: rewritten past the undo, it stays `nop`, so the undo brings the character back and $c$'s delete is lost.\n- **An insert sat where a deleted character was.** The undo puts the character back at the same place, a tie with the insert, and the tie-break by site need not put them back in their old order.\n\nSo \"rewrite the inverse forward\" is right for most pairs and wrong for exactly these. Transforms built for undo keep more information than `nop` does, for instance by not removing deleted characters at all: the RGA's tombstones again.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "example : Undo.ip2 (.del 1 'b') (.del 1 'b') = false := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove the first cause: two concurrent deletes of the b, then the undo of one of them, fail IP2.",
+      "leanSolution": "  decide",
+      "hints": [
+        "`T (del 1) (del 1)` is `nop`, and `nop` rewritten past anything is `nop`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Selective undo rewrites an old edit's inverse past the later ones. That is sound when the transform has IP1, IP2 and IP3. The course's transform has IP1, proved, and fails IP2 and IP3 on 6 of 49 pairs on \"abc\" each, all of them a delete that became `nop` or a tie at a restored character.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

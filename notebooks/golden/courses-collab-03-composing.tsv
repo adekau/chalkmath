@@ -1,0 +1,5 @@
+16	let W = op({id, x, y}; [id, x, y; x, x, y; y, x, y])	= [id, x, y; x, x, y; y, x, y]
+17	associative(W)	= true
+18	commutative(W)	= false
+26	identity(W)	= id
+27	idempotent(W)	= true

@@ -1,0 +1,170 @@
+{
+  "chalk": 1,
+  "name": "08-capstone.chalk",
+  "cells": [
+    {
+      "src": "Capstone: proofs and shipped code",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Put the transform's proofs in one place, say exactly what they guarantee about a running editor, and connect them to the code that ships.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "An editor ships in the languages its clients and servers are written in, not in Lean. So the Lean is a **reference**: a definition small enough to read, with theorems about it, against which the shipped code is tested. This lesson assembles it: the transform of lessons 1 to 5, TP1 for every text, preservation, and an exhaustive check.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The reference",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "namespace Reference\n\n/-- Insert `x` at position `p` (at the end, if `p` is past it). -/\ndef insAt : Nat → Char → List Char → List Char\n  | 0, x, s => x :: s\n  | _ + 1, x, [] => [x]\n  | p + 1, x, y :: s => y :: insAt p x s\n\n/-- Delete the character at position `p` (nothing, if there is none). -/\ndef delAt : Nat → List Char → List Char\n  | _, [] => []\n  | 0, _ :: s => s\n  | p + 1, y :: s => y :: delAt p s\n\n/-- An edit: insert a character at a place (typed at a site, for ties), delete one, or nothing. -/\ninductive Op where\n  | ins (p : Nat) (x : Char) (site : Nat)\n  | del (p : Nat)\n  | nop\n  deriving Repr, DecidableEq\n\ndef Op.apply : Op → List Char → List Char\n  | .ins p x _, s => insAt p x s\n  | .del p, s => delAt p s\n  | .nop, s => s\n\n/-- `T a b`: `a`, rewritten to apply after a concurrent `b`. Of two inserts at one place, the lower site goes first. -/\ndef T : Op → Op → Op\n  | .ins p x i, .ins q _ j => if q < p ∨ (q = p ∧ j < i) then .ins (p + 1) x i else .ins p x i\n  | .ins p x i, .del q => if q < p then .ins (p - 1) x i else .ins p x i\n  | .del p, .ins q _ _ => if q ≤ p then .del (p + 1) else .del p\n  | .del p, .del q => if q < p then .del (p - 1) else if q = p then .nop else .del p\n  | a, .nop => a\n  | .nop, _ => .nop\n\n/-- Apply edits in order to a text, and read the result. -/\ndef run (os : List Op) (t : String) : String := String.ofList (os.foldl (fun s o => o.apply s) t.toList)\n\nend Reference",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> [Collaborative text](#course=crdt&lesson=10&app=1) checked TP1 on 49 pairs and said the proof for every text \"is the same case split, with lemmas\". Which lemmas does the case split need?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "One per way two edits can be reordered: two inserts, an insert and a delete either way round, two deletes. Each is an induction on the text, and needs the edits to make sense on it (an insert at most at the end, a delete of a character that is there): a delete past the end does nothing, and then the positions no longer line up.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "namespace Reference\n\ntheorem delAt_nil (p : Nat) : delAt p [] = [] := by cases p <;> rfl\n\ntheorem ins_ins {y x : Char} : ∀ (s : List Char) (p q : Nat), q ≤ p → p ≤ s.length →\n    insAt q y (insAt p x s) = insAt (p + 1) x (insAt q y s)\n  | [], p, q, h1, h2 => by\n    have hp : p = 0 := by simp at h2; omega\n    have hq : q = 0 := by omega\n    subst hp; subst hq; rfl\n  | z :: s, p, 0, _, _ => by cases p <;> rfl\n  | z :: s, p + 1, q + 1, h1, h2 => by\n    simp only [insAt]\n    rw [ins_ins s p q (by omega) (by simp at h2; omega)]\n  | z :: s, 0, q + 1, h1, _ => by omega\n\ntheorem del_ins {x : Char} : ∀ (s : List Char) (p q : Nat), q < p → p ≤ s.length →\n    delAt q (insAt p x s) = insAt (p - 1) x (delAt q s)\n  | [], p, q, h1, h2 => by simp at h2; omega\n  | z :: s, p + 1, 0, _, _ => by cases p <;> rfl\n  | z :: s, p + 1, q + 1, h1, h2 => by\n    simp only [insAt, delAt]\n    rw [del_ins s p q (by omega) (by simp at h2; omega)]\n    cases p with\n    | zero => omega\n    | succ p => rfl\n  | z :: s, 0, q, h1, _ => by omega\n\ntheorem del_ins' {x : Char} : ∀ (s : List Char) (p q : Nat), p ≤ q → q < s.length →\n    delAt (q + 1) (insAt p x s) = insAt p x (delAt q s)\n  | [], p, q, _, h2 => by simp at h2\n  | z :: s, 0, q, _, _ => rfl\n  | z :: s, p + 1, q + 1, h1, h2 => by\n    simp only [insAt, delAt]\n    rw [del_ins' s p q (by omega) (by simp at h2; omega)]\n  | z :: s, p + 1, 0, h1, _ => by omega\n\ntheorem del_del : ∀ (s : List Char) (p q : Nat), q < p →\n    delAt q (delAt p s) = delAt (p - 1) (delAt q s)\n  | [], p, q, _ => by simp only [delAt_nil]\n  | z :: s, p + 1, 0, _ => by cases s <;> cases p <;> rfl\n  | z :: s, p + 1, q + 1, h => by\n    simp only [delAt]\n    rw [del_del s p q (by omega)]\n    cases p with\n    | zero => omega\n    | succ p => rfl\n  | z :: s, 0, q, h => by omega\n\n/-- An edit that makes sense on a text: an insert at one of its places, a delete of one of its characters. -/\ndef Op.valid : Op → List Char → Prop\n  | .ins p _ _, s => p ≤ s.length\n  | .del p, s => p < s.length\n  | .nop, _ => True\n\n/-- Two inserts come from different sites: the tie-break needs it. -/\ndef Op.apart : Op → Op → Prop\n  | .ins _ _ i, .ins _ _ j => i ≠ j\n  | _, _ => True\n\n/-- TP1, for every text and every two valid edits from different sites. -/\ntheorem tp1 : ∀ (a b : Op) (s : List Char), a.valid s → b.valid s → a.apart b →\n    (T b a).apply (a.apply s) = (T a b).apply (b.apply s)\n  | .ins p x i, .ins q y j, s, ha, hb, hab => by\n    simp only [Op.valid, Op.apart] at ha hb hab\n    by_cases h : q < p ∨ (q = p ∧ j < i)\n    · have h' : ¬(p < q ∨ (p = q ∧ i < j)) := by omega\n      simp only [T, h, h', ite_true, ite_false, Op.apply]\n      exact ins_ins s p q (by omega) ha\n    · have h' : p < q ∨ (p = q ∧ i < j) := by omega\n      simp only [T, h, h', ite_true, ite_false, Op.apply]\n      exact (ins_ins s q p (by omega) hb).symm\n  | .ins p x i, .del q, s, ha, hb, _ => by\n    simp only [Op.valid] at ha hb\n    by_cases h : q < p\n    · have h' : ¬(p ≤ q) := by omega\n      simp only [T, h, h', ite_true, ite_false, Op.apply]\n      exact del_ins s p q h ha\n    · have h' : p ≤ q := by omega\n      simp only [T, h, h', ite_true, ite_false, Op.apply]\n      exact del_ins' s p q h' hb\n  | .del p, .ins q y j, s, ha, hb, _ => by\n    simp only [Op.valid] at ha hb\n    by_cases h : q ≤ p\n    · have h' : ¬(p < q) := by omega\n      simp only [T, h, h', ite_true, ite_false, Op.apply]\n      exact (del_ins' s q p h ha).symm\n    · have h' : p < q := by omega\n      simp only [T, h, h', ite_true, ite_false, Op.apply]\n      exact (del_ins s q p h' hb).symm\n  | .del p, .del q, s, ha, hb, _ => by\n    by_cases h : q < p\n    · have h1 : ¬(p < q) := by omega\n      have h2 : ¬(p = q) := by omega\n      simp only [T, h, h1, h2, ite_true, ite_false, Op.apply]\n      exact del_del s p q h\n    · by_cases he : q = p\n      · subst he; simp [T, Op.apply]\n      · have h' : p < q := by omega\n        have he' : ¬(p = q) := by omega\n        simp only [T, h, he, h', he', ite_true, ite_false, Op.apply]\n        exact (del_del s q p h').symm\n  | .ins p x i, .nop, s, _, _, _ => rfl\n  | .del p, .nop, s, _, _, _ => rfl\n  | .nop, .ins q y j, s, _, _, _ => rfl\n  | .nop, .del q, s, _, _, _ => rfl\n  | .nop, .nop, s, _, _, _ => rfl\n\nend Reference",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Lesson 1's `tiling` asks for TP1 for every pair of edits on every state; `tp1` asks that the edits make sense on the text and that two inserts come from different sites. Joining the two needs one more fact, that rewriting keeps edits valid (the exercise below is a piece of it), and a version of `tiling` that carries it along the grid. That is not written out here. Preservation is lesson 5's, stated again for the reference:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "namespace Reference\n\n/-- What a delete removes: the character at its place, in the text it is applied to. -/\ndef Op.target : Op → List Char → Option Char\n  | .del p, s => s[p]?\n  | _, _ => none\n\ntheorem mem_insAt (x : Char) : ∀ (p : Nat) (s : List Char), x ∈ insAt p x s\n  | 0, _ => List.mem_cons_self\n  | _ + 1, [] => List.mem_cons_self\n  | p + 1, _ :: s => List.mem_cons_of_mem _ (mem_insAt x p s)\n\ntheorem mem_insAt_of_mem {z : Char} (x : Char) : ∀ (p : Nat) (s : List Char), z ∈ s → z ∈ insAt p x s\n  | 0, s, h => List.mem_cons_of_mem _ h\n  | _ + 1, [], h => by cases h\n  | p + 1, y :: s, h => by\n    rcases List.mem_cons.mp h with rfl | h\n    · exact List.mem_cons_self\n    · exact List.mem_cons_of_mem _ (mem_insAt_of_mem x p s h)\n\ntheorem getElem?_insAt (x : Char) : ∀ (p : Nat) (s : List Char), p ≤ s.length → (insAt p x s)[p]? = some x\n  | 0, s, _ => rfl\n  | _ + 1, [], h => by simp at h\n  | p + 1, _ :: s, h => by\n    simp only [insAt, List.getElem?_cons_succ]; exact getElem?_insAt x p s (by simp at h; omega)\n\n/-- Deleting at `q` keeps what stands at any other place `p`. -/\ntheorem mem_delAt {z : Char} : ∀ (l : List Char) (p q : Nat), l[p]? = some z → q ≠ p → z ∈ delAt q l\n  | [], _, _, h, _ => by simp at h\n  | y :: l, 0, 0, _, hq => absurd rfl hq\n  | y :: l, 0, q + 1, h, _ => by simp at h; subst h; exact List.mem_cons_self\n  | y :: l, p + 1, 0, h, _ => by simp only [delAt]; exact List.mem_of_getElem? h\n  | y :: l, p + 1, q + 1, h, hq => by\n    simp only [delAt]\n    exact List.mem_cons_of_mem _ (mem_delAt l p q (by simpa using h) (by omega))\n\ntheorem getElem?_insAt_lt (x : Char) : ∀ (s : List Char) (p q : Nat), q < p → p ≤ s.length → (insAt p x s)[q]? = s[q]?\n  | [], p + 1, q, _, h => by simp at h\n  | y :: s, p + 1, 0, _, _ => rfl\n  | y :: s, p + 1, q + 1, h, h' => by\n    simp only [insAt, List.getElem?_cons_succ]; exact getElem?_insAt_lt x s p q (by omega) (by simp at h'; omega)\n  | _, 0, q, h, _ => by omega\n\ntheorem getElem?_insAt_ge (x : Char) : ∀ (s : List Char) (p q : Nat), p ≤ q → (insAt p x s)[q + 1]? = s[q]?\n  | s, 0, q, _ => rfl\n  | [], p + 1, q, h => by cases q <;> simp [insAt]\n  | y :: s, p + 1, 0, h => by omega\n  | y :: s, p + 1, q + 1, h => by\n    simp only [insAt, List.getElem?_cons_succ]; exact getElem?_insAt_ge x s p q (by omega)\n\ntheorem getElem?_delAt_lt : ∀ (s : List Char) (p q : Nat), q < p → (delAt p s)[q]? = s[q]?\n  | [], p, q, _ => by simp [delAt_nil]\n  | y :: s, p + 1, 0, _ => rfl\n  | y :: s, p + 1, q + 1, h => by\n    simp only [delAt, List.getElem?_cons_succ]; exact getElem?_delAt_lt s p q (by omega)\n  | _ :: _, 0, q, h => by omega\n\ntheorem getElem?_delAt_gt : ∀ (s : List Char) (p q : Nat), p < q → (delAt p s)[q - 1]? = s[q]?\n  | [], p, q, _ => by simp [delAt_nil]\n  | y :: s, 0, q + 1, _ => by simp [delAt]\n  | y :: s, p + 1, q + 1, h => by\n    simp only [delAt]\n    cases q with\n    | zero => omega\n    | succ q => simp only [Nat.add_sub_cancel, List.getElem?_cons_succ]; exact getElem?_delAt_gt s p (q + 1) (by omega)\n  | _ :: _, _, 0, h => by omega\n\ntheorem insert_kept (b : Op) (s : List Char) (p : Nat) (x : Char) (i : Nat) (ha : p ≤ s.length) :\n    x ∈ (T b (.ins p x i)).apply ((Op.ins p x i).apply s) := by\n  cases b with\n  | ins q y j => simp only [T]; split <;> exact mem_insAt_of_mem _ _ _ (mem_insAt x p s)\n  | del q =>\n    simp only [T]; split\n    · exact mem_delAt _ p _ (getElem?_insAt x p s ha) (by omega)\n    · exact mem_delAt _ p _ (getElem?_insAt x p s ha) (by omega)\n  | nop => exact mem_insAt x p s\n\ntheorem insert_kept' (b : Op) (s : List Char) (p : Nat) (x : Char) (i : Nat) :\n    x ∈ (T (.ins p x i) b).apply (b.apply s) := by\n  cases b with\n  | ins q y j => simp only [T]; split <;> exact mem_insAt x _ _\n  | del q => simp only [T]; split <;> exact mem_insAt x _ _\n  | nop => exact mem_insAt x _ _\n\ntheorem delete_aimed (a : Op) (s : List Char) (q : Nat) (ha : a.valid s) :\n    (T (.del q) a = .nop ∧ a = .del q) ∨ (T (.del q) a).target (a.apply s) = (Op.del q).target s := by\n  cases a with\n  | ins p y j =>\n    simp only [Op.valid] at ha\n    right; simp only [T]; split\n    · exact getElem?_insAt_ge y s p q (by omega)\n    · exact getElem?_insAt_lt y s p q (by omega) ha\n  | del p =>\n    by_cases h : p = q\n    · subst h; left; simp [T]\n    · right; simp only [T]; split\n      · exact getElem?_delAt_gt s p q (by omega)\n      · exact getElem?_delAt_lt s p q (by omega)\n  | nop => right; rfl\n\nend Reference",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Every small case",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The theorems are for every text. A check of every small case is still worth having: it is what a port is tested against, and it tests the statements themselves, which a proof cannot (a theorem with a hypothesis that is never true proves nothing). Every text over a and b of up to three characters, every pair of edits on it, with x and y as the inserted characters: TP1, and both inserts in the result.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "namespace Reference\n\n/-- Every text over a and b of `n` characters. -/\ndef texts : Nat → List (List Char)\n  | 0 => [[]]\n  | n + 1 => (texts n).flatMap fun t => ['a' :: t, 'b' :: t]\n\n/-- Every edit a site can make on a text of length `n`, inserting `x`. -/\ndef edits (n : Nat) (x : Char) (site : Nat) : List Op :=\n  (List.range (n + 1)).map (fun p => .ins p x site) ++ (List.range n).map .del\n\n/-- One case: TP1, and the inserts of both sides in the result. -/\ndef case (a b : Op) (s : List Char) : Bool :=\n  (T b a).apply (a.apply s) == (T a b).apply (b.apply s)\n    && (match a with | .ins _ x _ => ((T b a).apply (a.apply s)).contains x | _ => true)\n    && (match b with | .ins _ y _ => ((T b a).apply (a.apply s)).contains y | _ => true)\n\ndef allCases (n : Nat) : Bool :=\n  (List.range (n + 1)).all fun k => (texts k).all fun s =>\n    (edits k 'x' 1).all fun a => (edits k 'y' 2).all fun b => case a b s\n\n#eval (List.range 4).foldl (fun acc k => acc + (texts k).length * (2 * k + 1) * (2 * k + 1)) 0\n\ntheorem small_cases : allCases 3 = true := by decide\n\nend Reference",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "511 cases, checked by Lean's kernel. (Inserting x and y, which the texts never contain, makes \"in the result\" mean \"kept\".)",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "What the proofs cover",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!note] Covered\n> - **The transform**: TP1 for every text and every two valid edits from different sites (`tp1`), and preservation (`insert_kept`, `insert_kept'`, `delete_aimed`).\n> - **Rebasing sequences**: any rebase grid closes, given TP1 on every pair (lesson 1, `tiling`). For this transform, which has TP1 only for valid edits from different sites, the step from one square to the grid is the one fact left unproved above.\n> - **Composition** is a monoid and composing is applying in turn (lesson 3); positions map monotonically (lesson 4); a snapshot stands in for its prefix and an honest server passes the audit (lesson 6); split and join are a section and its retraction (lesson 7).",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> What is **not** proved, and has to be tested or argued instead:\n> - **The protocol.** Versions in order, holding back early broadcasts, acknowledgements, one batch in flight: lesson 1 checked a model of two broadcasts, and lesson 2 a model of two workers; neither is a proof about the code that runs, or about more clients.\n> - **The conditional write.** Lesson 2 assumed it is one step. That is the store's promise (linearizability, in [the systems course](#course=systems&lesson=4)), not something the course proves.\n> - **The normalizer and the annotations.** Lesson 7 proved the round trip for one small representation (a bold flag per character), not for a real document format; lesson 3's formatting TP1 is per character, not for runs; range deletes (lesson 5) were only computed on examples.\n> - **TP2.** It fails for this transform (lesson 2); the protocol is what makes it unnecessary, and a deployment that breaks the one order (lesson 2's diamond) is outside every theorem here.\n> - **What a position counts.** Here a character is a Lean `Char`, a Unicode code point. An editor in a browser usually counts UTF-16 code units, and people expect grapheme clusters: a port and the reference that disagree on what \"position 3\" means agree on every test written in ASCII.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Testing a port against the reference",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "**Differential testing**: run the reference and the port on the same inputs and compare. The reference can print its cases with their expected results, for the port's test suite to read:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "namespace Reference\n\ndef Op.show : Op → String\n  | .ins p x i => s!\"ins {p} {x} {i}\"\n  | .del p => s!\"del {p}\"\n  | .nop => \"nop\"\n\n/-- One line per case: the text, the two edits, and the text both sites must reach. -/\ndef vectors (n : Nat) : List String :=\n  (texts n).flatMap fun s => (edits n 'x' 1).flatMap fun a => (edits n 'y' 2).map fun b =>\n    s!\"{String.ofList s}|{a.show}|{b.show}|{String.ofList ((T b a).apply (a.apply s))}\"\n\n#eval (vectors 2).take 6\n#eval (vectors 2).length\n\nend Reference",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A port, here in TypeScript, then reads the lines and checks each, both orders:\n\n```ts\ntype Op = { ins: [number, string, number] } | { del: number } | \"nop\";\nfunction T(a: Op, b: Op): Op {\n  if (b === \"nop\") return a;\n  if (a === \"nop\") return \"nop\";\n  if (\"ins\" in a && \"ins\" in b) {\n    const [p, x, i] = a.ins, [q, , j] = b.ins;\n    return q < p || (q === p && j < i) ? { ins: [p + 1, x, i] } : a;\n  }\n  if (\"ins\" in a && \"del\" in b) return b.del < a.ins[0] ? { ins: [a.ins[0] - 1, a.ins[1], a.ins[2]] } : a;\n  if (\"del\" in a && \"ins\" in b) return b.ins[0] <= a.del ? { del: a.del + 1 } : a;\n  const p = (a as { del: number }).del, q = (b as { del: number }).del;\n  return q < p ? { del: p - 1 } : q === p ? \"nop\" : a;\n}\n```\n\nThe vectors pin the reference's exact behaviour, ties included: a port that breaks a tie the other way passes every convergence test it runs on itself and fails here. For inputs larger than the vectors, generate random texts and edits in the port's test and send them to the reference, compiled as a command-line program, so that the comparison is not limited to the cases written down.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Running the reference itself",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Instead of porting, a client could run the reference: Lean compiles to C, and C compiles to WebAssembly with Emscripten. ChalkMath runs its own engine this way (Lean to C to wasm, in a web worker), and Lean itself for its Lean cells; its architecture notes (§1, §2 and §4b) record what that takes. The caveats are concrete:\n\n- **Support.** Lean's \"Supported Platforms\" page (Lean Language Reference, lean-lang.org/doc/reference/latest/platforms/, as of October 2026) lists Emscripten WebAssembly as **Tier 2**: cross-compiled but not tested by Lean's CI, with releases that \"may be silently broken due to the lack of automated testing\".\n- **The runtime.** Compiled Lean calls Lean's runtime and the compiled code of its standard library, and both must be built for wasm32, with 32-bit pointers; ChalkMath builds them from source (`npm run wasm`).\n- **Stack.** A browser gives a worker thread far less stack than a native thread (Chromium: 500 KB, against the 8 MB Lean's threads have natively), and recursion that is fine natively can run out: `insAt` on a long text recurses once per character.\n- **What the proof is about.** The theorems are about the Lean definitions. Lean's compiler, the C compiler and Emscripten are trusted, not proved; the compiled code is the reference only as far as they are right, so it is tested against the reference all the same.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem Reference.insAt_length (x : Char) : ∀ (p : Nat) (s : List Char), (Reference.insAt p x s).length = s.length + 1 := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "An insert makes the text one longer. Prove it: it is what lets a rewritten edit stay valid on the longer text.",
+      "leanSolution": "  intro p s\n  induction s generalizing p with\n  | nil => cases p <;> rfl\n  | cons y s ih =>\n    cases p with\n    | zero => rfl\n    | succ p => simp [Reference.insAt, ih]",
+      "hints": [
+        "Induction on `s`, for every `p` (`generalizing p`), then cases on `p`.",
+        "In the `succ` case, `insAt (p + 1) x (y :: s)` is `y :: insAt p x s`: `simp [Reference.insAt, ih]`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> The reference transform is proved TP1 for every text and to preserve content, and every small case is checked exhaustively; lesson 1's tiling closes any grid of squares that TP1 closes. The protocol, the store's conditional write, the document format and what a position counts are outside the proofs, and are tested or argued. A port is tested against the reference's vectors and against the reference itself on random inputs. Running the reference compiled to WebAssembly is possible, on a Tier 2 platform, with a runtime built for wasm32 and small stacks, and the compilers are trusted, not proved.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

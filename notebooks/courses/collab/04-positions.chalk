@@ -1,0 +1,202 @@
+{
+  "chalk": 1,
+  "name": "04-positions.chalk",
+  "cells": [
+    {
+      "src": "Mapping positions",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Move a position through an edit, prove that the move keeps positions in order, and decide what happens to a comment whose text has been deleted.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Not only edits point into the text. A cursor, a selection, a comment anchored to a phrase: each is a **position**, a gap between two characters numbered from 0, or a pair of them. When an edit arrives, every position must move with the text, or it points at the wrong place, as Bob's delete did in [Collaborative text](#course=crdt&lesson=10&app=1).",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Bias",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "An insert at $p$ moves every position after $p$ one place right and leaves those before it. A position exactly at $p$ could go either way: a cursor where someone else types should usually stay before their text, and a cursor where you type goes after yours. That choice is the position's **bias**, left or right. A delete at $p$ removes the character between gaps $p$ and $p + 1$, and the two gaps become one.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "namespace Anchor\n\n/-- An edit, as far as a position cares: an insert at `p`, or a delete at `p`. -/\ninductive Op where\n  | ins (p : Nat)\n  | del (p : Nat)\n  deriving Repr, DecidableEq\n\n/-- Which way a position goes when text is inserted exactly there. -/\ninductive Bias where\n  | left   -- stay before the new text\n  | right  -- move past it\n  deriving Repr, DecidableEq\n\n/-- Where position `k` is after the edit. -/\ndef map (b : Bias) : Op → Nat → Nat\n  | .ins p, k => if k < p ∨ (k = p ∧ b = .left) then k else k + 1\n  | .del p, k => if k ≤ p then k else k - 1\n\n#eval (List.range 6).map (map .left (.ins 2))\n#eval (List.range 6).map (map .right (.ins 2))\n#eval (List.range 6).map (map .left (.del 2))\n\nend Anchor",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A text of five characters has positions 0 to 5. The same maps as the engine's maps between chains, with the insert at 2, right bias:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let P6 = chain(6)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let P7 = chain(7)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let insR = map(P6, P7; 0->0, 1->1, 2->3, 3->4, 4->5, 5->6)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "monotone(P6, P7, insR)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Monotone",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> A selection runs from position 1 to position 4. Could an edit move its start past its end?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Not if mapping is **monotone**, in the sense of [Special elements and monotone maps](#course=order-lattices&lesson=2): $k \\le m$ implies $\\mathrm{map}(k) \\le \\mathrm{map}(m)$. Positions are a chain, and an edit maps the chain of the old text into the chain of the new one, keeping order. So whatever was before something stays before it, or lands on it.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "namespace Anchor\n\ntheorem map_monotone (b : Bias) (o : Op) {k m : Nat} (h : k ≤ m) : map b o k ≤ map b o m := by\n  cases b <;> cases o <;> simp only [map, reduceCtorEq, and_true, and_false, or_false] <;> split <;> split <;> omega\n\n/-- Left bias never goes further than right bias. -/\ntheorem map_left_le_right (o : Op) (k : Nat) : map .left o k ≤ map .right o k := by\n  cases o <;> simp only [map, reduceCtorEq, and_true, and_false, or_false] <;> split <;> (try split) <;> omega\n\nend Anchor",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A map that is not monotone, such as one that mirrors the text, turns selections inside out:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let mirror = map(P6, P7; 0->6, 1->5, 2->3, 3->2, 4->1, 5->0)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "monotone(P6, P7, mirror)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "Ranges and anchors",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A range is two positions, a start and an end. Give its start left bias and its end right bias: text typed at either edge joins the range, and by the two theorems a range with start $\\le$ end keeps start $\\le$ end. (The other choice, start right and end left, keeps typed text out but can turn an empty range inside out: an insert at its one position moves the start past the end. A range of that kind needs a clamp.)",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> A comment is anchored to \"bc\" in \"abcd\", positions 1 to 3. Someone deletes the b and then the c. Where is the comment?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "namespace Anchor\n\n/-- A range, from `start` to `stop`, and whether its text has been deleted. -/\nstructure Range where\n  start : Nat\n  stop : Nat\n  orphaned : Bool := false\n  deriving Repr, DecidableEq\n\n/-- Map a range through an edit. A range that had text and has none left is kept, and flagged. -/\ndef Range.map (r : Range) (o : Op) : Range :=\n  { start := Anchor.map .left o r.start, stop := Anchor.map .right o r.stop,\n    orphaned := r.orphaned || (r.start < r.stop && Anchor.map .left o r.start == Anchor.map .right o r.stop) }\n\n#eval [Op.del 1, Op.del 1].foldl Range.map ⟨1, 3, false⟩\n\ntheorem Range.map_ordered (r : Range) (o : Op) (h : r.start ≤ r.stop) : (r.map o).start ≤ (r.map o).stop :=\n  Nat.le_trans (map_monotone .left o h) (map_left_le_right o r.stop)\n\n/-- Anchors are mapped, never dropped. -/\ntheorem mapAll_length (rs : List Range) (o : Op) : (rs.map (·.map o)).length = rs.length := by simp\n\nend Anchor",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The range **collapses**: start and end meet at 1, with nothing between them. Each delete was fine on its own; the comment's text is simply gone. The same happens when the deletes are concurrent with the comment, on another client: once the server has ordered them, the client maps its anchor through each.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Orphaned anchors\n> An anchor whose text has been deleted is **orphaned**. The policy here: an orphaned anchor is kept, at the place its text was, and flagged; it is never deleted by the mapping. A person can then see the comment and decide, and an undo that brings the text back finds the anchor still there.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> Deleting collapsed anchors is the tempting tidy-up, and it loses a comment someone wrote because of an edit someone else made, possibly concurrently, without either of them deciding to. `mapAll_length` is the policy as a theorem: mapping keeps every anchor. Whether it stays flagged is the next exercise.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let P5 = chain(5)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let delm = map(P6, P5; 0->0, 1->1, 2->2, 3->2, 4->3, 5->4)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "monotone(P6, P5, delm)",
+      "type": "exercise",
+      "prompt": "`delm` is the map of a delete at 2 on a text of five characters. Is it monotone? Answer `true` or `false`.",
+      "hints": [
+        "Gaps 2 and 3 become one gap; does anything overtake anything?"
+      ],
+      "hideQuestion": true,
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem Anchor.Range.map_keeps_flag (r : Anchor.Range) (o : Anchor.Op) (h : r.orphaned = true) : (r.map o).orphaned = true := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that an orphaned anchor stays flagged through any edit, even one that types text back into it.",
+      "leanSolution": "  simp [Anchor.Range.map, h]",
+      "hints": [
+        "Unfold `Range.map`: the new flag is the old one, or something."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> A position moves through an edit: past an insert before it, back past a delete before it, and, for an insert exactly there, the way its bias says. The map is monotone, and left bias stays below right bias, so a range with its start biased left and its end right stays a range. A range whose text is deleted collapses; it is kept and flagged as orphaned, never dropped.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Collapsing is one way for content to vanish. Next: a theorem that the transform itself never loses what people typed.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

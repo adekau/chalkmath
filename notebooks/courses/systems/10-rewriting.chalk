@@ -220,6 +220,12 @@
       "label": null
     },
     {
+      "src": "> [!note] See also\n> [The client–server protocol](#course=collab&lesson=1), in the course on collaborative editing, closes a whole grid of diamonds with no termination argument: there each diamond is closed by the transform itself, so closing one opens no new fork.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "> [!summary]\n> Rewrite rules are an optimization written as equations directed left to right. A measure every rule lowers shows termination; joinable critical pairs show local confluence; together they give each term one normal form. A pair that does not join points at a rule to fix, or one to add (Knuth–Bendix completion).",
       "type": "markdown",
       "showWork": false,

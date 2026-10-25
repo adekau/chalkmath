@@ -1,0 +1,191 @@
+{
+  "chalk": 1,
+  "name": "02-optimistic.chalk",
+  "cells": [
+    {
+      "src": "Optimistic concurrency on a versioned record",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> See how a server that runs on several workers can lose the one order lesson 1 relied on, keep it with a conditional write on a version, and make the client's retries safe.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A server under load runs many stateless **workers**, each of which handles a batch from start to finish: it reads the document's record (its version and log) from a shared store, rewrites the batch past the log entries after its base, and writes the record back with the batch appended. No worker remembers anything between batches. The record is the only shared state.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The lost update, again",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Two workers commit at once. Each reads the version, then writes the version it read plus one, and adds its edit to the count `n` of log entries. This is the lost update of the systems course's [first lesson](#course=systems&lesson=1), with a version in place of a counter:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let Blind = system(\n  var ver in 1..3\n  var n in 1..3\n  var a in 0..3\n  var b in 0..3\n  var p in {read, write, done}\n  var q in {read, write, done}\n  init ver = 1 ∧ n = 1 ∧ a = 0 ∧ b = 0 ∧ p = read ∧ q = read\n  action pread when p = read do a := ver, p := write\n  action pwrite when p = write do ver := a + 1, n := n + 1, p := done\n  action qread when q = read do b := ver, q := write\n  action qwrite when q = write do ver := b + 1, n := n + 1, q := done\n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> Each commit is one log entry with one new version. Can the number of entries and the version disagree?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "invariant(Blind, n = ver)",
+      "showWork": true,
+      "label": null,
+      "stepwise": 0
+    },
+    {
+      "src": "Both workers read version 1, and both write version 2. Two edits now claim to be the successor of version 1. The log is no longer a line, one edit per version; it is a **diamond**.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The conditional write",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Conditional write\n> A **conditional write** replaces a record only if a field still has the value the writer read, in one step: a conditional put on a version attribute, as a key-value store provides, or a compare-and-set. If the field has changed, the write fails and changes nothing.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A worker then runs a loop: **read** the record, **rewrite** the batch past the entries after its base, **write** conditionally on the version it read, and on a conflict, **retry** from the read, which brings the newer entries to rewrite past.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let Cond = system(\n  var ver in 1..3\n  var n in 1..3\n  var a in 0..3\n  var b in 0..3\n  var p in {read, write, done}\n  var q in {read, write, done}\n  init ver = 1 ∧ n = 1 ∧ a = 0 ∧ b = 0 ∧ p = read ∧ q = read\n  action pread when p = read do a := ver, p := write\n  action pcommit when p = write ∧ ver = a do ver := ver + 1, n := n + 1, p := done\n  action pretry when p = write ∧ ver ≠ a do p := read\n  action qread when q = read do b := ver, q := write\n  action qcommit when q = write ∧ ver = b do ver := ver + 1, n := n + 1, q := done\n  action qretry when q = write ∧ ver ≠ b do q := read\n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "invariant(Cond, n = ver)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The check and the write are one action, as the atomic lock of [Mutual exclusion](#course=systems&lesson=3) made its check and take one. The guard `ver = a` is the condition; `pretry` is the loop going round.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "What a diamond does to clients",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Take \"abc\" at version 1, and three edits typed against it: $a$ inserts x at 1 (site 2), $b$ deletes position 1, the b (site 3), and $c$ inserts y at 2 (site 1). Workers 1 and 2 commit $a$ and $b$ without the condition, both as version 2. Worker 3 then takes $c$ and reads the log in its stored order, $a$ then $b$: it rewrites $b$ for $a$ and $c$ past both. The client that typed $c$ received the broadcasts the other way round, $b$ and then $a$, and rebased in that order.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "namespace Occ\n\n/-- Insert `x` at position `p` (at the end, if `p` is past it). -/\ndef insAt : Nat → Char → List Char → List Char\n  | 0, x, s => x :: s\n  | _ + 1, x, [] => [x]\n  | p + 1, x, y :: s => y :: insAt p x s\n\n/-- Delete the character at position `p` (nothing, if there is none). -/\ndef delAt : Nat → List Char → List Char\n  | _, [] => []\n  | 0, _ :: s => s\n  | p + 1, y :: s => y :: delAt p s\n\n/-- An edit: insert a character at a place (typed at a site, for ties), delete one, or nothing. -/\ninductive Op where\n  | ins (p : Nat) (x : Char) (site : Nat)\n  | del (p : Nat)\n  | nop\n  deriving Repr, DecidableEq\n\ndef Op.apply : Op → List Char → List Char\n  | .ins p x _, s => insAt p x s\n  | .del p, s => delAt p s\n  | .nop, s => s\n\n/-- `T a b`: `a`, rewritten to apply after a concurrent `b`. Of two inserts at one place, the lower site goes first. -/\ndef T : Op → Op → Op\n  | .ins p x i, .ins q _ j => if q < p ∨ (q = p ∧ j < i) then .ins (p + 1) x i else .ins p x i\n  | .ins p x i, .del q => if q < p then .ins (p - 1) x i else .ins p x i\n  | .del p, .ins q _ _ => if q ≤ p then .del (p + 1) else .del p\n  | .del p, .del q => if q < p then .del (p - 1) else if q = p then .nop else .del p\n  | a, .nop => a\n  | .nop, _ => .nop\n\n/-- Apply edits in order to a text, and read the result. -/\ndef run (os : List Op) (t : String) : String := String.ofList (os.foldl (fun s o => o.apply s) t.toList)\n\ndef a : Op := .ins 1 'x' 2\ndef b : Op := .del 1\ndef c : Op := .ins 2 'y' 1\n\n#eval run [a, T b a] \"abc\"\n#eval run [b, T a b] \"abc\"\n-- worker 3: c past a, then past b rewritten for a\n#eval run [a, T b a, T (T c a) (T b a)] \"abc\"\n-- the client: c past b, then past a rewritten for b\n#eval run [b, T a b, T (T c b) (T a b)] \"abc\"\n\nend Occ",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Both agree on $a$ and $b$, \"axc\", by TP1. They disagree on $c$: the server's text is \"axyc\" and the client's \"ayxc\". After the delete, x and y both sit at position 1, a tie that was not a tie when they were typed, and the two paths break it differently: the false tie of [Collaborative text](#course=crdt&lesson=10&app=1)'s TP2 example, from a server this time. Two edits with one version gave $b$ two rewritten forms, and lesson 1's argument needed one.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!note] The site is the conditional write\n> Lesson 1's server was one site. With many workers, the site is not any worker: it is the version counter together with its conditional write, the one place where \"the next version\" is decided. Any number of workers that commit through one conditional write on one version form a single site, and the log stays a line. A worker that writes around it, or two stores that each hand out versions, is a second site, and TP1 is no longer enough.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Retries and duplicates",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A client that hears no acknowledgement cannot tell a lost batch from a lost reply, so it sends the batch again: [Effectively-once delivery](#course=systems&lesson=8)'s duplicate. Applied twice, an insert types its character twice. The fix is that lesson's: give each batch an **idempotency key** (the client and its own count of batches), and let the server commit a key once; a batch it has seen is answered with the acknowledgement it already gave. The key goes in the same conditional write as the entry, so a retry and the first attempt cannot both succeed.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "namespace Occ\n\n/-- The server's record: the log, each entry with the key of the batch it came from. -/\nstructure Record where\n  log : List (Nat × List Op)\n  deriving Repr\n\n/-- Commit a batch under a key, unless that key is already in the log. -/\ndef submit (r : Record) (key : Nat) (batch : List Op) : Record :=\n  if r.log.any (·.1 == key) then r else ⟨r.log ++ [(key, batch)]⟩\n\n#eval (submit (submit ⟨[]⟩ 7 [.ins 0 'x' 1]) 7 [.ins 0 'x' 1]).log.length\n\nend Occ",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "reach(Cond, p = read ∧ q = done ∧ a = 1)",
+      "type": "exercise",
+      "prompt": "In `Cond`, can a worker have to go back and read again after the other committed? Answer `true` or `false`.",
+      "hints": [
+        "Let both read version 1, then let `q` commit first."
+      ],
+      "hideQuestion": true,
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "reach(Cond, p = done ∧ q = done)",
+      "type": "exercise",
+      "prompt": "Do both workers' batches get committed in some run of `Cond`? Answer `true` or `false`.",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem Occ.submit_twice (r : Occ.Record) (key : Nat) (batch : List Occ.Op) :\n    Occ.submit (Occ.submit r key batch) key batch = Occ.submit r key batch := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that a batch submitted twice under one key is committed once.",
+      "leanSolution": "  unfold Occ.submit\n  by_cases h : r.log.any (·.1 == key) <;> simp [h]",
+      "hints": [
+        "Unfold `submit` and split on whether the key was already in the log: `by_cases h : r.log.any (·.1 == key)`.",
+        "If it was not, the inner submit appends an entry with that key, so the outer one finds it: `simp [h]` knows `List.any_append`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Workers that read a version and write it plus one lose an update: two commits get one version, and the log forks into a diamond. Readers then rebase along different paths and diverge, the TP2 false tie again (\"axyc\" against \"ayxc\"). A conditional write on the version, in a read, rewrite, write, retry loop, keeps the log a line: the server's one site is its version counter and conditional write, however many workers use them. Retries are made harmless with an idempotency key per batch, committed in the same write.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A batch is several edits sent as one. What is the one edit they amount to?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

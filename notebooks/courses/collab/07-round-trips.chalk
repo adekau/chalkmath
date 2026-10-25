@@ -1,0 +1,163 @@
+{
+  "chalk": 1,
+  "name": "07-round-trips.chalk",
+  "cells": [
+    {
+      "src": "Lossless round trips",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Store a formatted document in two parts and get it back exactly; find which stored forms come back unchanged; and see why rewriting what is stored, however tidily, breaks lesson 1's protocol.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The log of lessons 1 to 6 edits plain text. An editor's document also has formatting: bold runs, links, comments. A common design stores the two apart, the **text** and a list of **annotations** on it, so that text edits and formatting can be handled (and transformed) separately. The editor holds the document whole, so every save **splits** it and every load **joins** it again.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> Splitting and joining should lose nothing. Is \"join after split is the identity\" enough, or must \"split after join\" be one too?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Split and join",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A small version: each character is bold or not, and the annotations are the places of the bold characters.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "namespace RoundTrip\n\n/-- A document as the editor holds it: each character with whether it is bold. -/\nabbrev Doc := List (Char × Bool)\n\n/-- The places, counting from `k`, of the bold characters. -/\ndef marks : Nat → Doc → List Nat\n  | _, [] => []\n  | k, (_, b) :: d => if b then k :: marks (k + 1) d else marks (k + 1) d\n\n/-- Store a document as its plain text and the places that are bold. -/\ndef split (d : Doc) : List Char × List Nat := (d.map (·.1), marks 0 d)\n\n/-- Put each character back with its flag: bold when its place is listed. -/\ndef flags : Nat → List Char → List Nat → Doc\n  | _, [], _ => []\n  | k, c :: t, ps => (c, ps.contains k) :: flags (k + 1) t ps\n\ndef join (p : List Char × List Nat) : Doc := flags 0 p.1 p.2\n\n#eval split [('a', false), ('b', true), ('c', true)]\n#eval join (\"abc\".toList, [2, 1])\n#eval split (join (\"abc\".toList, [2, 1, 1, 9]))\n\nend RoundTrip",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Joining loses nothing it can show, but the stored form can say one thing several ways: `[2, 1]`, `[1, 2]` and `[2, 1, 1, 9]` all join to the same document, and split gives back only `[1, 2]`. So the two directions differ.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "namespace RoundTrip\n\ntheorem le_of_mem_marks : ∀ (d : Doc) (k i : Nat), i ∈ marks k d → k ≤ i\n  | [], _, _, h => by simp [marks] at h\n  | (_, b) :: d, k, i, h => by\n    simp only [marks] at h\n    split at h\n    · rcases List.mem_cons.mp h with rfl | h\n      · omega\n      · have := le_of_mem_marks d (k + 1) i h; omega\n    · have := le_of_mem_marks d (k + 1) i h; omega\n\ntheorem flags_marks : ∀ (d : Doc) (k : Nat) (ps : List Nat),\n    (∀ i, k ≤ i → (i ∈ ps ↔ i ∈ marks k d)) → flags k (d.map (·.1)) ps = d\n  | [], _, _, _ => rfl\n  | (c, b) :: d, k, ps, h => by\n    simp only [List.map, flags]\n    have hk := h k (Nat.le_refl k)\n    have hb : ps.contains k = b := by\n      cases b\n      · simp only [marks] at hk\n        have : k ∉ marks (k + 1) d := fun hm => by have := le_of_mem_marks d (k + 1) k hm; omega\n        simp [hk, this]\n      · simp [marks] at hk; simp [hk]\n    rw [hb, flags_marks d (k + 1) ps (fun i hi => by\n      rw [h i (by omega)]\n      cases b <;> simp [marks] <;> omega)]\n\n/-- Joining what was split gives the document back: `split` is a section of `join`. -/\ntheorem join_split (d : Doc) : join (split d) = d :=\n  flags_marks d 0 (marks 0 d) (fun _ _ => Iff.rfl)\n\ntheorem map_flags : ∀ (t : List Char) (k : Nat) (ps : List Nat), (flags k t ps).map (·.1) = t\n  | [], _, _ => rfl\n  | c :: t, k, ps => by simp [flags, map_flags t (k + 1) ps]\n\ntheorem marks_flags : ∀ (t : List Char) (k : Nat) (ps : List Nat),\n    marks k (flags k t ps) = (List.range' k t.length).filter (ps.contains ·)\n  | [], _, _ => rfl\n  | c :: t, k, ps => by\n    simp only [flags, marks, List.length_cons, List.range'_succ, List.filter_cons, marks_flags t (k + 1) ps]\n\n/-- A pair is well formed when its places are each a place in the text, listed once, in order. -/\ndef WellFormed (p : List Char × List Nat) : Prop := (List.range p.1.length).filter (p.2.contains ·) = p.2\n\ninstance (p : List Char × List Nat) : Decidable (WellFormed p) := inferInstanceAs (Decidable (_ = _))\n\n/-- On well-formed pairs, splitting what was joined gives the pair back. -/\ntheorem split_join (p : List Char × List Nat) (h : WellFormed p) : split (join p) = p := by\n  rcases p with ⟨t, ps⟩\n  simp only [split, join, map_flags, marks_flags]\n  simp only [WellFormed, List.range_eq_range'] at h\n  rw [h]\n\nend RoundTrip",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Section and retraction\n> Maps $s : A \\to B$ and $j : B \\to A$ with $j \\circ s = \\mathrm{id}_A$: $s$ is a **section** of $j$, and $j$ a **retraction** of $s$. Here $A$ is documents, $B$ is stored pairs, $s$ is `split` and $j$ is `join`. Then $s \\circ j$ is the identity exactly on the image of $s$: the well-formed pairs.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The normalizer",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "$s \\circ j$, join then split, sends any stored pair to the well-formed one that means the same document: it sorts the places, drops repeats, and drops places past the text. It is idempotent for a reason that has nothing to do with lists: $s \\circ j \\circ s \\circ j = s \\circ (j \\circ s) \\circ j = s \\circ j$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "namespace RoundTrip\n\n/-- For any section `s` of `j`, `s ∘ j` is idempotent… -/\ntheorem idem_of_section {A B : Type} (s : A → B) (j : B → A) (h : ∀ a, j (s a) = a) (b : B) :\n    s (j (s (j b))) = s (j b) := by rw [h]\n\n/-- …and what it fixes is exactly what `s` can produce. -/\ntheorem fixed_iff_image {A B : Type} (s : A → B) (j : B → A) (h : ∀ a, j (s a) = a) (b : B) :\n    s (j b) = b ↔ ∃ a, s a = b :=\n  ⟨fun hb => ⟨j b, hb⟩, fun ⟨a, ha⟩ => by rw [← ha, h]⟩\n\n/-- The normalizer: join, then split. -/\ndef norm (p : List Char × List Nat) : List Char × List Nat := split (join p)\n\ntheorem norm_idem (p : List Char × List Nat) : norm (norm p) = norm p :=\n  idem_of_section split join join_split p\n\n#eval norm (\"abc\".toList, [2, 0, 0, 7])\n\nend RoundTrip",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!note] Not a closure operator\n> [Galois connections and closure operators](#course=order-lattices&lesson=10) made closure operators from Galois connections: extensive, monotone and idempotent, with the closed elements as fixed points. `norm` shares only idempotence, and its fixed points are the well-formed pairs, as the closed elements were there. There is no natural order in which it is extensive: it drops repeated places as well as sorting them. It is an idempotent from a section–retraction pair, and the resemblance stops there.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A normalizer that rewrites saves",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Suppose the server normalizes the *text* on every save, say by squeezing runs of spaces into one. That is idempotent too, and it breaks the protocol. A client has version 3, \"a  b\" with two spaces, and types x after the second space, at 3: typed against its base, version 3. But the server stored version 3 squeezed, \"a b\":",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "namespace RoundTrip\n\ndef insAt : Nat → Char → List Char → List Char\n  | 0, x, s => x :: s\n  | _ + 1, x, [] => [x]\n  | p + 1, x, y :: s => y :: insAt p x s\n\n/-- Squeeze runs of spaces into one: drop a space that follows a space. -/\ndef squeezeAfter (space : Bool) : List Char → List Char\n  | [] => []\n  | c :: s => if c == ' ' && space then squeezeAfter true s else c :: squeezeAfter (c == ' ') s\n\ndef squeeze (s : List Char) : List Char := squeezeAfter false s\n\n#eval String.ofList (insAt 3 'x' \"a  b\".toList)            -- what the client typed\n#eval String.ofList (insAt 3 'x' (squeeze \"a  b\".toList))  -- what the server makes of it\n\nend RoundTrip",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The client meant \"a  xb\" and the server made \"a bx\": the client's positions count a space the server no longer has. Rebasing (lesson 1) assumes that version 3 is the same text at the client and at the server, and the normalizer made it two texts with one version. The client will apply its own x at 3 and the server's broadcasts after that, and the two texts will never meet.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> A normalizer may run on read (a view, lesson 6), or as an edit of its own committed through the log, which every client then rebases past like any other. It must not rewrite a version in place. `norm` above passes the test because, on everything the editor produces, it is the identity: `split_join`.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem RoundTrip.norm_wf (p : List Char × List Nat) (h : RoundTrip.WellFormed p) : RoundTrip.norm p = p := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that the normalizer leaves a well-formed pair alone, so a save of what the editor produced is stored as it is.",
+      "leanSolution": "  exact RoundTrip.split_join p h",
+      "hints": [
+        "`norm` is `split (join p)`, and one theorem above says what that is on a well-formed pair."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "example : RoundTrip.squeeze (RoundTrip.squeeze \"a   b\".toList) = RoundTrip.squeeze \"a   b\".toList := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "The squeezing normalizer is idempotent too, at least here. Prove it for \"a   b\" (three spaces): idempotence is not what makes a normalizer safe.",
+      "leanSolution": "  decide",
+      "hints": [
+        "A fixed text: `decide` computes both sides."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Split a document into text and annotations and join it back: `join ∘ split = id` for every document, and `split ∘ join = id` for well-formed pairs, a section and its retraction. `split ∘ join` is then an idempotent normalizer that fixes exactly the well-formed pairs. A normalizer that rewrites stored versions, however idempotent, makes the server's version $v$ differ from the client's, and rebasing against the client's base goes wrong; normalize on read, or as an edit in the log.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The course has proved its pieces separately. The capstone puts the transform's proofs in one place, and asks what they say about the code that ships.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

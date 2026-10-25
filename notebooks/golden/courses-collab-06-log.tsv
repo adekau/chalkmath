@@ -1,0 +1,4 @@
+3	let W = op({id, x, y}; [id, x, y; x, x, y; y, x, y])	= [id, x, y; x, x, y; y, x, y]
+4	fold(W; x, y)	= y
+5	fold(W; y, x)	= x
+22	fold(W; x, id, y, id)	= y

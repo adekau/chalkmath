@@ -4573,6 +4573,10 @@ theorem Collab.ins_del_comm : Collab.delete 3 1 (Collab.insert 1 1 ⟨4, 1, 'x',
       r`b@2a follows a@1a and y@2b follows x@1b: each run stays whole.`,
     ], { hide: true });
     md(r`
+> [!note] See also
+> [Collaborative editing with a server](#course=collab), a course of its own, builds Jupiter's server out in full: the client's queues and the server's versions, rebasing a sequence of edits as a grid of TP1 squares, optimistic concurrency on a versioned log, and this transform proved TP1 for every text.
+`);
+    md(r`
 > [!summary]
 > Replaying an edit by position breaks as soon as a concurrent edit moves the text under it. Operational transformation rewrites the edit's position past the concurrent ones: TP1 makes two sites agree, TP2 is what three need, and Jupiter's server, which orders everything, makes TP1 enough; Google Docs edits this way, through a server. A sequence CRDT such as the RGA names characters by unique ids instead, so edits commute and the replicas converge without a server, at the cost of an id per character and tombstones. One moves the agreement into the transformation and a server, the other into the ids.
 `);
@@ -6104,6 +6108,10 @@ theorem normalize_sound : ∀ (ops : List Op) (s : Option Nat), run s (normalize
     ex("terminates(A; add(x, y) = x + y + 1, s(x) = x + 1)", r`Would a plainer weight do: does ‹A› pass with ‹add(x, y) = x + y + 1› and ‹s(x) = x + 1›? Answer ‹true› or ‹false›.`, [r`Work out both sides of the second rule: ‹add(s(x), y)› and ‹s(add(x, y))›.`], { hide: true });
     ex("rewrite(A, add(s(s(0)), s(s(0))))", r`What is ‹add(s(s(0)), s(s(0)))›, rewritten with ‹A›?`, []);
     md(r`
+> [!note] See also
+> [The client–server protocol](#course=collab&lesson=1), in the course on collaborative editing, closes a whole grid of diamonds with no termination argument: there each diamond is closed by the transform itself, so closing one opens no new fork.
+`);
+    md(r`
 > [!summary]
 > Rewrite rules are an optimization written as equations directed left to right. A measure every rule lowers shows termination; joinable critical pairs show local confluence; together they give each term one normal form. A pair that does not join points at a rule to fix, or one to add (Knuth–Bendix completion).
 `);
@@ -6174,6 +6182,1517 @@ theorem normalize_sound : ∀ (ops : List Op) (s : Option Nat), run s (normalize
 `);
   });
 }, { leanPrelude: true });
+
+// ---------------------------------------------------------------------------------------------------
+// Course 4. Collaborative editing with a central server: crdt's Collaborative text (TP1, the TP2 false
+// tie, Jupiter named) built out into a client–server system. No Lean prelude: each lesson's Lean is in a
+// namespace of its own and stands alone, so the edits and the transform are written out again where a
+// lesson needs them (COLLAB_CORE), in the same words each time.
+/** The course's edits on text and its transform: insert and delete by position, recursive on the list so
+ *  that the proofs are inductions, and TP1's tie-break by site. */
+const COLLAB_CORE = r`/-- Insert ‹x› at position ‹p› (at the end, if ‹p› is past it). -/
+def insAt : Nat → Char → List Char → List Char
+  | 0, x, s => x :: s
+  | _ + 1, x, [] => [x]
+  | p + 1, x, y :: s => y :: insAt p x s
+
+/-- Delete the character at position ‹p› (nothing, if there is none). -/
+def delAt : Nat → List Char → List Char
+  | _, [] => []
+  | 0, _ :: s => s
+  | p + 1, y :: s => y :: delAt p s
+
+/-- An edit: insert a character at a place (typed at a site, for ties), delete one, or nothing. -/
+inductive Op where
+  | ins (p : Nat) (x : Char) (site : Nat)
+  | del (p : Nat)
+  | nop
+  deriving Repr, DecidableEq
+
+def Op.apply : Op → List Char → List Char
+  | .ins p x _, s => insAt p x s
+  | .del p, s => delAt p s
+  | .nop, s => s
+
+/-- ‹T a b›: ‹a›, rewritten to apply after a concurrent ‹b›. Of two inserts at one place, the lower site goes first. -/
+def T : Op → Op → Op
+  | .ins p x i, .ins q _ j => if q < p ∨ (q = p ∧ j < i) then .ins (p + 1) x i else .ins p x i
+  | .ins p x i, .del q => if q < p then .ins (p - 1) x i else .ins p x i
+  | .del p, .ins q _ _ => if q ≤ p then .del (p + 1) else .del p
+  | .del p, .del q => if q < p then .del (p - 1) else if q = p then .nop else .del p
+  | a, .nop => a
+  | .nop, _ => .nop
+
+/-- Apply edits in order to a text, and read the result. -/
+def run (os : List Op) (t : String) : String := String.ofList (os.foldl (fun s o => o.apply s) t.toList)`;
+/** A lesson's own copy of the course's edits and transform, in its namespace. */
+const collabCore = (ns, more = "") => `namespace ${ns}
+
+${COLLAB_CORE}${more ? `\n\n${more}` : ""}
+
+end ${ns}`.replace(/‹|›/g, "`");
+
+course("collab", "Collaborative editing with a server",
+  "From two sites to a working system: a client–server protocol in which TP1 is enough, optimistic concurrency on a versioned record, edits that compose, cursors and comments that move with the text, content that is never silently lost, the log as state and audit, lossless round trips, and a reference transform proved in Lean against which shipped code is tested.",
+  "Distributed systems", (add, app) => {
+
+  add("01-protocol.chalk", "The client–server protocol", "Jupiter in full: a client's in-flight batch and pending queue, versions and acknowledgements, broadcasts applied in version order, and the rebase of one sequence over another as a grid of TP1 squares, proved without a termination argument.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("The client–server protocol");
+    md(r`
+> [!goal]
+> Build the protocol a client and a central server run so that every client ends with the same text using only TP1: what each side keeps, how versions acknowledge edits, why a broadcast that arrives early waits, and the theorem that lets a client rebase a whole sequence of edits.
+`);
+    md(r`This course starts where [Collaborative text](#course=crdt&lesson=10&app=1) stops. There, TP1 made two sites agree, three sites needed TP2, and a transform that satisfies TP1 failed it; a server that puts every edit in one order was named as the way out, and not built. Here it is built. The course also uses the systems course's state machines ([Mutual exclusion](#course=systems&lesson=3)) and compares one proof with its [Rewriting systems](#course=systems&lesson=10). Each lesson's Lean is in a namespace of its own and uses nothing from other lessons or courses.`);
+    sec("Who keeps what");
+    md(r`
+> [!definition] The protocol
+> **The server** keeps the document as a **log** of edits: the edit at position $v$ of the log makes **version** $v$. A client sends a **batch** of edits with the version it was typed against, its **base**. The server rewrites the batch past the log's edits after the base, appends it, and so gives its edits the next versions. It answers the author with an **acknowledgement** naming the batch's last version, and sends every other client the rewritten edits, each with its version.
+>
+> **A client** applies its own edits at once. It keeps the batch it has sent and not seen acknowledged, the **in-flight** batch (one at a time), and the edits typed since, the **pending** queue, which it sends as the next batch once the acknowledgement comes. An edit from the server with version $v$ is applied only after version $v - 1$; one that arrives early is held back. Before applying it, the client rewrites it past its in-flight and pending edits, and rewrites those past it.
+`);
+    md(r`The two-party core, a client and a server each rewriting the other's edits past its own unacknowledged ones, is the Jupiter system's (Nichols, Curtis, Dixon and Lamping, 1995). One batch in flight at a time is a way of building the client that keeps the server's side simple: a batch is always typed against a version the server has.`);
+    sec("Versions, in order");
+    md(r`Two broadcasts, versions 2 and 3, are on their way to a client that has applied version 1. A network may deliver them in either order. A client that applies whatever arrives:`);
+    m(`let Eager = system(
+  var w2 in {sent, here, used}
+  var w3 in {sent, here, used}
+  init w2 = sent ∧ w3 = sent
+  action arrive2 when w2 = sent do w2 := here
+  action arrive3 when w3 = sent do w3 := here
+  action use2 when w2 = here do w2 := used
+  action use3 when w3 = here do w3 := used
+)`);
+    md(r`
+> [!try]
+> Version 3 was rewritten by the server for a text that already has version 2 in it. What goes wrong if the client applies it first?
+`);
+    m("invariant(Eager, w3 = used → w2 = used)", { step: 0 });
+    md(r`Version 3's positions count characters that version 2 put there, or no longer count ones it removed; applied first, it lands in the wrong place. The fix is a guard: version 3 waits until version 2 is used.`);
+    m(`let Hold = system(
+  var w2 in {sent, here, used}
+  var w3 in {sent, here, used}
+  init w2 = sent ∧ w3 = sent
+  action arrive2 when w2 = sent do w2 := here
+  action arrive3 when w3 = sent do w3 := here
+  action use2 when w2 = here do w2 := used
+  action use3 when w3 = here ∧ w2 = used do w3 := used
+)`);
+    m("invariant(Hold, w3 = used → w2 = used)");
+    md(r`Versions do the work that causal delivery did for the op-based CRDTs: a client applies the server's edits in the server's order, whatever order they arrive in.`);
+    sec("Rebasing is a grid");
+    md(r`A client with pending edits $a_1, \ldots, a_m$ hears of server edits $b_1, \ldots, b_n$ made concurrently. It must rewrite the $b$'s to follow its $a$'s, and the server must rewrite the $a$'s to follow its $b$'s, and the two texts must meet. Lay the two sequences out as the sides of a grid: each square has $a_i$ and $b_j$ on two sides, $T(b_j, a_i)$ and $T(a_i, b_j)$ on the other two, and closes by TP1. Rewriting one edit past a sequence is a row of squares; rewriting a sequence past a sequence is the whole grid.`);
+    lean(`namespace Jupiter
+
+variable {Op S : Type}
+
+/-- Apply a sequence of edits, first to last. -/
+def applyAll (apply : Op → S → S) : List Op → S → S
+  | [], s => s
+  | o :: os, s => applyAll apply os (apply o s)
+
+/-- One edit ‹a› past a sequence ‹bs›: ‹a› rewritten to follow all of ‹bs›, and ‹bs› rewritten to follow ‹a›. A row of the grid. -/
+def past (T : Op → Op → Op) (a : Op) : List Op → Op × List Op
+  | [] => (a, [])
+  | b :: bs => ((past T (T a b) bs).1, T b a :: (past T (T a b) bs).2)
+
+/-- A sequence ‹as› past a sequence ‹bs›: the grid, a row at a time. -/
+def rebase (T : Op → Op → Op) : List Op → List Op → List Op × List Op
+  | [], bs => ([], bs)
+  | a :: as, bs =>
+    ((past T a bs).1 :: (rebase T as (past T a bs).2).1, (rebase T as (past T a bs).2).2)
+
+/-- TP1: two concurrent edits, each rewritten past the other, meet. -/
+def TP1 (apply : Op → S → S) (T : Op → Op → Op) : Prop :=
+  ∀ a b s, apply (T b a) (apply a s) = apply (T a b) (apply b s)
+
+/-- A row closes: induction on the length of ‹bs›, one square per step. -/
+theorem past_meets (apply : Op → S → S) (T : Op → Op → Op) (h : TP1 apply T) :
+    ∀ (bs : List Op) (a : Op) (s : S),
+      applyAll apply (past T a bs).2 (apply a s) = apply (past T a bs).1 (applyAll apply bs s)
+  | [], a, s => rfl
+  | b :: bs, a, s => by
+    simp only [past, applyAll]
+    rw [h a b s]
+    exact past_meets apply T h bs (T a b) (apply b s)
+
+/-- The grid closes: induction on the length of ‹as›, one row per step. -/
+theorem tiling (apply : Op → S → S) (T : Op → Op → Op) (h : TP1 apply T) :
+    ∀ (as bs : List Op) (s : S),
+      applyAll apply (rebase T as bs).2 (applyAll apply as s)
+        = applyAll apply (rebase T as bs).1 (applyAll apply bs s)
+  | [], bs, s => rfl
+  | a :: as, bs, s => by
+    simp only [rebase, applyAll]
+    rw [tiling apply T h as (past T a bs).2 (apply a s), past_meets apply T h bs a s]
+
+end Jupiter`.replace(/‹|›/g, "`"));
+    md(r`
+> [!note] No termination argument
+> [Rewriting systems](#course=systems&lesson=10) got confluence from two facts: every critical pair joins (local confluence), and rewriting stops (termination). Newman's lemma needs both, because closing one diamond can open new forks, and only termination says that this stops. The grid has no such problem. $T$ supplies both sides that close each square, so closing a square opens nothing; the grid is $m \times n$ from the start, and the induction is on the two lengths. ‹tiling› uses TP1 and nothing else, for any edits and any states.
+`);
+    md(r`The course's transform, with the edits of [Collaborative text](#course=crdt&lesson=10&app=1), on "cat": the client has typed an s at the end and deleted the c; the server has meanwhile committed a b at the front and the deletion of the a.`);
+    lean(collabCore("Jupiter", r`def text (s : List Char) : String := String.ofList s
+
+def mine : List Op := [.ins 3 's' 1, .del 0]
+def theirs : List Op := [.ins 0 'b' 2, .del 2]
+
+#eval rebase T mine theirs
+#eval text (applyAll Op.apply (rebase T mine theirs).2 (applyAll Op.apply mine "cat".toList))   -- the client
+#eval text (applyAll Op.apply (rebase T mine theirs).1 (applyAll Op.apply theirs "cat".toList))   -- the server`));
+    md(r`Both read "bts". ‹tiling› says they always will, given TP1 for $T$. Here that is checked on this grid only; lesson 8 proves TP1 for this $T$ on every text, for edits that make sense on it.`);
+    sec("Why one order makes TP1 enough");
+    md(r`Three sites needed TP2 because a third edit $c$ could be rewritten past two concurrent edits $a$ and $b$ along two paths, $a$ then $T(b, a)$, or $b$ then $T(a, b)$, and the two had to agree. With a server, that never happens:
+
+- Every edit the server has committed has **one** rewritten form: the one in the log, at its version. Every client receives that form and applies it in version order, so all clients apply the same shared edits, rewritten the same way.
+- A client rewrites only against its **own** edits that are not yet shared, in-flight and pending. Those exist at that client alone; no one else will rewrite them along another path.
+- The server rewrites a batch only past log entries after its base, in log order: one path again.
+
+Every rewrite is a square of one grid between one client's unshared edits and the server's log. Two sites, so TP1.`);
+    md(r`
+> [!mistake]
+> "One central order" means one place that decides the next version. It need not be one machine, and one machine is not enough if it can hand out the same version twice. The next lesson breaks this on purpose.
+`);
+    sec("A client and a server in Lean");
+    lean(`namespace Jupiter
+
+/-- A client: its text, the last server version it has applied, the batch it has sent and not seen
+acknowledged, and the edits typed since. -/
+structure Client where
+  text : List Char
+  ver : Nat
+  flight : List Op := []
+  pending : List Op := []
+  deriving Repr
+
+/-- Type an edit: it applies at once and waits in the queue. -/
+def Client.edit (c : Client) (o : Op) : Client := { c with text := o.apply c.text, pending := c.pending ++ [o] }
+
+/-- Send the queue as the next batch, if none is in flight. -/
+def Client.send (c : Client) : Client :=
+  if c.flight.isEmpty then { c with flight := c.pending, pending := [] } else c
+
+/-- The batch is committed; its last edit is version ‹v›. -/
+def Client.ack (c : Client) (v : Nat) : Client := { c with ver := v, flight := [] }
+
+/-- Another client's edit, as the server committed it at version ‹c.ver + 1›: rewritten past this
+client's unacknowledged edits, which are rewritten past it. -/
+def Client.remote (c : Client) (o : Op) : Client :=
+  { c with text := (past T o (c.flight ++ c.pending)).1.apply c.text, ver := c.ver + 1,
+           flight := (past T o (c.flight ++ c.pending)).2.take c.flight.length,
+           pending := (past T o (c.flight ++ c.pending)).2.drop c.flight.length }
+
+/-- The server's commit: a batch typed against version ‹base›, rebased past the log after it. -/
+def commit (log : List Op) (base : Nat) (batch : List Op) : List Op :=
+  log ++ (rebase T batch (log.drop base)).1
+
+end Jupiter`.replace(/‹|›/g, "`"));
+    md(r`Client 1 types an s at the end of "cat" and sends it. Before the acknowledgement, the server's version 1 arrives: client 2 deleted the c. The client rewrites the delete past its in-flight insert and applies it; the server commits the insert, typed against version 0, past the delete:`);
+    lean(r`open Jupiter in
+#eval text ((((Client.mk "cat".toList 0 [] []).edit (.ins 3 's' 1)).send.remote (.del 0)).text)
+open Jupiter in
+#eval text (applyAll Op.apply (commit [.del 0] 0 [.ins 3 's' 1]) "cat".toList)`);
+    sec("Exercises");
+    ex("reach(Hold, w3 = here ∧ w2 = sent)", r`In ‹Hold›, can version 3 be waiting at the client while version 2 is still on its way? Answer ‹true› or ‹false›.`, [r`The network delivers in either order; only applying is guarded.`], { hide: true });
+    ex("invariant(Eager, w2 = used → w3 = used)", r`And the other way round: in ‹Eager›, is version 3 always used once version 2 is? Answer ‹true› or ‹false›.`, [r`Version 2 can be used before version 3 has even arrived.`], { hide: true });
+    lx(r`theorem Jupiter.rebase_nil_right {E : Type} (T : E → E → E) : ∀ (as : List E), Jupiter.rebase T as [] = (as, []) := by`, r`A client whose base is the server's latest version has nothing to rebase past. Prove that rebasing over no server edits changes nothing.`, r`  intro as
+  induction as with
+  | nil => rfl
+  | cons a as ih => simp only [Jupiter.rebase, Jupiter.past, ih]`, [
+      r`Induction on ‹as›.`,
+      r`In the step, unfold ‹rebase› and ‹past› and use the hypothesis: ‹simp only [Jupiter.rebase, Jupiter.past, ih]›.`,
+    ]);
+    md(r`
+> [!summary]
+> The server keeps a log and hands out versions; a client applies its own edits at once, keeps one batch in flight and a queue pending, applies the server's edits in version order, and rewrites each past its own unshared edits. Rebasing a sequence over a sequence is a grid of TP1 squares, and ‹tiling› proves it closes by induction on the two lengths, with no termination argument. One order means every shared edit has one rewritten form and every rewrite is between two sites: TP1 is enough.
+`);
+    md(r`The proof assumed one order. Next: what a real server has to do to have one, when several machines take commits.`);
+  });
+
+  add("02-optimistic.chalk", "Optimistic concurrency on a versioned record", "The lost update between two workers; a conditional write on the version and the read, rewrite, write, retry loop; a log that forks into a diamond, and the TP2 failure it brings back; why the server's one site is its version counter, and retries made harmless with an idempotency key.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Optimistic concurrency on a versioned record");
+    md(r`
+> [!goal]
+> See how a server that runs on several workers can lose the one order lesson 1 relied on, keep it with a conditional write on a version, and make the client's retries safe.
+`);
+    md(r`A server under load runs many stateless **workers**, each of which handles a batch from start to finish: it reads the document's record (its version and log) from a shared store, rewrites the batch past the log entries after its base, and writes the record back with the batch appended. No worker remembers anything between batches. The record is the only shared state.`);
+    sec("The lost update, again");
+    md(r`Two workers commit at once. Each reads the version, then writes the version it read plus one, and adds its edit to the count ‹n› of log entries. This is the lost update of the systems course's [first lesson](#course=systems&lesson=1), with a version in place of a counter:`);
+    m(`let Blind = system(
+  var ver in 1..3
+  var n in 1..3
+  var a in 0..3
+  var b in 0..3
+  var p in {read, write, done}
+  var q in {read, write, done}
+  init ver = 1 ∧ n = 1 ∧ a = 0 ∧ b = 0 ∧ p = read ∧ q = read
+  action pread when p = read do a := ver, p := write
+  action pwrite when p = write do ver := a + 1, n := n + 1, p := done
+  action qread when q = read do b := ver, q := write
+  action qwrite when q = write do ver := b + 1, n := n + 1, q := done
+)`);
+    md(r`
+> [!try]
+> Each commit is one log entry with one new version. Can the number of entries and the version disagree?
+`);
+    m("invariant(Blind, n = ver)", { step: 0 });
+    md(r`Both workers read version 1, and both write version 2. Two edits now claim to be the successor of version 1. The log is no longer a line, one edit per version; it is a **diamond**.`);
+    sec("The conditional write");
+    md(r`
+> [!definition] Conditional write
+> A **conditional write** replaces a record only if a field still has the value the writer read, in one step: a conditional put on a version attribute, as a key-value store provides, or a compare-and-set. If the field has changed, the write fails and changes nothing.
+`);
+    md(r`A worker then runs a loop: **read** the record, **rewrite** the batch past the entries after its base, **write** conditionally on the version it read, and on a conflict, **retry** from the read, which brings the newer entries to rewrite past.`);
+    m(`let Cond = system(
+  var ver in 1..3
+  var n in 1..3
+  var a in 0..3
+  var b in 0..3
+  var p in {read, write, done}
+  var q in {read, write, done}
+  init ver = 1 ∧ n = 1 ∧ a = 0 ∧ b = 0 ∧ p = read ∧ q = read
+  action pread when p = read do a := ver, p := write
+  action pcommit when p = write ∧ ver = a do ver := ver + 1, n := n + 1, p := done
+  action pretry when p = write ∧ ver ≠ a do p := read
+  action qread when q = read do b := ver, q := write
+  action qcommit when q = write ∧ ver = b do ver := ver + 1, n := n + 1, q := done
+  action qretry when q = write ∧ ver ≠ b do q := read
+)`);
+    m("invariant(Cond, n = ver)");
+    md(r`The check and the write are one action, as the atomic lock of [Mutual exclusion](#course=systems&lesson=3) made its check and take one. The guard ‹ver = a› is the condition; ‹pretry› is the loop going round.`);
+    sec("What a diamond does to clients");
+    md(r`Take "abc" at version 1, and three edits typed against it: $a$ inserts x at 1 (site 2), $b$ deletes position 1, the b (site 3), and $c$ inserts y at 2 (site 1). Workers 1 and 2 commit $a$ and $b$ without the condition, both as version 2. Worker 3 then takes $c$ and reads the log in its stored order, $a$ then $b$: it rewrites $b$ for $a$ and $c$ past both. The client that typed $c$ received the broadcasts the other way round, $b$ and then $a$, and rebased in that order.`);
+    lean(collabCore("Occ", r`def a : Op := .ins 1 'x' 2
+def b : Op := .del 1
+def c : Op := .ins 2 'y' 1
+
+#eval run [a, T b a] "abc"
+#eval run [b, T a b] "abc"
+-- worker 3: c past a, then past b rewritten for a
+#eval run [a, T b a, T (T c a) (T b a)] "abc"
+-- the client: c past b, then past a rewritten for b
+#eval run [b, T a b, T (T c b) (T a b)] "abc"`));
+    md(r`Both agree on $a$ and $b$, "axc", by TP1. They disagree on $c$: the server's text is "axyc" and the client's "ayxc". After the delete, x and y both sit at position 1, a tie that was not a tie when they were typed, and the two paths break it differently: the false tie of [Collaborative text](#course=crdt&lesson=10&app=1)'s TP2 example, from a server this time. Two edits with one version gave $b$ two rewritten forms, and lesson 1's argument needed one.`);
+    md(r`
+> [!note] The site is the conditional write
+> Lesson 1's server was one site. With many workers, the site is not any worker: it is the version counter together with its conditional write, the one place where "the next version" is decided. Any number of workers that commit through one conditional write on one version form a single site, and the log stays a line. A worker that writes around it, or two stores that each hand out versions, is a second site, and TP1 is no longer enough.
+`);
+    sec("Retries and duplicates");
+    md(r`A client that hears no acknowledgement cannot tell a lost batch from a lost reply, so it sends the batch again: [Effectively-once delivery](#course=systems&lesson=8)'s duplicate. Applied twice, an insert types its character twice. The fix is that lesson's: give each batch an **idempotency key** (the client and its own count of batches), and let the server commit a key once; a batch it has seen is answered with the acknowledgement it already gave. The key goes in the same conditional write as the entry, so a retry and the first attempt cannot both succeed.`);
+    lean(`namespace Occ
+
+/-- The server's record: the log, each entry with the key of the batch it came from. -/
+structure Record where
+  log : List (Nat × List Op)
+  deriving Repr
+
+/-- Commit a batch under a key, unless that key is already in the log. -/
+def submit (r : Record) (key : Nat) (batch : List Op) : Record :=
+  if r.log.any (·.1 == key) then r else ⟨r.log ++ [(key, batch)]⟩
+
+#eval (submit (submit ⟨[]⟩ 7 [.ins 0 'x' 1]) 7 [.ins 0 'x' 1]).log.length
+
+end Occ`);
+    sec("Exercises");
+    ex("reach(Cond, p = read ∧ q = done ∧ a = 1)", r`In ‹Cond›, can a worker have to go back and read again after the other committed? Answer ‹true› or ‹false›.`, [r`Let both read version 1, then let ‹q› commit first.`], { hide: true });
+    ex("reach(Cond, p = done ∧ q = done)", r`Do both workers' batches get committed in some run of ‹Cond›? Answer ‹true› or ‹false›.`, []);
+    lx(r`theorem Occ.submit_twice (r : Occ.Record) (key : Nat) (batch : List Occ.Op) :
+    Occ.submit (Occ.submit r key batch) key batch = Occ.submit r key batch := by`, r`Prove that a batch submitted twice under one key is committed once.`, r`  unfold Occ.submit
+  by_cases h : r.log.any (·.1 == key) <;> simp [h]`, [
+      r`Unfold ‹submit› and split on whether the key was already in the log: ‹by_cases h : r.log.any (·.1 == key)›.`,
+      r`If it was not, the inner submit appends an entry with that key, so the outer one finds it: ‹simp [h]› knows ‹List.any_append›.`,
+    ]);
+    md(r`
+> [!summary]
+> Workers that read a version and write it plus one lose an update: two commits get one version, and the log forks into a diamond. Readers then rebase along different paths and diverge, the TP2 false tie again ("axyc" against "ayxc"). A conditional write on the version, in a read, rewrite, write, retry loop, keeps the log a line: the server's one site is its version counter and conditional write, however many workers use them. Retries are made harmless with an idempotency key per batch, committed in the same write.
+`);
+    md(r`A batch is several edits sent as one. What is the one edit they amount to?`);
+  });
+
+  /** Lesson 3's associativity proof: a case for each way the three edits can start, each one unfolding
+   *  ‹compose› and using the statement for shorter edits. */
+  const assocCases = (() => {
+    const out = ["  | a, b, [] => by simp only [compose]", "  | a, b, .ins x :: c => by simp only [compose]; congr 1; exact compose_assoc a b c"];
+    const step = "by simp only [compose] <;> first | rfl | exact compose_assoc _ _ _ | (congr 1; exact compose_assoc _ _ _)";
+    for (const ch of ["keep", "del"]) {
+      out.push(`  | a, [], .${ch} :: c => by simp only [compose, compose_nil_left]`,
+        `  | a, .ins y :: b, .${ch} :: c => ${step}`);
+      for (const bh of ["keep", "del"]) out.push(
+        `  | [], .${bh} :: b, .${ch} :: c => by simp only [compose, compose_nil_left]`,
+        `  | .ins z :: a, .${bh} :: b, .${ch} :: c => ${step}`,
+        `  | .keep :: a, .${bh} :: b, .${ch} :: c => ${step}`,
+        `  | .del :: a, .${bh} :: b, .${ch} :: c => by simp only [compose]; congr 1; rw [compose_assoc a]; simp only [compose]`);
+    }
+    return out.join("\n");
+  })();
+
+  add("03-composing.chalk", "Composing edits", "One edit that does two: composition is a monoid, applying the composite is applying one then the other, and it is neither commutative nor idempotent, so a queue rolled up by composition keeps its order; then runs of retain, insert and delete with formatting, and concurrent formatting by priority.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Composing edits");
+    md(r`
+> [!goal]
+> Compose two edits into one, prove that the composite does what the two did one after the other, find the laws composition has and the two it lacks, and extend edits to formatted text.
+`);
+    md(r`A client's pending queue can grow to hundreds of keystrokes while a batch is in flight. Sending them as one edit is smaller, and rebasing one edit is cheaper than rebasing hundreds. That needs **composition**: one edit that does what two did in turn.`);
+    sec("Edits as steps");
+    md(r`Lesson 1's edits name a position. To compose them, write an edit instead as a walk along the text: for each character, **keep** it or **delete** it, and **insert** new characters between. Past the edit's last step, the rest of the text is kept. Inserting x at position 1 is ‹[keep, ins 'x']›; deleting position 2 is ‹[keep, keep, del]›.`);
+    lean(`namespace Compose
+
+/-- One step of an edit, read left to right along the text: keep the next character, insert one, or delete the next. -/
+inductive Step where
+  | keep
+  | ins (c : Char)
+  | del
+  deriving Repr, DecidableEq
+
+/-- An edit is a list of steps; past its last step, the text is kept. -/
+abbrev Edit := List Step
+
+def apply : Edit → List Char → List Char
+  | [], s => s
+  | .ins c :: e, s => c :: apply e s
+  | .keep :: e, x :: s => x :: apply e s
+  | .del :: e, _ :: s => apply e s
+  | .keep :: e, [] => apply e []
+  | .del :: e, [] => apply e []
+
+/-- ‹compose a b›: one edit that does ‹a›, then ‹b›. ‹b›'s steps walk along ‹a›'s output: ‹b›'s inserts go in
+as they are, ‹a›'s deletes happen before ‹b› sees anything, and each keep or delete of ‹b› meets what ‹a›
+kept or inserted. -/
+def compose : Edit → Edit → Edit
+  | a, [] => a
+  | a, .ins c :: b => .ins c :: compose a b
+  | [], b => b
+  | .del :: a, b => .del :: compose a b
+  | .ins _ :: a, .del :: b => compose a b
+  | .ins c :: a, .keep :: b => .ins c :: compose a b
+  | .keep :: a, .keep :: b => .keep :: compose a b
+  | .keep :: a, .del :: b => .del :: compose a b
+
+def run (e : Edit) (t : String) : String := String.ofList (apply e t.toList)
+
+#eval compose [.keep, .ins 'x'] [.keep, .keep, .keep, .del]
+#eval run (compose [.keep, .ins 'x'] [.keep, .keep, .keep, .del]) "abcd"
+#eval run [.keep, .keep, .keep, .del] (run [.keep, .ins 'x'] "abcd")
+
+end Compose`.replace(/‹|›/g, "`"));
+    md(r`Inserting x after the a and then deleting the third character of the result (the c, now that x has moved it) is one edit that keeps a, inserts x, keeps b and deletes c.`);
+    sec("A monoid");
+    md(r`
+> [!definition] Monoid
+> A **monoid** is a set with an operation that is **associative**, $(a \cdot b) \cdot c = a \cdot (b \cdot c)$, and has an **identity** $e$, with $e \cdot a = a = a \cdot e$. A semilattice ([Semilattices](#course=order-lattices&lesson=5)) is a monoid that is also commutative and idempotent.
+`);
+    md(r`Composition is a monoid with the empty edit as identity, and composing is applying one edit after the other, on any text the first edit fits: one that does not keep or delete past its end.`);
+    lean(`namespace Compose
+
+/-- How many characters of its text an edit reads: its keeps and deletes. -/
+def reads : Edit → Nat
+  | [] => 0
+  | .ins _ :: e => reads e
+  | _ :: e => reads e + 1
+
+/-- Composing is applying one after the other, on any text the first edit fits. -/
+theorem apply_compose : ∀ (a b : Edit) (s : List Char), reads a ≤ s.length →
+    apply (compose a b) s = apply b (apply a s)
+  | [], [], s, _ => by simp only [compose, apply]
+  | _ :: _, [], s, _ => by simp only [compose, apply]
+  | a, .ins c :: b, s, h => by
+    cases a <;> simp only [compose, apply] <;> rw [apply_compose _ b s h] <;> rfl
+  | [], .keep :: b, s, _ => by simp only [compose, apply]
+  | [], .del :: b, s, _ => by simp only [compose, apply]
+  | .del :: a, .keep :: b, x :: s, h => by
+    simp only [compose, apply]; exact apply_compose a _ s (by simp [reads] at h; omega)
+  | .del :: a, .del :: b, x :: s, h => by
+    simp only [compose, apply]; exact apply_compose a _ s (by simp [reads] at h; omega)
+  | .ins _ :: a, .del :: b, s, h => by
+    simp only [compose, apply]; exact apply_compose a b s h
+  | .ins c :: a, .keep :: b, s, h => by
+    simp only [compose, apply]; rw [apply_compose a b s h]
+  | .keep :: a, .keep :: b, x :: s, h => by
+    simp only [compose, apply]; rw [apply_compose a b s (by simp [reads] at h; omega)]
+  | .keep :: a, .del :: b, x :: s, h => by
+    simp only [compose, apply]; exact apply_compose a b s (by simp [reads] at h; omega)
+  | .del :: _, .keep :: _, [], h => by simp [reads] at h
+  | .del :: _, .del :: _, [], h => by simp [reads] at h
+  | .keep :: _, .keep :: _, [], h => by simp [reads] at h
+  | .keep :: _, .del :: _, [], h => by simp [reads] at h
+termination_by a b => a.length + b.length
+
+/-- The empty edit is the identity, on either side. -/
+theorem compose_nil_left : ∀ (b : Edit), compose [] b = b
+  | [] => by simp only [compose]
+  | .ins c :: b => by simp only [compose, compose_nil_left b]
+  | .keep :: b => by simp only [compose]
+  | .del :: b => by simp only [compose]
+
+theorem compose_nil_right (a : Edit) : compose a [] = a := by cases a <;> simp only [compose]
+
+/-- Composition is associative, as edits: the same list of steps, however three edits are grouped. -/
+theorem compose_assoc : ∀ (a b c : Edit), compose (compose a b) c = compose a (compose b c)
+${assocCases}
+termination_by a b c => a.length + b.length + c.length
+
+end Compose`);
+    md(r`Both proofs follow ‹compose›: a case for each way the edits can start, each one unfolding a step and using the statement for shorter edits. The hypothesis of ‹apply_compose› is needed. On the empty text, ‹[keep, ins 'z']› finds nothing to keep and gives "z"; then ‹[keep, del]› keeps the z. But ‹compose› pairs the second edit's keep with the first edit's keep, as if that had kept a character, and its delete with the z: the composite is ‹[keep]›, which gives "". The first edit read past the end of its text, and then it is not about that text.`);
+    sec("What composition lacks");
+    md(r`
+> [!try]
+> Is typing x then y the same as typing y then x? Is typing x twice the same as typing it once?
+`);
+    lean(r`#eval (Compose.run (Compose.compose [.ins 'x'] [.ins 'y']) "ab", Compose.run (Compose.compose [.ins 'y'] [.ins 'x']) "ab")
+#eval (Compose.run (Compose.compose [.ins 'x'] [.ins 'x']) "ab", Compose.run [.ins 'x'] "ab")
+
+-- ‹compose› is defined by well-founded recursion, which ‹decide› does not unfold; ‹simp› uses its equations
+example : Compose.apply (Compose.compose [.ins 'x'] [.ins 'y']) "ab".toList
+    ≠ Compose.apply (Compose.compose [.ins 'y'] [.ins 'x']) "ab".toList := by simp [Compose.compose, Compose.apply]
+example : Compose.apply (Compose.compose [.ins 'x'] [.ins 'x']) "ab".toList
+    ≠ Compose.apply [.ins 'x'] "ab".toList := by simp [Compose.compose, Compose.apply]`.replace(/‹|›/g, "`"));
+    md(r`Neither commutative nor idempotent. Even overwriting, which is idempotent, is not commutative. A one-character document with three edits, ‹id› (change nothing) and "set it to x" and "set it to y", composed left to right:`);
+    m("let W = op({id, x, y}; [id, x, y; x, x, y; y, x, y])");
+    m("associative(W)");
+    m("commutative(W)", { work: true });
+    md(r`
+> [!mistake]
+> A queue of edits is not a set of updates to merge. [Semilattices](#course=order-lattices&lesson=5) found the laws a merge needs so that order, grouping and repetition do not matter; composition has only one of them, associativity. So a queue may be rolled up in any grouping (‹compose_assoc›: compose the first hundred keystrokes, then the next, or pairs at a time), but never in another order, and never with a repeat. A queue that rolls edits up with a merge, or that sorts or deduplicates them, changes what the user typed.
+`);
+    sec("Runs and formatting");
+    md(r`Rich-text editors usually write an edit as **runs** rather than single steps: retain $n$ characters, insert a string, delete $n$ characters (a format often called a delta). A run of retains can also carry **attributes**: "make these characters bold", "set their colour". Runs are steps compressed, so their composition is the one above, run length aside:`);
+    lean(`namespace Compose
+
+/-- A run: keep ‹n› characters, insert a string, or delete ‹n›. -/
+inductive Run where
+  | retain (n : Nat)
+  | insert (s : String)
+  | delete (n : Nat)
+  deriving Repr
+
+def Run.steps : Run → Edit
+  | .retain n => List.replicate n .keep
+  | .insert s => s.toList.map .ins
+  | .delete n => List.replicate n .del
+
+def runs (rs : List Run) : Edit := rs.flatMap Run.steps
+
+#eval run (runs [.retain 6, .delete 5, .insert "there"]) "hello world"
+
+end Compose`);
+    md(r`Formatting changes on one character transform like edits. Two people make the same word bold and not bold at once: a format change sets some attributes and leaves the rest, and of two concurrent changes to one attribute, the one with **priority** keeps its value; the other drops that attribute and keeps the rest of its change. Priority is a tie-break, as the site was for two inserts at one place: arbitrary, but the same at every site.`);
+    lean(`namespace Compose
+
+/-- A character's format: a value for each attribute it has. -/
+abbrev Format := String → Option String
+
+/-- A format change: a new value for each attribute it sets, ‹none› for those it leaves alone. -/
+abbrev Change := String → Option String
+
+def Change.apply (c : Change) (f : Format) : Format := fun k => (c k).or (f k)
+
+/-- ‹c›, rewritten past a concurrent ‹d›. With priority, ‹c› keeps everything; without, it drops what ‹d› sets. -/
+def Change.T (c d : Change) (priority : Bool) : Change :=
+  fun k => if priority then c k else if (d k).isSome then none else c k
+
+def bold : Change := fun k => if k = "bold" then some "true" else none
+def plainRed : Change := fun k => if k = "bold" then some "false" else if k = "color" then some "red" else none
+def none₀ : Format := fun _ => none
+
+-- bold has priority: both sites end bold, and red
+#eval ((plainRed.T bold false).apply (bold.apply none₀) "bold", (bold.T plainRed true).apply (plainRed.apply none₀) "bold")
+#eval ((plainRed.T bold false).apply (bold.apply none₀) "color", (bold.T plainRed true).apply (plainRed.apply none₀) "color")
+
+end Compose`.replace(/‹|›/g, "`"));
+    sec("Exercises");
+    ex("identity(W)", r`Which element of ‹W› is its identity?`, [r`The edit that changes nothing.`]);
+    ex("idempotent(W)", r`Is overwriting idempotent: is setting the character to x twice the same as once? Answer ‹true› or ‹false›.`, [r`Read the diagonal of the table.`], { hide: true });
+    lx(r`theorem Compose.change_tp1 (c d : Compose.Change) (f : Compose.Format) :
+    (d.T c false).apply (c.apply f) = (c.T d true).apply (d.apply f) := by`, r`Prove TP1 for format changes: ‹c› with priority, ‹d› without, on any format.`, r`  funext k
+  simp only [Compose.Change.apply, Compose.Change.T]
+  cases hc : c k <;> cases hd : d k <;> simp [Option.or]`, [
+      r`Two formats are equal when they agree on every attribute: ‹funext k›.`,
+      r`Unfold ‹Change.apply› and ‹Change.T›, then split on what ‹c› and ‹d› say about ‹k›: ‹cases hc : c k <;> cases hd : d k›.`,
+    ]);
+    md(r`
+> [!summary]
+> Edits compose: ‹apply (compose a b) = apply b ∘ apply a› on any text the first fits, composition is associative and has the empty edit as identity, so edits form a monoid. It is not commutative and not idempotent, so a queue may be rolled up in any grouping but must keep its order and its repeats, which a merge would not. Runs of retain, insert and delete are steps compressed, and attributes on retains transform with a priority to break the tie.
+`);
+    md(r`An edit moves the text under everything that points into it: cursors, selections, comments. Next: moving them with it.`);
+  });
+
+  app("03a-patches.chalk", "Patches as morphisms", "Edits as arrows between texts, composition as their composition, and the merge of two concurrent inserts as a pushout: the merged order is a partial order, and the tie-break is what makes it a text.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Patches as morphisms");
+    md(r`
+> [!goal]
+> Read edits as arrows from one text to another, and a merge of two concurrent edits as the smallest text both lead into; see where that picture needs a tie-break.
+`);
+    md(r`An application of lesson 3, outside the course's order. Lesson 3's edits composed into a monoid. A monoid has one object; edits have two ends, the text before and the text after, and an edit only composes with one that starts where it ends. That is a **category**: texts as objects, edits as arrows, composition and the empty edit as before.`);
+    sec("An insert is an embedding");
+    md(r`For inserts, the arrow is visible in the texts: the old text sits inside the new one, in order, as a **sublist**. Composition of inserts is composition of embeddings.`);
+    lean(`namespace Patches
+
+def insAt : Nat → Char → List Char → List Char
+  | 0, x, s => x :: s
+  | _ + 1, x, [] => [x]
+  | p + 1, x, y :: s => y :: insAt p x s
+
+end Patches`);
+    lx(r`theorem Patches.sublist_insAt (x : Char) : ∀ (p : Nat) (s : List Char), s.Sublist (Patches.insAt p x s) := by`, r`Prove that an insert keeps the old text, in order, inside the new one.`, r`  intro p s
+  induction s generalizing p with
+  | nil => cases p <;> exact List.Sublist.slnil.cons _
+  | cons y s ih =>
+    cases p with
+    | zero => exact (List.Sublist.refl _).cons _
+    | succ p => exact (ih p).cons_cons y`, [
+      r`Induction on ‹s›, for every ‹p›, then cases on ‹p›.`,
+      r`‹List.Sublist.cons› adds an element on the right only; ‹List.Sublist.cons_cons› adds the same element on both sides.`,
+    ]);
+    sec("A merge is a pushout");
+    md(r`Two concurrent edits $a : s \to s_a$ and $b : s \to s_b$ start from one text. A merge is a text $m$ with edits $s_a \to m$ and $s_b \to m$ such that both ways round from $s$ agree: TP1's square. The best merge is the **pushout**: a merge through which every other merge factors, the least text that both lead into, adding nothing either side did not.`);
+    md(r`For inserts, order theory computes it. Take "ab", and two inserts between a and b: x by one person and y by another. A text is a chain of characters; each side knows its chain, and the merge must contain both orders and nothing more:`);
+    m("let Mg = poset({a, x, y, b}; a < x, x < b, a < y, y < b)");
+    m("le(Mg, x, y)");
+    m("le(Mg, y, x)");
+    md(r`
+> [!note] The pushout is not a text
+> The least order containing both sides has x and y incomparable: nothing either person did puts one before the other. A text needs a chain. So the pushout of the two inserts exists among partial orders of characters, and not among texts; choosing a chain above it (x before y, or y before x) adds information that neither edit had. That choice is the tie-break by site of lesson 1, and the RGA's order on ids in [Collaborative text](#course=crdt&lesson=10&app=1). Mimram and Di Giusto, "A Categorical Theory of Patches", develop patches as morphisms and merging as pushouts in full; this notebook builds only the smallest piece of the idea, for inserts, and does not follow their construction.
+`);
+    sec("Exercises");
+    ex("join(Mg, x, y)", r`In the merged order, what is the least character after both x and y?`, [r`Both inserts went before the b.`]);
+    md(r`
+> [!summary]
+> Edits are arrows between texts and compose as arrows do; an insert embeds the old text in the new one. A merge of two concurrent edits is a square, and the best merge a pushout. For two inserts at one place the pushout is a partial order in which the two characters are incomparable: a text needs a tie-break on top.
+`);
+  });
+
+  add("04-positions.chalk", "Mapping positions", "Moving a cursor, a selection or a comment's anchor through an edit, with a bias for text typed exactly there; the map is monotone, so ranges stay ranges; a range whose text is deleted collapses, and the policy that keeps it, flagged.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Mapping positions");
+    md(r`
+> [!goal]
+> Move a position through an edit, prove that the move keeps positions in order, and decide what happens to a comment whose text has been deleted.
+`);
+    md(r`Not only edits point into the text. A cursor, a selection, a comment anchored to a phrase: each is a **position**, a gap between two characters numbered from 0, or a pair of them. When an edit arrives, every position must move with the text, or it points at the wrong place, as Bob's delete did in [Collaborative text](#course=crdt&lesson=10&app=1).`);
+    sec("Bias");
+    md(r`An insert at $p$ moves every position after $p$ one place right and leaves those before it. A position exactly at $p$ could go either way: a cursor where someone else types should usually stay before their text, and a cursor where you type goes after yours. That choice is the position's **bias**, left or right. A delete at $p$ removes the character between gaps $p$ and $p + 1$, and the two gaps become one.`);
+    lean(`namespace Anchor
+
+/-- An edit, as far as a position cares: an insert at ‹p›, or a delete at ‹p›. -/
+inductive Op where
+  | ins (p : Nat)
+  | del (p : Nat)
+  deriving Repr, DecidableEq
+
+/-- Which way a position goes when text is inserted exactly there. -/
+inductive Bias where
+  | left   -- stay before the new text
+  | right  -- move past it
+  deriving Repr, DecidableEq
+
+/-- Where position ‹k› is after the edit. -/
+def map (b : Bias) : Op → Nat → Nat
+  | .ins p, k => if k < p ∨ (k = p ∧ b = .left) then k else k + 1
+  | .del p, k => if k ≤ p then k else k - 1
+
+#eval (List.range 6).map (map .left (.ins 2))
+#eval (List.range 6).map (map .right (.ins 2))
+#eval (List.range 6).map (map .left (.del 2))
+
+end Anchor`.replace(/‹|›/g, "`"));
+    md(r`A text of five characters has positions 0 to 5. The same maps as the engine's maps between chains, with the insert at 2, right bias:`);
+    m("let P6 = chain(6)");
+    m("let P7 = chain(7)");
+    m("let insR = map(P6, P7; 0->0, 1->1, 2->3, 3->4, 4->5, 5->6)");
+    m("monotone(P6, P7, insR)");
+    sec("Monotone");
+    md(r`
+> [!try]
+> A selection runs from position 1 to position 4. Could an edit move its start past its end?
+`);
+    md(r`Not if mapping is **monotone**, in the sense of [Special elements and monotone maps](#course=order-lattices&lesson=2): $k \le m$ implies $\mathrm{map}(k) \le \mathrm{map}(m)$. Positions are a chain, and an edit maps the chain of the old text into the chain of the new one, keeping order. So whatever was before something stays before it, or lands on it.`);
+    lean(`namespace Anchor
+
+theorem map_monotone (b : Bias) (o : Op) {k m : Nat} (h : k ≤ m) : map b o k ≤ map b o m := by
+  cases b <;> cases o <;> simp only [map, reduceCtorEq, and_true, and_false, or_false] <;> split <;> split <;> omega
+
+/-- Left bias never goes further than right bias. -/
+theorem map_left_le_right (o : Op) (k : Nat) : map .left o k ≤ map .right o k := by
+  cases o <;> simp only [map, reduceCtorEq, and_true, and_false, or_false] <;> split <;> (try split) <;> omega
+
+end Anchor`);
+    md(r`A map that is not monotone, such as one that mirrors the text, turns selections inside out:`);
+    m("let mirror = map(P6, P7; 0->6, 1->5, 2->3, 3->2, 4->1, 5->0)");
+    m("monotone(P6, P7, mirror)", { work: true });
+    sec("Ranges and anchors");
+    md(r`A range is two positions, a start and an end. Give its start left bias and its end right bias: text typed at either edge joins the range, and by the two theorems a range with start $\le$ end keeps start $\le$ end. (The other choice, start right and end left, keeps typed text out but can turn an empty range inside out: an insert at its one position moves the start past the end. A range of that kind needs a clamp.)`);
+    md(r`
+> [!try]
+> A comment is anchored to "bc" in "abcd", positions 1 to 3. Someone deletes the b and then the c. Where is the comment?
+`);
+    lean(`namespace Anchor
+
+/-- A range, from ‹start› to ‹stop›, and whether its text has been deleted. -/
+structure Range where
+  start : Nat
+  stop : Nat
+  orphaned : Bool := false
+  deriving Repr, DecidableEq
+
+/-- Map a range through an edit. A range that had text and has none left is kept, and flagged. -/
+def Range.map (r : Range) (o : Op) : Range :=
+  { start := Anchor.map .left o r.start, stop := Anchor.map .right o r.stop,
+    orphaned := r.orphaned || (r.start < r.stop && Anchor.map .left o r.start == Anchor.map .right o r.stop) }
+
+#eval [Op.del 1, Op.del 1].foldl Range.map ⟨1, 3, false⟩
+
+theorem Range.map_ordered (r : Range) (o : Op) (h : r.start ≤ r.stop) : (r.map o).start ≤ (r.map o).stop :=
+  Nat.le_trans (map_monotone .left o h) (map_left_le_right o r.stop)
+
+/-- Anchors are mapped, never dropped. -/
+theorem mapAll_length (rs : List Range) (o : Op) : (rs.map (·.map o)).length = rs.length := by simp
+
+end Anchor`.replace(/‹|›/g, "`"));
+    md(r`The range **collapses**: start and end meet at 1, with nothing between them. Each delete was fine on its own; the comment's text is simply gone. The same happens when the deletes are concurrent with the comment, on another client: once the server has ordered them, the client maps its anchor through each.`);
+    md(r`
+> [!definition] Orphaned anchors
+> An anchor whose text has been deleted is **orphaned**. The policy here: an orphaned anchor is kept, at the place its text was, and flagged; it is never deleted by the mapping. A person can then see the comment and decide, and an undo that brings the text back finds the anchor still there.
+`);
+    md(r`
+> [!mistake]
+> Deleting collapsed anchors is the tempting tidy-up, and it loses a comment someone wrote because of an edit someone else made, possibly concurrently, without either of them deciding to. ‹mapAll_length› is the policy as a theorem: mapping keeps every anchor. Whether it stays flagged is the next exercise.
+`);
+    sec("Exercises");
+    m("let P5 = chain(5)");
+    m("let delm = map(P6, P5; 0->0, 1->1, 2->2, 3->2, 4->3, 5->4)");
+    ex("monotone(P6, P5, delm)", r`‹delm› is the map of a delete at 2 on a text of five characters. Is it monotone? Answer ‹true› or ‹false›.`, [r`Gaps 2 and 3 become one gap; does anything overtake anything?`], { hide: true });
+    lx(r`theorem Anchor.Range.map_keeps_flag (r : Anchor.Range) (o : Anchor.Op) (h : r.orphaned = true) : (r.map o).orphaned = true := by`, r`Prove that an orphaned anchor stays flagged through any edit, even one that types text back into it.`, r`  simp [Anchor.Range.map, h]`, [r`Unfold ‹Range.map›: the new flag is the old one, or something.`]);
+    md(r`
+> [!summary]
+> A position moves through an edit: past an insert before it, back past a delete before it, and, for an insert exactly there, the way its bias says. The map is monotone, and left bias stays below right bias, so a range with its start biased left and its end right stays a range. A range whose text is deleted collapses; it is kept and flagged as orphaned, never dropped.
+`);
+    md(r`Collapsing is one way for content to vanish. Next: a theorem that the transform itself never loses what people typed.`);
+  });
+
+  /** Lesson 5's lemmas: what stands where after an insert or a delete. Lesson 8 states them again. */
+  const PRESERVE_LEMMAS = r`theorem mem_insAt (x : Char) : ∀ (p : Nat) (s : List Char), x ∈ insAt p x s
+  | 0, _ => List.mem_cons_self
+  | _ + 1, [] => List.mem_cons_self
+  | p + 1, _ :: s => List.mem_cons_of_mem _ (mem_insAt x p s)
+
+theorem mem_insAt_of_mem {z : Char} (x : Char) : ∀ (p : Nat) (s : List Char), z ∈ s → z ∈ insAt p x s
+  | 0, s, h => List.mem_cons_of_mem _ h
+  | _ + 1, [], h => by cases h
+  | p + 1, y :: s, h => by
+    rcases List.mem_cons.mp h with rfl | h
+    · exact List.mem_cons_self
+    · exact List.mem_cons_of_mem _ (mem_insAt_of_mem x p s h)
+
+theorem getElem?_insAt (x : Char) : ∀ (p : Nat) (s : List Char), p ≤ s.length → (insAt p x s)[p]? = some x
+  | 0, s, _ => rfl
+  | _ + 1, [], h => by simp at h
+  | p + 1, _ :: s, h => by
+    simp only [insAt, List.getElem?_cons_succ]; exact getElem?_insAt x p s (by simp at h; omega)
+
+/-- Deleting at ‹q› keeps what stands at any other place ‹p›. -/
+theorem mem_delAt {z : Char} : ∀ (l : List Char) (p q : Nat), l[p]? = some z → q ≠ p → z ∈ delAt q l
+  | [], _, _, h, _ => by simp at h
+  | y :: l, 0, 0, _, hq => absurd rfl hq
+  | y :: l, 0, q + 1, h, _ => by simp at h; subst h; exact List.mem_cons_self
+  | y :: l, p + 1, 0, h, _ => by simp only [delAt]; exact List.mem_of_getElem? h
+  | y :: l, p + 1, q + 1, h, hq => by
+    simp only [delAt]
+    exact List.mem_cons_of_mem _ (mem_delAt l p q (by simpa using h) (by omega))
+
+theorem getElem?_insAt_lt (x : Char) : ∀ (s : List Char) (p q : Nat), q < p → p ≤ s.length → (insAt p x s)[q]? = s[q]?
+  | [], p + 1, q, _, h => by simp at h
+  | y :: s, p + 1, 0, _, _ => rfl
+  | y :: s, p + 1, q + 1, h, h' => by
+    simp only [insAt, List.getElem?_cons_succ]; exact getElem?_insAt_lt x s p q (by omega) (by simp at h'; omega)
+  | _, 0, q, h, _ => by omega
+
+theorem getElem?_insAt_ge (x : Char) : ∀ (s : List Char) (p q : Nat), p ≤ q → (insAt p x s)[q + 1]? = s[q]?
+  | s, 0, q, _ => rfl
+  | [], p + 1, q, h => by cases q <;> simp [insAt]
+  | y :: s, p + 1, 0, h => by omega
+  | y :: s, p + 1, q + 1, h => by
+    simp only [insAt, List.getElem?_cons_succ]; exact getElem?_insAt_ge x s p q (by omega)
+
+theorem delAt_nil (p : Nat) : delAt p [] = [] := by cases p <;> rfl
+
+theorem getElem?_delAt_lt : ∀ (s : List Char) (p q : Nat), q < p → (delAt p s)[q]? = s[q]?
+  | [], p, q, _ => by simp [delAt_nil]
+  | y :: s, p + 1, 0, _ => rfl
+  | y :: s, p + 1, q + 1, h => by
+    simp only [delAt, List.getElem?_cons_succ]; exact getElem?_delAt_lt s p q (by omega)
+  | _ :: _, 0, q, h => by omega
+
+theorem getElem?_delAt_gt : ∀ (s : List Char) (p q : Nat), p < q → (delAt p s)[q - 1]? = s[q]?
+  | [], p, q, _ => by simp [delAt_nil]
+  | y :: s, 0, q + 1, _ => by simp [delAt]
+  | y :: s, p + 1, q + 1, h => by
+    simp only [delAt]
+    cases q with
+    | zero => omega
+    | succ q => simp only [Nat.add_sub_cancel, List.getElem?_cons_succ]; exact getElem?_delAt_gt s p (q + 1) (by omega)
+  | _ :: _, _, 0, h => by omega`;
+  /** Lesson 5's preservation theorems, for the course's transform (they need ‹Op.valid› and ‹Op.target›). */
+  const PRESERVE_THMS = r`theorem insert_kept (b : Op) (s : List Char) (p : Nat) (x : Char) (i : Nat) (ha : p ≤ s.length) :
+    x ∈ (T b (.ins p x i)).apply ((Op.ins p x i).apply s) := by
+  cases b with
+  | ins q y j => simp only [T]; split <;> exact mem_insAt_of_mem _ _ _ (mem_insAt x p s)
+  | del q =>
+    simp only [T]; split
+    · exact mem_delAt _ p _ (getElem?_insAt x p s ha) (by omega)
+    · exact mem_delAt _ p _ (getElem?_insAt x p s ha) (by omega)
+  | nop => exact mem_insAt x p s
+
+theorem insert_kept' (b : Op) (s : List Char) (p : Nat) (x : Char) (i : Nat) :
+    x ∈ (T (.ins p x i) b).apply (b.apply s) := by
+  cases b with
+  | ins q y j => simp only [T]; split <;> exact mem_insAt x _ _
+  | del q => simp only [T]; split <;> exact mem_insAt x _ _
+  | nop => exact mem_insAt x _ _
+
+theorem delete_aimed (a : Op) (s : List Char) (q : Nat) (ha : a.valid s) :
+    (T (.del q) a = .nop ∧ a = .del q) ∨ (T (.del q) a).target (a.apply s) = (Op.del q).target s := by
+  cases a with
+  | ins p y j =>
+    simp only [Op.valid] at ha
+    right; simp only [T]; split
+    · exact getElem?_insAt_ge y s p q (by omega)
+    · exact getElem?_insAt_lt y s p q (by omega) ha
+  | del p =>
+    by_cases h : p = q
+    · subst h; left; simp [T]
+    · right; simp only [T]; split
+      · exact getElem?_delAt_gt s p q (by omega)
+      · exact getElem?_delAt_lt s p q (by omega)
+  | nop => right; rfl`;
+
+  add("05-preserving.chalk", "Preserving content", "Converging is not keeping what people did: every character either edit inserts is in the result, and a delete removes only a character of its own text, proved for the course's transform; a rule that drops an insert inside a deleted range, which converges and fails the theorem; and the RGA's tombstones, which keep it by construction.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Preserving content");
+    md(r`
+> [!goal]
+> State what it means for a transform to keep what people did, prove it for the course's transform, and see a transform that converges and does not.
+`);
+    md(r`TP1 says the two sites end with the same text. It says nothing about which text. A transform that turned every edit into ‹nop› would satisfy it: both sites keep the old text, and agree. [Last writer wins](#course=crdt&lesson=5) made the same point about registers: converging is not the same as keeping what users did. That needs a second property, about content.`);
+    md(r`
+> [!definition] Preservation
+> A transform **preserves content** when, for any two concurrent edits on one text:
+> 1. every character either edit inserts is in the result;
+> 2. a delete, rewritten past the other edit, removes the character it removed in its own text, or nothing if the other edit removed that character already: it never removes a character the other edit inserted.
+`);
+    lean(collabCore("Preserve", r`/-- What a delete removes: the character at its place, in the text it is applied to. -/
+def Op.target : Op → List Char → Option Char
+  | .del p, s => s[p]?
+  | _, _ => none`));
+    md(r`The proofs are inductions on the text, about what stands where after an insert or a delete:`);
+    lean(`namespace Preserve
+
+${PRESERVE_LEMMAS}
+
+end Preserve`.replace(/‹|›/g, "`"));
+    md(r`Now the two halves of preservation. An insert is never lost, whichever edit it met: rewritten past anything, it is still an insert of its character (‹insert_kept'›), and the other edit, rewritten past it, never deletes the place it occupies (‹insert_kept›). A delete stays aimed (‹delete_aimed›).`);
+    lean(`namespace Preserve
+
+/-- An edit that makes sense on a text: an insert at one of its places, a delete of one of its characters. -/
+def Op.valid : Op → List Char → Prop
+  | .ins p _ _, s => p ≤ s.length
+  | .del p, s => p < s.length
+  | .nop, _ => True
+
+${PRESERVE_THMS}
+
+end Preserve`.replace(/‹|›/g, "`"));
+    md(r`
+> [!note] What "the character" means
+> ‹x ∈ result› says a character equal to x is in the result. If the text already held an x, that is weaker than "the x that was typed". The proof is stronger than the statement: it follows the inserted x to its place (‹getElem?_insAt›) and shows the other edit's delete lands elsewhere. Give characters ids, as the RGA does, and the statement says what the proof shows.
+`);
+    sec("A rule that drops an edit");
+    md(r`With deletes of a whole range, a tempting rule is: an insert inside a range someone deleted concurrently is dropped, and the delete grows to swallow it, so both sites agree. Take "abcd", an insert of x at 2 (between b and c) and, concurrently, a delete of the two characters from 1 ("bc"):`);
+    lean(`namespace Preserve
+
+/-- Range edits: insert a character, delete ‹n› characters from ‹p›. -/
+inductive ROp where
+  | ins (p : Nat) (x : Char)
+  | delr (p n : Nat)
+  | nop
+  deriving Repr, DecidableEq
+
+def ROp.apply : ROp → List Char → List Char
+  | .ins p x, s => insAt p x s
+  | .delr p n, s => s.take p ++ s.drop (p + n)
+  | .nop, s => s
+
+def runR (os : List ROp) (t : String) : String := String.ofList (os.foldl (fun s o => o.apply s) t.toList)
+
+def a : ROp := .ins 2 'x'
+def b : ROp := .delr 1 2
+
+-- the dropping rule: the insert becomes nothing, the delete grows by one
+#eval (runR [a, .delr 1 3] "abcd", runR [b, .nop] "abcd")
+-- a preserving rule: the insert lands where the range was, the delete is split around it
+#eval (runR [a, .delr 1 1, .delr 2 1] "abcd", runR [b, .ins 1 'x'] "abcd")
+
+theorem dropping_converges : runR [a, .delr 1 3] "abcd" = runR [b, .nop] "abcd" := by decide
+theorem dropping_loses : 'x' ∉ (runR [a, .delr 1 3] "abcd").toList := by decide
+
+end Preserve`);
+    md(r`The dropping rule converges, "ad" at both sites, and loses the x: it fails half 1 of preservation. Nothing in TP1 notices. The preserving rule keeps the x where the range was, "axd", at the price of a delete split in two: a rewritten edit is no longer always one edit.`);
+    md(r`
+> [!mistake]
+> "Both sites agree" is the test that convergence checks pass, and a rule can pass it by throwing work away. The person who typed x sees it vanish, with no conflict reported. Test content as well as agreement: the course's capstone checks both on every small case.
+`);
+    sec("The RGA keeps it by construction");
+    md(r`In [Collaborative text](#course=crdt&lesson=10&app=1)'s RGA, an insert names the character it follows, by id, and a delete only sets a tombstone: the deleted character stays in the state. So an insert after a character someone deleted still has its place:`);
+    m(`replicas(rga; a, b
+  a: ins a at 0
+  a: ins b at 1
+  a: ins c at 2
+  a -> b
+  a: del 1
+  b: ins x at 2
+  a -> b
+  b -> a
+)`, { work: true });
+    md(r`The x went after b@2a, which ‹a› had deleted; the tombstone kept its place, and both read "axc". Preservation there is a property of the data, not of a transform: nothing is ever removed from the state, only hidden. The transform has to earn it case by case, which is what the theorems above do.`);
+    sec("Exercises");
+    ex(`replicas(rga; a, b
+  a: ins o at 0
+  a: ins k at 1
+  a -> b
+  a: del 0
+  a: del 0
+  b: ins s at 2
+  a -> b
+  b -> a
+)`, r`Alice deletes all of "ok" while Bob types an s after the k. What does each replica read? Answer as the cell would, ‹{a↦…, b↦…}›.`, [r`The s goes after the k by id; the k is a tombstone, not gone.`], { hide: true });
+    lx(r`theorem Preserve.dropping_loses_y : 'y' ∉ (Preserve.runR [.ins 3 'y', .delr 0 5] "abcd").toList := by`, r`The dropping rule again: on "abcd", y is typed at 3 while all four characters are deleted, and the delete grows to five. Prove that y is lost.`, r`  decide`, [r`A fixed text and fixed edits: ‹decide› computes it.`]);
+    md(r`
+> [!summary]
+> TP1 is agreement; preservation is keeping what people did: every inserted character is in the result, and a rewritten delete removes the character it meant or nothing. Both are proved here for the course's transform, by induction on the text. A rule that drops an insert inside a concurrently deleted range converges and loses the insert. The RGA keeps content by never removing anything from its state.
+`);
+    md(r`The server's log is where every edit ends up. Next: the log as the state itself, and as the record of what was done.`);
+  });
+
+  /** Lesson 6's edits, as the log keeps them: a delete records its character, so that it can be undone. */
+  const LOG_CORE = r`/-- Insert ‹x› at position ‹p›. -/
+def insAt : Nat → Char → List Char → List Char
+  | 0, x, s => x :: s
+  | _ + 1, x, [] => [x]
+  | p + 1, x, y :: s => y :: insAt p x s
+
+/-- Delete the character at position ‹p›. -/
+def delAt : Nat → List Char → List Char
+  | _, [] => []
+  | 0, _ :: s => s
+  | p + 1, y :: s => y :: delAt p s
+
+/-- An edit as the log keeps it. A delete records the character it removed, so that it can be undone. -/
+inductive Op where
+  | ins (p : Nat) (x : Char) (site : Nat)
+  | del (p : Nat) (x : Char)
+  | nop
+  deriving Repr, DecidableEq
+
+def Op.apply : Op → List Char → List Char
+  | .ins p x _, s => insAt p x s
+  | .del p _, s => delAt p s
+  | .nop, s => s
+
+/-- The course's transform, for these edits. -/
+def T : Op → Op → Op
+  | .ins p x i, .ins q _ j => if q < p ∨ (q = p ∧ j < i) then .ins (p + 1) x i else .ins p x i
+  | .ins p x i, .del q _ => if q < p then .ins (p - 1) x i else .ins p x i
+  | .del p x, .ins q _ _ => if q ≤ p then .del (p + 1) x else .del p x
+  | .del p x, .del q _ => if q < p then .del (p - 1) x else if q = p then .nop else .del p x
+  | a, .nop => a
+  | .nop, _ => .nop
+
+/-- The inverse of an edit: an insert undone by deleting its character, a delete by putting the character back. -/
+def Op.inv : Op → Op
+  | .ins p x _ => .del p x
+  | .del p x => .ins p x 0
+  | .nop => .nop`;
+  /** IP1's proof: an edit's inverse undoes it, on a text the edit fits. */
+  const LOG_INV = r`theorem delAt_insAt (x : Char) : ∀ (p : Nat) (s : List Char), p ≤ s.length → delAt p (insAt p x s) = s
+  | 0, s, _ => rfl
+  | _ + 1, [], h => by simp at h
+  | p + 1, y :: s, h => by simp only [insAt, delAt]; rw [delAt_insAt x p s (by simp at h; omega)]
+
+theorem insAt_delAt (x : Char) : ∀ (p : Nat) (s : List Char), s[p]? = some x → insAt p x (delAt p s) = s
+  | _, [], h => by simp at h
+  | 0, y :: s, h => by simp at h; subst h; rfl
+  | p + 1, y :: s, h => by simp only [delAt, insAt]; rw [insAt_delAt x p s (by simpa using h)]
+
+/-- What makes an edit undoable: an insert within the text, a delete that names the character it removes. -/
+def Op.fits : Op → List Char → Prop
+  | .ins p _ _, s => p ≤ s.length
+  | .del p x, s => s[p]? = some x
+  | .nop, _ => True
+
+theorem inv_apply (o : Op) (s : List Char) (h : o.fits s) : o.inv.apply (o.apply s) = s := by
+  cases o with
+  | ins p x _ => exact delAt_insAt x p s h
+  | del p x => exact insAt_delAt x p s h
+  | nop => rfl`;
+
+  add("06-log.chalk", "The op log as state and audit", "The document as a fold of the log; snapshots and compaction, with the theorem that folding from a snapshot gives the same document; each edit kept as sent and as applied, so that every merge can be audited and undone; and views for readers that want the text.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("The op log as state and audit");
+    md(r`
+> [!goal]
+> Treat the log as the document's state, prove that a snapshot can stand in for its prefix, and keep enough in each entry to check and to undo what the server did.
+`);
+    md(r`Lesson 1's server kept a log and nothing else. The text at version $v$ is the first $v$ edits applied in turn: a **fold**, as in [Multisets, folds and the main theorem](#course=crdt&lesson=7). There, the fold was of a join, and order, grouping and repeats did not matter, which is what let replicas apply updates as they came. A fold of edits is lesson 3's monoid: grouping does not matter, order and repeats do, so the log fixes both.`);
+    m("let W = op({id, x, y}; [id, x, y; x, x, y; y, x, y])");
+    m("fold(W; x, y)");
+    m("fold(W; y, x)");
+    lean(`namespace OpLog
+
+${LOG_CORE}
+
+/-- The document is the log, folded: each edit applied in turn to what the ones before it made. -/
+def state (log : List Op) (s₀ : List Char) : List Char := log.foldl (fun s o => o.apply s) s₀
+
+end OpLog`.replace(/‹|›/g, "`"));
+    sec("Snapshots and compaction");
+    md(r`A log grows for ever, and a reader that wants version 10,000 should not replay 10,000 edits. Keep a **snapshot**: the text at some version $k$. Then the text at any later version is the snapshot with the edits after $k$ applied. The edits before $k$ can then be **compacted**, archived or dropped, as far as reading goes:`);
+    lean(`namespace OpLog
+
+/-- A snapshot at ‹k›, then the rest of the log: the same document. -/
+theorem snapshot (log : List Op) (s₀ : List Char) (k : Nat) :
+    state (log.drop k) (state (log.take k) s₀) = state log s₀ := by
+  simp only [state, ← List.foldl_append, List.take_append_drop]
+
+end OpLog`.replace(/‹|›/g, "`"));
+    md(r`
+> [!mistake]
+> Compaction is safe for reading, not for rebasing. A client whose base is older than the snapshot needs the edits after its base to rebase its batch past (lesson 1), and those are the ones compaction removed. A server that compacts must keep the log back to the oldest base it will accept, and tell a client with an older one to reload.
+`);
+    sec("As sent, and as applied");
+    md(r`The server rewrites every batch before appending it, so the log's edits are not the ones anyone typed. Keep both in each entry: the edit **as sent**, with its base version, and the edit **as applied**. Then anyone can **audit** a merge by redoing it: rebase the sent edit past the applied edits after its base, and compare.`);
+    lean(`namespace OpLog
+
+/-- An edit sent against an older version, rewritten past everything committed since. -/
+def rebase (o : Op) (since : List Op) : Op := since.foldl T o
+
+/-- What the log keeps of a commit: the edit as its author sent it, against which version, and as it was applied. -/
+structure Entry where
+  base : Nat
+  sent : Op
+  applied : Op
+  deriving Repr
+
+/-- An entry is right when its applied edit is its sent edit rebased past the entries after its base. -/
+def Entry.check (prior : List Entry) (e : Entry) : Bool :=
+  e.applied == rebase e.sent ((prior.drop e.base).map (·.applied))
+
+/-- The server's commit: rebase, then append, keeping both forms. -/
+def commit (log : List Entry) (base : Nat) (sent : Op) : List Entry :=
+  log ++ [⟨base, sent, rebase sent ((log.drop base).map (·.applied))⟩]
+
+/-- An audit replays the log, checking each entry against the ones before it. -/
+def auditFrom : List Entry → List Entry → Bool
+  | _, [] => true
+  | prior, e :: rest => e.check prior && auditFrom (prior ++ [e]) rest
+
+def audit (log : List Entry) : Bool := auditFrom [] log
+
+theorem auditFrom_append (e : Entry) : ∀ (prior rest : List Entry),
+    auditFrom prior (rest ++ [e]) = (auditFrom prior rest && e.check (prior ++ rest))
+  | prior, [] => by simp [auditFrom]
+  | prior, d :: rest => by
+    simp only [List.cons_append, auditFrom, auditFrom_append e (prior ++ [d]) rest, Bool.and_assoc,
+      List.append_assoc, List.nil_append]
+
+/-- A log the server built by commits passes the audit. -/
+theorem audit_commit (log : List Entry) (base : Nat) (sent : Op) (h : audit log = true) :
+    audit (commit log base sent) = true := by
+  simp [audit, commit, auditFrom_append, Entry.check] at *
+  exact h
+
+/-- Two commits against version 0, the second rebased past the first; then the same log with its second entry altered. -/
+def good : List Entry := commit (commit [] 0 (.ins 0 'x' 1)) 0 (.del 1 'b')
+def bad : List Entry := good.take 1 ++ (good.drop 1).map fun e => { e with applied := .del 1 'b' }
+
+#eval good
+#eval (audit good, audit bad)
+
+end OpLog`.replace(/‹|›/g, "`"));
+    md(r`On "abc", the first commit makes "xabc". The altered entry deletes position 1, which is now the a, not the b its author meant; the audit catches it. An audit is a check of the server by anyone with the log, and it needs both forms; the applied edits alone say what happened, not whether it should have.`);
+    sec("Undoing");
+    md(r`A delete that records the character it removed can be undone: put the character back. With both forms kept, any entry can be reversed, and lesson 5's preservation says what reversing has to bring back.`);
+    lean(`namespace OpLog
+
+${LOG_INV}
+
+end OpLog`.replace(/‹|›/g, "`"));
+    md(r`Undoing the last edit is applying its inverse. Undoing an edit from further back means rewriting its inverse past everything committed since, which needs more of the transform than TP1: [Selective undo](#course=collab&lesson=6&app=1), an optional notebook beside this lesson, checks how much more.`);
+    sec("Views for readers");
+    md(r`Most readers want the text, not the log: a search index, a preview, an export. Keep a **materialized view**, the text at the head, and update it on every commit by applying the new entry. It is the fold kept up to date, so it is right as long as every commit updates it once (the exercise below), and it can be rebuilt from a snapshot and the log whenever it is in doubt.`);
+    sec("Exercises");
+    ex("fold(W; x, id, y, id)", r`A log of overwrites on one character: ‹x›, then nothing, then ‹y›, then nothing. Fold it with ‹W›.`, [r`‹id› changes nothing; the last overwrite stands.`]);
+    lx(r`theorem OpLog.state_append (log : List OpLog.Op) (o : OpLog.Op) (s₀ : List Char) :
+    OpLog.state (log ++ [o]) s₀ = o.apply (OpLog.state log s₀) := by`, r`Prove that the view updated by one commit is the fold of the longer log: appending an edit to the log is applying it to the text.`, r`  simp [OpLog.state, List.foldl_append]`, [r`Unfold ‹state›; ‹List.foldl_append› splits the fold over the two parts.`]);
+    md(r`
+> [!summary]
+> The document is the log, folded, and since edits form a monoid and not a semilattice, the log's order is part of the state. A snapshot at $k$ followed by the rest of the log gives the same text (‹snapshot›), so readers need not replay everything, though rebasing still needs the log back to the oldest base. Keeping each edit as sent, with its base, and as applied lets anyone audit a merge, and a delete that records its character can be undone. A view is the fold kept up to date.
+`);
+    md(r`The log stores edits on plain text. A real document has more than text in it, and the next lesson asks how to store that without losing any of it.`);
+  });
+
+  app("06a-selective-undo.chalk", "Selective undo", "Undoing an edit that is not the last: its inverse rewritten past what came after, the three inverse properties that makes it sound, the one this transform has (IP1, proved), and the two it lacks (IP2 and IP3), with every failing pair on a small text.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Selective undo");
+    md(r`
+> [!goal]
+> Undo one person's edit while later edits stay, and find out which properties of the transform that needs and which this course's transform has.
+`);
+    md(r`An application of lesson 6, outside the course's order. In a shared document, "undo" should undo *my* last edit, even if others have edited since. That edit $a$ is somewhere back in the log, followed by edits $b_1, \ldots, b_n$. Its inverse $\bar a$ was made for the text just after $a$; to apply it now, rewrite it past $b_1, \ldots, b_n$, as a late batch is rebased.`);
+    md(r`
+> [!definition] The inverse properties
+> Three properties of a transform are known in the literature on undo in operational transformation as **IP1**, **IP2** and **IP3**:
+> - **IP1**: an edit followed by its inverse changes nothing: $\bar a(a(s)) = s$.
+> - **IP2**: rewriting $c$ past $a$ and then past $\bar a$ gives $c$ back: $T(T(c, a), \bar a) = c$.
+> - **IP3**: the inverse of $a$, rewritten past $T(b, a)$, is the inverse of $T(a, b)$: $T(\bar a, T(b, a)) = \overline{T(a, b)}$.
+`);
+    md(r`IP1 says the inverse is an inverse. IP2 says an edit and its undo, both in the history, cancel for anything rewritten past them. IP3 says that undoing $a$ after $b$ is the same as undoing the form of $a$ that $b$'s site saw.`);
+    lean(`namespace Undo
+
+${LOG_CORE}
+
+${LOG_INV}
+
+/-- IP2 for two edits. -/
+def ip2 (c a : Op) : Bool := T (T c a) a.inv == c
+
+/-- IP3 for two edits. -/
+def ip3 (a b : Op) : Bool := T a.inv (T b a) == (T a b).inv
+
+/-- Every edit a site can make on ‹s›: an insert at each place, a delete of each character. -/
+def edits (s : List Char) (c : Char) (site : Nat) : List Op :=
+  (List.range (s.length + 1)).map (fun p => .ins p c site) ++ (List.range s.length).map (fun p => .del p (s.getD p ' '))
+
+def abc : List Char := "abc".toList
+
+/-- The pairs on "abc" for which a property fails. -/
+def failures (prop : Op → Op → Bool) : List (Op × Op) :=
+  (edits abc 'x' 1).flatMap fun c => (edits abc 'y' 2).filterMap fun a => if prop c a then none else some (c, a)
+
+#eval failures ip2
+#eval failures ip3
+#eval ((failures ip2).length, (failures ip3).length)
+
+end Undo`.replace(/‹|›/g, "`"));
+    md(r`IP1 is proved (‹inv_apply›). IP2 and IP3 each fail on 6 of the 49 pairs, and the failures have two causes:
+
+- **A delete met a delete of the same character.** $T(c, a)$ is ‹nop›, and ‹nop› remembers nothing: rewritten past the undo, it stays ‹nop›, so the undo brings the character back and $c$'s delete is lost.
+- **An insert sat where a deleted character was.** The undo puts the character back at the same place, a tie with the insert, and the tie-break by site need not put them back in their old order.
+
+So "rewrite the inverse forward" is right for most pairs and wrong for exactly these. Transforms built for undo keep more information than ‹nop› does, for instance by not removing deleted characters at all: the RGA's tombstones again.`);
+    sec("Exercises");
+    lx(r`example : Undo.ip2 (.del 1 'b') (.del 1 'b') = false := by`, r`Prove the first cause: two concurrent deletes of the b, then the undo of one of them, fail IP2.`, r`  decide`, [r`‹T (del 1) (del 1)› is ‹nop›, and ‹nop› rewritten past anything is ‹nop›.`]);
+    md(r`
+> [!summary]
+> Selective undo rewrites an old edit's inverse past the later ones. That is sound when the transform has IP1, IP2 and IP3. The course's transform has IP1, proved, and fails IP2 and IP3 on 6 of 49 pairs on "abc" each, all of them a delete that became ‹nop› or a tie at a restored character.
+`);
+  });
+
+  add("07-round-trips.chalk", "Lossless round trips", "A document stored as text and annotations and joined back: join after split is the identity, and split after join is too on well-formed pairs; the normalizer this gives is idempotent; and why a normalizer that rewrites every save breaks the client's rebase.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Lossless round trips");
+    md(r`
+> [!goal]
+> Store a formatted document in two parts and get it back exactly; find which stored forms come back unchanged; and see why rewriting what is stored, however tidily, breaks lesson 1's protocol.
+`);
+    md(r`The log of lessons 1 to 6 edits plain text. An editor's document also has formatting: bold runs, links, comments. A common design stores the two apart, the **text** and a list of **annotations** on it, so that text edits and formatting can be handled (and transformed) separately. The editor holds the document whole, so every save **splits** it and every load **joins** it again.`);
+    md(r`
+> [!try]
+> Splitting and joining should lose nothing. Is "join after split is the identity" enough, or must "split after join" be one too?
+`);
+    sec("Split and join");
+    md(r`A small version: each character is bold or not, and the annotations are the places of the bold characters.`);
+    lean(`namespace RoundTrip
+
+/-- A document as the editor holds it: each character with whether it is bold. -/
+abbrev Doc := List (Char × Bool)
+
+/-- The places, counting from ‹k›, of the bold characters. -/
+def marks : Nat → Doc → List Nat
+  | _, [] => []
+  | k, (_, b) :: d => if b then k :: marks (k + 1) d else marks (k + 1) d
+
+/-- Store a document as its plain text and the places that are bold. -/
+def split (d : Doc) : List Char × List Nat := (d.map (·.1), marks 0 d)
+
+/-- Put each character back with its flag: bold when its place is listed. -/
+def flags : Nat → List Char → List Nat → Doc
+  | _, [], _ => []
+  | k, c :: t, ps => (c, ps.contains k) :: flags (k + 1) t ps
+
+def join (p : List Char × List Nat) : Doc := flags 0 p.1 p.2
+
+#eval split [('a', false), ('b', true), ('c', true)]
+#eval join ("abc".toList, [2, 1])
+#eval split (join ("abc".toList, [2, 1, 1, 9]))
+
+end RoundTrip`.replace(/‹|›/g, "`"));
+    md(r`Joining loses nothing it can show, but the stored form can say one thing several ways: ‹[2, 1]›, ‹[1, 2]› and ‹[2, 1, 1, 9]› all join to the same document, and split gives back only ‹[1, 2]›. So the two directions differ.`);
+    lean(`namespace RoundTrip
+
+theorem le_of_mem_marks : ∀ (d : Doc) (k i : Nat), i ∈ marks k d → k ≤ i
+  | [], _, _, h => by simp [marks] at h
+  | (_, b) :: d, k, i, h => by
+    simp only [marks] at h
+    split at h
+    · rcases List.mem_cons.mp h with rfl | h
+      · omega
+      · have := le_of_mem_marks d (k + 1) i h; omega
+    · have := le_of_mem_marks d (k + 1) i h; omega
+
+theorem flags_marks : ∀ (d : Doc) (k : Nat) (ps : List Nat),
+    (∀ i, k ≤ i → (i ∈ ps ↔ i ∈ marks k d)) → flags k (d.map (·.1)) ps = d
+  | [], _, _, _ => rfl
+  | (c, b) :: d, k, ps, h => by
+    simp only [List.map, flags]
+    have hk := h k (Nat.le_refl k)
+    have hb : ps.contains k = b := by
+      cases b
+      · simp only [marks] at hk
+        have : k ∉ marks (k + 1) d := fun hm => by have := le_of_mem_marks d (k + 1) k hm; omega
+        simp [hk, this]
+      · simp [marks] at hk; simp [hk]
+    rw [hb, flags_marks d (k + 1) ps (fun i hi => by
+      rw [h i (by omega)]
+      cases b <;> simp [marks] <;> omega)]
+
+/-- Joining what was split gives the document back: ‹split› is a section of ‹join›. -/
+theorem join_split (d : Doc) : join (split d) = d :=
+  flags_marks d 0 (marks 0 d) (fun _ _ => Iff.rfl)
+
+theorem map_flags : ∀ (t : List Char) (k : Nat) (ps : List Nat), (flags k t ps).map (·.1) = t
+  | [], _, _ => rfl
+  | c :: t, k, ps => by simp [flags, map_flags t (k + 1) ps]
+
+theorem marks_flags : ∀ (t : List Char) (k : Nat) (ps : List Nat),
+    marks k (flags k t ps) = (List.range' k t.length).filter (ps.contains ·)
+  | [], _, _ => rfl
+  | c :: t, k, ps => by
+    simp only [flags, marks, List.length_cons, List.range'_succ, List.filter_cons, marks_flags t (k + 1) ps]
+
+/-- A pair is well formed when its places are each a place in the text, listed once, in order. -/
+def WellFormed (p : List Char × List Nat) : Prop := (List.range p.1.length).filter (p.2.contains ·) = p.2
+
+instance (p : List Char × List Nat) : Decidable (WellFormed p) := inferInstanceAs (Decidable (_ = _))
+
+/-- On well-formed pairs, splitting what was joined gives the pair back. -/
+theorem split_join (p : List Char × List Nat) (h : WellFormed p) : split (join p) = p := by
+  rcases p with ⟨t, ps⟩
+  simp only [split, join, map_flags, marks_flags]
+  simp only [WellFormed, List.range_eq_range'] at h
+  rw [h]
+
+end RoundTrip`.replace(/‹|›/g, "`"));
+    md(r`
+> [!definition] Section and retraction
+> Maps $s : A \to B$ and $j : B \to A$ with $j \circ s = \mathrm{id}_A$: $s$ is a **section** of $j$, and $j$ a **retraction** of $s$. Here $A$ is documents, $B$ is stored pairs, $s$ is ‹split› and $j$ is ‹join›. Then $s \circ j$ is the identity exactly on the image of $s$: the well-formed pairs.
+`);
+    sec("The normalizer");
+    md(r`$s \circ j$, join then split, sends any stored pair to the well-formed one that means the same document: it sorts the places, drops repeats, and drops places past the text. It is idempotent for a reason that has nothing to do with lists: $s \circ j \circ s \circ j = s \circ (j \circ s) \circ j = s \circ j$.`);
+    lean(`namespace RoundTrip
+
+/-- For any section ‹s› of ‹j›, ‹s ∘ j› is idempotent… -/
+theorem idem_of_section {A B : Type} (s : A → B) (j : B → A) (h : ∀ a, j (s a) = a) (b : B) :
+    s (j (s (j b))) = s (j b) := by rw [h]
+
+/-- …and what it fixes is exactly what ‹s› can produce. -/
+theorem fixed_iff_image {A B : Type} (s : A → B) (j : B → A) (h : ∀ a, j (s a) = a) (b : B) :
+    s (j b) = b ↔ ∃ a, s a = b :=
+  ⟨fun hb => ⟨j b, hb⟩, fun ⟨a, ha⟩ => by rw [← ha, h]⟩
+
+/-- The normalizer: join, then split. -/
+def norm (p : List Char × List Nat) : List Char × List Nat := split (join p)
+
+theorem norm_idem (p : List Char × List Nat) : norm (norm p) = norm p :=
+  idem_of_section split join join_split p
+
+#eval norm ("abc".toList, [2, 0, 0, 7])
+
+end RoundTrip`.replace(/‹|›/g, "`"));
+    md(r`
+> [!note] Not a closure operator
+> [Galois connections and closure operators](#course=order-lattices&lesson=10) made closure operators from Galois connections: extensive, monotone and idempotent, with the closed elements as fixed points. ‹norm› shares only idempotence, and its fixed points are the well-formed pairs, as the closed elements were there. There is no natural order in which it is extensive: it drops repeated places as well as sorting them. It is an idempotent from a section–retraction pair, and the resemblance stops there.
+`);
+    sec("A normalizer that rewrites saves");
+    md(r`Suppose the server normalizes the *text* on every save, say by squeezing runs of spaces into one. That is idempotent too, and it breaks the protocol. A client has version 3, "a  b" with two spaces, and types x after the second space, at 3: typed against its base, version 3. But the server stored version 3 squeezed, "a b":`);
+    lean(`namespace RoundTrip
+
+def insAt : Nat → Char → List Char → List Char
+  | 0, x, s => x :: s
+  | _ + 1, x, [] => [x]
+  | p + 1, x, y :: s => y :: insAt p x s
+
+/-- Squeeze runs of spaces into one: drop a space that follows a space. -/
+def squeezeAfter (space : Bool) : List Char → List Char
+  | [] => []
+  | c :: s => if c == ' ' && space then squeezeAfter true s else c :: squeezeAfter (c == ' ') s
+
+def squeeze (s : List Char) : List Char := squeezeAfter false s
+
+#eval String.ofList (insAt 3 'x' "a  b".toList)            -- what the client typed
+#eval String.ofList (insAt 3 'x' (squeeze "a  b".toList))  -- what the server makes of it
+
+end RoundTrip`);
+    md(r`The client meant "a  xb" and the server made "a bx": the client's positions count a space the server no longer has. Rebasing (lesson 1) assumes that version 3 is the same text at the client and at the server, and the normalizer made it two texts with one version. The client will apply its own x at 3 and the server's broadcasts after that, and the two texts will never meet.`);
+    md(r`
+> [!mistake]
+> A normalizer may run on read (a view, lesson 6), or as an edit of its own committed through the log, which every client then rebases past like any other. It must not rewrite a version in place. ‹norm› above passes the test because, on everything the editor produces, it is the identity: ‹split_join›.
+`);
+    sec("Exercises");
+    lx(r`theorem RoundTrip.norm_wf (p : List Char × List Nat) (h : RoundTrip.WellFormed p) : RoundTrip.norm p = p := by`, r`Prove that the normalizer leaves a well-formed pair alone, so a save of what the editor produced is stored as it is.`, r`  exact RoundTrip.split_join p h`, [r`‹norm› is ‹split (join p)›, and one theorem above says what that is on a well-formed pair.`]);
+    lx(r`example : RoundTrip.squeeze (RoundTrip.squeeze "a   b".toList) = RoundTrip.squeeze "a   b".toList := by`, r`The squeezing normalizer is idempotent too, at least here. Prove it for "a   b" (three spaces): idempotence is not what makes a normalizer safe.`, r`  decide`, [r`A fixed text: ‹decide› computes both sides.`]);
+    md(r`
+> [!summary]
+> Split a document into text and annotations and join it back: ‹join ∘ split = id› for every document, and ‹split ∘ join = id› for well-formed pairs, a section and its retraction. ‹split ∘ join› is then an idempotent normalizer that fixes exactly the well-formed pairs. A normalizer that rewrites stored versions, however idempotent, makes the server's version $v$ differ from the client's, and rebasing against the client's base goes wrong; normalize on read, or as an edit in the log.
+`);
+    md(r`The course has proved its pieces separately. The capstone puts the transform's proofs in one place, and asks what they say about the code that ships.`);
+  });
+
+  add("08-capstone.chalk", "Capstone: proofs and shipped code", "The course's transform as a Lean reference: TP1 proved for every text, preservation, and an exhaustive check of every small case; what the proofs cover and what they do not; a port tested against the reference; and the caveats of running Lean's own compiled code in a browser.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Capstone: proofs and shipped code");
+    md(r`
+> [!goal]
+> Put the transform's proofs in one place, say exactly what they guarantee about a running editor, and connect them to the code that ships.
+`);
+    md(r`An editor ships in the languages its clients and servers are written in, not in Lean. So the Lean is a **reference**: a definition small enough to read, with theorems about it, against which the shipped code is tested. This lesson assembles it: the transform of lessons 1 to 5, TP1 for every text, preservation, and an exhaustive check.`);
+    sec("The reference");
+    lean(collabCore("Reference"));
+    md(r`
+> [!try]
+> [Collaborative text](#course=crdt&lesson=10&app=1) checked TP1 on 49 pairs and said the proof for every text "is the same case split, with lemmas". Which lemmas does the case split need?
+`);
+    md(r`One per way two edits can be reordered: two inserts, an insert and a delete either way round, two deletes. Each is an induction on the text, and needs the edits to make sense on it (an insert at most at the end, a delete of a character that is there): a delete past the end does nothing, and then the positions no longer line up.`);
+    lean(`namespace Reference
+
+theorem delAt_nil (p : Nat) : delAt p [] = [] := by cases p <;> rfl
+
+theorem ins_ins {y x : Char} : ∀ (s : List Char) (p q : Nat), q ≤ p → p ≤ s.length →
+    insAt q y (insAt p x s) = insAt (p + 1) x (insAt q y s)
+  | [], p, q, h1, h2 => by
+    have hp : p = 0 := by simp at h2; omega
+    have hq : q = 0 := by omega
+    subst hp; subst hq; rfl
+  | z :: s, p, 0, _, _ => by cases p <;> rfl
+  | z :: s, p + 1, q + 1, h1, h2 => by
+    simp only [insAt]
+    rw [ins_ins s p q (by omega) (by simp at h2; omega)]
+  | z :: s, 0, q + 1, h1, _ => by omega
+
+theorem del_ins {x : Char} : ∀ (s : List Char) (p q : Nat), q < p → p ≤ s.length →
+    delAt q (insAt p x s) = insAt (p - 1) x (delAt q s)
+  | [], p, q, h1, h2 => by simp at h2; omega
+  | z :: s, p + 1, 0, _, _ => by cases p <;> rfl
+  | z :: s, p + 1, q + 1, h1, h2 => by
+    simp only [insAt, delAt]
+    rw [del_ins s p q (by omega) (by simp at h2; omega)]
+    cases p with
+    | zero => omega
+    | succ p => rfl
+  | z :: s, 0, q, h1, _ => by omega
+
+theorem del_ins' {x : Char} : ∀ (s : List Char) (p q : Nat), p ≤ q → q < s.length →
+    delAt (q + 1) (insAt p x s) = insAt p x (delAt q s)
+  | [], p, q, _, h2 => by simp at h2
+  | z :: s, 0, q, _, _ => rfl
+  | z :: s, p + 1, q + 1, h1, h2 => by
+    simp only [insAt, delAt]
+    rw [del_ins' s p q (by omega) (by simp at h2; omega)]
+  | z :: s, p + 1, 0, h1, _ => by omega
+
+theorem del_del : ∀ (s : List Char) (p q : Nat), q < p →
+    delAt q (delAt p s) = delAt (p - 1) (delAt q s)
+  | [], p, q, _ => by simp only [delAt_nil]
+  | z :: s, p + 1, 0, _ => by cases s <;> cases p <;> rfl
+  | z :: s, p + 1, q + 1, h => by
+    simp only [delAt]
+    rw [del_del s p q (by omega)]
+    cases p with
+    | zero => omega
+    | succ p => rfl
+  | z :: s, 0, q, h => by omega
+
+/-- An edit that makes sense on a text: an insert at one of its places, a delete of one of its characters. -/
+def Op.valid : Op → List Char → Prop
+  | .ins p _ _, s => p ≤ s.length
+  | .del p, s => p < s.length
+  | .nop, _ => True
+
+/-- Two inserts come from different sites: the tie-break needs it. -/
+def Op.apart : Op → Op → Prop
+  | .ins _ _ i, .ins _ _ j => i ≠ j
+  | _, _ => True
+
+/-- TP1, for every text and every two valid edits from different sites. -/
+theorem tp1 : ∀ (a b : Op) (s : List Char), a.valid s → b.valid s → a.apart b →
+    (T b a).apply (a.apply s) = (T a b).apply (b.apply s)
+  | .ins p x i, .ins q y j, s, ha, hb, hab => by
+    simp only [Op.valid, Op.apart] at ha hb hab
+    by_cases h : q < p ∨ (q = p ∧ j < i)
+    · have h' : ¬(p < q ∨ (p = q ∧ i < j)) := by omega
+      simp only [T, h, h', ite_true, ite_false, Op.apply]
+      exact ins_ins s p q (by omega) ha
+    · have h' : p < q ∨ (p = q ∧ i < j) := by omega
+      simp only [T, h, h', ite_true, ite_false, Op.apply]
+      exact (ins_ins s q p (by omega) hb).symm
+  | .ins p x i, .del q, s, ha, hb, _ => by
+    simp only [Op.valid] at ha hb
+    by_cases h : q < p
+    · have h' : ¬(p ≤ q) := by omega
+      simp only [T, h, h', ite_true, ite_false, Op.apply]
+      exact del_ins s p q h ha
+    · have h' : p ≤ q := by omega
+      simp only [T, h, h', ite_true, ite_false, Op.apply]
+      exact del_ins' s p q h' hb
+  | .del p, .ins q y j, s, ha, hb, _ => by
+    simp only [Op.valid] at ha hb
+    by_cases h : q ≤ p
+    · have h' : ¬(p < q) := by omega
+      simp only [T, h, h', ite_true, ite_false, Op.apply]
+      exact (del_ins' s q p h ha).symm
+    · have h' : p < q := by omega
+      simp only [T, h, h', ite_true, ite_false, Op.apply]
+      exact (del_ins s q p h' hb).symm
+  | .del p, .del q, s, ha, hb, _ => by
+    by_cases h : q < p
+    · have h1 : ¬(p < q) := by omega
+      have h2 : ¬(p = q) := by omega
+      simp only [T, h, h1, h2, ite_true, ite_false, Op.apply]
+      exact del_del s p q h
+    · by_cases he : q = p
+      · subst he; simp [T, Op.apply]
+      · have h' : p < q := by omega
+        have he' : ¬(p = q) := by omega
+        simp only [T, h, he, h', he', ite_true, ite_false, Op.apply]
+        exact (del_del s q p h').symm
+  | .ins p x i, .nop, s, _, _, _ => rfl
+  | .del p, .nop, s, _, _, _ => rfl
+  | .nop, .ins q y j, s, _, _, _ => rfl
+  | .nop, .del q, s, _, _, _ => rfl
+  | .nop, .nop, s, _, _, _ => rfl
+
+end Reference`.replace(/‹|›/g, "`"));
+    md(r`Lesson 1's ‹tiling› asks for TP1 for every pair of edits on every state; ‹tp1› asks that the edits make sense on the text and that two inserts come from different sites. Joining the two needs one more fact, that rewriting keeps edits valid (the exercise below is a piece of it), and a version of ‹tiling› that carries it along the grid. That is not written out here. Preservation is lesson 5's, stated again for the reference:`);
+    lean(`namespace Reference
+
+/-- What a delete removes: the character at its place, in the text it is applied to. -/
+def Op.target : Op → List Char → Option Char
+  | .del p, s => s[p]?
+  | _, _ => none
+
+${PRESERVE_LEMMAS.replace(/theorem delAt_nil[^\n]*\n\n/, "")}
+
+${PRESERVE_THMS}
+
+end Reference`.replace(/‹|›/g, "`"));
+    sec("Every small case");
+    md(r`The theorems are for every text. A check of every small case is still worth having: it is what a port is tested against, and it tests the statements themselves, which a proof cannot (a theorem with a hypothesis that is never true proves nothing). Every text over a and b of up to three characters, every pair of edits on it, with x and y as the inserted characters: TP1, and both inserts in the result.`);
+    lean(`namespace Reference
+
+/-- Every text over a and b of ‹n› characters. -/
+def texts : Nat → List (List Char)
+  | 0 => [[]]
+  | n + 1 => (texts n).flatMap fun t => ['a' :: t, 'b' :: t]
+
+/-- Every edit a site can make on a text of length ‹n›, inserting ‹x›. -/
+def edits (n : Nat) (x : Char) (site : Nat) : List Op :=
+  (List.range (n + 1)).map (fun p => .ins p x site) ++ (List.range n).map .del
+
+/-- One case: TP1, and the inserts of both sides in the result. -/
+def case (a b : Op) (s : List Char) : Bool :=
+  (T b a).apply (a.apply s) == (T a b).apply (b.apply s)
+    && (match a with | .ins _ x _ => ((T b a).apply (a.apply s)).contains x | _ => true)
+    && (match b with | .ins _ y _ => ((T b a).apply (a.apply s)).contains y | _ => true)
+
+def allCases (n : Nat) : Bool :=
+  (List.range (n + 1)).all fun k => (texts k).all fun s =>
+    (edits k 'x' 1).all fun a => (edits k 'y' 2).all fun b => case a b s
+
+#eval (List.range 4).foldl (fun acc k => acc + (texts k).length * (2 * k + 1) * (2 * k + 1)) 0
+
+theorem small_cases : allCases 3 = true := by decide
+
+end Reference`.replace(/‹|›/g, "`"));
+    md(r`511 cases, checked by Lean's kernel. (Inserting x and y, which the texts never contain, makes "in the result" mean "kept".)`);
+    sec("What the proofs cover");
+    md(r`
+> [!note] Covered
+> - **The transform**: TP1 for every text and every two valid edits from different sites (‹tp1›), and preservation (‹insert_kept›, ‹insert_kept'›, ‹delete_aimed›).
+> - **Rebasing sequences**: any rebase grid closes, given TP1 on every pair (lesson 1, ‹tiling›). For this transform, which has TP1 only for valid edits from different sites, the step from one square to the grid is the one fact left unproved above.
+> - **Composition** is a monoid and composing is applying in turn (lesson 3); positions map monotonically (lesson 4); a snapshot stands in for its prefix and an honest server passes the audit (lesson 6); split and join are a section and its retraction (lesson 7).
+`);
+    md(r`
+> [!mistake]
+> What is **not** proved, and has to be tested or argued instead:
+> - **The protocol.** Versions in order, holding back early broadcasts, acknowledgements, one batch in flight: lesson 1 checked a model of two broadcasts, and lesson 2 a model of two workers; neither is a proof about the code that runs, or about more clients.
+> - **The conditional write.** Lesson 2 assumed it is one step. That is the store's promise (linearizability, in [the systems course](#course=systems&lesson=4)), not something the course proves.
+> - **The normalizer and the annotations.** Lesson 7 proved the round trip for one small representation (a bold flag per character), not for a real document format; lesson 3's formatting TP1 is per character, not for runs; range deletes (lesson 5) were only computed on examples.
+> - **TP2.** It fails for this transform (lesson 2); the protocol is what makes it unnecessary, and a deployment that breaks the one order (lesson 2's diamond) is outside every theorem here.
+> - **What a position counts.** Here a character is a Lean ‹Char›, a Unicode code point. An editor in a browser usually counts UTF-16 code units, and people expect grapheme clusters: a port and the reference that disagree on what "position 3" means agree on every test written in ASCII.
+`);
+    sec("Testing a port against the reference");
+    md(r`**Differential testing**: run the reference and the port on the same inputs and compare. The reference can print its cases with their expected results, for the port's test suite to read:`);
+    lean(`namespace Reference
+
+def Op.show : Op → String
+  | .ins p x i => s!"ins {p} {x} {i}"
+  | .del p => s!"del {p}"
+  | .nop => "nop"
+
+/-- One line per case: the text, the two edits, and the text both sites must reach. -/
+def vectors (n : Nat) : List String :=
+  (texts n).flatMap fun s => (edits n 'x' 1).flatMap fun a => (edits n 'y' 2).map fun b =>
+    s!"{String.ofList s}|{a.show}|{b.show}|{String.ofList ((T b a).apply (a.apply s))}"
+
+#eval (vectors 2).take 6
+#eval (vectors 2).length
+
+end Reference`.replace(/‹|›/g, "`"));
+    md(`A port, here in TypeScript, then reads the lines and checks each, both orders:
+
+${FENCE}ts
+type Op = { ins: [number, string, number] } | { del: number } | "nop";
+function T(a: Op, b: Op): Op {
+  if (b === "nop") return a;
+  if (a === "nop") return "nop";
+  if ("ins" in a && "ins" in b) {
+    const [p, x, i] = a.ins, [q, , j] = b.ins;
+    return q < p || (q === p && j < i) ? { ins: [p + 1, x, i] } : a;
+  }
+  if ("ins" in a && "del" in b) return b.del < a.ins[0] ? { ins: [a.ins[0] - 1, a.ins[1], a.ins[2]] } : a;
+  if ("del" in a && "ins" in b) return b.ins[0] <= a.del ? { del: a.del + 1 } : a;
+  const p = (a as { del: number }).del, q = (b as { del: number }).del;
+  return q < p ? { del: p - 1 } : q === p ? "nop" : a;
+}
+${FENCE}
+
+The vectors pin the reference's exact behaviour, ties included: a port that breaks a tie the other way passes every convergence test it runs on itself and fails here. For inputs larger than the vectors, generate random texts and edits in the port's test and send them to the reference, compiled as a command-line program, so that the comparison is not limited to the cases written down.`);
+    sec("Running the reference itself");
+    md(r`Instead of porting, a client could run the reference: Lean compiles to C, and C compiles to WebAssembly with Emscripten. ChalkMath runs its own engine this way (Lean to C to wasm, in a web worker), and Lean itself for its Lean cells; its architecture notes (§1, §2 and §4b) record what that takes. The caveats are concrete:
+
+- **Support.** Lean's "Supported Platforms" page (Lean Language Reference, lean-lang.org/doc/reference/latest/platforms/, as of October 2026) lists Emscripten WebAssembly as **Tier 2**: cross-compiled but not tested by Lean's CI, with releases that "may be silently broken due to the lack of automated testing".
+- **The runtime.** Compiled Lean calls Lean's runtime and the compiled code of its standard library, and both must be built for wasm32, with 32-bit pointers; ChalkMath builds them from source (‹npm run wasm›).
+- **Stack.** A browser gives a worker thread far less stack than a native thread (Chromium: 500 KB, against the 8 MB Lean's threads have natively), and recursion that is fine natively can run out: ‹insAt› on a long text recurses once per character.
+- **What the proof is about.** The theorems are about the Lean definitions. Lean's compiler, the C compiler and Emscripten are trusted, not proved; the compiled code is the reference only as far as they are right, so it is tested against the reference all the same.
+`);
+    sec("Exercises");
+    lx(r`theorem Reference.insAt_length (x : Char) : ∀ (p : Nat) (s : List Char), (Reference.insAt p x s).length = s.length + 1 := by`, r`An insert makes the text one longer. Prove it: it is what lets a rewritten edit stay valid on the longer text.`, r`  intro p s
+  induction s generalizing p with
+  | nil => cases p <;> rfl
+  | cons y s ih =>
+    cases p with
+    | zero => rfl
+    | succ p => simp [Reference.insAt, ih]`, [
+      r`Induction on ‹s›, for every ‹p› (‹generalizing p›), then cases on ‹p›.`,
+      r`In the ‹succ› case, ‹insAt (p + 1) x (y :: s)› is ‹y :: insAt p x s›: ‹simp [Reference.insAt, ih]›.`,
+    ]);
+    md(r`
+> [!summary]
+> The reference transform is proved TP1 for every text and to preserve content, and every small case is checked exhaustively; lesson 1's tiling closes any grid of squares that TP1 closes. The protocol, the store's conditional write, the document format and what a position counts are outside the proofs, and are tested or argued. A port is tested against the reference's vectors and against the reference itself on random inputs. Running the reference compiled to WebAssembly is possible, on a Tier 2 platform, with a runtime built for wasm32 and small stacks, and the compilers are trusted, not proved.
+`);
+  });
+}, {});
 
 // ---------------------------------------------------------------------------------------------------
 course("calculus", "Calculus: derivatives and integrals",
