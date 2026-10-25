@@ -81,6 +81,7 @@ def builtinFunctions : List String :=
    "exp", "ln", "log", "sqrt", "abs", "conj", "re", "im", "arg",
    "diff", "simplify", "expand", "factor", "N", "det", "rref", "transpose", "solve", "subst", "integrate", "plot",
    "sign", "dot", "norm", "sum", "exptotrig", "epicycles", "dft", "manipulate", "column",
+   "backprop",
    "total", "mean", "variance", "stdev", "min", "max", "median"]
 
 /-- The unary builtins whose power is written before the argument: `sin^2(y)` is `sin(y)^2`. -/

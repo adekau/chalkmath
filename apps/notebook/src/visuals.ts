@@ -5,7 +5,7 @@
  * for a visual that places the work's steps on itself, how the steps are marked. A kind not here is left
  * out; a new kind is one entry. Nothing here knows about cells: the notebook decides what to draw when.
  */
-import type { KnownVisual, HasseData, TruthTableData, DigraphData, OpTableData, ContextTableData, TypingNode, TypingTreeData, SpacetimeData } from "@chalkmath/protocol";
+import type { KnownVisual, HasseData, TruthTableData, ComputationGraphData, DigraphData, OpTableData, ContextTableData, TypingNode, TypingTreeData, SpacetimeData } from "@chalkmath/protocol";
 import { h, tex } from "./dom.js";
 
 /** The visuals this notebook draws (ARCHITECTURE.md §5), one entry per kind: how a reply's or a
@@ -32,6 +32,10 @@ export const VISUALS: { [K in KnownVisual["kind"]]: VisualRenderer<K> } = {
   "logic.truthtable": {
     check: (d) => Array.isArray(d["vars"]) && Array.isArray(d["rows"]) && typeof (d["formula"] as { latex?: unknown } | undefined)?.latex === "string",
     render: (d) => [truthTable(d)],
+  },
+  "calculus.graph": {
+    check: (d) => Array.isArray(d["nodes"]) && Array.isArray(d["edges"]),
+    render: (d) => [computationGraph(d)],
   },
   "relation.digraph": {
     check: (d) => Array.isArray(d["nodes"]) && Array.isArray(d["edges"]) && Array.isArray(d["bad"]) && Array.isArray(d["added"]),
@@ -110,6 +114,58 @@ function hasseSvg(d: { nodes: { name: string; height: number }[]; covers: [strin
     t.setAttribute("x", String(x + 9)); t.setAttribute("y", String(y - 7)); t.setAttribute("class", "hlabel"); t.textContent = name; svg.append(t);
   }
   return svg;
+}
+
+/** A computation graph (`backprop`): a column per layer, the inputs on the left and the output on the
+ *  right, each node a box with what it does, its value (=) and its gradient (∂), and each arrow, from a
+ *  node read to the node reading it, labelled with its local derivative. The boxes are HTML, for their
+ *  LaTeX, over an SVG of the arrows. */
+function computationGraph(d: ComputationGraphData): HTMLElement {
+  const NS = "http://www.w3.org/2000/svg";
+  const n = d.nodes.length;
+  const layer: number[] = new Array(n).fill(0);
+  // each node comes after the nodes it reads, so one pass in order finds the longest path to it
+  for (let i = 0; i < n; i++) for (const [a, b] of d.edges) if (b === i) layer[i] = Math.max(layer[i]!, layer[a]! + 1);
+  const cols = new Map<number, number[]>();
+  layer.forEach((l, i) => cols.set(l, [...(cols.get(l) ?? []), i]));
+  const boxW = 112, boxH = 60, colW = 168, rowH = 78, pad = 14;
+  const tallest = Math.max(1, ...[...cols.values()].map((c) => c.length));
+  const width = pad * 2 + (Math.max(0, ...layer) + 1) * colW - (colW - boxW), height = pad * 2 + tallest * rowH - (rowH - boxH);
+  const pos: [number, number][] = new Array(n);
+  for (const [l, ids] of cols) ids.forEach((id, k) => { pos[id] = [pad + l * colW, pad + (height - pad * 2 - ids.length * rowH + (rowH - boxH)) / 2 + k * rowH]; });
+  const wrap = h("div", "adgraph");
+  wrap.style.width = `${width}px`; wrap.style.height = `${height}px`;
+  wrap.setAttribute("role", "img");
+  const out = d.nodes.find((x) => x.output);
+  wrap.setAttribute("aria-label", `Computation graph of ${out?.text ?? "the function"}: ${n} nodes; each with its value and its gradient`);
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("width", String(width)); svg.setAttribute("height", String(height)); svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  for (const [a, b, local] of d.edges) {
+    const p = pos[a], q = pos[b]; if (!p || !q) continue;
+    const x1 = p[0] + boxW, y1 = p[1] + boxH / 2, x2 = q[0], y2 = q[1] + boxH / 2, mx = (x1 + x2) / 2;
+    const path = document.createElementNS(NS, "path");
+    path.setAttribute("d", `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`);
+    path.setAttribute("class", "adedge"); path.setAttribute("data-edge", `${a}-${b}`);
+    svg.append(path);
+    const t = document.createElementNS(NS, "text");
+    t.setAttribute("x", String(mx)); t.setAttribute("y", String((y1 + y2) / 2 - 4)); t.setAttribute("text-anchor", "middle");
+    t.setAttribute("class", "adlocal"); t.textContent = local;
+    svg.append(t);
+  }
+  wrap.append(svg);
+  d.nodes.forEach((node, i) => {
+    const [x, y] = pos[i]!;
+    const box = h("div", `adnode${node.input ? " input" : ""}${node.output ? " output" : ""}`);
+    box.style.left = `${x}px`; box.style.top = `${y}px`; box.style.width = `${boxW}px`; box.style.height = `${boxH}px`;
+    box.dataset["node"] = String(i);
+    box.title = `${node.text}\nvalue ${node.value}\ngradient ${node.grad}`;
+    const op = h("div", "adop"); op.innerHTML = tex(node.label);
+    box.append(op, h("div", "advalue", `= ${node.value}`), h("div", "adgrad", `∂ ${node.grad}`));
+    wrap.append(box);
+  });
+  const legend = h("div", "adlegend", "Each box: what it computes, its value (=) and the gradient of the output with respect to it (∂). Each arrow: the local derivative of the box it enters with respect to the box it leaves.");
+  const all = h("div", "adwrap"); all.append(wrap, legend);
+  return all;
 }
 
 /** Mark where steps of the work are on a state graph: the trail of steps so far, and the current one

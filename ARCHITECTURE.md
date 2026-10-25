@@ -920,10 +920,14 @@ settings, the cell) is `apps/notebook/src/ask-cells.ts`.
 
 The engine never draws. It emits **visual specs**: declarative JSON next to `rendered`
 (`EvaluateResult.visuals`): a Cayley table, a graph, a commutative diagram, sampled plot data, a
-matrix heat map. Seven kinds exist (`KnownVisual` in the protocol): `order.hasse`, a poset's elements
+matrix heat map. Eight kinds exist (`KnownVisual` in the protocol): `order.hasse`, a poset's elements
 with their heights and its covers, which stands in for the poset's value in the cell (the `hasse`
 field beside it is the earlier form, kept one release); `logic.truthtable`, the rows of a
-formula's table; `relation.digraph`, a relation's pairs with the ones that break a property (`bad`)
+formula's table; `calculus.graph`, the computation graph of a `backprop(f, [x, …], [a, …])` cell, each
+node with what it does, its value and its gradient and each arrow with its local derivative (`backprop`
+is a whole-cell command, like `plot`: `Backprop.lean` runs the forward and backward passes in double
+precision and checks their gradients against `diff`'s derivatives at the point, so it is not a pipeline
+rule); `relation.digraph`, a relation's pairs with the ones that break a property (`bad`)
 and the ones a closure added (`added`), and, for a state graph, each arrow's label (`labels`, in the
 order of `edges`: the actions that take that transition) and where each step of the work is on it
 (`steps`: the transition it takes or the state it is at), so stepping through a trace marks the
@@ -931,7 +935,7 @@ current transition (with the answer's marks held back until the answer shows); `
 failing law read (`marks`); `context.table`, a formal context's cross table; and `typing.tree`, a
 typing derivation as nested judgments, each with its rule and premises; and `replicas.spacetime`, a
 replica simulation's lanes, events and messages, with the events each step made. The notebook draws the tables
-and the proof tree as HTML and the graph as SVG (a state graph in rows from its initial states, each state a box
+and the proof tree as HTML, a computation graph as HTML boxes over SVG arrows, and the graph as SVG (a state graph in rows from its initial states, each state a box
 with its name in it so no arrow crosses a name), keeps them with the cell in a saved file, and ignores a kind it does not know. In the
 notebook the kinds are one registry (`VISUALS`, `apps/notebook/src/visuals.ts`): each entry checks a
 reply's or a file's data, draws it, says whether it stands in for the value, and, for a visual that
