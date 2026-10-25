@@ -19,7 +19,8 @@
 #     elaborating thread went to Emscripten's JavaScript dlsym. engine/wasm/lean-compiler-emscripten.patch
 #     points `lookup_symbol_in_cur_exe` at the table.
 #   - The C for Init/Std/Lean is emitted by the host `lean` from the tagged sources, as the runtime
-#     script does for Init, not taken from stage0 (which lags the tag).
+#     script does for Init, not taken from stage0 (which lags the tag); one of them, Lean's frontend,
+#     from a copy patched by engine/wasm/lean-frontend.patch (step 1b).
 #   - Threads stay on (-pthread, MULTI_THREAD): the language server reads LSP messages while elaboration
 #     runs in tasks, and elaboration waits on promises other tasks resolve. So everything is compiled a
 #     second time here, with -pthread, into its own tree; the engine's single-threaded libraries are
@@ -56,6 +57,22 @@ MODS=$(python3 "$SCRIPTS/lean-wasm-oleans.py" --closure "$PREFIX/src/lean" Init 
 echo "== emitting C for $(wc -l <<<"$MODS" | tr -d ' ') modules"
 (cd "$PREFIX/src/lean" && sed 's#\.#/#g' <<<"$MODS" | LEAN_PATH="$PREFIX/lib/lean" xargs -P "$JOBS" -I{} bash -c \
   'o="$OUT/c/{}.c"; [ -f "$o" ] && exit 0; mkdir -p "$(dirname "$o")"; "$LEAN" -R . --c="$o.tmp" "{}.lean" && mv "$o.tmp" "$o"')
+
+# 1b. One of those modules again, from a patched copy (engine/wasm/lean-frontend.patch): the frontend
+#     elaborates each command inside the call that elaborated the one before, one call per command,
+#     which a browser thread's stack cannot take for a course's longer lessons (ARCHITECTURE.md §4b).
+#     The patched C replaces the stock C, and its object is dropped so step 2 compiles it again (a
+#     restored build tree keeps both).
+FRONTEND_MODS="Lean/Language/Lean"
+PATCHED=$OUT/patched-src
+rm -rf "$PATCHED" && mkdir -p "$PATCHED"
+for m in $FRONTEND_MODS; do mkdir -p "$PATCHED/$(dirname "$m")"; cp "$PREFIX/src/lean/$m.lean" "$PATCHED/$m.lean"; done
+(cd "$PATCHED" && patch -p1 --no-backup-if-mismatch < "$OLDPWD/wasm/lean-frontend.patch")
+for m in $FRONTEND_MODS; do
+  (cd "$PATCHED" && LEAN_PATH="$PREFIX/lib/lean" "$LEAN" -R . --c="$OUT/c/$m.c.new" "$m.lean")
+  if cmp -s "$OUT/c/$m.c.new" "$OUT/c/$m.c"; then rm "$OUT/c/$m.c.new"
+  else mv "$OUT/c/$m.c.new" "$OUT/c/$m.c"; rm -f "$OUT/obj/c/$m.c.o"; fi
+done
 
 # 2. Compile it.
 echo "== compiling the emitted C"

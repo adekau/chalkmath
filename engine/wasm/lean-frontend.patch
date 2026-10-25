@@ -1,0 +1,25 @@
+--- a/Lean/Language/Lean.lean
++++ b/Lean/Language/Lean.lean
+@@ -363,6 +363,10 @@
+   descr := "no-op, deprecated"
+ }
+ 
++/-- ChalkMath (engine/wasm/lean-frontend.patch): how many commands `process.parseCmd` elaborates
++one inside the next before it continues on a fresh task. -/
++private def stackBreak : Nat := 32
++
+ /--
+ Entry point of the Lean language processor.
+ 
+@@ -639,7 +643,10 @@
+       return
+ 
+     -- Start new task when leaving fast-forwarding path; see "General notes" above
+-    let _ ← (if sync then BaseIO.asTask else (.pure <$> ·)) do
++    -- ChalkMath (engine/wasm/lean-frontend.patch): and every `stackBreak` commands, so that the next
++    -- command's `parseCmd`, called at the end of this one, starts on a fresh stack instead of nesting a
++    -- call per command: a long file otherwise overflows a browser thread's stack as it opens
++    let _ ← (if sync || cmds.size % stackBreak == stackBreak - 1 then BaseIO.asTask else (.pure <$> ·)) do
+       -- definitely resolved in `doElab` task
+       let elabPromise ← IO.Promise.new
+       let resultPromise ← IO.Promise.new

@@ -6,7 +6,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 INPUTS=(engine/lean-toolchain engine/wasm/emscripten-version engine/wasm/lean-runtime-emscripten.patch
-        engine/wasm/lean-compiler-emscripten.patch engine/wasm/uv-posix.c engine/wasm/server/*
+        engine/wasm/lean-compiler-emscripten.patch engine/wasm/lean-frontend.patch engine/wasm/uv-posix.c engine/wasm/server/*
         scripts/build-lean-wasm-runtime.sh scripts/build-lean-wasm-compiler.sh scripts/lean-wasm-symtab.py
         scripts/lean-wasm-oleans.py)
 VER=$(sed -E 's/.*:v//' engine/lean-toolchain)
