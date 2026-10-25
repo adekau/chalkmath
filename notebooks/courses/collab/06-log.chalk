@@ -1,0 +1,170 @@
+{
+  "chalk": 1,
+  "name": "06-log.chalk",
+  "cells": [
+    {
+      "src": "The op log as state and audit",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Treat the log as the document's state, prove that a snapshot can stand in for its prefix, and keep enough in each entry to check and to undo what the server did.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Lesson 1's server kept a log and nothing else. The text at version $v$ is the first $v$ edits applied in turn: a **fold**, as in [Multisets, folds and the main theorem](#course=crdt&lesson=7). There, the fold was of a join, and order, grouping and repeats did not matter, which is what let replicas apply updates as they came. A fold of edits is lesson 3's monoid: grouping does not matter, order and repeats do, so the log fixes both.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let W = op({id, x, y}; [id, x, y; x, x, y; y, x, y])",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "fold(W; x, y)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "fold(W; y, x)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "namespace OpLog\n\n/-- Insert `x` at position `p`. -/\ndef insAt : Nat → Char → List Char → List Char\n  | 0, x, s => x :: s\n  | _ + 1, x, [] => [x]\n  | p + 1, x, y :: s => y :: insAt p x s\n\n/-- Delete the character at position `p`. -/\ndef delAt : Nat → List Char → List Char\n  | _, [] => []\n  | 0, _ :: s => s\n  | p + 1, y :: s => y :: delAt p s\n\n/-- An edit as the log keeps it. A delete records the character it removed, so that it can be undone. -/\ninductive Op where\n  | ins (p : Nat) (x : Char) (site : Nat)\n  | del (p : Nat) (x : Char)\n  | nop\n  deriving Repr, DecidableEq\n\ndef Op.apply : Op → List Char → List Char\n  | .ins p x _, s => insAt p x s\n  | .del p _, s => delAt p s\n  | .nop, s => s\n\n/-- The course's transform, for these edits. -/\ndef T : Op → Op → Op\n  | .ins p x i, .ins q _ j => if q < p ∨ (q = p ∧ j < i) then .ins (p + 1) x i else .ins p x i\n  | .ins p x i, .del q _ => if q < p then .ins (p - 1) x i else .ins p x i\n  | .del p x, .ins q _ _ => if q ≤ p then .del (p + 1) x else .del p x\n  | .del p x, .del q _ => if q < p then .del (p - 1) x else if q = p then .nop else .del p x\n  | a, .nop => a\n  | .nop, _ => .nop\n\n/-- The inverse of an edit: an insert undone by deleting its character, a delete by putting the character back. -/\ndef Op.inv : Op → Op\n  | .ins p x _ => .del p x\n  | .del p x => .ins p x 0\n  | .nop => .nop\n\n/-- The document is the log, folded: each edit applied in turn to what the ones before it made. -/\ndef state (log : List Op) (s₀ : List Char) : List Char := log.foldl (fun s o => o.apply s) s₀\n\nend OpLog",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Snapshots and compaction",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A log grows for ever, and a reader that wants version 10,000 should not replay 10,000 edits. Keep a **snapshot**: the text at some version $k$. Then the text at any later version is the snapshot with the edits after $k$ applied. The edits before $k$ can then be **compacted**, archived or dropped, as far as reading goes:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "namespace OpLog\n\n/-- A snapshot at `k`, then the rest of the log: the same document. -/\ntheorem snapshot (log : List Op) (s₀ : List Char) (k : Nat) :\n    state (log.drop k) (state (log.take k) s₀) = state log s₀ := by\n  simp only [state, ← List.foldl_append, List.take_append_drop]\n\nend OpLog",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> Compaction is safe for reading, not for rebasing. A client whose base is older than the snapshot needs the edits after its base to rebase its batch past (lesson 1), and those are the ones compaction removed. A server that compacts must keep the log back to the oldest base it will accept, and tell a client with an older one to reload.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "As sent, and as applied",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The server rewrites every batch before appending it, so the log's edits are not the ones anyone typed. Keep both in each entry: the edit **as sent**, with its base version, and the edit **as applied**. Then anyone can **audit** a merge by redoing it: rebase the sent edit past the applied edits after its base, and compare.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "namespace OpLog\n\n/-- An edit sent against an older version, rewritten past everything committed since. -/\ndef rebase (o : Op) (since : List Op) : Op := since.foldl T o\n\n/-- What the log keeps of a commit: the edit as its author sent it, against which version, and as it was applied. -/\nstructure Entry where\n  base : Nat\n  sent : Op\n  applied : Op\n  deriving Repr\n\n/-- An entry is right when its applied edit is its sent edit rebased past the entries after its base. -/\ndef Entry.check (prior : List Entry) (e : Entry) : Bool :=\n  e.applied == rebase e.sent ((prior.drop e.base).map (·.applied))\n\n/-- The server's commit: rebase, then append, keeping both forms. -/\ndef commit (log : List Entry) (base : Nat) (sent : Op) : List Entry :=\n  log ++ [⟨base, sent, rebase sent ((log.drop base).map (·.applied))⟩]\n\n/-- An audit replays the log, checking each entry against the ones before it. -/\ndef auditFrom : List Entry → List Entry → Bool\n  | _, [] => true\n  | prior, e :: rest => e.check prior && auditFrom (prior ++ [e]) rest\n\ndef audit (log : List Entry) : Bool := auditFrom [] log\n\ntheorem auditFrom_append (e : Entry) : ∀ (prior rest : List Entry),\n    auditFrom prior (rest ++ [e]) = (auditFrom prior rest && e.check (prior ++ rest))\n  | prior, [] => by simp [auditFrom]\n  | prior, d :: rest => by\n    simp only [List.cons_append, auditFrom, auditFrom_append e (prior ++ [d]) rest, Bool.and_assoc,\n      List.append_assoc, List.nil_append]\n\n/-- A log the server built by commits passes the audit. -/\ntheorem audit_commit (log : List Entry) (base : Nat) (sent : Op) (h : audit log = true) :\n    audit (commit log base sent) = true := by\n  simp [audit, commit, auditFrom_append, Entry.check] at *\n  exact h\n\n/-- Two commits against version 0, the second rebased past the first; then the same log with its second entry altered. -/\ndef good : List Entry := commit (commit [] 0 (.ins 0 'x' 1)) 0 (.del 1 'b')\ndef bad : List Entry := good.take 1 ++ (good.drop 1).map fun e => { e with applied := .del 1 'b' }\n\n#eval good\n#eval (audit good, audit bad)\n\nend OpLog",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "On \"abc\", the first commit makes \"xabc\". The altered entry deletes position 1, which is now the a, not the b its author meant; the audit catches it. An audit is a check of the server by anyone with the log, and it needs both forms; the applied edits alone say what happened, not whether it should have.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Undoing",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A delete that records the character it removed can be undone: put the character back. With both forms kept, any entry can be reversed, and lesson 5's preservation says what reversing has to bring back.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "namespace OpLog\n\ntheorem delAt_insAt (x : Char) : ∀ (p : Nat) (s : List Char), p ≤ s.length → delAt p (insAt p x s) = s\n  | 0, s, _ => rfl\n  | _ + 1, [], h => by simp at h\n  | p + 1, y :: s, h => by simp only [insAt, delAt]; rw [delAt_insAt x p s (by simp at h; omega)]\n\ntheorem insAt_delAt (x : Char) : ∀ (p : Nat) (s : List Char), s[p]? = some x → insAt p x (delAt p s) = s\n  | _, [], h => by simp at h\n  | 0, y :: s, h => by simp at h; subst h; rfl\n  | p + 1, y :: s, h => by simp only [delAt, insAt]; rw [insAt_delAt x p s (by simpa using h)]\n\n/-- What makes an edit undoable: an insert within the text, a delete that names the character it removes. -/\ndef Op.fits : Op → List Char → Prop\n  | .ins p _ _, s => p ≤ s.length\n  | .del p x, s => s[p]? = some x\n  | .nop, _ => True\n\ntheorem inv_apply (o : Op) (s : List Char) (h : o.fits s) : o.inv.apply (o.apply s) = s := by\n  cases o with\n  | ins p x _ => exact delAt_insAt x p s h\n  | del p x => exact insAt_delAt x p s h\n  | nop => rfl\n\nend OpLog",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Undoing the last edit is applying its inverse. Undoing an edit from further back means rewriting its inverse past everything committed since, which needs more of the transform than TP1: [Selective undo](#course=collab&lesson=6&app=1), an optional notebook beside this lesson, checks how much more.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Views for readers",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Most readers want the text, not the log: a search index, a preview, an export. Keep a **materialized view**, the text at the head, and update it on every commit by applying the new entry. It is the fold kept up to date, so it is right as long as every commit updates it once (the exercise below), and it can be rebuilt from a snapshot and the log whenever it is in doubt.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "fold(W; x, id, y, id)",
+      "type": "exercise",
+      "prompt": "A log of overwrites on one character: `x`, then nothing, then `y`, then nothing. Fold it with `W`.",
+      "hints": [
+        "`id` changes nothing; the last overwrite stands."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem OpLog.state_append (log : List OpLog.Op) (o : OpLog.Op) (s₀ : List Char) :\n    OpLog.state (log ++ [o]) s₀ = o.apply (OpLog.state log s₀) := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that the view updated by one commit is the fold of the longer log: appending an edit to the log is applying it to the text.",
+      "leanSolution": "  simp [OpLog.state, List.foldl_append]",
+      "hints": [
+        "Unfold `state`; `List.foldl_append` splits the fold over the two parts."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> The document is the log, folded, and since edits form a monoid and not a semilattice, the log's order is part of the state. A snapshot at $k$ followed by the rest of the log gives the same text (`snapshot`), so readers need not replay everything, though rebasing still needs the log back to the oldest base. Keeping each edit as sent, with its base, and as applied lets anyone audit a merge, and a delete that records its character can be undone. A view is the fold kept up to date.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The log stores edits on plain text. A real document has more than text in it, and the next lesson asks how to store that without losing any of it.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

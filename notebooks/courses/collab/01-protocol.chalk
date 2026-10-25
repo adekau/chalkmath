@@ -1,0 +1,231 @@
+{
+  "chalk": 1,
+  "name": "01-protocol.chalk",
+  "cells": [
+    {
+      "src": "The client–server protocol",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Build the protocol a client and a central server run so that every client ends with the same text using only TP1: what each side keeps, how versions acknowledge edits, why a broadcast that arrives early waits, and the theorem that lets a client rebase a whole sequence of edits.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "This course starts where [Collaborative text](#course=crdt&lesson=10&app=1) stops. There, TP1 made two sites agree, three sites needed TP2, and a transform that satisfies TP1 failed it; a server that puts every edit in one order was named as the way out, and not built. Here it is built. The course also uses the systems course's state machines ([Mutual exclusion](#course=systems&lesson=3)) and compares one proof with its [Rewriting systems](#course=systems&lesson=10). Each lesson's Lean is in a namespace of its own and uses nothing from other lessons or courses.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Who keeps what",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] The protocol\n> **The server** keeps the document as a **log** of edits: the edit at position $v$ of the log makes **version** $v$. A client sends a **batch** of edits with the version it was typed against, its **base**. The server rewrites the batch past the log's edits after the base, appends it, and so gives its edits the next versions. It answers the author with an **acknowledgement** naming the batch's last version, and sends every other client the rewritten edits, each with its version.\n>\n> **A client** applies its own edits at once. It keeps the batch it has sent and not seen acknowledged, the **in-flight** batch (one at a time), and the edits typed since, the **pending** queue, which it sends as the next batch once the acknowledgement comes. An edit from the server with version $v$ is applied only after version $v - 1$; one that arrives early is held back. Before applying it, the client rewrites it past its in-flight and pending edits, and rewrites those past it.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The two-party core, a client and a server each rewriting the other's edits past its own unacknowledged ones, is the Jupiter system's (Nichols, Curtis, Dixon and Lamping, 1995). One batch in flight at a time is a way of building the client that keeps the server's side simple: a batch is always typed against a version the server has.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Versions, in order",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Two broadcasts, versions 2 and 3, are on their way to a client that has applied version 1. A network may deliver them in either order. A client that applies whatever arrives:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let Eager = system(\n  var w2 in {sent, here, used}\n  var w3 in {sent, here, used}\n  init w2 = sent ∧ w3 = sent\n  action arrive2 when w2 = sent do w2 := here\n  action arrive3 when w3 = sent do w3 := here\n  action use2 when w2 = here do w2 := used\n  action use3 when w3 = here do w3 := used\n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> Version 3 was rewritten by the server for a text that already has version 2 in it. What goes wrong if the client applies it first?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "invariant(Eager, w3 = used → w2 = used)",
+      "showWork": true,
+      "label": null,
+      "stepwise": 0
+    },
+    {
+      "src": "Version 3's positions count characters that version 2 put there, or no longer count ones it removed; applied first, it lands in the wrong place. The fix is a guard: version 3 waits until version 2 is used.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let Hold = system(\n  var w2 in {sent, here, used}\n  var w3 in {sent, here, used}\n  init w2 = sent ∧ w3 = sent\n  action arrive2 when w2 = sent do w2 := here\n  action arrive3 when w3 = sent do w3 := here\n  action use2 when w2 = here do w2 := used\n  action use3 when w3 = here ∧ w2 = used do w3 := used\n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "invariant(Hold, w3 = used → w2 = used)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Versions do the work that causal delivery did for the op-based CRDTs: a client applies the server's edits in the server's order, whatever order they arrive in.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Rebasing is a grid",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A client with pending edits $a_1, \\ldots, a_m$ hears of server edits $b_1, \\ldots, b_n$ made concurrently. It must rewrite the $b$'s to follow its $a$'s, and the server must rewrite the $a$'s to follow its $b$'s, and the two texts must meet. Lay the two sequences out as the sides of a grid: each square has $a_i$ and $b_j$ on two sides, $T(b_j, a_i)$ and $T(a_i, b_j)$ on the other two, and closes by TP1. Rewriting one edit past a sequence is a row of squares; rewriting a sequence past a sequence is the whole grid.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "namespace Jupiter\n\nvariable {Op S : Type}\n\n/-- Apply a sequence of edits, first to last. -/\ndef applyAll (apply : Op → S → S) : List Op → S → S\n  | [], s => s\n  | o :: os, s => applyAll apply os (apply o s)\n\n/-- One edit `a` past a sequence `bs`: `a` rewritten to follow all of `bs`, and `bs` rewritten to follow `a`. A row of the grid. -/\ndef past (T : Op → Op → Op) (a : Op) : List Op → Op × List Op\n  | [] => (a, [])\n  | b :: bs => ((past T (T a b) bs).1, T b a :: (past T (T a b) bs).2)\n\n/-- A sequence `as` past a sequence `bs`: the grid, a row at a time. -/\ndef rebase (T : Op → Op → Op) : List Op → List Op → List Op × List Op\n  | [], bs => ([], bs)\n  | a :: as, bs =>\n    ((past T a bs).1 :: (rebase T as (past T a bs).2).1, (rebase T as (past T a bs).2).2)\n\n/-- TP1: two concurrent edits, each rewritten past the other, meet. -/\ndef TP1 (apply : Op → S → S) (T : Op → Op → Op) : Prop :=\n  ∀ a b s, apply (T b a) (apply a s) = apply (T a b) (apply b s)\n\n/-- A row closes: induction on the length of `bs`, one square per step. -/\ntheorem past_meets (apply : Op → S → S) (T : Op → Op → Op) (h : TP1 apply T) :\n    ∀ (bs : List Op) (a : Op) (s : S),\n      applyAll apply (past T a bs).2 (apply a s) = apply (past T a bs).1 (applyAll apply bs s)\n  | [], a, s => rfl\n  | b :: bs, a, s => by\n    simp only [past, applyAll]\n    rw [h a b s]\n    exact past_meets apply T h bs (T a b) (apply b s)\n\n/-- The grid closes: induction on the length of `as`, one row per step. -/\ntheorem tiling (apply : Op → S → S) (T : Op → Op → Op) (h : TP1 apply T) :\n    ∀ (as bs : List Op) (s : S),\n      applyAll apply (rebase T as bs).2 (applyAll apply as s)\n        = applyAll apply (rebase T as bs).1 (applyAll apply bs s)\n  | [], bs, s => rfl\n  | a :: as, bs, s => by\n    simp only [rebase, applyAll]\n    rw [tiling apply T h as (past T a bs).2 (apply a s), past_meets apply T h bs a s]\n\nend Jupiter",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!note] No termination argument\n> [Rewriting systems](#course=systems&lesson=10) got confluence from two facts: every critical pair joins (local confluence), and rewriting stops (termination). Newman's lemma needs both, because closing one diamond can open new forks, and only termination says that this stops. The grid has no such problem. $T$ supplies both sides that close each square, so closing a square opens nothing; the grid is $m \\times n$ from the start, and the induction is on the two lengths. `tiling` uses TP1 and nothing else, for any edits and any states.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The course's transform, with the edits of [Collaborative text](#course=crdt&lesson=10&app=1), on \"cat\": the client has typed an s at the end and deleted the c; the server has meanwhile committed a b at the front and the deletion of the a.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "namespace Jupiter\n\n/-- Insert `x` at position `p` (at the end, if `p` is past it). -/\ndef insAt : Nat → Char → List Char → List Char\n  | 0, x, s => x :: s\n  | _ + 1, x, [] => [x]\n  | p + 1, x, y :: s => y :: insAt p x s\n\n/-- Delete the character at position `p` (nothing, if there is none). -/\ndef delAt : Nat → List Char → List Char\n  | _, [] => []\n  | 0, _ :: s => s\n  | p + 1, y :: s => y :: delAt p s\n\n/-- An edit: insert a character at a place (typed at a site, for ties), delete one, or nothing. -/\ninductive Op where\n  | ins (p : Nat) (x : Char) (site : Nat)\n  | del (p : Nat)\n  | nop\n  deriving Repr, DecidableEq\n\ndef Op.apply : Op → List Char → List Char\n  | .ins p x _, s => insAt p x s\n  | .del p, s => delAt p s\n  | .nop, s => s\n\n/-- `T a b`: `a`, rewritten to apply after a concurrent `b`. Of two inserts at one place, the lower site goes first. -/\ndef T : Op → Op → Op\n  | .ins p x i, .ins q _ j => if q < p ∨ (q = p ∧ j < i) then .ins (p + 1) x i else .ins p x i\n  | .ins p x i, .del q => if q < p then .ins (p - 1) x i else .ins p x i\n  | .del p, .ins q _ _ => if q ≤ p then .del (p + 1) else .del p\n  | .del p, .del q => if q < p then .del (p - 1) else if q = p then .nop else .del p\n  | a, .nop => a\n  | .nop, _ => .nop\n\n/-- Apply edits in order to a text, and read the result. -/\ndef run (os : List Op) (t : String) : String := String.ofList (os.foldl (fun s o => o.apply s) t.toList)\n\ndef text (s : List Char) : String := String.ofList s\n\ndef mine : List Op := [.ins 3 's' 1, .del 0]\ndef theirs : List Op := [.ins 0 'b' 2, .del 2]\n\n#eval rebase T mine theirs\n#eval text (applyAll Op.apply (rebase T mine theirs).2 (applyAll Op.apply mine \"cat\".toList))   -- the client\n#eval text (applyAll Op.apply (rebase T mine theirs).1 (applyAll Op.apply theirs \"cat\".toList))   -- the server\n\nend Jupiter",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Both read \"bts\". `tiling` says they always will, given TP1 for $T$. Here that is checked on this grid only; lesson 8 proves TP1 for this $T$ on every text, for edits that make sense on it.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Why one order makes TP1 enough",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Three sites needed TP2 because a third edit $c$ could be rewritten past two concurrent edits $a$ and $b$ along two paths, $a$ then $T(b, a)$, or $b$ then $T(a, b)$, and the two had to agree. With a server, that never happens:\n\n- Every edit the server has committed has **one** rewritten form: the one in the log, at its version. Every client receives that form and applies it in version order, so all clients apply the same shared edits, rewritten the same way.\n- A client rewrites only against its **own** edits that are not yet shared, in-flight and pending. Those exist at that client alone; no one else will rewrite them along another path.\n- The server rewrites a batch only past log entries after its base, in log order: one path again.\n\nEvery rewrite is a square of one grid between one client's unshared edits and the server's log. Two sites, so TP1.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> \"One central order\" means one place that decides the next version. It need not be one machine, and one machine is not enough if it can hand out the same version twice. The next lesson breaks this on purpose.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A client and a server in Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "namespace Jupiter\n\n/-- A client: its text, the last server version it has applied, the batch it has sent and not seen\nacknowledged, and the edits typed since. -/\nstructure Client where\n  text : List Char\n  ver : Nat\n  flight : List Op := []\n  pending : List Op := []\n  deriving Repr\n\n/-- Type an edit: it applies at once and waits in the queue. -/\ndef Client.edit (c : Client) (o : Op) : Client := { c with text := o.apply c.text, pending := c.pending ++ [o] }\n\n/-- Send the queue as the next batch, if none is in flight. -/\ndef Client.send (c : Client) : Client :=\n  if c.flight.isEmpty then { c with flight := c.pending, pending := [] } else c\n\n/-- The batch is committed; its last edit is version `v`. -/\ndef Client.ack (c : Client) (v : Nat) : Client := { c with ver := v, flight := [] }\n\n/-- Another client's edit, as the server committed it at version `c.ver + 1`: rewritten past this\nclient's unacknowledged edits, which are rewritten past it. -/\ndef Client.remote (c : Client) (o : Op) : Client :=\n  { c with text := (past T o (c.flight ++ c.pending)).1.apply c.text, ver := c.ver + 1,\n           flight := (past T o (c.flight ++ c.pending)).2.take c.flight.length,\n           pending := (past T o (c.flight ++ c.pending)).2.drop c.flight.length }\n\n/-- The server's commit: a batch typed against version `base`, rebased past the log after it. -/\ndef commit (log : List Op) (base : Nat) (batch : List Op) : List Op :=\n  log ++ (rebase T batch (log.drop base)).1\n\nend Jupiter",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Client 1 types an s at the end of \"cat\" and sends it. Before the acknowledgement, the server's version 1 arrives: client 2 deleted the c. The client rewrites the delete past its in-flight insert and applies it; the server commits the insert, typed against version 0, past the delete:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "open Jupiter in\n#eval text ((((Client.mk \"cat\".toList 0 [] []).edit (.ins 3 's' 1)).send.remote (.del 0)).text)\nopen Jupiter in\n#eval text (applyAll Op.apply (commit [.del 0] 0 [.ins 3 's' 1]) \"cat\".toList)",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "reach(Hold, w3 = here ∧ w2 = sent)",
+      "type": "exercise",
+      "prompt": "In `Hold`, can version 3 be waiting at the client while version 2 is still on its way? Answer `true` or `false`.",
+      "hints": [
+        "The network delivers in either order; only applying is guarded."
+      ],
+      "hideQuestion": true,
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "invariant(Eager, w2 = used → w3 = used)",
+      "type": "exercise",
+      "prompt": "And the other way round: in `Eager`, is version 3 always used once version 2 is? Answer `true` or `false`.",
+      "hints": [
+        "Version 2 can be used before version 3 has even arrived."
+      ],
+      "hideQuestion": true,
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem Jupiter.rebase_nil_right {E : Type} (T : E → E → E) : ∀ (as : List E), Jupiter.rebase T as [] = (as, []) := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "A client whose base is the server's latest version has nothing to rebase past. Prove that rebasing over no server edits changes nothing.",
+      "leanSolution": "  intro as\n  induction as with\n  | nil => rfl\n  | cons a as ih => simp only [Jupiter.rebase, Jupiter.past, ih]",
+      "hints": [
+        "Induction on `as`.",
+        "In the step, unfold `rebase` and `past` and use the hypothesis: `simp only [Jupiter.rebase, Jupiter.past, ih]`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> The server keeps a log and hands out versions; a client applies its own edits at once, keeps one batch in flight and a queue pending, applies the server's edits in version order, and rewrites each past its own unshared edits. Rebasing a sequence over a sequence is a grid of TP1 squares, and `tiling` proves it closes by induction on the two lengths, with no termination argument. One order means every shared edit has one rewritten form and every rewrite is between two sites: TP1 is enough.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The proof assumed one order. Next: what a real server has to do to have one, when several machines take commits.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

@@ -312,6 +312,12 @@
       "label": null
     },
     {
+      "src": "> [!note] See also\n> [Collaborative editing with a server](#course=collab), a course of its own, builds Jupiter's server out in full: the client's queues and the server's versions, rebasing a sequence of edits as a grid of TP1 squares, optimistic concurrency on a versioned log, and this transform proved TP1 for every text.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "> [!summary]\n> Replaying an edit by position breaks as soon as a concurrent edit moves the text under it. Operational transformation rewrites the edit's position past the concurrent ones: TP1 makes two sites agree, TP2 is what three need, and Jupiter's server, which orders everything, makes TP1 enough; Google Docs edits this way, through a server. A sequence CRDT such as the RGA names characters by unique ids instead, so edits commute and the replicas converge without a server, at the cost of an id per character and tombstones. One moves the agreement into the transformation and a server, the other into the ids.",
       "type": "markdown",
       "showWork": false,

@@ -1,0 +1,2 @@
+17	replicas(rga; a, b\n  a: ins a at 0\n  a: ins b at 1\n  a: ins c at 2\n  a -> b\n  a: del 1\n  b: ins x at 2\n  a -> b\n  b -> a\n)	= {a↦axc, b↦axc}
+20	replicas(rga; a, b\n  a: ins o at 0\n  a: ins k at 1\n  a -> b\n  a: del 0\n  a: del 0\n  b: ins s at 2\n  a -> b\n  b -> a\n)	= {a↦s, b↦s}

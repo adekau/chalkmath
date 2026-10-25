@@ -398,6 +398,70 @@
       ]
     },
     {
+      "id": "collab",
+      "title": "Collaborative editing with a server",
+      "blurb": "From two sites to a working system: a client–server protocol in which TP1 is enough, optimistic concurrency on a versioned record, edits that compose, cursors and comments that move with the text, content that is never silently lost, the log as state and audit, lossless round trips, and a reference transform proved in Lean against which shipped code is tested.",
+      "kind": "course",
+      "level": "Distributed systems",
+      "path": "courses/collab",
+      "lessons": [
+        {
+          "file": "01-protocol.chalk",
+          "title": "The client–server protocol",
+          "blurb": "Jupiter in full: a client's in-flight batch and pending queue, versions and acknowledgements, broadcasts applied in version order, and the rebase of one sequence over another as a grid of TP1 squares, proved without a termination argument."
+        },
+        {
+          "file": "02-optimistic.chalk",
+          "title": "Optimistic concurrency on a versioned record",
+          "blurb": "The lost update between two workers; a conditional write on the version and the read, rewrite, write, retry loop; a log that forks into a diamond, and the TP2 failure it brings back; why the server's one site is its version counter, and retries made harmless with an idempotency key."
+        },
+        {
+          "file": "03-composing.chalk",
+          "title": "Composing edits",
+          "blurb": "One edit that does two: composition is a monoid, applying the composite is applying one then the other, and it is neither commutative nor idempotent, so a queue rolled up by composition keeps its order; then runs of retain, insert and delete with formatting, and concurrent formatting by priority.",
+          "apps": [
+            {
+              "file": "03a-patches.chalk",
+              "title": "Patches as morphisms",
+              "blurb": "Edits as arrows between texts, composition as their composition, and the merge of two concurrent inserts as a pushout: the merged order is a partial order, and the tie-break is what makes it a text."
+            }
+          ]
+        },
+        {
+          "file": "04-positions.chalk",
+          "title": "Mapping positions",
+          "blurb": "Moving a cursor, a selection or a comment's anchor through an edit, with a bias for text typed exactly there; the map is monotone, so ranges stay ranges; a range whose text is deleted collapses, and the policy that keeps it, flagged."
+        },
+        {
+          "file": "05-preserving.chalk",
+          "title": "Preserving content",
+          "blurb": "Converging is not keeping what people did: every character either edit inserts is in the result, and a delete removes only a character of its own text, proved for the course's transform; a rule that drops an insert inside a deleted range, which converges and fails the theorem; and the RGA's tombstones, which keep it by construction."
+        },
+        {
+          "file": "06-log.chalk",
+          "title": "The op log as state and audit",
+          "blurb": "The document as a fold of the log; snapshots and compaction, with the theorem that folding from a snapshot gives the same document; each edit kept as sent and as applied, so that every merge can be audited and undone; and views for readers that want the text.",
+          "apps": [
+            {
+              "file": "06a-selective-undo.chalk",
+              "title": "Selective undo",
+              "blurb": "Undoing an edit that is not the last: its inverse rewritten past what came after, the three inverse properties that makes it sound, the one this transform has (IP1, proved), and the two it lacks (IP2 and IP3), with every failing pair on a small text."
+            }
+          ]
+        },
+        {
+          "file": "07-round-trips.chalk",
+          "title": "Lossless round trips",
+          "blurb": "A document stored as text and annotations and joined back: join after split is the identity, and split after join is too on well-formed pairs; the normalizer this gives is idempotent; and why a normalizer that rewrites every save breaks the client's rebase."
+        },
+        {
+          "file": "08-capstone.chalk",
+          "title": "Capstone: proofs and shipped code",
+          "blurb": "The course's transform as a Lean reference: TP1 proved for every text, preservation, and an exhaustive check of every small case; what the proofs cover and what they do not; a port tested against the reference; and the caveats of running Lean's own compiled code in a browser."
+        }
+      ]
+    },
+    {
       "id": "calculus",
       "title": "Calculus: derivatives and integrals",
       "blurb": "The slope at a point, found by zooming in; the power, product and chain rules read off pictures; the circle behind cos, sin and e^(it), and the hyperbola behind cosh and sinh; tangent lines and bending; then antiderivatives the engine checks by differentiating, and area as slope run backwards.",

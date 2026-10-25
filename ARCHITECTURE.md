@@ -812,6 +812,9 @@ language server answers LSP for Lean cells.
   some 5 s of one native thread, mostly the kernel checking the book's structures and proofs.
   Compiling each course's prelude to 32-bit oleans with the wasm Lean, imported instead of inlined,
   would make it a download; that is not built.
+  A course can do without one: the collaborative-editing course's lessons each keep their Lean in a
+  namespace of their own and stand alone (the course's edits and transform are written out again where a
+  lesson needs them, from one string in `mk-courses.mjs`), so a lesson opens with nothing in front of it.
 - **A thread's stack.** Every one of Lean's threads is a web worker, and Chromium gives a worker 500 KB
   of stack (Lean's threads have 8 MB natively), of which Lean compiled to wasm needs far more per level of
   recursion than native Lean: some 20 KB per statement of a `do` block, so one of about 24 `let x ← …`
