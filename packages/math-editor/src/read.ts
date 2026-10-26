@@ -29,7 +29,7 @@ export type ReadResult = { ok: true; stmt: Stmt } | { ok: false; error: ReadErro
 /** `builtinFunctions` in `Parser.lean`: a name followed by `(` is a call only if it is one of these
  *  or a function the session defined (`known`); otherwise it is a product, `f·(x)`. */
 export const BUILTIN_FUNCTIONS = ["sin", "cos", "tan", "sec", "csc", "cot", "arcsin", "arccos", "arctan", "sinh", "cosh", "tanh", "exp", "ln", "log", "sqrt", "abs", "conj", "re", "im", "arg",
-  "diff", "simplify", "expand", "factor", "N", "det", "rref", "transpose", "solve", "subst", "integrate", "plot",
+  "diff", "simplify", "expand", "factor", "N", "det", "rref", "nullspace", "transpose", "solve", "subst", "integrate", "plot",
   "sign", "dot", "norm", "sum", "exptotrig", "epicycles", "dft", "manipulate", "column",
   "backprop",
   "total", "mean", "variance", "stdev", "min", "max", "median"];

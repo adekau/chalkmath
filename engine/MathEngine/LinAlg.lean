@@ -179,6 +179,78 @@ def laDet : PlainRule :=
         | _ => some ⟨detExpr r rows, "Laplace expansion along the first row, $\\det M = \\sum_j (-1)^{1+j} a_{1j} \\det M_{1j}$ where $M_{1j}$ deletes row 1 and column $j$, applied recursively down to 2×2 minors.", none, none⟩
       | _ => none }
 
+/-- Gauss–Jordan elimination over ℚ: the operations of the verified `LinQ.rref`, replayed into
+steps. `LinQ.sol_rref` is the theorem that the output has the input's solution set. -/
+def rrefRat (rs : List (List Rat)) (approx : Bool) : Except String (Expr × Array Step) := Id.run do
+  let lit (r : Rat) : Expr := .num (Q.ofRat r approx)
+  let snap (m : List (List Rat)) : Expr := .matrix (m.map (·.map lit))
+  let mut m := rs
+  let mut steps : Array Step := #[]
+  for (col, op) in LinQ.rrefOps rs do
+    let before := snap m
+    m := op.apply m
+    let (rule, text) := match op with
+      | .swap i j => ("la.row-swap", s!"Swap $R_\{{i + 1}}$ and $R_\{{j + 1}}$ so the pivot for column {col + 1} is nonzero. (Elementary row operations preserve the solution set: `LinQ.sol_swap`.)")
+      | .scale i c => ("la.row-scale", s!"Scale $R_\{{i + 1}}$ by ${(lit c).toText}$ so the pivot becomes 1. (`LinQ.sol_scale`: the factor is nonzero.)")
+      | .addMul i j c => ("la.row-add", s!"$R_\{{i + 1}} \\leftarrow R_\{{i + 1}} - ({(lit (-c)).toText}) R_\{{j + 1}}$ to clear column {col + 1}. (`LinQ.sol_addMul`.)")
+    steps := steps.push ⟨rule, text, [], before, snap m, none⟩
+  return .ok (snap m, steps)
+
+/-- The null space of a matrix of numbers, read off its reduced form `r` (`n` columns): the pivot
+columns, the free ones, and a basis vector for each free column — `1` there, `0` in the other free
+columns, and each pivot variable from its row. -/
+def nullBasis (r : List (List Rat)) (n : Nat) : List Nat × List Nat × List (List Rat) :=
+  let pivRows := r.filterMap fun row => (row.findIdx? (· != 0)).map (·, row)
+  let pivs := pivRows.map (·.1)
+  let free := (List.range n).filter (!pivs.contains ·)
+  let vec (f : Nat) : List Rat := (List.range n).map fun j =>
+    if j == f then 1 else match pivRows.find? (·.1 == j) with
+      | some (_, row) => - row.getD f 0
+      | none => 0
+  (pivs, free, free.map vec)
+
+/-- "1, 2 and 4", for the columns a step names. -/
+def colList (cs : List Nat) : String :=
+  match (cs.map (· + 1 |>.repr)).reverse with
+  | [] => "none" | [x] => x | x :: ys => s!"{", ".intercalate ys.reverse} and {x}"
+
+/-- `nullspace(A)`: every `x` with `A x = 0`, as the combinations of a basis, the columns of the
+result. Elimination keeps the solutions (`LinQ.sol_rref`), so the basis is read off the reduced
+matrix (`nullBasis`), and each vector is checked to solve every row of `A` (`LinQ.solves_sound`)
+before it is shown. That they span the null space is the reading of the reduced matrix, not a
+theorem: they are independent (each is `1` in its own free column, `0` in the others'), and there
+are as many as there are free columns. -/
+def laNullspace : PlainRule :=
+  { name := "la.nullspace", apply := fun e => Option.map (checkedLit e) <|
+      match e with
+      | .fn "nullspace" [.matrix rows] =>
+        let (_, n) := dims rows
+        match asRatRows rows with
+        | none => some (refuse "nullspace needs a matrix of numbers")
+        | some (_, true) => some (refuse "nullspace needs exact numbers: an approximate entry cannot be told from 0")
+        | some (rs, false) =>
+          if n == 0 then some (refuse "nullspace needs a matrix with at least one column") else
+          let r := LinQ.rref rs
+          let (pivs, free, basis) := nullBasis r n
+          if !basis.all (LinQ.solves rs) then some (refuse "nullspace: a basis vector does not solve the system (please report this)") else
+          let lit (x : Rat) : Expr := .num (Q.ofRat x false)
+          let out : Expr :=
+            if basis.isEmpty then .matrix ((List.range n).map fun _ => [Expr.zero])
+            else .matrix ((List.range n).map fun i => basis.map fun v => lit (v.getD i 0))
+          let reduced : Expr := .matrix (r.map (·.map lit))
+          let elim := match rrefRat rs false with | .ok (_, st) => st | .error _ => #[]
+          let k := free.length
+          let read : Step := ⟨"la.nullspace",
+            if k == 0 then s!"Every column has a pivot ({colList pivs}), so no variable is free: the only solution of $Ax = 0$ is $x = 0$, and the null space is that one vector."
+            else s!"Read off the solutions: column{if pivs.length == 1 then "" else "s"} {colList pivs} {if pivs.length == 1 then "has a pivot" else "have pivots"}, and column{if k == 1 then "" else "s"} {colList free} {if k == 1 then "is" else "are"} free. A free variable can be anything, and each pivot row gives its pivot variable from the free ones. Setting one free variable to $1$ and the others to $0$ gives one solution each: {if k == 1 then "the column" else s!"the {k} columns"} of the result. Each solves every equation of the original matrix, checked exactly.",
+            [], reduced, out, none⟩
+          some ⟨out,
+            if k == 0 then "The null space, every $x$ with $Ax = 0$: elimination finds a pivot in every column, so it is $x = 0$ alone."
+            else s!"The null space, every $x$ with $Ax = 0$: all combinations of the {if k == 1 then "column" else s!"{k} columns"} shown. Elimination keeps the solutions (`LinQ.sol_rref`), so they are read off the reduced matrix, one for each free column.",
+            some ⟨.matrix rows, elim.push read, out⟩, none⟩
+      | .fn "nullspace" _ => some (refuse "nullspace takes one matrix")
+      | _ => none }
+
 def laPow : PlainRule :=
   { name := "la.pow", apply := fun e => Option.map (checkedLit e) <|
       match e with
@@ -527,7 +599,7 @@ def statRule (st : Stat) : PlainRule :=
 
 def statRules : List PlainRule := stats.map statRule
 
-def matrixRules : List PlainRule := [laAdd, laScalarMul, laMul, laTranspose, laDet, laPow, laDot, laNorm, laConj, laEdiv, laEmul, laPart] ++ statRules
+def matrixRules : List PlainRule := [laAdd, laScalarMul, laMul, laTranspose, laDet, laNullspace, laPow, laDot, laNorm, laConj, laEdiv, laEmul, laPart] ++ statRules
 
 /-- The catch-all: a matrix literal anywhere no rule above handles it is an error, not junk. -/
 def laContext : PlainRule :=
@@ -603,23 +675,6 @@ def rrefSymbolic (m : List (List Expr)) : Expr × Array Step := Id.run do
               s!"$R_\{{i + 1}} \\leftarrow R_\{{i + 1}} - ({factor.toText}) R_\{{pivotRow + 1}}$ to clear column {col + 1}.{assumingText as}", [], before, snap rows, none⟩
       pivotRow := pivotRow + 1
   return (snap rows, steps)
-
-/-- Gauss–Jordan elimination over ℚ: the operations of the verified `LinQ.rref`, replayed into
-steps. `LinQ.sol_rref` is the theorem that the output has the input's solution set. -/
-def rrefRat (rs : List (List Rat)) (approx : Bool) : Except String (Expr × Array Step) := Id.run do
-  let lit (r : Rat) : Expr := .num (Q.ofRat r approx)
-  let snap (m : List (List Rat)) : Expr := .matrix (m.map (·.map lit))
-  let mut m := rs
-  let mut steps : Array Step := #[]
-  for (col, op) in LinQ.rrefOps rs do
-    let before := snap m
-    m := op.apply m
-    let (rule, text) := match op with
-      | .swap i j => ("la.row-swap", s!"Swap $R_\{{i + 1}}$ and $R_\{{j + 1}}$ so the pivot for column {col + 1} is nonzero. (Elementary row operations preserve the solution set: `LinQ.sol_swap`.)")
-      | .scale i c => ("la.row-scale", s!"Scale $R_\{{i + 1}}$ by ${(lit c).toText}$ so the pivot becomes 1. (`LinQ.sol_scale`: the factor is nonzero.)")
-      | .addMul i j c => ("la.row-add", s!"$R_\{{i + 1}} \\leftarrow R_\{{i + 1}} - ({(lit (-c)).toText}) R_\{{j + 1}}$ to clear column {col + 1}. (`LinQ.sol_addMul`.)")
-    steps := steps.push ⟨rule, text, [], before, snap m, none⟩
-  return .ok (snap m, steps)
 
 /-- `rref`: the verified ℚ path when every entry is a numeral, the symbolic path otherwise. -/
 def rref (m : List (List Expr)) : Except String (Expr × Array Step) :=

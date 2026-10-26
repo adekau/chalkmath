@@ -37,7 +37,7 @@ export const FALLBACK_WORLDS: WorldInfo[] = [
     names: ["true", "false", "and", "or", "not", "if", "zero", "succ", "add", "mul", "pow", "iszero", "pair", "fst", "snd", "id", "const", "K", "S", "I", "omega", "Y"],
     markers: ["λ", "\\", ":="] },
   { id: "math", label: "Algebra",
-    commands: ["sin", "cos", "tan", "sec", "csc", "cot", "arcsin", "arccos", "arctan", "sinh", "cosh", "tanh", "exp", "ln", "log", "sqrt", "abs", "conj", "re", "im", "arg", "diff", "simplify", "expand", "factor", "N", "det", "rref", "transpose", "solve", "subst", "integrate", "plot", "sign", "dot", "norm", "sum", "exptotrig", "epicycles", "dft", "manipulate", "column", "backprop", "total", "mean", "variance", "stdev", "min", "max", "median"],
+    commands: ["sin", "cos", "tan", "sec", "csc", "cot", "arcsin", "arccos", "arctan", "sinh", "cosh", "tanh", "exp", "ln", "log", "sqrt", "abs", "conj", "re", "im", "arg", "diff", "simplify", "expand", "factor", "N", "det", "rref", "nullspace", "transpose", "solve", "subst", "integrate", "plot", "sign", "dot", "norm", "sum", "exptotrig", "epicycles", "dft", "manipulate", "column", "backprop", "total", "mean", "variance", "stdev", "min", "max", "median"],
     keywords: [],
     glyphs: [],
     names: [],

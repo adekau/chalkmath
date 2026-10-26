@@ -528,8 +528,25 @@ export const FUNCTIONS: FnDoc[] = [
       section("Symbolic entries", "rref([x, y; x^2, 1])"),
       section("Scope", note("A singular matrix:"), "rref([1,2;2,4])", note("Fractions stay exact:"), "rref([1/2,1,3;1,3,5])", "rref([1,2,3,4;2,4,6,8;1,1,1,1])"),
     ],
-    see: ["det", "transpose"],
+    see: ["det", "transpose", "nullspace"],
     ref: "https://mathworld.wolfram.com/ReducedRowEchelonForm.html",
+  },
+  {
+    name: "nullspace", area: "Linear algebra",
+    usage: [["nullspace(M)", "gives a basis of the null space of `M`, every `x` with `M x = 0`, as the columns of a matrix."]],
+    details: [
+      "By elimination: the reduced matrix's free columns are the free variables. Setting one to 1 and the others to 0, the pivot rows give the rest, one basis vector per free column. The row operations are nested steps, as under `rref`.",
+      "Each basis vector is checked against every equation of `M`, in exact arithmetic, before it is shown (`LinQ.solves_sound`). They are independent: each is 1 in its own free column and 0 in the others'.",
+      "When every column has a pivot, the null space is the zero vector alone, and that is the answer.",
+      "Entries must be exact numbers. As an exercise, any basis of the null space is right: any nonzero multiple of a single vector, say, in whole numbers.",
+    ],
+    examples: [
+      basic("nullspace([1, 2, 3; 2, 4, 6])"),
+      section("Balancing a reaction", note("CH₄ + O₂ → CO₂ + H₂O: rows C, H, O; columns the compounds, products negative. Doubled, the coefficients 1, 2, 1, 2."), "nullspace([1, 0, -1, 0; 4, 0, 0, -2; 0, 2, -2, -1])", "2*nullspace([1, 0, -1, 0; 4, 0, 0, -2; 0, 2, -2, -1])"),
+      section("Scope", note("Every column a pivot:"), "nullspace([1, 2; 3, 4])", note("Two free columns:"), "nullspace([1, 0, -1, -1; 0, 2, -1, -2])"),
+    ],
+    see: ["rref", "det"],
+    ref: "https://mathworld.wolfram.com/NullSpace.html",
   },
   {
     name: "transpose", area: "Linear algebra",

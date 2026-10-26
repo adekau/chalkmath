@@ -534,7 +534,14 @@
         {
           "file": "03-systems.chalk",
           "title": "Solving systems by elimination",
-          "blurb": "Which input lands on a given output: elimination on the augmented matrix, row operations proved to keep the solutions, and the matrices that squash the plane, with no solution or infinitely many."
+          "blurb": "Which input lands on a given output: elimination on the augmented matrix, row operations proved to keep the solutions, and the matrices that squash the plane, with no solution or infinitely many.",
+          "apps": [
+            {
+              "file": "03a-balancing.chalk",
+              "title": "Balancing chemical equations",
+              "blurb": "Atoms are neither made nor destroyed: one equation per element, the coefficients of a reaction as the null space of a matrix, found by elimination, and reactions with two balancings or none."
+            }
+          ]
         },
         {
           "file": "04-determinants.chalk",

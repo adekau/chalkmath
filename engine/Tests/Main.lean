@@ -816,6 +816,17 @@ def partStatTests : TestM Unit := do
 
 /-- Show work for big terms: entrywise steps (`buildSteps`), outline replies and `engine.steps`. -/
 def workTests : TestM Unit := do
+  -- nullspace: the row operations nested, then the reading of the reduced matrix
+  let (stn, r) := sessionEval [] "nullspace([1,2,3;2,4,6])" ",\"showWork\":true"
+  check "nullspace: a basis vector per free column" r "[-2, -3; 1, 0; 0, 1]"
+  check "nullspace: elimination, then the reading"
+    (((stn.get "t").cells.lookup "nullspace([1,2,3;2,4,6])" >>= fun c => c.derivation.steps[0]? >>= (·.sub)).map (fun d => d.steps.toList.map (·.rule)) |>.getD []).toString
+    "[la.row-add, la.nullspace]"
+  checkTrue "nullspace: the reading names the free columns"
+    (((stn.get "t").cells.lookup "nullspace([1,2,3;2,4,6])" >>= fun c => c.derivation.steps[0]? >>= (·.sub) >>= (·.steps.toList.getLast?)).map
+      (fun s => contains s.explanation "column 1 has a pivot, and columns 2 and 3 are free") |>.getD false)
+  checkTrue "nullspace: a checked basis vector solves the system" (LinQ.solves [[1, 0, -1, 0], [4, 0, 0, -2], [0, 2, -2, -1]] [1, 2, 1, 2])
+  checkTrue "nullspace: a wrong vector is caught" (!LinQ.solves [[1, 0, -1, 0], [4, 0, 0, -2], [0, 2, -2, -1]] [1, 2, 1, 1])
   -- entrywise: a run of rewrites inside one matrix's entries is one step, each entry's steps nested
   -- with the entry alone as their term, so the derivation grows with the matrix, not its square
   let (st3, _) := sessionEval [] "[1,2;3,4]*2" ",\"showWork\":true"
@@ -961,6 +972,18 @@ def checkTests : TestM Unit := do
   checkTrue "check: the work is not an answer" (contains (ask "diff(x^2, x)" "diff(x^2 + 0, x)") "the answer may not use diff")
   checkTrue "check: the question is not its own answer" (contains (ask "[1, 2; 3, 4]*[0, 1; 1, 0]" "[1,2;3,4] * [0,1;1,0]") "that is the question itself")
   checkTrue "check: a matrix answer" (eqv "[1, 2; 3, 4]*[0, 1; 1, 0]" "[2, 1; 4, 3]")
+  -- nullspace: any basis of the null space, not only the engine's
+  let ch4 := "nullspace([1, 0, -1, 0; 4, 0, 0, -2; 0, 2, -2, -1])"
+  checkTrue "check nullspace: the engine's basis" (eqv ch4 "[1/2; 1; 1/2; 1]")
+  checkTrue "check nullspace: a whole-number multiple" (eqv ch4 "[1; 2; 1; 2]")
+  checkTrue "check nullspace: not a solution" (!eqv ch4 "[1; 2; 1; 1]")
+  checkTrue "check nullspace: a row, said so" (contains (ask ch4 "[1, 2, 1, 2]") "write the vector as a column")
+  checkTrue "check nullspace: the zero vector, said so" (contains (ask ch4 "[0; 0; 0; 0]") "the zero vector solves every such system")
+  checkTrue "check nullspace: another basis of a plane" (eqv "nullspace([1, 2, 3; 2, 4, 6])" "[2, 1; -1, 1; 0, -1]")
+  checkTrue "check nullspace: one vector of a plane, said so" (contains (ask "nullspace([1, 2, 3; 2, 4, 6])" "[-2; 1; 0]") "the null space has 2 dimensions")
+  checkTrue "check nullspace: dependent columns, said so" (contains (ask "nullspace([1, 2, 3; 2, 4, 6])" "[-2, -4; 1, 2; 0, 0]") "not independent")
+  checkTrue "check nullspace: the zero space" (eqv "nullspace([1, 2; 3, 4])" "[0; 0]")
+  checkTrue "check nullspace: the answer may not call nullspace" (!eqv ch4 "nullspace([1, 0, -1, 0; 4, 0, 0, -2; 0, 2, -2, -1])")
   checkTrue "check: elementary functions are allowed" (eqv "diff(sin(x^2), x)" "2x cos(x^2)")
   checkTrue "check: i is a value, not work" (eqv "i*(1 + 2i)" "-2 + i")
   checkTrue "check: so is π" (eqv "exptotrig(exp(i*pi/2))" "i")
