@@ -832,8 +832,15 @@ language server answers LSP for Lean cells.
   the runtime runs at most 16 such continuations inside one another and queues the rest as ordinary
   tasks, on fresh stacks (`lean-compiler-emscripten.patch`, `object.cpp`). Lean computes semantic tokens
   with recursion as deep as the commands a request spans, so the in-browser watchdog offers them for
-  ranges only, and the editor asks for the lines its views show (`lean-server.ts`). A document of some
-  1,500 commands still overflows as it opens; no notebook or lesson is near that. Elaboration itself is as
+  ranges only, and the editor asks for the lines its views show (`lean-server.ts`). Opening a document
+  nested a call per command as well, in a plain call the runtime cannot queue: the frontend elaborates
+  each command at the end of the call that elaborated the one before (`process.parseCmd`), so a late CRDT
+  lesson, some 500 commands with its prelude, overflowed as it opened, now and then. Lean's frontend is
+  therefore built from a patched copy (`lean-frontend.patch`, step 1b of `build-lean-wasm-compiler.sh`)
+  that moves to a fresh task every 32 commands. Measured in Lean's native file worker at the least
+  stack it finishes with, 1,600 one-line theorems needed 968 KB before and 79 KB after (the same as 400),
+  and the collaborative-text application 381 KB before and 175 KB after, what its deepest commands
+  take. Elaboration itself is as
   deep as the Lean it checks, so the shipped Lean is kept shallow (small definitions), and
   `lean-cells.yml` (`scripts/notebooks/check-lean-browser.mjs`) runs every notebook and lesson through
   the browser's Lean, opened and then edited at its end.
