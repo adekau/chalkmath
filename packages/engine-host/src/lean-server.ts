@@ -58,6 +58,13 @@ export interface LeanServerOptions {
 const FORWARDED = new Set(["textDocument/didChange", "$/cancelRequest", "$/lean/rpc/release", "$/lean/rpc/keepAlive"]);
 const WATCHDOG_ONLY = new Set(["$/lean/ileanHeaderSetupInfo", "$/lean/ileanInfoUpdate", "$/lean/ileanInfoFinal", "$/lean/importClosure"]);
 
+/** How many threads Lean's task manager runs in a browser: one per core the browser reports, at least 2 and
+ *  at most 8 (4 when it reports none). Each is a worker from the pool of 32 the module pre-creates, and a
+ *  task that waits on another adds one, so the pool must keep room beyond them. */
+export function leanThreads(cores: number | undefined): number {
+  return cores && cores > 0 ? Math.min(8, Math.max(2, Math.floor(cores))) : 4;
+}
+
 /** The `initialize` reply with semantic tokens offered for ranges only, so the editor asks for the lines it
  *  shows. Lean computes a request's tokens with recursion as deep as the commands it spans, and a whole
  *  long document (a late lesson of a course, with its prelude) runs a browser thread out of stack, which
@@ -143,8 +150,9 @@ export function startLeanServer(o: LeanServerOptions): { receive(msg: LspMessage
     M.leanAppPath = "/bin/lean";
     // Lean's task manager runs this many threads, and adds one whenever a pooled task waits on another;
     // in a browser each is a worker from the pool the module pre-creates (32), and one started beyond
-    // it is not ready in time
-    M.ENV["LEAN_NUM_THREADS"] = "4";
+    // it is not ready in time. One per core, as Lean does natively (a course's prelude elaborates its
+    // proofs in parallel), but at most 8, which leaves the pool room for the threads waits add
+    M.ENV["LEAN_NUM_THREADS"] = String(leanThreads(globalThis.navigator?.hardwareConcurrency));
     for (const [path, data] of o.library) {
       const full = `/lib/lean/${path}`;
       M.FS.mkdirTree(full.slice(0, full.lastIndexOf("/")));
