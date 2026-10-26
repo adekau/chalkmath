@@ -1,3 +1,3 @@
-21	taut(¬¬p → p)	= ⊤
-28	equiv(¬(p ∨ q), ¬p ∧ ¬q)	= ⊤
-29	equiv(¬(p ∧ q), ¬p ∨ ¬q)	= ⊤
+23	taut(¬¬p → p)	= ⊤
+31	equiv(¬(p ∨ q), ¬p ∧ ¬q)	= ⊤
+32	equiv(¬(p ∧ q), ¬p ∨ ¬q)	= ⊤

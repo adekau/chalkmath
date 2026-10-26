@@ -1080,13 +1080,17 @@ def route (admin owner : Bool) : String :=
 `);
     md(r`
 - $p \land q$: hand over a proof of each, a pair. Given one, you can take either half.
-- $p \lor q$: hand over a proof of one of them, saying which. Given one, you do not know which side you have, so you must finish the job in both cases.
+- $p \lor q$: hand over a proof of one of them, saying which. Given one, you do not know which side holds, so you prove what you are after twice: once assuming $p$, once assuming $q$.
 - $p \to q$: hand over a method that turns any proof of $p$ into a proof of $q$; to build it, assume $p$ and derive $q$. Given one and a proof of $p$, apply it and get $q$.
 - $\lnot p$ is $p \to \bot$: a method that turns any proof of $p$ into a contradiction.
 `);
     md(r`
 > [!definition] Introduction and elimination
 > Natural deduction is these answers written as rules: for each connective, how to **introduce** it (prove it) and how to **eliminate** it (use it). In Lean, ‹intro› assumes the premise of $\to$, and applying ‹h hp› uses one; ‹constructor› or ‹⟨hp, hq⟩› builds $\land$, and ‹h.1›, ‹h.2› take it apart; ‹left› and ‹right› build $\lor$, and ‹cases› uses it.
+`);
+    md(r`
+> [!note] Typing the symbols
+> In a Lean cell, type a backslash and a name, and it turns into the symbol as you keep typing: ‹\and› gives ‹∧›, ‹\or› gives ‹∨›, ‹\not› gives ‹¬›, ‹\to› gives ‹→›, ‹\<› and ‹\>› give ‹⟨› and ‹⟩›, and ‹\.› gives the ‹·› that starts each case below. For any other symbol, hover over it in a Lean cell: Lean shows how to type it.
 `);
     lean(r`example (p q : Prop) (hp : p) (hq : q) : p ∧ q := by
   constructor
@@ -1100,8 +1104,15 @@ example (p q : Prop) : p ∧ q → q := by
 example (p q : Prop) : p → p ∨ q := by
   intro hp
   left
-  exact hp`);
-    md(r`Put the cursor after a tactic to see the goal it leaves: the hypotheses above the line, what is left to prove below it.`);
+  exact hp
+
+example (p : Prop) : p ∨ p → p := by
+  intro h
+  cases h with
+  | inl hp => exact hp
+  | inr hp => exact hp`);
+    md(r`Put the cursor after a tactic, and the Lean goals panel below the notebook shows what is left to do: first the hypotheses you have, one per line (‹hp : p› is a proof of $p$ named ‹hp›), then, after ‹⊢›, the statement still to prove.`);
+    md(r`‹cases h with› splits a proof of $p \lor q$ into its two cases, ‹inl› (the left side, $p$) and ‹inr› (the right side, $q$), and names the proof each case holds; in the last example both are ‹hp›. Without ‹with› the cases still come, but their proofs are unnamed (the goals panel shows ‹h✝›), so you cannot refer to them.`);
     sec("Exercises");
     md(r`Replace ‹sorry› with a proof. Lean checks it as you type; the exercise is done when Lean accepts it with nothing left unproved.`);
     lx(r`theorem and_swap' (p q : Prop) : p ∧ q → q ∧ p := by`, r`Prove that $\land$ commutes.`, r`  intro ⟨hp, hq⟩
@@ -1109,13 +1120,13 @@ example (p q : Prop) : p → p ∨ q := by
     lx(r`theorem or_swap' (p q : Prop) : p ∨ q → q ∨ p := by`, r`Prove that $\lor$ commutes.`, r`  intro h
   cases h with
   | inl hp => exact Or.inr hp
-  | inr hq => exact Or.inl hq`, [r`After ‹intro h›, ‹cases h› gives two goals: one with ‹hp : p›, one with ‹hq : q›.`, r`‹Or.inr hp› proves ‹q ∨ p› from ‹p›.`]);
+  | inr hq => exact Or.inl hq`, [r`After ‹intro h›, write ‹cases h with›, then one line per case: ‹| inl hp => …›, where ‹hp : p›, and ‹| inr hq => …›, where ‹hq : q›.`, r`‹Or.inr hp› proves ‹q ∨ p› from ‹hp : p›.`]);
     lx(r`theorem modus_tollens (p q : Prop) : (p → q) → ¬q → ¬p := by`, r`Prove *modus tollens*: if $p$ implies $q$ and $q$ is false, then $p$ is false.`, r`  intro hpq hnq hp
-  exact hnq (hpq hp)`, [r`‹¬p› is ‹p → False›, so ‹intro› can take a proof of ‹p› too.`, r`‹hpq hp› is a proof of ‹q›, and ‹hnq› turns it into ‹False›.`]);
+  exact hnq (hpq hp)`, [r`‹¬p› is ‹p → False›, so ‹intro› can take a proof of ‹p› too.`, r`Applying the ‹p → q› hypothesis to the proof of ‹p› gives a proof of ‹q›, and the ‹¬q› hypothesis turns that into ‹False›.`]);
     lx(r`theorem curry' (p q r : Prop) : (p ∧ q → r) → (p → q → r) := by`, r`Prove that a function of a pair can take its arguments one at a time.`, r`  intro h hp hq
-  exact h ⟨hp, hq⟩`, [r`Introduce all three hypotheses, then feed ‹h› the pair.`]);
+  exact h ⟨hp, hq⟩`, [r`Introduce all three hypotheses (the ‹p ∧ q → r› function, then proofs of ‹p› and of ‹q›), then apply the function to the pair of the two proofs.`]);
     lx(r`theorem not_or_split (p q : Prop) : ¬(p ∨ q) → ¬p ∧ ¬q := by`, r`Prove one of De Morgan's laws: if neither $p \lor q$, then not $p$ and not $q$.`, r`  intro h
-  exact ⟨fun hp => h (Or.inl hp), fun hq => h (Or.inr hq)⟩`, [r`A proof of ‹¬p› is a function from ‹p› to ‹False›.`, r`Given ‹hp : p›, ‹Or.inl hp› proves ‹p ∨ q›, which ‹h› refutes.`]);
+  exact ⟨fun hp => h (Or.inl hp), fun hq => h (Or.inr hq)⟩`, [r`A proof of ‹¬p› is a function from ‹p› to ‹False›.`, r`Given ‹hp : p›, ‹Or.inl hp› proves ‹p ∨ q›, which the ‹¬(p ∨ q)› hypothesis refutes.`]);
     sec("Proofs are programs");
     md(r`
 > [!note] Curry–Howard
@@ -1127,10 +1138,20 @@ example (p q : Prop) : p → p ∨ q := by
 > It is natural to expect every tautology to have a proof by these rules. $\lnot\lnot p \to p$ is a tautology:
 `);
     m("taut(¬¬p → p)");
-    md(r`Yet the rules above give no proof of it. A proof of $\lnot\lnot p$ is a function that turns refutations of $p$ into contradictions, and nothing in it is evidence for $p$. It needs one more principle, the excluded middle (‹Classical.em p : p ∨ ¬p›), or proof by contradiction:`);
+    md(r`Yet the rules above give no proof of it. Try: after ‹intro h›, the goal is ‹p›, and all you have is ‹h : ¬¬p›, which is ‹¬p → False›. To use ‹h› you must first hand it a ‹¬p›, a way to turn any proof of $p$ into ‹False›, and nothing gives you one. No other rule produces a ‹p› out of nothing either. ‹h› says that $p$ cannot be refuted, and that is not a proof of $p$: there is no evidence for $p$ in it to hand over.`);
+    md(r`A truth table takes for granted that every proposition is true or false. Classical logic adds that as a rule of its own, in either of two forms (each proves the other):
+
+- **excluded middle**, ‹Classical.em p : p ∨ ¬p›: $p$ holds or it does not, without saying which. ‹cases› on it: in the ‹p› case you are done, and in the ‹¬p› case ‹h› turns it into ‹False›, from which anything follows (‹absurd hnp h› proves any goal from ‹hnp : ¬p› and ‹h : ¬¬p›).
+- **proof by contradiction**, ‹Classical.byContradiction : (¬p → False) → p›: to prove $p$, assume ‹¬p› and derive ‹False›. Its premise is ‹¬¬p› spelled out, so it is $\lnot\lnot p \to p$ itself.`);
     lean(r`theorem dne (p : Prop) : ¬¬p → p := by
   intro h
-  exact Classical.byContradiction h`);
+  exact Classical.byContradiction h
+
+example (p : Prop) : ¬¬p → p := by
+  intro h
+  cases Classical.em p with
+  | inl hp => exact hp
+  | inr hnp => exact absurd hnp h`);
     md(r`
 > [!summary]
 > Each connective's rules say what it takes to prove it and what you can do with it, and Lean's tactics are those rules. A proof of an implication is a function; a proof of a conjunction is a pair. Excluded middle is the one extra principle classical logic adds.
@@ -1158,27 +1179,33 @@ example (p q : Prop) : p → p ∨ q := by
   | inl hp => exact hnp hp
   | inr hq => exact hnq hq`, [
       r`‹¬(p ∨ q)› is ‹p ∨ q → False›: after the pair, introduce a proof of ‹p ∨ q› too.`,
-      r`‹cases› on it: in each case one half of the pair refutes what you have.`,
+      r`‹cases› on it, naming each side (‹with | inl hp => … | inr hq => …›): in each case one half of the pair refutes what you have.`,
     ], { optional: true });
     lx(r`theorem not_and_of_either (p q : Prop) : ¬p ∨ ¬q → ¬(p ∧ q) := by`, r`Prove law 3: if not $p$ or not $q$, then not both.`, r`  intro h ⟨hp, hq⟩
   cases h with
   | inl hnp => exact hnp hp
   | inr hnq => exact hnq hq`, [
-      r`Introduce the ‹∨› and the pair, then ‹cases› on the ‹∨›.`,
+      r`Introduce the ‹∨› and the pair, then ‹cases … with› on the ‹∨›, naming each side.`,
       r`Whichever side you get refutes one half of the pair.`,
     ], { optional: true });
     sec("Why the fourth needs more");
-    md(r`In 1, 2 and 3 you take apart what you are given and build a pair or a function. In 4 you must build $\lnot p \lor \lnot q$, and a proof of an $\lor$ says which side holds: ‹left› or ‹right›, chosen by you. All you have is $h : \lnot(p \land q)$, a function that turns a proof of $p \land q$ into a contradiction, and you can only use it once you have both $p$ and $q$. Every attempt stalls at that point:`);
-    md(r`
-‹‹‹lean
+    md(r`In 1, 2 and 3 you take apart what you are given and build a pair or a function. In 4 you must build $\lnot p \lor \lnot q$, and a proof of an $\lor$ says which side holds: ‹left› or ‹right›, chosen by you. All you have is $h : \lnot(p \land q)$, a function that turns a proof of $p \land q$ into a contradiction, and you can only use it once you have both $p$ and $q$. Every attempt stalls at that point. Here is one, with ‹sorry›, Lean's placeholder for a missing proof, where it stalls (the first line only stops Lean warning about the ‹sorry›):`);
+    lean(r`set_option warn.sorry false in
 example (p q : Prop) : ¬(p ∧ q) → ¬p ∨ ¬q := by
   intro h
   left           -- commit: it is p that fails
   intro hp       -- now prove False from h : ¬(p ∧ q) and hp : p
-  exact h ⟨hp, _⟩  -- h needs a proof of q as well, and nothing gives one
-‹‹‹
-`.replace(/‹‹‹/g, "```"));
-    md(r`‹right› stalls the same way, for want of a proof of $p$. No cleverer proof exists either. Take for $p$ a statement nobody has settled, Goldbach's conjecture $G$, and for $q$ its negation $\lnot G$. Then $\lnot(G \land \lnot G)$ has a one-line proof, ‹fun ⟨g, ng⟩ => ng g›, and law 4 would turn it into $\lnot G \lor \lnot\lnot G$: a proof that says which side, so a proof that settles whether Goldbach's conjecture can be refuted, for free. The rules of this lesson never decide anything for free; that is what makes them **constructive**.`);
+  exact h ⟨hp, sorry⟩  -- h needs a proof of q as well, and nothing gives one`);
+    md(r`Put the cursor on ‹sorry› to see the goal there: ‹q›, and nothing above ‹⊢› proves it, since neither hypothesis says anything about $q$ on its own. Try ‹right› instead of ‹left›: it stalls the same way, now for want of a proof of $p$.`);
+    md(r`But $\lor$ allows both sides to hold, so why is choosing a side a problem? Because the proof must work for every $p$ and $q$ at once, without knowing which row of the truth table it is in, and the side that holds changes from row to row:
+
+- $p$ true, $q$ false: only $\lnot q$ holds, so only ‹right› can work;
+- $p$ false, $q$ true: only $\lnot p$ holds, so only ‹left› can work;
+- both false: both hold, and either works;
+- both true: $\lnot(p \land q)$ is false, so there is nothing to prove.
+
+A truth table checks each row on its own. A proof writes ‹left› or ‹right› once, for every row, and no single choice is right in all of them; to choose row by row it would have to find out which row it is in, and that means deciding $p$.`);
+    md(r`No cleverer proof exists either. Take for $p$ a statement nobody has settled, Goldbach's conjecture $G$, and for $q$ its negation $\lnot G$. Then $\lnot(G \land \lnot G)$ has a one-line proof, ‹fun ⟨g, ng⟩ => ng g›, and law 4 would turn it into $\lnot G \lor \lnot\lnot G$: a proof that says which side, so a proof that settles whether Goldbach's conjecture can be refuted, for free. The rules of this lesson never decide anything for free; that is what makes them **constructive**.`);
     md(r`What they can prove is weaker: you cannot say *which* of $p$ and $q$ fails, but you can show that *neither* failing is impossible. That is the double negation of law 4, and it needs no excluded middle.`);
     lx(r`theorem not_not_either (p q : Prop) : ¬(p ∧ q) → ¬¬(¬p ∨ ¬q) := by`, r`Prove that law 4's conclusion cannot be refuted: from $\lnot(p \land q)$, derive $\lnot\lnot(\lnot p \lor \lnot q)$.`, r`  intro h k
   apply k
@@ -1190,26 +1217,32 @@ example (p q : Prop) : ¬(p ∧ q) → ¬p ∨ ¬q := by
   exact h ⟨hp, hq⟩`, [
       r`After ‹intro h k›, ‹k : ¬(¬p ∨ ¬q)› refutes whichever side you give it, and you may use it more than once.`,
       r`Give it ‹¬p›: to prove that, assume ‹hp : p›. Now use ‹k› again, with ‹¬q›.`,
-      r`With both ‹hp› and ‹hq› in hand, ‹h ⟨hp, hq⟩› is the contradiction.`,
+      r`With proofs of both ‹p› and ‹q› in hand, apply the ‹¬(p ∧ q)› hypothesis to the pair of them.`,
     ], { optional: true });
-    md(r`The trick is that ‹k› can be asked twice. The first time you claim $\lnot p$; inside that claim you have $p$, so you take it back and claim $\lnot q$; now you hold $p$ and $q$ together, and $h$ refutes them. A classical proof of law 4 decides which side; this one only shows that refusing both sides is contradictory.`);
+    md(r`The trick is that ‹k› can be used twice. Hypotheses in Lean are never used up: ‹apply k› turns the goal ‹False› into ‹k›'s premise, ‹¬p ∨ ¬q›, and ‹k› stays among the hypotheses, ready to apply again. A proof of an implication is a function, and a function can be called as often as you like. (There are logics in which each hypothesis is used exactly once, linear logic among them, but Lean's is not one.)`);
+    md(r`So the first time you claim $\lnot p$; inside that claim you have $p$, so you take it back and claim $\lnot q$ instead; now you hold $p$ and $q$ together, and $h$ refutes them. A classical proof of law 4 decides which side; this one only shows that refusing both sides is contradictory.`);
     lx(r`theorem not_and_split (p q : Prop) : ¬(p ∧ q) → ¬p ∨ ¬q := by`, r`Now prove law 4 itself, with excluded middle: ‹Classical.em p : p ∨ ¬p›.`, r`  intro h
   cases Classical.em p with
   | inl hp => exact Or.inr (fun hq => h ⟨hp, hq⟩)
   | inr hnp => exact Or.inl hnp`, [
-      r`‹cases Classical.em p› gives two cases: ‹hp : p› and ‹hnp : ¬p›.`,
-      r`If ‹¬p›, that is the left side. If ‹p›, then ‹q› would make ‹h› a contradiction: the right side.`,
+      r`‹cases Classical.em p with› gives two cases: ‹| inl hp => …›, where ‹hp : p›, and ‹| inr hnp => …›, where ‹hnp : ¬p›.`,
+      r`If ‹¬p›, that is the left side. If ‹p›, then a proof of ‹q› would contradict the ‹¬(p ∧ q)› hypothesis: the right side.`,
     ], { optional: true });
     sec("Where excluded middle comes from: choice");
     md(r`In Lean, excluded middle is not an axiom. ‹Classical.em› is a theorem, proved from the **axiom of choice**, ‹Classical.choice : Nonempty α → α›: given only a proof that a type has an element, it hands you an element. A proof that something exists need not say which, and choice produces one anyway, with no recipe for finding it. That is exactly what a constructive proof cannot do, and it is enough to decide every proposition (Diaconescu's theorem).`);
     md(r`
 > [!theorem] Diaconescu's argument
-> Take two predicates on the booleans: $U(x)$ is "$x = \mathsf{true}$ or $p$", and $V(x)$ is "$x = \mathsf{false}$ or $p$". Each holds of some boolean, so choice picks $u$ with $U(u)$ and $v$ with $V(v)$. Two booleans can always be compared, and the comparison decides $p$:
-> - If $p$ holds, $U$ and $V$ hold of every boolean: they are the same predicate, and choice, asked the same question, gives the same answer. So $u = v$.
-> - So if $u \neq v$, $p$ is false.
-> - If $u = v$, then $u = \mathsf{true}$ and $v = \mathsf{false}$ cannot both be why they were picked, so $p$ was: $p$ is true.
+> Let $p$ be any proposition: the one to decide. We prove $p \lor \lnot p$ from choice.
+>
+> Define two properties of a boolean $x$:
+> - $U(x)$: "$x = \mathsf{true}$, or $p$";
+> - $V(x)$: "$x = \mathsf{false}$, or $p$".
+>
+> Each property holds of some boolean, whatever $p$ is: $U(\mathsf{true})$ and $V(\mathsf{false})$. From these two proofs of existence, choice produces two booleans: $u$, one with $U(u)$, and $v$, one with $V(v)$. (In Lean below they are ‹Classical.choose hU› and ‹Classical.choose hV›.) Nobody can compute $u$ or $v$, but they are booleans, and whether two booleans are equal can always be decided, with no excluded middle. So either $u \neq v$ or $u = v$:
+> - **If $u \neq v$, then $p$ is false.** Suppose $p$ held. Then $U(x)$ and $V(x)$ are both true of every $x$, so $U$ and $V$ are the same property; choice, given the same property, gives the same boolean, so $u = v$. That contradicts $u \neq v$.
+> - **If $u = v$, then $p$ is true.** $U(u)$ says $u = \mathsf{true}$ or $p$, and $V(v)$ says $v = \mathsf{false}$ or $p$. If neither one gave $p$, then $u = \mathsf{true}$ and $v = \mathsf{false}$, so $u \neq v$. So one of them gave $p$.
 `);
-    md(r`Choice committed to a side, $u$ and $v$, without saying how; comparing them reads off the side. Two smaller axioms make "the same predicate" literal: **propositional extensionality** (‹propext›: equivalent propositions are equal) and **function extensionality** (from ‹Quot.sound›: functions that agree everywhere are equal). In Lean:`);
+    md(r`Choice picked $u$ and $v$ without saying how, and whether they came out equal records whether $p$ holds. Two smaller axioms make "the same property" literal: **propositional extensionality** (‹propext›: equivalent propositions are equal) and **function extensionality** (from ‹Quot.sound›: functions that agree everywhere are equal). In Lean:`);
     lean(r`theorem em_by_choice (p : Prop) : p ∨ ¬p := by
   let U : Bool → Prop := fun x => x = true ∨ p
   let V : Bool → Prop := fun x => x = false ∨ p
@@ -1225,7 +1258,7 @@ example (p q : Prop) : ¬(p ∧ q) → ¬p ∨ ¬q := by
       cases hv with
       | inr h => exact Or.inr h
       | inl hv => exact Or.inl (by rw [hu, hv]; decide)
-  -- if p holds, U and V are the same predicate, and choice picks the same from the same
+  -- if p holds, U and V are the same property, and choice picks the same from the same
   have same_if_p : p → Classical.choose hU = Classical.choose hV := by
     intro hp
     have hUV : U = V := funext fun x => propext ⟨fun _ => Or.inr hp, fun _ => Or.inr hp⟩
