@@ -1,0 +1,161 @@
+{
+  "chalk": 1,
+  "name": "05-preserving.chalk",
+  "cells": [
+    {
+      "src": "Preserving content",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> State what it means for a transform to keep what people did, prove it for the course's transform, and see a transform that converges and does not.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "TP1 says the two sites end with the same text. It says nothing about which text. A transform that turned every edit into `nop` would satisfy it: both sites keep the old text, and agree. [Last writer wins](#course=crdt&lesson=5) made the same point about registers: converging is not the same as keeping what users did. That needs a second property, about content.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Preservation\n> A transform **preserves content** when, for any two concurrent edits on one text:\n> 1. every character either edit inserts is in the result;\n> 2. a delete, rewritten past the other edit, removes the character it removed in its own text, or nothing if the other edit removed that character already: it never removes a character the other edit inserted.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "namespace Preserve\n\n/-- Insert `x` at position `p` (at the end, if `p` is past it). -/\ndef insAt : Nat → Char → List Char → List Char\n  | 0, x, s => x :: s\n  | _ + 1, x, [] => [x]\n  | p + 1, x, y :: s => y :: insAt p x s\n\n/-- Delete the character at position `p` (nothing, if there is none). -/\ndef delAt : Nat → List Char → List Char\n  | _, [] => []\n  | 0, _ :: s => s\n  | p + 1, y :: s => y :: delAt p s\n\n/-- An edit: insert a character at a place (typed at a site, for ties), delete one, or nothing. -/\ninductive Op where\n  | ins (p : Nat) (x : Char) (site : Nat)\n  | del (p : Nat)\n  | nop\n  deriving Repr, DecidableEq\n\ndef Op.apply : Op → List Char → List Char\n  | .ins p x _, s => insAt p x s\n  | .del p, s => delAt p s\n  | .nop, s => s\n\n/-- `T a b`: `a`, rewritten to apply after a concurrent `b`. Of two inserts at one place, the lower site goes first. -/\ndef T : Op → Op → Op\n  | .ins p x i, .ins q _ j => if q < p ∨ (q = p ∧ j < i) then .ins (p + 1) x i else .ins p x i\n  | .ins p x i, .del q => if q < p then .ins (p - 1) x i else .ins p x i\n  | .del p, .ins q _ _ => if q ≤ p then .del (p + 1) else .del p\n  | .del p, .del q => if q < p then .del (p - 1) else if q = p then .nop else .del p\n  | a, .nop => a\n  | .nop, _ => .nop\n\n/-- Apply edits in order to a text, and read the result. -/\ndef run (os : List Op) (t : String) : String := String.ofList (os.foldl (fun s o => o.apply s) t.toList)\n\n/-- What a delete removes: the character at its place, in the text it is applied to. -/\ndef Op.target : Op → List Char → Option Char\n  | .del p, s => s[p]?\n  | _, _ => none\n\nend Preserve",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The proofs are inductions on the text, about what stands where after an insert or a delete:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "namespace Preserve\n\ntheorem mem_insAt (x : Char) : ∀ (p : Nat) (s : List Char), x ∈ insAt p x s\n  | 0, _ => List.mem_cons_self\n  | _ + 1, [] => List.mem_cons_self\n  | p + 1, _ :: s => List.mem_cons_of_mem _ (mem_insAt x p s)\n\ntheorem mem_insAt_of_mem {z : Char} (x : Char) : ∀ (p : Nat) (s : List Char), z ∈ s → z ∈ insAt p x s\n  | 0, s, h => List.mem_cons_of_mem _ h\n  | _ + 1, [], h => by cases h\n  | p + 1, y :: s, h => by\n    rcases List.mem_cons.mp h with rfl | h\n    · exact List.mem_cons_self\n    · exact List.mem_cons_of_mem _ (mem_insAt_of_mem x p s h)\n\ntheorem getElem?_insAt (x : Char) : ∀ (p : Nat) (s : List Char), p ≤ s.length → (insAt p x s)[p]? = some x\n  | 0, s, _ => rfl\n  | _ + 1, [], h => by simp at h\n  | p + 1, _ :: s, h => by\n    simp only [insAt, List.getElem?_cons_succ]; exact getElem?_insAt x p s (by simp at h; omega)\n\n/-- Deleting at `q` keeps what stands at any other place `p`. -/\ntheorem mem_delAt {z : Char} : ∀ (l : List Char) (p q : Nat), l[p]? = some z → q ≠ p → z ∈ delAt q l\n  | [], _, _, h, _ => by simp at h\n  | y :: l, 0, 0, _, hq => absurd rfl hq\n  | y :: l, 0, q + 1, h, _ => by simp at h; subst h; exact List.mem_cons_self\n  | y :: l, p + 1, 0, h, _ => by simp only [delAt]; exact List.mem_of_getElem? h\n  | y :: l, p + 1, q + 1, h, hq => by\n    simp only [delAt]\n    exact List.mem_cons_of_mem _ (mem_delAt l p q (by simpa using h) (by omega))\n\ntheorem getElem?_insAt_lt (x : Char) : ∀ (s : List Char) (p q : Nat), q < p → p ≤ s.length → (insAt p x s)[q]? = s[q]?\n  | [], p + 1, q, _, h => by simp at h\n  | y :: s, p + 1, 0, _, _ => rfl\n  | y :: s, p + 1, q + 1, h, h' => by\n    simp only [insAt, List.getElem?_cons_succ]; exact getElem?_insAt_lt x s p q (by omega) (by simp at h'; omega)\n  | _, 0, q, h, _ => by omega\n\ntheorem getElem?_insAt_ge (x : Char) : ∀ (s : List Char) (p q : Nat), p ≤ q → (insAt p x s)[q + 1]? = s[q]?\n  | s, 0, q, _ => rfl\n  | [], p + 1, q, h => by cases q <;> simp [insAt]\n  | y :: s, p + 1, 0, h => by omega\n  | y :: s, p + 1, q + 1, h => by\n    simp only [insAt, List.getElem?_cons_succ]; exact getElem?_insAt_ge x s p q (by omega)\n\ntheorem delAt_nil (p : Nat) : delAt p [] = [] := by cases p <;> rfl\n\ntheorem getElem?_delAt_lt : ∀ (s : List Char) (p q : Nat), q < p → (delAt p s)[q]? = s[q]?\n  | [], p, q, _ => by simp [delAt_nil]\n  | y :: s, p + 1, 0, _ => rfl\n  | y :: s, p + 1, q + 1, h => by\n    simp only [delAt, List.getElem?_cons_succ]; exact getElem?_delAt_lt s p q (by omega)\n  | _ :: _, 0, q, h => by omega\n\ntheorem getElem?_delAt_gt : ∀ (s : List Char) (p q : Nat), p < q → (delAt p s)[q - 1]? = s[q]?\n  | [], p, q, _ => by simp [delAt_nil]\n  | y :: s, 0, q + 1, _ => by simp [delAt]\n  | y :: s, p + 1, q + 1, h => by\n    simp only [delAt]\n    cases q with\n    | zero => omega\n    | succ q => simp only [Nat.add_sub_cancel, List.getElem?_cons_succ]; exact getElem?_delAt_gt s p (q + 1) (by omega)\n  | _ :: _, _, 0, h => by omega\n\nend Preserve",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Now the two halves of preservation. An insert is never lost, whichever edit it met: rewritten past anything, it is still an insert of its character (`insert_kept'`), and the other edit, rewritten past it, never deletes the place it occupies (`insert_kept`). A delete stays aimed (`delete_aimed`).",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "namespace Preserve\n\n/-- An edit that makes sense on a text: an insert at one of its places, a delete of one of its characters. -/\ndef Op.valid : Op → List Char → Prop\n  | .ins p _ _, s => p ≤ s.length\n  | .del p, s => p < s.length\n  | .nop, _ => True\n\ntheorem insert_kept (b : Op) (s : List Char) (p : Nat) (x : Char) (i : Nat) (ha : p ≤ s.length) :\n    x ∈ (T b (.ins p x i)).apply ((Op.ins p x i).apply s) := by\n  cases b with\n  | ins q y j => simp only [T]; split <;> exact mem_insAt_of_mem _ _ _ (mem_insAt x p s)\n  | del q =>\n    simp only [T]; split\n    · exact mem_delAt _ p _ (getElem?_insAt x p s ha) (by omega)\n    · exact mem_delAt _ p _ (getElem?_insAt x p s ha) (by omega)\n  | nop => exact mem_insAt x p s\n\ntheorem insert_kept' (b : Op) (s : List Char) (p : Nat) (x : Char) (i : Nat) :\n    x ∈ (T (.ins p x i) b).apply (b.apply s) := by\n  cases b with\n  | ins q y j => simp only [T]; split <;> exact mem_insAt x _ _\n  | del q => simp only [T]; split <;> exact mem_insAt x _ _\n  | nop => exact mem_insAt x _ _\n\ntheorem delete_aimed (a : Op) (s : List Char) (q : Nat) (ha : a.valid s) :\n    (T (.del q) a = .nop ∧ a = .del q) ∨ (T (.del q) a).target (a.apply s) = (Op.del q).target s := by\n  cases a with\n  | ins p y j =>\n    simp only [Op.valid] at ha\n    right; simp only [T]; split\n    · exact getElem?_insAt_ge y s p q (by omega)\n    · exact getElem?_insAt_lt y s p q (by omega) ha\n  | del p =>\n    by_cases h : p = q\n    · subst h; left; simp [T]\n    · right; simp only [T]; split\n      · exact getElem?_delAt_gt s p q (by omega)\n      · exact getElem?_delAt_lt s p q (by omega)\n  | nop => right; rfl\n\nend Preserve",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!note] What \"the character\" means\n> `x ∈ result` says a character equal to x is in the result. If the text already held an x, that is weaker than \"the x that was typed\". The proof is stronger than the statement: it follows the inserted x to its place (`getElem?_insAt`) and shows the other edit's delete lands elsewhere. Give characters ids, as the RGA does, and the statement says what the proof shows.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A rule that drops an edit",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "With deletes of a whole range, a tempting rule is: an insert inside a range someone deleted concurrently is dropped, and the delete grows to swallow it, so both sites agree. Take \"abcd\", an insert of x at 2 (between b and c) and, concurrently, a delete of the two characters from 1 (\"bc\"):",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "namespace Preserve\n\n/-- Range edits: insert a character, delete ‹n› characters from ‹p›. -/\ninductive ROp where\n  | ins (p : Nat) (x : Char)\n  | delr (p n : Nat)\n  | nop\n  deriving Repr, DecidableEq\n\ndef ROp.apply : ROp → List Char → List Char\n  | .ins p x, s => insAt p x s\n  | .delr p n, s => s.take p ++ s.drop (p + n)\n  | .nop, s => s\n\ndef runR (os : List ROp) (t : String) : String := String.ofList (os.foldl (fun s o => o.apply s) t.toList)\n\ndef a : ROp := .ins 2 'x'\ndef b : ROp := .delr 1 2\n\n-- the dropping rule: the insert becomes nothing, the delete grows by one\n#eval (runR [a, .delr 1 3] \"abcd\", runR [b, .nop] \"abcd\")\n-- a preserving rule: the insert lands where the range was, the delete is split around it\n#eval (runR [a, .delr 1 1, .delr 2 1] \"abcd\", runR [b, .ins 1 'x'] \"abcd\")\n\ntheorem dropping_converges : runR [a, .delr 1 3] \"abcd\" = runR [b, .nop] \"abcd\" := by decide\ntheorem dropping_loses : 'x' ∉ (runR [a, .delr 1 3] \"abcd\").toList := by decide\n\nend Preserve",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The dropping rule converges, \"ad\" at both sites, and loses the x: it fails half 1 of preservation. Nothing in TP1 notices. The preserving rule keeps the x where the range was, \"axd\", at the price of a delete split in two: a rewritten edit is no longer always one edit.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> \"Both sites agree\" is the test that convergence checks pass, and a rule can pass it by throwing work away. The person who typed x sees it vanish, with no conflict reported. Test content as well as agreement: the course's capstone checks both on every small case.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The RGA keeps it by construction",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In [Collaborative text](#course=crdt&lesson=10&app=1)'s RGA, an insert names the character it follows, by id, and a delete only sets a tombstone: the deleted character stays in the state. So an insert after a character someone deleted still has its place:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "replicas(rga; a, b\n  a: ins a at 0\n  a: ins b at 1\n  a: ins c at 2\n  a -> b\n  a: del 1\n  b: ins x at 2\n  a -> b\n  b -> a\n)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "The x went after b@2a, which `a` had deleted; the tombstone kept its place, and both read \"axc\". Preservation there is a property of the data, not of a transform: nothing is ever removed from the state, only hidden. The transform has to earn it case by case, which is what the theorems above do.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "replicas(rga; a, b\n  a: ins o at 0\n  a: ins k at 1\n  a -> b\n  a: del 0\n  a: del 0\n  b: ins s at 2\n  a -> b\n  b -> a\n)",
+      "type": "exercise",
+      "prompt": "Alice deletes all of \"ok\" while Bob types an s after the k. What does each replica read? Answer as the cell would, `{a↦…, b↦…}`.",
+      "hints": [
+        "The s goes after the k by id; the k is a tombstone, not gone."
+      ],
+      "hideQuestion": true,
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem Preserve.dropping_loses_y : 'y' ∉ (Preserve.runR [.ins 3 'y', .delr 0 5] \"abcd\").toList := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "The dropping rule again: on \"abcd\", y is typed at 3 while all four characters are deleted, and the delete grows to five. Prove that y is lost.",
+      "leanSolution": "  decide",
+      "hints": [
+        "A fixed text and fixed edits: `decide` computes it."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> TP1 is agreement; preservation is keeping what people did: every inserted character is in the result, and a rewritten delete removes the character it meant or nothing. Both are proved here for the course's transform, by induction on the text. A rule that drops an insert inside a concurrently deleted range converges and loses the insert. The RGA keeps content by never removing anything from its state.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The server's log is where every edit ends up. Next: the log as the state itself, and as the record of what was done.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

@@ -856,6 +856,27 @@ def workTests : TestM Unit := do
     ((derivationExplanations stm mzd).getLast?.map (contains · "true only in rows that cannot happen") |>.getD false)
   let (st3, _) := sessionEval st3 "[x+x, 1]" ",\"showWork\":true"
   check "entrywise: one entry rewritten stays as it was" (derivationRules st3 "[x+x, 1]").toString "[simp.collect-like-terms, simp.identity]"
+  -- backprop: the forward pass, the backward pass and the check, a nested step per node, and the graph
+  let bp := "backprop((1/(1 + exp(-(w*x + b))) - y)^2, [w, b], [0.5, 0])"
+  let (stb, _) := sessionEval [] "let x = 2"
+  let (stb, _) := sessionEval stb "let y = 1"
+  let (stb, bpOut) := sessionEval stb bp ",\"showWork\":true"
+  check "backprop: the gradient of a neuron's squared error" bpOut "[-0.211508371137067, -0.105754185568533]"
+  check "backprop: forward, backward, checked" (derivationRules stb bp).toString "[ad.forward, ad.backward, ad.check]"
+  let bpSubs (k : Nat) : List String := (((stb.get "t").cells.lookup bp >>= fun c => c.derivation.steps[k]? >>= (·.sub)).map
+    fun d => d.steps.toList.map fun s => s.explanation).getD []
+  checkTrue "backprop: the forward pass computes each node from what it reads"
+    ((bpSubs 0).contains "$w \\cdot 2$ from the values it reads: $0.5 \\cdot 2 = 1$.") (toString (bpSubs 0))
+  checkTrue "backprop: the backward pass multiplies along the path"
+    ((bpSubs 1).getLast?.map (contains · "= (-0.1058) \\cdot 2 = -0.2115$") |>.getD false) (toString (bpSubs 1))
+  check "backprop: the inputs and every operation, once each" (toString (bpSubs 0).length) "10"
+  let (_, bpExact) := sessionEval [] "backprop((w*2 + b - 1)^2, [w, b], [1/2, 1])"
+  check "backprop: exact where diff's derivative is a rational number" bpExact "[4, 2]"
+  let bpRaw := rpc "engine.evaluate" "{\"sessionId\":\"bp\",\"cellId\":\"g\",\"source\":\"backprop(x^2*y, [x, y], [3, 2])\"}"
+  checkTrue "backprop: draws the computation graph" (contains bpRaw "\"kind\":\"calculus.graph\"" && contains bpRaw "\"grad\":\"12\"" && contains bpRaw "\"input\":true") bpRaw
+  let (stl, _) := sessionEval [] "let w = 7"
+  let (_, bpOwn) := sessionEval stl "backprop(w^2, [w], [3])"
+  check "backprop: a listed variable is its own, not the session's" bpOwn "[6]"
   let (_, exew) := handleS st3 "{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"engine.explain\",\"params\":{\"sessionId\":\"t\",\"cellId\":\"[1,2;3,4]*2\",\"path\":[2]}}"
   checkTrue "entrywise: explain an entry: created by the entrywise step" (contains exew "\"text\":\"6\"" && contains exew "{\"index\":1,\"relation\":\"created\"}") exew
   -- outline: the steps without their terms; engine.steps sends the derivation an eager reply would have
@@ -1058,6 +1079,12 @@ def algebraTests : TestM Unit := do
   let (st, _) := handleS st (req "6" "let SC = product(Lv, Cat)")
   let (st, jRaw) := handleS st (req "7" "join(SC, (low, {hr, fin}), ( high , {} ))")
   checkTrue "algebra: pair elements, written with any spacing and set order" (contains jRaw "\"text\":\"(high, {fin,hr})\"") jRaw
+  -- the lexicographic order: the first coordinate decides, the second breaks a tie; a chain of chains is a chain
+  let lexT (src : String) := (sessionEval [] src).2
+  check "lex: the first coordinate decides" (lexT "le(lex(chain(3), chain(3)), (0, 2), (1, 0))") "true"
+  check "lex: whatever the second says" (lexT "le(lex(chain(3), chain(3)), (1, 0), (0, 2))") "false"
+  check "lex: a tie goes to the second" (lexT "le(lex(chain(3), chain(3)), (1, 0), (1, 2))") "true"
+  check "lex: a chain, so a join is the larger" (lexT "join(lex(chain(3), chain(3)), (0, 2), (1, 0))") "(1, 0)"
   let (_, xRaw) := handleS st (req "8" "let X = context({duck, dog}, {flies, mammal}; duck->flies, dog->mammal)")
   checkTrue "algebra: a context is drawn as its cross table" (contains xRaw "\"kind\":\"context.table\"" && contains xRaw "\"has\":[[true,false],[false,true]]") xRaw
 
@@ -1074,6 +1101,35 @@ def systemsTests : TestM Unit := do
   checkTrue "systems: each step of the trace names its action" (contains invRaw "\"explanation\":\"inc (x < 2 holds): x := x + 1.\"") invRaw
   let (_, ctlRaw) := handleS st (req "3" "ctl(C, EF x = 2)")
   checkTrue "systems: a CTL formula's fixed point, a round a step" (contains ctlRaw "\"rule\":\"sys.iterate\"" && contains ctlRaw "\"rule\":\"sys.fixed\"") ctlRaw
+  -- an escrow counter: a use its quota does not cover is refused locally, and the state is shown whole
+  let (_, escRaw) := handleS [] (req "4" "replicas(escrow 2; a, b; a: use; a: use; a: give b)")
+  checkTrue "escrow: a use beyond the quota is refused, by the replica alone" (contains escRaw "\"rule\":\"crdt.refuse\"" && contains escRaw "a refuses the use: its quota is spent") escRaw
+  checkTrue "escrow: an update says the quota left" (contains escRaw "Its quota left, as far as it knows: 0.") escRaw
+  checkTrue "escrow: the state is uses, frees and gifts" (contains escRaw "({a↦1, b↦0}, {a↦0, b↦0}, {a→b↦0, b→a↦0})") escRaw
+  checkTrue "escrow: a gift with nothing left is refused too" (contains escRaw "a refuses the gift") escRaw
+  checkTrue "escrow: a refusal shows the quota left, so the work does not fold it away" (contains escRaw "\"afterRendered\":{\"text\":\"quota(a) = 0\"") escRaw
+  match Rep.parse "escrow 2; a, b; b: give a; a: use; a: use; b -> a; a: use" with
+  | .ok (kind, rs, evs) => match Rep.run kind rs evs with
+    | .ok r =>
+      let a := (r.states.lookup "a").getD []
+      check "escrow: a gift is spent once it has arrived" (toString (Rep.quotaLeft r.layout a 0, Rep.inUse r.layout a)) "(0, 2)"
+      check "escrow: an even split, the first replica taking the remainder" (toString ((List.range 3).map (Rep.share 5 3 ·))) "[2, 2, 1]"
+    | .error e => checkTrue "escrow: the run" false e
+  | .error e => checkTrue "escrow: the parse" false e
+  -- an RGA: inserts name the character they follow, so concurrent edits commute without transformation
+  let (_, rgaRaw) := handleS [] (req "5" "replicas(rga; a, b; a: ins c at 0; a: ins a at 1; a: ins t at 2; a -> b; a: ins x at 1; b: del 2; a -> b; b -> a)")
+  checkTrue "rga: an insert and a concurrent delete converge on the text both meant" (contains rgaRaw "\"text\":\"{a↦cxa, b↦cxa}\"") rgaRaw
+  checkTrue "rga: an insert names the node it follows" (contains rgaRaw "The new character is the node x@4a, inserted after c@1a") rgaRaw
+  checkTrue "rga: a delete leaves a tombstone" (contains rgaRaw "It tombstones t@3a") rgaRaw
+  checkTrue "rga: the state is the nodes after their parents, then the tombstones" (contains rgaRaw "({c@1a↦start, x@4a↦c@1a, a@2a↦c@1a, t@3a↦a@2a}, {t@3a})") rgaRaw
+  match Rep.parse "rga; a, b; a: ins h at 0; a: ins i at 1; a -> b; a: ins a at 2; b: ins o at 2; b -> a" with
+  | .ok (kind, rs, evs) => match Rep.run kind rs evs with
+    | .ok r =>
+      let a := (r.states.lookup "a").getD []
+      check "rga: concurrent inserts after one node, the tie to the replica listed first" (Rep.read r.layout a).toText "hiao"
+      check "rga: the document order, tombstones included" (toString (Rep.rgaOrder r.layout a)) "[0, 1, 2, 3]"
+    | .error e => checkTrue "rga: the run" false e
+  | .error e => checkTrue "rga: the parse" false e
 
 /-- Inverse trigonometric functions, and `sec`, `csc`, `cot` and `f^-1(x)` as reciprocals. -/
 def trigTests : TestM Unit := do
@@ -1241,6 +1297,15 @@ def worldTests : TestM Unit := do
   checkTrue "worlds: a function cannot take a wire value's name" (contains r5 "a function cannot be called that") r5
   let (_, r6) := ev [] "h" "let reach = 3"
   checkTrue "worlds: a value may take a command's name" (contains r6 "\"bound\":[\"reach\"]") r6
+  -- a λ-name the session defined shadows another world's command of that name (`map` is the order world's)
+  let (stl, _) := ev [] "i" "map := λf x. f (f x)"
+  let (stl, r7) := ev stl "j" "map (add 1) 0"
+  checkTrue "worlds: a session's λ-name shadows an order command" (contains r7 "\"kind\":\"lambda\"" && contains r7 "\"text\":\"λf. λx. f (f x)\"") r7
+  let (stl, _) := ev stl "k" "let D = divisors(4)"
+  let (_, r8) := ev stl "l" "let g = map(D; 1->2, 2->4, 4->4)"
+  checkTrue "worlds: the command, written as one, is not shadowed" (contains r8 "\"kind\":\"poset\"") r8
+  let (_, r9) := ev [] "m" "map (add 1) 0"
+  checkTrue "worlds: with no λ-name, the command is the order world's" (contains r9 "\"ok\":false") r9
 
 /-- `engine.read`: the source as written, in its world, with paths; nothing evaluated, the session
 untouched. -/

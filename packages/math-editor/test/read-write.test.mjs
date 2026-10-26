@@ -279,6 +279,14 @@ test("the entrywise operators write back spaced, and draw as ⊘ and ⊙", () =>
   assert.match(toLatex(tree("a .* b")), /\\odot/);
 });
 
+test("backprop is a call, its lists rows, and writes back the same", () => {
+  const src = "backprop((w*x + b - y)^2, [w, b], [0.5, 0])";
+  assert.equal(write(tree(src)).text, src);
+  const seen = [];
+  toLatex(tree(src), { classify: (text, as) => { seen.push(`${as}:${text}`); return as === "name" ? null : as; } });
+  assert.ok(seen.includes("call:backprop"), seen.join(" "));
+});
+
 test("manipulate is a call, its parameter bound over the call, and writes back the same", () => {
   const src = "manipulate(plot(x^h, x, 0, 2), h, 1, 3)";
   assert.equal(write(tree(src)).text, src);

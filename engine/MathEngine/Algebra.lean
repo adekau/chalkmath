@@ -117,6 +117,13 @@ def product (P Q : Poset) : Poset :=
   Poset.of (P.elems.flatMap fun x => Q.elems.map (pairName x ·))
     (P.le.flatMap fun (a, b) => Q.le.map fun (c, d) => (pairName a c, pairName b d))
 
+/-- The lexicographic order: pairs, `(a, c) ≤ (b, d)` when `a < b`, or `a = b` and `c ≤ d`. The first
+coordinate decides unless it ties, as words in a dictionary and version numbers compare. -/
+def lexOrder (P Q : Poset) : Poset :=
+  Poset.of (P.elems.flatMap fun x => Q.elems.map (pairName x ·))
+    ((P.le.filter (fun (a, b) => a != b)).flatMap (fun (a, b) => Q.elems.flatMap fun c => Q.elems.map fun d => (pairName a c, pairName b d))
+      ++ P.elems.flatMap fun a => Q.le.map fun (c, d) => (pairName a c, pairName a d))
+
 /-- A pair `x ≤ y` of `P` with `f x ≰ f y` in `Q`, if any. -/
 def monotoneFailure2 (P Q : Poset) (f : PMap) : Option (String × String) :=
   P.le.find? fun (x, y) => !Q.rel (f.apply x) (f.apply y)

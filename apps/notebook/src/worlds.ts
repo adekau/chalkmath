@@ -19,7 +19,7 @@ export const FALLBACK_WORLDS: WorldInfo[] = [
     names: [],
     markers: [] },
   { id: "poset", label: "Order theory",
-    commands: ["poset", "divisors", "subsets", "chain", "map", "hasse", "join", "meet", "sup", "inf", "upper", "lower", "lattice", "top", "bottom", "le", "maximal", "minimal", "monotone", "lfp", "gfp", "fixpoints", "rel", "kernel", "reflexive", "symmetric", "antisymmetric", "transitive", "equivalence", "preorder", "closure", "classes", "finer", "wellfounded", "measure", "op", "joinop", "meetop", "table", "associative", "commutative", "idempotent", "semilattice", "identity", "fold", "order", "distributive", "complement", "complemented", "boolean", "product", "galois", "closureop", "context", "concepts", "secure", "events", "clocks", "concurrent"],
+    commands: ["poset", "divisors", "subsets", "chain", "map", "hasse", "join", "meet", "sup", "inf", "upper", "lower", "lattice", "top", "bottom", "le", "maximal", "minimal", "monotone", "lfp", "gfp", "fixpoints", "rel", "kernel", "reflexive", "symmetric", "antisymmetric", "transitive", "equivalence", "preorder", "closure", "classes", "finer", "wellfounded", "measure", "op", "joinop", "meetop", "table", "associative", "commutative", "idempotent", "semilattice", "identity", "fold", "order", "distributive", "complement", "complemented", "boolean", "product", "lex", "galois", "closureop", "context", "concepts", "secure", "events", "clocks", "concurrent"],
     keywords: [],
     glyphs: ["<", "->", "=", "|", "..", "{", "}"],
     names: [],
@@ -37,7 +37,7 @@ export const FALLBACK_WORLDS: WorldInfo[] = [
     names: ["true", "false", "and", "or", "not", "if", "zero", "succ", "add", "mul", "pow", "iszero", "pair", "fst", "snd", "id", "const", "K", "S", "I", "omega", "Y"],
     markers: ["λ", "\\", ":="] },
   { id: "math", label: "Algebra",
-    commands: ["sin", "cos", "tan", "sec", "csc", "cot", "arcsin", "arccos", "arctan", "sinh", "cosh", "tanh", "exp", "ln", "log", "sqrt", "abs", "conj", "re", "im", "arg", "diff", "simplify", "expand", "factor", "N", "det", "rref", "nullspace", "transpose", "solve", "subst", "integrate", "plot", "sign", "dot", "norm", "sum", "exptotrig", "epicycles", "dft", "manipulate", "column", "total", "mean", "variance", "stdev", "min", "max", "median"],
+    commands: ["sin", "cos", "tan", "sec", "csc", "cot", "arcsin", "arccos", "arctan", "sinh", "cosh", "tanh", "exp", "ln", "log", "sqrt", "abs", "conj", "re", "im", "arg", "diff", "simplify", "expand", "factor", "N", "det", "rref", "nullspace", "transpose", "solve", "subst", "integrate", "plot", "sign", "dot", "norm", "sum", "exptotrig", "epicycles", "dft", "manipulate", "column", "backprop", "total", "mean", "variance", "stdev", "min", "max", "median"],
     keywords: [],
     glyphs: [],
     names: [],
@@ -96,13 +96,16 @@ function marked(w: WorldInfo, src: string): boolean {
 }
 
 /** The world a source belongs to, by its id, or null for algebra: the engine's `worldFor`, as far as
- *  the page can tell before the engine answers. A λ-command is the λ-world's whatever else it holds;
- *  otherwise the worlds are asked in the engine's order, each by its commands and markers, the λ-world
- *  last and also by a known definition at the head (`defs`, the session's λ-names). */
+ *  the page can tell before the engine answers. A λ-command is the λ-world's whatever else it holds,
+ *  and so is a λ-term headed by one of the session's λ-names (`defs`), which shadows another world's
+ *  command of that name (`map (add 1) l`); otherwise the worlds are asked in the engine's order, each
+ *  by its commands and markers, the λ-world last and also by a known definition at the head. */
 export function worldOf(src: string, defs: (name: string) => boolean = () => false): string | null {
   const s = src.trim();
   if (!s) return null;
   if (lambdaCommand(s)) return "lambda";
+  const head = s.split(" ")[0] ?? "";
+  if (head !== "let" && defs(head) && lambdaHeaded(s, defs)) return "lambda";
   const hasLambda = /[λ\\]/.test(s);
   for (const w of others()) {
     if (w.id === "lambda") {

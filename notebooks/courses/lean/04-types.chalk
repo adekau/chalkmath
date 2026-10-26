@@ -119,6 +119,12 @@
       "label": null
     },
     {
+      "src": "> [!note] Application: a card game\n> [Model a card game](#course=lean&lesson=4&app=1), an optional notebook beside this lesson, uses these types for something bigger: suits and ranks as choices, a card as a structure, a hand as a list, and the rules of a game as functions on them.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "You can now write functions on numbers, lists and types of your own. The next lesson writes statements about them and has Lean check them.",
       "type": "markdown",
       "showWork": false,

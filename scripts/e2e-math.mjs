@@ -52,6 +52,8 @@ const CASES = [
   { src: "ln(x^2)", text: "2*ln(x)", step: "Function value, assuming a positive argument" },
   // inverse trigonometric functions, and sec, csc, cot as reciprocals
   { src: "diff(arctan(x), x)", text: "1/(x^2 + 1)", step: "Chain rule" },
+  { src: "backprop(x^2*y, [x, y], [3, 2])", text: "[12, 9]", step: "Backward pass" },
+  { src: "backprop(abs(t), [t], [3])", error: "no local derivative for abs" },
   { src: "integrate(1/(4+x^2), x)", text: "arctan(x/2)/2", step: "Arctangent integral" },
   { src: "integrate(1/sqrt(1-x^2), x)", text: "arcsin(x)", step: "Arcsine integral" },
   // cosh, sinh and tanh, read as their definitions in exp
@@ -97,7 +99,11 @@ const CASES = [
   { src: "let RPS = op({r, p, s}; [r, p, r; p, p, s; r, s, s])", text: "[r, p, r; p, p, s; r, s, s]" },
   { src: "associative(RPS)", text: "false", step: "Not associative" },
   { src: "lattice(product(chain(2), chain(3)))", text: "true", step: "Inner call" },
+  { src: "le(lex(chain(3), chain(3)), (0, 2), (1, 0))", text: "true", step: "Inner call" },
+  { src: "lattice(lex(chain(2), chain(3)))", text: "true", step: "Lexicographic order" },
   { src: "replicas(gcounter; a, b; a: inc; m := a; a: inc; b <- m; a -> b)", text: "{a↦2, b↦2}", step: "b merges the message m" },
+  { src: "replicas(escrow 2; a, b; a: use; b: use; a: use; a -> b; b -> a)", text: "{a↦2, b↦2}", step: "a refuses the use" },
+  { src: "replicas(rga; a, b; a: ins c at 0; a: ins a at 1; a: ins t at 2; a -> b; a: ins x at 1; b: del 2; a -> b; b -> a)", text: "{a↦cxa, b↦cxa}", step: "Converged" },
   // term rewriting, in the systems world
   { src: "let Add = rules(add(0, y) -> y; add(s(x), y) -> s(add(x, y)))", text: "{add(0, y) → y, add(s(x), y) → s(add(x, y))}" },
   { src: "rewrite(Add, add(s(0), s(0)))", text: "s(s(0))", step: "Rewrite" },
@@ -118,6 +124,9 @@ const CASES = [
   { src: "type: λx:A. x x", error: "not a function type" },
   // a Church name at the head is a λ-term only when the cell reads as one
   { src: "fst (pair a b)", text: "a" },
+  // a λ-name of the session shadows another world's command (`map` is the order world's)
+  { src: "map := λf x. f (f x)", text: "λf. λx. f (f x)" },
+  { src: "map (add 1) 0", text: "λf. λx. f (f x)" },
   { src: "S + 1", text: "S + 1" },
 ];
 
@@ -714,6 +723,15 @@ async function features() {
   assert.deepEqual(await ty.locator(".typingtree .ptrule").allTextContents(), nodesOf(tyWant.root).map((n) => n.rule), "a rule per judgment, as the engine derived it");
   assert.deepEqual(await ty.locator(".typingtree .ptconc").evaluateAll((els) => els.map((e) => e.title)), nodesOf(tyWant.root).map((n) => n.text), "the judgments are the engine's");
   console.log(`✓ typing tree: ${nodesOf(tyWant.root).length} judgments, rules ${nodesOf(tyWant.root).map((n) => n.rule).join(" ")}`);
+  // a computation graph (backprop): a box per node with its value and gradient, an arrow per local derivative
+  const bpSrc = "backprop(x^2*y, [x, y], [3, 2])";
+  const bp = await runLast(bpSrc);
+  const bpWant = (await ref(bpSrc, "bp")).visuals.find((v) => v.kind === "calculus.graph").data;
+  assert.equal(await bp.locator(".adgraph .adnode").count(), bpWant.nodes.length, "a box per node");
+  assert.equal(await bp.locator(".adgraph path.adedge").count(), bpWant.edges.length, "an arrow per local derivative");
+  assert.deepEqual(await bp.locator(".adgraph .adgrad").allTextContents(), bpWant.nodes.map((n) => `∂ ${n.grad}`), "the gradients are the engine's");
+  assert.deepEqual(await bp.locator(".adgraph .adlocal").allTextContents(), bpWant.edges.map((e) => e[2]), "the local derivatives are the engine's");
+  console.log(`✓ computation graph: ${bpWant.nodes.length} nodes, ${bpWant.edges.length} arrows, gradients ${bpWant.nodes.map((n) => n.grad).join(" ")}`);
   // a poset's Hasse diagram stands in for its value: a node per element, an edge per cover, no LaTeX
   const hs = await runLast("let D = divisors(12)");
   const hsWant = (await ref("let D = divisors(12)", 17)).visuals.find((v) => v.kind === "order.hasse").data;
@@ -1044,7 +1062,7 @@ async function features() {
     const p = await linked.newPage();
     await p.goto(`${base}/#course=${other.id}`);
     await p.locator(".courses h1", { hasText: other.title }).waitFor({ timeout: 30000 });
-    assert.equal(await p.locator(".crslesson").count(), other.lessons.length, "a page loaded with a course link shows the course's lessons");
+    assert.equal(await p.locator(".crslesson:not(.crsapp)").count(), other.lessons.length, "a page loaded with a course link shows the course's lessons");
     assert.equal(await p.evaluate(() => location.hash), `#course=${other.id}`, "the link stays in the address");
   } finally {
     await linked.close();

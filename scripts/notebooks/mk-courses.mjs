@@ -23,6 +23,7 @@ const PRACTICE = {
   "diff(x^3 * cos(x), x)": "calculus.product", "diff(exp(x) * cos(x), x)": "calculus.product",
   "diff(cos(x^3), x)": "calculus.chain", "diff(exp(x^2), x)": "calculus.chain", "diff((x^2 + 1)^3, x)": "calculus.chain",
   "subst(diff(x^2, x), x, 3)": "calculus.slope",
+  "backprop((3w + b - 5)^2, [w, b], [1, 0])": "calculus.backprop",
   "integrate(4x^3, x)": "calculus.antiderivative", "integrate(cos(3x), x)": "calculus.antiderivative",
   "integrate(x, x, 0, 2)": "calculus.definite", "integrate(x^2, x, 1, 3)": "calculus.definite",
   "dot([1, 2, 3], [4, 5, 6])": "linear-algebra.dot", "[2, -1; 1, 1]*[3; -1]": "linear-algebra.matvec",
@@ -123,7 +124,7 @@ const oddSquareScene = (() => {
 // ---------------------------------------------------------------------------------------------------
 course("lean", "Lean from zero",
   "Lean before any course uses it: values and their types, functions, recursion, your own types, and then statements about your functions that Lean checks, for every input.",
-  "Start here", (add) => {
+  "Start here", (add, app) => {
 
   add("01-calculator.chalk", "Lean as a calculator", "Ask Lean for values with #eval and for types with #check; numbers that stop at zero and numbers that do not; names for values.", ({ sec, md, lean, lx }) => {
     sec("Lean as a calculator");
@@ -339,7 +340,100 @@ def sample : Tree := .node (.node .leaf 1 .leaf) 2 (.node .leaf 3 .leaf)
 > [!summary]
 > ‹inductive› defines a type by the ways to build it: a list of choices, or choices that carry values, even of the same type (a tree). ‹structure› bundles named values. Functions on them go by cases, and call themselves on the smaller parts.
 `);
+    md(r`
+> [!note] Application: a card game
+> [Model a card game](#course=lean&lesson=4&app=1), an optional notebook beside this lesson, uses these types for something bigger: suits and ranks as choices, a card as a structure, a hand as a list, and the rules of a game as functions on them.
+`);
     md(r`You can now write functions on numbers, lists and types of your own. The next lesson writes statements about them and has Lean check them.`);
+  });
+
+  app("04a-card-game.chalk", "Model a card game", "Suits and ranks as inductive types, a card as a structure, a hand as a list of cards, and the rules of a game as functions on them, checked with #eval and decide.", ({ sec, md, lean, lx }) => {
+    sec("Model a card game");
+    md(r`
+> [!goal]
+> Turn a familiar thing, a deck of cards, into Lean types, and its rules into functions on them.
+`);
+    md(r`An application of lesson 4, outside the course's order: nothing later depends on it. It uses what lessons 1 to 4 teach: ‹def›, ‹if›, recursion on lists, ‹inductive› and ‹structure›.`);
+    sec("Suits and ranks");
+    md(r`A suit is one of four choices, and a rank one of thirteen, so each is an ‹inductive› type that lists them, as ‹Weekday› listed the days:`);
+    lean(r`inductive Suit where
+  | clubs | diamonds | hearts | spades
+  deriving Repr, DecidableEq
+
+inductive Rank where
+  | two | three | four | five | six | seven | eight | nine | ten
+  | jack | queen | king | ace
+  deriving Repr, DecidableEq`);
+    md(r`Choices like these are better than numbers or strings for the same job. A suit stored as a ‹String› could be ‹"hearts"›, ‹"Hearts"› or ‹"hearst"›; a ‹Suit› can only be one of the four, and a function on it must say what it does for each.`);
+    sec("A card");
+    md(r`A card is a rank *and* a suit, so it is a ‹structure› with two fields:`);
+    lean(r`structure Card where
+  rank : Rank
+  suit : Suit
+  deriving Repr, DecidableEq
+
+def aceOfSpades : Card := { rank := .ace, suit := .spades }
+
+#eval aceOfSpades
+#eval aceOfSpades.suit`);
+    md(r`‹{ rank := .ace, suit := .spades }› builds a card, and ‹aceOfSpades.suit› reads one of its fields. ‹.ace› is short for ‹Rank.ace›: Lean knows from the field's type which one is meant.`);
+    sec("Rules as functions");
+    md(r`A rule of the game is a function. Which suits are red goes by cases on the suit; how high a rank is, by cases on the rank:`);
+    lean(r`def Suit.isRed : Suit → Bool
+  | .hearts | .diamonds => true
+  | _ => false
+
+def Rank.toNat : Rank → Nat
+  | .two => 2 | .three => 3 | .four => 4 | .five => 5 | .six => 6
+  | .seven => 7 | .eight => 8 | .nine => 9 | .ten => 10
+  | .jack => 11 | .queen => 12 | .king => 13 | .ace => 14
+
+def Card.beats (a b : Card) : Bool := a.rank.toNat > b.rank.toNat
+
+#eval aceOfSpades.suit.isRed
+#eval aceOfSpades.beats { rank := .king, suit := .hearts }`);
+    md(r`‹Card.beats› compares two cards by rank, using ‹Rank.toNat›: one function built on another, as programs are.`);
+    sec("A hand");
+    md(r`A hand is a list of cards, so a function on a hand is a recursion on the list, as ‹total› was in lesson 3:`);
+    lean(r`def hand : List Card :=
+  [{ rank := .ace, suit := .spades }, { rank := .king, suit := .spades }, { rank := .five, suit := .hearts }]
+
+def countSuit (s : Suit) : List Card → Nat
+  | [] => 0
+  | c :: cs => (if c.suit = s then 1 else 0) + countSuit s cs
+
+#eval countSuit .spades hand`);
+    md(r`‹c.suit = s› compares two suits; ‹deriving DecidableEq› is what lets ‹if› ask it. The same comparison as a ‹Bool› is ‹c.suit == s›, and ‹&&› is "and" on ‹Bool›s. Together they say whether every card of a hand has one suit:`);
+    lean(r`def allSuit (s : Suit) : List Card → Bool
+  | [] => true
+  | c :: cs => c.suit == s && allSuit s cs
+
+#eval allSuit .spades hand
+#eval allSuit .spades [aceOfSpades]`);
+    md(r`An empty hand has every card of any suit, since it has no card that is not: ‹allSuit s []› is ‹true›.`);
+    sec("Exercises");
+    md(r`Each exercise asks for a function; the statement below it checks it on examples, with ‹decide›. Until the function is written the check fails, and the panel says so.`);
+    lx(r`theorem sameColor_ok : Card.sameColor aceOfSpades { rank := .two, suit := .clubs } = true ∧ Card.sameColor aceOfSpades { rank := .two, suit := .hearts } = false := by`, r`Define ‹Card.sameColor›: two cards have the same colour when both are red or both are not.`, r`  decide`, [
+      r`Compare ‹a.suit.isRed› with ‹b.suit.isRed›.`,
+      r`‹==› compares two ‹Bool›s too: ‹a.suit.isRed == b.suit.isRed›.`,
+    ], { start: "  decide", def: { start: "def Card.sameColor (a b : Card) : Bool := sorry", solution: "def Card.sameColor (a b : Card) : Bool := a.suit.isRed == b.suit.isRed", forbid: [] } });
+    lx(r`theorem points_ok : Rank.points .seven = 7 ∧ Rank.points .queen = 10 ∧ Rank.points .ace = 11 ∧ Rank.points .ten = 10 := by`, r`In blackjack, a number card counts its number, a jack, queen or king counts 10, and an ace 11. Define ‹Rank.points›.`, r`  decide`, [
+      r`Three cases share 10: ‹| .jack | .queen | .king => 10›.`,
+      r`For the number ranks, ‹Rank.toNat› already has the answer: a last case ‹| r => r.toNat› covers them all.`,
+    ], { start: "  decide", def: { start: "def Rank.points : Rank → Nat\n  | r => sorry", solution: "def Rank.points : Rank → Nat\n  | .jack | .queen | .king => 10\n  | .ace => 11\n  | r => r.toNat", forbid: [] } });
+    lx(r`theorem handPoints_ok : handPoints hand = 26 ∧ handPoints [] = 0 := by`, r`Define ‹handPoints›, the points of a whole hand: the sum of its cards' ‹Rank.points›, by recursion on the list. (Lean's ‹List.sum›, ‹map› and ‹foldl› are ruled out.)`, r`  decide`, [
+      r`An empty hand has 0 points.`,
+      r`‹c :: cs› has ‹c›'s points plus the points of ‹cs›: ‹c.rank.points + handPoints cs›.`,
+    ], { start: "  decide", def: { start: "def handPoints : List Card → Nat\n  | [] => sorry\n  | c :: cs => sorry", solution: "def handPoints : List Card → Nat\n  | [] => 0\n  | c :: cs => c.rank.points + handPoints cs", forbid: ["sum", "map", "foldl", "foldr"] } });
+    lx(r`theorem flush_ok : isFlush hand = false ∧ isFlush [aceOfSpades, { rank := .two, suit := .spades }] = true ∧ isFlush [] = true := by`, r`A hand is a **flush** when all its cards have one suit. Define ‹isFlush›, using ‹allSuit›. (Lean's ‹List.all› is ruled out.)`, r`  decide`, [
+      r`Which suit should every card have? The first card's.`,
+      r`‹| c :: cs => allSuit c.suit cs›, and an empty hand is a flush.`,
+    ], { start: "  decide", def: { start: "def isFlush : List Card → Bool\n  | [] => sorry\n  | c :: cs => sorry", solution: "def isFlush : List Card → Bool\n  | [] => true\n  | c :: cs => allSuit c.suit cs", forbid: ["all"] } });
+    md(r`
+> [!summary]
+> A thing with a fixed set of kinds is an ‹inductive› type of choices; a thing made of parts is a ‹structure›; a collection is a ‹List›. The rules are functions on them, by cases on the choices and by recursion on the lists, and ‹#eval› and ‹decide› check them on examples.
+`);
+    md(r`The checks here try a few hands. Lesson 5 proves statements about *every* value, such as that no rank is worth more than 11 points: ‹∀ r : Rank, r.points ≤ 11›, by ‹cases› on the rank.`);
   });
 
   add("05-statements.chalk", "Statements and first proofs", "theorem and example, rfl and decide, statements about every input, and the tactics omega, simp and cases.", ({ sec, md, lean, lx }) => {
@@ -431,7 +525,137 @@ theorem next_not_same : ∀ d : Weekday, d.next ≠ d := by
 > [!summary]
 > Induction proves a statement for every number, or every list or tree, by following the cases the type is built from: a proof for the smallest case, and one for each bigger case that may use the statement for the parts inside it. A theorem about every input is a **specification**, and a function that meets it is correct on all of them, which no number of checks can show.
 `);
+    md(r`
+> [!note] Application: a verified sort
+> [A verified sort check](#course=lean&lesson=6&app=1), an optional notebook beside this lesson, proves that reversing a list twice gives it back, and that insertion sort is correct: its output is sorted and has the same numbers as its input, for every list.
+`);
     md(r`That is everything the next course assumes. [Logic and proof technique](#course=logic) uses Lean from its third lesson on, for proofs about logic, numbers and the functions you define there.`);
+  });
+
+  app("06a-verified-sort.chalk", "A verified sort check", "Reversing twice gives the list back, with a lemma; then insertion sort, and the three theorems that make it correct for every list: the same length, the same count of every number, and a sorted result.", ({ sec, md, lean, lx }) => {
+    sec("A verified sort check");
+    md(r`
+> [!goal]
+> Say what it means for a sorting function to be correct, and prove that insertion sort is, for every list.
+`);
+    md(r`An application of lesson 6, outside the course's order: nothing later depends on it. It uses induction on lists, ‹simp› and ‹omega› from lessons 5 and 6, and ‹len› and ‹count› from lessons 6 and 3; two new steps, a **lemma** and the tactic ‹split›, are explained where they come up.`);
+    sec("Reversing twice");
+    md(r`A warm-up. ‹rev› reverses a list: the reverse of ‹x :: xs› is the reverse of ‹xs› with ‹x› put at the end.`);
+    lean(r`def rev : List Nat → List Nat
+  | [] => []
+  | x :: xs => rev xs ++ [x]
+
+#eval rev [1, 2, 3]
+#eval rev (rev [1, 2, 3])`);
+    md(r`Reversing twice should give the list back, for every list. Try induction on ‹xs›: in the ‹cons x xs› case the goal is ‹rev (rev xs ++ [x]) = x :: xs›, and the hypothesis ‹ih : rev (rev xs) = xs› does not apply, because ‹rev› is applied to ‹rev xs ++ [x]›, not to ‹rev xs›. The proof needs a fact about reversing a list with something at its end. A fact proved on the way to another is a **lemma**:`);
+    lean(r`theorem rev_snoc (xs : List Nat) (x : Nat) : rev (xs ++ [x]) = x :: rev xs := by
+  induction xs with
+  | nil => rfl
+  | cons y ys ih => simp [rev, ih]`);
+    md(r`With the lemma, ‹simp› can turn ‹rev (rev xs ++ [x])› into ‹x :: rev (rev xs)›, and then ‹ih› finishes it. That is the first exercise.`);
+    sec("Insertion sort");
+    md(r`Insertion sort sorts a list the way many people sort a hand of cards: take the cards one at a time and put each into its place among the ones already sorted. ‹ins x ys› puts ‹x› into a sorted list ‹ys›, before the first number at least as big; ‹isort› does that for each number in turn.`);
+    lean(r`def ins (x : Nat) : List Nat → List Nat
+  | [] => [x]
+  | y :: ys => if x ≤ y then x :: y :: ys else y :: ins x ys
+
+def isort : List Nat → List Nat
+  | [] => []
+  | x :: xs => ins x (isort xs)
+
+#eval ins 4 [1, 3, 5, 7]
+#eval isort [5, 2, 9, 1, 5, 6]`);
+    sec("What correct means");
+    md(r`A sort is correct when its output is in order. That alone is not enough:`);
+    lean(r`def sorted : List Nat → Bool
+  | [] => true
+  | [_] => true
+  | x :: y :: ys => x ≤ y && sorted (y :: ys)
+
+def lazySort (_ : List Nat) : List Nat := []
+
+#eval sorted (isort [3, 1, 2])
+#eval sorted (lazySort [3, 1, 2])`);
+    md(r`‹lazySort› throws the list away, and its empty output is sorted. A correct sort must also keep the numbers it was given: the output has the same length as the input, and each number occurs in it as many times as in the input (‹count› from lesson 3). Three theorems, each about every list, make the specification:
+
+1. ‹len (isort xs) = len xs›
+2. ‹count a (isort xs) = count a xs›, for every number ‹a›
+3. ‹sorted (isort xs) = true›
+
+The first two say ‹isort› rearranges its input without losing or adding a number; the third that the rearrangement is in order. No number of examples shows them; induction does.`);
+    sec("Each theorem through a lemma");
+    md(r`‹isort› is built from ‹ins›, so each theorem about ‹isort› goes through a lemma about ‹ins›. ‹ins› has an ‹if› in it, and a proof about it needs both branches. The tactic ‹split› does that: on a goal with an ‹if›, it gives one goal where the condition holds and one where it does not.`);
+    md(r`The count lemma, as an example of ‹split›:`);
+    lean(r`theorem count_ins (a x : Nat) (ys : List Nat) : count a (ins x ys) = count a (x :: ys) := by
+  induction ys with
+  | nil => rfl
+  | cons y ys ih =>
+    simp only [ins]
+    split
+    · rfl
+    · simp only [count] at *
+      rw [ih]
+      omega`);
+    md(r`‹simp only [ins]› unfolds one step of ‹ins›, leaving its ‹if›; ‹split› makes the two cases. When ‹x ≤ y›, ‹ins› gave ‹x :: y :: ys›, which is ‹x :: (y :: ys)›, and ‹rfl› closes it. Otherwise it gave ‹y :: ins x ys›; ‹simp only [count] at *› unfolds ‹count› in the goal and in ‹ih› (‹at *› means everywhere), ‹rw [ih]› replaces the left side of ‹ih› with its right, and ‹omega› finishes the sums. The bullets ‹·› mark the two cases.`);
+    md(r`The sorted lemma has more cases: inserting into a sorted list, the new number may land in front of the first or further along, and the list may be short. Here it is in full; you do not need to follow every line to use it.`);
+    lean(r`theorem sorted_ins (x : Nat) (ys : List Nat) (h : sorted ys = true) : sorted (ins x ys) = true := by
+  induction ys with
+  | nil => rfl
+  | cons y ys ih =>
+    cases ys with
+    | nil => simp only [ins]; split <;> simp [sorted] <;> omega
+    | cons z zs =>
+      simp only [ins]
+      split
+      · simp_all [sorted]
+      · simp only [sorted, Bool.and_eq_true, decide_eq_true_eq] at h
+        have ih' := ih h.2
+        simp only [ins] at ih' ⊢
+        split
+        · simp_all [sorted]; omega
+        · simp_all [sorted]`);
+    md(r`The hypothesis ‹(h : sorted ys = true)› before the colon makes this a statement *if ‹ys› is sorted*: inserting keeps a sorted list sorted. ‹have ih' := ih h.2› uses the induction hypothesis on the rest of the list, which ‹h› says is sorted too.`);
+    sec("Exercises");
+    md(r`Each statement is fixed; replace the ‹sorry›s. The **Lean goals** tab shows what is left at the cursor.`);
+    lx(r`theorem rev_rev (xs : List Nat) : rev (rev xs) = xs := by`, r`Prove that reversing a list twice gives it back, using the lemma ‹rev_snoc›.`, r`  induction xs with
+  | nil => rfl
+  | cons x xs ih => simp [rev, rev_snoc, ih]`, [
+      r`The ‹nil› case computes.`,
+      r`In the ‹cons› case, give ‹simp› the definition, the lemma and the hypothesis: ‹simp [rev, rev_snoc, ih]›.`,
+    ], { start: "  induction xs with\n  | nil => sorry\n  | cons x xs ih => sorry" });
+    lx(r`theorem len_ins (x : Nat) (ys : List Nat) : len (ins x ys) = len ys + 1 := by`, r`Prove that ‹ins› makes a list one longer.`, r`  induction ys with
+  | nil => rfl
+  | cons y ys ih =>
+    simp only [ins]
+    split
+    · rfl
+    · simp [len, ih]`, [
+      r`The ‹nil› case computes: ‹len [x]› is ‹0 + 1›.`,
+      r`When ‹x ≤ y›, ‹ins› gave ‹x :: y :: ys›, and both sides compute to the same number: ‹rfl›.`,
+      r`Otherwise it gave ‹y :: ins x ys›: unfold ‹len› and use ‹ih›, with ‹simp [len, ih]›.`,
+    ], { start: "  induction ys with\n  | nil => sorry\n  | cons y ys ih =>\n    simp only [ins]\n    split\n    · sorry\n    · sorry" });
+    lx(r`theorem len_isort (xs : List Nat) : len (isort xs) = len xs := by`, r`Prove the first theorem of the specification: sorting keeps the length.`, r`  induction xs with
+  | nil => rfl
+  | cons x xs ih => simp [isort, len_ins, len, ih]`, [
+      r`‹isort (x :: xs)› is ‹ins x (isort xs)›, and ‹len_ins› says how long that is.`,
+      r`‹simp [isort, len_ins, len, ih]›.`,
+    ], { start: "  induction xs with\n  | nil => sorry\n  | cons x xs ih => sorry" });
+    lx(r`theorem count_isort (a : Nat) (xs : List Nat) : count a (isort xs) = count a xs := by`, r`Prove the second: sorting keeps how many times each number occurs, using ‹count_ins›.`, r`  induction xs with
+  | nil => rfl
+  | cons x xs ih => simp only [isort, count_ins, count, ih]`, [
+      r`The same shape as ‹len_isort›, with ‹count_ins› in place of ‹len_ins›.`,
+      r`‹simp only [isort, count_ins, count, ih]›.`,
+    ], { start: "  induction xs with\n  | nil => sorry\n  | cons x xs ih => sorry" });
+    lx(r`theorem sorted_isort (xs : List Nat) : sorted (isort xs) = true := by`, r`Prove the third: the output of ‹isort› is sorted, using ‹sorted_ins›.`, r`  induction xs with
+  | nil => rfl
+  | cons x xs ih => exact sorted_ins x (isort xs) ih`, [
+      r`‹isort (x :: xs)› is ‹ins x (isort xs)›, and ‹ih› says ‹isort xs› is sorted.`,
+      r`‹sorted_ins x (isort xs) ih› is exactly the proof: ‹exact sorted_ins x (isort xs) ih›.`,
+    ], { start: "  induction xs with\n  | nil => sorry\n  | cons x xs ih => sorry" });
+    md(r`
+> [!summary]
+> A specification says what a function must do for every input: for a sort, an output in order with the same numbers as the input. Each theorem about ‹isort› went through a lemma about ‹ins›, the function it is built from, and ‹split› took ‹ins›'s ‹if› apart. With the three proved, ‹isort› is correct on every list, which no test suite can show; ‹lazySort› passes the third theorem and fails the first two.
+`);
   });
 }, { leanPrelude: true });
 
@@ -1090,7 +1314,147 @@ example : ∀ n : Nat, n + 0 = n := fun _ => rfl`);
 > [!summary]
 > $\forall$ is a long $\land$ and $\exists$ a long $\lor$: one counterexample refutes a $\forall$, one witness proves an $\exists$, and negation swaps them by De Morgan's law. Their order changes the meaning. Over a finite set both can be checked; over all numbers they must be proved.
 `);
+    md(r`
+> [!note] Application: “for every” in SQL
+> A database query has no word for "every", only ‹EXISTS› and ‹NOT›. [“For every” in SQL](#course=logic&lesson=4&app=1), an optional notebook beside this lesson, builds it with this lesson's law for negating a quantifier, and tests a query that asks the wrong question.
+`);
     md(r`Euler's polynomial passed 39 checks and still failed. How can a finite argument cover every natural number? The next lesson's answer is induction.`);
+  });
+
+  app("04a-sql-for-all.chalk", "“For every” in SQL", "SQL can say “there exists” and not “for every”: the double NOT EXISTS that De Morgan's law gives, checked on a small shop's tables, the query that answers another question, and the empty table.", ({ sec, md, m, ex, lean, lx }) => {
+    const O = "{11, 12, 13, 21, 23, 32}", P = "{1, 2, 3}", C = "{1, 2, 3}";
+    sec("“For every” in SQL");
+    md(r`
+> [!goal]
+> Write "for every" in a language that only has "there exists", check on a small table that the two say the same, and catch the query that answers a different question.
+`);
+    md(r`An application of lesson 4, outside the course's order: nothing later depends on it. It uses the lesson's quantifiers and the law for negating them, and only as much SQL as it shows. The last section uses Lean, as lesson 4 does.`);
+    md(r`A shop keeps three tables:
+
+- **customers**: 1 Ada, 2 Bo, 3 Cy;
+- **products**: 1 pen, 2 ink, 3 pad;
+- **orders**, a row for each purchase, with its customer and its product: Ada bought all three products, Bo a pen and a pad, Cy only ink.
+
+Which customers bought every product? By eye, only Ada. The question is how to ask a database, whose language turns out to have no word for "every".`);
+    sec("A table as a formula");
+    md(r`The engine's quantifiers range over sets of numbers, so write each order as one number, the customer in the tens digit and the product in the units: Ada's ink is 12, Bo's pad is 23, and the orders table is $\{11, 12, 13, 21, 23, 32\}$. Then "customer $c$ bought product $p$" says that some row of the table is that pair:
+$$\exists o \in \mathit{orders},\ o = 10c + p.$$
+SQL asks it the same way, as a search through the rows:
+
+‹‹‹sql
+EXISTS (SELECT * FROM orders o WHERE o.customer = c AND o.product = p)
+‹‹‹
+
+Did Bo (customer 2) buy a pad (product 3)? Did he buy ink (product 2)?`.replace(/‹‹‹/g, "```"));
+    m(`∃ o ∈ ${O}, o = 10*2 + 3`, { work: true });
+    m(`∃ o ∈ ${O}, o = 10*2 + 2`, { work: true });
+    sec("SQL has no “for every”");
+    md(r`A SQL condition can say ‹EXISTS› and ‹NOT EXISTS›, and has nothing for "for every". Lesson 4's law for negating a quantifier gives it anyway:
+$$\forall p,\ \varphi(p) \;\equiv\; \lnot \exists p,\ \lnot \varphi(p).$$
+"Customer $c$ bought every product" is "there is no product that $c$ did not buy": two ‹NOT EXISTS›, one inside the other.
+
+‹‹‹sql
+SELECT name FROM customers c
+WHERE NOT EXISTS (              -- there is no product p
+  SELECT * FROM products p
+  WHERE NOT EXISTS (            -- that c did not buy
+    SELECT * FROM orders o
+    WHERE o.customer = c.id AND o.product = p.id));
+‹‹‹
+
+Read each ‹NOT EXISTS› as $\lnot\exists$. For Ada, customer 1, the "for every" form holds:`.replace(/‹‹‹/g, "```"));
+    m(`∀ p ∈ ${P}, ∃ o ∈ ${O}, o = 10*1 + p`, { work: true });
+    md(r`For Bo the query's condition is false. Without its outer $\lnot$ it is an $\exists$, and its witness is the product Bo did not buy, product 2, the ink:`);
+    m(`¬∃ p ∈ ${P}, ¬∃ o ∈ ${O}, o = 10*2 + p`);
+    m(`∃ p ∈ ${P}, ¬∃ o ∈ ${O}, o = 10*2 + p`, { work: true });
+    md(r`For every customer, the two forms agree. That is the law, checked on this table:`);
+    m(`∀ c ∈ ${C}, ((¬∃ p ∈ ${P}, ¬∃ o ∈ ${O}, o = 10c + p) ↔ (∀ p ∈ ${P}, ∃ o ∈ ${O}, o = 10c + p))`, { work: true });
+    md(r`
+> [!mistake]
+> Both negations matter. Drop the inner ‹NOT› and the query asks for customers with no product they *did* buy, those with no orders at all. Drop the outer one and it asks for customers who missed *some* product: Bo and Cy.
+`);
+    sec("The query that answers another question");
+    md(r`A shorter query looks as if it asks the same thing:
+
+‹‹‹sql
+SELECT DISTINCT name FROM customers c
+JOIN orders o ON o.customer = c.id
+WHERE o.product IN (SELECT id FROM products);
+‹‹‹
+
+It keeps a customer who has some order of some product: $\exists p\, \exists o$, "bought something", where the question was $\forall p\, \exists o$. On this table it returns Ada, Bo and Cy. The engine finds a customer for whom the two questions have different answers:`.replace(/‹‹‹/g, "```"));
+    m(`∃ c ∈ ${C}, ((∃ p ∈ ${P}, ∃ o ∈ ${O}, o = 10c + p) ∧ ¬(∀ p ∈ ${P}, ∃ o ∈ ${O}, o = 10c + p))`, { work: true });
+    md(r`
+> [!mistake]
+> A test table where Ada is the only customer passes both queries: she bought something, and she bought everything. A query is tested on a table where the questions differ, here a customer like Bo, who bought some products and not others. The formula above is a search for one.
+`);
+    sec("No products at all");
+    md(r`Before the shop lists anything, the products table is empty. Who has bought every product? The ‹NOT EXISTS› query returns every customer, Cy too: there is no product they did not buy. That is how $\forall$ over the empty set behaves in logic as well. It is a long $\land$ of no conditions at all, so there is no counterexample, and it is true:`);
+    m(`∀ p ∈ {}, ∃ o ∈ ${O}, o = 10*3 + p`);
+    md(r`
+> [!note] A query by counting
+> Another common query counts: group the orders by customer and keep the groups with as many products as the products table has (‹GROUP BY customer HAVING COUNT(DISTINCT product) = (SELECT COUNT(*) FROM products)›). On this shop it gives the same answer, Ada. With no products it gives none: the count to reach is 0, a customer with orders has more, and a customer without orders has no group at all. The two queries were never the same formula; the empty table is where that shows.
+`);
+    sec("Exercises");
+    md(r`Each question is about the shop above. Write it as a formula in a cell of your own, with the orders as ‹${O}›, and answer ‹true› or ‹false›.`);
+    ex(`∃ p ∈ ${P}, ∀ c ∈ ${C}, ∃ o ∈ ${O}, o = 10c + p`, r`Is there a product that every customer bought?`, [
+      r`"There is a product $p$ such that every customer $c$ bought $p$": $\exists p\, \forall c$, then "bought" as before.`,
+      r`Cy bought only ink. Did Bo buy ink?`,
+    ], { hide: true });
+    ex(`∀ p ∈ ${P}, ∃ c ∈ ${C}, ∃ o ∈ ${O}, o = 10c + p`, r`Was every product bought by at least one customer?`, [
+      r`$\forall p\, \exists c$: the same two quantifiers as the last question, in the other order.`,
+    ], { hide: true });
+    ex(`∃ c ∈ ${C}, ¬∃ o ∈ ${O}, o = 10c + 3`, r`Is there a customer who never bought a pad (product 3)?`, [
+      r`In SQL: ‹EXISTS› a customer for whom ‹NOT EXISTS› an order of product 3: $\exists c\, \lnot \exists o$.`,
+    ], { hide: true });
+    ex(`∀ c ∈ ${C}, ((¬∃ o ∈ ${O}, o = 10c + 1) ↔ c = 3)`, r`This query returns the customers who never bought a pen:
+
+‹‹‹sql
+SELECT name FROM customers c
+WHERE NOT EXISTS (SELECT * FROM orders o WHERE o.customer = c.id AND o.product = 1);
+‹‹‹
+
+Is Cy the only customer it returns?`.replace(/‹‹‹/g, "```"), [
+      r`"Cy is the only one" says: for every customer $c$, the condition holds exactly when $c$ is Cy, customer 3.`,
+      r`$\forall c,\ (\lnot \exists o,\ o = 10c + 1) \leftrightarrow c = 3$.`,
+    ], { hide: true });
+    sec("In Lean");
+    md(r`In Lean the table is a list of pairs, and "$c$ bought $p$" is a pair being in the list. Over a list, ‹∀ p ∈ products› and ‹∃ p ∈ products› are finite checks, and ‹decide› makes them element by element, as the engine did.`);
+    lean(r`def orders : List (Nat × Nat) := [(1, 1), (1, 2), (1, 3), (2, 1), (2, 3), (3, 2)]
+def customers : List Nat := [1, 2, 3]
+def products : List Nat := [1, 2, 3]
+
+/-- Customer c bought product p: the pair is a row of the table. -/
+abbrev bought (c p : Nat) : Prop := (c, p) ∈ orders
+
+theorem ada_bought_all : ∀ p ∈ products, bought 1 p := by decide`);
+    lx(r`theorem bo_missed_one : ∃ p ∈ products, ¬ bought 2 p := by`, r`Prove that Bo missed some product.`, r`  decide`, [
+      r`A statement over the lists ‹products› and ‹orders›: ‹decide› checks it.`,
+      r`Or by hand: the witness is product 2, ‹exact ⟨2, by decide, by decide⟩›.`,
+    ]);
+    lx(r`theorem no_product_for_all : ¬ ∃ p ∈ products, ∀ c ∈ customers, bought c p := by`, r`Prove that no product was bought by every customer.`, r`  decide`, [
+      r`The same tactic: ‹decide› tries each product and each customer.`,
+    ]);
+    md(r`The law that turned "for every" into ‹NOT EXISTS NOT EXISTS› is one theorem, for any predicate. One direction is lesson 3's kind of proof:`);
+    lx(r`theorem not_exists_not_of_forall (α : Type) (B : α → Prop) : (∀ x, B x) → ¬ ∃ x, ¬ B x := by`, r`Prove that if every $x$ has $B$, there is no $x$ without it.`, r`  intro h ⟨x, hx⟩
+  exact hx (h x)`, [
+      r`‹¬ ∃ x, ¬ B x› is a function from a proof of the ‹∃› to ‹False›: introduce ‹h›, then the pair ‹⟨x, hx⟩›.`,
+      r`‹hx : ¬ B x› and ‹h x : B x› contradict each other: ‹exact hx (h x)›.`,
+    ]);
+    md(r`The other direction, from "no product they did not buy" to "every product", is the kind lesson 3 could not prove without excluded middle: to produce ‹B x› you must know whether ‹B x› holds. For a table you do. Whether a pair is in a list is **decidable**, settled by looking, and for a decidable statement excluded middle is a theorem, ‹Decidable.em›, not an axiom:`);
+    lean(r`theorem forall_of_not_exists_not (α : Type) (B : α → Prop) [DecidablePred B] :
+    (¬ ∃ x, ¬ B x) → ∀ x, B x := by
+  intro h x
+  cases Decidable.em (B x) with
+  | inl hb => exact hb
+  | inr hn => exact absurd ⟨x, hn⟩ h
+
+#print axioms forall_of_not_exists_not`);
+    md(r`So the double ‹NOT EXISTS› is the "for every" it stands for, with no appeal to choice, because a table can be looked through, row by row.`);
+    md(r`
+> [!summary]
+> SQL has $\exists$ (‹EXISTS›) and $\lnot$ (‹NOT›), and De Morgan's law for quantifiers builds $\forall$ from them: $\forall p\ \varphi \equiv \lnot\exists p\ \lnot\varphi$, a ‹NOT EXISTS› inside a ‹NOT EXISTS›. A shorter query that joins and filters asks $\exists$ instead, and a table where the two differ shows it. Over the empty table $\forall$ is true. In Lean, ‹decide› checks such statements over lists, and on a decidable predicate the law needs no excluded middle.
+`);
   });
 
   add("05-induction.chalk", "Induction on the natural numbers", "Why checking is not enough, and induction as a recipe that produces a proof for any n: dominoes, sums, and proofs in Lean.", ({ sec, md, m, ex, lean, lx, sc }) => {
@@ -1186,7 +1550,164 @@ theorem oddSum_eq (n : Nat) : oddSum n = n * n := by`, r`Prove that the sum of t
 > [!summary]
 > Induction proves $P(n)$ for every $n$ from a base case and a step: a recipe that builds the proof for any $n$ you name. Checking cases finds mistakes; the step is the proof. In Lean, ‹induction› splits the goal into those two cases and hands the step its hypothesis.
 `);
+    md(r`
+> [!note] Application: loop invariants
+> A loop is proved correct the same way, by a statement that holds before it and is kept by every pass. [Loop invariants](#course=logic&lesson=5&app=1), an optional notebook beside this lesson, proves a summing loop and a running maximum, in Lean.
+`);
     md(r`The step here only ever used the case just before. To show 12 has a prime factor, 11 is no help; 12's factors 2, 3, 4 and 6 are. The next lesson lets the step use any smaller case.`);
+  });
+
+  app("05a-loop-invariants.chalk", "Loop invariants", "A loop proved correct the way induction proves a formula: a statement true before the loop and kept by every pass, then the same loop in Lean, its invariant proved by induction, and a running maximum.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Loop invariants");
+    md(r`
+> [!goal]
+> Prove that a loop computes what it should, by a statement that is true when the loop starts and stays true after every pass: induction, on the number of passes.
+`);
+    md(r`An application of lesson 5, outside the course's order: nothing later depends on it. Its Lean uses ‹sumTo› and ‹sumTo_formula› from the lesson.`);
+    md(r`
+‹‹‹ts
+function sumTo(n: number): number {
+  let i = n, total = 0;
+  while (i > 0) {
+    total = total + i;
+    i = i - 1;
+  }
+  return total;
+}
+‹‹‹
+`.replace(/‹‹‹/g, "```"));
+    md(r`Running it for $n = 4$ adds $4$, then $3$, $2$ and $1$: ‹total› is 0, 4, 7, 9, 10. Testing a few $n$ is lesson 5's "checking is not proving" again. What stays the same from pass to pass? After each pass, what is already in ‹total›, plus what the loop will still add, $1 + 2 + \cdots + i$, is the whole answer:
+$$\mathit{total} + (1 + 2 + \cdots + i) = 1 + 2 + \cdots + n.$$
+At the start $\mathit{total} = 0$ and $i = n$, so it holds. When the loop stops, $i = 0$, nothing is left to add, and it says $\mathit{total} = 1 + 2 + \cdots + n$: the answer.`);
+    md(r`Does a pass keep it? A pass turns ‹total› into $\mathit{total} + i$ and $i$ into $i - 1$. With $1 + \cdots + i = \frac{i(i+1)}{2}$, the left side after a pass minus the left side before is zero:`);
+    m("expand((t + i) + (i - 1)i/2 - (t + i(i + 1)/2))");
+    md(r`
+> [!definition] Loop invariant
+> A **loop invariant** is a statement about the loop's variables that
+> 1. holds when the loop starts;
+> 2. is kept by every pass: if it holds before a pass (and the loop's condition does, since the pass runs), it holds after;
+> 3. when the condition fails and the loop stops, says what the function promises.
+>
+> The first two are induction on the number of passes, a base case and a step, so the invariant holds after any number of them. The third uses it at the end.
+`);
+    md(r`
+> [!mistake]
+> "‹total› is the sum so far" is true but not enough: it never mentions $n$, so when the loop stops it says nothing about the answer. A good invariant ties what is done to what is left.
+`);
+    sec("The loop in Lean");
+    md(r`Lean has no ‹while›. A loop is a function that calls itself with the variables' new values, ‹i› first: ‹sumLoop (i + 1) total› is one pass, then the rest of the loop from ‹i› and ‹total + (i + 1)›.`);
+    lean(r`def sumLoop : Nat → Nat → Nat
+  | 0, total => total
+  | i + 1, total => sumLoop i (total + (i + 1))
+
+#eval sumLoop 4 0
+#eval (List.range 8).map (fun n => sumLoop n 0)`);
+    md(r`The invariant, with lesson 5's ‹sumTo› for $1 + \cdots + i$: what the loop returns from here is what it has, plus what is left.`);
+    lean(r`theorem sumLoop_inv (i total : Nat) : sumLoop i total = total + sumTo i := by
+  induction i generalizing total with
+  | zero => rfl
+  | succ k ih =>
+    simp only [sumLoop, sumTo, ih]
+    omega`);
+    md(r`A pass changes ‹total› as well as ‹i›: ‹sumLoop (k + 1) total› is ‹sumLoop k (total + (k + 1))›. So the step needs the induction hypothesis at a *different* total, and ‹induction i generalizing total› gives it for every total: ‹ih : ∀ total, sumLoop k total = total + sumTo k›. In the TypeScript, it is the invariant being about whatever ‹total› holds at that pass.`);
+    md(r`
+> [!mistake]
+> Without ‹generalizing total›, the hypothesis is about the starting total only, and the step is stuck:
+
+‹‹‹
+theorem sumLoop_inv (i total : Nat) : sumLoop i total = total + sumTo i := by
+  induction i with
+  | zero => rfl
+  | succ k ih =>
+    simp only [sumLoop, sumTo]
+    omega
+-- ih : sumLoop k total = total + sumTo k
+-- ⊢ sumLoop k (total + (k + 1)) = total + (sumTo k + (k + 1))
+-- error: omega could not prove the goal
+‹‹‹
+
+The goal is about ‹sumLoop k (total + (k + 1))›, and ‹ih› only about ‹sumLoop k total›.
+`.replace(/‹‹‹/g, "```"));
+    md(r`The function's promise is the invariant at the start, ‹total = 0›:`);
+    lx(r`theorem sumLoop_correct (n : Nat) : 2 * sumLoop n 0 = n * (n + 1) := by`, r`Prove that the loop, started at ‹0›, adds $1 + \cdots + n$: twice it is $n(n+1)$.`, r`  rw [sumLoop_inv, Nat.zero_add]
+  exact sumTo_formula n`, [
+      r`‹rw [sumLoop_inv]› turns ‹sumLoop n 0› into ‹0 + sumTo n›, and ‹Nat.zero_add› drops the ‹0 +›.`,
+      r`What is left is lesson 5's ‹sumTo_formula n›.`,
+    ]);
+    sec("A running maximum");
+    md(r`
+‹‹‹ts
+function maxOf(xs: number[]): number {
+  let best = 0;
+  for (const x of xs) {
+    best = Math.max(best, x);
+  }
+  return best;
+}
+‹‹‹
+
+The invariant: ‹best› is at least every element seen so far. In Lean the loop walks down the list, and its invariant is two statements about what it returns from any ‹best›: at least ‹best›, and at least every element left.`.replace(/‹‹‹/g, "```"));
+    lean(r`def maxLoop : List Nat → Nat → Nat
+  | [], best => best
+  | x :: xs, best => maxLoop xs (max best x)
+
+#eval maxLoop [3, 9, 2, 7] 0`);
+    lx(r`theorem best_le (xs : List Nat) (best : Nat) : best ≤ maxLoop xs best := by`, r`Prove that the loop never returns less than the ‹best› it starts with.`, r`  induction xs generalizing best with
+  | nil => exact Nat.le_refl best
+  | cons x xs ih =>
+    have h := ih (max best x)
+    simp only [maxLoop]
+    omega`, [
+      r`Induction on the list, generalizing ‹best›, since a pass changes it: ‹induction xs generalizing best with›, cases ‹nil› and ‹cons x xs ih›.`,
+      r`For ‹nil›, ‹maxLoop [] best› is ‹best›: ‹exact Nat.le_refl best›.`,
+      r`For ‹cons›, ‹ih (max best x)› says ‹max best x ≤ maxLoop xs (max best x)›. Name it with ‹have h := …›, unfold one pass with ‹simp only [maxLoop]›, and ‹omega›, which knows ‹max›, finishes.`,
+    ], { start: `  induction xs generalizing best with
+  | nil => sorry
+  | cons x xs ih => sorry` });
+    md(r`The second half follows, and uses the first for the element just passed:`);
+    lean(r`theorem elem_le (xs : List Nat) (best : Nat) : ∀ y ∈ xs, y ≤ maxLoop xs best := by
+  induction xs generalizing best with
+  | nil => intro y hy; cases hy
+  | cons x xs ih =>
+    intro y hy
+    simp only [maxLoop]
+    cases hy with
+    | head => have h := best_le xs (max best x); omega
+    | tail _ hy => exact ih (max best x) y hy`);
+    md(r`
+> [!note] What the invariant does not say
+> These two prove that ‹maxLoop xs 0› is at least every element, not that it is one of them: for the empty list it returns 0, which is in no list. A promise needs an invariant that mentions it. "The answer is an element" would need a second one: ‹best› is the start or one of the elements passed.
+`);
+    sec("Exercises");
+    ex("expand((t + (2i - 1)) + (i - 1)^2 - (t + i^2))", r`A loop adds the first $n$ odd numbers: ‹while (i > 0) { total = total + (2*i - 1); i = i - 1; }›, from ‹total = 0›, ‹i = n›. Its invariant is $\mathit{total} + i^2 = n^2$. Simplify the invariant's left side after a pass minus before it, $(\mathit{total} + (2i - 1)) + (i - 1)^2 - (\mathit{total} + i^2)$, with ‹t› for ‹total›. The pass keeps the invariant when it is 0.`, [
+      r`Expand $(i - 1)^2 = i^2 - 2i + 1$.`,
+    ]);
+    md(r`In the next exercise you write the loop too, and the theorem, its invariant, is the specification.`);
+    lx(r`theorem powLoop_inv (k acc : Nat) : powLoop k acc = acc * 2 ^ k := by`, r`Define ‹powLoop k acc›, a loop that doubles ‹acc›, ‹k› times, without ‹^›; then prove its invariant: it returns ‹acc› times $2^k$.`, r`  induction k generalizing acc with
+  | zero => simp [powLoop]
+  | succ k ih =>
+    simp only [powLoop, ih, Nat.pow_succ]
+    grind`, [
+      r`The loop: with 0 passes left it returns ‹acc›; with ‹k + 1›, it runs the rest from ‹acc * 2›: ‹powLoop (k + 1) acc = powLoop k (acc * 2)›.`,
+      r`A pass changes ‹acc›, so the induction generalizes it: ‹induction k generalizing acc with›.`,
+      r`‹zero›: ‹simp [powLoop]›. ‹succ›: ‹simp only [powLoop, ih, Nat.pow_succ]› leaves ‹acc * 2 * 2 ^ k = acc * (2 ^ k * 2)›, and ‹grind› finishes.`,
+    ], {
+      start: `  induction k generalizing acc with
+  | zero => sorry
+  | succ k ih => sorry`,
+      def: { start: `def powLoop : Nat → Nat → Nat
+  | 0, acc => sorry
+  | k + 1, acc => sorry`, solution: `def powLoop : Nat → Nat → Nat
+  | 0, acc => acc
+  | k + 1, acc => powLoop k (acc * 2)`, forbid: ["^", "pow", "Nat.pow", "HPow", "<<<", "shiftLeft"] },
+    });
+    lx(r`theorem powLoop_correct (k : Nat) : powLoop k 1 = 2 ^ k := by`, r`Prove that started from 1, the loop computes $2^k$.`, r`  rw [powLoop_inv, Nat.one_mul]`, [
+      r`The invariant at ‹acc = 1›: ‹rw [powLoop_inv]›, then ‹Nat.one_mul› drops the ‹1 *›.`,
+    ]);
+    md(r`
+> [!summary]
+> A loop invariant is a statement true before the loop and kept by every pass, so by induction it holds when the loop stops; it should tie what is done to what is left, so that at the end it says the answer. In Lean a loop is a function that calls itself with its new values, and its invariant is proved by induction generalizing every variable a pass changes.
+`);
   });
 
   add("06-strong-induction.chalk", "Strong induction", "When the step needs more than the case before: prime factors, making change, and why strong induction, weak induction and well-ordering are one principle.", ({ sec, md, m, ex, lean, lx }) => {
@@ -1363,7 +1884,162 @@ def Ex.simp : Ex → Ex
 > [!summary]
 > Every inductive type comes with its own induction: a case per constructor and a hypothesis per recursive part. Lists, trees and syntax trees are proved about the same way as numbers, and "a transformation keeps the meaning" is a structural induction.
 `);
+    md(r`
+> [!note] Application: a compiler, proved correct
+> ‹Ex.simp› is a small optimizer. [A tiny compiler, proved correct](#course=logic&lesson=7&app=1), an optional notebook beside this lesson, adds variables and constant folding, compiles expressions to a stack machine, and proves both never change what an expression computes, by the same structural induction.
+`);
     md(r`Every induction so far ran along a relation: "is one less than", "is less than", "is a part of". Which relations can induction run along? First, relations themselves, and what it means to close one up.`);
+  });
+
+  app("07a-tiny-compiler.chalk", "A tiny compiler, proved correct", "Expressions with variables, constant folding, and a compiler to a stack machine, each proved to keep the value of every expression by structural induction, the way verified compilers are built.", ({ sec, md, lean, lx }) => {
+    sec("A tiny compiler, proved correct");
+    md(r`
+> [!goal]
+> Build a constant-folding optimizer and a compiler to a stack machine for a small language of expressions, and prove in Lean that neither changes what any expression computes.
+`);
+    md(r`An application of lesson 7, outside the course's order: nothing later depends on it. It assumes lesson 7's structural induction and its simplifier ‹Ex.simp›, and goes two steps further: an optimizer that computes what it can ahead of time, and a compiler.`);
+    md(r`
+> [!note] Why prove a compiler
+> A compiler that is wrong in a rare case turns a correct program into a wrong one, and testing the program cannot catch it: the bug is in a tool the tests trust. CompCert, a C compiler used in aircraft software, is proved correct in the proof assistant Rocq with exactly the method below, a structural induction per pass. When researchers generated millions of random C programs to find compiler bugs, they found hundreds in GCC and LLVM and none in CompCert's proved passes.
+`);
+    sec("Expressions and what they mean");
+    md(r`An expression is a number, a variable, a sum or a product. What it means depends on the values of its variables, so the evaluator takes an **environment** ‹env›, a function from variable names to numbers:`);
+    lean(r`inductive Arith where
+  | num (n : Nat)
+  | var (x : String)
+  | add (a b : Arith)
+  | mul (a b : Arith)
+  deriving Repr, DecidableEq
+
+def Arith.eval (env : String → Nat) : Arith → Nat
+  | .num n => n
+  | .var x => env x
+  | .add a b => a.eval env + b.eval env
+  | .mul a b => a.eval env * b.eval env
+
+/-- x is 5, every other variable 0 -/
+def env5 : String → Nat := fun x => if x = "x" then 5 else 0
+
+#eval (Arith.add (.var "x") (.mul (.num 2) (.num 3))).eval env5`);
+    sec("Constant folding");
+    md(r`**Constant folding** does at compile time what does not depend on the variables: ‹2 * 3› becomes ‹6›, ‹0 + e› and ‹1 * e› become ‹e›. Write it as two **smart constructors**, which build a sum or a product but simplify when they can, and a pass that rebuilds the expression with them from the leaves up:`);
+    lean(r`def Arith.addOpt : Arith → Arith → Arith
+  | .num a, .num b => .num (a + b)
+  | .num 0, e => e
+  | e, .num 0 => e
+  | a, b => .add a b
+
+theorem Arith.addOpt_eval (env : String → Nat) (a b : Arith) :
+    (Arith.addOpt a b).eval env = a.eval env + b.eval env := by
+  unfold Arith.addOpt
+  split <;> simp_all [Arith.eval]`);
+    md(r`The theorem is the whole of ‹addOpt›'s correctness: whichever case fires, the result means the sum of what ‹a› and ‹b› mean. ‹split› makes a goal per case of the ‹match›, and in each ‹simp_all› knows which case it is in (that ‹a› is ‹.num 0›, say) and finishes with arithmetic.`);
+    lx(r`theorem Arith.mulOpt_spec : (∀ env a b, (Arith.mulOpt a b).eval env = a.eval env * b.eval env) ∧
+    Arith.mulOpt (.num 2) (.num 3) = .num 6 ∧ Arith.mulOpt (.num 1) (.var "x") = .var "x" ∧
+    Arith.mulOpt (.var "x") (.num 1) = .var "x" := by`, r`Define ‹Arith.mulOpt›, the smart constructor for products: multiply two numbers, and drop a factor ‹1› on either side. The statement asks for both halves of the job: it keeps the value of every product, and it does fold these three.`, r`  refine ⟨fun env a b => ?_, rfl, rfl, rfl⟩
+  unfold Arith.mulOpt
+  split <;> simp_all [Arith.eval]`, [
+      r`Copy ‹addOpt›'s shape: a ‹match› on both arguments, the case of two numbers first.`,
+      r`‹| .num a, .num b => .num (a * b)›, then ‹| .num 1, e => e›, ‹| e, .num 1 => e› and ‹| a, b => .mul a b›.`,
+      r`The proof is ‹addOpt_eval›'s, after ‹refine› splits off the three examples, which ‹rfl› computes.`,
+    ], { start: "  refine ⟨fun env a b => ?_, rfl, rfl, rfl⟩\n  unfold Arith.mulOpt\n  split <;> simp_all [Arith.eval]", def: { start: "def Arith.mulOpt (a b : Arith) : Arith := sorry", solution: "def Arith.mulOpt : Arith → Arith → Arith\n  | .num a, .num b => .num (a * b)\n  | .num 1, e => e\n  | e, .num 1 => e\n  | a, b => .mul a b", forbid: [] } });
+    md(r`
+> [!try]
+> Why not also fold $0 \cdot e$ to $0$? It is right for these expressions. In a language where evaluating $e$ can fail or print, would it still be?
+`);
+    md(r`With both smart constructors, the pass itself is a structural recursion: fold the parts, then rebuild. It turns ‹x + 2 * 3› into ‹x + 6›, and ‹0 + 1 * x› into ‹x›; the last section runs it, once your ‹mulOpt› is written.`);
+    lean(r`def Arith.fold : Arith → Arith
+  | .add a b => Arith.addOpt a.fold b.fold
+  | .mul a b => Arith.mulOpt a.fold b.fold
+  | e => e`);
+    lx(r`theorem Arith.fold_eval (env : String → Nat) (e : Arith) : e.fold.eval env = e.eval env := by`, r`Prove constant folding sound: it keeps the value of every expression, in every environment.`, r`  induction e with
+  | num n => rfl
+  | var x => rfl
+  | add a b iha ihb => simp [Arith.fold, Arith.addOpt_eval, Arith.eval, iha, ihb]
+  | mul a b iha ihb => simp [Arith.fold, Arith.mulOpt_spec.1, Arith.eval, iha, ihb]`, [
+      r`Induction on ‹e›, a case per constructor. For a number or a variable, ‹fold› does nothing: ‹rfl›.`,
+      r`In the ‹add› case, unfold ‹Arith.fold›; ‹Arith.addOpt_eval› turns the smart constructor into a sum, and the hypotheses say the folded parts mean what the parts do.`,
+      r`‹simp [Arith.fold, Arith.addOpt_eval, Arith.eval, iha, ihb]›; for ‹mul›, the first half of ‹Arith.mulOpt_spec›, which is ‹Arith.mulOpt_spec.1›.`,
+    ]);
+    md(r`This is how a verified compiler is organized: each local rewrite gets a lemma of its own, and one structural induction stitches them into the pass. Adding a rewrite adds a case to a smart constructor and nothing to the induction.`);
+    sec("Compiling to a stack machine");
+    md(r`A **stack machine** runs a list of instructions against a stack of numbers. ‹push n› puts ‹n› on top; ‹load x› puts the value of ‹x›; ‹add› and ‹mul› take the top two and put back their sum or product. The JVM, WebAssembly and many pocket calculators work this way. A sum compiles to the code for its left part, then its right part, then ‹add›:`);
+    lean(r`inductive Instr where
+  | push (n : Nat)
+  | load (x : String)
+  | add
+  | mul
+  deriving Repr
+
+def exec (env : String → Nat) : List Instr → List Nat → List Nat
+  | [], st => st
+  | .push n :: is, st => exec env is (n :: st)
+  | .load x :: is, st => exec env is (env x :: st)
+  | .add :: is, b :: a :: st => exec env is ((a + b) :: st)
+  | .mul :: is, b :: a :: st => exec env is ((a * b) :: st)
+  | _ :: is, st => exec env is st
+
+def Arith.compile : Arith → List Instr
+  | .num n => [.push n]
+  | .var x => [.load x]
+  | .add a b => a.compile ++ b.compile ++ [.add]
+  | .mul a b => a.compile ++ b.compile ++ [.mul]
+
+#eval (Arith.add (.var "x") (.mul (.num 2) (.num 3))).compile
+#eval exec env5 (Arith.add (.var "x") (.mul (.num 2) (.num 3))).compile []`);
+    md(r`The last case of ‹exec› skips an ‹add› or ‹mul› that finds fewer than two numbers. Compiled code never meets it, and the proof below shows why without having to say so.`);
+    md(r`The compiler is correct when the code for ‹e›, run on an empty stack, leaves exactly the value of ‹e›. The obvious proof gets stuck:
+
+‹‹‹lean
+theorem compile_ok (env : String → Nat) (e : Arith) :
+    exec env e.compile [] = [e.eval env] := by
+  induction e with
+  | num n => rfl
+  | var x => rfl
+  | add a b iha ihb => simp [Arith.compile, Arith.eval]
+  | mul a b iha ihb => simp [Arith.compile, Arith.eval]
+-- error: unsolved goals
+-- case add
+-- iha : exec env a.compile [] = [Arith.eval env a]
+-- ihb : exec env b.compile [] = [Arith.eval env b]
+-- ⊢ exec env (a.compile ++ (b.compile ++ [Instr.add])) [] = [Arith.eval env a + Arith.eval env b]
+‹‹‹
+
+The hypothesis is about ‹a.compile› run alone on an empty stack. In the goal it runs with more code after it, and ‹b.compile› runs on a stack that already holds ‹a›'s value. The hypothesis is too weak to be used where it is needed.`.replace(/‹‹‹/g, "```"));
+    md(r`
+> [!definition] Strengthening the statement
+> When the induction hypothesis is too weak, prove *more*: a statement general enough that the parts' cases are instances of it. Here, say what ‹e.compile› does in any context: followed by any code ‹is›, on any stack ‹st›, it pushes ‹e›'s value and carries on with ‹is›. ‹induction e generalizing is st› then gives hypotheses for every ‹is› and ‹st›, and the ‹add› case uses ‹a›'s with ‹b.compile ++ [.add] ++ is› as the code after it.
+`);
+    lx(r`theorem Arith.compile_exec (env : String → Nat) (e : Arith) (is : List Instr) (st : List Nat) :
+    exec env (e.compile ++ is) st = exec env is (e.eval env :: st) := by`, r`Prove the strengthened statement: the code for ‹e›, followed by any code, on any stack, pushes the value of ‹e› and runs the rest.`, r`  induction e generalizing is st with
+  | num n => rfl
+  | var x => rfl
+  | add a b iha ihb => simp [Arith.compile, List.append_assoc, iha, ihb, exec, Arith.eval]
+  | mul a b iha ihb => simp [Arith.compile, List.append_assoc, iha, ihb, exec, Arith.eval]`, [
+      r`‹induction e generalizing is st with›: the hypotheses then hold for every ‹is› and ‹st›.`,
+      r`A number or a variable is one instruction, and ‹exec› runs it: ‹rfl›.`,
+      r`For ‹add›: reassociate the code with ‹List.append_assoc› so it reads ‹a.compile ++ (b.compile ++ ([.add] ++ is))›; then ‹iha›, then ‹ihb›, then one step of ‹exec›. ‹simp [Arith.compile, List.append_assoc, iha, ihb, exec, Arith.eval]› does all of it.`,
+    ]);
+    lx(r`theorem Arith.compile_correct (env : String → Nat) (e : Arith) :
+    exec env e.compile [] = [e.eval env] := by`, r`Now the statement that got stuck follows from the strong one: no code after, an empty stack.`, r`  simpa [exec] using Arith.compile_exec env e [] []`, [
+      r`‹Arith.compile_exec env e [] []› is ‹exec env (e.compile ++ []) [] = exec env [] [e.eval env]›.`,
+      r`‹simpa [exec] using …› removes the ‹++ []› and runs the empty program.`,
+    ]);
+    sec("The whole pipeline");
+    md(r`An optimizing compiler folds, then compiles. With your ‹mulOpt› written, here is both, on ‹x + 2 * 3› and on ‹0 + 1 * x›:`);
+    lean(r`#eval (Arith.add (.var "x") (.mul (.num 2) (.num 3))).fold
+#eval (Arith.add (.var "x") (.mul (.num 2) (.num 3))).fold.compile
+#eval (Arith.add (.num 0) (.mul (.num 1) (.var "x"))).fold.compile`);
+    md(r`Its correctness is the two theorems chained: no new induction.`);
+    lx(r`theorem Arith.pipeline_correct (env : String → Nat) (e : Arith) :
+    exec env e.fold.compile [] = [e.eval env] := by`, r`Prove that folding and then compiling keeps the value.`, r`  rw [Arith.compile_correct, Arith.fold_eval]`, [
+      r`The compiler is correct for every expression, ‹e.fold› among them: ‹rw [Arith.compile_correct]›.`,
+      r`That leaves ‹[e.fold.eval env] = [e.eval env]›, which is ‹Arith.fold_eval›.`,
+    ]);
+    md(r`
+> [!summary]
+> A pass of a compiler is a structural recursion, and its correctness a structural induction: a lemma per local rewrite, one induction to stitch them. When the hypothesis is too weak, as for the compiler, strengthen the statement to cover every context the parts appear in. Passes compose: the correctness of the pipeline is the theorems of its passes, chained.
+`);
   });
 
   add("08-relations.chalk", "Relations", "When do two things count as the same? Properties with counterexamples, closures as what you are forced to add, equivalence classes, and a deduplication bug.", ({ sec, md, m, ex }) => {
@@ -1515,6 +2191,126 @@ termination_by m n => (m, n)
 > [!summary]
 > Well-founded means no infinite descent; on a finite set, no cycle. A measure into the naturals proves it, a cycle refutes it, and Lean's ‹termination_by› is a measure written down. Every induction in this course ran along a well-founded relation.
 `);
+    md(r`
+> [!note] Application: why your recursion stops
+> [Why your recursion stops](#course=logic&lesson=9&app=1), an optional notebook beside this lesson, finds the measures behind binary search, quicksort and a two-phase loop, shows the binary search bug Lean refuses to accept, and meets a function nobody knows a measure for.
+`);
+  });
+
+  app("09a-why-recursion-stops.chalk", "Why your recursion stops", "The measure behind binary search, quicksort and a loop with two phases; an off-by-one that Lean refuses; and Collatz, for which nobody knows one.", ({ sec, md, m, lean, lx }) => {
+    sec("Why your recursion stops");
+    md(r`
+> [!goal]
+> Find the measure that makes a real recursive function stop, give it to Lean when Lean cannot find it, and read Lean's refusal as a bug report.
+`);
+    md(r`An application of lesson 9, outside the course's order: nothing later depends on it. It assumes lesson 9's measures and ‹termination_by›, and lesson 7's lists.`);
+    sec("Lean looks for a measure first");
+    md(r`Lean tries to find a measure itself before it asks for one. Counting from ‹i› up to ‹n› calls itself with a *bigger* argument, and Lean still accepts it: it tries ‹n - i›, which goes down at every call, and proves that it does.`);
+    lean(r`def countUp (i n : Nat) : Nat := if i < n then countUp (i + 1) n + 1 else 0
+
+#eval countUp 3 10`);
+    md(r`Binary search looks for ‹x› in the part ‹lo ≤ i < hi› of a sorted array: it checks the middle, then searches the half that can contain ‹x›. The part gets shorter at every call, so its length, ‹hi - lo›, is the measure. Lean would find it too; ‹termination_by› writes it down for the reader.`);
+    lean(r`def bsearch (a : Array Nat) (x : Nat) (lo hi : Nat) : Option Nat :=
+  if lo < hi then
+    let mid := (lo + hi) / 2
+    if a[mid]! = x then some mid
+    else if a[mid]! < x then bsearch a x (mid + 1) hi
+    else bsearch a x lo mid
+  else none
+termination_by hi - lo
+
+#eval bsearch #[1, 3, 4, 7, 9, 12] 9 0 6
+#eval bsearch #[1, 3, 4, 7, 9, 12] 5 0 6`);
+    sec("A bug Lean refuses");
+    md(r`Here is the same search with a one-character slip, ‹mid› where it should be ‹mid + 1›. Most languages run it, and it works on most inputs. Lean does not accept it:
+
+‹‹‹lean
+def bsearch (a : Array Nat) (x : Nat) (lo hi : Nat) : Option Nat :=
+  if lo < hi then
+    let mid := (lo + hi) / 2
+    if a[mid]! = x then some mid
+    else if a[mid]! < x then bsearch a x mid hi
+    else bsearch a x lo mid
+  else none
+-- error: fail to show termination for
+--   bsearch
+-- …
+-- Could not find a decreasing measure.
+-- The basic measures relate at each recursive call as follows:
+-- (<, ≤, =: relation proved, ? all proofs failed, _: no proof attempted)
+--            lo hi #1
+-- 1) 5:29-47  ?  =  ≤
+-- 2) 6:9-27   _  <  _
+--
+-- #1: hi - lo
+‹‹‹
+
+The table is Lean's search for a measure, a row per recursive call and a column per candidate: ‹lo›, ‹hi›, and ‹#1›, which is ‹hi - lo›. In call 2, ‹hi› goes down (‹<›). In call 1, ‹hi - lo› only stays the same or goes down (‹≤›), and that is the bug: when ‹hi = lo + 1›, ‹mid› is ‹lo›, so the call is the one already running. Searching ‹#[1, 3]› for ‹5› would loop forever.`.replace(/‹‹‹/g, "```"));
+    md(r`
+> [!mistake]
+> "It terminated on every test" is not termination. The looping input needs the part to be down to two elements with ‹x› past both, which a test suite can easily miss. A termination proof covers every input, and the place where it fails points at the line to fix.
+`);
+    sec("When no argument goes down");
+    md(r`A worker has ‹n› jobs and two phases. When ready, it takes a job and then cools down; when cooling down, it becomes ready again; it stops when it is ready with no jobs left. The result counts its steps.`);
+    md(r`Neither argument works as a measure. Taking a job lowers ‹n›; cooling down leaves ‹n› the same and changes the phase, and a ‹Bool› has no order Lean can use. What goes down at every step is the pair: ‹n› first, and the phase, cooling down counted above ready, when ‹n› stays the same. Lesson 9's states and measures check it on the steps from 2 jobs:`);
+    m("let W = rel({r2, c1, r1, c0, r0}; r2->c1, c1->r1, r1->c0, c0->r0)");
+    m("measure(W; r2->4, c1->3, r1->2, c0->1, r0->0)", { work: true });
+    md(r`Here ‹r2› is "ready, 2 jobs" and ‹c1› "cooling down, 1 job", and the measure is $2n$ when ready and $2n + 1$ when cooling down: the pair, flattened into one number.`);
+    lx(r`theorem worker_ok : worker true 3 = 6 ∧ worker false 2 = 5 := by`, r`Lean cannot find this function's measure on its own: without ‹termination_by› its error lists what it tried. Replace the ‹sorry› with a measure that works. (‹partial› is ruled out: it gives up on termination, and then nothing can be proved about the function.)`, r`  simp [worker]`, [
+      r`Lean's table says the two calls change the arguments as (=, <) and (=, =): in the second call neither argument goes down.`,
+      r`A pair is compared first component first, as in lesson 9's Ackermann. Put ‹n› first and a number for the phase second.`,
+      r`‹termination_by ready n => (n, if ready then 0 else 1)›: when ‹n› stays the same, the phase goes from cooling down (1) to ready (0).`,
+    ], { start: "  simp [worker]", def: { start: "def worker : Bool → Nat → Nat\n  | true, 0 => 0\n  | true, n + 1 => worker false n + 1\n  | false, n => worker true n + 1\ntermination_by ready n => (sorry : Nat)", solution: "def worker : Bool → Nat → Nat\n  | true, 0 => 0\n  | true, n + 1 => worker false n + 1\n  | false, n => worker true n + 1\ntermination_by ready n => (n, if ready then 0 else 1)", forbid: ["partial"] } });
+    sec("When the measure needs a proof");
+    md(r`Quicksort takes the first element, sorts the smaller ones and the rest separately, and puts the first element between them. The lists it recurses on are not parts of the input, so structural recursion does not apply; their *length* is the measure. Lean can be told the measure but cannot see why it goes down:
+
+‹‹‹lean
+def qsort : List Nat → List Nat
+  | [] => []
+  | x :: xs => qsort (lows x xs) ++ [x] ++ qsort (highs x xs)
+termination_by xs => xs.length
+-- error: failed to prove termination, possible solutions:
+-- …
+-- x : Nat
+-- xs : List Nat
+-- ⊢ (lows x xs).length < xs.length + 1
+‹‹‹
+
+The error is a goal: what is left to prove. A filtered list is no longer than the list, ‹List.length_filter_le›, and so it is shorter than ‹x :: xs›. ‹decreasing_by› proves it, for each of the two calls:`.replace(/‹‹‹/g, "```"));
+    lean(r`def lows (x : Nat) (xs : List Nat) : List Nat := xs.filter (· < x)
+def highs (x : Nat) (xs : List Nat) : List Nat := xs.filter (· ≥ x)
+
+def qsort : List Nat → List Nat
+  | [] => []
+  | x :: xs => qsort (lows x xs) ++ [x] ++ qsort (highs x xs)
+termination_by xs => xs.length
+decreasing_by
+  all_goals simp only [List.length_cons]
+  all_goals exact Nat.lt_succ_of_le (List.length_filter_le _ _)
+
+#eval qsort [3, 1, 4, 1, 5, 9, 2, 6]`);
+    lean(r`def without (x : Nat) (xs : List Nat) : List Nat := xs.filter (· ≠ x)`);
+    lx(r`theorem dedup_ok : dedup [1, 2, 1, 3, 2] = [1, 2, 3] ∧ dedup [] = [] := by`, r`‹dedup› keeps the first of each value and removes its repeats from the rest, by recursion on ‹without x xs›. Without the two ‹sorry›s Lean rejects it: replace them with the measure and the proof that the measure goes down. (‹partial› is ruled out.)`, r`  simp [dedup, without]`, [
+      r`The measure is the list's length, as for ‹qsort›: ‹termination_by xs => xs.length›.`,
+      r`Lean is then left with ‹(without x xs).length < xs.length + 1›. ‹without› is a ‹filter›, so ‹qsort›'s proof works for the one call.`,
+      r`‹decreasing_by› then ‹simp only [List.length_cons]› and ‹exact Nat.lt_succ_of_le (List.length_filter_le _ _)›.`,
+    ], { start: "  simp [dedup, without]", def: { start: "def dedup : List Nat → List Nat\n  | [] => []\n  | x :: xs => x :: dedup (without x xs)\ntermination_by xs => (sorry : Nat)\ndecreasing_by sorry", solution: "def dedup : List Nat → List Nat\n  | [] => []\n  | x :: xs => x :: dedup (without x xs)\ntermination_by xs => xs.length\ndecreasing_by\n  simp only [List.length_cons]\n  exact Nat.lt_succ_of_le (List.length_filter_le _ _)", forbid: ["partial"] } });
+    lx(r`theorem bsearch_shrinks (lo hi : Nat) (h : lo < hi) :
+    (lo + hi) / 2 - lo < hi - lo ∧ hi - ((lo + hi) / 2 + 1) < hi - lo := by`, r`Prove what Lean proved for ‹bsearch›: both recursive calls make ‹hi - lo› smaller, whenever ‹lo < hi›.`, r`  constructor <;> omega`, [
+      r`Two inequalities: ‹constructor› splits the ‹∧›.`,
+      r`Each is arithmetic with division by a numeral, which ‹omega› handles: ‹constructor <;> omega›.`,
+    ]);
+    sec("A function nobody can measure");
+    md(r`Take a number; halve it if it is even, otherwise triple it and add one; repeat until it reaches 1. From 27 it takes 111 steps, climbing as high as 9232 on the way. Every number anyone has tried reaches 1, but whether every number does is the **Collatz conjecture**, open since 1937. A measure for this function would prove it.`);
+    lean(r`partial def collatz (n : Nat) : Nat :=
+  if n ≤ 1 then 0 else if n % 2 = 0 then collatz (n / 2) + 1 else collatz (3 * n + 1) + 1
+
+#eval collatz 27`);
+    md(r`‹partial› tells Lean not to look for a measure. It accepts the definition and runs it, but treats the function as a black box: there is no equation to unfold, so nothing about its values can be proved. That is the price, and why the exercises rule it out. A server's main loop, meant never to stop, is the honest use of it.`);
+    md(r`
+> [!summary]
+> Lean looks for a measure itself: an argument, or a difference like ‹hi - lo›. When it fails, its table shows which calls it could not prove smaller, often the bug. A loop whose arguments take turns needs a pair, compared first component first; a measure that is not obviously smaller needs ‹decreasing_by› and a lemma. And some functions, Collatz's among them, nobody can measure: ‹partial› runs them and proves nothing.
+`);
   });
 }, { leanPrelude: true });
 
@@ -1567,7 +2363,7 @@ function chapter(L, k, goal, opening = () => {}) {
 
 course("order-lattices", "Order and lattices",
   "From Zero to Propagators: partial orders, lattices and fixed points; semilattices as merges, access decisions and information flow; Galois connections; and propagator networks in Lean, ending with a Sudoku solver.",
-  "Discrete mathematics", (add) => {
+  "Discrete mathematics", (add, app) => {
 
   /** The permissions on a file: the first picture of an order in which two things need not compare. */
   const perm = "let Perm = poset({none, read, write, rw}; none < read, none < write, read < rw, write < rw)";
@@ -2547,6 +3343,189 @@ def ivalContradiction : IO Unit := do
 
 A Sudoku square is not a number to bound but a choice among a few digits, and what we know of it is the set of digits still possible. Next, and last: two capstones.
 `);
+    md(r`
+> [!note] Application: version ranges
+> A package manager's version constraints are intervals too, of versions. [Version ranges](#course=order-lattices&lesson=14&app=1), an optional notebook beside this lesson, merges constraints, finds conflicts, and builds a small resolver in Lean.
+`);
+  });
+
+  app("14a-version-ranges.chalk", "Version ranges", "A package manager's version constraints as intervals of versions: versions in lexicographic order, constraints merged by intersecting them, a conflict as an empty merge, and a resolver in Lean.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Version ranges");
+    md(r`
+> [!goal]
+> Read a package manager's version constraints as intervals of versions, combine several by merging them, recognise a conflict as an empty merge, and pick a version as a resolver does.
+`);
+    md(r`An application of lesson 14, outside the course's order: nothing later depends on it. It uses the lesson's intervals and lesson 5's ‹Semilattice› in Lean, and one new engine command, ‹lex›.`);
+    md(r`A library is published in versions written ‹major.minor.patch›, such as ‹1.4.2›. By convention (semantic versioning) a new major version may break the programs that use the library, a new minor one adds features, and a new patch only fixes bugs. So a project does not name one version of each library it needs; it states a **constraint**, a set of versions it will accept:
+
+- ‹^1.2.0›: any version from ‹1.2.0› on with the same major version, so ‹1.9.3› but not ‹2.0.0›;
+- ‹~1.4.2›: any version from ‹1.4.2› on with the same minor version, so ‹1.4.9› but not ‹1.5.0›;
+- ‹>=1.3.0 <1.6.0›: the versions between, written out.
+
+The project's dependencies need libraries too, each with constraints of its own, and the package manager must install one version of the library that meets them all. That is lesson 14's question about a number known only by its bounds, asked of versions.`);
+    sec("How versions compare");
+    md(r`
+> [!try]
+> Is ‹1.9.0› older than ‹2.0.0›? Its minor part, 9, is larger than 0. Compare the two parts the way the engine's ‹product› does, both at once, and see what you get.
+`);
+    md(r`Versions with two parts, the major and the minor each from 0 to 2, compared part by part:`);
+    m("let W = product(chain(3), chain(3))");
+    m("le(W, (1, 2), (2, 0))");
+    md(r`In the product order ‹1.2› and ‹2.0› are **incomparable**: neither is below the other, since one is ahead in each part. A resolver cannot work with that; it must be able to say which of two versions is newer. Versions compare as words in a dictionary do: the major part decides, and the minor part counts only when the majors are equal. That is the **lexicographic order**, ‹lex›:`);
+    m("let V = lex(chain(3), chain(3))");
+    m("le(V, (1, 2), (2, 0))");
+    md(r`The same nine versions, now in a single chain: any two compare. With three parts, nest it, and the elements are pairs of a pair and a number:`);
+    m("le(lex(lex(chain(2), chain(2)), chain(2)), ((0, 1), 1), ((1, 0), 0))");
+    md(r`
+> [!definition] Lexicographic order
+> $(a, c) \le (b, d)$ when $a < b$, or $a = b$ and $c \le d$. The first coordinate decides, and the second only breaks a tie. Of two chains it makes a chain, so every two versions compare, and a set of versions has a newest.
+`);
+    sec("Constraints are intervals");
+    md(r`On a chain every constraint above is an **interval**, with the lower end included and the upper one left out: ‹^1.2.0› is $[1.2.0,\ 2.0.0)$, ‹~1.4.2› is $[1.4.2,\ 1.5.0)$. (Versions before ‹1.0.0› count as unstable, so ‹^0.2.3› keeps the minor part too: $[0.2.3,\ 0.3.0)$.) Each constraint is partial information about the version that will be installed, and as in lesson 14 two of them merge into their **intersection**: the larger lower end and the smaller upper end. An empty intersection is a **conflict**: no version meets both.`);
+    md(r`
+> [!mistake]
+> Lesson 14 orders intervals by information, so the merge is a join there, and a smaller interval is higher. Ordered by inclusion instead, as sets of versions, the same intersection is a meet. It is one operation either way; only the picture is upside down.
+`);
+    md(r`In Lean, versions compare lexicographically, and a range is its two ends:`);
+    lean(r`/-- A version, major.minor.patch. -/
+structure Ver where
+  major : Nat
+  minor : Nat
+  patch : Nat
+  deriving Repr, DecidableEq
+
+instance : ToString Ver := ⟨fun v => s!"{v.major}.{v.minor}.{v.patch}"⟩
+
+/-- Versions compare as words in a dictionary do: by major, then minor, then patch. -/
+def Ver.le (a b : Ver) : Prop :=
+  a.major < b.major ∨ (a.major = b.major ∧ (a.minor < b.minor ∨ (a.minor = b.minor ∧ a.patch ≤ b.patch)))
+
+instance (a b : Ver) : Decidable (a.le b) := by unfold Ver.le; infer_instance
+
+/-- a comes strictly before b. -/
+def Ver.lt (a b : Ver) : Prop := ¬ b.le a
+
+instance (a b : Ver) : Decidable (a.lt b) := by unfold Ver.lt; infer_instance
+
+def Ver.max (a b : Ver) : Ver := if a.le b then b else a
+def Ver.min (a b : Ver) : Ver := if a.le b then a else b
+
+/-- The versions from lo, included, up to hi, left out. -/
+structure VRange where
+  lo : Ver
+  hi : Ver
+  deriving Repr, DecidableEq
+
+def VRange.has (r : VRange) (v : Ver) : Prop := r.lo.le v ∧ v.lt r.hi
+instance (r : VRange) (v : Ver) : Decidable (r.has v) := by unfold VRange.has; infer_instance
+
+/-- No version is in it. -/
+def VRange.empty (r : VRange) : Prop := ¬ r.lo.lt r.hi
+instance (r : VRange) : Decidable r.empty := by unfold VRange.empty; infer_instance
+
+instance : ToString VRange := ⟨fun r => if r.empty then "no version" else s!">={r.lo} <{r.hi}"⟩
+
+/-- ^v: from v on, the same major version (for 0.x, the same minor; for 0.0.x, only that patch). -/
+def caret (v : Ver) : VRange :=
+  if v.major > 0 then ⟨v, ⟨v.major + 1, 0, 0⟩⟩
+  else if v.minor > 0 then ⟨v, ⟨0, v.minor + 1, 0⟩⟩
+  else ⟨v, ⟨0, 0, v.patch + 1⟩⟩
+
+/-- ~v: from v on, the same minor version. -/
+def tilde (v : Ver) : VRange := ⟨v, ⟨v.major, v.minor + 1, 0⟩⟩
+
+/-- Both constraints at once: the larger lower end and the smaller upper end. -/
+def VRange.merge (r s : VRange) : VRange := ⟨r.lo.max s.lo, r.hi.min s.hi⟩
+
+#eval toString ((caret ⟨1, 2, 0⟩).merge (tilde ⟨1, 4, 2⟩))
+#eval toString ((caret ⟨1, 2, 0⟩).merge (caret ⟨2, 0, 0⟩))`);
+    md(r`That the merge is the right operation is a theorem: a version is in the merged range exactly when it meets both constraints. And an empty range has no version in it, so a conflict found by merging is a real one.`);
+    lean(r`theorem Ver.max_le_iff (a b v : Ver) : (a.max b).le v ↔ a.le v ∧ b.le v := by
+  unfold Ver.max; split <;> (simp only [Ver.le] at *; omega)
+
+theorem Ver.lt_min_iff (v a b : Ver) : v.lt (a.min b) ↔ v.lt a ∧ v.lt b := by
+  unfold Ver.min; split <;> (simp only [Ver.lt, Ver.le] at *; omega)
+
+theorem VRange.has_merge (r s : VRange) (v : Ver) : (r.merge s).has v ↔ r.has v ∧ s.has v := by
+  simp only [VRange.has, VRange.merge, Ver.max_le_iff, Ver.lt_min_iff]
+  exact ⟨fun ⟨⟨a, b⟩, c, d⟩ => ⟨⟨a, c⟩, b, d⟩, fun ⟨⟨a, c⟩, b, d⟩ => ⟨⟨a, b⟩, c, d⟩⟩
+
+theorem VRange.empty_has (r : VRange) (v : Ver) (h : r.empty) : ¬ r.has v := by
+  simp only [VRange.empty, VRange.has, Ver.lt, Ver.le] at *
+  omega`);
+    md(r`And the merge is a merge in lesson 5's sense: commutative, associative and idempotent. So the constraints can be merged in any order, as the resolver happens to find them while it walks through the dependencies, and seeing the same one twice changes nothing.`);
+    lean(r`theorem Ver.max_comm (a b : Ver) : a.max b = b.max a := by
+  unfold Ver.max
+  by_cases h1 : a.le b <;> by_cases h2 : b.le a <;> simp only [h1, h2, ↓reduceIte] <;>
+    (cases a; cases b; simp only [Ver.le] at h1 h2; simp only [Ver.mk.injEq]; omega)
+
+theorem Ver.min_comm (a b : Ver) : a.min b = b.min a := by
+  unfold Ver.min
+  by_cases h1 : a.le b <;> by_cases h2 : b.le a <;> simp only [h1, h2, ↓reduceIte] <;>
+    (cases a; cases b; simp only [Ver.le] at h1 h2; simp only [Ver.mk.injEq]; omega)
+
+theorem Ver.max_assoc (a b c : Ver) : (a.max b).max c = a.max (b.max c) := by
+  unfold Ver.max
+  by_cases ab : a.le b <;> by_cases bc : b.le c <;> by_cases ac : a.le c <;> simp only [ab, bc, ac, ↓reduceIte] <;>
+    (cases a; cases b; cases c; simp only [Ver.le] at ab bc ac; simp only [Ver.mk.injEq]; omega)
+
+theorem Ver.min_assoc (a b c : Ver) : (a.min b).min c = a.min (b.min c) := by
+  unfold Ver.min
+  by_cases ab : a.le b <;> by_cases bc : b.le c <;> by_cases ac : a.le c <;> simp only [ab, bc, ac, ↓reduceIte] <;>
+    (cases a; cases b; cases c; simp only [Ver.le] at ab bc ac; simp only [Ver.mk.injEq]; omega)
+
+instance : Semilattice VRange where
+  merge := VRange.merge
+  merge_comm r s := by simp only [VRange.merge, Ver.max_comm, Ver.min_comm]
+  merge_assoc r s t := by simp only [VRange.merge, Ver.max_assoc, Ver.min_assoc]
+  merge_idem r := by cases r; simp [VRange.merge, Ver.max, Ver.min]`);
+    sec("A resolver");
+    md(r`A resolver merges every constraint on a library, then installs the newest published version left; since versions form a chain, "newest" always makes sense. Your project asks for ‹^1.2.0›, one dependency for ‹~1.4.2›, another for ‹>=1.3.0 <1.6.0›:`);
+    lean(r`/-- The newest of the published versions a range allows, if any. -/
+def newest (published : List Ver) (r : VRange) : Option Ver :=
+  published.foldl (fun best v =>
+    if r.has v then (match best with
+      | some b => if b.le v then some v else best
+      | none => some v)
+    else best) none
+
+/-- Merge every constraint, then take the newest version left. -/
+def resolve (published : List Ver) : List VRange → Option Ver
+  | [] => none
+  | r :: rs => newest published (rs.foldl VRange.merge r)
+
+def say : Option Ver → String
+  | some v => s!"install {v}"
+  | none => "conflict: no published version meets every constraint"
+
+/-- The library's published versions. -/
+def lib : List Ver := [⟨1, 2, 0⟩, ⟨1, 3, 5⟩, ⟨1, 4, 1⟩, ⟨1, 4, 3⟩, ⟨1, 4, 7⟩, ⟨1, 5, 0⟩, ⟨1, 6, 2⟩, ⟨2, 0, 0⟩, ⟨2, 1, 0⟩]
+
+#eval say (resolve lib [caret ⟨1, 2, 0⟩, tilde ⟨1, 4, 2⟩, ⟨⟨1, 3, 0⟩, ⟨1, 6, 0⟩⟩])
+#eval say (resolve lib [caret ⟨1, 2, 0⟩, tilde ⟨1, 4, 2⟩, caret ⟨2, 0, 0⟩])`);
+    md(r`A third dependency that needs ‹^2.0.0› makes the merge empty. A real resolver does not stop there: it backtracks, and tries an older version of the dependency that imposed the constraint, which may ask for less; that search is where resolving gets hard (in general, as hard as satisfiability). npm sidesteps it by installing two copies of the library, one for each side.`);
+    lx(r`theorem ab_conflict : ((caret ⟨1, 2, 0⟩).merge (caret ⟨2, 0, 0⟩)).empty := by`, r`Prove that ‹^1.2.0› and ‹^2.0.0› conflict.`, r`  decide`, [
+      r`A statement about two concrete ranges: ‹decide› computes it.`,
+    ]);
+    lx(r`theorem merge_left (r s : VRange) (v : Ver) (h : (r.merge s).has v) : r.has v := by`, r`Prove that a version in a merged range meets the first constraint, for every range and version.`, r`  exact ((VRange.has_merge r s v).mp h).1`, [
+      r`‹VRange.has_merge r s v› is an ‹↔›; its ‹.mp› turns ‹h› into a pair.`,
+      r`The first half of the pair is ‹r.has v›.`,
+    ]);
+    md(r`The other way round, the smallest range that covers two ranges keeps the smaller lower end and the larger upper end. A lockfile updater uses it to describe "every version either side accepts" in one range, and it can be too generous: ‹~1.4.2› and ‹~1.6.0› are covered by $[1.4.2,\ 1.7.0)$, which also holds ‹1.5.0›, a version neither accepts. Ranges, like intervals, are not closed under union.`);
+    lx(r`theorem hull_ok : (tilde ⟨1, 4, 2⟩).hull (tilde ⟨1, 6, 0⟩) = ⟨⟨1, 4, 2⟩, ⟨1, 7, 0⟩⟩ ∧
+    (caret ⟨2, 0, 0⟩).hull (caret ⟨1, 3, 0⟩) = ⟨⟨1, 3, 0⟩, ⟨3, 0, 0⟩⟩ := by`, r`Define ‹VRange.hull›, the smallest range that covers both of two ranges. The proof is given: ‹decide› checks two examples.`, r`  decide`, [
+      r`It is the merge with ‹max› and ‹min› swapped.`,
+      r`‹def VRange.hull (r s : VRange) : VRange := ⟨r.lo.min s.lo, r.hi.max s.hi⟩›`,
+    ], { start: "  decide", def: { start: "def VRange.hull (r s : VRange) : VRange := sorry", solution: "def VRange.hull (r s : VRange) : VRange := ⟨r.lo.min s.lo, r.hi.max s.hi⟩", forbid: [] } });
+    sec("Exercises");
+    md(r`Versions with two parts, in the engine. Answer ‹true› or ‹false›, or with a version as a pair.`);
+    ex("le(lex(chain(3), chain(3)), (2, 0), (1, 2))", r`In the lexicographic order, is ‹2.0› at most ‹1.2›?`, [r`The major part decides.`]);
+    ex("join(lex(chain(3), chain(3)), (1, 2), (2, 1))", r`The join of two versions in the lexicographic order is the newer one. What is the join of ‹1.2› and ‹2.1›?`, [r`In a chain the join of two elements is the larger.`]);
+    ex("join(product(chain(3), chain(3)), (1, 2), (2, 1))", r`In the product order, what is the join of ‹1.2› and ‹2.1›? Is it either of them?`, [r`The least pair at least as large in each part.`], { hide: true });
+    md(r`
+> [!summary]
+> Versions compare lexicographically, so they form a chain and any set of them has a newest. A constraint is an interval of that chain; constraints merge by intersecting, the merge is a semilattice, so the order the resolver meets them in does not matter, and an empty merge is a conflict that no choice of version can avoid. The smallest range covering two is the other operation, and it may cover versions neither side accepts.
+`);
   });
 
   add("15-capstones.chalk", "Capstones: Sudoku and type inference", "A Sudoku solver and a type checker, both as propagator networks over lattices of partial information.", ({ sec, md, lean, lx }) => {
@@ -2669,7 +3648,7 @@ const OPEN = "open Order.PartialOrder Order.BoundedJoinSemilattice in\n";
 
 course("crdt", "CRDTs: replicated data that converges",
   "From Propagators to Replicas: counters, sets and registers that replicas update without coordinating and merge as joins, each design the fix for the last one's bug; the main theorem that they converge; gossip, version vectors, op-based CRDTs, a replicated store, and the limits.",
-  "Distributed systems", (add) => {
+  "Distributed systems", (add, app) => {
 
   add("01-replicas.chalk", "Replicas and the merge discipline", "Two replicas lose an update; the three laws a merge needs so that the network cannot make it lose one: states in a semilattice, merge as join.", ({ sec, md, m, ex, lean }) => {
     sec("Replicas and the merge discipline");
@@ -3347,8 +4326,261 @@ example : msetUnion (MSet.ofList [1, 2]) (MSet.ofList [3])
     · rw [increment_comm]
     · rw [increment_comm]`);
     md(r`
+> [!note] Collaborative text
+> Text is where operations meet positions: an insert at 3 means something else once a concurrent insert has moved the text. [Collaborative text](#course=crdt&lesson=10&app=1), an optional notebook beside this lesson, compares Google Docs' answer, operational transformation, with a sequence CRDT whose operations commute.
+`);
+    md(r`
 > [!summary]
 > State-based CRDTs tolerate any network that eventually delivers; op-based CRDTs need commuting operations and exactly-once delivery, in exchange for small messages. For inflationary operations the Lean proves the two readings of a history agree. Every part is now built: can they be put together into one store without new proofs?
+`);
+  });
+
+  app("10a-collaborative-text.chalk", "Collaborative text", "Two people typing into one document, as Google Docs lets them: operational transformation, which rewrites an edit's position past a concurrent one (TP1, the TP2 it needs without a server, and Jupiter's server that avoids it), against a sequence CRDT, the RGA, whose edits name a character instead and commute.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Collaborative text");
+    md(r`
+> [!goal]
+> See why two people's edits to one text diverge when they are replayed by position; fix it twice: by transforming an edit past a concurrent one (operational transformation, as in Jupiter and Google Docs), and by naming characters instead of positions (a sequence CRDT, the RGA); and compare what each fix costs.
+`);
+    md(r`An application of lesson 10, outside the course's order: nothing later depends on it. It uses tombstones (lesson 4), causal delivery (lesson 9), and op-based CRDTs (lesson 10). The Lean is in a namespace of its own, ‹Collab›, and uses nothing from the course's library.`);
+    sec("Two people, one document");
+    md(r`Alice and Bob share the text "cat". Alice inserts an x at position 1, after the c; at the same time Bob deletes position 2, the t. Positions count from 0. Each applies their own edit at once and sends it to the other, who applies it on arrival, as lesson 10's operations are applied.`);
+    lean(r`namespace Collab
+
+/-- An edit at a position: insert a character (typed at a site), delete one, or nothing at all. -/
+inductive Op where
+  | ins (p : Nat) (c : Char) (site : Nat)
+  | del (p : Nat)
+  | nop
+  deriving Repr, DecidableEq
+
+/-- Apply an edit to a text, as a list of characters. -/
+def Op.apply : Op → List Char → List Char
+  | .ins p c _, s => s.take p ++ c :: s.drop p
+  | .del p, s => s.take p ++ s.drop (p + 1)
+  | .nop, s => s
+
+/-- The same, on a ‹String›, to read the results. -/
+def edit (o : Op) (t : String) : String := String.ofList (o.apply t.toList)
+
+end Collab`);
+    lean(r`#eval Collab.edit (.del 2) (Collab.edit (.ins 1 'x' 1) "cat")   -- Alice: her insert, then Bob's delete
+#eval Collab.edit (.ins 1 'x' 1) (Collab.edit (.del 2) "cat")   -- Bob: his delete, then Alice's insert`);
+    md(r`Alice reads "cxt" and Bob reads "cxa". Bob meant the t; in Alice's text, after her insert, position 2 is the a. A position names a character only in the text it was counted in, and the two texts have moved apart.`);
+    md(r`
+> [!try]
+> The edits are fine; the positions are stale. Two ways out: rewrite a remote edit's position for what has happened locally since, or stop using positions at all. Which would you build?
+`);
+    sec("Operational transformation");
+    md(r`
+> [!definition] Transformation
+> **Operational transformation** (OT) keeps positional edits and, before applying a concurrent remote edit $a$ after a local one $b$, rewrites it as $T(a, b)$: $a$ as it must read once $b$ has happened. An insert or delete before $a$'s position shifts it by one; a delete of the character $a$ deletes too makes $a$ do nothing; and two inserts at the same place need a **tie-break**, here the site number, so that both sites put the two characters in the same order.
+`);
+    lean(r`namespace Collab
+
+/-- ‹T a b›: the edit ‹a›, rewritten to apply after a concurrent edit ‹b› has been applied. -/
+def T : Op → Op → Op
+  | .ins p c i, .ins q _ j => if q < p || (q == p && j < i) then .ins (p + 1) c i else .ins p c i
+  | .ins p c i, .del q => if q < p then .ins (p - 1) c i else .ins p c i
+  | .del p, .ins q _ _ => if q ≤ p then .del (p + 1) else .del p
+  | .del p, .del q => if q < p then .del (p - 1) else if q == p then .nop else .del p
+  | a, .nop => a
+  | .nop, _ => .nop
+
+end Collab`.replace(/‹|›/g, "`"));
+    lean(r`#eval Collab.edit (Collab.T (.del 2) (.ins 1 'x' 1)) (Collab.edit (.ins 1 'x' 1) "cat")   -- Alice
+#eval Collab.edit (Collab.T (.ins 1 'x' 1) (.del 2)) (Collab.edit (.del 2) "cat")   -- Bob`);
+    md(r`Both read "cxa": Alice applied Bob's delete as ‹del 3›, past her x.`);
+    md(r`
+> [!definition] TP1
+> A transformation is correct for two sites when, for any two concurrent edits $a$ and $b$, applying $a$ then $T(b, a)$ gives the same text as applying $b$ then $T(a, b)$. This is **TP1** (transformation property 1).
+`);
+    md(r`
+> [!note] TP1 is a diamond
+> From one text, $a$ and $b$ lead two ways, and $T(b, a)$ and $T(a, b)$ bring the two back to one text. That is the shape of local confluence in the systems course's [Rewriting systems](#course=systems&lesson=10): two rewrites of one term must join. There a critical pair joins when the rules already rewrite both results to a common term; here $T$ is written to supply the two edits that close the diamond.
+`);
+    lean(r`namespace Collab
+
+/-- TP1 for two concurrent edits on a text: ‹a› then ‹b› rewritten, against ‹b› then ‹a› rewritten. -/
+def tp1 (a b : Op) (s : List Char) : Bool := (T b a).apply (a.apply s) == (T a b).apply (b.apply s)
+
+/-- Every edit a site can make on a text of length ‹n›: an insert at each of the ‹n + 1› places, a delete
+at each of the ‹n› characters. -/
+def edits (n site : Nat) (c : Char) : List Op :=
+  (List.range (n + 1)).map (fun p => .ins p c site) ++ (List.range n).map .del
+
+/-- TP1 for every pair of edits two sites can make on "abc". -/
+theorem tp1_abc : (edits 3 1 'x').all (fun a => (edits 3 2 'y').all fun b => tp1 a b "abc".toList) = true := by
+  decide
+
+/-- ‹T› without the tie-break: of two inserts at one place, neither moves. -/
+def Tnaive : Op → Op → Op
+  | .ins p c i, .ins q _ _ => if q < p then .ins (p + 1) c i else .ins p c i
+  | a, b => T a b
+
+end Collab`.replace(/‹|›/g, "`"));
+    md(r`That is a check, not a proof for every text: 49 pairs on one text of three letters. It covers every way two positions can compare (before, the same, after, at either end), which is all ‹T› looks at; the proof for every text is the same case split, with lemmas about ‹take› and ‹drop›.`);
+    lx(r`example : (Collab.Tnaive (.ins 1 'y' 2) (.ins 1 'x' 1)).apply ((Collab.Op.ins 1 'x' 1).apply "abc".toList)
+    ≠ (Collab.Tnaive (.ins 1 'x' 1) (.ins 1 'y' 2)).apply ((Collab.Op.ins 1 'y' 2).apply "abc".toList) := by`, r`‹Tnaive›, defined in the cell above, leaves out the tie-break: of two inserts at the same place, neither moves. Prove that it breaks TP1 when Alice (site 1) and Bob (site 2) both insert at position 1 of "abc".`, r`  decide`, [
+      r`Both sides are computations on a fixed text: ‹decide› runs them and compares.`,
+      r`Alice ends with "ayxbc", Bob with "axybc" (try ‹#eval› on each side).`,
+    ]);
+    md(r`
+> [!mistake]
+> Without a tie-break, two inserts at the same place each stay where they were, and the two sites put the characters in opposite orders. The site number is arbitrary, but it is the same at every site, and that is all a tie-break needs.
+`);
+    sec("Three sites, and Jupiter's server");
+    md(r`With three sites, an edit can arrive after two concurrent ones, in either order, and is rewritten past different histories. TP1 is no longer enough: transforming $c$ past $a$ and then past $b$ rewritten, and past $b$ and then $a$ rewritten, must give the same edit. That is **TP2**. This ‹T› satisfies TP1 and fails TP2. On "ab", Alice inserts x at 1, Bob deletes position 0, and Carol inserts z at 0; a fourth site that receives them in two orders reads two texts:`);
+    lean(r`namespace Collab
+
+/-- Three concurrent edits applied in the order ‹a›, ‹b›, ‹c›, each rewritten past what came before it. -/
+def inOrder (a b c : Op) (s : List Char) : List Char :=
+  (T (T c a) (T b a)).apply ((T b a).apply (a.apply s))
+
+end Collab
+
+#eval String.ofList (Collab.inOrder (.ins 1 'x' 1) (.del 0) (.ins 0 'z' 3) "ab".toList)
+#eval String.ofList (Collab.inOrder (.del 0) (.ins 1 'x' 1) (.ins 0 'z' 3) "ab".toList)
+
+theorem Collab.not_tp2 : Collab.inOrder (.ins 1 'x' 1) (.del 0) (.ins 0 'z' 3) "ab".toList
+    ≠ Collab.inOrder (.del 0) (.ins 1 'x' 1) (.ins 0 'z' 3) "ab".toList := by
+  decide`.replace(/‹|›/g, "`"));
+    md(r`"zxb" and "xzb". After Bob's delete, Alice's x and Carol's z both sit at position 0, a tie that was not a tie when they were typed, and the site numbers order them one way in one history and the other way in the other. Transformation functions that satisfy TP2 are hard to get right: dOPT, the algorithm of Ellis and Gibbs's GROVE editor (1989), diverges in cases like this one, and later work that checked published transformation functions with a theorem prover found TP2 counterexamples in several of them.`);
+    md(r`
+> [!definition] Jupiter: a server orders everything
+> The Jupiter system (Nichols, Curtis, Dixon and Lamping, Xerox PARC, 1995) avoids TP2 altogether. Every client talks only to a central server, which puts all edits in one order; a client and the server are then two sites, and two sites need only TP1. A client applies its own edits at once, keeps those the server has not acknowledged, and transforms each edit from the server past them. Google Wave's operational transformation was built on Jupiter's design, and Google Docs also edits through a server with client–server operational transformation.
+`);
+    md(r`The price is the server: every edit goes through it, and two clients cut off from it cannot merge with each other. TP1 for two inserts is the exercise below, with the shift of an insert past a concurrent one as a function of its own:`);
+    lean(r`namespace Collab
+
+/-- TP1 for two concurrent inserts, x at ‹p› from site ‹i› and y at ‹q› from site ‹j›, each moved past the
+other by ‹shift›: ‹shift p i q j› is where the insert at ‹p› goes once the one at ‹q› has happened. -/
+def tp1Ins (shift : Nat → Nat → Nat → Nat → Nat) (p i q j : Nat) (s : List Char) : Bool :=
+  (Op.ins (shift q j p i) 'y' j).apply ((Op.ins p 'x' i).apply s)
+    == (Op.ins (shift p i q j) 'x' i).apply ((Op.ins q 'y' j).apply s)
+
+end Collab`.replace(/‹|›/g, "`"));
+    lx(r`theorem Collab.shiftIns_tp1 : ∀ p q : Fin 4,
+    Collab.tp1Ins Collab.shiftIns p 1 q 2 "abc".toList = true ∧ Collab.tp1Ins Collab.shiftIns p 2 q 1 "abc".toList = true := by`, r`Write ‹shiftIns p i q j›: the new position of an insert at ‹p›, from site ‹i›, once a concurrent insert at ‹q›, from site ‹j›, has been applied. The statement is TP1 for every pair of inserts on "abc", from sites 1 and 2 in either role; the proof is given.`, r`  decide`, [
+      r`An insert before yours pushes yours one place right; one after it does not.`,
+      r`At the same place, one of the two must move, and both sites must agree which: compare the sites.`,
+      r`‹def Collab.shiftIns (p i q j : Nat) : Nat := if q < p || (q == p && j < i) then p + 1 else p›`,
+    ], { start: "  decide", def: { start: "def Collab.shiftIns (p i q j : Nat) : Nat := sorry", solution: "def Collab.shiftIns (p i q j : Nat) : Nat := if q < p || (q == p && j < i) then p + 1 else p", forbid: ["Collab.T", "Collab.Tnaive"] } });
+    sec("Name the character, not the position");
+    md(r`
+> [!definition] A sequence CRDT: the RGA
+> Give every character a unique **id**: a timestamp and the site that typed it, the timestamp a Lamport clock (one more than any the site has seen). An insert says which character it goes **after**, by id, not where. Two inserts after the same character go newest id first. A delete sets a **tombstone** on the character it names; the character stays, so inserts after it still have a place (lesson 4's tombstones). This is the **RGA**, the replicated growable array of Roh, Jeon, Kim and Lee (2011). Edits now name things that never move, and concurrent ones commute without being rewritten.
+`);
+    md(r`The course's ‹replicas› command runs it, as ‹rga›. Its updates are positional, as a cursor is: ‹ins x at 1› inserts after the character the replica sees at position 0, and ‹del 2› tombstones the one at 2. The work names each node by its character and id (‹x@4a›: x, timestamp 4, typed at ‹a›) and the node it follows:`);
+    m(`replicas(rga; a, b
+  a: ins c at 0
+  a: ins a at 1
+  a: ins t at 2
+  a -> b
+  a: ins x at 1
+  b: del 2
+  a -> b
+  b -> a
+)`, { work: true });
+    md(r`Alice's x became the node x@4a, after c@1a; Bob's delete tombstoned t@3a. Neither depends on where the other's edit falls, and both read "cxa", with no transformation. The state is a set of nodes and a set of tombstones, merged by union, so the replicas converge by the course's main theorem; here it runs state-based, and an op-based RGA ships one node per insert, with causal delivery (lesson 9), since an insert after a node the receiver has not seen has nowhere to go yet.`);
+    md(r`Two inserts after the same character, typed at once:`);
+    m(`replicas(rga; a, b
+  a: ins h at 0
+  a: ins i at 1
+  a -> b
+  a: ins a at 2
+  b: ins o at 2
+  a -> b
+  b -> a
+)`, { work: true });
+    md(r`Both follow i@2a, and both have timestamp 3: the tie goes to the replica listed first, ‹a›, at both replicas. The same in Lean, on a list of characters with their ids:`);
+    lean(r`namespace Collab
+
+/-- A character with its id, the timestamp and the site that typed it, and whether it is still there. -/
+structure Atom where
+  ts : Nat
+  site : Nat
+  c : Char
+  live : Bool := true
+  deriving Repr, DecidableEq
+
+/-- ‹a› goes before ‹b›: the larger timestamp, then the larger site. -/
+def Atom.newer (a b : Atom) : Bool := a.ts > b.ts || (a.ts == b.ts && a.site > b.site)
+
+/-- Place ‹n› in the part of the text after its anchor: past every newer atom (a newer insert after the
+same anchor, and everything inserted after that, which is newer still), before the first older one. -/
+def skipIns (n : Atom) : List Atom → List Atom
+  | [] => [n]
+  | x :: xs => if x.newer n then x :: skipIns n xs else n :: x :: xs
+
+/-- Insert ‹n› after the atom with id ‹(ts, site)›, found even if it is a tombstone. -/
+def insAfter (ts site : Nat) (n : Atom) : List Atom → List Atom
+  | [] => []
+  | x :: xs => if x.ts == ts && x.site == site then x :: skipIns n xs else x :: insAfter ts site n xs
+
+/-- Insert after an id; ‹ts = 0› is the start of the text. -/
+def insert (ts site : Nat) (n : Atom) (doc : List Atom) : List Atom :=
+  if ts == 0 then skipIns n doc else insAfter ts site n doc
+
+/-- Delete by id: the atom stays, as a tombstone. -/
+def delete (ts site : Nat) : List Atom → List Atom
+  | [] => []
+  | x :: xs => if x.ts == ts && x.site == site then { x with live := false } :: xs else x :: delete ts site xs
+
+def text (doc : List Atom) : String := String.ofList ((doc.filter (·.live)).map (·.c))
+
+def cat : List Atom := [⟨1, 1, 'c', true⟩, ⟨2, 1, 'a', true⟩, ⟨3, 1, 't', true⟩]
+
+end Collab`.replace(/‹|›/g, "`"));
+    lean(r`-- Alice's x after c (id 1 at site 1), and Bob's delete of t (id 3 at site 1), in both orders
+#eval Collab.text (Collab.delete 3 1 (Collab.insert 1 1 ⟨4, 1, 'x', true⟩ Collab.cat))
+#eval Collab.text (Collab.insert 1 1 ⟨4, 1, 'x', true⟩ (Collab.delete 3 1 Collab.cat))
+
+theorem Collab.ins_del_comm : Collab.delete 3 1 (Collab.insert 1 1 ⟨4, 1, 'x', true⟩ Collab.cat)
+    = Collab.insert 1 1 ⟨4, 1, 'x', true⟩ (Collab.delete 3 1 Collab.cat) := by
+  decide`);
+    lx(r`theorem Collab.ins_ins_comm :
+    Collab.insert 1 1 ⟨4, 2, 'y', true⟩ (Collab.insert 1 1 ⟨4, 1, 'x', true⟩ Collab.cat)
+      = Collab.insert 1 1 ⟨4, 1, 'x', true⟩ (Collab.insert 1 1 ⟨4, 2, 'y', true⟩ Collab.cat) := by`, r`Alice (site 1) inserts x and Bob (site 2) inserts y after the c, concurrently, both with timestamp 4. Prove that the two inserts commute: the text is the same whichever arrives first.`, r`  decide`, [
+      r`Both sides are lists computed from ‹cat›: ‹decide› compares them.`,
+      r`Bob's y has the larger site, so it is the newer id and goes first: both sides are c, y, x, a, t.`,
+    ]);
+    sec("What each costs");
+    md(r`
+- **Operational transformation** keeps edits small (a position and a character) and the text plain. The agreement lives in ‹T›: one rule per pair of edit kinds, TP1 always, and TP2 without a server. Jupiter's server makes TP1 enough, at the price of the server and of the client's queue of edits awaiting acknowledgement.
+- **A sequence CRDT** needs no server and no transformation: any two replicas that have seen the same edits read the same text, the course's main theorem. The agreement lives in the ids. The costs: an id on every character, tombstones that stay (removing one safely needs every replica to have seen the delete, which is coordination again, lesson 12), and the ordering of concurrent runs of text. When two people type whole words at one place at once, a sequence CRDT can interleave them character by character; RGA keeps each person's forward-typed run together, and Kleppmann and others (2019) studied when such interleaving happens and how to avoid it.
+`);
+    md(r`Yjs and Automerge, libraries behind many collaborative editors, are sequence CRDTs of this family, which compress the ids of characters typed in a run.`);
+    sec("Exercises");
+    ex(`replicas(rga; a, b
+  a: ins o at 0
+  a: ins k at 1
+  a -> b
+  b: del 1
+  a: ins s at 2
+  a -> b
+  b -> a
+)`, r`Alice types "ok" and shares it; then Bob deletes the k while Alice adds an s after it. What does each replica read? Answer as the cell would, ‹{a↦…, b↦…}›.`, [
+      r`Bob's delete tombstones the k; the node stays.`,
+      r`Alice's s goes after the k, by id, so it survives the delete: the text is o, then s.`,
+    ], { hide: true });
+    ex(`replicas(rga; a, b
+  a: ins a at 0
+  b: ins x at 0
+  a: ins b at 1
+  b: ins y at 1
+  a -> b
+  b -> a
+)`, r`Alice types "ab" and Bob types "xy", both into an empty document, at once. What does each read: interleaved, or each run whole?`, [
+      r`a@1a and x@1b both follow the start, with the same timestamp: the replica listed first goes first.`,
+      r`b@2a follows a@1a and y@2b follows x@1b: each run stays whole.`,
+    ], { hide: true });
+    md(r`
+> [!note] See also
+> [Collaborative editing with a server](#course=collab), a course of its own, builds Jupiter's server out in full: the client's queues and the server's versions, rebasing a sequence of edits as a grid of TP1 squares, optimistic concurrency on a versioned log, and this transform proved TP1 for every text.
+`);
+    md(r`
+> [!summary]
+> Replaying an edit by position breaks as soon as a concurrent edit moves the text under it. Operational transformation rewrites the edit's position past the concurrent ones: TP1 makes two sites agree, TP2 is what three need, and Jupiter's server, which orders everything, makes TP1 enough; Google Docs edits this way, through a server. A sequence CRDT such as the RGA names characters by unique ids instead, so edits commute and the replicas converge without a server, at the cost of an id per character and tombstones. One moves the agreement into the transformation and a server, the other into the ids.
 `);
   });
 
@@ -3421,6 +4653,10 @@ example : msetUnion (MSet.ofList [1, 2]) (MSet.ofList [3])
     md(r`Both read $-1$. They have converged, and the rule is broken. No cleverer merge fixes it: in the Lean, ‹no_bank_merge› shows that no idempotent merge can honour both of two withdrawals of 80 from 100. Idempotence forces the merge of $20$ with $20$ to be $20$, while honouring both withdrawals needs $-60$. Each replica was right about its own state and neither could know about the other's withdrawal without asking it first.`);
     md(r`The same boundary showed up earlier. LWW converges by discarding one of two concurrent writes. Tombstones pile up for ever, and throwing one away safely needs to know that every replica has seen its remove: agreement about the state of everyone, which is coordination again.`);
     md(r`Invariants that span replicas (no overdraft, unique usernames, at most ten seats sold) need coordination somewhere: a lock, consensus, or an escrow that hands each replica a share it may spend alone. CRDTs are for the state that does not need it.`);
+    md(r`
+> [!note] Where the coordination goes, in a real system
+> [Scheduling without a lock](#course=crdt&lesson=12&app=1), an optional notebook beside this lesson, follows that sentence through a cluster scheduler: which of its questions are monotone and need no coordination (the CALM theorem), how Google's Omega puts the rest into one atomic step, and how an escrow of quotas removes even that.
+`);
     sec("In Lean");
     for (const c of crdtLesson(11)) lean(c);
     md(r`
@@ -3431,6 +4667,278 @@ example : msetUnion (MSet.ofList [1, 2]) (MSet.ofList [3])
     md(r`
 > [!summary]
 > CRDTs buy availability and convergence without coordination, and they cannot buy invariants that relate replicas. Knowing which state needs which is the design decision this course leaves you with.
+`);
+  });
+  app("12a-scheduling.chalk", "Scheduling without a lock", "Many schedulers, one cluster: what can be decided without asking anyone (CALM), Omega's optimistic transactions and their one atomic step, and an escrow of quotas that keeps a machine from being overcommitted with no coordination at all.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Scheduling without a lock");
+    md(r`
+> [!goal]
+> Take a cluster scheduler apart into what grows and what is tested for absence; see why only the second needs coordination; follow Omega's answer, which keeps the coordination to one atomic step; and remove even that for capacity, with an escrow of quotas.
+`);
+    md(r`An application of lesson 12, outside the course's order: nothing later depends on it. It uses the PN-Counter (lesson 3), the main theorem (lesson 7), and the transition systems of *Transition systems, invariants and temporal logic* (its lessons 1–4: ‹system›, ‹invariant›, ‹reach›), each explained again where it is used.`);
+    sec("Many schedulers, one cluster");
+    md(r`A cluster is thousands of machines, each with so much CPU and memory, and a stream of tasks to place on them: long-running services, which want careful placement, and short batch jobs, which want to start now. One scheduler for everything is simple, and it is a queue every task waits in. Google's paper on Omega (Schwarzkopf, Konwinski, Abd-El-Malek and Wilkes, *Omega: flexible, scalable schedulers for large compute clusters*, EuroSys 2013) sorts the ways out into three designs:
+
+- **Monolithic**: one scheduler places every task, Google's Borg among them. One view of the cluster and no conflicts, but every kind of task goes through the same code, one decision at a time.
+- **Two-level**: a resource manager *offers* resources to several schedulers in turn, as Mesos does. An offered resource is locked away from the others while the offer is out: pessimistic, and a scheduler sees only what it is offered.
+- **Shared state**, Omega's: every scheduler has a full copy of the cluster's state, decides on its own copy, and commits its claims to the shared state as a **transaction**, optimistically. Two schedulers can claim the same resources; then one commit fails, and that scheduler tries again.
+
+The third gives every scheduler the whole view and no locks while it thinks. What it gives up, and what has to stay coordinated, is what this course can say precisely.`);
+    sec("What can be decided without asking");
+    md(r`
+> [!theorem] CALM (Consistency As Logical Monotonicity)
+> A program has a consistent implementation that needs no coordination exactly when it is **monotone**: when learning more facts can only add to its output, never take something back. (Hellerstein's conjecture; proved by Ameloot, Neven and Van den Bussche; see Hellerstein and Alvaro, *Keeping CALM*, 2020.)
+`);
+    md(r`This is the course's main theorem seen from the other side. A CRDT's state only grows, and a reading that is monotone in it, like a G-Counter's value, can be read anywhere, any time: later it can only be larger. A reading that is not monotone, like lesson 3's PN-Counter value or lesson 12's "is the balance at least 1?", can be overturned by a merge.
+
+Sort a scheduler's questions that way:
+
+- **The tasks submitted, the machines, the claims made**: each a set that only grows. Merging two schedulers' knowledge is union, and "has task 7 been placed?" asks whether a claim is *there*. Once true, it stays true.
+- **"Does machine 4 have room for this task?"** asks whether enough claims are *not* there. One more claim, learned later, can turn yes into no. It is not monotone, so by CALM no coordination-free implementation answers it consistently.`);
+    md(r`Two schedulers, ‹a› and ‹b›, and one machine with room for one more task. Each looks at its copy of the machine's PN-Counter of units in use, sees 0, places its task, and counts it:`);
+    m(`replicas(pncounter; a, b
+  a: inc
+  b: inc
+  a -> b
+  b -> a
+)`, { work: true });
+    md(r`Both copies converge, to 2, on a machine with room for 1: overcommitted. It is lesson 12's overdraft in other words. Each scheduler's decision was right on what it knew; the question it answered, "is there room?", was about what it did *not* know.`);
+    sec("Omega: one atomic step");
+    md(r`Omega does not try to make "is there room?" monotone. It confines it. A scheduler plans on its copy, with no lock, as long as it likes; then it commits, and the commit is checked against the shared state *at that instant*: are the machines it claims still as it saw them? That check and the write are one atomic step, a compare-and-set, and it is the only coordination in the design.
+
+As a transition system (the systems course's notation: variables, an initial state, and actions, each a guard and its updates, taken one at a time), two schedulers placing one task each on a machine with room for one. Without the check, planning and committing are two steps with a gap between them:`);
+    m(`let Naive = system(
+  var used in 0..2
+  var a in {idle, planned, placed}
+  var b in {idle, planned, placed}
+  init used = 0 ∧ a = idle ∧ b = idle
+  action aplan when a = idle ∧ used < 1 do a := planned
+  action acommit when a = planned do used := used + 1, a := placed
+  action bplan when b = idle ∧ used < 1 do b := planned
+  action bcommit when b = planned do used := used + 1, b := placed
+)`);
+    m("invariant(Naive, used ≤ 1)", { step: 0 });
+    md(r`The shortest run that breaks it: both plan while the machine is empty, then both commit. It is the lost update of the systems course's lesson 1, and the check-then-act of its lesson 3.
+
+Omega's fix gives the machine a **sequence number**, raised by every commit to it. A scheduler records the number when it plans (‹sa›, ‹sb›); its commit succeeds only if the number is still the same, and otherwise the scheduler drops its plan and plans again:`);
+    m(`let Cas = system(
+  var used in 0..2
+  var seq in 0..2
+  var sa in 0..2
+  var sb in 0..2
+  var a in {idle, planned, placed}
+  var b in {idle, planned, placed}
+  init used = 0 ∧ seq = 0 ∧ sa = 0 ∧ sb = 0 ∧ a = idle ∧ b = idle
+  action aplan when a = idle ∧ used < 1 do sa := seq, a := planned
+  action acommit when a = planned ∧ seq = sa do used := used + 1, seq := seq + 1, a := placed
+  action aabort when a = planned ∧ seq ≠ sa do a := idle
+  action bplan when b = idle ∧ used < 1 do sb := seq, b := planned
+  action bcommit when b = planned ∧ seq = sb do used := used + 1, seq := seq + 1, b := placed
+  action babort when b = planned ∧ seq ≠ sb do b := idle
+)`);
+    m("invariant(Cas, used ≤ 1)");
+    md(r`The run that broke ‹Naive› now ends differently: ‹a› commits first, the number moves on, and ‹b›'s commit finds it changed and aborts.`);
+    m("trace(Cas; aplan, bplan, acommit, babort)", { step: 0 });
+    md(r`
+> [!note] A sequence number is a per-key lock, held for one instant
+> The systems course's lesson 4 kept one lock per key and held it across the work. Omega keeps one number per machine and "holds" it only for the commit's instant: the scheduler thinks without a lock, and pays for a conflict with a retry instead of a wait. Kubernetes objects carry a ‹resourceVersion› that is used the same way.
+`);
+    sec("How much to compare");
+    md(r`A commit checks the machines it claims. It could instead check the whole cell: one sequence number for everything, raised by every commit. That is simpler, and it aborts commits that did not conflict at all. Two machines with room for one task each; ‹a› places on the first and ‹b› on the second:`);
+    m(`let Coarse = system(
+  var u1 in 0..1
+  var u2 in 0..1
+  var seq in 0..2
+  var sa in 0..2
+  var sb in 0..2
+  var a in {idle, planned, retry, placed}
+  var b in {idle, planned, retry, placed}
+  init u1 = 0 ∧ u2 = 0 ∧ seq = 0 ∧ sa = 0 ∧ sb = 0 ∧ a = idle ∧ b = idle
+  action aplan when a = idle ∧ u1 = 0 do sa := seq, a := planned
+  action acommit when a = planned ∧ seq = sa do u1 := 1, seq := seq + 1, a := placed
+  action aabort when a = planned ∧ seq ≠ sa do a := retry
+  action aretry when a = retry do a := idle
+  action bplan when b = idle ∧ u2 = 0 do sb := seq, b := planned
+  action bcommit when b = planned ∧ seq = sb do u2 := 1, seq := seq + 1, b := placed
+  action babort when b = planned ∧ seq ≠ sb do b := retry
+  action bretry when b = retry do b := idle
+)`);
+    m("reach(Coarse, b = retry)", { step: 0 });
+    md(r`‹b› retried though nothing it claimed had changed. With a number per machine (‹Fine›, the same system with ‹seq1› and ‹seq2›), the two commits never meet:`);
+    m(`let Fine = system(
+  var u1 in 0..1
+  var u2 in 0..1
+  var seq1 in 0..1
+  var seq2 in 0..1
+  var sa in 0..1
+  var sb in 0..1
+  var a in {idle, planned, retry, placed}
+  var b in {idle, planned, retry, placed}
+  init u1 = 0 ∧ u2 = 0 ∧ seq1 = 0 ∧ seq2 = 0 ∧ sa = 0 ∧ sb = 0 ∧ a = idle ∧ b = idle
+  action aplan when a = idle ∧ u1 = 0 do sa := seq1, a := planned
+  action acommit when a = planned ∧ seq1 = sa do u1 := 1, seq1 := seq1 + 1, a := placed
+  action aabort when a = planned ∧ seq1 ≠ sa do a := retry
+  action aretry when a = retry do a := idle
+  action bplan when b = idle ∧ u2 = 0 do sb := seq2, b := planned
+  action bcommit when b = planned ∧ seq2 = sb do u2 := 1, seq2 := seq2 + 1, b := placed
+  action babort when b = planned ∧ seq2 ≠ sb do b := retry
+  action bretry when b = retry do b := idle
+)`);
+    m("reach(Fine, a = retry ∨ b = retry)");
+    md(r`The Omega paper makes this a design choice and measures it: **fine-grained** conflict detection (per machine) against **coarse-grained** (any change since the plan). Coarse is cheaper to check and wastes work in retries; fine retries only on real conflicts. Both keep the invariant: the difference is how much a scheduler's work is thrown away, not whether the machine is overcommitted.`);
+    sec("All or nothing");
+    md(r`Some jobs are only useful whole: a job of two tasks that must run together (a **gang**). A transaction can be **incremental**, committing the claims that succeed and keeping them, or **all-or-nothing**, committing every claim or none. Two such jobs, ‹A› and ‹B›, each needing both of two machines; incrementally, each takes one machine and then waits for the other:`);
+    m(`let Incremental = system(
+  var m1 in {free, A, B}
+  var m2 in {free, A, B}
+  var a in {idle, half, running}
+  var b in {idle, half, running}
+  init m1 = free ∧ m2 = free ∧ a = idle ∧ b = idle
+  action a1 when a = idle ∧ m1 = free do m1 := A, a := half
+  action a2 when a = half ∧ m2 = free do m2 := A, a := running
+  action adone when a = running do m1 := free, m2 := free, a := idle
+  action b1 when b = idle ∧ m2 = free do m2 := B, b := half
+  action b2 when b = half ∧ m1 = free do m1 := B, b := running
+  action bdone when b = running do m1 := free, m2 := free, b := idle
+)`);
+    m("deadlock(Incremental)", { step: 0 });
+    md(r`‹deadlock› finds a reachable state with no action enabled (the systems course's lesson 5): each job holds half of what it needs, and neither will let go. Claiming both machines in one commit, or neither, removes the state where a job holds half:`);
+    m(`let Gang = system(
+  var m1 in {free, A, B}
+  var m2 in {free, A, B}
+  var a in {idle, running}
+  var b in {idle, running}
+  init m1 = free ∧ m2 = free ∧ a = idle ∧ b = idle
+  action aclaim when a = idle ∧ m1 = free ∧ m2 = free do m1 := A, m2 := A, a := running
+  action adone when a = running do m1 := free, m2 := free, a := idle
+  action bclaim when b = idle ∧ m1 = free ∧ m2 = free do m1 := B, m2 := B, b := running
+  action bdone when b = running do m1 := free, m2 := free, b := idle
+)`);
+    m("deadlock(Gang)");
+    md(r`All-or-nothing makes a bigger atomic step, so it conflicts more often: a commit that needs ten machines fails if any one of them changed. Incremental commits conflict less and can strand half a job. Omega offers both, per transaction, and leaves the choice to the scheduler that knows what its job needs.`);
+    sec("An escrow of quotas");
+    md(r`Omega keeps "is there room?" correct by checking it at one instant. The escrow method goes further: it changes the question into one that needs no instant at all. Split the machine's capacity into **quotas**, one per scheduler, each a share that scheduler may spend alone. "Is there room?" becomes "is there room *in my quota*?", and a scheduler's own quota is something only it spends, so it always knows the answer exactly, or errs on the safe side.
+
+‹replicas(escrow N; …)› is that design as a CRDT, a **bounded counter**: a capacity of ‹N› split evenly between the replicas; ‹use› takes a unit of the replica's quota, ‹free› returns one, and ‹give r› hands a unit of quota to ‹r›. A replica refuses, by itself, a use its quota does not cover. The same schedule as before, with room for two, and ‹a› trying a second task:`);
+    m(`replicas(escrow 2; a, b
+  a: use
+  b: use
+  a: use
+  a -> b
+  b -> a
+)`, { work: true });
+    md(r`Two in use, on a machine with room for two, and ‹a›'s second use was refused without asking anyone. The state is three G-Counters (uses, frees, and gifts between each pair), merged by the entrywise maximum as every type here is, so the main theorem applies as it is: replicas that have seen the same updates agree. A gift has to travel before it can be spent:`);
+    m(`replicas(escrow 2; a, b
+  b: give a
+  a: use
+  a: use
+  b -> a
+  a: use
+)`, { work: true });
+    md(r`‹a›'s second use came before ‹b›'s gift reached it, so ‹a› refused it: it can only spend what it knows it has. After the merge, it spends ‹b›'s unit.`);
+    md(r`
+> [!definition] Invariant confluence
+> An invariant is **I-confluent** when any two states that satisfy it, reached from a common state that satisfies it, merge into a state that satisfies it (Bailis, Fekete, Franklin, Ghodsi, Hellerstein and Stoica, *Coordination Avoidance in Database Systems*, 2015). Exactly the I-confluent invariants can be kept without coordination. "In use ≤ capacity" over a shared count is not: the overcommitted merge above. "Each scheduler within its quota", with the quotas adding up to at most the capacity, is.
+`);
+    md(r`The price is **stranded capacity**: a unit in an idle scheduler's quota is a unit a busy one cannot use until quota is moved, and moving quota is the one thing that needs agreement between two schedulers. Escrow wins when the bound is far from being reached, or quotas can be moved ahead of demand; checking at commit time, as Omega does, wins when the cluster runs close to full and any scheduler may need any machine.`);
+    sec("In Lean");
+    md(r`The two kinds of question, in Lean: "is the task placed?" looks for a claim, and stays true as claims arrive; "is the machine free?" looks for the absence of one, and does not.`);
+    lean(r`namespace Sched
+
+/-- A claim: a task placed on a machine. -/
+structure Claim where
+  task : Nat
+  machine : Nat
+  deriving DecidableEq, Repr
+
+/-- Has the task been placed? A question about what is there. -/
+def placed (log : List Claim) (t : Nat) : Bool := log.any (·.task == t)
+
+/-- Is the machine free? A question about what is not there. -/
+def free (log : List Claim) (m : Nat) : Bool := log.all (·.machine != m)
+
+/-- Learning more claims never turns "placed" from true to false. -/
+theorem placed_mono (log more : List Claim) (t : Nat) (h : placed log t = true) :
+    placed (log ++ more) t = true := by
+  unfold placed at h ⊢
+  rw [List.any_append, h, Bool.true_or]
+
+/-- "Free" can: one more claim, and the answer goes from yes to no. -/
+example : free [] 1 = true ∧ free [⟨7, 1⟩] 1 = false := by decide
+
+end Sched`);
+    md(r`Two schedulers' counts of units on one machine, a G-Counter with a slot each, merged slot by slot. The invariant is that the machine is not overcommitted:`);
+    lean(r`namespace Sched
+
+structure Used where
+  a : Nat
+  b : Nat
+  deriving DecidableEq, Repr
+
+def Used.merge (s t : Used) : Used := ⟨max s.a t.a, max s.b t.b⟩
+def Used.total (s : Used) : Nat := s.a + s.b
+
+/-- The machine is not overcommitted. -/
+def fits (cap : Nat) (s : Used) : Prop := s.total ≤ cap
+
+instance (cap : Nat) (s : Used) : Decidable (fits cap s) := inferInstanceAs (Decidable (_ ≤ _))
+
+/-- Escrow: each scheduler keeps within its own quota. -/
+def withinQuota (qa qb : Nat) (s : Used) : Prop := s.a ≤ qa ∧ s.b ≤ qb
+
+end Sched`);
+    lx(r`theorem Sched.overcommit : Sched.fits 1 ⟨1, 0⟩ ∧ Sched.fits 1 ⟨0, 1⟩ ∧ ¬ Sched.fits 1 (Sched.Used.merge ⟨1, 0⟩ ⟨0, 1⟩) := by`, r`Prove that "not overcommitted" is not I-confluent: two states that fit a machine with room for one merge into one that does not.`, r`  decide`, [
+      r`Every part is a statement about small numbers: ‹decide› computes it.`,
+    ]);
+    lx(r`theorem Sched.escrow_fits (cap qa qb : Nat) (hq : qa + qb ≤ cap) (s : Sched.Used) (h : Sched.withinQuota qa qb s) :
+    Sched.fits cap s := by`, r`Prove the escrow's promise: if each scheduler is within its quota and the quotas add up to at most the capacity, the machine is not overcommitted.`, r`  unfold Sched.fits Sched.Used.total
+  unfold Sched.withinQuota at h
+  omega`, [
+      r`Unfold ‹fits› and ‹Used.total› in the goal, and ‹withinQuota› in ‹h›: what is left is arithmetic.`,
+      r`‹omega› adds the two quota bounds for you.`,
+    ]);
+    lx(r`theorem Sched.merge_within (qa qb : Nat) (s t : Sched.Used) (hs : Sched.withinQuota qa qb s) (ht : Sched.withinQuota qa qb t) :
+    Sched.withinQuota qa qb (s.merge t) := by`, r`Prove that "within quota" is I-confluent: two states within the quotas merge into one within them.`, r`  unfold Sched.withinQuota Sched.Used.merge at *
+  simp only
+  omega`, [
+      r`Unfold ‹withinQuota› and ‹Used.merge› everywhere (‹at *›), then ‹simp only› to read the fields of the merged state.`,
+      r`The maximum of two numbers below a bound is below it: ‹omega› knows ‹max›.`,
+    ]);
+    lx(r`theorem Sched.useA_within (qa qb : Nat) (s : Sched.Used) (h : Sched.withinQuota qa qb s) (hc : Sched.canUseA qa s = true) :
+    Sched.withinQuota qa qb { s with a := s.a + 1 } := by`, r`Write the local test ‹canUseA›: may scheduler ‹a› place one more unit, looking only at its own slot and its quota? The statement says that a use the test allows keeps ‹a› within its quota; the proof is written for you.`, r`  unfold Sched.canUseA at hc
+  unfold Sched.withinQuota at *
+  simp only [decide_eq_true_eq] at hc
+  exact ⟨show s.a + 1 ≤ qa by omega, h.2⟩`, [
+      r`One more unit keeps ‹a› within its quota when what it has used so far is below the quota.`,
+      r`‹def Sched.canUseA (qa : Nat) (s : Sched.Used) : Bool := s.a < qa›`,
+    ], { start: r`  unfold Sched.canUseA at hc
+  unfold Sched.withinQuota at *
+  simp only [decide_eq_true_eq] at hc
+  exact ⟨show s.a + 1 ≤ qa by omega, h.2⟩`, def: { start: "def Sched.canUseA (qa : Nat) (s : Sched.Used) : Bool := sorry", solution: "def Sched.canUseA (qa : Nat) (s : Sched.Used) : Bool := s.a < qa", forbid: ["true"] } });
+    sec("Exercises");
+    ex(`replicas(escrow 3; a, b
+  a: use
+  a: use
+  a: use
+  b: use
+  a -> b
+  b -> a
+)`, r`A capacity of 3 between two schedulers, so ‹a›'s quota is 2 and ‹b›'s is 1. ‹a› tries three tasks and ‹b› one, then they sync. How many units are in use, as each reads it?`, [
+      r`‹a›'s third use is refused: its quota is 2.`,
+      r`After the syncs both know of ‹a›'s 2 and ‹b›'s 1.`,
+    ]);
+    ex("invariant(Naive, ¬(a = placed ∧ b = placed))", r`In ‹Naive›, can both schedulers end up placed on the machine with room for one? Answer ‹true› if never, ‹false› if they can.`, [
+      r`The invariant run above ends with ‹used = 2›: who placed?`,
+    ], { hide: true });
+    ex("reach(Cas, a = placed ∧ b = placed)", r`In ‹Cas›, can both schedulers end up placed? Answer ‹true› or ‹false›.`, [
+      r`The machine has room for one, and every commit checks the sequence number.`,
+    ], { hide: true });
+    ex("deadlock(Gang)", r`Can two all-or-nothing jobs leave each other waiting forever? Answer ‹true› or ‹false›.`, [
+      r`A job claims both machines or neither, so no state has a job holding one of them.`,
+    ], { hide: true });
+    md(r`
+> [!summary]
+> By CALM, the monotone part of a scheduler (tasks submitted, claims made, "has it been placed?") needs no coordination; "is there room?" asks about the absence of claims, and does. Omega keeps the scheduling itself coordination-free and puts that question into one atomic step, a commit checked against per-machine sequence numbers, retried on conflict; fine- or coarse-grained checks and incremental or all-or-nothing commits trade retries against guarantees. An escrow of quotas turns the question into an I-confluent one, each scheduler within its own share, and needs coordination only to move quota.
 `);
   });
 }, { leanPrelude: true });
@@ -3612,7 +5120,7 @@ ${countedJob("q", "p")}
 
 course("systems", "Transition systems, invariants and temporal logic",
   "A lost update as a path in a graph of states; invariants with counterexample traces and inductive proofs; a lock that fails and Peterson's that does not; one lock per key, and the gap between two atomic calls; safety and liveness under fairness; temporal logic as fixed points; happens-before, effectively-once delivery and refinement; rewriting systems, and retries under failure.",
-  "Distributed systems", (add) => {
+  "Distributed systems", (add, app) => {
 
   add("01-state-machines.chalk", "State machines and executions", "Two threads that lose an update: a system as variables, an initial state and guarded actions, and its graph of reachable states as every interleaving at once.", ({ sec, md, m, ex, lean, lx }) => {
     sec("State machines and executions");
@@ -3681,7 +5189,176 @@ def counter : TS Nat where
 > [!summary]
 > A system is variables, initial states and guarded actions. Its graph of reachable states holds every interleaving of its steps at once, and a breadth-first search through it finds a shortest path to any state we ask for: here, the lost update.
 `);
+    md(r`
+> [!note] Application: TCP's handshake
+> A network protocol is a state machine too. [TCP as a state machine](#course=systems&lesson=1&app=1), an optional notebook beside this lesson, models the handshake that opens a TCP connection, and finds what a lost segment does to it.
+`);
     md(r`$x = 2$ at the end is not guaranteed. What *is* guaranteed in every reachable state, and how can we know it when the graph is too large to draw? That is the next lesson.`);
+  });
+
+  app("01a-tcp.chalk", "TCP as a state machine", "The handshake that opens a TCP connection as a system: its executions, what each end can know, the deadlocks a lost segment causes, and the timers that remove them, in the engine and in Lean.", ({ sec, md, m, ex, lean, lx }) => {
+    /** The handshake on a network that delivers everything: a state per end, and a flag per segment in flight. */
+    const tcp = (name, extra = "") => `let ${name} = system(
+  var c in {closed, synsent, estab}
+  var s in {listen, synrcvd, estab}
+  var syn in bool
+  var synack in bool
+  var ack in bool
+  init c = closed ∧ s = listen ∧ syn = false ∧ synack = false ∧ ack = false
+  action connect when c = closed do syn := true, c := synsent
+  action accept when s = listen ∧ syn = true do syn := false, synack := true, s := synrcvd
+  action confirm when c = synsent ∧ synack = true do synack := false, ack := true, c := estab
+  action finish when s = synrcvd ∧ ack = true do ack := false, s := estab${extra}
+)`;
+    const LOSS = `
+  action loseSyn when syn = true do syn := false
+  action loseSynack when synack = true do synack := false
+  action loseAck when ack = true do ack := false`;
+    const TIMERS = `
+  action resendSyn when c = synsent do syn := true
+  action resendSynack when s = synrcvd do synack := true
+  action reaccept when s = synrcvd ∧ syn = true do syn := false, synack := true
+  action reconfirm when c = estab ∧ synack = true do synack := false, ack := true`;
+    const OPEN = `
+  action stale when s = estab ∧ syn = true do syn := false
+  action talk when c = estab ∧ s = estab ∧ synack = false do c := estab`;
+    sec("TCP as a state machine");
+    md(r`
+> [!goal]
+> Model the handshake that opens a TCP connection as a system: read off its executions, find what each end can and cannot know about the other, and find what a lost segment does to it.
+`);
+    md(r`An application of lesson 1, outside the course's order: nothing later depends on it. It uses lesson 1's ‹system›, ‹trace›, ‹states› and ‹reach›, and one command from lesson 5, ‹deadlock›, which is explained where it is used. The last section uses Lean as lesson 1 does.`);
+    md(r`Before two programs exchange data over TCP, they agree that a connection exists, with three messages, called **segments**. The client sends a **SYN** ("I would like to talk"). The server answers with a **SYN-ACK** ("I got that, and I would like to talk too"). The client answers with an **ACK** ("I got yours"). Each end has a state, and moves on when a segment reaches it:
+
+- the client: ‹CLOSED›, then ‹SYN-SENT› once it has sent its SYN, then ‹ESTABLISHED› once the SYN-ACK arrives;
+- the server: ‹LISTEN›, waiting for anyone, then ‹SYN-RECEIVED› once a SYN arrives and it has answered, then ‹ESTABLISHED› once the ACK arrives.
+
+These are the state names of the TCP standard (RFC 9293), which also has states for closing a connection; the opening is enough to see the ideas.`);
+    sec("A model");
+    md(r`The variables: ‹c›, where the client is; ‹s›, where the server is; and a flag per kind of segment, true while one is in flight. Each action is one end acting on what has reached it:`);
+    m(tcp("Hs"));
+    md(r`The handshake, in order:`);
+    m("trace(Hs; connect, accept, confirm, finish)", { step: 0 });
+    m("states(Hs)");
+    md(r`Five states in a row: on a network that delivers every segment, the handshake can happen in only one order, since each end waits for the other's segment before it acts.`);
+    sec("What each end knows");
+    md(r`
+> [!try]
+> The client becomes established when the SYN-ACK arrives. Can the server be established while the client is not? Can the client be established while the server is not?
+`);
+    m("reach(Hs, s = estab ∧ c ≠ estab)");
+    m("reach(Hs, c = estab ∧ s ≠ estab)", { step: 0 });
+    md(r`The server is never ahead: it becomes established only on the ACK, which the client sends as it becomes established. The client is ahead for a while, with its ACK in flight. Neither end sees the other's state; each knows only the segments that reached it, so a handshake can make the two agree only *eventually*, and the one that learns last is the server. Real TCP lets the client send data at once, and a server in ‹SYN-RECEIVED› accepts data that arrives with or after the ACK.`);
+    sec("A network that loses segments");
+    md(r`A real network drops packets. Add an action per kind of segment that loses the one in flight:`);
+    m(tcp("Lossy", LOSS));
+    m("states(Lossy)");
+    md(r`
+> [!try]
+> The server's SYN-ACK is lost. What does each end do next?
+`);
+    m("reach(Lossy, c = synsent ∧ s = synrcvd ∧ syn = false ∧ synack = false ∧ ack = false)", { step: 0 });
+    md(r`Nothing. The client waits for a SYN-ACK, the server waits for an ACK, and neither segment exists. Lesson 5's ‹deadlock(S)› asks for a reachable state in which no action is enabled at all; the shortest is a lost SYN:`);
+    m("deadlock(Lossy)", { step: 0 });
+    md(r`
+> [!mistake]
+> The state where both ends are established has no step either: a model of something that finishes ends in a deadlock, the one you meant. A deadlock is a bug only when it is not where you meant to end, so the model below gives the open connection a step of its own, its traffic.
+`);
+    sec("Timers");
+    md(r`TCP's fix is a **timer**: an end waiting for an answer sends its segment again when the timer runs out. Sending again makes duplicates, and each end needs a rule for a segment it has seen before: a server in ‹SYN-RECEIVED› that gets a SYN again answers with a SYN-ACK again; an established client that gets a SYN-ACK again answers with an ACK again; an established server ignores a late SYN. Once both are established the connection carries data, modelled by ‹talk›, a step that changes nothing.`);
+    m(tcp("Retry", LOSS + TIMERS + OPEN));
+    m("states(Retry)");
+    m("deadlock(Retry)");
+    md(r`No reachable state is a dead end any more, and the server is still never ahead of the client, duplicates and all:`);
+    m("reach(Retry, s = estab ∧ c ≠ estab)");
+    md(r`
+> [!mistake]
+> "No dead end" is not "the handshake finishes". The network may lose every SYN the client sends, for ever: an execution that never stops and never connects. To say that the connection *eventually* opens, the model has to assume that a segment sent again and again is eventually delivered. That is a fairness assumption, lesson 5's subject.
+`);
+    sec("In Lean");
+    md(r`The same handshake with lesson 1's ‹TS›. One segment is in flight at a time, so the wire is one value. The steps from a state are a list, and a step is a member of it, which ‹decide› can check.`);
+    lean(r`/-- Where the client is. -/
+inductive Cli where
+  | closed | synSent | estab
+  deriving DecidableEq, Repr
+
+/-- Where the server is. -/
+inductive Srv where
+  | listen | synRcvd | estab
+  deriving DecidableEq, Repr
+
+/-- The segment in flight, if any. -/
+inductive Seg where
+  | none | syn | synAck | ack
+  deriving DecidableEq, Repr
+
+/-- A state of the connection: each end, and the wire. -/
+structure Conn where
+  c : Cli
+  s : Srv
+  wire : Seg
+  deriving DecidableEq, Repr
+
+/-- The steps from a state: the client starts, and each end answers the segment that reaches it. -/
+def Conn.next : Conn → List Conn
+  | ⟨.closed, s, .none⟩ => [⟨.synSent, s, .syn⟩]
+  | ⟨c, .listen, .syn⟩ => [⟨c, .synRcvd, .synAck⟩]
+  | ⟨.synSent, s, .synAck⟩ => [⟨.estab, s, .ack⟩]
+  | ⟨c, .synRcvd, .ack⟩ => [⟨c, .estab, .none⟩]
+  | _ => []
+
+def Conn.start : Conn := ⟨.closed, .listen, .none⟩
+
+/-- The handshake as a transition system. -/
+def handshake : TS Conn where
+  init t := t = Conn.start
+  step t u := u ∈ t.next
+
+#eval Conn.start.next`);
+    md(r`That the handshake can complete is a reachability proof, built backwards from the end as in lesson 1: each ‹.step› names the state before it, and ‹decide› checks that the step is one of ‹next›'s.`);
+    lean(r`theorem handshake_completes : Reachable handshake ⟨.estab, .estab, .none⟩ := by
+  refine .step (s := ⟨.estab, .synRcvd, .ack⟩) ?_ (show _ ∈ Conn.next _ by decide)
+  refine .step (s := ⟨.synSent, .synRcvd, .synAck⟩) ?_ (show _ ∈ Conn.next _ by decide)
+  refine .step (s := ⟨.synSent, .listen, .syn⟩) ?_ (show _ ∈ Conn.next _ by decide)
+  refine .step (s := Conn.start) ?_ (show _ ∈ Conn.next _ by decide)
+  exact .init rfl`);
+    md(r`An execution can also be written down as a list of states and checked by running a function, which is how a test of a protocol works:`);
+    lean(r`/-- ts is an execution of the steps next: it begins at the start, and each state is a step from the one before. -/
+def isExecution (next : Conn → List Conn) : List Conn → Bool
+  | [] => false
+  | t :: ts => t == Conn.start && go t ts
+where
+  go : Conn → List Conn → Bool
+    | _, [] => true
+    | t, u :: us => (next t).contains u && go u us`);
+    lx(r`theorem handshakeRun_ok : isExecution Conn.next handshakeRun = true ∧ handshakeRun.getLast? = some ⟨.estab, .estab, .none⟩ := by`, r`Define ‹handshakeRun›, the list of the five states of a complete handshake, from ‹Conn.start› to both ends established. The proof is given: ‹decide› runs ‹isExecution›.`, r`  decide`, [
+      r`Each state is one step from the one before: the wire carries ‹.syn›, then ‹.synAck›, then ‹.ack›.`,
+      r`‹[⟨.closed, .listen, .none⟩, ⟨.synSent, .listen, .syn⟩, ⟨.synSent, .synRcvd, .synAck⟩, ⟨.estab, .synRcvd, .ack⟩, ⟨.estab, .estab, .none⟩]›`,
+    ], { start: "  decide", def: { start: "def handshakeRun : List Conn := sorry", solution: "def handshakeRun : List Conn :=\n  [⟨.closed, .listen, .none⟩, ⟨.synSent, .listen, .syn⟩, ⟨.synSent, .synRcvd, .synAck⟩, ⟨.estab, .synRcvd, .ack⟩, ⟨.estab, .estab, .none⟩]", forbid: [] } });
+    md(r`A network that may lose the segment in flight adds one step from every state with something on the wire:`);
+    lean(r`def Conn.nextLossy (t : Conn) : List Conn :=
+  t.next ++ (if t.wire = .none then [] else [{ t with wire := .none }])`);
+    lx(r`theorem lostRun_ok : isExecution Conn.nextLossy lostRun = true ∧ lostRun.getLast? = some ⟨.synSent, .synRcvd, .none⟩ := by`, r`Define ‹lostRun›, an execution on the lossy network that ends with the SYN-ACK lost: the client in ‹SYN-SENT›, the server in ‹SYN-RECEIVED›, nothing on the wire.`, r`  decide`, [
+      r`Three steps of the handshake's, then the loss: the wire goes from ‹.synAck› to ‹.none›.`,
+    ], { start: "  decide", def: { start: "def lostRun : List Conn := sorry", solution: "def lostRun : List Conn :=\n  [⟨.closed, .listen, .none⟩, ⟨.synSent, .listen, .syn⟩, ⟨.synSent, .synRcvd, .synAck⟩, ⟨.synSent, .synRcvd, .none⟩]", forbid: [] } });
+    lx(r`theorem lost_synack_dead : Conn.nextLossy ⟨.synSent, .synRcvd, .none⟩ = [] := by`, r`Prove that the state a lost SYN-ACK leaves has no step out of it.`, r`  decide`, [
+      r`A statement about one concrete list: ‹decide› computes it.`,
+    ]);
+    sec("Exercises");
+    md(r`Answer ‹true› or ‹false›.`);
+    ex("reach(Hs, c = estab ∧ s = listen)", r`On the network that delivers everything, can the client be established while the server is still in ‹LISTEN›?`, [r`Before the client can be established, the server must have answered its SYN.`]);
+    ex("reach(Lossy, c = estab ∧ s = synrcvd ∧ ack = false)", r`On the lossy network without timers, can the client be established while the server waits in ‹SYN-RECEIVED› for an ACK that no longer exists?`, [r`Which segment would have to be lost?`], { hide: true });
+    md(r`A busy server may give up on a handshake that has gone quiet, to free the memory it holds (a defence against floods of SYNs). It goes back to ‹LISTEN› and forgets the client:`);
+    m(tcp("GiveUp", LOSS + TIMERS + `
+  action giveUp when s = synrcvd do s := listen, synack := false` + OPEN));
+    ex("reach(GiveUp, c = estab ∧ s = listen)", r`Can the client end up established on a connection the server has forgotten?`, [
+      r`The client is established as soon as the SYN-ACK arrives. What if the server gives up just then?`,
+    ], { hide: true });
+    md(r`That state is a **half-open connection**. Real TCP repairs it when the client's next segment reaches a server that knows nothing of the connection: the server answers with a reset, and the client learns the connection is gone.`);
+    md(r`
+> [!summary]
+> A protocol is a transition system: each end's state, the messages in flight, and an action per thing that can happen to them, losses included. Reachability questions say what the two ends can disagree about (the client is ahead, never the server), and a reachable state with no step finds a handshake that waits for ever. Timers remove those states; that the handshake then finishes needs a fairness assumption on the network.
+`);
   });
 
   add("02-invariants.chalk", "Invariants and induction", "What holds in every reachable state: refuted by a shortest trace, proved by one step of induction, and strengthened when that step fails.", ({ sec, md, m, ex, lean, lx }) => {
@@ -3959,6 +5636,10 @@ theorem le_foldr_max (used : List Nat) : ∀ x ∈ used, x ≤ used.foldr max 0 
 > A linearizable call takes effect at one instant, so a model may make it one action; the promise ends at the call's return. The gap between two calls, on the table and on the lock, is where a per-key lock fails: the entry is removed and made again between a lookup and a take, and two jobs hold two locks for one key. A new lock is only a fresh name. Checking the table again after the take, and removing before releasing, fixes it; an inductive invariant proves it.
 `);
     md(r`‹Checked› never lets two in. But a job can take its lock, find the entry gone, and start over, and nothing says it will not find it gone every time, while the other job goes round and round. No state is bad; a good thing just never happens. Saying that needs a second kind of property, the next lesson's.`);
+    md(r`
+> [!note] A lock per key, held for one instant
+> Google's Omega scheduler keeps a sequence number per machine and checks it only at the instant a scheduler commits, with no lock while it plans: a per-key lock held for one step, paid for in retries. [Scheduling without a lock](#course=crdt&lesson=12&app=1), an optional notebook in the CRDT course, models it with this course's tools.
+`);
   });
 
   add("05-safety-liveness.chalk", "Safety and liveness", "Nothing bad happens; something good eventually does. Finite counterexamples and infinite ones, deadlocks and lassos, and the fairness a scheduler must promise.", ({ sec, md, m, ex, lean, lx }) => {
@@ -4429,6 +6110,10 @@ theorem normalize_sound : ∀ (ops : List Op) (s : Option Nat), run s (normalize
     ex("terminates(A; add(x, y) = x + y + 1, s(x) = x + 1)", r`Would a plainer weight do: does ‹A› pass with ‹add(x, y) = x + y + 1› and ‹s(x) = x + 1›? Answer ‹true› or ‹false›.`, [r`Work out both sides of the second rule: ‹add(s(x), y)› and ‹s(add(x, y))›.`], { hide: true });
     ex("rewrite(A, add(s(s(0)), s(s(0))))", r`What is ‹add(s(s(0)), s(s(0)))›, rewritten with ‹A›?`, []);
     md(r`
+> [!note] See also
+> [The client–server protocol](#course=collab&lesson=1), in the course on collaborative editing, closes a whole grid of diamonds with no termination argument: there each diamond is closed by the transform itself, so closing one opens no new fork.
+`);
+    md(r`
 > [!summary]
 > Rewrite rules are an optimization written as equations directed left to right. A measure every rule lowers shows termination; joinable critical pairs show local confluence; together they give each term one normal form. A pair that does not join points at a rule to fix, or one to add (Knuth–Bendix completion).
 `);
@@ -4501,9 +6186,1520 @@ theorem normalize_sound : ∀ (ops : List Op) (s : Option Nat), run s (normalize
 }, { leanPrelude: true });
 
 // ---------------------------------------------------------------------------------------------------
+// Course 4. Collaborative editing with a central server: crdt's Collaborative text (TP1, the TP2 false
+// tie, Jupiter named) built out into a client–server system. No Lean prelude: each lesson's Lean is in a
+// namespace of its own and stands alone, so the edits and the transform are written out again where a
+// lesson needs them (COLLAB_CORE), in the same words each time.
+/** The course's edits on text and its transform: insert and delete by position, recursive on the list so
+ *  that the proofs are inductions, and TP1's tie-break by site. */
+const COLLAB_CORE = r`/-- Insert ‹x› at position ‹p› (at the end, if ‹p› is past it). -/
+def insAt : Nat → Char → List Char → List Char
+  | 0, x, s => x :: s
+  | _ + 1, x, [] => [x]
+  | p + 1, x, y :: s => y :: insAt p x s
+
+/-- Delete the character at position ‹p› (nothing, if there is none). -/
+def delAt : Nat → List Char → List Char
+  | _, [] => []
+  | 0, _ :: s => s
+  | p + 1, y :: s => y :: delAt p s
+
+/-- An edit: insert a character at a place (typed at a site, for ties), delete one, or nothing. -/
+inductive Op where
+  | ins (p : Nat) (x : Char) (site : Nat)
+  | del (p : Nat)
+  | nop
+  deriving Repr, DecidableEq
+
+def Op.apply : Op → List Char → List Char
+  | .ins p x _, s => insAt p x s
+  | .del p, s => delAt p s
+  | .nop, s => s
+
+/-- ‹T a b›: ‹a›, rewritten to apply after a concurrent ‹b›. Of two inserts at one place, the lower site goes first. -/
+def T : Op → Op → Op
+  | .ins p x i, .ins q _ j => if q < p ∨ (q = p ∧ j < i) then .ins (p + 1) x i else .ins p x i
+  | .ins p x i, .del q => if q < p then .ins (p - 1) x i else .ins p x i
+  | .del p, .ins q _ _ => if q ≤ p then .del (p + 1) else .del p
+  | .del p, .del q => if q < p then .del (p - 1) else if q = p then .nop else .del p
+  | a, .nop => a
+  | .nop, _ => .nop
+
+/-- Apply edits in order to a text, and read the result. -/
+def run (os : List Op) (t : String) : String := String.ofList (os.foldl (fun s o => o.apply s) t.toList)`;
+/** A lesson's own copy of the course's edits and transform, in its namespace. */
+const collabCore = (ns, more = "") => `namespace ${ns}
+
+${COLLAB_CORE}${more ? `\n\n${more}` : ""}
+
+end ${ns}`.replace(/‹|›/g, "`");
+
+course("collab", "Collaborative editing with a server",
+  "From two sites to a working system: a client–server protocol in which TP1 is enough, optimistic concurrency on a versioned record, edits that compose, cursors and comments that move with the text, content that is never silently lost, the log as state and audit, lossless round trips, and a reference transform proved in Lean against which shipped code is tested.",
+  "Distributed systems", (add, app) => {
+
+  add("01-protocol.chalk", "The client–server protocol", "Jupiter in full: a client's in-flight batch and pending queue, versions and acknowledgements, broadcasts applied in version order, and the rebase of one sequence over another as a grid of TP1 squares, proved without a termination argument.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("The client–server protocol");
+    md(r`
+> [!goal]
+> Build the protocol a client and a central server run so that every client ends with the same text using only TP1: what each side keeps, how versions acknowledge edits, why a broadcast that arrives early waits, and the theorem that lets a client rebase a whole sequence of edits.
+`);
+    md(r`This course starts where [Collaborative text](#course=crdt&lesson=10&app=1) stops. There, TP1 made two sites agree, three sites needed TP2, and a transform that satisfies TP1 failed it; a server that puts every edit in one order was named as the way out, and not built. Here it is built. The course also uses the systems course's state machines ([Mutual exclusion](#course=systems&lesson=3)) and compares one proof with its [Rewriting systems](#course=systems&lesson=10). Each lesson's Lean is in a namespace of its own and uses nothing from other lessons or courses.`);
+    sec("Who keeps what");
+    md(r`
+> [!definition] The protocol
+> **The server** keeps the document as a **log** of edits: the edit at position $v$ of the log makes **version** $v$. A client sends a **batch** of edits with the version it was typed against, its **base**. The server rewrites the batch past the log's edits after the base, appends it, and so gives its edits the next versions. It answers the author with an **acknowledgement** naming the batch's last version, and sends every other client the rewritten edits, each with its version.
+>
+> **A client** applies its own edits at once. It keeps the batch it has sent and not seen acknowledged, the **in-flight** batch (one at a time), and the edits typed since, the **pending** queue, which it sends as the next batch once the acknowledgement comes. An edit from the server with version $v$ is applied only after version $v - 1$; one that arrives early is held back. Before applying it, the client rewrites it past its in-flight and pending edits, and rewrites those past it.
+`);
+    md(r`The two-party core, a client and a server each rewriting the other's edits past its own unacknowledged ones, is the Jupiter system's (Nichols, Curtis, Dixon and Lamping, 1995). One batch in flight at a time is a way of building the client that keeps the server's side simple: a batch is always typed against a version the server has.`);
+    sec("Versions, in order");
+    md(r`Two broadcasts, versions 2 and 3, are on their way to a client that has applied version 1. A network may deliver them in either order. A client that applies whatever arrives:`);
+    m(`let Eager = system(
+  var w2 in {sent, here, used}
+  var w3 in {sent, here, used}
+  init w2 = sent ∧ w3 = sent
+  action arrive2 when w2 = sent do w2 := here
+  action arrive3 when w3 = sent do w3 := here
+  action use2 when w2 = here do w2 := used
+  action use3 when w3 = here do w3 := used
+)`);
+    md(r`
+> [!try]
+> Version 3 was rewritten by the server for a text that already has version 2 in it. What goes wrong if the client applies it first?
+`);
+    m("invariant(Eager, w3 = used → w2 = used)", { step: 0 });
+    md(r`Version 3's positions count characters that version 2 put there, or no longer count ones it removed; applied first, it lands in the wrong place. The fix is a guard: version 3 waits until version 2 is used.`);
+    m(`let Hold = system(
+  var w2 in {sent, here, used}
+  var w3 in {sent, here, used}
+  init w2 = sent ∧ w3 = sent
+  action arrive2 when w2 = sent do w2 := here
+  action arrive3 when w3 = sent do w3 := here
+  action use2 when w2 = here do w2 := used
+  action use3 when w3 = here ∧ w2 = used do w3 := used
+)`);
+    m("invariant(Hold, w3 = used → w2 = used)");
+    md(r`Versions do the work that causal delivery did for the op-based CRDTs: a client applies the server's edits in the server's order, whatever order they arrive in.`);
+    sec("Rebasing is a grid");
+    md(r`A client with pending edits $a_1, \ldots, a_m$ hears of server edits $b_1, \ldots, b_n$ made concurrently. It must rewrite the $b$'s to follow its $a$'s, and the server must rewrite the $a$'s to follow its $b$'s, and the two texts must meet. Lay the two sequences out as the sides of a grid: each square has $a_i$ and $b_j$ on two sides, $T(b_j, a_i)$ and $T(a_i, b_j)$ on the other two, and closes by TP1. Rewriting one edit past a sequence is a row of squares; rewriting a sequence past a sequence is the whole grid.`);
+    lean(`namespace Jupiter
+
+variable {Op S : Type}
+
+/-- Apply a sequence of edits, first to last. -/
+def applyAll (apply : Op → S → S) : List Op → S → S
+  | [], s => s
+  | o :: os, s => applyAll apply os (apply o s)
+
+/-- One edit ‹a› past a sequence ‹bs›: ‹a› rewritten to follow all of ‹bs›, and ‹bs› rewritten to follow ‹a›. A row of the grid. -/
+def past (T : Op → Op → Op) (a : Op) : List Op → Op × List Op
+  | [] => (a, [])
+  | b :: bs => ((past T (T a b) bs).1, T b a :: (past T (T a b) bs).2)
+
+/-- A sequence ‹as› past a sequence ‹bs›: the grid, a row at a time. -/
+def rebase (T : Op → Op → Op) : List Op → List Op → List Op × List Op
+  | [], bs => ([], bs)
+  | a :: as, bs =>
+    ((past T a bs).1 :: (rebase T as (past T a bs).2).1, (rebase T as (past T a bs).2).2)
+
+/-- TP1: two concurrent edits, each rewritten past the other, meet. -/
+def TP1 (apply : Op → S → S) (T : Op → Op → Op) : Prop :=
+  ∀ a b s, apply (T b a) (apply a s) = apply (T a b) (apply b s)
+
+/-- A row closes: induction on the length of ‹bs›, one square per step. -/
+theorem past_meets (apply : Op → S → S) (T : Op → Op → Op) (h : TP1 apply T) :
+    ∀ (bs : List Op) (a : Op) (s : S),
+      applyAll apply (past T a bs).2 (apply a s) = apply (past T a bs).1 (applyAll apply bs s)
+  | [], a, s => rfl
+  | b :: bs, a, s => by
+    simp only [past, applyAll]
+    rw [h a b s]
+    exact past_meets apply T h bs (T a b) (apply b s)
+
+/-- The grid closes: induction on the length of ‹as›, one row per step. -/
+theorem tiling (apply : Op → S → S) (T : Op → Op → Op) (h : TP1 apply T) :
+    ∀ (as bs : List Op) (s : S),
+      applyAll apply (rebase T as bs).2 (applyAll apply as s)
+        = applyAll apply (rebase T as bs).1 (applyAll apply bs s)
+  | [], bs, s => rfl
+  | a :: as, bs, s => by
+    simp only [rebase, applyAll]
+    rw [tiling apply T h as (past T a bs).2 (apply a s), past_meets apply T h bs a s]
+
+end Jupiter`.replace(/‹|›/g, "`"));
+    md(r`
+> [!note] No termination argument
+> [Rewriting systems](#course=systems&lesson=10) got confluence from two facts: every critical pair joins (local confluence), and rewriting stops (termination). Newman's lemma needs both, because closing one diamond can open new forks, and only termination says that this stops. The grid has no such problem. $T$ supplies both sides that close each square, so closing a square opens nothing; the grid is $m \times n$ from the start, and the induction is on the two lengths. ‹tiling› uses TP1 and nothing else, for any edits and any states.
+`);
+    md(r`The course's transform, with the edits of [Collaborative text](#course=crdt&lesson=10&app=1), on "cat": the client has typed an s at the end and deleted the c; the server has meanwhile committed a b at the front and the deletion of the a.`);
+    lean(collabCore("Jupiter", r`def text (s : List Char) : String := String.ofList s
+
+def mine : List Op := [.ins 3 's' 1, .del 0]
+def theirs : List Op := [.ins 0 'b' 2, .del 2]
+
+#eval rebase T mine theirs
+#eval text (applyAll Op.apply (rebase T mine theirs).2 (applyAll Op.apply mine "cat".toList))   -- the client
+#eval text (applyAll Op.apply (rebase T mine theirs).1 (applyAll Op.apply theirs "cat".toList))   -- the server`));
+    md(r`Both read "bts". ‹tiling› says they always will, given TP1 for $T$. Here that is checked on this grid only; lesson 8 proves TP1 for this $T$ on every text, for edits that make sense on it.`);
+    sec("Why one order makes TP1 enough");
+    md(r`Three sites needed TP2 because a third edit $c$ could be rewritten past two concurrent edits $a$ and $b$ along two paths, $a$ then $T(b, a)$, or $b$ then $T(a, b)$, and the two had to agree. With a server, that never happens:
+
+- Every edit the server has committed has **one** rewritten form: the one in the log, at its version. Every client receives that form and applies it in version order, so all clients apply the same shared edits, rewritten the same way.
+- A client rewrites only against its **own** edits that are not yet shared, in-flight and pending. Those exist at that client alone; no one else will rewrite them along another path.
+- The server rewrites a batch only past log entries after its base, in log order: one path again.
+
+Every rewrite is a square of one grid between one client's unshared edits and the server's log. Two sites, so TP1.`);
+    md(r`
+> [!mistake]
+> "One central order" means one place that decides the next version. It need not be one machine, and one machine is not enough if it can hand out the same version twice. The next lesson breaks this on purpose.
+`);
+    sec("A client and a server in Lean");
+    lean(`namespace Jupiter
+
+/-- A client: its text, the last server version it has applied, the batch it has sent and not seen
+acknowledged, and the edits typed since. -/
+structure Client where
+  text : List Char
+  ver : Nat
+  flight : List Op := []
+  pending : List Op := []
+  deriving Repr
+
+/-- Type an edit: it applies at once and waits in the queue. -/
+def Client.edit (c : Client) (o : Op) : Client := { c with text := o.apply c.text, pending := c.pending ++ [o] }
+
+/-- Send the queue as the next batch, if none is in flight. -/
+def Client.send (c : Client) : Client :=
+  if c.flight.isEmpty then { c with flight := c.pending, pending := [] } else c
+
+/-- The batch is committed; its last edit is version ‹v›. -/
+def Client.ack (c : Client) (v : Nat) : Client := { c with ver := v, flight := [] }
+
+/-- Another client's edit, as the server committed it at version ‹c.ver + 1›: rewritten past this
+client's unacknowledged edits, which are rewritten past it. -/
+def Client.remote (c : Client) (o : Op) : Client :=
+  { c with text := (past T o (c.flight ++ c.pending)).1.apply c.text, ver := c.ver + 1,
+           flight := (past T o (c.flight ++ c.pending)).2.take c.flight.length,
+           pending := (past T o (c.flight ++ c.pending)).2.drop c.flight.length }
+
+/-- The server's commit: a batch typed against version ‹base›, rebased past the log after it. -/
+def commit (log : List Op) (base : Nat) (batch : List Op) : List Op :=
+  log ++ (rebase T batch (log.drop base)).1
+
+end Jupiter`.replace(/‹|›/g, "`"));
+    md(r`Client 1 types an s at the end of "cat" and sends it. Before the acknowledgement, the server's version 1 arrives: client 2 deleted the c. The client rewrites the delete past its in-flight insert and applies it; the server commits the insert, typed against version 0, past the delete:`);
+    lean(r`open Jupiter in
+#eval text ((((Client.mk "cat".toList 0 [] []).edit (.ins 3 's' 1)).send.remote (.del 0)).text)
+open Jupiter in
+#eval text (applyAll Op.apply (commit [.del 0] 0 [.ins 3 's' 1]) "cat".toList)`);
+    sec("Exercises");
+    ex("reach(Hold, w3 = here ∧ w2 = sent)", r`In ‹Hold›, can version 3 be waiting at the client while version 2 is still on its way? Answer ‹true› or ‹false›.`, [r`The network delivers in either order; only applying is guarded.`], { hide: true });
+    ex("invariant(Eager, w2 = used → w3 = used)", r`And the other way round: in ‹Eager›, is version 3 always used once version 2 is? Answer ‹true› or ‹false›.`, [r`Version 2 can be used before version 3 has even arrived.`], { hide: true });
+    lx(r`theorem Jupiter.rebase_nil_right {E : Type} (T : E → E → E) : ∀ (as : List E), Jupiter.rebase T as [] = (as, []) := by`, r`A client whose base is the server's latest version has nothing to rebase past. Prove that rebasing over no server edits changes nothing.`, r`  intro as
+  induction as with
+  | nil => rfl
+  | cons a as ih => simp only [Jupiter.rebase, Jupiter.past, ih]`, [
+      r`Induction on ‹as›.`,
+      r`In the step, unfold ‹rebase› and ‹past› and use the hypothesis: ‹simp only [Jupiter.rebase, Jupiter.past, ih]›.`,
+    ]);
+    md(r`
+> [!summary]
+> The server keeps a log and hands out versions; a client applies its own edits at once, keeps one batch in flight and a queue pending, applies the server's edits in version order, and rewrites each past its own unshared edits. Rebasing a sequence over a sequence is a grid of TP1 squares, and ‹tiling› proves it closes by induction on the two lengths, with no termination argument. One order means every shared edit has one rewritten form and every rewrite is between two sites: TP1 is enough.
+`);
+    md(r`The proof assumed one order. Next: what a real server has to do to have one, when several machines take commits.`);
+  });
+
+  add("02-optimistic.chalk", "Optimistic concurrency on a versioned record", "The lost update between two workers; a conditional write on the version and the read, rewrite, write, retry loop; a log that forks into a diamond, and the TP2 failure it brings back; why the server's one site is its version counter, and retries made harmless with an idempotency key.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Optimistic concurrency on a versioned record");
+    md(r`
+> [!goal]
+> See how a server that runs on several workers can lose the one order lesson 1 relied on, keep it with a conditional write on a version, and make the client's retries safe.
+`);
+    md(r`A server under load runs many stateless **workers**, each of which handles a batch from start to finish: it reads the document's record (its version and log) from a shared store, rewrites the batch past the log entries after its base, and writes the record back with the batch appended. No worker remembers anything between batches. The record is the only shared state.`);
+    sec("The lost update, again");
+    md(r`Two workers commit at once. Each reads the version, then writes the version it read plus one, and adds its edit to the count ‹n› of log entries. This is the lost update of the systems course's [first lesson](#course=systems&lesson=1), with a version in place of a counter:`);
+    m(`let Blind = system(
+  var ver in 1..3
+  var n in 1..3
+  var a in 0..3
+  var b in 0..3
+  var p in {read, write, done}
+  var q in {read, write, done}
+  init ver = 1 ∧ n = 1 ∧ a = 0 ∧ b = 0 ∧ p = read ∧ q = read
+  action pread when p = read do a := ver, p := write
+  action pwrite when p = write do ver := a + 1, n := n + 1, p := done
+  action qread when q = read do b := ver, q := write
+  action qwrite when q = write do ver := b + 1, n := n + 1, q := done
+)`);
+    md(r`
+> [!try]
+> Each commit is one log entry with one new version. Can the number of entries and the version disagree?
+`);
+    m("invariant(Blind, n = ver)", { step: 0 });
+    md(r`Both workers read version 1, and both write version 2. Two edits now claim to be the successor of version 1. The log is no longer a line, one edit per version; it is a **diamond**.`);
+    sec("The conditional write");
+    md(r`
+> [!definition] Conditional write
+> A **conditional write** replaces a record only if a field still has the value the writer read, in one step: a conditional put on a version attribute, as a key-value store provides, or a compare-and-set. If the field has changed, the write fails and changes nothing.
+`);
+    md(r`A worker then runs a loop: **read** the record, **rewrite** the batch past the entries after its base, **write** conditionally on the version it read, and on a conflict, **retry** from the read, which brings the newer entries to rewrite past.`);
+    m(`let Cond = system(
+  var ver in 1..3
+  var n in 1..3
+  var a in 0..3
+  var b in 0..3
+  var p in {read, write, done}
+  var q in {read, write, done}
+  init ver = 1 ∧ n = 1 ∧ a = 0 ∧ b = 0 ∧ p = read ∧ q = read
+  action pread when p = read do a := ver, p := write
+  action pcommit when p = write ∧ ver = a do ver := ver + 1, n := n + 1, p := done
+  action pretry when p = write ∧ ver ≠ a do p := read
+  action qread when q = read do b := ver, q := write
+  action qcommit when q = write ∧ ver = b do ver := ver + 1, n := n + 1, q := done
+  action qretry when q = write ∧ ver ≠ b do q := read
+)`);
+    m("invariant(Cond, n = ver)");
+    md(r`The check and the write are one action, as the atomic lock of [Mutual exclusion](#course=systems&lesson=3) made its check and take one. The guard ‹ver = a› is the condition; ‹pretry› is the loop going round.`);
+    sec("What a diamond does to clients");
+    md(r`Take "abc" at version 1, and three edits typed against it: $a$ inserts x at 1 (site 2), $b$ deletes position 1, the b (site 3), and $c$ inserts y at 2 (site 1). Workers 1 and 2 commit $a$ and $b$ without the condition, both as version 2. Worker 3 then takes $c$ and reads the log in its stored order, $a$ then $b$: it rewrites $b$ for $a$ and $c$ past both. The client that typed $c$ received the broadcasts the other way round, $b$ and then $a$, and rebased in that order.`);
+    lean(collabCore("Occ", r`def a : Op := .ins 1 'x' 2
+def b : Op := .del 1
+def c : Op := .ins 2 'y' 1
+
+#eval run [a, T b a] "abc"
+#eval run [b, T a b] "abc"
+-- worker 3: c past a, then past b rewritten for a
+#eval run [a, T b a, T (T c a) (T b a)] "abc"
+-- the client: c past b, then past a rewritten for b
+#eval run [b, T a b, T (T c b) (T a b)] "abc"`));
+    md(r`Both agree on $a$ and $b$, "axc", by TP1. They disagree on $c$: the server's text is "axyc" and the client's "ayxc". After the delete, x and y both sit at position 1, a tie that was not a tie when they were typed, and the two paths break it differently: the false tie of [Collaborative text](#course=crdt&lesson=10&app=1)'s TP2 example, from a server this time. Two edits with one version gave $b$ two rewritten forms, and lesson 1's argument needed one.`);
+    md(r`
+> [!note] The site is the conditional write
+> Lesson 1's server was one site. With many workers, the site is not any worker: it is the version counter together with its conditional write, the one place where "the next version" is decided. Any number of workers that commit through one conditional write on one version form a single site, and the log stays a line. A worker that writes around it, or two stores that each hand out versions, is a second site, and TP1 is no longer enough.
+`);
+    sec("Retries and duplicates");
+    md(r`A client that hears no acknowledgement cannot tell a lost batch from a lost reply, so it sends the batch again: [Effectively-once delivery](#course=systems&lesson=8)'s duplicate. Applied twice, an insert types its character twice. The fix is that lesson's: give each batch an **idempotency key** (the client and its own count of batches), and let the server commit a key once; a batch it has seen is answered with the acknowledgement it already gave. The key goes in the same conditional write as the entry, so a retry and the first attempt cannot both succeed.`);
+    lean(`namespace Occ
+
+/-- The server's record: the log, each entry with the key of the batch it came from. -/
+structure Record where
+  log : List (Nat × List Op)
+  deriving Repr
+
+/-- Commit a batch under a key, unless that key is already in the log. -/
+def submit (r : Record) (key : Nat) (batch : List Op) : Record :=
+  if r.log.any (·.1 == key) then r else ⟨r.log ++ [(key, batch)]⟩
+
+#eval (submit (submit ⟨[]⟩ 7 [.ins 0 'x' 1]) 7 [.ins 0 'x' 1]).log.length
+
+end Occ`);
+    sec("Exercises");
+    ex("reach(Cond, p = read ∧ q = done ∧ a = 1)", r`In ‹Cond›, can a worker have to go back and read again after the other committed? Answer ‹true› or ‹false›.`, [r`Let both read version 1, then let ‹q› commit first.`], { hide: true });
+    ex("reach(Cond, p = done ∧ q = done)", r`Do both workers' batches get committed in some run of ‹Cond›? Answer ‹true› or ‹false›.`, []);
+    lx(r`theorem Occ.submit_twice (r : Occ.Record) (key : Nat) (batch : List Occ.Op) :
+    Occ.submit (Occ.submit r key batch) key batch = Occ.submit r key batch := by`, r`Prove that a batch submitted twice under one key is committed once.`, r`  unfold Occ.submit
+  by_cases h : r.log.any (·.1 == key) <;> simp [h]`, [
+      r`Unfold ‹submit› and split on whether the key was already in the log: ‹by_cases h : r.log.any (·.1 == key)›.`,
+      r`If it was not, the inner submit appends an entry with that key, so the outer one finds it: ‹simp [h]› knows ‹List.any_append›.`,
+    ]);
+    md(r`
+> [!summary]
+> Workers that read a version and write it plus one lose an update: two commits get one version, and the log forks into a diamond. Readers then rebase along different paths and diverge, the TP2 false tie again ("axyc" against "ayxc"). A conditional write on the version, in a read, rewrite, write, retry loop, keeps the log a line: the server's one site is its version counter and conditional write, however many workers use them. Retries are made harmless with an idempotency key per batch, committed in the same write.
+`);
+    md(r`A batch is several edits sent as one. What is the one edit they amount to?`);
+  });
+
+  /** Lesson 3's associativity proof: a case for each way the three edits can start, each one unfolding
+   *  ‹compose› and using the statement for shorter edits. */
+  const assocCases = (() => {
+    const out = ["  | a, b, [] => by simp only [compose]", "  | a, b, .ins x :: c => by simp only [compose]; congr 1; exact compose_assoc a b c"];
+    const step = "by simp only [compose] <;> first | rfl | exact compose_assoc _ _ _ | (congr 1; exact compose_assoc _ _ _)";
+    for (const ch of ["keep", "del"]) {
+      out.push(`  | a, [], .${ch} :: c => by simp only [compose, compose_nil_left]`,
+        `  | a, .ins y :: b, .${ch} :: c => ${step}`);
+      for (const bh of ["keep", "del"]) out.push(
+        `  | [], .${bh} :: b, .${ch} :: c => by simp only [compose, compose_nil_left]`,
+        `  | .ins z :: a, .${bh} :: b, .${ch} :: c => ${step}`,
+        `  | .keep :: a, .${bh} :: b, .${ch} :: c => ${step}`,
+        `  | .del :: a, .${bh} :: b, .${ch} :: c => by simp only [compose]; congr 1; rw [compose_assoc a]; simp only [compose]`);
+    }
+    return out.join("\n");
+  })();
+
+  add("03-composing.chalk", "Composing edits", "One edit that does two: composition is a monoid, applying the composite is applying one then the other, and it is neither commutative nor idempotent, so a queue rolled up by composition keeps its order; then runs of retain, insert and delete with formatting, and concurrent formatting by priority.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Composing edits");
+    md(r`
+> [!goal]
+> Compose two edits into one, prove that the composite does what the two did one after the other, find the laws composition has and the two it lacks, and extend edits to formatted text.
+`);
+    md(r`A client's pending queue can grow to hundreds of keystrokes while a batch is in flight. Sending them as one edit is smaller, and rebasing one edit is cheaper than rebasing hundreds. That needs **composition**: one edit that does what two did in turn.`);
+    sec("Edits as steps");
+    md(r`Lesson 1's edits name a position. To compose them, write an edit instead as a walk along the text: for each character, **keep** it or **delete** it, and **insert** new characters between. Past the edit's last step, the rest of the text is kept. Inserting x at position 1 is ‹[keep, ins 'x']›; deleting position 2 is ‹[keep, keep, del]›.`);
+    lean(`namespace Compose
+
+/-- One step of an edit, read left to right along the text: keep the next character, insert one, or delete the next. -/
+inductive Step where
+  | keep
+  | ins (c : Char)
+  | del
+  deriving Repr, DecidableEq
+
+/-- An edit is a list of steps; past its last step, the text is kept. -/
+abbrev Edit := List Step
+
+def apply : Edit → List Char → List Char
+  | [], s => s
+  | .ins c :: e, s => c :: apply e s
+  | .keep :: e, x :: s => x :: apply e s
+  | .del :: e, _ :: s => apply e s
+  | .keep :: e, [] => apply e []
+  | .del :: e, [] => apply e []
+
+/-- ‹compose a b›: one edit that does ‹a›, then ‹b›. ‹b›'s steps walk along ‹a›'s output: ‹b›'s inserts go in
+as they are, ‹a›'s deletes happen before ‹b› sees anything, and each keep or delete of ‹b› meets what ‹a›
+kept or inserted. -/
+def compose : Edit → Edit → Edit
+  | a, [] => a
+  | a, .ins c :: b => .ins c :: compose a b
+  | [], b => b
+  | .del :: a, b => .del :: compose a b
+  | .ins _ :: a, .del :: b => compose a b
+  | .ins c :: a, .keep :: b => .ins c :: compose a b
+  | .keep :: a, .keep :: b => .keep :: compose a b
+  | .keep :: a, .del :: b => .del :: compose a b
+
+def run (e : Edit) (t : String) : String := String.ofList (apply e t.toList)
+
+#eval compose [.keep, .ins 'x'] [.keep, .keep, .keep, .del]
+#eval run (compose [.keep, .ins 'x'] [.keep, .keep, .keep, .del]) "abcd"
+#eval run [.keep, .keep, .keep, .del] (run [.keep, .ins 'x'] "abcd")
+
+end Compose`.replace(/‹|›/g, "`"));
+    md(r`Inserting x after the a and then deleting the third character of the result (the c, now that x has moved it) is one edit that keeps a, inserts x, keeps b and deletes c.`);
+    sec("A monoid");
+    md(r`
+> [!definition] Monoid
+> A **monoid** is a set with an operation that is **associative**, $(a \cdot b) \cdot c = a \cdot (b \cdot c)$, and has an **identity** $e$, with $e \cdot a = a = a \cdot e$. A semilattice ([Semilattices](#course=order-lattices&lesson=5)) is a monoid that is also commutative and idempotent.
+`);
+    md(r`Composition is a monoid with the empty edit as identity, and composing is applying one edit after the other, on any text the first edit fits: one that does not keep or delete past its end.`);
+    lean(`namespace Compose
+
+/-- How many characters of its text an edit reads: its keeps and deletes. -/
+def reads : Edit → Nat
+  | [] => 0
+  | .ins _ :: e => reads e
+  | _ :: e => reads e + 1
+
+/-- Composing is applying one after the other, on any text the first edit fits. -/
+theorem apply_compose : ∀ (a b : Edit) (s : List Char), reads a ≤ s.length →
+    apply (compose a b) s = apply b (apply a s)
+  | [], [], s, _ => by simp only [compose, apply]
+  | _ :: _, [], s, _ => by simp only [compose, apply]
+  | a, .ins c :: b, s, h => by
+    cases a <;> simp only [compose, apply] <;> rw [apply_compose _ b s h] <;> rfl
+  | [], .keep :: b, s, _ => by simp only [compose, apply]
+  | [], .del :: b, s, _ => by simp only [compose, apply]
+  | .del :: a, .keep :: b, x :: s, h => by
+    simp only [compose, apply]; exact apply_compose a _ s (by simp [reads] at h; omega)
+  | .del :: a, .del :: b, x :: s, h => by
+    simp only [compose, apply]; exact apply_compose a _ s (by simp [reads] at h; omega)
+  | .ins _ :: a, .del :: b, s, h => by
+    simp only [compose, apply]; exact apply_compose a b s h
+  | .ins c :: a, .keep :: b, s, h => by
+    simp only [compose, apply]; rw [apply_compose a b s h]
+  | .keep :: a, .keep :: b, x :: s, h => by
+    simp only [compose, apply]; rw [apply_compose a b s (by simp [reads] at h; omega)]
+  | .keep :: a, .del :: b, x :: s, h => by
+    simp only [compose, apply]; exact apply_compose a b s (by simp [reads] at h; omega)
+  | .del :: _, .keep :: _, [], h => by simp [reads] at h
+  | .del :: _, .del :: _, [], h => by simp [reads] at h
+  | .keep :: _, .keep :: _, [], h => by simp [reads] at h
+  | .keep :: _, .del :: _, [], h => by simp [reads] at h
+termination_by a b => a.length + b.length
+
+/-- The empty edit is the identity, on either side. -/
+theorem compose_nil_left : ∀ (b : Edit), compose [] b = b
+  | [] => by simp only [compose]
+  | .ins c :: b => by simp only [compose, compose_nil_left b]
+  | .keep :: b => by simp only [compose]
+  | .del :: b => by simp only [compose]
+
+theorem compose_nil_right (a : Edit) : compose a [] = a := by cases a <;> simp only [compose]
+
+/-- Composition is associative, as edits: the same list of steps, however three edits are grouped. -/
+theorem compose_assoc : ∀ (a b c : Edit), compose (compose a b) c = compose a (compose b c)
+${assocCases}
+termination_by a b c => a.length + b.length + c.length
+
+end Compose`);
+    md(r`Both proofs follow ‹compose›: a case for each way the edits can start, each one unfolding a step and using the statement for shorter edits. The hypothesis of ‹apply_compose› is needed. On the empty text, ‹[keep, ins 'z']› finds nothing to keep and gives "z"; then ‹[keep, del]› keeps the z. But ‹compose› pairs the second edit's keep with the first edit's keep, as if that had kept a character, and its delete with the z: the composite is ‹[keep]›, which gives "". The first edit read past the end of its text, and then it is not about that text.`);
+    sec("What composition lacks");
+    md(r`
+> [!try]
+> Is typing x then y the same as typing y then x? Is typing x twice the same as typing it once?
+`);
+    lean(r`#eval (Compose.run (Compose.compose [.ins 'x'] [.ins 'y']) "ab", Compose.run (Compose.compose [.ins 'y'] [.ins 'x']) "ab")
+#eval (Compose.run (Compose.compose [.ins 'x'] [.ins 'x']) "ab", Compose.run [.ins 'x'] "ab")
+
+-- ‹compose› is defined by well-founded recursion, which ‹decide› does not unfold; ‹simp› uses its equations
+example : Compose.apply (Compose.compose [.ins 'x'] [.ins 'y']) "ab".toList
+    ≠ Compose.apply (Compose.compose [.ins 'y'] [.ins 'x']) "ab".toList := by simp [Compose.compose, Compose.apply]
+example : Compose.apply (Compose.compose [.ins 'x'] [.ins 'x']) "ab".toList
+    ≠ Compose.apply [.ins 'x'] "ab".toList := by simp [Compose.compose, Compose.apply]`.replace(/‹|›/g, "`"));
+    md(r`Neither commutative nor idempotent. Even overwriting, which is idempotent, is not commutative. A one-character document with three edits, ‹id› (change nothing) and "set it to x" and "set it to y", composed left to right:`);
+    m("let W = op({id, x, y}; [id, x, y; x, x, y; y, x, y])");
+    m("associative(W)");
+    m("commutative(W)", { work: true });
+    md(r`
+> [!mistake]
+> A queue of edits is not a set of updates to merge. [Semilattices](#course=order-lattices&lesson=5) found the laws a merge needs so that order, grouping and repetition do not matter; composition has only one of them, associativity. So a queue may be rolled up in any grouping (‹compose_assoc›: compose the first hundred keystrokes, then the next, or pairs at a time), but never in another order, and never with a repeat. A queue that rolls edits up with a merge, or that sorts or deduplicates them, changes what the user typed.
+`);
+    sec("Runs and formatting");
+    md(r`Rich-text editors usually write an edit as **runs** rather than single steps: retain $n$ characters, insert a string, delete $n$ characters (a format often called a delta). A run of retains can also carry **attributes**: "make these characters bold", "set their colour". Runs are steps compressed, so their composition is the one above, run length aside:`);
+    lean(`namespace Compose
+
+/-- A run: keep ‹n› characters, insert a string, or delete ‹n›. -/
+inductive Run where
+  | retain (n : Nat)
+  | insert (s : String)
+  | delete (n : Nat)
+  deriving Repr
+
+def Run.steps : Run → Edit
+  | .retain n => List.replicate n .keep
+  | .insert s => s.toList.map .ins
+  | .delete n => List.replicate n .del
+
+def runs (rs : List Run) : Edit := rs.flatMap Run.steps
+
+#eval run (runs [.retain 6, .delete 5, .insert "there"]) "hello world"
+
+end Compose`);
+    md(r`Formatting changes on one character transform like edits. Two people make the same word bold and not bold at once: a format change sets some attributes and leaves the rest, and of two concurrent changes to one attribute, the one with **priority** keeps its value; the other drops that attribute and keeps the rest of its change. Priority is a tie-break, as the site was for two inserts at one place: arbitrary, but the same at every site.`);
+    lean(`namespace Compose
+
+/-- A character's format: a value for each attribute it has. -/
+abbrev Format := String → Option String
+
+/-- A format change: a new value for each attribute it sets, ‹none› for those it leaves alone. -/
+abbrev Change := String → Option String
+
+def Change.apply (c : Change) (f : Format) : Format := fun k => (c k).or (f k)
+
+/-- ‹c›, rewritten past a concurrent ‹d›. With priority, ‹c› keeps everything; without, it drops what ‹d› sets. -/
+def Change.T (c d : Change) (priority : Bool) : Change :=
+  fun k => if priority then c k else if (d k).isSome then none else c k
+
+def bold : Change := fun k => if k = "bold" then some "true" else none
+def plainRed : Change := fun k => if k = "bold" then some "false" else if k = "color" then some "red" else none
+def none₀ : Format := fun _ => none
+
+-- bold has priority: both sites end bold, and red
+#eval ((plainRed.T bold false).apply (bold.apply none₀) "bold", (bold.T plainRed true).apply (plainRed.apply none₀) "bold")
+#eval ((plainRed.T bold false).apply (bold.apply none₀) "color", (bold.T plainRed true).apply (plainRed.apply none₀) "color")
+
+end Compose`.replace(/‹|›/g, "`"));
+    sec("Exercises");
+    ex("identity(W)", r`Which element of ‹W› is its identity?`, [r`The edit that changes nothing.`]);
+    ex("idempotent(W)", r`Is overwriting idempotent: is setting the character to x twice the same as once? Answer ‹true› or ‹false›.`, [r`Read the diagonal of the table.`], { hide: true });
+    lx(r`theorem Compose.change_tp1 (c d : Compose.Change) (f : Compose.Format) :
+    (d.T c false).apply (c.apply f) = (c.T d true).apply (d.apply f) := by`, r`Prove TP1 for format changes: ‹c› with priority, ‹d› without, on any format.`, r`  funext k
+  simp only [Compose.Change.apply, Compose.Change.T]
+  cases hc : c k <;> cases hd : d k <;> simp [Option.or]`, [
+      r`Two formats are equal when they agree on every attribute: ‹funext k›.`,
+      r`Unfold ‹Change.apply› and ‹Change.T›, then split on what ‹c› and ‹d› say about ‹k›: ‹cases hc : c k <;> cases hd : d k›.`,
+    ]);
+    md(r`
+> [!summary]
+> Edits compose: ‹apply (compose a b) = apply b ∘ apply a› on any text the first fits, composition is associative and has the empty edit as identity, so edits form a monoid. It is not commutative and not idempotent, so a queue may be rolled up in any grouping but must keep its order and its repeats, which a merge would not. Runs of retain, insert and delete are steps compressed, and attributes on retains transform with a priority to break the tie.
+`);
+    md(r`An edit moves the text under everything that points into it: cursors, selections, comments. Next: moving them with it.`);
+  });
+
+  app("03a-patches.chalk", "Patches as morphisms", "Edits as arrows between texts, composition as their composition, and the merge of two concurrent inserts as a pushout: the merged order is a partial order, and the tie-break is what makes it a text.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Patches as morphisms");
+    md(r`
+> [!goal]
+> Read edits as arrows from one text to another, and a merge of two concurrent edits as the smallest text both lead into; see where that picture needs a tie-break.
+`);
+    md(r`An application of lesson 3, outside the course's order. Lesson 3's edits composed into a monoid. A monoid has one object; edits have two ends, the text before and the text after, and an edit only composes with one that starts where it ends. That is a **category**: texts as objects, edits as arrows, composition and the empty edit as before.`);
+    sec("An insert is an embedding");
+    md(r`For inserts, the arrow is visible in the texts: the old text sits inside the new one, in order, as a **sublist**. Composition of inserts is composition of embeddings.`);
+    lean(`namespace Patches
+
+def insAt : Nat → Char → List Char → List Char
+  | 0, x, s => x :: s
+  | _ + 1, x, [] => [x]
+  | p + 1, x, y :: s => y :: insAt p x s
+
+end Patches`);
+    lx(r`theorem Patches.sublist_insAt (x : Char) : ∀ (p : Nat) (s : List Char), s.Sublist (Patches.insAt p x s) := by`, r`Prove that an insert keeps the old text, in order, inside the new one.`, r`  intro p s
+  induction s generalizing p with
+  | nil => cases p <;> exact List.Sublist.slnil.cons _
+  | cons y s ih =>
+    cases p with
+    | zero => exact (List.Sublist.refl _).cons _
+    | succ p => exact (ih p).cons_cons y`, [
+      r`Induction on ‹s›, for every ‹p›, then cases on ‹p›.`,
+      r`‹List.Sublist.cons› adds an element on the right only; ‹List.Sublist.cons_cons› adds the same element on both sides.`,
+    ]);
+    sec("A merge is a pushout");
+    md(r`Two concurrent edits $a : s \to s_a$ and $b : s \to s_b$ start from one text. A merge is a text $m$ with edits $s_a \to m$ and $s_b \to m$ such that both ways round from $s$ agree: TP1's square. The best merge is the **pushout**: a merge through which every other merge factors, the least text that both lead into, adding nothing either side did not.`);
+    md(r`For inserts, order theory computes it. Take "ab", and two inserts between a and b: x by one person and y by another. A text is a chain of characters; each side knows its chain, and the merge must contain both orders and nothing more:`);
+    m("let Mg = poset({a, x, y, b}; a < x, x < b, a < y, y < b)");
+    m("le(Mg, x, y)");
+    m("le(Mg, y, x)");
+    md(r`
+> [!note] The pushout is not a text
+> The least order containing both sides has x and y incomparable: nothing either person did puts one before the other. A text needs a chain. So the pushout of the two inserts exists among partial orders of characters, and not among texts; choosing a chain above it (x before y, or y before x) adds information that neither edit had. That choice is the tie-break by site of lesson 1, and the RGA's order on ids in [Collaborative text](#course=crdt&lesson=10&app=1). Mimram and Di Giusto, "A Categorical Theory of Patches", develop patches as morphisms and merging as pushouts in full; this notebook builds only the smallest piece of the idea, for inserts, and does not follow their construction.
+`);
+    sec("Exercises");
+    ex("join(Mg, x, y)", r`In the merged order, what is the least character after both x and y?`, [r`Both inserts went before the b.`]);
+    md(r`
+> [!summary]
+> Edits are arrows between texts and compose as arrows do; an insert embeds the old text in the new one. A merge of two concurrent edits is a square, and the best merge a pushout. For two inserts at one place the pushout is a partial order in which the two characters are incomparable: a text needs a tie-break on top.
+`);
+  });
+
+  add("04-positions.chalk", "Mapping positions", "Moving a cursor, a selection or a comment's anchor through an edit, with a bias for text typed exactly there; the map is monotone, so ranges stay ranges; a range whose text is deleted collapses, and the policy that keeps it, flagged.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Mapping positions");
+    md(r`
+> [!goal]
+> Move a position through an edit, prove that the move keeps positions in order, and decide what happens to a comment whose text has been deleted.
+`);
+    md(r`Not only edits point into the text. A cursor, a selection, a comment anchored to a phrase: each is a **position**, a gap between two characters numbered from 0, or a pair of them. When an edit arrives, every position must move with the text, or it points at the wrong place, as Bob's delete did in [Collaborative text](#course=crdt&lesson=10&app=1).`);
+    sec("Bias");
+    md(r`An insert at $p$ moves every position after $p$ one place right and leaves those before it. A position exactly at $p$ could go either way: a cursor where someone else types should usually stay before their text, and a cursor where you type goes after yours. That choice is the position's **bias**, left or right. A delete at $p$ removes the character between gaps $p$ and $p + 1$, and the two gaps become one.`);
+    lean(`namespace Anchor
+
+/-- An edit, as far as a position cares: an insert at ‹p›, or a delete at ‹p›. -/
+inductive Op where
+  | ins (p : Nat)
+  | del (p : Nat)
+  deriving Repr, DecidableEq
+
+/-- Which way a position goes when text is inserted exactly there. -/
+inductive Bias where
+  | left   -- stay before the new text
+  | right  -- move past it
+  deriving Repr, DecidableEq
+
+/-- Where position ‹k› is after the edit. -/
+def map (b : Bias) : Op → Nat → Nat
+  | .ins p, k => if k < p ∨ (k = p ∧ b = .left) then k else k + 1
+  | .del p, k => if k ≤ p then k else k - 1
+
+#eval (List.range 6).map (map .left (.ins 2))
+#eval (List.range 6).map (map .right (.ins 2))
+#eval (List.range 6).map (map .left (.del 2))
+
+end Anchor`.replace(/‹|›/g, "`"));
+    md(r`A text of five characters has positions 0 to 5. The same maps as the engine's maps between chains, with the insert at 2, right bias:`);
+    m("let P6 = chain(6)");
+    m("let P7 = chain(7)");
+    m("let insR = map(P6, P7; 0->0, 1->1, 2->3, 3->4, 4->5, 5->6)");
+    m("monotone(P6, P7, insR)");
+    sec("Monotone");
+    md(r`
+> [!try]
+> A selection runs from position 1 to position 4. Could an edit move its start past its end?
+`);
+    md(r`Not if mapping is **monotone**, in the sense of [Special elements and monotone maps](#course=order-lattices&lesson=2): $k \le m$ implies $\mathrm{map}(k) \le \mathrm{map}(m)$. Positions are a chain, and an edit maps the chain of the old text into the chain of the new one, keeping order. So whatever was before something stays before it, or lands on it.`);
+    lean(`namespace Anchor
+
+theorem map_monotone (b : Bias) (o : Op) {k m : Nat} (h : k ≤ m) : map b o k ≤ map b o m := by
+  cases b <;> cases o <;> simp only [map, reduceCtorEq, and_true, and_false, or_false] <;> split <;> split <;> omega
+
+/-- Left bias never goes further than right bias. -/
+theorem map_left_le_right (o : Op) (k : Nat) : map .left o k ≤ map .right o k := by
+  cases o <;> simp only [map, reduceCtorEq, and_true, and_false, or_false] <;> split <;> (try split) <;> omega
+
+end Anchor`);
+    md(r`A map that is not monotone, such as one that mirrors the text, turns selections inside out:`);
+    m("let mirror = map(P6, P7; 0->6, 1->5, 2->3, 3->2, 4->1, 5->0)");
+    m("monotone(P6, P7, mirror)", { work: true });
+    sec("Ranges and anchors");
+    md(r`A range is two positions, a start and an end. Give its start left bias and its end right bias: text typed at either edge joins the range, and by the two theorems a range with start $\le$ end keeps start $\le$ end. (The other choice, start right and end left, keeps typed text out but can turn an empty range inside out: an insert at its one position moves the start past the end. A range of that kind needs a clamp.)`);
+    md(r`
+> [!try]
+> A comment is anchored to "bc" in "abcd", positions 1 to 3. Someone deletes the b and then the c. Where is the comment?
+`);
+    lean(`namespace Anchor
+
+/-- A range, from ‹start› to ‹stop›, and whether its text has been deleted. -/
+structure Range where
+  start : Nat
+  stop : Nat
+  orphaned : Bool := false
+  deriving Repr, DecidableEq
+
+/-- Map a range through an edit. A range that had text and has none left is kept, and flagged. -/
+def Range.map (r : Range) (o : Op) : Range :=
+  { start := Anchor.map .left o r.start, stop := Anchor.map .right o r.stop,
+    orphaned := r.orphaned || (r.start < r.stop && Anchor.map .left o r.start == Anchor.map .right o r.stop) }
+
+#eval [Op.del 1, Op.del 1].foldl Range.map ⟨1, 3, false⟩
+
+theorem Range.map_ordered (r : Range) (o : Op) (h : r.start ≤ r.stop) : (r.map o).start ≤ (r.map o).stop :=
+  Nat.le_trans (map_monotone .left o h) (map_left_le_right o r.stop)
+
+/-- Anchors are mapped, never dropped. -/
+theorem mapAll_length (rs : List Range) (o : Op) : (rs.map (·.map o)).length = rs.length := by simp
+
+end Anchor`.replace(/‹|›/g, "`"));
+    md(r`The range **collapses**: start and end meet at 1, with nothing between them. Each delete was fine on its own; the comment's text is simply gone. The same happens when the deletes are concurrent with the comment, on another client: once the server has ordered them, the client maps its anchor through each.`);
+    md(r`
+> [!definition] Orphaned anchors
+> An anchor whose text has been deleted is **orphaned**. The policy here: an orphaned anchor is kept, at the place its text was, and flagged; it is never deleted by the mapping. A person can then see the comment and decide, and an undo that brings the text back finds the anchor still there.
+`);
+    md(r`
+> [!mistake]
+> Deleting collapsed anchors is the tempting tidy-up, and it loses a comment someone wrote because of an edit someone else made, possibly concurrently, without either of them deciding to. ‹mapAll_length› is the policy as a theorem: mapping keeps every anchor. Whether it stays flagged is the next exercise.
+`);
+    sec("Exercises");
+    m("let P5 = chain(5)");
+    m("let delm = map(P6, P5; 0->0, 1->1, 2->2, 3->2, 4->3, 5->4)");
+    ex("monotone(P6, P5, delm)", r`‹delm› is the map of a delete at 2 on a text of five characters. Is it monotone? Answer ‹true› or ‹false›.`, [r`Gaps 2 and 3 become one gap; does anything overtake anything?`], { hide: true });
+    lx(r`theorem Anchor.Range.map_keeps_flag (r : Anchor.Range) (o : Anchor.Op) (h : r.orphaned = true) : (r.map o).orphaned = true := by`, r`Prove that an orphaned anchor stays flagged through any edit, even one that types text back into it.`, r`  simp [Anchor.Range.map, h]`, [r`Unfold ‹Range.map›: the new flag is the old one, or something.`]);
+    md(r`
+> [!summary]
+> A position moves through an edit: past an insert before it, back past a delete before it, and, for an insert exactly there, the way its bias says. The map is monotone, and left bias stays below right bias, so a range with its start biased left and its end right stays a range. A range whose text is deleted collapses; it is kept and flagged as orphaned, never dropped.
+`);
+    md(r`Collapsing is one way for content to vanish. Next: a theorem that the transform itself never loses what people typed.`);
+  });
+
+  /** Lesson 5's lemmas: what stands where after an insert or a delete. Lesson 8 states them again. */
+  const PRESERVE_LEMMAS = r`theorem mem_insAt (x : Char) : ∀ (p : Nat) (s : List Char), x ∈ insAt p x s
+  | 0, _ => List.mem_cons_self
+  | _ + 1, [] => List.mem_cons_self
+  | p + 1, _ :: s => List.mem_cons_of_mem _ (mem_insAt x p s)
+
+theorem mem_insAt_of_mem {z : Char} (x : Char) : ∀ (p : Nat) (s : List Char), z ∈ s → z ∈ insAt p x s
+  | 0, s, h => List.mem_cons_of_mem _ h
+  | _ + 1, [], h => by cases h
+  | p + 1, y :: s, h => by
+    rcases List.mem_cons.mp h with rfl | h
+    · exact List.mem_cons_self
+    · exact List.mem_cons_of_mem _ (mem_insAt_of_mem x p s h)
+
+theorem getElem?_insAt (x : Char) : ∀ (p : Nat) (s : List Char), p ≤ s.length → (insAt p x s)[p]? = some x
+  | 0, s, _ => rfl
+  | _ + 1, [], h => by simp at h
+  | p + 1, _ :: s, h => by
+    simp only [insAt, List.getElem?_cons_succ]; exact getElem?_insAt x p s (by simp at h; omega)
+
+/-- Deleting at ‹q› keeps what stands at any other place ‹p›. -/
+theorem mem_delAt {z : Char} : ∀ (l : List Char) (p q : Nat), l[p]? = some z → q ≠ p → z ∈ delAt q l
+  | [], _, _, h, _ => by simp at h
+  | y :: l, 0, 0, _, hq => absurd rfl hq
+  | y :: l, 0, q + 1, h, _ => by simp at h; subst h; exact List.mem_cons_self
+  | y :: l, p + 1, 0, h, _ => by simp only [delAt]; exact List.mem_of_getElem? h
+  | y :: l, p + 1, q + 1, h, hq => by
+    simp only [delAt]
+    exact List.mem_cons_of_mem _ (mem_delAt l p q (by simpa using h) (by omega))
+
+theorem getElem?_insAt_lt (x : Char) : ∀ (s : List Char) (p q : Nat), q < p → p ≤ s.length → (insAt p x s)[q]? = s[q]?
+  | [], p + 1, q, _, h => by simp at h
+  | y :: s, p + 1, 0, _, _ => rfl
+  | y :: s, p + 1, q + 1, h, h' => by
+    simp only [insAt, List.getElem?_cons_succ]; exact getElem?_insAt_lt x s p q (by omega) (by simp at h'; omega)
+  | _, 0, q, h, _ => by omega
+
+theorem getElem?_insAt_ge (x : Char) : ∀ (s : List Char) (p q : Nat), p ≤ q → (insAt p x s)[q + 1]? = s[q]?
+  | s, 0, q, _ => rfl
+  | [], p + 1, q, h => by cases q <;> simp [insAt]
+  | y :: s, p + 1, 0, h => by omega
+  | y :: s, p + 1, q + 1, h => by
+    simp only [insAt, List.getElem?_cons_succ]; exact getElem?_insAt_ge x s p q (by omega)
+
+theorem delAt_nil (p : Nat) : delAt p [] = [] := by cases p <;> rfl
+
+theorem getElem?_delAt_lt : ∀ (s : List Char) (p q : Nat), q < p → (delAt p s)[q]? = s[q]?
+  | [], p, q, _ => by simp [delAt_nil]
+  | y :: s, p + 1, 0, _ => rfl
+  | y :: s, p + 1, q + 1, h => by
+    simp only [delAt, List.getElem?_cons_succ]; exact getElem?_delAt_lt s p q (by omega)
+  | _ :: _, 0, q, h => by omega
+
+theorem getElem?_delAt_gt : ∀ (s : List Char) (p q : Nat), p < q → (delAt p s)[q - 1]? = s[q]?
+  | [], p, q, _ => by simp [delAt_nil]
+  | y :: s, 0, q + 1, _ => by simp [delAt]
+  | y :: s, p + 1, q + 1, h => by
+    simp only [delAt]
+    cases q with
+    | zero => omega
+    | succ q => simp only [Nat.add_sub_cancel, List.getElem?_cons_succ]; exact getElem?_delAt_gt s p (q + 1) (by omega)
+  | _ :: _, _, 0, h => by omega`;
+  /** Lesson 5's preservation theorems, for the course's transform (they need ‹Op.valid› and ‹Op.target›). */
+  const PRESERVE_THMS = r`theorem insert_kept (b : Op) (s : List Char) (p : Nat) (x : Char) (i : Nat) (ha : p ≤ s.length) :
+    x ∈ (T b (.ins p x i)).apply ((Op.ins p x i).apply s) := by
+  cases b with
+  | ins q y j => simp only [T]; split <;> exact mem_insAt_of_mem _ _ _ (mem_insAt x p s)
+  | del q =>
+    simp only [T]; split
+    · exact mem_delAt _ p _ (getElem?_insAt x p s ha) (by omega)
+    · exact mem_delAt _ p _ (getElem?_insAt x p s ha) (by omega)
+  | nop => exact mem_insAt x p s
+
+theorem insert_kept' (b : Op) (s : List Char) (p : Nat) (x : Char) (i : Nat) :
+    x ∈ (T (.ins p x i) b).apply (b.apply s) := by
+  cases b with
+  | ins q y j => simp only [T]; split <;> exact mem_insAt x _ _
+  | del q => simp only [T]; split <;> exact mem_insAt x _ _
+  | nop => exact mem_insAt x _ _
+
+theorem delete_aimed (a : Op) (s : List Char) (q : Nat) (ha : a.valid s) :
+    (T (.del q) a = .nop ∧ a = .del q) ∨ (T (.del q) a).target (a.apply s) = (Op.del q).target s := by
+  cases a with
+  | ins p y j =>
+    simp only [Op.valid] at ha
+    right; simp only [T]; split
+    · exact getElem?_insAt_ge y s p q (by omega)
+    · exact getElem?_insAt_lt y s p q (by omega) ha
+  | del p =>
+    by_cases h : p = q
+    · subst h; left; simp [T]
+    · right; simp only [T]; split
+      · exact getElem?_delAt_gt s p q (by omega)
+      · exact getElem?_delAt_lt s p q (by omega)
+  | nop => right; rfl`;
+
+  add("05-preserving.chalk", "Preserving content", "Converging is not keeping what people did: every character either edit inserts is in the result, and a delete removes only a character of its own text, proved for the course's transform; a rule that drops an insert inside a deleted range, which converges and fails the theorem; and the RGA's tombstones, which keep it by construction.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Preserving content");
+    md(r`
+> [!goal]
+> State what it means for a transform to keep what people did, prove it for the course's transform, and see a transform that converges and does not.
+`);
+    md(r`TP1 says the two sites end with the same text. It says nothing about which text. A transform that turned every edit into ‹nop› would satisfy it: both sites keep the old text, and agree. [Last writer wins](#course=crdt&lesson=5) made the same point about registers: converging is not the same as keeping what users did. That needs a second property, about content.`);
+    md(r`
+> [!definition] Preservation
+> A transform **preserves content** when, for any two concurrent edits on one text:
+> 1. every character either edit inserts is in the result;
+> 2. a delete, rewritten past the other edit, removes the character it removed in its own text, or nothing if the other edit removed that character already: it never removes a character the other edit inserted.
+`);
+    lean(collabCore("Preserve", r`/-- What a delete removes: the character at its place, in the text it is applied to. -/
+def Op.target : Op → List Char → Option Char
+  | .del p, s => s[p]?
+  | _, _ => none`));
+    md(r`The proofs are inductions on the text, about what stands where after an insert or a delete:`);
+    lean(`namespace Preserve
+
+${PRESERVE_LEMMAS}
+
+end Preserve`.replace(/‹|›/g, "`"));
+    md(r`Now the two halves of preservation. An insert is never lost, whichever edit it met: rewritten past anything, it is still an insert of its character (‹insert_kept'›), and the other edit, rewritten past it, never deletes the place it occupies (‹insert_kept›). A delete stays aimed (‹delete_aimed›).`);
+    lean(`namespace Preserve
+
+/-- An edit that makes sense on a text: an insert at one of its places, a delete of one of its characters. -/
+def Op.valid : Op → List Char → Prop
+  | .ins p _ _, s => p ≤ s.length
+  | .del p, s => p < s.length
+  | .nop, _ => True
+
+${PRESERVE_THMS}
+
+end Preserve`.replace(/‹|›/g, "`"));
+    md(r`
+> [!note] What "the character" means
+> ‹x ∈ result› says a character equal to x is in the result. If the text already held an x, that is weaker than "the x that was typed". The proof is stronger than the statement: it follows the inserted x to its place (‹getElem?_insAt›) and shows the other edit's delete lands elsewhere. Give characters ids, as the RGA does, and the statement says what the proof shows.
+`);
+    sec("A rule that drops an edit");
+    md(r`With deletes of a whole range, a tempting rule is: an insert inside a range someone deleted concurrently is dropped, and the delete grows to swallow it, so both sites agree. Take "abcd", an insert of x at 2 (between b and c) and, concurrently, a delete of the two characters from 1 ("bc"):`);
+    lean(`namespace Preserve
+
+/-- Range edits: insert a character, delete ‹n› characters from ‹p›. -/
+inductive ROp where
+  | ins (p : Nat) (x : Char)
+  | delr (p n : Nat)
+  | nop
+  deriving Repr, DecidableEq
+
+def ROp.apply : ROp → List Char → List Char
+  | .ins p x, s => insAt p x s
+  | .delr p n, s => s.take p ++ s.drop (p + n)
+  | .nop, s => s
+
+def runR (os : List ROp) (t : String) : String := String.ofList (os.foldl (fun s o => o.apply s) t.toList)
+
+def a : ROp := .ins 2 'x'
+def b : ROp := .delr 1 2
+
+-- the dropping rule: the insert becomes nothing, the delete grows by one
+#eval (runR [a, .delr 1 3] "abcd", runR [b, .nop] "abcd")
+-- a preserving rule: the insert lands where the range was, the delete is split around it
+#eval (runR [a, .delr 1 1, .delr 2 1] "abcd", runR [b, .ins 1 'x'] "abcd")
+
+theorem dropping_converges : runR [a, .delr 1 3] "abcd" = runR [b, .nop] "abcd" := by decide
+theorem dropping_loses : 'x' ∉ (runR [a, .delr 1 3] "abcd").toList := by decide
+
+end Preserve`);
+    md(r`The dropping rule converges, "ad" at both sites, and loses the x: it fails half 1 of preservation. Nothing in TP1 notices. The preserving rule keeps the x where the range was, "axd", at the price of a delete split in two: a rewritten edit is no longer always one edit.`);
+    md(r`
+> [!mistake]
+> "Both sites agree" is the test that convergence checks pass, and a rule can pass it by throwing work away. The person who typed x sees it vanish, with no conflict reported. Test content as well as agreement: the course's capstone checks both on every small case.
+`);
+    sec("The RGA keeps it by construction");
+    md(r`In [Collaborative text](#course=crdt&lesson=10&app=1)'s RGA, an insert names the character it follows, by id, and a delete only sets a tombstone: the deleted character stays in the state. So an insert after a character someone deleted still has its place:`);
+    m(`replicas(rga; a, b
+  a: ins a at 0
+  a: ins b at 1
+  a: ins c at 2
+  a -> b
+  a: del 1
+  b: ins x at 2
+  a -> b
+  b -> a
+)`, { work: true });
+    md(r`The x went after b@2a, which ‹a› had deleted; the tombstone kept its place, and both read "axc". Preservation there is a property of the data, not of a transform: nothing is ever removed from the state, only hidden. The transform has to earn it case by case, which is what the theorems above do.`);
+    sec("Exercises");
+    ex(`replicas(rga; a, b
+  a: ins o at 0
+  a: ins k at 1
+  a -> b
+  a: del 0
+  a: del 0
+  b: ins s at 2
+  a -> b
+  b -> a
+)`, r`Alice deletes all of "ok" while Bob types an s after the k. What does each replica read? Answer as the cell would, ‹{a↦…, b↦…}›.`, [r`The s goes after the k by id; the k is a tombstone, not gone.`], { hide: true });
+    lx(r`theorem Preserve.dropping_loses_y : 'y' ∉ (Preserve.runR [.ins 3 'y', .delr 0 5] "abcd").toList := by`, r`The dropping rule again: on "abcd", y is typed at 3 while all four characters are deleted, and the delete grows to five. Prove that y is lost.`, r`  decide`, [r`A fixed text and fixed edits: ‹decide› computes it.`]);
+    md(r`
+> [!summary]
+> TP1 is agreement; preservation is keeping what people did: every inserted character is in the result, and a rewritten delete removes the character it meant or nothing. Both are proved here for the course's transform, by induction on the text. A rule that drops an insert inside a concurrently deleted range converges and loses the insert. The RGA keeps content by never removing anything from its state.
+`);
+    md(r`The server's log is where every edit ends up. Next: the log as the state itself, and as the record of what was done.`);
+  });
+
+  /** Lesson 6's edits, as the log keeps them: a delete records its character, so that it can be undone. */
+  const LOG_CORE = r`/-- Insert ‹x› at position ‹p›. -/
+def insAt : Nat → Char → List Char → List Char
+  | 0, x, s => x :: s
+  | _ + 1, x, [] => [x]
+  | p + 1, x, y :: s => y :: insAt p x s
+
+/-- Delete the character at position ‹p›. -/
+def delAt : Nat → List Char → List Char
+  | _, [] => []
+  | 0, _ :: s => s
+  | p + 1, y :: s => y :: delAt p s
+
+/-- An edit as the log keeps it. A delete records the character it removed, so that it can be undone. -/
+inductive Op where
+  | ins (p : Nat) (x : Char) (site : Nat)
+  | del (p : Nat) (x : Char)
+  | nop
+  deriving Repr, DecidableEq
+
+def Op.apply : Op → List Char → List Char
+  | .ins p x _, s => insAt p x s
+  | .del p _, s => delAt p s
+  | .nop, s => s
+
+/-- The course's transform, for these edits. -/
+def T : Op → Op → Op
+  | .ins p x i, .ins q _ j => if q < p ∨ (q = p ∧ j < i) then .ins (p + 1) x i else .ins p x i
+  | .ins p x i, .del q _ => if q < p then .ins (p - 1) x i else .ins p x i
+  | .del p x, .ins q _ _ => if q ≤ p then .del (p + 1) x else .del p x
+  | .del p x, .del q _ => if q < p then .del (p - 1) x else if q = p then .nop else .del p x
+  | a, .nop => a
+  | .nop, _ => .nop
+
+/-- The inverse of an edit: an insert undone by deleting its character, a delete by putting the character back. -/
+def Op.inv : Op → Op
+  | .ins p x _ => .del p x
+  | .del p x => .ins p x 0
+  | .nop => .nop`;
+  /** IP1's proof: an edit's inverse undoes it, on a text the edit fits. */
+  const LOG_INV = r`theorem delAt_insAt (x : Char) : ∀ (p : Nat) (s : List Char), p ≤ s.length → delAt p (insAt p x s) = s
+  | 0, s, _ => rfl
+  | _ + 1, [], h => by simp at h
+  | p + 1, y :: s, h => by simp only [insAt, delAt]; rw [delAt_insAt x p s (by simp at h; omega)]
+
+theorem insAt_delAt (x : Char) : ∀ (p : Nat) (s : List Char), s[p]? = some x → insAt p x (delAt p s) = s
+  | _, [], h => by simp at h
+  | 0, y :: s, h => by simp at h; subst h; rfl
+  | p + 1, y :: s, h => by simp only [delAt, insAt]; rw [insAt_delAt x p s (by simpa using h)]
+
+/-- What makes an edit undoable: an insert within the text, a delete that names the character it removes. -/
+def Op.fits : Op → List Char → Prop
+  | .ins p _ _, s => p ≤ s.length
+  | .del p x, s => s[p]? = some x
+  | .nop, _ => True
+
+theorem inv_apply (o : Op) (s : List Char) (h : o.fits s) : o.inv.apply (o.apply s) = s := by
+  cases o with
+  | ins p x _ => exact delAt_insAt x p s h
+  | del p x => exact insAt_delAt x p s h
+  | nop => rfl`;
+
+  add("06-log.chalk", "The op log as state and audit", "The document as a fold of the log; snapshots and compaction, with the theorem that folding from a snapshot gives the same document; each edit kept as sent and as applied, so that every merge can be audited and undone; and views for readers that want the text.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("The op log as state and audit");
+    md(r`
+> [!goal]
+> Treat the log as the document's state, prove that a snapshot can stand in for its prefix, and keep enough in each entry to check and to undo what the server did.
+`);
+    md(r`Lesson 1's server kept a log and nothing else. The text at version $v$ is the first $v$ edits applied in turn: a **fold**, as in [Multisets, folds and the main theorem](#course=crdt&lesson=7). There, the fold was of a join, and order, grouping and repeats did not matter, which is what let replicas apply updates as they came. A fold of edits is lesson 3's monoid: grouping does not matter, order and repeats do, so the log fixes both.`);
+    m("let W = op({id, x, y}; [id, x, y; x, x, y; y, x, y])");
+    m("fold(W; x, y)");
+    m("fold(W; y, x)");
+    lean(`namespace OpLog
+
+${LOG_CORE}
+
+/-- The document is the log, folded: each edit applied in turn to what the ones before it made. -/
+def state (log : List Op) (s₀ : List Char) : List Char := log.foldl (fun s o => o.apply s) s₀
+
+end OpLog`.replace(/‹|›/g, "`"));
+    sec("Snapshots and compaction");
+    md(r`A log grows for ever, and a reader that wants version 10,000 should not replay 10,000 edits. Keep a **snapshot**: the text at some version $k$. Then the text at any later version is the snapshot with the edits after $k$ applied. The edits before $k$ can then be **compacted**, archived or dropped, as far as reading goes:`);
+    lean(`namespace OpLog
+
+/-- A snapshot at ‹k›, then the rest of the log: the same document. -/
+theorem snapshot (log : List Op) (s₀ : List Char) (k : Nat) :
+    state (log.drop k) (state (log.take k) s₀) = state log s₀ := by
+  simp only [state, ← List.foldl_append, List.take_append_drop]
+
+end OpLog`.replace(/‹|›/g, "`"));
+    md(r`
+> [!mistake]
+> Compaction is safe for reading, not for rebasing. A client whose base is older than the snapshot needs the edits after its base to rebase its batch past (lesson 1), and those are the ones compaction removed. A server that compacts must keep the log back to the oldest base it will accept, and tell a client with an older one to reload.
+`);
+    sec("As sent, and as applied");
+    md(r`The server rewrites every batch before appending it, so the log's edits are not the ones anyone typed. Keep both in each entry: the edit **as sent**, with its base version, and the edit **as applied**. Then anyone can **audit** a merge by redoing it: rebase the sent edit past the applied edits after its base, and compare.`);
+    lean(`namespace OpLog
+
+/-- An edit sent against an older version, rewritten past everything committed since. -/
+def rebase (o : Op) (since : List Op) : Op := since.foldl T o
+
+/-- What the log keeps of a commit: the edit as its author sent it, against which version, and as it was applied. -/
+structure Entry where
+  base : Nat
+  sent : Op
+  applied : Op
+  deriving Repr
+
+/-- An entry is right when its applied edit is its sent edit rebased past the entries after its base. -/
+def Entry.check (prior : List Entry) (e : Entry) : Bool :=
+  e.applied == rebase e.sent ((prior.drop e.base).map (·.applied))
+
+/-- The server's commit: rebase, then append, keeping both forms. -/
+def commit (log : List Entry) (base : Nat) (sent : Op) : List Entry :=
+  log ++ [⟨base, sent, rebase sent ((log.drop base).map (·.applied))⟩]
+
+/-- An audit replays the log, checking each entry against the ones before it. -/
+def auditFrom : List Entry → List Entry → Bool
+  | _, [] => true
+  | prior, e :: rest => e.check prior && auditFrom (prior ++ [e]) rest
+
+def audit (log : List Entry) : Bool := auditFrom [] log
+
+theorem auditFrom_append (e : Entry) : ∀ (prior rest : List Entry),
+    auditFrom prior (rest ++ [e]) = (auditFrom prior rest && e.check (prior ++ rest))
+  | prior, [] => by simp [auditFrom]
+  | prior, d :: rest => by
+    simp only [List.cons_append, auditFrom, auditFrom_append e (prior ++ [d]) rest, Bool.and_assoc,
+      List.append_assoc, List.nil_append]
+
+/-- A log the server built by commits passes the audit. -/
+theorem audit_commit (log : List Entry) (base : Nat) (sent : Op) (h : audit log = true) :
+    audit (commit log base sent) = true := by
+  simp [audit, commit, auditFrom_append, Entry.check] at *
+  exact h
+
+/-- Two commits against version 0, the second rebased past the first; then the same log with its second entry altered. -/
+def good : List Entry := commit (commit [] 0 (.ins 0 'x' 1)) 0 (.del 1 'b')
+def bad : List Entry := good.take 1 ++ (good.drop 1).map fun e => { e with applied := .del 1 'b' }
+
+#eval good
+#eval (audit good, audit bad)
+
+end OpLog`.replace(/‹|›/g, "`"));
+    md(r`On "abc", the first commit makes "xabc". The altered entry deletes position 1, which is now the a, not the b its author meant; the audit catches it. An audit is a check of the server by anyone with the log, and it needs both forms; the applied edits alone say what happened, not whether it should have.`);
+    sec("Undoing");
+    md(r`A delete that records the character it removed can be undone: put the character back. With both forms kept, any entry can be reversed, and lesson 5's preservation says what reversing has to bring back.`);
+    lean(`namespace OpLog
+
+${LOG_INV}
+
+end OpLog`.replace(/‹|›/g, "`"));
+    md(r`Undoing the last edit is applying its inverse. Undoing an edit from further back means rewriting its inverse past everything committed since, which needs more of the transform than TP1: [Selective undo](#course=collab&lesson=6&app=1), an optional notebook beside this lesson, checks how much more.`);
+    sec("Views for readers");
+    md(r`Most readers want the text, not the log: a search index, a preview, an export. Keep a **materialized view**, the text at the head, and update it on every commit by applying the new entry. It is the fold kept up to date, so it is right as long as every commit updates it once (the exercise below), and it can be rebuilt from a snapshot and the log whenever it is in doubt.`);
+    sec("Exercises");
+    ex("fold(W; x, id, y, id)", r`A log of overwrites on one character: ‹x›, then nothing, then ‹y›, then nothing. Fold it with ‹W›.`, [r`‹id› changes nothing; the last overwrite stands.`]);
+    lx(r`theorem OpLog.state_append (log : List OpLog.Op) (o : OpLog.Op) (s₀ : List Char) :
+    OpLog.state (log ++ [o]) s₀ = o.apply (OpLog.state log s₀) := by`, r`Prove that the view updated by one commit is the fold of the longer log: appending an edit to the log is applying it to the text.`, r`  simp [OpLog.state, List.foldl_append]`, [r`Unfold ‹state›; ‹List.foldl_append› splits the fold over the two parts.`]);
+    md(r`
+> [!summary]
+> The document is the log, folded, and since edits form a monoid and not a semilattice, the log's order is part of the state. A snapshot at $k$ followed by the rest of the log gives the same text (‹snapshot›), so readers need not replay everything, though rebasing still needs the log back to the oldest base. Keeping each edit as sent, with its base, and as applied lets anyone audit a merge, and a delete that records its character can be undone. A view is the fold kept up to date.
+`);
+    md(r`The log stores edits on plain text. A real document has more than text in it, and the next lesson asks how to store that without losing any of it.`);
+  });
+
+  app("06a-selective-undo.chalk", "Selective undo", "Undoing an edit that is not the last: its inverse rewritten past what came after, the three inverse properties that makes it sound, the one this transform has (IP1, proved), and the two it lacks (IP2 and IP3), with every failing pair on a small text.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Selective undo");
+    md(r`
+> [!goal]
+> Undo one person's edit while later edits stay, and find out which properties of the transform that needs and which this course's transform has.
+`);
+    md(r`An application of lesson 6, outside the course's order. In a shared document, "undo" should undo *my* last edit, even if others have edited since. That edit $a$ is somewhere back in the log, followed by edits $b_1, \ldots, b_n$. Its inverse $\bar a$ was made for the text just after $a$; to apply it now, rewrite it past $b_1, \ldots, b_n$, as a late batch is rebased.`);
+    md(r`
+> [!definition] The inverse properties
+> Three properties of a transform are known in the literature on undo in operational transformation as **IP1**, **IP2** and **IP3**:
+> - **IP1**: an edit followed by its inverse changes nothing: $\bar a(a(s)) = s$.
+> - **IP2**: rewriting $c$ past $a$ and then past $\bar a$ gives $c$ back: $T(T(c, a), \bar a) = c$.
+> - **IP3**: the inverse of $a$, rewritten past $T(b, a)$, is the inverse of $T(a, b)$: $T(\bar a, T(b, a)) = \overline{T(a, b)}$.
+`);
+    md(r`IP1 says the inverse is an inverse. IP2 says an edit and its undo, both in the history, cancel for anything rewritten past them. IP3 says that undoing $a$ after $b$ is the same as undoing the form of $a$ that $b$'s site saw.`);
+    lean(`namespace Undo
+
+${LOG_CORE}
+
+${LOG_INV}
+
+/-- IP2 for two edits. -/
+def ip2 (c a : Op) : Bool := T (T c a) a.inv == c
+
+/-- IP3 for two edits. -/
+def ip3 (a b : Op) : Bool := T a.inv (T b a) == (T a b).inv
+
+/-- Every edit a site can make on ‹s›: an insert at each place, a delete of each character. -/
+def edits (s : List Char) (c : Char) (site : Nat) : List Op :=
+  (List.range (s.length + 1)).map (fun p => .ins p c site) ++ (List.range s.length).map (fun p => .del p (s.getD p ' '))
+
+def abc : List Char := "abc".toList
+
+/-- The pairs on "abc" for which a property fails. -/
+def failures (prop : Op → Op → Bool) : List (Op × Op) :=
+  (edits abc 'x' 1).flatMap fun c => (edits abc 'y' 2).filterMap fun a => if prop c a then none else some (c, a)
+
+#eval failures ip2
+#eval failures ip3
+#eval ((failures ip2).length, (failures ip3).length)
+
+end Undo`.replace(/‹|›/g, "`"));
+    md(r`IP1 is proved (‹inv_apply›). IP2 and IP3 each fail on 6 of the 49 pairs, and the failures have two causes:
+
+- **A delete met a delete of the same character.** $T(c, a)$ is ‹nop›, and ‹nop› remembers nothing: rewritten past the undo, it stays ‹nop›, so the undo brings the character back and $c$'s delete is lost.
+- **An insert sat where a deleted character was.** The undo puts the character back at the same place, a tie with the insert, and the tie-break by site need not put them back in their old order.
+
+So "rewrite the inverse forward" is right for most pairs and wrong for exactly these. Transforms built for undo keep more information than ‹nop› does, for instance by not removing deleted characters at all: the RGA's tombstones again.`);
+    sec("Exercises");
+    lx(r`example : Undo.ip2 (.del 1 'b') (.del 1 'b') = false := by`, r`Prove the first cause: two concurrent deletes of the b, then the undo of one of them, fail IP2.`, r`  decide`, [r`‹T (del 1) (del 1)› is ‹nop›, and ‹nop› rewritten past anything is ‹nop›.`]);
+    md(r`
+> [!summary]
+> Selective undo rewrites an old edit's inverse past the later ones. That is sound when the transform has IP1, IP2 and IP3. The course's transform has IP1, proved, and fails IP2 and IP3 on 6 of 49 pairs on "abc" each, all of them a delete that became ‹nop› or a tie at a restored character.
+`);
+  });
+
+  add("07-round-trips.chalk", "Lossless round trips", "A document stored as text and annotations and joined back: join after split is the identity, and split after join is too on well-formed pairs; the normalizer this gives is idempotent; and why a normalizer that rewrites every save breaks the client's rebase.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Lossless round trips");
+    md(r`
+> [!goal]
+> Store a formatted document in two parts and get it back exactly; find which stored forms come back unchanged; and see why rewriting what is stored, however tidily, breaks lesson 1's protocol.
+`);
+    md(r`The log of lessons 1 to 6 edits plain text. An editor's document also has formatting: bold runs, links, comments. A common design stores the two apart, the **text** and a list of **annotations** on it, so that text edits and formatting can be handled (and transformed) separately. The editor holds the document whole, so every save **splits** it and every load **joins** it again.`);
+    md(r`
+> [!try]
+> Splitting and joining should lose nothing. Is "join after split is the identity" enough, or must "split after join" be one too?
+`);
+    sec("Split and join");
+    md(r`A small version: each character is bold or not, and the annotations are the places of the bold characters.`);
+    lean(`namespace RoundTrip
+
+/-- A document as the editor holds it: each character with whether it is bold. -/
+abbrev Doc := List (Char × Bool)
+
+/-- The places, counting from ‹k›, of the bold characters. -/
+def marks : Nat → Doc → List Nat
+  | _, [] => []
+  | k, (_, b) :: d => if b then k :: marks (k + 1) d else marks (k + 1) d
+
+/-- Store a document as its plain text and the places that are bold. -/
+def split (d : Doc) : List Char × List Nat := (d.map (·.1), marks 0 d)
+
+/-- Put each character back with its flag: bold when its place is listed. -/
+def flags : Nat → List Char → List Nat → Doc
+  | _, [], _ => []
+  | k, c :: t, ps => (c, ps.contains k) :: flags (k + 1) t ps
+
+def join (p : List Char × List Nat) : Doc := flags 0 p.1 p.2
+
+#eval split [('a', false), ('b', true), ('c', true)]
+#eval join ("abc".toList, [2, 1])
+#eval split (join ("abc".toList, [2, 1, 1, 9]))
+
+end RoundTrip`.replace(/‹|›/g, "`"));
+    md(r`Joining loses nothing it can show, but the stored form can say one thing several ways: ‹[2, 1]›, ‹[1, 2]› and ‹[2, 1, 1, 9]› all join to the same document, and split gives back only ‹[1, 2]›. So the two directions differ.`);
+    lean(`namespace RoundTrip
+
+theorem le_of_mem_marks : ∀ (d : Doc) (k i : Nat), i ∈ marks k d → k ≤ i
+  | [], _, _, h => by simp [marks] at h
+  | (_, b) :: d, k, i, h => by
+    simp only [marks] at h
+    split at h
+    · rcases List.mem_cons.mp h with rfl | h
+      · omega
+      · have := le_of_mem_marks d (k + 1) i h; omega
+    · have := le_of_mem_marks d (k + 1) i h; omega
+
+theorem flags_marks : ∀ (d : Doc) (k : Nat) (ps : List Nat),
+    (∀ i, k ≤ i → (i ∈ ps ↔ i ∈ marks k d)) → flags k (d.map (·.1)) ps = d
+  | [], _, _, _ => rfl
+  | (c, b) :: d, k, ps, h => by
+    simp only [List.map, flags]
+    have hk := h k (Nat.le_refl k)
+    have hb : ps.contains k = b := by
+      cases b
+      · simp only [marks] at hk
+        have : k ∉ marks (k + 1) d := fun hm => by have := le_of_mem_marks d (k + 1) k hm; omega
+        simp [hk, this]
+      · simp [marks] at hk; simp [hk]
+    rw [hb, flags_marks d (k + 1) ps (fun i hi => by
+      rw [h i (by omega)]
+      cases b <;> simp [marks] <;> omega)]
+
+/-- Joining what was split gives the document back: ‹split› is a section of ‹join›. -/
+theorem join_split (d : Doc) : join (split d) = d :=
+  flags_marks d 0 (marks 0 d) (fun _ _ => Iff.rfl)
+
+theorem map_flags : ∀ (t : List Char) (k : Nat) (ps : List Nat), (flags k t ps).map (·.1) = t
+  | [], _, _ => rfl
+  | c :: t, k, ps => by simp [flags, map_flags t (k + 1) ps]
+
+theorem marks_flags : ∀ (t : List Char) (k : Nat) (ps : List Nat),
+    marks k (flags k t ps) = (List.range' k t.length).filter (ps.contains ·)
+  | [], _, _ => rfl
+  | c :: t, k, ps => by
+    simp only [flags, marks, List.length_cons, List.range'_succ, List.filter_cons, marks_flags t (k + 1) ps]
+
+/-- A pair is well formed when its places are each a place in the text, listed once, in order. -/
+def WellFormed (p : List Char × List Nat) : Prop := (List.range p.1.length).filter (p.2.contains ·) = p.2
+
+instance (p : List Char × List Nat) : Decidable (WellFormed p) := inferInstanceAs (Decidable (_ = _))
+
+/-- On well-formed pairs, splitting what was joined gives the pair back. -/
+theorem split_join (p : List Char × List Nat) (h : WellFormed p) : split (join p) = p := by
+  rcases p with ⟨t, ps⟩
+  simp only [split, join, map_flags, marks_flags]
+  simp only [WellFormed, List.range_eq_range'] at h
+  rw [h]
+
+end RoundTrip`.replace(/‹|›/g, "`"));
+    md(r`
+> [!definition] Section and retraction
+> Maps $s : A \to B$ and $j : B \to A$ with $j \circ s = \mathrm{id}_A$: $s$ is a **section** of $j$, and $j$ a **retraction** of $s$. Here $A$ is documents, $B$ is stored pairs, $s$ is ‹split› and $j$ is ‹join›. Then $s \circ j$ is the identity exactly on the image of $s$: the well-formed pairs.
+`);
+    sec("The normalizer");
+    md(r`$s \circ j$, join then split, sends any stored pair to the well-formed one that means the same document: it sorts the places, drops repeats, and drops places past the text. It is idempotent for a reason that has nothing to do with lists: $s \circ j \circ s \circ j = s \circ (j \circ s) \circ j = s \circ j$.`);
+    lean(`namespace RoundTrip
+
+/-- For any section ‹s› of ‹j›, ‹s ∘ j› is idempotent… -/
+theorem idem_of_section {A B : Type} (s : A → B) (j : B → A) (h : ∀ a, j (s a) = a) (b : B) :
+    s (j (s (j b))) = s (j b) := by rw [h]
+
+/-- …and what it fixes is exactly what ‹s› can produce. -/
+theorem fixed_iff_image {A B : Type} (s : A → B) (j : B → A) (h : ∀ a, j (s a) = a) (b : B) :
+    s (j b) = b ↔ ∃ a, s a = b :=
+  ⟨fun hb => ⟨j b, hb⟩, fun ⟨a, ha⟩ => by rw [← ha, h]⟩
+
+/-- The normalizer: join, then split. -/
+def norm (p : List Char × List Nat) : List Char × List Nat := split (join p)
+
+theorem norm_idem (p : List Char × List Nat) : norm (norm p) = norm p :=
+  idem_of_section split join join_split p
+
+#eval norm ("abc".toList, [2, 0, 0, 7])
+
+end RoundTrip`.replace(/‹|›/g, "`"));
+    md(r`
+> [!note] Not a closure operator
+> [Galois connections and closure operators](#course=order-lattices&lesson=10) made closure operators from Galois connections: extensive, monotone and idempotent, with the closed elements as fixed points. ‹norm› shares only idempotence, and its fixed points are the well-formed pairs, as the closed elements were there. There is no natural order in which it is extensive: it drops repeated places as well as sorting them. It is an idempotent from a section–retraction pair, and the resemblance stops there.
+`);
+    sec("A normalizer that rewrites saves");
+    md(r`Suppose the server normalizes the *text* on every save, say by squeezing runs of spaces into one. That is idempotent too, and it breaks the protocol. A client has version 3, "a  b" with two spaces, and types x after the second space, at 3: typed against its base, version 3. But the server stored version 3 squeezed, "a b":`);
+    lean(`namespace RoundTrip
+
+def insAt : Nat → Char → List Char → List Char
+  | 0, x, s => x :: s
+  | _ + 1, x, [] => [x]
+  | p + 1, x, y :: s => y :: insAt p x s
+
+/-- Squeeze runs of spaces into one: drop a space that follows a space. -/
+def squeezeAfter (space : Bool) : List Char → List Char
+  | [] => []
+  | c :: s => if c == ' ' && space then squeezeAfter true s else c :: squeezeAfter (c == ' ') s
+
+def squeeze (s : List Char) : List Char := squeezeAfter false s
+
+#eval String.ofList (insAt 3 'x' "a  b".toList)            -- what the client typed
+#eval String.ofList (insAt 3 'x' (squeeze "a  b".toList))  -- what the server makes of it
+
+end RoundTrip`);
+    md(r`The client meant "a  xb" and the server made "a bx": the client's positions count a space the server no longer has. Rebasing (lesson 1) assumes that version 3 is the same text at the client and at the server, and the normalizer made it two texts with one version. The client will apply its own x at 3 and the server's broadcasts after that, and the two texts will never meet.`);
+    md(r`
+> [!mistake]
+> A normalizer may run on read (a view, lesson 6), or as an edit of its own committed through the log, which every client then rebases past like any other. It must not rewrite a version in place. ‹norm› above passes the test because, on everything the editor produces, it is the identity: ‹split_join›.
+`);
+    sec("Exercises");
+    lx(r`theorem RoundTrip.norm_wf (p : List Char × List Nat) (h : RoundTrip.WellFormed p) : RoundTrip.norm p = p := by`, r`Prove that the normalizer leaves a well-formed pair alone, so a save of what the editor produced is stored as it is.`, r`  exact RoundTrip.split_join p h`, [r`‹norm› is ‹split (join p)›, and one theorem above says what that is on a well-formed pair.`]);
+    lx(r`example : RoundTrip.squeeze (RoundTrip.squeeze "a   b".toList) = RoundTrip.squeeze "a   b".toList := by`, r`The squeezing normalizer is idempotent too, at least here. Prove it for "a   b" (three spaces): idempotence is not what makes a normalizer safe.`, r`  decide`, [r`A fixed text: ‹decide› computes both sides.`]);
+    md(r`
+> [!summary]
+> Split a document into text and annotations and join it back: ‹join ∘ split = id› for every document, and ‹split ∘ join = id› for well-formed pairs, a section and its retraction. ‹split ∘ join› is then an idempotent normalizer that fixes exactly the well-formed pairs. A normalizer that rewrites stored versions, however idempotent, makes the server's version $v$ differ from the client's, and rebasing against the client's base goes wrong; normalize on read, or as an edit in the log.
+`);
+    md(r`The course has proved its pieces separately. The capstone puts the transform's proofs in one place, and asks what they say about the code that ships.`);
+  });
+
+  add("08-capstone.chalk", "Capstone: proofs and shipped code", "The course's transform as a Lean reference: TP1 proved for every text, preservation, and an exhaustive check of every small case; what the proofs cover and what they do not; a port tested against the reference; and the caveats of running Lean's own compiled code in a browser.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Capstone: proofs and shipped code");
+    md(r`
+> [!goal]
+> Put the transform's proofs in one place, say exactly what they guarantee about a running editor, and connect them to the code that ships.
+`);
+    md(r`An editor ships in the languages its clients and servers are written in, not in Lean. So the Lean is a **reference**: a definition small enough to read, with theorems about it, against which the shipped code is tested. This lesson assembles it: the transform of lessons 1 to 5, TP1 for every text, preservation, and an exhaustive check.`);
+    sec("The reference");
+    lean(collabCore("Reference"));
+    md(r`
+> [!try]
+> [Collaborative text](#course=crdt&lesson=10&app=1) checked TP1 on 49 pairs and said the proof for every text "is the same case split, with lemmas". Which lemmas does the case split need?
+`);
+    md(r`One per way two edits can be reordered: two inserts, an insert and a delete either way round, two deletes. Each is an induction on the text, and needs the edits to make sense on it (an insert at most at the end, a delete of a character that is there): a delete past the end does nothing, and then the positions no longer line up.`);
+    lean(`namespace Reference
+
+theorem delAt_nil (p : Nat) : delAt p [] = [] := by cases p <;> rfl
+
+theorem ins_ins {y x : Char} : ∀ (s : List Char) (p q : Nat), q ≤ p → p ≤ s.length →
+    insAt q y (insAt p x s) = insAt (p + 1) x (insAt q y s)
+  | [], p, q, h1, h2 => by
+    have hp : p = 0 := by simp at h2; omega
+    have hq : q = 0 := by omega
+    subst hp; subst hq; rfl
+  | z :: s, p, 0, _, _ => by cases p <;> rfl
+  | z :: s, p + 1, q + 1, h1, h2 => by
+    simp only [insAt]
+    rw [ins_ins s p q (by omega) (by simp at h2; omega)]
+  | z :: s, 0, q + 1, h1, _ => by omega
+
+theorem del_ins {x : Char} : ∀ (s : List Char) (p q : Nat), q < p → p ≤ s.length →
+    delAt q (insAt p x s) = insAt (p - 1) x (delAt q s)
+  | [], p, q, h1, h2 => by simp at h2; omega
+  | z :: s, p + 1, 0, _, _ => by cases p <;> rfl
+  | z :: s, p + 1, q + 1, h1, h2 => by
+    simp only [insAt, delAt]
+    rw [del_ins s p q (by omega) (by simp at h2; omega)]
+    cases p with
+    | zero => omega
+    | succ p => rfl
+  | z :: s, 0, q, h1, _ => by omega
+
+theorem del_ins' {x : Char} : ∀ (s : List Char) (p q : Nat), p ≤ q → q < s.length →
+    delAt (q + 1) (insAt p x s) = insAt p x (delAt q s)
+  | [], p, q, _, h2 => by simp at h2
+  | z :: s, 0, q, _, _ => rfl
+  | z :: s, p + 1, q + 1, h1, h2 => by
+    simp only [insAt, delAt]
+    rw [del_ins' s p q (by omega) (by simp at h2; omega)]
+  | z :: s, p + 1, 0, h1, _ => by omega
+
+theorem del_del : ∀ (s : List Char) (p q : Nat), q < p →
+    delAt q (delAt p s) = delAt (p - 1) (delAt q s)
+  | [], p, q, _ => by simp only [delAt_nil]
+  | z :: s, p + 1, 0, _ => by cases s <;> cases p <;> rfl
+  | z :: s, p + 1, q + 1, h => by
+    simp only [delAt]
+    rw [del_del s p q (by omega)]
+    cases p with
+    | zero => omega
+    | succ p => rfl
+  | z :: s, 0, q, h => by omega
+
+/-- An edit that makes sense on a text: an insert at one of its places, a delete of one of its characters. -/
+def Op.valid : Op → List Char → Prop
+  | .ins p _ _, s => p ≤ s.length
+  | .del p, s => p < s.length
+  | .nop, _ => True
+
+/-- Two inserts come from different sites: the tie-break needs it. -/
+def Op.apart : Op → Op → Prop
+  | .ins _ _ i, .ins _ _ j => i ≠ j
+  | _, _ => True
+
+/-- TP1, for every text and every two valid edits from different sites. -/
+theorem tp1 : ∀ (a b : Op) (s : List Char), a.valid s → b.valid s → a.apart b →
+    (T b a).apply (a.apply s) = (T a b).apply (b.apply s)
+  | .ins p x i, .ins q y j, s, ha, hb, hab => by
+    simp only [Op.valid, Op.apart] at ha hb hab
+    by_cases h : q < p ∨ (q = p ∧ j < i)
+    · have h' : ¬(p < q ∨ (p = q ∧ i < j)) := by omega
+      simp only [T, h, h', ite_true, ite_false, Op.apply]
+      exact ins_ins s p q (by omega) ha
+    · have h' : p < q ∨ (p = q ∧ i < j) := by omega
+      simp only [T, h, h', ite_true, ite_false, Op.apply]
+      exact (ins_ins s q p (by omega) hb).symm
+  | .ins p x i, .del q, s, ha, hb, _ => by
+    simp only [Op.valid] at ha hb
+    by_cases h : q < p
+    · have h' : ¬(p ≤ q) := by omega
+      simp only [T, h, h', ite_true, ite_false, Op.apply]
+      exact del_ins s p q h ha
+    · have h' : p ≤ q := by omega
+      simp only [T, h, h', ite_true, ite_false, Op.apply]
+      exact del_ins' s p q h' hb
+  | .del p, .ins q y j, s, ha, hb, _ => by
+    simp only [Op.valid] at ha hb
+    by_cases h : q ≤ p
+    · have h' : ¬(p < q) := by omega
+      simp only [T, h, h', ite_true, ite_false, Op.apply]
+      exact (del_ins' s q p h ha).symm
+    · have h' : p < q := by omega
+      simp only [T, h, h', ite_true, ite_false, Op.apply]
+      exact (del_ins s q p h' hb).symm
+  | .del p, .del q, s, ha, hb, _ => by
+    by_cases h : q < p
+    · have h1 : ¬(p < q) := by omega
+      have h2 : ¬(p = q) := by omega
+      simp only [T, h, h1, h2, ite_true, ite_false, Op.apply]
+      exact del_del s p q h
+    · by_cases he : q = p
+      · subst he; simp [T, Op.apply]
+      · have h' : p < q := by omega
+        have he' : ¬(p = q) := by omega
+        simp only [T, h, he, h', he', ite_true, ite_false, Op.apply]
+        exact (del_del s q p h').symm
+  | .ins p x i, .nop, s, _, _, _ => rfl
+  | .del p, .nop, s, _, _, _ => rfl
+  | .nop, .ins q y j, s, _, _, _ => rfl
+  | .nop, .del q, s, _, _, _ => rfl
+  | .nop, .nop, s, _, _, _ => rfl
+
+end Reference`.replace(/‹|›/g, "`"));
+    md(r`Lesson 1's ‹tiling› asks for TP1 for every pair of edits on every state; ‹tp1› asks that the edits make sense on the text and that two inserts come from different sites. Joining the two needs one more fact, that rewriting keeps edits valid (the exercise below is a piece of it), and a version of ‹tiling› that carries it along the grid. That is not written out here. Preservation is lesson 5's, stated again for the reference:`);
+    lean(`namespace Reference
+
+/-- What a delete removes: the character at its place, in the text it is applied to. -/
+def Op.target : Op → List Char → Option Char
+  | .del p, s => s[p]?
+  | _, _ => none
+
+${PRESERVE_LEMMAS.replace(/theorem delAt_nil[^\n]*\n\n/, "")}
+
+${PRESERVE_THMS}
+
+end Reference`.replace(/‹|›/g, "`"));
+    sec("Every small case");
+    md(r`The theorems are for every text. A check of every small case is still worth having: it is what a port is tested against, and it tests the statements themselves, which a proof cannot (a theorem with a hypothesis that is never true proves nothing). Every text over a and b of up to three characters, every pair of edits on it, with x and y as the inserted characters: TP1, and both inserts in the result.`);
+    lean(`namespace Reference
+
+/-- Every text over a and b of ‹n› characters. -/
+def texts : Nat → List (List Char)
+  | 0 => [[]]
+  | n + 1 => (texts n).flatMap fun t => ['a' :: t, 'b' :: t]
+
+/-- Every edit a site can make on a text of length ‹n›, inserting ‹x›. -/
+def edits (n : Nat) (x : Char) (site : Nat) : List Op :=
+  (List.range (n + 1)).map (fun p => .ins p x site) ++ (List.range n).map .del
+
+/-- One case: TP1, and the inserts of both sides in the result. -/
+def case (a b : Op) (s : List Char) : Bool :=
+  (T b a).apply (a.apply s) == (T a b).apply (b.apply s)
+    && (match a with | .ins _ x _ => ((T b a).apply (a.apply s)).contains x | _ => true)
+    && (match b with | .ins _ y _ => ((T b a).apply (a.apply s)).contains y | _ => true)
+
+def allCases (n : Nat) : Bool :=
+  (List.range (n + 1)).all fun k => (texts k).all fun s =>
+    (edits k 'x' 1).all fun a => (edits k 'y' 2).all fun b => case a b s
+
+#eval (List.range 4).foldl (fun acc k => acc + (texts k).length * (2 * k + 1) * (2 * k + 1)) 0
+
+theorem small_cases : allCases 3 = true := by decide
+
+end Reference`.replace(/‹|›/g, "`"));
+    md(r`511 cases, checked by Lean's kernel. (Inserting x and y, which the texts never contain, makes "in the result" mean "kept".)`);
+    sec("What the proofs cover");
+    md(r`
+> [!note] Covered
+> - **The transform**: TP1 for every text and every two valid edits from different sites (‹tp1›), and preservation (‹insert_kept›, ‹insert_kept'›, ‹delete_aimed›).
+> - **Rebasing sequences**: any rebase grid closes, given TP1 on every pair (lesson 1, ‹tiling›). For this transform, which has TP1 only for valid edits from different sites, the step from one square to the grid is the one fact left unproved above.
+> - **Composition** is a monoid and composing is applying in turn (lesson 3); positions map monotonically (lesson 4); a snapshot stands in for its prefix and an honest server passes the audit (lesson 6); split and join are a section and its retraction (lesson 7).
+`);
+    md(r`
+> [!mistake]
+> What is **not** proved, and has to be tested or argued instead:
+> - **The protocol.** Versions in order, holding back early broadcasts, acknowledgements, one batch in flight: lesson 1 checked a model of two broadcasts, and lesson 2 a model of two workers; neither is a proof about the code that runs, or about more clients.
+> - **The conditional write.** Lesson 2 assumed it is one step. That is the store's promise (linearizability, in [the systems course](#course=systems&lesson=4)), not something the course proves.
+> - **The normalizer and the annotations.** Lesson 7 proved the round trip for one small representation (a bold flag per character), not for a real document format; lesson 3's formatting TP1 is per character, not for runs; range deletes (lesson 5) were only computed on examples.
+> - **TP2.** It fails for this transform (lesson 2); the protocol is what makes it unnecessary, and a deployment that breaks the one order (lesson 2's diamond) is outside every theorem here.
+> - **What a position counts.** Here a character is a Lean ‹Char›, a Unicode code point. An editor in a browser usually counts UTF-16 code units, and people expect grapheme clusters: a port and the reference that disagree on what "position 3" means agree on every test written in ASCII.
+`);
+    sec("Testing a port against the reference");
+    md(r`**Differential testing**: run the reference and the port on the same inputs and compare. The reference can print its cases with their expected results, for the port's test suite to read:`);
+    lean(`namespace Reference
+
+def Op.show : Op → String
+  | .ins p x i => s!"ins {p} {x} {i}"
+  | .del p => s!"del {p}"
+  | .nop => "nop"
+
+/-- One line per case: the text, the two edits, and the text both sites must reach. -/
+def vectors (n : Nat) : List String :=
+  (texts n).flatMap fun s => (edits n 'x' 1).flatMap fun a => (edits n 'y' 2).map fun b =>
+    s!"{String.ofList s}|{a.show}|{b.show}|{String.ofList ((T b a).apply (a.apply s))}"
+
+#eval (vectors 2).take 6
+#eval (vectors 2).length
+
+end Reference`.replace(/‹|›/g, "`"));
+    md(`A port, here in TypeScript, then reads the lines and checks each, both orders:
+
+${FENCE}ts
+type Op = { ins: [number, string, number] } | { del: number } | "nop";
+function T(a: Op, b: Op): Op {
+  if (b === "nop") return a;
+  if (a === "nop") return "nop";
+  if ("ins" in a && "ins" in b) {
+    const [p, x, i] = a.ins, [q, , j] = b.ins;
+    return q < p || (q === p && j < i) ? { ins: [p + 1, x, i] } : a;
+  }
+  if ("ins" in a && "del" in b) return b.del < a.ins[0] ? { ins: [a.ins[0] - 1, a.ins[1], a.ins[2]] } : a;
+  if ("del" in a && "ins" in b) return b.ins[0] <= a.del ? { del: a.del + 1 } : a;
+  const p = (a as { del: number }).del, q = (b as { del: number }).del;
+  return q < p ? { del: p - 1 } : q === p ? "nop" : a;
+}
+${FENCE}
+
+The vectors pin the reference's exact behaviour, ties included: a port that breaks a tie the other way passes every convergence test it runs on itself and fails here. For inputs larger than the vectors, generate random texts and edits in the port's test and send them to the reference, compiled as a command-line program, so that the comparison is not limited to the cases written down.`);
+    sec("Running the reference itself");
+    md(r`Instead of porting, a client could run the reference: Lean compiles to C, and C compiles to WebAssembly with Emscripten. ChalkMath runs its own engine this way (Lean to C to wasm, in a web worker), and Lean itself for its Lean cells; its architecture notes (§1, §2 and §4b) record what that takes. The caveats are concrete:
+
+- **Support.** Lean's "Supported Platforms" page (Lean Language Reference, lean-lang.org/doc/reference/latest/platforms/, as of October 2026) lists Emscripten WebAssembly as **Tier 2**: cross-compiled but not tested by Lean's CI, with releases that "may be silently broken due to the lack of automated testing".
+- **The runtime.** Compiled Lean calls Lean's runtime and the compiled code of its standard library, and both must be built for wasm32, with 32-bit pointers; ChalkMath builds them from source (‹npm run wasm›).
+- **Stack.** A browser gives a worker thread far less stack than a native thread (Chromium: 500 KB, against the 8 MB Lean's threads have natively), and recursion that is fine natively can run out: ‹insAt› on a long text recurses once per character.
+- **What the proof is about.** The theorems are about the Lean definitions. Lean's compiler, the C compiler and Emscripten are trusted, not proved; the compiled code is the reference only as far as they are right, so it is tested against the reference all the same.
+`);
+    sec("Exercises");
+    lx(r`theorem Reference.insAt_length (x : Char) : ∀ (p : Nat) (s : List Char), (Reference.insAt p x s).length = s.length + 1 := by`, r`An insert makes the text one longer. Prove it: it is what lets a rewritten edit stay valid on the longer text.`, r`  intro p s
+  induction s generalizing p with
+  | nil => cases p <;> rfl
+  | cons y s ih =>
+    cases p with
+    | zero => rfl
+    | succ p => simp [Reference.insAt, ih]`, [
+      r`Induction on ‹s›, for every ‹p› (‹generalizing p›), then cases on ‹p›.`,
+      r`In the ‹succ› case, ‹insAt (p + 1) x (y :: s)› is ‹y :: insAt p x s›: ‹simp [Reference.insAt, ih]›.`,
+    ]);
+    md(r`
+> [!summary]
+> The reference transform is proved TP1 for every text and to preserve content, and every small case is checked exhaustively; lesson 1's tiling closes any grid of squares that TP1 closes. The protocol, the store's conditional write, the document format and what a position counts are outside the proofs, and are tested or argued. A port is tested against the reference's vectors and against the reference itself on random inputs. Running the reference compiled to WebAssembly is possible, on a Tier 2 platform, with a runtime built for wasm32 and small stacks, and the compilers are trusted, not proved.
+`);
+  });
+}, {});
+
+// ---------------------------------------------------------------------------------------------------
 course("calculus", "Calculus: derivatives and integrals",
   "The slope at a point, found by zooming in; the power, product and chain rules read off pictures; the circle behind cos, sin and e^(it), and the hyperbola behind cosh and sinh; tangent lines and bending; then antiderivatives the engine checks by differentiating, and area as slope run backwards.",
-  "Calculus I–II", (add) => {
+  "Calculus I–II", (add, app) => {
 
   add("01-rules.chalk", "The rules of differentiation", "The slope at a point, as what secants settle on; the power rule from a growing square, the product rule from a growing rectangle.", ({ sec, md, m, ex, sc }) => {
     sec("The rules of differentiation");
@@ -4714,8 +7910,109 @@ M2 = segment(a^2 + i, sin(a^2)) dashed color 6
       r`The right side's derivative is $1$.`,
     ]);
     md(r`
+> [!note] Where this goes
+> A neural network is a chain of simple functions, and training one needs the derivative of its error with respect to every weight: the chain rule, many times over. [Backpropagation](#course=calculus&lesson=2&app=1), an optional notebook beside this lesson, works it through for one neuron and shows why doing it from the output backwards is what makes it cheap.
+`);
+    md(r`
 > [!summary]
 > Follow a nudge: the inside stretches it by $g'(x)$, then the outside by $f'(g)$. The derivative of the inside comes out in front because the inside moves at its own rate. One chain is worth a lesson of its own: $e^{it}$, where the inside is multiplied by $i$. What does a point do whose velocity is its position times $i$?
+`);
+  });
+  app("02a-backpropagation.chalk", "Backpropagation", "A neuron's error as a chain of functions: the forward pass as numbers, the backward pass as the chain rule link by link, backprop's computation graph checked against diff, why backwards is cheap, and one step of gradient descent.", ({ sec, md, m, ex }) => {
+    sec("Backpropagation");
+    md(r`
+> [!goal]
+> Find how a neuron's error changes with each of its weights, by the chain rule applied link by link, and see why doing it from the output backwards gives every weight's derivative for the price of one pass.
+`);
+    md(r`An application of lesson 2, outside the course's order: nothing later depends on it. It uses partial derivatives, which are ordinary derivatives with the other variables held fixed: ‹diff(x*y, x)› is ‹y›.`);
+    sec("One neuron");
+    md(r`
+> [!definition] A neuron
+> A **neuron** takes an input $x$, multiplies it by a **weight** $w$, adds a **bias** $b$, and passes the result through an **activation**, here the **sigmoid** $\sigma(z) = \dfrac{1}{1 + e^{-z}}$, a smooth step from $0$ to $1$. Its output is $a = \sigma(wx + b)$.
+`);
+    m("plot(1/(1 + exp(-u)), u, -6, 6)");
+    md(r`**Training** chooses $w$ and $b$ so that, for an input $x$, the output is close to the answer we want, the **target** $y$. How far off it is, is measured by the **loss** $L = (a - y)^2$: zero when the output is right, larger the further off it is. One training example: the input $2$, the target $1$.`);
+    m("let x = 2");
+    m("let y = 1");
+    m("let L = (1/(1 + exp(-(w*x + b))) - y)^2");
+    md(r`The **forward pass** computes the loss the way the neuron does, a piece at a time. Start from $w = 0.5$ and $b = 0$:`);
+    m("let z1 = 0.5*x + 0");
+    m("let a1 = N(1/(1 + exp(-z1)))");
+    m("N((a1 - y)^2)");
+    md(r`The output is $0.731$ where it should be $1$, and the loss is $0.0723$. To lower it, nudge $w$ and $b$ the way that makes $L$ smaller: that needs the slope of $L$ in each direction, the **partial derivatives** $\partial L / \partial w$ and $\partial L / \partial b$. Together they are the **gradient**.`);
+    sec("The chain rule, link by link");
+    md(r`The loss is a chain: $w$ makes $z = wx + b$, $z$ makes $a = \sigma(z)$, and $a$ makes $L = (a - y)^2$. By the chain rule, a nudge to $w$ is stretched by each link in turn:
+$$\frac{\partial L}{\partial w} = \frac{\partial L}{\partial a} \cdot \frac{\partial a}{\partial z} \cdot \frac{\partial z}{\partial w}.$$
+Each link on its own is easy. The loss, as a function of the output $u$, is $2(u - y)$ (here with $y = 1$ put in):`);
+    m("diff((u - y)^2, u)");
+    md(r`The sigmoid, which comes out as $\sigma(u)\,(1 - \sigma(u))$ once you look twice (try it: $\sigma = \frac{1}{1 + e^{-u}}$ and $1 - \sigma = \frac{e^{-u}}{1 + e^{-u}}$):`);
+    m("diff(1/(1 + exp(-u)), u)");
+    md(r`And $z = wx + b$, whose derivative is $x$ with respect to $w$ (here $2$, since ‹x› is bound to $2$) and $1$ with respect to $b$:`);
+    m("diff(w*x + b, w)");
+    md(r`
+Now at the point. With $a = 0.7311$:
+
+- $\partial L / \partial a = 2(a - y) = 2(0.7311 - 1) = -0.5379$;
+- $\partial a / \partial z = a(1 - a) = 0.7311 \cdot 0.2689 = 0.1966$;
+- so $\partial L / \partial z = -0.5379 \cdot 0.1966 = -0.1058$;
+- and $\partial L / \partial w = -0.1058 \cdot x = -0.2115$, while $\partial L / \partial b = -0.1058 \cdot 1 = -0.1058$.
+`);
+    m("N(2*(a1 - y) * a1*(1 - a1) * x)");
+    md(r`The same number as differentiating the whole loss at once and putting the point in:`);
+    m("N(subst(subst(diff(L, w), w, 0.5), b, 0))");
+    md(r`
+> [!try]
+> Before reading on: which factor did $\partial L / \partial w$ and $\partial L / \partial b$ have in common? How much of the work for one could the other reuse?
+`);
+    sec("The computation graph");
+    md(r`
+> [!definition] Backpropagation
+> Draw the loss as a **computation graph**: a node for each input and each operation, with an arrow from each node to the ones that read it. **Backpropagation** makes two passes over it. The **forward pass** gives every node its value, from the inputs up. The **backward pass** gives every node its **gradient**, how much the loss changes per unit change of that node: the loss's own is $1$, and a node's is the gradient of the node that reads it times the local derivative on the arrow (summed, if several nodes read it).
+`);
+    md(r`‹backprop(f, [w, b], [0.5, 0])› does both passes at the point $w = 0.5$, $b = 0$, and draws the graph: each box shows its value (=) and its gradient (∂), each arrow its local derivative. Open the work to see each node computed, forwards and then backwards. The last step checks the answer against ‹diff›.`);
+    m("backprop(L, [w, b], [0.5, 0])", { work: true });
+    md(r`The node $w \cdot 2 + b$ is $z$. Its gradient, $-0.1058$, is computed once, in the backward pass, and then used twice: times $2$ for $w$, and times $1$ for $b$. That shared factor is the answer to the question above.`);
+    sec("Why backwards");
+    md(r`
+Lesson 2 followed a nudge *forwards*, from $x$ to the output. Done that way, every weight needs its own pass: nudge $w$ and follow it to the loss, then nudge $b$ and follow that. With $n$ weights, that is $n$ passes through the network.
+
+Going *backwards*, one pass from the loss gives the gradient of every node at once, because a node's gradient depends only on the nodes above it, each computed once and then shared by everything below. Every weight's derivative costs about as much as one more evaluation of the network. A network with a million weights needs one backward pass, not a million forward ones; that is why neural networks can be trained at all.
+`);
+    md(r`Two neurons in a row: a hidden neuron $h = \sigma(w x)$ feeds an output $v h$. Both gradients come out of the one backward pass, and both pass through the node $v h - y$:`);
+    m("backprop((v/(1 + exp(-(w*x))) - y)^2, [w, v], [1, 0.5])", { work: true });
+    md(r`
+> [!mistake]
+> Backpropagation is not an approximation of the derivative. It is the chain rule, exactly, done in a good order. The only rounding is the computer's arithmetic, which the check against ‹diff› bounds.
+`);
+    sec("One step downhill");
+    md(r`
+> [!definition] Gradient descent
+> The gradient points the way the loss increases fastest, so step the other way: $(w, b) \leftarrow (w, b) - r \cdot \nabla L$, for a small **learning rate** $r$.
+`);
+    md(r`Bind the gradient, step with $r = 2$, and evaluate the loss at the new weights:`);
+    m("let g = backprop(L, [w, b], [0.5, 0])");
+    m("let p = [0.5, 0] - 2*g");
+    m("N(subst(subst(L, w, p[[1]]), b, p[[2]]))");
+    md(r`The loss fell from $0.0723$ to $0.0128$. Training repeats this step over many examples, many times; each step needs the gradient, and backpropagation is how it is found.`);
+    sec("Exercises");
+    md(r`A neuron without the sigmoid, $z = 3w + b$, for the input $3$ and the target $5$, has loss $(3w + b - 5)^2$. Answer a gradient as a row, ‹[∂L/∂w, ∂L/∂b]›.`);
+    ex("diff((3w + b - 5)^2, w)", r`Differentiate the loss $(3w + b - 5)^2$ with respect to $w$, holding $b$ fixed.`, [
+      r`The outer function is $u^2$, the inner $u = 3w + b - 5$, whose derivative with respect to $w$ is $3$.`,
+    ]);
+    ex("backprop((3w + b - 5)^2, [w, b], [1, 0])", r`Find the gradient of $(3w + b - 5)^2$ at $w = 1$, $b = 0$, as ‹[∂L/∂w, ∂L/∂b]›.`, [
+      r`Forward: $z = 3$, so $z - 5 = -2$. Backward: the loss's derivative with respect to $z$ is $2(z - 5) = -4$.`,
+      r`Then multiply by each local derivative: $3$ for $w$, $1$ for $b$.`,
+    ], { hide: true });
+    ex("[1, 0] - 0.1*[-12, -4]", r`The gradient at $w = 1$, $b = 0$ is $[-12, -4]$. Take one step of gradient descent with learning rate $0.1$: what are the new $[w, b]$?`, [
+      r`Subtract $0.1$ times the gradient: $1 - 0.1 \cdot (-12)$ for $w$.`,
+    ], { hide: true });
+    ex("diff(1/(1 + exp(-u)), u)", r`Differentiate the sigmoid $\dfrac{1}{1 + e^{-u}}$. Write it with ‹exp›.`, [
+      r`It is $(1 + e^{-u})^{-1}$: the outer function is $t^{-1}$, the inner $1 + e^{-u}$.`,
+      r`The inner derivative is $-e^{-u}$, and $(t^{-1})' = -t^{-2}$.`,
+    ]);
+    md(r`
+> [!summary]
+> A network's loss is a chain of simple functions, so its derivative with respect to a weight is a product of local derivatives, one per link. Backpropagation computes every node's value going forwards and every node's gradient going backwards, sharing each product with everything below it, so all the weights' derivatives cost about one pass. Gradient descent then steps the weights against the gradient.
 `);
   });
   add("03-circles.chalk", "Circles, exponentials and rotation", "Why e^(it) walks round the unit circle: cosine and sine as shadows, multiplying by i as a quarter turn, Euler's formula, angles that add, and arctan as an angle.", ({ sec, md, m, ex, sc }) => {
@@ -5988,7 +9285,7 @@ KX = line(0, [1, 0]) dashed color 1
 // safety proof. After "A Programmer's Guide to Lambda Calculus", whose Lean the first course follows.
 course("lambda", "λ-calculus I: computing with functions",
   "What if functions were the only thing? Terms, free and bound variables, substitution without capture, β-reduction and normal forms, evaluation strategies, de Bruijn indices, Church encodings and recursion by fixed points; an interpreter built in Lean alongside.",
-  "Logic and computation", (add) => {
+  "Logic and computation", (add, app) => {
 
   add("01-terms.chalk", "Terms and notation", "A language with nothing but functions: variables, functions and applications, how they are written, and a first β-step.", ({ sec, md, m, ex, lean, lx }) => {
     sec("Terms and notation");
@@ -6433,10 +9730,136 @@ def KIΩ : Term := app (app K I) (app ω ω)
     ex("cbn: (λx. x x) ((λy. y) z)", r`Reduce $(\lambda x.\, x\ x)\ ((\lambda y.\, y)\ z)$ by name. Where does it stop?`, [r`The argument goes in unevaluated, twice. Then the head is reduced, and only the head.`]);
     ex("cbn: λx. (λy. y) x", r`Reduce $\lambda x.\, (\lambda y.\, y)\ x$ by name.`, [r`Call by name does not reduce under a λ.`]);
     md(r`
+> [!note] Application: laziness in real languages
+> JavaScript calls by value, except in ‹&&›, ‹||› and ‹if›; Haskell calls by need. [Laziness in real languages](#course=lambda&lesson=5&app=1), an optional notebook beside this lesson, finds these strategies in real code, with thunks and sharing.
+`);
+    md(r`
 > [!summary]
 > A strategy answers "which redex first?". Normal order finds every normal form there is. Call by name and call by value stop at functions; call by value evaluates arguments first, once, and can loop on an argument nobody needs.
 
 Every strategy here renames bound variables to substitute, and lesson 2 had to compare terms up to renaming. Names are a nuisance: can we do without them? Lesson 6.
+`);
+  });
+
+  app("05a-laziness.chalk", "Laziness in real languages", "Every language picks a strategy: arguments first in JavaScript, &&, || and if as the exceptions that run by name, thunks to delay by hand, and Haskell's call by need, which shares what it evaluates.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Laziness in real languages");
+    md(r`
+> [!goal]
+> Find lesson 5's strategies in languages you may use: call by value in JavaScript, the few places where it calls by name, thunks that delay an argument by hand, and Haskell's call by need.
+`);
+    md(r`An application of lesson 5, outside the course's order: nothing later depends on it. It uses lesson 5's strategies (‹cbv:›, ‹cbn:›, ‹normal:›, ‹applicative:›) and, in its last section, the Lean of lessons 1 to 5. The code is JavaScript and Haskell; you need only read it.`);
+    sec("Arguments first");
+    md(r`JavaScript, Python, Java, C and most other languages call by value: in ‹f(g(x))›, ‹g(x)› is computed before ‹f› starts. So a function that ignores an argument still waits for it:
+
+‹‹‹js
+const K = (x) => (y) => x;        // λx. λy. x
+function spin() { return spin(); } // never returns: Ω
+
+K(1)(spin());                      // never returns: spin() runs before K sees it
+‹‹‹
+
+This is lesson 5's $K\ I\ \Omega$. Call by value goes round $\Omega$ for as many steps as you give it; call by name never looks at it:`.replace(/‹‹‹/g, "```"));
+    m("cbv 6: K I (omega omega)");
+    m("cbn: K I (omega omega)");
+    sec("Where a strict language calls by name");
+    md(r`Every call-by-value language still has a few constructs that do *not* evaluate everything first: ‹&&›, ‹||›, ‹? :› and ‹if›. Their right-hand side, or their other branch, is evaluated only when it is needed:
+
+‹‹‹js
+user !== null && user.isAdmin        // fine when user is null: the right side is never evaluated
+const and = (a, b) => (a ? b : false);
+and(user !== null, user.isAdmin)     // a TypeError when user is null: both arguments come first
+‹‹‹
+
+That is why ‹&&› cannot be written as an ordinary function in JavaScript. Lesson 7's ‹and› is an ordinary function, and shows the same thing: by value, the argument nobody needs runs first, and never finishes; by name, the answer comes at once.`.replace(/‹‹‹/g, "```"));
+    m("cbv 6: and false (omega omega)");
+    m("cbn: and false (omega omega)", { work: true });
+    md(r`The same goes for ‹if›: as a function, it evaluates both branches before choosing one.`);
+    m("cbv 6: if true a (omega omega)");
+    m("cbn: if true a (omega omega)");
+    sec("Thunks: call by name by hand");
+    md(r`
+> [!definition] Thunk
+> A **thunk** is an argument wrapped in a function of nothing: ‹() => spin()› in JavaScript, $\lambda d.\, \Omega$ here (the $d$ is never used). A λ is already a value, so call by value passes it on untouched; the code that wants the argument calls the thunk, and only then is it evaluated.
+`);
+    md(r`Wrapped in a thunk, $\Omega$ no longer stops call by value:`);
+    m("cbv: K I (λd. omega omega)", { work: true });
+    md(r`A lazy ‹if› takes its branches as thunks and calls only the one it chooses. Here the chosen branch is forced by applying it to $I$, any argument would do:
+
+‹‹‹js
+const lazyIf = (b, t, e) => (b ? t : e)();
+lazyIf(true, () => "a", () => spin());   // "a": the other thunk is never called
+‹‹‹`.replace(/‹‹‹/g, "```"));
+    m("cbv: if true (λd. a) (λd. omega omega) I", { work: true });
+    md(r`Thunks are everywhere once you look: a logger that takes ‹() => describe(state)› so that the description is built only when the message is printed, a default value computed only if it is missing, and lesson 8's $Z$, which is $Y$ with the self-application put inside a λ so that call by value does not unfold it forever.`);
+    sec("Call by need: sharing");
+    md(r`Call by name never evaluates an argument nobody uses, but it evaluates one that is used three times three times. Call by value is the other way round. Count the β-steps of each strategy's work on an argument used three times:`);
+    m("normal: (λx. f x x x) ((λy. y) ((λy. y) v))", { work: true });
+    m("applicative: (λx. f x x x) ((λy. y) ((λy. y) v))", { work: true });
+    md(r`Seven steps by name (the argument's two steps, once per copy, and the call), three by value. Now an argument nobody uses:`);
+    m("normal: (λx. f) ((λy. y) ((λy. y) v))", { work: true });
+    m("applicative: (λx. f) ((λy. y) ((λy. y) v))", { work: true });
+    md(r`One step by name, three by value. Neither is best in both.`);
+    md(r`
+> [!definition] Call by need
+> **Call by need** passes the argument unevaluated, like call by name, and evaluates it the first time it is used; then it *remembers* the value, so that every other use gets it at no cost. An argument is evaluated at most once, and never if it is unused: three steps in the first example, one in the second. Haskell calls by need.
+`);
+    md(r`
+‹‹‹haskell
+square x = x * x
+square (expensive 10)    -- expensive 10 is computed once, when * first needs x
+const 1 (expensive 10)   -- never computed
+take 3 (repeat 7)        -- [7,7,7]: an infinite list, of which only three cells are ever built
+‹‹‹
+
+In JavaScript, call by need is a thunk that remembers:
+
+‹‹‹js
+function lazy(f) {
+  let done = false, value;
+  return () => { if (!done) { value = f(); done = true; } return value; };
+}
+const x = lazy(() => expensive(10));
+x() * x();               // expensive runs once
+‹‹‹`.replace(/‹‹‹/g, "```"));
+    md(r`
+> [!mistake]
+> The strategies in this course copy terms when they substitute, so none of them shares: sharing needs a place where the value is kept, and a λ-term has none. Implementations of Haskell reduce *graphs* instead, in which the three copies of $x$ are three pointers to one node, and evaluating that node once updates it for all three.
+`);
+    sec("In Lean");
+    md(r`Lean evaluates by value too. Its ‹&&›, ‹||› and ‹if› are the short-circuiting exceptions, and an ordinary function can take a thunk, of type ‹Unit → Bool›, to get the same behaviour. Lean must know that a function stops before it lets you use it in a proof; ‹partial› gives a function it cannot check, such as one that never stops, and promises nothing about it. It is never run below.`);
+    lean(r`/-- "and" with its second argument as a thunk: forced only when the first is true. -/
+def andLazy (a : Bool) (b : Unit → Bool) : Bool :=
+  match a with
+  | false => false
+  | true => b ()
+
+/-- A function that never returns: Ω in Lean. -/
+partial def spin (u : Unit) : Bool := spin u
+
+#eval andLazy false (fun _ => spin ())   -- false: the thunk is never forced
+
+theorem andLazy_false (b : Unit → Bool) : andLazy false b = false := rfl
+
+/-- Lesson 5's interpreter: by value, K I applied to a thunk of Ω finishes. -/
+def KIthunk : Term := app (app K I) (lam "d" (app ω ω))
+#eval (run cbvStep 10 KIthunk).pretty`);
+    md(r`‹Thunk› is Lean's built-in remembering thunk: the first ‹get› computes the value, and later ones return it.`);
+    lean(r`def bigSum : Thunk Nat := Thunk.mk fun _ => (List.range 1001).foldl (· + ·) 0
+
+#eval bigSum.get + bigSum.get   -- the sum is computed once`);
+    lx(r`theorem orLazy_spec (b : Unit → Bool) : orLazy true b = true ∧ orLazy false b = b () := by`, r`Define ‹orLazy›, an "or" whose second argument is a thunk: when the first is ‹true›, the answer is ‹true› without forcing the thunk. The check below it fails until your definition is written.`, r`  constructor <;> rfl`, [
+      r`Match on ‹a›, as ‹andLazy› does: ‹true› gives ‹true›, ‹false› gives whatever the thunk gives, ‹b ()›.`,
+      r`With that definition both sides of each equation compute to the same thing: ‹constructor› splits the ∧, and ‹rfl› closes each half.`,
+    ], { start: "  constructor <;> rfl", def: { start: "def orLazy (a : Bool) (b : Unit → Bool) : Bool := sorry", solution: "def orLazy (a : Bool) (b : Unit → Bool) : Bool :=\n  match a with\n  | true => true\n  | false => b ()", forbid: ["||", "or"] } });
+    lx(r`theorem andLazy_true (b : Unit → Bool) : andLazy true b = b () := by`, r`Prove that ‹andLazy true b› is whatever the thunk gives.`, r`  rfl`, [r`Unfold ‹andLazy› on ‹true›: it is ‹b ()›, by definition.`]);
+    sec("Exercises");
+    md(r`Write the term the strategy stops at; it is compared up to bound names, not reduced further.`);
+    ex("cbv: K a (λd. omega omega)", r`Call by value, with $\Omega$ in a thunk: reduce $K\ a\ (\lambda d.\, \Omega)$ by value.`, [r`$\lambda d.\, \Omega$ is a λ, so it is a value already: the call can go ahead.`]);
+    ex("cbn: or true (omega omega)", r`Reduce $\mathsf{or}\ \mathsf{true}\ \Omega$ by name. Does $\Omega$ run?`, [r`$\mathsf{or}\ p\ q$ is $p\ p\ q$: with $p$ true, it keeps the first of $p$ and $q$.`]);
+    ex("cbv: if false (λd. omega omega) (λd. b) I", r`A lazy ‹if› by value: reduce $\mathsf{if}\ \mathsf{false}\ (\lambda d.\, \Omega)\ (\lambda d.\, b)\ I$.`, [r`$\mathsf{if}$ chooses the second thunk without calling either; applying the chosen one to $I$ calls it.`]);
+    md(r`
+> [!summary]
+> Most languages call by value, with ‹&&›, ‹||›, ‹? :› and ‹if› as the places where they call by name. A thunk, an argument wrapped in a function of nothing, is call by name by hand: a λ is a value, so it waits. Call by need is call by name that remembers: an argument evaluated at most once, and never if unused. Haskell calls by need, sharing values in a graph that a λ-term cannot express.
 `);
   });
 
@@ -6632,10 +10055,129 @@ def church {α : Type} : Nat → (α → α) → α → α
     ex("normal: 3 not true", r`A numeral is a loop. Reduce $3\ \mathsf{not}\ \mathsf{true}$.`, [r`It applies $\mathsf{not}$ to $\mathsf{true}$ three times.`]);
     ex("normal: 2 (add 3) 0", r`Reduce $2\ (\mathsf{add}\ 3)\ 0$. Which operation on 2 and 3 have you invented?`, [r`It applies "add 3" to 0, twice.`]);
     md(r`
+> [!note] Application: callbacks and currying
+> JavaScript's ‹x => y => x + y› is a λ-term. [Callbacks and currying](#course=lambda&lesson=7&app=1), an optional notebook beside this lesson, reads currying, partial application, ‹map›, ‹compose› and callbacks as λ-terms, and finds Church encodings to be callbacks.
+`);
+    md(r`
 > [!summary]
 > A thing is what you can do with it: booleans choose, numerals iterate, pairs wait for a selector, lists are their own folds. Arithmetic is iteration of iterations, and the predecessor is a counter carried in a pair.
 
 Every loop here is a numeral, which knows in advance how many times to run. A loop that runs until it is done needs a function that calls itself. With no names, how can a function refer to itself? Lesson 8.
+`);
+  });
+
+  app("07a-callbacks-currying.chalk", "Callbacks and currying", "JavaScript's arrow functions as λ-terms: curried functions and partial application, functions that take functions (map, compose), and callbacks and continuation passing, which Church encodings were all along.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Callbacks and currying");
+    md(r`
+> [!goal]
+> Read JavaScript's functions as λ-terms: curry and partially apply them, pass functions to functions, and see callbacks and continuation passing in lesson 7's encodings.
+`);
+    md(r`An application of lesson 7, outside the course's order: nothing later depends on it. It uses lesson 7's library (numerals, ‹add›, ‹mul›, ‹succ›, ‹pair›, ‹fst›, ‹snd›) and, in its last section, a little Lean. The code is JavaScript; you need only read it.`);
+    sec("Arrow functions are λs");
+    md(r`JavaScript's ‹x => x + 1› is $\lambda x.\, x + 1$, written with an arrow. A function of two arguments can be written two ways:
+
+‹‹‹js
+const add2 = (x, y) => x + y;      // takes both at once
+const add = (x) => (y) => x + y;   // takes x, and returns a function waiting for y
+add(2)(3);                         // 5
+‹‹‹
+
+The second is how every function of two arguments looks in the λ-calculus: $\lambda x.\, \lambda y.\, \ldots$, a function returning a function. Turning the first form into the second is **currying**, after Haskell Curry (Moses Schönfinkel found it first).`.replace(/‹‹‹/g, "```"));
+    sec("Partial application");
+    md(r`A curried function can be given one argument now and the other later. ‹add(1)› is not an error and not a number: it is a function, waiting for ‹y›.
+
+‹‹‹js
+const inc = add(1);        // a function
+inc(2);                    // 3
+[1, 2, 3].map(add(10));    // [11, 12, 13]
+‹‹‹
+
+The library's ‹add› is curried, so $\mathsf{add}\ 1$ reduces to a function waiting for $n$:`.replace(/‹‹‹/g, "```"));
+    m("normal: add 1", { work: true });
+    m("inc := add 1");
+    m("inc 2");
+    md(r`A function on pairs and a curried function carry the same information, and each turns into the other. With lesson 7's pairs:
+
+‹‹‹js
+const curry = (f) => (a) => (b) => f([a, b]);
+const uncurry = (f) => ([a, b]) => f(a)(b);
+‹‹‹`.replace(/‹‹‹/g, "```"));
+    m("curry := λf. λa. λb. f (pair a b)");
+    m("uncurry := λf. λp. f (fst p) (snd p)");
+    m("uncurry add (pair 2 3)");
+    m("curry (uncurry add) 2 3");
+    sec("Functions that take functions");
+    md(r`A function that takes a function, or returns one, is called **higher-order**. In the λ-calculus there is nothing else: every argument is a function. Three that every language has:
+
+‹‹‹js
+const compose = (f) => (g) => (x) => f(g(x));   // g, then f
+const flip = (f) => (a) => (b) => f(b)(a);       // the arguments swapped
+xs.map(f);                                      // f on every element
+‹‹‹`.replace(/‹‹‹/g, "```"));
+    m("compose := λf. λg. λx. f (g x)");
+    m("double := mul 2");
+    m("compose succ double 3", { work: true });
+    m("flip := λf. λa. λb. f b a");
+    m("fst (flip pair a b)");
+    md(r`A Church list is its own fold (lesson 7), so $\mathsf{map}$ hands the fold a combining step that applies $f$ to each head first. This notebook has its own names, so the list is defined again:`);
+    m("nil := λc. λn. n");
+    m("cons := λh. λt. λc. λn. c h (t c n)");
+    m("map := λf. λl. λc. λn. l (λh. λr. c (f h) r) n");
+    md(r`Double every element of $[1, 2, 3]$, then sum, by folding with $\mathsf{add}$ from $0$:`);
+    m("map double (cons 1 (cons 2 (cons 3 nil))) add 0");
+    sec("Callbacks and continuations");
+    md(r`A **callback** is a function you hand over, to be called later with a result. Node's ‹readFile(path, (err, data) => …)› does not return the file: it calls you back with it.`);
+    md(r`
+> [!definition] Continuation-passing style
+> In **continuation-passing style** a function does not return its result; it takes one more argument $k$, the **continuation**, "what to do next", and calls it with the result. Returning $3$ becomes $\lambda k.\, k\ 3$.
+`);
+    m("withThree := λk. k 3");
+    m("withThree succ");
+    md(r`Adding, in that style, takes its two numbers and a continuation. Doing two additions in a row nests the second inside the first's continuation:
+
+‹‹‹js
+const addk = (a, b, k) => k(a + b);
+addk(1, 2, (s) => addk(s, 3, (t) => t));   // 6
+‹‹‹
+
+The nesting, a step deeper for every step taken, is "callback hell"; promises and ‹async›/‹await› are ways of writing the same continuations flat.`.replace(/‹‹‹/g, "```"));
+    m("addk := λa. λb. λk. k (add a b)");
+    m("addk 1 2 (λs. addk s 3 (λt. t))", { work: true });
+    md(r`
+> [!note] Church encodings are callbacks
+> Lesson 7's "a thing is what you can do with it" is continuation passing. A Church boolean takes two continuations, what to do if it is true and what to do if it is false, and calls one. A pair, $\lambda s.\, s\ a\ b$, calls its callback with both parts. A list calls its callback once per element. None of them returns anything: each calls you back.
+`);
+    sec("In Lean");
+    md(r`Lean's functions are curried too: ‹Nat → Nat → Nat› is ‹Nat → (Nat → Nat)›, and ‹addC 1› is a function.`);
+    lean(r`def addC : Nat → Nat → Nat := fun x => fun y => x + y
+
+#eval addC 1 2
+#eval [1, 2, 3].map (addC 10)
+
+def curry2 {α β γ : Type} (f : α × β → γ) : α → β → γ := fun a b => f (a, b)
+def uncurry2 {α β γ : Type} (f : α → β → γ) : α × β → γ := fun p => f p.1 p.2
+
+/-- Uncurrying and then currying gives the function back, by definition. -/
+theorem curry_uncurry {α β γ : Type} (f : α → β → γ) : curry2 (uncurry2 f) = f := rfl`);
+    lx(r`theorem compose2_apply {α β γ : Type} (f : β → γ) (g : α → β) (x : α) : compose2 f g x = f (g x) := by`, r`Define ‹compose2 f g›: the function that does ‹g›, then ‹f›. (Lean's own ‹∘› is ruled out.) The check, ‹rfl›, fails until your definition is written.`, r`  rfl`, [
+      r`It takes ‹f› and ‹g› and returns a function: ‹fun x => …›.`,
+      r`‹def compose2 {α β γ : Type} (f : β → γ) (g : α → β) : α → γ := fun x => f (g x)›`,
+    ], { start: "  rfl", def: { start: "def compose2 {α β γ : Type} (f : β → γ) (g : α → β) : α → γ := sorry", solution: "def compose2 {α β γ : Type} (f : β → γ) (g : α → β) : α → γ := fun x => f (g x)", forbid: ["∘", "Function.comp"] } });
+    lx(r`theorem map_map' (f g : Nat → Nat) (l : List Nat) : (l.map g).map f = l.map (compose2 f g) := by`, r`Mapping ‹g› and then ‹f› is mapping their composition once. Prove it by induction on the list.`, r`  induction l with
+  | nil => rfl
+  | cons h t ih => simp [List.map, compose2_apply, ih]`, [
+      r`‹induction l with›: the empty list, then a head ‹h› on a tail ‹t›, with ‹ih› for the tail.`,
+      r`In the second case, ‹simp [List.map, compose2_apply, ih]› unfolds one step of ‹map› on each side and uses the last exercise and ‹ih›.`,
+    ]);
+    sec("Exercises");
+    md(r`Answer with a numeral or a boolean by name, or with the λ-term. The definitions above are in this notebook's session.`);
+    ex("inc (inc 1)", r`Reduce $\mathsf{inc}\ (\mathsf{inc}\ 1)$, with $\mathsf{inc} = \mathsf{add}\ 1$.`, [r`Each $\mathsf{inc}$ adds one.`]);
+    ex("compose double inc 2", r`Reduce $\mathsf{compose}\ \mathsf{double}\ \mathsf{inc}\ 2$. Which runs first?`, [r`$\mathsf{compose}\ f\ g\ x = f\ (g\ x)$: $g$ first.`]);
+    ex("withThree (λn. addk n 4 (λt. t))", r`In continuation-passing style: reduce $\mathsf{withThree}\ (\lambda n.\, \mathsf{addk}\ n\ 4\ (\lambda t.\, t))$.`, [r`$\mathsf{withThree}$ calls its continuation with $3$; then $3 + 4$ is passed to $\lambda t.\, t$.`]);
+    ex("map inc (cons 1 (cons 2 nil)) add 0", r`Add one to every element of $[1, 2]$, then sum: reduce $\mathsf{map}\ \mathsf{inc}\ (\mathsf{cons}\ 1\ (\mathsf{cons}\ 2\ \mathsf{nil}))\ \mathsf{add}\ 0$.`, [r`The list becomes $[2, 3]$, and its sum is $2 + 3$.`]);
+    md(r`
+> [!summary]
+> JavaScript's arrow functions are λs. A curried function takes its arguments one at a time, so giving it some of them (partial application) makes a new function. Higher-order functions such as ‹map›, ‹compose› and ‹flip› are the λ-calculus's ordinary case. A callback, and continuation-passing style generally, hands a function "what to do next" instead of returning: Church encodings were callbacks all along.
 `);
   });
 
@@ -6736,7 +10278,7 @@ theorem fact_fixed : ∀ n, F fact n = fact n := by
 
 course("lambda-types", "λ-calculus II: types and proofs",
   "The simply typed λ-calculus: typing rules and derivation trees, type inference by unification, what types rule out, propositions as types, type safety, polymorphism and dependent types, with the theory proved in Lean.",
-  "Logic and computation", (add) => {
+  "Logic and computation", (add, app) => {
 
   add("01-simple-types.chalk", "Simple types", "What goes wrong without types, what a type has to record to prevent it, and the three typing rules that follow.", ({ sec, md, m, ex, lean, lx }) => {
     sec("Simple types");
@@ -7172,10 +10714,147 @@ theorem peirce (P Q : Prop) : ((P → Q) → P) → P := by
     ], { hide: true });
     ex("taut(¬¬p → p)", r`Is $\lnot\lnot A \to A$ a tautology? Answer ‹⊤› or ‹⊥›.`, []);
     md(r`
+> [!note] Application: illegal states
+> A product is $\land$ and a sum is $\lor$, in programs too. [Make illegal states unrepresentable](#course=lambda-types&lesson=5&app=1), an optional notebook beside this lesson, replaces a record of flags that allows nonsense states with a tagged union that does not.
+`);
+    md(r`
 > [!summary]
 > The typing rules are natural deduction's rules for implication: a type is a proposition and a closed term a proof of it; Var is an assumption, →I assuming, →E modus ponens, and a β-step removes a detour from a proof. Every type with a term is a tautology, but not every tautology has a term: Peirce's law and $\lnot\lnot A \to A$ need classical logic's excluded middle, which no program proves.
 `);
     md(r`A proof is a program, and lesson 1 promised that a typed program cannot compute nonsense. What exactly does a type promise about a program while it runs?`);
+  });
+
+  app("05a-illegal-states.chalk", "Make illegal states unrepresentable", "A record of flags whose type allows states that mean nothing, and a tagged union whose every value means something: counting a type's values, sums and products as ∨ and ∧, and a function's type as a promise to handle every case.", ({ sec, md, m, ex, lean, lx }) => {
+    sec("Make illegal states unrepresentable");
+    md(r`
+> [!goal]
+> Count the values of a type, spot the values that mean nothing, and replace the type with one whose every value means something, so that the type checker rules the nonsense out.
+`);
+    md(r`An application of lesson 5, outside the course's order: nothing later depends on it. It reads a product as $\land$ and a sum as $\lor$, as lesson 5's Lean does, uses ‹type:› from lessons 1 and 2, and some Lean. The code is TypeScript; you need only read it.`);
+    sec("A type with too many values");
+    md(r`A screen fetches some data. Written with flags, its state is:
+
+‹‹‹ts
+type Fetch = {
+  loading: boolean;
+  error?: string;     // present when the fetch failed
+  data?: Item[];      // present when it succeeded
+};
+‹‹‹
+
+Four states mean something: nothing asked yet, loading, failed with a message, loaded with data. But the type also allows ‹{ loading: true, error: "timeout", data: [] }›: loading, failed and loaded at once. Nothing stops code from building it, so every reader of the state has to guess, and the order of its ‹if›s decides what the screen shows.`.replace(/‹‹‹/g, "```"));
+    md(r`Forget the message and the items for a moment, and count: with $l$ for loading, $e$ for an error being there and $d$ for data being there, three yes-or-no fields allow $2 \cdot 2 \cdot 2$ combinations:`);
+    m("2^3");
+    md(r`The meaningful ones have at most one of the three. Their truth table has 4 true rows of 8, and ‹sat› finds a state that is loading and failed at once:`);
+    m("truthtable((¬l ∧ ¬e ∧ ¬d) ∨ (l ∧ ¬e ∧ ¬d) ∨ (¬l ∧ e ∧ ¬d) ∨ (¬l ∧ ¬e ∧ d))");
+    m("sat(l ∧ e)");
+    sec("A tagged union");
+    md(r`Say instead which state it is, and give each state only the fields it has:
+
+‹‹‹ts
+type Fetch =
+  | { tag: "idle" }
+  | { tag: "loading" }
+  | { tag: "failed"; error: string }
+  | { tag: "loaded"; data: Item[] };
+‹‹‹
+
+Every value of this type is one of the four states. A loading state with an error is not a value of the type at all: the compiler refuses to build it, before the program runs. And code that reads the state can ask the compiler to check that it handles every tag:
+
+‹‹‹ts
+function message(s: Fetch): string {
+  switch (s.tag) {
+    case "idle":    return "Nothing yet";
+    case "loading": return "Loading…";
+    case "failed":  return "Failed: " + s.error;   // s.error exists here, and only here
+    case "loaded":  return s.data.length + " items";
+  }
+}
+‹‹‹`.replace(/‹‹‹/g, "```"));
+    sec("Products, sums and counting");
+    md(r`
+> [!definition] Products and sums
+> A record of an $A$ and a $B$ is a **product**, $A \times B$: one of each, so $|A| \cdot |B|$ values. A tagged union of $A$ and $B$ is a **sum**, $A + B$: one or the other, tagged with which, so $|A| + |B|$ values. A function from $A$ to $B$ picks a $B$ for each $A$: $|B|^{|A|}$ of them.
+`);
+    md(r`The flags type is a product of three two-valued fields, $2 \cdot 2 \cdot 2 = 8$; the union is a sum of four one-valued cases, $1 + 1 + 1 + 1 = 4$ (leaving out the message and the items, as before). Lesson 5 reads the same types as propositions: a pair holds a proof of each part, so a product is $\land$; a sum holds one of them, saying which, so it is $\lor$. The flags type says "loading, and maybe an error, and maybe data"; the union says "idle, or loading, or failed, or loaded", exactly one.`);
+    sec("A sum as what you can do with it");
+    md(r`Simple types have only arrows, but lesson I.7's trick gives sums anyway: a thing is what you can do with it. What do you do with "data or an error"? Handle it: given what to do with data, $k : D \to R$, and what to do with an error, $h : E \to R$, produce an $R$. So the sum is the type $(D \to R) \to (E \to R) \to R$, and "it succeeded with $d$" is the term that calls the first handler:`);
+    m("type: λd:D. λk:D→R. λh:E→R. k d");
+    md(r`A function's type is a promise it keeps. To get an $R$ out of a result $r$, you must hand it both handlers:`);
+    m("type: show : D → R, fail : E → R, r : (D→R)→(E→R)→R ⊢ r show fail");
+    md(r`Hand it only the data handler, and what you get is not an $R$ but a function still waiting for the error handler: the type will not let you forget the error case.`);
+    m("type: show : D → R, r : (D→R)→(E→R)→R ⊢ r show");
+    sec("In Lean");
+    md(r`In Lean a product is a ‹structure› and a sum an ‹inductive› type with several constructors. The structure builds the nonsense state without complaint:`);
+    lean(r`structure FetchFlags where
+  loading : Bool
+  error : Option String
+  data : Option (List Nat)
+
+def nonsense : FetchFlags := { loading := true, error := some "timeout", data := some [1, 2] }`);
+    md(r`The inductive type has one constructor per state, and each takes only what its state has:`);
+    lean(r`inductive Fetch where
+  | idle
+  | loading
+  | failed (error : String)
+  | loaded (data : List Nat)
+
+def Fetch.isLoading : Fetch → Bool
+  | .loading => true
+  | _ => false
+
+def Fetch.error? : Fetch → Option String
+  | .failed e => some e
+  | _ => none
+
+/-- No state is loading and failed at once: checked for every state, case by case. -/
+theorem not_loading_and_failed (s : Fetch) : ¬ (s.isLoading = true ∧ s.error?.isSome = true) := by
+  cases s <;> simp [Fetch.isLoading, Fetch.error?]
+
+def Fetch.message : Fetch → String
+  | .idle => "Nothing yet"
+  | .loading => "Loading…"
+  | .failed e => s!"Failed: {e}"
+  | .loaded d => s!"{d.length} items"
+
+#eval (Fetch.loaded [1, 2, 3]).message`);
+    md(r`Leave a case out of ‹message›, and Lean refuses the definition, naming the case:
+
+‹‹‹
+def Fetch.message' : Fetch → String
+  | .idle => "Nothing yet"
+  | .loading => "Loading…"
+  | .failed e => s!"Failed: {e}"
+-- error: Missing cases:
+-- (loaded _)
+‹‹‹`.replace(/‹‹‹/g, "```"));
+    md(r`A state changes by events. Each event is a constructor too, and the step function says what each one does to each state. A ‹loaded› state can only come from ‹loading›, or be one already:`);
+    lean(r`inductive Event where
+  | start
+  | fail (error : String)
+  | succeed (data : List Nat)
+
+def Fetch.step : Fetch → Event → Fetch
+  | _, .start => .loading
+  | .loading, .fail e => .failed e
+  | .loading, .succeed d => .loaded d
+  | s, _ => s`);
+    lx(r`theorem hasData_iff (s : Fetch) : hasData s = true ↔ ∃ d, s = .loaded d := by`, r`Define ‹hasData›: ‹true› exactly for a loaded state. Then the statement, that it is true exactly when the state is ‹loaded› with some data, is checked case by case, and fails until your definition is written.`, r`  cases s <;> simp [hasData]`, [
+      r`Match on the state, as ‹Fetch.isLoading› does: ‹.loaded _› gives ‹true›, anything else ‹false›.`,
+      r`‹def hasData : Fetch → Bool | .loaded _ => true | _ => false›, on three lines.`,
+    ], { start: "  cases s <;> simp [hasData]", def: { start: "def hasData (s : Fetch) : Bool := sorry", solution: "def hasData : Fetch → Bool\n  | .loaded _ => true\n  | _ => false", forbid: [] } });
+    lx(r`theorem loaded_from (s : Fetch) (e : Event) (d : List Nat) : s.step e = .loaded d → s = .loading ∨ s = .loaded d := by`, r`Prove that a step lands on ‹.loaded d› only from ‹.loading›, or from ‹.loaded d› itself.`, r`  cases s <;> cases e <;> simp [Fetch.step]`, [
+      r`Split on the state and on the event: ‹cases s <;> cases e›, sixteen cases.`,
+      r`In each, ‹simp [Fetch.step]› computes the step; the cases that cannot land on ‹.loaded d› have a false hypothesis.`,
+    ]);
+    sec("Exercises");
+    ex("2^2", r`How many functions are there from ‹boolean› to ‹boolean›? Answer with a number.`, [r`A function from $A$ to $B$ has $|B|^{|A|}$ choices: a ‹boolean› for each of the two inputs.`]);
+    ex("1 + 2", r`How many values has ‹{ tag: "off" } | { tag: "on"; bright: boolean }›? Answer with a number.`, [r`A sum adds: one value for ‹off›, and one ‹on› for each ‹boolean›.`]);
+    ex("type: λe:E. λk:D→R. λh:E→R. h e", r`"It failed with $e$" calls the error handler. Write it as a term, in a cell of your own, and give its type.`, [r`It takes $e : E$, then the two handlers, and calls the second with $e$: $\lambda e{:}E.\, \lambda k{:}D \to R.\, \lambda h{:}E \to R.\, h\ e$.`], { hide: true });
+    md(r`
+> [!summary]
+> A type with more values than meanings forces every reader to guess. A product (a record) multiplies the counts of its parts and reads as $\land$; a sum (a tagged union) adds them and reads as $\lor$. Give each state its own case, with only the fields it has, and the nonsense states are not values at all; a sum's type, as its handlers, promises that every case is handled.
+`);
   });
 
   add("06-safety.chalk", "Type safety", "A program stuck with no rule to apply, the two promises a type must make about every step (progress and preservation), a looser rule that breaks one, and safety proved in Lean.", ({ sec, md, m, ex, lean, lx }) => {

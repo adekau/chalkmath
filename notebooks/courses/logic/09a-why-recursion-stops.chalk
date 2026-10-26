@@ -1,0 +1,214 @@
+{
+  "chalk": 1,
+  "name": "09a-why-recursion-stops.chalk",
+  "cells": [
+    {
+      "src": "Why your recursion stops",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Find the measure that makes a real recursive function stop, give it to Lean when Lean cannot find it, and read Lean's refusal as a bug report.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "An application of lesson 9, outside the course's order: nothing later depends on it. It assumes lesson 9's measures and `termination_by`, and lesson 7's lists.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Lean looks for a measure first",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Lean tries to find a measure itself before it asks for one. Counting from `i` up to `n` calls itself with a *bigger* argument, and Lean still accepts it: it tries `n - i`, which goes down at every call, and proves that it does.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "def countUp (i n : Nat) : Nat := if i < n then countUp (i + 1) n + 1 else 0\n\n#eval countUp 3 10",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Binary search looks for `x` in the part `lo ≤ i < hi` of a sorted array: it checks the middle, then searches the half that can contain `x`. The part gets shorter at every call, so its length, `hi - lo`, is the measure. Lean would find it too; `termination_by` writes it down for the reader.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "def bsearch (a : Array Nat) (x : Nat) (lo hi : Nat) : Option Nat :=\n  if lo < hi then\n    let mid := (lo + hi) / 2\n    if a[mid]! = x then some mid\n    else if a[mid]! < x then bsearch a x (mid + 1) hi\n    else bsearch a x lo mid\n  else none\ntermination_by hi - lo\n\n#eval bsearch #[1, 3, 4, 7, 9, 12] 9 0 6\n#eval bsearch #[1, 3, 4, 7, 9, 12] 5 0 6",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A bug Lean refuses",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Here is the same search with a one-character slip, `mid` where it should be `mid + 1`. Most languages run it, and it works on most inputs. Lean does not accept it:\n\n```lean\ndef bsearch (a : Array Nat) (x : Nat) (lo hi : Nat) : Option Nat :=\n  if lo < hi then\n    let mid := (lo + hi) / 2\n    if a[mid]! = x then some mid\n    else if a[mid]! < x then bsearch a x mid hi\n    else bsearch a x lo mid\n  else none\n-- error: fail to show termination for\n--   bsearch\n-- …\n-- Could not find a decreasing measure.\n-- The basic measures relate at each recursive call as follows:\n-- (<, ≤, =: relation proved, ? all proofs failed, _: no proof attempted)\n--            lo hi #1\n-- 1) 5:29-47  ?  =  ≤\n-- 2) 6:9-27   _  <  _\n--\n-- #1: hi - lo\n```\n\nThe table is Lean's search for a measure, a row per recursive call and a column per candidate: `lo`, `hi`, and `#1`, which is `hi - lo`. In call 2, `hi` goes down (`<`). In call 1, `hi - lo` only stays the same or goes down (`≤`), and that is the bug: when `hi = lo + 1`, `mid` is `lo`, so the call is the one already running. Searching `#[1, 3]` for `5` would loop forever.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> \"It terminated on every test\" is not termination. The looping input needs the part to be down to two elements with `x` past both, which a test suite can easily miss. A termination proof covers every input, and the place where it fails points at the line to fix.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "When no argument goes down",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A worker has `n` jobs and two phases. When ready, it takes a job and then cools down; when cooling down, it becomes ready again; it stops when it is ready with no jobs left. The result counts its steps.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Neither argument works as a measure. Taking a job lowers `n`; cooling down leaves `n` the same and changes the phase, and a `Bool` has no order Lean can use. What goes down at every step is the pair: `n` first, and the phase, cooling down counted above ready, when `n` stays the same. Lesson 9's states and measures check it on the steps from 2 jobs:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let W = rel({r2, c1, r1, c0, r0}; r2->c1, c1->r1, r1->c0, c0->r0)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "measure(W; r2->4, c1->3, r1->2, c0->1, r0->0)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "Here `r2` is \"ready, 2 jobs\" and `c1` \"cooling down, 1 job\", and the measure is $2n$ when ready and $2n + 1$ when cooling down: the pair, flattened into one number.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem worker_ok : worker true 3 = 6 ∧ worker false 2 = 5 := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Lean cannot find this function's measure on its own: without `termination_by` its error lists what it tried. Replace the `sorry` with a measure that works. (`partial` is ruled out: it gives up on termination, and then nothing can be proved about the function.)",
+      "leanSolution": "  simp [worker]",
+      "leanStart": "  simp [worker]",
+      "hints": [
+        "Lean's table says the two calls change the arguments as (=, <) and (=, =): in the second call neither argument goes down.",
+        "A pair is compared first component first, as in lesson 9's Ackermann. Put `n` first and a number for the phase second.",
+        "`termination_by ready n => (n, if ready then 0 else 1)`: when `n` stays the same, the phase goes from cooling down (1) to ready (0)."
+      ],
+      "leanDef": "def worker : Bool → Nat → Nat\n  | true, 0 => 0\n  | true, n + 1 => worker false n + 1\n  | false, n => worker true n + 1\ntermination_by ready n => (sorry : Nat)",
+      "leanDefSolution": "def worker : Bool → Nat → Nat\n  | true, 0 => 0\n  | true, n + 1 => worker false n + 1\n  | false, n => worker true n + 1\ntermination_by ready n => (n, if ready then 0 else 1)",
+      "leanForbid": [
+        "partial"
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "When the measure needs a proof",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Quicksort takes the first element, sorts the smaller ones and the rest separately, and puts the first element between them. The lists it recurses on are not parts of the input, so structural recursion does not apply; their *length* is the measure. Lean can be told the measure but cannot see why it goes down:\n\n```lean\ndef qsort : List Nat → List Nat\n  | [] => []\n  | x :: xs => qsort (lows x xs) ++ [x] ++ qsort (highs x xs)\ntermination_by xs => xs.length\n-- error: failed to prove termination, possible solutions:\n-- …\n-- x : Nat\n-- xs : List Nat\n-- ⊢ (lows x xs).length < xs.length + 1\n```\n\nThe error is a goal: what is left to prove. A filtered list is no longer than the list, `List.length_filter_le`, and so it is shorter than `x :: xs`. `decreasing_by` proves it, for each of the two calls:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "def lows (x : Nat) (xs : List Nat) : List Nat := xs.filter (· < x)\ndef highs (x : Nat) (xs : List Nat) : List Nat := xs.filter (· ≥ x)\n\ndef qsort : List Nat → List Nat\n  | [] => []\n  | x :: xs => qsort (lows x xs) ++ [x] ++ qsort (highs x xs)\ntermination_by xs => xs.length\ndecreasing_by\n  all_goals simp only [List.length_cons]\n  all_goals exact Nat.lt_succ_of_le (List.length_filter_le _ _)\n\n#eval qsort [3, 1, 4, 1, 5, 9, 2, 6]",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "def without (x : Nat) (xs : List Nat) : List Nat := xs.filter (· ≠ x)",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem dedup_ok : dedup [1, 2, 1, 3, 2] = [1, 2, 3] ∧ dedup [] = [] := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "`dedup` keeps the first of each value and removes its repeats from the rest, by recursion on `without x xs`. Without the two `sorry`s Lean rejects it: replace them with the measure and the proof that the measure goes down. (`partial` is ruled out.)",
+      "leanSolution": "  simp [dedup, without]",
+      "leanStart": "  simp [dedup, without]",
+      "hints": [
+        "The measure is the list's length, as for `qsort`: `termination_by xs => xs.length`.",
+        "Lean is then left with `(without x xs).length < xs.length + 1`. `without` is a `filter`, so `qsort`'s proof works for the one call.",
+        "`decreasing_by` then `simp only [List.length_cons]` and `exact Nat.lt_succ_of_le (List.length_filter_le _ _)`."
+      ],
+      "leanDef": "def dedup : List Nat → List Nat\n  | [] => []\n  | x :: xs => x :: dedup (without x xs)\ntermination_by xs => (sorry : Nat)\ndecreasing_by sorry",
+      "leanDefSolution": "def dedup : List Nat → List Nat\n  | [] => []\n  | x :: xs => x :: dedup (without x xs)\ntermination_by xs => xs.length\ndecreasing_by\n  simp only [List.length_cons]\n  exact Nat.lt_succ_of_le (List.length_filter_le _ _)",
+      "leanForbid": [
+        "partial"
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem bsearch_shrinks (lo hi : Nat) (h : lo < hi) :\n    (lo + hi) / 2 - lo < hi - lo ∧ hi - ((lo + hi) / 2 + 1) < hi - lo := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove what Lean proved for `bsearch`: both recursive calls make `hi - lo` smaller, whenever `lo < hi`.",
+      "leanSolution": "  constructor <;> omega",
+      "hints": [
+        "Two inequalities: `constructor` splits the `∧`.",
+        "Each is arithmetic with division by a numeral, which `omega` handles: `constructor <;> omega`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A function nobody can measure",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Take a number; halve it if it is even, otherwise triple it and add one; repeat until it reaches 1. From 27 it takes 111 steps, climbing as high as 9232 on the way. Every number anyone has tried reaches 1, but whether every number does is the **Collatz conjecture**, open since 1937. A measure for this function would prove it.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "partial def collatz (n : Nat) : Nat :=\n  if n ≤ 1 then 0 else if n % 2 = 0 then collatz (n / 2) + 1 else collatz (3 * n + 1) + 1\n\n#eval collatz 27",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`partial` tells Lean not to look for a measure. It accepts the definition and runs it, but treats the function as a black box: there is no equation to unfold, so nothing about its values can be proved. That is the price, and why the exercises rule it out. A server's main loop, meant never to stop, is the honest use of it.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Lean looks for a measure itself: an argument, or a difference like `hi - lo`. When it fails, its table shows which calls it could not prove smaller, often the bug. A loop whose arguments take turns needs a pair, compared first component first; a measure that is not obviously smaller needs `decreasing_by` and a lemma. And some functions, Collatz's among them, nobody can measure: `partial` runs them and proves nothing.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

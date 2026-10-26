@@ -1,4 +1,5 @@
 import MathEngine.Integrate
+import MathEngine.Backprop
 import MathEngine.Origin
 import MathEngine.Parser
 import MathEngine.Stlc
@@ -105,8 +106,17 @@ def evaluateCell (s : Session) (cellId source : String) :
     match s.resolveOuts stmt.value with
     | .error msg => (s, .error ("eval", msg, none))
     | .ok value =>
+    -- `backprop(f, [x, …], [a, …])`: the listed variables are its own, not the session's
+    let env := match value with
+      | .fn "backprop" [_, vs, _] => env.filter fun (x, _) => !(AD.listArg vs).any (equal · (.var x))
+      | _ => env
     let input := substitute env (substituteFns s.fns value)
-    match normCell input with
+    let result : Except String Expr × Array Step := match input with
+      | .fn "backprop" _ => match AD.evaluate input with
+        | .ok (_, output, d) => (.ok output, d.steps)
+        | .error msg => (.error msg, #[])
+      | _ => normCell input
+    match result with
     | (.error msg, _) => (s, .error ("eval", msg, none))
     | (.ok output, steps) =>
       let d : Derivation := ⟨input, steps, output⟩
@@ -843,6 +853,12 @@ def orderCell (s : Session) (cellId source : String) :
       | .ok P, .ok Q =>
         let R := Ord.product P Q
         withPoset R #[step "order.product" "Pairs, ordered componentwise: $(a, c) \\le (b, d)$ when $a \\le b$ and $c \\le d$." (.fn "pair" [Ord.setExpr P.elems, Ord.setExpr Q.elems]) (Ord.posetExpr R)]
+      | .error m, _ | _, .error m => err m
+    | "lex", [p, q] =>
+      match getP p, getP q with
+      | .ok P, .ok Q =>
+        let R := Ord.lexOrder P Q
+        withPoset R #[step "order.lex" "Lexicographic order: $(a, c) \\le (b, d)$ when $a < b$, or $a = b$ and $c \\le d$. The first coordinate decides; the second only breaks a tie." (.fn "pair" [Ord.setExpr P.elems, Ord.setExpr Q.elems]) (Ord.posetExpr R)]
       | .error m, _ | _, .error m => err m
     | "map", [.elem pn, .elem qn, .maps ps] =>
       match getP (.elem pn), getP (.elem qn) with

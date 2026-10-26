@@ -27,7 +27,14 @@
         {
           "file": "04-types.chalk",
           "title": "Your own types",
-          "blurb": "inductive types, from a list of choices to trees, structures that bundle values, and functions on them by cases."
+          "blurb": "inductive types, from a list of choices to trees, structures that bundle values, and functions on them by cases.",
+          "apps": [
+            {
+              "file": "04a-card-game.chalk",
+              "title": "Model a card game",
+              "blurb": "Suits and ranks as inductive types, a card as a structure, a hand as a list of cards, and the rules of a game as functions on them, checked with #eval and decide."
+            }
+          ]
         },
         {
           "file": "05-statements.chalk",
@@ -37,7 +44,14 @@
         {
           "file": "06-induction.chalk",
           "title": "Proofs about your functions",
-          "blurb": "Induction on numbers and lists: a statement about every input, proved for the functions of lessons 3 and 4, so that a function meets its specification."
+          "blurb": "Induction on numbers and lists: a statement about every input, proved for the functions of lessons 3 and 4, so that a function meets its specification.",
+          "apps": [
+            {
+              "file": "06a-verified-sort.chalk",
+              "title": "A verified sort check",
+              "blurb": "Reversing twice gives the list back, with a lemma; then insertion sort, and the three theorems that make it correct for every list: the same length, the same count of every number, and a sorted result."
+            }
+          ]
         }
       ]
     },
@@ -75,12 +89,26 @@
         {
           "file": "04-quantifiers.chalk",
           "title": "Predicates and quantifiers",
-          "blurb": "∀ as a long ∧ and ∃ as a long ∨: counterexamples and witnesses, negation by De Morgan, the order of quantifiers, and quantifiers in Lean."
+          "blurb": "∀ as a long ∧ and ∃ as a long ∨: counterexamples and witnesses, negation by De Morgan, the order of quantifiers, and quantifiers in Lean.",
+          "apps": [
+            {
+              "file": "04a-sql-for-all.chalk",
+              "title": "“For every” in SQL",
+              "blurb": "SQL can say “there exists” and not “for every”: the double NOT EXISTS that De Morgan's law gives, checked on a small shop's tables, the query that answers another question, and the empty table."
+            }
+          ]
         },
         {
           "file": "05-induction.chalk",
           "title": "Induction on the natural numbers",
-          "blurb": "Why checking is not enough, and induction as a recipe that produces a proof for any n: dominoes, sums, and proofs in Lean."
+          "blurb": "Why checking is not enough, and induction as a recipe that produces a proof for any n: dominoes, sums, and proofs in Lean.",
+          "apps": [
+            {
+              "file": "05a-loop-invariants.chalk",
+              "title": "Loop invariants",
+              "blurb": "A loop proved correct the way induction proves a formula: a statement true before the loop and kept by every pass, then the same loop in Lean, its invariant proved by induction, and a running maximum."
+            }
+          ]
         },
         {
           "file": "06-strong-induction.chalk",
@@ -90,7 +118,14 @@
         {
           "file": "07-structural-induction.chalk",
           "title": "Structural induction",
-          "blurb": "The same idea for anything defined by constructors: lists, trees, expressions, and a small simplifier proved sound."
+          "blurb": "The same idea for anything defined by constructors: lists, trees, expressions, and a small simplifier proved sound.",
+          "apps": [
+            {
+              "file": "07a-tiny-compiler.chalk",
+              "title": "A tiny compiler, proved correct",
+              "blurb": "Expressions with variables, constant folding, and a compiler to a stack machine, each proved to keep the value of every expression by structural induction, the way verified compilers are built."
+            }
+          ]
         },
         {
           "file": "08-relations.chalk",
@@ -100,7 +135,14 @@
         {
           "file": "09-well-founded.chalk",
           "title": "Well-founded relations and termination",
-          "blurb": "No infinite descent: why a loop stops, cycles as counterexamples, measures as proofs, and termination in Lean."
+          "blurb": "No infinite descent: why a loop stops, cycles as counterexamples, measures as proofs, and termination in Lean.",
+          "apps": [
+            {
+              "file": "09a-why-recursion-stops.chalk",
+              "title": "Why your recursion stops",
+              "blurb": "The measure behind binary search, quicksort and a loop with two phases; an off-by-one that Lean refuses; and Collatz, for which nobody knows one."
+            }
+          ]
         }
       ]
     },
@@ -181,7 +223,14 @@
         {
           "file": "14-intervals.chalk",
           "title": "The interval lattice",
-          "blurb": "Bounds on a number as partial information: intersection as the merge, interval arithmetic propagators, and what a contradiction does to termination."
+          "blurb": "Bounds on a number as partial information: intersection as the merge, interval arithmetic propagators, and what a contradiction does to termination.",
+          "apps": [
+            {
+              "file": "14a-version-ranges.chalk",
+              "title": "Version ranges",
+              "blurb": "A package manager's version constraints as intervals of versions: versions in lexicographic order, constraints merged by intersecting them, a conflict as an empty merge, and a resolver in Lean."
+            }
+          ]
         },
         {
           "file": "15-capstones.chalk",
@@ -247,7 +296,14 @@
         {
           "file": "10-op-based.chalk",
           "title": "Op-based CRDTs",
-          "blurb": "Shipping operations instead of states: what the join used to absorb becomes the network's job, commuting operations and exactly-once delivery."
+          "blurb": "Shipping operations instead of states: what the join used to absorb becomes the network's job, commuting operations and exactly-once delivery.",
+          "apps": [
+            {
+              "file": "10a-collaborative-text.chalk",
+              "title": "Collaborative text",
+              "blurb": "Two people typing into one document, as Google Docs lets them: operational transformation, which rewrites an edit's position past a concurrent one (TP1, the TP2 it needs without a server, and Jupiter's server that avoids it), against a sequence CRDT, the RGA, whose edits name a character instead and commute."
+            }
+          ]
         },
         {
           "file": "11-capstone.chalk",
@@ -257,7 +313,14 @@
         {
           "file": "12-limits.chalk",
           "title": "What CRDTs cannot do",
-          "blurb": "Agreement is not correctness: a balance that converges below zero, invariants that need coordination, and the axiom audit."
+          "blurb": "Agreement is not correctness: a balance that converges below zero, invariants that need coordination, and the axiom audit.",
+          "apps": [
+            {
+              "file": "12a-scheduling.chalk",
+              "title": "Scheduling without a lock",
+              "blurb": "Many schedulers, one cluster: what can be decided without asking anyone (CALM), Omega's optimistic transactions and their one atomic step, and an escrow of quotas that keeps a machine from being overcommitted with no coordination at all."
+            }
+          ]
         }
       ]
     },
@@ -273,7 +336,14 @@
         {
           "file": "01-state-machines.chalk",
           "title": "State machines and executions",
-          "blurb": "Two threads that lose an update: a system as variables, an initial state and guarded actions, and its graph of reachable states as every interleaving at once."
+          "blurb": "Two threads that lose an update: a system as variables, an initial state and guarded actions, and its graph of reachable states as every interleaving at once.",
+          "apps": [
+            {
+              "file": "01a-tcp.chalk",
+              "title": "TCP as a state machine",
+              "blurb": "The handshake that opens a TCP connection as a system: its executions, what each end can know, the deadlocks a lost segment causes, and the timers that remove them, in the engine and in Lean."
+            }
+          ]
         },
         {
           "file": "02-invariants.chalk",
@@ -328,6 +398,70 @@
       ]
     },
     {
+      "id": "collab",
+      "title": "Collaborative editing with a server",
+      "blurb": "From two sites to a working system: a client–server protocol in which TP1 is enough, optimistic concurrency on a versioned record, edits that compose, cursors and comments that move with the text, content that is never silently lost, the log as state and audit, lossless round trips, and a reference transform proved in Lean against which shipped code is tested.",
+      "kind": "course",
+      "level": "Distributed systems",
+      "path": "courses/collab",
+      "lessons": [
+        {
+          "file": "01-protocol.chalk",
+          "title": "The client–server protocol",
+          "blurb": "Jupiter in full: a client's in-flight batch and pending queue, versions and acknowledgements, broadcasts applied in version order, and the rebase of one sequence over another as a grid of TP1 squares, proved without a termination argument."
+        },
+        {
+          "file": "02-optimistic.chalk",
+          "title": "Optimistic concurrency on a versioned record",
+          "blurb": "The lost update between two workers; a conditional write on the version and the read, rewrite, write, retry loop; a log that forks into a diamond, and the TP2 failure it brings back; why the server's one site is its version counter, and retries made harmless with an idempotency key."
+        },
+        {
+          "file": "03-composing.chalk",
+          "title": "Composing edits",
+          "blurb": "One edit that does two: composition is a monoid, applying the composite is applying one then the other, and it is neither commutative nor idempotent, so a queue rolled up by composition keeps its order; then runs of retain, insert and delete with formatting, and concurrent formatting by priority.",
+          "apps": [
+            {
+              "file": "03a-patches.chalk",
+              "title": "Patches as morphisms",
+              "blurb": "Edits as arrows between texts, composition as their composition, and the merge of two concurrent inserts as a pushout: the merged order is a partial order, and the tie-break is what makes it a text."
+            }
+          ]
+        },
+        {
+          "file": "04-positions.chalk",
+          "title": "Mapping positions",
+          "blurb": "Moving a cursor, a selection or a comment's anchor through an edit, with a bias for text typed exactly there; the map is monotone, so ranges stay ranges; a range whose text is deleted collapses, and the policy that keeps it, flagged."
+        },
+        {
+          "file": "05-preserving.chalk",
+          "title": "Preserving content",
+          "blurb": "Converging is not keeping what people did: every character either edit inserts is in the result, and a delete removes only a character of its own text, proved for the course's transform; a rule that drops an insert inside a deleted range, which converges and fails the theorem; and the RGA's tombstones, which keep it by construction."
+        },
+        {
+          "file": "06-log.chalk",
+          "title": "The op log as state and audit",
+          "blurb": "The document as a fold of the log; snapshots and compaction, with the theorem that folding from a snapshot gives the same document; each edit kept as sent and as applied, so that every merge can be audited and undone; and views for readers that want the text.",
+          "apps": [
+            {
+              "file": "06a-selective-undo.chalk",
+              "title": "Selective undo",
+              "blurb": "Undoing an edit that is not the last: its inverse rewritten past what came after, the three inverse properties that makes it sound, the one this transform has (IP1, proved), and the two it lacks (IP2 and IP3), with every failing pair on a small text."
+            }
+          ]
+        },
+        {
+          "file": "07-round-trips.chalk",
+          "title": "Lossless round trips",
+          "blurb": "A document stored as text and annotations and joined back: join after split is the identity, and split after join is too on well-formed pairs; the normalizer this gives is idempotent; and why a normalizer that rewrites every save breaks the client's rebase."
+        },
+        {
+          "file": "08-capstone.chalk",
+          "title": "Capstone: proofs and shipped code",
+          "blurb": "The course's transform as a Lean reference: TP1 proved for every text, preservation, and an exhaustive check of every small case; what the proofs cover and what they do not; a port tested against the reference; and the caveats of running Lean's own compiled code in a browser."
+        }
+      ]
+    },
+    {
       "id": "calculus",
       "title": "Calculus: derivatives and integrals",
       "blurb": "The slope at a point, found by zooming in; the power, product and chain rules read off pictures; the circle behind cos, sin and e^(it), and the hyperbola behind cosh and sinh; tangent lines and bending; then antiderivatives the engine checks by differentiating, and area as slope run backwards.",
@@ -343,7 +477,14 @@
         {
           "file": "02-chain-rule.chalk",
           "title": "The chain rule",
-          "blurb": "Functions of functions: follow a nudge through the inner function and then the outer one, and see why the inner derivative comes out in front."
+          "blurb": "Functions of functions: follow a nudge through the inner function and then the outer one, and see why the inner derivative comes out in front.",
+          "apps": [
+            {
+              "file": "02a-backpropagation.chalk",
+              "title": "Backpropagation",
+              "blurb": "A neuron's error as a chain of functions: the forward pass as numbers, the backward pass as the chain rule link by link, backprop's computation graph checked against diff, why backwards is cheap, and one step of gradient descent."
+            }
+          ]
         },
         {
           "file": "03-circles.chalk",
@@ -446,7 +587,14 @@
         {
           "file": "05-strategies.chalk",
           "title": "Evaluation strategies",
-          "blurb": "Which redex first: normal order, call by name, call by value, applicative order, and a term where the choice decides whether you finish."
+          "blurb": "Which redex first: normal order, call by name, call by value, applicative order, and a term where the choice decides whether you finish.",
+          "apps": [
+            {
+              "file": "05a-laziness.chalk",
+              "title": "Laziness in real languages",
+              "blurb": "Every language picks a strategy: arguments first in JavaScript, &&, || and if as the exceptions that run by name, thunks to delay by hand, and Haskell's call by need, which shares what it evaluates."
+            }
+          ]
         },
         {
           "file": "06-de-bruijn.chalk",
@@ -456,7 +604,14 @@
         {
           "file": "07-church.chalk",
           "title": "Church encodings",
-          "blurb": "A thing is what you can do with it: booleans that choose, numerals that iterate, pairs, the predecessor puzzle, and lists."
+          "blurb": "A thing is what you can do with it: booleans that choose, numerals that iterate, pairs, the predecessor puzzle, and lists.",
+          "apps": [
+            {
+              "file": "07a-callbacks-currying.chalk",
+              "title": "Callbacks and currying",
+              "blurb": "JavaScript's arrow functions as λ-terms: curried functions and partial application, functions that take functions (map, compose), and callbacks and continuation passing, which Church encodings were all along."
+            }
+          ]
         },
         {
           "file": "08-recursion.chalk",
@@ -497,7 +652,14 @@
         {
           "file": "05-curry-howard.chalk",
           "title": "Propositions as types",
-          "blurb": "The typing rules turn out to be the rules of logic: a type is a proposition, a term a proof of it, β-reduction simplifies proofs, and Peirce's law, true by truth table, has no term."
+          "blurb": "The typing rules turn out to be the rules of logic: a type is a proposition, a term a proof of it, β-reduction simplifies proofs, and Peirce's law, true by truth table, has no term.",
+          "apps": [
+            {
+              "file": "05a-illegal-states.chalk",
+              "title": "Make illegal states unrepresentable",
+              "blurb": "A record of flags whose type allows states that mean nothing, and a tagged union whose every value means something: counting a type's values, sums and products as ∨ and ∧, and a function's type as a promise to handle every case."
+            }
+          ]
         },
         {
           "file": "06-safety.chalk",

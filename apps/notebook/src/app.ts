@@ -4490,7 +4490,7 @@ function stepTitle(st: Step): { title: string; rest: string } {
 /** Names for the rules whose explanations do not name them. */
 const RULE_NAMES: Record<string, string> = {
   "diff.chain": "Chain rule", "diff.sum": "Sum rule", "diff.product": "Product rule", "diff.power": "Power rule", "diff.chain.assuming": "Chain rule, assuming", "diff.sum.assuming": "Sum rule, assuming", "diff.product.assuming": "Product rule, assuming", "diff.power.assuming": "Power rule, assuming", "diff.variable": "Derivative of the variable",
-  "diff.constant": "Derivative of a constant", "diff.constant-multiple": "Constant multiple rule", "diff.higher-order": "Higher derivative", "diff.matrix": "Entrywise derivative",
+  "diff.constant": "Derivative of a constant", "diff.constant-multiple": "Constant multiple rule", "diff.higher-order": "Higher derivative", "diff.matrix": "Entrywise derivative", "ad.forward": "Forward pass", "ad.backward": "Backward pass", "ad.check": "Check against diff",
   "simp.power": "Power identity", "simp.identity": "Identity", "simp.flatten": "Flatten", "simp.sort": "Reorder", "simp.function": "Function value", "simp.function.real": "Function value over ℝ", "simp.function.assuming": "Function value, assuming a positive argument",
   "simp.fold-constants": "Arithmetic on constants", "simp.collect-like-terms": "Collect like terms", "simp.collect-powers": "Collect powers", "simp.collect-powers.assuming": "Collect powers, assuming the base", "simp.collect-radicals": "Collect radicals",
   "simp.radical": "Radical", "simp.exp-product": "Exponentials multiply", "expand.distribute": "Distribute", "expand.power": "Expand the power",
@@ -4516,7 +4516,7 @@ const RULE_NAMES: Record<string, string> = {
   "logic.evaluate": "Evaluate", "logic.bounded": "Check every element",
   "alg.from-order": "Table from the order", "alg.associative": "Associative", "alg.commutative": "Commutative", "alg.idempotent": "Idempotent",
   "alg.identity": "Identity element", "alg.fold": "Combine", "alg.order": "Order of a semilattice", "order.distributive": "Distributive",
-  "order.complement": "Complement", "order.boolean": "Boolean lattice", "order.product": "Product order", "order.galois": "Galois connection",
+  "order.complement": "Complement", "order.boolean": "Boolean lattice", "order.product": "Product order", "order.lex": "Lexicographic order", "order.galois": "Galois connection",
   "order.closure-operator": "Closure operator", "order.concepts": "Concept lattice", "order.flow": "Information flow",
   "order.happens-before": "Happens-before", "order.clocks": "Vector clocks", "order.concurrent": "Concurrent",
   "sys.init": "Start", "sys.step": "Step", "sys.found": "Found", "sys.violated": "Violated", "sys.deadlock": "Deadlock", "sys.reach": "Reachable states",
@@ -4525,7 +4525,7 @@ const RULE_NAMES: Record<string, string> = {
   "sys.eventually": "Eventually", "sys.refines": "Refinement",
   "order.inner": "Inner call", "sys.inner": "Inner call",
   "trs.step": "Rewrite", "trs.decrease": "Decreases", "trs.critical": "Critical pair",
-  "crdt.update": "Update", "crdt.merge": "Merge", "crdt.send": "Send", "crdt.converged": "Converged", "crdt.diverged": "Not converged",
+  "crdt.update": "Update", "crdt.refuse": "Refused", "crdt.merge": "Merge", "crdt.send": "Send", "crdt.converged": "Converged", "crdt.diverged": "Not converged",
   "lambda.eta": "η-reduction", "lambda.elided": "Steps not shown", "lambda.alpha": "Rename bound variables", "lambda.alpha-eq": "Compare", "lambda.subst": "Substitute",
   "lambda.fv": "Free variables", "lambda.db": "De Bruijn indices",
   "stlc.var": "Var", "stlc.abs": "→I (abstraction)", "stlc.app": "→E (application)", "stlc.constraints": "Type equations",

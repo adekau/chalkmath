@@ -294,6 +294,12 @@
       "type": "markdown",
       "showWork": false,
       "label": null
+    },
+    {
+      "src": "> [!note] A lock per key, held for one instant\n> Google's Omega scheduler keeps a sequence number per machine and checks it only at the instant a scheduler commits, with no lock while it plans: a per-key lock held for one step, paid for in retries. [Scheduling without a lock](#course=crdt&lesson=12&app=1), an optional notebook in the CRDT course, models it with this course's tools.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
     }
   ],
   "scenes": []

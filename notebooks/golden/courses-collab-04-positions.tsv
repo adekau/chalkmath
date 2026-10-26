@@ -1,0 +1,9 @@
+7	let P6 = chain(6)	= poset {0, 1, 2, 3, 4, 5}
+8	let P7 = chain(7)	= poset {0, 1, 2, 3, 4, 5, 6}
+9	let insR = map(P6, P7; 0->0, 1->1, 2->3, 3->4, 4->5, 5->6)	= {0↦0, 1↦1, 2↦3, 3↦4, 4↦5, 5↦6}
+10	monotone(P6, P7, insR)	= true
+16	let mirror = map(P6, P7; 0->6, 1->5, 2->3, 3->2, 4->1, 5->0)	= {0↦6, 1↦5, 2↦3, 3↦2, 4↦1, 5↦0}
+17	monotone(P6, P7, mirror)	= false
+26	let P5 = chain(5)	= poset {0, 1, 2, 3, 4}
+27	let delm = map(P6, P5; 0->0, 1->1, 2->2, 3->2, 4->3, 5->4)	= {0↦0, 1↦1, 2↦2, 3↦2, 4↦3, 5↦4}
+28	monotone(P6, P5, delm)	= true

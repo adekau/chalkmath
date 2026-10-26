@@ -1,0 +1,318 @@
+{
+  "chalk": 1,
+  "name": "07a-callbacks-currying.chalk",
+  "cells": [
+    {
+      "src": "Callbacks and currying",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Read JavaScript's functions as λ-terms: curry and partially apply them, pass functions to functions, and see callbacks and continuation passing in lesson 7's encodings.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "An application of lesson 7, outside the course's order: nothing later depends on it. It uses lesson 7's library (numerals, `add`, `mul`, `succ`, `pair`, `fst`, `snd`) and, in its last section, a little Lean. The code is JavaScript; you need only read it.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Arrow functions are λs",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "JavaScript's `x => x + 1` is $\\lambda x.\\, x + 1$, written with an arrow. A function of two arguments can be written two ways:\n\n```js\nconst add2 = (x, y) => x + y;      // takes both at once\nconst add = (x) => (y) => x + y;   // takes x, and returns a function waiting for y\nadd(2)(3);                         // 5\n```\n\nThe second is how every function of two arguments looks in the λ-calculus: $\\lambda x.\\, \\lambda y.\\, \\ldots$, a function returning a function. Turning the first form into the second is **currying**, after Haskell Curry (Moses Schönfinkel found it first).",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Partial application",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A curried function can be given one argument now and the other later. `add(1)` is not an error and not a number: it is a function, waiting for `y`.\n\n```js\nconst inc = add(1);        // a function\ninc(2);                    // 3\n[1, 2, 3].map(add(10));    // [11, 12, 13]\n```\n\nThe library's `add` is curried, so $\\mathsf{add}\\ 1$ reduces to a function waiting for $n$:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "normal: add 1",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "inc := add 1",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "inc 2",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A function on pairs and a curried function carry the same information, and each turns into the other. With lesson 7's pairs:\n\n```js\nconst curry = (f) => (a) => (b) => f([a, b]);\nconst uncurry = (f) => ([a, b]) => f(a)(b);\n```",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "curry := λf. λa. λb. f (pair a b)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "uncurry := λf. λp. f (fst p) (snd p)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "uncurry add (pair 2 3)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "curry (uncurry add) 2 3",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Functions that take functions",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A function that takes a function, or returns one, is called **higher-order**. In the λ-calculus there is nothing else: every argument is a function. Three that every language has:\n\n```js\nconst compose = (f) => (g) => (x) => f(g(x));   // g, then f\nconst flip = (f) => (a) => (b) => f(b)(a);       // the arguments swapped\nxs.map(f);                                      // f on every element\n```",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "compose := λf. λg. λx. f (g x)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "double := mul 2",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "compose succ double 3",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "flip := λf. λa. λb. f b a",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "fst (flip pair a b)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A Church list is its own fold (lesson 7), so $\\mathsf{map}$ hands the fold a combining step that applies $f$ to each head first. This notebook has its own names, so the list is defined again:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "nil := λc. λn. n",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "cons := λh. λt. λc. λn. c h (t c n)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "map := λf. λl. λc. λn. l (λh. λr. c (f h) r) n",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Double every element of $[1, 2, 3]$, then sum, by folding with $\\mathsf{add}$ from $0$:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "map double (cons 1 (cons 2 (cons 3 nil))) add 0",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Callbacks and continuations",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A **callback** is a function you hand over, to be called later with a result. Node's `readFile(path, (err, data) => …)` does not return the file: it calls you back with it.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Continuation-passing style\n> In **continuation-passing style** a function does not return its result; it takes one more argument $k$, the **continuation**, \"what to do next\", and calls it with the result. Returning $3$ becomes $\\lambda k.\\, k\\ 3$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "withThree := λk. k 3",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "withThree succ",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Adding, in that style, takes its two numbers and a continuation. Doing two additions in a row nests the second inside the first's continuation:\n\n```js\nconst addk = (a, b, k) => k(a + b);\naddk(1, 2, (s) => addk(s, 3, (t) => t));   // 6\n```\n\nThe nesting, a step deeper for every step taken, is \"callback hell\"; promises and `async`/`await` are ways of writing the same continuations flat.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "addk := λa. λb. λk. k (add a b)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "addk 1 2 (λs. addk s 3 (λt. t))",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "> [!note] Church encodings are callbacks\n> Lesson 7's \"a thing is what you can do with it\" is continuation passing. A Church boolean takes two continuations, what to do if it is true and what to do if it is false, and calls one. A pair, $\\lambda s.\\, s\\ a\\ b$, calls its callback with both parts. A list calls its callback once per element. None of them returns anything: each calls you back.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Lean's functions are curried too: `Nat → Nat → Nat` is `Nat → (Nat → Nat)`, and `addC 1` is a function.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "def addC : Nat → Nat → Nat := fun x => fun y => x + y\n\n#eval addC 1 2\n#eval [1, 2, 3].map (addC 10)\n\ndef curry2 {α β γ : Type} (f : α × β → γ) : α → β → γ := fun a b => f (a, b)\ndef uncurry2 {α β γ : Type} (f : α → β → γ) : α × β → γ := fun p => f p.1 p.2\n\n/-- Uncurrying and then currying gives the function back, by definition. -/\ntheorem curry_uncurry {α β γ : Type} (f : α → β → γ) : curry2 (uncurry2 f) = f := rfl",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem compose2_apply {α β γ : Type} (f : β → γ) (g : α → β) (x : α) : compose2 f g x = f (g x) := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Define `compose2 f g`: the function that does `g`, then `f`. (Lean's own `∘` is ruled out.) The check, `rfl`, fails until your definition is written.",
+      "leanSolution": "  rfl",
+      "leanStart": "  rfl",
+      "hints": [
+        "It takes `f` and `g` and returns a function: `fun x => …`.",
+        "`def compose2 {α β γ : Type} (f : β → γ) (g : α → β) : α → γ := fun x => f (g x)`"
+      ],
+      "leanDef": "def compose2 {α β γ : Type} (f : β → γ) (g : α → β) : α → γ := sorry",
+      "leanDefSolution": "def compose2 {α β γ : Type} (f : β → γ) (g : α → β) : α → γ := fun x => f (g x)",
+      "leanForbid": [
+        "∘",
+        "Function.comp"
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem map_map' (f g : Nat → Nat) (l : List Nat) : (l.map g).map f = l.map (compose2 f g) := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Mapping `g` and then `f` is mapping their composition once. Prove it by induction on the list.",
+      "leanSolution": "  induction l with\n  | nil => rfl\n  | cons h t ih => simp [List.map, compose2_apply, ih]",
+      "hints": [
+        "`induction l with`: the empty list, then a head `h` on a tail `t`, with `ih` for the tail.",
+        "In the second case, `simp [List.map, compose2_apply, ih]` unfolds one step of `map` on each side and uses the last exercise and `ih`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Answer with a numeral or a boolean by name, or with the λ-term. The definitions above are in this notebook's session.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "inc (inc 1)",
+      "type": "exercise",
+      "prompt": "Reduce $\\mathsf{inc}\\ (\\mathsf{inc}\\ 1)$, with $\\mathsf{inc} = \\mathsf{add}\\ 1$.",
+      "hints": [
+        "Each $\\mathsf{inc}$ adds one."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "compose double inc 2",
+      "type": "exercise",
+      "prompt": "Reduce $\\mathsf{compose}\\ \\mathsf{double}\\ \\mathsf{inc}\\ 2$. Which runs first?",
+      "hints": [
+        "$\\mathsf{compose}\\ f\\ g\\ x = f\\ (g\\ x)$: $g$ first."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "withThree (λn. addk n 4 (λt. t))",
+      "type": "exercise",
+      "prompt": "In continuation-passing style: reduce $\\mathsf{withThree}\\ (\\lambda n.\\, \\mathsf{addk}\\ n\\ 4\\ (\\lambda t.\\, t))$.",
+      "hints": [
+        "$\\mathsf{withThree}$ calls its continuation with $3$; then $3 + 4$ is passed to $\\lambda t.\\, t$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "map inc (cons 1 (cons 2 nil)) add 0",
+      "type": "exercise",
+      "prompt": "Add one to every element of $[1, 2]$, then sum: reduce $\\mathsf{map}\\ \\mathsf{inc}\\ (\\mathsf{cons}\\ 1\\ (\\mathsf{cons}\\ 2\\ \\mathsf{nil}))\\ \\mathsf{add}\\ 0$.",
+      "hints": [
+        "The list becomes $[2, 3]$, and its sum is $2 + 3$."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> JavaScript's arrow functions are λs. A curried function takes its arguments one at a time, so giving it some of them (partial application) makes a new function. Higher-order functions such as `map`, `compose` and `flip` are the λ-calculus's ordinary case. A callback, and continuation-passing style generally, hands a function \"what to do next\" instead of returning: Church encodings were callbacks all along.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

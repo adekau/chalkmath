@@ -118,6 +118,12 @@
       "label": null
     },
     {
+      "src": "> [!note] Application: a verified sort\n> [A verified sort check](#course=lean&lesson=6&app=1), an optional notebook beside this lesson, proves that reversing a list twice gives it back, and that insertion sort is correct: its output is sorted and has the same numbers as its input, for every list.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "That is everything the next course assumes. [Logic and proof technique](#course=logic) uses Lean from its third lesson on, for proofs about logic, numbers and the functions you define there.",
       "type": "markdown",
       "showWork": false,

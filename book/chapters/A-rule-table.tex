@@ -36,6 +36,9 @@ the engine omits is unverified.
 \rt{diff.chain.assuming}{conditional}{$u > 0$ for $\ln u$, $\cos u \neq 0$ for $\tan u$, $-1 < u < 1$ for $\arcsin u$ and $\arccos u$, $u$ differentiable, as the step states (\lc{diffChainAssuming_sound_on}).}
 \rt{diff.matrix}{verified}{A matrix is differentiated entry by entry (\lc{diffMatrix_sound}): with matrices given a value (\lc{evalV}), the theorem has content.}
 \rt{diff.higher-order}{verified}{$\operatorname{diff}(f, x, n)$ for a positive integer $n$ is $n$ successive $\operatorname{diff}(\cdot, x)$ (\lc{diffHigherOrder_spec}), and those mean Mathlib's \lc{iteratedDeriv} $n$ of $f$ as a function of $x$ (\lc{diffHigherOrder_soundR}).}
+\rt{ad.forward}{unverified}{\texttt{backprop}'s forward pass: each node of the computation graph evaluated at the point, in IEEE-754 double precision. No error bound is proved; the answer is checked by \texttt{ad.check}.}
+\rt{ad.backward}{unverified}{\texttt{backprop}'s backward pass: each node's gradient, the sum over the nodes that read it of their gradient times the local derivative, in double precision. Not proved; the gradients of the listed variables are checked by \texttt{ad.check}.}
+\rt{ad.check}{checked}{The backward pass's gradients against \texttt{diff}'s derivatives (whose rules carry their own statuses) at the point: they must agree to within $10^{-9}$ relatively, or \texttt{backprop} refuses. Where \texttt{diff}'s derivative at the point is a rational number, that exact number is the answer.}
 \midrule \multicolumn{3}{l}{\textbf{Linear algebra}} \\
 \rt{cmd.rref}{verified}{Over $\mathbb{Q}$ the reduced matrix has the input's solution set (\lc{sol_rref}) and is in reduced row echelon form (\lc{rref_isRref}). With symbolic entries the nested row operations are the unverified \texttt{.symbolic} ones, and the step inherits their status.}
 \rt{la.row-swap}{verified}{Exchanging two rows preserves the solution set (\lc{sol_swap}).}
@@ -133,6 +136,7 @@ the engine omits is unverified.
 \rt{order.complement}{verified}{Every element checked for $x \lor y = \top$ and $x \land y = \bot$, by definition.}
 \rt{order.boolean}{verified}{Distributive and complemented, each checked: the definition of a Boolean lattice.}
 \rt{order.product}{verified}{Pairs ordered componentwise, by definition: the order is the product of the two orders.}
+\rt{order.lex}{verified}{Pairs ordered lexicographically, by definition: the first coordinate's strict order, then the second's within a tie.}
 \rt{order.galois}{verified}{Every pair $(x, y)$ checked for $f(x) \le y \iff x \le g(y)$ (\lc{galoisFailure_none}).}
 \rt{order.closure-operator}{verified}{Extensive, monotone and idempotent, each checked on every element or pair (\lc{closureOpFailure_none}).}
 \rt{order.concepts}{verified}{Every pair listed is a formal concept (\lc{concepts_sound}), and every concept is listed: intersecting attribute extents one attribute at a time reaches the extent of every set of attributes (\lc{concepts_complete}).}
@@ -159,6 +163,7 @@ the engine omits is unverified.
 \rt{trs.decrease}{verified}{A rule passes when its left side's linear form has a larger constant and no smaller coefficient: then the left side is worth more whatever the variables are (\lc{decreases\_sound}), and every step lowers the term's value (\lc{step\_decreases}), so no term rewrites for ever (\lc{no\_infinite\_rewriting}). A rule that fails has values that make its left side worth no more (\lc{decreases\_complete}).}
 \rt{trs.critical}{verified}{Robinson's unification, total by well-founded recursion, returns a most general unifier when there is one (\lc{unify_mgu}) and nothing only when there is none (\lc{unify_none}); \texttt{critical} pairs every rule with every rule at every non-variable position of the first one's left side, the variables renamed apart (\lc{apart_spec}), and records each overlap (\lc{mem_critical}), checked to be one (\lc{isPeak_sound}). Locally confluent when every pair joins: the critical pair lemma, the overlap below a variable joined by rewriting every copy of it (\lc{critical_pair_lemma}, \lc{critical_sound}), for every system \texttt{rules(…)} makes (\lc{parseSystem_wellFormed}). Not confluent when a pair's sides reach two different normal forms (\lc{critical_refutes}, \lc{step_complete}); confluent with termination by Newman's lemma (\lc{newman_lemma}). Sides that reach neither within the step limit leave it undecided.}
 \rt{crdt.update}{verified}{A local update only raises entries of the replica's state (\lc{update\_inflation}).}
+\rt{crdt.refuse}{verified}{An escrow counter's replica refuses a use or a gift its own quota does not cover: the state is left as it is. That the units in use stay within the capacity is checked after every event.}
 \rt{crdt.merge}{verified}{The entrywise maximum: a join, commutative, associative and idempotent (\lc{merge\_comm}, \lc{merge\_assoc}, \lc{merge\_idem}).}
 \rt{crdt.send}{verified}{A message is a copy of the state; nothing to prove.}
 \rt{crdt.converged}{verified}{Decided by comparing the states; equal states read equal values.}

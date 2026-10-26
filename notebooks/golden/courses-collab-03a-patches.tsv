@@ -1,0 +1,4 @@
+10	let Mg = poset({a, x, y, b}; a < x, x < b, a < y, y < b)	= poset {a, x, y, b}
+11	le(Mg, x, y)	= false
+12	le(Mg, y, x)	= false
+15	join(Mg, x, y)	= b

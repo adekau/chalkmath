@@ -246,7 +246,13 @@ differential test with zero mismatches.
 - **Replicas are simulated in the systems world.** `replicas(type; a, b; events…)` (`Replicas.lean`)
   runs a state-based CRDT through a schedule of local updates, syncs and delayed or duplicated
   messages. Every type there is a vector of naturals merged by the entrywise maximum, so one merge
-  serves them all, proved a join with every update an inflation (`ReplicasProofs.lean`).
+  serves them all, proved a join with every update an inflation (`ReplicasProofs.lean`). The escrow
+  (bounded) counter keeps its invariant the same way: quotas are entries too, a replica refuses
+  locally what its own quota does not cover, and the units in use are checked against the capacity
+  after every event. The RGA (text) fits too: a node per insert, its parent and Lamport timestamp
+  entries written once by its creator and a tombstone bit, so a merge is still the maximum; the text is
+  read off as the preorder of the insertion tree, newest child first. Its updates take positions, as a
+  cursor does, and turn them into the node they follow when they happen.
 - **Term rewriting is in the systems world too.** `let R = rules(l -> r; …)` binds a first-order
   rewriting system (`Rewriting.lean`, its terms a nested inductive with the recursion written as
   mutual definitions so that it can be proved about). `rewrite` takes leftmost-outermost steps,
@@ -503,7 +509,7 @@ rewriting). Each has its own grammar and evaluator (§3), and all of them are re
 |---|---|
 | `id`, `label` | the `kind` its replies carry, and how the notebook names it |
 | `commands`, `keywords`, `glyphs`, `names`, `markers` | its lexicon: the names written `name(…)`, the words its grammar reserves, the operators algebra's grammar lacks, the other names it gives a cell (the λ library, the logic predicates), and what claims a source for it beyond its commands |
-| `precedes`, `claims` | which sources are its: `claims`, asked in the list's order; `precedes` takes a source before any other world looks (a λ-command, which may hold a connective) |
+| `precedes`, `claims` | which sources are its: `claims`, asked in the list's order; `precedes` takes a source before any other world looks (a λ-command, which may hold a connective; a λ-term headed by a λ-name the session defined, which shadows another world's command of that name) |
 | `binds`, `holds` | the name a source would bind, and whether the world holds a binding of a name |
 | `evaluate`, `check` | a cell's evaluation (a `WorldResult`: value, derivation, the name bound, a note, visual specs, the world's own fields) and an exercise's check |
 | `read` | the source parsed and not evaluated, the session's names left as names (`engine.read`, for the hover toolbar while a cell is edited); by default the input as written (`Surface.lean`) |
@@ -806,6 +812,9 @@ language server answers LSP for Lean cells.
   some 5 s of one native thread, mostly the kernel checking the book's structures and proofs.
   Compiling each course's prelude to 32-bit oleans with the wasm Lean, imported instead of inlined,
   would make it a download; that is not built.
+  A course can do without one: the collaborative-editing course's lessons each keep their Lean in a
+  namespace of their own and stand alone (the course's edits and transform are written out again where a
+  lesson needs them, from one string in `mk-courses.mjs`), so a lesson opens with nothing in front of it.
 - **A thread's stack.** Every one of Lean's threads is a web worker, and Chromium gives a worker 500 KB
   of stack (Lean's threads have 8 MB natively), of which Lean compiled to wasm needs far more per level of
   recursion than native Lean: some 20 KB per statement of a `do` block, so one of about 24 `let x ← …`
@@ -823,8 +832,15 @@ language server answers LSP for Lean cells.
   the runtime runs at most 16 such continuations inside one another and queues the rest as ordinary
   tasks, on fresh stacks (`lean-compiler-emscripten.patch`, `object.cpp`). Lean computes semantic tokens
   with recursion as deep as the commands a request spans, so the in-browser watchdog offers them for
-  ranges only, and the editor asks for the lines its views show (`lean-server.ts`). A document of some
-  1,500 commands still overflows as it opens; no notebook or lesson is near that. Elaboration itself is as
+  ranges only, and the editor asks for the lines its views show (`lean-server.ts`). Opening a document
+  nested a call per command as well, in a plain call the runtime cannot queue: the frontend elaborates
+  each command at the end of the call that elaborated the one before (`process.parseCmd`), so a late CRDT
+  lesson, some 500 commands with its prelude, overflowed as it opened, now and then. Lean's frontend is
+  therefore built from a patched copy (`lean-frontend.patch`, step 1b of `build-lean-wasm-compiler.sh`)
+  that moves to a fresh task every 32 commands. Measured in Lean's native file worker at the least
+  stack it finishes with, 1,600 one-line theorems needed 968 KB before and 79 KB after (the same as 400),
+  and the collaborative-text application 381 KB before and 175 KB after, what its deepest commands
+  take. Elaboration itself is as
   deep as the Lean it checks, so the shipped Lean is kept shallow (small definitions), and
   `lean-cells.yml` (`scripts/notebooks/check-lean-browser.mjs`) runs every notebook and lesson through
   the browser's Lean, opened and then edited at its end.
@@ -911,10 +927,14 @@ settings, the cell) is `apps/notebook/src/ask-cells.ts`.
 
 The engine never draws. It emits **visual specs**: declarative JSON next to `rendered`
 (`EvaluateResult.visuals`): a Cayley table, a graph, a commutative diagram, sampled plot data, a
-matrix heat map. Seven kinds exist (`KnownVisual` in the protocol): `order.hasse`, a poset's elements
+matrix heat map. Eight kinds exist (`KnownVisual` in the protocol): `order.hasse`, a poset's elements
 with their heights and its covers, which stands in for the poset's value in the cell (the `hasse`
 field beside it is the earlier form, kept one release); `logic.truthtable`, the rows of a
-formula's table; `relation.digraph`, a relation's pairs with the ones that break a property (`bad`)
+formula's table; `calculus.graph`, the computation graph of a `backprop(f, [x, …], [a, …])` cell, each
+node with what it does, its value and its gradient and each arrow with its local derivative (`backprop`
+is a whole-cell command, like `plot`: `Backprop.lean` runs the forward and backward passes in double
+precision and checks their gradients against `diff`'s derivatives at the point, so it is not a pipeline
+rule); `relation.digraph`, a relation's pairs with the ones that break a property (`bad`)
 and the ones a closure added (`added`), and, for a state graph, each arrow's label (`labels`, in the
 order of `edges`: the actions that take that transition) and where each step of the work is on it
 (`steps`: the transition it takes or the state it is at), so stepping through a trace marks the
@@ -922,7 +942,7 @@ current transition (with the answer's marks held back until the answer shows); `
 failing law read (`marks`); `context.table`, a formal context's cross table; and `typing.tree`, a
 typing derivation as nested judgments, each with its rule and premises; and `replicas.spacetime`, a
 replica simulation's lanes, events and messages, with the events each step made. The notebook draws the tables
-and the proof tree as HTML and the graph as SVG (a state graph in rows from its initial states, each state a box
+and the proof tree as HTML, a computation graph as HTML boxes over SVG arrows, and the graph as SVG (a state graph in rows from its initial states, each state a box
 with its name in it so no arrow crosses a name), keeps them with the cell in a saved file, and ignores a kind it does not know. In the
 notebook the kinds are one registry (`VISUALS`, `apps/notebook/src/visuals.ts`): each entry checks a
 reply's or a file's data, draws it, says whether it stands in for the value, and, for a visual that

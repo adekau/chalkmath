@@ -1,0 +1,253 @@
+{
+  "chalk": 1,
+  "name": "05a-illegal-states.chalk",
+  "cells": [
+    {
+      "src": "Make illegal states unrepresentable",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Count the values of a type, spot the values that mean nothing, and replace the type with one whose every value means something, so that the type checker rules the nonsense out.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "An application of lesson 5, outside the course's order: nothing later depends on it. It reads a product as $\\land$ and a sum as $\\lor$, as lesson 5's Lean does, uses `type:` from lessons 1 and 2, and some Lean. The code is TypeScript; you need only read it.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A type with too many values",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A screen fetches some data. Written with flags, its state is:\n\n```ts\ntype Fetch = {\n  loading: boolean;\n  error?: string;     // present when the fetch failed\n  data?: Item[];      // present when it succeeded\n};\n```\n\nFour states mean something: nothing asked yet, loading, failed with a message, loaded with data. But the type also allows `{ loading: true, error: \"timeout\", data: [] }`: loading, failed and loaded at once. Nothing stops code from building it, so every reader of the state has to guess, and the order of its `if`s decides what the screen shows.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Forget the message and the items for a moment, and count: with $l$ for loading, $e$ for an error being there and $d$ for data being there, three yes-or-no fields allow $2 \\cdot 2 \\cdot 2$ combinations:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "2^3",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The meaningful ones have at most one of the three. Their truth table has 4 true rows of 8, and `sat` finds a state that is loading and failed at once:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "truthtable((¬l ∧ ¬e ∧ ¬d) ∨ (l ∧ ¬e ∧ ¬d) ∨ (¬l ∧ e ∧ ¬d) ∨ (¬l ∧ ¬e ∧ d))",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "sat(l ∧ e)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A tagged union",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Say instead which state it is, and give each state only the fields it has:\n\n```ts\ntype Fetch =\n  | { tag: \"idle\" }\n  | { tag: \"loading\" }\n  | { tag: \"failed\"; error: string }\n  | { tag: \"loaded\"; data: Item[] };\n```\n\nEvery value of this type is one of the four states. A loading state with an error is not a value of the type at all: the compiler refuses to build it, before the program runs. And code that reads the state can ask the compiler to check that it handles every tag:\n\n```ts\nfunction message(s: Fetch): string {\n  switch (s.tag) {\n    case \"idle\":    return \"Nothing yet\";\n    case \"loading\": return \"Loading…\";\n    case \"failed\":  return \"Failed: \" + s.error;   // s.error exists here, and only here\n    case \"loaded\":  return s.data.length + \" items\";\n  }\n}\n```",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Products, sums and counting",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Products and sums\n> A record of an $A$ and a $B$ is a **product**, $A \\times B$: one of each, so $|A| \\cdot |B|$ values. A tagged union of $A$ and $B$ is a **sum**, $A + B$: one or the other, tagged with which, so $|A| + |B|$ values. A function from $A$ to $B$ picks a $B$ for each $A$: $|B|^{|A|}$ of them.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The flags type is a product of three two-valued fields, $2 \\cdot 2 \\cdot 2 = 8$; the union is a sum of four one-valued cases, $1 + 1 + 1 + 1 = 4$ (leaving out the message and the items, as before). Lesson 5 reads the same types as propositions: a pair holds a proof of each part, so a product is $\\land$; a sum holds one of them, saying which, so it is $\\lor$. The flags type says \"loading, and maybe an error, and maybe data\"; the union says \"idle, or loading, or failed, or loaded\", exactly one.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A sum as what you can do with it",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Simple types have only arrows, but lesson I.7's trick gives sums anyway: a thing is what you can do with it. What do you do with \"data or an error\"? Handle it: given what to do with data, $k : D \\to R$, and what to do with an error, $h : E \\to R$, produce an $R$. So the sum is the type $(D \\to R) \\to (E \\to R) \\to R$, and \"it succeeded with $d$\" is the term that calls the first handler:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "type: λd:D. λk:D→R. λh:E→R. k d",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A function's type is a promise it keeps. To get an $R$ out of a result $r$, you must hand it both handlers:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "type: show : D → R, fail : E → R, r : (D→R)→(E→R)→R ⊢ r show fail",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Hand it only the data handler, and what you get is not an $R$ but a function still waiting for the error handler: the type will not let you forget the error case.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "type: show : D → R, r : (D→R)→(E→R)→R ⊢ r show",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean a product is a `structure` and a sum an `inductive` type with several constructors. The structure builds the nonsense state without complaint:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "structure FetchFlags where\n  loading : Bool\n  error : Option String\n  data : Option (List Nat)\n\ndef nonsense : FetchFlags := { loading := true, error := some \"timeout\", data := some [1, 2] }",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The inductive type has one constructor per state, and each takes only what its state has:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "inductive Fetch where\n  | idle\n  | loading\n  | failed (error : String)\n  | loaded (data : List Nat)\n\ndef Fetch.isLoading : Fetch → Bool\n  | .loading => true\n  | _ => false\n\ndef Fetch.error? : Fetch → Option String\n  | .failed e => some e\n  | _ => none\n\n/-- No state is loading and failed at once: checked for every state, case by case. -/\ntheorem not_loading_and_failed (s : Fetch) : ¬ (s.isLoading = true ∧ s.error?.isSome = true) := by\n  cases s <;> simp [Fetch.isLoading, Fetch.error?]\n\ndef Fetch.message : Fetch → String\n  | .idle => \"Nothing yet\"\n  | .loading => \"Loading…\"\n  | .failed e => s!\"Failed: {e}\"\n  | .loaded d => s!\"{d.length} items\"\n\n#eval (Fetch.loaded [1, 2, 3]).message",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Leave a case out of `message`, and Lean refuses the definition, naming the case:\n\n```\ndef Fetch.message' : Fetch → String\n  | .idle => \"Nothing yet\"\n  | .loading => \"Loading…\"\n  | .failed e => s!\"Failed: {e}\"\n-- error: Missing cases:\n-- (loaded _)\n```",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A state changes by events. Each event is a constructor too, and the step function says what each one does to each state. A `loaded` state can only come from `loading`, or be one already:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "inductive Event where\n  | start\n  | fail (error : String)\n  | succeed (data : List Nat)\n\ndef Fetch.step : Fetch → Event → Fetch\n  | _, .start => .loading\n  | .loading, .fail e => .failed e\n  | .loading, .succeed d => .loaded d\n  | s, _ => s",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem hasData_iff (s : Fetch) : hasData s = true ↔ ∃ d, s = .loaded d := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Define `hasData`: `true` exactly for a loaded state. Then the statement, that it is true exactly when the state is `loaded` with some data, is checked case by case, and fails until your definition is written.",
+      "leanSolution": "  cases s <;> simp [hasData]",
+      "leanStart": "  cases s <;> simp [hasData]",
+      "hints": [
+        "Match on the state, as `Fetch.isLoading` does: `.loaded _` gives `true`, anything else `false`.",
+        "`def hasData : Fetch → Bool | .loaded _ => true | _ => false`, on three lines."
+      ],
+      "leanDef": "def hasData (s : Fetch) : Bool := sorry",
+      "leanDefSolution": "def hasData : Fetch → Bool\n  | .loaded _ => true\n  | _ => false",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem loaded_from (s : Fetch) (e : Event) (d : List Nat) : s.step e = .loaded d → s = .loading ∨ s = .loaded d := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that a step lands on `.loaded d` only from `.loading`, or from `.loaded d` itself.",
+      "leanSolution": "  cases s <;> cases e <;> simp [Fetch.step]",
+      "hints": [
+        "Split on the state and on the event: `cases s <;> cases e`, sixteen cases.",
+        "In each, `simp [Fetch.step]` computes the step; the cases that cannot land on `.loaded d` have a false hypothesis."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "2^2",
+      "type": "exercise",
+      "prompt": "How many functions are there from `boolean` to `boolean`? Answer with a number.",
+      "hints": [
+        "A function from $A$ to $B$ has $|B|^{|A|}$ choices: a `boolean` for each of the two inputs."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "1 + 2",
+      "type": "exercise",
+      "prompt": "How many values has `{ tag: \"off\" } | { tag: \"on\"; bright: boolean }`? Answer with a number.",
+      "hints": [
+        "A sum adds: one value for `off`, and one `on` for each `boolean`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "type: λe:E. λk:D→R. λh:E→R. h e",
+      "type": "exercise",
+      "prompt": "\"It failed with $e$\" calls the error handler. Write it as a term, in a cell of your own, and give its type.",
+      "hints": [
+        "It takes $e : E$, then the two handlers, and calls the second with $e$: $\\lambda e{:}E.\\, \\lambda k{:}D \\to R.\\, \\lambda h{:}E \\to R.\\, h\\ e$."
+      ],
+      "hideQuestion": true,
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> A type with more values than meanings forces every reader to guess. A product (a record) multiplies the counts of its parts and reads as $\\land$; a sum (a tagged union) adds them and reads as $\\lor$. Give each state its own case, with only the fields it has, and the nonsense states are not values at all; a sum's type, as its handlers, promises that every case is handled.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

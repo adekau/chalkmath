@@ -50,6 +50,12 @@
       "label": null
     },
     {
+      "src": "> [!note] Where the coordination goes, in a real system\n> [Scheduling without a lock](#course=crdt&lesson=12&app=1), an optional notebook beside this lesson, follows that sentence through a cluster scheduler: which of its questions are monotone and need no coordination (the CALM theorem), how Google's Omega puts the rest into one atomic step, and how an escrow of quotas removes even that.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "In Lean",
       "type": "section",
       "showWork": false,

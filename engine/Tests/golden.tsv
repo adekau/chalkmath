@@ -205,6 +205,13 @@ diff(tan(x), x) - sec(x)^2	0
 cosh(0)	1
 diff(cosh(x), x) - sinh(x)	0
 diff(sinh(x), x) - cosh(x)	0
+backprop(x^2*y, [x, y], [3, 2])	[12, 9]
+backprop(sin(x*y), [x, y], [1, 2])	[-0.832293673094285, -0.416146836547142]
+backprop((w*2 + b - 1)^2, [w, b], [1/2, 1])	[4, 2]
+backprop(t^2, t, 3)	[6]
+backprop(abs(t), [t], [3])	<error: backprop: no local derivative for abs (it reads +, ·, powers, exp, ln, sin, cos, tan, sqrt and arctan)>
+backprop(t^2 + s, [t], [3])	<error: backprop: s has no value (list it with the variables, or bind it with let)>
+backprop(t^2, [t], [1, 2])	<error: backprop: 1 variable but 2 values>
 expand(cosh(x)^2 - sinh(x)^2)	1
 expand(cosh(x) + sinh(x))	exp(x)
 cosh(-x) - cosh(x)	0
@@ -434,6 +441,11 @@ infer: λx:A. λy:B. x y	<error: cannot unify A with B → τ1, so the term has 
 infer: λf:A→B. λx. f x	(A → B) → A → B
 (λx:A. x) y	y
 lattice(product(chain(2), chain(3)))	true
+le(lex(chain(3), chain(3)), (0, 2), (1, 0))	true
+le(product(chain(3), chain(3)), (0, 2), (1, 0))	false
+lattice(lex(chain(2), chain(3)))	true
+lattice(lex(poset({a, b}), chain(2)))	false
+le(lex(lex(chain(2), chain(2)), chain(2)), ((0, 1), 1), ((1, 0), 0))	true
 let NR = rel({a, b, c}; a->b, b->c)	{(a, b), (b, c)}
 transitive(closure(NR, transitive))	true
 classes(closure(rel({a, b, c}; a->b), equivalence))	{{a, b}, {c}}
@@ -442,6 +454,17 @@ states(system(var x in 0..2; init x = 0; action inc when x < 2 do x := x + 1))	3
 replicas(gcounter; a, b, c; a: inc; b: inc; b: inc; a -> b; b -> c; c -> a)	{a↦3, b↦3, c↦3}
 replicas(gcounter; a, b; a: inc; m := a; a: inc; b <- m; b <- m)	{a↦2, b↦1}
 replicas(pncounter; a, b; a: inc; a: inc; b: dec; a -> b; b -> a)	{a↦1, b↦1}
+replicas(escrow 2; a, b; a: use; b: use; a: use; a -> b; b -> a)	{a↦2, b↦2}
+replicas(escrow 2; a, b; b: give a; a: use; a: use; b -> a; a: use)	{a↦2, b↦0}
+replicas(escrow 3; a, b; a: use; a: use; a: free; a: use; a -> b)	{a↦2, b↦2}
+replicas(escrow 2; a, b; a: give a)	<error: a can give quota to another replica (b), not 'a'>
+replicas(escrow 2; a, b; a: dec)	<error: a bounded counter has use, free, give r, not 'dec'>
+replicas(rga; a, b; a: ins c at 0; a: ins a at 1; a: ins t at 2; a -> b; a: ins x at 1; b: del 2; a -> b; b -> a)	{a↦cxa, b↦cxa}
+replicas(rga; a, b; a: ins x at 0; b: ins y at 0; a -> b; b -> a)	{a↦xy, b↦xy}
+replicas(rga; a, b; a: ins o at 0; a: ins k at 1; a -> b; b: del 1; a: ins s at 2; a -> b; b -> a)	{a↦os, b↦os}
+replicas(rga; a, b; a: ins x at 1)	<error: a cannot insert at 1: the text it sees has 0 characters>
+replicas(rga; a, b; a: del 0)	<error: a cannot delete at 0: the text it sees has 0 characters>
+replicas(rga; a, b; a: inc)	<error: a replicated growable array (RGA) has ins c at p, del p, not 'inc'>
 replicas(gset; a, b; a: add x; b: add y; a -> b; b -> a)	{a↦{x, y}, b↦{x, y}}
 replicas(twopset; a, b; a: add x; a -> b; b: remove x; a: add x; b -> a)	{a↦{}, b↦{}}
 replicas(orset; a, b; a: add x; a -> b; b: remove x; a: add x; b -> a; a -> b)	{a↦{x}, b↦{x}}
@@ -471,6 +494,8 @@ S + 1	S + 1
 id + 1	id + 1
 K * 2	2*K
 fst (pair a b)	a
+map := λf x. f (f x)	λf. λx. f (f x)
+map (add 1) 0	λf. λx. f (f x)
 N(exp(i*pi/4))	0.707106781186548 + 0.707106781186548*i
 N(1/(1+i))	0.5 - 0.5*i
 N(sqrt(-4))	2*i

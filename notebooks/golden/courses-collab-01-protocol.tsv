@@ -1,0 +1,6 @@
+8	let Eager = system(\n  var w2 in {sent, here, used}\n  var w3 in {sent, here, used}\n  init w2 = sent ∧ w3 = sent\n  action arrive2 when w2 = sent do w2 := here\n  action arrive3 when w3 = sent do w3 := here\n  action use2 when w2 = here do w2 := used\n  action use3 when w3 = here do w3 := used\n)	= system({w2, w3}, {arrive2, arrive3, use2, use3})   [9 reachable states]
+10	invariant(Eager, w3 = used → w2 = used)	= false
+12	let Hold = system(\n  var w2 in {sent, here, used}\n  var w3 in {sent, here, used}\n  init w2 = sent ∧ w3 = sent\n  action arrive2 when w2 = sent do w2 := here\n  action arrive3 when w3 = sent do w3 := here\n  action use2 when w2 = here do w2 := used\n  action use3 when w3 = here ∧ w2 = used do w3 := used\n)	= system({w2, w3}, {arrive2, arrive3, use2, use3})   [7 reachable states]
+13	invariant(Hold, w3 = used → w2 = used)	= true
+30	reach(Hold, w3 = here ∧ w2 = sent)	= true
+31	invariant(Eager, w2 = used → w3 = used)	= false

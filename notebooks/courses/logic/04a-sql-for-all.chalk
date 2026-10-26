@@ -1,0 +1,293 @@
+{
+  "chalk": 1,
+  "name": "04a-sql-for-all.chalk",
+  "cells": [
+    {
+      "src": "“For every” in SQL",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Write \"for every\" in a language that only has \"there exists\", check on a small table that the two say the same, and catch the query that answers a different question.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "An application of lesson 4, outside the course's order: nothing later depends on it. It uses the lesson's quantifiers and the law for negating them, and only as much SQL as it shows. The last section uses Lean, as lesson 4 does.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A shop keeps three tables:\n\n- **customers**: 1 Ada, 2 Bo, 3 Cy;\n- **products**: 1 pen, 2 ink, 3 pad;\n- **orders**, a row for each purchase, with its customer and its product: Ada bought all three products, Bo a pen and a pad, Cy only ink.\n\nWhich customers bought every product? By eye, only Ada. The question is how to ask a database, whose language turns out to have no word for \"every\".",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A table as a formula",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The engine's quantifiers range over sets of numbers, so write each order as one number, the customer in the tens digit and the product in the units: Ada's ink is 12, Bo's pad is 23, and the orders table is $\\{11, 12, 13, 21, 23, 32\\}$. Then \"customer $c$ bought product $p$\" says that some row of the table is that pair:\n$$\\exists o \\in \\mathit{orders},\\ o = 10c + p.$$\nSQL asks it the same way, as a search through the rows:\n\n```sql\nEXISTS (SELECT * FROM orders o WHERE o.customer = c AND o.product = p)\n```\n\nDid Bo (customer 2) buy a pad (product 3)? Did he buy ink (product 2)?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "∃ o ∈ {11, 12, 13, 21, 23, 32}, o = 10*2 + 3",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "∃ o ∈ {11, 12, 13, 21, 23, 32}, o = 10*2 + 2",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "SQL has no “for every”",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A SQL condition can say `EXISTS` and `NOT EXISTS`, and has nothing for \"for every\". Lesson 4's law for negating a quantifier gives it anyway:\n$$\\forall p,\\ \\varphi(p) \\;\\equiv\\; \\lnot \\exists p,\\ \\lnot \\varphi(p).$$\n\"Customer $c$ bought every product\" is \"there is no product that $c$ did not buy\": two `NOT EXISTS`, one inside the other.\n\n```sql\nSELECT name FROM customers c\nWHERE NOT EXISTS (              -- there is no product p\n  SELECT * FROM products p\n  WHERE NOT EXISTS (            -- that c did not buy\n    SELECT * FROM orders o\n    WHERE o.customer = c.id AND o.product = p.id));\n```\n\nRead each `NOT EXISTS` as $\\lnot\\exists$. For Ada, customer 1, the \"for every\" form holds:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "∀ p ∈ {1, 2, 3}, ∃ o ∈ {11, 12, 13, 21, 23, 32}, o = 10*1 + p",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "For Bo the query's condition is false. Without its outer $\\lnot$ it is an $\\exists$, and its witness is the product Bo did not buy, product 2, the ink:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "¬∃ p ∈ {1, 2, 3}, ¬∃ o ∈ {11, 12, 13, 21, 23, 32}, o = 10*2 + p",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "∃ p ∈ {1, 2, 3}, ¬∃ o ∈ {11, 12, 13, 21, 23, 32}, o = 10*2 + p",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "For every customer, the two forms agree. That is the law, checked on this table:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "∀ c ∈ {1, 2, 3}, ((¬∃ p ∈ {1, 2, 3}, ¬∃ o ∈ {11, 12, 13, 21, 23, 32}, o = 10c + p) ↔ (∀ p ∈ {1, 2, 3}, ∃ o ∈ {11, 12, 13, 21, 23, 32}, o = 10c + p))",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> Both negations matter. Drop the inner `NOT` and the query asks for customers with no product they *did* buy, those with no orders at all. Drop the outer one and it asks for customers who missed *some* product: Bo and Cy.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The query that answers another question",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A shorter query looks as if it asks the same thing:\n\n```sql\nSELECT DISTINCT name FROM customers c\nJOIN orders o ON o.customer = c.id\nWHERE o.product IN (SELECT id FROM products);\n```\n\nIt keeps a customer who has some order of some product: $\\exists p\\, \\exists o$, \"bought something\", where the question was $\\forall p\\, \\exists o$. On this table it returns Ada, Bo and Cy. The engine finds a customer for whom the two questions have different answers:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "∃ c ∈ {1, 2, 3}, ((∃ p ∈ {1, 2, 3}, ∃ o ∈ {11, 12, 13, 21, 23, 32}, o = 10c + p) ∧ ¬(∀ p ∈ {1, 2, 3}, ∃ o ∈ {11, 12, 13, 21, 23, 32}, o = 10c + p))",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> A test table where Ada is the only customer passes both queries: she bought something, and she bought everything. A query is tested on a table where the questions differ, here a customer like Bo, who bought some products and not others. The formula above is a search for one.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "No products at all",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Before the shop lists anything, the products table is empty. Who has bought every product? The `NOT EXISTS` query returns every customer, Cy too: there is no product they did not buy. That is how $\\forall$ over the empty set behaves in logic as well. It is a long $\\land$ of no conditions at all, so there is no counterexample, and it is true:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "∀ p ∈ {}, ∃ o ∈ {11, 12, 13, 21, 23, 32}, o = 10*3 + p",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!note] A query by counting\n> Another common query counts: group the orders by customer and keep the groups with as many products as the products table has (`GROUP BY customer HAVING COUNT(DISTINCT product) = (SELECT COUNT(*) FROM products)`). On this shop it gives the same answer, Ada. With no products it gives none: the count to reach is 0, a customer with orders has more, and a customer without orders has no group at all. The two queries were never the same formula; the empty table is where that shows.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Each question is about the shop above. Write it as a formula in a cell of your own, with the orders as `{11, 12, 13, 21, 23, 32}`, and answer `true` or `false`.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "∃ p ∈ {1, 2, 3}, ∀ c ∈ {1, 2, 3}, ∃ o ∈ {11, 12, 13, 21, 23, 32}, o = 10c + p",
+      "type": "exercise",
+      "prompt": "Is there a product that every customer bought?",
+      "hints": [
+        "\"There is a product $p$ such that every customer $c$ bought $p$\": $\\exists p\\, \\forall c$, then \"bought\" as before.",
+        "Cy bought only ink. Did Bo buy ink?"
+      ],
+      "hideQuestion": true,
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "∀ p ∈ {1, 2, 3}, ∃ c ∈ {1, 2, 3}, ∃ o ∈ {11, 12, 13, 21, 23, 32}, o = 10c + p",
+      "type": "exercise",
+      "prompt": "Was every product bought by at least one customer?",
+      "hints": [
+        "$\\forall p\\, \\exists c$: the same two quantifiers as the last question, in the other order."
+      ],
+      "hideQuestion": true,
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "∃ c ∈ {1, 2, 3}, ¬∃ o ∈ {11, 12, 13, 21, 23, 32}, o = 10c + 3",
+      "type": "exercise",
+      "prompt": "Is there a customer who never bought a pad (product 3)?",
+      "hints": [
+        "In SQL: `EXISTS` a customer for whom `NOT EXISTS` an order of product 3: $\\exists c\\, \\lnot \\exists o$."
+      ],
+      "hideQuestion": true,
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "∀ c ∈ {1, 2, 3}, ((¬∃ o ∈ {11, 12, 13, 21, 23, 32}, o = 10c + 1) ↔ c = 3)",
+      "type": "exercise",
+      "prompt": "This query returns the customers who never bought a pen:\n\n```sql\nSELECT name FROM customers c\nWHERE NOT EXISTS (SELECT * FROM orders o WHERE o.customer = c.id AND o.product = 1);\n```\n\nIs Cy the only customer it returns?",
+      "hints": [
+        "\"Cy is the only one\" says: for every customer $c$, the condition holds exactly when $c$ is Cy, customer 3.",
+        "$\\forall c,\\ (\\lnot \\exists o,\\ o = 10c + 1) \\leftrightarrow c = 3$."
+      ],
+      "hideQuestion": true,
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean the table is a list of pairs, and \"$c$ bought $p$\" is a pair being in the list. Over a list, `∀ p ∈ products` and `∃ p ∈ products` are finite checks, and `decide` makes them element by element, as the engine did.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "def orders : List (Nat × Nat) := [(1, 1), (1, 2), (1, 3), (2, 1), (2, 3), (3, 2)]\ndef customers : List Nat := [1, 2, 3]\ndef products : List Nat := [1, 2, 3]\n\n/-- Customer c bought product p: the pair is a row of the table. -/\nabbrev bought (c p : Nat) : Prop := (c, p) ∈ orders\n\ntheorem ada_bought_all : ∀ p ∈ products, bought 1 p := by decide",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem bo_missed_one : ∃ p ∈ products, ¬ bought 2 p := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that Bo missed some product.",
+      "leanSolution": "  decide",
+      "hints": [
+        "A statement over the lists `products` and `orders`: `decide` checks it.",
+        "Or by hand: the witness is product 2, `exact ⟨2, by decide, by decide⟩`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem no_product_for_all : ¬ ∃ p ∈ products, ∀ c ∈ customers, bought c p := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that no product was bought by every customer.",
+      "leanSolution": "  decide",
+      "hints": [
+        "The same tactic: `decide` tries each product and each customer."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The law that turned \"for every\" into `NOT EXISTS NOT EXISTS` is one theorem, for any predicate. One direction is lesson 3's kind of proof:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem not_exists_not_of_forall (α : Type) (B : α → Prop) : (∀ x, B x) → ¬ ∃ x, ¬ B x := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that if every $x$ has $B$, there is no $x$ without it.",
+      "leanSolution": "  intro h ⟨x, hx⟩\n  exact hx (h x)",
+      "hints": [
+        "`¬ ∃ x, ¬ B x` is a function from a proof of the `∃` to `False`: introduce `h`, then the pair `⟨x, hx⟩`.",
+        "`hx : ¬ B x` and `h x : B x` contradict each other: `exact hx (h x)`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The other direction, from \"no product they did not buy\" to \"every product\", is the kind lesson 3 could not prove without excluded middle: to produce `B x` you must know whether `B x` holds. For a table you do. Whether a pair is in a list is **decidable**, settled by looking, and for a decidable statement excluded middle is a theorem, `Decidable.em`, not an axiom:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem forall_of_not_exists_not (α : Type) (B : α → Prop) [DecidablePred B] :\n    (¬ ∃ x, ¬ B x) → ∀ x, B x := by\n  intro h x\n  cases Decidable.em (B x) with\n  | inl hb => exact hb\n  | inr hn => exact absurd ⟨x, hn⟩ h\n\n#print axioms forall_of_not_exists_not",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "So the double `NOT EXISTS` is the \"for every\" it stands for, with no appeal to choice, because a table can be looked through, row by row.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> SQL has $\\exists$ (`EXISTS`) and $\\lnot$ (`NOT`), and De Morgan's law for quantifiers builds $\\forall$ from them: $\\forall p\\ \\varphi \\equiv \\lnot\\exists p\\ \\lnot\\varphi$, a `NOT EXISTS` inside a `NOT EXISTS`. A shorter query that joins and filters asks $\\exists$ instead, and a table where the two differ shows it. Over the empty table $\\forall$ is true. In Lean, `decide` checks such statements over lists, and on a decidable predicate the law needs no excluded middle.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

@@ -1,0 +1,117 @@
+{
+  "chalk": 1,
+  "name": "03a-patches.chalk",
+  "cells": [
+    {
+      "src": "Patches as morphisms",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Read edits as arrows from one text to another, and a merge of two concurrent edits as the smallest text both lead into; see where that picture needs a tie-break.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "An application of lesson 3, outside the course's order. Lesson 3's edits composed into a monoid. A monoid has one object; edits have two ends, the text before and the text after, and an edit only composes with one that starts where it ends. That is a **category**: texts as objects, edits as arrows, composition and the empty edit as before.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "An insert is an embedding",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "For inserts, the arrow is visible in the texts: the old text sits inside the new one, in order, as a **sublist**. Composition of inserts is composition of embeddings.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "namespace Patches\n\ndef insAt : Nat → Char → List Char → List Char\n  | 0, x, s => x :: s\n  | _ + 1, x, [] => [x]\n  | p + 1, x, y :: s => y :: insAt p x s\n\nend Patches",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem Patches.sublist_insAt (x : Char) : ∀ (p : Nat) (s : List Char), s.Sublist (Patches.insAt p x s) := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that an insert keeps the old text, in order, inside the new one.",
+      "leanSolution": "  intro p s\n  induction s generalizing p with\n  | nil => cases p <;> exact List.Sublist.slnil.cons _\n  | cons y s ih =>\n    cases p with\n    | zero => exact (List.Sublist.refl _).cons _\n    | succ p => exact (ih p).cons_cons y",
+      "hints": [
+        "Induction on `s`, for every `p`, then cases on `p`.",
+        "`List.Sublist.cons` adds an element on the right only; `List.Sublist.cons_cons` adds the same element on both sides."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A merge is a pushout",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Two concurrent edits $a : s \\to s_a$ and $b : s \\to s_b$ start from one text. A merge is a text $m$ with edits $s_a \\to m$ and $s_b \\to m$ such that both ways round from $s$ agree: TP1's square. The best merge is the **pushout**: a merge through which every other merge factors, the least text that both lead into, adding nothing either side did not.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "For inserts, order theory computes it. Take \"ab\", and two inserts between a and b: x by one person and y by another. A text is a chain of characters; each side knows its chain, and the merge must contain both orders and nothing more:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let Mg = poset({a, x, y, b}; a < x, x < b, a < y, y < b)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "le(Mg, x, y)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "le(Mg, y, x)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!note] The pushout is not a text\n> The least order containing both sides has x and y incomparable: nothing either person did puts one before the other. A text needs a chain. So the pushout of the two inserts exists among partial orders of characters, and not among texts; choosing a chain above it (x before y, or y before x) adds information that neither edit had. That choice is the tie-break by site of lesson 1, and the RGA's order on ids in [Collaborative text](#course=crdt&lesson=10&app=1). Mimram and Di Giusto, \"A Categorical Theory of Patches\", develop patches as morphisms and merging as pushouts in full; this notebook builds only the smallest piece of the idea, for inserts, and does not follow their construction.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "join(Mg, x, y)",
+      "type": "exercise",
+      "prompt": "In the merged order, what is the least character after both x and y?",
+      "hints": [
+        "Both inserts went before the b."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Edits are arrows between texts and compose as arrows do; an insert embeds the old text in the new one. A merge of two concurrent edits is a square, and the best merge a pushout. For two inserts at one place the pushout is a partial order in which the two characters are incomparable: a text needs a tie-break on top.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

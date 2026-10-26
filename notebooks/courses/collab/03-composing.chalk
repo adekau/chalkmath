@@ -1,0 +1,206 @@
+{
+  "chalk": 1,
+  "name": "03-composing.chalk",
+  "cells": [
+    {
+      "src": "Composing edits",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Compose two edits into one, prove that the composite does what the two did one after the other, find the laws composition has and the two it lacks, and extend edits to formatted text.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A client's pending queue can grow to hundreds of keystrokes while a batch is in flight. Sending them as one edit is smaller, and rebasing one edit is cheaper than rebasing hundreds. That needs **composition**: one edit that does what two did in turn.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Edits as steps",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Lesson 1's edits name a position. To compose them, write an edit instead as a walk along the text: for each character, **keep** it or **delete** it, and **insert** new characters between. Past the edit's last step, the rest of the text is kept. Inserting x at position 1 is `[keep, ins 'x']`; deleting position 2 is `[keep, keep, del]`.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "namespace Compose\n\n/-- One step of an edit, read left to right along the text: keep the next character, insert one, or delete the next. -/\ninductive Step where\n  | keep\n  | ins (c : Char)\n  | del\n  deriving Repr, DecidableEq\n\n/-- An edit is a list of steps; past its last step, the text is kept. -/\nabbrev Edit := List Step\n\ndef apply : Edit → List Char → List Char\n  | [], s => s\n  | .ins c :: e, s => c :: apply e s\n  | .keep :: e, x :: s => x :: apply e s\n  | .del :: e, _ :: s => apply e s\n  | .keep :: e, [] => apply e []\n  | .del :: e, [] => apply e []\n\n/-- `compose a b`: one edit that does `a`, then `b`. `b`'s steps walk along `a`'s output: `b`'s inserts go in\nas they are, `a`'s deletes happen before `b` sees anything, and each keep or delete of `b` meets what `a`\nkept or inserted. -/\ndef compose : Edit → Edit → Edit\n  | a, [] => a\n  | a, .ins c :: b => .ins c :: compose a b\n  | [], b => b\n  | .del :: a, b => .del :: compose a b\n  | .ins _ :: a, .del :: b => compose a b\n  | .ins c :: a, .keep :: b => .ins c :: compose a b\n  | .keep :: a, .keep :: b => .keep :: compose a b\n  | .keep :: a, .del :: b => .del :: compose a b\n\ndef run (e : Edit) (t : String) : String := String.ofList (apply e t.toList)\n\n#eval compose [.keep, .ins 'x'] [.keep, .keep, .keep, .del]\n#eval run (compose [.keep, .ins 'x'] [.keep, .keep, .keep, .del]) \"abcd\"\n#eval run [.keep, .keep, .keep, .del] (run [.keep, .ins 'x'] \"abcd\")\n\nend Compose",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Inserting x after the a and then deleting the third character of the result (the c, now that x has moved it) is one edit that keeps a, inserts x, keeps b and deletes c.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A monoid",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Monoid\n> A **monoid** is a set with an operation that is **associative**, $(a \\cdot b) \\cdot c = a \\cdot (b \\cdot c)$, and has an **identity** $e$, with $e \\cdot a = a = a \\cdot e$. A semilattice ([Semilattices](#course=order-lattices&lesson=5)) is a monoid that is also commutative and idempotent.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Composition is a monoid with the empty edit as identity, and composing is applying one edit after the other, on any text the first edit fits: one that does not keep or delete past its end.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "namespace Compose\n\n/-- How many characters of its text an edit reads: its keeps and deletes. -/\ndef reads : Edit → Nat\n  | [] => 0\n  | .ins _ :: e => reads e\n  | _ :: e => reads e + 1\n\n/-- Composing is applying one after the other, on any text the first edit fits. -/\ntheorem apply_compose : ∀ (a b : Edit) (s : List Char), reads a ≤ s.length →\n    apply (compose a b) s = apply b (apply a s)\n  | [], [], s, _ => by simp only [compose, apply]\n  | _ :: _, [], s, _ => by simp only [compose, apply]\n  | a, .ins c :: b, s, h => by\n    cases a <;> simp only [compose, apply] <;> rw [apply_compose _ b s h] <;> rfl\n  | [], .keep :: b, s, _ => by simp only [compose, apply]\n  | [], .del :: b, s, _ => by simp only [compose, apply]\n  | .del :: a, .keep :: b, x :: s, h => by\n    simp only [compose, apply]; exact apply_compose a _ s (by simp [reads] at h; omega)\n  | .del :: a, .del :: b, x :: s, h => by\n    simp only [compose, apply]; exact apply_compose a _ s (by simp [reads] at h; omega)\n  | .ins _ :: a, .del :: b, s, h => by\n    simp only [compose, apply]; exact apply_compose a b s h\n  | .ins c :: a, .keep :: b, s, h => by\n    simp only [compose, apply]; rw [apply_compose a b s h]\n  | .keep :: a, .keep :: b, x :: s, h => by\n    simp only [compose, apply]; rw [apply_compose a b s (by simp [reads] at h; omega)]\n  | .keep :: a, .del :: b, x :: s, h => by\n    simp only [compose, apply]; exact apply_compose a b s (by simp [reads] at h; omega)\n  | .del :: _, .keep :: _, [], h => by simp [reads] at h\n  | .del :: _, .del :: _, [], h => by simp [reads] at h\n  | .keep :: _, .keep :: _, [], h => by simp [reads] at h\n  | .keep :: _, .del :: _, [], h => by simp [reads] at h\ntermination_by a b => a.length + b.length\n\n/-- The empty edit is the identity, on either side. -/\ntheorem compose_nil_left : ∀ (b : Edit), compose [] b = b\n  | [] => by simp only [compose]\n  | .ins c :: b => by simp only [compose, compose_nil_left b]\n  | .keep :: b => by simp only [compose]\n  | .del :: b => by simp only [compose]\n\ntheorem compose_nil_right (a : Edit) : compose a [] = a := by cases a <;> simp only [compose]\n\n/-- Composition is associative, as edits: the same list of steps, however three edits are grouped. -/\ntheorem compose_assoc : ∀ (a b c : Edit), compose (compose a b) c = compose a (compose b c)\n  | a, b, [] => by simp only [compose]\n  | a, b, .ins x :: c => by simp only [compose]; congr 1; exact compose_assoc a b c\n  | a, [], .keep :: c => by simp only [compose, compose_nil_left]\n  | a, .ins y :: b, .keep :: c => by simp only [compose] <;> first | rfl | exact compose_assoc _ _ _ | (congr 1; exact compose_assoc _ _ _)\n  | [], .keep :: b, .keep :: c => by simp only [compose, compose_nil_left]\n  | .ins z :: a, .keep :: b, .keep :: c => by simp only [compose] <;> first | rfl | exact compose_assoc _ _ _ | (congr 1; exact compose_assoc _ _ _)\n  | .keep :: a, .keep :: b, .keep :: c => by simp only [compose] <;> first | rfl | exact compose_assoc _ _ _ | (congr 1; exact compose_assoc _ _ _)\n  | .del :: a, .keep :: b, .keep :: c => by simp only [compose]; congr 1; rw [compose_assoc a]; simp only [compose]\n  | [], .del :: b, .keep :: c => by simp only [compose, compose_nil_left]\n  | .ins z :: a, .del :: b, .keep :: c => by simp only [compose] <;> first | rfl | exact compose_assoc _ _ _ | (congr 1; exact compose_assoc _ _ _)\n  | .keep :: a, .del :: b, .keep :: c => by simp only [compose] <;> first | rfl | exact compose_assoc _ _ _ | (congr 1; exact compose_assoc _ _ _)\n  | .del :: a, .del :: b, .keep :: c => by simp only [compose]; congr 1; rw [compose_assoc a]; simp only [compose]\n  | a, [], .del :: c => by simp only [compose, compose_nil_left]\n  | a, .ins y :: b, .del :: c => by simp only [compose] <;> first | rfl | exact compose_assoc _ _ _ | (congr 1; exact compose_assoc _ _ _)\n  | [], .keep :: b, .del :: c => by simp only [compose, compose_nil_left]\n  | .ins z :: a, .keep :: b, .del :: c => by simp only [compose] <;> first | rfl | exact compose_assoc _ _ _ | (congr 1; exact compose_assoc _ _ _)\n  | .keep :: a, .keep :: b, .del :: c => by simp only [compose] <;> first | rfl | exact compose_assoc _ _ _ | (congr 1; exact compose_assoc _ _ _)\n  | .del :: a, .keep :: b, .del :: c => by simp only [compose]; congr 1; rw [compose_assoc a]; simp only [compose]\n  | [], .del :: b, .del :: c => by simp only [compose, compose_nil_left]\n  | .ins z :: a, .del :: b, .del :: c => by simp only [compose] <;> first | rfl | exact compose_assoc _ _ _ | (congr 1; exact compose_assoc _ _ _)\n  | .keep :: a, .del :: b, .del :: c => by simp only [compose] <;> first | rfl | exact compose_assoc _ _ _ | (congr 1; exact compose_assoc _ _ _)\n  | .del :: a, .del :: b, .del :: c => by simp only [compose]; congr 1; rw [compose_assoc a]; simp only [compose]\ntermination_by a b c => a.length + b.length + c.length\n\nend Compose",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Both proofs follow `compose`: a case for each way the edits can start, each one unfolding a step and using the statement for shorter edits. The hypothesis of `apply_compose` is needed. On the empty text, `[keep, ins 'z']` finds nothing to keep and gives \"z\"; then `[keep, del]` keeps the z. But `compose` pairs the second edit's keep with the first edit's keep, as if that had kept a character, and its delete with the z: the composite is `[keep]`, which gives \"\". The first edit read past the end of its text, and then it is not about that text.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "What composition lacks",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> Is typing x then y the same as typing y then x? Is typing x twice the same as typing it once?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "#eval (Compose.run (Compose.compose [.ins 'x'] [.ins 'y']) \"ab\", Compose.run (Compose.compose [.ins 'y'] [.ins 'x']) \"ab\")\n#eval (Compose.run (Compose.compose [.ins 'x'] [.ins 'x']) \"ab\", Compose.run [.ins 'x'] \"ab\")\n\n-- `compose` is defined by well-founded recursion, which `decide` does not unfold; `simp` uses its equations\nexample : Compose.apply (Compose.compose [.ins 'x'] [.ins 'y']) \"ab\".toList\n    ≠ Compose.apply (Compose.compose [.ins 'y'] [.ins 'x']) \"ab\".toList := by simp [Compose.compose, Compose.apply]\nexample : Compose.apply (Compose.compose [.ins 'x'] [.ins 'x']) \"ab\".toList\n    ≠ Compose.apply [.ins 'x'] \"ab\".toList := by simp [Compose.compose, Compose.apply]",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Neither commutative nor idempotent. Even overwriting, which is idempotent, is not commutative. A one-character document with three edits, `id` (change nothing) and \"set it to x\" and \"set it to y\", composed left to right:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "let W = op({id, x, y}; [id, x, y; x, x, y; y, x, y])",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "associative(W)",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "commutative(W)",
+      "showWork": true,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> A queue of edits is not a set of updates to merge. [Semilattices](#course=order-lattices&lesson=5) found the laws a merge needs so that order, grouping and repetition do not matter; composition has only one of them, associativity. So a queue may be rolled up in any grouping (`compose_assoc`: compose the first hundred keystrokes, then the next, or pairs at a time), but never in another order, and never with a repeat. A queue that rolls edits up with a merge, or that sorts or deduplicates them, changes what the user typed.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Runs and formatting",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Rich-text editors usually write an edit as **runs** rather than single steps: retain $n$ characters, insert a string, delete $n$ characters (a format often called a delta). A run of retains can also carry **attributes**: \"make these characters bold\", \"set their colour\". Runs are steps compressed, so their composition is the one above, run length aside:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "namespace Compose\n\n/-- A run: keep ‹n› characters, insert a string, or delete ‹n›. -/\ninductive Run where\n  | retain (n : Nat)\n  | insert (s : String)\n  | delete (n : Nat)\n  deriving Repr\n\ndef Run.steps : Run → Edit\n  | .retain n => List.replicate n .keep\n  | .insert s => s.toList.map .ins\n  | .delete n => List.replicate n .del\n\ndef runs (rs : List Run) : Edit := rs.flatMap Run.steps\n\n#eval run (runs [.retain 6, .delete 5, .insert \"there\"]) \"hello world\"\n\nend Compose",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Formatting changes on one character transform like edits. Two people make the same word bold and not bold at once: a format change sets some attributes and leaves the rest, and of two concurrent changes to one attribute, the one with **priority** keeps its value; the other drops that attribute and keeps the rest of its change. Priority is a tie-break, as the site was for two inserts at one place: arbitrary, but the same at every site.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "namespace Compose\n\n/-- A character's format: a value for each attribute it has. -/\nabbrev Format := String → Option String\n\n/-- A format change: a new value for each attribute it sets, `none` for those it leaves alone. -/\nabbrev Change := String → Option String\n\ndef Change.apply (c : Change) (f : Format) : Format := fun k => (c k).or (f k)\n\n/-- `c`, rewritten past a concurrent `d`. With priority, `c` keeps everything; without, it drops what `d` sets. -/\ndef Change.T (c d : Change) (priority : Bool) : Change :=\n  fun k => if priority then c k else if (d k).isSome then none else c k\n\ndef bold : Change := fun k => if k = \"bold\" then some \"true\" else none\ndef plainRed : Change := fun k => if k = \"bold\" then some \"false\" else if k = \"color\" then some \"red\" else none\ndef none₀ : Format := fun _ => none\n\n-- bold has priority: both sites end bold, and red\n#eval ((plainRed.T bold false).apply (bold.apply none₀) \"bold\", (bold.T plainRed true).apply (plainRed.apply none₀) \"bold\")\n#eval ((plainRed.T bold false).apply (bold.apply none₀) \"color\", (bold.T plainRed true).apply (plainRed.apply none₀) \"color\")\n\nend Compose",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "identity(W)",
+      "type": "exercise",
+      "prompt": "Which element of `W` is its identity?",
+      "hints": [
+        "The edit that changes nothing."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "idempotent(W)",
+      "type": "exercise",
+      "prompt": "Is overwriting idempotent: is setting the character to x twice the same as once? Answer `true` or `false`.",
+      "hints": [
+        "Read the diagonal of the table."
+      ],
+      "hideQuestion": true,
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem Compose.change_tp1 (c d : Compose.Change) (f : Compose.Format) :\n    (d.T c false).apply (c.apply f) = (c.T d true).apply (d.apply f) := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove TP1 for format changes: `c` with priority, `d` without, on any format.",
+      "leanSolution": "  funext k\n  simp only [Compose.Change.apply, Compose.Change.T]\n  cases hc : c k <;> cases hd : d k <;> simp [Option.or]",
+      "hints": [
+        "Two formats are equal when they agree on every attribute: `funext k`.",
+        "Unfold `Change.apply` and `Change.T`, then split on what `c` and `d` say about `k`: `cases hc : c k <;> cases hd : d k`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Edits compose: `apply (compose a b) = apply b ∘ apply a` on any text the first fits, composition is associative and has the empty edit as identity, so edits form a monoid. It is not commutative and not idempotent, so a queue may be rolled up in any grouping but must keep its order and its repeats, which a merge would not. Runs of retain, insert and delete are steps compressed, and attributes on retains transform with a priority to break the tie.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "An edit moves the text under everything that points into it: cursors, selections, comments. Next: moving them with it.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}
