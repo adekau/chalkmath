@@ -3111,7 +3111,7 @@ function renderChrome() {
   $(".sidebar").hidden = !S.sidebarOpen || S.tab === "docs" || !open;
 
   // toolbar
-  const tl = $(".toolbar"); tl.innerHTML = "";
+  const tl = $(".main > .toolbar"); tl.innerHTML = "";
   const group = h("div", "bgroup");
   const mk = (label: string, title: string, fn: () => void, primary = false, enabled = true) => {
     const b = document.createElement("button");
@@ -3191,8 +3191,8 @@ function renderView() {
   $(".welcome").hidden = S.tab !== "welcome";
   if (S.tab !== "welcome") $(".welcome").innerHTML = "";   // drawn afresh when shown: the saved notebooks change
   renderNotice();
-  $(".toolbar").hidden = S.tab !== "notebook";
-  $(".docs").hidden = S.tab !== "docs";
+  $(".main > .toolbar").hidden = S.tab !== "notebook";
+  $(".main > .docs").hidden = S.tab !== "docs";
   $(".courses").hidden = S.tab !== "courses";
   $(".studio").hidden = S.tab !== "studio";
   $(".panel").hidden = S.tab !== "notebook";
@@ -6494,7 +6494,7 @@ function fnMatches(q: string): FnDoc[] {
 }
 
 function renderDocs() {
-  const host = $(".docs"); host.innerHTML = "";
+  const host = $(".main > .docs"); host.innerHTML = "";
   const nav = h("nav", "docnav"); nav.setAttribute("aria-label", "Documentation contents");
   const search = document.createElement("input");
   search.type = "search"; search.className = "docsearch"; search.placeholder = "Search the documentation"; search.value = S.guide.query;

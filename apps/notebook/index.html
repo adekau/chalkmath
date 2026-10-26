@@ -178,7 +178,9 @@ button { font-family: var(--font); }
 .tabplaces { display:flex; align-items:flex-end; gap:5px; flex:0 0 auto; margin-left:auto; padding-left:10px; height:100%; }
 
 /* --- body: rail | sidebar | main ------------------------------------------ */
-.body { flex:1; display:flex; align-items:stretch; min-height:0; background:var(--bg); }
+/* The shell's generic class names (.body, .main, .toolbar, .docs, .code) are also Monaco's, inside its
+   suggestion list and widgets in Lean cells, so their rules name where the shell puts them. */
+#app > .body { flex:1; display:flex; align-items:stretch; min-height:0; background:var(--bg); }
 .rail { width:44px; flex:0 0 44px; display:flex; flex-direction:column; align-items:center; padding:8px 0; gap:6px; background:var(--bg); border-right:1px solid var(--border); }
 .rail .b { width:32px; height:32px; display:flex; align-items:center; justify-content:center; border-radius:8px; cursor:pointer; font-size:13px; font-weight:600; color:var(--ink-mut); background:var(--btn-lift); box-shadow:var(--raised); }
 .rail .b.on { color:var(--on-acc); background:var(--primary); box-shadow:var(--raised-strong); }
@@ -199,10 +201,10 @@ button { font-family: var(--font); }
 .plrow .name { display:block; font-size:11.5px; font-weight:600; color:var(--acc-hi); }
 .plrow .sig { display:block; font-family:var(--mono); font-size:10.5px; color:var(--ink-mut); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
-.main { flex:1; display:flex; flex-direction:column; min-width:0; min-height:0; }
+.body > .main { flex:1; display:flex; flex-direction:column; min-width:0; min-height:0; }
 
 /* --- toolbar and button groups -------------------------------------------- */
-.toolbar { display:flex; align-items:center; gap:8px; height:34px; flex:0 0 34px; padding:0 12px; border-bottom:1px solid var(--border); background:var(--panel); }
+.main > .toolbar { display:flex; align-items:center; gap:8px; height:34px; flex:0 0 34px; padding:0 12px; border-bottom:1px solid var(--border); background:var(--panel); }
 .bgroup { display:flex; align-items:stretch; height:22px; border:1px solid var(--btn-edge); border-radius:4px; overflow:hidden; box-shadow:0 1px 0 var(--hl-b) inset, 0 1px 3px var(--sh-b); }
 .bgroup { flex:0 0 auto; }
 .bgroup button { border:0; border-right:1px solid var(--btn-edge); font-size:11px; padding:0 9px; cursor:pointer; display:flex; align-items:center; gap:5px; background:var(--btn); color:var(--ink-2); font-weight:500; white-space:nowrap; }
@@ -213,7 +215,7 @@ button { font-family: var(--font); }
 .bgroup button.on { background:var(--primary); color:var(--on-acc); }
 .vsep { width:1px; height:18px; background:var(--border); }
 .bgroup button:disabled { opacity:0.45; cursor:default; filter:none; transform:none; }
-.toolbar .tlabel { font-size:10px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:var(--ink-mut); margin-left:6px; }
+.main > .toolbar .tlabel { font-size:10px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:var(--ink-mut); margin-left:6px; }
 /* the strip above the paper: engine loading or failed, or a notebook not run yet */
 .notice { display:flex; align-items:center; gap:10px; flex:0 0 auto; padding:7px 14px; font-size:12px; color:var(--ink-2); background:var(--acc-soft-bg2); border-bottom:1px solid var(--acc-soft-br); }
 .notice .msg { flex:1; min-width:0; }
@@ -225,8 +227,8 @@ button { font-family: var(--font); }
 .notice button { font:11.5px var(--font); font-weight:600; padding:3px 11px; border-radius:4px; border:1px solid var(--btn-edge); background:var(--btn); color:var(--ink-2); cursor:pointer; white-space:nowrap; }
 .notice button:first-of-type { background:var(--primary); color:var(--pri-ink); border-color:var(--pri-edge); }
 .notice button:hover { filter:brightness(1.12); }
-.toolbar .count { font-family:var(--mono); font-size:10px; color:var(--ink-mut); }
-.toolbar .hint { font-size:10.5px; color:var(--ink-mut); }
+.main > .toolbar .count { font-family:var(--mono); font-size:10px; color:var(--ink-mut); }
+.main > .toolbar .hint { font-size:10.5px; color:var(--ink-mut); }
 
 /* --- the paper: cells ----------------------------------------------------- */
 .cells { flex:1; overflow-y:auto; min-height:0; padding:22px 0 70px; color:var(--p-ink); font-family:var(--serif);
@@ -839,7 +841,7 @@ table.keys kbd { font:11.5px var(--mono); color:var(--ink); background:var(--pan
 .studio-empty p { margin:0; font-size:12.5px; line-height:1.6; color:var(--ink-mut); }
 
 /* --- documentation (Help › Documentation): contents beside a page on the paper -------- */
-.docs { flex:1; min-height:0; display:flex; }
+.main > .docs { flex:1; min-height:0; display:flex; }
 .docnav { flex:0 0 230px; width:230px; display:flex; flex-direction:column; min-height:0; background:var(--panel); border-right:1px solid var(--border); }
 .docsearch { margin:12px 12px 6px; padding:6px 9px; font-size:12px; color:var(--ink); background:var(--bg); border:1px solid var(--border); border-radius:6px; outline:none; }
 .docsearch:focus { border-color:var(--acc-soft-br); }
@@ -982,11 +984,11 @@ table.doctable td.mono { font-family:var(--code); font-size:12.5px; color:var(--
 .shot select { flex:1; min-width:0; }
 .shot input[type=number] { width:46px; }
 .shot .s { font-size:9.5px; color:var(--ink-mut); }
-.code { flex:0 0 auto; display:flex; flex-direction:column; min-height:0; border-top:1px solid var(--border); background:var(--bg); overflow:hidden; }
+.studio > .code { flex:0 0 auto; display:flex; flex-direction:column; min-height:0; border-top:1px solid var(--border); background:var(--bg); overflow:hidden; }
 .codehead { display:flex; align-items:center; gap:8px; height:32px; flex:0 0 32px; padding:0 8px 0 12px; background:var(--panel); border-bottom:1px solid var(--border); }
 .codehead .title { font-size:10px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:var(--ink-mut); cursor:pointer; }
 .codehead .file, .codehead .cmd { font-family:var(--mono); font-size:10px; color:var(--ink-mut); }
-.code pre { margin:0; padding:12px 14px; overflow:auto; flex:1; font-family:var(--mono); font-size:11px; line-height:1.55; color:var(--ink-2); white-space:pre; }
+.studio > .code pre { margin:0; padding:12px 14px; overflow:auto; flex:1; font-family:var(--mono); font-size:11px; line-height:1.55; color:var(--ink-2); white-space:pre; }
 
 /* --- bottom panel --------------------------------------------------------- */
 .panel { display:flex; flex-direction:column; min-height:0; background:var(--bg); border-top:1px solid var(--border); overflow:hidden; }
@@ -1083,12 +1085,12 @@ table.doctable td.mono { font-family:var(--code); font-size:12.5px; color:var(--
   .tab { padding:6px 6px 7px 9px; }
   .tabplaces { padding-left:4px; gap:3px; }
   .tablist { position:fixed; top:79px; left:8px; right:8px; max-width:none; }
-  .body { position:relative; }
+  #app > .body { position:relative; }
   .rail { width:38px; flex-basis:38px; }
   /* the sidebar is a drawer over the paper */
   .sidebar { position:absolute; left:38px; top:0; bottom:0; z-index:30; width:min(300px, 80vw); box-shadow:var(--pop); }
-  .toolbar { overflow-x:auto; scrollbar-width:none; }
-  .toolbar .hint, .toolbar .tlabel { display:none; }
+  .main > .toolbar { overflow-x:auto; scrollbar-width:none; }
+  .main > .toolbar .hint, .main > .toolbar .tlabel { display:none; }
   .notice { flex-wrap:wrap; }
   .cells { padding:12px 0 40px; }
   .cell, .outrow { grid-template-columns:46px minmax(0,1fr) 14px; }
@@ -1111,7 +1113,7 @@ table.doctable td.mono { font-family:var(--code); font-size:12.5px; color:var(--
   .exrow { grid-template-columns:minmax(0,1fr); gap:0; }
   .exprompt { text-align:left; }
   /* the contents become a strip above the page */
-  .docs { flex-direction:column; }
+  .main > .docs { flex-direction:column; }
   .docnav { flex:0 0 auto; width:auto; border-right:0; border-bottom:1px solid var(--border); }
   .docsearch { margin:8px 10px 4px; }
   .doclist { display:flex; gap:2px; overflow-x:auto; scrollbar-width:none; padding:0 8px 6px; }
