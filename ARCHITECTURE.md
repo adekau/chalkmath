@@ -850,7 +850,9 @@ language server answers LSP for Lean cells.
   files in Cache Storage under an id of their contents (a browser's HTTP cache will not hold entries that
   size, and the files' URLs change with every deploy), so they are downloaded again only when Lean changes. The site gets Lean from a
   release `lean-wasm.yml` publishes whenever Lean's build inputs change (`scripts/lean-wasm-key.sh` names it),
-  so a deploy does not spend two hours building it.
+  so a deploy does not spend two hours building it. The release carries a second asset,
+  `lean-wasm-cli.tar.gz`: the same Lean's command-line driver for Node (`bin/lean.js`) and its 32-bit
+  library, which compiles oleans the browser's Lean can import (a native olean is a 64-bit memory image).
 - **Memory.** Running, Lean takes over a gigabyte: its heap (the library's oleans read into it, 512 MB to
   start with), the library in its filesystem (~280 MB), the module, and the pool's 32 workers. The worker
   unpacks the library as it decompresses, into one array per file, which the filesystem keeps rather than

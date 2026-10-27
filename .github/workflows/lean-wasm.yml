@@ -41,7 +41,17 @@ jobs:
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "ver=$(sed -E 's/.*:v//' engine/lean-toolchain)" >> "$GITHUB_OUTPUT"
           echo "emsdk=$(cat engine/wasm/emscripten-version)" >> "$GITHUB_OUTPUT"
-          if gh release view "$tag" >/dev/null 2>&1; then echo "exists=true" >> "$GITHUB_OUTPUT"; echo "$tag is already published"; fi
+          # published means both assets: Lean for the browser, and its command-line driver with the 32-bit
+          # library (lean-wasm-cli.tar.gz), which compiles 32-bit oleans the browser's Lean can import. A
+          # release made before the driver was published gets it added (the cached build tree has it)
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            if gh release view "$tag" --json assets -q '.assets[].name' | grep -qx lean-wasm-cli.tar.gz; then
+              echo "exists=true" >> "$GITHUB_OUTPUT"; echo "$tag is already published"
+            else
+              echo "$tag has no lean-wasm-cli.tar.gz yet: building to add it"
+            fi
+          fi
       - uses: actions/setup-node@v4
         if: steps.key.outputs.exists != 'true'
         with: { node-version: 22, cache: npm }
@@ -88,8 +98,15 @@ jobs:
         if: steps.key.outputs.exists != 'true'
         run: |
           dir=engine/toolchains/lean-${{ steps.key.outputs.ver }}-wasm32/compiler
-          tar czf lean-wasm.tar.gz -C "$dir" lean-server.js lean-server.wasm lean-lib.pack.gz lean-initialize.json
-          ls -la lean-wasm.tar.gz
-          gh release create "${{ steps.key.outputs.tag }}" lean-wasm.tar.gz --prerelease --target "$GITHUB_SHA" \
-            --title "Lean ${{ steps.key.outputs.ver }} for wasm (${{ steps.key.outputs.tag }})" \
-            --notes "Lean itself for the notebook's Lean cells, built by scripts/build-lean-wasm-compiler.sh at $GITHUB_SHA with Emscripten ${{ steps.key.outputs.emsdk }}. The Pages deploy fetches it by name (scripts/lean-wasm-key.sh); unpack it and point LEAN_WASM_DIR at it to bundle it locally."
+          tar czf lean-wasm-cli.tar.gz -C "$dir" bin lib/lean
+          ls -la lean-wasm-cli.tar.gz
+          if [ "${{ steps.key.outputs.release }}" = true ]; then
+            # the release is there without the driver: add it, and leave the browser's Lean as published
+            gh release upload "${{ steps.key.outputs.tag }}" lean-wasm-cli.tar.gz
+          else
+            tar czf lean-wasm.tar.gz -C "$dir" lean-server.js lean-server.wasm lean-lib.pack.gz lean-initialize.json
+            ls -la lean-wasm.tar.gz
+            gh release create "${{ steps.key.outputs.tag }}" lean-wasm.tar.gz lean-wasm-cli.tar.gz --prerelease --target "$GITHUB_SHA" \
+              --title "Lean ${{ steps.key.outputs.ver }} for wasm (${{ steps.key.outputs.tag }})" \
+              --notes "Lean itself for the notebook's Lean cells, built by scripts/build-lean-wasm-compiler.sh at $GITHUB_SHA with Emscripten ${{ steps.key.outputs.emsdk }}. The Pages deploy fetches lean-wasm.tar.gz by name (scripts/lean-wasm-key.sh); unpack it and point LEAN_WASM_DIR at it to bundle it locally. lean-wasm-cli.tar.gz is the command-line driver (bin/lean.js, for Node) with the 32-bit library, for compiling oleans the browser's Lean can import."
+          fi
