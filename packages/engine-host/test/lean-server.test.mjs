@@ -31,3 +31,21 @@ test("and answers `initialize` with that, before Lean starts", () => {
   assert.equal(sent[0].id, 1);
   assert.equal(sent[0].result.capabilities.semanticTokensProvider.full, false);
 });
+
+test("Lean's process ending is reported, but not the module's own main returning as Lean starts", () => {
+  const exits = [];
+  const ring = new SharedArrayBuffer(1 << 16);   // room for the handshake, which nothing reads here
+  const module = {
+    HEAP32: new Int32Array(ring), HEAPU8: new Uint8Array(ring), ENV: {},
+    FS: { mkdirTree() {}, writeFile() {} },
+    _leanweb_in_buf: () => 16, _leanweb_in_cap: () => 60000, _leanweb_in_w: () => 0, _leanweb_in_r: () => 4,
+    // PROXY_TO_PTHREAD: `main` starts Lean's on a thread and exits with 0 at once
+    callMain() { module.leanExit?.(0); },
+  };
+  const server = startLeanServer({ module, library: [], initializeResult: native, send: () => {}, onExit: (c) => exits.push(c) });
+  server.receive({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} });
+  server.receive({ jsonrpc: "2.0", method: "textDocument/didOpen", params: { textDocument: { uri: "file:///a.lean", languageId: "lean4", version: 1, text: "" } } });
+  assert.deepEqual(exits, []);
+  module.leanExit(2);   // the file worker, when the document's imports change
+  assert.deepEqual(exits, [2]);
+});

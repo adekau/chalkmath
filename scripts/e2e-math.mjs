@@ -1089,10 +1089,16 @@ async function features() {
     await note.locator("button", { hasText: "Start Lean" }).click();
     await again.waitForFunction(() => !document.querySelector(".leanstate.held"), null, { timeout: 10000 });
     assert.equal(await again.evaluate((k) => localStorage.getItem(k), MARK), null, "starting Lean on request clears the mark");
+    // this bundle has no Lean itself: the cell says so, and offers no restart, there being no server to replace
+    // (a restart is driven with Lean by scripts/smoke-lean-cells.mjs)
+    const failed = again.locator(".cell.lean .leanstate.failed");
+    await failed.waitFor({ timeout: 10000 });
+    assert.match(await failed.textContent(), /built without Lean itself/, "a bundle without Lean says so on the Lean cell");
+    assert.equal(await failed.locator("button", { hasText: "Restart Lean" }).count(), 0, "Lean that never had a server offers no restart");
   } finally {
     await fresh.close();
   }
-  console.log("✓ Lean held after the page stopped while it started: said so, and started on request");
+  console.log("✓ Lean held after the page stopped while it started: said so, and started on request (no restart without a server)");
 }
 
 let failed = false;

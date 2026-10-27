@@ -36,6 +36,9 @@ export interface LeanServerModule {
   leanwebOut?: (fd: number, bytes: Uint8Array) => void;
   /** What `IO.appPath` returns (engine/wasm/lean-compiler-emscripten.patch): a web worker has no executable. */
   leanAppPath?: string;
+  /** Called as the process ends (`exit`, on any thread), from a hook scripts/lean-bundle.mjs adds: the module
+   *  is built to keep running after `exit` (its threads serve the server), so Emscripten calls no `onExit`. */
+  leanExit?: (code: number) => void;
 }
 
 export interface LeanServerOptions {
@@ -50,6 +53,10 @@ export interface LeanServerOptions {
   send(msg: LspMessage): void;
   /** Where the worker's stderr goes. */
   log?(line: string): void;
+  /** Lean's process ended, with this code: its file worker exits with 2 to be started again when the
+   *  document's imports change (Lean.Server.FileWorker `setupImports`), which the real watchdog does. The
+   *  server answers nothing more. Only with a module bundled with the hook (`leanExit`). */
+  onExit?(code: number): void;
 }
 
 /** The client notifications the watchdog relays to a file worker (Watchdog.lean `handleNotification`,
@@ -158,7 +165,11 @@ export function startLeanServer(o: LeanServerOptions): { receive(msg: LspMessage
       M.FS.mkdirTree(full.slice(0, full.lastIndexOf("/")));
       M.FS.writeFile(full, data, { canOwn: true });   // a copy would hold the library (~280 MB) twice
     }
+    // the module's own `main` (PROXY_TO_PTHREAD) exits with 0 as soon as it has started Lean's on a thread
+    let running = false;
+    M.leanExit = (code) => { if (running) o.onExit?.(code); };
     M.callMain([]);
+    running = true;
   };
 
   return {

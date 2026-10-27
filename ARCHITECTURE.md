@@ -781,7 +781,7 @@ language server answers LSP for Lean cells.
   elaboration runs in tasks. So the page must be cross-origin isolated, which a static host gets from
   `coi-sw.js`, a service worker registered the first time a notebook has a Lean cell (one reload). In a
   browser each thread is a worker and one started beyond the pre-created pool is not ready in time, so
-  the pool is large (32) and Lean's own pool is capped (4).
+  the pool is large (32) and Lean's own pool is capped (a thread per core, 2 to 8).
 - **One document per notebook.** The notebook's Lean cells, in order, are the stretches of one Lean file
   between separator comment lines; each cell's editor is a Monaco view of that one model that hides every
   other line (`packages/lean-editor`). Definitions carry from cell to cell, editing a cell re-elaborates
@@ -844,6 +844,19 @@ language server answers LSP for Lean cells.
   deep as the Lean it checks, so the shipped Lean is kept shallow (small definitions), and
   `lean-cells.yml` (`scripts/notebooks/check-lean-browser.mjs`) runs every notebook and lesson through
   the browser's Lean, opened and then edited at its end.
+- **Restarting Lean.** A server that stopped is replaced in the page, as the Lean 4 extension's "Restart
+  Lean Server" replaces a native one: the extension's client stops, the old worker is terminated (each
+  holds over a gigabyte), and the client starts again on a new one (`restart` in
+  `packages/lean-editor`, which hands the extension a worker it reads at each start). The editors, the
+  document and the infoview stay, so what is typed meanwhile is kept; the new server loads Lean's files
+  from the browser's store, and loads its library and checks the notebook from the start (about 7 s here).
+  A Lean cell that says Lean stopped has a button for it. The page also does it by itself, where Lean's
+  watchdog would: a file's imports are loaded once per process, so when they change the file worker exits
+  with 2 to be started again (`setupImports` in `Lean.Server.FileWorker`). A web worker's process ending
+  is reported by nothing (the module is built to keep running after `exit`, for its threads, so
+  Emscripten calls no `onExit`): `scripts/lean-bundle.mjs` adds a call to the module's `_proc_exit`,
+  which every thread's `exit` reaches, and fails the bundle if Emscripten's glue no longer has it, and
+  the worker tells the page (`lean-server.ts` `onExit`).
 - **Cost.** Nothing loads until a notebook has a Lean cell. Then, compressed: the editor (~3 MB), the
   server (~24 MB) and Init's 32-bit oleans (~114 MB: their private parts, proofs included, are most of it,
   and an ordinary file's implicit `import Init` needs them), once per browser: the worker keeps the large

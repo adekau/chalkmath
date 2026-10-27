@@ -35,7 +35,7 @@ import { parseScene, numberRequests as sceneNumberRequests, sampleRequests as sc
 import { DOC_PAGES, type DocPage, type DocPart } from "./docs.js";
 import { highlightCode, registerLanguage, type CodeTok } from "./code-highlight.js";
 import { FUNCTIONS, FN_BY_NAME, AREAS, fnPage, evaluable, type FnDoc, type ExampleSection } from "./reference.js";
-import { ensureLean, syncLean, mountLean, unmountLean, focusLean, setLeanDark, infoview as leanInfoview, leanState, leanFailure, leanStoppedAt, leanProgress, leanChecked, initLeanIsolation, startLeanAnyway, type LeanMessage } from "./lean-cells.js";
+import { ensureLean, syncLean, mountLean, unmountLean, focusLean, setLeanDark, infoview as leanInfoview, leanState, leanFailure, leanStoppedAt, leanProgress, leanChecked, initLeanIsolation, startLeanAnyway, restartLean, leanRestartable, type LeanMessage } from "./lean-cells.js";
 
 // ---------------------------------------------------------------------------
 // Content: the notebook's own vocabulary, from the function reference (reference.ts)
@@ -4831,8 +4831,9 @@ function leanStoppedHere(cell: Cell): string {
   return "";
 }
 
-/** Why Lean is not running, said on a Lean cell: it stopped (and where), the page reloads to prepare for it,
- *  or it is held because the page stopped the last time it started, with a button that starts it. */
+/** Why Lean is not running, said on a Lean cell: it stopped (and where), with a button that starts it again;
+ *  the page reloads to prepare for it; or it is held because the page stopped the last time it started, with
+ *  a button that starts it. */
 function leanStateNote(cell: Cell): HTMLElement | null {
   const st = leanState();
   if (st === "held") {
@@ -4842,7 +4843,16 @@ function leanStateNote(cell: Cell): HTMLElement | null {
     note.append(go);
     return note;
   }
-  if (st === "failed") return h("div", "leanstate failed", `${leanFailure()}${leanStoppedHere(cell)}`);
+  if (st === "failed") {
+    const note = h("div", "leanstate failed", `${leanFailure()}${leanStoppedHere(cell)} `);
+    if (leanRestartable()) {
+      const go = h("button", "smallbtn", "Restart Lean");
+      go.title = "Starts Lean again in this page: it checks the notebook from the start";
+      go.addEventListener("click", () => void restartLean());
+      note.append(go);
+    }
+    return note;
+  }
   if (st === "isolating") return h("div", "leanstate isolating", "Preparing the page for Lean: it reloads once.");
   return null;
 }

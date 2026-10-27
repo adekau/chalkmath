@@ -25,6 +25,9 @@ let state: LeanState = "off";
 let failure = "";
 let session: LeanNotebook | null = null;
 let starting: Promise<LeanNotebook | null> | null = null;
+/** The worker running Lean's server, and the channel its loading progress comes on, while it runs. */
+let server: Worker | null = null;
+let progressChannel: BroadcastChannel | null = null;
 /** Which notebook the document holds, and its cells' ids in order, as last synced. */
 let docKey: unknown = null;
 let syncedIds: string[] = [];
@@ -147,38 +150,12 @@ export function ensureLean(h: LeanHooks): Promise<LeanNotebook | null> {
     try {
       const url = new URL(versioned("lean/lean-editor.js"), location.href).href;
       const mod = (await import(url)) as { startLean(o: LeanOptions): Promise<LeanNotebook> };
-      const channel = `chalkmath-lean-${crypto.randomUUID()}`;
-      const bc = new BroadcastChannel(channel);
-      bc.onmessage = (e: MessageEvent<{ phase: string; loaded?: number; total?: number }>) => {
-        const p = e.data;
-        if (p.phase === "done") { bc.close(); settled(); }
-        setProgress(p.phase === "download" ? { phase: "download", loaded: p.loaded!, total: p.total! }
-          : p.phase === "checking" ? { phase: "checking" } : null);
-      };
-      setProgress({ phase: "starting" });   // a download is reported only for what this browser does not have
-      const worker = new Worker(`${versioned("lean/lean-server.worker.js")}&progress=${channel}`);
-      // Lean's own progress reports: which version of the document it is checking, and whether it is done
-      worker.addEventListener("message", (e: MessageEvent<{ method?: string; params?: { textDocument?: { version?: number }; processing?: unknown[] } }>) => {
-        if (e.data?.method !== "$/lean/fileProgress") return;
-        checkedVersion = e.data.params?.textDocument?.version ?? -1;
-        const left = (e.data.params?.processing ?? []) as { range: { start: { line: number } } }[];
-        busy = left.length > 0;
-        checkingLine = busy ? Math.min(...left.map((p) => p.range.start.line)) + 1 : null;
-        hooks?.onChecked?.();
-      });
-      worker.addEventListener("error", (e) => {
-        if (state === "failed") return;   // the dying worker reports more than once
-        // before Lean has its library loaded, it did not start; after, it stopped while checking
-        const ran = state === "ready" && (progress === null || progress.phase === "checking");
-        setProgress(null);
-        if (!ran) { notStarted(e.message || "its server stopped"); return; }
-        stoppedAt = checkingLine === null ? null : session?.cellAt(checkingLine) ?? null;
-        const why = /Maximum call stack size exceeded|too much recursion/.test(e.message) ? OUT_OF_STACK : e.message || "its server stopped";
-        setState("failed", `Lean stopped: ${why}. Reload the page to start it again.`);
-      });
+      const worker = startServer();
       const started = dark;
-      session = await mod.startLean({ worker, infoview: infoview(), dark: started,
+      const next = await mod.startLean({ worker, infoview: infoview(), dark: started,
         onSource: (id, src) => hooks?.onSource(id, src), onMessages: (id, ms) => hooks?.onMessages(id, ms) });
+      if (worker !== server) { next.dispose(); return null; }   // its server stopped, and Lean was started again
+      session = next;
       if (dark !== started) session.setDark(dark);   // the theme changed while Lean was starting
       setState("ready");
       if (docKey !== null) { session.setCells(lastCells); }
@@ -194,11 +171,83 @@ export function ensureLean(h: LeanHooks): Promise<LeanNotebook | null> {
   return starting;
 }
 
+/** Starts Lean's server: a worker (packages/engine-host/src/worker-lean-server.ts) that reports its loading,
+ *  and its end when it ends by itself, on a channel of its own. */
+function startServer(): Worker {
+  const channel = `chalkmath-lean-${crypto.randomUUID()}`;
+  const bc = progressChannel = new BroadcastChannel(channel);
+  bc.onmessage = (e: MessageEvent<{ phase: string; loaded?: number; total?: number; code?: number }>) => {
+    const p = e.data;
+    if (p.phase === "exit") { exited(worker, p.code!); return; }
+    if (p.phase === "done") settled();
+    setProgress(p.phase === "download" ? { phase: "download", loaded: p.loaded!, total: p.total! }
+      : p.phase === "checking" ? { phase: "checking" } : null);
+  };
+  setProgress({ phase: "starting" });   // a download is reported only for what this browser does not have
+  const worker = server = new Worker(`${versioned("lean/lean-server.worker.js")}&progress=${channel}`);
+  // Lean's own progress reports: which version of the document it is checking, and whether it is done
+  worker.addEventListener("message", (e: MessageEvent<{ method?: string; params?: { textDocument?: { version?: number }; processing?: unknown[] } }>) => {
+    if (e.data?.method !== "$/lean/fileProgress" || worker !== server) return;
+    checkedVersion = e.data.params?.textDocument?.version ?? -1;
+    const left = (e.data.params?.processing ?? []) as { range: { start: { line: number } } }[];
+    busy = left.length > 0;
+    checkingLine = busy ? Math.min(...left.map((p) => p.range.start.line)) + 1 : null;
+    hooks?.onChecked?.();
+  });
+  worker.addEventListener("error", (e) => {
+    e.preventDefault();   // said on the Lean cells, not as an error of the page's own
+    if (state === "failed" || worker !== server) return;   // the dying worker reports more than once
+    stopped(/Maximum call stack size exceeded|too much recursion/.test(e.message) ? OUT_OF_STACK : e.message || "its server stopped");
+  });
+  return worker;
+}
+
+/** Lean's server has stopped: before it had its library loaded, Lean did not start; after, it stopped while checking. */
+function stopped(why: string) {
+  const ran = state === "ready" && (progress === null || progress.phase === "checking");
+  setProgress(null);
+  if (!ran) { notStarted(why); return; }
+  stoppedAt = checkingLine === null ? null : session?.cellAt(checkingLine) ?? null;
+  setState("failed", `Lean stopped: ${why}.`);
+}
+
+/** Lean's server ended its process. Natively Lean's watchdog then starts another: a file's imports are loaded
+ *  once per process, so when they change, the file worker exits with 2 to be started again with the new ones
+ *  (Lean.Server.FileWorker `setupImports`). Here the page does that, and on any other code Lean stopped. */
+function exited(worker: Worker, code: number) {
+  if (worker !== server || state === "failed") return;
+  if (code === 2 && session) { void restartLean(); return; }
+  stopped(`its server exited (code ${code})`);
+}
+
 /** Starts Lean when it was held (`STARTING`): the reader asked to try again. */
 export function startLeanAnyway(h: LeanHooks): Promise<LeanNotebook | null> {
   held = false;
   mark(false);
   return ensureLean(h);
+}
+
+/** Whether Lean can be started again in the page: it stopped, or did not start, after its server did. */
+export const leanRestartable = () => state === "failed" && server !== null;
+
+/** Starts a new server for Lean in the page, in place of the one it has: after that one stopped (out of
+ *  stack, say), or exited to be started again. The cells' editors and the infoview stay, and what was typed
+ *  meanwhile is there; Lean's files come from the browser's store, but it loads its library and checks the
+ *  notebook again from the start. Lean that did not start (no editor yet) starts again from the beginning. */
+export async function restartLean(): Promise<void> {
+  if (!hooks) return;
+  const old = server, oldChannel = progressChannel;
+  const end = () => { old?.terminate(); oldChannel?.close(); };
+  stoppedAt = null; checkingLine = null; checkedVersion = -1; busy = true;
+  server = null; progressChannel = null;   // what the old server says from now on is not heard
+  if (!session) { end(); starting = null; setState("off"); void ensureLean(hooks); return; }
+  marking = true; mark(true);
+  setState("ready");
+  setProgress({ phase: "starting" });
+  hooks.onChecked?.();
+  // the old server goes before the new one starts: each holds over a gigabyte
+  try { await session.restart(() => { end(); return startServer(); }); }
+  catch (e) { stopped(e instanceof Error ? e.message : String(e)); }
 }
 
 /** The version Lean last reported on, and whether it was still checking it. */

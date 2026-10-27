@@ -127,7 +127,62 @@ check("after a reload, #eval shows 42 again", again, `${Date.now() - t1} ms afte
 check("and Lean's large files came from the browser's store", fetched.length === 0, fetched.join(", ") || "nothing downloaded");
 const later = await page.evaluate(() => window.__leanStatus);
 check("so the status never said it was downloading", !later.some((t) => /Downloading/.test(t)), later.join(" → "));
+
+// Lean stops (recursion deeper than a browser thread's stack), says so on the cell, and starts again in the
+// page on request, with what was typed after it stopped
+const deep = { v: 1, n: "lean-deep.chalk", c: [
+  { s: "def deep : Nat → Nat\n  | 0 => 0\n  | n + 1 => deep n + 1", t: "lean" },
+  { s: "#eval deep 100000000", t: "lean" },
+] };
 check("no error escaped into the page", pageErrors.length === 0, pageErrors.join("; "));
+await page.goto("about:blank");
+await page.goto(`http://localhost:${port}/index.html#nbj=${Buffer.from(JSON.stringify(deep)).toString("base64url")}`);
+const stopped = await page.waitForFunction(() => document.querySelector(".cell.lean .leanstate.failed")?.textContent ?? false, null, { timeout: 180000 })
+  .then((h) => h.jsonValue(), () => false);
+check("Lean stops on recursion deeper than its stack, and says so", !!stopped && /Lean stopped: it ran out of stack/.test(stopped), stopped || "no note");
+const leanWorkers = () => page.workers().filter((w) => w.url().includes("lean-server.worker")).length;   // the server and its threads
+const before = leanWorkers();
+const restart = page.locator(".cell.lean .leanstate.failed button", { hasText: "Restart Lean" }).first();
+check("with a button that restarts it", await restart.count() === 1);
+const evalView = page.locator(".cell.lean .leanview").nth(1);
+const eb = await evalView.boundingBox();
+await page.mouse.click(eb.x + 120, eb.y + 10);
+await page.keyboard.press("Control+A");
+await page.keyboard.type("#eval deep 20");
+await page.keyboard.press("Escape");
+const t2 = Date.now();
+await restart.click();
+const twenty = await page.waitForFunction(() => [...document.querySelectorAll(".leanmsg .text")].some((e) => e.textContent.trim() === "20"), null, { timeout: 180000 }).then(() => true, () => false);
+check("restarted, Lean checks the notebook as edited since it stopped", twenty, `${Date.now() - t2} ms after the click`);
+check("and the cell no longer says Lean stopped", await page.locator(".leanstate.failed").count() === 0);
+check("the stopped server's workers are gone", leanWorkers() === before, `${leanWorkers()} of Lean's workers, ${before} before`);
+await page.evaluate(() => [...document.querySelectorAll(".ptab")].find((t) => t.textContent.includes("Lean goals"))?.click());
+const eb2 = await page.locator(".cell.lean .leanview").nth(1).boundingBox();
+await page.mouse.click(eb2.x + 60, eb2.y + 10);
+const goals2 = await page.waitForFunction(() => {
+  const frames = document.querySelectorAll(".leaninfo iframe");
+  const t = frames[0]?.contentDocument?.body?.innerText ?? "";
+  return frames.length === 1 && /Notebook\.lean:5:/.test(t) && /\b20\b/.test(t) ? t : false;
+}, null, { timeout: 30000 }).then((h) => h.jsonValue(), () => false);
+check("and the Lean goals tab follows the new server", !!goals2, goals2 ? goals2.split("\n").slice(0, 3).join(" / ") : await page.evaluate(() => `${document.querySelectorAll(".leaninfo iframe").length} infoviews: ${document.querySelector(".leaninfo iframe")?.contentDocument?.body?.innerText.slice(0, 200)}`));
+// imports are loaded once per process: when they change, Lean's file worker exits to be started again, as
+// Lean's watchdog does natively; the page starts it again by itself, with the editors as they are
+const workersNow = leanWorkers();
+const fb = await page.locator(".cell.lean .leanview").first().boundingBox();
+await page.mouse.click(fb.x + 120, fb.y + 10);
+await page.keyboard.press("Control+Home");
+await page.keyboard.type("import Init.Data.List.Lemmas");
+await page.keyboard.press("Escape");
+await page.keyboard.press("Enter");
+const restarted = await page.waitForFunction(() => window.__leanStatus.at(-1) !== undefined && document.querySelector(".leanstatus"), null, { timeout: 30000 }).then(() => true, () => false);
+const after = await page.waitForFunction(() => !document.querySelector(".leanstatus") && [...document.querySelectorAll(".leanmsg .text")].some((e) => e.textContent.trim() === "20"), null, { timeout: 120000 }).then(() => true, () => false);
+check("a changed import starts Lean again by itself, and it checks the notebook", restarted && after && await page.locator(".leanstate.failed").count() === 0,
+  `${await page.locator(".leanstate.failed").allTextContents()}`);
+check("in place of the server it had", leanWorkers() === workersNow, `${leanWorkers()} of Lean's workers, ${workersNow} before`);
+// the stopped thread's own error (Chromium reports a worker's as the page's) is all, and the page did not take it for its own
+const others = pageErrors.filter((m) => !/Maximum call stack size exceeded/.test(m));
+check("nothing else went wrong on the page", others.length === 0 && await page.locator(".toast.err").count() === 0,
+  [...others, ...await page.locator(".toast.err").allTextContents()].join("; "));
 await browser.close();
 server.close();
 process.exit(checks.every(Boolean) ? 0 : 1);
