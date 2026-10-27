@@ -51,6 +51,12 @@
       "label": null
     },
     {
+      "src": "> [!note] Typing the symbols\n> Lean is full of symbols like `→`. In a Lean cell, type a backslash and a name, and it turns into the symbol as you keep typing: `\\to` gives `→` (Lean also reads `->` as `→`), `\\and` gives `∧`, `\\ne` gives `≠`. For any symbol you meet, hover over it in a Lean cell: Lean shows how to type it.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "Functions without names",
       "type": "section",
       "showWork": false,
