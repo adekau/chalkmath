@@ -197,6 +197,10 @@ course("lean", "Lean from zero",
 #check (area)
 #check (square)`);
     md(r`‹square› has the type ‹Nat → Nat›: it takes a ‹Nat› to a ‹Nat›. ‹area› has ‹Nat → Nat → Nat›: give it a ‹Nat›, then another, and you get a ‹Nat›.`);
+    md(r`
+> [!note] Typing the symbols
+> Lean is full of symbols like ‹→›. In a Lean cell, type a backslash and a name, and it turns into the symbol as you keep typing: ‹\to› gives ‹→› (Lean also reads ‹->› as ‹→›), ‹\and› gives ‹∧›, ‹\ne› gives ‹≠›. For any symbol you meet, hover over it in a Lean cell: Lean shows how to type it.
+`);
     sec("Functions without names");
     md(r`‹fun x => …› is a function with no name, handy where a function is needed only once, such as for ‹List.map›, which applies a function to every element of a list:`);
     lean(r`#eval (fun x => x + 1) 5
