@@ -186,11 +186,26 @@ const others = pageErrors.filter((m) => !/Maximum call stack size exceeded/.test
 check("nothing else went wrong on the page", others.length === 0 && await page.locator(".toast.err").count() === 0,
   [...others, ...await page.locator(".toast.err").allTextContents()].join("; "));
 
+// Lean whose editor did not load (a dropped connection): the cell says so, and Lean loads again on request
+await page.close();   // one Lean at a time: each holds over a gigabyte
+{
+  const retry = await browser.newPage({ viewport: { width: 1400, height: 950 } });
+  let dropped = 0;
+  await retry.route("**/lean/lean-editor.js*", (r) => (dropped++ ? r.continue() : r.abort("connectionreset")));
+  await retry.goto(`http://localhost:${port}/index.html#nbj=${Buffer.from(JSON.stringify(doc)).toString("base64url")}`);
+  const note = retry.locator(".cell.lean .leanstate.failed").first();
+  const said = await note.waitFor({ timeout: 60000 }).then(() => note.textContent(), () => "");
+  check("Lean whose editor did not load says so, with a button to try again", /Lean did not start/.test(said) && await note.locator("button", { hasText: "Try again" }).count() === 1, said);
+  await note.locator("button", { hasText: "Try again" }).click();
+  const back = await retry.waitForFunction(() => [...document.querySelectorAll(".leanmsg .text")].some((e) => e.textContent.trim() === "42"), null, { timeout: 180000 }).then(() => true, () => false);
+  check("and it starts on the second try", back && dropped === 2, `${dropped} requests for the editor`);
+  await retry.close();
+}
+
 // a course's lessons with their preludes imported from the course's compiled modules (lean/lean-courses.json,
 // scripts/lean-courses.mjs), when the bundle has them: in a page of the real courses
 const compiled = JSON.parse(readFileSync(path.join(dist, "lean/lean-courses.json"), "utf8"));
 if (compiled.crdt && compiled.logic) {
-  await page.close();   // one Lean at a time: each holds over a gigabyte
   const course = await browser.newPage({ viewport: { width: 1400, height: 950 } });
   const errors = [];
   course.on("pageerror", (e) => errors.push(e.message));

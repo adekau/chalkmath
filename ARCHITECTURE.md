@@ -887,7 +887,10 @@ language server answers LSP for Lean cells.
   `packages/lean-editor`, which hands the extension a worker it reads at each start). The editors, the
   document and the infoview stay, so what is typed meanwhile is kept; the new server loads Lean's files
   from the browser's store, and loads its library and checks the notebook from the start (about 7 s here).
-  A Lean cell that says Lean stopped has a button for it. The page also does it by itself, where Lean's
+  A Lean cell that says Lean stopped has a button for it; one that says Lean did not start because what it
+  loads did not load has **Try again**, which loads the editor under a new URL (a browser keeps a module
+  that failed to load failed for the page's life). The page's service worker (`coi-sw.js`) asks once more
+  for a request that did not reach the server, so a dropped connection mostly never shows. The page also does it by itself, where Lean's
   watchdog would: a file's imports are loaded once per process, so when they change the file worker exits
   with 2 to be started again (`setupImports` in `Lean.Server.FileWorker`). A web worker's process ending
   is reported by nothing (the module is built to keep running after `exit`, for its threads, so
