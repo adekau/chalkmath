@@ -358,6 +358,8 @@ A Lean cell is [Lean 4](https://lean-lang.org) itself, running in your browser: 
 
 Nothing for Lean loads until a notebook has a Lean cell. Then the editor and Lean's server download, about 140 MB compressed, once per browser: they are kept, and downloaded again only when ChalkMath updates Lean. Lean needs the page to be *cross-origin isolated*, so the first time, the page reloads once to turn that on; your tabs come back as they were.
 
+The top bar says what Lean is doing, beside the engine: **starting**, **downloading** (how much), **checking** (how far through the notebook's Lean), **ready**, or **stopped**. A lesson late in a course starts from the Lean of the lessons before it, which Lean checks each time the lesson opens; the first Lean cell says which line it is on.
+
 ## When Lean stops
 
 Lean in a browser has far less stack than it has natively, so Lean that nests very deeply (a very long ‹do› block, or recursion thousands of calls deep in an ‹#eval›) can stop it. The Lean cells then say so, and where Lean was checking; change that, then **Restart Lean** starts it again in the page, keeping what you typed, and it checks the notebook from the start. Changing a Lean file's ‹import› lines restarts Lean by itself, as Lean does in VS Code: a file's imports are loaded once per server.

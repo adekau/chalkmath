@@ -35,7 +35,7 @@ import { parseScene, numberRequests as sceneNumberRequests, sampleRequests as sc
 import { DOC_PAGES, type DocPage, type DocPart } from "./docs.js";
 import { highlightCode, registerLanguage, type CodeTok } from "./code-highlight.js";
 import { FUNCTIONS, FN_BY_NAME, AREAS, fnPage, evaluable, type FnDoc, type ExampleSection } from "./reference.js";
-import { ensureLean, syncLean, mountLean, unmountLean, focusLean, setLeanDark, infoview as leanInfoview, leanState, leanFailure, leanStoppedAt, leanProgress, leanChecked, initLeanIsolation, startLeanAnyway, restartLean, leanRestartable, type LeanMessage } from "./lean-cells.js";
+import { ensureLean, syncLean, mountLean, unmountLean, focusLean, setLeanDark, infoview as leanInfoview, leanState, leanFailure, leanStoppedAt, leanProgress, leanChecking, leanChecked, initLeanIsolation, startLeanAnyway, restartLean, leanRestartable, type LeanMessage } from "./lean-cells.js";
 
 // ---------------------------------------------------------------------------
 // Content: the notebook's own vocabulary, from the function reference (reference.ts)
@@ -3089,7 +3089,8 @@ function renderChrome() {
   url.addEventListener("change", () => { S.httpUrl = url.value; void connect(); });
   if (S.dev) kernel.append(dot, sel, url, h("span", "sep", "·"), h("span", undefined, state));
   else kernel.append(dot, h("span", undefined, `engine · ${state}`));
-  tb.append(brand, menus, h("div", "spacer"), theme, kernel);
+  const lean = leanPill();
+  tb.append(brand, menus, h("div", "spacer"), theme, ...(lean ? [lean] : []), kernel);
 
   // tab bar
   renderTabs();
@@ -4784,8 +4785,9 @@ function leanHooks() {
       leanWasChecked = now;
       for (const c of S.cells) if (c.type === "exercise" && c.lean && (leanVerdict(c) || now || started)) renderCellBody(c);
     },
-    onState: () => { renderPanelHead(); for (const c of S.cells) if (isLeanCell(c)) renderCellBody(c); },
+    onState: () => { renderPanelHead(); updateLeanPill(); for (const c of S.cells) if (isLeanCell(c)) renderCellBody(c); },
     onProgress: () => {
+      updateLeanPill();
       // the status is in the first Lean cell: updated in place while it shows, re-rendered when it comes or goes
       const first = S.cells.find(isLeanCell);
       const old = first?.el?.querySelector(".leanstatus");
@@ -4797,17 +4799,34 @@ function leanHooks() {
 }
 
 const MB = (n: number) => (n / 1e6).toFixed(n < 10e6 ? 1 : 0);
+/** How far Lean is through a download or the document, in percent (null: it cannot say). Checking starts at
+ *  the file's first line, while Lean loads its library. */
+function leanPercent(): number | null {
+  const p = leanProgress(), c = leanChecking();
+  if (p?.phase === "download") return p.total > 0 ? Math.min(100, Math.round((p.loaded / p.total) * 100)) : null;
+  if (c && c.line > 1 && c.lines > 0) return Math.min(99, Math.round(((c.line - 1) / c.lines) * 100));
+  return null;
+}
+/** What the line Lean is checking belongs to: the course's earlier lessons (the prelude), or this notebook. */
+function leanChecks(): string {
+  const c = leanChecking();
+  if (!c || c.line <= 1) return "";
+  const where = c.at?.id === PRELUDE_ID ? "the Lean of the course's earlier lessons" : "this notebook's Lean";
+  return `: line ${c.line.toLocaleString()} of ${c.lines.toLocaleString()}, in ${where}`;
+}
+
 /** What Lean is doing while it loads, with a progress bar; null once it has checked the notebook. */
 function leanStatus(): HTMLElement | null {
   const st = leanState(), p = leanProgress();
   if (st === "off" || st === "isolating" || st === "failed" || !p) return null;
-  const pct = p.phase === "download" && p.total > 0 ? Math.min(100, Math.round((p.loaded / p.total) * 100)) : null;
+  const pct = p.phase === "download" || p.phase === "checking" ? leanPercent() : null;
+  const checks = leanChecks();
   const text = p.phase === "editor" ? "Loading the Lean editor…"
     : p.phase === "starting" ? "Starting Lean…"
     : p.phase === "download" ? (p.total > 0
       ? `Downloading Lean and its library: ${MB(p.loaded)} of ${MB(p.total)} MB. Only the first time: your browser keeps it.`
       : "Downloading Lean and its library…")
-    : "Lean is loading its library and checking the notebook…";
+    : checks ? `Lean is checking the notebook${checks}.` : "Lean is loading its library…";
   const box = h("div", "leanstatus");
   const bar = h("div", `leanbar${pct === null ? " busy" : ""}`);
   bar.setAttribute("role", "progressbar");
@@ -4818,6 +4837,36 @@ function leanStatus(): HTMLElement | null {
   bar.append(fill);
   box.append(h("div", "leanstate", text), bar);
   return box;
+}
+
+/** Lean's state in the top bar, beside the engine's, wherever the reader has scrolled: how far it is in
+ *  loading and in checking the notebook, that it is ready, or that it stopped. */
+function leanPill(): HTMLElement | null {
+  const st = leanState();
+  if (st === "off") return null;
+  const p = leanProgress(), c = leanChecking(), pct = leanPercent();
+  const of = pct === null ? "…" : ` ${pct}%`;
+  const [text, color, title] =
+    st === "failed" ? ["stopped", "var(--danger)", leanFailure()]
+    : st === "held" ? ["not started", "var(--danger)", leanFailure()]
+    : st === "isolating" ? ["preparing…", "var(--acc)", "Preparing the page for Lean: it reloads once"]
+    : p?.phase === "download" ? [`downloading${of}`, "var(--acc)", "Downloading Lean and its library (only the first time)"]
+    : p?.phase === "editor" || p?.phase === "starting" || st === "starting" ? ["starting…", "var(--acc)", "Starting Lean"]
+    : c ? [c.line > 1 ? `checking${of}` : "loading…", "var(--acc)", c.line > 1 ? `Lean is checking the notebook${leanChecks()}` : "Lean is loading its library"]
+    : !leanChecked() ? ["checking…", "var(--acc)", "Lean is checking the notebook"]
+    : ["ready", "var(--ok)", "Lean has checked the notebook"];
+  const pill = h("div", "kernel leanpill");
+  pill.title = title;
+  const dot = h("span", "dot");
+  dot.style.background = color;
+  pill.append(dot, h("span", undefined, `Lean · ${text}`));
+  return pill;
+}
+function updateLeanPill() {
+  const old = document.querySelector(".leanpill"), next = leanPill();
+  if (old && next) old.replaceWith(next);
+  else if (old) old.remove();
+  else if (next) document.querySelector(".titlebar .kernel:not(.leanpill)")?.before(next);
 }
 
 /** Where Lean was when its server stopped, said on the cell it was checking (the course's prelude: on the

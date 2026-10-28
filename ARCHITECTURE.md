@@ -787,6 +787,21 @@ language server answers LSP for Lean cells.
   other line (`packages/lean-editor`). Definitions carry from cell to cell, editing a cell re-elaborates
   it and the cells after it, and every position the extension and the infoview use is real — nothing is
   translated between cells and file.
+  The price is that every view holds the whole document, a course's prelude included (some 2,800 lines in
+  a late CRDT lesson), and Monaco does per view what it does per document, on the page's thread. Three
+  things kept a late lesson from freezing the page for seconds as it opened: wrapping by counting
+  characters (`wrappingStrategy: "simple"`: the extension's "advanced" measures every line in the page,
+  for every view, at each of the settings changes it makes as it starts, 5 s of one task); no task
+  gutter (its decorations run from each command Lean is still checking to the end of the file, and each
+  view lays out every one of them, line by line, on every frame, even with no gutter shown); and making
+  the views a few at a time, the one nearest the reader's view first (`mountSoon` in `lean-cells.ts`).
+  The longest task while 10a opens went from 5.2 s to 0.5 s.
+- **Saying what Lean is doing.** The top bar shows Lean's state beside the engine's, wherever the reader
+  has scrolled: starting, downloading (how much), checking (how far through the document), ready, or
+  stopped; the first Lean cell says the same at more length, with the line Lean is checking and whether it
+  is in the course's earlier lessons. Lean's `$/lean/fileProgress` gives the first line it has still to
+  check, so the share of the document's lines before it is the progress; the page updates once a frame
+  at most, as Lean reports many times a second.
 - **Lean exercises.** An exercise can ask for a proof instead of a value. Its statement (ending
   `:= by`) and the reader's proof are two cells of the same Lean file: the statement a cell no view
   shows (so it cannot be edited), the proof a view of its own. The verdict is Lean's: proved when the

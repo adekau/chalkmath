@@ -60,7 +60,18 @@ let checkingLine: number | null = null;
 export type LeanProgress = { phase: "editor" } | { phase: "starting" } | { phase: "download"; loaded: number; total: number } | { phase: "checking" };
 let progress: LeanProgress | null = null;
 export const leanProgress = () => progress;
-const setProgress = (p: LeanProgress | null) => { progress = p; hooks?.onProgress(); };
+const setProgress = (p: LeanProgress | null) => { progress = p; progressSoon(); };
+/** Tells the notebook where Lean is, once a frame at most: Lean reports its checking many times a second. */
+let progressFrame = 0;
+const progressSoon = () => {
+  if (!progressFrame) progressFrame = requestAnimationFrame(() => { progressFrame = 0; hooks?.onProgress(); });
+};
+/** Where Lean is in checking the document while it does: the first line it has still to check, of how many,
+ *  and the cell (and line in it) that line is in. */
+export function leanChecking(): { line: number; lines: number; at: { id: string; line: number } | null } | null {
+  if (!session || !busy || checkingLine === null) return null;
+  return { line: checkingLine, lines: session.lineCount(), at: session.cellAt(checkingLine) };
+}
 
 export interface LeanHooks {
   dark: boolean;
@@ -159,8 +170,7 @@ export function ensureLean(h: LeanHooks): Promise<LeanNotebook | null> {
       if (dark !== started) session.setDark(dark);   // the theme changed while Lean was starting
       setState("ready");
       if (docKey !== null) { session.setCells(lastCells); }
-      for (const [id, p] of pending) if (p.el.isConnected) mountNow(id, p.el);
-      pending.clear();
+      mountSoon();
       return session;
     } catch (e) {
       progress = null;
@@ -193,6 +203,7 @@ function startServer(): Worker {
     busy = left.length > 0;
     checkingLine = busy ? Math.min(...left.map((p) => p.range.start.line)) + 1 : null;
     hooks?.onChecked?.();
+    progressSoon();
   });
   worker.addEventListener("error", (e) => {
     e.preventDefault();   // said on the Lean cells, not as an error of the page's own
@@ -290,16 +301,47 @@ function mountNow(id: string, el: HTMLElement) {
   }
 }
 
-/** Shows cell `id`'s editor in `el` (now, or when Lean has started). */
+/** Shows cell `id`'s editor in `el`: at once when it has one, else its source until the editor is made. */
 export function mountLean(id: string, el: HTMLElement, src: string) {
-  if (session) mountNow(id, el);
-  else { el.textContent = src; el.classList.add("pending"); pending.set(id, { el, src }); }
+  if (session && views.has(id)) { pending.delete(id); mountNow(id, el); return; }
+  el.textContent = src; el.classList.add("pending"); pending.set(id, { el, src });
+  if (session) mountSoon();
+}
+
+/** Makes the editors of the cells waiting for one a few at a time, the one nearest the reader's view first,
+ *  between which the page draws and answers: each takes tens of milliseconds, and a lesson has a dozen or two
+ *  (all at once, the page froze for the best part of a second as Lean's editor started). */
+let mounting = false;
+function mountSoon() {
+  if (mounting || !pending.size) return;
+  mounting = true;
+  setTimeout(function step() {
+    const t0 = performance.now();
+    while (session && pending.size && performance.now() - t0 < 12) {
+      let next: string | null = null, far = Infinity;
+      for (const [id, p] of pending) {
+        if (!p.el.isConnected) { pending.delete(id); continue; }
+        const r = p.el.getBoundingClientRect();
+        const d = r.bottom < 0 ? -r.bottom : r.top > innerHeight ? r.top - innerHeight : 0;
+        if (d < far) { far = d; next = id; }
+      }
+      if (next === null) break;
+      const el = pending.get(next)!.el;
+      pending.delete(next);
+      mountNow(next, el);
+    }
+    if (session && pending.size) setTimeout(step, 0); else mounting = false;
+  }, 0);
 }
 
 /** Follows the notebook's theme. */
 export function setLeanDark(d: boolean) { dark = d; session?.setDark(d); }
 
-export function focusLean(id: string) { views.get(id)?.view.focus(); }
+export function focusLean(id: string) {
+  const p = pending.get(id);
+  if (p && session && p.el.isConnected) { pending.delete(id); mountNow(id, p.el); }   // wanted now
+  views.get(id)?.view.focus();
+}
 
 /** Disposes the editors of cells that are gone (from the notebook, or with the notebook). */
 export function unmountLean(keep: (id: string) => boolean) {
