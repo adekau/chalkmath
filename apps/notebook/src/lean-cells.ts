@@ -81,6 +81,8 @@ export interface LeanHooks {
   onProgress(): void;
   /** Lean has finished (or started) checking the document as it is now. */
   onChecked?(): void;
+  /** The packs of modules (lean/courses/…, scripts/lean-courses.mjs) a server needs for these imports. */
+  packs?(imports: string[]): string[];
 }
 let hooks: LeanHooks | null = null;
 /** The theme Lean should show: the notebook's, which can change after Lean has started. */
@@ -194,7 +196,9 @@ function startServer(): Worker {
       : p.phase === "checking" ? { phase: "checking" } : null);
   };
   setProgress({ phase: "starting" });   // a download is reported only for what this browser does not have
-  const worker = server = new Worker(`${versioned("lean/lean-server.worker.js")}&progress=${channel}`);
+  serverImports = importsOf(lastCells);
+  const packs = hooks?.packs?.(serverImports) ?? [];
+  const worker = server = new Worker(`${versioned("lean/lean-server.worker.js")}&progress=${channel}${packs.length ? `&packs=${encodeURIComponent(packs.join(","))}` : ""}`);
   // Lean's own progress reports: which version of the document it is checking, and whether it is done
   worker.addEventListener("message", (e: MessageEvent<{ method?: string; params?: { textDocument?: { version?: number }; processing?: unknown[] } }>) => {
     if (e.data?.method !== "$/lean/fileProgress" || worker !== server) return;
@@ -212,6 +216,21 @@ function startServer(): Worker {
   });
   return worker;
 }
+
+/** The modules a document imports: the `import` lines its first cell starts with. */
+function importsOf(cells: { src: string }[]): string[] {
+  const out: string[] = [];
+  for (const line of (cells[0]?.src ?? "").split("\n")) {
+    const m = /^import\s+(\S+)\s*$/.exec(line);
+    if (m) out.push(m[1]!);
+    else if (line.trim() && !line.startsWith("--")) break;
+  }
+  return out;
+}
+/** What the running server imports (null: Lean has not started). Lean loads a file's imports once per process, as it
+ *  first checks the file, and exits to be started again for others (`exited`). */
+let serverImports: string[] | null = null;
+export const leanServerImports = () => (session ? serverImports : null);
 
 /** Lean's server has stopped: before it had its library loaded, Lean did not start; after, it stopped while checking. */
 function stopped(why: string) {

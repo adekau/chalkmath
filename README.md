@@ -33,7 +33,10 @@ Needs emsdk (`emcc`), elan, git.
 `npm run lean-wasm` — Lean itself (compiler and language server) for wasm32, for Lean cells: ~1.5–2 h cold,
 cached under `engine/toolchains/` (or unpack a `lean-wasm-*` release and set `LEAN_WASM_DIR` to it); `npm run bundle` then includes it, and `npm run smoke:lean` checks it in
 Node and Chromium (set `CHROMIUM` to a browser executable if playwright-core's own is not installed). Without
-it, Lean cells say the build has no Lean. See ARCHITECTURE.md §4b.
+it, Lean cells say the build has no Lean. With the release's `lean-wasm-cli.tar.gz` unpacked and `LEAN_WASM_CLI_DIR`
+set to it (a local `npm run lean-wasm` has it already), `npm run bundle` also compiles the courses' Lean preludes
+to modules (`scripts/lean-courses.mjs`: ~2 min cold, then only what changed, kept in `.cache/lean-courses/`);
+without it the preludes stay inline. See ARCHITECTURE.md §4b.
 
 `node scripts/notebooks/drive.mjs --check notebooks/*.chalk notebooks/courses/*/*.chalk` — every example notebook and lesson's cells against the
 answers it was written with (`notebooks/golden/`, errors a notebook shows on purpose included); after an engine

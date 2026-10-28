@@ -820,13 +820,35 @@ language server answers LSP for Lean cells.
 - **A course's Lean prelude.** A project with `leanPrelude` gives each lesson the Lean of the lessons
   before it (their Lean cells, and their Lean exercises with the author's proofs) as a first cell no view
   shows, so a course builds one development across its lessons. It is saved with the lesson, and CI
-  checks each lesson with it in front. Lean elaborates it each time a lesson opens, so it leaves out
-  the earlier lessons' commands that only show something (`#eval`, `#print`, `#check`, `example`;
-  `leanForPrelude` in `packages/lean-editor/src/prelude.js`, which the CI check shares). That is
-  most of what can be cut: the CRDT course's last lesson still has about 2,800 lines in front of it,
-  some 5 s of one native thread, mostly the kernel checking the book's structures and proofs.
-  Compiling each course's prelude to 32-bit oleans with the wasm Lean, imported instead of inlined,
-  would make it a download; that is not built.
+  checks each lesson with it in front. It leaves out the earlier lessons' commands that only show
+  something (`#eval`, `#print`, `#check`, `example`; `preludePart` in `packages/lean-editor/src/prelude.js`,
+  which the page, the modules' build and CI share). Even so the CRDT course's last lessons have about
+  2,800 lines in front of them: some 5 s of one native thread, and 30 s or more in the browser, each time
+  such a lesson opened.
+- **The preludes as modules.** So the bundle has each course's prelude compiled (`scripts/lean-courses.mjs`,
+  from `lean-bundle.mjs`): a chain of modules `ChalkCourse.<Course>.L<m>`, module m holding lesson m's part
+  and importing module m - 1, compiled to 32-bit oleans by the wasm Lean's command-line driver (the
+  release's `lean-wasm-cli.tar.gz`; a native olean is a 64-bit memory image the browser's Lean cannot
+  read). Each course's oleans are one pack (`lean/courses/<course>-<hash>.pack.gz`, the library's format,
+  named by its contents so the browser's HTTP cache keeps it; 4 MB for all seven), and
+  `lean/lean-courses.json` lists, for each module, the prelude it stands for (its length and a hash) and the
+  scope that prelude leaves. A lesson's Lean file then starts with an import of the module holding the
+  most of its prelude, the scope replayed (its namespaces, sections, `open`s, `variable`s: an import
+  brings declarations, not the scope they were made in), and whatever is left of the prelude inline
+  (`leanPreludeSrc` in `app.ts`, `importedPrelude`); the server is started with that course's pack
+  (`packs`, added to its library). CRDT 10a is checked about 10 s after it opens, against 40 s.
+  - **Saved and edited notebooks.** A reader's cells come after the prelude, so adding or changing cells
+    changes nothing here. A notebook saved with a prelude that is not one the modules were compiled from
+    (from an older version of its course) keeps it inline, as does a bundle without the command-line Lean,
+    and a lesson whose import fails (its pack did not load): the page logs it and goes back to inline.
+  - **Lessons in a row.** Lean loads a file's imports once per process: another import means starting
+    Lean again (`exited` in `lean-cells.ts`), some 7 s. So when the running Lean already has an earlier
+    module of the same course, and at most 500 lines are left after it, that one is kept and the rest is
+    inline: the next lesson opens in a few seconds, on the Lean it has. Another course, or a lesson
+    before the module Lean has, starts it again.
+  - **Checks.** CI compiles the same modules with native Lean and checks every lesson both inline and
+    imported (`check-lean.mjs`); `check-lean-browser.mjs` checks every lesson as the page gives it, its
+    pack loaded, and fails one with an error in its prelude.
   A course can do without one: the collaborative-editing course's lessons each keep their Lean in a
   namespace of their own and stand alone (the course's edits and transform are written out again where a
   lesson needs them, from one string in `mk-courses.mjs`), so a lesson opens with nothing in front of it.

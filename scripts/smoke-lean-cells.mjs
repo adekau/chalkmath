@@ -185,6 +185,45 @@ check("in place of the server it had", leanWorkers() === workersNow, `${leanWork
 const others = pageErrors.filter((m) => !/Maximum call stack size exceeded/.test(m));
 check("nothing else went wrong on the page", others.length === 0 && await page.locator(".toast.err").count() === 0,
   [...others, ...await page.locator(".toast.err").allTextContents()].join("; "));
+
+// a course's lessons with their preludes imported from the course's compiled modules (lean/lean-courses.json,
+// scripts/lean-courses.mjs), when the bundle has them: in a page of the real courses
+const compiled = JSON.parse(readFileSync(path.join(dist, "lean/lean-courses.json"), "utf8"));
+if (compiled.crdt && compiled.logic) {
+  await page.close();   // one Lean at a time: each holds over a gigabyte
+  const course = await browser.newPage({ viewport: { width: 1400, height: 950 } });
+  const errors = [];
+  course.on("pageerror", (e) => errors.push(e.message));
+  const servers = [], ended = [];
+  course.on("worker", (w) => { if (/lean-server\.worker/.test(w.url())) { servers.push(w.url()); w.on("close", () => ended.push(w.url())); } });
+  const ready = () => course.waitForFunction(() => document.querySelector(".titlebar .leanpill")?.textContent === "Lean · ready", null, { timeout: 240000 }).then(() => true, () => false);
+  /** Opens a course link, and waits for Lean to have checked the lesson. */
+  const open = async (hash, where, first = false) => {
+    const t = Date.now();
+    if (first) await course.goto(`http://localhost:${port}/index.html${hash}`);
+    else await course.evaluate((h) => { location.hash = h; }, hash);
+    await course.locator(".lessonbar .lbwhere", { hasText: where }).first().waitFor({ timeout: 60000 });
+    await course.waitForTimeout(1500);
+    const ok = await ready();
+    return { ok, secs: ((Date.now() - t) / 1000).toFixed(1) };
+  };
+  const a = await open("#course=crdt&lesson=10&app=1", "Application of lesson 10", true);
+  const pack = (u) => decodeURIComponent(new URL(u).searchParams.get("packs") ?? "");
+  const leanMessages = () => course.evaluate(() => [...document.querySelectorAll(".leanmsg.error .text")].map((e) => e.textContent));
+  const unknown = (await leanMessages()).filter((m) => /unknown (identifier|constant|namespace)|unknown module/.test(m));
+  check("CRDT 10a: Lean imports the lessons before it from the course's modules, and checks it", a.ok && pack(servers.at(-1) ?? "") === compiled.crdt.pack && unknown.length === 0,
+    `${a.secs} s; packs ${pack(servers.at(-1) ?? "") || "none"}${unknown.length ? `; ${unknown[0]}` : ""}`);
+  const workers = servers.length, gone = ended.length;
+  const b = await open("#course=crdt&lesson=11", "Lesson 11 of 12");
+  const c = await open("#course=crdt&lesson=12", "Lesson 12 of 12");
+  check("the next lessons keep the server: the module it has, and the rest of their prelude inline", b.ok && c.ok && servers.length === workers && ended.length === gone,
+    `${b.secs} s, ${c.secs} s; ${servers.length - workers} servers started`);
+  const d = await open("#course=logic&lesson=4", "Lesson 4 of 9");
+  check("another course starts Lean again, with that course's modules", d.ok && pack(servers.at(-1) ?? "") === compiled.logic.pack && ended.length > gone,
+    `${d.secs} s; packs ${pack(servers.at(-1) ?? "") || "none"}`);
+  check("and nothing went wrong on the page", errors.length === 0, errors.join("; "));
+  await course.close();
+} else console.log("(the bundle has no courses' modules: npm run bundle with LEAN_WASM_CLI_DIR)");
 await browser.close();
 server.close();
 process.exit(checks.every(Boolean) ? 0 : 1);

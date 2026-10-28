@@ -3,3 +3,4 @@ dist/
 .lake/
 engine/toolchains/
 Math Notebook Web Application.zip
+.cache/
