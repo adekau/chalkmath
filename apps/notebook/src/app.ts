@@ -35,7 +35,7 @@ import { parseScene, numberRequests as sceneNumberRequests, sampleRequests as sc
 import { DOC_PAGES, type DocPage, type DocPart } from "./docs.js";
 import { highlightCode, registerLanguage, type CodeTok } from "./code-highlight.js";
 import { FUNCTIONS, FN_BY_NAME, AREAS, fnPage, evaluable, type FnDoc, type ExampleSection } from "./reference.js";
-import { ensureLean, syncLean, mountLean, unmountLean, focusLean, setLeanDark, infoview as leanInfoview, leanState, leanFailure, leanStoppedAt, leanProgress, leanChecking, leanChecked, initLeanIsolation, startLeanAnyway, restartLean, leanRestartable, leanServerImports, type LeanMessage } from "./lean-cells.js";
+import { ensureLean, syncLean, mountLean, unmountLean, focusLean, setLeanDark, infoview as leanInfoview, leanState, leanFailure, leanStoppedAt, leanProgress, leanChecking, leanChecked, initLeanIsolation, startLeanAnyway, restartLean, leanRestartable, leanEditorStarted, leanServerImports, type LeanMessage } from "./lean-cells.js";
 
 // ---------------------------------------------------------------------------
 // Content: the notebook's own vocabulary, from the function reference (reference.ts)
@@ -4956,8 +4956,8 @@ function leanStateNote(cell: Cell): HTMLElement | null {
   if (st === "failed") {
     const note = h("div", "leanstate failed", `${leanFailure()}${leanStoppedHere(cell)} `);
     if (leanRestartable()) {
-      const go = h("button", "smallbtn", "Restart Lean");
-      go.title = "Starts Lean again in this page: it checks the notebook from the start";
+      const go = h("button", "smallbtn", leanEditorStarted() ? "Restart Lean" : "Try again");
+      go.title = leanEditorStarted() ? "Starts Lean again in this page: it checks the notebook from the start" : "Loads Lean again";
       go.addEventListener("click", () => void restartLean());
       note.append(go);
     }

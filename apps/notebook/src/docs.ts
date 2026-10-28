@@ -362,7 +362,7 @@ The top bar says what Lean is doing, beside the engine: **starting**, **download
 
 ## When Lean stops
 
-Lean in a browser has far less stack than it has natively, so Lean that nests very deeply (a very long ‹do› block, or recursion thousands of calls deep in an ‹#eval›) can stop it. The Lean cells then say so, and where Lean was checking; change that, then **Restart Lean** starts it again in the page, keeping what you typed, and it checks the notebook from the start. Changing a Lean file's ‹import› lines restarts Lean by itself, as Lean does in VS Code: a file's imports are loaded once per server.
+Lean in a browser has far less stack than it has natively, so Lean that nests very deeply (a very long ‹do› block, or recursion thousands of calls deep in an ‹#eval›) can stop it. The Lean cells then say so, and where Lean was checking; change that, then **Restart Lean** starts it again in the page, keeping what you typed, and it checks the notebook from the start. Changing a Lean file's ‹import› lines restarts Lean by itself, as Lean does in VS Code: a file's imports are loaded once per server. If Lean did not load at all (a dropped connection, say), the Lean cells say so, and **Try again** loads it again.
 
 The example notebook *Order and lattices* has its proofs in Lean cells.
 `],

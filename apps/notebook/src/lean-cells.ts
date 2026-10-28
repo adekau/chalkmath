@@ -93,7 +93,13 @@ const setState = (s: LeanState, why = "") => {
   if (s === "failed") settled();   // ("ready" is the editor: Lean itself is still loading)
   hooks?.onState();
 };
-const notStarted = (why: string) => setState("failed", `Lean did not start: ${why}`);
+/** Whether starting Lean again could get further: what failed was loading it (the network, say), not this
+ *  browser or this build. */
+let retryable = false;
+const notStarted = (why: string, retry = false) => { retryable = retry; setState("failed", `Lean did not start: ${why}`); };
+/** How many times the page has started Lean's editor: a module that failed to load stays failed for the
+ *  page's life under its URL, so another try asks for it under another. */
+let attempt = 0;
 /** A browser gives each of its threads a small stack (Chromium: 500 KB to a worker, against the 8 MB Lean's
  *  threads have natively), and Lean compiled to wasm needs more of it per level of recursion than native
  *  Lean: Lean that elaborates deep enough runs out of it, and the thread's error stops the whole server. */
@@ -161,7 +167,7 @@ export function ensureLean(h: LeanHooks): Promise<LeanNotebook | null> {
   setProgress({ phase: "editor" });
   starting = (async () => {
     try {
-      const url = new URL(versioned("lean/lean-editor.js"), location.href).href;
+      const url = new URL(`${versioned("lean/lean-editor.js")}${attempt++ ? `&try=${attempt}` : ""}`, location.href).href;
       const mod = (await import(url)) as { startLean(o: LeanOptions): Promise<LeanNotebook> };
       const worker = startServer();
       const started = dark;
@@ -176,7 +182,7 @@ export function ensureLean(h: LeanHooks): Promise<LeanNotebook | null> {
       return session;
     } catch (e) {
       progress = null;
-      notStarted(e instanceof Error ? e.message : String(e));
+      notStarted(e instanceof Error ? e.message : String(e), true);
       return null;
     }
   })();
@@ -236,7 +242,7 @@ export const leanServerImports = () => (session ? serverImports : null);
 function stopped(why: string) {
   const ran = state === "ready" && (progress === null || progress.phase === "checking");
   setProgress(null);
-  if (!ran) { notStarted(why); return; }
+  if (!ran) { notStarted(why, true); return; }
   stoppedAt = checkingLine === null ? null : session?.cellAt(checkingLine) ?? null;
   setState("failed", `Lean stopped: ${why}.`);
 }
@@ -257,8 +263,11 @@ export function startLeanAnyway(h: LeanHooks): Promise<LeanNotebook | null> {
   return ensureLean(h);
 }
 
-/** Whether Lean can be started again in the page: it stopped, or did not start, after its server did. */
-export const leanRestartable = () => state === "failed" && server !== null;
+/** Whether Lean can be started again in the page: it stopped, or did not start because what it loads did not
+ *  load. */
+export const leanRestartable = () => state === "failed" && (server !== null || retryable);
+/** Whether Lean's editor has started in the page (a restart then replaces only the server). */
+export const leanEditorStarted = () => session !== null;
 
 /** Starts a new server for Lean in the page, in place of the one it has: after that one stopped (out of
  *  stack, say), or exited to be started again. The cells' editors and the infoview stay, and what was typed

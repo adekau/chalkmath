@@ -14,11 +14,15 @@ self.addEventListener("fetch", (event) => {
   // a request the browser may only answer from its cache, from another origin, cannot be re-fetched here
   if (request.cache === "only-if-cached" && request.mode !== "same-origin") return;
   if (new URL(request.url).origin !== self.location.origin) return;
-  event.respondWith(fetch(request).then((response) => {
+  // A request that does not reach the server (a dropped connection) is asked for once more, as the page would
+  // have had its own request answered without this worker in between; one that fails again is a network
+  // error to the page, as it would have been, rather than an error of this worker's own.
+  const get = () => fetch(request);
+  event.respondWith(get().catch((e) => (request.method === "GET" ? get() : Promise.reject(e))).then((response) => {
     if (response.status === 0) return response;   // opaque: nothing to add
     const headers = new Headers(response.headers);
     headers.set("Cross-Origin-Opener-Policy", "same-origin");
     headers.set("Cross-Origin-Embedder-Policy", coep);
     return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
-  }));
+  }, () => Response.error()));
 });
