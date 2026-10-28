@@ -73,6 +73,8 @@ check("the loading status showed the download", statuses.some((t) => /Downloadin
   `${statuses.length} updates, last: ${statuses.at(-1) ?? "none"}`);
 await page.waitForFunction(() => !document.querySelector(".leanstatus"), null, { timeout: 60000 }).catch(() => {});
 check("and is gone once Lean has checked the notebook", await page.evaluate(() => !document.querySelector(".leanstatus")));
+check("the top bar says Lean is ready", await page.waitForFunction(() => document.querySelector(".titlebar .leanpill")?.textContent === "Lean · ready", null, { timeout: 30000 }).then(() => true, () => false),
+  await page.locator(".titlebar .leanpill").textContent().catch(() => "no pill"));
 check("the math cell still evaluates", await page.evaluate(() => !!document.querySelector(".cell.done")));
 
 await page.evaluate(() => [...document.querySelectorAll(".ptab")].find((t) => t.textContent.includes("Lean goals"))?.click());

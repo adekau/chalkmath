@@ -1095,6 +1095,7 @@ async function features() {
     await failed.waitFor({ timeout: 10000 });
     assert.match(await failed.textContent(), /built without Lean itself/, "a bundle without Lean says so on the Lean cell");
     assert.equal(await failed.locator("button", { hasText: "Restart Lean" }).count(), 0, "Lean that never had a server offers no restart");
+    assert.equal((await again.locator(".titlebar .leanpill").textContent()).trim(), "Lean · stopped", "the top bar says Lean is not running");
   } finally {
     await fresh.close();
   }

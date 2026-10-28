@@ -61,10 +61,23 @@ export async function startLean(o: LeanOptions): Promise<LeanNotebook> {
     vscode: {
       "workbench.colorTheme": colorTheme(o.dark),
       "editor.wordWrap": "on",
+      // Every cell's view holds the whole document (its other lines hidden), so each view wraps all of it
+      // whenever a setting changes, as the extension's do while it starts: "advanced" wrapping measures
+      // each line in the page (seconds, all on the page's thread, for a late lesson with its prelude),
+      // "simple" counts characters. And no view shows a glyph margin, whose decorations each view would
+      // lay out over the whole document on every frame
+      "editor.wrappingStrategy": "simple",
+      "editor.glyphMargin": false,
       "editor.minimap.enabled": false,
       "lean4.input.eagerReplacementEnabled": true,
     },
   });
+  // The extension's task gutter marks what Lean is still checking, a decoration from each command to the end
+  // of the file. No view shows the gutter, but each lays out every one of its decorations, line by line, on
+  // every frame: thousands of lines, many times over, for a late lesson with its prelude. The notebook says
+  // what Lean is checking itself.
+  lm.taskGutter?.dispose();
+  lm.taskGutter = undefined;
   // The document's own editor lives off screen: the extension opens the file through it, and each cell's
   // view shares its model.
   const holder = document.createElement("div");
@@ -196,6 +209,7 @@ export async function startLean(o: LeanOptions): Promise<LeanNotebook> {
       refreshViews();
     },
     version() { return model.getVersionId(); },
+    lineCount() { return model.getLineCount(); },
     messages(id) { return JSON.parse(lastMessages.get(id) ?? "[]") as LeanMessage[]; },
     cellAt(line) {
       for (const [id, [first, last]] of ranges) if (line >= first && line <= last) return { id, line: line - first + 1 };
