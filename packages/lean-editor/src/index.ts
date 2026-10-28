@@ -21,9 +21,21 @@ import type { LeanMessage, LeanNotebook, LeanOptions } from "./types.js";
 
 /** LeanMonaco, speaking LSP to a web worker instead of a WebSocket (monaco-languageclient's `WorkerDirect`). */
 class WorkerLeanMonaco extends LeanMonaco {
-  constructor(private readonly worker: Worker) { super(); }
+  private next: (() => Worker) | null = null;
+  constructor(private worker: Worker) { super(); }
+  /** The worker is read each time the extension starts its client, so a restart can start it on a new one. */
   protected override getWebSocketOptions(): never {
-    return { $type: "WorkerDirect", worker: this.worker } as never;
+    const lm = this;
+    return { $type: "WorkerDirect", get worker() { if (lm.next) { lm.worker = lm.next(); lm.next = null; } return lm.worker; } } as never;
+  }
+  /** Starts the extension's client again, as its "Restart Lean Server" does, on the worker `server` makes once
+   *  the client has stopped (and told the old server so): the editors, their document and the infoview stay,
+   *  and the client opens the document on the new server. */
+  async restartOn(server: () => Worker) {
+    this.next = server;
+    const clients = this.clientProvider?.getClients() ?? [];
+    await Promise.all(clients.map((c) => c.restart()));
+    if (this.next) { this.worker = this.next(); this.next = null; }   // no client to start (none yet)
   }
   /** The Lean 4 extension's manifest without its `extensionDependencies` (the TOML extension, for
    *  `lakefile.toml`), which this editor does not load: the extension host, activating Lean's extension
@@ -237,6 +249,7 @@ export async function startLean(o: LeanOptions): Promise<LeanNotebook> {
       };
     },
     setDark(dark) { lm.updateVSCodeOptions({ "workbench.colorTheme": colorTheme(dark) }); },
+    restart(server) { return lm.restartOn(server); },
     dispose() {
       markerSub.dispose();
       for (const set of views.values()) for (const v of set) v.editor.dispose();

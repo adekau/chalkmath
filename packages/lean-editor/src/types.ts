@@ -33,6 +33,10 @@ export interface LeanNotebook {
   mount(id: string, el: HTMLElement): CellView;
   /** Switches the editors and the infoview to the dark or light theme. */
   setDark(dark: boolean): void;
+  /** Moves the editor to a new server (worker-lean-server.ts), which checks the document from the start: after
+   *  the one it had stopped. `server` makes it, once the editor has told the old one to shut down. The
+   *  editors and the infoview stay as they are. */
+  restart(server: () => Worker): Promise<void>;
   dispose(): void;
 }
 

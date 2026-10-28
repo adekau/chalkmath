@@ -26,8 +26,9 @@ if (self.name !== "em-pthread") host();
 /** What the page shows while Lean loads, posted on the BroadcastChannel named by the worker URL's
  *  `progress` parameter (the worker's own messages are the extension's LSP): the download (of what this
  *  browser does not have yet), then Lean loading its library and checking the document, until it has
- *  checked it once. */
-export type LeanProgress = { phase: "download"; loaded: number; total: number } | { phase: "checking" } | { phase: "done" };
+ *  checked it once. And, at any time, that Lean's process ended (`exit`, with its code), which nothing else
+ *  reports: the threads stay, and the server stops answering. */
+export type LeanProgress = { phase: "download"; loaded: number; total: number } | { phase: "checking" } | { phase: "done" } | { phase: "exit"; code: number };
 
 function host() {
   const channelName = new URL(self.location.href).searchParams.get("progress");
@@ -166,6 +167,7 @@ function host() {
         self.postMessage(m);
       },
       log: (l) => console.debug(`[lean] ${l}`),
+      onExit: (code) => report({ phase: "exit", code }),
     });
     receive = (m) => server.receive(m);
     for (const m of early.splice(0)) server.receive(m);

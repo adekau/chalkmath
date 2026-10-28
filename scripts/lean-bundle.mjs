@@ -92,7 +92,14 @@ export async function bundleLean({ out, define, minify, nonce }) {
   const files = { id: "", sizes: {} };
   for (const f of readdirSync(out)) if (/^lean-(server\.wasm|lib\.pack)/.test(f)) rmSync(`${out}/${f}`);
   if (lean) {
-    for (const f of ["lean-server.js", "lean-initialize.json"]) cpSync(`${lean}/${f}`, `${out}/${f}`);
+    cpSync(`${lean}/lean-initialize.json`, `${out}/lean-initialize.json`);
+    // Lean's process ending, told to the host (lean-server.ts `leanExit`): the module is built to keep running
+    // after `exit` (its threads serve the server), so Emscripten calls no `onExit`, and a server whose file
+    // worker exited to be started again (its imports changed) would only stop answering
+    const glue = readFileSync(`${lean}/lean-server.js`, "utf8");
+    const EXIT = "function _proc_exit(code) {\n  if (ENVIRONMENT_IS_PTHREAD) return proxyToMainThread(0, 0, 1, code);\n";
+    if (glue.split(EXIT).length !== 2) throw new Error("lean-bundle: Emscripten's _proc_exit not found in lean-server.js");
+    writeFileSync(`${out}/lean-server.js`, glue.replace(EXIT, `${EXIT}  Module["leanExit"]?.(code);\n`));
     const wasm = gzipSync(readFileSync(`${lean}/lean-server.wasm`), { level: 9 });
     const lib = readFileSync(`${lean}/lean-lib.pack.gz`);
     const id = createHash("sha256");
