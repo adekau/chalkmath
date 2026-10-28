@@ -12,10 +12,10 @@ on:
   push:
     branches: [main]
     paths: ["notebooks/**", "packages/lean-editor/**", "packages/engine-host/src/**", "engine/lean-toolchain", "engine/wasm/**",
-            "scripts/notebooks/**", "scripts/bundle.mjs", "scripts/lean-bundle.mjs", ".github/workflows/lean-cells.yml"]
+            "scripts/notebooks/**", "scripts/bundle.mjs", "scripts/lean-bundle.mjs", "scripts/lean-courses.mjs", ".github/workflows/lean-cells.yml"]
   pull_request:
     paths: ["notebooks/**", "packages/lean-editor/**", "packages/engine-host/src/**", "engine/lean-toolchain", "engine/wasm/**",
-            "scripts/notebooks/**", "scripts/bundle.mjs", "scripts/lean-bundle.mjs", ".github/workflows/lean-cells.yml"]
+            "scripts/notebooks/**", "scripts/bundle.mjs", "scripts/lean-bundle.mjs", "scripts/lean-courses.mjs", ".github/workflows/lean-cells.yml"]
   workflow_run:
     workflows: ["Lean for wasm"]
     types: [completed]
@@ -48,6 +48,16 @@ jobs:
             mkdir -p "$RUNNER_TEMP/lean-wasm"
             tar xzf "$RUNNER_TEMP/lean-wasm.tar.gz" -C "$RUNNER_TEMP/lean-wasm"
             echo "LEAN_WASM_DIR=$RUNNER_TEMP/lean-wasm" >> "$GITHUB_ENV"
+            # the same Lean's command-line driver, which compiles the courses' preludes to modules
+            # (scripts/lean-courses.mjs); without it they stay inline
+            if gh release download "$tag" --pattern lean-wasm-cli.tar.gz --dir "$RUNNER_TEMP"; then
+              mkdir -p "$RUNNER_TEMP/lean-wasm-cli"
+              tar xzf "$RUNNER_TEMP/lean-wasm-cli.tar.gz" -C "$RUNNER_TEMP/lean-wasm-cli"
+              echo "LEAN_WASM_CLI_DIR=$RUNNER_TEMP/lean-wasm-cli" >> "$GITHUB_ENV"
+            else
+              echo "::warning::$tag has no lean-wasm-cli.tar.gz; the courses' preludes stay inline"
+            fi
+            echo "LEAN_WASM_TAG=$tag" >> "$GITHUB_ENV"
             echo "have=true" >> "$GITHUB_OUTPUT"
           else
             echo "::warning::$tag is not published yet (the Lean for wasm workflow builds it); nothing to check the Lean cells with"
@@ -55,6 +65,13 @@ jobs:
       - uses: actions/setup-node@v4
         if: steps.lean.outputs.have == 'true'
         with: { node-version: 22, cache: npm }
+      - name: Keep the courses' compiled modules (scripts/lean-courses.mjs compiles only what changed)
+        if: env.LEAN_WASM_CLI_DIR != ''
+        uses: actions/cache@v4
+        with:
+          path: .cache/lean-courses/oleans
+          key: lean-courses-${{ env.LEAN_WASM_TAG }}-${{ hashFiles('notebooks/courses.json', 'notebooks/courses/**', 'packages/lean-editor/src/prelude.js', 'scripts/lean-courses.mjs') }}
+          restore-keys: lean-courses-${{ env.LEAN_WASM_TAG }}-
       - name: Build the workspace packages, then bundle the notebook with Lean
         if: steps.lean.outputs.have == 'true'
         run: |

@@ -1,6 +1,6 @@
 import { createClient, type EngineClient, type Step, type StepOutline, type Path, type RuleStatus, type Derivation, type WireExpr, type PlotResult, type ManipulateResult, type HasseData, type KnownVisual, type TruthTableData, type DigraphData, type OpTableData, type ContextTableData, type TypingNode, type TypingTreeData, type SpacetimeData } from "@chalkmath/protocol";
 import { workerTransport, httpTransport } from "@chalkmath/engine-host";
-import { leanForPrelude } from "@chalkmath/lean-editor/prelude";
+import { preludePart, importedPrelude, type ModuleEntry } from "@chalkmath/lean-editor/prelude";
 import { read as readNotation, write as writeNotation, writeText, hasNotation, templateAt, templateInText, TEMPLATES, configureLexicon, lex as lexNotation, type Stmt, type Caret, type MathEdit } from "@chalkmath/math-editor";
 import { setWorlds, worldOf, worldFns, keywordsOf, lambdaCommand } from "./worlds.js";
 import { MathInput, type MathInputOptions } from "@chalkmath/math-editor/view";
@@ -35,7 +35,7 @@ import { parseScene, numberRequests as sceneNumberRequests, sampleRequests as sc
 import { DOC_PAGES, type DocPage, type DocPart } from "./docs.js";
 import { highlightCode, registerLanguage, type CodeTok } from "./code-highlight.js";
 import { FUNCTIONS, FN_BY_NAME, AREAS, fnPage, evaluable, type FnDoc, type ExampleSection } from "./reference.js";
-import { ensureLean, syncLean, mountLean, unmountLean, focusLean, setLeanDark, infoview as leanInfoview, leanState, leanFailure, leanStoppedAt, leanProgress, leanChecking, leanChecked, initLeanIsolation, startLeanAnyway, restartLean, leanRestartable, type LeanMessage } from "./lean-cells.js";
+import { ensureLean, syncLean, mountLean, unmountLean, focusLean, setLeanDark, infoview as leanInfoview, leanState, leanFailure, leanStoppedAt, leanProgress, leanChecking, leanChecked, initLeanIsolation, startLeanAnyway, restartLean, leanRestartable, leanServerImports, type LeanMessage } from "./lean-cells.js";
 
 // ---------------------------------------------------------------------------
 // Content: the notebook's own vocabulary, from the function reference (reference.ts)
@@ -1861,17 +1861,16 @@ async function fetchExample(file: string): Promise<string> {
 }
 /** The Lean of a course's lessons before lesson `k`, in order: their Lean cells, and their Lean exercises
  *  as statement and the author's proof (a theorem proved there may be used later), without the commands
- *  that only show something (`leanForPrelude`: Lean elaborates the prelude each time a lesson opens).
- *  Lessons that are not there are left out; what a lesson needs from them then shows as an error in its Lean. */
+ *  that only show something (`preludePart`, shared with the modules scripts/lean-courses.mjs compiles and
+ *  with CI's check). Lessons that are not there are left out; what a lesson needs from them then shows as
+ *  an error in its Lean. */
 async function leanPreludeOf(p: Project, k: number): Promise<string> {
   // (an application of lesson k sees lesson k's Lean too: its caller passes k + 1)
   const parts: string[] = [];
   for (let j = 0; j < k; j++) {
     try {
-      const doc = JSON.parse(await fetchExample(lessonPath(p, j))) as ChalkFile;
-      const lean = doc.cells.flatMap((c) => c.type === "lean" ? [c.src]
-        : c.type === "exercise" && c.lean && c.src.trim() ? [`${c.leanDefSolution ? `${c.leanDefSolution}\n\n` : ""}${c.src}\n${c.leanSolution ?? LEAN_START}`] : []);
-      if (lean.length) parts.push(`-- ${p.lessons[j]!.title}\n${leanForPrelude(lean.join("\n\n"))}`);
+      const part = preludePart(p.lessons[j]!.title, (JSON.parse(await fetchExample(lessonPath(p, j))) as ChalkFile).cells);
+      if (part !== null) parts.push(part);
     } catch (e) { log("err", `Lean prelude: ${lessonPath(p, j)}: ${e instanceof Error ? e.message : String(e)}`); }
   }
   return parts.join("\n\n");
@@ -4269,7 +4268,7 @@ function renderCells() {
   const leanIds = new Set(leanCells.map((c) => c.id));
   unmountLean((id) => leanIds.has(id));
   syncLean(currentDoc(), leanCells);
-  if (leanCells.length) void ensureLean(leanHooks());
+  if (leanCells.length) startLeanCells();
   let folded = false;   // inside a collapsed section: its cells are not built
   S.cells.forEach((cell, i) => {
     if (cell.type === "section") folded = !!cell.collapsed;
@@ -4720,14 +4719,74 @@ function leanDocCells(): { id: string; src: string; fixed?: boolean }[] {
     }
   }
   const pre = currentDoc()?.leanPrelude;
-  if (pre && out.length) out.unshift({ id: PRELUDE_ID, src: pre, fixed: true });
+  if (pre && out.length) out.unshift({ id: PRELUDE_ID, src: leanPreludeSrc(pre, currentDoc()?.project?.id), fixed: true });
   return out;
+}
+
+/** The courses' preludes as modules the bundle has (lean/lean-courses.json, scripts/lean-courses.mjs): for
+ *  each course, its pack and its modules, the first `m` lessons' Lean in module `m`. Null until loaded. */
+type LeanModules = Record<string, { pack: string; size: number; modules: ModuleEntry[] }>;
+let leanModules: LeanModules | null = null;
+let leanModulesLoading: Promise<void> | null = null;
+/** Loads the modules' list (once), and Lean, with the notebook's Lean file as it then is. */
+function startLeanCells() {
+  leanModulesLoading ??= fetch(versioned("lean/lean-courses.json"))
+    .then((r) => (r.ok ? r.json() : {}) as Promise<LeanModules>, () => ({}))
+    .catch(() => ({})).then((m) => { leanModules = m; });
+  void leanModulesLoading.then(() => {
+    const cells = leanDocCells();
+    if (!cells.length) return;
+    syncLean(currentDoc(), cells);
+    void ensureLean(leanHooks());
+  });
+}
+/** Set when importing a course's module failed (its pack did not load, say): preludes are inline from then on. */
+let leanModulesFailed = false;
+/** Lines of a prelude left inline after a module that Lean already has loaded, at most, rather than starting
+ *  Lean again for a module holding more of it: some 10 ms a line in a browser, against several seconds to
+ *  start Lean. */
+const REUSE_LINES = 500;
+let preludeMemo: { pre: string; course: string; loaded: string; src: string } | null = null;
+/** A course's prelude as the Lean file starts with it: an import of the course's module that holds the most of
+ *  it, the scope its lessons leave, and the rest inline (`importedPrelude`). Lean then reads the lessons
+ *  before this one compiled, instead of elaborating them each time the lesson opens. When the running Lean
+ *  has an earlier module of the course loaded (the lesson before this one, say) and little is left after
+ *  it, that one, since another means starting Lean again. Inline when the bundle has no modules for the
+ *  course, or the prelude is not one they were compiled from (a notebook saved from an older course). */
+function leanPreludeSrc(pre: string, course: string | undefined): string {
+  const c = course && !leanModulesFailed ? leanModules?.[course] : undefined;
+  if (!c || !course) return pre;
+  const loaded = (leanServerImports() ?? []).join(" ");
+  if (preludeMemo && preludeMemo.pre === pre && preludeMemo.course === course && preludeMemo.loaded === loaded) return preludeMemo.src;
+  let best: { m: number; src: string } | null = null;
+  for (let m = c.modules.length; m >= 1 && !best; m--) {
+    const src = importedPrelude(c.modules[m - 1]!, pre);
+    if (src !== null) best = { m, src };
+  }
+  let src = best?.src ?? pre;
+  if (best) {
+    const lines = (t: string) => t.split("\n").length;
+    let have = best.m - 2;
+    while (have >= 0 && !loaded.split(" ").includes(c.modules[have]!.name)) have--;
+    const kept = have >= 0 ? importedPrelude(c.modules[have]!, pre) : null;
+    if (kept !== null && lines(kept) - lines(best.src) <= REUSE_LINES) src = kept;
+  }
+  preludeMemo = { pre, course, loaded, src };
+  return src;
 }
 /** Whether Lean had finished checking the file when it last reported. */
 let leanWasChecked = false;
 /** Errors in a course's prelude are the course's, not the reader's: logged once per set of messages. */
 let lastPreludeErrors = "";
 function preludeMessages(ms: LeanMessage[]) {
+  // a course's module that would not import (its pack did not load): the prelude inline instead, which
+  // starts Lean again (its imports change)
+  if (!leanModulesFailed && preludeMemo?.src.startsWith("import ") && ms.some((m) => m.severity === "error" && m.line === 1)) {
+    leanModulesFailed = true;
+    log("err", `Lean could not import the course's module, so the lesson's prelude is inline: ${ms.find((m) => m.severity === "error")!.message}`);
+    renderCells();
+    return;
+  }
   const errs = ms.filter((m) => m.severity === "error").map((m) => `prelude ${m.line}:${m.column} ${m.message}`).join("\n");
   if (errs && errs !== lastPreludeErrors) log("err", errs);
   lastPreludeErrors = errs;
@@ -4778,6 +4837,8 @@ function leanHooks() {
       if (c.type === "exercise") leanVerdict(c);
       renderCellBody(c);
     },
+    packs: (imports: string[]) => [...new Set(imports.flatMap((name) =>
+      Object.values(leanModules ?? {}).filter((c) => c.modules.some((e) => e.name === name)).map((c) => c.pack)))],
     onChecked: () => {
       // every Lean exercise says "checking" while Lean is: each is redrawn when Lean starts on the file, and
       // whenever it reports the file as it is now checked (a small edit can go from checked to checked)

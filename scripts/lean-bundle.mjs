@@ -4,6 +4,9 @@
 //   workers/*.js            the editor's two workers (Monaco's, TextMate's), bundled on their own
 //   assets/, infoview/      files the bundle reaches by URL, and the infoview's own files
 //   lean-server.worker.js   Lean's language server host (packages/engine-host/src/worker-lean-server.ts)
+//   lean-courses.json, courses/<course>-<hash>.pack.gz
+//                           the courses' Lean preludes as modules (scripts/lean-courses.mjs), when the wasm
+//                           Lean's command-line driver is there (LEAN_WASM_CLI_DIR)
 //   lean-server.js, lean-server.wasm.gz, lean-lib.pack.gz.<n>, lean-initialize.json
 //                           Lean itself, from scripts/build-lean-wasm-compiler.sh (or its release, fetched
 //                           into LEAN_WASM_DIR), when that build exists. The wasm is shipped gzipped and
@@ -19,6 +22,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, write
 import { createRequire } from "node:module";
 import path from "node:path";
 import { gzipSync } from "node:zlib";
+import { buildCourseModules } from "./lean-courses.mjs";
 
 const require = createRequire(import.meta.url);
 const WORKERS = {
@@ -37,6 +41,14 @@ export function leanBuild() {
   const ver = readFileSync("engine/lean-toolchain", "utf8").trim().replace(/.*:v/, "");
   const dir = process.env.LEAN_WASM_DIR || `engine/toolchains/lean-${ver}-wasm32/compiler`;
   return LEAN_FILES.every((f) => existsSync(`${dir}/${f}`)) ? dir : null;
+}
+
+/** Where the wasm Lean's command-line driver and its 32-bit library are (bin/lean.js, lib/lean): LEAN_WASM_CLI_DIR
+ *  (the release's lean-wasm-cli.tar.gz, unpacked), else where scripts/build-lean-wasm-compiler.sh put them. */
+export function leanCompiler() {
+  const ver = readFileSync("engine/lean-toolchain", "utf8").trim().replace(/.*:v/, "");
+  const dir = process.env.LEAN_WASM_CLI_DIR || `engine/toolchains/lean-${ver}-wasm32/compiler`;
+  return existsSync(`${dir}/bin/lean.js`) && existsSync(`${dir}/lib/lean/Init.olean`) ? path.resolve(dir) : null;
 }
 
 export async function bundleLean({ out, define, minify, nonce }) {
@@ -108,6 +120,15 @@ export async function bundleLean({ out, define, minify, nonce }) {
     for (let at = 0; at < lib.length; at += PART) add(`lean-lib.pack.gz.${parts++}`, lib.subarray(at, at + PART));
     files.id = id.digest("hex").slice(0, 16);
   } else console.log("lean: Lean itself has not been built (npm run lean-wasm); Lean cells will say so");
+  // the courses' preludes as modules (scripts/lean-courses.mjs), compiled by the same Lean's command-line
+  // driver: without it, or without Lean, a lesson elaborates its prelude inline, as before
+  const compiler = leanCompiler();
+  const courses = lean && compiler ? await buildCourseModules(compiler, out) : null;
+  if (!courses) {
+    rmSync(`${out}/courses`, { recursive: true, force: true });
+    writeFileSync(`${out}/lean-courses.json`, "{}");
+    if (lean) console.log("lean: no command-line Lean (LEAN_WASM_CLI_DIR: the release's lean-wasm-cli.tar.gz, unpacked); the courses' preludes stay inline");
+  }
   await build({ ...common, format: "iife", entryPoints: ["packages/engine-host/src/worker-lean-server.ts"], outfile: `${out}/lean-server.worker.js`,
     define: { ...common.define, __LEAN_LIB_PARTS__: String(parts), __LEAN_FILES__: JSON.stringify(files) } });
   console.log(`lean: ${readdirSync(out).join(" ")}`);

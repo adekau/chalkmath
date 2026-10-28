@@ -102,7 +102,11 @@ function host() {
    *  browser stops a page that uses that much (iOS Safari: "This webpage was reloaded because a problem
    *  occurred"). */
   async function library(): Promise<[string, Uint8Array][]> {
-    const reader = gunzip("lean-lib.pack.gz", __LEAN_LIB_PARTS__).getReader();
+    return unpack(gunzip("lean-lib.pack.gz", __LEAN_LIB_PARTS__));
+  }
+  /** The files of a pack (the library's format), as it arrives. */
+  async function unpack(stream: ReadableStream<Uint8Array>): Promise<[string, Uint8Array][]> {
+    const reader = stream.getReader();
     let chunk: Uint8Array = new Uint8Array(0), pos = 0;
     /** Fills `into` from the stream. */
     const fill = async (into: Uint8Array) => {
@@ -141,6 +145,18 @@ function host() {
   let receive = (m: LspMessage) => { early.push(m); };
   self.onmessage = (ev: MessageEvent<LspMessage>) => receive(ev.data);
 
+  /** The packs of modules the page names (`packs`: a course's prelude, scripts/lean-courses.mjs), added to the
+   *  library. Small, and named by their contents, so the browser's HTTP cache keeps them. One that does not
+   *  load is left out: the document importing it then says so, and the page goes back to the prelude inline. */
+  const packNames = (new URL(self.location.href).searchParams.get("packs") ?? "").split(",").filter(Boolean);
+  const packs = Promise.all(packNames.map(async (name) => {
+    try {
+      const res = await fetch(new URL(name, self.location.href));
+      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+      return await unpack(res.body.pipeThrough(new DecompressionStream("gzip")));
+    } catch (e) { console.warn(`[lean] ${name} did not load: ${e instanceof Error ? e.message : String(e)}`); return []; }
+  })).then((all) => all.flat());
+
   Promise.all([
     createLeanServer({
       locateFile: (p: string) => at(p),
@@ -153,11 +169,12 @@ function host() {
     }),
     library(),
     fetch(at("lean-initialize.json")).then((r) => r.json()),
-  ]).then(([module, lib, initializeResult]) => {
+    packs,
+  ]).then(([module, lib, initializeResult, modules]) => {
     report({ phase: "checking" });
     let checked = false;
     const server = startLeanServer({
-      module, library: lib, initializeResult,
+      module, library: [...lib, ...modules], initializeResult,
       send: (m) => {
         // `$/lean/fileProgress` with nothing left to process: the document has been checked once
         if (!checked && m.method === "$/lean/fileProgress" && (m.params as { processing?: unknown[] }).processing?.length === 0) {

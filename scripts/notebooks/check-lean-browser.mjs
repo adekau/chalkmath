@@ -16,7 +16,7 @@ import { chromium } from "playwright-core";
 import { createServer } from "node:http";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
-import { leanForPrelude } from "../../packages/lean-editor/src/prelude.js";
+import { preludePart, preludeOf, importedPrelude } from "../../packages/lean-editor/src/prelude.js";
 
 const SEPARATOR = "--⁅cell⁆";   // packages/lean-editor/src/index.ts
 const LEAN_START = "  sorry";    // apps/notebook/src/app.ts: an exercise's proof before the reader writes one
@@ -31,22 +31,31 @@ if (!existsSync(path.join(dist, "lean/lean-server.wasm.gz"))) {
   process.exit(1);
 }
 
-/** A lesson's Lean as a later lesson sees it (app.ts `leanPreludeOf`): exercises with the author's proofs. */
-const leanOf = (cells) => cells.flatMap((c) => c.type === "lean" ? [c.src] : c.type === "exercise" && c.lean && c.src.trim() ? [`${c.leanDefSolution ? `${c.leanDefSolution}\n\n` : ""}${c.src}\n${c.leanSolution ?? LEAN_START}`] : []);
+// a course's lessons' preludes, as the page gives them (app.ts `leanPreludeOf`, `leanPreludeSrc`): an
+// import of the course's module that holds the prelude (lean/lean-courses.json, scripts/lean-courses.mjs)
+// when the bundle has them, with the module's pack loaded, else the prelude inline
+const modulesFile = path.join(dist, "lean/lean-courses.json");
+const modules = existsSync(modulesFile) ? JSON.parse(readFileSync(modulesFile, "utf8")) : {};
 const preludes = new Map();
 for (const p of JSON.parse(readFileSync(path.join(root, "notebooks/courses.json"), "utf8")).projects) {
   if (!p.leanPrelude) continue;
   const parts = [];
+  const prelude = () => {
+    const text = preludeOf(parts), c = modules[p.id];
+    const entry = c && text ? c.modules[parts.length - 1] : undefined;
+    const src = entry ? importedPrelude(entry, text) : null;
+    return src === null ? { src: text } : { src, pack: c.pack };
+  };
   for (const l of p.lessons) {
     const file = path.join(root, "notebooks", p.path, l.file);
-    preludes.set(file, parts.join("\n\n"));
-    const lean = leanOf(JSON.parse(readFileSync(file, "utf8")).cells);
-    if (lean.length) parts.push(`-- ${l.title}\n${leanForPrelude(lean.join("\n\n"))}`);
+    preludes.set(file, prelude());
+    parts.push(preludePart(l.title, JSON.parse(readFileSync(file, "utf8")).cells));
     // a lesson's applications see its Lean too; later lessons do not see theirs
-    for (const ap of l.apps ?? []) preludes.set(path.join(root, "notebooks", p.path, ap.file), parts.join("\n\n"));
+    for (const ap of l.apps ?? []) preludes.set(path.join(root, "notebooks", p.path, ap.file), prelude());
   }
 }
-/** The document the page gives Lean for a notebook (app.ts `leanDocCells`), or null when it has no Lean. */
+/** The document the page gives Lean for a notebook (app.ts `leanDocCells`), the pack its import needs, and
+ *  how many lines its prelude has; null when it has no Lean. */
 function documentOf(file) {
   const out = [];
   for (const c of JSON.parse(readFileSync(file, "utf8")).cells) {
@@ -55,8 +64,8 @@ function documentOf(file) {
     else if (c.type === "exercise" && c.lean && c.src.trim()) out.push(...(c.leanDef !== undefined ? [c.leanDef] : []), c.src, c.leanStart ?? LEAN_START);
   }
   const prelude = preludes.get(file);
-  if (prelude && out.length) out.unshift(prelude);
-  return out.length ? out.join(`\n${SEPARATOR}\n`) : null;
+  if (prelude?.src && out.length) out.unshift(prelude.src);
+  return out.length ? { text: out.join(`\n${SEPARATOR}\n`), pack: prelude?.src ? prelude.pack : undefined, preludeLines: prelude?.src ? prelude.src.split("\n").length : 0 } : null;
 }
 
 // the headers a host serving Lean cells sends (or the page's service worker adds): SharedArrayBuffer
@@ -76,12 +85,12 @@ const base = `http://localhost:${site.address().port}/check.html`;
 
 /** Lean's server on one document, then on it edited at its end: done (with its errors), or stopped (with
  *  where it was), or out of time. */
-async function check(text) {
+async function check(text, pack, preludeLines) {
   const page = await context.newPage();
   try {
     await page.goto(base);
-    return await page.evaluate(([text, timeout]) => new Promise((resolve) => {
-      const worker = new Worker("lean/lean-server.worker.js");
+    return await page.evaluate(([text, timeout, pack, preludeLines]) => new Promise((resolve) => {
+      const worker = new Worker(`lean/lean-server.worker.js${pack ? `?packs=${encodeURIComponent(pack)}` : ""}`);
       let diagnostics = [], at = null;
       const t0 = Date.now();
       const end = (r) => { worker.terminate(); resolve({ ...r, secs: Math.round((Date.now() - t0) / 1000), at, edited: version === 2 }); };
@@ -94,7 +103,13 @@ async function check(text) {
         if (m.method !== "$/lean/fileProgress" || m.params.textDocument.version !== version) return;
         const left = m.params.processing;
         if (left.length) { at = Math.min(...left.map((p) => p.range.start.line)); return; }
-        if (version === 2) { end({ result: "done", errors: diagnostics.filter((d) => d.severity === 1).length }); return; }
+        if (version === 2) {
+          const errors = diagnostics.filter((d) => d.severity === 1);
+          // the prelude is the course's, not the reader's: an error there (its module did not import) fails it
+          const inPrelude = errors.filter((d) => d.range.start.line < preludeLines);
+          end({ result: "done", errors: errors.length, prelude: inPrelude.map((d) => `${d.range.start.line + 1}: ${d.message.split("\n")[0]}`) });
+          return;
+        }
         // Lean fast-forwards over the commands an edit leaves unchanged, one after another
         version = 2; at = null;
         worker.postMessage({ jsonrpc: "2.0", method: "textDocument/didChange", params: { textDocument: { uri, version }, contentChanges: [{ text: `${text}\n` }] } });
@@ -102,7 +117,7 @@ async function check(text) {
       worker.postMessage({ jsonrpc: "2.0", id: 1, method: "initialize", params: { processId: null, rootUri: null, capabilities: {} } });
       worker.postMessage({ jsonrpc: "2.0", method: "textDocument/didOpen", params: { textDocument: { uri, languageId: "lean4", version, text } } });
       setTimeout(() => end({ result: "timeout" }), timeout);
-    }), [text, TIMEOUT]);
+    }), [text, TIMEOUT, pack, preludeLines]);
   } finally { await page.close(); }
 }
 
@@ -114,15 +129,17 @@ function declarationAt(text, line) {
   return `line ${line + 1}`;
 }
 
-const queue = args.map((f) => path.resolve(f)).map((file) => ({ file, text: documentOf(file) })).filter((d) => d.text);
+const queue = args.map((f) => path.resolve(f)).map((file) => ({ file, doc: documentOf(file) })).filter((d) => d.doc);
 let bad = 0;
 await Promise.all(Array.from({ length: Math.max(1, jobs) }, async () => {
   for (let d; (d = queue.shift());) {
-    const r = await check(d.text);
+    const r = await check(d.doc.text, d.doc.pack, d.doc.preludeLines);
     const name = path.relative(root, d.file);
-    if (r.result === "done") { console.log(`${name}: ok (${r.secs} s${r.errors ? `, ${r.errors} errors the reader sees` : ""})`); continue; }
+    const how = d.doc.pack ? ", its prelude imported" : "";
+    if (r.result === "done" && r.prelude.length) { bad++; console.log(`${name}: FAILED, errors in its prelude${how}: ${r.prelude.slice(0, 3).join("; ")}`); continue; }
+    if (r.result === "done") { console.log(`${name}: ok (${r.secs} s${how}${r.errors ? `, ${r.errors} errors the reader sees` : ""})`); continue; }
     bad++;
-    const where = r.at === null ? (r.edited ? ", after an edit at its end" : "") : `, while checking ${declarationAt(d.text, r.at)}`;
+    const where = r.at === null ? (r.edited ? ", after an edit at its end" : "") : `, while checking ${declarationAt(d.doc.text, r.at)}`;
     console.log(`${name}: FAILED, ${r.result === "timeout" ? `not checked in ${TIMEOUT / 1000} s` : `Lean's server stopped (${r.message})`}${where}`);
   }
 }));
