@@ -1,0 +1,142 @@
+{
+  "chalk": 1,
+  "name": "04-expansion.chalk",
+  "cells": [
+    {
+      "src": "Expansion and its universe",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Specify what expanding a set computes, prove that it keeps what the set allows, and read the theorem's hypotheses for what it does not promise.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Expanding replaces each `*` by every name it stands for. A `*` stands for every resource, and the code can only write out the resources it knows, its **universe**:\n\n```ts\ninterface Universe {\n  tenants: string[];\n  resources: string[];\n  actions: string[];\n}\n\nconst wildcards = (key: string) => (key.match(/\\*/g) ?? []).length;\n\n/** Every key written out: a * becomes every name the universe has. */\nfunction expand(perms: Permissions, u: Universe): Permissions {\n  const out: Permissions = {};\n  // most wildcards first: a more specific key overwrites a broader one\n  const entries = Object.entries(perms)\n    .sort(([a], [b]) => wildcards(b) - wildcards(a));\n  for (const [key, allowed] of entries) {\n    const { tenant, resource, action } = parseKey(key);\n    for (const r of resource === \"*\" ? u.resources : [resource])\n      for (const a of action === \"*\" ? u.actions : [action])\n        out[`${tenant}-${r}:${a}`] = allowed;\n  }\n  return out;\n}\n```",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Two things to model: what `expand` should compute, and the loop that computes it. This lesson does the first and proves it keeps the meaning. The capstone, lesson 8, models the loop step for step and compares the two, which is how a model checks code: a specification, then the code against it.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "What it should compute is a key for every tenant, resource and action of the universe, with what the set says of it:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- Every key written out in full, for the tenants, resources and actions given, each with what the\n    set allows. -/\ndef expand (p : Perms T R A) (ts : List T) (rs : List R) (as : List A) : Perms T R A :=\n  ts.flatMap fun t => rs.flatMap fun r => as.map fun a => (⟨t, .is r, .is a⟩, allows p t r a)\n\n#eval showPerms (expand admin [.t1] resources actions)\n#eval (expand admin [.t1] resources actions).length",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`List.flatMap` applies a function that gives a list to each element and joins the lists: one list per tenant, of one list per resource, of a key per action. Twelve keys for one tenant.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Expansion keeps the meaning",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The theorem: for a tenant, resource and action of the universe, the expanded set allows what the original did. The expanded set's keys all have rank 2, and the ones that apply to the request all carry the same value, `allows p t r a`; a lemma says that a non-empty list of one value has that value as its `all`:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem all_id_of_forall {l : List Bool} {v : Bool} (hne : l ≠ []) (h : ∀ x ∈ l, x = v) :\n    l.all id = v := by\n  cases v\n  · obtain ⟨x, hx⟩ := List.exists_mem_of_ne_nil l hne\n    have := h x hx\n    apply Bool.eq_false_iff.mpr\n    intro hall\n    have := (List.all_eq_true.mp hall) x hx\n    simp_all\n  · exact List.all_eq_true.mpr (fun x hx => by simp [h x hx])\n\n/-- Inside the universe, the expanded set allows what the original did. -/\ntheorem allows_expand (p : Perms T R A) (ts : List T) (rs : List R) (as : List A)\n    (t : T) (r : R) (a : A) (ht : t ∈ ts) (hr : r ∈ rs) (ha : a ∈ as) :\n    allows (expand p ts rs as) t r a = allows p t r a := by\n  have h2 : verdictAt (expand p ts rs as) 2 t r a = some (allows p t r a) := by\n    simp only [verdictAt]\n    have hmem : ∀ x ∈ ((expand p ts rs as).filter fun e => e.1.covers t r a && e.1.rank == 2).map (·.2),\n        x = allows p t r a := by\n      intro x hx\n      simp only [expand, List.mem_map, List.mem_filter, List.mem_flatMap] at hx\n      obtain ⟨e, ⟨⟨t', _, r', _, a', _, rfl⟩, hc⟩, rfl⟩ := hx\n      simp [Key.covers, Pat.hits] at hc\n      obtain ⟨⟨⟨rfl, rfl⟩, rfl⟩, -⟩ := hc\n      rfl\n    have hne : ((expand p ts rs as).filter fun e => e.1.covers t r a && e.1.rank == 2).map (·.2) ≠ [] := by\n      apply List.ne_nil_of_mem (a := allows p t r a)\n      simp only [expand, List.mem_map, List.mem_filter, List.mem_flatMap]\n      exact ⟨_, ⟨⟨t, ht, r, hr, a, ha, rfl⟩, by simp [Key.covers, Pat.hits, Key.rank, Pat.rank]⟩, rfl⟩\n    have : (((expand p ts rs as).filter fun e => e.1.covers t r a && e.1.rank == 2).map (·.2)).isEmpty = false := by\n      simpa using hne\n    simp only [this, Bool.false_eq_true, ite_false, all_id_of_forall hne hmem]\n  simp only [allows, h2]",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Rank 2 decides, so the proof only needs `verdictAt` at rank 2 (`h2`): every value there is `allows p t r a` (`hmem`: a key of the expanded set that applies is the request's own), and there is one (`hne`: the request's key is in the set, because `t`, `r` and `a` are in the universe). `obtain ⟨…, rfl⟩` takes a hypothesis apart and substitutes each equation as it goes.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Outside the universe",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Every theorem's hypotheses are worth reading as cases where it promises nothing. Here: `t ∈ ts`, `r ∈ rs`, `a ∈ as`. Next month the app gets a fifth resource, `audit`:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "inductive Res' where\n  | doc | invoice | user | report | audit\n  deriving Repr, DecidableEq\n\n/-- The wildcard allows the new resource. -/\nexample : allows [(⟨Tenant.t1, (.any : Pat Res'), (.any : Pat Act)⟩, true)] .t1 .audit .read = true := by decide\n\n/-- The set expanded before it existed does not. -/\nexample : allows (expand [(⟨Tenant.t1, (.any : Pat Res'), (.any : Pat Act)⟩, true)] [.t1] [.doc, .invoice, .user, .report] actions)\n    .t1 .audit .read = false := by decide",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> `\"tenant1-*:*\": true` is a promise about every resource, including the ones added next month. Its expansion is a promise about the four that existed when it was made. A system that stores expanded sets quietly takes the new resource away from every administrator, and a system that expands on the server must expand again whenever the universe changes. The theorem was right; it was the hypothesis `r ∈ rs` that said so.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem allows_expand_outside (p : Perms T R A) (ts : List T) (rs : List R) (as : List A) (t : T) (r : R) (a : A) (hr : r ∉ rs) : allows (expand p ts rs as) t r a = false := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove what the example showed, for every set: for a resource outside the universe, the expanded set allows nothing.",
+      "leanSolution": "  have none : ∀ n, verdictAt (expand p ts rs as) n t r a = none := by\n    intro n\n    have : ((expand p ts rs as).filter fun e => e.1.covers t r a && e.1.rank == n) = [] := by\n      apply List.eq_nil_iff_forall_not_mem.mpr\n      intro e he\n      simp only [expand, List.mem_filter, List.mem_flatMap, List.mem_map] at he\n      obtain ⟨⟨t', _, r', hr', a', _, rfl⟩, hc⟩ := he\n      simp [Key.covers, Pat.hits] at hc\n      exact hr (hc.1.1.2 ▸ hr')\n    simp [verdictAt, this]\n  simp [allows, none]",
+      "leanStart": "  have none : ∀ n, verdictAt (expand p ts rs as) n t r a = none := by\n    sorry\n  simp [allows, none]",
+      "hints": [
+        "No key of the expanded set applies: each names a resource `r'` of `rs`, and applying needs `r' = r`. So every rank says `none`.",
+        "The keys that apply form an empty list: prove it with `List.eq_nil_iff_forall_not_mem.mpr`, taking an `e` in it apart as `allows_expand` did.",
+        "The contradiction is `hr : r ∉ rs` against `hr' : r' ∈ rs` and `r' = r`; `▸` rewrites a proof with an equation: `hr (h ▸ hr')`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem expand_editor_size : (expand editor tenants resources actions).length = 24 := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "How many keys does `editor` expand to, over both tenants? Predict, then prove the statement (and change the number if your prediction was wrong).",
+      "leanSolution": "  decide",
+      "hints": [
+        "One key per tenant, resource and action of the universe, whatever the set says."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Expansion is specified by what it should compute, every key of the universe with what the set allows, and proved to keep the meaning for every tenant, resource and action of the universe. The hypotheses mark what it does not promise: a resource added later is not in the expanded set, though the wildcard it came from allowed it.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Expanded sets are large. The next lesson makes them small again.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

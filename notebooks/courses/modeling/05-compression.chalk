@@ -1,0 +1,182 @@
+{
+  "chalk": 1,
+  "name": "05-compression.chalk",
+  "cells": [
+    {
+      "src": "Compression without loss",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Model the compression that goes to the browser, and prove it loses no information on the universe.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The expanded set has a key for every tenant, resource and action. Before it goes over the wire, the code puts the wildcards back, as few keys as it can:\n\n```ts\n/** The fewest keys that say what an expanded set says (grants only). */\nfunction compress(explicit: Permissions, u: Universe): Permissions {\n  const out: Permissions = {};\n  if (u.resources.length === 0 || u.actions.length === 0) return out;\n  for (const t of u.tenants) {\n    const ok = (r: string, a: string) => explicit[`${t}-${r}:${a}`] === true;\n    const fullRow = (r: string) => u.actions.every((a) => ok(r, a));\n    const fullCol = (a: string) => u.resources.every((r) => ok(r, a));\n    if (u.resources.every(fullRow)) { out[`${t}-*:*`] = true; continue; }\n    for (const r of u.resources.filter(fullRow)) out[`${t}-${r}:*`] = true;\n    for (const a of u.actions.filter(fullCol)) out[`${t}-*:${a}`] = true;\n    for (const r of u.resources.filter((r) => !fullRow(r)))\n      for (const a of u.actions.filter((a) => ok(r, a) && !fullCol(a)))\n        out[`${t}-${r}:${a}`] = true;\n  }\n  return out;\n}\n```",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "It writes only grants. A row (`\"tenant1-doc:*\"`) when every action on a resource is allowed, a column (`\"tenant1-*:Read\"`) when an action is allowed on every resource, `\"tenant1-*:*\"` when everything is, and single keys for what is left. Anything absent is a no.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "What a set of grants means",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "With only grants, there is no deny to win a tie, and the ranks stop mattering: a set of grants allows a request exactly when some key applies to it. That is `can`'s view of a set in the frontend, and it is worth proving once, since compression's proof rests on it.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- Every value in the set is true: a set of grants. -/\ndef grantsOnly (p : Perms T R A) : Prop := ∀ e ∈ p, e.2 = true\n\ntheorem verdictAt_grants {p : Perms T R A} (hp : grantsOnly p) (n : Nat) (t : T) (r : R) (a : A) :\n    verdictAt p n t r a = if p.any (fun e => e.1.covers t r a && e.1.rank == n) then some true else none := by\n  simp only [verdictAt]\n  by_cases h : p.any (fun e => e.1.covers t r a && e.1.rank == n) = true\n  · obtain ⟨e, he, hc⟩ := List.any_eq_true.mp h\n    have hne : ((p.filter fun e => e.1.covers t r a && e.1.rank == n).map (·.2)) ≠ [] :=\n      List.ne_nil_of_mem (List.mem_map_of_mem (List.mem_filter.mpr ⟨he, hc⟩))\n    have hall : ∀ x ∈ ((p.filter fun e => e.1.covers t r a && e.1.rank == n).map (·.2)), x = true := by\n      intro x hx\n      obtain ⟨e', he', rfl⟩ := List.mem_map.mp hx\n      exact hp e' (List.mem_filter.mp he').1\n    have : ((p.filter fun e => e.1.covers t r a && e.1.rank == n).map (·.2)).isEmpty = false := by\n      simpa using hne\n    simp only [this, Bool.false_eq_true, ite_false, h, ite_true, all_id_of_forall hne hall]\n  · have : (p.filter fun e => e.1.covers t r a && e.1.rank == n) = [] := by\n      apply List.eq_nil_iff_forall_not_mem.mpr\n      intro e he\n      exact h (List.any_eq_true.mpr ⟨e, (List.mem_filter.mp he).1, (List.mem_filter.mp he).2⟩)\n    simp [this, h]\n\n/-- In a set of grants, a request is allowed when some key applies to it. -/\ntheorem allows_grants {p : Perms T R A} (hp : grantsOnly p) (t : T) (r : R) (a : A) :\n    allows p t r a = p.any (fun e => e.1.covers t r a) := by\n  have hrank : ∀ e : Key T R A × Bool, e.1.covers t r a = true →\n      e.1.rank = 0 ∨ e.1.rank = 1 ∨ e.1.rank = 2 := by\n    intro e _; have := e.1.rank_le; omega\n  simp only [allows, verdictAt_grants hp]\n  apply Bool.eq_iff_iff.mpr\n  constructor\n  · intro h\n    split at h <;> (try split at h) <;> simp_all <;> grind\n  · intro h\n    obtain ⟨e, he, hc⟩ := List.any_eq_true.mp h\n    rcases hrank e hc with h0 | h1 | h2\n    · split <;> (try split) <;> simp_all <;> grind\n    · split <;> (try split) <;> simp_all <;> grind\n    · split <;> (try split) <;> simp_all <;> grind",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`grantsOnly` is a `Prop`, a statement, rather than a `Bool`: it is used in hypotheses, not computed. `grind` is a tactic that collects the facts in sight and searches for a contradiction or a proof among them; here it finishes the cases `split` leaves.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Compression, modeled",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The model follows the code. `g r a` is what the set allows the tenant; `missing` finds a cell it does not allow, if there is one, which is how the model asks the code's question \"is everything allowed?\" (the answer is yes when nothing is missing):",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- Whether every action on r is allowed. -/\ndef fullRow (g : R → A → Bool) (as : List A) (r : R) : Bool := as.all (g r)\n/-- Whether a is allowed on every resource. -/\ndef fullCol (g : R → A → Bool) (rs : List R) (a : A) : Bool := rs.all (g · a)\n\n/-- A cell that is not allowed, if there is one. -/\ndef missing (g : R → A → Bool) (rs : List R) (as : List A) : Option (R × A) :=\n  (rs.flatMap fun r => as.map fun a => (r, a)).find? fun c => !g c.1 c.2\n\n/-- Tenant t's keys: everything at once if it can, else whole rows, whole columns, and the cells\n    left over. -/\ndef compressFor (g : R → A → Bool) (t : T) (rs : List R) (as : List A) : List (Key T R A) :=\n  if rs.isEmpty || as.isEmpty then [] else\n  match missing g rs as with\n  | none => [⟨t, .any, .any⟩]\n  | some _ =>\n    (rs.filter (fullRow g as)).map (fun r => ⟨t, .is r, .any⟩)\n    ++ (as.filter (fullCol g rs)).map (fun a => ⟨t, .any, .is a⟩)\n    ++ (rs.filter (fun r => !fullRow g as r)).flatMap (fun r =>\n          (as.filter (fun a => g r a && !fullCol g rs a)).map (fun a => ⟨t, .is r, .is a⟩))\n\n/-- The set sent to the browser: each tenant's keys, as grants. -/\ndef compress (p : Perms T R A) (ts : List T) (rs : List R) (as : List A) : Perms T R A :=\n  (ts.flatMap fun t => compressFor (allows p t) t rs as).map (·, true)\n\n#eval showPerms (compress admin tenants resources actions)\n#eval showPerms (compress editor tenants resources actions)",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The model compresses `p` directly, reading it through `allows p t`; the code compresses the expanded set, which lesson 4 proved means the same on the universe. `admin` comes back as one key. `editor` comes back as four: every action on documents, invoices and reports, and reading on everything, users included.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Smallest among what?",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The code promises the result is as small as possible. Try a role with a deny:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "def blocked : Perms Tenant Res Act := [(⟨.t1, .any, .any⟩, true), (⟨.t1, .is .doc, .is .delete⟩, false)]\n\n#eval showPerms (compress blocked tenants resources actions)",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> Two keys went in and five came out. `blocked` says the same thing in two keys, using a deny, which compression never writes. \"As small as possible\" is true only as \"as small as any set of *grants*\", and the frontend's `can` depends on that (lesson 7). An unqualified promise is often true of a smaller class than it says; the model makes you name the class.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The next lesson proves the qualified promise. This one proves the other: nothing is lost.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Nothing is lost",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem missing_none {R A : Type} {g : R → A → Bool} {rs : List R} {as : List A} (h : missing g rs as = none) :\n    ∀ r ∈ rs, ∀ a ∈ as, g r a = true := by\n  intro r hr a ha\n  have := List.find?_eq_none.mp h (r, a) (List.mem_flatMap.mpr ⟨r, hr, List.mem_map.mpr ⟨a, ha, rfl⟩⟩)\n  simpa using this\n\ntheorem missing_some {R A : Type} {g : R → A → Bool} {rs : List R} {as : List A} {c : R × A}\n    (h : missing g rs as = some c) : c.1 ∈ rs ∧ c.2 ∈ as ∧ g c.1 c.2 = false := by\n  have hm := List.mem_of_find?_eq_some h\n  have hp := List.find?_some h\n  obtain ⟨r, hr, hc⟩ := List.mem_flatMap.mp hm\n  obtain ⟨a, ha, rfl⟩ := List.mem_map.mp hc\n  simp_all\n\n/-- Tenant t's keys reach exactly what g allows. -/\ntheorem compressFor_covers (g : R → A → Bool) (t : T) (rs : List R) (as : List A)\n    (r : R) (a : A) (hr : r ∈ rs) (ha : a ∈ as) :\n    (compressFor g t rs as).any (fun k => k.covers t r a) = g r a := by\n  have hrs : rs.isEmpty = false := by cases rs <;> simp_all\n  have has : as.isEmpty = false := by cases as <;> simp_all\n  apply Bool.eq_iff_iff.mpr\n  simp only [compressFor, hrs, has, Bool.or_false, Bool.false_eq_true, ite_false]\n  split\n  · rename_i hm\n    simp [Key.covers, Pat.hits, missing_none hm r hr a ha]\n  · simp only [List.any_append, List.any_map, Bool.or_eq_true, List.any_eq_true, List.mem_filter,\n      List.mem_flatMap, List.mem_map, Function.comp]\n    constructor\n    · rintro ((⟨r', ⟨hr', hf⟩, hc⟩ | ⟨a', ⟨ha', hf⟩, hc⟩) | ⟨k, ⟨r', ⟨hr', _⟩, a', ⟨ha', hg⟩, rfl⟩, hc⟩)\n      · simp [Key.covers, Pat.hits] at hc; subst hc\n        exact List.all_eq_true.mp hf a ha\n      · simp [Key.covers, Pat.hits] at hc; subst hc\n        exact List.all_eq_true.mp hf r hr\n      · simp [Key.covers, Pat.hits] at hc; obtain ⟨rfl, rfl⟩ := hc\n        simp at hg; exact hg.1\n    · intro hg\n      by_cases hfr : fullRow g as r = true\n      · exact Or.inl (Or.inl ⟨r, ⟨hr, hfr⟩, by simp [Key.covers, Pat.hits]⟩)\n      by_cases hfc : fullCol g rs a = true\n      · exact Or.inl (Or.inr ⟨a, ⟨ha, hfc⟩, by simp [Key.covers, Pat.hits]⟩)\n      · exact Or.inr ⟨⟨t, .is r, .is a⟩, ⟨r, ⟨hr, by simpa using hfr⟩, a, ⟨ha, by simp_all⟩, rfl⟩,\n          by simp [Key.covers, Pat.hits]⟩\n\ntheorem compressFor_tenant {T R A : Type} {g : R → A → Bool} {t : T} {rs : List R} {as : List A} {k : Key T R A}\n    (h : k ∈ compressFor g t rs as) : k.tenant = t := by\n  simp only [compressFor] at h\n  split at h\n  · simp at h\n  · split at h\n    · simp at h; subst h; rfl\n    · simp only [List.mem_append, List.mem_map, List.mem_filter, List.mem_flatMap] at h\n      rcases h with (⟨_, _, rfl⟩ | ⟨_, _, rfl⟩) | ⟨_, _, _, _, rfl⟩ <;> rfl\n\ntheorem compress_grants (p : Perms T R A) (ts : List T) (rs : List R) (as : List A) :\n    grantsOnly (compress p ts rs as) := by\n  intro e he\n  obtain ⟨_, _, rfl⟩ := List.mem_map.mp he\n  rfl\n\n/-- Nothing is lost: inside the universe, the compressed set allows what the original did. -/\ntheorem allows_compress (p : Perms T R A) (ts : List T) (rs : List R) (as : List A)\n    (t : T) (r : R) (a : A) (ht : t ∈ ts) (hr : r ∈ rs) (ha : a ∈ as) :\n    allows (compress p ts rs as) t r a = allows p t r a := by\n  rw [allows_grants (compress_grants p ts rs as), ← compressFor_covers (allows p t) t rs as r a hr ha]\n  apply Bool.eq_iff_iff.mpr\n  simp only [compress, List.any_map, List.any_eq_true, List.mem_flatMap, Function.comp]\n  constructor\n  · rintro ⟨k, ⟨t', _, hk⟩, hc⟩\n    have : t' = t := by\n      have := compressFor_tenant hk\n      simp [Key.covers] at hc; rw [← this]; exact hc.1.1\n    subst this\n    exact ⟨k, hk, hc⟩\n  · rintro ⟨k, hk, hc⟩\n    exact ⟨k, ⟨t, ht, hk⟩, hc⟩",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The heart is `compressFor_covers`, case by case as the code is. When nothing is missing, `*:*` reaches everything, and everything is allowed. Otherwise, a key that reaches the request is a full row, a full column or the request's own cell, and each says the request is allowed; the other way, an allowed request is in a full row, or a full column, or else it is a cell left over, which has a key of its own. `allows_compress` puts it together: compression writes only grants, so `allows_grants` applies, and the keys that reach tenant `t`'s requests are `t`'s own (`compressFor_tenant`).",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem allows_pipeline (p : Perms T R A) (ts : List T) (rs : List R) (as : List A) (t : T) (r : R) (a : A) (ht : t ∈ ts) (hr : r ∈ rs) (ha : a ∈ as) : allows (compress (expand p ts rs as) ts rs as) t r a = allows p t r a := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "The code compresses the *expanded* set. Prove that the two steps together lose nothing on the universe.",
+      "leanSolution": "  rw [allows_compress _ ts rs as t r a ht hr ha, allows_expand p ts rs as t r a ht hr ha]",
+      "hints": [
+        "Two theorems, one per step: `allows_compress`, then `allows_expand`.",
+        "`rw [allows_compress _ ts rs as t r a ht hr ha]` turns the left side into `allows (expand p ts rs as) t r a`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem compress_admin : compress admin tenants resources actions = [(⟨.t1, .any, .any⟩, true)] := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that full access to a tenant compresses back to one key.",
+      "leanSolution": "  decide",
+      "hints": [
+        "A statement about one value, which Lean can compute."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem compress_blocked_size : (compress blocked tenants resources actions).length = 5 := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that compression gives five keys for `blocked`, the two-key role with a deny.",
+      "leanSolution": "  decide",
+      "hints": [
+        "Compute it."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> A set of grants allows a request exactly when some key applies to it, which is all the frontend's check looks at. Compression, modeled after the code, is proved to lose nothing on the universe, and so is the code's pipeline, expansion then compression. \"As small as possible\" needed a qualifier: a deny can say in two keys what takes five grants.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The next lesson proves the qualified promise: no set of grants that means the same is smaller.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

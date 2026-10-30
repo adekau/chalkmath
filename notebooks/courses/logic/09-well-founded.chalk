@@ -204,6 +204,12 @@
       "type": "markdown",
       "showWork": false,
       "label": null
+    },
+    {
+      "src": "[Modeling a system in Lean](#course=modeling) puts this course's tools to work on a piece of real code: a permission system in TypeScript, its promises stated as theorems, and the case where the code breaks them.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
     }
   ],
   "scenes": []

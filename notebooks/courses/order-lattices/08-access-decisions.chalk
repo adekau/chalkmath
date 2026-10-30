@@ -199,6 +199,12 @@
       "type": "markdown",
       "showWork": false,
       "label": null
+    },
+    {
+      "src": "> [!note] A whole permission system\n> [Modeling a system in Lean](#course=modeling) models a permission system whose keys have wildcards, where more specific keys win. Two equally specific keys that disagree need a combining rule like these, and it takes deny-overrides.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
     }
   ],
   "scenes": []

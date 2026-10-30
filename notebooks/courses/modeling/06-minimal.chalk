@@ -1,0 +1,151 @@
+{
+  "chalk": 1,
+  "name": "06-minimal.chalk",
+  "cells": [
+    {
+      "src": "As small as it can be",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> State precisely what \"the compressed set is as small as it can be\" means, and prove it.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Lesson 5 found the class: sets of grants. The promise, made precise: if `q` is any set of grants that allows the same requests as `p` on the universe, then `compress p` has no more keys than `q`. Written in Lean, it is the theorem this lesson ends on:\n\n```lean\ntheorem compress_minimal (p q : Perms T R A) (ts : List T) (rs : List R) (as : List A)\n    (hts : ts.Nodup) (hrs : rs.Nodup) (has : as.Nodup) (hq : grantsOnly q)\n    (agree : ∀ t ∈ ts, ∀ r ∈ rs, ∀ a ∈ as, allows q t r a = allows p t r a) :\n    (compress p ts rs as).length ≤ q.length\n```\n\nIt has a hypothesis the code never mentions: `ts.Nodup`, `rs.Nodup`, `as.Nodup`, the universe lists name nothing twice.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "#eval showPerms (compress editor tenants [.doc, .invoice, .doc, .user, .report] actions)",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "With `doc` listed twice, `\"tenant1-doc:*\"` is written twice: the code writes `out[key]` twice, harmlessly, but a list keeps both. Where the universe comes from (a config file, a database query with a join) decides whether this hypothesis holds, and the theorem says it matters.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The argument",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Fix a tenant whose cells are not all allowed (otherwise compression writes one key, and `q` has at least one). Let $(r_0, a_0)$ be a cell that is not allowed, the one `missing` finds. No key of `q` applies to it, so `q` has no `*:*` key, no column key for $a_0$ and no row key for $r_0$. Now take each kind of key compression writes, and find a key of `q` that must be there:\n\n- **A full row** $r$, `\"t-r:*\"`. The cell $(r, a_0)$ is allowed, so some key of `q` applies to it. Not one with resource `*`: it would apply to $(r_0, a_0)$ too. So it is `\"t-r:*\"` or `\"t-r:a₀\"`.\n- **A full column** $a$, `\"t-*:a\"`. Likewise, the cell $(r_0, a)$: the key of `q` is `\"t-*:a\"` or `\"t-r₀:a\"`.\n- **A cell left over**, $(r, a)$, in no full row and no full column. A key of `q` applies to it. If its resource were `*`, column $a$ would be full; if its action were `*`, row $r$ would be full. So it is `\"t-r:a\"` itself.\n\nEach key compression writes has a key of `q` that pays for it, and no key of `q` pays for two: `\"t-r:a₀\"` pays for row $r$ (its row is full), `\"t-r₀:a\"` for column $a$ (row $r_0$ is not full), and any other cell key for itself. The function that says which key a key of `q` pays for is `charge`. If every key compression writes is the charge of some key of `q`, and compression writes no key twice, it writes at most as many keys as `q` has.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Counting by paying\n> To show a list is no longer than another, find for each of its elements one of the other's that pays for it, no one paying twice. In Lean: a list without repeats whose members are all in a second list is no longer than it. That is `length_le_of_subset`.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- A list without repeats is no longer than any list holding all its members. -/\ntheorem length_le_of_subset {α : Type} [DecidableEq α] {l m : List α} (hl : l.Nodup)\n    (h : ∀ x ∈ l, x ∈ m) : l.length ≤ m.length := by\n  induction l generalizing m with\n  | nil => simp\n  | cons x xs ih =>\n    obtain ⟨hnx, hxs⟩ := List.nodup_cons.mp hl\n    have hx : x ∈ m := h x (by simp)\n    have hle : xs.length ≤ (m.erase x).length :=\n      ih hxs fun y hy => (List.mem_erase_of_ne (by rintro rfl; exact hnx hy)).mpr (h y (by simp [hy]))\n    rw [List.length_erase_of_mem hx] at hle\n    have := List.length_pos_of_mem hx\n    simp only [List.length_cons]\n    omega",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Induction on `l`, for every `m` (`generalizing m`): `x` is in `m`; the rest of `l` has no `x`, so it is in `m` with `x` removed (`m.erase x`), one shorter. Then the charge:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- In a set of grants, a key that applies to a request allows it. -/\ntheorem allows_of_covers {q : Perms T R A} (hq : grantsOnly q) {e : Key T R A × Bool} (he : e ∈ q)\n    {t : T} {r : R} {a : A} (hc : e.1.covers t r a = true) : allows q t r a = true := by\n  rw [allows_grants hq]\n  exact List.any_eq_true.mpr ⟨e, he, hc⟩\n\n/-- Which of compressFor's keys a grant k of another set pays for. -/\ndef charge (g : R → A → Bool) (rs : List R) (as : List A) (k : Key T R A) : Key T R A :=\n  match missing g rs as with\n  | none => ⟨k.tenant, .any, .any⟩\n  | some (r₀, a₀) =>\n    match k.res, k.act with\n    | .is r, .is a =>\n      if fullRow g as r && a == a₀ then ⟨k.tenant, .is r, .any⟩\n      else if fullCol g rs a && r == r₀ then ⟨k.tenant, .any, .is a⟩\n      else k\n    | _, _ => k",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The proof that every key compression writes is paid for follows the argument's three cases; each `cases` on a key's resource and action rules out the shapes the argument ruled out, with `allowed` (what a key of `q` allows, `g` allows) and the missing cell. It is long because there are many shapes, not because any step is hard: read the comments and one case.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- Every key compressFor writes is paid for by a grant of any set of grants that means the same. -/\ntheorem compressFor_paid (g : R → A → Bool) (t : T) (rs : List R) (as : List A)\n    (q : Perms T R A) (hq : grantsOnly q) (agree : ∀ r ∈ rs, ∀ a ∈ as, allows q t r a = g r a)\n    (c : Key T R A) (hc : c ∈ compressFor g t rs as) :\n    ∃ e ∈ q, e.1.tenant = t ∧ charge g rs as e.1 = c := by\n  -- a grant of q that applies to an allowed cell of the universe\n  have grant : ∀ r ∈ rs, ∀ a ∈ as, g r a = true →\n      ∃ e ∈ q, e.1.tenant = t ∧ e.1.res.hits r = true ∧ e.1.act.hits a = true := by\n    intro r hr a ha hg\n    rw [← agree r hr a ha, allows_grants hq] at hg\n    obtain ⟨e, he, hc⟩ := List.any_eq_true.mp hg\n    simp only [Key.covers, Bool.and_eq_true, beq_iff_eq] at hc\n    exact ⟨e, he, hc.1.1, hc.1.2, hc.2⟩\n  -- and what such a grant allows, g allows\n  have allowed : ∀ e ∈ q, e.1.tenant = t → ∀ r ∈ rs, ∀ a ∈ as,\n      e.1.res.hits r = true → e.1.act.hits a = true → g r a = true := by\n    intro e he het r hr a ha h1 h2\n    rw [← agree r hr a ha]\n    exact allows_of_covers hq he (by simp [Key.covers, het, h1, h2])\n  simp only [compressFor] at hc\n  split at hc\n  · simp at hc\n  · rename_i hne\n    have hrs : rs ≠ [] := by intro h; simp [h] at hne\n    have has : as ≠ [] := by intro h; simp [h] at hne\n    split at hc\n    · -- everything allowed: one key, *:*, paid for by any grant of the tenant\n      rename_i hm\n      simp only [List.mem_singleton] at hc; subst hc\n      obtain ⟨r, hr⟩ := List.exists_mem_of_ne_nil rs hrs\n      obtain ⟨a, ha⟩ := List.exists_mem_of_ne_nil as has\n      obtain ⟨e, he, het, -, -⟩ := grant r hr a ha (missing_none hm r hr a ha)\n      exact ⟨e, he, het, by simp [charge, hm, het]⟩\n    · -- (r₀, a₀) is not allowed\n      rename_i c₀ hm\n      obtain ⟨r₀, a₀⟩ := c₀\n      obtain ⟨hr₀, ha₀, hg₀⟩ := missing_some hm\n      simp only at hr₀ ha₀ hg₀\n      have hfr₀ : fullRow g as r₀ = false := by\n        apply Bool.eq_false_iff.mpr; intro h\n        have := List.all_eq_true.mp h a₀ ha₀; simp_all\n      simp only [List.mem_append, List.mem_map, List.mem_filter, List.mem_flatMap] at hc\n      rcases hc with (⟨r, ⟨hr, hfr⟩, rfl⟩ | ⟨a, ⟨ha, hfc⟩, rfl⟩) | ⟨r, ⟨hr, hfr⟩, a, ⟨ha, hga⟩, rfl⟩\n      · -- a full row r: the grant that allows (r, a₀)\n        obtain ⟨⟨⟨t', res, act⟩, v⟩, he, het, h1, h2⟩ := grant r hr a₀ ha₀ (List.all_eq_true.mp hfr a₀ ha₀)\n        simp only at het h1 h2; subst het\n        refine ⟨_, he, rfl, ?_⟩\n        cases res with\n        | any =>\n          have := allowed _ he rfl r₀ hr₀ a₀ ha₀ rfl h2\n          simp_all\n        | is r' =>\n          simp only [Pat.hits, beq_iff_eq] at h1; subst h1\n          cases act with\n          | any => simp [charge, hm]\n          | is a' =>\n            simp only [Pat.hits, beq_iff_eq] at h2; subst h2\n            simp [charge, hm, hfr]\n      · -- a full column a: the grant that allows (r₀, a)\n        obtain ⟨⟨⟨t', res, act⟩, v⟩, he, het, h1, h2⟩ := grant r₀ hr₀ a ha (List.all_eq_true.mp hfc r₀ hr₀)\n        simp only at het h1 h2; subst het\n        refine ⟨_, he, rfl, ?_⟩\n        cases act with\n        | any =>\n          have := allowed _ he rfl r₀ hr₀ a₀ ha₀ h1 rfl\n          simp_all\n        | is a' =>\n          simp only [Pat.hits, beq_iff_eq] at h2; subst h2\n          cases res with\n          | any => simp [charge, hm]\n          | is r' =>\n            simp only [Pat.hits, beq_iff_eq] at h1; subst h1\n            simp [charge, hm, hfr₀, hfc]\n      · -- a cell left over: only the grant of that very cell allows it\n        simp only [Bool.and_eq_true, Bool.not_eq_true'] at hga hfr\n        obtain ⟨hg, hfc⟩ := hga\n        obtain ⟨⟨⟨t', res, act⟩, v⟩, he, het, h1, h2⟩ := grant r hr a ha hg\n        simp only at het h1 h2; subst het\n        refine ⟨_, he, rfl, ?_⟩\n        cases res with\n        | any =>\n          cases act with\n          | any =>\n            have := allowed _ he rfl r₀ hr₀ a₀ ha₀ rfl rfl\n            simp_all\n          | is a' =>\n            simp only [Pat.hits, beq_iff_eq] at h2; subst h2\n            have : fullCol g rs a' = true :=\n              List.all_eq_true.mpr fun r' hr' => allowed _ he rfl r' hr' a' ha rfl (by simp [Pat.hits])\n            simp_all\n        | is r' =>\n          simp only [Pat.hits, beq_iff_eq] at h1; subst h1\n          cases act with\n          | any =>\n            have : fullRow g as r' = true :=\n              List.all_eq_true.mpr fun a' ha' => allowed _ he rfl r' hr a' ha' (by simp [Pat.hits]) rfl\n            simp_all\n          | is a' =>\n            simp only [Pat.hits, beq_iff_eq] at h2; subst h2\n            simp [charge, hm, hfr, hfc]",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Last, the hypothesis the argument needed of compression itself: it writes no key twice, given a universe without repeats. Rows, columns and cells each come from a list without repeats, and keys of different kinds differ in where their `*` is.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- compressFor writes no key twice. -/\ntheorem compressFor_nodup {T R A : Type} (g : R → A → Bool) (t : T) (rs : List R) (as : List A)\n    (hrs : rs.Nodup) (has : as.Nodup) : (compressFor g t rs as).Nodup := by\n  simp only [compressFor]\n  split\n  · exact List.nodup_nil\n  · split\n    · simp\n    · have h1 : ((rs.filter (fullRow g as)).map fun r => (⟨t, .is r, .any⟩ : Key T R A)).Nodup :=\n        List.pairwise_map.mpr ((hrs.filter _).imp fun hne heq => hne (by simpa using heq))\n      have h2 : ((as.filter (fullCol g rs)).map fun a => (⟨t, .any, .is a⟩ : Key T R A)).Nodup :=\n        List.pairwise_map.mpr ((has.filter _).imp fun hne heq => hne (by simpa using heq))\n      have h3 : ((rs.filter fun r => !fullRow g as r).flatMap fun r =>\n          (as.filter fun a => g r a && !fullCol g rs a).map fun a => (⟨t, .is r, .is a⟩ : Key T R A)).Nodup := by\n        refine List.pairwise_flatMap.mpr ⟨fun r _ => ?_, (hrs.filter _).imp fun hne x hx y hy heq => ?_⟩\n        · exact List.pairwise_map.mpr ((has.filter _).imp fun hne heq => hne (by simpa using heq))\n        · simp only [List.mem_map] at hx hy\n          obtain ⟨_, _, rfl⟩ := hx; obtain ⟨_, _, rfl⟩ := hy\n          simp at heq; exact hne heq.1\n      rw [List.nodup_append, List.nodup_append]\n      refine ⟨⟨h1, h2, ?_⟩, h3, ?_⟩\n      · intro x hx y hy\n        simp only [List.mem_map] at hx hy\n        obtain ⟨_, _, rfl⟩ := hx; obtain ⟨_, _, rfl⟩ := hy; simp\n      · intro x hx y hy\n        simp only [List.mem_append, List.mem_map, List.mem_flatMap] at hx hy\n        obtain ⟨_, _, _, _, rfl⟩ := hy\n        rcases hx with ⟨_, _, rfl⟩ | ⟨_, _, rfl⟩ <;> simp",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The pieces are proved; the exercises put them together, first for one tenant, then for the whole set.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem compressFor_minimal (g : R → A → Bool) (t : T) (rs : List R) (as : List A) (hrs : rs.Nodup) (has : as.Nodup) (q : Perms T R A) (hq : grantsOnly q) (agree : ∀ r ∈ rs, ∀ a ∈ as, allows q t r a = g r a) : (compressFor g t rs as).length ≤ q.length := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that one tenant's compressed keys are no more than the keys of any set of grants that means the same for that tenant.",
+      "leanSolution": "  have hsub : ∀ c ∈ compressFor g t rs as, c ∈ q.map fun e => charge g rs as e.1 := by\n    intro c hc\n    obtain ⟨e, he, -, hch⟩ := compressFor_paid g t rs as q hq agree c hc\n    exact List.mem_map.mpr ⟨e, he, hch⟩\n  have := length_le_of_subset (compressFor_nodup g t rs as hrs has) hsub\n  simpa using this",
+      "leanStart": "  have hsub : ∀ c ∈ compressFor g t rs as, c ∈ q.map fun e => charge g rs as e.1 := by\n    sorry\n  sorry",
+      "hints": [
+        "Use `length_le_of_subset` with `m` the charges of `q`'s keys: `q.map fun e => charge g rs as e.1`, which is as long as `q`.",
+        "Its first hypothesis is `compressFor_nodup`. For the second, each `c` has a paying key by `compressFor_paid`: `obtain ⟨e, he, -, hch⟩ := compressFor_paid g t rs as q hq agree c hc`, and `List.mem_map.mpr ⟨e, he, hch⟩`.",
+        "`length_le_of_subset` then gives `… ≤ (q.map _).length`; `simpa using this` rewrites the length of a `map`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem compress_minimal (p q : Perms T R A) (ts : List T) (rs : List R) (as : List A) (hts : ts.Nodup) (hrs : rs.Nodup) (has : as.Nodup) (hq : grantsOnly q) (agree : ∀ t ∈ ts, ∀ r ∈ rs, ∀ a ∈ as, allows q t r a = allows p t r a) : (compress p ts rs as).length ≤ q.length := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove the promise: the set compression sends is as small as any set of grants that allows the same requests on the universe. A key of `q` now pays with the charge of its own tenant: `charge (allows p e.1.tenant) rs as e.1`.",
+      "leanSolution": "  have hnodup : (ts.flatMap fun t => compressFor (allows p t) t rs as).Nodup := by\n    simp only [List.Nodup, List.pairwise_flatMap]\n    refine ⟨fun t _ => compressFor_nodup _ t rs as hrs has, hts.imp ?_⟩\n    intro t₁ t₂ hne x hx y hy hxy\n    subst hxy\n    exact hne ((compressFor_tenant hx).symm.trans (compressFor_tenant hy))\n  have hsub : ∀ c ∈ ts.flatMap (fun t => compressFor (allows p t) t rs as),\n      c ∈ q.map fun e => charge (allows p e.1.tenant) rs as e.1 := by\n    intro c hc\n    obtain ⟨t, ht, hc⟩ := List.mem_flatMap.mp hc\n    obtain ⟨e, he, het, hch⟩ := compressFor_paid (allows p t) t rs as q hq (agree t ht) c hc\n    exact List.mem_map.mpr ⟨e, he, by rw [het]; exact hch⟩\n  have := length_le_of_subset hnodup hsub\n  simpa [compress] using this",
+      "leanStart": "  have hnodup : (ts.flatMap fun t => compressFor (allows p t) t rs as).Nodup := by\n    sorry\n  have hsub : ∀ c ∈ ts.flatMap (fun t => compressFor (allows p t) t rs as),\n      c ∈ q.map fun e => charge (allows p e.1.tenant) rs as e.1 := by\n    sorry\n  have := length_le_of_subset hnodup hsub\n  simpa [compress] using this",
+      "hints": [
+        "The same shape as `compressFor_minimal`, for the list of all tenants' keys, `ts.flatMap fun t => compressFor (allows p t) t rs as` (`compress` pairs each with `true`, which does not change the length).",
+        "No repeats: within a tenant by `compressFor_nodup`; across two tenants, a key's tenant is the one it was written for (`compressFor_tenant`). `List.pairwise_flatMap` splits `Nodup` of a `flatMap` into those two parts.",
+        "Paying: a `c` in the list comes from some `t ∈ ts` (`List.mem_flatMap.mp`); `compressFor_paid` gives `e` with `e.1.tenant = t`, and rewriting with that makes its charge the right one."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> \"Minimal\" became a theorem with every word pinned down: among sets of grants, meaning the same on the universe, for a universe that names nothing twice. The proof counts by paying: a cell that is not allowed rules out the broad keys, so each key compression writes forces a different key into any other set that means the same. Neither the class nor the hypothesis on the universe was in the code's comment.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "What is sent is right and small. The next lesson follows it into the page.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}
