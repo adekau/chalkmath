@@ -1,0 +1,213 @@
+{
+  "chalk": 1,
+  "name": "08-capstone.chalk",
+  "cells": [
+    {
+      "src": "Capstone: the code against the model",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Model a loop exactly as the code runs it, compare it with the specification, find the input where they part, fix the code, and prove the fixed code meets the specification for every input.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Lesson 4 specified what expanding should compute. Here is the loop again:\n\n```ts\nconst wildcards = (key: string) => (key.match(/\\*/g) ?? []).length;\n\n/** Every key written out: a * becomes every name the universe has. */\nfunction expand(perms: Permissions, u: Universe): Permissions {\n  const out: Permissions = {};\n  // most wildcards first: a more specific key overwrites a broader one\n  const entries = Object.entries(perms)\n    .sort(([a], [b]) => wildcards(b) - wildcards(a));\n  for (const [key, allowed] of entries) {\n    const { tenant, resource, action } = parseKey(key);\n    for (const r of resource === \"*\" ? u.resources : [resource])\n      for (const a of action === \"*\" ? u.actions : [action])\n        out[`${tenant}-${r}:${a}`] = allowed;\n  }\n  return out;\n}\n```",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "To compare it with the specification, model what it does, step for step: the sort, the two loops, and the object it writes into. A model of code rests on assumptions about the language, and each one belongs in writing:\n\n- `Array.prototype.sort` is **stable**: entries that compare equal keep their order. JavaScript has promised that since ES2019.\n- An object's keys come back from `Object.entries` in the order they were first written, for keys like these that do not look like whole numbers.\n- `out[key] = v` for a key already there replaces its value; `out[key]` for a key never written is `undefined`.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- The cells an entry writes: a * becomes every name the frontend knows. -/\ndef cells (rs : List R) (as : List A) (k : Key T R A) : List (Key T R A) :=\n  let rs' := match k.res with | .any => rs | .is r => [r]\n  let as' := match k.act with | .any => as | .is a => [a]\n  rs'.flatMap fun r => as'.map fun a => ⟨k.tenant, .is r, .is a⟩\n\n/-- out[key] = allowed for each of an entry's cells: the newest write goes in front. -/\ndef writeEntry (rs : List R) (as : List A) (out : Perms T R A) (e : Key T R A × Bool) : Perms T R A :=\n  (cells rs as e.1).foldl (fun o k => (k, e.2) :: o) out\n\n/-- out[key]: the newest write, or nothing (undefined). -/\ndef lookup (out : Perms T R A) (k : Key T R A) : Option Bool :=\n  (out.find? (·.1 == k)).map (·.2)\n\n/-- The code's sort: most *s first, entries with as many in the order they came (a stable sort by a\n    rank of 0, 1 or 2 is these three filters). -/\ndef sortTS (p : Perms T R A) : Perms T R A :=\n  p.filter (·.1.rank == 0) ++ p.filter (·.1.rank == 1) ++ p.filter (·.1.rank == 2)\n\n/-- The code's expand, step for step. -/\ndef expandTS (p : Perms T R A) (rs : List R) (as : List A) : Perms T R A :=\n  (sortTS p).foldl (writeEntry rs as) []\n\n/-- What the page asks of an expanded set: out[key] === true. -/\ndef canTS (out : Perms T R A) (t : T) (r : R) (a : A) : Bool :=\n  lookup out ⟨t, .is r, .is a⟩ == some true",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`List.foldl` is the `for` loop: it starts from `[]`, the empty object, and runs `writeEntry` on each entry in turn. The object is a list with the newest write in front, and `lookup` finds the first, so a later write hides an earlier one, as replacing a value would. A stable sort by a rank that is 0, 1 or 2 is exactly the three filters in order: that is the first assumption, written as a definition.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Two equal roles, two answers",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Lesson 2's question comes back: a row and a column of the same rank that disagree. The sort puts them together, in the order the object had them, and the loop writes the later one last:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "def rowThenCol : Perms Tenant Res Act := [(⟨.t1, .is .doc, .any⟩, false), (⟨.t1, .any, .is .read⟩, true)]\ndef colThenRow : Perms Tenant Res Act := [(⟨.t1, .any, .is .read⟩, true), (⟨.t1, .is .doc, .any⟩, false)]\n\n#eval canTS (expandTS rowThenCol resources actions) .t1 .doc .read\n#eval canTS (expandTS colThenRow resources actions) .t1 .doc .read\n#eval allows rowThenCol .t1 .doc .read\n\n/-- The same entries in another order, another answer. -/\nexample : canTS (expandTS rowThenCol resources actions) .t1 .doc .read ≠\n    canTS (expandTS colThenRow resources actions) .t1 .doc .read := by decide",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> `{ \"tenant1-doc:*\": false, \"tenant1-*:Read\": true }` and the same two keys the other way round are the same role, and the code lets tenant1 read documents under one and not the other. The order of an object's keys is whatever produced it: the order a role editor saved them in, or the JSON the server sent. No test that builds its roles in one order finds this. The model found it by comparing the code with a specification that had to answer the question.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The fix is one comparison more in the sort. With as many `*`s, grants first and denies after them, so that a deny is written last and wins the tie, as the specification says:\n\n```ts\n  // most wildcards first; with as many, grants before denies,\n  // so that a deny is written last and wins a tie\n  const entries = Object.entries(perms).sort(([a, x], [b, y]) =>\n    wildcards(b) - wildcards(a) || Number(y) - Number(x));\n```",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- The fix: at each rank, the grants before the denies, so a deny is written last. -/\ndef sortFixed (p : Perms T R A) : Perms T R A :=\n  [0, 1, 2].flatMap fun n => p.filter (fun e => e.1.rank == n && e.2) ++ p.filter (fun e => e.1.rank == n && !e.2)\n\ndef expandFixed (p : Perms T R A) (rs : List R) (as : List A) : Perms T R A :=\n  (sortFixed p).foldl (writeEntry rs as) []\n\nexample : canTS (expandFixed rowThenCol resources actions) .t1 .doc .read = false := by decide\nexample : canTS (expandFixed colThenRow resources actions) .t1 .doc .read = false := by decide",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Two examples are not a proof. The rest of the lesson proves that the fixed loop computes `allows`, for every role and every request in the universe.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The loop, in the model's words",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "First, what the loop leaves in `out`: for a cell of the universe, the value of the *last* entry that applies to it, in the order the loop runs, or nothing if none does.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- What the last entry that applies to the request says, if one does. -/\ndef lastSays (t : T) (r : R) (a : A) : Perms T R A → Option Bool\n  | [] => none\n  | e :: p => (lastSays t r a p).or (if e.1.covers t r a then some e.2 else none)\n\ntheorem lookup_writes (ks : List (Key T R A)) (v : Bool) (out : Perms T R A) (c : Key T R A) :\n    lookup (ks.foldl (fun o k => (k, v) :: o) out) c = if c ∈ ks then some v else lookup out c := by\n  induction ks generalizing out with\n  | nil => simp\n  | cons k ks ih =>\n    simp only [List.foldl_cons, ih, List.mem_cons]\n    by_cases h1 : c ∈ ks\n    · simp [h1]\n    · by_cases h2 : c = k\n      · subst h2; simp [lookup]\n      · have : (k == c) = false := by simp; exact fun h => h2 h.symm\n        simp [h1, h2, lookup, this]\n\ntheorem mem_cells (rs : List R) (as : List A) (k : Key T R A) (t : T) (r : R) (a : A)\n    (hr : r ∈ rs) (ha : a ∈ as) : (⟨t, .is r, .is a⟩ : Key T R A) ∈ cells rs as k ↔ k.covers t r a = true := by\n  obtain ⟨t', res, act⟩ := k\n  cases res <;> cases act <;> simp only [cells, Key.covers, Pat.hits, List.mem_flatMap, List.mem_map,\n    List.mem_singleton, Key.mk.injEq, Pat.is.injEq, Bool.and_eq_true, beq_iff_eq] <;> grind\n\ntheorem lookup_expand (L out : Perms T R A) (rs : List R) (as : List A) (t : T) (r : R) (a : A)\n    (hr : r ∈ rs) (ha : a ∈ as) :\n    lookup (L.foldl (writeEntry rs as) out) ⟨t, .is r, .is a⟩ = (lastSays t r a L).or (lookup out ⟨t, .is r, .is a⟩) := by\n  induction L generalizing out with\n  | nil => simp [lastSays]\n  | cons e L ih =>\n    simp only [List.foldl_cons, ih, writeEntry, lookup_writes, mem_cells rs as e.1 t r a hr ha, lastSays]\n    cases lastSays t r a L <;> by_cases h : e.1.covers t r a = true <;> simp [h]",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`x.or y` is `x` if it is a value, else `y`. `lookup_writes` is one entry's inner loops: after writing `v` to each key of `ks`, a key reads `v` if it was one of them. `mem_cells` says an entry writes a cell of the universe exactly when it applies to it, the place where the `*`s meet the universe. `lookup_expand` is the whole loop, by induction on the entries.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The sorted order, in the model's words",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The fixed sort is six filters in a row. The last entry that applies, in a list made of pieces, is in the last piece that has one; and in a piece whose entries all say the same, it says that:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem lastSays_append (p q : Perms T R A) (t : T) (r : R) (a : A) :\n    lastSays t r a (p ++ q) = (lastSays t r a q).or (lastSays t r a p) := by\n  induction p with\n  | nil => simp [lastSays]\n  | cons e p ih => simp [lastSays, ih, Option.or_assoc]\n\ntheorem lastSays_filter (p : Perms T R A) (f : Key T R A × Bool → Bool) (v : Bool)\n    (hv : ∀ e ∈ p, f e = true → e.2 = v) (t : T) (r : R) (a : A) :\n    lastSays t r a (p.filter f) = if p.any (fun e => e.1.covers t r a && f e) then some v else none := by\n  induction p with\n  | nil => rfl\n  | cons e p ih =>\n    have ih := ih (fun e' h' => hv e' (by simp [h']))\n    by_cases hf : f e = true\n    · have he := hv e (by simp) hf\n      simp only [List.filter_cons, hf, ite_true, lastSays, ih, List.any_cons, he]\n      by_cases hc : e.1.covers t r a = true <;> by_cases hp : (p.any fun e => e.1.covers t r a && f e) = true <;> simp [hc, hp]\n    · simp only [List.filter_cons, hf, Bool.false_eq_true, ite_false, ih, List.any_cons, Bool.and_false, Bool.false_or]",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "And the specification in the same words: at one rank, a deny that applies decides no; otherwise a grant that applies decides yes; otherwise the rank says nothing.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem verdictAt_split (p : Perms T R A) (n : Nat) (t : T) (r : R) (a : A) :\n    verdictAt p n t r a =\n      (if p.any (fun e => e.1.covers t r a && (e.1.rank == n && !e.2)) then some false else none).or\n        (if p.any (fun e => e.1.covers t r a && (e.1.rank == n && e.2)) then some true else none) := by\n  induction p with\n  | nil => rfl\n  | cons e p ih =>\n    rw [verdictAt_cons, ih]\n    obtain ⟨k, v⟩ := e\n    simp only [List.any_cons]\n    by_cases hF : (p.any fun e => e.1.covers t r a && (e.1.rank == n && !e.2)) = true <;>\n    by_cases hT : (p.any fun e => e.1.covers t r a && (e.1.rank == n && e.2)) = true <;>\n    by_cases hc : k.covers t r a = true <;> by_cases hn : (k.rank == n) = true <;> cases v <;>\n      simp [hF, hT, hc, hn]\n\ntheorem beq_some_true (o : Option Bool) : (o == some true) = o.getD false := by\n  rcases o with _ | _ | _ <;> rfl\n\ntheorem allows_eq_or (p : Perms T R A) (t : T) (r : R) (a : A) :\n    allows p t r a = (((verdictAt p 2 t r a).or (verdictAt p 1 t r a)).or (verdictAt p 0 t r a)).getD false := by\n  unfold allows\n  split <;> simp_all",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The fixed loop meets the specification",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Now the two sides are written in the same words, and the theorem is a matter of rewriting both into them:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- The fixed code computes what the role allows, for every role and every request in the universe. -/\ntheorem canTS_fixed (p : Perms T R A) (rs : List R) (as : List A) (t : T) (r : R) (a : A)\n    (hr : r ∈ rs) (ha : a ∈ as) : canTS (expandFixed p rs as) t r a = allows p t r a := by\n  have hF : ∀ n, ∀ e ∈ p, (e.1.rank == n && !e.2) = true → e.2 = false := by\n    intro n e _ h; simp at h; simp [h.2]\n  have hT : ∀ n, ∀ e ∈ p, (e.1.rank == n && e.2) = true → e.2 = true := by\n    intro n e _ h; simp at h; exact h.2\n  simp only [canTS, expandFixed, lookup_expand _ _ rs as t r a hr ha, sortFixed, List.flatMap_cons,\n    List.flatMap_nil, List.append_nil, lastSays_append, lastSays_filter _ _ _ (hF _), lastSays_filter _ _ _ (hT _),\n    allows_eq_or, verdictAt_split]\n  simp only [lookup, List.find?_nil, Option.map_none, Option.or_none]\n  exact beq_some_true _",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The loop's last write, through `lookup_expand`, is the last of the six pieces that has an entry applying to the request (`lastSays_append`), saying that piece's value (`lastSays_filter`): denies of rank 2, else grants of rank 2, else denies of rank 1, and so on down. That is `allows`, rank by rank through `verdictAt_split`. The original loop fails here at one point only: within a rank its entries are not split into grants and then denies, so `lastSays_filter` has no single value to say.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem expandTS_wrong : ¬ ∀ p : Perms Tenant Res Act, canTS (expandTS p resources actions) .t1 .doc .read = allows p .t1 .doc .read := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that the original loop does not meet the specification.",
+      "leanSolution": "  intro h\n  have := h rowThenCol\n  revert this\n  decide",
+      "hints": [
+        "One counterexample is enough; which of the two roles does the loop get wrong?",
+        "`intro h`, `have := h rowThenCol`, `revert this`, `decide`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem expandFixed_order (p q : Perms T R A) (h : ∀ e, e ∈ p ↔ e ∈ q) (rs : List R) (as : List A) (t : T) (r : R) (a : A) (hr : r ∈ rs) (ha : a ∈ as) : canTS (expandFixed p rs as) t r a = canTS (expandFixed q rs as) t r a := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that the fixed loop no longer depends on the order of a role's keys: two roles with the same entries expand to sets the page reads the same way.",
+      "leanSolution": "  rw [canTS_fixed p rs as t r a hr ha, canTS_fixed q rs as t r a hr ha, allows_sameMembers h]",
+      "hints": [
+        "No induction needed: two theorems of this course do it.",
+        "`canTS_fixed` turns each side into `allows`, and lesson 2's `allows_sameMembers` says `allows` ignores the order."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> The loop was modeled as it runs, with its assumptions about JavaScript written down. Compared with the specification, it parted from it on two equal roles written in different orders; the fix was one comparison in the sort, and the proof covers every role and every request in the universe. The proof is about the model of the code, so it is as good as the model: the assumptions are where to look if the code and the proof ever disagree.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The modeler's checklist",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "What this course did, as steps to take on the next system:\n\n1. **Write down the promises** the code makes, in words, before any Lean (lesson 1).\n2. **Decide what the model keeps**, and write down what it leaves out and what it assumes; the parsing rule was found there (lesson 1).\n3. **Specify the meaning independently of the code** under test, and let the function force every open question to an answer, such as a tie between equal keys (lesson 2).\n4. **Prove the model faithful** to what it represents, as order not mattering made a list an object (lesson 2).\n5. **State the guarantees as theorems**, and try to break each one; a counterexample is a result too (lesson 3).\n6. **Read every hypothesis** as a case the promise does not cover: the universe (lesson 4), the repeats (lesson 6).\n7. **Qualify the promises** until they are true: smallest among sets of grants (lessons 5 and 6).\n8. **Look for preconditions** a function relies on and its types do not carry, and the empty cases (lesson 7).\n9. **Model the code as it runs**, compare it with the specification, and prove the fix (lesson 8).",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

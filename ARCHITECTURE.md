@@ -830,7 +830,7 @@ language server answers LSP for Lean cells.
   and importing module m - 1, compiled to 32-bit oleans by the wasm Lean's command-line driver (the
   release's `lean-wasm-cli.tar.gz`; a native olean is a 64-bit memory image the browser's Lean cannot
   read). Each course's oleans are one pack (`lean/courses/<course>-<hash>.pack.gz`, the library's format,
-  named by its contents so the browser's HTTP cache keeps it; 4 MB for all seven), and
+  named by its contents so the browser's HTTP cache keeps it; 5.2 MB for all eight), and
   `lean/lean-courses.json` lists, for each module, the prelude it stands for (its length and a hash) and the
   scope that prelude leaves. A lesson's Lean file then starts with an import of the module holding the
   most of its prelude, the scope replayed (its namespaces, sections, `open`s, `variable`s: an import

@@ -1,0 +1,190 @@
+{
+  "chalk": 1,
+  "name": "07-template.chalk",
+  "cells": [
+    {
+      "src": "The check in the template",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Model the check the page runs, find the precondition it depends on and what breaks without it, and prove the whole path, from the role to what the page shows.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The browser gets the compressed set, and the directive asks it questions:\n\n```ts\n/** What the frontend asks of the set it was sent. */\nconst can = (perms: Permissions, t: string, r: string, a: string) =>\n  [`${t}-${r}:${a}`, `${t}-${r}:*`, `${t}-*:${a}`, `${t}-*:*`]\n    .some((k) => perms[k] === true);\n\n// *ifPermissions=\"doc; tenants: [tenant1]; actions: [Create]; match: any\"\nfunction ifPermissions(perms: Permissions, resource: string,\n    tenants: string[], actions: string[], match: \"any\" | \"all\"): boolean {\n  const pairs = tenants.flatMap((t) => actions.map((a) => [t, a] as const));\n  const allowed = ([t, a]: readonly [string, string]) =>\n    can(perms, t, resource, a);\n  return match === \"all\" ? pairs.every(allowed) : pairs.some(allowed);\n}\n```",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`can` looks for any of the four keys that could apply, and takes a `true` among them as a yes. In the model, that is: some key that applies says yes.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- The frontend's can: some key that applies to the request says yes. -/\ndef canWire (p : Perms T R A) (t : T) (r : R) (a : A) : Bool :=\n  p.any fun e => e.1.covers t r a && e.2\n\ntheorem canWire_grants {p : Perms T R A} (hp : grantsOnly p) (t : T) (r : R) (a : A) :\n    canWire p t r a = allows p t r a := by\n  rw [allows_grants hp]\n  apply Bool.eq_iff_iff.mpr\n  simp only [canWire, List.any_eq_true, Bool.and_eq_true]\n  constructor\n  · rintro ⟨e, he, hc, -⟩; exact ⟨e, he, hc⟩\n  · rintro ⟨e, he, hc⟩; exact ⟨e, he, hc, hp e he⟩",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "On a set of grants, `can` is right. On anything else:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "example : canWire blocked .t1 .doc .delete = true ∧ allows blocked .t1 .doc .delete = false := by decide",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> Hand `can` a role straight from the server, with its deny, and it shows tenant1 a Delete button the role forbids. `can` is correct only on sets of grants, and nothing says so: compression's output and a role have the same type, `Permissions`. A precondition that lives only in the head of the person who wrote the function is a bug waiting for the next person.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The model can carry the precondition in the type. A `Wire` is a set together with a proof that it is a set of grants, and the only way to make one from a role is to compress it:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- What goes over the wire: a set of grants, with the proof. -/\ndef Wire (T R A : Type) := { p : Perms T R A // grantsOnly p }\n\ndef toWire (p : Perms T R A) (ts : List T) (rs : List R) (as : List A) : Wire T R A :=\n  ⟨compress p ts rs as, compress_grants p ts rs as⟩\n\ntheorem canWire_toWire (p : Perms T R A) (ts : List T) (rs : List R) (as : List A)\n    (t : T) (r : R) (a : A) (ht : t ∈ ts) (hr : r ∈ rs) (ha : a ∈ as) :\n    canWire (toWire p ts rs as).val t r a = allows p t r a := by\n  rw [canWire_grants (toWire p ts rs as).property, toWire, allows_compress p ts rs as t r a ht hr ha]",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`{ p : Perms T R A // grantsOnly p }` is a **subtype**: values of `Perms` that come with a proof of `grantsOnly`; `.val` is the set and `.property` the proof. TypeScript cannot carry the proof, but it can carry the name: a branded type, `type WirePermissions = Permissions & { readonly __wire: true }`, returned only by `compress` and the only type `can` accepts, makes the mistake above a type error.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Some and every",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "inductive Match where\n  | any | all\n  deriving Repr, DecidableEq\n\n/-- *ifPermissions=\"r; tenants: ts; actions: as; match: m\": some pair, or every pair, of a tenant and\n    an action is allowed on r. -/\ndef ifPermissions (p : Perms T R A) (r : R) (ts : List T) (as : List A) : Match → Bool\n  | .any => ts.any fun t => as.any fun a => allows p t r a\n  | .all => ts.all fun t => as.all fun a => allows p t r a\n\n#eval ifPermissions editor .doc [.t1] [.create, .read] .all\n#eval ifPermissions editor .user [.t1] [.read, .delete] .any\n#eval ifPermissions editor .user [.t1] [.read, .delete] .all",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!note] Another reading of \"all\"\n> The code takes `all` over every pair of a tenant and an action. \"Every listed tenant may do some listed action\" is another reasonable reading, and someone writing a template may assume it. The model had to pick one, the code's, and the docs should say it in a sentence.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> What does `*ifPermissions=\"doc; tenants: []; actions: [Delete]; match: all\"` show, to a user with no permissions at all?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "example : ifPermissions ([] : Perms Tenant Res Act) .doc [] [.delete] .all = true := rfl",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> `[].every(f)` is `true`: every member of an empty list passes, since none fails. So a template whose tenant list comes out empty (the user's tenants not loaded yet, a filter that matched none) shows a Delete button to everyone. It is the empty case of \"for all\", and [Logic and proof technique](#course=logic&lesson=4) has it as a law: a `∀` over nothing is true. Here it is a hole.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The fix asks `all` for at least one tenant and one action:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- The check with all asking for at least one tenant and one action. -/\ndef ifPermissions' (p : Perms T R A) (r : R) (ts : List T) (as : List A) : Match → Bool\n  | .any => ifPermissions p r ts as .any\n  | .all => !ts.isEmpty && !as.isEmpty && ifPermissions p r ts as .all\n\nexample : ifPermissions' ([] : Perms Tenant Res Act) .doc [] [.delete] .all = false := rfl",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "End to end",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The theorem that ties it together: what the page decides from the compressed set is what the role says, for any tenants and actions of the universe, either way of matching.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem ifPermissions_compress (p : Perms T R A) (uts : List T) (urs : List R) (uas : List A)\n    (r : R) (ts : List T) (as : List A) (m : Match)\n    (hr : r ∈ urs) (hts : ∀ t ∈ ts, t ∈ uts) (has : ∀ a ∈ as, a ∈ uas) :\n    ifPermissions (compress p uts urs uas) r ts as m = ifPermissions p r ts as m := by\n  have same : ∀ t ∈ ts, ∀ a ∈ as, allows (compress p uts urs uas) t r a = allows p t r a :=\n    fun t ht a ha => allows_compress p uts urs uas t r a (hts t ht) hr (has a ha)\n  apply Bool.eq_iff_iff.mpr\n  cases m with\n  | any =>\n    simp only [ifPermissions, List.any_eq_true]\n    constructor\n    · rintro ⟨t, ht, a, ha, h⟩; exact ⟨t, ht, a, ha, by rw [← same t ht a ha]; exact h⟩\n    · rintro ⟨t, ht, a, ha, h⟩; exact ⟨t, ht, a, ha, by rw [same t ht a ha]; exact h⟩\n  | all =>\n    simp only [ifPermissions, List.all_eq_true]\n    constructor\n    · intro h t ht a ha; rw [← same t ht a ha]; exact h t ht a ha\n    · intro h t ht a ha; rw [same t ht a ha]; exact h t ht a ha",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "With `allows_expand` for the server's step, it is the whole path: role, expanded, compressed, sent, checked, each step proved to keep what the role allows, for every role, inside the universe.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem any_of_all' (p : Perms T R A) (r : R) (ts : List T) (as : List A) (h : ifPermissions' p r ts as .all = true) : ifPermissions' p r ts as .any = true := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "With the fix, `all` implies `any`, as anyone reading a template expects. Prove it. (Without the fix it is false: the empty list.)",
+      "leanSolution": "  simp only [ifPermissions', ifPermissions, Bool.and_eq_true, Bool.not_eq_true', List.isEmpty_eq_false_iff,\n    List.all_eq_true, List.any_eq_true] at *\n  obtain ⟨⟨hts, has⟩, h⟩ := h\n  obtain ⟨t, ht⟩ := List.exists_mem_of_ne_nil ts hts\n  obtain ⟨a, ha⟩ := List.exists_mem_of_ne_nil as has\n  exact ⟨t, ht, a, ha, h t ht a ha⟩",
+      "hints": [
+        "Unfold both sides into statements about members: `simp only [ifPermissions', ifPermissions, Bool.and_eq_true, Bool.not_eq_true', List.isEmpty_eq_false_iff, List.all_eq_true, List.any_eq_true] at *`.",
+        "The hypothesis now says `ts ≠ []`, `as ≠ []`, and every pair is allowed. `List.exists_mem_of_ne_nil` gives a member of a non-empty list.",
+        "With `t ∈ ts` and `a ∈ as` in hand, the goal is `∃ t, t ∈ ts ∧ ∃ a, a ∈ as ∧ …`: `exact ⟨t, ht, a, ha, h t ht a ha⟩`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem not_any_of_all : ¬ ∀ p : Perms Tenant Res Act, ifPermissions p .doc [] [.delete] .all = true → ifPermissions p .doc [] [.delete] .any = true := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "And without the fix, `all` does not imply `any`. Prove it, with the empty set as the counterexample.",
+      "leanSolution": "  intro h\n  have := h [] rfl\n  revert this\n  decide",
+      "hints": [
+        "As in lesson 3: `intro h`, use `h` on a set, and the result is a false statement Lean can compute.",
+        "`have := h [] rfl`, then `revert this` and `decide`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> The page's check is right only on sets of grants, a precondition the code's types did not carry; the model carries it in a subtype, and TypeScript can carry its name in a branded type. `all` over an empty list is true, so an empty tenant list showed everything; asking for at least one fixes it, and then `all` implies `any`. End to end, what the page shows is what the role allows, for every role, inside the universe.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "One thing is left: the expand loop itself. The capstone models it step for step and holds it to the specification.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

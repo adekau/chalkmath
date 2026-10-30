@@ -1,0 +1,180 @@
+{
+  "chalk": 1,
+  "name": "03-properties.chalk",
+  "cells": [
+    {
+      "src": "What must be true",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> State the guarantees a permission system owes as theorems about the model, prove them, and refute a plausible one with a counterexample.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A model is worth having when it answers questions the code cannot answer about itself. Start in plain words, with what anyone would expect of a permission system:\n\n1. An empty set allows nothing.\n2. One tenant's keys change nothing for another tenant.\n3. Adding a grant never takes anything away, and adding a deny never gives anything.\n4. A deny of exactly one resource and action always wins.\n5. A grant of everything on a resource lets you do every action on it.\n\nEach is a statement about every set and every request, so tests can only sample it. Four of them are true.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem allows_nil (t : T) (r : R) (a : A) : allows ([] : Perms T R A) t r a = false := rfl",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The first holds by computing: with no entries, every rank says nothing. The others need to know what one more entry does to `verdictAt`. A **lemma** says it once, so that the theorems can use it: an entry that applies at rank `n` adds its value to what that rank said (`getD true` reads \"nothing\" as true, so a lone entry decides by itself), and any other entry changes nothing.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem verdictAt_cons (e : Key T R A × Bool) (p : Perms T R A) (n : Nat) (t : T) (r : R) (a : A) :\n    verdictAt (e :: p) n t r a =\n      if e.1.covers t r a && e.1.rank == n then some (e.2 && (verdictAt p n t r a).getD true)\n      else verdictAt p n t r a := by\n  unfold verdictAt\n  by_cases h : (e.1.covers t r a && e.1.rank == n) = true\n  · simp only [List.filter_cons, h, ite_true, List.map_cons, List.isEmpty_cons, List.all_cons,\n      Bool.false_eq_true, ite_false]\n    generalize List.map _ (List.filter _ p) = l\n    cases l <;> simp\n  · simp only [List.filter_cons, h, Bool.false_eq_true, ite_false]",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`by_cases h` splits on whether the entry applies at rank `n`. When it does, `generalize` names the rest of the list `says` as `l`, and `cases l` deals with it being empty or not.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Tenant isolation",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The second statement is the one a customer's security review asks about. Entries for other tenants, put in front of a set, change nothing for tenant `t`:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- Tenant isolation: the entries of other tenants change nothing for tenant t. -/\ntheorem allows_append_other (p q : Perms T R A) (t : T) (hq : ∀ e ∈ q, e.1.tenant ≠ t) (r : R) (a : A) :\n    allows (q ++ p) t r a = allows p t r a := by\n  induction q with\n  | nil => rfl\n  | cons e q ih =>\n    have he : e.1.covers t r a = false := by\n      simp [Key.covers, hq e (by simp)]\n    have hv : ∀ n, verdictAt (e :: (q ++ p)) n t r a = verdictAt (q ++ p) n t r a := by\n      intro n; simp [verdictAt_cons, he]\n    have := ih (fun e' h' => hq e' (by simp [h']))\n    simp only [List.cons_append, allows, hv] at *\n    exact this",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Induction on `q`: an entry of another tenant does not apply (`he`), so by the lemma no rank changes (`hv`), and the rest is the induction hypothesis. With `allows_sameMembers` from lesson 2, the other tenant's entries can be anywhere in the list, not only in front.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Grants only give",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A key's rank is at most 2, which the proofs below use to go through the three ranks:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem Key.rank_le {T R A : Type} (k : Key T R A) : k.rank ≤ 2 := by\n  cases k with\n  | mk t r a => cases r <;> cases a <;> simp [Key.rank, Pat.rank]\n\n/-- A grant never takes anything away. -/\ntheorem allows_cons_grant (k : Key T R A) (p : Perms T R A) (t : T) (r : R) (a : A)\n    (h : allows p t r a = true) : allows ((k, true) :: p) t r a = true := by\n  have hk := k.rank_le\n  unfold allows at *\n  simp only [verdictAt_cons]\n  by_cases hc : k.covers t r a = true\n  · have : k.rank = 0 ∨ k.rank = 1 ∨ k.rank = 2 := by omega\n    rcases this with h0 | h1 | h2\n    · simp only [hc, h0] at *; split at h <;> simp_all\n    · simp only [hc, h1] at *; split at h <;> simp_all\n    · simp only [hc, h2] at *; split at h <;> simp_all\n  · simp_all",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "If the new key does not apply, nothing changes. If it does, it is at rank 0, 1 or 2 (`rcases` takes the three cases of the `∨` apart), and in each case `split at h` goes through the ranks `allows` asked before the new key, and `simp_all` finishes. You need not follow each step to use the theorem; the exercises have one shaped like it.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A plausible statement that is false",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The fifth statement: a grant of everything on `doc` lets you do every action on `doc`. It sounds like what `\"tenant1-doc:*\": true` means. But `clash` from lesson 2 has that key and denies deleting a document, because `\"tenant1-*:Delete\": false` is just as specific and deny wins the tie. A false statement about every set is refuted by one set, a **counterexample**:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "example : ∃ p : Perms Tenant Res Act, (⟨.t1, .is .doc, .any⟩, true) ∈ p ∧ allows p .t1 .doc .delete = false :=\n  ⟨clash, by decide, by decide⟩",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> Someone who believes statement 5 writes tests for row grants on their own, and every test passes; the statement is only wrong in combination with a column deny, a case the person who believes it does not think to try. A statement written down is something to try to break, and the model gives the counterexample in a line.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem allows_cons_exact_deny (p : Perms T R A) (t : T) (r : R) (a : A) : allows ((⟨t, .is r, .is a⟩, false) :: p) t r a = false := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove statement 4: a deny of exactly the request's resource and action wins, whatever else the set says.",
+      "leanSolution": "  simp [allows, verdictAt_cons, Key.covers, Pat.hits, Key.rank, Pat.rank]",
+      "hints": [
+        "The new key applies, and it has rank 2, so it decides at the first rank `allows` asks.",
+        "`simp` with the definitions and the lemma does it: `simp [allows, verdictAt_cons, Key.covers, Pat.hits, Key.rank, Pat.rank]`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem allows_of_cons_deny (k : Key T R A) (p : Perms T R A) (t : T) (r : R) (a : A) (h : allows ((k, false) :: p) t r a = true) : allows p t r a = true := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove the other half of statement 3: a deny never gives anything. If the set with the deny allows a request, the set without it did already.",
+      "leanSolution": "  have hk := k.rank_le\n  unfold allows at *\n  simp only [verdictAt_cons] at h\n  by_cases hc : k.covers t r a = true\n  · have : k.rank = 0 ∨ k.rank = 1 ∨ k.rank = 2 := by omega\n    rcases this with h0 | h1 | h2\n    · simp only [hc, h0] at *; split <;> simp_all\n    · simp only [hc, h1] at *; split <;> simp_all\n    · simp only [hc, h2] at *; split <;> simp_all\n  · simp_all",
+      "leanStart": "  have hk := k.rank_le\n  unfold allows at *\n  simp only [verdictAt_cons] at h\n  sorry",
+      "hints": [
+        "Follow `allows_cons_grant`. This time the lemma rewrites the hypothesis: `simp only [verdictAt_cons] at h`.",
+        "In each of the three cases, the ranks to go through are those of the goal, `allows p`: `split <;> simp_all`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem not_row_grant : ¬ ∀ p : Perms Tenant Res Act, (⟨.t1, .is .doc, .any⟩, true) ∈ p → allows p .t1 .doc .delete = true := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that statement 5 is false, with `clash` as the counterexample.",
+      "leanSolution": "  intro h\n  have := h clash (by decide)\n  revert this\n  decide",
+      "hints": [
+        "`¬ S` is \"if `S`, then a contradiction\": `intro h` gives you `h : ∀ p, …`.",
+        "Use `h` on `clash`: `have := h clash (by decide)` says `allows clash .t1 .doc .delete = true`, which is false.",
+        "`revert this` puts it back in the goal as `… = true → False`, which `decide` computes."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> The guarantees, in plain words first and then as theorems about every set: deny by default, tenant isolation, grants that only give and denies that only take. A lemma about one more entry carried the proofs. One plausible guarantee was false, and a counterexample showed it: a statement about every input is something to try to break before trusting.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "These are guarantees of the meaning. The next lessons hold the code's operations to it, starting with expansion.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

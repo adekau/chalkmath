@@ -1,0 +1,187 @@
+{
+  "chalk": 1,
+  "name": "02-meaning.chalk",
+  "cells": [
+    {
+      "src": "What a set allows",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Define what a permission set allows, as a function, making the choices the code leaves open; then prove that the definition ignores what an object does not have, the order of its keys.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The code computes what a set allows in `expand`, but `expand` is one of the things whose promise we want to check. Taking it as the definition would make every theorem about it true by definition and worthless. A specification has to come from somewhere else: from what the people who write the roles mean by them.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!try]\n> Look at `editor` from lesson 1: `\"tenant1-*:*\": true`, `\"tenant1-user:*\": false`, `\"tenant1-user:Read\": true`. May tenant1 delete a document? Delete a user? Read a user?",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Yes, no, yes: everyone reads it the same way, because the more specific key wins. Written as rules:\n\n1. A key **applies** to a request (a tenant doing an action to a resource) when its tenant is the request's, and each of its other parts is `*` or the request's name.\n2. Of the keys that apply, the most specific decide: those of rank 2 if any apply, else those of rank 1, else rank 0.\n3. When no key applies, the answer is no.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "From here on, definitions work for any types `T`, `R`, `A` of tenants, resources and actions, as long as names can be compared (`DecidableEq`). `variable` says that once, for every definition after it:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "variable {T R A : Type} [DecidableEq T] [DecidableEq R] [DecidableEq A]\n\n/-- Whether a part of a key matches a name: * matches every one. -/\ndef Pat.hits {α : Type} [DecidableEq α] : Pat α → α → Bool\n  | .any, _ => true\n  | .is x, y => x == y\n\n/-- Whether a key applies to a request: tenant t doing a to r. -/\ndef Key.covers (k : Key T R A) (t : T) (r : R) (a : A) : Bool :=\n  k.tenant == t && k.res.hits r && k.act.hits a",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Rule 2 asks, rank by rank, what the keys that apply say. At one rank there may be none, which is no answer (`none`), or some, and then they decide (`some`):",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- What the keys of rank n that apply to the request say: nothing, or a decision, in which one\n    false wins. -/\ndef verdictAt (p : Perms T R A) (n : Nat) (t : T) (r : R) (a : A) : Option Bool :=\n  let says := (p.filter fun e => e.1.covers t r a && e.1.rank == n).map (·.2)\n  if says.isEmpty then none else some (says.all id)\n\n/-- What a permission set allows: the most specific keys that apply decide, and a request no key\n    applies to is refused. -/\ndef allows (p : Perms T R A) (t : T) (r : R) (a : A) : Bool :=\n  match verdictAt p 2 t r a, verdictAt p 1 t r a, verdictAt p 0 t r a with\n  | some v, _, _ => v\n  | none, some v, _ => v\n  | none, none, some v => v\n  | none, none, none => false\n\n#eval allows editor .t1 .doc .delete\n#eval allows editor .t1 .user .delete\n#eval allows editor .t1 .user .read\n#eval allows editor .t2 .doc .read",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`Option Bool` is `none` or `some b`: Lean's way of saying \"maybe a value\", where TypeScript would use `boolean | undefined`. The `match` in `allows` asks rank 2 first and takes the first rank with something to say. tenant2 gets nothing from a role that names only tenant1.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A question the code does not answer",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Rule 2 assumed that the keys of one rank agree. A set can break that:\n\n```ts\nconst clash: Permissions = {\n  \"tenant1-doc:*\": true,      // everything on documents\n  \"tenant1-*:Delete\": false,  // no deleting anything\n};\n```\n\nMay tenant1 delete a document? Both keys apply and both have one `*`. The rules say nothing, and the people who wrote this role may not agree either. In the TypeScript, the answer depends on which key comes first in the object (lesson 8). The model cannot leave the question open: a function must give an answer.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!definition] Deny wins a tie\n> When keys of the same rank apply and disagree, the answer is no. In `verdictAt`, `says.all id` is true only when every key at that rank says true.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "def clash : Perms Tenant Res Act := [(⟨.t1, .is .doc, .any⟩, true), (⟨.t1, .any, .is .delete⟩, false)]\n\n#eval allows clash .t1 .doc .delete\n#eval allows clash .t1 .doc .read",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!note] A decision, not a discovery\n> Another rule would do, a resource beating an action, say, as long as the code and the model make the same one. What matters is that the rule is written down where the team can see it, and that the code follows it. Denying is the usual choice for permissions: a mistake then hides a button rather than showing data.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The order of the keys",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Two objects with the same entries in another order are the same role. The model is a list, which has an order and can repeat an entry, so it is faithful only if `allows` ignores both. That is a theorem: two lists with the same members allow the same requests.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem sameMembers_all {β : Type} {l l' : List β} (h : ∀ x, x ∈ l ↔ x ∈ l') (f : β → Bool) :\n    l.all f = l'.all f := by\n  apply Bool.eq_iff_iff.mpr\n  simp only [List.all_eq_true, h]\n\ntheorem sameMembers_isEmpty {β : Type} {l l' : List β} (h : ∀ x, x ∈ l ↔ x ∈ l') :\n    l.isEmpty = l'.isEmpty := by\n  apply Bool.eq_iff_iff.mpr\n  simp only [List.isEmpty_iff, List.eq_nil_iff_forall_not_mem, h]\n\n/-- Neither the order of the entries matters nor an entry written twice: only which entries there are. -/\ntheorem allows_sameMembers {p q : Perms T R A} (h : ∀ e, e ∈ p ↔ e ∈ q) (t : T) (r : R) (a : A) :\n    allows p t r a = allows q t r a := by\n  have hv : ∀ n, verdictAt p n t r a = verdictAt q n t r a := by\n    intro n\n    have hs : ∀ v, v ∈ (p.filter fun e => e.1.covers t r a && e.1.rank == n).map (·.2) ↔\n        v ∈ (q.filter fun e => e.1.covers t r a && e.1.rank == n).map (·.2) := by\n      intro v\n      simp only [List.mem_map, List.mem_filter, h]\n    simp only [verdictAt, sameMembers_isEmpty hs, sameMembers_all hs]\n  simp only [allows, hv]",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The proof works rank by rank. `verdictAt` looks at its list only through `isEmpty` and `all`, and both depend only on which members a list has (the two lemmas, each a statement about Booleans proved as an \"if and only if\" with `Bool.eq_iff_iff`). The lists `says` of `p` and `q` have the same members, because `p` and `q` do: `simp only [List.mem_map, List.mem_filter, h]` unfolds what it is to be a member and uses `h`.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!note] Why prove this\n> A model that depended on the order of a list would be modeling something the object does not have, and its theorems would be about the wrong thing. This theorem is what lets every later lesson use a list for an object.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem readOnly_ok : (resources.all fun r => actions.all fun a => allows readOnly .t1 r a == (a == .read && r != .user)) = true := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Define `readOnly`, a role for tenant1 that may read every resource except users, and do nothing else. The check tries every resource and action of the small world.",
+      "leanSolution": "  decide",
+      "leanStart": "  decide",
+      "hints": [
+        "Reading everything is one key with a `*`; what is not allowed needs nothing, as absent means no.",
+        "Users are the exception. A key that names `user` is more specific than one that does not: `(⟨.t1, .is .user, .any⟩, false)`."
+      ],
+      "leanDef": "def readOnly : Perms Tenant Res Act := sorry",
+      "leanDefSolution": "def readOnly : Perms Tenant Res Act :=\n  [(⟨.t1, .any, .is .read⟩, true), (⟨.t1, .is .user, .any⟩, false)]",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem editor_user_create : allows editor .t1 .user .create = false := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Predict whether `editor` lets tenant1 create a user, then prove it.",
+      "leanSolution": "  decide",
+      "hints": [
+        "Which keys apply, and which of them are most specific?",
+        "It is a statement about one request, which Lean can compute."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem editor_reverse : allows editor.reverse .t1 .user .read = allows editor .t1 .user .read := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Prove that writing `editor`'s keys in the opposite order changes nothing, with `allows_sameMembers`, not by computing.",
+      "leanSolution": "  exact allows_sameMembers (fun e => List.mem_reverse) _ _ _",
+      "hints": [
+        "`allows_sameMembers` needs `∀ e, e ∈ editor.reverse ↔ e ∈ editor`.",
+        "`List.mem_reverse` says exactly that: `exact allows_sameMembers (fun e => List.mem_reverse) _ _ _`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> The code never said what a set allows, so the model had to: the keys that apply, the most specific deciding, and no when none applies. Writing it as a function forced a question nobody had asked, two equally specific keys disagreeing, and an answer to it (deny wins). Then a theorem checked that the model is faithful to what it models: like an object, a set's meaning ignores the order of its keys.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "With `allows` defined, the next lesson asks what it guarantees.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

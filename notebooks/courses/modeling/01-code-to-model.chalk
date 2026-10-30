@@ -1,0 +1,189 @@
+{
+  "chalk": 1,
+  "name": "01-code-to-model.chalk",
+  "cells": [
+    {
+      "src": "From code to a model",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!goal]\n> Read a piece of TypeScript, write down what it promises, and decide what a Lean model of it keeps and what it leaves out.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "This course models one piece of code in Lean, the way you would at work: read the code, write down what it is for, find the questions it leaves open, and prove what it promises, or find where it fails. It assumes [Lean from zero](#course=lean); the `∃` and `∀` proofs of [Logic and proof technique](#course=logic)'s lessons 3 and 4 help from lesson 3 on.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The code is a permission system for an app with several **tenants** (customer accounts), each with **resources** (documents, invoices, users, reports) and **actions** on them (create, read, delete). A **role** is a permission set: an object whose keys name a tenant, a resource and an action, and whose values say yes or no. A `*` in a key stands for every resource, or every action.\n\n```ts\n// \"{tenant}-{resource}:{action}\" → allowed\n// a * stands for every resource, or every action\ntype Permissions = Record<string, boolean>;\n\nconst admin: Permissions = { \"tenant1-*:*\": true };\nconst editor: Permissions = {\n  \"tenant1-*:*\": true,        // everything in tenant1,\n  \"tenant1-user:*\": false,    // but nothing on users,\n  \"tenant1-user:Read\": true,  // except reading them\n};\n```",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The code does three things with a set.\n\n1. **Expand** it: replace every `*` by the names it stands for, so that each key names one tenant, one resource and one action. With four resources and three actions, `\"tenant1-*:*\": true` becomes twelve keys.\n2. **Compress** the expanded set to the fewest keys that say the same, to send to the browser.\n3. **Check** it in the page, with an Angular directive: `*ifPermissions=\"doc; tenants: [tenant1]; actions: [Create]; match: any\"` shows an element when some (`any`) or every (`all`) pair of a listed tenant and action is allowed on `doc`.\n\nEach comes with a promise. Expanding changes nothing a set allows. Compressing loses no information, and the result is as small as it can be. The directive shows an element exactly when the set allows what it asks.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!note] What \"the same\" means\n> All three promises say that two sets *mean the same*, and nothing in the code says what a set means. There is no definition of what a set allows other than the code itself. Writing that definition down is the first job of a model, and lesson 2 does it.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "What the model keeps",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A model is not a translation. It keeps what the promises are about and leaves the rest out: here, what each key says (which tenant, which resource or all of them, which action or all of them) and its value. It leaves out the strings the keys are written in, the JSON they travel as, and Angular. Each of those is a decision to write down, because a bug in what the model leaves out is a bug the model cannot see.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The strings are a good example. The code takes a key apart like this:\n\n```ts\nfunction parseKey(key: string) {\n  const [tenant, rest] = key.split(\"-\");\n  const [resource, action] = rest.split(\":\");\n  return { tenant, resource, action };\n}\n```",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "#eval \"tenant1-doc:Read\".splitOn \"-\"\n#eval \"acme-eu-doc:Read\".splitOn \"-\"",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> A tenant named `acme-eu` splits into three parts, and `parseKey` keeps the first two: tenant `acme`, resource `eu`, and the action is gone. The format works only when no name contains `-`, `:` or `*`. The code relies on that rule and nothing checks it. It is the first finding of this course, and it came from asking what the model is allowed to assume.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "So the model starts from keys already taken apart. A part of a key is a name or `*`: an `inductive` type with two choices, the second carrying a name, as a tree's `node` carries a number. A key is a `structure` of three parts, and a set is a list of keys with their values:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- One part of a key: a name, or * for every name. -/\ninductive Pat (α : Type) where\n  | any\n  | is (x : α)\n  deriving Repr, DecidableEq\n\n/-- A key, \"{tenant}-{resource}:{action}\", with its parts kept apart. -/\nstructure Key (T R A : Type) where\n  tenant : T\n  res : Pat R\n  act : Pat A\n  deriving Repr, DecidableEq\n\n/-- A permission set: keys and their values, as the TypeScript object's entries. -/\nabbrev Perms (T R A : Type) := List (Key T R A × Bool)",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`Pat α` works for names of any type `α`, and `Key T R A` for any types of tenants, resources and actions: the theorems of later lessons hold for every app, not only one. A list is a modeling choice too. An object has no repeated keys and no order anyone means anything by; a list has both. Lesson 2 proves that what a set allows ignores the order and the repeats, which is what makes the list a faithful model of the object.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "A small world",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "To run examples, a small world: two tenants, four resources and three actions, the lists of them the frontend knows (its **universe**), and a way to write a set the way the TypeScript does, to compare:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "inductive Tenant where\n  | t1 | t2\n  deriving Repr, DecidableEq\n\ninductive Res where\n  | doc | invoice | user | report\n  deriving Repr, DecidableEq\n\ninductive Act where\n  | create | read | delete\n  deriving Repr, DecidableEq\n\ndef tenants : List Tenant := [.t1, .t2]\ndef resources : List Res := [.doc, .invoice, .user, .report]\ndef actions : List Act := [.create, .read, .delete]\n\ninstance : ToString Tenant := ⟨fun | .t1 => \"tenant1\" | .t2 => \"tenant2\"⟩\ninstance : ToString Res := ⟨fun | .doc => \"doc\" | .invoice => \"invoice\" | .user => \"user\" | .report => \"report\"⟩\ninstance : ToString Act := ⟨fun | .create => \"Create\" | .read => \"Read\" | .delete => \"Delete\"⟩\n\ndef Pat.show {α : Type} [ToString α] : Pat α → String\n  | .any => \"*\"\n  | .is x => toString x\n\ndef Key.show {T R A : Type} [ToString T] [ToString R] [ToString A] (k : Key T R A) : String :=\n  s!\"{k.tenant}-{k.res.show}:{k.act.show}\"\n\ndef showPerms {T R A : Type} [ToString T] [ToString R] [ToString A] (p : Perms T R A) : List String :=\n  p.map fun e => s!\"{e.1.show}: {e.2}\"",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`instance : ToString Tenant` tells Lean how to write a tenant as text, which `s!\"…\"` uses: inside it, `{…}` is replaced by the text of the value. The two roles from the TypeScript:",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "def admin : Perms Tenant Res Act := [(⟨.t1, .any, .any⟩, true)]\n\ndef editor : Perms Tenant Res Act :=\n  [(⟨.t1, .any, .any⟩, true), (⟨.t1, .is .user, .any⟩, false), (⟨.t1, .is .user, .is .read⟩, true)]\n\n#eval showPerms admin\n#eval showPerms editor",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "`⟨.t1, .any, .is .read⟩` builds a `Key` from its three fields in order, as `{ tenant := .t1, res := .any, act := .is .read }` would.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "One more thing about a key will matter: how specific it is. A part that names something counts 1 and a `*` counts 0, so a key with no `*` has rank 2 and `\"tenant1-*:*\"` has rank 0.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "/-- How specific a part of a key is: a name 1, * 0. -/\ndef Pat.rank {α : Type} : Pat α → Nat\n  | .any => 0\n  | .is _ => 1",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Exercises",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem rank_ok : Key.rank (⟨.t1, .any, .any⟩ : Key Tenant Res Act) = 0 ∧ Key.rank (⟨.t1, .is .doc, .any⟩ : Key Tenant Res Act) = 1 ∧ Key.rank (⟨.t2, .any, .is .read⟩ : Key Tenant Res Act) = 1 ∧ Key.rank (⟨.t1, .is .user, .is .read⟩ : Key Tenant Res Act) = 2 := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Define `Key.rank`: how specific a key is, the ranks of its resource and its action added.",
+      "leanSolution": "  decide",
+      "leanStart": "  decide",
+      "hints": [
+        "A key's parts are `k.res` and `k.act`, and `Pat.rank` gives each one's rank.",
+        "`def Key.rank {T R A : Type} (k : Key T R A) : Nat := k.res.rank + k.act.rank`"
+      ],
+      "leanDef": "def Key.rank {T R A : Type} (k : Key T R A) : Nat := sorry",
+      "leanDefSolution": "def Key.rank {T R A : Type} (k : Key T R A) : Nat := k.res.rank + k.act.rank",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem invoices_ok : showPerms invoices = [\"tenant2-invoice:*: true\", \"tenant2-invoice:Delete: false\"] := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Write this role as a `Perms Tenant Res Act`, its entries in the same order: `{ \"tenant2-invoice:*\": true, \"tenant2-invoice:Delete\": false }`.",
+      "leanSolution": "  decide",
+      "leanStart": "  decide",
+      "hints": [
+        "Two entries, each a key and a value: `(⟨tenant, resource, action⟩, value)`.",
+        "The first key is `⟨.t2, .is .invoice, .any⟩`."
+      ],
+      "leanDef": "def invoices : Perms Tenant Res Act := sorry",
+      "leanDefSolution": "def invoices : Perms Tenant Res Act :=\n  [(⟨.t2, .is .invoice, .any⟩, true), (⟨.t2, .is .invoice, .is .delete⟩, false)]",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Before modeling, write down what the code promises. A model keeps what the promises are about (here, what each key says) and leaves the rest out, as a decision: leaving out the strings showed a rule the code relies on and never checks, that no name contains `-`, `:` or `*`. Types that can hold only meaningful values (`Pat`, `Key`) make the model's data what the code's data means.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Every promise is about what a set allows. The next lesson defines it.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    }
+  ],
+  "scenes": []
+}

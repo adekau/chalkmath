@@ -2232,6 +2232,7 @@ termination_by m n => (m, n)
 > [!note] Application: why your recursion stops
 > [Why your recursion stops](#course=logic&lesson=9&app=1), an optional notebook beside this lesson, finds the measures behind binary search, quicksort and a two-phase loop, shows the binary search bug Lean refuses to accept, and meets a function nobody knows a measure for.
 `);
+    md(r`[Modeling a system in Lean](#course=modeling) puts this course's tools to work on a piece of real code: a permission system in TypeScript, its promises stated as theorems, and the case where the code breaks them.`);
   });
 
   app("09a-why-recursion-stops.chalk", "Why your recursion stops", "The measure behind binary search, quicksort and a loop with two phases; an off-by-one that Lean refuses; and Collatz, for which nobody knows one.", ({ sec, md, m, lean, lx }) => {
@@ -2348,6 +2349,1257 @@ decreasing_by
 > [!summary]
 > Lean looks for a measure itself: an argument, or a difference like ‹hi - lo›. When it fails, its table shows which calls it could not prove smaller, often the bug. A loop whose arguments take turns needs a pair, compared first component first; a measure that is not obviously smaller needs ‹decreasing_by› and a lemma. And some functions, Collatz's among them, nobody can measure: ‹partial› runs them and proves nothing.
 `);
+  });
+}, { leanPrelude: true });
+
+// ---------------------------------------------------------------------------------------------------
+// Modeling a system in Lean: one piece of TypeScript, a permission system with wildcard keys, taken
+// from code to a model to proofs about it. The TypeScript is written here for the course, in the shape
+// such systems have; the lessons quote it a piece at a time, from the strings below (plain strings, as
+// its template literals have backticks and ${…}). The Lean is one development across the lessons
+// (leanPrelude): the meaning of a set, its properties, expansion, compression and its minimality, the
+// template's check, and the expand loop itself against the model.
+const tsFence = (lines) => "```ts\n" + lines.join("\n") + "\n```";
+const PERMS_TS = [
+  "// \"{tenant}-{resource}:{action}\" → allowed",
+  "// a * stands for every resource, or every action",
+  "type Permissions = Record<string, boolean>;",
+  "",
+  "const admin: Permissions = { \"tenant1-*:*\": true };",
+  "const editor: Permissions = {",
+  "  \"tenant1-*:*\": true,        // everything in tenant1,",
+  "  \"tenant1-user:*\": false,    // but nothing on users,",
+  "  \"tenant1-user:Read\": true,  // except reading them",
+  "};",
+];
+const PARSE_TS = [
+  "function parseKey(key: string) {",
+  "  const [tenant, rest] = key.split(\"-\");",
+  "  const [resource, action] = rest.split(\":\");",
+  "  return { tenant, resource, action };",
+  "}",
+];
+const UNIVERSE_TS = [
+  "interface Universe {",
+  "  tenants: string[];",
+  "  resources: string[];",
+  "  actions: string[];",
+  "}",
+];
+const EXPAND_TS = [
+  "const wildcards = (key: string) => (key.match(/\\*/g) ?? []).length;",
+  "",
+  "/** Every key written out: a * becomes every name the universe has. */",
+  "function expand(perms: Permissions, u: Universe): Permissions {",
+  "  const out: Permissions = {};",
+  "  // most wildcards first: a more specific key overwrites a broader one",
+  "  const entries = Object.entries(perms)",
+  "    .sort(([a], [b]) => wildcards(b) - wildcards(a));",
+  "  for (const [key, allowed] of entries) {",
+  "    const { tenant, resource, action } = parseKey(key);",
+  "    for (const r of resource === \"*\" ? u.resources : [resource])",
+  "      for (const a of action === \"*\" ? u.actions : [action])",
+  "        out[`${tenant}-${r}:${a}`] = allowed;",
+  "  }",
+  "  return out;",
+  "}",
+];
+const COMPRESS_TS = [
+  "/** The fewest keys that say what an expanded set says (grants only). */",
+  "function compress(explicit: Permissions, u: Universe): Permissions {",
+  "  const out: Permissions = {};",
+  "  if (u.resources.length === 0 || u.actions.length === 0) return out;",
+  "  for (const t of u.tenants) {",
+  "    const ok = (r: string, a: string) => explicit[`${t}-${r}:${a}`] === true;",
+  "    const fullRow = (r: string) => u.actions.every((a) => ok(r, a));",
+  "    const fullCol = (a: string) => u.resources.every((r) => ok(r, a));",
+  "    if (u.resources.every(fullRow)) { out[`${t}-*:*`] = true; continue; }",
+  "    for (const r of u.resources.filter(fullRow)) out[`${t}-${r}:*`] = true;",
+  "    for (const a of u.actions.filter(fullCol)) out[`${t}-*:${a}`] = true;",
+  "    for (const r of u.resources.filter((r) => !fullRow(r)))",
+  "      for (const a of u.actions.filter((a) => ok(r, a) && !fullCol(a)))",
+  "        out[`${t}-${r}:${a}`] = true;",
+  "  }",
+  "  return out;",
+  "}",
+];
+const CHECK_TS = [
+  "/** What the frontend asks of the set it was sent. */",
+  "const can = (perms: Permissions, t: string, r: string, a: string) =>",
+  "  [`${t}-${r}:${a}`, `${t}-${r}:*`, `${t}-*:${a}`, `${t}-*:*`]",
+  "    .some((k) => perms[k] === true);",
+  "",
+  "// *ifPermissions=\"doc; tenants: [tenant1]; actions: [Create]; match: any\"",
+  "function ifPermissions(perms: Permissions, resource: string,",
+  "    tenants: string[], actions: string[], match: \"any\" | \"all\"): boolean {",
+  "  const pairs = tenants.flatMap((t) => actions.map((a) => [t, a] as const));",
+  "  const allowed = ([t, a]: readonly [string, string]) =>",
+  "    can(perms, t, resource, a);",
+  "  return match === \"all\" ? pairs.every(allowed) : pairs.some(allowed);",
+  "}",
+];
+const FIXED_SORT_TS = [
+  "  // most wildcards first; with as many, grants before denies,",
+  "  // so that a deny is written last and wins a tie",
+  "  const entries = Object.entries(perms).sort(([a, x], [b, y]) =>",
+  "    wildcards(b) - wildcards(a) || Number(y) - Number(x));",
+];
+
+course("modeling", "Modeling a system in Lean",
+  "One piece of TypeScript, a permission system with wildcard keys, modeled in Lean: what to keep and what to leave out, a specification the code never wrote down, the promises it makes as theorems, the cases it gets wrong, and proofs that what goes over the wire loses nothing and is as small as it can be.",
+  "Software verification", (add) => {
+
+  add("01-code-to-model.chalk", "From code to a model", "A permission system in TypeScript, what it promises, and what a model of it keeps: the meaning of a key, not its string, and the rule the string format quietly relies on.", ({ sec, md, lean, lx }) => {
+    sec("From code to a model");
+    md(r`
+> [!goal]
+> Read a piece of TypeScript, write down what it promises, and decide what a Lean model of it keeps and what it leaves out.
+`);
+    md(r`This course models one piece of code in Lean, the way you would at work: read the code, write down what it is for, find the questions it leaves open, and prove what it promises, or find where it fails. It assumes [Lean from zero](#course=lean); the ‹∃› and ‹∀› proofs of [Logic and proof technique](#course=logic)'s lessons 3 and 4 help from lesson 3 on.`);
+    md(r`The code is a permission system for an app with several **tenants** (customer accounts), each with **resources** (documents, invoices, users, reports) and **actions** on them (create, read, delete). A **role** is a permission set: an object whose keys name a tenant, a resource and an action, and whose values say yes or no. A ‹*› in a key stands for every resource, or every action.
+
+${tsFence(PERMS_TS)}`);
+    md(r`The code does three things with a set.
+
+1. **Expand** it: replace every ‹*› by the names it stands for, so that each key names one tenant, one resource and one action. With four resources and three actions, ‹"tenant1-*:*": true› becomes twelve keys.
+2. **Compress** the expanded set to the fewest keys that say the same, to send to the browser.
+3. **Check** it in the page, with an Angular directive: ‹*ifPermissions="doc; tenants: [tenant1]; actions: [Create]; match: any"› shows an element when some (‹any›) or every (‹all›) pair of a listed tenant and action is allowed on ‹doc›.
+
+Each comes with a promise. Expanding changes nothing a set allows. Compressing loses no information, and the result is as small as it can be. The directive shows an element exactly when the set allows what it asks.`);
+    md(r`
+> [!note] What "the same" means
+> All three promises say that two sets *mean the same*, and nothing in the code says what a set means. There is no definition of what a set allows other than the code itself. Writing that definition down is the first job of a model, and lesson 2 does it.
+`);
+    sec("What the model keeps");
+    md(r`A model is not a translation. It keeps what the promises are about and leaves the rest out: here, what each key says (which tenant, which resource or all of them, which action or all of them) and its value. It leaves out the strings the keys are written in, the JSON they travel as, and Angular. Each of those is a decision to write down, because a bug in what the model leaves out is a bug the model cannot see.`);
+    md(r`The strings are a good example. The code takes a key apart like this:
+
+${tsFence(PARSE_TS)}`);
+    lean(r`#eval "tenant1-doc:Read".splitOn "-"
+#eval "acme-eu-doc:Read".splitOn "-"`);
+    md(r`
+> [!mistake]
+> A tenant named ‹acme-eu› splits into three parts, and ‹parseKey› keeps the first two: tenant ‹acme›, resource ‹eu›, and the action is gone. The format works only when no name contains ‹-›, ‹:› or ‹*›. The code relies on that rule and nothing checks it. It is the first finding of this course, and it came from asking what the model is allowed to assume.
+`);
+    md(r`So the model starts from keys already taken apart. A part of a key is a name or ‹*›: an ‹inductive› type with two choices, the second carrying a name, as a tree's ‹node› carries a number. A key is a ‹structure› of three parts, and a set is a list of keys with their values:`);
+    lean(r`/-- One part of a key: a name, or * for every name. -/
+inductive Pat (α : Type) where
+  | any
+  | is (x : α)
+  deriving Repr, DecidableEq
+
+/-- A key, "{tenant}-{resource}:{action}", with its parts kept apart. -/
+structure Key (T R A : Type) where
+  tenant : T
+  res : Pat R
+  act : Pat A
+  deriving Repr, DecidableEq
+
+/-- A permission set: keys and their values, as the TypeScript object's entries. -/
+abbrev Perms (T R A : Type) := List (Key T R A × Bool)`);
+    md(r`‹Pat α› works for names of any type ‹α›, and ‹Key T R A› for any types of tenants, resources and actions: the theorems of later lessons hold for every app, not only one. A list is a modeling choice too. An object has no repeated keys and no order anyone means anything by; a list has both. Lesson 2 proves that what a set allows ignores the order and the repeats, which is what makes the list a faithful model of the object.`);
+    sec("A small world");
+    md(r`To run examples, a small world: two tenants, four resources and three actions, the lists of them the frontend knows (its **universe**), and a way to write a set the way the TypeScript does, to compare:`);
+    lean(r`inductive Tenant where
+  | t1 | t2
+  deriving Repr, DecidableEq
+
+inductive Res where
+  | doc | invoice | user | report
+  deriving Repr, DecidableEq
+
+inductive Act where
+  | create | read | delete
+  deriving Repr, DecidableEq
+
+def tenants : List Tenant := [.t1, .t2]
+def resources : List Res := [.doc, .invoice, .user, .report]
+def actions : List Act := [.create, .read, .delete]
+
+instance : ToString Tenant := ⟨fun | .t1 => "tenant1" | .t2 => "tenant2"⟩
+instance : ToString Res := ⟨fun | .doc => "doc" | .invoice => "invoice" | .user => "user" | .report => "report"⟩
+instance : ToString Act := ⟨fun | .create => "Create" | .read => "Read" | .delete => "Delete"⟩
+
+def Pat.show {α : Type} [ToString α] : Pat α → String
+  | .any => "*"
+  | .is x => toString x
+
+def Key.show {T R A : Type} [ToString T] [ToString R] [ToString A] (k : Key T R A) : String :=
+  s!"{k.tenant}-{k.res.show}:{k.act.show}"
+
+def showPerms {T R A : Type} [ToString T] [ToString R] [ToString A] (p : Perms T R A) : List String :=
+  p.map fun e => s!"{e.1.show}: {e.2}"`);
+    md(r`‹instance : ToString Tenant› tells Lean how to write a tenant as text, which ‹s!"…"› uses: inside it, ‹{…}› is replaced by the text of the value. The two roles from the TypeScript:`);
+    lean(r`def admin : Perms Tenant Res Act := [(⟨.t1, .any, .any⟩, true)]
+
+def editor : Perms Tenant Res Act :=
+  [(⟨.t1, .any, .any⟩, true), (⟨.t1, .is .user, .any⟩, false), (⟨.t1, .is .user, .is .read⟩, true)]
+
+#eval showPerms admin
+#eval showPerms editor`);
+    md(r`‹⟨.t1, .any, .is .read⟩› builds a ‹Key› from its three fields in order, as ‹{ tenant := .t1, res := .any, act := .is .read }› would.`);
+    md(r`One more thing about a key will matter: how specific it is. A part that names something counts 1 and a ‹*› counts 0, so a key with no ‹*› has rank 2 and ‹"tenant1-*:*"› has rank 0.`);
+    lean(r`/-- How specific a part of a key is: a name 1, * 0. -/
+def Pat.rank {α : Type} : Pat α → Nat
+  | .any => 0
+  | .is _ => 1`);
+    sec("Exercises");
+    lx(r`theorem rank_ok : Key.rank (⟨.t1, .any, .any⟩ : Key Tenant Res Act) = 0 ∧ Key.rank (⟨.t1, .is .doc, .any⟩ : Key Tenant Res Act) = 1 ∧ Key.rank (⟨.t2, .any, .is .read⟩ : Key Tenant Res Act) = 1 ∧ Key.rank (⟨.t1, .is .user, .is .read⟩ : Key Tenant Res Act) = 2 := by`, r`Define ‹Key.rank›: how specific a key is, the ranks of its resource and its action added.`, r`  decide`, [
+      r`A key's parts are ‹k.res› and ‹k.act›, and ‹Pat.rank› gives each one's rank.`,
+      r`‹def Key.rank {T R A : Type} (k : Key T R A) : Nat := k.res.rank + k.act.rank›`,
+    ], { start: "  decide", def: { start: "def Key.rank {T R A : Type} (k : Key T R A) : Nat := sorry", solution: "def Key.rank {T R A : Type} (k : Key T R A) : Nat := k.res.rank + k.act.rank", forbid: [] } });
+    lx(r`theorem invoices_ok : showPerms invoices = ["tenant2-invoice:*: true", "tenant2-invoice:Delete: false"] := by`, r`Write this role as a ‹Perms Tenant Res Act›, its entries in the same order: ‹{ "tenant2-invoice:*": true, "tenant2-invoice:Delete": false }›.`, r`  decide`, [
+      r`Two entries, each a key and a value: ‹(⟨tenant, resource, action⟩, value)›.`,
+      r`The first key is ‹⟨.t2, .is .invoice, .any⟩›.`,
+    ], { start: "  decide", def: { start: "def invoices : Perms Tenant Res Act := sorry", solution: "def invoices : Perms Tenant Res Act :=\n  [(⟨.t2, .is .invoice, .any⟩, true), (⟨.t2, .is .invoice, .is .delete⟩, false)]", forbid: [] } });
+    md(r`
+> [!summary]
+> Before modeling, write down what the code promises. A model keeps what the promises are about (here, what each key says) and leaves the rest out, as a decision: leaving out the strings showed a rule the code relies on and never checks, that no name contains ‹-›, ‹:› or ‹*›. Types that can hold only meaningful values (‹Pat›, ‹Key›) make the model's data what the code's data means.
+`);
+    md(r`Every promise is about what a set allows. The next lesson defines it.`);
+  });
+
+  add("02-meaning.chalk", "What a set allows", "A specification the code never wrote down: which keys apply to a request, the most specific deciding, a choice where two disagree, and a proof that the order of the keys does not matter.", ({ sec, md, lean, lx }) => {
+    sec("What a set allows");
+    md(r`
+> [!goal]
+> Define what a permission set allows, as a function, making the choices the code leaves open; then prove that the definition ignores what an object does not have, the order of its keys.
+`);
+    md(r`The code computes what a set allows in ‹expand›, but ‹expand› is one of the things whose promise we want to check. Taking it as the definition would make every theorem about it true by definition and worthless. A specification has to come from somewhere else: from what the people who write the roles mean by them.`);
+    md(r`
+> [!try]
+> Look at ‹editor› from lesson 1: ‹"tenant1-*:*": true›, ‹"tenant1-user:*": false›, ‹"tenant1-user:Read": true›. May tenant1 delete a document? Delete a user? Read a user?
+`);
+    md(r`Yes, no, yes: everyone reads it the same way, because the more specific key wins. Written as rules:
+
+1. A key **applies** to a request (a tenant doing an action to a resource) when its tenant is the request's, and each of its other parts is ‹*› or the request's name.
+2. Of the keys that apply, the most specific decide: those of rank 2 if any apply, else those of rank 1, else rank 0.
+3. When no key applies, the answer is no.`);
+    md(r`From here on, definitions work for any types ‹T›, ‹R›, ‹A› of tenants, resources and actions, as long as names can be compared (‹DecidableEq›). ‹variable› says that once, for every definition after it:`);
+    lean(r`variable {T R A : Type} [DecidableEq T] [DecidableEq R] [DecidableEq A]
+
+/-- Whether a part of a key matches a name: * matches every one. -/
+def Pat.hits {α : Type} [DecidableEq α] : Pat α → α → Bool
+  | .any, _ => true
+  | .is x, y => x == y
+
+/-- Whether a key applies to a request: tenant t doing a to r. -/
+def Key.covers (k : Key T R A) (t : T) (r : R) (a : A) : Bool :=
+  k.tenant == t && k.res.hits r && k.act.hits a`);
+    md(r`Rule 2 asks, rank by rank, what the keys that apply say. At one rank there may be none, which is no answer (‹none›), or some, and then they decide (‹some›):`);
+    lean(r`/-- What the keys of rank n that apply to the request say: nothing, or a decision, in which one
+    false wins. -/
+def verdictAt (p : Perms T R A) (n : Nat) (t : T) (r : R) (a : A) : Option Bool :=
+  let says := (p.filter fun e => e.1.covers t r a && e.1.rank == n).map (·.2)
+  if says.isEmpty then none else some (says.all id)
+
+/-- What a permission set allows: the most specific keys that apply decide, and a request no key
+    applies to is refused. -/
+def allows (p : Perms T R A) (t : T) (r : R) (a : A) : Bool :=
+  match verdictAt p 2 t r a, verdictAt p 1 t r a, verdictAt p 0 t r a with
+  | some v, _, _ => v
+  | none, some v, _ => v
+  | none, none, some v => v
+  | none, none, none => false
+
+#eval allows editor .t1 .doc .delete
+#eval allows editor .t1 .user .delete
+#eval allows editor .t1 .user .read
+#eval allows editor .t2 .doc .read`);
+    md(r`‹Option Bool› is ‹none› or ‹some b›: Lean's way of saying "maybe a value", where TypeScript would use ‹boolean | undefined›. The ‹match› in ‹allows› asks rank 2 first and takes the first rank with something to say. tenant2 gets nothing from a role that names only tenant1.`);
+    sec("A question the code does not answer");
+    md(r`Rule 2 assumed that the keys of one rank agree. A set can break that:
+
+${tsFence(["const clash: Permissions = {", "  \"tenant1-doc:*\": true,      // everything on documents", "  \"tenant1-*:Delete\": false,  // no deleting anything", "};"])}
+
+May tenant1 delete a document? Both keys apply and both have one ‹*›. The rules say nothing, and the people who wrote this role may not agree either. In the TypeScript, the answer depends on which key comes first in the object (lesson 8). The model cannot leave the question open: a function must give an answer.`);
+    md(r`
+> [!definition] Deny wins a tie
+> When keys of the same rank apply and disagree, the answer is no. In ‹verdictAt›, ‹says.all id› is true only when every key at that rank says true.
+`);
+    lean(r`def clash : Perms Tenant Res Act := [(⟨.t1, .is .doc, .any⟩, true), (⟨.t1, .any, .is .delete⟩, false)]
+
+#eval allows clash .t1 .doc .delete
+#eval allows clash .t1 .doc .read`);
+    md(r`
+> [!note] A decision, not a discovery
+> Another rule would do, a resource beating an action, say, as long as the code and the model make the same one. What matters is that the rule is written down where the team can see it, and that the code follows it. Denying is the usual choice for permissions: a mistake then hides a button rather than showing data.
+`);
+    sec("The order of the keys");
+    md(r`Two objects with the same entries in another order are the same role. The model is a list, which has an order and can repeat an entry, so it is faithful only if ‹allows› ignores both. That is a theorem: two lists with the same members allow the same requests.`);
+    lean(r`theorem sameMembers_all {β : Type} {l l' : List β} (h : ∀ x, x ∈ l ↔ x ∈ l') (f : β → Bool) :
+    l.all f = l'.all f := by
+  apply Bool.eq_iff_iff.mpr
+  simp only [List.all_eq_true, h]
+
+theorem sameMembers_isEmpty {β : Type} {l l' : List β} (h : ∀ x, x ∈ l ↔ x ∈ l') :
+    l.isEmpty = l'.isEmpty := by
+  apply Bool.eq_iff_iff.mpr
+  simp only [List.isEmpty_iff, List.eq_nil_iff_forall_not_mem, h]
+
+/-- Neither the order of the entries matters nor an entry written twice: only which entries there are. -/
+theorem allows_sameMembers {p q : Perms T R A} (h : ∀ e, e ∈ p ↔ e ∈ q) (t : T) (r : R) (a : A) :
+    allows p t r a = allows q t r a := by
+  have hv : ∀ n, verdictAt p n t r a = verdictAt q n t r a := by
+    intro n
+    have hs : ∀ v, v ∈ (p.filter fun e => e.1.covers t r a && e.1.rank == n).map (·.2) ↔
+        v ∈ (q.filter fun e => e.1.covers t r a && e.1.rank == n).map (·.2) := by
+      intro v
+      simp only [List.mem_map, List.mem_filter, h]
+    simp only [verdictAt, sameMembers_isEmpty hs, sameMembers_all hs]
+  simp only [allows, hv]`);
+    md(r`The proof works rank by rank. ‹verdictAt› looks at its list only through ‹isEmpty› and ‹all›, and both depend only on which members a list has (the two lemmas, each a statement about Booleans proved as an "if and only if" with ‹Bool.eq_iff_iff›). The lists ‹says› of ‹p› and ‹q› have the same members, because ‹p› and ‹q› do: ‹simp only [List.mem_map, List.mem_filter, h]› unfolds what it is to be a member and uses ‹h›.`);
+    md(r`
+> [!note] Why prove this
+> A model that depended on the order of a list would be modeling something the object does not have, and its theorems would be about the wrong thing. This theorem is what lets every later lesson use a list for an object.
+`);
+    sec("Exercises");
+    lx(r`theorem readOnly_ok : (resources.all fun r => actions.all fun a => allows readOnly .t1 r a == (a == .read && r != .user)) = true := by`, r`Define ‹readOnly›, a role for tenant1 that may read every resource except users, and do nothing else. The check tries every resource and action of the small world.`, r`  decide`, [
+      r`Reading everything is one key with a ‹*›; what is not allowed needs nothing, as absent means no.`,
+      r`Users are the exception. A key that names ‹user› is more specific than one that does not: ‹(⟨.t1, .is .user, .any⟩, false)›.`,
+    ], { start: "  decide", def: { start: "def readOnly : Perms Tenant Res Act := sorry", solution: "def readOnly : Perms Tenant Res Act :=\n  [(⟨.t1, .any, .is .read⟩, true), (⟨.t1, .is .user, .any⟩, false)]", forbid: [] } });
+    lx(r`theorem editor_user_create : allows editor .t1 .user .create = false := by`, r`Predict whether ‹editor› lets tenant1 create a user, then prove it.`, r`  decide`, [
+      r`Which keys apply, and which of them are most specific?`,
+      r`It is a statement about one request, which Lean can compute.`,
+    ]);
+    lx(r`theorem editor_reverse : allows editor.reverse .t1 .user .read = allows editor .t1 .user .read := by`, r`Prove that writing ‹editor›'s keys in the opposite order changes nothing, with ‹allows_sameMembers›, not by computing.`, r`  exact allows_sameMembers (fun e => List.mem_reverse) _ _ _`, [
+      r`‹allows_sameMembers› needs ‹∀ e, e ∈ editor.reverse ↔ e ∈ editor›.`,
+      r`‹List.mem_reverse› says exactly that: ‹exact allows_sameMembers (fun e => List.mem_reverse) _ _ _›.`,
+    ]);
+    md(r`
+> [!summary]
+> The code never said what a set allows, so the model had to: the keys that apply, the most specific deciding, and no when none applies. Writing it as a function forced a question nobody had asked, two equally specific keys disagreeing, and an answer to it (deny wins). Then a theorem checked that the model is faithful to what it models: like an object, a set's meaning ignores the order of its keys.
+`);
+    md(r`With ‹allows› defined, the next lesson asks what it guarantees.`);
+  });
+
+  add("03-properties.chalk", "What must be true", "The guarantees a permission system owes, in plain words and then as theorems: deny by default, tenant isolation, grants that only give, and a plausible statement that is false, refuted by a counterexample.", ({ sec, md, lean, lx }) => {
+    sec("What must be true");
+    md(r`
+> [!goal]
+> State the guarantees a permission system owes as theorems about the model, prove them, and refute a plausible one with a counterexample.
+`);
+    md(r`A model is worth having when it answers questions the code cannot answer about itself. Start in plain words, with what anyone would expect of a permission system:
+
+1. An empty set allows nothing.
+2. One tenant's keys change nothing for another tenant.
+3. Adding a grant never takes anything away, and adding a deny never gives anything.
+4. A deny of exactly one resource and action always wins.
+5. A grant of everything on a resource lets you do every action on it.
+
+Each is a statement about every set and every request, so tests can only sample it. Four of them are true.`);
+    lean(r`theorem allows_nil (t : T) (r : R) (a : A) : allows ([] : Perms T R A) t r a = false := rfl`);
+    md(r`The first holds by computing: with no entries, every rank says nothing. The others need to know what one more entry does to ‹verdictAt›. A **lemma** says it once, so that the theorems can use it: an entry that applies at rank ‹n› adds its value to what that rank said (‹getD true› reads "nothing" as true, so a lone entry decides by itself), and any other entry changes nothing.`);
+    lean(r`theorem verdictAt_cons (e : Key T R A × Bool) (p : Perms T R A) (n : Nat) (t : T) (r : R) (a : A) :
+    verdictAt (e :: p) n t r a =
+      if e.1.covers t r a && e.1.rank == n then some (e.2 && (verdictAt p n t r a).getD true)
+      else verdictAt p n t r a := by
+  unfold verdictAt
+  by_cases h : (e.1.covers t r a && e.1.rank == n) = true
+  · simp only [List.filter_cons, h, ite_true, List.map_cons, List.isEmpty_cons, List.all_cons,
+      Bool.false_eq_true, ite_false]
+    generalize List.map _ (List.filter _ p) = l
+    cases l <;> simp
+  · simp only [List.filter_cons, h, Bool.false_eq_true, ite_false]`);
+    md(r`‹by_cases h› splits on whether the entry applies at rank ‹n›. When it does, ‹generalize› names the rest of the list ‹says› as ‹l›, and ‹cases l› deals with it being empty or not.`);
+    sec("Tenant isolation");
+    md(r`The second statement is the one a customer's security review asks about. Entries for other tenants, put in front of a set, change nothing for tenant ‹t›:`);
+    lean(r`/-- Tenant isolation: the entries of other tenants change nothing for tenant t. -/
+theorem allows_append_other (p q : Perms T R A) (t : T) (hq : ∀ e ∈ q, e.1.tenant ≠ t) (r : R) (a : A) :
+    allows (q ++ p) t r a = allows p t r a := by
+  induction q with
+  | nil => rfl
+  | cons e q ih =>
+    have he : e.1.covers t r a = false := by
+      simp [Key.covers, hq e (by simp)]
+    have hv : ∀ n, verdictAt (e :: (q ++ p)) n t r a = verdictAt (q ++ p) n t r a := by
+      intro n; simp [verdictAt_cons, he]
+    have := ih (fun e' h' => hq e' (by simp [h']))
+    simp only [List.cons_append, allows, hv] at *
+    exact this`);
+    md(r`Induction on ‹q›: an entry of another tenant does not apply (‹he›), so by the lemma no rank changes (‹hv›), and the rest is the induction hypothesis. With ‹allows_sameMembers› from lesson 2, the other tenant's entries can be anywhere in the list, not only in front.`);
+    sec("Grants only give");
+    md(r`A key's rank is at most 2, which the proofs below use to go through the three ranks:`);
+    lean(r`theorem Key.rank_le {T R A : Type} (k : Key T R A) : k.rank ≤ 2 := by
+  cases k with
+  | mk t r a => cases r <;> cases a <;> simp [Key.rank, Pat.rank]
+
+/-- A grant never takes anything away. -/
+theorem allows_cons_grant (k : Key T R A) (p : Perms T R A) (t : T) (r : R) (a : A)
+    (h : allows p t r a = true) : allows ((k, true) :: p) t r a = true := by
+  have hk := k.rank_le
+  unfold allows at *
+  simp only [verdictAt_cons]
+  by_cases hc : k.covers t r a = true
+  · have : k.rank = 0 ∨ k.rank = 1 ∨ k.rank = 2 := by omega
+    rcases this with h0 | h1 | h2
+    · simp only [hc, h0] at *; split at h <;> simp_all
+    · simp only [hc, h1] at *; split at h <;> simp_all
+    · simp only [hc, h2] at *; split at h <;> simp_all
+  · simp_all`);
+    md(r`If the new key does not apply, nothing changes. If it does, it is at rank 0, 1 or 2 (‹rcases› takes the three cases of the ‹∨› apart), and in each case ‹split at h› goes through the ranks ‹allows› asked before the new key, and ‹simp_all› finishes. You need not follow each step to use the theorem; the exercises have one shaped like it.`);
+    sec("A plausible statement that is false");
+    md(r`The fifth statement: a grant of everything on ‹doc› lets you do every action on ‹doc›. It sounds like what ‹"tenant1-doc:*": true› means. But ‹clash› from lesson 2 has that key and denies deleting a document, because ‹"tenant1-*:Delete": false› is just as specific and deny wins the tie. A false statement about every set is refuted by one set, a **counterexample**:`);
+    lean(r`example : ∃ p : Perms Tenant Res Act, (⟨.t1, .is .doc, .any⟩, true) ∈ p ∧ allows p .t1 .doc .delete = false :=
+  ⟨clash, by decide, by decide⟩`);
+    md(r`
+> [!mistake]
+> Someone who believes statement 5 writes tests for row grants on their own, and every test passes; the statement is only wrong in combination with a column deny, a case the person who believes it does not think to try. A statement written down is something to try to break, and the model gives the counterexample in a line.
+`);
+    sec("Exercises");
+    lx(r`theorem allows_cons_exact_deny (p : Perms T R A) (t : T) (r : R) (a : A) : allows ((⟨t, .is r, .is a⟩, false) :: p) t r a = false := by`, r`Prove statement 4: a deny of exactly the request's resource and action wins, whatever else the set says.`, r`  simp [allows, verdictAt_cons, Key.covers, Pat.hits, Key.rank, Pat.rank]`, [
+      r`The new key applies, and it has rank 2, so it decides at the first rank ‹allows› asks.`,
+      r`‹simp› with the definitions and the lemma does it: ‹simp [allows, verdictAt_cons, Key.covers, Pat.hits, Key.rank, Pat.rank]›.`,
+    ]);
+    lx(r`theorem allows_of_cons_deny (k : Key T R A) (p : Perms T R A) (t : T) (r : R) (a : A) (h : allows ((k, false) :: p) t r a = true) : allows p t r a = true := by`, r`Prove the other half of statement 3: a deny never gives anything. If the set with the deny allows a request, the set without it did already.`, r`  have hk := k.rank_le
+  unfold allows at *
+  simp only [verdictAt_cons] at h
+  by_cases hc : k.covers t r a = true
+  · have : k.rank = 0 ∨ k.rank = 1 ∨ k.rank = 2 := by omega
+    rcases this with h0 | h1 | h2
+    · simp only [hc, h0] at *; split <;> simp_all
+    · simp only [hc, h1] at *; split <;> simp_all
+    · simp only [hc, h2] at *; split <;> simp_all
+  · simp_all`, [
+      r`Follow ‹allows_cons_grant›. This time the lemma rewrites the hypothesis: ‹simp only [verdictAt_cons] at h›.`,
+      r`In each of the three cases, the ranks to go through are those of the goal, ‹allows p›: ‹split <;> simp_all›.`,
+    ], { start: "  have hk := k.rank_le\n  unfold allows at *\n  simp only [verdictAt_cons] at h\n  sorry" });
+    lx(r`theorem not_row_grant : ¬ ∀ p : Perms Tenant Res Act, (⟨.t1, .is .doc, .any⟩, true) ∈ p → allows p .t1 .doc .delete = true := by`, r`Prove that statement 5 is false, with ‹clash› as the counterexample.`, r`  intro h
+  have := h clash (by decide)
+  revert this
+  decide`, [
+      r`‹¬ S› is "if ‹S›, then a contradiction": ‹intro h› gives you ‹h : ∀ p, …›.`,
+      r`Use ‹h› on ‹clash›: ‹have := h clash (by decide)› says ‹allows clash .t1 .doc .delete = true›, which is false.`,
+      r`‹revert this› puts it back in the goal as ‹… = true → False›, which ‹decide› computes.`,
+    ]);
+    md(r`
+> [!summary]
+> The guarantees, in plain words first and then as theorems about every set: deny by default, tenant isolation, grants that only give and denies that only take. A lemma about one more entry carried the proofs. One plausible guarantee was false, and a counterexample showed it: a statement about every input is something to try to break before trusting.
+`);
+    md(r`These are guarantees of the meaning. The next lessons hold the code's operations to it, starting with expansion.`);
+  });
+
+  add("04-expansion.chalk", "Expansion and its universe", "What expanding a set should compute, a proof that it keeps the meaning for the names the frontend knows, and what that hypothesis costs: a resource added later is not in the expanded set.", ({ sec, md, lean, lx }) => {
+    sec("Expansion and its universe");
+    md(r`
+> [!goal]
+> Specify what expanding a set computes, prove that it keeps what the set allows, and read the theorem's hypotheses for what it does not promise.
+`);
+    md(r`Expanding replaces each ‹*› by every name it stands for. A ‹*› stands for every resource, and the code can only write out the resources it knows, its **universe**:
+
+${tsFence([...UNIVERSE_TS, "", ...EXPAND_TS])}`);
+    md(r`Two things to model: what ‹expand› should compute, and the loop that computes it. This lesson does the first and proves it keeps the meaning. The capstone, lesson 8, models the loop step for step and compares the two, which is how a model checks code: a specification, then the code against it.`);
+    md(r`What it should compute is a key for every tenant, resource and action of the universe, with what the set says of it:`);
+    lean(r`/-- Every key written out in full, for the tenants, resources and actions given, each with what the
+    set allows. -/
+def expand (p : Perms T R A) (ts : List T) (rs : List R) (as : List A) : Perms T R A :=
+  ts.flatMap fun t => rs.flatMap fun r => as.map fun a => (⟨t, .is r, .is a⟩, allows p t r a)
+
+#eval showPerms (expand admin [.t1] resources actions)
+#eval (expand admin [.t1] resources actions).length`);
+    md(r`‹List.flatMap› applies a function that gives a list to each element and joins the lists: one list per tenant, of one list per resource, of a key per action. Twelve keys for one tenant.`);
+    sec("Expansion keeps the meaning");
+    md(r`The theorem: for a tenant, resource and action of the universe, the expanded set allows what the original did. The expanded set's keys all have rank 2, and the ones that apply to the request all carry the same value, ‹allows p t r a›; a lemma says that a non-empty list of one value has that value as its ‹all›:`);
+    lean(r`theorem all_id_of_forall {l : List Bool} {v : Bool} (hne : l ≠ []) (h : ∀ x ∈ l, x = v) :
+    l.all id = v := by
+  cases v
+  · obtain ⟨x, hx⟩ := List.exists_mem_of_ne_nil l hne
+    have := h x hx
+    apply Bool.eq_false_iff.mpr
+    intro hall
+    have := (List.all_eq_true.mp hall) x hx
+    simp_all
+  · exact List.all_eq_true.mpr (fun x hx => by simp [h x hx])
+
+/-- Inside the universe, the expanded set allows what the original did. -/
+theorem allows_expand (p : Perms T R A) (ts : List T) (rs : List R) (as : List A)
+    (t : T) (r : R) (a : A) (ht : t ∈ ts) (hr : r ∈ rs) (ha : a ∈ as) :
+    allows (expand p ts rs as) t r a = allows p t r a := by
+  have h2 : verdictAt (expand p ts rs as) 2 t r a = some (allows p t r a) := by
+    simp only [verdictAt]
+    have hmem : ∀ x ∈ ((expand p ts rs as).filter fun e => e.1.covers t r a && e.1.rank == 2).map (·.2),
+        x = allows p t r a := by
+      intro x hx
+      simp only [expand, List.mem_map, List.mem_filter, List.mem_flatMap] at hx
+      obtain ⟨e, ⟨⟨t', _, r', _, a', _, rfl⟩, hc⟩, rfl⟩ := hx
+      simp [Key.covers, Pat.hits] at hc
+      obtain ⟨⟨⟨rfl, rfl⟩, rfl⟩, -⟩ := hc
+      rfl
+    have hne : ((expand p ts rs as).filter fun e => e.1.covers t r a && e.1.rank == 2).map (·.2) ≠ [] := by
+      apply List.ne_nil_of_mem (a := allows p t r a)
+      simp only [expand, List.mem_map, List.mem_filter, List.mem_flatMap]
+      exact ⟨_, ⟨⟨t, ht, r, hr, a, ha, rfl⟩, by simp [Key.covers, Pat.hits, Key.rank, Pat.rank]⟩, rfl⟩
+    have : (((expand p ts rs as).filter fun e => e.1.covers t r a && e.1.rank == 2).map (·.2)).isEmpty = false := by
+      simpa using hne
+    simp only [this, Bool.false_eq_true, ite_false, all_id_of_forall hne hmem]
+  simp only [allows, h2]`);
+    md(r`Rank 2 decides, so the proof only needs ‹verdictAt› at rank 2 (‹h2›): every value there is ‹allows p t r a› (‹hmem›: a key of the expanded set that applies is the request's own), and there is one (‹hne›: the request's key is in the set, because ‹t›, ‹r› and ‹a› are in the universe). ‹obtain ⟨…, rfl⟩› takes a hypothesis apart and substitutes each equation as it goes.`);
+    sec("Outside the universe");
+    md(r`Every theorem's hypotheses are worth reading as cases where it promises nothing. Here: ‹t ∈ ts›, ‹r ∈ rs›, ‹a ∈ as›. Next month the app gets a fifth resource, ‹audit›:`);
+    lean(r`inductive Res' where
+  | doc | invoice | user | report | audit
+  deriving Repr, DecidableEq
+
+/-- The wildcard allows the new resource. -/
+example : allows [(⟨Tenant.t1, (.any : Pat Res'), (.any : Pat Act)⟩, true)] .t1 .audit .read = true := by decide
+
+/-- The set expanded before it existed does not. -/
+example : allows (expand [(⟨Tenant.t1, (.any : Pat Res'), (.any : Pat Act)⟩, true)] [.t1] [.doc, .invoice, .user, .report] actions)
+    .t1 .audit .read = false := by decide`);
+    md(r`
+> [!mistake]
+> ‹"tenant1-*:*": true› is a promise about every resource, including the ones added next month. Its expansion is a promise about the four that existed when it was made. A system that stores expanded sets quietly takes the new resource away from every administrator, and a system that expands on the server must expand again whenever the universe changes. The theorem was right; it was the hypothesis ‹r ∈ rs› that said so.
+`);
+    sec("Exercises");
+    lx(r`theorem allows_expand_outside (p : Perms T R A) (ts : List T) (rs : List R) (as : List A) (t : T) (r : R) (a : A) (hr : r ∉ rs) : allows (expand p ts rs as) t r a = false := by`, r`Prove what the example showed, for every set: for a resource outside the universe, the expanded set allows nothing.`, r`  have none : ∀ n, verdictAt (expand p ts rs as) n t r a = none := by
+    intro n
+    have : ((expand p ts rs as).filter fun e => e.1.covers t r a && e.1.rank == n) = [] := by
+      apply List.eq_nil_iff_forall_not_mem.mpr
+      intro e he
+      simp only [expand, List.mem_filter, List.mem_flatMap, List.mem_map] at he
+      obtain ⟨⟨t', _, r', hr', a', _, rfl⟩, hc⟩ := he
+      simp [Key.covers, Pat.hits] at hc
+      exact hr (hc.1.1.2 ▸ hr')
+    simp [verdictAt, this]
+  simp [allows, none]`, [
+      r`No key of the expanded set applies: each names a resource ‹r'› of ‹rs›, and applying needs ‹r' = r›. So every rank says ‹none›.`,
+      r`The keys that apply form an empty list: prove it with ‹List.eq_nil_iff_forall_not_mem.mpr›, taking an ‹e› in it apart as ‹allows_expand› did.`,
+      r`The contradiction is ‹hr : r ∉ rs› against ‹hr' : r' ∈ rs› and ‹r' = r›; ‹▸› rewrites a proof with an equation: ‹hr (h ▸ hr')›.`,
+    ], { start: "  have none : ∀ n, verdictAt (expand p ts rs as) n t r a = none := by\n    sorry\n  simp [allows, none]" });
+    lx(r`theorem expand_editor_size : (expand editor tenants resources actions).length = 24 := by`, r`How many keys does ‹editor› expand to, over both tenants? Predict, then prove the statement (and change the number if your prediction was wrong).`, r`  decide`, [
+      r`One key per tenant, resource and action of the universe, whatever the set says.`,
+    ]);
+    md(r`
+> [!summary]
+> Expansion is specified by what it should compute, every key of the universe with what the set allows, and proved to keep the meaning for every tenant, resource and action of the universe. The hypotheses mark what it does not promise: a resource added later is not in the expanded set, though the wildcard it came from allowed it.
+`);
+    md(r`Expanded sets are large. The next lesson makes them small again.`);
+  });
+
+  add("05-compression.chalk", "Compression without loss", "What a set of grants means, the compression that goes over the wire, a proof that it loses nothing on the universe, and why “as small as possible” has to say smallest among what.", ({ sec, md, lean, lx }) => {
+    sec("Compression without loss");
+    md(r`
+> [!goal]
+> Model the compression that goes to the browser, and prove it loses no information on the universe.
+`);
+    md(r`The expanded set has a key for every tenant, resource and action. Before it goes over the wire, the code puts the wildcards back, as few keys as it can:
+
+${tsFence(COMPRESS_TS)}`);
+    md(r`It writes only grants. A row (‹"tenant1-doc:*"›) when every action on a resource is allowed, a column (‹"tenant1-*:Read"›) when an action is allowed on every resource, ‹"tenant1-*:*"› when everything is, and single keys for what is left. Anything absent is a no.`);
+    sec("What a set of grants means");
+    md(r`With only grants, there is no deny to win a tie, and the ranks stop mattering: a set of grants allows a request exactly when some key applies to it. That is ‹can›'s view of a set in the frontend, and it is worth proving once, since compression's proof rests on it.`);
+    lean(r`/-- Every value in the set is true: a set of grants. -/
+def grantsOnly (p : Perms T R A) : Prop := ∀ e ∈ p, e.2 = true
+
+theorem verdictAt_grants {p : Perms T R A} (hp : grantsOnly p) (n : Nat) (t : T) (r : R) (a : A) :
+    verdictAt p n t r a = if p.any (fun e => e.1.covers t r a && e.1.rank == n) then some true else none := by
+  simp only [verdictAt]
+  by_cases h : p.any (fun e => e.1.covers t r a && e.1.rank == n) = true
+  · obtain ⟨e, he, hc⟩ := List.any_eq_true.mp h
+    have hne : ((p.filter fun e => e.1.covers t r a && e.1.rank == n).map (·.2)) ≠ [] :=
+      List.ne_nil_of_mem (List.mem_map_of_mem (List.mem_filter.mpr ⟨he, hc⟩))
+    have hall : ∀ x ∈ ((p.filter fun e => e.1.covers t r a && e.1.rank == n).map (·.2)), x = true := by
+      intro x hx
+      obtain ⟨e', he', rfl⟩ := List.mem_map.mp hx
+      exact hp e' (List.mem_filter.mp he').1
+    have : ((p.filter fun e => e.1.covers t r a && e.1.rank == n).map (·.2)).isEmpty = false := by
+      simpa using hne
+    simp only [this, Bool.false_eq_true, ite_false, h, ite_true, all_id_of_forall hne hall]
+  · have : (p.filter fun e => e.1.covers t r a && e.1.rank == n) = [] := by
+      apply List.eq_nil_iff_forall_not_mem.mpr
+      intro e he
+      exact h (List.any_eq_true.mpr ⟨e, (List.mem_filter.mp he).1, (List.mem_filter.mp he).2⟩)
+    simp [this, h]
+
+/-- In a set of grants, a request is allowed when some key applies to it. -/
+theorem allows_grants {p : Perms T R A} (hp : grantsOnly p) (t : T) (r : R) (a : A) :
+    allows p t r a = p.any (fun e => e.1.covers t r a) := by
+  have hrank : ∀ e : Key T R A × Bool, e.1.covers t r a = true →
+      e.1.rank = 0 ∨ e.1.rank = 1 ∨ e.1.rank = 2 := by
+    intro e _; have := e.1.rank_le; omega
+  simp only [allows, verdictAt_grants hp]
+  apply Bool.eq_iff_iff.mpr
+  constructor
+  · intro h
+    split at h <;> (try split at h) <;> simp_all <;> grind
+  · intro h
+    obtain ⟨e, he, hc⟩ := List.any_eq_true.mp h
+    rcases hrank e hc with h0 | h1 | h2
+    · split <;> (try split) <;> simp_all <;> grind
+    · split <;> (try split) <;> simp_all <;> grind
+    · split <;> (try split) <;> simp_all <;> grind`);
+    md(r`‹grantsOnly› is a ‹Prop›, a statement, rather than a ‹Bool›: it is used in hypotheses, not computed. ‹grind› is a tactic that collects the facts in sight and searches for a contradiction or a proof among them; here it finishes the cases ‹split› leaves.`);
+    sec("Compression, modeled");
+    md(r`The model follows the code. ‹g r a› is what the set allows the tenant; ‹missing› finds a cell it does not allow, if there is one, which is how the model asks the code's question "is everything allowed?" (the answer is yes when nothing is missing):`);
+    lean(r`/-- Whether every action on r is allowed. -/
+def fullRow (g : R → A → Bool) (as : List A) (r : R) : Bool := as.all (g r)
+/-- Whether a is allowed on every resource. -/
+def fullCol (g : R → A → Bool) (rs : List R) (a : A) : Bool := rs.all (g · a)
+
+/-- A cell that is not allowed, if there is one. -/
+def missing (g : R → A → Bool) (rs : List R) (as : List A) : Option (R × A) :=
+  (rs.flatMap fun r => as.map fun a => (r, a)).find? fun c => !g c.1 c.2
+
+/-- Tenant t's keys: everything at once if it can, else whole rows, whole columns, and the cells
+    left over. -/
+def compressFor (g : R → A → Bool) (t : T) (rs : List R) (as : List A) : List (Key T R A) :=
+  if rs.isEmpty || as.isEmpty then [] else
+  match missing g rs as with
+  | none => [⟨t, .any, .any⟩]
+  | some _ =>
+    (rs.filter (fullRow g as)).map (fun r => ⟨t, .is r, .any⟩)
+    ++ (as.filter (fullCol g rs)).map (fun a => ⟨t, .any, .is a⟩)
+    ++ (rs.filter (fun r => !fullRow g as r)).flatMap (fun r =>
+          (as.filter (fun a => g r a && !fullCol g rs a)).map (fun a => ⟨t, .is r, .is a⟩))
+
+/-- The set sent to the browser: each tenant's keys, as grants. -/
+def compress (p : Perms T R A) (ts : List T) (rs : List R) (as : List A) : Perms T R A :=
+  (ts.flatMap fun t => compressFor (allows p t) t rs as).map (·, true)
+
+#eval showPerms (compress admin tenants resources actions)
+#eval showPerms (compress editor tenants resources actions)`);
+    md(r`The model compresses ‹p› directly, reading it through ‹allows p t›; the code compresses the expanded set, which lesson 4 proved means the same on the universe. ‹admin› comes back as one key. ‹editor› comes back as four: every action on documents, invoices and reports, and reading on everything, users included.`);
+    sec("Smallest among what?");
+    md(r`The code promises the result is as small as possible. Try a role with a deny:`);
+    lean(r`def blocked : Perms Tenant Res Act := [(⟨.t1, .any, .any⟩, true), (⟨.t1, .is .doc, .is .delete⟩, false)]
+
+#eval showPerms (compress blocked tenants resources actions)`);
+    md(r`
+> [!mistake]
+> Two keys went in and five came out. ‹blocked› says the same thing in two keys, using a deny, which compression never writes. "As small as possible" is true only as "as small as any set of *grants*", and the frontend's ‹can› depends on that (lesson 7). An unqualified promise is often true of a smaller class than it says; the model makes you name the class.
+`);
+    md(r`The next lesson proves the qualified promise. This one proves the other: nothing is lost.`);
+    sec("Nothing is lost");
+    lean(r`theorem missing_none {R A : Type} {g : R → A → Bool} {rs : List R} {as : List A} (h : missing g rs as = none) :
+    ∀ r ∈ rs, ∀ a ∈ as, g r a = true := by
+  intro r hr a ha
+  have := List.find?_eq_none.mp h (r, a) (List.mem_flatMap.mpr ⟨r, hr, List.mem_map.mpr ⟨a, ha, rfl⟩⟩)
+  simpa using this
+
+theorem missing_some {R A : Type} {g : R → A → Bool} {rs : List R} {as : List A} {c : R × A}
+    (h : missing g rs as = some c) : c.1 ∈ rs ∧ c.2 ∈ as ∧ g c.1 c.2 = false := by
+  have hm := List.mem_of_find?_eq_some h
+  have hp := List.find?_some h
+  obtain ⟨r, hr, hc⟩ := List.mem_flatMap.mp hm
+  obtain ⟨a, ha, rfl⟩ := List.mem_map.mp hc
+  simp_all
+
+/-- Tenant t's keys reach exactly what g allows. -/
+theorem compressFor_covers (g : R → A → Bool) (t : T) (rs : List R) (as : List A)
+    (r : R) (a : A) (hr : r ∈ rs) (ha : a ∈ as) :
+    (compressFor g t rs as).any (fun k => k.covers t r a) = g r a := by
+  have hrs : rs.isEmpty = false := by cases rs <;> simp_all
+  have has : as.isEmpty = false := by cases as <;> simp_all
+  apply Bool.eq_iff_iff.mpr
+  simp only [compressFor, hrs, has, Bool.or_false, Bool.false_eq_true, ite_false]
+  split
+  · rename_i hm
+    simp [Key.covers, Pat.hits, missing_none hm r hr a ha]
+  · simp only [List.any_append, List.any_map, Bool.or_eq_true, List.any_eq_true, List.mem_filter,
+      List.mem_flatMap, List.mem_map, Function.comp]
+    constructor
+    · rintro ((⟨r', ⟨hr', hf⟩, hc⟩ | ⟨a', ⟨ha', hf⟩, hc⟩) | ⟨k, ⟨r', ⟨hr', _⟩, a', ⟨ha', hg⟩, rfl⟩, hc⟩)
+      · simp [Key.covers, Pat.hits] at hc; subst hc
+        exact List.all_eq_true.mp hf a ha
+      · simp [Key.covers, Pat.hits] at hc; subst hc
+        exact List.all_eq_true.mp hf r hr
+      · simp [Key.covers, Pat.hits] at hc; obtain ⟨rfl, rfl⟩ := hc
+        simp at hg; exact hg.1
+    · intro hg
+      by_cases hfr : fullRow g as r = true
+      · exact Or.inl (Or.inl ⟨r, ⟨hr, hfr⟩, by simp [Key.covers, Pat.hits]⟩)
+      by_cases hfc : fullCol g rs a = true
+      · exact Or.inl (Or.inr ⟨a, ⟨ha, hfc⟩, by simp [Key.covers, Pat.hits]⟩)
+      · exact Or.inr ⟨⟨t, .is r, .is a⟩, ⟨r, ⟨hr, by simpa using hfr⟩, a, ⟨ha, by simp_all⟩, rfl⟩,
+          by simp [Key.covers, Pat.hits]⟩
+
+theorem compressFor_tenant {T R A : Type} {g : R → A → Bool} {t : T} {rs : List R} {as : List A} {k : Key T R A}
+    (h : k ∈ compressFor g t rs as) : k.tenant = t := by
+  simp only [compressFor] at h
+  split at h
+  · simp at h
+  · split at h
+    · simp at h; subst h; rfl
+    · simp only [List.mem_append, List.mem_map, List.mem_filter, List.mem_flatMap] at h
+      rcases h with (⟨_, _, rfl⟩ | ⟨_, _, rfl⟩) | ⟨_, _, _, _, rfl⟩ <;> rfl
+
+theorem compress_grants (p : Perms T R A) (ts : List T) (rs : List R) (as : List A) :
+    grantsOnly (compress p ts rs as) := by
+  intro e he
+  obtain ⟨_, _, rfl⟩ := List.mem_map.mp he
+  rfl
+
+/-- Nothing is lost: inside the universe, the compressed set allows what the original did. -/
+theorem allows_compress (p : Perms T R A) (ts : List T) (rs : List R) (as : List A)
+    (t : T) (r : R) (a : A) (ht : t ∈ ts) (hr : r ∈ rs) (ha : a ∈ as) :
+    allows (compress p ts rs as) t r a = allows p t r a := by
+  rw [allows_grants (compress_grants p ts rs as), ← compressFor_covers (allows p t) t rs as r a hr ha]
+  apply Bool.eq_iff_iff.mpr
+  simp only [compress, List.any_map, List.any_eq_true, List.mem_flatMap, Function.comp]
+  constructor
+  · rintro ⟨k, ⟨t', _, hk⟩, hc⟩
+    have : t' = t := by
+      have := compressFor_tenant hk
+      simp [Key.covers] at hc; rw [← this]; exact hc.1.1
+    subst this
+    exact ⟨k, hk, hc⟩
+  · rintro ⟨k, hk, hc⟩
+    exact ⟨k, ⟨t, ht, hk⟩, hc⟩`);
+    md(r`The heart is ‹compressFor_covers›, case by case as the code is. When nothing is missing, ‹*:*› reaches everything, and everything is allowed. Otherwise, a key that reaches the request is a full row, a full column or the request's own cell, and each says the request is allowed; the other way, an allowed request is in a full row, or a full column, or else it is a cell left over, which has a key of its own. ‹allows_compress› puts it together: compression writes only grants, so ‹allows_grants› applies, and the keys that reach tenant ‹t›'s requests are ‹t›'s own (‹compressFor_tenant›).`);
+    sec("Exercises");
+    lx(r`theorem allows_pipeline (p : Perms T R A) (ts : List T) (rs : List R) (as : List A) (t : T) (r : R) (a : A) (ht : t ∈ ts) (hr : r ∈ rs) (ha : a ∈ as) : allows (compress (expand p ts rs as) ts rs as) t r a = allows p t r a := by`, r`The code compresses the *expanded* set. Prove that the two steps together lose nothing on the universe.`, r`  rw [allows_compress _ ts rs as t r a ht hr ha, allows_expand p ts rs as t r a ht hr ha]`, [
+      r`Two theorems, one per step: ‹allows_compress›, then ‹allows_expand›.`,
+      r`‹rw [allows_compress _ ts rs as t r a ht hr ha]› turns the left side into ‹allows (expand p ts rs as) t r a›.`,
+    ]);
+    lx(r`theorem compress_admin : compress admin tenants resources actions = [(⟨.t1, .any, .any⟩, true)] := by`, r`Prove that full access to a tenant compresses back to one key.`, r`  decide`, [r`A statement about one value, which Lean can compute.`]);
+    lx(r`theorem compress_blocked_size : (compress blocked tenants resources actions).length = 5 := by`, r`Prove that compression gives five keys for ‹blocked›, the two-key role with a deny.`, r`  decide`, [r`Compute it.`]);
+    md(r`
+> [!summary]
+> A set of grants allows a request exactly when some key applies to it, which is all the frontend's check looks at. Compression, modeled after the code, is proved to lose nothing on the universe, and so is the code's pipeline, expansion then compression. "As small as possible" needed a qualifier: a deny can say in two keys what takes five grants.
+`);
+    md(r`The next lesson proves the qualified promise: no set of grants that means the same is smaller.`);
+  });
+
+  add("06-minimal.chalk", "As small as it can be", "What “minimal” has to mean, why the universe must have no repeats, and the proof: every key compression writes is paid for by a different key of any other set of grants that means the same.", ({ sec, md, lean, lx }) => {
+    sec("As small as it can be");
+    md(r`
+> [!goal]
+> State precisely what "the compressed set is as small as it can be" means, and prove it.
+`);
+    md(r`Lesson 5 found the class: sets of grants. The promise, made precise: if ‹q› is any set of grants that allows the same requests as ‹p› on the universe, then ‹compress p› has no more keys than ‹q›. Written in Lean, it is the theorem this lesson ends on:
+
+‹‹‹lean
+theorem compress_minimal (p q : Perms T R A) (ts : List T) (rs : List R) (as : List A)
+    (hts : ts.Nodup) (hrs : rs.Nodup) (has : as.Nodup) (hq : grantsOnly q)
+    (agree : ∀ t ∈ ts, ∀ r ∈ rs, ∀ a ∈ as, allows q t r a = allows p t r a) :
+    (compress p ts rs as).length ≤ q.length
+‹‹‹
+
+It has a hypothesis the code never mentions: ‹ts.Nodup›, ‹rs.Nodup›, ‹as.Nodup›, the universe lists name nothing twice.`.replace(/‹‹‹/g, "```"));
+    lean(r`#eval showPerms (compress editor tenants [.doc, .invoice, .doc, .user, .report] actions)`);
+    md(r`With ‹doc› listed twice, ‹"tenant1-doc:*"› is written twice: the code writes ‹out[key]› twice, harmlessly, but a list keeps both. Where the universe comes from (a config file, a database query with a join) decides whether this hypothesis holds, and the theorem says it matters.`);
+    sec("The argument");
+    md(r`Fix a tenant whose cells are not all allowed (otherwise compression writes one key, and ‹q› has at least one). Let $(r_0, a_0)$ be a cell that is not allowed, the one ‹missing› finds. No key of ‹q› applies to it, so ‹q› has no ‹*:*› key, no column key for $a_0$ and no row key for $r_0$. Now take each kind of key compression writes, and find a key of ‹q› that must be there:
+
+- **A full row** $r$, ‹"t-r:*"›. The cell $(r, a_0)$ is allowed, so some key of ‹q› applies to it. Not one with resource ‹*›: it would apply to $(r_0, a_0)$ too. So it is ‹"t-r:*"› or ‹"t-r:a₀"›.
+- **A full column** $a$, ‹"t-*:a"›. Likewise, the cell $(r_0, a)$: the key of ‹q› is ‹"t-*:a"› or ‹"t-r₀:a"›.
+- **A cell left over**, $(r, a)$, in no full row and no full column. A key of ‹q› applies to it. If its resource were ‹*›, column $a$ would be full; if its action were ‹*›, row $r$ would be full. So it is ‹"t-r:a"› itself.
+
+Each key compression writes has a key of ‹q› that pays for it, and no key of ‹q› pays for two: ‹"t-r:a₀"› pays for row $r$ (its row is full), ‹"t-r₀:a"› for column $a$ (row $r_0$ is not full), and any other cell key for itself. The function that says which key a key of ‹q› pays for is ‹charge›. If every key compression writes is the charge of some key of ‹q›, and compression writes no key twice, it writes at most as many keys as ‹q› has.`);
+    md(r`
+> [!definition] Counting by paying
+> To show a list is no longer than another, find for each of its elements one of the other's that pays for it, no one paying twice. In Lean: a list without repeats whose members are all in a second list is no longer than it. That is ‹length_le_of_subset›.
+`);
+    lean(r`/-- A list without repeats is no longer than any list holding all its members. -/
+theorem length_le_of_subset {α : Type} [DecidableEq α] {l m : List α} (hl : l.Nodup)
+    (h : ∀ x ∈ l, x ∈ m) : l.length ≤ m.length := by
+  induction l generalizing m with
+  | nil => simp
+  | cons x xs ih =>
+    obtain ⟨hnx, hxs⟩ := List.nodup_cons.mp hl
+    have hx : x ∈ m := h x (by simp)
+    have hle : xs.length ≤ (m.erase x).length :=
+      ih hxs fun y hy => (List.mem_erase_of_ne (by rintro rfl; exact hnx hy)).mpr (h y (by simp [hy]))
+    rw [List.length_erase_of_mem hx] at hle
+    have := List.length_pos_of_mem hx
+    simp only [List.length_cons]
+    omega`);
+    md(r`Induction on ‹l›, for every ‹m› (‹generalizing m›): ‹x› is in ‹m›; the rest of ‹l› has no ‹x›, so it is in ‹m› with ‹x› removed (‹m.erase x›), one shorter. Then the charge:`);
+    lean(r`/-- In a set of grants, a key that applies to a request allows it. -/
+theorem allows_of_covers {q : Perms T R A} (hq : grantsOnly q) {e : Key T R A × Bool} (he : e ∈ q)
+    {t : T} {r : R} {a : A} (hc : e.1.covers t r a = true) : allows q t r a = true := by
+  rw [allows_grants hq]
+  exact List.any_eq_true.mpr ⟨e, he, hc⟩
+
+/-- Which of compressFor's keys a grant k of another set pays for. -/
+def charge (g : R → A → Bool) (rs : List R) (as : List A) (k : Key T R A) : Key T R A :=
+  match missing g rs as with
+  | none => ⟨k.tenant, .any, .any⟩
+  | some (r₀, a₀) =>
+    match k.res, k.act with
+    | .is r, .is a =>
+      if fullRow g as r && a == a₀ then ⟨k.tenant, .is r, .any⟩
+      else if fullCol g rs a && r == r₀ then ⟨k.tenant, .any, .is a⟩
+      else k
+    | _, _ => k`);
+    md(r`The proof that every key compression writes is paid for follows the argument's three cases; each ‹cases› on a key's resource and action rules out the shapes the argument ruled out, with ‹allowed› (what a key of ‹q› allows, ‹g› allows) and the missing cell. It is long because there are many shapes, not because any step is hard: read the comments and one case.`);
+    lean(r`/-- Every key compressFor writes is paid for by a grant of any set of grants that means the same. -/
+theorem compressFor_paid (g : R → A → Bool) (t : T) (rs : List R) (as : List A)
+    (q : Perms T R A) (hq : grantsOnly q) (agree : ∀ r ∈ rs, ∀ a ∈ as, allows q t r a = g r a)
+    (c : Key T R A) (hc : c ∈ compressFor g t rs as) :
+    ∃ e ∈ q, e.1.tenant = t ∧ charge g rs as e.1 = c := by
+  -- a grant of q that applies to an allowed cell of the universe
+  have grant : ∀ r ∈ rs, ∀ a ∈ as, g r a = true →
+      ∃ e ∈ q, e.1.tenant = t ∧ e.1.res.hits r = true ∧ e.1.act.hits a = true := by
+    intro r hr a ha hg
+    rw [← agree r hr a ha, allows_grants hq] at hg
+    obtain ⟨e, he, hc⟩ := List.any_eq_true.mp hg
+    simp only [Key.covers, Bool.and_eq_true, beq_iff_eq] at hc
+    exact ⟨e, he, hc.1.1, hc.1.2, hc.2⟩
+  -- and what such a grant allows, g allows
+  have allowed : ∀ e ∈ q, e.1.tenant = t → ∀ r ∈ rs, ∀ a ∈ as,
+      e.1.res.hits r = true → e.1.act.hits a = true → g r a = true := by
+    intro e he het r hr a ha h1 h2
+    rw [← agree r hr a ha]
+    exact allows_of_covers hq he (by simp [Key.covers, het, h1, h2])
+  simp only [compressFor] at hc
+  split at hc
+  · simp at hc
+  · rename_i hne
+    have hrs : rs ≠ [] := by intro h; simp [h] at hne
+    have has : as ≠ [] := by intro h; simp [h] at hne
+    split at hc
+    · -- everything allowed: one key, *:*, paid for by any grant of the tenant
+      rename_i hm
+      simp only [List.mem_singleton] at hc; subst hc
+      obtain ⟨r, hr⟩ := List.exists_mem_of_ne_nil rs hrs
+      obtain ⟨a, ha⟩ := List.exists_mem_of_ne_nil as has
+      obtain ⟨e, he, het, -, -⟩ := grant r hr a ha (missing_none hm r hr a ha)
+      exact ⟨e, he, het, by simp [charge, hm, het]⟩
+    · -- (r₀, a₀) is not allowed
+      rename_i c₀ hm
+      obtain ⟨r₀, a₀⟩ := c₀
+      obtain ⟨hr₀, ha₀, hg₀⟩ := missing_some hm
+      simp only at hr₀ ha₀ hg₀
+      have hfr₀ : fullRow g as r₀ = false := by
+        apply Bool.eq_false_iff.mpr; intro h
+        have := List.all_eq_true.mp h a₀ ha₀; simp_all
+      simp only [List.mem_append, List.mem_map, List.mem_filter, List.mem_flatMap] at hc
+      rcases hc with (⟨r, ⟨hr, hfr⟩, rfl⟩ | ⟨a, ⟨ha, hfc⟩, rfl⟩) | ⟨r, ⟨hr, hfr⟩, a, ⟨ha, hga⟩, rfl⟩
+      · -- a full row r: the grant that allows (r, a₀)
+        obtain ⟨⟨⟨t', res, act⟩, v⟩, he, het, h1, h2⟩ := grant r hr a₀ ha₀ (List.all_eq_true.mp hfr a₀ ha₀)
+        simp only at het h1 h2; subst het
+        refine ⟨_, he, rfl, ?_⟩
+        cases res with
+        | any =>
+          have := allowed _ he rfl r₀ hr₀ a₀ ha₀ rfl h2
+          simp_all
+        | is r' =>
+          simp only [Pat.hits, beq_iff_eq] at h1; subst h1
+          cases act with
+          | any => simp [charge, hm]
+          | is a' =>
+            simp only [Pat.hits, beq_iff_eq] at h2; subst h2
+            simp [charge, hm, hfr]
+      · -- a full column a: the grant that allows (r₀, a)
+        obtain ⟨⟨⟨t', res, act⟩, v⟩, he, het, h1, h2⟩ := grant r₀ hr₀ a ha (List.all_eq_true.mp hfc r₀ hr₀)
+        simp only at het h1 h2; subst het
+        refine ⟨_, he, rfl, ?_⟩
+        cases act with
+        | any =>
+          have := allowed _ he rfl r₀ hr₀ a₀ ha₀ h1 rfl
+          simp_all
+        | is a' =>
+          simp only [Pat.hits, beq_iff_eq] at h2; subst h2
+          cases res with
+          | any => simp [charge, hm]
+          | is r' =>
+            simp only [Pat.hits, beq_iff_eq] at h1; subst h1
+            simp [charge, hm, hfr₀, hfc]
+      · -- a cell left over: only the grant of that very cell allows it
+        simp only [Bool.and_eq_true, Bool.not_eq_true'] at hga hfr
+        obtain ⟨hg, hfc⟩ := hga
+        obtain ⟨⟨⟨t', res, act⟩, v⟩, he, het, h1, h2⟩ := grant r hr a ha hg
+        simp only at het h1 h2; subst het
+        refine ⟨_, he, rfl, ?_⟩
+        cases res with
+        | any =>
+          cases act with
+          | any =>
+            have := allowed _ he rfl r₀ hr₀ a₀ ha₀ rfl rfl
+            simp_all
+          | is a' =>
+            simp only [Pat.hits, beq_iff_eq] at h2; subst h2
+            have : fullCol g rs a' = true :=
+              List.all_eq_true.mpr fun r' hr' => allowed _ he rfl r' hr' a' ha rfl (by simp [Pat.hits])
+            simp_all
+        | is r' =>
+          simp only [Pat.hits, beq_iff_eq] at h1; subst h1
+          cases act with
+          | any =>
+            have : fullRow g as r' = true :=
+              List.all_eq_true.mpr fun a' ha' => allowed _ he rfl r' hr a' ha' (by simp [Pat.hits]) rfl
+            simp_all
+          | is a' =>
+            simp only [Pat.hits, beq_iff_eq] at h2; subst h2
+            simp [charge, hm, hfr, hfc]`);
+    md(r`Last, the hypothesis the argument needed of compression itself: it writes no key twice, given a universe without repeats. Rows, columns and cells each come from a list without repeats, and keys of different kinds differ in where their ‹*› is.`);
+    lean(r`/-- compressFor writes no key twice. -/
+theorem compressFor_nodup {T R A : Type} (g : R → A → Bool) (t : T) (rs : List R) (as : List A)
+    (hrs : rs.Nodup) (has : as.Nodup) : (compressFor g t rs as).Nodup := by
+  simp only [compressFor]
+  split
+  · exact List.nodup_nil
+  · split
+    · simp
+    · have h1 : ((rs.filter (fullRow g as)).map fun r => (⟨t, .is r, .any⟩ : Key T R A)).Nodup :=
+        List.pairwise_map.mpr ((hrs.filter _).imp fun hne heq => hne (by simpa using heq))
+      have h2 : ((as.filter (fullCol g rs)).map fun a => (⟨t, .any, .is a⟩ : Key T R A)).Nodup :=
+        List.pairwise_map.mpr ((has.filter _).imp fun hne heq => hne (by simpa using heq))
+      have h3 : ((rs.filter fun r => !fullRow g as r).flatMap fun r =>
+          (as.filter fun a => g r a && !fullCol g rs a).map fun a => (⟨t, .is r, .is a⟩ : Key T R A)).Nodup := by
+        refine List.pairwise_flatMap.mpr ⟨fun r _ => ?_, (hrs.filter _).imp fun hne x hx y hy heq => ?_⟩
+        · exact List.pairwise_map.mpr ((has.filter _).imp fun hne heq => hne (by simpa using heq))
+        · simp only [List.mem_map] at hx hy
+          obtain ⟨_, _, rfl⟩ := hx; obtain ⟨_, _, rfl⟩ := hy
+          simp at heq; exact hne heq.1
+      rw [List.nodup_append, List.nodup_append]
+      refine ⟨⟨h1, h2, ?_⟩, h3, ?_⟩
+      · intro x hx y hy
+        simp only [List.mem_map] at hx hy
+        obtain ⟨_, _, rfl⟩ := hx; obtain ⟨_, _, rfl⟩ := hy; simp
+      · intro x hx y hy
+        simp only [List.mem_append, List.mem_map, List.mem_flatMap] at hx hy
+        obtain ⟨_, _, _, _, rfl⟩ := hy
+        rcases hx with ⟨_, _, rfl⟩ | ⟨_, _, rfl⟩ <;> simp`);
+    sec("Exercises");
+    md(r`The pieces are proved; the exercises put them together, first for one tenant, then for the whole set.`);
+    lx(r`theorem compressFor_minimal (g : R → A → Bool) (t : T) (rs : List R) (as : List A) (hrs : rs.Nodup) (has : as.Nodup) (q : Perms T R A) (hq : grantsOnly q) (agree : ∀ r ∈ rs, ∀ a ∈ as, allows q t r a = g r a) : (compressFor g t rs as).length ≤ q.length := by`, r`Prove that one tenant's compressed keys are no more than the keys of any set of grants that means the same for that tenant.`, r`  have hsub : ∀ c ∈ compressFor g t rs as, c ∈ q.map fun e => charge g rs as e.1 := by
+    intro c hc
+    obtain ⟨e, he, -, hch⟩ := compressFor_paid g t rs as q hq agree c hc
+    exact List.mem_map.mpr ⟨e, he, hch⟩
+  have := length_le_of_subset (compressFor_nodup g t rs as hrs has) hsub
+  simpa using this`, [
+      r`Use ‹length_le_of_subset› with ‹m› the charges of ‹q›'s keys: ‹q.map fun e => charge g rs as e.1›, which is as long as ‹q›.`,
+      r`Its first hypothesis is ‹compressFor_nodup›. For the second, each ‹c› has a paying key by ‹compressFor_paid›: ‹obtain ⟨e, he, -, hch⟩ := compressFor_paid g t rs as q hq agree c hc›, and ‹List.mem_map.mpr ⟨e, he, hch⟩›.`,
+      r`‹length_le_of_subset› then gives ‹… ≤ (q.map _).length›; ‹simpa using this› rewrites the length of a ‹map›.`,
+    ], { start: "  have hsub : ∀ c ∈ compressFor g t rs as, c ∈ q.map fun e => charge g rs as e.1 := by\n    sorry\n  sorry" });
+    lx(r`theorem compress_minimal (p q : Perms T R A) (ts : List T) (rs : List R) (as : List A) (hts : ts.Nodup) (hrs : rs.Nodup) (has : as.Nodup) (hq : grantsOnly q) (agree : ∀ t ∈ ts, ∀ r ∈ rs, ∀ a ∈ as, allows q t r a = allows p t r a) : (compress p ts rs as).length ≤ q.length := by`, r`Prove the promise: the set compression sends is as small as any set of grants that allows the same requests on the universe. A key of ‹q› now pays with the charge of its own tenant: ‹charge (allows p e.1.tenant) rs as e.1›.`, r`  have hnodup : (ts.flatMap fun t => compressFor (allows p t) t rs as).Nodup := by
+    simp only [List.Nodup, List.pairwise_flatMap]
+    refine ⟨fun t _ => compressFor_nodup _ t rs as hrs has, hts.imp ?_⟩
+    intro t₁ t₂ hne x hx y hy hxy
+    subst hxy
+    exact hne ((compressFor_tenant hx).symm.trans (compressFor_tenant hy))
+  have hsub : ∀ c ∈ ts.flatMap (fun t => compressFor (allows p t) t rs as),
+      c ∈ q.map fun e => charge (allows p e.1.tenant) rs as e.1 := by
+    intro c hc
+    obtain ⟨t, ht, hc⟩ := List.mem_flatMap.mp hc
+    obtain ⟨e, he, het, hch⟩ := compressFor_paid (allows p t) t rs as q hq (agree t ht) c hc
+    exact List.mem_map.mpr ⟨e, he, by rw [het]; exact hch⟩
+  have := length_le_of_subset hnodup hsub
+  simpa [compress] using this`, [
+      r`The same shape as ‹compressFor_minimal›, for the list of all tenants' keys, ‹ts.flatMap fun t => compressFor (allows p t) t rs as› (‹compress› pairs each with ‹true›, which does not change the length).`,
+      r`No repeats: within a tenant by ‹compressFor_nodup›; across two tenants, a key's tenant is the one it was written for (‹compressFor_tenant›). ‹List.pairwise_flatMap› splits ‹Nodup› of a ‹flatMap› into those two parts.`,
+      r`Paying: a ‹c› in the list comes from some ‹t ∈ ts› (‹List.mem_flatMap.mp›); ‹compressFor_paid› gives ‹e› with ‹e.1.tenant = t›, and rewriting with that makes its charge the right one.`,
+    ], { start: "  have hnodup : (ts.flatMap fun t => compressFor (allows p t) t rs as).Nodup := by\n    sorry\n  have hsub : ∀ c ∈ ts.flatMap (fun t => compressFor (allows p t) t rs as),\n      c ∈ q.map fun e => charge (allows p e.1.tenant) rs as e.1 := by\n    sorry\n  have := length_le_of_subset hnodup hsub\n  simpa [compress] using this" });
+    md(r`
+> [!summary]
+> "Minimal" became a theorem with every word pinned down: among sets of grants, meaning the same on the universe, for a universe that names nothing twice. The proof counts by paying: a cell that is not allowed rules out the broad keys, so each key compression writes forces a different key into any other set that means the same. Neither the class nor the hypothesis on the universe was in the code's comment.
+`);
+    md(r`What is sent is right and small. The next lesson follows it into the page.`);
+  });
+
+  add("07-template.chalk", "The check in the template", "The frontend's check and the precondition it relies on, an input that fools it, “all” over an empty list, and the theorem that ties the page's answer to the server's set, end to end.", ({ sec, md, lean, lx }) => {
+    sec("The check in the template");
+    md(r`
+> [!goal]
+> Model the check the page runs, find the precondition it depends on and what breaks without it, and prove the whole path, from the role to what the page shows.
+`);
+    md(r`The browser gets the compressed set, and the directive asks it questions:
+
+${tsFence(CHECK_TS)}`);
+    md(r`‹can› looks for any of the four keys that could apply, and takes a ‹true› among them as a yes. In the model, that is: some key that applies says yes.`);
+    lean(r`/-- The frontend's can: some key that applies to the request says yes. -/
+def canWire (p : Perms T R A) (t : T) (r : R) (a : A) : Bool :=
+  p.any fun e => e.1.covers t r a && e.2
+
+theorem canWire_grants {p : Perms T R A} (hp : grantsOnly p) (t : T) (r : R) (a : A) :
+    canWire p t r a = allows p t r a := by
+  rw [allows_grants hp]
+  apply Bool.eq_iff_iff.mpr
+  simp only [canWire, List.any_eq_true, Bool.and_eq_true]
+  constructor
+  · rintro ⟨e, he, hc, -⟩; exact ⟨e, he, hc⟩
+  · rintro ⟨e, he, hc⟩; exact ⟨e, he, hc, hp e he⟩`);
+    md(r`On a set of grants, ‹can› is right. On anything else:`);
+    lean(r`example : canWire blocked .t1 .doc .delete = true ∧ allows blocked .t1 .doc .delete = false := by decide`);
+    md(r`
+> [!mistake]
+> Hand ‹can› a role straight from the server, with its deny, and it shows tenant1 a Delete button the role forbids. ‹can› is correct only on sets of grants, and nothing says so: compression's output and a role have the same type, ‹Permissions›. A precondition that lives only in the head of the person who wrote the function is a bug waiting for the next person.
+`);
+    md(r`The model can carry the precondition in the type. A ‹Wire› is a set together with a proof that it is a set of grants, and the only way to make one from a role is to compress it:`);
+    lean(r`/-- What goes over the wire: a set of grants, with the proof. -/
+def Wire (T R A : Type) := { p : Perms T R A // grantsOnly p }
+
+def toWire (p : Perms T R A) (ts : List T) (rs : List R) (as : List A) : Wire T R A :=
+  ⟨compress p ts rs as, compress_grants p ts rs as⟩
+
+theorem canWire_toWire (p : Perms T R A) (ts : List T) (rs : List R) (as : List A)
+    (t : T) (r : R) (a : A) (ht : t ∈ ts) (hr : r ∈ rs) (ha : a ∈ as) :
+    canWire (toWire p ts rs as).val t r a = allows p t r a := by
+  rw [canWire_grants (toWire p ts rs as).property, toWire, allows_compress p ts rs as t r a ht hr ha]`);
+    md(r`‹{ p : Perms T R A // grantsOnly p }› is a **subtype**: values of ‹Perms› that come with a proof of ‹grantsOnly›; ‹.val› is the set and ‹.property› the proof. TypeScript cannot carry the proof, but it can carry the name: a branded type, ‹type WirePermissions = Permissions & { readonly __wire: true }›, returned only by ‹compress› and the only type ‹can› accepts, makes the mistake above a type error.`);
+    sec("Some and every");
+    lean(r`inductive Match where
+  | any | all
+  deriving Repr, DecidableEq
+
+/-- *ifPermissions="r; tenants: ts; actions: as; match: m": some pair, or every pair, of a tenant and
+    an action is allowed on r. -/
+def ifPermissions (p : Perms T R A) (r : R) (ts : List T) (as : List A) : Match → Bool
+  | .any => ts.any fun t => as.any fun a => allows p t r a
+  | .all => ts.all fun t => as.all fun a => allows p t r a
+
+#eval ifPermissions editor .doc [.t1] [.create, .read] .all
+#eval ifPermissions editor .user [.t1] [.read, .delete] .any
+#eval ifPermissions editor .user [.t1] [.read, .delete] .all`);
+    md(r`
+> [!note] Another reading of "all"
+> The code takes ‹all› over every pair of a tenant and an action. "Every listed tenant may do some listed action" is another reasonable reading, and someone writing a template may assume it. The model had to pick one, the code's, and the docs should say it in a sentence.
+`);
+    md(r`
+> [!try]
+> What does ‹*ifPermissions="doc; tenants: []; actions: [Delete]; match: all"› show, to a user with no permissions at all?
+`);
+    lean(r`example : ifPermissions ([] : Perms Tenant Res Act) .doc [] [.delete] .all = true := rfl`);
+    md(r`
+> [!mistake]
+> ‹[].every(f)› is ‹true›: every member of an empty list passes, since none fails. So a template whose tenant list comes out empty (the user's tenants not loaded yet, a filter that matched none) shows a Delete button to everyone. It is the empty case of "for all", and [Logic and proof technique](#course=logic&lesson=4) has it as a law: a ‹∀› over nothing is true. Here it is a hole.
+`);
+    md(r`The fix asks ‹all› for at least one tenant and one action:`);
+    lean(r`/-- The check with all asking for at least one tenant and one action. -/
+def ifPermissions' (p : Perms T R A) (r : R) (ts : List T) (as : List A) : Match → Bool
+  | .any => ifPermissions p r ts as .any
+  | .all => !ts.isEmpty && !as.isEmpty && ifPermissions p r ts as .all
+
+example : ifPermissions' ([] : Perms Tenant Res Act) .doc [] [.delete] .all = false := rfl`);
+    sec("End to end");
+    md(r`The theorem that ties it together: what the page decides from the compressed set is what the role says, for any tenants and actions of the universe, either way of matching.`);
+    lean(r`theorem ifPermissions_compress (p : Perms T R A) (uts : List T) (urs : List R) (uas : List A)
+    (r : R) (ts : List T) (as : List A) (m : Match)
+    (hr : r ∈ urs) (hts : ∀ t ∈ ts, t ∈ uts) (has : ∀ a ∈ as, a ∈ uas) :
+    ifPermissions (compress p uts urs uas) r ts as m = ifPermissions p r ts as m := by
+  have same : ∀ t ∈ ts, ∀ a ∈ as, allows (compress p uts urs uas) t r a = allows p t r a :=
+    fun t ht a ha => allows_compress p uts urs uas t r a (hts t ht) hr (has a ha)
+  apply Bool.eq_iff_iff.mpr
+  cases m with
+  | any =>
+    simp only [ifPermissions, List.any_eq_true]
+    constructor
+    · rintro ⟨t, ht, a, ha, h⟩; exact ⟨t, ht, a, ha, by rw [← same t ht a ha]; exact h⟩
+    · rintro ⟨t, ht, a, ha, h⟩; exact ⟨t, ht, a, ha, by rw [same t ht a ha]; exact h⟩
+  | all =>
+    simp only [ifPermissions, List.all_eq_true]
+    constructor
+    · intro h t ht a ha; rw [← same t ht a ha]; exact h t ht a ha
+    · intro h t ht a ha; rw [same t ht a ha]; exact h t ht a ha`);
+    md(r`With ‹allows_expand› for the server's step, it is the whole path: role, expanded, compressed, sent, checked, each step proved to keep what the role allows, for every role, inside the universe.`);
+    sec("Exercises");
+    lx(r`theorem any_of_all' (p : Perms T R A) (r : R) (ts : List T) (as : List A) (h : ifPermissions' p r ts as .all = true) : ifPermissions' p r ts as .any = true := by`, r`With the fix, ‹all› implies ‹any›, as anyone reading a template expects. Prove it. (Without the fix it is false: the empty list.)`, r`  simp only [ifPermissions', ifPermissions, Bool.and_eq_true, Bool.not_eq_true', List.isEmpty_eq_false_iff,
+    List.all_eq_true, List.any_eq_true] at *
+  obtain ⟨⟨hts, has⟩, h⟩ := h
+  obtain ⟨t, ht⟩ := List.exists_mem_of_ne_nil ts hts
+  obtain ⟨a, ha⟩ := List.exists_mem_of_ne_nil as has
+  exact ⟨t, ht, a, ha, h t ht a ha⟩`, [
+      r`Unfold both sides into statements about members: ‹simp only [ifPermissions', ifPermissions, Bool.and_eq_true, Bool.not_eq_true', List.isEmpty_eq_false_iff, List.all_eq_true, List.any_eq_true] at *›.`,
+      r`The hypothesis now says ‹ts ≠ []›, ‹as ≠ []›, and every pair is allowed. ‹List.exists_mem_of_ne_nil› gives a member of a non-empty list.`,
+      r`With ‹t ∈ ts› and ‹a ∈ as› in hand, the goal is ‹∃ t, t ∈ ts ∧ ∃ a, a ∈ as ∧ …›: ‹exact ⟨t, ht, a, ha, h t ht a ha⟩›.`,
+    ]);
+    lx(r`theorem not_any_of_all : ¬ ∀ p : Perms Tenant Res Act, ifPermissions p .doc [] [.delete] .all = true → ifPermissions p .doc [] [.delete] .any = true := by`, r`And without the fix, ‹all› does not imply ‹any›. Prove it, with the empty set as the counterexample.`, r`  intro h
+  have := h [] rfl
+  revert this
+  decide`, [
+      r`As in lesson 3: ‹intro h›, use ‹h› on a set, and the result is a false statement Lean can compute.`,
+      r`‹have := h [] rfl›, then ‹revert this› and ‹decide›.`,
+    ]);
+    md(r`
+> [!summary]
+> The page's check is right only on sets of grants, a precondition the code's types did not carry; the model carries it in a subtype, and TypeScript can carry its name in a branded type. ‹all› over an empty list is true, so an empty tenant list showed everything; asking for at least one fixes it, and then ‹all› implies ‹any›. End to end, what the page shows is what the role allows, for every role, inside the universe.
+`);
+    md(r`One thing is left: the expand loop itself. The capstone models it step for step and holds it to the specification.`);
+  });
+
+  add("08-capstone.chalk", "Capstone: the code against the model", "The expand loop modeled step for step, the assumptions about JavaScript it rests on, two equal roles that it reads differently, the one-line fix, and the proof that the fixed loop computes the specification for every role.", ({ sec, md, lean, lx }) => {
+    sec("Capstone: the code against the model");
+    md(r`
+> [!goal]
+> Model a loop exactly as the code runs it, compare it with the specification, find the input where they part, fix the code, and prove the fixed code meets the specification for every input.
+`);
+    md(r`Lesson 4 specified what expanding should compute. Here is the loop again:
+
+${tsFence(EXPAND_TS)}`);
+    md(r`To compare it with the specification, model what it does, step for step: the sort, the two loops, and the object it writes into. A model of code rests on assumptions about the language, and each one belongs in writing:
+
+- ‹Array.prototype.sort› is **stable**: entries that compare equal keep their order. JavaScript has promised that since ES2019.
+- An object's keys come back from ‹Object.entries› in the order they were first written, for keys like these that do not look like whole numbers.
+- ‹out[key] = v› for a key already there replaces its value; ‹out[key]› for a key never written is ‹undefined›.`);
+    lean(r`/-- The cells an entry writes: a * becomes every name the frontend knows. -/
+def cells (rs : List R) (as : List A) (k : Key T R A) : List (Key T R A) :=
+  let rs' := match k.res with | .any => rs | .is r => [r]
+  let as' := match k.act with | .any => as | .is a => [a]
+  rs'.flatMap fun r => as'.map fun a => ⟨k.tenant, .is r, .is a⟩
+
+/-- out[key] = allowed for each of an entry's cells: the newest write goes in front. -/
+def writeEntry (rs : List R) (as : List A) (out : Perms T R A) (e : Key T R A × Bool) : Perms T R A :=
+  (cells rs as e.1).foldl (fun o k => (k, e.2) :: o) out
+
+/-- out[key]: the newest write, or nothing (undefined). -/
+def lookup (out : Perms T R A) (k : Key T R A) : Option Bool :=
+  (out.find? (·.1 == k)).map (·.2)
+
+/-- The code's sort: most *s first, entries with as many in the order they came (a stable sort by a
+    rank of 0, 1 or 2 is these three filters). -/
+def sortTS (p : Perms T R A) : Perms T R A :=
+  p.filter (·.1.rank == 0) ++ p.filter (·.1.rank == 1) ++ p.filter (·.1.rank == 2)
+
+/-- The code's expand, step for step. -/
+def expandTS (p : Perms T R A) (rs : List R) (as : List A) : Perms T R A :=
+  (sortTS p).foldl (writeEntry rs as) []
+
+/-- What the page asks of an expanded set: out[key] === true. -/
+def canTS (out : Perms T R A) (t : T) (r : R) (a : A) : Bool :=
+  lookup out ⟨t, .is r, .is a⟩ == some true`);
+    md(r`‹List.foldl› is the ‹for› loop: it starts from ‹[]›, the empty object, and runs ‹writeEntry› on each entry in turn. The object is a list with the newest write in front, and ‹lookup› finds the first, so a later write hides an earlier one, as replacing a value would. A stable sort by a rank that is 0, 1 or 2 is exactly the three filters in order: that is the first assumption, written as a definition.`);
+    sec("Two equal roles, two answers");
+    md(r`Lesson 2's question comes back: a row and a column of the same rank that disagree. The sort puts them together, in the order the object had them, and the loop writes the later one last:`);
+    lean(r`def rowThenCol : Perms Tenant Res Act := [(⟨.t1, .is .doc, .any⟩, false), (⟨.t1, .any, .is .read⟩, true)]
+def colThenRow : Perms Tenant Res Act := [(⟨.t1, .any, .is .read⟩, true), (⟨.t1, .is .doc, .any⟩, false)]
+
+#eval canTS (expandTS rowThenCol resources actions) .t1 .doc .read
+#eval canTS (expandTS colThenRow resources actions) .t1 .doc .read
+#eval allows rowThenCol .t1 .doc .read
+
+/-- The same entries in another order, another answer. -/
+example : canTS (expandTS rowThenCol resources actions) .t1 .doc .read ≠
+    canTS (expandTS colThenRow resources actions) .t1 .doc .read := by decide`);
+    md(r`
+> [!mistake]
+> ‹{ "tenant1-doc:*": false, "tenant1-*:Read": true }› and the same two keys the other way round are the same role, and the code lets tenant1 read documents under one and not the other. The order of an object's keys is whatever produced it: the order a role editor saved them in, or the JSON the server sent. No test that builds its roles in one order finds this. The model found it by comparing the code with a specification that had to answer the question.
+`);
+    md(r`The fix is one comparison more in the sort. With as many ‹*›s, grants first and denies after them, so that a deny is written last and wins the tie, as the specification says:
+
+${tsFence(FIXED_SORT_TS)}`);
+    lean(r`/-- The fix: at each rank, the grants before the denies, so a deny is written last. -/
+def sortFixed (p : Perms T R A) : Perms T R A :=
+  [0, 1, 2].flatMap fun n => p.filter (fun e => e.1.rank == n && e.2) ++ p.filter (fun e => e.1.rank == n && !e.2)
+
+def expandFixed (p : Perms T R A) (rs : List R) (as : List A) : Perms T R A :=
+  (sortFixed p).foldl (writeEntry rs as) []
+
+example : canTS (expandFixed rowThenCol resources actions) .t1 .doc .read = false := by decide
+example : canTS (expandFixed colThenRow resources actions) .t1 .doc .read = false := by decide`);
+    md(r`Two examples are not a proof. The rest of the lesson proves that the fixed loop computes ‹allows›, for every role and every request in the universe.`);
+    sec("The loop, in the model's words");
+    md(r`First, what the loop leaves in ‹out›: for a cell of the universe, the value of the *last* entry that applies to it, in the order the loop runs, or nothing if none does.`);
+    lean(r`/-- What the last entry that applies to the request says, if one does. -/
+def lastSays (t : T) (r : R) (a : A) : Perms T R A → Option Bool
+  | [] => none
+  | e :: p => (lastSays t r a p).or (if e.1.covers t r a then some e.2 else none)
+
+theorem lookup_writes (ks : List (Key T R A)) (v : Bool) (out : Perms T R A) (c : Key T R A) :
+    lookup (ks.foldl (fun o k => (k, v) :: o) out) c = if c ∈ ks then some v else lookup out c := by
+  induction ks generalizing out with
+  | nil => simp
+  | cons k ks ih =>
+    simp only [List.foldl_cons, ih, List.mem_cons]
+    by_cases h1 : c ∈ ks
+    · simp [h1]
+    · by_cases h2 : c = k
+      · subst h2; simp [lookup]
+      · have : (k == c) = false := by simp; exact fun h => h2 h.symm
+        simp [h1, h2, lookup, this]
+
+theorem mem_cells (rs : List R) (as : List A) (k : Key T R A) (t : T) (r : R) (a : A)
+    (hr : r ∈ rs) (ha : a ∈ as) : (⟨t, .is r, .is a⟩ : Key T R A) ∈ cells rs as k ↔ k.covers t r a = true := by
+  obtain ⟨t', res, act⟩ := k
+  cases res <;> cases act <;> simp only [cells, Key.covers, Pat.hits, List.mem_flatMap, List.mem_map,
+    List.mem_singleton, Key.mk.injEq, Pat.is.injEq, Bool.and_eq_true, beq_iff_eq] <;> grind
+
+theorem lookup_expand (L out : Perms T R A) (rs : List R) (as : List A) (t : T) (r : R) (a : A)
+    (hr : r ∈ rs) (ha : a ∈ as) :
+    lookup (L.foldl (writeEntry rs as) out) ⟨t, .is r, .is a⟩ = (lastSays t r a L).or (lookup out ⟨t, .is r, .is a⟩) := by
+  induction L generalizing out with
+  | nil => simp [lastSays]
+  | cons e L ih =>
+    simp only [List.foldl_cons, ih, writeEntry, lookup_writes, mem_cells rs as e.1 t r a hr ha, lastSays]
+    cases lastSays t r a L <;> by_cases h : e.1.covers t r a = true <;> simp [h]`);
+    md(r`‹x.or y› is ‹x› if it is a value, else ‹y›. ‹lookup_writes› is one entry's inner loops: after writing ‹v› to each key of ‹ks›, a key reads ‹v› if it was one of them. ‹mem_cells› says an entry writes a cell of the universe exactly when it applies to it, the place where the ‹*›s meet the universe. ‹lookup_expand› is the whole loop, by induction on the entries.`);
+    sec("The sorted order, in the model's words");
+    md(r`The fixed sort is six filters in a row. The last entry that applies, in a list made of pieces, is in the last piece that has one; and in a piece whose entries all say the same, it says that:`);
+    lean(r`theorem lastSays_append (p q : Perms T R A) (t : T) (r : R) (a : A) :
+    lastSays t r a (p ++ q) = (lastSays t r a q).or (lastSays t r a p) := by
+  induction p with
+  | nil => simp [lastSays]
+  | cons e p ih => simp [lastSays, ih, Option.or_assoc]
+
+theorem lastSays_filter (p : Perms T R A) (f : Key T R A × Bool → Bool) (v : Bool)
+    (hv : ∀ e ∈ p, f e = true → e.2 = v) (t : T) (r : R) (a : A) :
+    lastSays t r a (p.filter f) = if p.any (fun e => e.1.covers t r a && f e) then some v else none := by
+  induction p with
+  | nil => rfl
+  | cons e p ih =>
+    have ih := ih (fun e' h' => hv e' (by simp [h']))
+    by_cases hf : f e = true
+    · have he := hv e (by simp) hf
+      simp only [List.filter_cons, hf, ite_true, lastSays, ih, List.any_cons, he]
+      by_cases hc : e.1.covers t r a = true <;> by_cases hp : (p.any fun e => e.1.covers t r a && f e) = true <;> simp [hc, hp]
+    · simp only [List.filter_cons, hf, Bool.false_eq_true, ite_false, ih, List.any_cons, Bool.and_false, Bool.false_or]`);
+    md(r`And the specification in the same words: at one rank, a deny that applies decides no; otherwise a grant that applies decides yes; otherwise the rank says nothing.`);
+    lean(r`theorem verdictAt_split (p : Perms T R A) (n : Nat) (t : T) (r : R) (a : A) :
+    verdictAt p n t r a =
+      (if p.any (fun e => e.1.covers t r a && (e.1.rank == n && !e.2)) then some false else none).or
+        (if p.any (fun e => e.1.covers t r a && (e.1.rank == n && e.2)) then some true else none) := by
+  induction p with
+  | nil => rfl
+  | cons e p ih =>
+    rw [verdictAt_cons, ih]
+    obtain ⟨k, v⟩ := e
+    simp only [List.any_cons]
+    by_cases hF : (p.any fun e => e.1.covers t r a && (e.1.rank == n && !e.2)) = true <;>
+    by_cases hT : (p.any fun e => e.1.covers t r a && (e.1.rank == n && e.2)) = true <;>
+    by_cases hc : k.covers t r a = true <;> by_cases hn : (k.rank == n) = true <;> cases v <;>
+      simp [hF, hT, hc, hn]
+
+theorem beq_some_true (o : Option Bool) : (o == some true) = o.getD false := by
+  rcases o with _ | _ | _ <;> rfl
+
+theorem allows_eq_or (p : Perms T R A) (t : T) (r : R) (a : A) :
+    allows p t r a = (((verdictAt p 2 t r a).or (verdictAt p 1 t r a)).or (verdictAt p 0 t r a)).getD false := by
+  unfold allows
+  split <;> simp_all`);
+    sec("The fixed loop meets the specification");
+    md(r`Now the two sides are written in the same words, and the theorem is a matter of rewriting both into them:`);
+    lean(r`/-- The fixed code computes what the role allows, for every role and every request in the universe. -/
+theorem canTS_fixed (p : Perms T R A) (rs : List R) (as : List A) (t : T) (r : R) (a : A)
+    (hr : r ∈ rs) (ha : a ∈ as) : canTS (expandFixed p rs as) t r a = allows p t r a := by
+  have hF : ∀ n, ∀ e ∈ p, (e.1.rank == n && !e.2) = true → e.2 = false := by
+    intro n e _ h; simp at h; simp [h.2]
+  have hT : ∀ n, ∀ e ∈ p, (e.1.rank == n && e.2) = true → e.2 = true := by
+    intro n e _ h; simp at h; exact h.2
+  simp only [canTS, expandFixed, lookup_expand _ _ rs as t r a hr ha, sortFixed, List.flatMap_cons,
+    List.flatMap_nil, List.append_nil, lastSays_append, lastSays_filter _ _ _ (hF _), lastSays_filter _ _ _ (hT _),
+    allows_eq_or, verdictAt_split]
+  simp only [lookup, List.find?_nil, Option.map_none, Option.or_none]
+  exact beq_some_true _`);
+    md(r`The loop's last write, through ‹lookup_expand›, is the last of the six pieces that has an entry applying to the request (‹lastSays_append›), saying that piece's value (‹lastSays_filter›): denies of rank 2, else grants of rank 2, else denies of rank 1, and so on down. That is ‹allows›, rank by rank through ‹verdictAt_split›. The original loop fails here at one point only: within a rank its entries are not split into grants and then denies, so ‹lastSays_filter› has no single value to say.`);
+    sec("Exercises");
+    lx(r`theorem expandTS_wrong : ¬ ∀ p : Perms Tenant Res Act, canTS (expandTS p resources actions) .t1 .doc .read = allows p .t1 .doc .read := by`, r`Prove that the original loop does not meet the specification.`, r`  intro h
+  have := h rowThenCol
+  revert this
+  decide`, [
+      r`One counterexample is enough; which of the two roles does the loop get wrong?`,
+      r`‹intro h›, ‹have := h rowThenCol›, ‹revert this›, ‹decide›.`,
+    ]);
+    lx(r`theorem expandFixed_order (p q : Perms T R A) (h : ∀ e, e ∈ p ↔ e ∈ q) (rs : List R) (as : List A) (t : T) (r : R) (a : A) (hr : r ∈ rs) (ha : a ∈ as) : canTS (expandFixed p rs as) t r a = canTS (expandFixed q rs as) t r a := by`, r`Prove that the fixed loop no longer depends on the order of a role's keys: two roles with the same entries expand to sets the page reads the same way.`, r`  rw [canTS_fixed p rs as t r a hr ha, canTS_fixed q rs as t r a hr ha, allows_sameMembers h]`, [
+      r`No induction needed: two theorems of this course do it.`,
+      r`‹canTS_fixed› turns each side into ‹allows›, and lesson 2's ‹allows_sameMembers› says ‹allows› ignores the order.`,
+    ]);
+    md(r`
+> [!summary]
+> The loop was modeled as it runs, with its assumptions about JavaScript written down. Compared with the specification, it parted from it on two equal roles written in different orders; the fix was one comparison in the sort, and the proof covers every role and every request in the universe. The proof is about the model of the code, so it is as good as the model: the assumptions are where to look if the code and the proof ever disagree.
+`);
+    sec("The modeler's checklist");
+    md(r`What this course did, as steps to take on the next system:
+
+1. **Write down the promises** the code makes, in words, before any Lean (lesson 1).
+2. **Decide what the model keeps**, and write down what it leaves out and what it assumes; the parsing rule was found there (lesson 1).
+3. **Specify the meaning independently of the code** under test, and let the function force every open question to an answer, such as a tie between equal keys (lesson 2).
+4. **Prove the model faithful** to what it represents, as order not mattering made a list an object (lesson 2).
+5. **State the guarantees as theorems**, and try to break each one; a counterexample is a result too (lesson 3).
+6. **Read every hypothesis** as a case the promise does not cover: the universe (lesson 4), the repeats (lesson 6).
+7. **Qualify the promises** until they are true: smallest among sets of grants (lessons 5 and 6).
+8. **Look for preconditions** a function relies on and its types do not carry, and the empty cases (lesson 7).
+9. **Model the code as it runs**, compare it with the specification, and prove the fix (lesson 8).`);
   });
 }, { leanPrelude: true });
 
@@ -2909,6 +4161,10 @@ def combine (ds : List Decision) : Decision := ds.foldl denyOverrides .na
 > Deny-overrides and permit-overrides are joins of a three-element chain, so a policy's decision under them does not depend on rule order. First-applicable is associative but not commutative: there the order of rules is part of the policy.
 
 Here the lattice ordered the *answers* to a request. Next it orders the *data*: every value carries a security class, and information may only flow up.
+`);
+    md(r`
+> [!note] A whole permission system
+> [Modeling a system in Lean](#course=modeling) models a permission system whose keys have wildcards, where more specific keys win. Two equally specific keys that disagree need a combining rule like these, and it takes deny-overrides.
 `);
   });
 

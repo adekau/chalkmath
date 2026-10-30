@@ -147,6 +147,57 @@
       ]
     },
     {
+      "id": "modeling",
+      "title": "Modeling a system in Lean",
+      "blurb": "One piece of TypeScript, a permission system with wildcard keys, modeled in Lean: what to keep and what to leave out, a specification the code never wrote down, the promises it makes as theorems, the cases it gets wrong, and proofs that what goes over the wire loses nothing and is as small as it can be.",
+      "kind": "course",
+      "level": "Software verification",
+      "path": "courses/modeling",
+      "leanPrelude": true,
+      "lessons": [
+        {
+          "file": "01-code-to-model.chalk",
+          "title": "From code to a model",
+          "blurb": "A permission system in TypeScript, what it promises, and what a model of it keeps: the meaning of a key, not its string, and the rule the string format quietly relies on."
+        },
+        {
+          "file": "02-meaning.chalk",
+          "title": "What a set allows",
+          "blurb": "A specification the code never wrote down: which keys apply to a request, the most specific deciding, a choice where two disagree, and a proof that the order of the keys does not matter."
+        },
+        {
+          "file": "03-properties.chalk",
+          "title": "What must be true",
+          "blurb": "The guarantees a permission system owes, in plain words and then as theorems: deny by default, tenant isolation, grants that only give, and a plausible statement that is false, refuted by a counterexample."
+        },
+        {
+          "file": "04-expansion.chalk",
+          "title": "Expansion and its universe",
+          "blurb": "What expanding a set should compute, a proof that it keeps the meaning for the names the frontend knows, and what that hypothesis costs: a resource added later is not in the expanded set."
+        },
+        {
+          "file": "05-compression.chalk",
+          "title": "Compression without loss",
+          "blurb": "What a set of grants means, the compression that goes over the wire, a proof that it loses nothing on the universe, and why “as small as possible” has to say smallest among what."
+        },
+        {
+          "file": "06-minimal.chalk",
+          "title": "As small as it can be",
+          "blurb": "What “minimal” has to mean, why the universe must have no repeats, and the proof: every key compression writes is paid for by a different key of any other set of grants that means the same."
+        },
+        {
+          "file": "07-template.chalk",
+          "title": "The check in the template",
+          "blurb": "The frontend's check and the precondition it relies on, an input that fools it, “all” over an empty list, and the theorem that ties the page's answer to the server's set, end to end."
+        },
+        {
+          "file": "08-capstone.chalk",
+          "title": "Capstone: the code against the model",
+          "blurb": "The expand loop modeled step for step, the assumptions about JavaScript it rests on, two equal roles that it reads differently, the one-line fix, and the proof that the fixed loop computes the specification for every role."
+        }
+      ]
+    },
+    {
       "id": "order-lattices",
       "title": "Order and lattices",
       "blurb": "From Zero to Propagators: partial orders, lattices and fixed points; semilattices as merges, access decisions and information flow; Galois connections; and propagator networks in Lean, ending with a Sudoku solver.",
