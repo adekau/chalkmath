@@ -5670,7 +5670,9 @@ function answerForm(cell: Cell): { placeholder: string; note: string } {
   if (wid === "logic") {
     if (head === "sat" || head === "falsify") return { placeholder: "an assignment: {p = true, q = false}, or p && !q",
       note: `An assignment that ${head === "sat" ? "makes the formula true" : "makes the formula false"}: a map such as \`{p = true, q = false}\` or a conjunction of literals such as \`p && !q\`, or \`false\` if there is none. ${glyphs}` };
-    if (head === "taut" || head === "equiv") return { placeholder: "true or false", note: "`true` or `false` (or ⊤, ⊥)." };
+    // a quantified statement (`∀ n ∈ 1..10, …`, `¬∃ …`) is closed: it is true or false, not a formula
+    if (head === "taut" || head === "equiv" || /^[\s(¬!~]*(∀|∃|forall\b|exists\b)/.test(cell.src))
+      return { placeholder: "true or false", note: "`true` or `false` (or ⊤, ⊥)." };
     if (head === "minimize") return { placeholder: "the smallest DNF, such as a || o && !l",
       note: `A formula in DNF that agrees with the formula (anything goes in rows the second formula rules out) and is as small as it can be: the fewest terms, then the fewest literals. ${glyphs}` };
     if (head === "nnf" || head === "cnf" || head === "dnf") return { placeholder: `a formula in ${head.toUpperCase()}`,

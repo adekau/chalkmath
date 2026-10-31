@@ -784,6 +784,24 @@ async function features() {
   }, [lxI, xtyped], { timeout: 30000 }).catch(() => assert.fail("the answer typed with backslash names was not checked right"));
   assert.equal((await reference.call("engine.check", { sessionId: "e2e-features", cellId: "lq", source: lq, answer: xtyped })).equivalent, true);
   console.log(`✓ exercise answer: what is wanted said under the box; ${xtyped} typed with backslash names, and right`);
+  // a quantified statement is closed: its answer box asks for true or false, not a formula
+  const qq = "∀ n ∈ 1..20, prime(n) → odd(n)";
+  await menu("Edit", "Add exercise");
+  const qxI = await all().count() - 1;
+  const qx = all().nth(qxI);
+  await qx.locator(".xc-qin").fill(qq);
+  await qx.locator(".xc-qin").press("Enter");
+  await qx.locator(".xc-q .katex").waitFor({ timeout: 30000 });
+  assert.equal(await qx.locator(".xc-in").getAttribute("placeholder"), "true or false", "a quantifier exercise's box asks for a formula");
+  assert.doesNotMatch(await qx.locator(".xc-howto").textContent(), /formula/, "a quantifier exercise's note asks for a formula");
+  const qwant = (await reference.call("engine.check", { sessionId: "e2e-features", cellId: "qq", source: qq, answer: "false" })).equivalent;
+  assert.equal(qwant, true, "the engine did not take false for a quantifier with a counterexample");
+  await qx.locator(".xc-in").fill("false"); await qx.locator(".xc-in").press("Enter");
+  await page.waitForFunction((k) => {
+    const c = document.querySelectorAll(".cell")[k];
+    return !c.classList.contains("running") && c.querySelector(".xc-verdict.right:not(.old)");
+  }, qxI, { timeout: 30000 }).catch(() => assert.fail("false was not marked right for a quantifier with a counterexample"));
+  console.log("✓ quantifier exercise: the box asks for true or false, and false is right");
   // practice: an exercise with a topic has its question written by the topic's generator, offers
   // another, answered with the engine's value, and puts the author's back
   await menu("Edit", "Add exercise");
