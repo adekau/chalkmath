@@ -4513,7 +4513,7 @@ const RULE_NAMES: Record<string, string> = {
   "logic.implication": "Eliminate →", "logic.biconditional": "Eliminate ↔", "logic.de-morgan": "De Morgan's law", "logic.double-negation": "Double negation",
   "logic.negate-constant": "Negate a constant", "logic.constants": "Simplify constants", "logic.distribute": "Distribute", "logic.complement": "Complementary literals", "logic.truthtable": "Truth table",
   "logic.minterms": "True rows as terms", "logic.merge": "Merge terms", "logic.cover": "Smallest cover",
-  "logic.evaluate": "Evaluate", "logic.bounded": "Check every element",
+  "logic.evaluate": "Evaluate", "logic.unfold": "Unfold the definition", "logic.bounded": "Check every element",
   "alg.from-order": "Table from the order", "alg.associative": "Associative", "alg.commutative": "Commutative", "alg.idempotent": "Idempotent",
   "alg.identity": "Identity element", "alg.fold": "Combine", "alg.order": "Order of a semilattice", "order.distributive": "Distributive",
   "order.complement": "Complement", "order.boolean": "Boolean lattice", "order.product": "Product order", "order.lex": "Lexicographic order", "order.galois": "Galois connection",

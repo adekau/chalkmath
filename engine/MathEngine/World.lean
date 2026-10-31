@@ -256,6 +256,10 @@ def orderWorld : World where
 
 /-! ## Logic -/
 
+/-- A logic command's cell, `taut(…)` or `let w = sat(…)`; a call of a predicate, `φ(2)`, is a formula. -/
+private def isCommandCell (src : String) : Bool :=
+  Surface.isCall src && match Logic.parseStmt src with | .ok (.cmd _ _ _) => true | _ => false
+
 def logicWorld : World where
   id := "logic"
   label := "Logic"
@@ -263,17 +267,20 @@ def logicWorld : World where
   -- `true` and `false` are values (⊤, ⊥), not keywords
   keywords := (Logic.wordGlyph.map (·.1)).filter (fun w => w != "true" && w != "false")
   names := ["prime", "even", "odd", "true", "false"]
-  glyphs := ["∧", "∨", "¬", "→", "↔", "⊤", "⊥", "∀", "∃", "∈", "≤", "≥", "≠", "<->", "->", "=>", "&&", "/\\", "||", "\\/", "<=", ">=", "!=", "==", "!", "~", "..", ","]
-  markers := ["¬", "∧", "∨", "→", "↔", "⊤", "⊥", "∀", "∃", "<->", "->", "&&", "||", "forall", "exists"]
-  claims := fun _ src => Logic.isLogicSource src
-  binds := fun src => (Sys.splitLet src).1
-  holds := fun s n => s.formulas.any (·.1 == n)
+  glyphs := ["∧", "∨", "¬", "→", "↔", "⊤", "⊥", "∀", "∃", "∈", "<", ">", "≤", "≥", "≠", "∣", "<->", "->", "=>", "&&", "/\\", "||", "\\/", "<=", ">=", "!=", "==", "!", "~", "..", ","]
+  markers := ["¬", "∧", "∨", "→", "↔", "⊤", "⊥", "∀", "∃", "<", ">", "≤", "≥", "≠", "∣", "<->", "->", "&&", "||", "forall", "exists"]
+  -- a comparison makes a cell logic, and so does a call of one of the session's predicates (`φ(2)`)
+  claims := fun s src => Logic.isLogicSource src || callsPred s src
+  binds := fun src => match Logic.splitLetHead (Logic.glyphs src).trimAscii.copy.toList with
+    | some (n, _, _) => some (String.ofList n)
+    | none => none
+  holds := fun s n => s.formulas.any (·.1 == n) || s.preds.any (·.1 == n)
   evaluate := fun s cellId src =>
     let (s, r) := logicCell s cellId src
     (s, r.map fun res =>
       -- a command's input as written; a statement (`∀ n ∈ 1..10, …`) is read as the logic world reads it
-      { name := res.name, value := res.value, derivation := res.derivation,
-        asWritten := if Surface.isCall src then some (Surface.asWritten src) else none,
+      { name := res.name, params := res.params, value := res.value, derivation := res.derivation,
+        asWritten := if isCommandCell src then some (Surface.asWritten src) else none,
         visuals := match res.table with
           | some (vs, rows) =>
             let formula := match res.derivation.input with | .fn "truthtable" [f] => f | e => e
@@ -284,9 +291,9 @@ def logicWorld : World where
   check := checkLogic
   -- a command as written; a statement as the logic world reads it, its names not expanded
   read := fun _ src =>
-    if Surface.isCall src then .ok (Surface.asWritten src) else
+    if isCommandCell src then .ok (Surface.asWritten src) else
     match Logic.parseStmt src with
-    | .ok (.fm _ f) => .ok f.toExpr
+    | .ok (.fm _ f) | .ok (.pred _ _ f) => .ok f.toExpr
     | .ok _ => .ok (Surface.asWritten src)
     | .error msg => .error ("syntax", msg, none)
 
@@ -354,7 +361,7 @@ def letFnName (src : String) : Option String :=
   let t := src.trimAsciiStart.copy
   if !t.startsWith "let " then none else
   let cs := (t.drop 4).trimAsciiStart.copy.toList
-  let w := cs.takeWhile fun c => c.isAlphanum || c == '_' || c == '\''
+  let w := cs.takeWhile lex.isIdChar
   match (cs.drop w.length).dropWhile (· == ' ') with
   | '(' :: _ => if w.isEmpty then none else some (String.ofList w)
   | _ => none

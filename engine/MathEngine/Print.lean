@@ -146,7 +146,9 @@ def latexTarget (paths : Bool) : Target where
   sqrtOpen := "\\sqrt{"
   sqrtClose := "}"
   fnOpen n :=
-    (if ["sin", "cos", "tan", "arcsin", "arccos", "arctan", "exp", "ln", "log", "arg"].contains n then "\\" ++ n else "\\operatorname{" ++ n ++ "}")
+    (if ["sin", "cos", "tan", "arcsin", "arccos", "arctan", "exp", "ln", "log", "arg"].contains n then "\\" ++ n
+     -- a function named by a Greek letter, `φ(n)`, is the letter
+     else match greek.lookup n with | some g => g | none => "\\operatorname{" ++ n ++ "}")
       ++ "\\left("
   fnClose := "\\right)"
   argSep := ", "

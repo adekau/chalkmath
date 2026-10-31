@@ -28,7 +28,7 @@ The grammar (ASCII and words are read as the glyphs: `->`, `<->`, `&&`/`and`, `|
 `true`, `false`, `forall … in`, `exists … in`, `<=`, `>=`, `!=`):
 
 ```
-stmt    := 'let' IDENT '=' formula | CMD '(' formula (',' formula)? ')' | formula
+stmt    := 'let' IDENT ('(' IDENT,* ')')? '=' formula | CMD '(' formula (',' formula)? ')' | formula
 CMD     := truthtable | taut | sat | falsify | nnf | cnf | dnf | equiv     -- equiv takes two
 formula := ('∀' | '∃') IDENT '∈' dom ',' formula | iff
 iff     := imp ('↔' iff)?                         -- right-assoc
@@ -36,14 +36,19 @@ imp     := or ('→' imp)?                          -- right-assoc
 or      := and ('∨' and)*
 and     := not ('∧' not)*
 not     := '¬' not | atom
-atom    := '⊤' | '⊥' | '(' formula ')' | PRED '(' expr,* ')' | expr CMP expr | IDENT
+atom    := '⊤' | '⊥' | '(' formula ')' | PRED '(' expr,* ')' | IDENT '(' expr,* ')' | expr CMP expr | IDENT
 dom     := expr '..' expr | '{' expr,* '}'
 PRED    := prime | even | odd
 CMP     := '<' | '≤' | '>' | '≥' | '=' | '≠' | '∣'
 ```
 
 `expr` is the math grammar (`Parser.lean`); an `IDENT` alone is a propositional variable, or a formula
-bound by `let`. A quantifier's body is everything after its comma, so in the middle of a formula a
+bound by `let`. `let P(n) = formula` defines a **predicate**, a formula with parameters, and `P(e)` in
+a formula is its body with the arguments put in for the parameters (a quantifier's variable renamed
+where an argument would be captured): `let φ(n) = n > 1`, then `¬(φ(1) ∧ φ(2))`. An argument is an
+expression, or for a parameter the body uses as a propositional variable, a variable, `⊤` or `⊥`. A
+body may use the predicates defined before it, not itself. A comparison outside a command makes a cell
+logic too, so `let φ(n) = n > 1` and `2^10 > 1000` are logic cells. A quantifier's body is everything after its comma, so in the middle of a formula a
 quantifier goes in brackets. `=>`, `/\`, `\/` and `~` are read too. In a CNF answer, the pass after distributing turns a clause with `p` and `¬p` into `⊤`
 (a DNF term with them into `⊥`), and constants are simplified again.
 -/
@@ -253,6 +258,10 @@ def parseAtom (s : List Char) : Except String Fm := do
   let rest := trim (s.drop name.length)
   if predicates.contains (String.ofList name) && wrapped rest then
     return .pred (String.ofList name) (← (splitCommas (trim ((rest.drop 1).dropLast))).mapM mathOf)
+  -- a predicate the session defines, `φ(1)`: `expandCalls` puts its body in
+  if !name.isEmpty && !(name.head?.map Char.isDigit |>.getD false) && wrapped rest then
+    let inner := trim ((rest.drop 1).dropLast)
+    return .pred (String.ofList name) (← if inner.isEmpty then pure [] else (splitCommas inner).mapM mathOf)
   if !s.isEmpty && s.all identChar && !(s.head?.map Char.isDigit |>.getD false) then return .var str
   throw s!"{str} is not a formula"
 
@@ -331,21 +340,43 @@ def parseAssignment (src : String) : Option Fm := do
 
 def commands : List String := ["truthtable", "taut", "sat", "falsify", "equiv", "nnf", "cnf", "dnf", "minimize"]
 
-/-- A logic cell: `[let name =] command(formula, …)` or `[let name =] formula`. -/
+/-- A logic cell: `[let name =] command(formula, …)`, `[let name =] formula`, or a predicate's
+definition `let name(params) = formula`. -/
 inductive Stmt where
   | cmd (name : Option String) (head : String) (args : List Fm)
   | fm (name : Option String) (f : Fm)
+  | pred (name : String) (params : List String) (body : Fm)
+
+/-- `let name = …` or `let name(params) = …`: the name, the parameters (`none` without brackets), and
+what follows the `=`. The `=` after the head is the binding's, not a comparison's. -/
+def splitLetHead (s : List Char) : Option (List Char × Option (List (List Char)) × List Char) := do
+  if s.take 4 != "let ".toList then none
+  let r := trim (s.drop 4)
+  let n := r.takeWhile identChar
+  if n.isEmpty then none
+  let r := trim (r.drop n.length)
+  if r.head? == some '=' then return (n, none, r.tail)
+  if r.head? != some '(' then none
+  let close ← r.findIdx? (· == ')')
+  let inner := trim ((r.take close).drop 1)
+  let ps := if inner.isEmpty then [] else (splitCommas inner).map trim
+  let r := trim (r.drop (close + 1))
+  if r.head? != some '=' then none
+  return (n, some ps, r.tail)
 
 def parseStmt (src : String) : Except String Stmt := do
   let s := trim (glyphs src).toList
-  -- `let name = …`: the `=` after a name is the binding's, not a comparison's
-  let (name, body) :=
-    if s.take 4 == "let ".toList then
-      let r := trim (s.drop 4)
-      let n := r.takeWhile identChar
-      let r := trim (r.drop n.length)
-      if !n.isEmpty && r.head? == some '=' then (some (String.ofList n), r.tail) else (none, s)
-    else (none, s)
+  let (name, body) ← match splitLetHead s with
+    | some (n, none, body) => pure (some (String.ofList n), body)
+    | some (n, some ps, body) =>
+      if ps.isEmpty then throw s!"{String.ofList n}(): a predicate takes at least one parameter"
+      match ps.find? fun p => p.isEmpty || !p.all identChar || (p.head?.map Char.isDigit |>.getD false) with
+      | some p => throw s!"{String.ofList p} is not a parameter's name"
+      | none =>
+        let ps := ps.map String.ofList
+        if ps.eraseDups.length != ps.length then throw s!"{String.ofList n}: a parameter is named twice"
+        return .pred (String.ofList n) ps (← parseFm body)
+    | none => pure (none, s)
   let body := trim body
   let head := body.takeWhile identChar
   let rest := trim (body.drop head.length)
@@ -354,15 +385,31 @@ def parseStmt (src : String) : Except String Stmt := do
     return .cmd name (String.ofList head) args
   return .fm name (← parseFm body)
 
+/-- Does the source call one of `names`, `prime(7)`: the name, then (after spaces) a bracket? -/
+partial def callsAny (names : List String) (src : String) : Bool :=
+  let rec go : List Char → Bool
+    | [] => false
+    | c :: cs =>
+      if identChar c then
+        let w := cs.takeWhile identChar
+        let rest := cs.drop w.length
+        (names.contains (String.ofList (c :: w)) && (rest.dropWhile (· == ' ')).head? == some '(') || go rest
+      else go cs
+  go src.toList
+
 /-- Is this a logic cell? A logic command first, or a connective or quantifier written as a glyph (`¬ ∧ ∨ →
-↔ ⊤ ⊥ ∀ ∃`) or as `<->`, `->`, `&&`, `||`, or a first word `forall`/`exists`. (`!` and `~` alone do not
-make a cell logic; the order world, which also writes `->`, is asked first, and a λ-cell is not logic.) -/
+↔ ⊤ ⊥ ∀ ∃`) or as `<->`, `->`, `&&`, `||`, or a first word `forall`/`exists`, or a comparison (`< > ≤ ≥ ≠
+∣`, which the math grammar does not read), or a `let` whose body compares with `=`
+(`let P(n) = n = 1`), or a call of `prime`, `even` or `odd`. (`!` and `~` alone do not make a cell logic; the order world, which also writes
+`->` and `<`, and the systems world, whose commands compare, are asked first, and a λ-cell is not logic.) -/
 def isLogicSource (src : String) : Bool :=
   let words := ((src.splitOn " ").map (·.trimAscii.copy)).filter (· != "")
   let first := match words with | "let" :: _ :: "=" :: w :: _ => w | w :: _ => w | [] => ""
   let glyph := src.any fun c => c == '¬' || c == '∧' || c == '∨' || c == '→' || c == '↔' || c == '⊤' || c == '⊥' || c == '∀' || c == '∃'
+    || c == '<' || c == '>' || c == '≤' || c == '≥' || c == '≠' || c == '∣'
   let ascii := ["<->", "->", "&&", "||"].any (fun t => (src.splitOn t).length > 1)
-  (commands.any (fun c => first.startsWith (c ++ "(")) || glyph || ascii || first == "forall" || first == "exists")
+  let letEq := match splitLetHead (trim src.toList) with | some (_, _, body) => body.contains '=' | none => false
+  (commands.any (fun c => first.startsWith (c ++ "(")) || glyph || ascii || letEq || callsAny predicates src || first == "forall" || first == "exists")
     && !src.any (fun c => c == 'λ' || c == '\\')
 
 /-! ## Truth tables -/
@@ -786,6 +833,11 @@ def Dom.values (num : Expr → Option Q) : Dom → Except String (List Q)
     return (List.range (b - a + 1).toNat).map fun k => Q.ofInt (a + Int.ofNat k)
   | .list xs => xs.mapM fun e => match num e with | some q => .ok q | none => .error s!"{e.toText} is not a number"
 
+/-- Why a call `p(…)` has no meaning: `p` is neither `prime`, `even`, `odd` nor a predicate defined
+with `let`. -/
+def undefinedPred (p : String) : String :=
+  s!"{p} is not a predicate: define it first, as in let {p}(n) = n > 1 (a formula in its parameters)"
+
 def isPrime (n : Int) : Bool := n ≥ 2 && (List.range (n.toNat - 2)).all fun k => n % (Int.ofNat k + 2) != 0
 
 /-- The truth of a closed formula, its bound variables given by `env` and its arithmetic evaluated by
@@ -814,6 +866,7 @@ def decide (num : List (String × Q) → Expr → Option Q) (env : List (String 
       return if x.val.num == 0 then y.val.num == 0 else y.val.num % x.val.num == 0
     | _ => throw s!"unknown comparison {op}"
   | .pred p args => do
+    if !predicates.contains p then throw (undefinedPred p)
     let [e] := args | throw s!"{p} takes one argument"
     let some x := num env e | throw s!"{e.toText} is not a number"
     if !x.isInt then throw s!"{p} is for integers"
@@ -822,7 +875,7 @@ def decide (num : List (String × Q) → Expr → Option Q) (env : List (String 
     | "prime" => return isPrime n
     | "even" => return n % 2 == 0
     | "odd" => return n % 2 != 0
-    | _ => throw s!"unknown predicate {p}"
+    | _ => throw (undefinedPred p)
   | .all x d b => do
     let vs ← d.values (num env)
     for v in vs do
@@ -871,6 +924,100 @@ def expand (defs : List (String × Fm)) : Fm → Fm
   | .all x d b => .all x d (expand defs b)
   | .ex x d b => .ex x d (expand defs b)
   | f => f
+
+/-- A session's predicate: its parameters and body (`let φ(n) = n > 1`). -/
+abbrev PredDef := List String × Fm
+
+def Dom.map (g : Expr → Expr) : Dom → Dom
+  | .range a b => .range (g a) (g b)
+  | .list xs => .list (xs.map g)
+
+def Dom.names : Dom → List String
+  | .range a b => a.freeVars ++ b.freeVars
+  | .list xs => xs.flatMap Expr.freeVars
+
+/-- Every name a formula mentions: its variables, the names in its arithmetic, its bound variables. -/
+def Fm.names : Fm → List String
+  | .var x => [x]
+  | .not a => a.names
+  | .and a b | .or a b | .imp a b | .iff a b => a.names ++ b.names
+  | .cmp _ l r => l.freeVars ++ r.freeVars
+  | .pred _ args => args.flatMap Expr.freeVars
+  | .all x d b | .ex x d b => x :: d.names ++ b.names
+  | _ => []
+
+/-- The predicates a formula calls, each once, in order. -/
+def Fm.calls : Fm → List String
+  | .pred p _ => [p]
+  | .not a => a.calls
+  | .and a b | .or a b | .imp a b | .iff a b => (a.calls ++ b.calls).eraseDups
+  | .all _ _ b | .ex _ _ b => b.calls
+  | _ => []
+
+/-- `x` with primes added until it is none of `avoid`: `n'`, `n''`, … -/
+def freshName (avoid : List String) (x : String) : String :=
+  (((List.range (avoid.length + 1)).map fun k => x ++ String.ofList (List.replicate (k + 1) '\'')).find? (!avoid.contains ·)).getD x
+
+/-- Put expressions in for names, all at once (`n ↦ 3`), as a predicate's call does. A quantifier's
+variable is not replaced, and is renamed when an expression put in mentions it, so it captures nothing
+(`∃ d ∈ 2..n, d ∣ n` with `n ↦ d` becomes `∃ d' ∈ 2..d, d' ∣ d`). A propositional variable takes the
+variable an argument is, or `⊤` or `⊥` for `true` and `false`; any other argument leaves it. -/
+def substFm (σ : List (String × Expr)) : Fm → Fm
+  | .var x => match σ.lookup x with
+    | some (.var "true") => .tt
+    | some (.var "false") => .ff
+    | some (.var y) => .var y
+    | _ => .var x
+  | .not a => .not (substFm σ a)
+  | .and a b => .and (substFm σ a) (substFm σ b)
+  | .or a b => .or (substFm σ a) (substFm σ b)
+  | .imp a b => .imp (substFm σ a) (substFm σ b)
+  | .iff a b => .iff (substFm σ a) (substFm σ b)
+  | .cmp op l r => .cmp op (substitute σ l) (substitute σ r)
+  | .pred p args => .pred p (args.map (substitute σ))
+  | .all x d b => let (x', σ') := binder σ x b; .all x' (d.map (substitute σ)) (substFm σ' b)
+  | .ex x d b => let (x', σ') := binder σ x b; .ex x' (d.map (substitute σ)) (substFm σ' b)
+  | f => f
+where
+  /-- Under a binder of `x`: `x` itself, or a fresh name when an expression put in mentions `x`, and
+  the substitution for the body. -/
+  binder (σ : List (String × Expr)) (x : String) (b : Fm) : String × List (String × Expr) :=
+    let σ := σ.filter (·.1 != x)
+    let into := σ.flatMap (·.2.freeVars)
+    if into.contains x then
+      let x' := freshName (into ++ b.names ++ σ.map (·.1)) x
+      (x', (x, .var x') :: σ)
+    else (x, σ)
+
+/-- Put in the bodies of the session's predicates for their calls, the arguments for the parameters.
+A body is stored with the predicates it calls already put in, so one pass is enough; a call with the
+wrong number of arguments, or of a name that is no predicate, is left (`callError` names it). -/
+def expandCalls (preds : List (String × PredDef)) : Fm → Fm
+  | .pred p args => match preds.lookup p with
+    | some (ps, body) => if ps.length == args.length then substFm (ps.zip args) body else .pred p args
+    | none => .pred p args
+  | .not a => .not (expandCalls preds a)
+  | .and a b => .and (expandCalls preds a) (expandCalls preds b)
+  | .or a b => .or (expandCalls preds a) (expandCalls preds b)
+  | .imp a b => .imp (expandCalls preds a) (expandCalls preds b)
+  | .iff a b => .iff (expandCalls preds a) (expandCalls preds b)
+  | .all x d b => .all x d (expandCalls preds b)
+  | .ex x d b => .ex x d (expandCalls preds b)
+  | f => f
+
+/-- The first call that cannot be put in: of a name that is no predicate, or with the wrong number of
+arguments. -/
+def callError (preds : List (String × PredDef)) : Fm → Option String
+  | .pred p args =>
+    match preds.lookup p with
+    | some (ps, _) =>
+      if ps.length == args.length then none
+      else some s!"{p} takes {ps.length} argument{if ps.length == 1 then "" else "s"} ({", ".intercalate ps}), not {args.length}"
+    | none => if predicates.contains p then none else some (undefinedPred p)
+  | .not a => callError preds a
+  | .and a b | .or a b | .imp a b | .iff a b => (callError preds a).or (callError preds b)
+  | .all _ _ b | .ex _ _ b => callError preds b
+  | _ => none
 
 /-- Apply `g` to every arithmetic expression of a formula (a session's names put in). -/
 def mapExprs (g : Expr → Expr) : Fm → Fm

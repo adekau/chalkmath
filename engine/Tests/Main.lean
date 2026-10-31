@@ -1037,6 +1037,27 @@ def logicRelTests : TestM Unit := do
   checkTrue "logic: an ∃ names its witness" (contains (ev "∃ n ∈ {4, 6, 9, 11}, prime(n)") "at $n = 11$")
   checkTrue "logic: a λ-cell stays a λ-cell" (contains (ev "(λx. x) y") "\"kind\":\"lambda\"")
   checkTrue "logic: a math cell stays a math cell" (contains (ev "diff(x^2, x)") "\"text\":\"2*x\"")
+  -- predicates: `let φ(n) = …` defines one, a call is unfolded as a step
+  let pw (st : Store) (id src : String) := handleS st s!"\{\"jsonrpc\":\"2.0\",\"id\":{id},\"method\":\"engine.evaluate\",\"params\":\{\"sessionId\":\"pr\",\"cellId\":\"{id}\",\"source\":\"{src}\",\"showWork\":true}}"
+  let (stP, defn) := pw [] "1" "let φ(n) = n > 1"
+  checkTrue "predicate: a let with a comparison is logic, and binds a function" (contains defn "\"kind\":\"logic\"" && contains defn "\"bound\":[\"φ\"],\"params\":[\"n\"]") defn
+  let (stP, use) := pw stP "2" "¬(φ(1) ∧ φ(2))"
+  checkTrue "predicate: a call is unfolded, a step" (contains use "\"rule\":\"logic.unfold\"" && contains use "\"text\":\"⊤\"") use
+  checkTrue "predicate: a Greek name is its letter in LaTeX" (contains use "\\\\varphi\\\\left(1\\\\right)") use
+  let (stP, bare) := pw stP "3" "φ(5)"
+  checkTrue "predicate: a call alone is a logic cell" (contains bare "\"kind\":\"logic\"" && contains bare "\"text\":\"⊤\"") bare
+  let (stP, _) := pw stP "4" "let C(n) = ∃ d ∈ 2..n-1, d ∣ n"
+  let (stP, cap) := pw stP "5" "∀ d ∈ 4..6, C(d)"
+  checkTrue "predicate: a bound variable an argument mentions is renamed" (contains cap "∃ d' ∈ 2..d - 1, d' ∣ d" && contains cap "\"text\":\"⊥\"") cap
+  let (stP, _) := pw stP "6" "let C = p ∧ q"
+  let (_, gone) := pw stP "7" "C(4) ∨ ⊥"
+  checkTrue "predicate: a formula of the same name replaces it" (contains gone "C is not a predicate") gone
+  let (stP, _) := pw stP "8" "let g(x) = x^2"
+  let (stP, _) := pw stP "9" "let g(n) = n > 2"
+  let (_, gm) := pw stP "10" "g(3)"
+  checkTrue "predicate: replaces a math function of its name" (contains gm "\"kind\":\"logic\"" && contains gm "\"text\":\"⊤\"") gm
+  checkTrue "predicate: at least one parameter" (contains (pw [] "11" "let φ() = ⊤").2 "φ(): a predicate takes at least one parameter")
+  checkTrue "check logic: a predicate's let is no question" (contains (rpc "engine.check" "{\"sessionId\":\"x\",\"cellId\":\"e\",\"source\":\"let P(n) = n > 1\",\"answer\":\"⊤\"}") "a let has no value to compare")
   let (st, _) := sessionEval [] "let R = rel({a, b, c}; a->b, b->c)"
   let (_, traw) := handleS st "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"engine.evaluate\",\"params\":{\"sessionId\":\"t\",\"cellId\":\"x\",\"source\":\"transitive(R)\",\"showWork\":true}}"
   checkTrue "relations: the pairs that break transitivity are marked" (contains traw "\"bad\":[[\"a\",\"b\"],[\"b\",\"c\"]]") traw

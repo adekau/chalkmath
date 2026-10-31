@@ -331,7 +331,14 @@ differential test with zero mismatches.
   it: each is a pass over the formula, structurally recursive, and Lean's own termination check is
   the obligation. A `truthtable` reply carries the table as a visual spec. `sat` and `falsify`
   answer with the assignment itself, a map `{p ↦ true, q ↦ false}` like a replica run's; a `let`
-  binds it as the conjunction of its literals, so it stays a formula.
+  binds it as the conjunction of its literals, so it stays a formula. `let P(n) = φ` binds a
+  **predicate** (`Session.preds`), its body stored with the predicates it calls already put in, so a
+  call unfolds in one pass and a definition cannot recurse; a cell's work shows the unfolding as its
+  first step (`logic.unfold`, a substitution that renames a quantifier's variable rather than capture
+  an argument's name). The reply carries the parameters as a math function's does, so the notebook
+  and the editor read `P(2)` as a call. A comparison claims a cell for logic, since the math grammar
+  reads none, and so does a call of `prime`, `even`, `odd` or one of the session's predicates (the
+  last is the one claim that needs the session).
 - **The answer says it; the work explains it; a note is the exception.** A world's reply may carry
   a one-line note (`summary`, a λ-cell's `reading`), which the notebook shows in small grey type
   beside the answer. It is sent only when it says something neither the answer nor the work does: a

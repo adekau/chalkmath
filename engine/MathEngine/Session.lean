@@ -51,6 +51,8 @@ structure Session where
   trss : List (String × TRS.System) := []
   /-- Logic-world formulas bound by `let`, by name. -/
   formulas : List (String × Logic.Fm) := []
+  /-- Logic-world predicates, `let φ(n) = n > 1`: parameters and body, by name. -/
+  preds : List (String × Logic.PredDef) := []
   cells : List (String × Cell) := []
   /-- Outputs by evaluation number, for `%`, `%%` and `%n`; `nextOut` is the number the next
   evaluation gets (every evaluation takes one, error or not, like Mathematica's `In[n]`). -/
@@ -58,14 +60,15 @@ structure Session where
   nextOut : Nat := 1
 
 /-- Forget a name in every world: the `let` bindings and functions, the λ-definitions, the posets,
-maps, relations, operations and contexts, the systems and rewriting systems, the formulas. A cell
-that binds a name another world holds calls this first (`evaluateIn`, `World.lean`), so one name
-means one thing. -/
+maps, relations, operations and contexts, the systems and rewriting systems, the formulas and
+predicates. A cell that binds a name another world holds calls this first (`evaluateIn`,
+`World.lean`), so one name means one thing. -/
 def Session.unbind (s : Session) (n : String) : Session :=
   { s with env := s.env.filter (·.1 != n), fns := s.fns.filter (·.1 != n), lambdas := s.lambdas.filter (·.1 != n),
            posets := s.posets.filter (·.1 != n), pmaps := s.pmaps.filter (·.1 != n), rels := s.rels.filter (·.1 != n),
            ops := s.ops.filter (·.1 != n), ctxs := s.ctxs.filter (·.1 != n), systems := s.systems.filter (·.1 != n),
-           trss := s.trss.filter (·.1 != n), formulas := s.formulas.filter (·.1 != n) }
+           trss := s.trss.filter (·.1 != n), formulas := s.formulas.filter (·.1 != n),
+           preds := s.preds.filter (·.1 != n) }
 
 /-- Number an evaluation and remember its output, if it had one. Returns the label. -/
 def Session.tick (s : Session) (out : Option Expr) : Session × Nat :=
@@ -943,6 +946,8 @@ structure LogicResult where
   derivation : Derivation
   /-- The variables, then one row per assignment: the variables' values and the formula's. -/
   table : Option (List String × List (List Bool)) := none
+  /-- A predicate's parameters, when the cell defined one. -/
+  params : List String := []
 
 /-- A number from an expression of a logic cell: its bound variables (`env`) and the session's names
 put in, then the pipeline. -/
@@ -952,6 +957,21 @@ def logicNum (s : Session) (env : List (String × Q)) (e : Expr) : Option Q :=
   | (.ok (.num q), _) => some q
   | _ => none
 
+/-- A formula with the session's names put in: its predicates' bodies for their calls, then its
+formulas for their names (a call's argument may name one). -/
+def logicPrep (s : Session) (f : Logic.Fm) : Logic.Fm :=
+  Logic.expand s.formulas (Logic.expandCalls s.preds f)
+
+/-- The first call in a cell's formulas that has no meaning: of an undefined predicate, or with the
+wrong number of arguments. -/
+def logicCallError (s : Session) : Logic.Stmt → Option String
+  | .fm _ f | .pred _ _ f => Logic.callError s.preds f
+  | .cmd _ _ args => args.findSome? (Logic.callError s.preds)
+
+/-- Does the source call one of the session's predicates, `φ(2)`? Such a cell is logic, comparison or not. -/
+def callsPred (s : Session) (src : String) : Bool :=
+  !s.preds.isEmpty && Logic.callsAny (s.preds.map (·.1)) src
+
 /-- Evaluate a logic cell. -/
 def logicCell (s : Session) (cellId source : String) :
     Session × Except (String × String × Option (Nat × Nat)) LogicResult :=
@@ -959,7 +979,10 @@ def logicCell (s : Session) (cellId source : String) :
   | .error msg => (s, .error ("syntax", msg, none))
   | .ok stmt =>
     let err (msg : String) : Session × Except (String × String × Option (Nat × Nat)) LogicResult := (s, .error ("eval", msg, none))
-    let prep (f : Logic.Fm) : Logic.Fm := Logic.expand s.formulas f
+    match logicCallError s stmt with
+    | some msg => err msg
+    | none =>
+    let prep := logicPrep s
     let tv (b : Bool) : Logic.Fm := if b then .tt else .ff
     let step (rule text : String) (before after : Expr) : Step := ⟨rule, text, [], before, after, none⟩
     -- `value` is what a `let` binds; the cell shows `shown` when it is given (an assignment's map)
@@ -970,9 +993,9 @@ def logicCell (s : Session) (cellId source : String) :
       let d : Derivation := ⟨input, steps, out⟩
       let s := { s with cells := (cellId, { output := out, derivation := d }) :: s.cells.filter (·.1 != cellId) }
       let s := match name with
-        | some n => { s with formulas := (n, value) :: s.formulas.filter (·.1 != n) }
+        | some n => { s with formulas := (n, value) :: s.formulas.filter (·.1 != n), preds := s.preds.filter (·.1 != n) }
         | none => s
-      (s, .ok ⟨name, out, d, table⟩)
+      (s, .ok { name, value := out, derivation := d, table })
     -- a propositional formula with at most `limit` variables, for the truth-table commands
     let propOnly (f : Logic.Fm) (what : String) (limit := Logic.maxVars) : Except String (List String) :=
       if !f.isProp then .error s!"{what} is for propositional formulas; {f.toText} has arithmetic or quantifiers in it (write it on its own to evaluate it)"
@@ -980,8 +1003,25 @@ def logicCell (s : Session) (cellId source : String) :
       else .ok f.vars
     let num := logicNum s
     match stmt with
-    | .fm name f =>
-      let f := prep f
+    | .pred name ps body =>
+      -- the body is kept with the predicates it calls put in; a parameter is never a formula's name
+      let body := Logic.expand (s.formulas.filter (!ps.contains ·.1)) (Logic.expandCalls s.preds body)
+      let out := body.toExpr
+      let d : Derivation := ⟨.fn name (ps.map Expr.var), #[], out⟩
+      let s := { s with cells := (cellId, { output := out, derivation := d }) :: s.cells.filter (·.1 != cellId),
+                        preds := (name, (ps, body)) :: s.preds.filter (·.1 != name), formulas := s.formulas.filter (·.1 != name) }
+      (s, .ok { name := some name, value := out, derivation := d, params := ps })
+    | .fm name f0 =>
+      let f := prep f0
+      -- the calls of the session's predicates, unfolded: a step, when there are any
+      let written := Logic.expand s.formulas f0
+      let unfold : Array Step := if written.toExpr == f.toExpr then #[] else
+        let names := (s.preds.filter fun (p, _) => written.calls.contains p).map fun (p, ps, b) =>
+          s!"${(Expr.fn p (ps.map Expr.var)).toLatex false}$ is ${b.toExpr.toLatex}$"
+        #[step "logic.unfold" s!"Put in each predicate's definition, the arguments for its parameters: {"; ".intercalate names}." written.toExpr f.toExpr]
+      let done (name : Option String) (_input : Expr) (value : Logic.Fm) (steps : Array Step)
+          (table : Option (List String × List (List Bool)) := none) (shown : Option Expr := none) :=
+        done name written.toExpr value (unfold ++ steps) table shown
       if f.isProp && !f.vars.isEmpty then
         done name f.toExpr f #[]
       else if f.isProp then

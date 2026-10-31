@@ -32,6 +32,12 @@ test("a cell's world is read from its source as the engine routes it", () => {
   assert.equal(W.worldOf("taut(p → q)"), "logic");
   assert.equal(W.worldOf("p && q"), "logic");
   assert.equal(W.worldOf("forall n in 1..5, n^2 > 0"), "logic");
+  // a comparison is logic: a predicate's definition, or a claim about numbers
+  assert.equal(W.worldOf("let φ(n) = n > 1"), "logic");
+  assert.equal(W.worldOf("2^10 ≥ 1000"), "logic");
+  assert.equal(W.worldOf("prime(7)"), "logic");
+  assert.equal(W.worldOf("let P(n) = even(n)"), "logic");
+  assert.equal(W.worldOf("sprime(7)"), null);
   assert.equal(W.worldOf("let P = poset({a, b}; a < b)"), "poset");
   assert.equal(W.worldOf("closure(R, transitive)"), "poset");
   assert.equal(W.worldOf("let S = system(var x in 0..1; init x = 0; action t when x < 1 do x := x + 1)"), "system");

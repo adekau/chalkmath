@@ -1423,7 +1423,25 @@ export const FUNCTIONS: FnDoc[] = [
     ],
     examples: [basic("∀ n ∈ 1..10, n^2 ≥ n", "∀ n ∈ 1..10, n^2 ≥ 2n", "∃ n ∈ {4, 6, 9, 11}, prime(n)"),
       section("Nested", "∀ n ∈ 2..30, ∃ p ∈ 2..n, prime(p) ∧ p ∣ n")],
-    see: ["connectives"],
+    see: ["connectives", "predicate"],
+  },
+  {
+    name: "predicate", title: "let P(n) = …", area: "Logic", notation: true,
+    usage: [
+      ["let P(n) = φ", "defines a predicate: a formula with parameters, true or false for each value put in. Several parameters are separated by commas, `let L(a, b) = a < b`."],
+      ["P(e)", "is P's formula with `e` put in for `n`, usable anywhere a formula is: `¬(P(1) ∧ P(2))`, `∀ n ∈ 1..10, P(n)`."],
+    ],
+    details: [
+      "A comparison (`<`, `>`, `≤`, `≥`, `≠`, `∣`) makes a cell logic, so `let φ(n) = n > 1` defines a predicate where `let f(x) = x^2` defines a function; so do a connective, `=` in the body of a `let`, and a call of `prime`, `even` or `odd`.",
+      "The work's first step unfolds each call: the definition, the arguments put in for the parameters. A quantifier's variable that an argument mentions is renamed (`d` to `d'`), so nothing is captured.",
+      "A body may use the predicates defined before it, but not itself: there is no recursion. A parameter the body uses as a propositional variable takes a variable, `true` or `false` (`let I(a, b) = a → b`, then `taut(I(p, p))`).",
+      "Type a Greek name with a backslash, as anywhere: `let \\phi(n) = …` is `let φ(n) = …`.",
+    ],
+    examples: [
+      basic("let φ(n) = n > 1", "¬(φ(1) ∧ φ(2) ∧ φ(3))", "∀ n ∈ 2..9, φ(n)"),
+      section("Built on others", "let composite(n) = ∃ d ∈ 2..n-1, d ∣ n", "∀ n ∈ 2..20, prime(n) ↔ ¬composite(n)", "let twin(p) = prime(p) ∧ prime(p + 2)", "∃ p ∈ 12..20, twin(p)"),
+    ],
+    see: ["forall", "connectives"],
   },
   {
     name: "truthtable", area: "Logic",

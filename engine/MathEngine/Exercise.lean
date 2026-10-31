@@ -115,12 +115,12 @@ def checkLogic (s : Session) (cellId question : String) (answer : Option String)
     Session × Except Err CheckResult :=
   match Logic.parseStmt question with
   | .error msg => (s, .error ("syntax", msg, none))
-  | .ok (.cmd (some _) _ _) | .ok (.fm (some _) _) => (s, .error ("params", "an exercise compares values; a let has no value to compare", none))
+  | .ok (.cmd (some _) _ _) | .ok (.fm (some _) _) | .ok (.pred _ _ _) => (s, .error ("params", "an exercise compares values; a let has no value to compare", none))
   | .ok stmt =>
   match logicCell s cellId question with
   | (s, .error e) => (s, .error e)
   | (s, .ok res) =>
-    let prep (f : Logic.Fm) := Logic.expand s.formulas f
+    let prep := logicPrep s
     -- what the answer is held to
     -- `minimize(f, d)`: the rows where `d` holds cannot happen, and an answer may do anything there
     let dontCare : Logic.Fm := match stmt with | .cmd _ "minimize" [_, d] => prep d | _ => .ff
@@ -129,6 +129,7 @@ def checkLogic (s : Session) (cellId question : String) (answer : Option String)
       | .cmd _ h [f] => if ["nnf", "cnf", "dnf"].contains h then (h, some (prep f)) else if h == "sat" || h == "falsify" then (h, some (prep f)) else ("bool", none)
       | .cmd _ _ _ => ("bool", none)
       | .fm _ f => let f := prep f; if f.isProp && !f.vars.isEmpty then ("formula", some f) else ("bool", none)
+      | .pred _ _ _ => ("bool", none)
     let expectedBool : Bool := match res.value with | .fn "⊤" [] => true | _ => false
     let compare (a : Logic.Fm) : Except Err (Compared × Bool) := do
       let shown : Compared := ⟨a.toExpr, a.toExpr⟩

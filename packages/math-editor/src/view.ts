@@ -1,6 +1,6 @@
 import katex from "katex";
 import { MathEdit, TEMPLATES, type Caret } from "./edit.js";
-import { isBreak, lineOf, type Atom, type Block, type Stmt } from "./model.js";
+import { isBreak, isIdChar, lineOf, type Atom, type Block, type Stmt } from "./model.js";
 import { outRefOf, slots, toLatex } from "./notation.js";
 import { read } from "./read.js";
 import { atomsInSpan, write } from "./write.js";
@@ -631,12 +631,14 @@ export class MathInput {
     const q = p.name, ql = q.toLowerCase();
     const seen = new Set<string>();
     const items: { name: string; what: string; glyph: string; fn?: boolean }[] = [];
+    // in a `let` head only a letter can go: a name's symbols, no operators or templates
+    const head = this.edit.inHead();
     for (const [name, sym] of Object.entries(this.edit.symbols)) {
-      if (!name.toLowerCase().startsWith(ql) || seen.has(sym)) continue;
+      if (!name.toLowerCase().startsWith(ql) || seen.has(sym) || (head && !Array.from(sym).every(isIdChar))) continue;
       seen.add(sym);
       items.push({ name, what: "symbol", glyph: sym });
     }
-    for (const [name, t] of Object.entries(TEMPLATES)) if (name.toLowerCase().startsWith(ql)) items.push({ name, what: t.what, glyph: t.glyph });
+    if (!head) for (const [name, t] of Object.entries(TEMPLATES)) if (name.toLowerCase().startsWith(ql)) items.push({ name, what: t.what, glyph: t.glyph });
     // an exact name first, then case-exact prefixes, then the rest
     const rank = (n: string) => (n === q ? 0 : n.startsWith(q) ? 1 : 2);
     items.sort((a, b) => rank(a.name) - rank(b.name));

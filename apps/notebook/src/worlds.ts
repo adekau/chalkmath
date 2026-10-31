@@ -27,9 +27,9 @@ export const FALLBACK_WORLDS: WorldInfo[] = [
   { id: "logic", label: "Logic",
     commands: ["truthtable", "taut", "sat", "falsify", "equiv", "nnf", "cnf", "dnf", "minimize"],
     keywords: ["and", "or", "not", "implies", "iff", "forall", "exists", "in"],
-    glyphs: ["∧", "∨", "¬", "→", "↔", "⊤", "⊥", "∀", "∃", "∈", "≤", "≥", "≠", "<->", "->", "=>", "&&", "/\\", "||", "\\/", "<=", ">=", "!=", "==", "!", "~", "..", ","],
+    glyphs: ["∧", "∨", "¬", "→", "↔", "⊤", "⊥", "∀", "∃", "∈", "<", ">", "≤", "≥", "≠", "∣", "<->", "->", "=>", "&&", "/\\", "||", "\\/", "<=", ">=", "!=", "==", "!", "~", "..", ","],
     names: ["prime", "even", "odd", "true", "false"],
-    markers: ["¬", "∧", "∨", "→", "↔", "⊤", "⊥", "∀", "∃", "<->", "->", "&&", "||", "forall", "exists"] },
+    markers: ["¬", "∧", "∨", "→", "↔", "⊤", "⊥", "∀", "∃", "<", ">", "≤", "≥", "≠", "∣", "<->", "->", "&&", "||", "forall", "exists"] },
   { id: "lambda", label: "λ-calculus",
     commands: ["normal", "cbn", "cbv", "applicative", "eta", "fv", "db", "alpha", "subst", "type", "infer"],
     keywords: [],
@@ -115,6 +115,8 @@ export function worldOf(src: string, defs: (name: string) => boolean = () => fal
     // a λ-term is not a logic cell, whatever glyphs it holds (the engine's isLogicSource says the same)
     if (w.id === "logic" && hasLambda) continue;
     if (cmdRe(w).test(s) || marked(w, s)) return w.id;
+    // a call of a logic predicate, `prime(7)`, is a formula (the engine's isLogicSource says the same)
+    if (w.id === "logic" && w.names.some((n) => new RegExp(`(?<![\\p{L}\\p{N}_'])${n}\\s*\\(`, "u").test(s))) return w.id;
   }
   return null;
 }

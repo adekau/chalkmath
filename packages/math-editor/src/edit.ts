@@ -518,10 +518,16 @@ export class MathEdit {
   }
 
   /** Typing in a `let` head: a name's characters; `(` opens the parameters and `,` adds one; a space,
-   *  `=` or `)` go on to the body. */
+   *  `=` or `)` go on to the body. A `\\` command names a Greek letter here as anywhere (`\\phi` is φ):
+   *  anything but a letter or digit finishes it, and a space is used up doing it. */
   private typeInHead(c: string, head: Atom & { k: "let" }, w: Where): boolean {
     const b = this.caret.block;
     const body = () => { this.caret = { block: w.parent, i: w.index + 1 }; return true; };
+    if (!/^[A-Za-z0-9]$/.test(c) && this.pendingCommand()) {
+      if (!this.commandOne()) return false;
+      if (c === " ") return true;
+    }
+    if (c === "\\") { b.splice(this.caret.i, 0, ch(c)); this.caret = { block: b, i: this.caret.i + 1 }; return true; }
     if (isIdChar(c)) { b.splice(this.caret.i, 0, ch(c)); this.caret = { block: b, i: this.caret.i + 1 }; return true; }
     if (b === head.name) {
       if (c === "(") { head.params ??= [[]]; this.caret = { block: head.params[0]!, i: 0 }; return true; }
@@ -839,6 +845,9 @@ export class MathEdit {
   }
 
   /** The `\name` just before the caret, if there is one: its text and where it starts. */
+  /** Is the caret in a `let` head, its name or a parameter? */
+  inHead(): boolean { return this.where(this.caret.block)?.atom.k === "let"; }
+
   pendingCommand(): { name: string; start: number } | null {
     const { block: b, i } = this.caret;
     let j = i;
@@ -858,6 +867,9 @@ export class MathEdit {
     const m = /^([A-Za-z]+?)(\d+)?(?:x(\d+))?$/.exec(p.name);
     const t = m && TEMPLATES[m[1]!];
     if (!sym && !t) return false;
+    // a `let` head holds names: a letter's symbol goes in, a template or an operator does not
+    const inHead = this.inHead();
+    if (inHead && !(sym && Array.from(sym).every(isIdChar))) return false;
     b.splice(p.start, i - p.start);
     this.caret = { block: b, i: p.start };
     if (sym) {
@@ -866,7 +878,7 @@ export class MathEdit {
       b.splice(p.start, 0, ...chars(sym));
       this.caret.i += Array.from(sym).length;
       // a name's glyph is kept apart from a name typed after it (`\\pi r` is π r); an operator's needs nothing
-      if (isIdChar(sym)) this.glue = { ...this.caret };
+      if (isIdChar(sym) && !inHead) this.glue = { ...this.caret };
       return true;
     }
     return this.insert(t!.make(m![2] ? +m![2] : undefined, m![3] ? +m![3] : undefined), true);

@@ -87,6 +87,10 @@ const CASES = [
   { src: "taut(p → q)", text: "⊥", step: "False when p = true, q = false" },
   { src: "falsify(p → q)", text: "{p↦true, q↦false}", step: "Truth table" },
   { src: "∀ n ∈ 1..10, n^2 ≥ 2n", text: "⊥", step: "Check every element" },
+  // a predicate: a let whose body compares, and its calls, each unfolded in the work
+  { src: "let φ(n) = n > 1", text: "n > 1" },
+  { src: "¬(φ(1) ∧ φ(2) ∧ φ(3))", text: "⊤", step: "Unfold the definition" },
+  { src: "φ(1, 2) ∨ ⊤", error: "φ takes 1 argument \\(n\\), not 2" },
   { src: "minimize(a ∨ (o ∧ ¬l) ∨ (o ∧ l ∧ a))", text: "a ∨ o ∧ ¬l", step: "Round 1" },
   { src: "minimize((g5 ∧ s) ∨ (g3 ∧ ¬g5 ∧ s), g5 ∧ ¬g3)", text: "s ∧ g3", step: "Smallest cover" },
   { src: "minimize((b ∧ ¬t) ∨ (b ∧ t ∧ s) ∨ (¬b ∧ s ∧ t))", text: "t ∧ s ∨ b ∧ ¬t", step: "Merge terms" },
@@ -850,6 +854,19 @@ async function features() {
   await page.keyboard.press("Control+Shift+M");
   assert.equal(await all().nth(vk).locator("input.cellin").inputValue(), odd, "the text changed on its way through the typeset view");
   console.log(`✓ one source: ${vtyped} typed typeset; ${odd} through the typeset view and back unchanged`);
+  // a Greek letter typed as a backslash name in a typeset let's head, its name and its parameter alike
+  await menu("Edit", "Add math cell");
+  const gk = await all().count() - 1;
+  await all().nth(gk).locator(".cellin").click();
+  await page.keyboard.press("Control+Shift+M");
+  await all().nth(gk).locator(".mi").waitFor({ timeout: 5000 });
+  await page.keyboard.type("let \\phi(\\alpha) = \\alpha > 1");
+  await page.keyboard.press("Control+Shift+M");
+  const gtyped = "let φ(α) = α > 1";
+  assert.equal(await all().nth(gk).locator("input.cellin").inputValue(), gtyped, "\\phi and \\alpha did not go into the let's head");
+  await page.keyboard.press("Enter");
+  await outIs(gk, (await ref(gtyped, "gk")).rendered.latex, "a predicate with a Greek name typed typeset");
+  console.log(`✓ a let's head takes backslash names: ${gtyped}`);
   // a typeset cell is edited as it is, run or not: its row keeps Visual/Text and Run; resting on a piece
   // opens the toolbar over it, from the run's reading and, once it is edited, from engine.read; the
   // toolbar's edits and Esc run nothing

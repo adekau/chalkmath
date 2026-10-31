@@ -301,6 +301,25 @@ exists n in {4, 6, 9}, prime(n)	⊥
 ∃ n ∈ {4, 6, 9, 11}, prime(n)	⊤
 ∀ n ∈ 2..30, ∃ p ∈ 2..n, prime(p) ∧ p ∣ n	⊤
 ∀ n ∈ 1..5, even(n) ∨ odd(n)	⊤
+let φ(n) = n > 1	n > 1
+¬(φ(1) ∧ φ(2) ∧ φ(3))	⊤
+φ(5)	⊤
+∀ n ∈ 2..9, φ(n)	⊤
+∃ n ∈ 0..3, ¬φ(n)	⊤
+φ(1, 2) ∨ ⊤	<error: φ takes 1 argument (n), not 2>
+ψ(3) ∧ φ(2)	<error: ψ is not a predicate: define it first, as in let ψ(n) = n > 1 (a formula in its parameters)>
+2^10 > 1000	⊤
+let composite(n) = ∃ d ∈ 2..n-1, d ∣ n	∃ d ∈ 2..n - 1, d ∣ n
+∀ d ∈ 4..6, composite(d)	⊥
+∀ n ∈ 2..20, prime(n) ↔ ¬composite(n)	⊤
+let I(a, b) = a → b	a → b
+taut(I(p, q) ∨ I(q, p))	⊤
+I(⊤, ⊥)	⊥
+let E(n) = n = 2	n = 2
+E(2) ∧ ¬E(3)	⊤
+prime(7)	⊤
+let twin(p) = prime(p) ∧ prime(p + 2)	prime(p) ∧ prime(p + 2)
+∃ p ∈ 12..20, twin(p)	⊤
 sat(p ∧ (n > 2))	<error: sat is for propositional formulas; p ∧ n > 2 has arithmetic or quantifiers in it (write it on its own to evaluate it)>
 cnf(p ∨)	<error: expected a formula>
 let R = rel({a, b, c}; a->b, b->c)	{(a, b), (b, c)}

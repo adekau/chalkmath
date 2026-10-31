@@ -262,6 +262,21 @@ test("a let head is typed as it reads, and its name and parameters are slots", (
   t.e.home(); t.e.right(); assert.equal(t.e.caret.block, t.e.stmt.body[0].name);
 });
 
+test("a let head's name and parameters take a Greek letter typed as a backslash name", () => {
+  // `(`, `=`, `,` and `)` finish the name and then do what they do there; a space is used up
+  assert.equal(text("let \\phi(n) = n > 1"), "let φ(n) = n > 1");
+  assert.equal(text("let \\phi = p ∧ q"), "let φ = p ∧ q");
+  assert.equal(text("let \\psi (n) = n"), "let ψ(n) = n");
+  assert.equal(text("let f(\\alpha, \\beta) = \\alpha + 1"), "let f(α, β) = α + 1");
+  // Tab (or Enter) finishes it too, and a digit or letter after it is more of the name, not a product
+  assert.equal(text("let \\phi{tab}{tab}1"), "let φ = 1");
+  assert.equal(text("let \\phi{tab}2 = 1"), "let φ2 = 1");
+  // a template or an operator cannot name anything: the command stays as typed, to be fixed
+  const { e } = typed("let \\frac(");
+  assert.equal(e.pendingCommand()?.name, "frac");
+  assert.equal(typed("let \\and").e.command(), false);
+});
+
 test("the call around the caret, for signature help, is one drawn as name(args)", () => {
   const ctx = (keys, src, known) => typed(keys, src, known).e.callContext();
   assert.deepEqual(ctx("subst(x^2{→}, x, 3"), { name: "subst", arg: 2, firstArg: "x^2" });
