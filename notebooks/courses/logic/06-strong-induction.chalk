@@ -146,6 +146,47 @@
       "label": null
     },
     {
+      "src": "The first two say that each kind of induction hypothesis can be built from the other. Strong to weak is short: a proof that may use every smaller case can use just the one before. Weak to strong takes a trick. Ordinary induction on $P$ itself only hands the step $P(n)$, so prove a bigger statement instead, one that carries every case so far:\n$$Q(k):\\quad P(m) \\text{ for every } m < k.$$\nIn dominoes, $Q(k)$ says the first $k$ are down. $Q(0)$ is about no dominoes at all, so it holds. If $Q(k)$ holds, the strong step turns \"every case below $k$\" into $P(k)$, and $Q(k)$ with $P(k)$ is $Q(k + 1)$. So $Q(k)$ holds for every $k$ by ordinary induction, and $P(n)$ follows from $Q(n + 1)$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Prove both directions in Lean, for any property `P` of the natural numbers.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem weak_of_strong (P : Nat → Prop) (h0 : P 0) (step : ∀ n, P n → P (n + 1)) (n : Nat) : P n := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Strong induction gives weak: prove ordinary induction, with `induction n using Nat.strongRecOn`.",
+      "leanSolution": "  induction n using Nat.strongRecOn with\n  | _ n ih =>\n    match n with\n    | 0 => exact h0\n    | k + 1 => exact step k (ih k (by omega))",
+      "hints": [
+        "Start as in `fib_lt_two_pow`: `induction n using Nat.strongRecOn with | _ n ih =>`, then `match n with` for `0` and `k + 1`.",
+        "For `0` there is nothing smaller to use, and `h0` is the answer.",
+        "For `k + 1`, of all the smaller cases `ih` offers, use only `k`: `ih k (by omega)` is `P k`, and `step k` turns it into `P (k + 1)`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem strong_of_weak (P : Nat → Prop) (step : ∀ n, (∀ m < n, P m) → P n) (n : Nat) : P n := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Weak induction gives strong: prove strong induction with ordinary `induction` only (no `Nat.strongRecOn`), through $Q(k)$, \"`P m` for every `m < k`\".",
+      "leanSolution": "  have below : ∀ k, ∀ m < k, P m := by\n    intro k\n    induction k with\n    | zero =>\n      intro m hm\n      exact absurd hm (Nat.not_lt_zero m)\n    | succ k ih =>\n      intro m hm\n      by_cases h : m < k\n      · exact ih m h\n      · have hmk : m = k := by omega\n        rw [hmk]\n        exact step k ih\n  exact below (n + 1) n (by omega)",
+      "leanStart": "  have below : ∀ k, ∀ m < k, P m := by\n    intro k\n    induction k with\n    | zero => sorry\n    | succ k ih => sorry\n  exact below (n + 1) n (by omega)",
+      "hints": [
+        "The start has the plan: `below` is $Q(k)$ for every `k`, proved by ordinary induction, and the last line takes `P n` from $Q(n + 1)$.",
+        "`zero`: after `intro m hm`, `hm : m < 0` cannot hold. `exact absurd hm (Nat.not_lt_zero m)` says so.",
+        "`succ k ih`: `ih` is $Q(k)$, `∀ m < k, P m`. After `intro m hm` (`hm : m < k + 1`), either `m < k`, and `ih m h` is the answer, or `m = k`, and `step k ih` proves `P k`. Split with `by_cases h : m < k`; in the second case `omega` proves `m = k`, and `rw` puts `k` for `m`."
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "The last form is the one lesson 9 generalizes: induction works along any relation with no infinite descending chain.",
       "type": "markdown",
       "showWork": false,

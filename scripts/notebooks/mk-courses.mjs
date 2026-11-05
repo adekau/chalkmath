@@ -1547,15 +1547,54 @@ theorem sumTo_formula (n : Nat) : 2 * sumTo n = n * (n + 1) := by
 `);
     sc(oddSquareScene);
     md(r`The sum of the first $n$ odd numbers is $n^2$, and the picture is the induction step: $n^2 + (2n + 1) = (n + 1)^2$.`);
+    sec("Writing a recursive definition");
+    md(r`To prove this in Lean, the sum needs a definition, and ‹1 + 3 + ⋯› is not one. A definition by recursion answers two questions, and they are induction's base case and step again:
+1. **What is it at 0?** The sum of no odd numbers is 0.
+2. **Given the answer for $n$, what is the answer for $n + 1$?** The same sum with one more odd number added.`);
+    md(r`Which odd number is added? Number them from 0, as ‹Nat› counts: the odd number at position $k$ is $2k + 1$, so 1 is at position 0, 3 at position 1 and 5 at position 2. The first $n$ odd numbers are at positions $0$ to $n - 1$. Going from $n$ of them to $n + 1$ adds the one at position $n$, which is $2n + 1$.`);
+    lean(r`def oddSum : Nat → Nat
+  | 0 => 0
+  | n + 1 => oddSum n + (2 * n + 1)
+
+#eval (List.range 8).map oddSum
+
+example : oddSum 3 = 0 + 1 + 3 + 5 := rfl`);
+    md(r`Read ‹| n + 1 => oddSum n + (2 * n + 1)› as "the sum of $n + 1$ odd numbers is the sum of $n$ of them, plus the next one". Lean computes ‹oddSum 3› by using that line until it reaches ‹0›:
+$$\mathit{oddSum}\ 3 = \mathit{oddSum}\ 2 + 5 = (\mathit{oddSum}\ 1 + 3) + 5 = ((\mathit{oddSum}\ 0 + 1) + 3) + 5 = 0 + 1 + 3 + 5,$$
+which is what the ‹example› checks, with ‹rfl›.`);
+    md(r`
+> [!note] Recursion and loops
+> If you think in loops, here is the same sum as one:
+>
+> ‹‹‹ts
+> function oddSum(n: number): number {
+>   let total = 0;
+>   for (let k = 0; k < n; k++) total = total + (2 * k + 1);
+>   return total;
+> }
+> ‹‹‹
+>
+> The loop starts from 0 and adds $1$, then $3$, then $5$. The recursive definition describes one pass of it: if ‹total› is the sum of the first $n$ odd numbers, the next pass adds $2n + 1$ to make the sum of the first $n + 1$. The loop counts up from 0. The definition starts from $n$ and asks for the case below, down to 0. Both do the same additions in the same order. [Loop invariants](#course=logic&lesson=5&app=1) writes loops in Lean like this.
+`.replace(/‹‹‹/g, "```"));
+    md(r`
+> [!tip] Trust the case below
+> When you write the ‹n + 1› line, do not trace the recursion all the way down. Assume ‹oddSum n› is already right, and ask only what one more step adds. That is what an induction proof's step does with its hypothesis, and it is why proofs about recursive definitions are by induction: the recursive call ‹oddSum n› is the case the hypothesis is about.
+`);
+    md(r`
+> [!mistake]
+> The usual slip is adding the wrong term. In the ‹n + 1› line, ‹n› is the number of terms *before* the step, so the term added is the one at position ‹n›. Writing ‹2 * n - 1›, the term at position ‹n - 1›, adds each odd number one step late: the values are the squares shifted along by one. (‹Nat› has no negative numbers, so ‹2 * 0 - 1› is ‹0›.)
+`);
+    lean(r`def oddSumLate : Nat → Nat
+  | 0 => 0
+  | n + 1 => oddSumLate n + (2 * n - 1)
+
+#eval (List.range 8).map oddSumLate`);
+    md(r`Running a definition on its first few inputs, as with ‹#eval› here, is the quickest way to catch this before you try to prove anything about it.`);
     sec("Exercises");
     md(r`First check, then prove. Answer ‹true› or ‹false›:`);
     ex("∀ n ∈ 1..15, 2^n ≥ n + 1", r`Is $2^n \ge n + 1$ for $n$ from 1 to 15?`, []);
     ex("∀ n ∈ 1..20, sum(2k - 1, k, 1, n) = n^2", r`Is the sum of the first $n$ odd numbers $n^2$, for $n$ up to 20?`, [r`$1 = 1$, $1 + 3 = 4$, $1 + 3 + 5 = 9$.`]);
-    lx(r`def oddSum : Nat → Nat
-  | 0 => 0
-  | n + 1 => oddSum n + (2 * n + 1)
-
-theorem oddSum_eq (n : Nat) : oddSum n = n * n := by`, r`Prove that the sum of the first $n$ odd numbers is $n^2$.`, r`  induction n with
+    lx(r`theorem oddSum_eq (n : Nat) : oddSum n = n * n := by`, r`Prove that ‹oddSum›, defined above, adds up to $n^2$: the sum of the first $n$ odd numbers is $n^2$.`, r`  induction n with
   | zero => rfl
   | succ k ih =>
     simp only [oddSum, ih]
@@ -1565,7 +1604,7 @@ theorem oddSum_eq (n : Nat) : oddSum n = n * n := by`, r`Prove that the sum of t
   | succ k ih =>
     rw [Nat.pow_succ]
     omega`, [r`The step: from $k + 1 \le 2^k$, show $k + 2 \le 2^k \cdot 2$.`, r`‹rw [Nat.pow_succ]› turns ‹2 ^ (k + 1)› into ‹2 ^ k * 2›; then ‹omega› treats ‹2 ^ k› as a number.`]);
-    md(r`Until now the definitions were given and you proved things about them. In the next exercise you write the definition too, and the theorem is its specification: Lean accepts your work when the definition meets it, for every $n$. A table of answers cannot: it would have to stop somewhere, and the theorem is about every $n$ after that too.`);
+    md(r`Until now the definitions were given and you proved things about them. In the next exercises you write the definition too, by answering the two questions: what it is at ‹0›, and how the answer for ‹n + 1› comes from the answer for ‹n›. The theorem is the definition's specification: Lean accepts your work when the definition meets it, for every $n$. A table of answers cannot: it would have to stop somewhere, and the theorem is about every $n$ after that too.`);
     lx(r`theorem double_spec (n : Nat) : double n = 2 * n := by`, r`Define ‹double› by recursion, adding as you go, without multiplying (no ‹*›); then prove that it doubles every number.`, r`  induction n with
   | zero => rfl
   | succ k ih =>
@@ -1583,9 +1622,46 @@ theorem oddSum_eq (n : Nat) : oddSum n = n * n := by`, r`Prove that the sum of t
   | 0 => 0
   | n + 1 => double n + 2`, forbid: ["*", "Nat.mul", "HMul.hMul", "mul", "<<<", "shiftLeft"] },
     });
+    md(r`In ‹double› each step adds the same amount. In the next one, each step uses the value before it: the answer for ‹n + 1› is made from the answer for ‹n›, not just added to.`);
+    lx(r`theorem pow2_spec (n : Nat) : pow2 n = 2 ^ n := by`, r`Define ‹pow2 n›, two to the power $n$, by recursion, without ‹^›; then prove that it is ‹2 ^ n›.`, r`  induction n with
+  | zero => rfl
+  | succ k ih =>
+    simp only [pow2, ih, Nat.pow_succ]
+    omega`, [
+      r`At ‹0›: $2^0 = 1$, not ‹0›. Each step up doubles: $2^{n+1} = 2 \cdot 2^n$, so ‹pow2 (n + 1)› is ‹2 * pow2 n›.`,
+      r`The proof: ‹simp only [pow2, ih, Nat.pow_succ]› unfolds one step, uses the hypothesis, and turns ‹2 ^ (k + 1)› into ‹2 ^ k * 2›; ‹omega› finishes, treating ‹2 ^ k› as a number.`,
+    ], {
+      start: `  induction n with
+  | zero => sorry
+  | succ k ih => sorry`,
+      def: { start: `def pow2 : Nat → Nat
+  | 0 => sorry
+  | n + 1 => sorry`, solution: `def pow2 : Nat → Nat
+  | 0 => 1
+  | n + 1 => 2 * pow2 n`, forbid: ["^", "Nat.pow", "HPow.hPow", "pow", "<<<", "shiftLeft"] },
+    });
+    md(r`The last one is a sum again, like ‹oddSum›. Mind which term the step adds.`);
+    lx(r`theorem powSum_spec (n : Nat) : powSum n + 1 = 2 ^ n := by`, r`Define ‹powSum n›, the sum of the first $n$ powers of two, $1 + 2 + 4 + \cdots$, by recursion; then prove that it is one less than $2^n$. (Without subtraction: write the sum, not its closed form $2^n - 1$.)`, r`  induction n with
+  | zero => rfl
+  | succ k ih =>
+    simp only [powSum, Nat.pow_succ]
+    omega`, [
+      r`The first $n$ powers of two are $2^0, 2^1, \ldots, 2^{n-1}$. The sum of none of them is ‹0›.`,
+      r`Going from $n$ terms to $n + 1$ adds the power at position $n$, which is $2^n$, not $2^{n+1}$: ‹powSum (n + 1)› is ‹powSum n + 2 ^ n›. Check with ‹#eval (List.range 6).map powSum›: 0, 1, 3, 7, 15, 31.`,
+      r`The proof: ‹simp only [powSum, Nat.pow_succ]› leaves ‹powSum k + 2 ^ k + 1 = 2 ^ k * 2›, and ‹omega› finishes it from ‹ih : powSum k + 1 = 2 ^ k›.`,
+    ], {
+      start: `  induction n with
+  | zero => sorry
+  | succ k ih => sorry`,
+      def: { start: `def powSum : Nat → Nat
+  | 0 => sorry
+  | n + 1 => sorry`, solution: `def powSum : Nat → Nat
+  | 0 => 0
+  | n + 1 => powSum n + 2 ^ n`, forbid: ["-", "Nat.sub", "HSub.hSub", "sub", "pred"] },
+    });
     md(r`
 > [!summary]
-> Induction proves $P(n)$ for every $n$ from a base case and a step: a recipe that builds the proof for any $n$ you name. Checking cases finds mistakes; the step is the proof. In Lean, ‹induction› splits the goal into those two cases and hands the step its hypothesis.
+> Induction proves $P(n)$ for every $n$ from a base case and a step: a recipe that builds the proof for any $n$ you name. Checking cases finds mistakes; the step is the proof. In Lean, ‹induction› splits the goal into those two cases and hands the step its hypothesis. A recursive definition has the same two parts, its value at ‹0› and how the value at ‹n + 1› comes from the value at ‹n›, which is why proofs about it are by induction.
 `);
     md(r`
 > [!note] Application: loop invariants
@@ -1817,6 +1893,44 @@ The invariant: ‹best› is at least every element seen so far. In Lean the loo
 > - Weak gives strong: apply weak induction to $Q(n)$ = "$P(m)$ for every $m < n$".
 > - Well-ordering (every non-empty set of naturals has a least element) gives strong induction: if $P$ failed somewhere, take the least $n$ where it fails; $P$ holds below $n$, so the step gives $P(n)$, a contradiction.
 `);
+    md(r`The first two say that each kind of induction hypothesis can be built from the other. Strong to weak is short: a proof that may use every smaller case can use just the one before. Weak to strong takes a trick. Ordinary induction on $P$ itself only hands the step $P(n)$, so prove a bigger statement instead, one that carries every case so far:
+$$Q(k):\quad P(m) \text{ for every } m < k.$$
+In dominoes, $Q(k)$ says the first $k$ are down. $Q(0)$ is about no dominoes at all, so it holds. If $Q(k)$ holds, the strong step turns "every case below $k$" into $P(k)$, and $Q(k)$ with $P(k)$ is $Q(k + 1)$. So $Q(k)$ holds for every $k$ by ordinary induction, and $P(n)$ follows from $Q(n + 1)$.`);
+    md(r`Prove both directions in Lean, for any property ‹P› of the natural numbers.`);
+    lx(r`theorem weak_of_strong (P : Nat → Prop) (h0 : P 0) (step : ∀ n, P n → P (n + 1)) (n : Nat) : P n := by`, r`Strong induction gives weak: prove ordinary induction, with ‹induction n using Nat.strongRecOn›.`, r`  induction n using Nat.strongRecOn with
+  | _ n ih =>
+    match n with
+    | 0 => exact h0
+    | k + 1 => exact step k (ih k (by omega))`, [
+      r`Start as in ‹fib_lt_two_pow›: ‹induction n using Nat.strongRecOn with | _ n ih =>›, then ‹match n with› for ‹0› and ‹k + 1›.`,
+      r`For ‹0› there is nothing smaller to use, and ‹h0› is the answer.`,
+      r`For ‹k + 1›, of all the smaller cases ‹ih› offers, use only ‹k›: ‹ih k (by omega)› is ‹P k›, and ‹step k› turns it into ‹P (k + 1)›.`,
+    ]);
+    lx(r`theorem strong_of_weak (P : Nat → Prop) (step : ∀ n, (∀ m < n, P m) → P n) (n : Nat) : P n := by`, r`Weak induction gives strong: prove strong induction with ordinary ‹induction› only (no ‹Nat.strongRecOn›), through $Q(k)$, "‹P m› for every ‹m < k›".`, r`  have below : ∀ k, ∀ m < k, P m := by
+    intro k
+    induction k with
+    | zero =>
+      intro m hm
+      exact absurd hm (Nat.not_lt_zero m)
+    | succ k ih =>
+      intro m hm
+      by_cases h : m < k
+      · exact ih m h
+      · have hmk : m = k := by omega
+        rw [hmk]
+        exact step k ih
+  exact below (n + 1) n (by omega)`, [
+      r`The start has the plan: ‹below› is $Q(k)$ for every ‹k›, proved by ordinary induction, and the last line takes ‹P n› from $Q(n + 1)$.`,
+      r`‹zero›: after ‹intro m hm›, ‹hm : m < 0› cannot hold. ‹exact absurd hm (Nat.not_lt_zero m)› says so.`,
+      r`‹succ k ih›: ‹ih› is $Q(k)$, ‹∀ m < k, P m›. After ‹intro m hm› (‹hm : m < k + 1›), either ‹m < k›, and ‹ih m h› is the answer, or ‹m = k›, and ‹step k ih› proves ‹P k›. Split with ‹by_cases h : m < k›; in the second case ‹omega› proves ‹m = k›, and ‹rw› puts ‹k› for ‹m›.`,
+    ], {
+      start: `  have below : ∀ k, ∀ m < k, P m := by
+    intro k
+    induction k with
+    | zero => sorry
+    | succ k ih => sorry
+  exact below (n + 1) n (by omega)`,
+    });
     md(r`The last form is the one lesson 9 generalizes: induction works along any relation with no infinite descending chain.`);
     sec("Exercises");
     ex("∀ n ∈ 12..50, ∃ a ∈ 0..12, ∃ b ∈ 0..10, n = 4a + 5b", r`With stamps of 4 and 5, can every amount from 12 to 50 be made exactly? Answer ‹true› or ‹false›.`, [r`12, 13, 14 and 15 directly; then reach back by 4.`]);
