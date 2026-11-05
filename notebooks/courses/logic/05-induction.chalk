@@ -158,6 +158,66 @@
       "label": null
     },
     {
+      "src": "Writing a recursive definition",
+      "type": "section",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "To prove this in Lean, the sum needs a definition, and `1 + 3 + ⋯` is not one. A definition by recursion answers two questions, and they are induction's base case and step again:\n1. **What is it at 0?** The sum of no odd numbers is 0.\n2. **Given the answer for $n$, what is the answer for $n + 1$?** The same sum with one more odd number added.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Which odd number is added? Number them from 0, as `Nat` counts: the odd number at position $k$ is $2k + 1$, so 1 is at position 0, 3 at position 1 and 5 at position 2. The first $n$ odd numbers are at positions $0$ to $n - 1$. Going from $n$ of them to $n + 1$ adds the one at position $n$, which is $2n + 1$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "def oddSum : Nat → Nat\n  | 0 => 0\n  | n + 1 => oddSum n + (2 * n + 1)\n\n#eval (List.range 8).map oddSum\n\nexample : oddSum 3 = 0 + 1 + 3 + 5 := rfl",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Read `| n + 1 => oddSum n + (2 * n + 1)` as \"the sum of $n + 1$ odd numbers is the sum of $n$ of them, plus the next one\". Lean computes `oddSum 3` by using that line until it reaches `0`:\n$$\\mathit{oddSum}\\ 3 = \\mathit{oddSum}\\ 2 + 5 = (\\mathit{oddSum}\\ 1 + 3) + 5 = ((\\mathit{oddSum}\\ 0 + 1) + 3) + 5 = 0 + 1 + 3 + 5,$$\nwhich is what the `example` checks, with `rfl`.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!note] Recursion and loops\n> If you think in loops, here is the same sum as one:\n>\n> ```ts\n> function oddSum(n: number): number {\n>   let total = 0;\n>   for (let k = 0; k < n; k++) total = total + (2 * k + 1);\n>   return total;\n> }\n> ```\n>\n> The loop starts from 0 and adds $1$, then $3$, then $5$. The recursive definition describes one pass of it: if `total` is the sum of the first $n$ odd numbers, the next pass adds $2n + 1$ to make the sum of the first $n + 1$. The loop counts up from 0. The definition starts from $n$ and asks for the case below, down to 0. Both do the same additions in the same order. [Loop invariants](#course=logic&lesson=5&app=1) writes loops in Lean like this.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!tip] Trust the case below\n> When you write the `n + 1` line, do not trace the recursion all the way down. Assume `oddSum n` is already right, and ask only what one more step adds. That is what an induction proof's step does with its hypothesis, and it is why proofs about recursive definitions are by induction: the recursive call `oddSum n` is the case the hypothesis is about.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!mistake]\n> The usual slip is adding the wrong term. In the `n + 1` line, `n` is the number of terms *before* the step, so the term added is the one at position `n`. Writing `2 * n - 1`, the term at position `n - 1`, adds each odd number one step late: the values are the squares shifted along by one. (`Nat` has no negative numbers, so `2 * 0 - 1` is `0`.)",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "def oddSumLate : Nat → Nat\n  | 0 => 0\n  | n + 1 => oddSumLate n + (2 * n - 1)\n\n#eval (List.range 8).map oddSumLate",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "Running a definition on its first few inputs, as with `#eval` here, is the quickest way to catch this before you try to prove anything about it.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "Exercises",
       "type": "section",
       "showWork": false,
@@ -187,10 +247,10 @@
       "label": null
     },
     {
-      "src": "def oddSum : Nat → Nat\n  | 0 => 0\n  | n + 1 => oddSum n + (2 * n + 1)\n\ntheorem oddSum_eq (n : Nat) : oddSum n = n * n := by",
+      "src": "theorem oddSum_eq (n : Nat) : oddSum n = n * n := by",
       "type": "exercise",
       "lean": true,
-      "prompt": "Prove that the sum of the first $n$ odd numbers is $n^2$.",
+      "prompt": "Prove that `oddSum`, defined above, adds up to $n^2$: the sum of the first $n$ odd numbers is $n^2$.",
       "leanSolution": "  induction n with\n  | zero => rfl\n  | succ k ih =>\n    simp only [oddSum, ih]\n    grind",
       "hints": [
         "`induction n with`, then a case for `zero` and one for `succ k ih`.",
@@ -213,7 +273,7 @@
       "label": null
     },
     {
-      "src": "Until now the definitions were given and you proved things about them. In the next exercise you write the definition too, and the theorem is its specification: Lean accepts your work when the definition meets it, for every $n$. A table of answers cannot: it would have to stop somewhere, and the theorem is about every $n$ after that too.",
+      "src": "Until now the definitions were given and you proved things about them. In the next exercises you write the definition too, by answering the two questions: what it is at `0`, and how the answer for `n + 1` comes from the answer for `n`. The theorem is the definition's specification: Lean accepts your work when the definition meets it, for every $n$. A table of answers cannot: it would have to stop somewhere, and the theorem is about every $n$ after that too.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -243,7 +303,67 @@
       "label": null
     },
     {
-      "src": "> [!summary]\n> Induction proves $P(n)$ for every $n$ from a base case and a step: a recipe that builds the proof for any $n$ you name. Checking cases finds mistakes; the step is the proof. In Lean, `induction` splits the goal into those two cases and hands the step its hypothesis.",
+      "src": "In `double` each step adds the same amount. In the next one, each step uses the value before it: the answer for `n + 1` is made from the answer for `n`, not just added to.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem pow2_spec (n : Nat) : pow2 n = 2 ^ n := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Define `pow2 n`, two to the power $n$, by recursion, without `^`; then prove that it is `2 ^ n`.",
+      "leanSolution": "  induction n with\n  | zero => rfl\n  | succ k ih =>\n    simp only [pow2, ih, Nat.pow_succ]\n    omega",
+      "leanStart": "  induction n with\n  | zero => sorry\n  | succ k ih => sorry",
+      "hints": [
+        "At `0`: $2^0 = 1$, not `0`. Each step up doubles: $2^{n+1} = 2 \\cdot 2^n$, so `pow2 (n + 1)` is `2 * pow2 n`.",
+        "The proof: `simp only [pow2, ih, Nat.pow_succ]` unfolds one step, uses the hypothesis, and turns `2 ^ (k + 1)` into `2 ^ k * 2`; `omega` finishes, treating `2 ^ k` as a number."
+      ],
+      "leanDef": "def pow2 : Nat → Nat\n  | 0 => sorry\n  | n + 1 => sorry",
+      "leanDefSolution": "def pow2 : Nat → Nat\n  | 0 => 1\n  | n + 1 => 2 * pow2 n",
+      "leanForbid": [
+        "^",
+        "Nat.pow",
+        "HPow.hPow",
+        "pow",
+        "<<<",
+        "shiftLeft"
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The last one is a sum again, like `oddSum`. Mind which term the step adds.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem powSum_spec (n : Nat) : powSum n + 1 = 2 ^ n := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Define `powSum n`, the sum of the first $n$ powers of two, $1 + 2 + 4 + \\cdots$, by recursion; then prove that it is one less than $2^n$. (Without subtraction: write the sum, not its closed form $2^n - 1$.)",
+      "leanSolution": "  induction n with\n  | zero => rfl\n  | succ k ih =>\n    simp only [powSum, Nat.pow_succ]\n    omega",
+      "leanStart": "  induction n with\n  | zero => sorry\n  | succ k ih => sorry",
+      "hints": [
+        "The first $n$ powers of two are $2^0, 2^1, \\ldots, 2^{n-1}$. The sum of none of them is `0`.",
+        "Going from $n$ terms to $n + 1$ adds the power at position $n$, which is $2^n$, not $2^{n+1}$: `powSum (n + 1)` is `powSum n + 2 ^ n`. Check with `#eval (List.range 6).map powSum`: 0, 1, 3, 7, 15, 31.",
+        "The proof: `simp only [powSum, Nat.pow_succ]` leaves `powSum k + 2 ^ k + 1 = 2 ^ k * 2`, and `omega` finishes it from `ih : powSum k + 1 = 2 ^ k`."
+      ],
+      "leanDef": "def powSum : Nat → Nat\n  | 0 => sorry\n  | n + 1 => sorry",
+      "leanDefSolution": "def powSum : Nat → Nat\n  | 0 => 0\n  | n + 1 => powSum n + 2 ^ n",
+      "leanForbid": [
+        "-",
+        "Nat.sub",
+        "HSub.hSub",
+        "sub",
+        "pred"
+      ],
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "> [!summary]\n> Induction proves $P(n)$ for every $n$ from a base case and a step: a recipe that builds the proof for any $n$ you name. Checking cases finds mistakes; the step is the proof. In Lean, `induction` splits the goal into those two cases and hands the step its hypothesis. A recursive definition has the same two parts, its value at `0` and how the value at `n + 1` comes from the value at `n`, which is why proofs about it are by induction.",
       "type": "markdown",
       "showWork": false,
       "label": null
