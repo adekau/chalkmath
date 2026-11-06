@@ -3,7 +3,7 @@
     {
       "id": "lean",
       "title": "Lean from zero",
-      "blurb": "Lean before any course uses it: values and their types, functions, recursion, your own types, and then statements about your functions that Lean checks, for every input.",
+      "blurb": "Lean before any course uses it: values and their types, functions, recursion, your own types, and then statements about your functions that Lean checks, for every input, and how to find the facts in its library that a proof needs.",
       "kind": "course",
       "level": "Start here",
       "path": "courses/lean",
@@ -52,6 +52,11 @@
               "blurb": "Reversing twice gives the list back, with a lemma; then insertion sort, and the three theorems that make it correct for every list: the same length, the same count of every number, and a sorted result."
             }
           ]
+        },
+        {
+          "file": "07-finding-theorems.chalk",
+          "title": "Finding a theorem",
+          "blurb": "The facts in Lean's library and how to find the one a proof needs: #check, the naming convention that turns a statement into a name, the search tactics exact?, apply?, rw? and simp?, and Loogle and LeanSearch on the web."
         }
       ]
     },

@@ -15,7 +15,7 @@
       "label": null
     },
     {
-      "src": "> [!note] New to Lean?\n> This lesson starts using Lean. If you have never written any, [Lean from zero](#course=lean) teaches what these lessons assume, from `#eval` to proofs by induction, in six short lessons.",
+      "src": "> [!note] New to Lean?\n> This lesson starts using Lean. If you have never written any, [Lean from zero](#course=lean) teaches what these lessons assume, from `#eval` to proofs by induction and finding the theorems a proof needs, in seven short lessons.",
       "type": "markdown",
       "showWork": false,
       "label": null
