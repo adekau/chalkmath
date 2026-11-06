@@ -260,6 +260,12 @@
       "label": null
     },
     {
+      "src": "> [!tip] Where the names come from\n> The proofs below use facts from Lean's library by name, such as `Nat.pow_succ : n ^ (m + 1) = n ^ m * n`. Such names follow a convention, the statement read as words (`pow_succ` is \"a power of a successor\"), and Lean can search for them: put `exact?` or `rw?` where the proof goes. [Finding a theorem](#course=lean&lesson=7) shows how.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
       "src": "theorem lt_two_pow' (n : Nat) : n + 1 ≤ 2 ^ n := by",
       "type": "exercise",
       "lean": true,

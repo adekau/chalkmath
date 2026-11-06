@@ -123,7 +123,7 @@ const oddSquareScene = (() => {
 
 // ---------------------------------------------------------------------------------------------------
 course("lean", "Lean from zero",
-  "Lean before any course uses it: values and their types, functions, recursion, your own types, and then statements about your functions that Lean checks, for every input.",
+  "Lean before any course uses it: values and their types, functions, recursion, your own types, and then statements about your functions that Lean checks, for every input, and how to find the facts in its library that a proof needs.",
   "Start here", (add, app) => {
 
   add("01-calculator.chalk", "Lean as a calculator", "Ask Lean for values with #eval and for types with #check; numbers that stop at zero and numbers that do not; names for values.", ({ sec, md, lean, lx }) => {
@@ -533,7 +533,7 @@ theorem next_not_same : ∀ d : Weekday, d.next ≠ d := by
 > [!note] Application: a verified sort
 > [A verified sort check](#course=lean&lesson=6&app=1), an optional notebook beside this lesson, proves that reversing a list twice gives it back, and that insertion sort is correct: its output is sorted and has the same numbers as its input, for every list.
 `);
-    md(r`That is everything the next course assumes. [Logic and proof technique](#course=logic) uses Lean from its third lesson on, for proofs about logic, numbers and the functions you define there.`);
+    md(r`One more lesson before the next course: these proofs used facts from Lean's library by name, ‹Nat.mul_pos›, ‹Nat.succ_pos›, ‹Nat.mul_add›. [Finding a theorem](#course=lean&lesson=7) is about how to find the one you need.`);
   });
 
   app("06a-verified-sort.chalk", "A verified sort check", "Reversing twice gives the list back, with a lemma; then insertion sort, and the three theorems that make it correct for every list: the same length, the same count of every number, and a sorted result.", ({ sec, md, lean, lx }) => {
@@ -660,6 +660,127 @@ The first two say ‹isort› rearranges its input without losing or adding a nu
 > [!summary]
 > A specification says what a function must do for every input: for a sort, an output in order with the same numbers as the input. Each theorem about ‹isort› went through a lemma about ‹ins›, the function it is built from, and ‹split› took ‹ins›'s ‹if› apart. With the three proved, ‹isort› is correct on every list, which no test suite can show; ‹lazySort› passes the third theorem and fails the first two.
 `);
+  });
+
+  add("07-finding-theorems.chalk", "Finding a theorem", "The facts in Lean's library and how to find the one a proof needs: #check, the naming convention that turns a statement into a name, the search tactics exact?, apply?, rw? and simp?, and Loogle and LeanSearch on the web.", ({ sec, md, lean, lx }) => {
+    sec("Finding a theorem");
+    md(r`
+> [!goal]
+> Find the fact a proof needs: guess its name from the statement, check it with ‹#check›, or have Lean search for it.
+`);
+    md(r`Proofs keep needing small facts. In an induction step, ‹2 ^ (k + 1)› has to become ‹2 ^ k * 2›; a product of two positive numbers has to be positive. Lean's library has thousands of facts like these, each a theorem with a name: lesson 6 used ‹Nat.mul_pos› and ‹Nat.succ_pos›. This lesson is about finding the one you need, in three ways: guess its name, ask Lean to search, or search the web.`);
+    sec("A theorem is a fact with a name");
+    md(r`‹#check› followed by a theorem's name shows what it states:`);
+    lean(r`#check Nat.pow_succ
+#check Nat.mul_comm
+#check Nat.mul_pos`);
+    md(r`Read ‹Nat.pow_succ (n m : Nat) : n ^ m.succ = n ^ m * n› as "for every ‹n› and ‹m›, $n^{m+1} = n^m \cdot n$". ‹m.succ› is ‹m + 1›, the *successor* of ‹m›; the two are the same number to Lean. ‹Nat.mul_pos {n m : Nat} (hn : 0 < n) (hm : 0 < m) : 0 < n * m› has hypotheses: give it a proof that ‹0 < n› and one that ‹0 < m›, and it gives back a proof that ‹0 < n * m›. Arguments in braces, like ‹{n m : Nat}› here, are ones Lean works out by itself from the others.`);
+    md(r`There are two common ways to use one. ‹rw [Nat.pow_succ]› rewrites the goal, replacing what matches the left side with the right side. ‹exact Nat.mul_comm a b› gives the theorem, for these ‹a› and ‹b›, as the whole proof: a theorem is a function from its arguments to a proof.`);
+    lean(r`example (k : Nat) : 2 ^ (k + 1) = 2 ^ k * 2 := by
+  rw [Nat.pow_succ]
+
+example (a b : Nat) : a * b = b * a := by
+  exact Nat.mul_comm a b
+
+example (a b : Nat) (ha : 0 < a) (hb : 0 < b) : 0 < a * b := by
+  exact Nat.mul_pos ha hb`);
+    sec("Names say what the theorem states");
+    md(r`The names are not arbitrary. Lean's library, and Mathlib beside it, name a theorem after its statement, so that you can often guess the name from the statement:
+
+1. The type comes first, as a namespace: ‹Nat.› for facts about natural numbers, ‹List.› for lists, ‹Bool.›, ‹Int.›.
+2. Then the statement, read from left to right, each symbol as a word, the words joined with ‹_›: ‹n ^ (m + 1) = …› is ‹pow_succ›, a power of a successor. For an equation the name usually describes only the left side, the side you start from; the right side is what it becomes.
+3. A function applied to something is named from the outside in: ‹(as ++ bs).length = as.length + bs.length› is ‹List.length_append›, the length of an append.
+4. The order of the words is the order of the symbols, so ‹Nat.zero_add : 0 + n = n› and ‹Nat.add_zero : n + 0 = n› are two different theorems, and so are ‹Nat.two_mul : 2 * n = n + n› and ‹Nat.mul_two : n * 2 = n + n›.
+
+The words for symbols:
+
+- arithmetic: ‹+› is ‹add›, ‹-› ‹sub›, ‹*› ‹mul›, ‹/› ‹div›, ‹%› ‹mod›, ‹^› ‹pow›;
+- numbers: ‹0› is ‹zero›, ‹1› ‹one›, ‹2› ‹two›, and ‹n + 1› (or ‹n.succ›) ‹succ›;
+- comparisons: ‹≤› is ‹le›, ‹<› ‹lt›, ‹=› ‹eq›, ‹≠› ‹ne›, ‹0 < x› ‹pos›, ‹∣› (divides) ‹dvd›;
+- logic: ‹¬› is ‹not›, ‹∧› ‹and›, ‹∨› ‹or›, ‹↔› ‹iff›;
+- lists: ‹++› is ‹append›, ‹x :: xs› ‹cons›, ‹[]› ‹nil›.
+
+‹≥› and ‹>› are written the other way round, as ‹≤› and ‹<›, so a theorem's name says ‹le› or ‹lt›. Words for the kind of fact:
+
+- ‹comm›, the order swapped: ‹Nat.mul_comm : n * m = m * n›;
+- ‹assoc›, the grouping changed: ‹Nat.add_assoc : n + m + k = n + (m + k)›;
+- ‹self›, something with itself: ‹Nat.sub_self : n - n = 0›;
+- ‹cancel›, something undone: ‹Nat.add_sub_cancel : n + m - m = n›;
+- ‹left› and ‹right›, which side: ‹Nat.add_left_cancel : n + m = n + k → m = k›;
+- ‹refl›, ‹trans› and ‹antisymm›, the laws of an order: ‹Nat.le_trans : n ≤ m → m ≤ k → n ≤ k›;
+- ‹iff›, a statement that is an ‹↔›: ‹Nat.lt_succ_iff : m < n.succ ↔ m ≤ n›;
+- a ‹'› at the end, a variant of the name without it: ‹Nat.pow_succ' : m ^ n.succ = m * m ^ n›.
+`);
+    md(r`A theorem with hypotheses is named after its conclusion, then ‹of›, then the hypotheses in order: ‹Nat.lt_of_le_of_lt : n ≤ m → m < k → n < k› is "‹lt› from ‹le› and ‹lt›", and ‹Nat.le_of_lt_succ : m < n.succ → m ≤ n› is "‹le› from ‹lt› of a ‹succ›". A hypothesis that only says when the fact applies is often left out of the name: ‹Nat.sub_add_cancel (h : m ≤ n) : n - m + m = n›.`);
+    md(r`So to find a fact, write down its statement, read it as words, guess, and check the guess with ‹#check›. A wrong guess gets ‹Unknown constant›, and costs nothing:`);
+    lean(r`#check Nat.add_sub_cancel
+#check Nat.lt_of_le_of_lt
+#check List.length_append
+#check List.reverse_reverse`);
+    md(r`
+> [!tip] Let the editor finish the name
+> Type a namespace and the start of a guess, ‹Nat.pow_›, and press ‹Ctrl+Space›: the editor lists the names that start that way, with the statement of the one selected beside the list. Moving down the list is a quick way to read what a part of the library offers.
+`);
+    sec("Ask Lean to search");
+    md(r`When the guess fails, Lean can search. Put one of these tactics where the proof goes:
+
+- ‹exact?› looks for a single theorem that, given the hypotheses you have, proves the goal outright.
+- ‹apply?› looks for theorems whose conclusion fits the goal, and lists each with the goals it would still leave you. Use it when no one theorem finishes the proof.
+- ‹rw?› looks for an equation that rewrites the goal.
+- ‹simp?› runs ‹simp›, then says which facts it used, as a ‹simp only [ … ]› to paste in its place.
+
+Each one answers with a message under its line that starts **Try this:**, followed by the proof it found. Put that proof in place of the search: it says which theorem did it, for next time, and a search can take seconds each time Lean checks the cell again.`);
+    lean(r`example (n m : Nat) : n * m = m * n := by exact?
+
+example (a b c : Nat) (h1 : a ≤ b) (h2 : b < c) : a < c := by exact?
+
+example (a b : Nat) (h : b ≤ a) : a - b + b = a := by exact?
+
+example (a b : Nat) : a + b - b = a := by simp?`);
+    md(r`The answers are ‹exact Nat.mul_comm n m›, ‹exact Nat.lt_of_le_of_lt h1 h2›, ‹exact Nat.sub_add_cancel h› and ‹simp only [Nat.add_sub_cancel]›. The search uses what is in scope: the second and third answers are the theorem applied to the hypotheses ‹h1›, ‹h2› and ‹h›. Without ‹h› the third is false, ‹0 - 1 + 1› is ‹1›, and ‹exact?› finds nothing.`);
+    md(r`
+> [!mistake]
+> ‹exact?› finds a theorem only when it is one step away. Asked for ‹2 ^ 3 ≤ 2 ^ k› with ‹h : 3 ≤ k›, it gives up: the theorem, ‹Nat.pow_le_pow_right›, also needs a proof that ‹2 > 0›. ‹apply?› finds it, as ‹refine Nat.pow_le_pow_right ?_ h› with the goal ‹2 > 0› left over, which ‹by decide› proves: ‹exact Nat.pow_le_pow_right (by decide) h›. And when the goal is not quite a library fact, take it apart first: ‹rw› it into the form a theorem has, or prove the missing step with ‹have›, then search again.
+`);
+    md(r`The search also finds your own theorems, and the ones from earlier lessons: a theorem you proved is in the library too, from then on. Now and then that gives a strange answer. Asked for ‹2 ^ (k + 1) = 2 ^ k * 2›, ‹exact?› here answers with lesson 5's ‹add_zero'›, which says ‹n + 0 = n›: Lean computes both sides of the goal to the same thing, so a theorem about ‹x = x›, in disguise, fits. An answer like that means ‹rfl› would have done; for a proof a reader can follow, ‹rw [Nat.pow_succ]› says what happened.`);
+    sec("Search on the web");
+    md(r`Two search engines on the web cover Lean's library and Mathlib:
+
+- [Loogle](https://loogle.lean-lang.org) searches by the shape of a statement. ‹?n * ?m = ?m * ?n› finds ‹Nat.mul_comm›: ‹?n› stands for any term, the same name for the same term, and ‹_› for anything at all. A name in quotes searches names, as ‹"pow_succ"› does, and a constant such as ‹Nat.pow› finds the facts that mention it. Join several with commas to ask for all of them at once: ‹Nat.pow, ?a ^ (?b + 1)›.
+- [LeanSearch](https://leansearch.net) takes a sentence: "a power with exponent n plus one is the power times the base".
+
+Both search Mathlib too, which this page's Lean does not have: it has Lean's core library alone. A result in a module whose name starts ‹Init.› works here; one in ‹Mathlib.› does not. Mathlib's facts about every kind of number usually have no namespace (‹mul_comm›, ‹pow_succ›); the core library's facts about ‹Nat› are in ‹Nat.› (‹Nat.mul_comm›, ‹Nat.pow_succ›). Mathlib's guide to its [naming conventions](https://leanprover-community.github.io/contribute/naming.html) covers the rules of this lesson and more.`);
+    sec("Exercises");
+    md(r`Each proof needs one or two facts from the library. Guess the name from the statement and check it with ‹#check› in a cell of your own, or search; then write the proof with the name, not the search.`);
+    lx(r`theorem mul_swap (a b : Nat) : a * b = b * a := by`, r`Prove that multiplying in the other order gives the same product.`, r`  exact Nat.mul_comm a b`, [
+      r`Multiplication, ‹mul›, with the order swapped. Which word means "the order swapped"?`,
+      r`‹Nat.mul_comm›: ‹exact Nat.mul_comm a b›.`,
+    ]);
+    lx(r`theorem mul_over_add (a b c : Nat) : a * (b + c) = a * b + a * c := by`, r`Prove that multiplying a sum multiplies each of its terms. ‹omega› cannot: it knows multiplying by a number, not by ‹a›.`, r`  exact Nat.mul_add a b c`, [
+      r`Read the left side from left to right: a ‹mul› whose right side is an ‹add›.`,
+      r`‹Nat.mul_add›: ‹exact Nat.mul_add a b c›. (‹Nat.left_distrib› is another name for it.)`,
+    ]);
+    lx(r`theorem lt_chain (a b c : Nat) (h1 : a ≤ b) (h2 : b < c) : a < c := by`, r`Prove ‹a < c› from ‹a ≤ b› and ‹b < c›, with the theorem that says so (‹omega› would do it, but find the name).`, r`  exact Nat.lt_of_le_of_lt h1 h2`, [
+      r`The conclusion first, then ‹of›, then the hypotheses in order.`,
+      r`‹Nat.lt_of_le_of_lt›, applied to the two hypotheses: ‹exact Nat.lt_of_le_of_lt h1 h2›.`,
+    ]);
+    lx(r`theorem two_pow_pos' (n : Nat) : 0 < 2 ^ n := by`, r`Prove that a power of two is never 0. ‹omega› cannot: to it, ‹2 ^ n› is a number it knows nothing about.`, r`  exact Nat.pow_pos (by decide)`, [
+      r`‹0 < x› is ‹pos›, and ‹x› is a ‹pow›. ‹#check Nat.pow_pos› shows what that theorem needs.`,
+      r`‹Nat.pow_pos› needs a proof that the base is positive, ‹0 < 2›, which ‹by decide› gives: ‹exact Nat.pow_pos (by decide)›. (‹exact?› finds ‹Nat.two_pow_pos n›, made for this case.)`,
+    ]);
+    lx(r`theorem pow_step (b k : Nat) : b ^ (k + 1) = b * b ^ k := by`, r`Prove $b^{k+1} = b \cdot b^k$. ‹Nat.pow_succ› has the product in the other order.`, r`  rw [Nat.pow_succ, Nat.mul_comm]`, [
+      r`‹rw [Nat.pow_succ]› leaves ‹b ^ k * b = b * b ^ k›: one more theorem swaps the product.`,
+      r`‹rw [Nat.pow_succ, Nat.mul_comm]›. Or the variant with a ‹'›: ‹exact Nat.pow_succ'›.`,
+    ]);
+    lx(r`theorem rev_append_length (xs ys : List Nat) : (xs ++ ys).reverse.length = xs.length + ys.length := by`, r`Prove that reversing two lists joined keeps the sum of their lengths, with ‹rw› and two theorems about ‹List›.`, r`  rw [List.length_reverse, List.length_append]`, [
+      r`From the outside in: first the ‹length› of a ‹reverse›, then the ‹length› of an ‹append›.`,
+      r`‹rw [List.length_reverse, List.length_append]›.`,
+    ]);
+    md(r`
+> [!summary]
+> A fact in Lean's library is a theorem with a name, and ‹#check› shows what it states. The name is the statement read as words: the type's namespace, then the symbols from left to right (‹pow_succ›, ‹length_append›), a word for the kind of fact (‹comm›, ‹assoc›, ‹cancel›), and ‹of› before the hypotheses. When guessing fails, ‹exact?›, ‹apply?›, ‹rw?› and ‹simp?› search, and Loogle and LeanSearch search on the web; keep the name they find, not the search.
+`);
+    md(r`That is everything the next course assumes. [Logic and proof technique](#course=logic) uses Lean from its third lesson on, for proofs about logic, numbers and the functions you define there.`);
   });
 }, { leanPrelude: true });
 
@@ -1074,7 +1195,7 @@ def route (admin owner : Bool) : String :=
 `);
     md(r`
 > [!note] New to Lean?
-> This lesson starts using Lean. If you have never written any, [Lean from zero](#course=lean) teaches what these lessons assume, from ‹#eval› to proofs by induction, in six short lessons.
+> This lesson starts using Lean. If you have never written any, [Lean from zero](#course=lean) teaches what these lessons assume, from ‹#eval› to proofs by induction and finding the theorems a proof needs, in seven short lessons.
 `);
     md(r`A truth table checks a formula by trying every row. That stops working for "every natural number $n$ satisfies $n + 0 = n$": the rows never end. A **proof** derives a statement by rules instead, each a small step that is obviously valid, and Lean checks every step. What should the rules be?`);
     sec("What each connective needs");
@@ -1599,6 +1720,10 @@ which is what the ‹example› checks, with ‹rfl›.`);
   | succ k ih =>
     simp only [oddSum, ih]
     grind`, [r`‹induction n with›, then a case for ‹zero› and one for ‹succ k ih›.`, r`In the ‹succ› case, ‹simp only [oddSum, ih]› leaves ‹k * k + (2 * k + 1) = (k + 1) * (k + 1)›: the picture's step.`]);
+    md(r`
+> [!tip] Where the names come from
+> The proofs below use facts from Lean's library by name, such as ‹Nat.pow_succ : n ^ (m + 1) = n ^ m * n›. Such names follow a convention, the statement read as words (‹pow_succ› is "a power of a successor"), and Lean can search for them: put ‹exact?› or ‹rw?› where the proof goes. [Finding a theorem](#course=lean&lesson=7) shows how.
+`);
     lx(r`theorem lt_two_pow' (n : Nat) : n + 1 ≤ 2 ^ n := by`, r`Prove $n + 1 \le 2^n$ for every $n$.`, r`  induction n with
   | zero => decide
   | succ k ih =>

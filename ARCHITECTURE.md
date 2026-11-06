@@ -748,7 +748,7 @@ in `PRACTICE` (`mk-courses.mjs`). Only the areas whose questions stand alone hav
 system or an order defined earlier in its lesson has none.
 
 **Help › Documentation** opens a tab: a guide to the notebook (cells, input,
-reading the work, files, lookups and their set-up, Lean cells, the studio) and the reference pages.
+reading the work, files, lookups and their set-up, Lean cells and finding a theorem for them, the studio) and the reference pages.
 The pages are Markdown in `src/docs.ts`, drawn by the Markdown cells' renderer; their tables (the
 symbols and templates, the shortcuts, the example notebooks) are built from the lists the notebook
 itself uses. Every function has a page of its own, laid out as Mathematica's are — usage lines,

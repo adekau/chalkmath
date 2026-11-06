@@ -352,7 +352,7 @@ A Lean cell is [Lean 4](https://lean-lang.org) itself, running in your browser: 
 - **What is left to prove**: put the cursor in a proof and the panel's **Lean goals** tab shows the goals there, as Lean's infoview does.
 - **One file**: a notebook's Lean cells, in order, are one Lean file. A definition in one cell is known in the cells after it, and editing a cell re-checks it and the cells below.
 - **Messages**: errors, warnings and ‹#eval› / ‹#check› output show under the cell's lines.
-- **Library**: Lean's core library (‹Init›). Mathlib is not available in the browser.
+- **Library**: Lean's core library (‹Init›). Mathlib is not available in the browser. [Finding a theorem](#doc:lean-search) says how to find the fact a proof needs.
 
 ## The first time
 
@@ -365,6 +365,49 @@ The top bar says what Lean is doing, beside the engine: **starting**, **download
 Lean in a browser has far less stack than it has natively, so Lean that nests very deeply (a very long ‹do› block, or recursion thousands of calls deep in an ‹#eval›) can stop it. The Lean cells then say so, and where Lean was checking; change that, then **Restart Lean** starts it again in the page, keeping what you typed, and it checks the notebook from the start. Changing a Lean file's ‹import› lines restarts Lean by itself, as Lean does in VS Code: a file's imports are loaded once per server. If Lean did not load at all (a dropped connection, say), the Lean cells say so, and **Try again** loads it again.
 
 The example notebook *Order and lattices* has its proofs in Lean cells.
+`],
+  },
+  {
+    id: "lean-search", title: "Finding a theorem", group: "Guide", parts: [md`
+# Finding a theorem
+
+A proof often needs a fact from Lean's library: that ‹2 ^ (k + 1) = 2 ^ k * 2›, or that ‹n * m = m * n›. Each such fact is a theorem with a name (‹Nat.pow_succ›, ‹Nat.mul_comm›), used with ‹rw [Nat.pow_succ]› or ‹exact Nat.mul_comm n m›. There are three ways to find the name. The lesson [Finding a theorem](#course=lean&lesson=7) of *Lean from zero* goes through them with exercises.
+
+## Check a name
+
+‹#check Nat.pow_succ› in a Lean cell shows what the theorem states, ‹Nat.pow_succ (n m : Nat) : n ^ m.succ = n ^ m * n› (‹m.succ› is ‹m + 1›), and a name that does not exist gets ‹Unknown constant›. In the editor, type ‹Nat.pow_› and press ‹Ctrl+Space› for a list of the names that start that way, with the statement of the one selected beside it.
+
+## Guess the name
+
+Lean's library and Mathlib name a theorem after its statement:
+
+- the type's namespace first: ‹Nat.›, ‹List.›, ‹Bool.›, ‹Int.›;
+- then the statement read from left to right, each symbol as a word, joined with ‹_›; for an equation, mostly its left side: ‹n ^ (m + 1) = n ^ m * n› is ‹Nat.pow_succ›;
+- a function applied to something from the outside in: ‹(as ++ bs).length = …› is ‹List.length_append›;
+- the words in the order of the symbols: ‹Nat.zero_add : 0 + n = n›, ‹Nat.add_zero : n + 0 = n›;
+- with hypotheses, the conclusion, then ‹of›, then the hypotheses in order: ‹Nat.lt_of_le_of_lt : n ≤ m → m < k → n < k›.
+
+The words for symbols: ‹+› ‹add›, ‹-› ‹sub›, ‹*› ‹mul›, ‹/› ‹div›, ‹%› ‹mod›, ‹^› ‹pow›; ‹0› ‹zero›, ‹1› ‹one›, ‹2› ‹two›, ‹n + 1› or ‹n.succ› ‹succ›; ‹≤› ‹le›, ‹<› ‹lt› (‹≥› and ‹>› are written as ‹≤› and ‹<›), ‹=› ‹eq›, ‹≠› ‹ne›, ‹0 < x› ‹pos›, ‹∣› (divides) ‹dvd›; ‹¬› ‹not›, ‹∧› ‹and›, ‹∨› ‹or›, ‹↔› ‹iff›; ‹++› ‹append›, ‹x :: xs› ‹cons›, ‹[]› ‹nil›.
+
+The kind of fact has a word too: ‹comm› (‹n * m = m * n›), ‹assoc› (‹n + m + k = n + (m + k)›), ‹self› (‹n - n = 0›), ‹cancel› (‹n + m - m = n›), ‹left› and ‹right› (which side), ‹refl›, ‹trans› and ‹antisymm› (the laws of an order), and a trailing ‹'› for a variant (‹Nat.pow_succ' : m ^ n.succ = m * m ^ n›). Mathlib's guide to its [naming conventions](https://leanprover-community.github.io/contribute/naming.html) has the whole set.
+
+## Ask Lean
+
+Put a search where the proof goes; it answers under the line with **Try this:** and the proof it found, to put in place of the search:
+
+- ‹exact?›: one theorem, applied to the hypotheses in scope, that proves the goal;
+- ‹apply?›: theorems whose conclusion fits the goal, each with the goals it leaves;
+- ‹rw?›: an equation that rewrites the goal;
+- ‹simp?›: what ‹simp› used, as a ‹simp only [ … ]›.
+
+They search the core library and everything defined before them in the notebook, your own theorems included. ‹exact?› finds only what is one step away; when it gives up, try ‹apply?›, or take the goal apart with ‹rw› or ‹have› first.
+
+## Search the web
+
+- [Loogle](https://loogle.lean-lang.org) searches by the shape of a statement: ‹?n * ?m = ?m * ?n› (‹?n› is any term, the same name the same term; ‹_› is anything), a name in quotes (‹"pow_succ"›), or a constant (‹Nat.pow›); join several with commas.
+- [LeanSearch](https://leansearch.net) takes a sentence in English.
+
+Both cover Mathlib as well, which the browser's Lean does not have. A theorem in a module whose name starts ‹Init.› works here; one in ‹Mathlib.› does not. Mathlib's general facts usually have no namespace (‹mul_comm›); the core library's facts about ‹Nat› are in ‹Nat.› (‹Nat.mul_comm›).
 `],
   },
   {
