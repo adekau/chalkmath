@@ -382,19 +382,17 @@ Add a scene from **+ Cell** ‹▾› or **Edit › Add scene**, write its scrip
 
 The first line names the scene's **clock**, the variable it animates, and its range. Then the objects, one per line, each with a name:
 
-| Object | What it draws |
-| --- | --- |
-| ‹point(z)› | a dot at ‹z›: a complex number (a real one sits on the real axis), or a vector ‹[x, y]› |
-| ‹curve(z, s, a, b)› | the curve ‹z› traces as ‹s› runs from ‹a› to ‹b› |
-| ‹graph(f, x, a, b)› | the graph of ‹y = f(x)› |
-| ‹arrow(A, B)›, ‹segment(A, B)› | from ‹A› to ‹B›: point names or expressions |
-| ‹line(A, B)› | the whole line through ‹A› and ‹B› |
-| ‹poly(A, B, C, …)› | a filled polygon with those corners |
-| ‹grid(M)› | the plane's grid as the $2 \times 2$ matrix ‹M› moves it: the lines through ‹M›'s images of the whole-number points |
-| ‹trace(P)› | the path the point ‹P› has drawn since the trace appeared |
-| ‹label(A, "TeX")› | TeX beside a point |
-| ‹eq(e)› | an expression above the picture, as the engine prints it |
-| ‹value(e, "TeX")› | a real number above the picture, read off as the clock moves: ‹value(det(M), "\det = ")› |
+- ‹point(z)› draws a dot at ‹z›, a complex number (a real one sits on the real axis) or a vector ‹[x, y]›.
+- ‹curve(z, s, a, b)› draws the curve ‹z› traces as ‹s› runs from ‹a› to ‹b›.
+- ‹graph(f, x, a, b)› draws the graph of ‹y = f(x)›.
+- ‹arrow(A, B)› and ‹segment(A, B)› go from ‹A› to ‹B›, which are point names or expressions.
+- ‹line(A, B)› draws the whole line through ‹A› and ‹B›.
+- ‹poly(A, B, C, …)› draws a filled polygon with those corners.
+- ‹grid(M)› draws the plane's grid as the $2 \times 2$ matrix ‹M› moves it: the lines through ‹M›'s images of the whole-number points.
+- ‹trace(P)› draws the path the point ‹P› has drawn since the trace appeared.
+- ‹label(A, "TeX")› puts TeX beside a point.
+- ‹eq(e)› shows an expression above the picture, as the engine prints it.
+- ‹value(e, "TeX")› shows a real number above the picture, read off as the clock moves: ‹value(det(M), "\det = ")›.
 
 Wherever a point goes, a vector does: the plane is $\mathbb{C}$, and a vector of two entries, ‹[x, y]›, ‹[x; y]› or anything the engine evaluates to one, such as ‹A*[1; 0]›, is the point $x + iy$.
 
