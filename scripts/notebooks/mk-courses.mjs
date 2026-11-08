@@ -87,6 +87,42 @@ function course(id, title, blurb, level, build, o = {}) {
 }
 
 // ---------------------------------------------------------------------------------------------------
+/** Lesson 6's proof that every n ≥ 2 has a prime factor, the example's argument, given whole: the reader
+ *  writes the statement (HasPrimeFactor) it proves. Each place it builds or takes apart a HasPrimeFactor
+ *  finds the two facts by `assumption`, so either order of them in the reader's definition fits. */
+const PRIME_FACTOR_PROOF = `  induction n using Nat.strongRecOn with
+  | _ n ih =>
+    by_cases hc : ∃ a, a ∣ n ∧ 2 ≤ a ∧ a < n
+    · -- n is not prime: n = a * b with 2 ≤ a < n
+      obtain ⟨a, han, ha2, han'⟩ := hc
+      -- the hypothesis for a: a has a prime factor p
+      have ha := ih a han' ha2
+      unfold HasPrimeFactor at ha ⊢
+      obtain ⟨p, h1, h2⟩ := ha
+      have hpa : p ∣ a := by assumption
+      -- p divides a, and a divides n, so p divides n
+      have hpn : p ∣ n := Nat.dvd_trans hpa han
+      exact ⟨p, by assumption, by assumption⟩
+    · -- n is prime: nothing from 2 to n - 1 divides it
+      have hp : IsPrime n := by
+        unfold IsPrime
+        refine ⟨by omega, fun d hd => ?_⟩
+        have hle : d ≤ n := Nat.le_of_dvd (by omega) hd
+        have hd0 : d ≠ 0 := by
+          intro h0
+          rw [h0] at hd
+          have := Nat.eq_zero_of_zero_dvd hd
+          omega
+        by_cases h1 : d = 1
+        · exact Or.inl h1
+        · by_cases h2 : d = n
+          · exact Or.inr h2
+          · exfalso
+            exact hc ⟨d, hd, by omega, by omega⟩
+      -- so n is its own prime factor
+      have hnn : n ∣ n := Nat.dvd_refl n
+      unfold HasPrimeFactor
+      exact ⟨n, by assumption, by assumption⟩`;
 /** Lesson 5's picture of induction: a row of dominoes, the step an arrow from each to the next, the base case a push. */
 const dominoScene = (() => {
   const N = 8, ks = [...Array(N).keys()];
@@ -1958,15 +1994,33 @@ The invariant: ‹best› is at least every element seen so far. In Lean the loo
     md(r`The fix is to assume more. When proving $P(n)$, assume $P(m)$ for every $m < n$, not only for $n - 1$:`);
     md(r`
 > [!theorem] Strong induction
-> If, for every $n$, $P(m)$ for all $m < n$ implies $P(n)$, then $P(n)$ holds for every $n$.
+> To prove $P(n)$ for every natural number $n$, it is enough to prove one step, for every $n$:
+>
+> *if $P(m)$ holds for every $m < n$, then $P(n)$ holds.*
+>
+> Ordinary induction proves $P(n + 1)$ from $P(n)$ alone. Here the proof of $P(n)$ may use all of $P(0), P(1), \ldots, P(n - 1)$.
 `);
     md(r`There is no separate base case: for $n = 0$ the hypothesis is about no numbers at all, so $P(0)$ must be proved outright, and the same happens for any $n$ the argument cannot reduce.`);
     sec("Every number has a prime factor");
     md(r`
 > [!example] Prime factors
-> Every $n \ge 2$ has a prime factor. If $n$ is prime, it is its own. If not, $n = ab$ with $2 \le a < n$, and $a$ has a prime factor by the hypothesis for $a$, which divides $n$ too. The step uses the case $a$, which can be any number below $n$, not $n - 1$.
+> Every $n \ge 2$ has a prime factor $p$: a prime with $p \mid n$. If $n$ is prime, it is its own, $p = n$. If not, $n = ab$ with $2 \le a < n$. By the hypothesis for $a$, $a$ has a prime factor $p$, and since $p \mid a$ and $a \mid n$, $p \mid n$ too. The step uses the case $a$, which can be any number below $n$, not $n - 1$.
 `);
+    md(r`The same claim, checked for every $n$ up to 60: for each $n$ there is a $p$ between 2 and $n$ that is prime and divides it.`);
     m("∀ n ∈ 2..60, ∃ p ∈ 2..n, prime(p) ∧ p ∣ n");
+    md(r`In Lean, "prime" needs a definition first: at least 2, and divisible only by 1 and itself.`);
+    lean(r`def IsPrime (p : Nat) : Prop := 2 ≤ p ∧ ∀ d, d ∣ p → d = 1 ∨ d = p`);
+    md(r`So far a lesson's exercises have given you the statement and asked for the proof. The next one turns that around. The proof is written, and it follows the example step by step. The statement is yours: define what "‹n› has a prime factor" means, so that the proof proves it. A proof only fits the statement it was written for, so if Lean accepts the proof, your definition says what the box says.`);
+    lx(r`theorem has_prime_factor (n : Nat) (h : 2 ≤ n) : HasPrimeFactor n := by`, r`Define ‹HasPrimeFactor n›, "‹n› has a prime factor", using ‹IsPrime›, so that the proof below checks. Leave the proof as it is.`, PRIME_FACTOR_PROOF, [
+      r`Read the box: a prime factor of $n$ is a number $p$ that is prime and divides $n$. "There is a $p$ such that …" is ‹∃ p, …›, and "and" is ‹∧›.`,
+      r`‹∃ p, IsPrime p ∧ p ∣ n›. Type ‹∣› as ‹\mid›: it is not the ‹|› on the keyboard.`,
+      r`A weaker definition, such as ‹∃ p, IsPrime p›, is also true, but it does not say what the box claims, and the proof does not fit it. Each branch of the proof ends by giving a ‹p› with both facts, prime and dividing ‹n›.`,
+    ], {
+      start: PRIME_FACTOR_PROOF,
+      def: { start: `def HasPrimeFactor (n : Nat) : Prop :=
+  sorry`, solution: `def HasPrimeFactor (n : Nat) : Prop :=
+  ∃ p, IsPrime p ∧ p ∣ n` },
+    });
     sec("Postage stamps");
     md(r`
 > [!try]
