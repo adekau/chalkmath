@@ -27,7 +27,7 @@
       "label": null
     },
     {
-      "src": "> [!theorem] Strong induction\n> If, for every $n$, $P(m)$ for all $m < n$ implies $P(n)$, then $P(n)$ holds for every $n$.",
+      "src": "> [!theorem] Strong induction\n> To prove $P(n)$ for every natural number $n$, it is enough to prove one step, for every $n$:\n>\n> *if $P(m)$ holds for every $m < n$, then $P(n)$ holds.*\n>\n> Ordinary induction proves $P(n + 1)$ from $P(n)$ alone. Here the proof of $P(n)$ may use all of $P(0), P(1), \\ldots, P(n - 1)$.",
       "type": "markdown",
       "showWork": false,
       "label": null
@@ -45,13 +45,54 @@
       "label": null
     },
     {
-      "src": "> [!example] Prime factors\n> Every $n \\ge 2$ has a prime factor. If $n$ is prime, it is its own. If not, $n = ab$ with $2 \\le a < n$, and $a$ has a prime factor by the hypothesis for $a$, which divides $n$ too. The step uses the case $a$, which can be any number below $n$, not $n - 1$.",
+      "src": "> [!example] Prime factors\n> Every $n \\ge 2$ has a prime factor $p$: a prime with $p \\mid n$. If $n$ is prime, it is its own, $p = n$. If not, $n = ab$ with $2 \\le a < n$. By the hypothesis for $a$, $a$ has a prime factor $p$, and since $p \\mid a$ and $a \\mid n$, $p \\mid n$ too. The step uses the case $a$, which can be any number below $n$, not $n - 1$.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "The same claim, checked for every $n$ up to 60: for each $n$ there is a $p$ between 2 and $n$ that is prime and divides it.",
       "type": "markdown",
       "showWork": false,
       "label": null
     },
     {
       "src": "∀ n ∈ 2..60, ∃ p ∈ 2..n, prime(p) ∧ p ∣ n",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "In Lean, \"prime\" needs a definition first: at least 2, and divisible only by 1 and itself.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "def IsPrime (p : Nat) : Prop := 2 ≤ p ∧ ∀ d, d ∣ p → d = 1 ∨ d = p",
+      "type": "lean",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "So far a lesson's exercises have given you the statement and asked for the proof. The next one turns that around. The proof is written, and it follows the example step by step. The statement is yours: define what \"`n` has a prime factor\" means, so that the proof proves it. A proof only fits the statement it was written for, so if Lean accepts the proof, your definition says what the box says.",
+      "type": "markdown",
+      "showWork": false,
+      "label": null
+    },
+    {
+      "src": "theorem has_prime_factor (n : Nat) (h : 2 ≤ n) : HasPrimeFactor n := by",
+      "type": "exercise",
+      "lean": true,
+      "prompt": "Define `HasPrimeFactor n`, \"`n` has a prime factor\", using `IsPrime`, so that the proof below checks. Leave the proof as it is.",
+      "leanSolution": "  induction n using Nat.strongRecOn with\n  | _ n ih =>\n    by_cases hc : ∃ a, a ∣ n ∧ 2 ≤ a ∧ a < n\n    · -- n is not prime: n = a * b with 2 ≤ a < n\n      obtain ⟨a, han, ha2, han'⟩ := hc\n      -- the hypothesis for a: a has a prime factor p\n      have ha := ih a han' ha2\n      unfold HasPrimeFactor at ha ⊢\n      obtain ⟨p, h1, h2⟩ := ha\n      have hpa : p ∣ a := by assumption\n      -- p divides a, and a divides n, so p divides n\n      have hpn : p ∣ n := Nat.dvd_trans hpa han\n      exact ⟨p, by assumption, by assumption⟩\n    · -- n is prime: nothing from 2 to n - 1 divides it\n      have hp : IsPrime n := by\n        unfold IsPrime\n        refine ⟨by omega, fun d hd => ?_⟩\n        have hle : d ≤ n := Nat.le_of_dvd (by omega) hd\n        have hd0 : d ≠ 0 := by\n          intro h0\n          rw [h0] at hd\n          have := Nat.eq_zero_of_zero_dvd hd\n          omega\n        by_cases h1 : d = 1\n        · exact Or.inl h1\n        · by_cases h2 : d = n\n          · exact Or.inr h2\n          · exfalso\n            exact hc ⟨d, hd, by omega, by omega⟩\n      -- so n is its own prime factor\n      have hnn : n ∣ n := Nat.dvd_refl n\n      unfold HasPrimeFactor\n      exact ⟨n, by assumption, by assumption⟩",
+      "leanStart": "  induction n using Nat.strongRecOn with\n  | _ n ih =>\n    by_cases hc : ∃ a, a ∣ n ∧ 2 ≤ a ∧ a < n\n    · -- n is not prime: n = a * b with 2 ≤ a < n\n      obtain ⟨a, han, ha2, han'⟩ := hc\n      -- the hypothesis for a: a has a prime factor p\n      have ha := ih a han' ha2\n      unfold HasPrimeFactor at ha ⊢\n      obtain ⟨p, h1, h2⟩ := ha\n      have hpa : p ∣ a := by assumption\n      -- p divides a, and a divides n, so p divides n\n      have hpn : p ∣ n := Nat.dvd_trans hpa han\n      exact ⟨p, by assumption, by assumption⟩\n    · -- n is prime: nothing from 2 to n - 1 divides it\n      have hp : IsPrime n := by\n        unfold IsPrime\n        refine ⟨by omega, fun d hd => ?_⟩\n        have hle : d ≤ n := Nat.le_of_dvd (by omega) hd\n        have hd0 : d ≠ 0 := by\n          intro h0\n          rw [h0] at hd\n          have := Nat.eq_zero_of_zero_dvd hd\n          omega\n        by_cases h1 : d = 1\n        · exact Or.inl h1\n        · by_cases h2 : d = n\n          · exact Or.inr h2\n          · exfalso\n            exact hc ⟨d, hd, by omega, by omega⟩\n      -- so n is its own prime factor\n      have hnn : n ∣ n := Nat.dvd_refl n\n      unfold HasPrimeFactor\n      exact ⟨n, by assumption, by assumption⟩",
+      "hints": [
+        "Read the box: a prime factor of $n$ is a number $p$ that is prime and divides $n$. \"There is a $p$ such that …\" is `∃ p, …`, and \"and\" is `∧`.",
+        "`∃ p, IsPrime p ∧ p ∣ n`. Type `∣` as `\\mid`: it is not the `|` on the keyboard.",
+        "A weaker definition, such as `∃ p, IsPrime p`, is also true, but it does not say what the box claims, and the proof does not fit it. Each branch of the proof ends by giving a `p` with both facts, prime and dividing `n`."
+      ],
+      "leanDef": "def HasPrimeFactor (n : Nat) : Prop :=\n  sorry",
+      "leanDefSolution": "def HasPrimeFactor (n : Nat) : Prop :=\n  ∃ p, IsPrime p ∧ p ∣ n",
       "showWork": false,
       "label": null
     },
