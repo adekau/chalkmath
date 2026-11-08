@@ -124,7 +124,7 @@
       "label": null
     },
     {
-      "src": "That is everything the next course assumes. [Logic and proof technique](#course=logic) uses Lean from its third lesson on, for proofs about logic, numbers and the functions you define there.",
+      "src": "One more lesson before the next course: these proofs used facts from Lean's library by name, `Nat.mul_pos`, `Nat.succ_pos`, `Nat.mul_add`. [Finding a theorem](#course=lean&lesson=7) is about how to find the one you need.",
       "type": "markdown",
       "showWork": false,
       "label": null
